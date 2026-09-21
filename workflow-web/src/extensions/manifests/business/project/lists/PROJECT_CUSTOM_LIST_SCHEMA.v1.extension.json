@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST",
+  "name": "PROJECT_CUSTOM_LIST_SCHEMA",
+  "label": "项目·后端 Schema 扩展列表",
+  "description": "由后端 EntityListSchemaProvider 增强结构后使用项目看板渲染。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/lists/ProjectAcceptanceBoardList.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "configSchema": [
+      {
+        "key": "showProviderTrace",
+        "label": "显示 Provider 轨迹",
+        "type": "boolean",
+        "defaultValue": true
+      },
+      {
+        "key": "searchPlaceholder",
+        "label": "搜索提示",
+        "type": "text",
+        "defaultValue": "搜索 Schema 扩展列表"
+      }
+    ],
+    "capabilities": {
+      "backendSchemaProvider": true,
+      "reusesPlatformActions": true,
+      "reusesPlatformPagination": true
+    },
+    "usageContexts": [
+      "PAGE"
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

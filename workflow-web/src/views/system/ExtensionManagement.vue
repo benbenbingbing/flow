@@ -31,6 +31,7 @@
             <el-option label="已停用" value="DISABLED" />
             <el-option label="待纳管" value="DISCOVERED" />
             <el-option label="实现缺失" value="MISSING" />
+            <el-option label="仅构建注册" value="BUILD_ONLY" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="searchExpanded" label="实现归属" class="filter-select">
@@ -40,6 +41,8 @@
             placeholder="全部归属"
           >
             <el-option label="平台内置" value="PLATFORM" />
+            <el-option label="通用扩展" value="COMMON" />
+            <el-option label="演示扩展" value="EXAMPLE" />
             <el-option label="项目自定义" value="CUSTOM" />
             <el-option label="暂无法识别" value="UNKNOWN" />
           </el-select>
@@ -76,7 +79,7 @@
           新增扩展接口
         </el-button>
         <el-button
-          v-if="canUpdate && filters.capabilityType !== 'INTERFACE'"
+          v-if="canUpdate && (!filters.capabilityType || ['UI_FORM', 'UI_LIST', 'UI_NODE', 'UI_FIELD'].includes(filters.capabilityType))"
           type="primary"
           plain
           @click="openCreateUi"
@@ -198,7 +201,7 @@
                 调试
               </el-button>
               <el-button
-                v-if="canUpdate && row.available !== false"
+                v-if="canUpdate && row.available !== false && !row.buildOnly"
                 link
                 type="primary"
                 @click="openEdit(row)"
@@ -305,9 +308,10 @@ import InterfaceExtensionEditorDialog from '@/components/ui-config/InterfaceExte
 import InterfaceExtensionTestDialog from '@/components/ui-config/InterfaceExtensionTestDialog.vue'
 import { normalizeInterfaceExtension } from '@/components/ui-config/interfaceExtensionModel'
 import {
-  getManagedExtensionManifest,
+  getBundledExtensionManifest,
   isPlatformBuiltInUiExtension
 } from '@/extensions/manifest'
+import { localExtensionRows } from '@/extensions/core/catalogRows.js'
 import { useUserStore } from '@/stores/user'
 import {
   loadAllExtensionCatalogRows,
@@ -320,7 +324,13 @@ const typeOptions = [
   { value: 'UI_FORM', label: '自定义表单' },
   { value: 'UI_LIST', label: '自定义列表' },
   { value: 'UI_NODE', label: '表单节点' },
-  { value: 'UI_FIELD', label: '表单字段' }
+  { value: 'UI_FIELD', label: '表单字段' },
+  { value: 'UI_LIST_CELL', label: '列表单元格' },
+  { value: 'UI_LIST_BUTTON', label: '列表按钮组件' },
+  { value: 'UI_LIST_ACTION', label: '列表动作函数' },
+  { value: 'UI_VALIDATOR', label: '前端校验器' },
+  { value: 'UI_ACTION_CONDITION', label: '操作条件编辑器' },
+  { value: 'UI_PERMISSION_PROVIDER', label: '权限候选提供器' }
 ]
 const typeMap = Object.fromEntries(typeOptions.map(item => [item.value, item.label]))
 const personUsageOptions = [
@@ -337,7 +347,7 @@ const canUpdate = computed(() => userStore.isSuperAdmin
 const canTest = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
   || userStore.permissions.includes('system:extension:test'))
-const localManifest = getManagedExtensionManifest()
+const localManifest = getBundledExtensionManifest()
 const filters = reactive({
   capabilityType: normalizeRouteType(route.query.type),
   keyword: '',
@@ -390,9 +400,9 @@ async function load() {
   loadError.value = ''
   try {
     const [catalogRows, allDefinitions, catalog] = await Promise.all([
-      loadAllExtensionCatalogRows(
+      (currentFilters.status === 'BUILD_ONLY' || ['UI_LIST_CELL', 'UI_LIST_BUTTON', 'UI_LIST_ACTION', 'UI_VALIDATOR', 'UI_ACTION_CONDITION', 'UI_PERMISSION_PROVIDER'].includes(currentFilters.capabilityType)) ? Promise.resolve([]) : loadAllExtensionCatalogRows(
         params => extensionCatalogApi.manage(params),
-        currentFilters
+        { ...currentFilters, implementationOrigin: ['COMMON', 'EXAMPLE'].includes(currentFilters.implementationOrigin) ? undefined : currentFilters.implementationOrigin }
       ),
       uiExtensionApi.list(),
       uiExtensionApi.catalog()
@@ -414,6 +424,7 @@ async function load() {
         // 管理目录负责筛选；定义详情只补齐编辑接口所需的内部实现字段。
         return decorateInterface({ ...row, ...raw })
       })
+      .filter(row => !currentFilters.implementationOrigin || row.implementationOrigin === currentFilters.implementationOrigin)
     const remoteUiKeys = new Set((allDefinitions || []).map(item =>
       `UI_${item.extensionType}:${item.extensionKey}:${item.version || 1}`))
     allCatalogRows.value = [
@@ -459,50 +470,14 @@ function decorateRemote(row) {
     description: row.description || local?.description || '',
     configSchema: row.configSchema ?? local?.configSchema ?? {},
     capabilities: row.capabilities ?? local?.capabilities ?? {},
+    implementationOrigin: local && local.origin !== 'BUSINESS' ? local.origin : row.implementationOrigin,
     localManifest: local || null
   }
 }
 
+/** 所有十类都可查看，仅四类已实现服务端治理的 UI 能进入纳管流程。 */
 function localOnlyRows(remoteKeys, currentFilters) {
-  return localManifest
-    .filter(item => ['FORM', 'LIST', 'NODE', 'FIELD'].includes(item.type))
-    .map(item => ({
-      rowKey: `LOCAL:${item.id}`,
-      id: null,
-      capabilityType: `UI_${item.type}`,
-      key: item.name,
-      displayName: item.label,
-      description: item.description,
-      implementationVersion: item.version,
-      snapshotVersion: item.snapshotVersion,
-      contractVersion: 1,
-      sourceType: 'FRONTEND_BUNDLE',
-      sourceName: item.source,
-      implementationClass: '',
-      implementationOrigin: 'CUSTOM',
-      status: 'DISCOVERED',
-      configured: false,
-      available: true,
-      enabled: false,
-      visibilityScope: 'GLOBAL',
-      entityCodes: [],
-      supportedModes: item.supportedModes || [],
-      supportedNodeTypes: [],
-      supportedBindings: [],
-      configSchema: item.configSchema || [],
-      capabilities: item.capabilities || {},
-      dynamicExtraParams: item.capabilities?.dynamicExtraParams === true,
-      localManifest: item
-    }))
-    .filter(row => !remoteKeys.has(
-      `${row.capabilityType}:${row.key}:${row.implementationVersion || 1}`))
-    .filter(row => !currentFilters.capabilityType
-      || row.capabilityType === currentFilters.capabilityType)
-    .filter(row => !currentFilters.status
-      || row.status === currentFilters.status)
-    .filter(row => !currentFilters.implementationOrigin
-      || row.implementationOrigin === currentFilters.implementationOrigin)
-    .filter(row => matchesKeyword(row, currentFilters.keyword))
+  return localExtensionRows(localManifest, remoteKeys, currentFilters)
 }
 
 function findLocal(row) {
@@ -656,6 +631,8 @@ function sourceLabel(value) {
 function originLabel(value) {
   return {
     PLATFORM: '平台内置',
+    COMMON: '通用扩展',
+    EXAMPLE: '演示扩展',
     CUSTOM: '项目自定义',
     UNKNOWN: '暂无法识别'
   }[value] || value || '-'
@@ -672,6 +649,8 @@ function originTagType(value) {
 function originDescription(value) {
   return {
     PLATFORM: '底层执行实现由流程平台提供，不代表这条配置由平台创建',
+    COMMON: '跨实体复用的前端扩展，定义来自集中 JSON 清单',
+    EXAMPLE: '由 Demo 开关启用的演示实现',
     CUSTOM: '底层执行实现由项目或二次开发代码提供',
     UNKNOWN: '当前实现未加载、未声明归属或存在归属冲突，暂时无法可靠判断'
   }[value] || '未声明实现归属'
@@ -682,7 +661,8 @@ function statusLabel(value) {
     ACTIVE: '已启用',
     DISABLED: '已停用',
     DISCOVERED: '待纳管',
-    MISSING: '实现缺失'
+    MISSING: '实现缺失',
+    BUILD_ONLY: '仅构建注册'
   }[value] || value || '-'
 }
 
@@ -691,7 +671,8 @@ function statusType(value) {
     ACTIVE: 'success',
     DISABLED: 'info',
     DISCOVERED: 'warning',
-    MISSING: 'danger'
+    MISSING: 'danger',
+    BUILD_ONLY: 'info'
   }[value] || 'info'
 }
 

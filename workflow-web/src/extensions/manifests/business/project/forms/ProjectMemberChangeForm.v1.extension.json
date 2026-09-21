@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FORM",
+  "name": "ProjectMemberChangeForm",
+  "label": "项目·成员变更表单",
+  "description": "支持加入、退出、暂停、恢复、投入调整及跨实体路由预判。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/forms/ProjectMemberChangeForm.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "supportedModes": [
+      "create",
+      "edit",
+      "approve",
+      "view"
+    ],
+    "configSchema": [
+      {
+        "key": "title",
+        "label": "表单标题",
+        "type": "text",
+        "defaultValue": "项目成员变更申请"
+      },
+      {
+        "key": "showRoutePreview",
+        "label": "显示审批路径",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "capabilities": {
+      "exposesValidate": true,
+      "computesWorkflowRouteFlags": true,
+      "crossEntityContext": true
+    },
+    "usageContexts": [
+      "PAGE"
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

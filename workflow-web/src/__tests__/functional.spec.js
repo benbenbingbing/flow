@@ -14,7 +14,7 @@ import {
   getCustomFormDescriptor,
   getCustomListComponentVersionOptions,
   getCustomFormComponentVersionOptions
-} from '@/utils/customComponentRegistry.js'
+} from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   getFormNodeComponent,
   getFormNodeComponentOptions,
@@ -23,7 +23,7 @@ import {
   migrateFormNodeConfig,
   registerFormNodeComponent,
   resolveFormNodeDescriptor
-} from '@/utils/formNodeRegistry.js'
+} from '@/extensions/core/registries/formNodeRegistry.js'
 import {
   registerListToolbarAction,
   getListToolbarAction,
@@ -31,12 +31,12 @@ import {
   registerListRowAction,
   getListRowAction,
   hasListRowAction
-} from '@/utils/listActionRegistry.js'
+} from '@/extensions/core/registries/listActionRegistry.js'
 import {
   registerListButtonComponent,
   getListButtonComponent,
   hasListButtonComponent
-} from '@/utils/listButtonComponentRegistry.js'
+} from '@/extensions/core/registries/listButtonComponentRegistry.js'
 import {
   formatLinkageConditionLiteral,
   LinkageEngine,

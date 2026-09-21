@@ -19,7 +19,7 @@ import {
   getRegisteredFieldTypes,
   getFormFieldComponentDescriptor,
   getFormFieldComponentOptions
-} from '@/components/form-fields'
+} from '@/extensions/core/registries/formFieldRegistry.js'
 
 export {
   TextField,

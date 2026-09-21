@@ -1,0 +1,368 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow 前端扩展清单",
+  "description": "一个文件声明一个扩展版本，构建器递归发现；JSON 不保存可执行脚本。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "type",
+    "name",
+    "label",
+    "version",
+    "implementation"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "$comment": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "description": "清单协议版本。"
+    },
+    "type": {
+      "enum": [
+        "FORM",
+        "FIELD",
+        "NODE",
+        "LIST",
+        "LIST_CELL",
+        "LIST_BUTTON",
+        "LIST_ACTION",
+        "VALIDATOR",
+        "ACTION_CONDITION",
+        "PERMISSION_PROVIDER"
+      ],
+      "description": "扩展分类，决定安装适配器和宿主契约，不是注册名称。"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,99}$",
+      "description": "稳定注册名；实体/流程配置会引用它，发布后不要改名。"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "设计器与管理目录显示名称。"
+    },
+    "description": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "实现版本；仅支持多版本的注册类型可同时安装多版本。"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "是否安装此构建项；与数据库目录启停状态独立。"
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "export",
+        "kind"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "相对 workflow-web 的源码路径；只允许 src 下本地文件。"
+        },
+        "export": {
+          "type": "string",
+          "pattern": "^(default|[A-Za-z_$][A-Za-z0-9_$]*)$",
+          "description": "导出名称，支持 default 或具名导出。"
+        },
+        "kind": {
+          "enum": [
+            "COMPONENT",
+            "FUNCTION",
+            "OBJECT",
+            "CLASS",
+            "FACTORY"
+          ],
+          "description": "组件/处理函数/对象/无参类/同步实例工厂。"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshotVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "组件配置结构版本；节点配置升级根据此值调用 migrateConfig。"
+        },
+        "supportedModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "create",
+              "edit",
+              "approve",
+              "view"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "实现支持的 create/edit/approve/view 模式；组件仍必须执行只读和权限约束。"
+        },
+        "supportedEntityCodes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "实体编码范围；空数组或 [*] 表示全部，不填写实体 ID。"
+        },
+        "supportedFieldTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "兼容的实体字段类型。"
+        },
+        "nodeTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "仅 NODE 使用：宿主节点类型白名单，例如 FIELD。"
+        },
+        "supportedBindings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "仅 NODE 使用：节点允许的绑定类型，例如 ENTITY_FIELD。"
+        },
+        "usageContexts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "PAGE",
+              "RELATED_CONTENT"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "仅 FORM/LIST 使用：PAGE 为普通页面（默认），RELATED_CONTENT 为关联内容；设计器与运行时按同一契约过滤。"
+        },
+        "configSchema": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "key",
+              "label",
+              "type"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type": {
+                "enum": [
+                  "text",
+                  "textarea",
+                  "number",
+                  "boolean",
+                  "select",
+                  "json"
+                ]
+              },
+              "defaultValue": {},
+              "description": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "value"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string"
+                    },
+                    "value": {}
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "jsonShape": {
+                "enum": [
+                  "object",
+                  "array"
+                ]
+              },
+              "example": {},
+              "helpKey": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "description": "设计器中的可配置参数定义；各实体实际值另存于页面配置。"
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "能力描述，不会自动生成事件、校验方法或权限。"
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "description": "权限能力说明；不会为用户授予权限，也不能替代宿主或后端授权。"
+        },
+        "artifactDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "FORM/LIST 可显式提供 64 位十六进制制品摘要；未提供时沿用注册表原有自动摘要。"
+        }
+      },
+      "description": "扩展能力和参数定义；不是某条实体记录的实例参数。"
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "TOOLBAR",
+          "ROW"
+        ]
+      },
+      "description": "LIST_ACTION 安装位置；选择结果回调复用对应动作注册表。"
+    },
+    "defaultConfig": {
+      "type": "object",
+      "description": "ACTION_CONDITION 新建时的默认配置；每次深复制。"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "仅平台 FIELD 使用的历史组件别名；大小写归一后必须全局唯一。"
+    },
+    "defaultForFieldTypes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "description": "仅平台 FIELD 使用：这些实体字段类型新增时默认选用本控件。"
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "createDefault": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "export",
+            "kind"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "相对 workflow-web 的源码路径；只允许 src 下本地文件。"
+            },
+            "export": {
+              "type": "string",
+              "pattern": "^(default|[A-Za-z_$][A-Za-z0-9_$]*)$",
+              "description": "导出名称，支持 default 或具名导出。"
+            },
+            "kind": {
+              "enum": [
+                "COMPONENT",
+                "FUNCTION",
+                "OBJECT",
+                "CLASS",
+                "FACTORY"
+              ],
+              "description": "组件/处理函数/对象/无参类/同步实例工厂。"
+            }
+          }
+        },
+        "migrateConfig": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "export",
+            "kind"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "相对 workflow-web 的源码路径；只允许 src 下本地文件。"
+            },
+            "export": {
+              "type": "string",
+              "pattern": "^(default|[A-Za-z_$][A-Za-z0-9_$]*)$",
+              "description": "导出名称，支持 default 或具名导出。"
+            },
+            "kind": {
+              "enum": [
+                "COMPONENT",
+                "FUNCTION",
+                "OBJECT",
+                "CLASS",
+                "FACTORY"
+              ],
+              "description": "组件/处理函数/对象/无参类/同步实例工厂。"
+            }
+          }
+        }
+      },
+      "description": "可执行钩子的源码引用；在 JSON 中只写路径和导出，不写脚本字符串。"
+    }
+  }
+}

@@ -882,7 +882,7 @@ import {
   getCustomListComponentOptions,
   getCustomListComponentVersionOptions,
   getCustomListDescriptor
-} from '@/utils/customComponentRegistry'
+} from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   RELATED_CONTENT_ACTION_OPTIONS,
   RELATED_CONTENT_FAILURE_OPTIONS,
@@ -1149,8 +1149,8 @@ const interfaceResultOptions = computed(() => {
   })
   return options
 })
-const formComponentOptions = getCustomFormComponentOptions()
-const listComponentOptions = getCustomListComponentOptions()
+const formComponentOptions = getCustomFormComponentOptions('RELATED_CONTENT')
+const listComponentOptions = getCustomListComponentOptions('RELATED_CONTENT')
 const customComponentOptions = computed(() => editor.config.target.contentType === 'FORM'
   ? formComponentOptions
   : listComponentOptions)
@@ -1158,8 +1158,8 @@ const customComponentVersionOptions = computed(() => {
   const name = editor.config.specialHandling.customComponent.name
   if (!name) return []
   return editor.config.target.contentType === 'FORM'
-    ? getCustomFormComponentVersionOptions(name)
-    : getCustomListComponentVersionOptions(name)
+    ? getCustomFormComponentVersionOptions(name, 'RELATED_CONTENT')
+    : getCustomListComponentVersionOptions(name, 'RELATED_CONTENT')
 })
 const selectedCustomComponent = computed(() => customComponentOptions.value.find(option =>
   option.value === editor.config.specialHandling.customComponent.name))
@@ -1626,9 +1626,10 @@ function handleCustomComponentVersionChange() {
 }
 
 function resolveCustomComponentDescriptor(name, version) {
-  return editor.config.target.contentType === 'FORM'
+  const descriptor = editor.config.target.contentType === 'FORM'
     ? getCustomFormDescriptor(name, version)
     : getCustomListDescriptor(name, version)
+  return descriptor?.usageContexts?.includes('RELATED_CONTENT') ? descriptor : undefined
 }
 
 /** 历史草稿未保存制品摘要时，只从当前精确 name/version 注册项补齐。 */

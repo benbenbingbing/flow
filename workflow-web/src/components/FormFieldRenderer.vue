@@ -14,9 +14,10 @@
 </template>
 
 <script setup>
+import TextField from '@/extensions/builtin/fields/components/TextField.vue'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { computed } from 'vue'
-import { resolveFieldComponent, TextField } from '@/components/form-fields'
+import { resolveFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 
 const props = defineProps({
   context: { type: Object, default: () => ({}) },

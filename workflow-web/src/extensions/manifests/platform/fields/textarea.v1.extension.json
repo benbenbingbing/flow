@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "textarea",
+  "label": "多行文本",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/TextField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "TEXT"
+    ],
+    "configSchema": [
+      {
+        "key": "rows",
+        "label": "显示行数",
+        "type": "number",
+        "min": 2,
+        "max": 20,
+        "defaultValue": 3
+      }
+    ]
+  },
+  "aliases": [],
+  "defaultForFieldTypes": [
+    "TEXT"
+  ],
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

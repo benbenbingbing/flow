@@ -106,30 +106,71 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
         <section id="field-component" class="guide-section">
           <h3>6. 节点级自定义组件</h3>
           <p>只替换某一类字段或局部展示节点时，注册节点级组件即可，表单树、校验、数据源、联动、模式权限和发布快照继续由平台管理。</p>
-          <CodeCard title="rating-field-extension.ts" language="TypeScript">
-            <pre v-pre><code>import { registerFormFieldComponent } from '@/components/form-fields'
-import RatingField from './RatingField.vue'
-
-registerFormFieldComponent('rating', RatingField, {
-  label: '评分',
-  description: '1 到 N 星评分',
-  supportedFieldTypes: ['INTEGER', 'DECIMAL'],
-  configSchema: [
-    { key: 'max', label: '最高分', type: 'number', defaultValue: 5 },
-    { key: 'allowHalf', label: '允许半星', type: 'boolean', defaultValue: false }
-  ]
-})</code></pre>
+          <CodeCard title="rating-field-extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "rating",
+  "label": "评分",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/fields/RatingField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "DECIMAL"
+    ],
+    "configSchema": [
+      {
+        "key": "max",
+        "label": "最高分",
+        "type": "number",
+        "defaultValue": 5
+      },
+      {
+        "key": "allowHalf",
+        "label": "允许半星",
+        "type": "boolean",
+        "defaultValue": false
+      }
+    ]
+  }
+}</code></pre>
           </CodeCard>
-          <CodeCard title="node-extension.ts" language="TypeScript">
-            <pre v-pre><code>registerFormNodeComponent('risk-matrix', RiskMatrixNode, {
-  version: 3,
-  nodeTypes: ['FIELD'],
-  supportedBindings: ['ENTITY_FIELD', 'COMPUTED'],
-  configSchema: [
-    { key: 'levels', label: '风险等级', type: 'number', required: true }
-  ],
-  snapshotVersion: 1
-})</code></pre>
+          <CodeCard title="node-extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "NODE",
+  "name": "risk-matrix",
+  "label": "risk-matrix",
+  "version": 3,
+  "implementation": {
+    "path": "src/extensions/common/nodes/RiskMatrixNode.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "nodeTypes": [
+      "FIELD"
+    ],
+    "supportedBindings": [
+      "ENTITY_FIELD",
+      "COMPUTED"
+    ],
+    "configSchema": [
+      {
+        "key": "levels",
+        "label": "风险等级",
+        "type": "number",
+        "required": true
+      }
+    ],
+    "snapshotVersion": 1
+  }
+}</code></pre>
           </CodeCard>
           <CodeCard title="扩展清单 capabilitiesDocument" language="JSON">
             <pre v-pre><code>{
@@ -164,19 +205,41 @@ const emit = defineEmits([
         <section id="whole-form" class="guide-section">
           <h3>7. 整表单自定义组件</h3>
           <p>复杂分步表单、矩阵录入、图形化编辑器等场景可以接管整个表单区域。`modelValue` 在所有场景中统一为业务字段对象，不再在新增场景传整条记录、审批场景传字段对象。</p>
-          <CodeCard title="custom-form-extension.ts" language="TypeScript">
-            <pre v-pre><code>import { registerCustomFormComponent } from '@/utils/customComponentRegistry'
-import ProjectWizardForm from './ProjectWizardForm.vue'
-
-registerCustomFormComponent('ProjectWizardForm', ProjectWizardForm, {
-  label: '项目分步表单',
-  description: '分阶段维护项目基础信息和计划',
-  supportedModes: ['create', 'edit', 'approve', 'view'],
-  configSchema: [
-    { key: 'showSummary', label: '显示汇总', type: 'boolean', defaultValue: true },
-    { key: 'defaultStep', label: '默认步骤', type: 'number', defaultValue: 0 }
-  ]
-})</code></pre>
+          <CodeCard title="custom-form-extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "FORM",
+  "name": "ProjectWizardForm",
+  "label": "项目分步表单",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/forms/ProjectWizardForm.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedModes": [
+      "create",
+      "edit",
+      "approve",
+      "view"
+    ],
+    "configSchema": [
+      {
+        "key": "showSummary",
+        "label": "显示汇总",
+        "type": "boolean",
+        "defaultValue": true
+      },
+      {
+        "key": "defaultStep",
+        "label": "默认步骤",
+        "type": "number",
+        "defaultValue": 0
+      }
+    ]
+  }
+}</code></pre>
           </CodeCard>
           <ul class="check-list">
             <li>前端注册组件后，还要在“扩展管理”登记并启用同名 `UI_FORM` 扩展；不需要单独启动组件，组件代码随前端应用一起构建和启动。</li>
@@ -322,8 +385,8 @@ defineExpose({ validate })
         <section id="demo" class="guide-section">
           <h3>13. 可运行 Demo</h3>
           <ul class="check-list">
-            <li>`src/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
-            <li>`src/demo/index.js`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
+            <li>`src/extensions/examples/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
+            <li>`src/extensions/manifests/examples/demo/`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
             <li>真实验证流程把该表单同时配置为新增默认表单和审批节点表单，审批后将风险评分从 58 回写为 35。</li>
             <li>执行 `npm run test:demo:real`；实体、流程、表单和数据 ID 记录在 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>
@@ -405,8 +468,8 @@ const toc = [
 
 const levels = [
   { level: '声明式递归节点', useCase: '区块、栅格、Tab、字段、子表、明细和动作槽', entry: '表单设计器按节点配置' },
-  { level: '节点级组件', useCase: '评分、签名、坐标、业务选择器或局部复杂展示', entry: 'registerFormNodeComponent / registerFormFieldComponent' },
-  { level: '自定义整表单', useCase: '分步、矩阵、图形化且节点树无法表达的整体交互', entry: 'registerCustomFormComponent，仍复用发布与权限运行时' }
+  { level: '节点级组件', useCase: '评分、签名、坐标、业务选择器或局部复杂展示', entry: 'NODE / FIELD JSON 清单' },
+  { level: '自定义整表单', useCase: '分步、矩阵、图形化且节点树无法表达的整体交互', entry: 'FORM JSON 清单，仍复用发布与权限运行时' }
 ]
 
 const nodeRows = [

@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST",
+  "name": "ProjectAcceptanceBoardList",
+  "label": "项目·扩展验收看板列表",
+  "description": "使用平台查询、分页和权限动作的全自定义列表。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/lists/ProjectAcceptanceBoardList.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "configSchema": [
+      {
+        "key": "showProviderTrace",
+        "label": "显示 Provider 轨迹",
+        "type": "boolean",
+        "defaultValue": true
+      },
+      {
+        "key": "searchPlaceholder",
+        "label": "搜索提示",
+        "type": "text",
+        "defaultValue": "搜索验收单名称"
+      }
+    ],
+    "capabilities": {
+      "layout": "acceptance-board",
+      "reusesPlatformActions": true,
+      "reusesPlatformPagination": true
+    },
+    "usageContexts": [
+      "PAGE"
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

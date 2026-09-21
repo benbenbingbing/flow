@@ -560,7 +560,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventMappingRows from '@/components/ui-config/EventMappingRows.vue'
 import EventDefaultProcessingHelp from './EventDefaultProcessingHelp.vue'
 import { getEventDefaultProcessing as platformDefaultHelp } from './uiEventDefaultProcessing'
-import { getFormFieldComponentDescriptor } from '@/components/form-fields'
+import { getFormFieldComponentDescriptor } from '@/extensions/core/registries/formFieldRegistry.js'
 import { fieldEventDisabledReason } from './uiFieldEventCapabilities'
 import { getConfigFieldHelp } from '@/shared/config-field-help'
 import {

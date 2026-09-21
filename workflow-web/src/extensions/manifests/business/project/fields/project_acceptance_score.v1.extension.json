@@ -1,0 +1,41 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "project_acceptance_score",
+  "label": "项目·验收评分",
+  "description": "用滑块、等级和实时结果展示自定义字段组件。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/fields/ProjectAcceptanceScoreField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "passScore",
+        "label": "通过分数",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 60
+      }
+    ],
+    "capabilities": {
+      "emitsChange": true,
+      "supportedEvents": [
+        "FIELD_BUTTON_CLICK"
+      ],
+      "supportsReadonly": true
+    }
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

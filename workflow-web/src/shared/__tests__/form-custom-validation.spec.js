@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { registerCustomValidator, getCustomValidatorOptions, isCustomValidatorApplicable } from '../../contracts/validator-registry.js'
-import { registerProjectValidators } from '../../project/validators/index.js'
+import { registerCustomValidator, getCustomValidatorOptions, isCustomValidatorApplicable } from '../../extensions/core/registries/validatorRegistry.js'
+import { installTestValidators } from '../../extensions/__tests__/helpers/install-node-extensions.mjs'
 import { evaluateCustomValidators, validateCustomValidationConfig } from '../form-custom-validation.js'
 import { createCustomValidationController } from '../form-custom-validation-runtime.js'
 import { collectCrossFieldRuntimeFields } from '../form-cross-field-runtime.js'
 import { normalizeFormFieldValidation } from '../form-node-property-schema.js'
 
-registerProjectValidators()
+await installTestValidators()
 const binding = (name = 'amount', params = { maxAmount: 1000 }, triggers = ['BLUR'], version = 1) => ({ name, version, params, triggers })
 const field = (rules = [binding()]) => ({ id: 'a', fieldCode: 'amount', fieldType: 'DECIMAL', validationRules: { customValidators: { version: 1, rules } } })
 const execute = (value, trigger = 'SUBMIT', f = field(), entityCode = 'expense') => evaluateCustomValidators(f, value, { entityCode, formData: { amount: value } }, trigger)

@@ -133,7 +133,7 @@ docs/project-member-change-e2e/project-member-change-20260730015454.json
 F07 前端自定义表单位于：
 
 ```text
-workflow-web/src/project/forms/ProjectMemberChangeForm.vue
+workflow-web/src/extensions/business/project/forms/ProjectMemberChangeForm.vue
 ```
 
 除该业务自定义表单和跨实体处理器外，F07 的实体、字段、列表、菜单、数据范围、BPMN、节点表单绑定和动作绑定均由配置实现。

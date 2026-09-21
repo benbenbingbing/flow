@@ -243,7 +243,7 @@ import { useUserStore } from '@/stores/user'
 import request from '@/utils/request'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { getItemTreeByDictCode } from '@/api/system/dict'
-import { getCustomListComponent, hasCustomListComponent } from '@/utils/customComponentRegistry.js'
+import { getCustomListComponent, hasCustomListComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   canExecuteAction,
   getActionCapabilityReason,

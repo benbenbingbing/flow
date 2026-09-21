@@ -75,7 +75,7 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import SettingsCapability from '@/components/SettingsCapability.vue'
 import { useFieldValueLinkage } from '@/composables/useFieldValueLinkage'
 import { safeParseConfig } from '@/shared/config-runtime'
-import { getDefaultFormFieldComponentType } from '@/shared/form-field-component-policy'
+import { getDefaultFormFieldComponentType } from '@/extensions/core/fieldPolicy.js'
 
 const props = defineProps({
   field: { type: Object, required: true },

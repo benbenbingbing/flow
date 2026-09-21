@@ -13,19 +13,19 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import Preview from '/src/components/FormPreviewLinkage.vue'
 import Editor from '/src/components/FormCustomValidatorEditor.vue'
-import SubRow from '/src/components/form-fields/components/SubFormRowRuntime.vue'
+import SubRow from '/src/extensions/builtin/fields/components/SubFormRowRuntime.vue'
 import DataFields from '/src/views/entity/components/EntityDataFormFields.vue'
-import { registerProjectValidators } from '/src/project/validators/index.js'
-import { AmountValidator } from '/src/project/validators/AmountValidator.js'
-import { registerCustomValidator } from '/src/contracts/validator-registry.js'
-import { registerCustomFormComponent } from '/src/utils/customComponentRegistry.js'
+import { registerApplicationExtensions } from '/src/extensions/register.js'
+import { AmountValidator } from '/src/extensions/common/validators/AmountValidator.js'
+import { registerCustomValidator } from '/src/extensions/core/registries/validatorRegistry.js'
+import { registerCustomFormComponent } from '/src/extensions/core/registries/customComponentRegistry.js'
 import request from '/src/utils/request.js'
 request.defaults.adapter = async config => {
   // 模拟字段事件接口晚于 blur 返回，覆盖首次失焦的 change/blur 竞态。
   if (String(config.data).includes('blur-form')) await new Promise(resolve => setTimeout(resolve, 120))
   return { data: { code: 200, data: config.url.includes('resolve') ? [{id:'child-entity',entityCode:'child'}] : [] }, status:200, statusText:'OK',headers:{},config }
 }
-registerProjectValidators()
+registerApplicationExtensions()
 let blurCalls = 0
 const blurValidator = new AmountValidator()
 registerCustomValidator('blurAmount', {validate(value, context) { blurCalls++; return blurValidator.validate(value, context) }}, {supportedFieldTypes:['STRING']})

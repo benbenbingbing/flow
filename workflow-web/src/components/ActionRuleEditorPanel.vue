@@ -149,7 +149,7 @@ import {
   createEmptyActionRule,
   hasActionRuleComparisonValue
 } from '@/shared/action-rules'
-import { getEntityActionRuleCondition } from '@/utils/entityActionRuleRegistry'
+import { getEntityActionRuleCondition } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 
 const props = defineProps({
   entityFields: { type: Array, default: () => [] },

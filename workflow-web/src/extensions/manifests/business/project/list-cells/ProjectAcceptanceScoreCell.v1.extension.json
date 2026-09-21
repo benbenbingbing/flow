@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "ProjectAcceptanceScoreCell",
+  "label": "项目·验收评分单元格",
+  "description": "在标准列表中以进度条和等级展示验收评分。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/list-cells/ProjectAcceptanceScoreCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "passScore",
+        "label": "通过分数",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 60
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

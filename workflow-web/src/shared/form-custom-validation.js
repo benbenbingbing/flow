@@ -1,5 +1,5 @@
-import { getCustomValidator, isCustomValidatorApplicable } from '../contracts/validator-registry.js'
-import { validateCustomValue } from '../contracts/validation.js'
+import { getCustomValidator, isCustomValidatorApplicable } from '../extensions/core/registries/validatorRegistry.js'
+import { validateCustomValue } from '../extensions/contracts/validation.js'
 
 export const CUSTOM_VALIDATION_VERSION = 1
 export const CUSTOM_VALIDATION_MAX_RULES = 20

@@ -1134,12 +1134,12 @@ import {
   getFormFieldComponentDescriptor,
   getFormFieldComponentOptions,
   hasFormFieldComponent
-} from '@/components/form-fields'
+} from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   getCustomFormComponentOptions,
   getCustomFormDescriptor,
   hasCustomFormComponent
-} from '@/utils/customComponentRegistry'
+} from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   FORM_RENDERER_MODE_CUSTOM,
   FORM_RENDERER_MODE_DEFAULT,
@@ -1148,7 +1148,7 @@ import {
 } from '@/shared/form-renderer-mode'
 import {
   getFormNodeComponentOptions
-} from '@/utils/formNodeRegistry'
+} from '@/extensions/core/registries/formNodeRegistry.js'
 import {
   FORM_NODE_MAX_DEPTH,
   FORM_NODE_ORDER_STEP,
@@ -1191,7 +1191,7 @@ import {
 } from '@/utils/flowConditionGroups'
 import {
   getDefaultFormFieldComponentType as getDefaultComponentType
-} from '@/shared/form-field-component-policy'
+} from '@/extensions/core/fieldPolicy.js'
 import {
   FORM_FIELD_EXTENSION_TYPE,
   resolveFormFieldExtensionName

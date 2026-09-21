@@ -17,7 +17,7 @@ import {
   getDefaultFormFieldComponentType,
   isBuiltInFormFieldComponentCompatible,
   normalizeFormNodeFieldType
-} from '../form-field-component-policy.js'
+} from '../../extensions/core/fieldPolicy.js'
 
 const clone = value => JSON.parse(JSON.stringify(value))
 

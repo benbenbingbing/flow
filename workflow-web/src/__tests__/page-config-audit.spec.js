@@ -370,7 +370,7 @@ dynamicRuntimeFiles.forEach((file) => {
 })
 
 const switchFieldSource = readFileSync(
-  path.join(root, 'src/components/form-fields/components/SwitchField.vue'),
+  path.join(root, 'src/extensions/builtin/fields/components/SwitchField.vue'),
   'utf8'
 )
 assert.ok(
@@ -1166,10 +1166,10 @@ assert.ok(
   formDesigner.includes('getDefaultFormFieldComponentType as getDefaultComponentType'),
   '新增实体字段必须使用共享的兼容默认组件策略'
 )
-const formFieldRegistrySource = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
+const formFieldRegistrySource = readFileSync(path.join(root, 'src/extensions/core/registries/formFieldRegistry.js'), 'utf8')
 assert.ok(
-  formFieldRegistrySource.includes('getBuiltInFormFieldSupportedTypes'),
-  '字段组件注册必须复用共享 supportedFieldTypes 策略'
+  readFileSync(path.join(root, 'src/extensions/core/fieldPolicy.js'), 'utf8').includes('fieldDefinitions.map'),
+  '字段兼容策略必须来自 JSON 清单生成的数据'
 )
 assert.equal(
   formFieldRegistrySource.includes("key: 'maxlength'"),
@@ -1245,7 +1245,7 @@ assert.equal(
   '正则测试文本只能保存在前端本地状态，不能写入校验规则'
 )
 const textFieldSource = readFileSync(
-  path.join(root, 'src/components/form-fields/components/TextField.vue'),
+  path.join(root, 'src/extensions/builtin/fields/components/TextField.vue'),
   'utf8'
 )
 assert.ok(
@@ -1610,7 +1610,7 @@ assert.ok(
 })
 
 const subFormField = readFileSync(
-  path.join(root, 'src/components/form-fields/components/SubFormField.vue'),
+  path.join(root, 'src/extensions/builtin/fields/components/SubFormField.vue'),
   'utf8'
 )
 const subFormRenderer = readFileSync(
@@ -1618,7 +1618,7 @@ const subFormRenderer = readFileSync(
   'utf8'
 )
 const checkboxField = readFileSync(
-  path.join(root, 'src/components/form-fields/components/CheckboxField.vue'),
+  path.join(root, 'src/extensions/builtin/fields/components/CheckboxField.vue'),
   'utf8'
 )
 assert.ok(
@@ -2277,7 +2277,7 @@ const entityList = readFileSync(path.join(root, 'src/views/EntityList.vue'), 'ut
   assert.ok(entityList.includes(marker), `实体发布缺少迁移标记能力: ${marker}`)
 })
 
-const formFieldRegistry = readFileSync(path.join(root, 'src/components/form-fields/index.js'), 'utf8')
+const formFieldRegistry = readFileSync(path.join(root, 'src/extensions/core/registries/formFieldRegistry.js'), 'utf8')
 ;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
   assert.ok(formFieldRegistry.includes(type), `表单运行时缺少字段类型线索: ${type}`)
 })
@@ -2512,10 +2512,12 @@ for (const file of [
 }
 
 const demoExpectations = {
-  'src/demo/index.js': ['registerDemoExtensions', 'DemoRiskProgressCell', 'DemoProjectCardList', 'DemoProjectForm'],
-  'src/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
-  'src/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
-  'src/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
+  'src/extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
+  'src/extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
+  'src/extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
+  'src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
+  'src/extensions/examples/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
+  'src/extensions/examples/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
   'scripts/real-dynamic-extension-demo.mjs': ['createCustomList', 'progressWithCustomForm', 'completeDemoProcess']
 }
 for (const [file, markers] of Object.entries(demoExpectations)) {
@@ -2539,12 +2541,13 @@ const extensionManifest = readFileSync(path.join(root, 'src/extensions/manifest.
   'migrationSupported',
   'deprecatedAt'
 ].forEach((marker) => {
-  assert.ok(extensionManifest.includes(marker), `扩展治理清单缺少字段: ${marker}`)
+  assert.ok((extensionManifest + readFileSync(path.join(root, 'src/extensions/core/catalog.js'), 'utf8')).includes(marker), `扩展治理清单缺少字段: ${marker}`)
 })
 const extensionRegister = readFileSync(path.join(root, 'src/extensions/register.js'), 'utf8')
 assert.ok(
   extensionRegister.includes('registerApplicationExtensions')
-    && extensionRegister.includes('registerDemoExtensions'),
+    && extensionRegister.includes('virtual:flow-extension-manifest')
+    && readFileSync(path.join(root, 'src/extensions/core/installer.js'), 'utf8').includes('enableDemo'),
   '扩展启动入口必须集中控制演示扩展注册'
 )
 const mainSource = readFileSync(path.join(root, 'src/main.js'), 'utf8')

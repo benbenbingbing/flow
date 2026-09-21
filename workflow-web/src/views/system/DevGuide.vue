@@ -78,29 +78,60 @@ Content-Type: application/json
             <el-table-column prop="capability" label="能力与限制" />
           </el-table>
           <p>表单树最大嵌套深度为 `8`。发布校验必须检查父子类型、孤儿节点、循环引用、跨表单 SUB_FORM 循环和引用的已发布表单版本。</p>
-          <CodeCard title="form-node-extension.ts" language="TypeScript">
-            <pre v-pre><code>registerFormNodeComponent('risk-matrix', RiskMatrixNode, {
-  version: 3,
-  nodeTypes: ['FIELD'],
-  supportedBindings: ['ENTITY_FIELD', 'COMPUTED'],
-  configSchema: [
-    { key: 'levels', label: '等级数', type: 'number', required: true, group: 'common', order: 10, priority: 'high' },
-    { key: 'showLegend', label: '显示图例', type: 'boolean', group: 'common', order: 20 },
-    {
-      key: 'legendPosition',
-      label: '图例位置',
-      type: 'select',
-      group: 'advanced',
-      advanced: true,
-      order: 100,
-      visibleWhen: { field: 'showLegend', equals: true }
-    }
-  ],
-  snapshotVersion: 1,
-  migrateConfig({ fromVersion, config }) {
-    return fromVersion === 1 ? config : { ...config, levels: 5 }
-  }
-})</code></pre>
+          <CodeCard title="form-node-extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "NODE",
+  "name": "risk-matrix",
+  "label": "risk-matrix",
+  "version": 3,
+  "implementation": {
+    "path": "src/extensions/common/nodes/RiskMatrixNode.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "nodeTypes": [
+      "FIELD"
+    ],
+    "supportedBindings": [
+      "ENTITY_FIELD",
+      "COMPUTED"
+    ],
+    "configSchema": [
+      {
+        "key": "levels",
+        "label": "等级数",
+        "type": "number",
+        "required": true,
+        "group": "common",
+        "order": 10,
+        "priority": "high"
+      },
+      {
+        "key": "showLegend",
+        "label": "显示图例",
+        "type": "boolean",
+        "group": "common",
+        "order": 20
+      },
+      {
+        "key": "legendPosition",
+        "label": "图例位置",
+        "type": "select",
+        "group": "advanced",
+        "advanced": true,
+        "order": 100,
+        "visibleWhen": {
+          "field": "showLegend",
+          "equals": true
+        }
+      }
+    ],
+    "snapshotVersion": 1
+  },
+  "$comment": "配置迁移函数放入 JS 文件，通过 hooks.migrateConfig 的 path/export 引用。"
+}</code></pre>
           </CodeCard>
           <ul class="check-list">
             <li>节点组件接收 `node / modelValue / readonly / mode / context / dataSourceRuntime`，并通过标准事件更新值。</li>
@@ -445,18 +476,35 @@ Content-Type: application/json
         <section id="cell" class="guide-section">
           <h3>12. 前端单元格组件</h3>
           <p>组件注册时同时声明名称、说明和参数 Schema，设计器会自动生成参数表单，不需要管理员手写 JSON。</p>
-          <CodeCard title="extension.ts" language="TypeScript">
-            <pre v-pre><code>import { registerCellComponent } from '@/utils/listCellRegistry'
-import RiskBadgeCell from './RiskBadgeCell.vue'
-
-registerCellComponent('RiskBadgeCell', RiskBadgeCell, {
-  label: '风险等级',
-  description: '按阈值显示风险标签',
-  configSchema: [
-    { key: 'warningAt', label: '预警阈值', type: 'number', required: true },
-    { key: 'dangerAt', label: '高危阈值', type: 'number', required: true }
-  ]
-})</code></pre>
+          <CodeCard title="extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "RiskBadgeCell",
+  "label": "风险等级",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/RiskBadgeCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "warningAt",
+        "label": "预警阈值",
+        "type": "number",
+        "required": true
+      },
+      {
+        "key": "dangerAt",
+        "label": "高危阈值",
+        "type": "number",
+        "required": true
+      }
+    ]
+  }
+}</code></pre>
           </CodeCard>
           <CodeCard title="RiskBadgeCell.vue" language="Vue">
             <pre v-pre><code>&lt;script setup&gt;
@@ -484,8 +532,8 @@ const props = defineProps({
           <h3>14. 可运行 Demo</h3>
           <p>仓库已经提供真实注册示例，不需要从文档片段重新拼装：</p>
           <ul class="check-list">
-            <li>`src/demo/list-fields/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
-            <li>`src/demo/index.js`：以 `DemoRiskProgressCell` 注册组件，并声明数值字段类型与四项可视化参数。</li>
+            <li>`src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue`：读取 `value / row / field / config / context`，展示风险进度和等级。</li>
+            <li>`src/extensions/manifests/examples/demo/`：以 `DemoRiskProgressCell` 注册组件，并声明数值字段类型与四项可视化参数。</li>
             <li>`scripts/real-dynamic-extension-demo.mjs`：创建实体、动态列、定制列表、定制表单和流程，验证配置真实生效。</li>
             <li>执行 `npm run test:demo:real`；最近一次结果保存在 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>
@@ -546,7 +594,7 @@ const extensionLevels = [
   { level: '节点级组件', useCase: '评分、签名、复杂单元格和局部交互', implementation: '注册表单节点组件或单元格组件，平台继续管理布局、权限和发布' },
   { level: '声明式虚拟列', useCase: '字段拼接、轻量派生值', implementation: '添加虚拟列，选择 FIELD_TEMPLATE 等可配置数据源' },
   { level: '自定义数据提供者', useCase: '关联、聚合、远程业务数据', implementation: '实现 ListFieldDataProvider 并声明配置 Schema' },
-  { level: '自定义单元格', useCase: '进度、标签、图片、复杂交互展示', implementation: 'registerCellComponent 注册 Vue 组件' },
+  { level: '自定义单元格', useCase: '进度、标签、图片、复杂交互展示', implementation: 'LIST_CELL JSON 清单声明 Vue 组件' },
   { level: '整页自定义', useCase: '平台节点树或表格运行时无法表达的整体交互', implementation: '使用整表单/整列表组件，但仍复用发布快照、数据源与权限运行时' }
 ]
 

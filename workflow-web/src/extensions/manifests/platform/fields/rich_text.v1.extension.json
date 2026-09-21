@@ -1,0 +1,34 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "rich_text",
+  "label": "富文本",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/RichTextField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "TEXT",
+      "RICH_TEXT"
+    ],
+    "configSchema": [
+      {
+        "key": "height",
+        "label": "编辑器高度",
+        "type": "number",
+        "min": 120,
+        "max": 1000,
+        "defaultValue": 200
+      }
+    ]
+  },
+  "aliases": [],
+  "defaultForFieldTypes": [
+    "RICH_TEXT"
+  ],
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

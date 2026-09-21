@@ -15,8 +15,8 @@ import Panel from '/src/components/ListButtonConfigPanel.vue'
 import Table from '/src/views/entity/components/EntityDataTable.vue'
 import { normalizeListActionForSave } from '/src/shared/list-config-design.js'
 import { isSelectionToolbarButton } from '/src/shared/list-selection.js'
-import { registerListToolbarAction } from '/src/utils/listActionRegistry.js'
-import { registerListButtonComponent } from '/src/utils/listButtonComponentRegistry.js'
+import { registerListToolbarAction } from '/src/extensions/core/registries/listActionRegistry.js'
+import { registerListButtonComponent } from '/src/extensions/core/registries/listButtonComponentRegistry.js'
 import request from '/src/utils/request.js'
 request.defaults.adapter = async config => ({data:{code:200,data:[]},status:200,statusText:'OK',headers:{},config})
 const keys=['free','one','many','component']

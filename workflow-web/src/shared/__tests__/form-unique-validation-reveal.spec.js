@@ -68,7 +68,7 @@ const renderer = source('../../components/FormNodeRenderer.vue')
 const item = source('../../components/FormNodeRuntimeItem.vue')
 const preview = source('../../components/FormPreviewLinkage.vue')
 const subFormRow = source(
-  '../../components/form-fields/components/SubFormRowRuntime.vue'
+  '../../extensions/builtin/fields/components/SubFormRowRuntime.vue'
 )
 
 assert.match(renderer, /:reveal-field-code="revealFieldCode"/)

@@ -163,7 +163,7 @@
 <script setup>
 import { defineComponent, h, resolveComponent } from 'vue'
 import { normalizeActionRuleSelectValue } from '@/shared/action-rules'
-import { getEntityActionRuleCondition, getEntityActionRuleConditions } from '@/utils/entityActionRuleRegistry'
+import { getEntityActionRuleCondition, getEntityActionRuleConditions } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 
 defineOptions({ name: 'ActionRuleGroupEditor' })
 

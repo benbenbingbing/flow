@@ -88,3 +88,8 @@ deploy/loadtest/results/
 
 # AI artifacts
 .codex-artifacts/
+
+# 前端扩展构建插件是源码，需随仓库交付。
+!workflow-web/build/
+workflow-web/build/*
+!workflow-web/build/extensions/

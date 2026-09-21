@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "switch",
+  "label": "开关",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/SwitchField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "BOOLEAN"
+    ],
+    "configSchema": [
+      {
+        "key": "activeText",
+        "label": "开启文本",
+        "type": "text"
+      },
+      {
+        "key": "inactiveText",
+        "label": "关闭文本",
+        "type": "text"
+      }
+    ]
+  },
+  "aliases": [
+    "boolean"
+  ],
+  "defaultForFieldTypes": [
+    "BOOLEAN"
+  ],
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

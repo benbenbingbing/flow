@@ -35,7 +35,7 @@
 <script setup>
 import { computed } from 'vue'
 import ConfigSchemaEditor from './ConfigSchemaEditor.vue'
-import { getCustomValidator, getCustomValidatorOptions } from '@/contracts/validator-registry'
+import { getCustomValidator, getCustomValidatorOptions } from '@/extensions/core/registries/validatorRegistry.js'
 import { CUSTOM_VALIDATION_MAX_RULES, customValidatorDefaults, validateCustomValidationConfig } from '@/shared/form-custom-validation'
 
 const props = defineProps({ modelValue: { default: undefined }, field: { type: Object, required: true }, entityCode: { type: String, default: '' } })

@@ -1,0 +1,16 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "VALIDATOR",
+  "name": "contract_required",
+  "label": "契约示例·必填",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "src/extensions/examples/contracts/AmountValidator.js",
+    "export": "requiredValidator",
+    "kind": "OBJECT"
+  },
+  "metadata": {},
+  "$comment": "默认禁用。启用此清单并打开 Demo 开关后，在字段自定义校验中选择；无需添加注册代码。"
+}

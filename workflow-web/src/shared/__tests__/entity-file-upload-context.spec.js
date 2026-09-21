@@ -82,7 +82,7 @@ assert.match(fileApiSource, /\/file\/entity\/\$\{entityCode\}\/upload/)
 assert.match(fileApiSource, /'Idempotency-Key': options\.idempotencyKey/)
 
 const fileFieldSource = readFileSync(
-  new URL('../../components/form-fields/components/FileField.vue', import.meta.url),
+  new URL('../../extensions/builtin/fields/components/FileField.vue', import.meta.url),
   'utf8'
 )
 assert.match(fileFieldSource, /:upload-context="uploadContext"/)

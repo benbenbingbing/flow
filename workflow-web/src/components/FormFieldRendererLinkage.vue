@@ -4,7 +4,7 @@
  */
 
 <template>
-  <div class="form-field-renderer-linkage">
+  <div class="form-field-renderer-linkage" :class="{ 'has-custom-validation-error': customValidationError }">
     <component
       ref="fieldComponentRef"
       :is="resolvedComponent"
@@ -20,16 +20,17 @@
       @blur="handleRuntimeBlur"
       @focus="$emit('focus', $event)"
     />
-    <div v-if="customValidationError" class="custom-validation-error" role="alert">{{ customValidationError }}</div>
+    <div v-if="customValidationError" class="custom-validation-error el-form-item__error" role="alert">{{ customValidationError }}</div>
   </div>
 </template>
 
 <script setup>
+import TextField from '@/extensions/builtin/fields/components/TextField.vue'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { CUSTOM_VALIDATION_CONTEXT_KEY } from '@/shared/form-custom-validation'
 import { computed, inject, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { resolveFieldComponent, TextField } from '@/components/form-fields'
+import { resolveFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { getFormId } from '@/shared/form-action-runtime'
 import { isEntitySelectionEventField } from '@/components/ui-config/uiFieldEventCapabilities'
@@ -247,8 +248,28 @@ defineExpose({ validate })
 </script>
 
 <style scoped>
-.custom-validation-error { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; padding-top: 4px; }
 .form-field-renderer-linkage {
+  position: relative;
   width: 100%;
+}
+
+/* 复用 FormItem 的错误文案样式，并在统一字段入口补齐同样的控件红框。
+   仅影响展示，不修改 FormItem 的校验状态，避免普通 change 校验清空失焦错误。 */
+.has-custom-validation-error :deep(.el-input__wrapper),
+.has-custom-validation-error :deep(.el-textarea__inner),
+.has-custom-validation-error :deep(.el-select__wrapper),
+.has-custom-validation-error :deep(.el-input-tag__wrapper) {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset;
+}
+
+/* 复合输入框的前后附加控件沿用 FormItem 的处理，不额外绘制内层边框。 */
+.has-custom-validation-error :deep(.el-input-group__append .el-input__wrapper),
+.has-custom-validation-error :deep(.el-input-group__prepend .el-input__wrapper) {
+  box-shadow: 0 0 0 1px transparent inset;
+}
+
+/* 同一字段只展示一条提示；自定义错误消失后，普通/跨字段错误仍由原表单展示。 */
+.has-custom-validation-error ~ :deep(.el-form-item__error) {
+  display: none;
 }
 </style>

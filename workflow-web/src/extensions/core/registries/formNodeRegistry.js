@@ -1,0 +1,111 @@
+import { normalizeExtensionDescriptor } from '../../../shared/config-runtime/index.js'
+
+const nodeRegistry = new Map()
+
+function normalizeVersion(version) {
+  const normalized = Number(version)
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : 1
+}
+
+function parseRequestedVersion(version) {
+  const normalized = Number(version)
+  return Number.isFinite(normalized) && normalized > 0 ? normalized : undefined
+}
+
+function getVersionRegistry(name) {
+  return nodeRegistry.get(name)
+}
+
+function resolveRegisteredDescriptor(name, version) {
+  const versions = getVersionRegistry(name)
+  if (!versions) return undefined
+  if (version !== undefined && version !== null && version !== '') {
+    const requestedVersion = parseRequestedVersion(version)
+    return requestedVersion === undefined ? undefined : versions.get(requestedVersion)
+  }
+  return Array.from(versions.values())
+    .sort((left, right) => right.version - left.version)[0]
+}
+
+/** 按 name/version 安装节点及允许的节点/绑定类型；组件配置升级函数作为独立钩子保存。 */
+export function registerFormNodeComponent(name, component, metadata = {}) {
+  const descriptor = normalizeExtensionDescriptor(name, component, metadata)
+  descriptor.version = normalizeVersion(descriptor.version)
+  descriptor.nodeTypes = Array.isArray(metadata.nodeTypes)
+    ? metadata.nodeTypes.map(value => String(value).toUpperCase())
+    : []
+  descriptor.supportedBindings = Array.isArray(metadata.supportedBindings)
+    ? metadata.supportedBindings.map(value => String(value).toUpperCase())
+    : []
+  descriptor.snapshotVersion = Number(metadata.snapshotVersion || 1)
+  descriptor.migrateConfig = typeof metadata.migrateConfig === 'function'
+    ? metadata.migrateConfig
+    : null
+  const versions = getVersionRegistry(descriptor.name) || new Map()
+  versions.set(descriptor.version, descriptor)
+  nodeRegistry.set(descriptor.name, versions)
+}
+
+export function getFormNodeDescriptor(name, version) {
+  return resolveRegisteredDescriptor(name, version)
+}
+
+export function getFormNodeComponent(name, version) {
+  return getFormNodeDescriptor(name, version)?.component
+}
+
+export function hasFormNodeComponent(name, version) {
+  return Boolean(getFormNodeDescriptor(name, version))
+}
+
+export function getFormNodeComponentOptions() {
+  return Array.from(nodeRegistry.values())
+    .map(versions => Array.from(versions.values())
+      .sort((left, right) => right.version - left.version)[0])
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map(({ component, migrateConfig, ...item }) => item)
+}
+
+/** 节点声明的类型和绑定必须同时匹配，防止将组件装入不支持的宿主。 */
+export function resolveFormNodeDescriptor(node) {
+  const componentName = node?.componentName
+    || node?.props?.componentName
+    || node?.props?.nodeComponent
+  const componentVersion = node?.componentVersion
+    ?? node?.props?.componentVersion
+  const descriptor = getFormNodeDescriptor(componentName, componentVersion)
+  if (!descriptor) return null
+  const nodeType = String(node?.nodeType || '').toUpperCase()
+  const bindingType = String(node?.bindingType || 'NONE').toUpperCase()
+  if (descriptor.nodeTypes.length && !descriptor.nodeTypes.includes(nodeType)) {
+    return null
+  }
+  if (descriptor.supportedBindings.length
+      && !descriptor.supportedBindings.includes(bindingType)) {
+    return null
+  }
+  return descriptor
+}
+
+/** 仅旧配置调用升级钩子；兼容旧 props 与新 componentProps，返回值供宿主使用。 */
+export function migrateFormNodeConfig(node, descriptor) {
+  const props = node?.props && typeof node.props === 'object'
+    ? node.props
+    : {}
+  const componentProps = props.componentProps
+    && typeof props.componentProps === 'object'
+    && !Array.isArray(props.componentProps)
+    ? props.componentProps
+    : null
+  const config = componentProps || props
+  if (!descriptor) return config
+  const sourceVersion = Number(node?.snapshotVersion || node?.props?.snapshotVersion || 1)
+  if (sourceVersion >= descriptor.snapshotVersion || !descriptor.migrateConfig) {
+    return config
+  }
+  return descriptor.migrateConfig({
+    fromVersion: sourceVersion,
+    toVersion: descriptor.snapshotVersion,
+    config
+  })
+}

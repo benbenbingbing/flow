@@ -257,7 +257,7 @@ async function main() {
     entityId: entity.id,
     formName: 'Demo项目定制表单',
     formKey: `demo_project_form_${suffix}`,
-    description: 'src/demo/forms/DemoProjectForm.vue 真实配置',
+    description: 'src/extensions/examples/demo/forms/DemoProjectForm.vue 真实配置',
     layoutType: 'grid',
     isDefault: true,
     status: 1,
@@ -323,7 +323,7 @@ async function main() {
     entityCode,
     listKey,
     listName: 'Demo项目卡片列表',
-    description: 'src/demo/lists/DemoProjectCardList.vue 真实配置',
+    description: 'src/extensions/examples/demo/lists/DemoProjectCardList.vue 真实配置',
     isDefault: true,
     customComponent: 'DemoProjectCardList',
     viewConfig: {
@@ -466,7 +466,7 @@ async function main() {
     processInstanceId: data.processInstanceId,
     listRoute: `/entity-list/${entityCode}/${listKey}`
   }
-  evidence.conclusion = 'PASS: 三个 src/demo 扩展已由真实流程、实体、表单、列表和业务数据验证'
+  evidence.conclusion = 'PASS: 三个 src/extensions/examples/demo 扩展已由真实流程、实体、表单、列表和业务数据验证'
   const evidencePath = writeEvidence('PASS')
   console.log(`dynamic extension demo passed: ${evidencePath}`)
 }

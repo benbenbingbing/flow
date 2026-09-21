@@ -953,10 +953,10 @@ import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { findButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
 import { isSelectionToolbarButton, normalizeListSelectionMode } from '@/shared/list-selection'
-import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
+import { getCellComponentOptions, getCellDescriptor } from '@/extensions/core/registries/listCellRegistry.js'
 import { filterOptionsByEntity } from '@/shared/extension-entity-scope'
-import { getCustomListComponentOptions, getCustomListDescriptor } from '@/utils/customComponentRegistry'
-import { getFormFieldComponentOptions } from '@/components/form-fields'
+import { getCustomListComponentOptions, getCustomListDescriptor } from '@/extensions/core/registries/customComponentRegistry.js'
+import { getFormFieldComponentOptions } from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   applySchemaDefaults,
   safeParseConfig,

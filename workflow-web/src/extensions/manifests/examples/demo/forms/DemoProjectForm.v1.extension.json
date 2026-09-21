@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FORM",
+  "name": "DemoProjectForm",
+  "label": "Demo·项目定制表单",
+  "description": "覆盖新增、编辑、审批、查看四种模式并暴露 validate。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/examples/demo/forms/DemoProjectForm.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedModes": [
+      "create",
+      "edit",
+      "approve",
+      "view"
+    ],
+    "configSchema": [
+      {
+        "key": "subtitle",
+        "label": "副标题",
+        "type": "text",
+        "defaultValue": "项目定制表单运行示例"
+      },
+      {
+        "key": "accentColor",
+        "label": "强调色",
+        "type": "text",
+        "defaultValue": "#409eff"
+      },
+      {
+        "key": "showRiskHint",
+        "label": "显示风险提示",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "usageContexts": [
+      "PAGE"
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

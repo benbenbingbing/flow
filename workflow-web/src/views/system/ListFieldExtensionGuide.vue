@@ -36,7 +36,7 @@
           <h4>2.1 要做什么</h4>
           <ol class="check-list">
             <li>写一个 Vue 组件，接收 <code>value / row / field / config / context</code>。</li>
-            <li>启动时 <code>registerCellComponent(名字, 组件, 元数据)</code>。名字是设计器里的选项值，稳定后不要改。</li>
+            <li>新增 <code>LIST_CELL</code> 类型的 <code>*.extension.json</code>，声明 name、implementation、metadata。name 是设计器选项值，发布后保持稳定。</li>
             <li>打开实体列表设计 → 字段配置 → 该列「设置」→「数据与显示」→「渲染组件」选中它。</li>
             <li>元数据里的 <code>configSchema</code> 会自动变成参数表单，填完写进这一列的 <code>renderConfig</code>。</li>
             <li>点「保存当前列」。提示是「当前列已保存，尚未发布」。再发布列表，运行时才看得到。</li>
@@ -51,7 +51,7 @@
           <p><code>value</code> 够用就只用 <code>value</code>。要拿同一行别的字段、原始 ID、点一下刷新列表，再去翻 <code>row</code> 和 <code>context</code>。组件里可以继续加自己的 computed、方法、样式，不需要向平台再注册一遍。</p>
 
           <h4>2.3 从最小组件抄起</h4>
-          <p>仓库里能跑的例子是 <code>src/demo/list-fields/DemoRiskProgressCell.vue</code>。开发环境启动后，渲染组件下拉里会有「Demo·风险进度」。自己做业务组件时，复制一份改名字即可。</p>
+          <p>仓库里能跑的例子是 <code>src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue</code>。开发环境启动后，渲染组件下拉里会有「Demo·风险进度」。自己做业务组件时，复制一份改名字即可。</p>
           <CodeCard title="单元格组件（带注释，可直接改）" language="Vue">
             <pre v-pre><code>&lt;template&gt;
   &lt;!-- 平台只负责把组件挂到格子里，模板怎么排是组件自己的事 --&gt;
@@ -92,28 +92,61 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
           </CodeCard>
 
           <h4>2.4 注册：让设计器能选到</h4>
-          <p>业务代码放在应用启动时调用，和 Demo 开关分开：<code>src/extensions/register.js</code> 里 <code>registerProjectExtensions()</code> 会随应用启动；<code>registerDemoExtensions()</code> 只在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时执行。</p>
-          <CodeCard title="registerCellComponent（对照 src/demo/index.js）" language="JavaScript">
-            <pre v-pre><code>import { registerCellComponent } from '@/utils/listCellRegistry'
-import RiskProgressCell from './RiskProgressCell.vue'
-
-// 第一个参数是稳定编码，设计器保存的是它，改名后旧列会回退成默认文本
-registerCellComponent('RiskProgressCell', RiskProgressCell, {
-  label: '风险进度',                 // 设计器下拉显示名
-  description: '按阈值显示进度和等级',
-  // 适用实体：不写、[]、['*'] 都是全部实体
-  // 只给报销单和合同用时写成 ['expense', 'contract']
-  supportedEntityCodes: ['expense'],
-  // 提示更适合哪些实体字段类型，不拦运行时
-  supportedFieldTypes: ['INTEGER', 'LONG', 'DECIMAL', 'DOUBLE'],
-  // 每一项会变成「数据与显示」里的表单，保存后进入 field.renderConfig
-  configSchema: [
-    { key: 'warningAt', label: '关注阈值', type: 'number', min: 0, max: 100, defaultValue: 40 },
-    { key: 'dangerAt', label: '高危阈值', type: 'number', min: 0, max: 100, defaultValue: 70 },
-    { key: 'showText', label: '显示百分比', type: 'boolean', defaultValue: true },
-    { key: 'showLevel', label: '显示风险等级', type: 'boolean', defaultValue: true }
-  ]
-})</code></pre>
+          <p>实现与注册声明分开：组件放在所属模块，JSON 放在 <code>src/extensions/manifests/</code>。平台构建自动发现并注册，新增组件不修改入口。examples 清单仅在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时启用。</p>
+          <CodeCard title="LIST_CELL JSON 清单" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "RiskProgressCell",
+  "label": "风险进度",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/RiskProgressCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedEntityCodes": [
+      "expense"
+    ],
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "warningAt",
+        "label": "关注阈值",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 40
+      },
+      {
+        "key": "dangerAt",
+        "label": "高危阈值",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 70
+      },
+      {
+        "key": "showText",
+        "label": "显示百分比",
+        "type": "boolean",
+        "defaultValue": true
+      },
+      {
+        "key": "showLevel",
+        "label": "显示风险等级",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ]
+  }
+}</code></pre>
           </CodeCard>
           <p><code>configSchema</code> 的 <code>type</code> 设计器认识这些：<code>text</code>、<code>textarea</code>、<code>number</code>、<code>boolean</code>、<code>select</code>、<code>json</code>。组件里用 <code>props.config.xxx</code> 读对应 <code>key</code>。显示参数写 <code>renderConfig</code>，不要塞进数据源配置；运行时优先读 <code>field.renderConfig</code>，没有才回退 <code>dataSourceConfig</code>。</p>
           <p>组件没注册时，格子会静默走内置 <code>DefaultText</code>，页面不会报红。自己测的时候先看下拉里有没有你的显示名。</p>
@@ -125,24 +158,58 @@ registerCellComponent('RiskProgressCell', RiskProgressCell, {
             <el-table-column prop="effect" label="设计器里怎样" min-width="280" />
           </el-table>
           <p>这只过滤下拉。已经保存到列上的组件和数据源，换实体后仍会渲染、仍会补数；打开该列时，当前选中项即使不在范围内也会留在下拉里，避免配置丢了。</p>
-          <CodeCard title="三种范围写法" language="JavaScript">
-            <pre v-pre><code>// 1. 全部实体：不写这个字段，或写空数组，或写 ['*']
-registerCellComponent('PlainTextCell', PlainTextCell, {
-  label: '普通文本'
-  // supportedEntityCodes 省略 = 每个实体的列表都能选
-})
+          <CodeCard title="三种范围写法" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "PlainTextCell",
+  "label": "普通文本",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/PlainTextCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {}
+}
 
-// 2. 只给一个实体
-registerCellComponent('ExpenseRiskCell', ExpenseRiskCell, {
-  label: '报销风险',
-  supportedEntityCodes: ['expense']
-})
+{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "ExpenseRiskCell",
+  "label": "报销风险",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/ExpenseRiskCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedEntityCodes": [
+      "expense"
+    ]
+  }
+}
 
-// 3. 给几个实体
-registerCellComponent('AmountBarCell', AmountBarCell, {
-  label: '金额条',
-  supportedEntityCodes: ['expense', 'contract', 'order']
-})</code></pre>
+{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "AmountBarCell",
+  "label": "金额条",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/AmountBarCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedEntityCodes": [
+      "expense",
+      "contract",
+      "order"
+    ]
+  }
+}</code></pre>
           </CodeCard>
         </section>
 
@@ -371,70 +438,88 @@ function reloadList() {
 
           <h4>6.3 注册元数据全开</h4>
           <p><code>normalizeExtensionDescriptor</code> 会收下这些字段。没写的给默认值，多写的不会进运行时。</p>
-          <CodeCard title="registerCellComponent 元数据全开" language="JavaScript">
-            <pre v-pre><code>registerCellComponent('RiskProgressCell', RiskProgressCell, {
-  label: '风险进度',
-  description: '按阈值显示进度和等级',
-  version: 1,                 // 缺省 1，给扩展清单用
-  snapshotVersion: 1,         // 缺省 1
-  supportedEntityCodes: ['expense'], // 不写或 [] 或 ['*'] = 全部实体
-  supportedFieldTypes: ['INTEGER', 'LONG', 'DECIMAL', 'DOUBLE'],
-  supportedModes: [],         // 单元格目前不用，保留字段
-  capabilities: {},           // 单元格目前不用，保留字段
-  configSchema: [
-    {
-      key: 'warningAt',
-      label: '关注阈值',
-      type: 'number',
-      required: true,
-      min: 0,
-      max: 100,
-      step: 1,
-      defaultValue: 40,
-      group: 'common',        // 常用区，首屏展开
-      order: 10,
-      description: '达到该值显示关注'
-    },
-    {
-      key: 'dangerAt',
-      label: '高危阈值',
-      type: 'number',
-      min: 0,
-      max: 100,
-      defaultValue: 70,
-      group: 'common',
-      order: 20
-    },
-    {
-      key: 'showText',
-      label: '显示百分比',
-      type: 'boolean',
-      defaultValue: true,
-      group: 'common',
-      order: 30
-    },
-    {
-      key: 'showLevel',
-      label: '显示风险等级',
-      type: 'boolean',
-      defaultValue: true,
-      group: 'common',
-      order: 40
-    },
-    {
-      key: 'dangerText',
-      label: '高危文案',
-      type: 'text',
-      defaultValue: '高风险',
-      placeholder: '例如 高风险',
-      group: 'advanced',      // 高级区，默认折叠
-      advanced: true,
-      order: 100,
-      // 只有打开「显示风险等级」才出现这一项
-      visibleWhen: { field: 'showLevel', equals: true }
-    }
-  ]
-})</code></pre>
+          <CodeCard title="LIST_CELL JSON 完整参数" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "RiskProgressCell",
+  "label": "风险进度",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/list-cells/RiskProgressCell.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "supportedEntityCodes": [
+      "expense"
+    ],
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "supportedModes": [],
+    "capabilities": {},
+    "configSchema": [
+      {
+        "key": "warningAt",
+        "label": "关注阈值",
+        "type": "number",
+        "required": true,
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "defaultValue": 40,
+        "group": "common",
+        "order": 10,
+        "description": "达到该值显示关注"
+      },
+      {
+        "key": "dangerAt",
+        "label": "高危阈值",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 70,
+        "group": "common",
+        "order": 20
+      },
+      {
+        "key": "showText",
+        "label": "显示百分比",
+        "type": "boolean",
+        "defaultValue": true,
+        "group": "common",
+        "order": 30
+      },
+      {
+        "key": "showLevel",
+        "label": "显示风险等级",
+        "type": "boolean",
+        "defaultValue": true,
+        "group": "common",
+        "order": 40
+      },
+      {
+        "key": "dangerText",
+        "label": "高危文案",
+        "type": "text",
+        "defaultValue": "高风险",
+        "placeholder": "例如 高风险",
+        "group": "advanced",
+        "advanced": true,
+        "order": 100,
+        "visibleWhen": {
+          "field": "showLevel",
+          "equals": true
+        }
+      }
+    ]
+  }
+}</code></pre>
           </CodeCard>
           <el-table :data="schemaItemRows" border size="small">
             <el-table-column prop="key" label="schema 项" width="140" />
@@ -537,7 +622,7 @@ const toc = [
 
 const overviewRows = [
   { part: '出数', what: '这一列每个格子的值从哪来', how: '实体字段直接读；模板拼；或 Provider 写入 extData' },
-  { part: '显示', what: '这个值在表格里长什么样', how: 'registerCellComponent 注册 Vue 组件，列上选渲染组件' }
+  { part: '显示', what: '这个值在表格里长什么样', how: 'LIST_CELL JSON 清单声明 Vue 组件，列上选渲染组件' }
 ]
 
 const entityScopeRows = [
@@ -571,10 +656,10 @@ const designerRows = [
 ]
 
 const frontApis = [
-  { api: 'registerCellComponent(name, comp, meta)', file: 'src/utils/listCellRegistry.js', note: '注册单元格。meta 含 label、configSchema、supportedEntityCodes、supportedFieldTypes' },
-  { api: 'getCellComponent / hasCellComponent', file: 'src/utils/listCellRegistry.js', note: '运行时按 renderComponent 取组件' },
+  { api: 'LIST_CELL 清单', file: 'src/extensions/core/registries/listCellRegistry.js', note: '注册单元格。meta 含 label、configSchema、supportedEntityCodes、supportedFieldTypes' },
+  { api: 'getCellComponent / hasCellComponent', file: 'src/extensions/core/registries/listCellRegistry.js', note: '运行时按 renderComponent 取组件' },
   { api: 'filterOptionsByEntity(options, entityCode, current)', file: 'src/shared/extension-entity-scope.js', note: '按实体收窄下拉，已选值始终保留' },
-  { api: 'getCellComponentOptions()', file: 'src/utils/listCellRegistry.js', note: '全部单元格；设计器再按实体过滤' },
+  { api: 'getCellComponentOptions()', file: 'src/extensions/core/registries/listCellRegistry.js', note: '全部单元格；设计器再按实体过滤' },
   { api: 'getCellValue(row, field)', file: 'src/shared/list-runtime/index.js', note: 'extData > data > row' },
   { api: 'formatListFieldValue(...)', file: 'src/shared/list-runtime/index.js', note: 'ListCellRenderer 用来算 value' },
   { api: 'entityListConfigApi.getExtensionOptions()', file: 'src/api/entityListConfig.js', note: 'GET /entity-list-config/extension-options' }

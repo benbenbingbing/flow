@@ -62,7 +62,7 @@ const sharedRequestSource = await source('src/shared/request/index.js')
 const embedMainSource = await source('src/embed/embed-main.js')
 const adminMainSource = await source('src/main.js')
 const extensionEntrySource = await source('src/extensions/register.js')
-const projectExtensionSource = await source('src/project/index.js')
+const projectFieldManifest = JSON.parse(await source('src/extensions/manifests/business/project/fields/project_acceptance_score.v1.extension.json'))
 const entityDialogSource = await source(
   'src/views/entity/components/EntityDataFormDialog.vue'
 )
@@ -75,7 +75,7 @@ const entityFieldsSource = await source(
 const fieldRendererSource = await source(
   'src/components/FormFieldRendererLinkage.vue'
 )
-const fieldRegistrySource = await source('src/components/form-fields/index.js')
+const fieldRegistrySource = await source('src/extensions/core/registries/formFieldRegistry.js')
 const formPreviewSource = await source('src/components/FormPreviewLinkage.vue')
 const formNodeRuntimeSource = await source('src/components/FormNodeRuntimeItem.vue')
 const canonicalFieldSources = await Promise.all([
@@ -83,7 +83,7 @@ const canonicalFieldSources = await Promise.all([
   'SelectField.vue',
   'SwitchField.vue',
   'RichTextField.vue'
-].map(filename => source(`src/components/form-fields/components/${filename}`)))
+].map(filename => source(`src/extensions/builtin/fields/components/${filename}`)))
 const bootstrapNormalizerSource = await source(
   'src/embed/projection/normalizeEmbedSchema.js'
 )
@@ -230,12 +230,13 @@ assert.match(bootstrapNormalizerSource, /nativeRuntimeUrl|formReleaseId/)
 // form-fields registry 注册；新组件不会要求在 src/embed 下再登记一次。
 assert.match(adminMainSource, /registerApplicationExtensions/)
 assert.match(embedMainSource, /registerApplicationExtensions/)
-assert.match(extensionEntrySource, /registerProjectExtensions/)
-assert.match(projectExtensionSource, /registerFormFieldComponent/)
-assert.match(projectExtensionSource, /PROJECT_ACCEPTANCE_SCORE_FIELD/)
+assert.match(extensionEntrySource, /virtual:flow-extension-manifest/)
+assert.equal(projectFieldManifest.type, 'FIELD')
+assert.equal(projectFieldManifest.name, 'project_acceptance_score')
+assert.match(projectFieldManifest.implementation.path, /ProjectAcceptanceScoreField.vue$/)
 assert.match(fieldRegistrySource, /export function registerFormFieldComponent/)
 assert.match(fieldRegistrySource, /export function resolveFieldComponent/)
-assert.match(fieldRegistrySource, /extensionRegistry/)
+assert.match(fieldRegistrySource, /state.custom/)
 assert.match(entityDialogSource, /EntityDataFormFields/)
 assert.match(approvalDialogSource, /EntityApprovalBasicInfo/)
 assert.match(entityFieldsSource, /FormPreviewLinkage/)

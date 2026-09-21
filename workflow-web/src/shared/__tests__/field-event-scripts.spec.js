@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { effectScope, reactive, nextTick } from 'vue'
 import { compileFieldScript, fieldScriptEnvironmentError, readFieldScripts, writeFieldScripts, runFieldScript } from '../field-event-scripts.js'
-import { useFormField } from '../../components/form-fields/composables/useFormField.js'
+import { useFormField } from '../../extensions/builtin/fields/composables/useFormField.js'
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const draft = { componentProps: JSON.stringify({ events: { onChange: 'old', onBlur: 'blur' } }), eventOnChange: '' }

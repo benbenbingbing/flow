@@ -1,0 +1,47 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FORM",
+  "name": "ProjectExtensionAcceptanceForm",
+  "label": "项目·扩展验收整表单",
+  "description": "覆盖新增、编辑、查看和审批模式，并可手工触发表单统一数据源。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/forms/ProjectExtensionAcceptanceForm.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "supportedModes": [
+      "create",
+      "edit",
+      "approve",
+      "view"
+    ],
+    "configSchema": [
+      {
+        "key": "title",
+        "label": "表单标题",
+        "type": "text",
+        "defaultValue": "项目扩展验收单"
+      },
+      {
+        "key": "showRuntimeTrace",
+        "label": "显示执行轨迹",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "capabilities": {
+      "exposesValidate": true,
+      "executesManagedDataSource": true,
+      "supportsWorkflowModes": true
+    },
+    "usageContexts": [
+      "PAGE"
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

@@ -456,7 +456,7 @@ import FormFieldRenderer from '@/components/FormFieldRenderer.vue'
 import FormNodeDraggableList from '@/components/FormNodeDraggableList.vue'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
-import SectionField from '@/components/form-fields/components/SectionField.vue'
+import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import { safeParseConfig } from '@/shared/config-runtime'
 import {
   resolveFormContainerAppearance,

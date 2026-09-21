@@ -1,5 +1,5 @@
 import { normalizeFormNodeType } from './form-node-hierarchy.js'
-import { normalizeFormNodeFieldType } from './form-field-component-policy.js'
+import { normalizeFormNodeFieldType } from '../extensions/core/fieldPolicy.js'
 import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance

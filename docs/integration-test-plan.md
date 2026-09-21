@@ -967,7 +967,7 @@ ProcessNodeForm（流程节点表单绑定）
 自定义组件通过 `customComponentRegistry.js` 注册：
 
 ```javascript
-import { registerCustomFormComponent } from '@/utils/customComponentRegistry'
+import { registerCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import MyCustomForm from './MyCustomForm.vue'
 
 registerCustomFormComponent('MyCustomForm', MyCustomForm)

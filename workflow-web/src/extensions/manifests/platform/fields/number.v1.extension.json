@@ -1,0 +1,66 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "number",
+  "label": "数字",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/NumberField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "min",
+        "label": "最小值",
+        "type": "number"
+      },
+      {
+        "key": "max",
+        "label": "最大值",
+        "type": "number"
+      },
+      {
+        "key": "precision",
+        "label": "小数位",
+        "type": "number",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 0
+      },
+      {
+        "key": "step",
+        "label": "步长",
+        "type": "number",
+        "defaultValue": 1
+      },
+      {
+        "key": "controls",
+        "label": "显示控制器",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ]
+  },
+  "aliases": [
+    "integer",
+    "long",
+    "decimal",
+    "double"
+  ],
+  "defaultForFieldTypes": [
+    "INTEGER",
+    "LONG",
+    "DOUBLE",
+    "DECIMAL"
+  ],
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

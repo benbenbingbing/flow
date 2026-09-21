@@ -323,7 +323,7 @@ import {
   LIST_COLUMN_TEMPLATE_TYPE
 } from '@/shared/list-column-template'
 import { interfacesForUsage } from './interfaceExtensionModel'
-import { getCellComponentOptions, getCellDescriptor } from '@/utils/listCellRegistry'
+import { getCellComponentOptions, getCellDescriptor } from '@/extensions/core/registries/listCellRegistry.js'
 
 const props = defineProps({
   dataSourceOptions: { type: Array, default: () => [] },

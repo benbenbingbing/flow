@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "DefaultText",
+  "label": "默认文本",
+  "description": "文本、数字和通用值的安全兜底显示。",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/list-cells/DefaultText.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "emptyText",
+        "label": "空值文本",
+        "type": "text",
+        "defaultValue": "-"
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

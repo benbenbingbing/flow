@@ -1,0 +1,63 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "StatusBadge",
+  "label": "状态标签",
+  "description": "使用标签展示状态，可配置标签尺寸和状态映射。",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/list-cells/StatusBadge.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "size",
+        "label": "标签尺寸",
+        "type": "select",
+        "defaultValue": "small",
+        "options": [
+          {
+            "label": "小",
+            "value": "small"
+          },
+          {
+            "label": "默认",
+            "value": "default"
+          },
+          {
+            "label": "大",
+            "value": "large"
+          }
+        ]
+      },
+      {
+        "key": "labelMap",
+        "label": "文本映射",
+        "type": "json",
+        "jsonShape": "object",
+        "helpKey": "entityList.statusLabelMap",
+        "example": {
+          "DRAFT": "草稿",
+          "APPROVED": "已通过"
+        },
+        "description": "原始值到显示文本的精确映射。"
+      },
+      {
+        "key": "statusMap",
+        "label": "颜色映射",
+        "type": "json",
+        "jsonShape": "object",
+        "helpKey": "entityList.statusColorMap",
+        "example": {
+          "draft": "info",
+          "approved": "success"
+        },
+        "description": "小写状态值到标签类型的映射。"
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

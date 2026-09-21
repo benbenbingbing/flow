@@ -15,7 +15,7 @@ import 'element-plus/dist/index.css'
 import Panel from '/src/components/form-designer/FormNodeEventBindings.vue'
 import SettingsSection from '/src/components/SettingsSection.vue'
 import { uiEventBindingApi, uiExtensionApi } from '/src/api/uiConfig.js'
-import { registerFormFieldComponent } from '/src/components/form-fields/index.js'
+import { registerFormFieldComponent } from '/src/extensions/core/registries/formFieldRegistry.js'
 const copy = value => JSON.parse(JSON.stringify(value))
 const events = ['FIELD_CHANGE','ENTITY_SELECTED','FIELD_BUTTON_CLICK','SUBFORM_LOAD','SUBFORM_SAVE']
 const field = {id:'customer-id',revision:1,nodeType:'FIELD',fieldId:'customer-id',fieldCode:'customer',fieldName:'单选用户',fieldType:'REFERENCE',componentType:'reference',refEntityType:'USER'}

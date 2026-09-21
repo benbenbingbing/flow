@@ -420,7 +420,7 @@ const entityDataFormFieldsSource = readFileSync(
   'utf8'
 )
 const customComponentRegistrySource = readFileSync(
-  new URL('../../utils/customComponentRegistry.js', import.meta.url),
+  new URL('../../extensions/core/registries/customComponentRegistry.js', import.meta.url),
   'utf8'
 )
 const apiSource = readFileSync(

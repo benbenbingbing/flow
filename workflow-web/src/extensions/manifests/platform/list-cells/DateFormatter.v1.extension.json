@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "DateFormatter",
+  "label": "日期格式",
+  "description": "按安全日期模板格式化，不执行表达式。",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/list-cells/DateFormatter.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "pattern",
+        "label": "日期格式",
+        "type": "text",
+        "defaultValue": "yyyy-MM-dd HH:mm:ss"
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

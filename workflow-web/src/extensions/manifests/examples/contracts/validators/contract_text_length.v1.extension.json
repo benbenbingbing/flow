@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "VALIDATOR",
+  "name": "contract_text_length",
+  "label": "契约示例·文本长度",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "src/extensions/examples/contracts/validatorFactory.js",
+    "export": "createTextLengthValidator",
+    "kind": "FACTORY"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "TEXT"
+    ],
+    "configSchema": [
+      {
+        "key": "maxLength",
+        "label": "最大字符数",
+        "type": "number",
+        "min": 1,
+        "defaultValue": 50,
+        "description": "按 Unicode 字符计数；每次调用读取当前绑定参数。"
+      }
+    ]
+  },
+  "$comment": "默认禁用。启用此清单并打开 Demo 开关后，在字段自定义校验中选择；无需添加注册代码。"
+}

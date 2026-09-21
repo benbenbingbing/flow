@@ -124,9 +124,9 @@ import { useFormCrossFieldValidation } from '@/composables/useFormCrossFieldVali
 import { useFormCustomValidation } from '@/composables/useFormCustomValidation'
 import { CROSS_FIELD_ERROR_CODE } from '@/shared/form-cross-field-validation'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import SectionField from '@/components/form-fields/components/SectionField.vue'
+import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import { LinkageEngine } from '@/utils/linkageEngine'
-import { getCustomFormComponent, hasCustomFormComponent } from '@/utils/customComponentRegistry.js'
+import { getCustomFormComponent, hasCustomFormComponent } from '@/extensions/core/registries/customComponentRegistry.js'
 import { parseJsonOptions } from '@/shared/list-runtime'
 import {
   createCustomFormActionSlotContract,

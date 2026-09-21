@@ -6,10 +6,10 @@ function source(path) {
 }
 
 const rowScope = source(
-  '../../components/form-fields/components/SubFormRowRuntime.vue'
+  '../../extensions/builtin/fields/components/SubFormRowRuntime.vue'
 )
 const subForm = source(
-  '../../components/form-fields/components/SubFormField.vue'
+  '../../extensions/builtin/fields/components/SubFormField.vue'
 )
 const legacyRenderer = source('../../components/SubFormRenderer.vue')
 const fieldRenderer = source('../../components/FormFieldRendererLinkage.vue')

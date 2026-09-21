@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "NODE",
+  "name": "ProjectAcceptanceSummaryNode",
+  "label": "项目·验收摘要节点",
+  "description": "读取整表单上下文并演示节点级统一数据源调用。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/business/project/nodes/ProjectAcceptanceSummaryNode.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 1,
+    "nodeTypes": [
+      "FIELD"
+    ],
+    "supportedBindings": [
+      "ENTITY_FIELD"
+    ],
+    "configSchema": [
+      {
+        "key": "title",
+        "label": "摘要标题",
+        "type": "text",
+        "defaultValue": "扩展执行摘要"
+      }
+    ],
+    "capabilities": {
+      "readsWholeForm": true,
+      "executesManagedDataSource": true
+    }
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

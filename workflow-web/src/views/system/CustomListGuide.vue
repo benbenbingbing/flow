@@ -28,33 +28,40 @@
         <section id="register" class="guide-section">
           <h3>2. 注册组件与可视化参数</h3>
           <p>注册信息不仅包含 Vue 组件，还包含管理员可见名称、说明、参数 Schema 和支持能力。配置设计器据此生成选择项和参数表单。</p>
-          <CodeCard title="custom-list-extension.ts" language="TypeScript">
-            <pre v-pre><code>import { registerCustomListComponent } from '@/utils/customComponentRegistry'
-import ProjectKanban from './ProjectKanban.vue'
-
-registerCustomListComponent('ProjectKanban', ProjectKanban, {
-  label: '项目看板',
-  description: '按阶段分组展示项目卡片',
-  configSchema: [
-    {
-      key: 'groupField',
-      label: '分组字段',
-      type: 'text',
-      required: true,
-      defaultValue: 'status'
-    },
-    {
-      key: 'showOwner',
-      label: '显示负责人',
-      type: 'boolean',
-      defaultValue: true
+          <CodeCard title="custom-list-extension.ts" language="JSON">
+            <pre v-pre><code>{
+  "schemaVersion": 1,
+  "type": "LIST",
+  "name": "ProjectKanban",
+  "label": "项目看板",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/lists/ProjectKanban.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "configSchema": [
+      {
+        "key": "groupField",
+        "label": "分组字段",
+        "type": "text",
+        "required": true,
+        "defaultValue": "status"
+      },
+      {
+        "key": "showOwner",
+        "label": "显示负责人",
+        "type": "boolean",
+        "defaultValue": true
+      }
+    ],
+    "capabilities": {
+      "layout": "kanban",
+      "supportsSelection": false
     }
-  ],
-  capabilities: {
-    layout: 'kanban',
-    supportsSelection: false
   }
-})</code></pre>
+}</code></pre>
           </CodeCard>
         </section>
 
@@ -249,8 +256,8 @@ emit('pageChange', 2)</code></pre>
         <section id="demo" class="guide-section">
           <h3>10. 可运行 Demo</h3>
           <ul class="check-list">
-            <li>`src/demo/lists/DemoProjectCardList.vue`：卡片布局、查询、分页、空状态和标准行操作的完整实现。</li>
-            <li>`src/demo/index.js`：以 `DemoProjectCardList` 注册组件，并声明列数、紧凑模式、说明和搜索提示参数。</li>
+            <li>`src/extensions/examples/demo/lists/DemoProjectCardList.vue`：卡片布局、查询、分页、空状态和标准行操作的完整实现。</li>
+            <li>`src/extensions/manifests/examples/demo/`：以 `DemoProjectCardList` 注册组件，并声明列数、紧凑模式、说明和搜索提示参数。</li>
             <li>示例直接使用 `runtime.canAction / getActionReason` 和 `listConfig.toolbarCapabilities`，不在前端重写权限规则。</li>
             <li>执行 `npm run test:demo:real` 可创建真实实体、列表和流程；验证结果写入 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>

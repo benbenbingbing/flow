@@ -1,0 +1,29 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "contract_example_text",
+  "label": "契约示例·文本字段",
+  "description": "",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "src/extensions/templates/CustomFieldTemplate.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "TEXT"
+    ],
+    "configSchema": [
+      {
+        "key": "suffix",
+        "label": "后缀",
+        "type": "text"
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "NODE",
+  "name": "ContractExampleNode",
+  "label": "契约示例·摘要节点",
+  "description": "演示只读摘要节点与 v1 单字段配置升级为 v2 数组配置。",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "src/extensions/templates/CustomNodeTemplate.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 2,
+    "nodeTypes": [
+      "FIELD"
+    ],
+    "supportedBindings": [
+      "ENTITY_FIELD"
+    ],
+    "configSchema": [
+      {
+        "key": "fieldCodes",
+        "label": "摘要字段",
+        "type": "json",
+        "jsonShape": "array",
+        "example": [
+          "name"
+        ]
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。",
+  "hooks": {
+    "migrateConfig": {
+      "path": "src/extensions/examples/contracts/nodeConfig.js",
+      "export": "migrateSummaryConfig",
+      "kind": "FUNCTION"
+    }
+  }
+}

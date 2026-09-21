@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { flowExtensionsPlugin } from './build/extensions/vite-plugin.mjs'
 import { resolve } from 'path'
 
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:8080'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [flowExtensionsPlugin(), vue()],
   build: {
     chunkSizeWarningLimit: 1000,
     rollupOptions: {

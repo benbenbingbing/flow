@@ -1,0 +1,44 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "cascader",
+  "label": "级联选择",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/CascaderField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "MULTI_SELECT"
+    ],
+    "configSchema": [
+      {
+        "key": "cascaderOptions",
+        "label": "级联选项",
+        "type": "json",
+        "jsonShape": "array",
+        "helpKey": "entityForm.cascaderOptions",
+        "example": [
+          {
+            "value": "china",
+            "label": "中国",
+            "children": [
+              {
+                "value": "beijing",
+                "label": "北京"
+              }
+            ]
+          }
+        ],
+        "description": "value、label、children 组成的树形选项数组。"
+      }
+    ]
+  },
+  "aliases": [],
+  "defaultForFieldTypes": [],
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

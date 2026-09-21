@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { effectScope, nextTick, ref } from 'vue'
 import { useFormCustomValidation } from '../../composables/useFormCustomValidation.js'
 import { useSubFormCustomValidation } from '../../composables/useSubFormCustomValidation.js'
-import { registerProjectValidators } from '../../project/validators/index.js'
-import { registerCustomValidator } from '../../contracts/validator-registry.js'
+import { installTestValidators } from '../../extensions/__tests__/helpers/install-node-extensions.mjs'
+import { registerCustomValidator } from '../../extensions/core/registries/validatorRegistry.js'
 
-registerProjectValidators()
+await installTestValidators()
 const config = { version: 1, rules: [{ name: 'amount', version: 1, params: { maxAmount: 10 }, triggers: ['CHANGE', 'BLUR'] }] }
 const fields = [{ fieldCode: 'amount', fieldType: 'DECIMAL', validationRules: { customValidators: config } }]
 const record = ref({ amount: 20 })

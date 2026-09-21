@@ -14,7 +14,7 @@ import 'element-plus/dist/index.css'
 import Panel from '/src/components/ListButtonConfigPanel.vue'
 import Table from '/src/views/entity/components/EntityDataTable.vue'
 import { normalizeListActionForSave } from '/src/shared/list-config-design.js'
-import { registerListRowAction } from '/src/utils/listActionRegistry.js'
+import { registerListRowAction } from '/src/extensions/core/registries/listActionRegistry.js'
 const state = reactive({
  buttons:[{id:'view',key:'view',label:'查看',type:'built-in',enabled:true},{id:'edit',key:'edit',label:'编辑',type:'built-in',enabled:true}],
  fields:[

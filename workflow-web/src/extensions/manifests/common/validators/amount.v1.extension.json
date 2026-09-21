@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "VALIDATOR",
+  "name": "amount",
+  "label": "金额校验",
+  "description": "金额必须为非负有限数字，且不超过当前字段配置的上限；空值交给必填规则。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "path": "src/extensions/common/validators/AmountValidator.js",
+    "export": "AmountValidator",
+    "kind": "CLASS"
+  },
+  "metadata": {
+    "supportedEntityCodes": [
+      "*"
+    ],
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE",
+      "NUMBER",
+      "STRING"
+    ],
+    "configSchema": [
+      {
+        "key": "maxAmount",
+        "label": "金额上限",
+        "type": "number",
+        "required": true,
+        "min": 0,
+        "defaultValue": 1000
+      }
+    ]
+  },
+  "$comment": "注册声明：实现路径可位于所属模块；name 是已发布配置引用的稳定名称。修改后由构建器自动安装，不另写注册代码。"
+}

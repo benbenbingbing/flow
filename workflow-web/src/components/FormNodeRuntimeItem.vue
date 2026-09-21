@@ -204,7 +204,7 @@
 import { isSubFormLayoutField } from '@/shared/form-layout'
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
-import SectionField from '@/components/form-fields/components/SectionField.vue'
+import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import { buildRuntimeFieldRules, getFieldKey } from '@/shared/form-runtime'
@@ -213,7 +213,7 @@ import {
   resolveRuntimeNodeFieldRules,
   safeParseConfig
 } from '@/shared/config-runtime'
-import { hasFormFieldComponent } from '@/components/form-fields'
+import { hasFormFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   isFormFieldExtensionNode,
   resolveRuntimeFormFieldComponentType
@@ -221,7 +221,7 @@ import {
 import {
   migrateFormNodeConfig,
   resolveFormNodeDescriptor
-} from '@/utils/formNodeRegistry'
+} from '@/extensions/core/registries/formNodeRegistry.js'
 import {
   appendFormUniqueBlurRule,
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY

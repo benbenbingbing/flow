@@ -243,7 +243,7 @@ import {
   getCustomListComponent,
   hasCustomFormComponent,
   hasCustomListComponent
-} from '@/utils/customComponentRegistry'
+} from '@/extensions/core/registries/customComponentRegistry.js'
 
 const AsyncEntityDataList = defineAsyncComponent(
   () => import('@/views/entity/EntityDataList.vue')
@@ -440,12 +440,12 @@ const customComponent = computed(() => {
   const version = customComponentConfig.value.version
   const artifactDigest = customComponentConfig.value.artifactDigest
   if (resolved.value?.targetContentType === 'FORM') {
-    return hasCustomFormComponent(name, version, artifactDigest)
-      ? getCustomFormComponent(name, version, artifactDigest)
+    return hasCustomFormComponent(name, version, artifactDigest, 'RELATED_CONTENT')
+      ? getCustomFormComponent(name, version, artifactDigest, 'RELATED_CONTENT')
       : null
   }
-  return hasCustomListComponent(name, version, artifactDigest)
-    ? getCustomListComponent(name, version, artifactDigest)
+  return hasCustomListComponent(name, version, artifactDigest, 'RELATED_CONTENT')
+    ? getCustomListComponent(name, version, artifactDigest, 'RELATED_CONTENT')
     : null
 })
 

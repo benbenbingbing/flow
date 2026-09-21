@@ -213,7 +213,7 @@ import {
   getCustomFormComponentOptions,
   getCustomFormDescriptor,
   hasCustomFormComponent
-} from '@/utils/customComponentRegistry'
+} from '@/extensions/core/registries/customComponentRegistry.js'
 import {
   FORM_RENDERER_MODE_CUSTOM,
   FORM_RENDERER_MODE_DEFAULT,

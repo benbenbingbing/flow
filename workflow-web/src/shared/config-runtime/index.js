@@ -45,6 +45,8 @@ export function normalizeExtensionDescriptor(name, component, metadata = {}) {
     label: metadata.label || name,
     description: metadata.description || '',
     component,
+    origin: metadata.origin,
+    usageContexts: metadata.usageContexts || ['PAGE'],
     configSchema: Array.isArray(metadata.configSchema) ? metadata.configSchema : [],
     capabilities: metadata.capabilities || {},
     supportedModes: metadata.supportedModes || [],

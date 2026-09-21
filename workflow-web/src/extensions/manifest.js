@@ -1,49 +1,15 @@
-import {
-  getCustomFormComponentOptions,
-  getCustomListComponentOptions
-} from '@/utils/customComponentRegistry'
-import { getCellComponentOptions } from '@/utils/listCellRegistry'
-import { getFormNodeComponentOptions } from '@/utils/formNodeRegistry'
-import {
-  getBuiltInFormFieldComponentNames,
-  getFormFieldComponentOptions,
-  getRegisteredFormFieldComponentOptions
-} from '@/components/form-fields'
+import { getExtensionCatalog } from './core/catalog.js'
+import { getBuiltInFormFieldComponentNames } from './core/registries/formFieldRegistry.js'
 
-const builtInFormFieldNames = new Set(
-  getBuiltInFormFieldComponentNames().map(name => name.toLowerCase())
-)
-
-export function getBundledExtensionManifest() {
-  const descriptors = [
-    ...getCustomFormComponentOptions().map(item => governedDescriptor('FORM', item)),
-    ...getCustomListComponentOptions().map(item => governedDescriptor('LIST', item)),
-    ...getFormNodeComponentOptions().map(item => governedDescriptor('NODE', item)),
-    ...getFormFieldComponentOptions().map(item => governedDescriptor('FIELD', item)),
-    ...getCellComponentOptions().map(item => governedDescriptor('LIST_CELL', item))
-  ]
-  const unique = new Map()
-  descriptors.forEach(item => unique.set(item.id, item))
-  return Array.from(unique.values()).sort((left, right) => left.id.localeCompare(right.id))
-}
-
+/** 当前构建实际安装的全部十类扩展，包含平台内置与可选示例。 */
+export function getBundledExtensionManifest() { return getExtensionCatalog() }
+/** 服务端目前只治理四类 UI 扩展；保留既有接口类型边界。 */
 export function getManagedExtensionManifest() {
-  const descriptors = [
-    ...getCustomFormComponentOptions().map(item => governedDescriptor('FORM', item)),
-    ...getCustomListComponentOptions().map(item => governedDescriptor('LIST', item)),
-    ...getFormNodeComponentOptions().map(item => governedDescriptor('NODE', item)),
-    ...getRegisteredFormFieldComponentOptions().map(item =>
-      governedDescriptor('FIELD', item))
-  ]
-  const unique = new Map()
-  descriptors.forEach(item => unique.set(item.id, item))
-  return Array.from(unique.values())
-    .sort((left, right) => left.id.localeCompare(right.id))
+  return getExtensionCatalog().filter(item => item.managed && !(item.type === 'FIELD' && item.origin === 'PLATFORM'))
 }
-
 export function isPlatformBuiltInUiExtension(type, name) {
   return String(type || '').replace(/^UI_/, '').toUpperCase() === 'FIELD'
-    && builtInFormFieldNames.has(String(name || '').toLowerCase())
+    && getBuiltInFormFieldComponentNames().includes(String(name || '').toLowerCase())
 }
 
 export function validateBundledExtensionManifest(manifest = getBundledExtensionManifest()) {
@@ -72,31 +38,4 @@ export function validateBundledExtensionManifest(manifest = getBundledExtensionM
     ids.add(item?.id)
   })
   return issues
-}
-
-function governedDescriptor(type, descriptor = {}) {
-  const version = positiveInteger(descriptor.version)
-  const snapshotVersion = positiveInteger(descriptor.snapshotVersion)
-  const name = descriptor.name || descriptor.value || descriptor.type
-  return {
-    id: `${type}:${name}@${version}`,
-    type,
-    name,
-    label: descriptor.label || name,
-    description: descriptor.description || '',
-    version,
-    snapshotVersion,
-    configSchema: Array.isArray(descriptor.configSchema) ? descriptor.configSchema : [],
-    capabilities: descriptor.capabilities || {},
-    permissions: Array.isArray(descriptor.permissions) ? descriptor.permissions : [],
-    supportedModes: Array.isArray(descriptor.supportedModes) ? descriptor.supportedModes : [],
-    migrationSupported: snapshotVersion > 1 || descriptor.migrationSupported === true,
-    deprecatedAt: descriptor.deprecatedAt || null,
-    source: descriptor.source || 'bundled'
-  }
-}
-
-function positiveInteger(value) {
-  const normalized = Number(value || 1)
-  return Number.isInteger(normalized) && normalized > 0 ? normalized : 1
 }

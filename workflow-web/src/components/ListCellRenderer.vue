@@ -11,8 +11,8 @@
 
 <script setup>
 import { computed } from 'vue'
-import { getCellComponent, hasCellComponent } from '@/utils/listCellRegistry.js'
-import DefaultText from '@/components/list-cells/DefaultText.vue'
+import { getCellComponent, hasCellComponent } from '@/extensions/core/registries/listCellRegistry.js'
+import DefaultText from '@/extensions/builtin/list-cells/DefaultText.vue'
 import { formatListFieldValue, parseDataSourceConfig } from '@/shared/list-runtime'
 import { safeParseConfig } from '@/shared/config-runtime'
 
