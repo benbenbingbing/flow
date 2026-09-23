@@ -29,7 +29,8 @@ jobs:
         github.event.workflow_run.event == 'push'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 公网上传镜像可能超过一小时，预留三小时覆盖慢速传输、重试和后续部署。
+    timeout-minutes: 180
     environment: 阿里云flow
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '8.145.54.70' }}
@@ -165,15 +166,30 @@ jobs:
           for attempt in $(seq 1 5); do
             echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Starting upload (attempt $attempt/5)..."
             # scp 在非终端环境会隐藏进度；script 分配伪终端以显示百分比、速度和 ETA。
-            # --return 保留 scp 退出码，--flush 和行缓冲确保进度实时到达 Actions 日志。
-            # 将覆盖当前行的回车转换成换行，保留历史进度及 scp 的 stalled 停滞提示。
+            # --return 保留 scp 退出码；回车转换行并及时刷新，供下游按分钟采样。
+            # 同一文件的进度（含 stalled）每 60 秒输出一次，开始、完成和错误立即输出。
             if script --quiet --return --flush --command '
               exec scp \
                 deploy/compose.ecs.yml \
                 deploy/deploy.sh \
                 "flow-images-$IMAGE_TAG.tar.gz" \
                 "flow-deploy:$DEPLOY_PATH/"
-            ' /dev/null < /dev/null | stdbuf -oL tr '\r' '\n'; then
+            ' /dev/null < /dev/null | stdbuf -oL tr '\r' '\n' | awk '
+              NF == 0 { next }
+              /[[:space:]][0-9]+%[[:space:]]/ {
+                now = systime()
+                file = $0
+                sub(/[[:space:]]+[0-9]+%.*/, "", file)
+                if (file == current_file &&
+                    $0 !~ /[[:space:]]100%[[:space:]]/ &&
+                    now - last_print < 60) {
+                  next
+                }
+                current_file = file
+                last_print = now
+              }
+              { print; fflush() }
+            '; then
               echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Deployment files uploaded successfully."
               exit 0
             fi
