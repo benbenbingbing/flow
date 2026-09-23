@@ -1,6 +1,9 @@
 package com.workflow.process.action.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -14,105 +17,169 @@ import java.util.List;
  *
  * <p>提供执行记录的就绪查询、乐观抢占、中断恢复与按流程实例查询等自定义 SQL。</p>
  */
+// 普通外层分页由 MyBatis-Plus 处理；锁定与嵌套分页仍保留必要的数据库适配。
 @Mapper
 public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecution> {
 
     /**
      * 查询就绪的执行记录：状态为 PENDING 或已到重试时间的 FAILED。
      *
-     * @param now   当前时间
      * @param limit 最多返回条数
      * @return 就绪执行记录列表
      */
-    @Select("SELECT * FROM process_action_execution " +
-            "WHERE status IN ('PENDING', 'FAILED') " +
-            "  AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6)) " +
-            "ORDER BY create_time " +
-            "LIMIT #{limit}")
-    List<FlowActionExecution> findReady(@Param("limit") int limit);
+    default List<FlowActionExecution> findReady(int limit) {
+        return findReadyRows(new OffsetPage<>(0, limit));
+    }
+
+    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    @Select("""
+            <script>
+            SELECT * FROM process_action_execution
+             WHERE status IN ('PENDING', 'FAILED')
+             AND (next_retry_time IS NULL OR next_retry_time &lt;= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)})
+             ORDER BY create_time, id
+            </script>
+            """)
+    List<FlowActionExecution> findReadyRows(
+            @Param("page") IPage<FlowActionExecution> page);
 
     /**
      * 乐观抢占执行记录：仅当原状态为 PENDING/FAILED 时将其置为 RUNNING。
      *
      * @param id  执行记录 ID
-     * @param now 当前时间
+     * @param ownerId 本次领取的执行者标识
+     * @param leaseSeconds 从数据库当前 UTC 时间起计算的租约秒数
      * @return 更新行数，1 表示抢占成功，0 表示已被其他线程抢占
      */
-    @Update("UPDATE process_action_execution " +
-            "SET status = 'RUNNING', owner_id = #{ownerId}, " +
-            "    lease_token = lease_token + 1, " +
-            "    lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), " +
-            "    started_at = UTC_TIMESTAMP(6), update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} " +
-            "  AND status IN ('PENDING', 'FAILED') " +
-            "  AND (next_retry_time IS NULL OR next_retry_time <= UTC_TIMESTAMP(6))")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET status = 'RUNNING',
+                 owner_id = #{ownerId},
+                 lease_token = lease_token + 1,
+                 lease_until = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcAfterSeconds(_databaseId, 'leaseSeconds')},
+                 started_at = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)},
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status IN ('PENDING', 'FAILED')
+             AND (next_retry_time IS NULL OR next_retry_time &lt;= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)})
+            </script>
+            """)
     int claim(
             @Param("id") String id,
             @Param("ownerId") String ownerId,
             @Param("leaseSeconds") int leaseSeconds);
 
-    @Select("SELECT * FROM process_action_execution " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{ownerId} AND lease_until > UTC_TIMESTAMP(6)")
+    @Select("""
+            <script>
+            SELECT * FROM process_action_execution
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND owner_id = #{ownerId}
+             AND lease_until > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     FlowActionExecution selectClaimed(
             @Param("id") String id,
             @Param("ownerId") String ownerId);
 
-    @Update("UPDATE process_action_execution " +
-            "SET lease_until = TIMESTAMPADD(SECOND, #{leaseSeconds}, UTC_TIMESTAMP(6)), " +
-            "    update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{ownerId} AND lease_token = #{leaseToken} " +
-            "  AND lease_until > UTC_TIMESTAMP(6)")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET lease_until = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcAfterSeconds(_databaseId, 'leaseSeconds')},
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND owner_id = #{ownerId}
+             AND lease_token = #{leaseToken}
+             AND lease_until > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     int heartbeat(
             @Param("id") String id,
             @Param("ownerId") String ownerId,
             @Param("leaseToken") long leaseToken,
             @Param("leaseSeconds") int leaseSeconds);
 
-    @Update("UPDATE process_action_execution " +
-            "SET started_at = COALESCE(started_at, UTC_TIMESTAMP(6)), " +
-            "    resolved_params_json = #{resolvedParamsJson}, " +
-            "    result_json = #{resultJson}, execution_trace_json = #{executionTraceJson}, " +
-            "    update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{ownerId} AND lease_token = #{leaseToken} " +
-            "  AND lease_until > UTC_TIMESTAMP(6)")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET started_at = COALESCE(started_at, ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}),
+                 resolved_params_json = #{resolvedParamsJson},
+                 result_json = #{resultJson},
+                 execution_trace_json = #{executionTraceJson},
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND owner_id = #{ownerId}
+             AND lease_token = #{leaseToken}
+             AND lease_until > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     int updateRunningProgress(FlowActionExecution execution);
 
-    @Update("UPDATE process_action_execution " +
-            "SET status = 'SUCCESS', finished_at = UTC_TIMESTAMP(6), " +
-            "    result_json = #{resultJson}, execution_trace_json = #{executionTraceJson}, " +
-            "    duration_ms = #{durationMs}, error_message = NULL, error_stack = NULL, " +
-            "    owner_id = NULL, lease_until = NULL, update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{ownerId} AND lease_token = #{leaseToken} " +
-            "  AND lease_until > UTC_TIMESTAMP(6)")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET status = 'SUCCESS',
+                 finished_at = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)},
+                 result_json = #{resultJson},
+                 execution_trace_json = #{executionTraceJson},
+                 duration_ms = #{durationMs},
+                 error_message = NULL,
+                 error_stack = NULL,
+                 owner_id = NULL,
+                 lease_until = NULL,
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND owner_id = #{ownerId}
+             AND lease_token = #{leaseToken}
+             AND lease_until > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     int markLeasedSuccess(FlowActionExecution execution);
 
-    @Update("UPDATE process_action_execution " +
-            "SET status = #{execution.status}, retry_count = #{execution.retryCount}, " +
-            "    next_retry_time = CASE WHEN #{execution.status} = 'DEAD' THEN NULL " +
-            "      ELSE TIMESTAMPADD(SECOND, #{retryDelaySeconds}, UTC_TIMESTAMP(6)) END, " +
-            "    finished_at = CASE WHEN #{execution.status} = 'DEAD' THEN UTC_TIMESTAMP(6) ELSE NULL END, " +
-            "    error_message = #{execution.errorMessage}, error_stack = #{execution.errorStack}, " +
-            "    execution_trace_json = #{execution.executionTraceJson}, " +
-            "    duration_ms = #{execution.durationMs}, " +
-            "    owner_id = NULL, lease_until = NULL, update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{execution.id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{execution.ownerId} " +
-            "  AND lease_token = #{execution.leaseToken} " +
-            "  AND lease_until > UTC_TIMESTAMP(6)")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET status = #{execution.status},
+                 retry_count = #{execution.retryCount},
+                 next_retry_time = CASE WHEN #{execution.status} = 'DEAD' THEN NULL ELSE ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcAfterSeconds(_databaseId, 'retryDelaySeconds')} END,
+                 finished_at = CASE WHEN #{execution.status} = 'DEAD' THEN ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)} ELSE NULL END,
+                 error_message = #{execution.errorMessage},
+                 error_stack = #{execution.errorStack},
+                 execution_trace_json = #{execution.executionTraceJson},
+                 duration_ms = #{execution.durationMs},
+                 owner_id = NULL,
+                 lease_until = NULL,
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{execution.id}
+             AND status = 'RUNNING'
+             AND owner_id = #{execution.ownerId}
+             AND lease_token = #{execution.leaseToken}
+             AND lease_until > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     int markLeasedFailure(
             @Param("execution") FlowActionExecution execution,
             @Param("retryDelaySeconds") long retryDelaySeconds);
 
-    @Update("UPDATE process_action_execution " +
-            "SET status = 'FAILED', next_retry_time = UTC_TIMESTAMP(6), " +
-            "    error_message = 'EXECUTOR_REJECTED', owner_id = NULL, " +
-            "    lease_until = NULL, update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND owner_id = #{ownerId} AND lease_token = #{leaseToken}")
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET status = 'FAILED',
+                 next_retry_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)},
+                 error_message = 'EXECUTOR_REJECTED',
+                 owner_id = NULL,
+                 lease_until = NULL,
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND owner_id = #{ownerId}
+             AND lease_token = #{leaseToken}
+            </script>
+            """)
     int releaseClaim(
             @Param("id") String id,
             @Param("ownerId") String ownerId,
@@ -125,20 +192,36 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
      */
     // Avoid a lease-index range UPDATE: completion locks the primary row
     // first, so recovery must use the same lock order in multi-Pod deployments.
-    @Select("SELECT id FROM process_action_execution " +
-            "WHERE status = 'RUNNING' " +
-            "  AND lease_until <= UTC_TIMESTAMP(6) " +
-            "ORDER BY lease_until, id LIMIT 100")
-    List<String> selectExpiredLeaseIds();
+    default List<String> selectExpiredLeaseIds() {
+        return selectExpiredLeaseIdsRows(new OffsetPage<>(0, 100));
+    }
 
-    @Update("UPDATE process_action_execution FORCE INDEX (PRIMARY) " +
-            "SET status = 'FAILED', " +
-            "    next_retry_time = UTC_TIMESTAMP(6), " +
-            "    error_message = 'LEASE_EXPIRED', " +
-            "    owner_id = NULL, lease_until = NULL, " +
-            "    update_time = UTC_TIMESTAMP(6) " +
-            "WHERE id = #{id} AND status = 'RUNNING' " +
-            "  AND lease_until <= UTC_TIMESTAMP(6)")
+    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    @Select("""
+            <script>
+            SELECT id FROM process_action_execution
+             WHERE status = 'RUNNING'
+             AND lease_until &lt;= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             ORDER BY lease_until, id
+            </script>
+            """)
+    List<String> selectExpiredLeaseIdsRows(
+            @Param("page") IPage<String> page);
+
+    @Update("""
+            <script>
+            UPDATE process_action_execution${@com.workflow.integration.database.api.DatabaseRuntimeSql@primaryKeyUpdateHint(_databaseId)}
+             SET status = 'FAILED',
+                 next_retry_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)},
+                 error_message = 'LEASE_EXPIRED',
+                 owner_id = NULL,
+                 lease_until = NULL,
+                 update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+             WHERE id = #{id}
+             AND status = 'RUNNING'
+             AND lease_until &lt;= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+            </script>
+            """)
     int recoverExpiredLease(@Param("id") String id);
 
     default int recoverExpiredLeases() {
@@ -155,8 +238,9 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
      * @param processInstanceId 流程实例 ID
      * @return 执行记录列表
      */
-    @Select("SELECT * FROM process_action_execution " +
-            "WHERE process_instance_id = #{processInstanceId} " +
-            "ORDER BY create_time DESC")
-    List<FlowActionExecution> findByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
+    default List<FlowActionExecution> findByProcessInstanceId(String processInstanceId) {
+        return selectList(Wrappers.<FlowActionExecution>lambdaQuery()
+                .eq(FlowActionExecution::getProcessInstanceId, processInstanceId)
+                .orderByDesc(FlowActionExecution::getCreatedAt));
+    }
 }

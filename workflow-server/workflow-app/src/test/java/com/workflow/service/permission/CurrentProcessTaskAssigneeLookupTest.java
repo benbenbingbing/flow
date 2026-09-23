@@ -1,5 +1,11 @@
 package com.workflow.service.permission;
 
+import com.baomidou.mybatisplus.annotation.DbType;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.MybatisSqlSessionFactoryBuilder;
+import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -9,11 +15,14 @@ import com.workflow.entity.permission.application.CurrentProcessTaskAssigneeLook
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.process.task.application.ProcessTaskAccessAdapter;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
-import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.mapping.BoundSql;
+import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
 import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.LocalCacheScope;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,9 +42,6 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -44,12 +50,19 @@ import static org.mockito.Mockito.when;
 class CurrentProcessTaskAssigneeLookupTest {
 
     private EmbeddedDatabase database;
+    private SqlSession mapperSession;
     private JdbcTemplate jdbc;
     private CurrentProcessTaskAssigneeLookup lookup;
     private ProcessTaskAccessPort taskAccess;
     private PermissionSqlBuilder permissionSqlBuilder;
     private SysUser alice;
     private EntityDataDTO row;
+
+    private static Configuration mysqlConfiguration() {
+        var configuration = new Configuration();
+        configuration.setDatabaseId("MYSQL");
+        return configuration;
+    }
 
     @BeforeEach
     void setUp() throws Exception {
@@ -82,28 +95,20 @@ class CurrentProcessTaskAssigneeLookupTest {
         jdbc.update("INSERT INTO sys_user_group VALUES ('user-1', 'group-1')");
         jdbc.update("INSERT INTO sys_user_role VALUES ('user-1', 'role-1')");
 
-        // 由 MyBatis 解析生产动态 SQL；H2 仅移除其不支持的 MySQL 排序规则声明。
-        Select select = ProcessTaskMapper.class.getMethod("selectActionableTaskId",
-                String.class, String.class, String.class, String.class, boolean.class).getAnnotation(Select.class);
-        SqlSource sqlSource = new XMLLanguageDriver().createSqlSource(new Configuration(),
-                String.join("", select.value()).replace(" COLLATE utf8mb4_unicode_ci", ""), Map.class);
-        ProcessTaskMapper mapper = mock(ProcessTaskMapper.class);
-        when(mapper.selectActionableTaskId(anyString(), nullable(String.class), nullable(String.class),
-                nullable(String.class), anyBoolean())).thenAnswer(invocation -> {
-                    Map<String, Object> params = new HashMap<>();
-                    String[] names = {"userId", "entityCode", "entityDataId", "processInstanceId", "assignedOnly"};
-                    for (int index = 0; index < names.length; index++) {
-                        params.put(names[index], invocation.getArgument(index));
-                    }
-                    return executeMapperSql(sqlSource, params).stream().findFirst().orElse(null);
-                });
-        Select recordSelect = ProcessTaskMapper.class.getMethod("selectActionableEntityDataIds",
-                String.class, String.class).getAnnotation(Select.class);
-        SqlSource recordSqlSource = new XMLLanguageDriver().createSqlSource(new Configuration(),
-                String.join("", recordSelect.value()).replace(" COLLATE utf8mb4_unicode_ci", ""), Map.class);
-        when(mapper.selectActionableEntityDataIds(anyString(), anyString())).thenAnswer(invocation ->
-                executeMapperSql(recordSqlSource, Map.of(
-                        "userId", invocation.getArgument(0), "entityCode", invocation.getArgument(1))));
+        // 使用真实代理执行默认方法及 Rows SQL，让首行分页也经过生产使用的 MP 插件。
+        var configuration = new MybatisConfiguration(
+                new Environment("task-access", new JdbcTransactionFactory(), database));
+        configuration.setDatabaseId("MYSQL");
+        configuration.setMapUnderscoreToCamelCase(true);
+        GlobalConfigUtils.getGlobalConfig(configuration).getDbConfig().setLogicDeleteField("deleted");
+        // 测试直接通过 JdbcTemplate 模拟领取、完成和权限变更，每次查询必须读取当前数据库状态。
+        configuration.setLocalCacheScope(LocalCacheScope.STATEMENT);
+        var interceptor = new MybatisPlusInterceptor();
+        interceptor.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
+        configuration.addInterceptor(interceptor);
+        configuration.addMapper(ProcessTaskMapper.class);
+        mapperSession = new MybatisSqlSessionFactoryBuilder().build(configuration).openSession(true);
+        ProcessTaskMapper mapper = mapperSession.getMapper(ProcessTaskMapper.class);
         taskAccess = new ProcessTaskAccessAdapter(
                 mapper,
                 mock(com.workflow.process.publish.application
@@ -112,7 +117,9 @@ class CurrentProcessTaskAssigneeLookupTest {
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("EXPENSE")).thenReturn("wf_expense");
         permissionSqlBuilder = new PermissionSqlBuilder(
-                null, null, null, List.of(), null, tableResolver, null, taskAccess);
+                null, null, null, List.of(), null, tableResolver, null, taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         alice = new SysUser();
         alice.setId("user-1");
         alice.setUsername("alice");
@@ -126,7 +133,8 @@ class CurrentProcessTaskAssigneeLookupTest {
 
     @AfterEach
     void tearDown() {
-        database.shutdown();
+        if (mapperSession != null) mapperSession.close();
+        if (database != null) database.shutdown();
     }
 
     @ParameterizedTest
@@ -239,8 +247,11 @@ class CurrentProcessTaskAssigneeLookupTest {
 
         FilterConfigDTO currentAssignee = new FilterConfigDTO();
         currentAssignee.setType("CURRENT_ASSIGNEE");
-        String assignedSql = permissionSqlBuilder.buildFilterSql("EXPENSE", currentAssignee, alice);
-        assertEquals(List.of(), jdbc.queryForList("SELECT id FROM wf_expense WHERE " + assignedSql, String.class));
+        Map<String, Object> values = new HashMap<>();
+        String assignedSql = permissionSqlBuilder.buildFilterSql("EXPENSE", currentAssignee, alice, values);
+        SqlSource source = new XMLLanguageDriver().createSqlSource(mysqlConfiguration(),
+                "SELECT id FROM wf_expense WHERE " + assignedSql, Map.class);
+        assertEquals(List.of(), executeMapperSql(source, Map.of("permissionParameters", values)));
         FilterConfigDTO team = new FilterConfigDTO();
         team.setType("TEAM");
         assertEquals("1=0", permissionSqlBuilder.buildFilterSql("EXPENSE", team, alice));
@@ -315,7 +326,7 @@ class CurrentProcessTaskAssigneeLookupTest {
         filter.setType("HAS_TODO");
         Map<String, Object> parameters = new HashMap<>();
         String permissionSql = permissionSqlBuilder.buildFilterSql("EXPENSE", filter, alice, parameters);
-        SqlSource source = new XMLLanguageDriver().createSqlSource(new Configuration(),
+        SqlSource source = new XMLLanguageDriver().createSqlSource(mysqlConfiguration(),
                 "SELECT id FROM wf_expense WHERE " + permissionSql + " ORDER BY id", Map.class);
         assertEquals(expected, executeMapperSql(source, Map.of("permissionParameters", parameters)));
     }

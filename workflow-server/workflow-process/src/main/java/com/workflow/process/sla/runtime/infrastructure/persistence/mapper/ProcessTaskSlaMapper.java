@@ -1,6 +1,10 @@
 package com.workflow.process.sla.runtime.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.workflow.core.database.OffsetPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.sla.runtime.infrastructure.persistence.record.ProcessTaskSla;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -13,113 +17,82 @@ import java.util.Map;
 @Mapper
 public interface ProcessTaskSlaMapper extends BaseMapper<ProcessTaskSla> {
 
-    @Select("SELECT * FROM process_task_sla WHERE task_id = #{taskId} LIMIT 1")
-    ProcessTaskSla findByTaskId(@Param("taskId") String taskId);
+    default ProcessTaskSla findByTaskId(String taskId) {
+        // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
+        return selectList(new Page<ProcessTaskSla>(1, 1, false), Wrappers.<ProcessTaskSla>lambdaQuery()
+                .eq(ProcessTaskSla::getTaskId, taskId)).stream().findFirst().orElse(null);
+    }
 
+    /** task_id 有唯一约束，直接锁定唯一行，无需组合分页与 FOR UPDATE。 */
     @Select("""
             SELECT * FROM process_task_sla
             WHERE task_id = #{taskId}
-            LIMIT 1 FOR UPDATE
+            FOR UPDATE
             """)
     ProcessTaskSla findByTaskIdForUpdate(@Param("taskId") String taskId);
 
-    @Select("""
-            SELECT * FROM process_task_sla
-            WHERE process_instance_id = #{processInstanceId}
-            ORDER BY create_time
-            """)
-    List<ProcessTaskSla> findByProcessInstanceId(
-            @Param("processInstanceId") String processInstanceId);
+    /** 读取流程实例的任务 SLA 记录，按创建顺序返回。 */
+    default List<ProcessTaskSla> findByProcessInstanceId(String processInstanceId) {
+        return selectList(Wrappers.<ProcessTaskSla>lambdaQuery()
+                .eq(ProcessTaskSla::getProcessInstanceId, processInstanceId)
+                .orderByAsc(ProcessTaskSla::getCreateTime));
+    }
 
-    @Select("""
-            SELECT * FROM process_task_sla
-            WHERE overall_status = 'PAUSED'
-              AND pause_started_at IS NOT NULL
-            ORDER BY pause_started_at
-            LIMIT #{limit}
-            """)
-    List<ProcessTaskSla> findPaused(@Param("limit") int limit);
+    /** 分批读取已暂停的 SLA，由分页插件限制数量。 */
+    default List<ProcessTaskSla> findPaused(int limit) {
+        return selectList(new OffsetPage<>(0, limit), Wrappers.<ProcessTaskSla>lambdaQuery()
+                .eq(ProcessTaskSla::getOverallStatus, "PAUSED")
+                .isNotNull(ProcessTaskSla::getPauseStartedAt)
+                .orderByAsc(ProcessTaskSla::getPauseStartedAt));
+    }
 
     @Update("""
+            <script>
             UPDATE process_task_sla
             SET current_assignee_id = #{assignee},
                 version = version + 1,
-                update_time = UTC_TIMESTAMP(6)
+                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE task_id = #{taskId}
               AND overall_status IN ('RUNNING', 'PAUSED')
+            </script>
             """)
     int updateAssignee(
             @Param("taskId") String taskId,
             @Param("assignee") String assignee);
 
-    @Select("""
-            <script>
-            SELECT * FROM process_task_sla
-            WHERE 1 = 1
-            <if test='status != null and status != ""'>
-              AND overall_status = #{status}
-            </if>
-            <if test='processKey != null and processKey != ""'>
-              AND process_key = #{processKey}
-            </if>
-            <if test='assignee != null and assignee != ""'>
-              AND current_assignee_id = #{assignee}
-            </if>
-            <if test='keyword != null and keyword != ""'>
-              AND (node_name LIKE CONCAT('%', #{keyword}, '%')
-                OR business_key LIKE CONCAT('%', #{keyword}, '%')
-                OR policy_code LIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            ORDER BY
-              CASE overall_status
-                WHEN 'BREACHED' THEN 0
-                WHEN 'RUNNING' THEN 1
-                WHEN 'PAUSED' THEN 2
-                ELSE 3
-              END,
-              completion_due_at,
-              create_time DESC
-            LIMIT #{offset}, #{limit}
-            </script>
-            """)
-    List<ProcessTaskSla> findMonitorPage(
-            @Param("status") String status,
-            @Param("processKey") String processKey,
-            @Param("assignee") String assignee,
-            @Param("keyword") String keyword,
-            @Param("offset") long offset,
-            @Param("limit") int limit);
+    /** 按告警优先级读取 SLA 监控列表，CASE 为固定标准 SQL，条件与分页由框架处理。 */
+    default List<ProcessTaskSla> findMonitorPage(
+            String status, String processKey, String assignee, String keyword, long offset, int limit) {
+        var wrapper = monitorFilter(status, processKey, assignee, keyword);
+        wrapper.orderByAsc("CASE overall_status WHEN 'BREACHED' THEN 0 WHEN 'RUNNING' THEN 1 "
+                        + "WHEN 'PAUSED' THEN 2 ELSE 3 END")
+                .orderByAsc("completion_due_at")
+                .orderByDesc("create_time");
+        return selectList(new OffsetPage<>(offset, limit), wrapper);
+    }
 
-    @Select("""
-            <script>
-            SELECT COUNT(*) FROM process_task_sla
-            WHERE 1 = 1
-            <if test='status != null and status != ""'>
-              AND overall_status = #{status}
-            </if>
-            <if test='processKey != null and processKey != ""'>
-              AND process_key = #{processKey}
-            </if>
-            <if test='assignee != null and assignee != ""'>
-              AND current_assignee_id = #{assignee}
-            </if>
-            <if test='keyword != null and keyword != ""'>
-              AND (node_name LIKE CONCAT('%', #{keyword}, '%')
-                OR business_key LIKE CONCAT('%', #{keyword}, '%')
-                OR policy_code LIKE CONCAT('%', #{keyword}, '%'))
-            </if>
-            </script>
-            """)
-    long countMonitor(
-            @Param("status") String status,
-            @Param("processKey") String processKey,
-            @Param("assignee") String assignee,
-            @Param("keyword") String keyword);
+    /** 监控计数复用列表筛选，不重复维护动态 SQL。 */
+    default long countMonitor(String status, String processKey, String assignee, String keyword) {
+        return selectCount(monitorFilter(status, processKey, assignee, keyword));
+    }
 
-    @Select("""
-            SELECT overall_status AS status, COUNT(*) AS total
-            FROM process_task_sla
-            GROUP BY overall_status
-            """)
-    List<Map<String, Object>> statusStatistics();
+    /** 固定列名来自 Mapper；请求仅作为绑定值，保留原有空串和 LIKE 通配符语义。 */
+    private static QueryWrapper<ProcessTaskSla> monitorFilter(
+            String status, String processKey, String assignee, String keyword) {
+        return Wrappers.<ProcessTaskSla>query()
+                .eq(status != null && !status.isEmpty(), "overall_status", status)
+                .eq(processKey != null && !processKey.isEmpty(), "process_key", processKey)
+                .eq(assignee != null && !assignee.isEmpty(), "current_assignee_id", assignee)
+                .and(keyword != null && !keyword.isEmpty(), text -> text
+                        .like("node_name", keyword)
+                        .or().like("business_key", keyword)
+                        .or().like("policy_code", keyword));
+    }
+
+    /** 统计各 SLA 状态数量，固定聚合表达式交给通用 selectMaps。 */
+    default List<Map<String, Object>> statusStatistics() {
+        return selectMaps(Wrappers.<ProcessTaskSla>query()
+                .select("overall_status AS status", "COUNT(*) AS total")
+                .groupBy("overall_status"));
+    }
 }

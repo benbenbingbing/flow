@@ -2,7 +2,8 @@ package com.workflow.service;
 
 import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.lock.JdbcDatabaseLock;
+import com.workflow.integration.database.api.DatabaseVendor;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -20,14 +21,12 @@ class EntitySchemaPublishConnectionLockTest {
 
     @Test
     void releasesOnTheConnectionThatAcquiredTheLock() throws Exception {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         DataSource dataSource = mock(DataSource.class);
         Connection connection = mock(Connection.class);
         PreparedStatement acquire = mock(PreparedStatement.class);
         PreparedStatement release = mock(PreparedStatement.class);
         ResultSet acquireResult = mock(ResultSet.class);
         ResultSet releaseResult = mock(ResultSet.class);
-        when(jdbcTemplate.getDataSource()).thenReturn(dataSource);
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(contains("GET_LOCK"))).thenReturn(acquire);
         when(connection.prepareStatement(contains("RELEASE_LOCK"))).thenReturn(release);
@@ -37,7 +36,7 @@ class EntitySchemaPublishConnectionLockTest {
         when(releaseResult.next()).thenReturn(true);
         when(acquireResult.getInt(1)).thenReturn(1);
         when(releaseResult.getInt(1)).thenReturn(1);
-        EntitySchemaPublishLock lock = new EntitySchemaPublishLock(jdbcTemplate);
+        EntitySchemaPublishLock lock = new EntitySchemaPublishLock(new JdbcDatabaseLock(dataSource, DatabaseVendor.MYSQL));
 
         assertTrue(lock.tryAcquire("entity-1"));
         lock.release("entity-1");

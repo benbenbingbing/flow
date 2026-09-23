@@ -1,5 +1,9 @@
 package com.workflow.process.assignment.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseRuntimeDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.identity.resolver.PersonPrincipal;
@@ -40,10 +44,14 @@ public class AssigneeIncidentService {
     private final TaskService taskService;
     private final RuntimeService runtimeService;
     private final AssigneeResolutionService resolutionService;
+    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
+    private final JdbcWriteAttempt writeAttempt;
 
     /** 查询事件和责任人、重试时间等管理字段。 */
     public List<Map<String, Object>> list(String status) {
         String normalized = trimToNull(status);
+        // CASE 保留原状态优先级；未知/NULL 状态仍排在 0，时间相同用主键稳定排序。
         String sql = """
                 SELECT id, process_config_id, process_definition_id, process_instance_id,
                        task_id, node_id, node_name, policy, status,
@@ -53,7 +61,9 @@ public class AssigneeIncidentService {
                        resolved_by, resolved_at, create_time, update_time
                 FROM process_assignee_incident
                 """ + (normalized == null ? "" : " WHERE status = ?")
-                + " ORDER BY FIELD(status, 'OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED', 'RESOLVED', 'TERMINATED'), update_time DESC LIMIT 500";
+                + " ORDER BY CASE status WHEN 'OPEN' THEN 1 WHEN 'RETRY_SCHEDULED' THEN 2"
+                + " WHEN 'MANUAL_REQUIRED' THEN 3 WHEN 'RESOLVED' THEN 4 WHEN 'TERMINATED' THEN 5 ELSE 0 END,"
+                + " update_time DESC, id DESC" + queryDialect.paginationClause("0", "500");
         return normalized == null
                 ? jdbcTemplate.query(sql, (rs, rowNum) -> incidentView(rs))
                 : jdbcTemplate.query(sql, (rs, rowNum) -> incidentView(rs), normalized);
@@ -84,6 +94,11 @@ public class AssigneeIncidentService {
         return result;
     }
 
+    /** 日期偏移仍以数据库会话时间为准；方言只渲染一次占位符，JDBC 保持原绑定顺序。 */
+    private DatabaseRuntimeDialect databaseTime() {
+        return DatabaseDialects.runtime(queryDialect.vendor());
+    }
+
     /** 汇总开放事件、待重试、人工恢复和策略分布，供告警接入。 */
     public Map<String, Object> metrics() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -94,9 +109,9 @@ public class AssigneeIncidentService {
         result.put("policyCounts", jdbcTemplate.queryForList("""
                 SELECT policy, COUNT(*) AS count
                 FROM process_assignee_incident
-                WHERE create_time >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
+                WHERE create_time >= %s
                 GROUP BY policy ORDER BY count DESC
-                """));
+                """.formatted(databaseTime().currentAfterSeconds("-2592000"))));
         Long overdue = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM process_assignee_incident
                 WHERE status = 'RETRY_SCHEDULED' AND next_retry_at <= CURRENT_TIMESTAMP
@@ -120,13 +135,13 @@ public class AssigneeIncidentService {
         String actionId = id();
         String actor = actor();
         try {
-            jdbcTemplate.update("""
+            writeAttempt.execute(() -> jdbcTemplate.update("""
                     INSERT INTO process_assignee_incident_action (
                       id, incident_id, request_id, action_type, status, operator,
                       request_json, create_time
                     ) VALUES (?, ?, ?, ?, 'RUNNING', ?, ?, CURRENT_TIMESTAMP)
                     """, actionId, incidentId, request.getRequestId().trim(), action,
-                    actor, writeJson(request));
+                    actor, writeJson(request)));
         } catch (DuplicateKeyException duplicate) {
             return detail(incidentId);
         }
@@ -160,8 +175,8 @@ public class AssigneeIncidentService {
         List<String> ids = jdbcTemplate.query("""
                 SELECT id FROM process_assignee_incident
                 WHERE status = 'RETRY_SCHEDULED' AND next_retry_at <= CURRENT_TIMESTAMP
-                ORDER BY next_retry_at LIMIT 50
-                """, (rs, rowNum) -> rs.getString("id"));
+                ORDER BY next_retry_at, id
+                """ + queryDialect.paginationClause("0", "50"), (rs, rowNum) -> rs.getString("id"));
         for (String incidentId : ids) {
             Incident incident = required(incidentId);
             AssigneeIncidentHandleRequest request = new AssigneeIncidentHandleRequest();
@@ -230,10 +245,10 @@ public class AssigneeIncidentService {
         jdbcTemplate.update("""
                 UPDATE process_assignee_incident
                 SET status = 'RETRY_SCHEDULED', retry_count = ?,
-                    next_retry_at = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND),
+                    next_retry_at = %s,
                     empty_reason_code = ?, empty_reason_message = ?, update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
-                """, retryCount, delay, resolution.reasonCode(), resolution.reasonMessage(), incident.id());
+                """.formatted(databaseTime().currentAfterSeconds("?")), retryCount, delay, resolution.reasonCode(), resolution.reasonMessage(), incident.id());
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }
 
@@ -306,11 +321,11 @@ public class AssigneeIncidentService {
         jdbcTemplate.update("""
                 UPDATE process_assignee_incident
                 SET status = 'RETRY_SCHEDULED', retry_count = ?,
-                    next_retry_at = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND),
+                    next_retry_at = %s,
                     empty_reason_code = ?, empty_reason_message = ?,
                     update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
-                """, retryCount, delay, resolution.reasonCode(),
+                """.formatted(databaseTime().currentAfterSeconds("?")), retryCount, delay, resolution.reasonCode(),
                 resolution.reasonMessage(), incident.id());
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }

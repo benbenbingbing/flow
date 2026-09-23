@@ -1,6 +1,7 @@
 package com.workflow.entity.list.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
@@ -18,9 +19,12 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
     /**
      * 根据列表配置ID查询字段列表
      */
-    @Select("SELECT * FROM entity_list_field WHERE list_config_id = #{listConfigId} "
-            + "AND deleted = 0 ORDER BY order_key ASC, sort_order ASC")
-    List<EntityListField> findByListConfigId(@Param("listConfigId") String listConfigId);
+    default List<EntityListField> findByListConfigId(String listConfigId) {
+        return selectList(Wrappers.<EntityListField>lambdaQuery()
+                .eq(EntityListField::getListConfigId, listConfigId)
+                .orderByAsc(EntityListField::getOrderKey)
+                .orderByAsc(EntityListField::getSortOrder));
+    }
 
     /** 锁定列表下全部字段草稿，包含逻辑删除行。 */
     @Select("SELECT * FROM entity_list_field "

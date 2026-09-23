@@ -1,5 +1,6 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -125,15 +126,18 @@ class EmbedPersistenceSqlContractTest {
 
     @Test
     void expiryScanIsBoundedAndOnlySelectsUnreleasedActiveSessions() {
-        String scan = sql(findByName(
-                EmbedSessionPersistenceMapper.class,
-                "findExpiredTokenDigests").getAnnotation(Select.class).value());
+        var bound = boundSelect(EmbedSessionPersistenceMapper.class, "findExpiredTokenDigests",
+                java.util.Map.of("now", LocalDateTime.of(2026, 1, 1, 0, 0), "limit", 37));
+        String scan = bound.getSql().replaceAll("\\s+", " ").trim();
 
         assertTrue(scan.contains("status = 'ACTIVE'"));
         assertTrue(scan.contains("slot_released = 0"));
-        assertTrue(scan.contains("idle_expires_at <= #{now}"));
-        assertTrue(scan.contains("absolute_expires_at <= #{now}"));
-        assertTrue(scan.contains("LIMIT #{limit}"));
+        assertTrue(scan.contains("idle_expires_at <= ?"));
+        assertTrue(scan.contains("absolute_expires_at <= ?"));
+        assertTrue(scan.endsWith("LIMIT ?"));
+        assertEquals(java.util.List.of("now", "now"), bound.getParameterMappings().subList(0, 2).stream()
+                .map(org.apache.ibatis.mapping.ParameterMapping::getProperty).toList());
+        assertEquals(3, bound.getParameterMappings().size());
     }
 
     @Test
@@ -153,49 +157,64 @@ class EmbedPersistenceSqlContractTest {
 
     @Test
     void maintenanceMutationsAreBoundedGuardedAndPreserveSensitiveDataChecks() {
-        String replay = deleteSqlByName(EmbedMaintenanceMapper.class,
+        String replay = maintenanceSql(EmbedMaintenanceMapper.class,
                 "deleteExpiredAssertionReplays");
-        String launchExpiry = updateSqlByName(EmbedMaintenanceMapper.class,
+        String launchExpiry = maintenanceSql(EmbedMaintenanceMapper.class,
                 "expireIssuedLaunches");
-        String erase = updateSqlByName(EmbedMaintenanceMapper.class,
+        String erase = maintenanceSql(EmbedMaintenanceMapper.class,
                 "eraseTerminalSessionContexts");
-        String receipts = deleteSqlByName(EmbedMaintenanceMapper.class,
+        String receipts = maintenanceSql(EmbedMaintenanceMapper.class,
                 "deleteOrphanOperationReceipts");
-        String sessions = deleteSqlByName(EmbedMaintenanceMapper.class,
+        String sessions = maintenanceSql(EmbedMaintenanceMapper.class,
                 "deleteTerminalSessions");
-        String launches = deleteSqlByName(EmbedMaintenanceMapper.class,
+        String launches = maintenanceSql(EmbedMaintenanceMapper.class,
                 "deleteUnreferencedTerminalLaunches");
 
         for (String statement : new String[]{
                 replay, launchExpiry, erase, receipts, sessions, launches}) {
-            assertTrue(statement.contains("LIMIT #{limit}"));
+            assertTrue(statement.contains("LIMIT ?"));
         }
-        assertTrue(replay.contains("expires_at <= #{now}"));
+        assertTrue(replay.contains("expires_at <= ?"));
         assertTrue(launchExpiry.contains("status = 'ISSUED'"));
-        assertTrue(launchExpiry.contains("expires_at <= #{now}"));
+        assertTrue(launchExpiry.contains("expires_at <= ?"));
         assertTrue(erase.contains("context_ciphertext = '{}'"));
         assertTrue(erase.contains("context_cipher_key_version = 'embed-erased-v1'"));
-        assertTrue(erase.contains("context_digest = REPEAT('0', 64)"));
+        assertTrue(erase.contains("context_digest = '0000000000000000000000000000000000000000000000000000000000000000'"));
         assertTrue(erase.contains("slot_released = 1"));
         assertTrue(receipts.contains("NOT EXISTS"));
         assertTrue(receipts.contains("integration_idempotency_record"));
         assertTrue(sessions.contains("slot_released = 1"));
         assertTrue(launches.contains("NOT EXISTS"));
-        assertTrue(launches.contains("update_time <= #{cutoff}"));
+        assertTrue(launches.contains("update_time <= ?"));
         assertTrue(launches.contains("s.launch_id = embed_launch.id"));
+    }
+
+    /** Provider 先生成方言 SQL，再由 MyBatis 绑定值；检查最终 SQL 而非注解源码。 */
+    private String maintenanceSql(Class<?> mapper, String method) {
+        var bound = boundSelect(mapper, method, java.util.Map.of(
+                "now", java.time.LocalDateTime.of(2026, 9, 22, 0, 0),
+                "cutoff", java.time.LocalDateTime.of(2026, 9, 1, 0, 0), "limit", 37));
+        assertEquals("limit", bound.getParameterMappings().get(bound.getParameterMappings().size() - 1).getProperty());
+        return bound.getSql().replaceAll("\\s+", " ").trim();
     }
 
     @Test
     void counterReconciliationIsBoundedKeysetReadOnlyAndNeverRepairsRows() {
-        String counters = selectSqlByName(EmbedMaintenanceMapper.class,
-                "inspectStoredCounterPage");
-        String activePairs = selectSqlByName(EmbedMaintenanceMapper.class,
-                "inspectActiveSessionPairPage");
-
+        var parameters = java.util.Map.of("afterGrantId", "grant-1", "afterFlowUserId", "user-1", "limit", 37);
+        var counterBound = boundSelect(EmbedMaintenanceMapper.class, "selectStoredCounterPage", parameters);
+        var activeBound = boundSelect(EmbedMaintenanceMapper.class, "inspectActiveSessionPairPage", parameters);
+        String counters = counterBound.getSql().replaceAll("\\s+", " ").trim();
+        String activePairs = activeBound.getSql().replaceAll("\\s+", " ").trim();
+        assertEquals(java.util.List.of("afterGrantId", "afterGrantId", "afterFlowUserId"),
+                counterBound.getParameterMappings().subList(0, 3).stream().map(org.apache.ibatis.mapping.ParameterMapping::getProperty).toList());
+        assertEquals(4, counterBound.getParameterMappings().size());
+        assertTrue(counters.endsWith("LIMIT ?"));
+        assertEquals(java.util.List.of("afterGrantId", "afterGrantId", "afterFlowUserId", "limit"),
+                activeBound.getParameterMappings().stream().map(org.apache.ibatis.mapping.ParameterMapping::getProperty).toList());
+        assertTrue(com.baomidou.mybatisplus.core.metadata.IPage.class.isAssignableFrom(
+                findByName(EmbedMaintenanceMapper.class, "selectStoredCounterPage").getParameterTypes()[0]));
+        assertTrue(activePairs.contains("LIMIT 0, ?"));
         for (String statement : new String[]{counters, activePairs}) {
-            assertTrue(statement.contains("LIMIT #{limit}"));
-            assertTrue(statement.contains("#{afterGrantId}"));
-            assertTrue(statement.contains("#{afterFlowUserId}"));
             assertFalse(statement.contains("FOR UPDATE"));
             assertFalse(statement.startsWith("UPDATE"));
         }
@@ -203,6 +222,35 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(counters.contains("s.slot_released = 0"));
         assertTrue(activePairs.contains("GROUP BY s.grant_id, s.flow_user_id"));
         assertTrue(activePairs.contains("LEFT JOIN embed_session_counter"));
+    }
+
+    /** 检查 MyBatis 渲染后的语句与绑定参数，避免把源码中的 XML/方言表达式误当 SQL。 */
+    private org.apache.ibatis.mapping.BoundSql boundSelect(Class<?> mapper, String method, java.util.Map<String, ?> parameters) {
+        var configuration = new org.apache.ibatis.session.Configuration();
+        configuration.setDatabaseId("MYSQL");
+        configuration.addMapper(mapper);
+        String statementId = mapper.getName() + "." + method;
+        if (!configuration.hasStatement(statementId)) {
+            statementId += "Page";
+        }
+        var statement = configuration.getMappedStatement(statementId);
+        var arguments = new java.util.HashMap<String, Object>(parameters);
+        boolean frameworkPage = java.util.Arrays.stream(findByName(mapper,
+                        statementId.substring(statementId.lastIndexOf('.') + 1)).getParameterTypes())
+                .anyMatch(com.baomidou.mybatisplus.core.metadata.IPage.class::isAssignableFrom);
+        if (frameworkPage) {
+            Object limit = parameters.get("limit");
+            arguments.put("page", new com.workflow.core.database.OffsetPage<>(0,
+                    limit == null ? 1 : ((Number) limit).longValue()));
+        }
+        var bound = statement.getBoundSql(arguments);
+        if (frameworkPage) {
+            // 执行与运行时相同的分页拦截器，验证数量限制实际进入 SQL。
+            new com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor(
+                    com.baomidou.mybatisplus.annotation.DbType.MYSQL)
+                    .beforeQuery(null, statement, arguments, org.apache.ibatis.session.RowBounds.DEFAULT, null, bound);
+        }
+        return bound;
     }
 
     @Test
@@ -255,7 +303,7 @@ class EmbedPersistenceSqlContractTest {
                 .getAnnotation(Select.class).value());
         String increment = sql(findByName(
                 EmbedTrafficControlMapper.class, "incrementRateBucket")
-                .getAnnotation(Insert.class).value());
+                .getAnnotation(Update.class).value());
         String active = sql(findByName(
                 EmbedTrafficControlMapper.class, "countActiveRuntimeLeases")
                 .getAnnotation(Select.class).value());
@@ -272,12 +320,13 @@ class EmbedPersistenceSqlContractTest {
         assertTrue(applicationLock.contains("FOR UPDATE"));
         assertTrue(lock.contains("application_id = #{applicationId}"));
         assertTrue(lock.contains("FOR UPDATE"));
-        assertTrue(increment.contains("ON DUPLICATE KEY UPDATE"));
+        assertTrue(increment.contains("request_count = request_count + 1"));
+        assertTrue(increment.contains("bucket_key = #{bucketKey} AND window_epoch = #{windowEpoch}"));
         assertTrue(active.contains("application_id = #{applicationId}"));
         assertTrue(active.contains("scope_key = #{scopeKey}"));
         assertTrue(cleanup.contains("scope_key = #{scopeKey}"));
         assertTrue(insert.contains("application_id, scope_key"));
-        assertTrue(release.contains("scope_key <> ''"));
+        assertTrue(release.contains("scope_key LIKE '" + EmbedTrafficControlMapper.RUNTIME_SCOPE_PREFIX + "%'"));
         assertFalse(release.contains("&lt;"));
     }
 
@@ -332,7 +381,8 @@ class EmbedPersistenceSqlContractTest {
 
     private static Method findByName(Class<?> type, String name) {
         return java.util.Arrays.stream(type.getMethods())
-                .filter(method -> method.getName().equals(name))
+                .filter(method -> method.getName().equals(name) || method.getName().equals(name + "Page"))
+                .filter(method -> !method.isDefault())
                 .findFirst()
                 .orElseThrow();
     }

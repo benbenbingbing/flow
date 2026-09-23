@@ -2,6 +2,7 @@ package com.workflow.entity.permission.application;
 
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import java.util.Map;
 
 /**
  * 数据权限过滤节点扩展点。
@@ -28,4 +29,13 @@ public interface EntityDataPermissionFilterProvider {
      * @return 不含外层括号的 SQL 条件片段
      */
     String toSql(String entityCode, EntityActionRuleDTO.RuleNode node, SysUser user);
+
+    /**
+     * 编译需要运行时值的扩展规则；参数容器与其他允许、拒绝、委托规则共享。
+     * 新扩展可使用 PermissionSqlParameters 分配绑定值；默认兼容仅返回固定 SQL 的旧扩展。
+     */
+    default String toSql(String entityCode, EntityActionRuleDTO.RuleNode node, SysUser user,
+                         Map<String, Object> parameters) {
+        return toSql(entityCode, node, user);
+    }
 }

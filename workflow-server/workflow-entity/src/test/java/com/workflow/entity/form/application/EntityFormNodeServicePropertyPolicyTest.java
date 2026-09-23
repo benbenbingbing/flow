@@ -1,5 +1,9 @@
 package com.workflow.entity.form.application;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -303,7 +307,8 @@ class EntityFormNodeServicePropertyPolicyTest {
                         mock(EntityFieldMapper.class),
                         mock(SystemEntityFieldPolicy.class),
                         mock(UiEventBindingMapper.class),
-                        codec),
+                        codec, new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL))),
                 nodeMapper);
     }
 

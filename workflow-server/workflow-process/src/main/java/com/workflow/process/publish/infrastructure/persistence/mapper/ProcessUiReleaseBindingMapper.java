@@ -1,11 +1,9 @@
 package com.workflow.process.publish.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -16,19 +14,26 @@ import java.util.List;
 public interface ProcessUiReleaseBindingMapper
         extends BaseMapper<ProcessUiReleaseBinding> {
 
-    @Select("SELECT * FROM process_ui_release_binding "
-            + "WHERE config_type = 'FORM' AND config_id = #{formId} "
-            + "ORDER BY process_key, process_version DESC, node_id")
-    List<ProcessUiReleaseBinding> findByFormId(
-            @Param("formId") String formId);
+    /** 查询表单被流程版本绑定的记录，按流程、版本及节点排列。 */
+    default List<ProcessUiReleaseBinding> findByFormId(String formId) {
+        return selectList(Wrappers.<ProcessUiReleaseBinding>lambdaQuery()
+                .eq(ProcessUiReleaseBinding::getConfigType, "FORM")
+                .eq(ProcessUiReleaseBinding::getConfigId, formId)
+                .orderByAsc(ProcessUiReleaseBinding::getProcessKey)
+                .orderByDesc(ProcessUiReleaseBinding::getProcessVersion)
+                .orderByAsc(ProcessUiReleaseBinding::getNodeId));
+    }
 
-    @Select("SELECT * FROM process_ui_release_binding "
-            + "WHERE process_version_history_id = #{historyId} "
-            + "ORDER BY node_id")
-    List<ProcessUiReleaseBinding> findByHistoryId(
-            @Param("historyId") String historyId);
+    /** 读取指定流程历史版本的界面绑定，按节点编号排列。 */
+    default List<ProcessUiReleaseBinding> findByHistoryId(String historyId) {
+        return selectList(Wrappers.<ProcessUiReleaseBinding>lambdaQuery()
+                .eq(ProcessUiReleaseBinding::getProcessVersionHistoryId, historyId)
+                .orderByAsc(ProcessUiReleaseBinding::getNodeId));
+    }
 
-    @Delete("DELETE FROM process_ui_release_binding "
-            + "WHERE process_version_history_id = #{historyId}")
-    int deleteByHistoryId(@Param("historyId") String historyId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default int deleteByHistoryId(String historyId) {
+        return delete(Wrappers.<ProcessUiReleaseBinding>lambdaQuery()
+                .eq(ProcessUiReleaseBinding::getProcessVersionHistoryId, historyId));
+    }
 }

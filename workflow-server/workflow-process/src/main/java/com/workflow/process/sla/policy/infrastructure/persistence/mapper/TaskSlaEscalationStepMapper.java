@@ -1,11 +1,9 @@
 package com.workflow.process.sla.policy.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.sla.policy.infrastructure.persistence.record.TaskSlaEscalationStep;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -13,23 +11,26 @@ import java.util.List;
 public interface TaskSlaEscalationStepMapper
         extends BaseMapper<TaskSlaEscalationStep> {
 
-    @Select("""
-            SELECT * FROM task_sla_escalation_step
-            WHERE policy_id = #{policyId}
-              AND enabled = 1
-            ORDER BY sort_order, create_time
-            """)
-    List<TaskSlaEscalationStep> findEnabledByPolicyId(
-            @Param("policyId") String policyId);
+    /** 读取策略中启用的升级步骤，按执行顺序返回。 */
+    default List<TaskSlaEscalationStep> findEnabledByPolicyId(String policyId) {
+        return selectList(Wrappers.<TaskSlaEscalationStep>lambdaQuery()
+                .eq(TaskSlaEscalationStep::getPolicyId, policyId)
+                .eq(TaskSlaEscalationStep::getEnabled, 1)
+                .orderByAsc(TaskSlaEscalationStep::getSortOrder)
+                .orderByAsc(TaskSlaEscalationStep::getCreateTime));
+    }
 
-    @Select("""
-            SELECT * FROM task_sla_escalation_step
-            WHERE policy_id = #{policyId}
-            ORDER BY sort_order, create_time
-            """)
-    List<TaskSlaEscalationStep> findByPolicyId(
-            @Param("policyId") String policyId);
+    /** 读取策略的全部升级步骤，包含禁用步骤以支持配置编辑。 */
+    default List<TaskSlaEscalationStep> findByPolicyId(String policyId) {
+        return selectList(Wrappers.<TaskSlaEscalationStep>lambdaQuery()
+                .eq(TaskSlaEscalationStep::getPolicyId, policyId)
+                .orderByAsc(TaskSlaEscalationStep::getSortOrder)
+                .orderByAsc(TaskSlaEscalationStep::getCreateTime));
+    }
 
-    @Delete("DELETE FROM task_sla_escalation_step WHERE policy_id = #{policyId}")
-    int deleteByPolicyId(@Param("policyId") String policyId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default int deleteByPolicyId(String policyId) {
+        return delete(Wrappers.<TaskSlaEscalationStep>lambdaQuery()
+                .eq(TaskSlaEscalationStep::getPolicyId, policyId));
+    }
 }

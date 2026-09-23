@@ -1,6 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessProgressRuntimeService;
+import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.core.error.ForbiddenException;
@@ -47,6 +48,7 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -172,6 +174,9 @@ class ProcessProgressRuntimeServiceTest {
                 progress.getFormConfig().getNodes().get(0)
                         .get("propsDocument"));
         assertEquals("data-1", progress.getEntityData().get("id"));
+        assertEquals("RUNNING", progress.getStatus());
+        assertEquals("FINANCE_REVIEW", progress.getEntityData().get("status"));
+        assertEquals("财务复核中", progress.getEntityData().get("_statusText"));
         assertEquals("pi-1", progress.getEntityData().get("processInstanceId"));
         assertEquals(
                 LocalDateTime.of(2026, 7, 25, 10, 30),
@@ -348,6 +353,7 @@ class ProcessProgressRuntimeServiceTest {
         final TaskService taskService = mock(TaskService.class);
         final SysUserService sysUserService = mock(SysUserService.class);
         final EntityDataDynamicService entityDataDynamicService = mock(EntityDataDynamicService.class);
+        final EntityStatusService entityStatusService = mock(EntityStatusService.class);
         final EntityFormRuntimeService entityFormRuntimeService =
                 mock(EntityFormRuntimeService.class);
         final EntityDefinitionMapper entityDefinitionMapper = mock(EntityDefinitionMapper.class);
@@ -523,6 +529,8 @@ class ProcessProgressRuntimeServiceTest {
         void entityData() {
             EntityDataDTO dto = new EntityDataDTO();
             dto.setId("data-1");
+            dto.setStatus("FINANCE_REVIEW");
+            when(entityStatusService.getStatusNameMap("expense")).thenReturn(Map.of("FINANCE_REVIEW", "财务复核中"));
             dto.setCode("EXP-1");
             dto.setProcessInstanceId("pi-1");
             dto.setProcessStartTime(LocalDateTime.of(2026, 7, 25, 10, 30));
@@ -620,7 +628,7 @@ class ProcessProgressRuntimeServiceTest {
                     runtimeService, historyService, repositoryService, taskService,
                     sysUserService, entityDataDynamicService, entityFormRuntimeService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, snapshotService, localAddSignTaskAccessService);
+                    sysUserMapper, operationLogMapper, snapshotService, localAddSignTaskAccessService, entityStatusService);
         }
     }
 }

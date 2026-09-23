@@ -1,10 +1,10 @@
 package com.workflow.admin.extension.action.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 import java.util.Optional;
@@ -22,8 +22,12 @@ public interface FlowActionDefinitionMapper extends BaseMapper<FlowActionDefinit
      *
      * @return 活跃动作定义列表
      */
-    @Select("SELECT * FROM process_action_definition WHERE deleted = 0 ORDER BY display_name, handler_name")
-    List<FlowActionDefinition> findAllActive();
+    default List<FlowActionDefinition> findAllActive() {
+        return selectList(Wrappers.<FlowActionDefinition>lambdaQuery()
+                .eq(FlowActionDefinition::getDeleted, 0)
+                .orderByAsc(FlowActionDefinition::getDisplayName)
+                .orderByAsc(FlowActionDefinition::getHandlerName));
+    }
 
     /**
      * 按主键查询未删除的动作定义。
@@ -31,8 +35,9 @@ public interface FlowActionDefinitionMapper extends BaseMapper<FlowActionDefinit
      * @param id 动作定义 ID
      * @return 动作定义；不存在返回 Optional.empty()
      */
-    @Select("SELECT * FROM process_action_definition WHERE id = #{id} AND deleted = 0 LIMIT 1")
-    Optional<FlowActionDefinition> findActiveById(@Param("id") String id);
+    default Optional<FlowActionDefinition> findActiveById(String id) {
+        return Optional.ofNullable(selectById(id));
+    }
 
     /**
      * 按处理器 Bean 名称查询未删除的动作定义。
@@ -40,6 +45,8 @@ public interface FlowActionDefinitionMapper extends BaseMapper<FlowActionDefinit
      * @param handlerName 处理器 Bean 名称
      * @return 动作定义；不存在返回 Optional.empty()
      */
-    @Select("SELECT * FROM process_action_definition WHERE handler_name = #{handlerName} AND deleted = 0 LIMIT 1")
-    Optional<FlowActionDefinition> findByHandlerName(@Param("handlerName") String handlerName);
+    default Optional<FlowActionDefinition> findByHandlerName(String handlerName) {
+        return selectPage(new Page<FlowActionDefinition>(1, 1, false), Wrappers.<FlowActionDefinition>lambdaQuery()
+                .eq(FlowActionDefinition::getHandlerName, handlerName)).getRecords().stream().findFirst();
+    }
 }

@@ -1,13 +1,15 @@
 package com.workflow.entity.data.infrastructure;
 
+import com.workflow.core.database.DatabaseExceptionClassifier;
+import com.workflow.core.database.DatabaseSQLExceptionTranslator;
+import com.workflow.integration.database.api.DatabaseDialects;
+
 import com.workflow.entity.data.application.SchemaDdlExecutor;
-import com.workflow.entity.data.application.SchemaDdlPolicy;
-import org.springframework.beans.factory.annotation.Value;
+import com.workflow.integration.database.api.SchemaDdlDialect;
+import com.workflow.core.database.port.DatabaseConnections;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 /**
  * Dedicated, unpooled connection for infrequent schema publication.
@@ -20,33 +22,21 @@ import org.springframework.util.StringUtils;
 public class JdbcSchemaDdlExecutor implements SchemaDdlExecutor {
 
     private final JdbcTemplate jdbcTemplate;
+    private final SchemaDdlDialect dialect;
 
-    public JdbcSchemaDdlExecutor(
-            @Value("${workflow.schema-publisher.datasource.url}") String url,
-            @Value("${workflow.schema-publisher.datasource.username}") String username,
-            @Value("${workflow.schema-publisher.datasource.password}") String password) {
-        requireText(url, "SCHEMA_DATASOURCE_URL");
-        requireText(username, "SCHEMA_DB_USERNAME");
-        requireText(password, "SCHEMA_DB_PASSWORD");
-
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
-        dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        dataSource.setUrl(url);
-        dataSource.setUsername(username);
-        dataSource.setPassword(password);
-        this.jdbcTemplate = new JdbcTemplate(dataSource);
+    /** 连接由应用基础设施装配；integration 方言只校验/生成 SQL，不建立连接。 */
+    public JdbcSchemaDdlExecutor(DatabaseConnections connections, SchemaDdlDialect dialect) {
+        this.jdbcTemplate = new JdbcTemplate(connections.schema());
+        this.jdbcTemplate.setExceptionTranslator(new DatabaseSQLExceptionTranslator(
+                new DatabaseExceptionClassifier(DatabaseDialects.errors(dialect.vendor()))));
+        this.dialect = dialect;
     }
 
     @Override
     @SuppressWarnings("lgtm [java/concatenated-sql-query]")
     public void execute(String ddl) {
-        SchemaDdlPolicy.requireSafe(ddl);
+        dialect.validateStatement(ddl);
         jdbcTemplate.execute(ddl);
     }
 
-    private static void requireText(String value, String environmentVariable) {
-        if (!StringUtils.hasText(value)) {
-            throw new IllegalStateException(environmentVariable + " is required");
-        }
-    }
 }

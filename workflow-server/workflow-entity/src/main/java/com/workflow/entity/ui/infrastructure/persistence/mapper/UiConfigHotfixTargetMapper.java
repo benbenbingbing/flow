@@ -1,39 +1,43 @@
 package com.workflow.entity.ui.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
 /**
  * UI 热修复目标 Mapper。
  */
+// 普通查询使用 Wrapper；分页由 MyBatis-Plus 生成对应数据库语法。
 @Mapper
 public interface UiConfigHotfixTargetMapper
         extends BaseMapper<UiConfigHotfixTarget> {
 
-    @Select("SELECT * FROM ui_config_hotfix_target "
-            + "WHERE config_type = #{configType} AND config_id = #{configId} "
-            + "AND process_version_history_id = #{processVersionHistoryId} "
-            + "AND status = 'ACTIVE' LIMIT 1")
-    UiConfigHotfixTarget findActiveTarget(
-            @Param("configType") String configType,
-            @Param("configId") String configId,
-            @Param("processVersionHistoryId") String processVersionHistoryId);
+    default UiConfigHotfixTarget findActiveTarget(String configType, String configId, String processVersionHistoryId) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<UiConfigHotfixTarget>lambdaQuery()
+                .eq(UiConfigHotfixTarget::getConfigType, configType)
+                .eq(UiConfigHotfixTarget::getConfigId, configId)
+                .eq(UiConfigHotfixTarget::getProcessVersionHistoryId, processVersionHistoryId)
+                .eq(UiConfigHotfixTarget::getStatus, "ACTIVE"))
+                .stream().findFirst().orElse(null);
+    }
 
-    @Select("SELECT * FROM ui_config_hotfix_target "
-            + "WHERE hotfix_release_id = #{hotfixReleaseId} "
-            + "ORDER BY activated_at DESC")
-    List<UiConfigHotfixTarget> findByHotfixReleaseId(
-            @Param("hotfixReleaseId") String hotfixReleaseId);
+    /** 查询一次热修复发布的全部目标，按激活时间倒序返回。 */
+    default List<UiConfigHotfixTarget> findByHotfixReleaseId(String hotfixReleaseId) {
+        return selectList(Wrappers.<UiConfigHotfixTarget>lambdaQuery()
+                .eq(UiConfigHotfixTarget::getHotfixReleaseId, hotfixReleaseId)
+                .orderByDesc(UiConfigHotfixTarget::getActivatedAt));
+    }
 
-    @Select("SELECT * FROM ui_config_hotfix_target "
-            + "WHERE config_type = #{configType} AND config_id = #{configId} "
-            + "AND status = 'ACTIVE' ORDER BY activated_at DESC")
-    List<UiConfigHotfixTarget> findActiveByConfig(
-            @Param("configType") String configType,
-            @Param("configId") String configId);
+    /** 查询指定配置当前生效的热修复目标，供运行时叠加配置使用。 */
+    default List<UiConfigHotfixTarget> findActiveByConfig(String configType, String configId) {
+        return selectList(Wrappers.<UiConfigHotfixTarget>lambdaQuery()
+                .eq(UiConfigHotfixTarget::getConfigType, configType)
+                .eq(UiConfigHotfixTarget::getConfigId, configId)
+                .eq(UiConfigHotfixTarget::getStatus, "ACTIVE")
+                .orderByDesc(UiConfigHotfixTarget::getActivatedAt));
+    }
 }

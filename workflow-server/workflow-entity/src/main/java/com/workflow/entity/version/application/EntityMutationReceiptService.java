@@ -1,5 +1,6 @@
 package com.workflow.entity.version.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +33,7 @@ public class EntityMutationReceiptService {
 
     private final EntityMutationReceiptMapper receiptMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcWriteAttempt writeAttempt;
 
     /**
      * 首次执行插入 PENDING 回执；已成功执行时返回原结果。
@@ -59,12 +61,12 @@ public class EntityMutationReceiptService {
         receipt.setCreateTime(LocalDateTime.now());
         receipt.setUpdateTime(LocalDateTime.now());
         try {
-            receiptMapper.insert(receipt);
+            writeAttempt.execute(() -> receiptMapper.insert(receipt));
             return null;
         } catch (DuplicateKeyException exception) {
             EntityMutationReceipt raced =
                     receiptMapper
-                            .findByIdempotencyKeyForUpdate(
+                            .findByIdempotencyKeyForReplay(
                                     key);
             if (raced != null) {
                 return replay(raced, command);

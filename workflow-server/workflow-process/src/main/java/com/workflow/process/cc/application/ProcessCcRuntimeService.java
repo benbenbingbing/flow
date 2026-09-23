@@ -37,7 +37,6 @@ import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -427,12 +426,10 @@ public class ProcessCcRuntimeService {
                     nullSafe(context.nodeId()),
                     nullSafe(context.timing()),
                     user.getUsername()));
-            try {
-                ccService.createCcRecord(record);
+            if (ccService.createCcRecordIfAbsent(record)) {
+                // 只有首次创建才通知；通知持久化失败必须穿透，不能被当成抄送重复而吞掉。
                 notificationPublisher.enqueue(record, channels);
                 created++;
-            } catch (DuplicateKeyException ignored) {
-                // 事件重复投递时保持幂等。
             }
         }
         return created;

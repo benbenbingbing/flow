@@ -1,11 +1,9 @@
 package com.workflow.process.configuration.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.configuration.infrastructure.persistence.record.ProcessNodeApprovalOption;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -23,17 +21,20 @@ public interface ProcessNodeApprovalOptionMapper
      * @param approvalConfigId 审批配置ID
      * @return 审批选项列表
      */
-    @Select("SELECT * FROM process_node_approval_option "
-            + "WHERE approval_config_id = #{approvalConfigId} ORDER BY sort_order")
-    List<ProcessNodeApprovalOption> findByApprovalConfigId(
-            @Param("approvalConfigId") String approvalConfigId);
+    default List<ProcessNodeApprovalOption> findByApprovalConfigId(String approvalConfigId) {
+        return selectList(Wrappers.<ProcessNodeApprovalOption>lambdaQuery()
+                .eq(ProcessNodeApprovalOption::getApprovalConfigId, approvalConfigId)
+                .orderByAsc(ProcessNodeApprovalOption::getSortOrder));
+    }
 
     /**
      * 根据审批配置ID删除其下所有审批选项。
      *
      * @param approvalConfigId 审批配置ID
      */
-    @Delete("DELETE FROM process_node_approval_option "
-            + "WHERE approval_config_id = #{approvalConfigId}")
-    void deleteByApprovalConfigId(@Param("approvalConfigId") String approvalConfigId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default void deleteByApprovalConfigId(String approvalConfigId) {
+        delete(Wrappers.<ProcessNodeApprovalOption>lambdaQuery()
+                .eq(ProcessNodeApprovalOption::getApprovalConfigId, approvalConfigId));
+    }
 }

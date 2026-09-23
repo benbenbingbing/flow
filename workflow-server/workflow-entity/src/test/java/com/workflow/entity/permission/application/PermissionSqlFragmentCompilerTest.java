@@ -30,7 +30,7 @@ class PermissionSqlFragmentCompilerTest {
 
     @BeforeEach
     void setUp() {
-        compiler = new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver);
+        compiler = new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
     }
 
@@ -42,7 +42,7 @@ class PermissionSqlFragmentCompilerTest {
                 user());
 
         assertEquals(
-                "`wf_expense`.create_by = 'u1' AND `wf_expense`.dept_id = 'dept-1'",
+                "`wf_expense`.`create_by` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR} AND `wf_expense`.`dept_id` = #{permissionParameters.permissionValue1,jdbcType=VARCHAR}",
                 sql);
     }
 
@@ -56,26 +56,31 @@ class PermissionSqlFragmentCompilerTest {
                 "biz.create_by = #{username}",
                 user);
 
-        assertEquals("`wf_expense`.create_by = 'o''reilly'", sql);
+        assertEquals("`wf_expense`.`create_by` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR}", sql);
     }
 
     @Test
     void matchesUserWrapsBooleanFragment() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
 
         boolean matched = compiler.matchesUser(
                 "#{userId} IN (SELECT user_id FROM special_auditors)",
                 user());
 
         assertTrue(matched);
+        var arguments = org.mockito.ArgumentCaptor.forClass(Object[].class);
         verify(jdbcTemplate).queryForObject(
-                "SELECT CASE WHEN ('u1' IN (SELECT user_id FROM special_auditors)) THEN 1 ELSE 0 END",
-                Integer.class);
+                eq("SELECT CASE WHEN (? IN (SELECT user_id FROM special_auditors)) THEN 1 ELSE 0 END"),
+                eq(Integer.class), arguments.capture());
+        org.springframework.jdbc.core.SqlParameterValue value =
+                (org.springframework.jdbc.core.SqlParameterValue) arguments.getValue()[0];
+        assertEquals(java.sql.Types.VARCHAR, value.getSqlType());
+        assertEquals("u1", value.getValue());
     }
 
     @Test
     void matchesUserFailsClosedWhenQueryFails() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class)))
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class)))
                 .thenThrow(new RuntimeException("bad sql"));
 
         assertFalse(compiler.matchesUser("#{userId} = 'u1'", user()));

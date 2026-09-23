@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper">
+    <!-- 与 Mapper 同路径以兼容独立 MyBatis 和 Spring 自动装配；动态字段仍由自动映射填充。 -->
+    <resultMap id="entityDataRow" type="com.workflow.entity.data.infrastructure.persistence.record.EntityDataRow" autoMapping="true"/>
+</mapper>

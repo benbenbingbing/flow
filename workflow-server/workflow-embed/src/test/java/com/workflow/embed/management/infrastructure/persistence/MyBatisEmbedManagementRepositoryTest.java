@@ -1,5 +1,9 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -32,7 +36,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void applicationOptionsUseOnlyNarrowQueriesAndPreserveExpiryAndPageTotal() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class));
+                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         LocalDateTime expiry = LocalDateTime.of(2026, 1, 1, 0, 0);
         when(mapper.findApplicationOptions("partner", "ACTIVE", 10, 20))
                 .thenReturn(List.of(new ApplicationOptionRow(
@@ -59,7 +63,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void identityProviderOptionsNeverFetchFullProviderConfiguration() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class));
+                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         when(mapper.findIdentityProviderOptions("provider-1", null, 20, 0))
                 .thenReturn(List.of(new IdentityProviderOptionRow(
                         "provider-1", "Partner", "TRUSTED_EXTERNAL_ID", "DISABLED")));
@@ -81,7 +85,7 @@ class MyBatisEmbedManagementRepositoryTest {
     void bindingProjectionPreservesCurrentFlowUserReadiness() {
         EmbedManagementMapper mapper = mock(EmbedManagementMapper.class);
         MyBatisEmbedManagementRepository repository = new MyBatisEmbedManagementRepository(
-                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class));
+                mapper, new ObjectMapper(), mock(EntityNewDataFormRuntimePort.class), new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         LocalDateTime now = LocalDateTime.of(2026, 1, 1, 0, 0);
         when(mapper.findBinding("binding-1")).thenReturn(new BindingRow(
                 "binding-1", "app-1", "provider-1", "digest", "v1",
@@ -105,7 +109,7 @@ class MyBatisEmbedManagementRepositoryTest {
         ObjectMapper objectMapper = new ObjectMapper();
         MyBatisEmbedManagementRepository repository =
                 new MyBatisEmbedManagementRepository(
-                        mapper, objectMapper, formRuntimePort);
+                        mapper, objectMapper, formRuntimePort, new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         when(mapper.findListTarget("expense", "default", null))
                 .thenReturn(new ListTargetRow(
                         "list-1", "entity-1", "expense", "default",

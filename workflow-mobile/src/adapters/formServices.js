@@ -20,9 +20,18 @@ function selectorContext(field) {
   if (type === 'CUSTOM' && !refEntityId && !entityCode) throw new Error('该字段尚未配置关联实体')
   return { type, refEntityId, entityCode }
 }
+
+/** 与 PC 表单保持一致：代码表树展开为平铺选项，停用项仍可回显，但不能新选。 */
+function dictionaryOptions(items = []) {
+  return items.flatMap(item => [
+    { value: item.itemCode, label: item.itemLabel, disabled: item.status !== '0' },
+    ...dictionaryOptions(item.children || [])
+  ])
+}
 export const formServices = {
   ...createMemberChangeApi(entities.entityDataApi),
   getFormRuntimeRelease: forms.getFormRuntimeRelease, getEntityFields: forms.getEntityFields, precheckUnique: forms.precheckFormFieldUnique,
+  async loadDictionaryOptions(dictCode) { return dictionaryOptions(await forms.getDictionaryItems(dictCode)) },
   async resolveEntityCode(id) { const options = await entities.entityApi.resolveOptions({ ids: [String(id)] }); return options.find(item => String(item.id) === String(id))?.entityCode || '' },
   async loadEntityOptions(field, query, runtimeContext = {}) {
     const { type, ...context } = selectorContext(field)

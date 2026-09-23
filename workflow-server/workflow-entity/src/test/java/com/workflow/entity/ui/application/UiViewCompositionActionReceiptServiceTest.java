@@ -1,5 +1,9 @@
 package com.workflow.entity.ui.application;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -72,7 +76,8 @@ class UiViewCompositionActionReceiptServiceTest {
                 });
         EntityMutationReceiptService receiptService =
                 new EntityMutationReceiptService(
-                        mapper, new ObjectMapper());
+                        mapper, new ObjectMapper(),
+                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         SysUserService userService = mock(SysUserService.class);
         when(userService.getById(anyString()))
                 .thenAnswer(invocation -> {

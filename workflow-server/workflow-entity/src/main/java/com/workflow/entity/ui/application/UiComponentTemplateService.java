@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.ui.api.request.UiComponentTemplateSaveRequest;
@@ -66,6 +67,7 @@ public class UiComponentTemplateService {
     private final JsonDocumentCodec codec;
     /** 只用于把不可变历史列模板中的 service + operation 引用解析为新扩展 ID。 */
     private final UiExtensionDefinitionMapper extensionMapper;
+    private final JdbcWriteAttempt writeAttempt;
 
     /**
      * 按类型查询模板列表。
@@ -337,11 +339,12 @@ public class UiComponentTemplateService {
         version.setCreatedBy(UserContext.getUserId());
         version.setCreatedAt(LocalDateTime.now());
         try {
-            versionMapper.insert(version);
+            // 恢复失败语句后才能查询冲突快照；PostgreSQL 等数据库不会自动恢复事务。
+            writeAttempt.execute(() -> versionMapper.insert(version));
         } catch (DuplicateKeyException exception) {
             throw new RevisionConflictException(
                     "组件模板版本已被其他请求更新，请刷新后重试",
-                    templateMapper.selectById(template.getId()));
+                    templateMapper.selectByIdForUpdate(template.getId()));
         }
         LocalDateTime updatedAt = LocalDateTime.now();
         UpdateWrapper<UiComponentTemplate> update = new UpdateWrapper<>();
@@ -357,7 +360,7 @@ public class UiComponentTemplateService {
         if (templateMapper.update(null, update) != 1) {
             throw new RevisionConflictException(
                     "组件模板版本已被其他请求更新，请刷新后重试",
-                    templateMapper.selectById(template.getId()));
+                    templateMapper.selectByIdForUpdate(template.getId()));
         }
         template.setCurrentVersion(version.getVersion());
         template.setUpdatedAt(updatedAt);

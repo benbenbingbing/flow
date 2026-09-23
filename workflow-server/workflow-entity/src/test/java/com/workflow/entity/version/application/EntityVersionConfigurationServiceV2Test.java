@@ -1,5 +1,9 @@
 package com.workflow.entity.version.application;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
@@ -70,7 +74,8 @@ class EntityVersionConfigurationServiceV2Test {
                 definitionMapper,
                 objectMapper,
                 validator,
-                scopeFreezer);
+                scopeFreezer,
+                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -200,10 +205,8 @@ class EntityVersionConfigurationServiceV2Test {
 
     @Test
     void firstSaveRequiresRevisionZeroAndMapsDuplicateToConflict() {
-        EntityVersionConfig winner = new EntityVersionConfig();
-        winner.setRevision(1);
-        when(configMapper.findByEntityCode("asset"))
-                .thenReturn(null, winner);
+        when(configMapper.findByEntityCode("asset")).thenReturn(null);
+        when(configMapper.findCurrentRevisionForConflict("asset")).thenReturn(1);
         when(configMapper.insert(any(EntityVersionConfig.class)))
                 .thenThrow(new DuplicateKeyException("concurrent insert"));
 
@@ -253,11 +256,7 @@ class EntityVersionConfigurationServiceV2Test {
 
     @Test
     void failedCasReturnsLatestRevisionConflict() {
-        EntityVersionConfig latest = currentConfigUnchecked(
-                v2Configuration("ROOT_MUTATION", true));
-        latest.setRevision(8);
-        when(configMapper.findByEntityCode("asset"))
-                .thenReturn(config, latest);
+        when(configMapper.findCurrentRevisionForConflict("asset")).thenReturn(8);
         when(configMapper.updateCurrentIfRevision(
                 eq("config-1"), eq(7), eq(true),
                 anyString(), any()))

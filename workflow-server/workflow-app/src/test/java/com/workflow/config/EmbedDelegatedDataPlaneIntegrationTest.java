@@ -57,6 +57,7 @@ import org.springframework.web.bind.annotation.RestController;
                 "workflow.embed.public-base-url=https://Embed.Example:443"
         })
 @Import({
+        com.workflow.config.MySqlErrorTestConfiguration.class,
         EmbedRuntimeSecurityConfiguration.class,
         CorsConfig.class,
         GlobalExceptionHandler.class,

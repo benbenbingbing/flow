@@ -32,11 +32,56 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class GlobalExceptionHandlerTest {
 
+    /** 驱动文本与 SQL 不进入响应，同一个码在不同语言下保持相同提示。 */
+    @Test
+    void databaseErrorsHavePortableMessagesWithoutDriverText() {
+        int[] codes = {1062, 1048, 1364, 1406, 1452, 3819, 1264, 1213, 1205, 99999};
+        String[] messages = {"数据重复，请检查唯一字段后重试", "必填字段不能为空，请检查后重试",
+                "必填字段没有填写且没有默认值，请检查表单配置", "字段内容过长，请缩短后重试",
+                "数据关联约束不满足，请检查关联数据后重试", "数据不满足校验约束，请检查后重试",
+                "数值超出字段允许范围，请检查后重试", "数据正在被其他请求修改，请刷新后重试",
+                "数据正在被其他请求修改，请刷新后重试", "数据库操作失败，请稍后重试"};
+        for (int i = 0; i < codes.length; i++) {
+            var sql = new java.sql.SQLException("Duplicate entry SECRET in internal_table", "HY000", codes[i]);
+            var wrapped = new org.springframework.jdbc.UncategorizedSQLException("write", "INSERT internal_table", sql);
+            assertEquals(messages[i], handler.handleDataAccessException(wrapped).getMessage());
+            assertEquals(messages[i], handler.handleSQLException(sql).getMessage());
+        }
+    }
+
+    @Test
+    void mixedErrorsDoNotProduceDuplicateMessage() {
+        var sql = new java.sql.SQLException("duplicate", "23000", 1062);
+        sql.setNextException(new java.sql.SQLException("lost connection", "08006", 0));
+        var error = new org.springframework.dao.DuplicateKeyException("misleading wrapper", sql);
+        assertEquals("数据库操作失败，请稍后重试", handler.handleDataAccessException(error).getMessage());
+    }
+
+    /** MVC 必须命中数据库分支，不能被 RuntimeException 处理器返回底层 SQL。 */
+    @Test
+    void mvcDispatchesUncategorizedJdbcFailuresToDatabaseHandler() throws Exception {
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new DatabaseErrorController())
+                .setControllerAdvice(handler).build();
+        mvc.perform(get("/database-error-test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(500))
+                .andExpect(jsonPath("$.message").value("数据不满足校验约束，请检查后重试"));
+    }
+
+    @RestController
+    static class DatabaseErrorController {
+        @GetMapping("/database-error-test")
+        public void fail() {
+            throw new org.springframework.jdbc.UncategorizedSQLException("insert", "INSERT private_table",
+                    new java.sql.SQLException("SECRET driver text", "HY000", 3819));
+        }
+    }
+
     /** 通过 MVC 分派确认专用异常处理器保留字段数据，而非被通用冲突处理器吞掉。 */
     @Test
     void crossFieldErrorsKeepFieldIdentityInConflictResponse() throws Exception {
         MockMvc mvc = MockMvcBuilders.standaloneSetup(new CrossFieldController())
-                .setControllerAdvice(new GlobalExceptionHandler()).build();
+                .setControllerAdvice(new GlobalExceptionHandler(new MySqlErrorTestConfiguration().databaseExceptionClassifier())).build();
         mvc.perform(get("/cross-field-test"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.errorCode").value("FORM_CROSS_FIELD_VALIDATION_FAILED"))
@@ -55,7 +100,7 @@ class GlobalExceptionHandlerTest {
     }
 
     /** 被测异常处理器实例 */
-    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+    private final GlobalExceptionHandler handler = new GlobalExceptionHandler(new MySqlErrorTestConfiguration().databaseExceptionClassifier());
 
     /** 畸形 JSON 应返回稳定 400，不能把 Jackson 内部反序列化详情暴露给页面。 */
     @Test

@@ -29,8 +29,8 @@ class ProcessTaskMapperIdentitySqlTest {
 
         for (String sql : java.util.List.of(listSql, countSql)) {
             assertTrue(sql.contains("u.username = #{userId} OR u.id = #{userId}"));
-            assertTrue(sql.contains("ft.ASSIGNEE_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)"));
-            assertTrue(sql.contains("candidate.USER_ID_ COLLATE utf8mb4_unicode_ci IN (u.id, u.username)"));
+            assertTrue(sql.contains("ft.ASSIGNEE_ IN (u.id, u.username)"));
+            assertTrue(sql.contains("candidate.USER_ID_ IN (u.id, u.username)"));
         }
     }
 

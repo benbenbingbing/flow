@@ -6,7 +6,9 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.port.SchemaMetadataPort;
+import com.workflow.integration.database.api.SchemaColumnMetadata;
+import java.sql.Types;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,7 +41,7 @@ public class SystemEntityCatalogService {
             Map.entry("sys_user_group", "用户组成员关系")
     );
 
-    private final JdbcTemplate jdbcTemplate;
+    private final SchemaMetadataPort metadata;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
 
@@ -50,17 +52,14 @@ public class SystemEntityCatalogService {
      */
     @Transactional
     public int synchronize() {
-        List<Map<String, Object>> tables = jdbcTemplate.queryForList(
-                "SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
-                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' "
-                        + "AND TABLE_NAME LIKE 'sys\\\\_%' ORDER BY TABLE_NAME");
+        var tables = metadata.tables();
         int synchronizedCount = 0;
-        for (Map<String, Object> table : tables) {
-            String tableName = String.valueOf(table.get("TABLE_NAME"));
+        for (var table : tables) {
+            String tableName = table.name();
             if (!SYSTEM_TABLE_NAMES.containsKey(tableName)) {
                 continue;
             }
-            String tableComment = text(table.get("TABLE_COMMENT"));
+            String tableComment = text(table.comment());
             EntityDefinition definition = definitionMapper.findByEntityCode(tableName).orElse(null);
             if (definition == null) {
                 definition = new EntityDefinition();
@@ -98,14 +97,9 @@ public class SystemEntityCatalogService {
      * 读取系统表列信息并同步为实体字段（标记为系统字段、不可编辑）。
      */
     private void synchronizeFields(EntityDefinition definition, String tableName) {
-        List<Map<String, Object>> columns = jdbcTemplate.queryForList(
-                "SELECT COLUMN_NAME, COLUMN_COMMENT, DATA_TYPE, COLUMN_TYPE, "
-                        + "CHARACTER_MAXIMUM_LENGTH, NUMERIC_SCALE, IS_NULLABLE, COLUMN_KEY, ORDINAL_POSITION "
-                        + "FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
-                        + "AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
-                tableName);
-        for (Map<String, Object> column : columns) {
-            String columnName = String.valueOf(column.get("COLUMN_NAME"));
+        var columns = metadata.columns(tableName);
+        for (var column : columns) {
+            String columnName = column.name();
             EntityField field = fieldMapper.findByEntityIdAndFieldCode(definition.getId(), columnName);
             if (field == null) {
                 field = new EntityField();
@@ -113,16 +107,16 @@ public class SystemEntityCatalogService {
                 field.setEntityId(definition.getId());
                 field.setFieldCode(columnName);
             }
-            String comment = text(column.get("COLUMN_COMMENT"));
+            String comment = text(column.comment());
             field.setFieldName(resolveComment(comment, columnName));
-            field.setFieldType(resolveFieldType(String.valueOf(column.get("DATA_TYPE"))));
-            field.setDbType(String.valueOf(column.get("COLUMN_TYPE")));
-            field.setFieldLength(integer(column.get("CHARACTER_MAXIMUM_LENGTH")));
-            field.setFieldPrecision(integer(column.get("NUMERIC_SCALE")));
+            field.setFieldType(resolveFieldType(column));
+            field.setDbType(column.typeName());
+            field.setFieldLength(integer(column.length()));
+            field.setFieldPrecision(column.scale());
             field.setDbColumnName(columnName);
-            field.setIsRequired("NO".equals(column.get("IS_NULLABLE")));
-            field.setIsUnique(List.of("PRI", "UNI").contains(String.valueOf(column.get("COLUMN_KEY"))));
-            field.setSortOrder(integer(column.get("ORDINAL_POSITION")));
+            field.setIsRequired(!column.nullable());
+            field.setIsUnique(column.singleColumnUnique());
+            field.setSortOrder(column.ordinal());
             field.setIsSystem(true);
             field.setEditable(false);
             field.setIsPublished(true);
@@ -134,16 +128,19 @@ public class SystemEntityCatalogService {
         }
     }
 
-    private EntityField.FieldType resolveFieldType(String dataType) {
-        return switch (dataType.toLowerCase()) {
-            case "tinyint", "bit", "boolean" -> EntityField.FieldType.BOOLEAN;
-            case "smallint", "mediumint", "int" -> EntityField.FieldType.INTEGER;
-            case "bigint" -> EntityField.FieldType.LONG;
-            case "decimal", "numeric", "float", "double" -> EntityField.FieldType.DECIMAL;
-            case "date" -> EntityField.FieldType.DATE;
-            case "datetime", "timestamp" -> EntityField.FieldType.DATETIME;
-            case "text", "tinytext", "mediumtext", "longtext", "json" -> EntityField.FieldType.TEXT;
-            default -> EntityField.FieldType.STRING;
+    /** JDBC 标准类型避免把 Oracle NUMBER、CLOB 等误识别为普通字符串。 */
+    private EntityField.FieldType resolveFieldType(SchemaColumnMetadata column) {
+        return switch (column.jdbcType()) {
+            case Types.BOOLEAN, Types.BIT, Types.TINYINT -> EntityField.FieldType.BOOLEAN;
+            case Types.SMALLINT, Types.INTEGER -> EntityField.FieldType.INTEGER;
+            case Types.BIGINT -> EntityField.FieldType.LONG;
+            // NUMBER(1) 不必然是布尔值，NUMBER(10) 也可能超过 Integer；目录同步不猜测窄类型。
+            case Types.DECIMAL, Types.NUMERIC -> EntityField.FieldType.DECIMAL;
+            case Types.FLOAT, Types.DOUBLE, Types.REAL -> EntityField.FieldType.DECIMAL;
+            case Types.DATE -> EntityField.FieldType.DATE;
+            case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> EntityField.FieldType.DATETIME;
+            case Types.CLOB, Types.NCLOB, Types.LONGVARCHAR, Types.LONGNVARCHAR -> EntityField.FieldType.TEXT;
+            default -> "json".equalsIgnoreCase(column.typeName()) ? EntityField.FieldType.TEXT : EntityField.FieldType.STRING;
         };
     }
 

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { normalizeRuntimeFormConfigs, mergeRuntimeFormConfigs } from '../shared/form-runtime/index.js'
+import { resolveEntityStatusLabel } from '../shared/entity-status-runtime.js'
 
 /**
  * 流程详情加载组合式函数
@@ -85,15 +86,8 @@ export function useProcessDetail({ request, getProcessHistory }) {
         }
         entityData.value = progressRes.entityData || null
         if (entityData.value && entityData.value.status) {
-          const statusMap = {
-            'DRAFT': '草稿',
-            'PENDING': '审批中',
-            'APPROVED': '已通过',
-            'REJECTED': '已驳回',
-            'COMPLETED': '已完成',
-            'WITHDRAWN': '已撤回'
-          }
-          entityData.value._statusText = statusMap[entityData.value.status] || entityData.value.status
+          // 服务端返回实体配置的名称；无配置时沿用统一内置名称，不能被流程状态覆盖。
+          entityData.value._statusText ||= resolveEntityStatusLabel(entityData.value.status)
         }
         formConfigs.value = normalizeRuntimeFormConfigs(progressRes)
         formConfig.value = mergeRuntimeFormConfigs(formConfigs.value)

@@ -1,5 +1,9 @@
 package com.workflow.migration.application;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.DictCacheService;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
@@ -13,6 +17,8 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBasel
 import com.workflow.migration.infrastructure.persistence.record.ConfigImportItem;
 import com.workflow.migration.infrastructure.persistence.record.ConfigImportPackage;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,7 +30,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -36,6 +45,12 @@ import static org.mockito.Mockito.when;
 /** 直接调用普通批次入口，验证发布及快照恢复完全不依赖候选编排。 */
 @ExtendWith(MockitoExtension.class)
 class ConfigMigrationPublishRollbackTest {
+    @BeforeAll
+    static void initializeMybatisMetadata() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), ConfigMigrationAsset.class);
+    }
+
     @Mock private ConfigImportPackageMapper importPackageMapper;
     @Mock private ConfigImportItemMapper importItemMapper;
     @Mock private ConfigAssetBaselineMapper baselineMapper;
@@ -48,6 +63,8 @@ class ConfigMigrationPublishRollbackTest {
     @Mock private DictCacheService dictCacheService;
     @Spy private ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     @Spy private ConfigMigrationPackageCodec packageCodec = new ConfigMigrationPackageCodec(objectMapper, null);
+    @Spy private com.workflow.integration.database.api.DatabaseQueryDialect queryDialect =
+            com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL");
     @InjectMocks private ConfigMigrationImportApplyService service;
 
     private ConfigImportPackage batch;
@@ -91,8 +108,7 @@ class ConfigMigrationPublishRollbackTest {
         verify(packageService).requireResolvedDependencies(List.of(item));
         verify(baselineMapper).insert(any(ConfigAssetBaseline.class));
 
-        when(migrationAssetMapper.selectOne(any()))
-                .thenReturn(asset(snapshot("Old priority"), "before-hash", 1));
+        stubPreviousAsset(asset(snapshot("Old priority"), "before-hash", 1));
         assertEquals("ROLLED_BACK", service.rollback(batch.getId()).get("status"));
         assertEquals("Old priority", dictionary.getDictName());
         assertEquals("ROLLED_BACK", item.getPublishStatus());
@@ -140,10 +156,28 @@ class ConfigMigrationPublishRollbackTest {
         when(importItemMapper.selectList(any())).thenReturn(List.of(item));
         ConfigMigrationAsset previous = asset(snapshot("Old priority"), "before-hash", 1);
         previous.setSnapshotCompleteness("PARTIAL");
-        when(migrationAssetMapper.selectOne(any())).thenReturn(previous);
+        stubPreviousAsset(previous);
         assertThrows(IllegalStateException.class, () -> service.rollback(batch.getId()));
         verifyNoInteractions(dictMapper, baselineMapper, processLockCoordinator);
         assertEquals("PUBLISHED", batch.getStatus());
+    }
+
+    /** 返回调用方实际传入的分页对象，验证回退查询仍完整保留资产范围和稳定首行约束。 */
+    private void stubPreviousAsset(ConfigMigrationAsset previous) {
+        when(migrationAssetMapper.selectPage(any(Page.class), any())).thenAnswer(invocation -> {
+            Page<ConfigMigrationAsset> page = invocation.getArgument(0);
+            LambdaQueryWrapper<ConfigMigrationAsset> query = invocation.getArgument(1);
+            assertEquals(1, page.getCurrent());
+            assertEquals(1, page.getSize());
+            assertFalse(page.searchCount());
+            assertNull(query.getSqlSelect());
+            assertTrue(query.getSqlSegment().contains("ORDER BY source_version DESC,id DESC"));
+            assertTrue(query.getParamNameValuePairs().containsValue(item.getAssetType()));
+            assertTrue(query.getParamNameValuePairs().containsValue(item.getBusinessKey()));
+            assertTrue(query.getParamNameValuePairs().containsValue(item.getTargetBeforeHash()));
+            page.setRecords(List.of(previous));
+            return page;
+        });
     }
 
     private ConfigMigrationAsset asset(String snapshot, String hash, int version) {

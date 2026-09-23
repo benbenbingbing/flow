@@ -1,11 +1,11 @@
 package com.workflow.process.definition.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 
 import java.util.Collection;
 import java.util.List;
@@ -24,27 +24,20 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
      *
      * @return 1 表示更新成功，0 表示草稿不存在或修订号已经变化
      */
-    @Update("""
-            UPDATE process_definition_config
-               SET process_name = #{processName},
-                   description = #{description},
-                   category = #{category},
-                   bpmn_xml = #{bpmnXml},
-                   draft_revision = draft_revision + 1,
-                   draft_hash = #{draftHash},
-                   update_time = CURRENT_TIMESTAMP
-             WHERE id = #{id}
-               AND deleted = 0
-               AND draft_revision = #{expectedRevision}
-            """)
-    int updateDraftCas(
-            @Param("id") String id,
-            @Param("expectedRevision") long expectedRevision,
-            @Param("processName") String processName,
-            @Param("description") String description,
-            @Param("category") String category,
-            @Param("bpmnXml") String bpmnXml,
-            @Param("draftHash") String draftHash);
+    default int updateDraftCas(String id, long expectedRevision, String processName,
+            String description, String category, String bpmnXml, String draftHash) {
+        return update(null, Wrappers.<ProcessDefinitionConfig>lambdaUpdate()
+                .set(ProcessDefinitionConfig::getProcessName, processName)
+                .set(ProcessDefinitionConfig::getDescription, description)
+                .set(ProcessDefinitionConfig::getCategory, category)
+                .set(ProcessDefinitionConfig::getBpmnXml, bpmnXml)
+                .set(ProcessDefinitionConfig::getDraftHash, draftHash)
+                // 修订号比较与递增继续在一条语句内完成，不能拆成读取后覆盖写入。
+                .setSql("draft_revision = draft_revision + 1")
+                .setSql("update_time = CURRENT_TIMESTAMP")
+                .eq(ProcessDefinitionConfig::getId, id)
+                .eq(ProcessDefinitionConfig::getDraftRevision, expectedRevision));
+    }
 
     /**
      * Lock one process definition for a serialized publish transaction.
@@ -69,43 +62,48 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
     /**
      * 根据流程标识查询（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE process_key = #{processKey} AND deleted = 0")
-    Optional<ProcessDefinitionConfig> findByProcessKey(@Param("processKey") String processKey);
+    default Optional<ProcessDefinitionConfig> findByProcessKey(String processKey) {
+        return Optional.ofNullable(selectOne(Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .eq(ProcessDefinitionConfig::getProcessKey, processKey)
+                .eq(ProcessDefinitionConfig::getDeleted, 0)));
+    }
 
     /**
      * 根据状态查询（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE status = #{status} AND deleted = 0")
-    List<ProcessDefinitionConfig> findByStatus(@Param("status") String status);
+    default List<ProcessDefinitionConfig> findByStatus(String status) {
+        return selectList(Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .eq(ProcessDefinitionConfig::getStatus, status)
+                .eq(ProcessDefinitionConfig::getDeleted, 0));
+    }
 
-    @Select("""
-            <script>
-            SELECT *
-              FROM process_definition_config
-             WHERE status = 'PUBLISHED'
-               AND deleted = 0
-               AND process_key IN
-               <foreach collection="processKeys" item="processKey"
-                        open="(" separator="," close=")">
-                 #{processKey}
-               </foreach>
-             ORDER BY process_key
-            </script>
-            """)
-    List<ProcessDefinitionConfig> findPublishedByKeys(
-            @Param("processKeys") Collection<String> processKeys);
+    /** 按指定流程编码读取发布配置；空集合表示没有可选流程，不能省略范围条件。 */
+    default List<ProcessDefinitionConfig> findPublishedByKeys(Collection<String> processKeys) {
+        if (processKeys == null || processKeys.isEmpty()) {
+            return List.of();
+        }
+        return selectList(Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .eq(ProcessDefinitionConfig::getStatus, "PUBLISHED")
+                .in(ProcessDefinitionConfig::getProcessKey, processKeys)
+                .orderByAsc(ProcessDefinitionConfig::getProcessKey));
+    }
 
     /**
      * 检查流程标识是否存在（排除已删除）
      */
-    @Select("SELECT COUNT(*) > 0 FROM process_definition_config WHERE process_key = #{processKey} AND deleted = 0")
-    boolean existsByProcessKey(@Param("processKey") String processKey);
+    default boolean existsByProcessKey(String processKey) {
+        return selectCount(Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .eq(ProcessDefinitionConfig::getProcessKey, processKey)) > 0;
+    }
 
     /**
      * 查询所有流程（排除已删除）
      */
-    @Select("SELECT * FROM process_definition_config WHERE deleted = 0 ORDER BY update_time DESC")
-    List<ProcessDefinitionConfig> findAllActive();
+    default List<ProcessDefinitionConfig> findAllActive() {
+        return selectList(Wrappers.<ProcessDefinitionConfig>lambdaQuery()
+                .eq(ProcessDefinitionConfig::getDeleted, 0)
+                .orderByDesc(ProcessDefinitionConfig::getUpdatedAt));
+    }
 
     /**
      * 查询所有未被实体绑定的流程（排除已删除）

@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createInboxLoader, createInboxState } from '../src/inbox.js'
-import { buildMobileFormTree, groupsContainingField } from '../../packages/workflow-mobile-ui/src/form/mobileFormTree.js'
+import { buildMobileFormTree, buildMobileFormPages, groupsContainingField } from '../../packages/workflow-mobile-ui/src/form/mobileFormTree.js'
 
 test('刷新后旧请求不得覆盖新列表，其它列表状态独立保留', async () => {
   const state = createInboxState(), pending = []
@@ -25,4 +25,22 @@ test('表单 Tab 转折叠分组保留默认项与错误祖先路径', () => {
   const tree = buildMobileFormTree(form, fields, { form, mode: 'view' })
   assert.deepEqual(tree.map(item => item.kind), ['group', 'group']); assert.equal(tree[1].defaultExpanded, true); assert.equal(tree[0].defaultExpanded, false)
   assert.deepEqual(groupsContainingField(tree, 'last'), ['b'])
+})
+
+test('仅提升根级 Tab，区块内的 Tab 保留；关联内容跟随所属页签且只出现一次', () => {
+  const nodes = [
+    { id: 'root-tabs', nodeType: 'TAB_SET' }, { id: 'a', nodeType: 'TAB', parentId: 'root-tabs', props: { label: '第一页' } },
+    { id: 'a-field', nodeType: 'FIELD', parentId: 'a' },
+    { id: 'section', nodeType: 'SECTION' }, { id: 'nested-tabs', nodeType: 'TAB_SET', parentId: 'section' },
+    { id: 'nested-tab', nodeType: 'TAB', parentId: 'nested-tabs', props: { label: '区块内页签' } }, { id: 'nested-field', nodeType: 'FIELD', parentId: 'nested-tab' }
+  ]
+  const form = { nodes }, fields = [{ id: 'a-field', fieldCode: 'first' }, { id: 'nested-field', fieldCode: 'nested' }]
+  const tree = buildMobileFormTree(form, fields, { form, mode: 'view' })
+  const related = [{ compositionKey: 'global', anchorType: 'FORM' }, { compositionKey: 'tab-related', anchorType: 'FORM_NODE', anchorKey: 'a-field' }]
+  const layout = buildMobileFormPages(form, tree, related, true)
+  assert.deepEqual(layout.pages.map(page => page.name), ['basic', 'form_tab_a'])
+  assert.equal(layout.pages[0].items[0].children[0].title, '区块内页签')
+  assert.equal(layout.pages[1].items[0].field.fieldCode, 'first')
+  assert.deepEqual(layout.pages.map(page => page.relatedContents.map(item => item.compositionKey)), [['global'], ['tab-related']])
+  assert.deepEqual(buildMobileFormPages(form, tree, related).pages[0].items, tree)
 })

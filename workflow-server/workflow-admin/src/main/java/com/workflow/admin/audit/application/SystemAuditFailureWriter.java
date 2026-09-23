@@ -1,5 +1,6 @@
 package com.workflow.admin.audit.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.domain.SystemOperationLog;
 import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
@@ -17,11 +18,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class SystemAuditFailureWriter {
 
     private final SystemOperationLogMapper operationLogMapper;
+    private final JdbcWriteAttempt writeAttempt;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void persist(AuditLogPayload payload) {
         try {
-            operationLogMapper.insert(toLog(payload));
+            writeAttempt.execute(() -> operationLogMapper.insert(toLog(payload)));
         } catch (DuplicateKeyException ignored) {
             // event_id 唯一约束保证失败日志幂等。
         }

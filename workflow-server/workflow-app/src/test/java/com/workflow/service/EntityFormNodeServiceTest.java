@@ -1,5 +1,9 @@
 package com.workflow.service;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -848,7 +852,8 @@ class EntityFormNodeServiceTest {
                 mock(EntityFieldMapper.class),
                 mock(SystemEntityFieldPolicy.class),
                 mock(UiEventBindingMapper.class),
-                new JsonDocumentCodec(new ObjectMapper()));
+                new JsonDocumentCodec(new ObjectMapper()), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)));
 
         RevisionConflictException exception = assertThrows(
                 RevisionConflictException.class,
@@ -867,11 +872,10 @@ class EntityFormNodeServiceTest {
         when(nodeMapper.selectCount(any())).thenReturn(0L);
         when(nodeMapper.insert(any(EntityFormNode.class))).thenThrow(
                 new DataIntegrityViolationException(
-                        "Duplicate entry for key "
-                                + "'uk_entity_form_node_active_key'"));
+                        "驱动未返回约束名称", new java.sql.SQLException("unique", "23000", 1062)));
         EntityFormNode conflicting = node("conflicting", null, 4);
         conflicting.setNodeKey("raced_key");
-        when(nodeMapper.findActiveByFormIdAndNodeKey(
+        when(nodeMapper.findActiveByFormIdAndNodeKeyForConflict(
                 "form-1", "raced_key"))
                 .thenReturn(conflicting);
 
@@ -899,11 +903,10 @@ class EntityFormNodeServiceTest {
         when(nodeMapper.selectCount(any())).thenReturn(0L);
         when(nodeMapper.update(isNull(), any())).thenThrow(
                 new DataIntegrityViolationException(
-                        "Duplicate entry for key "
-                                + "'uk_entity_form_node_active_key'"));
+                        "驱动未返回约束名称", new java.sql.SQLException("unique", "23000", 1062)));
         EntityFormNode conflicting = node("conflicting", null, 5);
         conflicting.setNodeKey("node_n1");
-        when(nodeMapper.findActiveByFormIdAndNodeKey(
+        when(nodeMapper.findActiveByFormIdAndNodeKeyForConflict(
                 "form-1", "node_n1"))
                 .thenReturn(conflicting);
 
@@ -928,7 +931,8 @@ class EntityFormNodeServiceTest {
         when(nodeMapper.selectCount(any())).thenReturn(0L);
         DataIntegrityViolationException databaseFailure =
                 new DataIntegrityViolationException(
-                        "foreign key constraint failed");
+                        "foreign key constraint failed; uk_entity_form_node_active_key",
+                        new java.sql.SQLException("foreign key", "23000", 1452));
         when(nodeMapper.insert(any(EntityFormNode.class)))
                 .thenThrow(databaseFailure);
 
@@ -942,6 +946,29 @@ class EntityFormNodeServiceTest {
                 () -> service(nodeMapper).create("form-1", request));
 
         assertSame(databaseFailure, thrown);
+        verify(nodeMapper, never()).findActiveByFormIdAndNodeKeyForConflict(anyString(), anyString());
+    }
+
+    /** 不能只因唯一错误就断言节点编码被占用：主键或其他唯一约束仍应保留数据库异常。 */
+    @Test
+    void uniqueFailureWithoutAnotherOccupyingNodeKeepsDatabaseError() {
+        for (boolean ownNode : List.of(false, true)) {
+            EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+            when(nodeMapper.findSiblings(anyString(), nullable(String.class))).thenReturn(List.of());
+            var failure = new org.springframework.dao.DuplicateKeyException("primary key duplicate");
+            when(nodeMapper.insert(any(EntityFormNode.class))).thenThrow(failure);
+            if (ownNode) {
+                EntityFormNode current = node("same-id", null, 1);
+                current.setNodeKey("requested");
+                when(nodeMapper.findActiveByFormIdAndNodeKeyForConflict("form-1", "requested"))
+                        .thenReturn(current);
+            }
+            EntityFormNodeCreateRequest request = new EntityFormNodeCreateRequest();
+            request.setId("same-id"); request.setNodeKey("requested");
+            request.setNodeType("TEXT"); request.setBindingType("NONE");
+            assertSame(failure, assertThrows(org.springframework.dao.DuplicateKeyException.class,
+                    () -> service(nodeMapper).create("form-1", request)));
+        }
     }
 
     /** 测试差量替换按最深层优先删除缺失节点：验证删除顺序为 leaf -> child -> root */
@@ -1074,7 +1101,8 @@ class EntityFormNodeServiceTest {
                 mock(EntityFieldMapper.class),
                 mock(SystemEntityFieldPolicy.class),
                 mock(UiEventBindingMapper.class),
-                new JsonDocumentCodec(new ObjectMapper()));
+                new JsonDocumentCodec(new ObjectMapper()), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)));
     }
 
     /** 构造指定层数的嵌套 SECTION 节点列表，并注册 selectById 返回 */

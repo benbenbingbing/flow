@@ -153,7 +153,8 @@ public class EmbedGrantAdministrationService {
                 repository.insertGrant(requested);
             } catch (DuplicateKeyException exception) {
                 // 并发首次 PUT 只能有一个成功；输掉竞争的一方按已有 Grant 的版本冲突处理。
-                throw versionConflict(repository.findGrant(viewId, applicationId));
+                // INSERT 已由仓储恢复；继续持有 View 锁，以当前读取返回已提交版本。
+                throw versionConflict(repository.lockGrant(viewId, applicationId));
             }
         } else if (repository.updateGrant(requested, command.expectedVersion(),
                 actor.userId(), now) != 1) {

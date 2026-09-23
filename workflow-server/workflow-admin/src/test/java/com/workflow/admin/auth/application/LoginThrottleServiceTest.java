@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.admin.auth.infrastructure.LoginThrottleMapper;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.core.error.RateLimitExceededException;
 import java.time.Clock;
 import java.time.Instant;
@@ -58,26 +59,27 @@ class LoginThrottleServiceTest {
                 any(),
                 any(),
                 anyInt(),
-                anyInt());
+                any());
         verify(mapper).recordFailure(
                 startsWith("i:"),
                 any(),
                 any(),
                 anyInt(),
-                anyInt());
+                any());
         verify(mapper, times(2)).recordFailure(
                 any(),
                 any(),
                 any(),
                 anyInt(),
-                anyInt());
+                any());
     }
 
     private LoginThrottleService service(
             LoginThrottleMapper mapper) {
+        when(mapper.recordFailure(any(), any(), any(), anyInt(), any())).thenReturn(1);
         return new LoginThrottleService(
                 mapper,
                 new LoginThrottleProperties(),
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), mock(JdbcLockedRow.class));
     }
 }

@@ -210,7 +210,8 @@ class UiHotfixGovernanceServiceTest {
                         mapper,
                         mock(JdbcTemplate.class),
                         new ObjectMapper().findAndRegisterModules(),
-                        accessService),
+                        accessService, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"),
+                        mock(com.workflow.core.database.JdbcLockedRow.class)),
                 mapper,
                 accessService);
     }

@@ -151,9 +151,9 @@ class PermissionRuleMatcherTest {
     @Test
     void matchesControlledSqlAudience() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(jdbcTemplate, null);
+                new PermissionSqlFragmentCompiler(jdbcTemplate, null, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
                 orgMapper, userGroupMapper, List.of(), compiler);
         SysUser user = new SysUser();
@@ -169,7 +169,7 @@ class PermissionRuleMatcherTest {
     @Test
     void rejectsAudienceSqlThatUsesMainAlias() {
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(mock(JdbcTemplate.class), null);
+                new PermissionSqlFragmentCompiler(mock(JdbcTemplate.class), null, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
                 orgMapper, userGroupMapper, List.of(), compiler);
         MatchConfigDTO.MatchConditionDTO condition =

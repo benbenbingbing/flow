@@ -1,11 +1,10 @@
 package com.workflow.process.action.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 
@@ -20,8 +19,16 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     /**
      * 查询流程配置下所有草稿状态的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE process_config_id = #{processConfigId} AND status = 'DRAFT' AND deleted = 0 ORDER BY scope_type, element_id, trigger_timing, sort_order")
-    List<FlowAction> findDraftActionsByProcessConfigId(@Param("processConfigId") String processConfigId);
+    default List<FlowAction> findDraftActionsByProcessConfigId(String processConfigId) {
+        return selectList(Wrappers.<FlowAction>lambdaQuery()
+                .eq(FlowAction::getProcessConfigId, processConfigId)
+                .eq(FlowAction::getStatus, "DRAFT")
+                .eq(FlowAction::getDeleted, 0)
+                .orderByAsc(FlowAction::getScopeType)
+                .orderByAsc(FlowAction::getElementId)
+                .orderByAsc(FlowAction::getTriggerTiming)
+                .orderByAsc(FlowAction::getSortOrder));
+    }
 
     /**
      * 按作用域与元素绑定查询草稿动作。
@@ -31,23 +38,28 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
      * @param elementId       BPMN 元素 ID；流程级传 null
      * @return 草稿动作列表
      */
-    @Select("SELECT * FROM process_action " +
-            "WHERE process_config_id = #{processConfigId} " +
-            "  AND scope_type = #{scopeType} " +
-            "  AND ((#{elementId} IS NULL AND element_id IS NULL) OR element_id = #{elementId}) " +
-            "  AND status = 'DRAFT' " +
-            "  AND deleted = 0 " +
-            "ORDER BY trigger_timing, sort_order")
-    List<FlowAction> findDraftActionsByBinding(
-            @Param("processConfigId") String processConfigId,
-            @Param("scopeType") String scopeType,
-            @Param("elementId") String elementId);
+    default List<FlowAction> findDraftActionsByBinding(
+            String processConfigId, String scopeType, String elementId) {
+        return selectList(elementBinding(elementId)
+                .eq(FlowAction::getProcessConfigId, processConfigId)
+                .eq(FlowAction::getScopeType, scopeType)
+                .eq(FlowAction::getStatus, "DRAFT")
+                .orderByAsc(FlowAction::getTriggerTiming, FlowAction::getSortOrder));
+    }
     
     /**
      * 查询版本下所有已发布的动作（排除已删除）
      */
-    @Select("SELECT * FROM process_action WHERE version_id = #{versionId} AND status = 'PUBLISHED' AND deleted = 0 ORDER BY scope_type, element_id, trigger_timing, sort_order")
-    List<FlowAction> findPublishedActionsByVersionId(@Param("versionId") String versionId);
+    default List<FlowAction> findPublishedActionsByVersionId(String versionId) {
+        return selectList(Wrappers.<FlowAction>lambdaQuery()
+                .eq(FlowAction::getVersionId, versionId)
+                .eq(FlowAction::getStatus, "PUBLISHED")
+                .eq(FlowAction::getDeleted, 0)
+                .orderByAsc(FlowAction::getScopeType)
+                .orderByAsc(FlowAction::getElementId)
+                .orderByAsc(FlowAction::getTriggerTiming)
+                .orderByAsc(FlowAction::getSortOrder));
+    }
 
     /**
      * 按版本、作用域、元素与触发时机查询已发布动作。
@@ -58,29 +70,41 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
      * @param triggerTiming 触发时机编码
      * @return 已发布动作列表
      */
-    @Select("SELECT * FROM process_action " +
-            "WHERE version_id = #{versionId} " +
-            "  AND scope_type = #{scopeType} " +
-            "  AND ((#{elementId} IS NULL AND element_id IS NULL) OR element_id = #{elementId}) " +
-            "  AND trigger_timing = #{triggerTiming} " +
-            "  AND status = 'PUBLISHED' " +
-            "  AND deleted = 0 " +
-            "ORDER BY sort_order")
-    List<FlowAction> findPublishedActionsByBinding(
-            @Param("versionId") String versionId,
-            @Param("scopeType") String scopeType,
-            @Param("elementId") String elementId,
-            @Param("triggerTiming") String triggerTiming);
+    default List<FlowAction> findPublishedActionsByBinding(
+            String versionId, String scopeType, String elementId, String triggerTiming) {
+        return selectList(elementBinding(elementId)
+                .eq(FlowAction::getVersionId, versionId)
+                .eq(FlowAction::getScopeType, scopeType)
+                .eq(FlowAction::getTriggerTiming, triggerTiming)
+                .eq(FlowAction::getStatus, "PUBLISHED")
+                .orderByAsc(FlowAction::getSortOrder));
+    }
+
+    /** 流程级动作绑定 NULL；空串保留数据库自身的 NULL 归一语义，避免改变既有 Oracle 查询。 */
+    private static LambdaQueryWrapper<FlowAction> elementBinding(String elementId) {
+        var wrapper = Wrappers.<FlowAction>lambdaQuery();
+        if (elementId == null) {
+            return wrapper.isNull(FlowAction::getElementId);
+        }
+        if (elementId.isEmpty()) {
+            // 仅空串需要这段固定 SQL；值仍由 Wrapper 绑定，不拼接请求内容。
+            return wrapper.apply("(({0,jdbcType=VARCHAR} IS NULL AND element_id IS NULL) "
+                    + "OR element_id = {0,jdbcType=VARCHAR})", elementId);
+        }
+        return wrapper.eq(FlowAction::getElementId, elementId);
+    }
     
     /**
      * 逻辑删除动作
      */
-    @Update("UPDATE process_action SET deleted = 1 WHERE id = #{actionId}")
-    void logicDeleteById(@Param("actionId") String actionId);
+    default void logicDeleteById(String actionId) {
+        delete(Wrappers.<FlowAction>lambdaQuery().eq(FlowAction::getId, actionId));
+    }
     
     /**
      * 逻辑删除版本下的所有动作
      */
-    @Update("UPDATE process_action SET deleted = 1 WHERE version_id = #{versionId}")
-    void logicDeleteByVersionId(@Param("versionId") String versionId);
+    default void logicDeleteByVersionId(String versionId) {
+        delete(Wrappers.<FlowAction>lambdaQuery().eq(FlowAction::getVersionId, versionId));
+    }
 }

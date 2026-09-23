@@ -4,7 +4,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.port.SchemaMetadataPort;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -20,7 +20,7 @@ public class EntityPhysicalTableResolver {
 
     private final EntityDefinitionMapper definitionMapper;
     private final EntityPhysicalTableNaming naming;
-    private final JdbcTemplate jdbcTemplate;
+    private final SchemaMetadataPort metadata;
 
     /**
      * 根据实体编码解析物理业务表名。
@@ -82,11 +82,6 @@ public class EntityPhysicalTableResolver {
     }
 
     private boolean tableExists(String tableName) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                        + "WHERE table_schema = DATABASE() AND table_name = ?",
-                Integer.class,
-                tableName);
-        return count != null && count > 0;
+        return metadata.tableExists(tableName);
     }
 }

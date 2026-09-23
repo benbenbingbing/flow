@@ -64,6 +64,11 @@
         <dependencies>
             <dependency>
                 <groupId>com.workflow</groupId>
+                <artifactId>workflow-database</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
                 <artifactId>workflow-core</artifactId>
                 <version>${project.version}</version>
             </dependency>

@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 节点配置控制器单元测试
  */
+@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
 @WebMvcTest(NodeConfigController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class NodeConfigControllerTest {

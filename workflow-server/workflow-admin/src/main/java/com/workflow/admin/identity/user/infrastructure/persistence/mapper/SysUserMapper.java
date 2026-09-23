@@ -1,6 +1,7 @@
 package com.workflow.admin.identity.user.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import org.apache.ibatis.annotations.Mapper;
@@ -14,6 +15,7 @@ import java.time.LocalDateTime;
 /**
  * 用户管理 Mapper
  */
+// 搜索模式在 MyBatis 中组装并以 VARCHAR 绑定，保留通配符语义，避免数据库 CONCAT 差异。
 @Mapper
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
@@ -25,16 +27,11 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * @param ids 待校验用户 ID
      * @return 未删除且存在的用户 ID
      */
-    @Select({
-            "<script>",
-            "SELECT id FROM sys_user",
-            "WHERE deleted = 0 AND id IN",
-            "<foreach collection='ids' item='id' open='(' separator=',' close=')'>",
-            "#{id}",
-            "</foreach>",
-            "</script>"
-    })
-    List<String> selectExistingIdsByIds(@Param("ids") List<String> ids);
+    default List<String> selectExistingIdsByIds(List<String> ids) {
+        // 空集合不能退化为无条件查询，否则成员校验可能扩大到所有用户。
+        return ids == null || ids.isEmpty() ? List.of() : selectObjs(Wrappers.<SysUser>lambdaQuery()
+                .select(SysUser::getId).in(SysUser::getId, ids));
+    }
 
     /**
      * Atomically activates the disabled built-in account only while it still
@@ -48,10 +45,12 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             @Param("passwordHash") String passwordHash,
             @Param("expectedPasswordHash") String expectedPasswordHash);
 
-    @Select("SELECT COUNT(*) > 0 FROM sys_user WHERE id = '1' AND username = 'admin' "
-            + "AND deleted = 0 AND status = '1' AND password = #{expectedPasswordHash}")
-    boolean isBootstrapAdministratorPending(
-            @Param("expectedPasswordHash") String expectedPasswordHash);
+    /** 检查内置管理员是否仍处于可激活状态；密码哈希保持参数绑定。 */
+    default boolean isBootstrapAdministratorPending(String expectedPasswordHash) {
+        return selectCount(Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getId, "1").eq(SysUser::getUsername, "admin")
+                .eq(SysUser::getStatus, "1").eq(SysUser::getPassword, expectedPasswordHash)) > 0;
+    }
     
     /**
      * 根据用户名查询用户
@@ -59,8 +58,10 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * @param username 用户名
      * @return 用户对象，不存在返回 null
      */
-    @Select("SELECT * FROM sys_user WHERE username = #{username} AND deleted = 0")
-    SysUser selectByUsername(@Param("username") String username);
+    default SysUser selectByUsername(String username) {
+        return selectOne(Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getUsername, username));
+    }
 
     @Select("SELECT * FROM sys_user WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     SysUser selectForUpdate(@Param("id") String id);
@@ -92,11 +93,14 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      * 检查用户名是否存在
      *
      * @param username  用户名
-     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串）
+     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串或 null）
      * @return 存在返回 true，否则 false
      */
-    @Select("SELECT COUNT(*) > 0 FROM sys_user WHERE username = #{username} AND deleted = 0 AND (#{excludeId} = '' OR id != #{excludeId})")
-    boolean existsUsername(@Param("username") String username, @Param("excludeId") String excludeId);
+    default boolean existsUsername(String username, String excludeId) {
+        return selectCount(Wrappers.<SysUser>lambdaQuery()
+                .eq(SysUser::getUsername, username)
+                .ne(excludeId != null && !excludeId.isEmpty(), SysUser::getId, excludeId)) > 0;
+    }
 
     /**
      * 分页查询已分配指定角色的用户
@@ -108,14 +112,15 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
      */
     @Select({
             "<script>",
+            "<bind name=\"_contains_keyword\" value=\"keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;\"/>",
             "SELECT u.* FROM sys_user u",
             "INNER JOIN sys_user_role ur ON ur.user_id = u.id",
             "WHERE u.deleted = 0 AND ur.role_id = #{roleId}",
             "<if test='keyword != null and keyword != \"\"'>",
-            "AND (u.username LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.nickname LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.email LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.phone LIKE CONCAT('%', #{keyword}, '%'))",
+            "AND (u.username LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.nickname LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.email LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.phone LIKE #{_contains_keyword,jdbcType=VARCHAR})",
             "</if>",
             "ORDER BY u.create_time DESC",
             "</script>"
@@ -127,16 +132,17 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
 
     @Select({
             "<script>",
+            "<bind name=\"_contains_keyword\" value=\"keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;\"/>",
             "SELECT DISTINCT u.* FROM sys_user u",
             "<if test='roleId != null and roleId != \"\"'>",
             "INNER JOIN sys_user_role ur ON ur.user_id = u.id",
             "</if>",
             "WHERE u.deleted = 0",
             "<if test='keyword != null and keyword != \"\"'>",
-            "AND (u.username LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.nickname LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.email LIKE CONCAT('%', #{keyword}, '%')",
-            "OR u.phone LIKE CONCAT('%', #{keyword}, '%'))",
+            "AND (u.username LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.nickname LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.email LIKE #{_contains_keyword,jdbcType=VARCHAR}",
+            "OR u.phone LIKE #{_contains_keyword,jdbcType=VARCHAR})",
             "</if>",
             "<if test='status != null and status != \"\"'>AND u.status = #{status}</if>",
             "<if test='orgId != null and orgId != \"\"'>AND u.org_id = #{orgId}</if>",
@@ -183,4 +189,11 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "INNER JOIN sys_user_role ur ON r.id = ur.role_id " +
             "WHERE ur.user_id = #{userId} AND r.deleted = 0 AND r.status = '0'")
     List<SysUser> selectUserRoles(@Param("userId") String userId);
+
+    /** 统计关联到组织或部门的未删除用户；同一用户两个字段均匹配时只计一次。 */
+    default int countByOrganization(String orgId) {
+        return selectCount(Wrappers.<SysUser>lambdaQuery()
+                .and(organization -> organization.eq(SysUser::getOrgId, orgId)
+                        .or().eq(SysUser::getDeptId, orgId))).intValue();
+    }
 }

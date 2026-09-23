@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.core.database.JdbcLockedRow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,6 +23,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 
@@ -39,6 +42,9 @@ public class EntitySchemaOperationService {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final DynamicTableService dynamicTableService;
+    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
+    private final JdbcLockedRow lockedRows;
 
     /** 构建发布前预览，不产生任何结构或状态副作用。 */
     public EntitySchemaOperationDTO preview(
@@ -69,30 +75,28 @@ public class EntitySchemaOperationService {
                     "启用唯一约束前发现重复数据: " + String.join("；", preview.getUniqueConflicts()));
         }
         String id = compactId();
-        jdbcTemplate.update(
-                "INSERT INTO entity_schema_operation "
-                        + "(id, entity_id, entity_code, status, plan_hash, idempotency_key, plan_json, "
-                        + "target_fingerprint, actual_fingerprint, drift_json, unique_conflict_json, "
-                        + "risk_level, risk_reason, estimated_rows, lock_risk, release_window, created_by) "
-                        + "VALUES (?, ?, ?, 'DDL_PENDING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
-                        + "ON DUPLICATE KEY UPDATE id = id",
-                id,
-                entity.getId(),
-                entity.getEntityCode(),
-                preview.getPlanHash(),
-                preview.getIdempotencyKey(),
-                writeJson(plan),
-                preview.getTargetFingerprint(),
-                preview.getActualFingerprint(),
-                writeJson(preview.getDrift()),
-                writeJson(preview.getUniqueConflicts()),
-                preview.getRiskLevel(),
-                preview.getRiskReason(),
-                preview.getEstimatedRows(),
-                preview.getLockRisk(),
-                preview.getReleaseWindow(),
-                userId);
-        EntitySchemaOperationDTO operation = findByPlan(entity.getId(), preview.getPlanHash());
+        // 计划行承担同一摘要的互斥，初始化只补缺失行，不覆盖原计划、状态或风险证据。
+        var initial = new LinkedHashMap<String, Object>();
+        initial.put("id", id);
+        initial.put("entity_id", entity.getId());
+        initial.put("entity_code", entity.getEntityCode());
+        initial.put("status", "DDL_PENDING");
+        initial.put("plan_hash", preview.getPlanHash());
+        initial.put("idempotency_key", preview.getIdempotencyKey());
+        initial.put("plan_json", writeJson(plan));
+        initial.put("target_fingerprint", preview.getTargetFingerprint());
+        initial.put("actual_fingerprint", preview.getActualFingerprint());
+        initial.put("drift_json", writeJson(preview.getDrift()));
+        initial.put("unique_conflict_json", writeJson(preview.getUniqueConflicts()));
+        initial.put("risk_level", preview.getRiskLevel());
+        initial.put("risk_reason", preview.getRiskReason());
+        initial.put("estimated_rows", preview.getEstimatedRows());
+        initial.put("lock_risk", preview.getLockRisk());
+        initial.put("release_window", preview.getReleaseWindow());
+        initial.put("created_by", userId);
+        lockedRows.ensureAndLock("entity_schema_operation", initial, List.of("entity_id", "plan_hash"));
+        // 当前读取得等待期间刚提交的竞争者，避免 MySQL 可重复读快照看不到已锁定的行。
+        EntitySchemaOperationDTO operation = findByPlanForUpdate(entity.getId(), preview.getPlanHash());
         if (operation == null) {
             throw new IllegalStateException("实体结构操作创建失败");
         }
@@ -105,7 +109,8 @@ public class EntitySchemaOperationService {
                     "该结构计划已终止；请先修改元数据生成新计划");
         }
         transition(operation.getId(), operation.getStatus(), "DDL_PENDING", "结构计划已确认");
-        return findById(operation.getId());
+        // 状态原本就是 DDL_PENDING 时 UPDATE 可能没有实际改行，返回值也必须使用当前读。
+        return findByPlanForUpdate(entity.getId(), preview.getPlanHash());
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -116,12 +121,12 @@ public class EntitySchemaOperationService {
         }
         jdbcTemplate.update(
                 "UPDATE entity_schema_operation SET status = 'DDL_RUNNING', attempt_count = attempt_count + 1, "
-                        + "started_at = NOW(), finished_at = NULL, error_message = NULL WHERE id = ?",
+                        + "started_at = CURRENT_TIMESTAMP, finished_at = NULL, error_message = NULL WHERE id = ?",
                 operationId);
         recordEvent(operationId, operation.getStatus(), "DDL_RUNNING", "开始执行DDL计划");
     }
 
-    /** DDL 完成后重新读取 information_schema；存在漂移时将操作标记为失败并阻止发布元数据。 */
+    /** DDL 完成后通过结构读取端口重新检查物理表；存在漂移时将操作标记为失败并阻止发布元数据。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void complete(
             String operationId,
@@ -137,7 +142,7 @@ public class EntitySchemaOperationService {
         EntitySchemaOperationDTO operation = requireOperation(operationId);
         jdbcTemplate.update(
                 "UPDATE entity_schema_operation SET status = 'SCHEMA_CONSISTENT', actual_fingerprint = ?, "
-                        + "drift_json = ?, error_message = NULL, finished_at = NOW() WHERE id = ?",
+                        + "drift_json = ?, error_message = NULL, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
                 actualFingerprint,
                 writeJson(drift),
                 operationId);
@@ -182,9 +187,11 @@ public class EntitySchemaOperationService {
         return findById(operation.getId());
     }
 
+    /** 按创建时间和主键稳定读取最新操作；分页语法跟随运行数据库。 */
     public EntitySchemaOperationDTO latest(String entityId) {
         return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE entity_id = ? ORDER BY create_time DESC LIMIT 1",
+                "SELECT * FROM entity_schema_operation WHERE entity_id = ? ORDER BY create_time DESC, id DESC"
+                        + queryDialect.paginationClause("0", "1"),
                 this::map,
                 entityId).stream().findFirst().orElse(null);
     }
@@ -222,13 +229,21 @@ public class EntitySchemaOperationService {
         return dto;
     }
 
+    /** 风险识别只面向方言生成的结构计划，字段类型修改在各产品上采用相同的高风险门槛。 */
     static Risk assessRisk(
             List<String> plan,
             long rows,
             List<String> drift,
             List<String> conflicts) {
-        String joined = String.join(" ", plan).toUpperCase();
-        boolean destructive = joined.contains(" DROP ") || joined.contains(" MODIFY COLUMN");
+        String joined = String.join(" ", plan).toUpperCase(java.util.Locale.ROOT);
+        // 只匹配已生成 DDL 的语句头与操作位置，不能把默认值或注释中的关键字当作改字段。
+        // MySQL/OB MySQL、Oracle/DM/OB Oracle、PG/Kingbase 分别采用以下三种模板。
+        String identifier = "(?:`[A-Z][A-Z0-9_]*`|\"[A-Z][A-Z0-9_]*\")";
+        String columnModification = "(?s)ALTER TABLE " + identifier
+                + " (?:MODIFY COLUMN |MODIFY \\(|ALTER COLUMN " + identifier + " TYPE ).*";
+        boolean modifiesColumn = plan.stream().anyMatch(sql ->
+                sql.toUpperCase(java.util.Locale.ROOT).matches(columnModification));
+        boolean destructive = joined.contains(" DROP ") || modifiesColumn;
         boolean alter = joined.contains("ALTER TABLE");
         boolean high = destructive || rows >= VERY_LARGE_TABLE_ROWS || !conflicts.isEmpty();
         boolean medium = !high && (alter || rows >= LARGE_TABLE_ROWS || !drift.isEmpty());
@@ -265,7 +280,7 @@ public class EntitySchemaOperationService {
         EntitySchemaOperationDTO operation = requireOperation(operationId);
         jdbcTemplate.update(
                 "UPDATE entity_schema_operation SET status = 'DDL_FAILED', actual_fingerprint = COALESCE(?, actual_fingerprint), "
-                        + "drift_json = COALESCE(?, drift_json), error_message = ?, finished_at = NOW() WHERE id = ?",
+                        + "drift_json = COALESCE(?, drift_json), error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
                 actualFingerprint,
                 drift == null ? null : writeJson(drift),
                 abbreviate(message, 2000),
@@ -294,12 +309,20 @@ public class EntitySchemaOperationService {
                 abbreviate(message, 1000));
     }
 
+    /** entity_id/plan_hash 唯一约束保证不可变计划只有一个操作记录。 */
     private EntitySchemaOperationDTO findByPlan(String entityId, String planHash) {
         return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE entity_id = ? AND plan_hash = ? LIMIT 1",
+                "SELECT * FROM entity_schema_operation WHERE entity_id = ? AND plan_hash = ?",
                 this::map,
                 entityId,
                 planHash).stream().findFirst().orElse(null);
+    }
+
+    /** 已取得计划行锁后读取最新状态；调用方必须处于 prepare 的独立事务内。 */
+    private EntitySchemaOperationDTO findByPlanForUpdate(String entityId, String planHash) {
+        return jdbcTemplate.query(
+                "SELECT * FROM entity_schema_operation WHERE entity_id = ? AND plan_hash = ? FOR UPDATE",
+                this::map, entityId, planHash).stream().findFirst().orElse(null);
     }
 
     private EntitySchemaOperationDTO findById(String id) {

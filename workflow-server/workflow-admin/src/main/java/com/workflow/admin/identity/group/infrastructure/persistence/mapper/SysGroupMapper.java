@@ -1,5 +1,7 @@
 package com.workflow.admin.identity.group.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -19,10 +21,10 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
      * 检查组编码是否存在
      *
      * @param groupCode  组编码
-     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串）
+     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串或 null）
      * @return 存在返回 true，否则 false；逻辑删除记录也计入，保持与数据库唯一约束一致
      */
-    @Select("SELECT COUNT(*) > 0 FROM sys_group WHERE group_code = #{groupCode} AND (#{excludeId} = '' OR id != #{excludeId})")
+    @Select("<script>SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM sys_group WHERE group_code = #{groupCode}<if test=\"excludeId != null and excludeId != ''\"> AND id != #{excludeId}</if></script>")
     boolean existsGroupCode(@Param("groupCode") String groupCode, @Param("excludeId") String excludeId);
     
     /**
@@ -31,8 +33,11 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
      * @param groupCode 组编码
      * @return 用户组对象，不存在返回 null
      */
-    @Select("SELECT * FROM sys_group WHERE group_code = #{groupCode} AND deleted = 0 LIMIT 1")
-    SysGroup selectByGroupCode(@Param("groupCode") String groupCode);
+    default SysGroup selectByGroupCode(String groupCode) {
+        // 保留原查询仅取一行的语义，由分页插件生成目标数据库的限制语法。
+        return selectPage(new Page<SysGroup>(1, 1, false), Wrappers.<SysGroup>lambdaQuery()
+                .eq(SysGroup::getGroupCode, groupCode)).getRecords().stream().findFirst().orElse(null);
+    }
     
     /**
      * 查询组下的用户列表

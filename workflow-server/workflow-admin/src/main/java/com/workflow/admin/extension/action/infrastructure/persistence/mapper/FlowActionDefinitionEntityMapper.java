@@ -1,11 +1,9 @@
 package com.workflow.admin.extension.action.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinitionEntity;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -24,16 +22,19 @@ public interface FlowActionDefinitionEntityMapper
      * @param definitionId 动作定义 ID
      * @return 实体编码列表
      */
-    @Select("SELECT entity_code FROM process_action_definition_entity "
-            + "WHERE action_definition_id = #{definitionId} ORDER BY entity_code")
-    List<String> findEntityCodes(@Param("definitionId") String definitionId);
+    default List<String> findEntityCodes(String definitionId) {
+        return selectObjs(Wrappers.<FlowActionDefinitionEntity>lambdaQuery()
+                .select(FlowActionDefinitionEntity::getEntityCode).eq(FlowActionDefinitionEntity::getActionDefinitionId, definitionId)
+                .orderByAsc(FlowActionDefinitionEntity::getEntityCode));
+    }
 
     /**
      * 删除动作定义下的全部可见实体关系。
      *
      * @param definitionId 动作定义 ID
      */
-    @Delete("DELETE FROM process_action_definition_entity "
-            + "WHERE action_definition_id = #{definitionId}")
-    void deleteByDefinitionId(@Param("definitionId") String definitionId);
+    default void deleteByDefinitionId(String definitionId) {
+        // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        delete(Wrappers.<FlowActionDefinitionEntity>lambdaQuery().eq(FlowActionDefinitionEntity::getActionDefinitionId, definitionId));
+    }
 }

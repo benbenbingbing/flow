@@ -1,5 +1,7 @@
 package com.workflow.process.assignment.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -10,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
 
@@ -23,17 +26,20 @@ public class AssigneeIncidentRecorder {
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    // 只渲染读守卫语法；开放槽身份及筛选条件仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
+    private final JdbcWriteAttempt writeAttempt;
 
     /** 创建事件；相同任务/实例与节点已有开放事件时幂等返回原 ID。 */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String create(CreateCommand command) {
-        String existing = findOpen(command);
+        String existing = findOpen(command, false);
         if (existing != null) {
             return existing;
         }
         String incidentId = id();
         try {
-            jdbcTemplate.update("""
+            writeAttempt.execute(() -> jdbcTemplate.update("""
                     INSERT INTO process_assignee_incident (
                       id, process_config_id, process_definition_id, process_instance_id,
                       task_id, node_id, node_name, policy, status,
@@ -51,24 +57,25 @@ public class AssigneeIncidentRecorder {
                     command.fallbackUser(), command.fallbackGroup(),
                     command.responsibilityOwner(), command.maxRetries(),
                     command.initialDelaySeconds(), command.backoffMultiplier(),
-                    command.nextRetryAt(), json(command.detail()));
-            jdbcTemplate.update("""
-                    INSERT INTO process_assignee_incident_action (
-                      id, incident_id, request_id, action_type, status, operator,
-                      request_json, result_json, create_time, finished_at
-                    ) VALUES (?, ?, ?, 'INCIDENT_CREATED', 'SUCCESS', 'system', ?, ?,
-                              CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                    """, id(), incidentId, "CREATE:" + incidentId,
-                    json(Map.of("reasonCode", command.reasonCode(), "policy", command.policy())),
-                    json(Map.of("status", command.status())));
-            return incidentId;
+                    command.nextRetryAt(), json(command.detail())));
         } catch (DuplicateKeyException duplicate) {
-            String concurrent = findOpen(command);
+            String concurrent = findOpen(command, true);
             if (concurrent != null) {
                 return concurrent;
             }
             throw duplicate;
         }
+        // 创建审计失败必须回滚本次新事件，不能把审计的唯一冲突误认成事件已存在。
+        jdbcTemplate.update("""
+                INSERT INTO process_assignee_incident_action (
+                  id, incident_id, request_id, action_type, status, operator,
+                  request_json, result_json, create_time, finished_at
+                ) VALUES (?, ?, ?, 'INCIDENT_CREATED', 'SUCCESS', 'system', ?, ?,
+                          CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, id(), incidentId, "CREATE:" + incidentId,
+                json(Map.of("reasonCode", command.reasonCode(), "policy", command.policy())),
+                json(Map.of("status", command.status())));
+        return incidentId;
     }
 
     /**
@@ -96,17 +103,30 @@ public class AssigneeIncidentRecorder {
                 """, processInstanceId, nodeId);
     }
 
-    private String findOpen(CreateCommand command) {
-        List<String> ids = jdbcTemplate.query("""
-                SELECT id FROM process_assignee_incident
-                WHERE node_id = ?
-                  AND COALESCE(task_id, '') = COALESCE(?, '')
-                  AND COALESCE(process_instance_id, '') = COALESCE(?, '')
-                  AND status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED')
-                ORDER BY create_time DESC LIMIT 1
-                """, (rs, rowNum) -> rs.getString("id"),
-                command.nodeId(), command.taskId(), command.processInstanceId());
+    /** 开放槽唯一索引保证至多一行；冲突后用当前读避开 MySQL 的旧快照。 */
+    private String findOpen(CreateCommand command, boolean currentRead) {
+        var parameters = new ArrayList<Object>(List.of(openSlot(command), command.nodeId()));
+        String task = emptyToNull(command.taskId());
+        String instance = emptyToNull(command.processInstanceId());
+        // 空值分支直接生成 IS NULL，避免 Oracle 的空串规则和 PostgreSQL 的未知类型空参数。
+        String taskCondition = task == null ? "(task_id IS NULL OR task_id = '')" : "task_id = ?";
+        String instanceCondition = instance == null ? "(process_instance_id IS NULL OR process_instance_id = '')" : "process_instance_id = ?";
+        if (task != null) parameters.add(task);
+        if (instance != null) parameters.add(instance);
+        List<String> ids = jdbcTemplate.query("SELECT id FROM process_assignee_incident WHERE open_slot = ? AND node_id = ? AND "
+                + taskCondition + " AND " + instanceCondition
+                + " AND status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED')"
+                + (currentRead ? queryDialect.readGuardClause() : ""), (rs, rowNum) -> rs.getString("id"), parameters.toArray());
         return ids.isEmpty() ? null : ids.get(0);
+    }
+
+    private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }
+
+    /** 与既有开放槽约束一致：有任务取任务，否则取实例，均缺失时保留固定命名空间。 */
+    private static String openSlot(CreateCommand command) {
+        String owner = command.taskId() != null ? command.taskId()
+                : command.processInstanceId() != null ? command.processInstanceId() : "NO_INSTANCE";
+        return owner + ":" + command.nodeId();
     }
 
     private String json(Object value) {

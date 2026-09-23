@@ -6,6 +6,7 @@
     <artifactId>workflow-integration</artifactId>
     <packaging>pom</packaging>
     <modules>
+        <module>workflow-database</module>
         <module>workflow-outbox</module>
         <module>workflow-http</module>
         <module>workflow-notification</module>

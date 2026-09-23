@@ -1,5 +1,8 @@
 package com.workflow.listener;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -109,6 +112,7 @@ class ProcessCcFlowableIntegrationTest {
             jdbc.execute(new String(migration.readAllBytes(), StandardCharsets.UTF_8));
         }
         var mybatis = new MybatisConfiguration();
+        mybatis.setDatabaseId("MYSQL");
         mybatis.setMapUnderscoreToCamelCase(true);
         mybatis.addMapper(ProcessCcRecordMapper.class);
         var factory = new MybatisSqlSessionFactoryBean();
@@ -120,7 +124,7 @@ class ProcessCcFlowableIntegrationTest {
         entityDataService = mock(EntityDataDynamicService.class);
         var snapshots = new ProcessCcSnapshotService(engine.getRepositoryService(), engine.getRuntimeService(),
                 engine.getHistoryService(), versionMapper, configMapper, entityDataService);
-        ccService = transactional(new ProcessCcService(mapper, snapshots));
+        ccService = transactional(new ProcessCcService(mapper, snapshots, new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
         notifications = mock(ProcessCcNotificationPublisher.class);
         SysUserMapper users = mock(SysUserMapper.class);
         for (String username : List.of("admin", "observer")) {

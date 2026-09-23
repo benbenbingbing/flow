@@ -1,11 +1,9 @@
 package com.workflow.process.task.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTaskCandidateUser;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -23,17 +21,20 @@ public interface ProcessTaskCandidateUserMapper
      * @param taskInstanceId 任务实例ID
      * @return 候选用户列表
      */
-    @Select("SELECT * FROM process_task_candidate_user "
-            + "WHERE task_instance_id = #{taskInstanceId} ORDER BY sort_order")
-    List<ProcessTaskCandidateUser> findByTaskInstanceId(
-            @Param("taskInstanceId") String taskInstanceId);
+    default List<ProcessTaskCandidateUser> findByTaskInstanceId(String taskInstanceId) {
+        return selectList(Wrappers.<ProcessTaskCandidateUser>lambdaQuery()
+                .eq(ProcessTaskCandidateUser::getTaskInstanceId, taskInstanceId)
+                .orderByAsc(ProcessTaskCandidateUser::getSortOrder));
+    }
 
     /**
      * 根据任务实例ID删除其下所有候选用户。
      *
      * @param taskInstanceId 任务实例ID
      */
-    @Delete("DELETE FROM process_task_candidate_user "
-            + "WHERE task_instance_id = #{taskInstanceId}")
-    void deleteByTaskInstanceId(@Param("taskInstanceId") String taskInstanceId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default void deleteByTaskInstanceId(String taskInstanceId) {
+        delete(Wrappers.<ProcessTaskCandidateUser>lambdaQuery()
+                .eq(ProcessTaskCandidateUser::getTaskInstanceId, taskInstanceId));
+    }
 }

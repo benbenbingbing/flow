@@ -1,6 +1,10 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.permission.application.PermissionSqlParameters;
+
 import com.workflow.core.logging.LogValue;
+import com.workflow.integration.database.api.SchemaDdlDialect;
+import com.workflow.core.database.port.SchemaMetadataPort;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
@@ -31,24 +35,21 @@ public class EntityRecordTeamService {
     private final EntityPhysicalTableResolver tableResolver;
     private final EntityPublishedSnapshotService snapshotService;
     private final SchemaDdlExecutor schemaDdlExecutor;
+    private final SchemaDdlDialect dialect;
+    private final SchemaMetadataPort metadata;
 
     @Autowired
     public EntityRecordTeamService(
             JdbcTemplate jdbcTemplate,
             EntityPhysicalTableResolver tableResolver,
             EntityPublishedSnapshotService snapshotService,
-            SchemaDdlExecutor schemaDdlExecutor) {
+            SchemaDdlExecutor schemaDdlExecutor, SchemaDdlDialect dialect, SchemaMetadataPort metadata) {
         this.jdbcTemplate = jdbcTemplate;
         this.tableResolver = tableResolver;
         this.snapshotService = snapshotService;
         this.schemaDdlExecutor = schemaDdlExecutor;
-    }
-
-    public EntityRecordTeamService(
-            JdbcTemplate jdbcTemplate,
-            EntityPhysicalTableResolver tableResolver,
-            EntityPublishedSnapshotService snapshotService) {
-        this(jdbcTemplate, tableResolver, snapshotService, jdbcTemplate::execute);
+        this.dialect = dialect;
+        this.metadata = metadata;
     }
 
     /**
@@ -79,23 +80,10 @@ public class EntityRecordTeamService {
     @Transactional(rollbackFor = Exception.class)
     public void ensureTeamTable(EntityDefinition definition) {
         String tableName = teamTableName(definition);
-        schemaDdlExecutor.execute("""
-                CREATE TABLE IF NOT EXISTS `%s` (
-                  `id` VARCHAR(64) NOT NULL COMMENT '参与事件ID',
-                  `record_id` VARCHAR(64) NOT NULL COMMENT '业务记录ID',
-                  `user_id` VARCHAR(64) NOT NULL COMMENT '参与用户ID',
-                  `action_type` VARCHAR(50) NOT NULL COMMENT '参与动作类型',
-                  `action_description` VARCHAR(500) DEFAULT NULL COMMENT '参与动作说明',
-                  `process_instance_id` VARCHAR(64) DEFAULT NULL COMMENT '流程实例ID',
-                  `process_task_id` VARCHAR(64) DEFAULT NULL COMMENT '流程任务ID',
-                  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '参与事件入库时间',
-                  PRIMARY KEY (`id`),
-                  KEY `idx_team_user_record` (`user_id`, `record_id`),
-                  KEY `idx_team_record_time` (`record_id`, `create_time`),
-                  KEY `idx_team_process_task` (`process_instance_id`, `process_task_id`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                  COMMENT='业务数据参与团队事件';
-                """.formatted(tableName));
+        if (!dialect.supportsCreateIfNotExists() && teamTableExists(tableName)) return;
+        var statements = dialect.createTable(EntityTableDefinitionFactory.teamTable(tableName));
+        statements.forEach(dialect::validateStatement);
+        statements.forEach(schemaDdlExecutor::execute);
     }
 
     /**
@@ -130,10 +118,10 @@ public class EntityRecordTeamService {
             return;
         }
         jdbcTemplate.update(
-                "INSERT INTO `" + tableName + "` "
+                "INSERT INTO " + dialect.quoteIdentifier(tableName) + " "
                         + "(id, record_id, user_id, action_type, action_description, "
                         + "process_instance_id, process_task_id, create_time) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, NOW())",
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
                 UUID.randomUUID().toString().replace("-", ""),
                 recordId,
                 userId,
@@ -149,7 +137,7 @@ public class EntityRecordTeamService {
      *
      * @param entityCode 实体编码
      * @param userId     当前用户 ID
-     * @return EXISTS 条件；表不存在或参数非法时返回 1=0
+     * @return 预览 EXISTS 条件（包含占位符）；实际查询使用带 parameters 的重载
      */
     public String relatedPeopleSql(String entityCode, String userId) {
         return relatedPeopleSql(entityCode, userId, null);
@@ -164,10 +152,15 @@ public class EntityRecordTeamService {
      * @param entityCode 实体编码
      * @param userId     当前用户 ID
      * @param username   当前用户名，可为空
-     * @return EXISTS 条件；表不存在或身份为空时返回 1=0
+     * @return 预览 EXISTS 条件（包含占位符）；实际查询使用带 parameters 的重载
      */
     public String relatedPeopleSql(String entityCode, String userId, String username) {
-        String identitySql = identityInSql("team.user_id", userId, username);
+        return relatedPeopleSql(entityCode, userId, username, new java.util.LinkedHashMap<>());
+    }
+
+    /** 执行入口必须保留共享参数容器；用户 ID/用户名都按文本绑定，不依赖 SQL 转义模式。 */
+    public String relatedPeopleSql(String entityCode, String userId, String username, Map<String, Object> parameters) {
+        String identitySql = identityInSql("team.user_id", userId, username, parameters);
         if (!StringUtils.hasText(entityCode) || identitySql == null) {
             return "1=0";
         }
@@ -175,10 +168,9 @@ public class EntityRecordTeamService {
         if (!teamTableExists(tableName)) {
             return "1=0";
         }
-        return "EXISTS (SELECT 1 FROM `" + tableName + "` team "
-                + "WHERE team.record_id = `"
-                + checkedIdentifier(tableResolver.resolve(entityCode))
-                + "`.id AND " + identitySql + ")";
+        return "EXISTS (SELECT 1 FROM " + dialect.quoteIdentifier(tableName) + " team "
+                + "WHERE team.record_id = " + dialect.quoteIdentifier(checkedIdentifier(tableResolver.resolve(entityCode)))
+                + ".id AND " + identitySql + ")";
     }
 
     /**
@@ -212,9 +204,9 @@ public class EntityRecordTeamService {
                 snapshot.getTeamVisibilityLevel() == null
                         ? EntityDefinition.TeamVisibilityLevel.ADDITIVE
                         : snapshot.getTeamVisibilityLevel(),
-                "EXISTS (SELECT 1 FROM `" + tableName + "` team "
-                        + "WHERE team.record_id = `" + tableResolver.resolve(entityCode)
-                        + "`.id AND team.user_id = #{permissionParameters.teamUserId})",
+                "EXISTS (SELECT 1 FROM " + dialect.quoteIdentifier(tableName) + " team "
+                        + "WHERE team.record_id = " + dialect.quoteIdentifier(tableResolver.resolve(entityCode))
+                        + ".id AND team.user_id = #{permissionParameters.teamUserId,jdbcType=VARCHAR})",
                 Map.of("teamUserId", userId));
     }
 
@@ -240,22 +232,13 @@ public class EntityRecordTeamService {
     }
 
     private boolean teamTableExists(String tableName) {
-        Integer count = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.TABLES "
-                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
-                Integer.class,
-                tableName);
-        return count != null && count > 0;
-    }
-
-    private String escapeLiteral(String input) {
-        return input == null ? "" : input.replace("'", "''");
+        return metadata.tableExists(tableName);
     }
 
     /**
      * 把用户 ID、用户名编成 IN 条件。流程任务常用用户名，实体写入常用用户 ID。
      */
-    private String identityInSql(String column, String userId, String username) {
+    private String identityInSql(String column, String userId, String username, Map<String, Object> parameters) {
         LinkedHashSet<String> identities = new LinkedHashSet<>();
         if (StringUtils.hasText(userId)) {
             identities.add(userId);
@@ -267,8 +250,7 @@ public class EntityRecordTeamService {
             return null;
         }
         return column + " IN (" + identities.stream()
-                .map(this::escapeLiteral)
-                .map(value -> "'" + value + "'")
+                .map(value -> PermissionSqlParameters.bindText(parameters, value))
                 .collect(Collectors.joining(",")) + ")";
     }
 

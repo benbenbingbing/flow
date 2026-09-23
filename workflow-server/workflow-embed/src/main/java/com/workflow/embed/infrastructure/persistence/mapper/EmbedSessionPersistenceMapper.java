@@ -1,5 +1,6 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedSessionSecurityRow;
 import com.workflow.embed.infrastructure.persistence.record.EmbedSessionTerminationRow;
 import java.time.LocalDateTime;
@@ -13,7 +14,14 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedSessionPersistenceMapper {
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedSessionSecurityRow findByTokenDigest(String tokenDigest) {
+        return findByTokenDigestPage(new OffsetPage<>(0, 1), tokenDigest).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT s.id, s.session_token_digest,
                    s.application_id, s.grant_id, s.view_id, s.view_release_id,
                    s.identity_provider_id, s.provider_security_version,
@@ -53,11 +61,21 @@ public interface EmbedSessionPersistenceMapper {
               JOIN embed_external_identity_binding b ON b.id = s.identity_binding_id
               JOIN sys_user u ON u.id = s.flow_user_id
              WHERE s.session_token_digest = #{tokenDigest}
-             LIMIT 1
-            """)
-    EmbedSessionSecurityRow findByTokenDigest(@Param("tokenDigest") String tokenDigest);
 
+            </script>
+            """)
+    List<EmbedSessionSecurityRow> findByTokenDigestPage(
+            @Param("page") OffsetPage<EmbedSessionSecurityRow> page,
+            @Param("tokenDigest") String tokenDigest);
+
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedSessionSecurityRow findById(String sessionId) {
+        return findByIdPage(new OffsetPage<>(0, 1), sessionId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT s.id, s.session_token_digest,
                    s.application_id, s.grant_id, s.view_id, s.view_release_id,
                    s.identity_provider_id, s.provider_security_version,
@@ -97,9 +115,12 @@ public interface EmbedSessionPersistenceMapper {
               JOIN embed_external_identity_binding b ON b.id = s.identity_binding_id
               JOIN sys_user u ON u.id = s.flow_user_id
              WHERE s.id = #{sessionId}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedSessionSecurityRow findById(@Param("sessionId") String sessionId);
+    List<EmbedSessionSecurityRow> findByIdPage(
+            @Param("page") OffsetPage<EmbedSessionSecurityRow> page,
+            @Param("sessionId") String sessionId);
 
     @Update("""
             UPDATE embed_session
@@ -131,38 +152,65 @@ public interface EmbedSessionPersistenceMapper {
             @Param("now") LocalDateTime now,
             @Param("requestedIdleExpiry") LocalDateTime requestedIdleExpiry);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<String> findExpiredTokenDigests(LocalDateTime now, int limit) {
+        return findExpiredTokenDigestsPage(new OffsetPage<>(0, limit), now, limit);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
+            <script>
             SELECT session_token_digest
               FROM embed_session
              WHERE status = 'ACTIVE'
                AND slot_released = 0
-               AND (idle_expires_at <= #{now}
-                    OR absolute_expires_at <= #{now})
+               AND (idle_expires_at &lt;= #{now}
+                    OR absolute_expires_at &lt;= #{now})
              ORDER BY idle_expires_at, absolute_expires_at, id
-             LIMIT #{limit}
+
+            </script>
             """)
-    List<String> findExpiredTokenDigests(
+    List<String> findExpiredTokenDigestsPage(
+            @Param("page") OffsetPage<String> page,
             @Param("now") LocalDateTime now,
             @Param("limit") int limit);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedSessionTerminationRow findTerminationCandidate(String tokenDigest) {
+        return findTerminationCandidatePage(new OffsetPage<>(0, 1), tokenDigest).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, application_id, grant_id, view_id, flow_user_id, status, slot_released,
                    idle_expires_at, absolute_expires_at
               FROM embed_session
              WHERE session_token_digest = #{tokenDigest}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedSessionTerminationRow findTerminationCandidate(
+    List<EmbedSessionTerminationRow> findTerminationCandidatePage(
+            @Param("page") OffsetPage<EmbedSessionTerminationRow> page,
             @Param("tokenDigest") String tokenDigest);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedSessionTerminationRow findTerminationCandidateById(String sessionId) {
+        return findTerminationCandidateByIdPage(new OffsetPage<>(0, 1), sessionId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, application_id, grant_id, view_id, flow_user_id, status, slot_released,
                    idle_expires_at, absolute_expires_at
               FROM embed_session
              WHERE id = #{sessionId}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedSessionTerminationRow findTerminationCandidateById(
+    List<EmbedSessionTerminationRow> findTerminationCandidateByIdPage(
+            @Param("page") OffsetPage<EmbedSessionTerminationRow> page,
             @Param("sessionId") String sessionId);
 
     @Select("""

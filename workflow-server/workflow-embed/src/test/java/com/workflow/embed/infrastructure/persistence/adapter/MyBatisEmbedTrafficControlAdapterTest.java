@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.embed.application.port.EmbedDigestPort;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeLease;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
 import com.workflow.embed.config.EmbedProperties;
@@ -60,7 +61,7 @@ class MyBatisEmbedTrafficControlAdapterTest {
                 mapper,
                 digestPort,
                 properties,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC), mock(JdbcLockedRow.class));
         when(mapper.lockApplication(APPLICATION_ID)).thenReturn(
                 new EmbedApplicationLockRow(APPLICATION_ID, "ACTIVE", null, 1));
         when(mapper.lockGrant(APPLICATION_ID, GRANT_ID)).thenReturn(activeGrant());
@@ -89,13 +90,13 @@ class MyBatisEmbedTrafficControlAdapterTest {
     }
 
     @Test
-    void duplicateBucketUpsertAffectedRowsValueIsAccepted() {
+    void unexpectedIncrementRowCountFailsClosed() {
         when(mapper.incrementRateBucket(eq(BUCKET_KEY), anyLong(), eq(DATABASE_NOW)))
                 .thenReturn(2);
 
-        adapter.consumeLaunch(APPLICATION_ID, GRANT_ID);
-
-        verify(mapper).currentRateCount(BUCKET_KEY, NOW.getEpochSecond() / 60);
+        var error = assertThrows(EmbedException.class, () -> adapter.consumeLaunch(APPLICATION_ID, GRANT_ID));
+        assertEquals(503, error.getStatus());
+        verify(mapper, never()).currentRateCount(BUCKET_KEY, NOW.getEpochSecond() / 60);
     }
 
     @Test

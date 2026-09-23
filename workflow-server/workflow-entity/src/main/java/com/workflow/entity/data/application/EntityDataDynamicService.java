@@ -170,13 +170,14 @@ public class EntityDataDynamicService {
                 permission);
     }
 
+    /** 列表扩展计划必须将条件和参数一起传递，包含类型明确的 SQL NULL。 */
     private DataPermissionResult createAllowedPermission(
             DataScopePlan plan) {
         if ("1=1".equals(plan.sqlFragment())) {
             return DataPermissionResult.allowAll();
         }
         return DataPermissionResult.withCondition(
-                plan.sqlFragment());
+                plan.sqlFragment(), plan.parameters());
     }
 
     private PageResult<EntityDataDTO> findPageWithPermission(
@@ -198,8 +199,6 @@ public class EntityDataDynamicService {
                 multiValueRuntimeService.prepareConditions(
                         definition,
                         condition);
-        Map<String, Object> preparedCondition =
-                prepared.condition();
         permission.intersect(prepared.sqlCondition());
         if (!permission.isHasPermission()) {
             return new PageResult<>(
@@ -209,14 +208,14 @@ public class EntityDataDynamicService {
                     pageSize);
         }
 
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
+        Map<String, Object> preparedCondition = EntityQueryConditions.fromPublishedFields(prepared.condition(), runtimeFields);
         PageRows pageRows = loadPageRows(
                 tableName,
                 preparedCondition,
                 permission,
                 offset,
                 pageSize);
-        List<EntityField> runtimeFields =
-                getRuntimeFields(entityCode);
         List<EntityDataDTO> records =
                 pageRows.rows().stream()
                         .map(data -> recordMapper.toDto(
@@ -411,9 +410,9 @@ public class EntityDataDynamicService {
                 multiValueRuntimeService.prepareConditions(
                         requireDefinition(entityCode),
                         condition);
-        Map<String, Object> preparedCondition =
-                prepared.condition();
         permission.intersect(prepared.sqlCondition());
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
+        Map<String, Object> preparedCondition = EntityQueryConditions.fromPublishedFields(prepared.condition(), runtimeFields);
 
         List<Map<String, Object>> dataList;
         if (!permission.isHasPermission()) {
@@ -431,8 +430,6 @@ public class EntityDataDynamicService {
                             permission.getSqlParameters());
         }
 
-        List<EntityField> runtimeFields =
-                getRuntimeFields(entityCode);
         List<EntityDataDTO> records = dataList.stream()
                 .map(data -> recordMapper.toDto(
                         data,
@@ -513,8 +510,8 @@ public class EntityDataDynamicService {
             String listKey) {
         SysUser user = getCurrentSysUser();
         if (user == null) {
-            return DataPermissionResult.withCondition(
-                    "create_by = ''");
+            // 无身份不能借创建人为空的历史记录获得权限；空串在不同数据库中也不具有相同语义。
+            return DataPermissionResult.denyAll();
         }
         return dataPermissionEngine.calculatePermission(
                 entityCode,

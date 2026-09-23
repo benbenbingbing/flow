@@ -1,5 +1,6 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -40,6 +41,8 @@ public class EntityMultiValueRuntimeService {
     private final DynamicTableService dynamicTableService;
     private final EntityPhysicalTableResolver tableResolver;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
+    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
 
     /**
      * 从数据中抽取并移除配置为多值字段（多选、多引用、复选框）的取值。
@@ -291,7 +294,8 @@ public class EntityMultiValueRuntimeService {
                     + " AND mv.deleted = 0";
             if (rawLabel != null) {
                 String labelParam = "__multi_label_" + sequence;
-                condition.put(labelParam, rawLabel);
+                // 保留 LIKE 的通配符语义，模式在 Java 中构造并绑定，避免数据库字符串拼接差异。
+                condition.put(labelParam, "EQ".equalsIgnoreCase(labelOperation) ? rawLabel : "%" + rawLabel + "%");
                 fragments.add(buildLabelExists(
                         field,
                         multiTable,
@@ -377,7 +381,8 @@ public class EntityMultiValueRuntimeService {
             List<String> ids = jdbcTemplate.queryForList(
                     "SELECT id FROM sys_dict_item WHERE dict_code = ?"
                             + " AND (id = ? OR item_code = ? OR item_value = ?)"
-                            + " AND status = '0' AND deleted = 0 LIMIT 1",
+                            + " AND status = '0' AND deleted = 0 ORDER BY id"
+                            + queryDialect.paginationClause("0", "1"),
                     String.class,
                     field.getDictType(),
                     value,
@@ -395,7 +400,7 @@ public class EntityMultiValueRuntimeService {
     private String resolveApiValue(EntityField field, String targetRecordId) {
         if (StringUtils.hasText(field.getDictType())) {
             List<String> codes = jdbcTemplate.queryForList(
-                    "SELECT item_code FROM sys_dict_item WHERE id = ? AND deleted = 0 LIMIT 1",
+                    "SELECT item_code FROM sys_dict_item WHERE id = ? AND deleted = 0",
                     String.class,
                     targetRecordId);
             return codes.isEmpty() ? targetRecordId : codes.get(0);
@@ -421,7 +426,8 @@ public class EntityMultiValueRuntimeService {
             }
             List<Map<String, Object>> items = jdbcTemplate.queryForList(
                     "SELECT id, item_code, item_label, status FROM sys_dict_item"
-                            + " WHERE dict_code = ? AND item_code = ? AND deleted = 0 LIMIT 1",
+                            + " WHERE dict_code = ? AND item_code = ? AND deleted = 0 ORDER BY id"
+                            + queryDialect.paginationClause("0", "1"),
                     field.getDictType(),
                     String.valueOf(rawValue));
             if (items.isEmpty()) {
@@ -447,7 +453,7 @@ public class EntityMultiValueRuntimeService {
         if (StringUtils.hasText(field.getDictType())) {
             List<Map<String, Object>> items = jdbcTemplate.queryForList(
                     "SELECT item_code, item_label, status FROM sys_dict_item"
-                            + " WHERE id = ? AND deleted = 0 LIMIT 1",
+                            + " WHERE id = ? AND deleted = 0",
                     targetRecordId);
             if (!items.isEmpty()) {
                 Map<String, Object> item = items.get(0);
@@ -462,8 +468,8 @@ public class EntityMultiValueRuntimeService {
                 String tableName = resolveTargetTable(target);
                 String displayColumn = resolveDisplayColumn(field, target);
                 List<Map<String, Object>> targets = jdbcTemplate.queryForList(
-                        "SELECT `" + displayColumn + "` AS display_name FROM " + tableName
-                                + " WHERE id = ? LIMIT 1",
+                        "SELECT " + queryDialect.quoteIdentifier(displayColumn) + " AS display_name FROM "
+                                + queryDialect.quoteIdentifier(tableName) + " WHERE id = ?",
                         targetRecordId);
                 if (!targets.isEmpty()) {
                     option.put("value", targetRecordId);
@@ -568,9 +574,7 @@ public class EntityMultiValueRuntimeService {
             String labelParam,
             String operation) {
         String operator = "EQ".equalsIgnoreCase(operation) ? "=" : "LIKE";
-        String valueExpression = "=".equals(operator)
-                ? "#{condition." + labelParam + "}"
-                : "CONCAT('%', #{condition." + labelParam + "}, '%')";
+        String valueExpression = "#{condition." + labelParam + "}";
         if (StringUtils.hasText(field.getDictType())) {
             return "EXISTS (SELECT 1 FROM " + multiTable + " mv JOIN sys_dict_item target"
                     + " ON target.id = mv.target_record_id AND target.deleted = 0"
@@ -586,7 +590,7 @@ public class EntityMultiValueRuntimeService {
         return "EXISTS (SELECT 1 FROM " + multiTable + " mv JOIN " + targetTable + " target"
                 + " ON target.id = mv.target_record_id"
                 + base.substring(base.indexOf(" WHERE"))
-                + " AND target.`" + displayColumn + "` " + operator + " " + valueExpression + ")";
+                + " AND target." + queryDialect.quoteIdentifier(displayColumn) + " " + operator + " " + valueExpression + ")";
     }
 
     private String text(Object value) {

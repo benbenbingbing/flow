@@ -63,6 +63,21 @@ class EntityRelationGraphAuthorizationServiceTest {
     }
 
     @Test
+    void internalGrantPreservesNullBindingsAndCopiesTheMutablePermissionResult() {
+        PublishedRelationPath path = path(); when(pathResolver.validate(path)).thenReturn(path);
+        var bindings = new java.util.LinkedHashMap<String, Object>(); bindings.put("dept", null);
+        var permission = DataPermissionResult.withCondition("dept_id = #{permissionParameters.dept,jdbcType=VARCHAR}", bindings);
+        when(permissionEngine.calculateExplicitListPermission(any(),
+                eq(EntityRelationGraphAuthorizationService.INTERNAL_SCOPE_KEY), eq(user)))
+                .thenReturn(new ExplicitListPermission(permission, true));
+        var plan = service.authorizeInternal(path, InternalPurpose.PROCESS_COORDINATION);
+        assertEquals(bindings, plan.source().dataScopePlan().parameters());
+        permission.getSqlParameters().put("dept", "changed");
+        org.junit.jupiter.api.Assertions.assertNull(plan.source().dataScopePlan().parameters().get("dept"));
+        assertThrows(UnsupportedOperationException.class, () -> plan.source().dataScopePlan().parameters().put("dept", "changed"));
+    }
+
+    @Test
     void usesFixedServerScopeKeyAndPreservesBoundParametersPerHop() {
         PublishedRelationPath path = path();
         when(pathResolver.validate(path)).thenReturn(path);

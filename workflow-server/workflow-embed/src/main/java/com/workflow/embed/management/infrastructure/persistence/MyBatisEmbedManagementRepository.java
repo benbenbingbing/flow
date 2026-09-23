@@ -1,5 +1,6 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
@@ -44,14 +45,17 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
     private final EmbedManagementMapper mapper;
     private final PublishedUiResourceSnapshotParser snapshotParser;
     private final EntityNewDataFormRuntimePort newDataFormRuntimePort;
+    private final JdbcWriteAttempt writeAttempt;
 
     public MyBatisEmbedManagementRepository(
             EmbedManagementMapper mapper,
             ObjectMapper objectMapper,
-            EntityNewDataFormRuntimePort newDataFormRuntimePort) {
+            EntityNewDataFormRuntimePort newDataFormRuntimePort,
+            JdbcWriteAttempt writeAttempt) {
         this.mapper = mapper;
         this.snapshotParser = new PublishedUiResourceSnapshotParser(objectMapper);
         this.newDataFormRuntimePort = newDataFormRuntimePort;
+        this.writeAttempt = writeAttempt;
     }
 
     @Override
@@ -197,7 +201,7 @@ public class MyBatisEmbedManagementRepository implements EmbedManagementReposito
 
     @Override
     public void insertGrant(GrantState grant) {
-        mapper.insertGrant(row(grant));
+        writeAttempt.execute(() -> mapper.insertGrant(row(grant)));
     }
 
     @Override

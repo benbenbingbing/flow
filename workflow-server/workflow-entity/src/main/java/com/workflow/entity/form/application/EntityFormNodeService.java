@@ -9,6 +9,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.ui.UiDataSourceUsages;
 import com.workflow.entity.form.api.request.EntityFormNodeCreateRequest;
@@ -27,7 +28,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseM
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -63,7 +64,6 @@ public class EntityFormNodeService {
         /** 表单节点最大嵌套深度。 */
         public static final int MAX_DEPTH = 8;
 
-        private static final String ACTIVE_NODE_KEY_UNIQUE_INDEX = "uk_entity_form_node_active_key";
         private static final Pattern NODE_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
         private static final Set<String> NODE_TYPES = Set.of(
                         "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE",
@@ -127,6 +127,7 @@ public class EntityFormNodeService {
         private final SystemEntityFieldPolicy systemEntityFieldPolicy;
         private final UiEventBindingMapper eventBindingMapper;
         private final JsonDocumentCodec codec;
+        private final JdbcWriteAttempt writeAttempt;
         private UiMutableInterfaceReferenceNormalizer interfaceReferenceNormalizer;
 
         /**
@@ -225,10 +226,10 @@ public class EntityFormNodeService {
                 validateNode(node, null);
                 validateSystemNode(node);
                 try {
-                        nodeMapper.insert(node);
-                } catch (DataIntegrityViolationException exception) {
+                        writeAttempt.execute(() -> nodeMapper.insert(node));
+                } catch (DuplicateKeyException exception) {
                         throw translateNodeWriteException(
-                                        formId, node.getNodeKey(), exception);
+                                        formId, node.getNodeKey(), node.getId(), exception);
                 }
                 if (touchOwner) {
                         touchForm(formId);
@@ -310,13 +311,15 @@ public class EntityFormNodeService {
                                 .set("local_overrides_document", updated.getLocalOverridesDocument())
                                 .set("revision", updated.getRevision())
                                 .set("update_time", updated.getUpdatedAt());
+                int affected;
                 try {
-                        if (nodeMapper.update(null, wrapper) != 1) {
-                                throw conflict(formId, nodeId);
-                        }
-                } catch (DataIntegrityViolationException exception) {
+                        affected = writeAttempt.execute(() -> nodeMapper.update(null, wrapper));
+                } catch (DuplicateKeyException exception) {
                         throw translateNodeWriteException(
-                                        formId, updated.getNodeKey(), exception);
+                                        formId, updated.getNodeKey(), nodeId, exception);
+                }
+                if (affected != 1) {
+                        throw conflict(formId, nodeId);
                 }
                 touchForm(formId);
                 return requireNode(formId, nodeId);
@@ -2390,28 +2393,23 @@ public class EntityFormNodeService {
                                 nodeMapper.findActiveByFormIdAndNodeKey(formId, nodeKey));
         }
 
+        /**
+         * 唯一冲突已由执行器恢复事务并按方言识别；再用当前读确认实际占用节点。
+         * 不依赖驱动错误文本或约束名称，主键冲突等无对应占用节点的失败仍原样抛出。
+         */
         private RuntimeException translateNodeWriteException(
                         String formId,
                         String nodeKey,
-                        DataIntegrityViolationException exception) {
-                if (containsConstraint(exception, ACTIVE_NODE_KEY_UNIQUE_INDEX)) {
-                        return duplicateNodeKeyConflict(formId, nodeKey);
+                        String attemptedNodeId,
+                        DuplicateKeyException exception) {
+                EntityFormNode occupying = nodeMapper.findActiveByFormIdAndNodeKeyForConflict(
+                                formId, nodeKey);
+                if (occupying != null && !Objects.equals(attemptedNodeId, occupying.getId())) {
+                        return new RevisionConflictException(
+                                        "同一表单内节点编码已被其他请求占用，请刷新后重试: " + nodeKey,
+                                        occupying);
                 }
                 return exception;
-        }
-
-        private boolean containsConstraint(
-                        Throwable throwable,
-                        String constraintName) {
-                Throwable current = throwable;
-                while (current != null) {
-                        if (StringUtils.hasText(current.getMessage())
-                                        && current.getMessage().contains(constraintName)) {
-                                return true;
-                        }
-                        current = current.getCause();
-                }
-                return false;
         }
 
         private EntityForm requireForm(String formId) {

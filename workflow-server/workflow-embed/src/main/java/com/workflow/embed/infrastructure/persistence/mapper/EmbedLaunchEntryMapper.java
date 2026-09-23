@@ -1,5 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedLaunchEntryRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,7 +11,14 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface EmbedLaunchEntryMapper {
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedLaunchEntryRow find(String launchId) {
+        return findPage(new OffsetPage<>(0, 1), launchId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT l.id AS launch_id,
                    l.parent_origin, l.channel_id, l.status AS launch_status,
                    l.expires_at AS launch_expires_at,
@@ -40,7 +49,10 @@ public interface EmbedLaunchEntryMapper {
               JOIN embed_external_identity_binding b ON b.id = l.identity_binding_id
               JOIN sys_user u ON u.id = l.flow_user_id
              WHERE l.id = #{launchId}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedLaunchEntryRow find(@Param("launchId") String launchId);
+    List<EmbedLaunchEntryRow> findPage(
+            @Param("page") OffsetPage<EmbedLaunchEntryRow> page,
+            @Param("launchId") String launchId);
 }

@@ -1,5 +1,6 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ApplicationOptionRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.IdentityProviderOptionRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.BindingRow;
@@ -17,14 +18,23 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Update;
 
 /** Embed 管理表及发布资源目录的 MyBatis Mapper。 */
+// 搜索模式在 MyBatis 中组装并以 VARCHAR 绑定，保留通配符语义，避免数据库 CONCAT 差异。
 @Mapper
 interface EmbedManagementMapper {
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<ViewRow> findViews(String keyword, String status, String surfaceType, String applicationId, int limit, int offset) {
+        return findViewsPage(new OffsetPage<>(offset, limit), keyword, status, surfaceType, applicationId, limit, offset);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT v.id, v.view_key, v.name, v.description, v.surface_type, v.status,
                    v.draft_config_json, v.draft_revision, v.published_release_id,
                    r.revision AS published_revision,
@@ -35,8 +45,8 @@ interface EmbedManagementMapper {
                AND r.view_id = v.id
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (v.view_key LIKE CONCAT('%', #{keyword}, '%')
-                      OR v.name LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (v.view_key LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR v.name LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND v.status = #{status}</if>
                <if test="surfaceType != null and surfaceType != ''">
@@ -48,10 +58,11 @@ interface EmbedManagementMapper {
                     WHERE g.view_id = v.id AND g.application_id = #{applicationId})
                </if>
              ORDER BY v.update_time DESC, v.id
-             LIMIT #{limit} OFFSET #{offset}
+
             </script>
             """)
-    List<ViewRow> findViews(
+    List<ViewRow> findViewsPage(
+            @Param("page") OffsetPage<ViewRow> page,
             @Param("keyword") String keyword,
             @Param("status") String status,
             @Param("surfaceType") String surfaceType,
@@ -61,11 +72,12 @@ interface EmbedManagementMapper {
 
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT COUNT(*) FROM embed_view v
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (v.view_key LIKE CONCAT('%', #{keyword}, '%')
-                      OR v.name LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (v.view_key LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR v.name LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND v.status = #{status}</if>
                <if test="surfaceType != null and surfaceType != ''">
@@ -84,7 +96,14 @@ interface EmbedManagementMapper {
             @Param("surfaceType") String surfaceType,
             @Param("applicationId") String applicationId);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ViewRow findView(String id) {
+        return findViewPage(new OffsetPage<>(0, 1), id).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT v.id, v.view_key, v.name, v.description, v.surface_type, v.status,
                    v.draft_config_json, v.draft_revision, v.published_release_id,
                    r.revision AS published_revision,
@@ -93,9 +112,12 @@ interface EmbedManagementMapper {
               FROM embed_view v
               LEFT JOIN embed_view_release r ON r.id = v.published_release_id
                AND r.view_id = v.id
-             WHERE v.id = #{id} LIMIT 1
+             WHERE v.id = #{id}
+            </script>
             """)
-    ViewRow findView(@Param("id") String id);
+    List<ViewRow> findViewPage(
+            @Param("page") OffsetPage<ViewRow> page,
+            @Param("id") String id);
 
     @Select("""
             SELECT v.id, v.view_key, v.name, v.description, v.surface_type, v.status,
@@ -110,7 +132,14 @@ interface EmbedManagementMapper {
             """)
     ViewRow lockView(@Param("id") String id);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ViewRow findViewByKey(String viewKey) {
+        return findViewByKeyPage(new OffsetPage<>(0, 1), viewKey).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT v.id, v.view_key, v.name, v.description, v.surface_type, v.status,
                    v.draft_config_json, v.draft_revision, v.published_release_id,
                    r.revision AS published_revision,
@@ -119,9 +148,12 @@ interface EmbedManagementMapper {
               FROM embed_view v
               LEFT JOIN embed_view_release r ON r.id = v.published_release_id
                AND r.view_id = v.id
-             WHERE v.view_key = #{viewKey} LIMIT 1
+             WHERE v.view_key = #{viewKey}
+            </script>
             """)
-    ViewRow findViewByKey(@Param("viewKey") String viewKey);
+    List<ViewRow> findViewByKeyPage(
+            @Param("page") OffsetPage<ViewRow> page,
+            @Param("viewKey") String viewKey);
 
     @Insert("""
             INSERT INTO embed_view (
@@ -186,7 +218,14 @@ interface EmbedManagementMapper {
                          @Param("actorId") String actorId,
                          @Param("now") LocalDateTime now);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ReleaseRow findReleaseByConfigHash(String viewId, String configHash) {
+        return findReleaseByConfigHashPage(new OffsetPage<>(0, 1), viewId, configHash).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, view_id, revision, surface_type, entity_code, list_key,
                    default_form_id, list_release_id, list_release_version,
                    form_release_id, form_release_version, entry_modes_json,
@@ -196,51 +235,70 @@ interface EmbedManagementMapper {
               FROM embed_view_release
              WHERE view_id = #{viewId} AND config_hash = #{configHash}
              ORDER BY revision DESC
-             LIMIT 1
+
+            </script>
             """)
-    ReleaseRow findReleaseByConfigHash(
+    List<ReleaseRow> findReleaseByConfigHashPage(
+            @Param("page") OffsetPage<ReleaseRow> page,
             @Param("viewId") String viewId,
             @Param("configHash") String configHash);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ListTargetRow findListTarget(String entityCode, String listKey, String releaseId) {
+        return findListTargetPage(new OffsetPage<>(0, 1), entityCode, listKey, releaseId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
-            SELECT l.id AS config_id, CAST(e.id AS CHAR) AS entity_id,
+            <script>
+            SELECT l.id AS config_id, ${@com.workflow.integration.database.api.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} AS entity_id,
                    l.entity_code, l.list_key,
                    r.id AS release_id, r.version AS release_version,
                    r.snapshot_document, r.content_hash
               FROM entity_list_config l
               JOIN entity_definition e
-                ON CAST(e.id AS CHAR CHARACTER SET utf8mb4)
-                     COLLATE utf8mb4_unicode_ci = l.entity_id
-               AND e.entity_code COLLATE utf8mb4_unicode_ci = l.entity_code
-              JOIN ui_config_release r ON r.id = COALESCE(#{releaseId}, l.active_release_id)
+                ON ${@com.workflow.integration.database.api.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} = l.entity_id
+               AND e.entity_code = l.entity_code
+              JOIN ui_config_release r ON r.id = COALESCE(#{releaseId,jdbcType=VARCHAR}, l.active_release_id)
                AND r.config_type = 'LIST' AND r.config_id = l.id
              WHERE l.entity_code = #{entityCode} AND l.list_key = #{listKey}
                AND l.deleted = 0 AND e.deleted = 0 AND e.status = 'PUBLISHED'
-             LIMIT 1
+
+            </script>
             """)
-    ListTargetRow findListTarget(@Param("entityCode") String entityCode,
+    List<ListTargetRow> findListTargetPage(
+            @Param("page") OffsetPage<ListTargetRow> page,
+            @Param("entityCode") String entityCode,
                                  @Param("listKey") String listKey,
                                  @Param("releaseId") String releaseId);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default FormTargetRow findFormTarget(String entityCode, String formId, String releaseId) {
+        return findFormTargetPage(new OffsetPage<>(0, 1), entityCode, formId, releaseId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
-            SELECT f.id AS form_id, CAST(e.id AS CHAR) AS entity_id,
+            <script>
+            SELECT f.id AS form_id, ${@com.workflow.integration.database.api.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} AS entity_id,
                    r.id AS release_id, r.version AS release_version,
                    r.snapshot_document, r.content_hash
               FROM entity_form f
               JOIN entity_definition e
-                ON CAST(e.id AS CHAR CHARACTER SET utf8mb4)
-                     COLLATE utf8mb4_unicode_ci = f.entity_id
+                ON ${@com.workflow.integration.database.api.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} = f.entity_id
               JOIN ui_config_release r
-                ON r.id = COALESCE(#{releaseId}, f.active_release_id)
-                     COLLATE utf8mb4_unicode_ci
+                ON r.id = COALESCE(#{releaseId,jdbcType=VARCHAR}, f.active_release_id)
                AND r.config_type = 'FORM'
-               AND r.config_id = f.id COLLATE utf8mb4_unicode_ci
+               AND r.config_id = f.id
              WHERE f.id = #{formId} AND e.entity_code = #{entityCode}
                AND f.deleted = 0 AND f.status = 1
                AND e.deleted = 0 AND e.status = 'PUBLISHED'
-             LIMIT 1
+
+            </script>
             """)
-    FormTargetRow findFormTarget(@Param("entityCode") String entityCode,
+    List<FormTargetRow> findFormTargetPage(
+            @Param("page") OffsetPage<FormTargetRow> page,
+            @Param("entityCode") String entityCode,
                                  @Param("formId") String formId,
                                  @Param("releaseId") String releaseId);
 
@@ -254,7 +312,14 @@ interface EmbedManagementMapper {
             """)
     List<FieldRow> findFields(@Param("entityCode") String entityCode);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default GrantRow findGrant(String viewId, String applicationId) {
+        return findGrantPage(new OffsetPage<>(0, 1), viewId, applicationId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT g.id, g.application_id, g.view_id, g.identity_provider_id,
                    g.status, g.trusted_subject_assertion, g.revision_mode,
                    g.pinned_revision, g.capability_ceiling_json,
@@ -265,9 +330,12 @@ interface EmbedManagementMapper {
                    g.update_by, g.update_time, g.revoked_by, g.revoked_at
               FROM embed_application_grant g
              WHERE g.view_id = #{viewId} AND g.application_id = #{applicationId}
-             LIMIT 1
+
+            </script>
             """)
-    GrantRow findGrant(@Param("viewId") String viewId,
+    List<GrantRow> findGrantPage(
+            @Param("page") OffsetPage<GrantRow> page,
+            @Param("viewId") String viewId,
                        @Param("applicationId") String applicationId);
 
     @Select("""
@@ -362,14 +430,18 @@ interface EmbedManagementMapper {
     int insertOrigins(@Param("grantId") String grantId,
                       @Param("origins") List<String> origins);
 
+    /** 按乐观版本更新状态；撤销时记录人和时间，否则清空。布尔请求先转为 0/1，返回 0 表示未命中版本或身份。 */
     @Update("""
+            <script>
+            <bind name="_revokedFlag" value="revoked ? 1 : 0"/>
             UPDATE embed_application_grant
                SET status = #{status}, lock_version = lock_version + 1,
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now},
-                   revoked_by = CASE WHEN #{revoked} THEN #{actorId} ELSE NULL END,
-                   revoked_at = CASE WHEN #{revoked} THEN #{now} ELSE NULL END
+                   revoked_by = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{actorId} ELSE NULL END,
+                   revoked_at = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{now} ELSE NULL END
              WHERE id = #{grantId} AND lock_version = #{expectedVersion}
+            </script>
             """)
     int changeGrantStatus(@Param("grantId") String grantId,
                           @Param("expectedVersion") long expectedVersion,
@@ -379,48 +451,59 @@ interface EmbedManagementMapper {
                           @Param("revoked") boolean revoked);
 
     @Select("""
-            SELECT COUNT(*) > 0 FROM integration_application
+            <script>
+            SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM integration_application
              WHERE id = #{applicationId} AND status = 'ACTIVE'
-               AND (expires_at IS NULL OR expires_at > UTC_TIMESTAMP(6))
+               AND (expires_at IS NULL OR expires_at > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)})
+            </script>
             """)
     boolean applicationExistsAndEnabled(@Param("applicationId") String applicationId);
 
     /** 名称选项必须直接投影最小列，避免低权限查询加载应用凭据或身份源验证配置。 */
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<ApplicationOptionRow> findApplicationOptions(String keyword, String status, int limit, int offset) {
+        return findApplicationOptionsPage(new OffsetPage<>(offset, limit), keyword, status, limit, offset);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT a.id, a.application_name AS name, a.client_id, a.status, a.expires_at,
                    CASE WHEN a.status = 'ACTIVE'
-                              AND (a.expires_at IS NULL OR a.expires_at > UTC_TIMESTAMP(6))
+                              AND (a.expires_at IS NULL OR a.expires_at > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)})
                               AND c.application_id IS NOT NULL
-                        THEN TRUE ELSE FALSE END AS embed_launch_ready
+                        THEN 1 ELSE 0 END AS embed_launch_ready
               FROM integration_application a
               LEFT JOIN integration_application_credential c
                 ON c.application_id = a.id
                AND c.status = 'ACTIVE'
-               AND (c.expires_at IS NULL OR c.expires_at > UTC_TIMESTAMP(6))
+               AND (c.expires_at IS NULL OR c.expires_at > ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)})
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (a.id LIKE CONCAT('%', #{keyword}, '%')
-                      OR a.application_name LIKE CONCAT('%', #{keyword}, '%')
-                      OR a.client_id LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (a.id LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR a.application_name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR a.client_id LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND a.status = #{status}</if>
              ORDER BY CASE WHEN a.id = #{keyword} THEN 0 ELSE 1 END,
-                      a.application_name, a.id LIMIT #{limit} OFFSET #{offset}
+                      a.application_name, a.id
             </script>
             """)
-    List<ApplicationOptionRow> findApplicationOptions(
+    List<ApplicationOptionRow> findApplicationOptionsPage(
+            @Param("page") OffsetPage<ApplicationOptionRow> page,
             @Param("keyword") String keyword, @Param("status") String status,
             @Param("limit") int limit, @Param("offset") int offset);
 
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT COUNT(*) FROM integration_application a
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (a.id LIKE CONCAT('%', #{keyword}, '%')
-                      OR a.application_name LIKE CONCAT('%', #{keyword}, '%')
-                      OR a.client_id LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (a.id LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR a.application_name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR a.client_id LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND a.status = #{status}</if>
             </script>
@@ -428,31 +511,40 @@ interface EmbedManagementMapper {
     long countApplicationOptions(@Param("keyword") String keyword,
                                  @Param("status") String status);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<IdentityProviderOptionRow> findIdentityProviderOptions(String keyword, String status, int limit, int offset) {
+        return findIdentityProviderOptionsPage(new OffsetPage<>(offset, limit), keyword, status, limit, offset);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT id, name, type, status
               FROM embed_identity_provider
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (id LIKE CONCAT('%', #{keyword}, '%')
-                      OR name LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (id LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR name LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND status = #{status}</if>
              ORDER BY CASE WHEN id = #{keyword} THEN 0 ELSE 1 END,
-                      name, id LIMIT #{limit} OFFSET #{offset}
+                      name, id
             </script>
             """)
-    List<IdentityProviderOptionRow> findIdentityProviderOptions(
+    List<IdentityProviderOptionRow> findIdentityProviderOptionsPage(
+            @Param("page") OffsetPage<IdentityProviderOptionRow> page,
             @Param("keyword") String keyword, @Param("status") String status,
             @Param("limit") int limit, @Param("offset") int offset);
 
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT COUNT(*) FROM embed_identity_provider
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (id LIKE CONCAT('%', #{keyword}, '%')
-                      OR name LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (id LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR name LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND status = #{status}</if>
             </script>
@@ -460,8 +552,15 @@ interface EmbedManagementMapper {
     long countIdentityProviderOptions(@Param("keyword") String keyword,
                                       @Param("status") String status);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<ProviderRow> findProviders(String keyword, String status, String type, int limit, int offset) {
+        return findProvidersPage(new OffsetPage<>(offset, limit), keyword, status, type, limit, offset);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT id, name, type, status, issuer, subject_namespace,
                    audiences_json, algorithms_json, jwks_mode, jwks_json, jwks_url,
                    clock_skew_seconds, max_assertion_lifetime_seconds,
@@ -470,15 +569,17 @@ interface EmbedManagementMapper {
               FROM embed_identity_provider
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (name LIKE CONCAT('%', #{keyword}, '%')
-                      OR subject_namespace LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR subject_namespace LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND status = #{status}</if>
                <if test="type != null and type != ''">AND type = #{type}</if>
-             ORDER BY update_time DESC, id LIMIT #{limit} OFFSET #{offset}
+             ORDER BY update_time DESC, id
             </script>
             """)
-    List<ProviderRow> findProviders(@Param("keyword") String keyword,
+    List<ProviderRow> findProvidersPage(
+            @Param("page") OffsetPage<ProviderRow> page,
+            @Param("keyword") String keyword,
                                     @Param("status") String status,
                                     @Param("type") String type,
                                     @Param("limit") int limit,
@@ -486,11 +587,12 @@ interface EmbedManagementMapper {
 
     @Select("""
             <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             SELECT COUNT(*) FROM embed_identity_provider
              WHERE 1 = 1
                <if test="keyword != null and keyword != ''">
-                 AND (name LIKE CONCAT('%', #{keyword}, '%')
-                      OR subject_namespace LIKE CONCAT('%', #{keyword}, '%'))
+                 AND (name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                      OR subject_namespace LIKE #{_contains_keyword,jdbcType=VARCHAR})
                </if>
                <if test="status != null and status != ''">AND status = #{status}</if>
                <if test="type != null and type != ''">AND type = #{type}</if>
@@ -500,16 +602,26 @@ interface EmbedManagementMapper {
                         @Param("status") String status,
                         @Param("type") String type);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ProviderRow findProvider(String id) {
+        return findProviderPage(new OffsetPage<>(0, 1), id).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, name, type, status, issuer, subject_namespace,
                    audiences_json, algorithms_json, jwks_mode, jwks_json, jwks_url,
                    clock_skew_seconds, max_assertion_lifetime_seconds,
                    key_version, lock_version, security_version, create_by, create_time,
                    update_by, update_time, revoked_by, revoked_at
               FROM embed_identity_provider
-             WHERE id = #{id} LIMIT 1
+             WHERE id = #{id}
+            </script>
             """)
-    ProviderRow findProvider(@Param("id") String id);
+    List<ProviderRow> findProviderPage(
+            @Param("page") OffsetPage<ProviderRow> page,
+            @Param("id") String id);
 
     @Select("""
             SELECT id, name, type, status, issuer, subject_namespace,
@@ -522,20 +634,32 @@ interface EmbedManagementMapper {
             """)
     ProviderRow lockProvider(@Param("id") String id);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ProviderRow findProviderByIssuerAndNamespace(String issuer, String namespace) {
+        return findProviderByIssuerAndNamespacePage(new OffsetPage<>(0, 1), issuer, namespace).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, name, type, status, issuer, subject_namespace,
                    audiences_json, algorithms_json, jwks_mode, jwks_json, jwks_url,
                    clock_skew_seconds, max_assertion_lifetime_seconds,
                    key_version, lock_version, security_version, create_by, create_time,
                    update_by, update_time, revoked_by, revoked_at
               FROM embed_identity_provider
-             WHERE ((issuer = #{issuer}) OR (issuer IS NULL AND #{issuer} IS NULL))
+             WHERE ((issuer = #{issuer,jdbcType=VARCHAR}) OR (issuer IS NULL AND #{issuer,jdbcType=VARCHAR} IS NULL))
                AND subject_namespace = #{namespace}
-             LIMIT 1
+
+            </script>
             """)
-    ProviderRow findProviderByIssuerAndNamespace(@Param("issuer") String issuer,
+    List<ProviderRow> findProviderByIssuerAndNamespacePage(
+            @Param("page") OffsetPage<ProviderRow> page,
+            @Param("issuer") String issuer,
                                                   @Param("namespace") String namespace);
 
+    // type/issuer 的 CHECK 配合判别值唯一键保证此条件至多一行，包括 issuer=NULL。
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
     @Select("""
             SELECT id, name, type, status, issuer, subject_namespace,
                    audiences_json, algorithms_json, jwks_mode, jwks_json, jwks_url,
@@ -543,9 +667,9 @@ interface EmbedManagementMapper {
                    key_version, lock_version, security_version, create_by, create_time,
                    update_by, update_time, revoked_by, revoked_at
               FROM embed_identity_provider
-             WHERE ((issuer = #{issuer}) OR (issuer IS NULL AND #{issuer} IS NULL))
+             WHERE ((issuer = #{issuer,jdbcType=VARCHAR}) OR (issuer IS NULL AND #{issuer,jdbcType=VARCHAR} IS NULL))
                AND subject_namespace = #{namespace}
-             LIMIT 1 FOR UPDATE
+             FOR UPDATE
             """)
     ProviderRow lockProviderByIssuerAndNamespace(@Param("issuer") String issuer,
                                                   @Param("namespace") String namespace);
@@ -558,7 +682,7 @@ interface EmbedManagementMapper {
               key_version, lock_version, security_version,
               create_by, create_time, update_by, update_time
             ) VALUES (
-              #{id}, #{name}, #{type}, #{status}, #{issuer}, #{subjectNamespace},
+              #{id}, #{name}, #{type}, #{status}, #{issuer,jdbcType=VARCHAR}, #{subjectNamespace},
               #{audiencesJson}, #{algorithmsJson}, #{jwksMode}, #{jwksJson}, #{jwksUrl},
               #{clockSkewSeconds}, #{maxAssertionLifetimeSeconds},
               #{keyVersion}, #{lockVersion}, #{securityVersion},
@@ -587,14 +711,18 @@ interface EmbedManagementMapper {
                        @Param("actorId") String actorId,
                        @Param("now") LocalDateTime now);
 
+    /** 按乐观版本更新状态；撤销时记录人和时间，否则清空。布尔请求先转为 0/1，返回 0 表示未命中版本或身份。 */
     @Update("""
+            <script>
+            <bind name="_revokedFlag" value="revoked ? 1 : 0"/>
             UPDATE embed_identity_provider
                SET status = #{status}, lock_version = lock_version + 1,
                    security_version = security_version + 1,
                    update_by = #{actorId}, update_time = #{now},
-                   revoked_by = CASE WHEN #{revoked} THEN #{actorId} ELSE NULL END,
-                   revoked_at = CASE WHEN #{revoked} THEN #{now} ELSE NULL END
+                   revoked_by = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{actorId} ELSE NULL END,
+                   revoked_at = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{now} ELSE NULL END
              WHERE id = #{providerId} AND lock_version = #{expectedVersion}
+            </script>
             """)
     int changeProviderStatus(@Param("providerId") String providerId,
                              @Param("expectedVersion") long expectedVersion,
@@ -619,14 +747,20 @@ interface EmbedManagementMapper {
                           @Param("actorId") String actorId,
                           @Param("now") LocalDateTime now);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<BindingRow> findBindings(String applicationId, String providerId, String flowUserId, String status, int limit, int offset) {
+        return findBindingsPage(new OffsetPage<>(offset, limit), applicationId, providerId, flowUserId, status, limit, offset);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
             SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
                    b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
-                   EXISTS (SELECT 1 FROM sys_user u
+                   CASE WHEN EXISTS (SELECT 1 FROM sys_user u
                             WHERE u.id = b.flow_user_id AND u.status = '0'
                               AND u.deleted = 0 AND u.password_reset_required = 0)
-                       AS flow_user_ready,
+                       THEN 1 ELSE 0 END AS flow_user_ready,
                    b.status, b.binding_version, b.effective_at, b.expires_at,
                    b.create_by, b.create_time, b.update_by, b.update_time,
                    b.revoked_by, b.revoked_at
@@ -642,10 +776,12 @@ interface EmbedManagementMapper {
                  AND b.flow_user_id = #{flowUserId}
                </if>
                <if test="status != null and status != ''">AND b.status = #{status}</if>
-             ORDER BY b.update_time DESC, b.id LIMIT #{limit} OFFSET #{offset}
+             ORDER BY b.update_time DESC, b.id
             </script>
             """)
-    List<BindingRow> findBindings(@Param("applicationId") String applicationId,
+    List<BindingRow> findBindingsPage(
+            @Param("page") OffsetPage<BindingRow> page,
+            @Param("applicationId") String applicationId,
                                   @Param("providerId") String providerId,
                                   @Param("flowUserId") String flowUserId,
                                   @Param("status") String status,
@@ -673,25 +809,35 @@ interface EmbedManagementMapper {
                        @Param("flowUserId") String flowUserId,
                        @Param("status") String status);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default BindingRow findBinding(String id) {
+        return findBindingPage(new OffsetPage<>(0, 1), id).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
                    b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
-                   EXISTS (SELECT 1 FROM sys_user u
+                   CASE WHEN EXISTS (SELECT 1 FROM sys_user u
                             WHERE u.id = b.flow_user_id AND u.status = '0'
                               AND u.deleted = 0 AND u.password_reset_required = 0)
-                       AS flow_user_ready,
+                       THEN 1 ELSE 0 END AS flow_user_ready,
                    b.status, b.binding_version, b.effective_at, b.expires_at,
                    b.create_by, b.create_time, b.update_by, b.update_time,
                    b.revoked_by, b.revoked_at
               FROM embed_external_identity_binding b
-             WHERE b.id = #{id} LIMIT 1
+             WHERE b.id = #{id}
+            </script>
             """)
-    BindingRow findBinding(@Param("id") String id);
+    List<BindingRow> findBindingPage(
+            @Param("page") OffsetPage<BindingRow> page,
+            @Param("id") String id);
 
     @Select("""
             SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
                    b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
-                   FALSE AS flow_user_ready,
+                   0 AS flow_user_ready,
                    b.status, b.binding_version, b.effective_at, b.expires_at,
                    b.create_by, b.create_time, b.update_by, b.update_time,
                    b.revoked_by, b.revoked_at
@@ -700,14 +846,20 @@ interface EmbedManagementMapper {
             """)
     BindingRow lockBinding(@Param("id") String id);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default BindingRow findBindingByDigests(String applicationId, String providerId, List<String> digests) {
+        return findBindingByDigestsPage(new OffsetPage<>(0, 1), applicationId, providerId, digests).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
             <script>
             SELECT b.id, b.application_id, b.identity_provider_id, b.subject_digest,
                    b.subject_digest_key_version, b.subject_hint, b.flow_user_id,
-                   EXISTS (SELECT 1 FROM sys_user u
+                   CASE WHEN EXISTS (SELECT 1 FROM sys_user u
                             WHERE u.id = b.flow_user_id AND u.status = '0'
                               AND u.deleted = 0 AND u.password_reset_required = 0)
-                       AS flow_user_ready,
+                       THEN 1 ELSE 0 END AS flow_user_ready,
                    b.status, b.binding_version, b.effective_at, b.expires_at,
                    b.create_by, b.create_time, b.update_by, b.update_time,
                    b.revoked_by, b.revoked_at
@@ -718,10 +870,12 @@ interface EmbedManagementMapper {
                <foreach collection="digests" item="digest" open="(" separator="," close=")">
                  #{digest}
                </foreach>
-             LIMIT 1
+
             </script>
             """)
-    BindingRow findBindingByDigests(@Param("applicationId") String applicationId,
+    List<BindingRow> findBindingByDigestsPage(
+            @Param("page") OffsetPage<BindingRow> page,
+            @Param("applicationId") String applicationId,
                                     @Param("providerId") String providerId,
                                     @Param("digests") List<String> digests);
 
@@ -739,13 +893,17 @@ interface EmbedManagementMapper {
             """)
     int insertBinding(BindingRow row);
 
+    /** 按乐观版本更新状态；撤销时记录人和时间，否则清空。布尔请求先转为 0/1，返回 0 表示未命中版本或身份。 */
     @Update("""
+            <script>
+            <bind name="_revokedFlag" value="revoked ? 1 : 0"/>
             UPDATE embed_external_identity_binding
                SET status = #{status}, binding_version = binding_version + 1,
                    update_by = #{actorId}, update_time = #{now},
-                   revoked_by = CASE WHEN #{revoked} THEN #{actorId} ELSE NULL END,
-                   revoked_at = CASE WHEN #{revoked} THEN #{now} ELSE NULL END
+                   revoked_by = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{actorId} ELSE NULL END,
+                   revoked_at = CASE WHEN #{_revokedFlag,jdbcType=INTEGER} = 1 THEN #{now} ELSE NULL END
              WHERE id = #{bindingId} AND binding_version = #{expectedVersion}
+            </script>
             """)
     int changeBindingStatus(@Param("bindingId") String bindingId,
                             @Param("expectedVersion") long expectedVersion,
@@ -755,7 +913,7 @@ interface EmbedManagementMapper {
                             @Param("revoked") boolean revoked);
 
     @Select("""
-            SELECT COUNT(*) > 0 FROM sys_user
+            SELECT CASE WHEN COUNT(*) > 0 THEN 1 ELSE 0 END FROM sys_user
              WHERE id = #{id} AND status = '0' AND deleted = 0
                AND password_reset_required = 0
             """)

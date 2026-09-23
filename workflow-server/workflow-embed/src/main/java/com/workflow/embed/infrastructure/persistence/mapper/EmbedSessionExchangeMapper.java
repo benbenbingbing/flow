@@ -1,5 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.domain.EmbedSessionExchangePlan;
 import com.workflow.embed.infrastructure.persistence.record.EmbedApplicationLockRow;
 import com.workflow.embed.infrastructure.persistence.record.EmbedBindingLockRow;
@@ -21,7 +23,14 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedSessionExchangeMapper {
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedLaunchExchangeRow findByCodeDigest(String launchCodeDigest) {
+        return findByCodeDigestPage(new OffsetPage<>(0, 1), launchCodeDigest).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT l.id, l.application_id, l.grant_id, l.view_id, l.view_release_id,
                    l.identity_provider_id, l.provider_security_version,
                    l.application_version, l.grant_security_version, l.view_security_version,
@@ -74,9 +83,11 @@ public interface EmbedSessionExchangeMapper {
               JOIN embed_external_identity_binding b ON b.id = l.identity_binding_id
               JOIN sys_user u ON u.id = l.flow_user_id
              WHERE l.launch_code_digest = #{launchCodeDigest}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedLaunchExchangeRow findByCodeDigest(
+    List<EmbedLaunchExchangeRow> findByCodeDigestPage(
+            @Param("page") OffsetPage<EmbedLaunchExchangeRow> page,
             @Param("launchCodeDigest") String launchCodeDigest);
 
     @Select("""
@@ -128,19 +139,6 @@ public interface EmbedSessionExchangeMapper {
              FOR UPDATE
             """)
     EmbedFlowUserRow lockFlowUser(@Param("id") String id);
-
-    @Insert("""
-            INSERT INTO embed_session_counter (
-              grant_id, flow_user_id, active_count, lock_version,
-              create_time, update_time
-            ) VALUES (
-              #{grantId}, #{flowUserId}, 0, 0, #{now}, #{now}
-            ) ON DUPLICATE KEY UPDATE grant_id = VALUES(grant_id)
-            """)
-    int ensureCounter(
-            @Param("grantId") String grantId,
-            @Param("flowUserId") String flowUserId,
-            @Param("now") LocalDateTime now);
 
     @Select("""
             SELECT grant_id, flow_user_id, active_count, lock_version

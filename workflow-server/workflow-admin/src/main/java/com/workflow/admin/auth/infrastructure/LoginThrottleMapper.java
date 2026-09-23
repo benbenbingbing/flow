@@ -2,13 +2,13 @@ package com.workflow.admin.auth.infrastructure;
 
 import java.time.LocalDateTime;
 import org.apache.ibatis.annotations.Delete;
-import org.apache.ibatis.annotations.Insert;
+import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 /**
- * Atomic MySQL operations for distributed login throttling.
+ * 分布式登录限流的持久化操作；写入前由调用方取得同一事务的限流行锁。
  */
 @Mapper
 public interface LoginThrottleMapper {
@@ -22,41 +22,29 @@ public interface LoginThrottleMapper {
             @Param("accountKey") String accountKey,
             @Param("clientKey") String clientKey);
 
-    @Insert("""
-            INSERT INTO auth_login_throttle (
-              throttle_key,
-              failure_count,
-              window_started_at,
-              blocked_until,
-              update_time
-            ) VALUES (
-              #{throttleKey},
-              1,
-              #{now},
-              NULL,
-              #{now}
-            )
-            ON DUPLICATE KEY UPDATE
-              failure_count = IF(
-                window_started_at < #{windowCutoff},
-                1,
-                failure_count + 1),
-              blocked_until = IF(
-                failure_count >= #{maxFailures},
-                DATE_ADD(#{now}, INTERVAL #{blockSeconds} SECOND),
-                blocked_until),
-              window_started_at = IF(
-                window_started_at < #{windowCutoff},
-                #{now},
-                window_started_at),
-              update_time = #{now}
+    /**
+     * 持锁后记录一次失败。封禁判断显式计算本次失败数，并放在计数赋值之前，
+     * 同时兼容 MySQL 从左到右赋值与其他产品使用旧行值的 UPDATE 语义。
+     */
+    @Update("""
+            UPDATE auth_login_throttle
+               SET blocked_until = CASE
+                     WHEN (CASE WHEN window_started_at < #{windowCutoff}
+                                THEN 1 ELSE failure_count + 1 END) >= #{maxFailures}
+                     THEN #{blockedUntil} ELSE blocked_until END,
+                   failure_count = CASE WHEN window_started_at < #{windowCutoff}
+                                        THEN 1 ELSE failure_count + 1 END,
+                   window_started_at = CASE WHEN window_started_at < #{windowCutoff}
+                                            THEN #{now} ELSE window_started_at END,
+                   update_time = #{now}
+             WHERE throttle_key = #{throttleKey}
             """)
     int recordFailure(
             @Param("throttleKey") String throttleKey,
             @Param("now") LocalDateTime now,
             @Param("windowCutoff") LocalDateTime windowCutoff,
             @Param("maxFailures") int maxFailures,
-            @Param("blockSeconds") int blockSeconds);
+            @Param("blockedUntil") LocalDateTime blockedUntil);
 
     @Delete("""
             DELETE FROM auth_login_throttle

@@ -288,40 +288,33 @@ public class TaskActionService {
                 taskService.setAssignee(taskId, transferTo);
                 processTaskService.completeTask(taskId, "transfer", "转办给: " + transferTo);
                 
-                // 为转办人创建新的待办记录（原待办已标记为 transfer，需要一条新的 todo）
-                try {
-                    Task transferredTask = taskService.createTaskQuery().taskId(taskId).singleResult();
-                    if (transferredTask != null) {
-                        Map<String, Object> variables = runtimeService.getVariables(transferredTask.getProcessInstanceId());
-                        processTaskService.createTask(transferredTask, variables);
-                        log.info("已为转办人 {} 创建新待办: taskId={}",
-                                LogValue.safe(transferTo), LogValue.safe(taskId));
-                    }
-                } catch (Exception e) {
-                    log.warn("为转办人创建待办失败: taskId={}, transferTo={}, failureType={}",
-                            LogValue.safe(taskId), LogValue.safe(transferTo), LogValue.failureType(e));
+                // 引擎办理人、本地新待办和转办记录属于同一次业务变更，必须一并提交。
+                // 不吞掉数据库异常后继续事务：PostgreSQL 可能已终止事务，Spring 的参与事务
+                // 也可能已标记 rollback-only；对所有数据库都让外层事务回滚，避免转办后无人可见。
+                Task transferredTask = taskService.createTaskQuery().taskId(taskId).singleResult();
+                if (transferredTask == null) {
+                    throw taskAlreadyCompleted();
                 }
-                
-                // 记录转办日志到 process_operation_log
-                try {
-                    com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog log = new com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog();
-                    log.setProcessInstanceId(task.getProcessInstanceId());
-                    log.setTaskId(taskId);
-                    log.setOperationType("TRANSFER");
-                    log.setOperatorId(userId);
-                    String operatorName = sysUserService.getDisplayName(userId);
-                    log.setOperatorName(operatorName);
-                    log.setOperationTime(LocalDateTime.now());
-                    log.setOperationComment(comment);
-                    log.setOldValue(assignee);
-                    log.setNewValue(transferTo);
-                    log.setOldValueFormat("PLAIN_TEXT");
-                    log.setNewValueFormat("PLAIN_TEXT");
-                    operationLogMapper.insert(log);
-                } catch (Exception e) {
-                    log.warn("记录转办日志失败", e);
-                }
-                
+                Map<String, Object> variables = runtimeService.getVariables(transferredTask.getProcessInstanceId());
+                processTaskService.createTask(transferredTask, variables);
+                log.info("已为转办人 {} 创建新待办: taskId={}",
+                        LogValue.safe(transferTo), LogValue.safe(taskId));
+
+                com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog transferLog =
+                        new com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog();
+                transferLog.setProcessInstanceId(task.getProcessInstanceId());
+                transferLog.setTaskId(taskId);
+                transferLog.setOperationType("TRANSFER");
+                transferLog.setOperatorId(userId);
+                transferLog.setOperatorName(sysUserService.getDisplayName(userId));
+                transferLog.setOperationTime(LocalDateTime.now());
+                transferLog.setOperationComment(comment);
+                transferLog.setOldValue(assignee);
+                transferLog.setNewValue(transferTo);
+                transferLog.setOldValueFormat("PLAIN_TEXT");
+                transferLog.setNewValueFormat("PLAIN_TEXT");
+                operationLogMapper.insert(transferLog);
+
                 log.info("任务 {} 已转办给 {}", LogValue.safe(taskId), LogValue.safe(transferTo));
                 break;
 

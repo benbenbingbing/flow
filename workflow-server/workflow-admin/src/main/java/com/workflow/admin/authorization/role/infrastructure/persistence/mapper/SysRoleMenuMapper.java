@@ -1,11 +1,9 @@
 package com.workflow.admin.authorization.role.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRoleMenu;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -21,8 +19,10 @@ public interface SysRoleMenuMapper extends BaseMapper<SysRoleMenu> {
      * @param roleId 角色ID
      * @return 菜单ID列表
      */
-    @Select("SELECT menu_id FROM sys_role_menu WHERE role_id = #{roleId}")
-    List<String> selectMenuIdsByRoleId(@Param("roleId") String roleId);
+    default List<String> selectMenuIdsByRoleId(String roleId) {
+        return selectObjs(Wrappers.<SysRoleMenu>lambdaQuery()
+                .select(SysRoleMenu::getMenuId).eq(SysRoleMenu::getRoleId, roleId));
+    }
     
     /**
      * 根据菜单ID查询角色ID列表
@@ -30,16 +30,20 @@ public interface SysRoleMenuMapper extends BaseMapper<SysRoleMenu> {
      * @param menuId 菜单ID
      * @return 角色ID列表
      */
-    @Select("SELECT role_id FROM sys_role_menu WHERE menu_id = #{menuId}")
-    List<String> selectRoleIdsByMenuId(@Param("menuId") String menuId);
+    default List<String> selectRoleIdsByMenuId(String menuId) {
+        return selectObjs(Wrappers.<SysRoleMenu>lambdaQuery()
+                .select(SysRoleMenu::getRoleId).eq(SysRoleMenu::getMenuId, menuId));
+    }
     
     /**
      * 删除角色的所有菜单权限
      *
      * @param roleId 角色ID
      */
-    @Delete("DELETE FROM sys_role_menu WHERE role_id = #{roleId}")
-    void deleteByRoleId(@Param("roleId") String roleId);
+    default void deleteByRoleId(String roleId) {
+        // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        delete(Wrappers.<SysRoleMenu>lambdaQuery().eq(SysRoleMenu::getRoleId, roleId));
+    }
 
     /**
      * 检查角色是否已分配指定菜单权限
@@ -48,6 +52,8 @@ public interface SysRoleMenuMapper extends BaseMapper<SysRoleMenu> {
      * @param menuId 菜单ID
      * @return 已分配返回 true，否则 false
      */
-    @Select("SELECT COUNT(*) > 0 FROM sys_role_menu WHERE role_id = #{roleId} AND menu_id = #{menuId}")
-    boolean existsRoleMenu(@Param("roleId") String roleId, @Param("menuId") String menuId);
+    default boolean existsRoleMenu(String roleId, String menuId) {
+        return selectCount(Wrappers.<SysRoleMenu>lambdaQuery()
+                .eq(SysRoleMenu::getRoleId, roleId).eq(SysRoleMenu::getMenuId, menuId)) > 0;
+    }
 }

@@ -1,6 +1,8 @@
 package com.workflow.entity.form.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -11,38 +13,56 @@ import java.util.List;
 /**
  * 实体表单Mapper
  */
+// 普通查询使用 Wrapper；分页由 MyBatis-Plus 生成对应数据库语法。
 @Mapper
 public interface EntityFormMapper extends BaseMapper<EntityForm> {
-    
+
     /**
      * 查询实体的表单列表
      */
-    @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND deleted = 0")
-    List<EntityForm> selectByEntityId(@Param("entityId") String entityId);
-    
+    default List<EntityForm> selectByEntityId(String entityId) {
+        return selectList(Wrappers.<EntityForm>lambdaQuery()
+                .eq(EntityForm::getEntityId, entityId));
+    }
+
     /**
      * 检查表单标识是否已存在
      */
-    @Select("SELECT COUNT(*) > 0 FROM entity_form WHERE entity_id = #{entityId} AND form_key = #{formKey} AND deleted = 0 AND (#{excludeId} = '' OR id != #{excludeId})")
-    boolean existsFormKey(@Param("entityId") String entityId, @Param("formKey") String formKey, @Param("excludeId") String excludeId);
-    
+    default boolean existsFormKey(String entityId, String formKey, String excludeId) {
+        return exists(Wrappers.<EntityForm>lambdaQuery()
+                .eq(EntityForm::getEntityId, entityId)
+                .eq(EntityForm::getFormKey, formKey)
+                .ne(excludeId != null && !excludeId.isEmpty(), EntityForm::getId, excludeId));
+    }
+
     /**
      * 根据表单Key查询
      */
-    @Select("SELECT * FROM entity_form WHERE form_key = #{formKey} AND deleted = 0 LIMIT 1")
-    EntityForm selectByFormKey(@Param("formKey") String formKey);
-    
+    default EntityForm selectByFormKey(String formKey) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()
+                .eq(EntityForm::getFormKey, formKey))
+                .stream().findFirst().orElse(null);
+    }
+
     /**
      * 根据实体ID和表单Key查询
      */
-    @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND form_key = #{formKey} AND deleted = 0 LIMIT 1")
-    EntityForm selectByEntityIdAndFormKey(@Param("entityId") String entityId, @Param("formKey") String formKey);
-    
+    default EntityForm selectByEntityIdAndFormKey(String entityId, String formKey) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()
+                .eq(EntityForm::getEntityId, entityId)
+                .eq(EntityForm::getFormKey, formKey))
+                .stream().findFirst().orElse(null);
+    }
+
     /**
      * 查询实体的默认表单
      */
-    @Select("SELECT * FROM entity_form WHERE entity_id = #{entityId} AND is_default = 1 AND deleted = 0 LIMIT 1")
-    EntityForm selectDefaultByEntityId(@Param("entityId") String entityId);
+    default EntityForm selectDefaultByEntityId(String entityId) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()
+                .eq(EntityForm::getEntityId, entityId)
+                .eq(EntityForm::getIsDefault, 1))
+                .stream().findFirst().orElse(null);
+    }
 
     /**
      * 根据主键 ID 加锁查询表单（FOR UPDATE），用于并发更新场景。

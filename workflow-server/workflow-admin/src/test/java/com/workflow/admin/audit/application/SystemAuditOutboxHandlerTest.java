@@ -1,5 +1,9 @@
 package com.workflow.admin.audit.application;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.domain.SystemOperationLog;
@@ -27,7 +31,8 @@ class SystemAuditOutboxHandlerTest {
                 .when(mapper)
                 .insert(any(SystemOperationLog.class));
         SystemAuditOutboxHandler handler =
-                new SystemAuditOutboxHandler(mapper, objectMapper);
+                new SystemAuditOutboxHandler(mapper, objectMapper,
+                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         OutboxEvent event = new OutboxEvent(
                 "outbox-1",
                 SystemAuditOutboxWriter.TOPIC,

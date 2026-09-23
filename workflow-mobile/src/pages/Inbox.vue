@@ -1,12 +1,20 @@
 <template>
   <section class="inbox-page">
-    <header class="inbox-header"><h1>{{ definition.label }} <span v-if="current.initialized">{{ current.total }}</span></h1><button class="inbox-icon-button" aria-label="刷新列表" :disabled="current.loading" @click="refresh"><VanIcon name="replay" /></button><button class="inbox-avatar" aria-label="用户菜单" @click="userMenu = true">{{ nickname.slice(0, 1) }}</button></header>
-    <div class="inbox-search"><VanSearch v-model="current.keyword" :show-action="false" placeholder="搜索流程名称或事项" @search="refresh" @clear="refresh" /><button class="inbox-icon-button" :class="{ filtered: hasFilters }" aria-label="筛选" @click="filterOpen = true"><VanIcon name="filter-o" /></button></div>
-    <div class="inbox-section"><h2>{{ sectionLabel }}</h2><span>{{ kind === 'todo' ? `共 ${current.total} 条` : sortLabel }}</span></div>
+    <div class="inbox-sticky-header">
+      <header class="inbox-header">
+        <h1>{{ definition.label }}</h1>
+        <VanSearch v-model="current.keyword" class="inbox-search" :show-action="false" placeholder="搜索" aria-label="搜索流程名称或事项" @search="refresh" @clear="refresh" />
+        <div class="inbox-actions">
+          <button class="inbox-icon-button" :class="{ filtered: hasFilters }" aria-label="筛选" @click="filterOpen = true"><svg class="inbox-filter-icon" viewBox="0 0 18 22" aria-hidden="true"><path d="M1 1H17L11 10V21L7 18V10Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg></button>
+          <button class="inbox-avatar" aria-label="用户菜单" @click="userMenu = true">{{ nickname.slice(0, 1) }}</button>
+        </div>
+      </header>
+      <div class="inbox-section"><span>{{ sortLabel }}</span><span>共 {{ current.total }} 条</span></div>
+    </div>
     <div v-if="current.error" class="mobile-error" role="alert">{{ current.error }}<button @click="load(kind, current.page === 0)">重试</button></div>
     <VanPullRefresh v-model="current.refreshing" @refresh="refresh">
       <VanList :loading="current.loading" :finished="current.finished" :error="Boolean(current.error)" :immediate-check="false" finished-text="已经到底了" @load="load(kind)">
-        <template v-for="(item, index) in current.rows" :key="item.id || item.taskId || item.processInstanceId"><div v-if="kind === 'done' && doneGroup(item) !== doneGroup(current.rows[index - 1])" class="inbox-date-group">{{ doneGroup(item) }}</div><MobileTaskCard :item="item" :kind="kind" @open="openDetail" /></template>
+        <MobileTaskCard v-for="item in current.rows" :key="item.id || item.taskId || item.processInstanceId" :item="item" :kind="kind" @open="openDetail" />
         <VanEmpty v-if="current.initialized && !current.rows.length && !current.loading && !current.error" :description="current.keyword ? '没有找到相关流程' : `暂无${definition.label}`" />
       </VanList>
     </VanPullRefresh>
@@ -26,7 +34,7 @@
 <script setup>
 import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Search as VanSearch, Icon as VanIcon, List as VanList, PullRefresh as VanPullRefresh, Empty as VanEmpty, Tabbar as VanTabbar, TabbarItem as VanTabbarItem, ActionSheet as VanActionSheet, Popup as VanPopup, Field as VanField, Button as VanButton, showConfirmDialog, showFailToast } from 'vant'
+import { Search as VanSearch, List as VanList, PullRefresh as VanPullRefresh, Empty as VanEmpty, Tabbar as VanTabbar, TabbarItem as VanTabbarItem, ActionSheet as VanActionSheet, Popup as VanPopup, Field as VanField, Button as VanButton, showConfirmDialog, showFailToast } from 'vant'
 import { MobileTaskCard } from '@flow/workflow-mobile-ui'
 import { session, tasks, logout, onSessionCleared } from '../adapters/services.js'
 import { INBOXES, createInboxState, createInboxLoader, onInboxesInvalidated } from '../inbox.js'
@@ -39,17 +47,8 @@ const kind = computed(() => INBOXES.some(item => item.key === route.params.kind)
 const definition = computed(() => INBOXES.find(item => item.key === kind.value))
 const current = computed(() => state[kind.value])
 const nickname = computed(() => session.userInfo?.nickname || session.userInfo?.username || '用户')
-const sectionLabel = computed(() => ({ todo: '全部待办', done: '最近办理', started: '全部流程', cc: '全部知会' })[kind.value])
-const sortLabel = computed(() => ({ done: '按办理时间', started: '按发起时间', cc: '按知会时间' })[kind.value])
+const sortLabel = computed(() => ({ todo: '按到达时间', done: '按办理时间', started: '按发起时间', cc: '按知会时间' })[kind.value])
 const hasFilters = computed(() => Boolean(current.value.startUserName || current.value.startDate || current.value.endDate))
-/** 只为服务端现有顺序添加日期分隔，不改变分页顺序或把缺失时间归入今天。 */
-function doneGroup(item) {
-  if (!item) return ''
-  const raw = item.endTime || item.createTime
-  const date = raw ? new Date(raw) : null
-  if (!date || Number.isNaN(date.getTime())) return '办理记录'
-  return date.toDateString() === new Date().toDateString() ? '今天' : '更早'
-}
 const userMenu = ref(false), filterOpen = ref(false)
 const load = createInboxLoader(state, tasks)
 /** 角标使用未筛选的待办总数与未读知会数，避免搜索或尚未打开的列表影响提醒。 */
@@ -109,10 +108,22 @@ async function leave() {
 }
 </script>
 <style scoped>
-.inbox-page { padding: 0 18px calc(72px + env(safe-area-inset-bottom)); background: var(--flow-mobile-surface); min-height: 100dvh; }.inbox-header { height: 56px; display: flex; align-items: center; gap: 6px; }.inbox-header h1 { margin: 0; flex: 1; font-size: 20px; font-weight: 650; letter-spacing: -.3px; }.inbox-header h1 span { display: inline-block; font-size: 12px; padding: 3px 7px; border-radius: 5px; background: var(--flow-mobile-accent-soft); color: var(--flow-mobile-accent-text); vertical-align: middle; margin-left: 4px; letter-spacing: 0; }
+.inbox-page { padding: 0 18px calc(72px + env(safe-area-inset-bottom)); background: var(--flow-mobile-surface); min-height: 100dvh; }
+/* 两行一起吸顶，继续使用页面滚动以保留分页、下拉刷新和返回时的滚动位置；背景覆盖两侧留白。 */
+.inbox-sticky-header { position: sticky; top: 0; z-index: 10; margin: 0 -18px; padding: 8px 18px 0; background: var(--flow-mobile-surface); }
+/* 四个页签共用单行工具栏；标题和操作按钮固定宽度，搜索框使用剩余空间。 */
+.inbox-header { height: 56px; display: flex; align-items: center; gap: 6px; }.inbox-header h1 { margin: 0; flex-shrink: 0; font-size: 16px; font-weight: 650; white-space: nowrap; }
+.inbox-actions { display: flex; align-items: center; flex-shrink: 0; gap: 6px; }
 /* 仅约束工具栏按钮，避免父级 scoped 选择器把子组件根按钮压成固定高度。 */
-.inbox-icon-button, .inbox-avatar { border: 0; background: transparent; color: var(--flow-mobile-accent-text); width: 44px; height: 44px; padding: 0; flex-shrink: 0; cursor: pointer; font-size: 23px; }.inbox-avatar { font-size: 15px; border-radius: 50%; background: radial-gradient(circle, var(--flow-mobile-accent-soft) 0 16px, transparent 16.5px); }.inbox-icon-button:disabled { opacity: .45; }.inbox-icon-button.filtered { border-radius: 9px; background: var(--flow-mobile-accent-soft); }
-.inbox-search { display: flex; align-items: center; gap: 8px; padding: 7px 0 8px; }.inbox-search :deep(.van-search) { flex: 1; min-width: 0; padding: 0; background: transparent; }.inbox-search :deep(.van-search__content) { border-radius: 9px; background: var(--flow-mobile-inset); padding-left: 12px; }.inbox-search :deep(.van-search .van-cell) { min-height: 44px; align-items: center; padding: 10px 8px 10px 0; }.inbox-search :deep(.van-field__control) { font-size: 13px; }.inbox-search :deep(.van-field__left-icon) { color: var(--flow-mobile-muted); }
-.inbox-section { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--flow-mobile-border); }.inbox-section h2 { font-size: 14px; font-weight: 600; margin: 0; }.inbox-section > span { color: var(--flow-mobile-muted); font-size: 11px; }.inbox-date-group { background: var(--flow-mobile-inset); color: var(--flow-mobile-muted); font-size: 11px; padding: 7px 18px; margin: 0 -18px; }
+.inbox-icon-button, .inbox-avatar { border: 0; background: transparent; color: var(--flow-mobile-accent-text); width: 36px; height: 44px; padding: 0; flex-shrink: 0; cursor: pointer; font-size: 21px; }.inbox-avatar { font-size: 14px; border-radius: 50%; background: radial-gradient(circle, var(--flow-mobile-accent-soft) 0 14px, transparent 14.5px); }.inbox-icon-button.filtered { border-radius: 9px; background: var(--flow-mobile-accent-soft); }
+/* 头像宽度与可见圆形一致，去除透明侧边，使圆形右边缘与标题左边缘同为 18px 页边距。 */
+.inbox-avatar { width: 28px; }
+/* 筛选图形使用贴合轮廓的边界，三处可见间距均为 6px；透明点击区延伸到间距内，便于触控。 */
+.inbox-icon-button { position: relative; display: flex; align-items: center; justify-content: center; width: 16px; }
+.inbox-icon-button::before { content: ''; position: absolute; inset: 0 -6px; }
+.inbox-filter-icon { display: block; width: 16px; height: 20px; }
+.inbox-search { flex: 1; min-width: 0; padding: 0; background: transparent; }.inbox-search :deep(.van-search__content) { min-width: 0; border-radius: 9px; background: var(--flow-mobile-inset); padding-left: 10px; }.inbox-search :deep(.van-cell) { height: 35px; min-height: 35px; align-items: center; padding: 0 8px 0 0; }.inbox-search :deep(.van-field__control) { font-size: 13px; }.inbox-search :deep(.van-field__left-icon) { color: var(--flow-mobile-muted); }
+/* 收紧说明行上方留白，使其与搜索框之间的距离减半，下方仍保留分隔空间。 */
+.inbox-section { padding: 3px 0 17px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--flow-mobile-border); }.inbox-section > span { color: var(--flow-mobile-muted); font-size: 11px; line-height: 14px; }
 :deep(.van-pull-refresh) { min-height: 60vh; }
 </style>

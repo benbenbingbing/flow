@@ -1,5 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -68,6 +71,7 @@ class EntityFormFieldEventCleanupIntegrationTest {
                 )
                 """);
         var configuration = new MybatisConfiguration();
+        configuration.setDatabaseId("MYSQL");
         configuration.setMapUnderscoreToCamelCase(true);
         configuration.addMapper(EntityFormNodeMapper.class);
         configuration.addMapper(UiEventBindingMapper.class);
@@ -82,7 +86,8 @@ class EntityFormFieldEventCleanupIntegrationTest {
                 mock(EntityRelationMapper.class), mock(UiConfigReleaseMapper.class),
                 mock(EntityUiConfigurationPolicy.class), mock(EntityDefinitionMapper.class),
                 mock(EntityFieldMapper.class), mock(SystemEntityFieldPolicy.class), bindings,
-                new JsonDocumentCodec(new ObjectMapper()));
+                new JsonDocumentCodec(new ObjectMapper()), new JdbcWriteAttempt(new JdbcTemplate(dataSource),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         var transaction = new TransactionInterceptor();
         transaction.setTransactionManager(new DataSourceTransactionManager(dataSource));
         transaction.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());

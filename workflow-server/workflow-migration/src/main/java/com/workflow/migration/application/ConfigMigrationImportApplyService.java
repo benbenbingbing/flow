@@ -1,6 +1,9 @@
 package com.workflow.migration.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -178,6 +181,7 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationPackageCodec packageCodec;
     private final ConfigMigrationPackageService packageService;
     private final ObjectMapper objectMapper;
+    private final DatabaseQueryDialect queryDialect;
 
     /**
      * 发布完整导入批次，将包内全部资产配置原子应用到目标环境。
@@ -363,8 +367,7 @@ public class ConfigMigrationImportApplyService {
                 incoming.getDictCode(), item.getBusinessKey());
         SysDict dictionary = dictMapper.selectOne(
                 new LambdaQueryWrapper<SysDict>()
-                        .eq(SysDict::getDictCode, dictCode)
-                        .last("LIMIT 1"));
+                        .eq(SysDict::getDictCode, dictCode));
         LocalDateTime now = LocalDateTime.now();
         if (dictionary == null) {
             dictionary = incoming;
@@ -1571,12 +1574,15 @@ public class ConfigMigrationImportApplyService {
             String extensionKey,
             Map<String, Object> legacyOperation,
             boolean legacy) {
+        int version = integerObject(value.get("version")) == null
+                ? 1 : integerObject(value.get("version"));
+        // 导入包已指定实现版本，必须命中该版本的唯一键，不能因数据库行序变化覆盖另一个版本。
         UiExtensionDefinition existing = extensionDefinitionMapper.selectOne(
                 new LambdaQueryWrapper<UiExtensionDefinition>()
                         .eq(UiExtensionDefinition::getExtensionType, "INTERFACE")
                         .eq(UiExtensionDefinition::getExtensionKey, extensionKey)
-                        .eq(UiExtensionDefinition::getDeleted, 0)
-                        .last("LIMIT 1"));
+                        .eq(UiExtensionDefinition::getVersion, version)
+                        .eq(UiExtensionDefinition::getDeleted, 0));
         UiExtensionDefinitionSaveRequest request =
                 new UiExtensionDefinitionSaveRequest();
         request.setId(existing == null ? null : existing.getId());
@@ -1589,8 +1595,7 @@ public class ConfigMigrationImportApplyService {
                         + text(legacyOperation.get("name"),
                                 text(legacyOperation.get("code"), extensionKey))
                 : text(value.get("displayName"), extensionKey));
-        request.setVersion(integerObject(value.get("version")) == null
-                ? 1 : integerObject(value.get("version")));
+        request.setVersion(version);
         request.setSnapshotVersion(integerObject(
                 value.get("snapshotVersion")) == null
                 ? 1 : integerObject(value.get("snapshotVersion")));
@@ -2029,18 +2034,20 @@ public class ConfigMigrationImportApplyService {
         config.put("target", target);
 
         Map<String, Object> special = mapValue(config.get("specialHandling"));
+        // 旧引用只携带编码；未钉定实现版本时按版本和主键稳定取首条，已含 extensionId 的引用保持原样。
         if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
             Map<String, Object> service = mapValue(rawService);
             if (!StringUtils.hasText(text(service.get("extensionId"), null))) {
                 String serviceCode = text(service.get("extensionCode"),
                         text(service.get("serviceCode"), null));
-                UiExtensionDefinition definition = extensionDefinitionMapper.selectOne(
+                UiExtensionDefinition definition = extensionDefinitionMapper.selectPage(new Page<UiExtensionDefinition>(1, 1, false),
                         new LambdaQueryWrapper<UiExtensionDefinition>()
                                 .eq(UiExtensionDefinition::getExtensionType,
                                         "INTERFACE")
                                 .eq(UiExtensionDefinition::getExtensionKey, serviceCode)
                                 .eq(UiExtensionDefinition::getDeleted, 0)
-                                .last("LIMIT 1"));
+                                .orderByDesc(UiExtensionDefinition::getVersion, UiExtensionDefinition::getId))
+                        .getRecords().stream().findFirst().orElse(null);
                 if (definition == null) {
                     throw new IllegalStateException(
                             "关联内容接口扩展不存在: " + serviceCode);
@@ -2064,13 +2071,15 @@ public class ConfigMigrationImportApplyService {
                     String extensionCode = text(service.get("extensionCode"),
                             text(service.get("serviceCode"), null));
                     UiExtensionDefinition definition = extensionDefinitionMapper
-                            .selectOne(new LambdaQueryWrapper<UiExtensionDefinition>()
-                                    .eq(UiExtensionDefinition::getExtensionType,
-                                            "INTERFACE")
-                                    .eq(UiExtensionDefinition::getExtensionKey,
-                                            extensionCode)
-                                    .eq(UiExtensionDefinition::getDeleted, 0)
-                                    .last("LIMIT 1"));
+                            .selectPage(new Page<UiExtensionDefinition>(1, 1, false),
+                                    new LambdaQueryWrapper<UiExtensionDefinition>()
+                                            .eq(UiExtensionDefinition::getExtensionType,
+                                                    "INTERFACE")
+                                            .eq(UiExtensionDefinition::getExtensionKey,
+                                                    extensionCode)
+                                            .eq(UiExtensionDefinition::getDeleted, 0)
+                                            .orderByDesc(UiExtensionDefinition::getVersion, UiExtensionDefinition::getId))
+                            .getRecords().stream().findFirst().orElse(null);
                     if (definition == null) {
                         throw new IllegalStateException(
                                 "关联内容动作接口不存在: " + extensionCode);
@@ -2532,8 +2541,7 @@ public class ConfigMigrationImportApplyService {
         ConfigAssetBaseline baseline = baselineMapper.selectOne(new LambdaQueryWrapper<ConfigAssetBaseline>()
                 .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
                 .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
-                .eq(ConfigAssetBaseline::getScopeKey, scopeKey)
-                .last("LIMIT 1"));
+                .eq(ConfigAssetBaseline::getScopeKey, scopeKey));
         if (baseline == null) {
             baseline = new ConfigAssetBaseline();
             baseline.setAssetType(item.getAssetType());
@@ -2630,16 +2638,18 @@ public class ConfigMigrationImportApplyService {
                 .orElse(null);
     }
 
+    /** 同一内容可以多次发布，回退目标按版本及主键稳定取首条，继续排除已逻辑删除资产。 */
     private ConfigMigrationAsset previousAsset(ConfigImportItem item) {
         if (!StringUtils.hasText(item.getTargetBeforeHash())) {
             return null;
         }
-        return migrationAssetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
-                .eq(ConfigMigrationAsset::getAssetType, item.getAssetType())
-                .eq(ConfigMigrationAsset::getBusinessKey, item.getBusinessKey())
-                .eq(ConfigMigrationAsset::getContentHash, item.getTargetBeforeHash())
-                .orderByDesc(ConfigMigrationAsset::getSourceVersion)
-                .last("LIMIT 1"));
+        return migrationAssetMapper.selectPage(new Page<ConfigMigrationAsset>(1, 1, false),
+                new LambdaQueryWrapper<ConfigMigrationAsset>()
+                        .eq(ConfigMigrationAsset::getAssetType, item.getAssetType())
+                        .eq(ConfigMigrationAsset::getBusinessKey, item.getBusinessKey())
+                        .eq(ConfigMigrationAsset::getContentHash, item.getTargetBeforeHash())
+                        .orderByDesc(ConfigMigrationAsset::getSourceVersion, ConfigMigrationAsset::getId))
+                .getRecords().stream().findFirst().orElse(null);
     }
 
     /**
@@ -2680,8 +2690,7 @@ public class ConfigMigrationImportApplyService {
             SysDict dictionary = dictMapper.selectOne(
                     new LambdaQueryWrapper<SysDict>()
                             .eq(SysDict::getDictCode,
-                                    item.getBusinessKey())
-                            .last("LIMIT 1"));
+                                    item.getBusinessKey()));
             if (dictionary != null) {
                 dictionary.setStatus(
                         SysDict.Status.DISABLED.getValue());
@@ -2939,8 +2948,7 @@ public class ConfigMigrationImportApplyService {
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                         .eq(ConfigEnvironmentMapping::getSourceType, type)
                         .eq(ConfigEnvironmentMapping::getSourceKey, sourceKey)
-                        .eq(ConfigEnvironmentMapping::getEnabled, true)
-                        .last("LIMIT 1"));
+                        .eq(ConfigEnvironmentMapping::getEnabled, true));
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
 

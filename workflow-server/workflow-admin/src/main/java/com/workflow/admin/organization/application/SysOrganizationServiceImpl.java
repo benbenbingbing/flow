@@ -98,7 +98,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
                     org.setParentName(parent.getOrgName());
                 }
             }
-            org.setUserCount(orgMapper.countUsers(org.getId()));
+            org.setUserCount(userMapper.countByOrganization(org.getId()));
         }
         return org;
     }
@@ -235,7 +235,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             throw new RuntimeException("该组织部门下有子节点，不能删除");
         }
         
-        int userCount = orgMapper.countUsers(id);
+        int userCount = userMapper.countByOrganization(id);
         if (userCount > 0) {
             throw new RuntimeException("该组织部门下有关联用户，不能删除");
         }

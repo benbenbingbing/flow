@@ -1,5 +1,6 @@
 package com.workflow.entity.version.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +37,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import com.workflow.core.database.JdbcLockedRow;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -70,6 +72,8 @@ public class EntityRecordVersionService {
     private final EntityRecordVersionDatasetRowMapper datasetRowMapper;
     private final EntityDataDynamicService dataService;
     private final EntityAggregateWriter aggregateWriter;
+    private final JdbcLockedRow lockedRows;
+    private final JdbcWriteAttempt writeAttempt;
 
     @Transactional(rollbackFor = Exception.class)
     public EntityRecordVersion createIfMatched(
@@ -164,7 +168,7 @@ public class EntityRecordVersionService {
         version.setCreateTime(LocalDateTime.now());
         for (int attempt = 1; ; attempt++) {
             try {
-                versionMapper.insert(version);
+                writeAttempt.execute(() -> versionMapper.insert(version));
                 break;
             } catch (DuplicateKeyException exception) {
                 EntityRecordVersion raced = findIdempotent(command, true);
@@ -526,10 +530,15 @@ public class EntityRecordVersionService {
                 command.context().idempotencyKey());
     }
 
+    /** 先锁住稳定计数器，再按历史最大版本追平；旧节点补写不能让计数器倒退。 */
     private void lockCounter(String entityCode, String recordId) {
         int initial = value(versionMapper.findMaxVersionNo(
                 entityCode, recordId));
-        counterMapper.initialize(entityCode, recordId, initial);
+        lockedRows.ensureAndLock("entity_record_version_counter",
+                Map.of("entity_code", entityCode, "record_id", recordId, "last_version_no", initial),
+                List.of("entity_code", "record_id"));
+        // 标准 CASE 保留原 GREATEST 语义；Mapper UPDATE 同时清空当前会话的旧计数缓存。
+        counterMapper.raiseMinimum(entityCode, recordId, initial);
         EntityRecordVersionCounter counter = counterMapper.lock(
                 entityCode, recordId);
         if (counter == null) {

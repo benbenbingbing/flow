@@ -1,5 +1,8 @@
 package com.workflow.process.assignment.application;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import org.flowable.engine.RuntimeService;
@@ -27,7 +30,7 @@ class AssigneeIncidentIdempotencyTest {
         ExistingIncidentJdbcTemplate jdbcTemplate =
                 new ExistingIncidentJdbcTemplate();
         AssigneeIncidentRecorder recorder = new AssigneeIncidentRecorder(
-                jdbcTemplate, new ObjectMapper());
+                jdbcTemplate, new ObjectMapper(), com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
 
         String id = recorder.create(new AssigneeIncidentRecorder.CreateCommand(
                 "config-1", "definition-1", "instance-1", "task-1",
@@ -51,7 +54,7 @@ class AssigneeIncidentIdempotencyTest {
                 mock(AssigneeResolutionService.class);
         AssigneeIncidentService service = new AssigneeIncidentService(
                 jdbcTemplate, new ObjectMapper(), taskService,
-                runtimeService, resolutionService);
+                runtimeService, resolutionService, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         AssigneeIncidentHandleRequest request =
                 new AssigneeIncidentHandleRequest();
         request.setRequestId("AUTO:incident-1:1");

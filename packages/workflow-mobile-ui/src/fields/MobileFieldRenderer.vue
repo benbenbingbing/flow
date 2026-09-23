@@ -4,16 +4,16 @@
   <MobileSubForm v-else-if="type === 'sub_form'" ref="subFormRef" v-bind="fieldProps" :services="services" :registry="registry" @update:model-value="handleChange" />
   <MobileSubList v-else-if="type === 'sub_list'" :field="field" :context="context" :services="services" />
   <MobileFileField v-else-if="['file', 'image'].includes(type)" ref="fileRef" v-bind="fieldProps" :services="services" @update:model-value="handleChange" />
-  <MobileReadonlyField v-else-if="disabled" :field="field" :model-value="modelValue" :options="choices" :services="services" />
+  <MobileReadonlyField v-else-if="disabled" :field="field" :model-value="modelValue" :options="choices" :context="context" :services="services" />
   <h3 v-else-if="type === 'section'" class="field-section">{{ fieldLabel }}</h3>
   <MobileRichTextEditor v-else-if="type === 'rich_text'" :label="fieldLabel" :model-value="fieldValue" @update:model-value="input" @blur="blur" @focus="handleFocus" />
-  <VanField v-else-if="type === 'switch'" :label="fieldLabel" :required="required"><template #input><VanSwitch :model-value="Boolean(fieldValue)" size="24px" @update:model-value="handleChange" /></template></VanField>
-  <VanField v-else-if="['radio', 'checkbox'].includes(type)" :label="fieldLabel" :required="required" label-align="top"><template #input>
-    <VanRadioGroup v-if="type === 'radio'" :model-value="fieldValue" @update:model-value="handleChange"><VanRadio v-for="choice in choices" :key="String(choice.value)" :name="choice.value">{{ choice.text }}</VanRadio></VanRadioGroup>
-    <VanCheckboxGroup v-else :model-value="Array.isArray(fieldValue) ? fieldValue : []" @update:model-value="handleChange"><VanCheckbox v-for="choice in choices" :key="String(choice.value)" :name="choice.value">{{ choice.text }}</VanCheckbox></VanCheckboxGroup>
+  <VanField v-else-if="type === 'switch'" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition" :input-align="inputAlign" center><template #input><VanSwitch :model-value="Boolean(fieldValue)" size="24px" @update:model-value="handleChange" /></template></VanField>
+  <VanField v-else-if="['radio', 'checkbox'].includes(type)" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition"><template #input>
+    <VanRadioGroup v-if="type === 'radio'" :model-value="fieldValue" @update:model-value="handleChange"><VanRadio v-for="choice in choices" :key="String(choice.value)" :name="choice.value" :disabled="choice.disabled">{{ choice.text }}</VanRadio></VanRadioGroup>
+    <VanCheckboxGroup v-else :model-value="Array.isArray(fieldValue) ? fieldValue : []" @update:model-value="handleChange"><VanCheckbox v-for="choice in choices" :key="String(choice.value)" :name="choice.value" :disabled="choice.disabled">{{ choice.text }}</VanCheckbox></VanCheckboxGroup>
   </template></VanField>
-  <VanField v-else-if="selectionType || dateType" :label="fieldLabel" :model-value="selectionLabel" :placeholder="`请选择${fieldLabel}`" readonly is-link clickable :required="required" @click="openPicker" />
-  <VanField v-else :label="fieldLabel" :model-value="type === 'number' ? numberDraft ?? fieldValue : fieldValue" :type="type === 'textarea' ? 'textarea' : type === 'number' ? 'number' : 'text'" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" label-align="top" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
+  <VanField v-else-if="selectionType || dateType" class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="selectionLabel" :placeholder="`请选择${fieldLabel}`" :label-align="labelPosition" :input-align="inputAlign" center readonly is-link clickable :required="required" @click="openPicker" />
+  <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="type === 'number' ? numberDraft ?? fieldValue : fieldValue" :type="type === 'textarea' ? 'textarea' : type === 'number' ? 'number' : 'text'" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
   <p v-if="optionError" class="field-unsupported" role="alert">{{ optionError }}<button @click="loadOptions">重试</button></p>
   <MobileEntityPicker v-if="entityType" v-model:show="pickerOpen" :title="`选择${fieldLabel}`" :model-value="selectedRecords" :multiple="multiple" :load-options="loadEntityOptions" :identity="`${context.form?.id || ''}:${field.fieldCode}`" @confirm="selectRecords" />
   <VanPopup v-else v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
@@ -23,12 +23,20 @@
       <VanTimePicker v-if="type !== 'date'" v-model="timeParts" :show-toolbar="false" :columns-type="['hour', 'minute', 'second']" />
     </template>
     <VanCascader v-else-if="type === 'cascader'" :title="fieldLabel" :model-value="Array.isArray(fieldValue) ? fieldValue.at(-1) : fieldValue" :options="choices" @close="pickerOpen = false" @finish="finishCascade" />
-    <template v-else-if="multiple"><VanNavBar :title="`选择${fieldLabel}`" left-text="取消" right-text="确定" @click-left="pickerOpen = false" @click-right="confirmMultiple" /><div class="multi-options"><VanCheckboxGroup v-model="selectionDraft"><VanCell v-for="choice in choices" :key="String(choice.value)" :title="choice.text" clickable @click="toggleChoice(choice.value)"><template #right-icon><VanCheckbox :model-value="selectionDraft.includes(choice.value)" /></template></VanCell></VanCheckboxGroup></div></template>
+    <template v-else-if="multiple">
+      <VanNavBar :title="`选择${fieldLabel}`" left-text="取消" right-text="确定" @click-left="pickerOpen = false" @click-right="confirmMultiple" />
+      <div class="multi-options">
+        <!-- 整行统一修改选择草稿，复选框仅回显，避免点击图标时重复切换或无 name 的分组覆盖回显。 -->
+        <VanCell v-for="choice in choices" :key="String(choice.value)" :title="choice.text" :clickable="!choice.disabled" @click="toggleChoice(choice)">
+          <template #right-icon><VanCheckbox :model-value="selectionDraft.includes(choice.value)" :disabled="choice.disabled" /></template>
+        </VanCell>
+      </div>
+    </template>
     <VanPicker v-else :title="fieldLabel" :columns="choices" :model-value="[fieldValue]" @cancel="pickerOpen = false" @confirm="confirmChoice" />
   </VanPopup>
 </template>
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cascader as VanCascader, Cell as VanCell } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
@@ -40,10 +48,13 @@ import MobileSubForm from '../form/MobileSubForm.vue'
 import MobileSubList from '../form/MobileSubList.vue'
 import MobileEntityPicker from '../pickers/MobileEntityPicker.vue'
 import { getMobileExtension, mobileFieldCapability, mobileFieldType } from './registry.js'
+import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
 const props = defineProps({ ...formFieldProps, services: { type: Object, default: () => ({}) }, registry: { type: Object, default: () => ({}) }, extensionName: { type: String, default: '' }, required: Boolean })
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
 const { fieldValue, fieldLabel, parsedComponentProps, staticOptions, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled })
 const type = computed(() => mobileFieldType(props.field))
+const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
+const inputAlign = computed(() => labelPosition.value === 'top' ? 'left' : 'right')
 const custom = computed(() => getMobileExtension('FIELD', props.extensionName || type.value, props.field.componentVersion || props.field.extensionVersion || 1))
 const capability = computed(() => mobileFieldCapability(props.field, props.extensionName))
 const fieldProps = computed(() => ({ field: props.field, modelValue: props.modelValue, disabled: props.disabled, options: props.options, context: props.context, services: props.services, dataSourceRuntime: props.dataSourceRuntime, attachmentItemRequiredState: props.attachmentItemRequiredState }))
@@ -61,13 +72,25 @@ const selectionLabel = computed(() => {
   return values.map(value => selectedRecords.value.find(item => String(item.id) === String(value))?.name || selectedRecords.value.find(item => String(item.id) === String(value))?.nickname || choices.value.find(item => String(item.value) === String(value))?.text || String(value)).join('、')
 })
 let optionGeneration = 0, committed = JSON.stringify(props.modelValue)
+/** 先使用已发布的动态选项绑定，否则读取实体字段代码表；两者都没有时保留内嵌选项。 */
 async function loadOptions() {
-  const generation = ++optionGeneration; optionError.value = ''
-  if (!props.dataSourceRuntime || !getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) return
-  try { const result = await props.dataSourceRuntime.loadOptions(props.field, { form: props.context.form, record: props.context.getFormData?.(), context: props.context }); if (generation === optionGeneration) remoteOptions.value = result }
+  const generation = ++optionGeneration; optionError.value = ''; remoteOptions.value = null
+  try {
+    let result
+    if (props.dataSourceRuntime && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) {
+      result = await props.dataSourceRuntime.loadOptions(props.field, { form: props.context.form, record: props.context.getFormData?.(), context: props.context })
+    } else if (['select', 'select_multiple', 'radio', 'checkbox'].includes(type.value) && props.field.dictType) {
+      if (!props.services.loadDictionaryOptions) throw new Error('当前表单未提供代码表查询能力')
+      result = await props.services.loadDictionaryOptions(props.field.dictType)
+    } else return
+    // 切换字段、代码表或离开页面后，旧响应不得覆盖当前候选项。
+    if (generation === optionGeneration) remoteOptions.value = result
+  }
   catch (cause) { if (generation === optionGeneration) optionError.value = cause.message }
 }
-watch(() => [props.field.id, props.context.form?.runtimeReleaseId], loadOptions, { immediate: true })
+// 仅在选项来源身份变化时重载；输入其它字段造成 context 重建时不重复请求代码表。
+watch([() => props.field.id, () => props.field.dictType, () => props.context.form?.runtimeReleaseId], loadOptions, { immediate: true })
+onBeforeUnmount(() => { optionGeneration++ })
 function input(value) {
   if (type.value === 'number') {
     numberDraft.value = value
@@ -101,8 +124,12 @@ async function blur() {
   await handleBlur()
 }
 function openPicker() { selectionDraft.value = Array.isArray(fieldValue.value) ? [...fieldValue.value] : []; initializeDate(); pickerOpen.value = true }
-function confirmChoice({ selectedValues }) { handleChange(selectedValues[0]); pickerOpen.value = false }
-function toggleChoice(value) { selectionDraft.value = selectionDraft.value.includes(value) ? selectionDraft.value.filter(item => item !== value) : [...selectionDraft.value, value] }
+function confirmChoice({ selectedValues }) {
+  // 空列的 Picker 可能返回 [undefined]；加载中或失败时点击确认不能清除已保存的编码。
+  if (selectedValues[0] !== undefined) handleChange(selectedValues[0])
+  pickerOpen.value = false
+}
+function toggleChoice({ value, disabled }) { if (disabled) return; selectionDraft.value = selectionDraft.value.includes(value) ? selectionDraft.value.filter(item => item !== value) : [...selectionDraft.value, value] }
 function confirmMultiple() { handleChange([...selectionDraft.value]); pickerOpen.value = false }
 function finishCascade({ selectedOptions, value }) { handleChange(parsedComponentProps.value.emitPath === false ? value : selectedOptions.map(item => item.value)); pickerOpen.value = false }
 async function loadEntityOptions(query) {
@@ -128,5 +155,20 @@ function confirmDate() { handleChange(type.value === 'date' ? dateParts.value.jo
 defineExpose({ validate: async () => !optionError.value && (await customRef.value?.validate?.()) !== false && (await subFormRef.value?.validate?.()) !== false && (await fileRef.value?.validate?.()) !== false })
 </script>
 <style scoped>
-:deep(.van-field) { padding: 14px 0; background: transparent; }:deep(.van-field__label) { color: var(--flow-mobile-muted); }:deep(.van-radio), :deep(.van-checkbox) { margin: 10px 0; }.field-section { font-size: 16px; padding: 12px 0; }.field-unsupported { color: #a94833; background: #fff5ed; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; }.field-unsupported button { border: 0; color: inherit; text-decoration: underline; background: none; min-height: 44px; }.multi-options { max-height: 55dvh; overflow-y: auto; }.mobile-rich-editor { padding: 14px 0; }.mobile-rich-editor label { display: block; color: var(--flow-mobile-muted); font-size: 14px; margin-bottom: 8px; }.mobile-rich-editor textarea { width: 100%; min-height: 140px; border: 1px solid var(--flow-mobile-border); border-radius: 8px; padding: 10px; }.mobile-rich-editor small { color: var(--flow-mobile-muted); }
+/* 字段本身是多根模板中的根节点，显式类才能命中根上的 Vant 单元格，且不会影响选择弹层的搜索框。
+   内边距、标签宽度和整行分隔线与只读字段一致，避免编辑/只读字段混排时出现缩进。 */
+.mobile-form-field {
+  --van-field-label-width: 92px;
+  --van-field-label-margin-right: 16px;
+  padding: 14px 0;
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.65;
+  border-bottom: 1px solid var(--flow-mobile-border);
+}
+.mobile-form-field :deep(.van-field__label) { color: var(--flow-mobile-muted); font-size: 13px; }
+/* 顶部标签明确独占一行，避免清除侧边距后，flex 把值压成零宽仍排在标签旁边。 */
+.mobile-form-field.van-field--label-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+.mobile-form-field :deep(.van-field__label--top) { grid-column: 1 / -1; margin-right: 0; }
+:deep(.van-radio), :deep(.van-checkbox) { margin: 10px 0; }.field-section { font-size: 16px; padding: 12px 0; }.field-unsupported { color: #a94833; background: #fff5ed; padding: 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; }.field-unsupported button { border: 0; color: inherit; text-decoration: underline; background: none; min-height: 44px; }.multi-options { max-height: 55dvh; overflow-y: auto; }.mobile-rich-editor { padding: 14px 0; }.mobile-rich-editor label { display: block; color: var(--flow-mobile-muted); font-size: 14px; margin-bottom: 8px; }.mobile-rich-editor textarea { width: 100%; min-height: 140px; border: 1px solid var(--flow-mobile-border); border-radius: 8px; padding: 10px; }.mobile-rich-editor small { color: var(--flow-mobile-muted); }
 </style>

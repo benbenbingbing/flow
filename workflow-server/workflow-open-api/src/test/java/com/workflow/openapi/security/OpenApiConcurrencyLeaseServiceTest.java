@@ -103,7 +103,7 @@ class OpenApiConcurrencyLeaseServiceTest {
     }
 
     @Test
-    void legacyOpenApiLeaseQueriesStayInTheEmptyScope() throws Exception {
+    void openApiQueriesKeepLegacyScopeAndMysqlInsertBindsTheOriginalEmptyKey() throws Exception {
         Method cleanup = IntegrationApiRequestLeaseMapper.class.getMethod(
                 "deleteExpiredForApplication", String.class, java.time.LocalDateTime.class);
         Method count = IntegrationApiRequestLeaseMapper.class.getMethod(
@@ -113,13 +113,18 @@ class OpenApiConcurrencyLeaseServiceTest {
                 java.time.LocalDateTime.class);
 
         assertEquals(true, sql(cleanup.getAnnotation(Delete.class).value())
-                .contains("scope_key = ''"));
+                .contains(IntegrationApiRequestLeaseMapper.APPLICATION_SCOPE));
         assertEquals(true, sql(count.getAnnotation(Select.class).value())
-                .contains("scope_key = ''"));
+                .contains(IntegrationApiRequestLeaseMapper.APPLICATION_SCOPE));
         assertEquals(true, sql(insert.getAnnotation(Insert.class).value())
                 .contains("application_id, scope_key"));
-        assertEquals(true, sql(insert.getAnnotation(Insert.class).value())
-                .contains("#{applicationId}, ''"));
+        var configuration = new org.apache.ibatis.session.Configuration();
+        configuration.setDatabaseId("MYSQL"); configuration.addMapper(IntegrationApiRequestLeaseMapper.class);
+        var bound = configuration.getMappedStatement(IntegrationApiRequestLeaseMapper.class.getName() + ".insert")
+                .getBoundSql(java.util.Map.of("leaseId", "lease", "applicationId", "app", "expiresAt", "later", "now", "now"));
+        assertEquals("", bound.getAdditionalParameter("_applicationScope"));
+        assertEquals(org.apache.ibatis.type.JdbcType.VARCHAR, bound.getParameterMappings().stream()
+                .filter(mapping -> mapping.getProperty().equals("_applicationScope")).findFirst().orElseThrow().getJdbcType());
     }
 
     private static String sql(String[] fragments) {

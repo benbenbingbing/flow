@@ -1,6 +1,8 @@
 package com.workflow.entity.ui.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiViewComposition;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
@@ -12,18 +14,20 @@ import java.util.List;
 /**
  * “关联内容”草稿持久化入口。
  */
+// 普通查询使用 Wrapper；分页由 MyBatis-Plus 生成对应数据库语法。
 @Mapper
 public interface UiViewCompositionMapper
         extends BaseMapper<UiViewComposition> {
 
     /** 按宿主稳定排序读取全部活动关联内容。 */
-    @Select("SELECT * FROM ui_view_composition "
-            + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
-            + "AND deleted = 0 "
-            + "ORDER BY order_key, composition_key, id")
-    List<UiViewComposition> findByOwner(
-            @Param("ownerType") String ownerType,
-            @Param("ownerId") String ownerId);
+    default List<UiViewComposition> findByOwner(String ownerType, String ownerId) {
+        return selectList(Wrappers.<UiViewComposition>lambdaQuery()
+                .eq(UiViewComposition::getOwnerType, ownerType)
+                .eq(UiViewComposition::getOwnerId, ownerId)
+                .orderByAsc(UiViewComposition::getOrderKey)
+                .orderByAsc(UiViewComposition::getCompositionKey)
+                .orderByAsc(UiViewComposition::getId));
+    }
 
     /**
      * 锁定宿主的全部关联内容（包含逻辑删除行）。
@@ -39,14 +43,13 @@ public interface UiViewCompositionMapper
             @Param("ownerId") String ownerId);
 
     /** 按宿主和稳定业务编码查询当前活动记录。 */
-    @Select("SELECT * FROM ui_view_composition "
-            + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
-            + "AND composition_key = #{compositionKey} AND deleted = 0 "
-            + "LIMIT 1")
-    UiViewComposition findActiveByKey(
-            @Param("ownerType") String ownerType,
-            @Param("ownerId") String ownerId,
-            @Param("compositionKey") String compositionKey);
+    default UiViewComposition findActiveByKey(String ownerType, String ownerId, String compositionKey) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<UiViewComposition>lambdaQuery()
+                .eq(UiViewComposition::getOwnerType, ownerType)
+                .eq(UiViewComposition::getOwnerId, ownerId)
+                .eq(UiViewComposition::getCompositionKey, compositionKey))
+                .stream().findFirst().orElse(null);
+    }
 
     /** 更新前锁定单条活动记录。 */
     @Select("SELECT * FROM ui_view_composition "

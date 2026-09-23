@@ -1,5 +1,6 @@
 package com.workflow.embed.infrastructure.persistence.adapter;
 
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.embed.application.port.EmbedDigestPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
@@ -14,6 +15,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
@@ -21,7 +24,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 基于 MySQL 行锁、原子 upsert 和持久化租约的 Embed 配额适配器。
+ * 基于事务行锁、计数桶和持久化租约的 Embed 配额适配器。
  *
  * <p>每次 acquire 使用独立事务，因此 Launch 后续身份校验失败也不会退回已消耗配额；
  * Runtime 的限流扣减与租约准入在同一事务中协调；已认证但被配额拒绝的
@@ -44,22 +47,23 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
             "embed-write-session-v1";
     private static final String HEARTBEAT_SESSION_BUCKET_NAMESPACE =
             "embed-heartbeat-session-v1";
-    private static final String RUNTIME_SCOPE_PREFIX = "embed-runtime-grant-v1:";
 
     private final EmbedTrafficControlMapper mapper;
     private final EmbedDigestPort digestPort;
     private final EmbedProperties properties;
     private final Clock clock;
+    private final JdbcLockedRow lockedRows;
 
     public MyBatisEmbedTrafficControlAdapter(
             EmbedTrafficControlMapper mapper,
             EmbedDigestPort digestPort,
             EmbedProperties properties,
-            @Qualifier("embedClock") Clock clock) {
+            @Qualifier("embedClock") Clock clock, JdbcLockedRow lockedRows) {
         this.mapper = mapper;
         this.digestPort = digestPort;
         this.properties = properties;
         this.clock = clock;
+        this.lockedRows = lockedRows;
     }
 
     /**
@@ -278,8 +282,11 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
         long epochSecond = now.getEpochSecond();
         long windowEpoch = epochSecond / WINDOW_SECONDS;
         String bucketKey = digestPort.sha256(material);
-        // MySQL 对 INSERT 返回 1，对 ON DUPLICATE KEY UPDATE 通常返回 2。
-        if (mapper.incrementRateBucket(bucketKey, windowEpoch, local(now)) < 1) {
+        // 初始化与行锁由统一接口执行，计数及拒绝请求是否提交仍属于 Embed 的事务规则。
+        lockedRows.ensureAndLock("integration_rate_limit_bucket", Map.of(
+                "bucket_key", bucketKey, "window_epoch", windowEpoch, "request_count", 0,
+                "create_time", local(now), "update_time", local(now)), List.of("bucket_key", "window_epoch"));
+        if (mapper.incrementRateBucket(bucketKey, windowEpoch, local(now)) != 1) {
             throw unavailable(null);
         }
         Integer count = mapper.currentRateCount(bucketKey, windowEpoch);
@@ -293,7 +300,7 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
     }
 
     private static String runtimeScope(String grantId) {
-        return RUNTIME_SCOPE_PREFIX + grantId;
+        return EmbedTrafficControlMapper.RUNTIME_SCOPE_PREFIX + grantId;
     }
 
     private static EmbedException quotaExceeded(String message, long retryAfter) {

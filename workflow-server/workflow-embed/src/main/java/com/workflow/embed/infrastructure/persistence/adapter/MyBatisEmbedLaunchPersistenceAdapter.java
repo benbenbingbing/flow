@@ -1,5 +1,6 @@
 package com.workflow.embed.infrastructure.persistence.adapter;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.embed.application.port.EmbedAssertionReplayPort;
 import com.workflow.embed.application.port.EmbedExternalIdentityBindingPort;
 import com.workflow.embed.application.port.EmbedFlowUserPort;
@@ -40,9 +41,11 @@ public class MyBatisEmbedLaunchPersistenceAdapter implements
         EmbedLaunchStorePort {
 
     private final EmbedLaunchPersistenceMapper mapper;
+    private final JdbcWriteAttempt writeAttempt;
 
-    public MyBatisEmbedLaunchPersistenceAdapter(EmbedLaunchPersistenceMapper mapper) {
+    public MyBatisEmbedLaunchPersistenceAdapter(EmbedLaunchPersistenceMapper mapper, JdbcWriteAttempt writeAttempt) {
         this.mapper = mapper;
+        this.writeAttempt = writeAttempt;
     }
 
     @Override
@@ -108,8 +111,8 @@ public class MyBatisEmbedLaunchPersistenceAdapter implements
             Instant expiresAt,
             Instant now) {
         try {
-            return mapper.insertAssertionReplay(
-                    providerId, jtiDigest, local(expiresAt), local(now)) == 1;
+            return writeAttempt.execute(() -> mapper.insertAssertionReplay(
+                    providerId, jtiDigest, local(expiresAt), local(now))) == 1;
         } catch (DuplicateKeyException duplicate) {
             return false;
         } catch (DataAccessException error) {

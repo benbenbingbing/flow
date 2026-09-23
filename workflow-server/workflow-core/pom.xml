@@ -7,6 +7,9 @@
     </parent>
     <artifactId>workflow-core</artifactId>
     <dependencies>
+        <dependency><groupId>org.springframework</groupId><artifactId>spring-jdbc</artifactId></dependency>
+        <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-extension</artifactId><version>${mybatis-plus.version}</version></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-database</artifactId></dependency>
         <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId><optional>true</optional></dependency>
         <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>${lombok.version}</version><scope>provided</scope></dependency>

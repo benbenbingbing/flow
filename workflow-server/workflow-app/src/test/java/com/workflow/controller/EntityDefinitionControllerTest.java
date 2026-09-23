@@ -38,6 +38,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 实体定义控制器单元测试
  */
+@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
 @WebMvcTest(EntityDefinitionController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class EntityDefinitionControllerTest {

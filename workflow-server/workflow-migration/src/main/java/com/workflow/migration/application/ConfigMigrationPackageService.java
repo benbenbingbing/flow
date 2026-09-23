@@ -1,5 +1,8 @@
 package com.workflow.migration.application;
+
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
@@ -94,6 +97,7 @@ public class ConfigMigrationPackageService {
     private final FlowActionCatalogPort flowActionCatalogPort;
     private final ConfigMigrationPackageDocumentSupport documents;
     private final ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
+    private final DatabaseQueryDialect queryDialect;
     /**
      * 生成配置导出包。
      *
@@ -241,8 +245,7 @@ public class ConfigMigrationPackageService {
             }
             ConfigImportPackage existing = importPackageMapper.selectOne(
                     new LambdaQueryWrapper<ConfigImportPackage>()
-                            .eq(ConfigImportPackage::getChecksum, decoded.checksum())
-                            .last("LIMIT 1"));
+                            .eq(ConfigImportPackage::getChecksum, decoded.checksum()));
             if (existing != null) {
                 return importSummary(existing);
             }
@@ -440,8 +443,7 @@ public class ConfigMigrationPackageService {
             ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
                     new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                             .eq(ConfigEnvironmentMapping::getSourceType, value.getSourceType())
-                            .eq(ConfigEnvironmentMapping::getSourceKey, value.getSourceKey())
-                            .last("LIMIT 1"));
+                            .eq(ConfigEnvironmentMapping::getSourceKey, value.getSourceKey()));
             if (mapping == null) {
                 mapping = new ConfigEnvironmentMapping();
                 mapping.setSourceType(value.getSourceType());
@@ -671,8 +673,7 @@ public class ConfigMigrationPackageService {
         ConfigAssetBaseline baseline = baselineMapper.selectOne(new LambdaQueryWrapper<ConfigAssetBaseline>()
                 .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
                 .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
-                .eq(ConfigAssetBaseline::getScopeKey, scopeKey)
-                .last("LIMIT 1"));
+                .eq(ConfigAssetBaseline::getScopeKey, scopeKey));
         BaselineHashes hashes = baseline == null
                 ? deriveBaselineHashes(item, selection, scopeKey)
                 : new BaselineHashes(
@@ -727,8 +728,7 @@ public class ConfigMigrationPackageService {
                 new LambdaQueryWrapper<ConfigAssetBaseline>()
                         .eq(ConfigAssetBaseline::getAssetType, item.getAssetType())
                         .eq(ConfigAssetBaseline::getBusinessKey, item.getBusinessKey())
-                        .eq(ConfigAssetBaseline::getScopeKey, "FULL")
-                        .last("LIMIT 1"));
+                        .eq(ConfigAssetBaseline::getScopeKey, "FULL"));
         if (fullBaseline == null) {
             return null;
         }
@@ -765,29 +765,30 @@ public class ConfigMigrationPackageService {
             ConfigAssetBaseline baseline) {
         ConfigMigrationAsset target = null;
         if (baseline.getTargetVersion() != null) {
-            target = assetMapper.selectOne(
+            target = assetMapper.selectPage(new Page<ConfigMigrationAsset>(1, 1, false),
                     baselineTargetQuery(assetType, businessKey)
                             .eq(ConfigMigrationAsset::getSourceVersion,
-                                    baseline.getTargetVersion())
-                            .last("LIMIT 1"));
+                                    baseline.getTargetVersion()))
+                    .getRecords().stream().findFirst().orElse(null);
         }
         if (target != null || !StringUtils.hasText(baseline.getTargetHash())) {
             return target;
         }
-        return assetMapper.selectOne(
+        return assetMapper.selectPage(new Page<ConfigMigrationAsset>(1, 1, false),
                 baselineTargetQuery(assetType, businessKey)
                         .eq(ConfigMigrationAsset::getContentHash,
-                                baseline.getTargetHash())
-                        .last("LIMIT 1"));
+                                baseline.getTargetHash()))
+                .getRecords().stream().findFirst().orElse(null);
     }
 
+    /** 同版本或同内容可能有多次发布历史，按版本及主键稳定选取，保留原业务筛选范围。 */
     private LambdaQueryWrapper<ConfigMigrationAsset> baselineTargetQuery(
             String assetType,
             String businessKey) {
         return new LambdaQueryWrapper<ConfigMigrationAsset>()
                 .eq(ConfigMigrationAsset::getAssetType, assetType)
                 .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
-                .orderByDesc(ConfigMigrationAsset::getSourceVersion);
+                .orderByDesc(ConfigMigrationAsset::getSourceVersion, ConfigMigrationAsset::getId);
     }
 
     /**
@@ -925,16 +926,16 @@ public class ConfigMigrationPackageService {
             }
             Integer version = integer(dependency.get("version"));
             String componentKey = componentName(key);
+            // 这里只验证存在性；不加载任意一条扩展，允许同名组件有多个版本或类型。
             if ("CUSTOM_COMPONENT".equals(type)
-                    && extensionDefinitionMapper.selectOne(
+                    && extensionDefinitionMapper.selectCount(
                     new LambdaQueryWrapper<UiExtensionDefinition>()
                             .eq(UiExtensionDefinition::getExtensionKey,
                                     componentKey)
                             .eq(version != null,
                                     UiExtensionDefinition::getVersion,
                                     version)
-                            .eq(UiExtensionDefinition::getDeleted, 0)
-                            .last("LIMIT 1")) != null) {
+                            .eq(UiExtensionDefinition::getDeleted, 0)) > 0) {
                 return true;
             }
             return hasMapping(type, key);
@@ -945,13 +946,12 @@ public class ConfigMigrationPackageService {
                             asset.snapshot(), dependency, type, key))) {
                 return true;
             }
-            return extensionDefinitionMapper.selectOne(
+            return extensionDefinitionMapper.selectCount(
                     new LambdaQueryWrapper<UiExtensionDefinition>()
                             .eq(UiExtensionDefinition::getExtensionType,
                                     "INTERFACE")
                             .eq(UiExtensionDefinition::getExtensionKey, key)
-                            .eq(UiExtensionDefinition::getDeleted, 0)
-                            .last("LIMIT 1")) != null;
+                            .eq(UiExtensionDefinition::getDeleted, 0)) > 0;
         }
         return true;
     }
@@ -1064,8 +1064,7 @@ public class ConfigMigrationPackageService {
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                         .eq(ConfigEnvironmentMapping::getSourceType, type)
                         .eq(ConfigEnvironmentMapping::getSourceKey, sourceKey)
-                        .eq(ConfigEnvironmentMapping::getEnabled, true)
-                        .last("LIMIT 1"));
+                        .eq(ConfigEnvironmentMapping::getEnabled, true));
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
     private boolean hasMapping(String type, String key) {

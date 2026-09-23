@@ -315,7 +315,9 @@ public class EntityDataMutationValidator {
             }
             if (dynamicMapper.countByCondition(
                     tableName,
-                    condition) > 0) {
+                    // EQ/NE 保持精确唯一性比较；数字和日期字符串按发布类型绑定，
+                    // 避免唯一值预检依赖数据库隐式转换，与普通动态查询共用规则。
+                    EntityQueryConditions.fromPublishedFields(condition, snapshot.getFields())) > 0) {
                 throw new RuntimeException(
                         "字段值已存在: "
                                 + field.getFieldName());

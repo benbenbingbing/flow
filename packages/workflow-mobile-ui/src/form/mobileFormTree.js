@@ -1,6 +1,7 @@
 import { normalizeRuntimeNodes } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { runtimeFieldState } from '@flow/workflow-core/form-runtime/formModel'
 import { resolveFormFieldExtensionName } from '@flow/workflow-core/form-field-extension'
+import { resolveRuntimeFormTabLayout } from '@flow/workflow-core/form-runtime/runtimeFormTabs'
 
 /** 移动布局投影：Tab 转分组、Grid 纵向排列，原节点身份和字段绑定全部保留。 */
 export function buildMobileFormTree(form, fields, options, linkage = {}) {
@@ -38,9 +39,37 @@ export function groupsContainingField(tree, fieldCode) {
   const groups = []
   function visit(items, ancestors) {
     for (const item of items) {
-      if (item.kind === 'field' && String(item.field.fieldCode || item.field.fieldKey) === String(fieldCode)) groups.push(...ancestors)
+      if ((item.kind === 'field' && String(item.field.fieldCode || item.field.fieldKey) === String(fieldCode)) || (item.kind === 'extension' && item.id === String(fieldCode))) groups.push(...ancestors)
       if (item.children) visit(item.children, [...ancestors, item.id])
     }
   }
   visit(tree, []); return [...new Set(groups)]
+}
+
+/** 复用 PC 的根级 Tab 布局，只移除被提升 Tab 的折叠外壳；嵌套 Tab 和区块保持原树结构。 */
+export function buildMobileFormPages(form, tree, relatedContents = [], tabbed = false) {
+  const basic = { name: 'basic', label: '基本信息', items: tree, relatedContents: [] }
+  if (!tabbed) return { pages: [{ ...basic, relatedContents }], defaultActiveTabName: 'basic' }
+  const layout = resolveRuntimeFormTabLayout(form)
+  const tabIds = new Set(layout.tabs.map(tab => String(tab.id)))
+  basic.items = tree.filter(item => !tabIds.has(item.id))
+  const pages = layout.tabs.map(tab => ({ ...tab, id: String(tab.id), items: tree.find(item => item.id === String(tab.id))?.children || [], relatedContents: [] }))
+  const nodes = normalizeRuntimeNodes(form.nodes || []), byId = new Map(nodes.map(node => [String(node.id), node]))
+  // 关联内容跟随锚点所在的第一层页签；表单级内容保留在基本信息中，避免提升页签后丢失或重复展示。
+  for (const composition of relatedContents) {
+    let node = String(composition.anchorType).toUpperCase() === 'FORM_NODE' ? nodes.find(node => [node.id, node.nodeKey].map(String).includes(String(composition.anchorKey))) : null
+    let target
+    const seen = new Set()
+    while (node && !seen.has(String(node.id))) {
+      seen.add(String(node.id))
+      target = pages.find(page => page.id === String(node.id))
+      if (target) break
+      node = byId.get(String(node.parentId))
+    }
+    const owner = target || basic
+    owner.relatedContents.push(composition)
+  }
+  const showBasic = layout.hasBaseContent || !pages.length || basic.relatedContents.length > 0
+  if (showBasic) pages.unshift(basic)
+  return { pages, defaultActiveTabName: showBasic ? 'basic' : layout.defaultActiveTabName }
 }

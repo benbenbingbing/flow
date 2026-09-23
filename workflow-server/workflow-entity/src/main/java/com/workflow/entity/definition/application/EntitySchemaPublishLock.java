@@ -1,95 +1,45 @@
 package com.workflow.entity.definition.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.database.port.DatabaseLockPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import java.util.HashMap;
+import java.util.Map;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-
-/**
- * Cross-pod, connection-scoped lock for entity schema publication.
- */
+/** 实体发布锁的业务入口；独立会话及厂商锁语法由数据库端口负责。 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class EntitySchemaPublishLock {
+    private final DatabaseLockPort locks;
+    private final ThreadLocal<Map<String, DatabaseLockPort.Handle>> held = new ThreadLocal<>();
 
-    private static final String LOCK_KEY_SQL =
-            "CONCAT('flow:entity:', LEFT(SHA2(?, 256), 40))";
-    private final JdbcTemplate jdbcTemplate;
-    private final ThreadLocal<Connection> heldConnection = new ThreadLocal<>();
-
+    /** 非阻塞获取；相同线程重复发布同一实体返回忙，防止覆盖句柄后泄露锁。 */
     public boolean tryAcquire(String entityId) {
-        DataSource dataSource = jdbcTemplate.getDataSource();
-        if (dataSource != null) {
-            try {
-                Connection connection = dataSource.getConnection();
-                try (PreparedStatement statement = connection.prepareStatement(
-                        "SELECT GET_LOCK(" + LOCK_KEY_SQL + ", 0)")) {
-                    statement.setString(1, entityId);
-                    try (ResultSet result = statement.executeQuery()) {
-                        boolean acquired = result.next() && result.getInt(1) == 1;
-                        if (acquired) {
-                            heldConnection.set(connection);
-                        } else {
-                            connection.close();
-                        }
-                        return acquired;
-                    }
-                }
-            } catch (Exception exception) {
-                throw new IllegalStateException("获取实体结构发布锁失败", exception);
-            }
+        Map<String, DatabaseLockPort.Handle> handles = held.get();
+        if (handles != null && handles.containsKey(entityId)) return false;
+        var acquired = locks.tryAcquire("flow:entity", entityId);
+        if (acquired.isEmpty()) return false;
+        if (handles == null) {
+            handles = new HashMap<>();
+            held.set(handles);
         }
-        // 保留无 DataSource 的轻量测试适配；生产路径始终在同一连接持有与释放命名锁。
-        Integer acquired = jdbcTemplate.queryForObject(
-                "SELECT GET_LOCK(" + LOCK_KEY_SQL + ", 0)",
-                Integer.class,
-                entityId);
-        return Integer.valueOf(1).equals(acquired);
+        handles.put(entityId, acquired.get());
+        return true;
     }
 
+    /** 只释放当前线程持有的指定实体句柄；释放异常不覆盖原始发布结果。 */
     public void release(String entityId) {
-        Connection connection = heldConnection.get();
-        if (connection != null) {
-            heldConnection.remove();
-            try (connection;
-                    PreparedStatement statement = connection.prepareStatement(
-                            "SELECT RELEASE_LOCK(" + LOCK_KEY_SQL + ")")) {
-                statement.setString(1, entityId);
-                try (ResultSet result = statement.executeQuery()) {
-                    if (!result.next() || result.getInt(1) != 1) {
-                        log.warn("Entity schema publish lock was not owned when released: entityId={}",
-                                LogValue.safe(entityId));
-                    }
-                }
-            } catch (Exception exception) {
-                log.warn("Failed to explicitly release entity schema publish lock: entityId={}",
-                        LogValue.safe(entityId), LogValue.failureType(exception));
-            }
-            return;
-        }
-        try {
-            Integer released = jdbcTemplate.queryForObject(
-                    "SELECT RELEASE_LOCK(" + LOCK_KEY_SQL + ")",
-                    Integer.class,
-                    entityId);
-            if (!Integer.valueOf(1).equals(released)) {
-                log.warn(
-                        "Entity schema publish lock was not owned when released: entityId={}",
-                        LogValue.safe(entityId));
-            }
-        } catch (RuntimeException exception) {
-            // Connection loss releases MySQL named locks; do not mask the publish result.
-            log.warn(
-                    "Failed to explicitly release entity schema publish lock: entityId={}",
-                    LogValue.safe(entityId),
-                    LogValue.failureType(exception));
+        var handles = held.get();
+        if (handles == null) return;
+        var handle = handles.remove(entityId);
+        if (handles.isEmpty()) held.remove();
+        if (handle == null) return;
+        try { handle.close(); }
+        catch (RuntimeException exception) {
+            log.warn("释放实体结构发布锁失败: entityId={}, type={}", LogValue.safe(entityId), LogValue.failureType(exception));
         }
     }
 }

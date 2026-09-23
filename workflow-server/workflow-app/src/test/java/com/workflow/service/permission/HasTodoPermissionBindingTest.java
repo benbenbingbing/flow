@@ -59,13 +59,16 @@ class HasTodoPermissionBindingTest {
         }
         Configuration configuration = new Configuration(new Environment(
                 "test", new JdbcTransactionFactory(), database));
+        configuration.setDatabaseId("MYSQL");
         configuration.addMapper(EntityDataDynamicMapper.class);
         session = new SqlSessionFactoryBuilder().build(configuration).openSession();
         mapper = session.getMapper(EntityDataDynamicMapper.class);
         EntityPhysicalTableResolver resolver = mock(EntityPhysicalTableResolver.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         taskAccess = mock(ProcessTaskAccessPort.class);
-        builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, taskAccess);
+        builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
     }
 
     @AfterEach

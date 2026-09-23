@@ -3,6 +3,7 @@ package com.workflow.entity.data.infrastructure.persistence.provider;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import org.apache.ibatis.annotations.Options;
 import org.junit.jupiter.api.Test;
+import org.apache.ibatis.builder.annotation.ProviderContext;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -13,6 +14,21 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EntityDataSqlProviderCandidateFilterTest {
+    private final ProviderContext context = mysqlContext();
+
+    private static ProviderContext mysqlContext() {
+        // ProviderContext 由 MyBatis 创建且构造器不公开；仅在直接渲染测试中构造，
+        // 真实 Mapper/绑定路径由 MySQL 实库测试覆盖，不修改项目的 Mockito 策略。
+        try {
+            var constructor = ProviderContext.class.getDeclaredConstructor(
+                    Class.class, java.lang.reflect.Method.class, String.class);
+            constructor.setAccessible(true);
+            return constructor.newInstance(Object.class, Object.class.getMethod("toString"), "MYSQL");
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError(error);
+        }
+    }
+
 
     @Test
     void trustedIsNullOperatorGeneratesNullPredicate() {
@@ -23,10 +39,10 @@ class EntityDataSqlProviderCandidateFilterTest {
                 "projectId_op", "IS_NULL"));
 
         String sql = new EntityDataSqlProvider()
-                .selectByCondition(params);
+                .selectByCondition(params, context);
 
-        assertTrue(sql.contains("project_id IS NULL"));
-        assertFalse(sql.contains("project_id ="));
+        assertTrue(sql.contains("`project_id` IS NULL"));
+        assertFalse(sql.contains("`project_id` ="));
     }
 
     @Test
@@ -38,11 +54,11 @@ class EntityDataSqlProviderCandidateFilterTest {
         params.put("excludeRecordId", "record-1");
 
         String sql = new EntityDataSqlProvider()
-                .selectFormUniqueCandidates(params);
+                .selectFormUniqueCandidates(params, context);
 
         assertTrue(sql.contains(
-                "LOWER(TRIM(CAST(project_name AS CHAR))) = #{normalizedValue}"));
-        assertTrue(sql.contains("id <> #{excludeRecordId}"));
+                "REGEXP_LIKE(`project_name`, CAST(#{_uniqueAsciiPattern,jdbcType=VARCHAR} AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_bin, 'c')"));
+        assertTrue(sql.contains("id <> #{excludeRecordId,jdbcType=VARCHAR}"));
     }
 
     @Test
@@ -55,7 +71,7 @@ class EntityDataSqlProviderCandidateFilterTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EntityDataSqlProvider()
-                        .selectFormUniqueCandidates(params));
+                        .selectFormUniqueCandidates(params, context));
     }
 
     @Test
@@ -66,10 +82,10 @@ class EntityDataSqlProviderCandidateFilterTest {
         params.put("normalizedValue", "");
 
         String sql = new EntityDataSqlProvider()
-                .selectFormUniqueCandidates(params);
+                .selectFormUniqueCandidates(params, context);
 
         assertTrue(sql.contains(
-                "project_name IS NULL OR TRIM(CAST(project_name AS CHAR)) = ''"));
+                "`project_name` IS NULL OR LENGTH(`project_name`) = 0"));
     }
 
     @Test
@@ -80,9 +96,9 @@ class EntityDataSqlProviderCandidateFilterTest {
                 new EntityDataSqlProvider();
 
         assertEquals(
-                provider.selectList(params) + " FOR UPDATE",
-                provider.selectListForUpdate(params));
-        assertFalse(provider.selectList(params)
+                provider.selectList(params, context) + " FOR UPDATE",
+                provider.selectListForUpdate(params, context));
+        assertFalse(provider.selectList(params, context)
                 .endsWith("FOR UPDATE"));
     }
 
@@ -97,11 +113,11 @@ class EntityDataSqlProviderCandidateFilterTest {
                 new EntityDataSqlProvider();
 
         assertEquals(
-                provider.selectFormUniqueCandidates(params)
+                provider.selectFormUniqueCandidates(params, context)
                         + " FOR UPDATE",
                 provider.selectFormUniqueCandidatesForUpdate(
-                        params));
-        assertFalse(provider.selectFormUniqueCandidates(params)
+                        params, context));
+        assertFalse(provider.selectFormUniqueCandidates(params, context)
                 .endsWith("FOR UPDATE"));
     }
 

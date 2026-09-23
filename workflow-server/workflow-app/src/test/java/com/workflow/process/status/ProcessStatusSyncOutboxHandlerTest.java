@@ -1,6 +1,7 @@
 package com.workflow.process.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.database.JdbcIdempotentInsert;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ProcessStatusSyncOutboxHandlerTest {
+    private static final LocalDateTime NOW = LocalDateTime.parse("2026-09-22T01:00:00");
 
     @Test
     void appliesTaskStatusOnce() throws Exception {
@@ -33,8 +35,8 @@ class ProcessStatusSyncOutboxHandlerTest {
                 null,
                 null);
         OutboxEvent event = fixture.event(payload);
-        when(fixture.mapper.insertApplying(any())).thenReturn(1);
-        when(fixture.mapper.markApplied("event-1")).thenReturn(1);
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(true);
+        when(fixture.mapper.markApplied("event-1", NOW)).thenReturn(1);
         when(fixture.linkMapper.updateActiveStatus(
                 "process-1", "FINANCE_REVIEW")).thenReturn(1);
 
@@ -45,7 +47,7 @@ class ProcessStatusSyncOutboxHandlerTest {
         verify(fixture.linkMapper).updateActiveStatus(
                 "process-1", "FINANCE_REVIEW");
         verify(fixture.linkMapper, never()).closeActive(any(), any());
-        verify(fixture.mapper).markApplied("event-1");
+        verify(fixture.mapper).markApplied("event-1", NOW);
     }
 
     @Test
@@ -60,14 +62,14 @@ class ProcessStatusSyncOutboxHandlerTest {
                 "FINANCE_REVIEW",
                 null,
                 null);
-        when(fixture.mapper.insertApplying(any())).thenReturn(0);
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(false);
 
         fixture.handler.handle(fixture.event(payload));
 
         verifyNoInteractions(
                 fixture.entityRecordPort,
                 fixture.linkMapper);
-        verify(fixture.mapper, never()).markApplied(any());
+        verify(fixture.mapper, never()).markApplied(any(), any());
     }
 
     @Test
@@ -82,8 +84,8 @@ class ProcessStatusSyncOutboxHandlerTest {
                 null,
                 "COMPLETED",
                 "APPROVED");
-        when(fixture.mapper.insertApplying(any())).thenReturn(1);
-        when(fixture.mapper.markApplied("event-1")).thenReturn(1);
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(true);
+        when(fixture.mapper.markApplied("event-1", NOW)).thenReturn(1);
         when(fixture.linkMapper.closeActive("process-1", "APPROVED"))
                 .thenReturn(1);
 
@@ -96,7 +98,7 @@ class ProcessStatusSyncOutboxHandlerTest {
                 "COMPLETED",
                 "APPROVED");
         verify(fixture.linkMapper).closeActive("process-1", "APPROVED");
-        verify(fixture.mapper).markApplied("event-1");
+        verify(fixture.mapper).markApplied("event-1", NOW);
     }
 
     @Test
@@ -111,8 +113,8 @@ class ProcessStatusSyncOutboxHandlerTest {
                 null,
                 "COMPLETED",
                 null);
-        when(fixture.mapper.insertApplying(any())).thenReturn(1);
-        when(fixture.mapper.markApplied("event-1")).thenReturn(1);
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(true);
+        when(fixture.mapper.markApplied("event-1", NOW)).thenReturn(1);
         when(fixture.linkMapper.closeActive("process-1", null))
                 .thenReturn(1);
 
@@ -126,7 +128,7 @@ class ProcessStatusSyncOutboxHandlerTest {
                 null);
         verify(fixture.linkMapper).closeActive("process-1", null);
         verify(fixture.linkMapper).recordEndType("process-1", "COMPLETED");
-        verify(fixture.mapper).markApplied("event-1");
+        verify(fixture.mapper).markApplied("event-1", NOW);
     }
 
     @Test
@@ -141,8 +143,8 @@ class ProcessStatusSyncOutboxHandlerTest {
                 "FINANCE_REVIEW",
                 null,
                 null);
-        when(fixture.mapper.insertApplying(any())).thenReturn(1);
-        when(fixture.mapper.markApplied("event-1")).thenReturn(1);
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(true);
+        when(fixture.mapper.markApplied("event-1", NOW)).thenReturn(1);
         when(fixture.linkMapper.updateActiveStatus(
                 "process-1", "FINANCE_REVIEW")).thenReturn(0);
 
@@ -150,7 +152,7 @@ class ProcessStatusSyncOutboxHandlerTest {
 
         verify(fixture.entityRecordPort, never())
                 .updateStatus(any(), any(), any());
-        verify(fixture.mapper).markApplied("event-1");
+        verify(fixture.mapper).markApplied("event-1", NOW);
     }
 
     private Fixture fixture() {
@@ -161,17 +163,19 @@ class ProcessStatusSyncOutboxHandlerTest {
                 mock(EntityProcessLinkMapper.class);
         EntityRecordPort entityRecordPort =
                 mock(EntityRecordPort.class);
+        JdbcIdempotentInsert inserts = mock(JdbcIdempotentInsert.class);
         ProcessStatusSyncOutboxHandler handler =
                 new ProcessStatusSyncOutboxHandler(
                         objectMapper,
                         mapper,
                         linkMapper,
-                        entityRecordPort);
+                        entityRecordPort, inserts, () -> NOW);
         return new Fixture(
                 objectMapper,
                 mapper,
                 linkMapper,
                 entityRecordPort,
+                inserts,
                 handler);
     }
 
@@ -180,6 +184,7 @@ class ProcessStatusSyncOutboxHandlerTest {
             ProcessStatusSyncMapper mapper,
             EntityProcessLinkMapper linkMapper,
             EntityRecordPort entityRecordPort,
+            JdbcIdempotentInsert inserts,
             ProcessStatusSyncOutboxHandler handler) {
 
         OutboxEvent event(ProcessStatusSyncPayload payload)

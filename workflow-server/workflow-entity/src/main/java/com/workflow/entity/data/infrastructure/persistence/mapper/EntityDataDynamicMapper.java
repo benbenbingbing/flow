@@ -1,5 +1,6 @@
 package com.workflow.entity.data.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import org.apache.ibatis.annotations.*;
 import org.apache.ibatis.mapping.StatementType;
 
@@ -9,7 +10,7 @@ import java.util.Map;
 /**
  * 实体数据动态 Mapper
  * 支持动态表名和动态字段
- * 
+ *
  * 注意：所有方法都需要传入 tableName 参数
  */
 @Mapper
@@ -17,11 +18,12 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 根据ID查询
-     * 
+     *
      * @param tableName 表名
      * @param id 数据ID
      * @return 数据Map
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectById")
     @Options(statementType = StatementType.PREPARED)
     Map<String, Object> selectById(@Param("tableName") String tableName, @Param("id") String id);
@@ -29,6 +31,7 @@ public interface EntityDataDynamicMapper {
     /**
      * 在调用方事务中锁定并读取记录。
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectByIdForUpdate")
@@ -48,6 +51,7 @@ public interface EntityDataDynamicMapper {
      * @param permissionSql  数据权限 SQL 片段
      * @return 数据 Map，无则返回 null
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByIdWithPermission")
     @Options(statementType = StatementType.PREPARED)
     Map<String, Object> selectByIdWithPermission(
@@ -56,6 +60,7 @@ public interface EntityDataDynamicMapper {
             @Param("permissionSql") String permissionSql,
             @Param("permissionParameters") Map<String, Object> permissionParameters);
 
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectByIdIncludingDeleted")
@@ -64,6 +69,7 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName,
             @Param("id") String id);
 
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectByIdIncludingDeletedWithPermission")
@@ -77,9 +83,10 @@ public interface EntityDataDynamicMapper {
     /**
      * 根据流程实例ID查询
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByProcessInstanceId")
     @Options(statementType = StatementType.PREPARED)
-    Map<String, Object> selectByProcessInstanceId(@Param("tableName") String tableName, 
+    Map<String, Object> selectByProcessInstanceId(@Param("tableName") String tableName,
                                                    @Param("processInstanceId") String processInstanceId);
 
     /**
@@ -88,6 +95,7 @@ public interface EntityDataDynamicMapper {
      * @param tableName 数据表名
      * @return 数据 Map 列表
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectList")
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectList(@Param("tableName") String tableName);
@@ -98,6 +106,7 @@ public interface EntityDataDynamicMapper {
      * <p>仅供已持有唯一值 gate、尚未触碰业务行的权威写前终检使用；
      * 独立 statement 并禁用缓存，保证 REPEATABLE READ 下读取当前已提交版本。</p>
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectListForUpdate")
@@ -109,9 +118,10 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName);
 
     /**
-     * 按表单唯一值的文本规范化语义预筛候选，只返回可能冲突的记录。
-     * 条件唯一的结构化条件仍由应用层在候选结果上求值。
+     * 按表单唯一值的文本规范化语义预筛普通字符列，允许多取候选但不得漏报。
+     * 完整归一化比较及条件唯一的结构化条件仍由应用层求值；大字段、数值和日期使用全量读取。
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectFormUniqueCandidates")
@@ -126,6 +136,7 @@ public interface EntityDataDynamicMapper {
      * 以 MySQL exclusive locking read 按文本规范化语义查询唯一值候选。
      * 仅供 gate 后、业务写前的事务内权威终检使用。
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
             method = "selectFormUniqueCandidatesForUpdate")
@@ -142,14 +153,15 @@ public interface EntityDataDynamicMapper {
     /**
      * 条件查询
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByCondition")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> selectByCondition(@Param("tableName") String tableName, 
+    List<Map<String, Object>> selectByCondition(@Param("tableName") String tableName,
                                                  @Param("condition") Map<String, Object> condition);
 
     /**
      * 插入数据
-     * 
+     *
      * @param tableName 表名
      * @param data 数据Map（包含所有字段）
      * @return 影响行数
@@ -160,7 +172,7 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 更新数据
-     * 
+     *
      * @param tableName 表名
      * @param data 数据Map（必须包含id字段）
      * @return 影响行数
@@ -204,6 +216,7 @@ public interface EntityDataDynamicMapper {
      * @param permissionSql 数据权限 SQL 片段
      * @return 数据 Map 列表
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectListWithPermission")
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectListWithPermission(@Param("tableName") String tableName,
@@ -218,12 +231,17 @@ public interface EntityDataDynamicMapper {
      * @param limit     每页数量
      * @return 数据 Map 列表
      */
+    default List<Map<String, Object>> selectPage(String tableName, long offset, long limit) {
+        return selectPageRows(new OffsetPage<>(offset, limit), tableName);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPage")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> selectPage(
-            @Param("tableName") String tableName,
-            @Param("offset") long offset,
-            @Param("limit") long limit);
+    List<Map<String, Object>> selectPageRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
+            @Param("tableName") String tableName);
 
     /**
      * 分页查询（带数据权限过滤），按创建时间倒序。
@@ -234,18 +252,24 @@ public interface EntityDataDynamicMapper {
      * @param limit         每页数量
      * @return 数据 Map 列表
      */
+    default List<Map<String, Object>> selectPageWithPermission(String tableName, String permissionSql, Map<String, Object> permissionParameters, long offset, long limit) {
+        return selectPageWithPermissionRows(new OffsetPage<>(offset, limit), tableName, permissionSql, permissionParameters);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageWithPermission")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> selectPageWithPermission(
+    List<Map<String, Object>> selectPageWithPermissionRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("tableName") String tableName,
             @Param("permissionSql") String permissionSql,
-            @Param("permissionParameters") Map<String, Object> permissionParameters,
-            @Param("offset") long offset,
-            @Param("limit") long limit);
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 条件查询（带数据权限过滤）
      */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByConditionWithPermission")
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectByConditionWithPermission(@Param("tableName") String tableName,
@@ -262,13 +286,18 @@ public interface EntityDataDynamicMapper {
      * @param limit     每页数量
      * @return 数据 Map 列表
      */
+    default List<Map<String, Object>> selectPageByCondition(String tableName, Map<String, Object> condition, long offset, long limit) {
+        return selectPageByConditionRows(new OffsetPage<>(offset, limit), tableName, condition);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageByCondition")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> selectPageByCondition(
+    List<Map<String, Object>> selectPageByConditionRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("tableName") String tableName,
-            @Param("condition") Map<String, Object> condition,
-            @Param("offset") long offset,
-            @Param("limit") long limit);
+            @Param("condition") Map<String, Object> condition);
 
     /**
      * 分页条件查询（带数据权限过滤），按创建时间倒序。
@@ -280,15 +309,20 @@ public interface EntityDataDynamicMapper {
      * @param limit         每页数量
      * @return 数据 Map 列表
      */
+    default List<Map<String, Object>> selectPageByConditionWithPermission(String tableName, Map<String, Object> condition, String permissionSql, Map<String, Object> permissionParameters, long offset, long limit) {
+        return selectPageByConditionWithPermissionRows(new OffsetPage<>(offset, limit), tableName, condition, permissionSql, permissionParameters);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageByConditionWithPermission")
     @Options(statementType = StatementType.PREPARED)
-    List<Map<String, Object>> selectPageByConditionWithPermission(
+    List<Map<String, Object>> selectPageByConditionWithPermissionRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("tableName") String tableName,
             @Param("condition") Map<String, Object> condition,
             @Param("permissionSql") String permissionSql,
-            @Param("permissionParameters") Map<String, Object> permissionParameters,
-            @Param("offset") long offset,
-            @Param("limit") long limit);
+            @Param("permissionParameters") Map<String, Object> permissionParameters);
 
     /**
      * 统计数量

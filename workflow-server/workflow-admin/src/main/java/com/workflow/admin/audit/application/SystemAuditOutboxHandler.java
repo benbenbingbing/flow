@@ -1,5 +1,6 @@
 package com.workflow.admin.audit.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
@@ -18,6 +19,7 @@ public class SystemAuditOutboxHandler implements OutboxEventHandler {
 
     private final SystemOperationLogMapper operationLogMapper;
     private final ObjectMapper objectMapper;
+    private final JdbcWriteAttempt writeAttempt;
 
     @Override
     public String topic() {
@@ -35,8 +37,8 @@ public class SystemAuditOutboxHandler implements OutboxEventHandler {
                 event.payloadDocument(),
                 AuditLogPayload.class);
         try {
-            operationLogMapper.insert(
-                    SystemAuditFailureWriter.toLog(payload));
+            writeAttempt.execute(() -> operationLogMapper.insert(
+                    SystemAuditFailureWriter.toLog(payload)));
         } catch (DuplicateKeyException ignored) {
             // event_id 唯一约束保证消费幂等。
         }

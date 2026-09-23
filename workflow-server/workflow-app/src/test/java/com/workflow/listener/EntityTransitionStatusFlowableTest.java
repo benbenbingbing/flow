@@ -125,6 +125,10 @@ class EntityTransitionStatusFlowableTest {
         engine.getRuntimeService().startProcessInstanceByKey("paged", vars());
         engine.getIdentityService().setAuthenticatedUserId(null);
         var configuration = new com.baomidou.mybatisplus.core.MybatisConfiguration();
+        configuration.setDatabaseId("MYSQL");
+        // 测试单独建立会话工厂，需要注册生产分页插件才能验证实际页大小和偏移。
+        configuration.addInterceptor(new com.workflow.config.database.DatabaseMybatisConfiguration()
+                .mybatisPlusInterceptor(new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect()));
         configuration.addMapper(com.workflow.process.instance.infrastructure.persistence.mapper.StartedProcessPageMapper.class);
         var factory = new com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean();
         factory.setDataSource(dataSource); factory.setConfiguration(configuration);

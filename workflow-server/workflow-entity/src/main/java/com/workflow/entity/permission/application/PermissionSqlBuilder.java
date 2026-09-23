@@ -1,6 +1,9 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.SchemaType;
+import com.workflow.entity.data.application.EntityTableDefinitionFactory;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -38,6 +41,8 @@ public class PermissionSqlBuilder {
     private static final int MAX_RULE_DEPTH = 6;
     /** 规则树最大节点数。 */
     private static final int MAX_RULE_NODES = 100;
+    /** 与动态表命名策略一致，侧表追加 _multi 后仍需满足跨数据库的 63 字符限制。 */
+    private static final int MAX_MULTI_TABLE_NAME_LENGTH = 63;
     /** 合法 SQL 标识符正则，用于字段名白名单校验。 */
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
     /** 支持的字段比较操作符。 */
@@ -73,22 +78,15 @@ public class PermissionSqlBuilder {
     private final EntityPhysicalTableResolver tableResolver;
     private final PermissionSqlFragmentCompiler sqlFragmentCompiler;
     private final ProcessTaskAccessPort taskAccessPort;
-
-    public PermissionSqlBuilder(
-            EntityDefinitionMapper definitionMapper,
-            EntityFieldMapper fieldMapper,
-            EntityStatusMapper statusMapper,
-            List<EntityDataPermissionFilterProvider> filterProviders) {
-        this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null, null);
-    }
+    private final DatabaseQueryDialect queryDialect;
 
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders,
-            EntityRecordTeamService teamService) {
-        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null, null);
+            DatabaseQueryDialect queryDialect) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null, null, queryDialect);
     }
 
     public PermissionSqlBuilder(
@@ -97,8 +95,8 @@ public class PermissionSqlBuilder {
             EntityStatusMapper statusMapper,
             List<EntityDataPermissionFilterProvider> filterProviders,
             EntityRecordTeamService teamService,
-            EntityPhysicalTableResolver tableResolver) {
-        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, tableResolver, null);
+            DatabaseQueryDialect queryDialect) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null, null, queryDialect);
     }
 
     public PermissionSqlBuilder(
@@ -108,9 +106,21 @@ public class PermissionSqlBuilder {
             List<EntityDataPermissionFilterProvider> filterProviders,
             EntityRecordTeamService teamService,
             EntityPhysicalTableResolver tableResolver,
-            PermissionSqlFragmentCompiler sqlFragmentCompiler) {
+            DatabaseQueryDialect queryDialect) {
+        this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, tableResolver, null, queryDialect);
+    }
+
+    public PermissionSqlBuilder(
+            EntityDefinitionMapper definitionMapper,
+            EntityFieldMapper fieldMapper,
+            EntityStatusMapper statusMapper,
+            List<EntityDataPermissionFilterProvider> filterProviders,
+            EntityRecordTeamService teamService,
+            EntityPhysicalTableResolver tableResolver,
+            PermissionSqlFragmentCompiler sqlFragmentCompiler,
+            DatabaseQueryDialect queryDialect) {
         this(definitionMapper, fieldMapper, statusMapper, filterProviders,
-                teamService, tableResolver, sqlFragmentCompiler, null);
+                teamService, tableResolver, sqlFragmentCompiler, null, queryDialect);
     }
 
     @Autowired
@@ -122,7 +132,8 @@ public class PermissionSqlBuilder {
             EntityRecordTeamService teamService,
             EntityPhysicalTableResolver tableResolver,
             PermissionSqlFragmentCompiler sqlFragmentCompiler,
-            ProcessTaskAccessPort taskAccessPort) {
+            ProcessTaskAccessPort taskAccessPort,
+            DatabaseQueryDialect queryDialect) {
         this.definitionMapper = definitionMapper;
         this.fieldMapper = fieldMapper;
         this.statusMapper = statusMapper;
@@ -131,10 +142,11 @@ public class PermissionSqlBuilder {
         this.tableResolver = tableResolver;
         this.sqlFragmentCompiler = sqlFragmentCompiler;
         this.taskAccessPort = taskAccessPort;
+        this.queryDialect = Objects.requireNonNull(queryDialect, "queryDialect");
     }
 
     /**
-     * 编译数据过滤配置为 SQL 条件片段，不带实体编码。
+     * 预览数据过滤 SQL，不带实体编码；返回值包含绑定占位符，不可单独用于执行查询。
      *
      * @param filter 数据过滤配置
      * @param user   当前用户
@@ -153,7 +165,7 @@ public class PermissionSqlBuilder {
      * @param entityCode 实体编码，可为 null（不解析实体字段）
      * @param filter     数据过滤配置，为空返回 "1=0"
      * @param user       当前用户，为空返回 "1=0"
-     * @return SQL 条件片段
+     * @return 预览条件片段；实际查询必须使用带 parameters 的重载，同时保留绑定值
      */
     public String buildFilterSql(String entityCode, FilterConfigDTO filter, SysUser user) {
         // 无参数容器的入口仅供条件预览；执行查询须使用携带参数容器的重载。
@@ -161,7 +173,7 @@ public class PermissionSqlBuilder {
     }
 
     /**
-     * 编译权限条件，并将待办记录 ID 作为绑定参数写入当前查询的参数容器。
+     * 编译权限条件，并将规则值和当前用户身份作为绑定参数写入查询参数容器。
      *
      * @param entityCode 实体编码，用于解析业务表
      * @param filter 数据范围配置
@@ -187,35 +199,44 @@ public class PermissionSqlBuilder {
         }
 
         String type = normalized(filter.getType(), "PERSONAL");
+        boolean mappedStatus = filter.getStatusLimit() != null && Boolean.TRUE.equals(filter.getStatusLimit().getEnabled());
+        Map<String, RuleFieldColumn> fields = Set.of("PERSONAL", "DEPT", "DEPT_TREE", "RULE").contains(type) || mappedStatus
+                ? resolveFieldColumns(entityCode) : Map.of();
+        List<String> validityGuards = new ArrayList<>();
         String baseSql = switch (type) {
             case "ALL" -> "1=1";
-            case "PERSONAL" -> matchesUserSql(userField, user);
-            case "SUBMITTER" -> matchesUserSql("submitter_id", user);
-            case "CURRENT_ASSIGNEE" -> matchesUserSql("current_task_assignee", user);
+            case "PERSONAL" -> matchesMappedUserSql(requireMappedField(fields, userField), user, parameters, validityGuards);
+            case "SUBMITTER" -> matchesUserSql("submitter_id", user, parameters);
+            case "CURRENT_ASSIGNEE" -> matchesUserSql("current_task_assignee", user, parameters);
             case "HAS_TODO" -> currentProcessTaskSql(entityCode, user, parameters);
-            case "TEAM" -> buildTeamSql(entityCode, user);
-            case "SQL" -> buildConfiguredSql(entityCode, filter, user);
-            case "DEPT" -> equalsSql(deptField, user.getDeptId());
-            case "DEPT_TREE" -> buildDeptTreeSql(deptField, user.getDeptId());
+            case "TEAM" -> buildTeamSql(entityCode, user, parameters);
+            case "SQL" -> buildConfiguredSql(entityCode, filter, user, parameters);
+            case "DEPT" -> StringUtils.hasText(user.getDeptId())
+                    ? buildFieldComparison(requireMappedField(fields, deptField), "EQ", user.getDeptId(), parameters, validityGuards) : "1=0";
+            case "DEPT_TREE" -> buildDeptTreeSql(requireMappedField(fields, deptField), user.getDeptId(), parameters);
             case "RULE" -> buildRuleSql(
                     entityCode,
                     filter.getRoot(),
                     user,
-                    resolveFieldColumns(entityCode),
+                    fields,
                     1,
-                    new int[]{0});
+                    new int[]{0}, parameters, validityGuards);
             case "EXPRESSION", "CUSTOM_SQL" -> "1=0";
-            default -> matchesUserSql(userField, user);
+            default -> matchesUserSql(userField, user, parameters);
         };
         if (!StringUtils.hasText(baseSql)) {
             baseSql = "1=0";
         }
 
-        String statusSql = buildStatusSql(filter.getStatusLimit(), statusField);
-        if (statusSql == null) {
-            return baseSql;
-        }
-        return "(" + baseSql + ") AND (" + statusSql + ")";
+        String statusSql = mappedStatus
+                ? buildStatusSql(filter.getStatusLimit(), requireMappedField(fields, statusField), parameters, validityGuards) : null;
+        String predicate = statusSql == null ? baseSql : "(" + baseSql + ") AND (" + statusSql + ")";
+        if (validityGuards.isEmpty()) return predicate;
+        // 失效字典值使整条规则 UNKNOWN；不能只保护叶子，否则 UNKNOWN AND FALSE 会变 FALSE，外层 DENY 取反可能放行。
+        // 内层同时保留原规则的 UNKNOWN，避免 CASE 的 ELSE 0 把含 NULL 的标量拒绝条件改成不命中。
+        return "(CASE WHEN " + String.join(" AND ", validityGuards)
+                + " THEN CASE WHEN (" + predicate + ") THEN 1 WHEN NOT (" + predicate + ") THEN 0 ELSE NULL END"
+                + " ELSE NULL END = 1)";
     }
 
     /**
@@ -244,7 +265,23 @@ public class PermissionSqlBuilder {
             requireSafeField(mapping.getDeptField(), "部门字段");
             requireSafeField(mapping.getStatusField(), "状态字段");
         }
+        Map<String, RuleFieldColumn> fields = null;
+        if (Set.of("PERSONAL", "DEPT", "DEPT_TREE", "RULE").contains(type)
+                || filter.getStatusLimit() != null && Boolean.TRUE.equals(filter.getStatusLimit().getEnabled())) {
+            fields = resolveFieldColumns(entityCode);
+        }
+        if ("PERSONAL".equals(type)) {
+            requireMappedField(fields, safeField(mapping == null ? null : mapping.getUserField(), "create_by"));
+        } else if (Set.of("DEPT", "DEPT_TREE").contains(type)) {
+            RuleFieldColumn department = requireMappedField(fields, safeField(mapping == null ? null : mapping.getDeptField(), "dept_id"));
+            if ("DEPT_TREE".equals(type) && department.multiValue() != null && department.multiValue().dictCode() != null) {
+                throw new IllegalArgumentException("部门树字段必须存储部门 ID，不能使用代码表多选字段");
+            }
+        }
         FilterConfigDTO.StatusLimitDTO statusLimit = filter.getStatusLimit();
+        if (statusLimit != null && Boolean.TRUE.equals(statusLimit.getEnabled())) {
+            requireMappedField(fields, safeField(mapping == null ? null : mapping.getStatusField(), "status"));
+        }
         if (statusLimit != null && Boolean.TRUE.equals(statusLimit.getEnabled())
                 && !Set.of("IN", "NOT_IN").contains(normalized(statusLimit.getMode(), "IN"))) {
             throw new IllegalArgumentException("状态限制仅支持 IN 或 NOT_IN");
@@ -262,32 +299,19 @@ public class PermissionSqlBuilder {
             validateRuleNode(
                     entityCode,
                     filter.getRoot(),
-                    resolveFieldColumns(entityCode),
+                    fields,
                     1,
                     new int[]{0});
         }
-    }
-
-    /**
-     * 转义 SQL 字符串字面量中的单引号，防止注入。
-     *
-     * @param input 原始输入
-     * @return 转义后的字符串，null 返回空串
-     */
-    public String escapeLiteral(String input) {
-        if (input == null) {
-            return "";
-        }
-        return input.replace("'", "''");
     }
 
     private String buildRuleSql(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
             SysUser user,
-            Map<String, String> fieldColumns,
+            Map<String, RuleFieldColumn> fieldColumns,
             int depth,
-            int[] count) {
+            int[] count, Map<String, Object> parameters, List<String> validityGuards) {
         if (node == null || depth > MAX_RULE_DEPTH || ++count[0] > MAX_RULE_NODES) {
             return "1=0";
         }
@@ -299,30 +323,30 @@ public class PermissionSqlBuilder {
                     user,
                     fieldColumns,
                     depth,
-                    count);
-            case "RELATION" -> buildRelationSql(entityCode, node.getRelation(), user);
+                    count, parameters, validityGuards);
+            case "RELATION" -> buildRelationSql(entityCode, node.getRelation(), user, parameters);
             case "PROCESS_STATE" -> Integer.valueOf(1).equals(node.getLifecycleVersion())
-                    ? buildComparisonSql("process_status", node.getOperator(), node.getValue())
+                    ? buildComparisonSql("process_status", node.getOperator(), node.getValue(), parameters)
                     : buildProcessStateComparison(
                     entityCode,
                     node.getOperator(),
-                    node.getValue());
+                    node.getValue(), parameters);
             case "STATUS_CODE" -> buildComparisonSql(
                     "status",
                     node.getOperator(),
-                    node.getValue());
+                    node.getValue(), parameters);
             case "STATUS_CATEGORY" -> buildStatusCategorySql(
                     entityCode,
                     node.getOperator(),
-                    node.getValue());
+                    node.getValue(), parameters);
             case "FIELD" -> {
-                String column = resolveFieldColumn(fieldColumns, node.getField());
+                RuleFieldColumn column = resolveFieldColumn(fieldColumns, node.getField());
                 yield column == null
                         ? "1=0"
-                        : buildComparisonSql(column, node.getOperator(), node.getValue());
+                        : buildFieldComparison(column, node.getOperator(), node.getValue(), parameters, validityGuards);
             }
             case "USER_FIELD" -> evaluateUserField(node, user) ? "1=1" : "1=0";
-            default -> buildCustomSql(entityCode, node, user);
+            default -> buildCustomSql(entityCode, node, user, parameters);
         };
     }
 
@@ -330,9 +354,9 @@ public class PermissionSqlBuilder {
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
             SysUser user,
-            Map<String, String> fieldColumns,
+            Map<String, RuleFieldColumn> fieldColumns,
             int depth,
-            int[] count) {
+            int[] count, Map<String, Object> parameters, List<String> validityGuards) {
         List<EntityActionRuleDTO.RuleNode> children = node.getChildren();
         if (children == null || children.isEmpty()) {
             return "1=0";
@@ -345,22 +369,22 @@ public class PermissionSqlBuilder {
                         user,
                         fieldColumns,
                         depth + 1,
-                        count))
+                        count, parameters, validityGuards))
                 .filter(StringUtils::hasText)
                 .map(part -> "(" + part + ")")
                 .toList();
         return parts.isEmpty() ? "1=0" : String.join(joiner, parts);
     }
 
-    private String buildRelationSql(String entityCode, String relation, SysUser user) {
+    private String buildRelationSql(String entityCode, String relation, SysUser user, Map<String, Object> parameters) {
         if (!StringUtils.hasText(relation)) {
             return "1=0";
         }
         return switch (relation.toUpperCase(Locale.ROOT)) {
-            case "CURRENT_USER_IS_CREATOR" -> matchesUserSql("create_by", user);
-            case "CURRENT_USER_IS_SUBMITTER" -> matchesUserSql("submitter_id", user);
-            case "CURRENT_USER_IS_ASSIGNEE" -> matchesUserSql("current_task_assignee", user);
-            case "CURRENT_USER_SAME_DEPT" -> equalsSql("dept_id", user.getDeptId());
+            case "CURRENT_USER_IS_CREATOR" -> matchesUserSql("create_by", user, parameters);
+            case "CURRENT_USER_IS_SUBMITTER" -> matchesUserSql("submitter_id", user, parameters);
+            case "CURRENT_USER_IS_ASSIGNEE" -> matchesUserSql("current_task_assignee", user, parameters);
+            case "CURRENT_USER_SAME_DEPT" -> equalsSql("dept_id", user.getDeptId(), parameters);
             default -> "1=0";
         };
     }
@@ -368,14 +392,14 @@ public class PermissionSqlBuilder {
     private String buildProcessStateComparison(
             String entityCode,
             String operator,
-            Object value) {
+            Object value, Map<String, Object> parameters) {
         List<Object> states = toValues(value);
         String op = normalized(operator, "EQ");
         if (states.isEmpty()) {
             return "NOT_IN".equals(op) || "NE".equals(op) ? "1=1" : "1=0";
         }
         List<String> stateSql = states.stream()
-                .map(state -> processStateSql(entityCode, String.valueOf(state)))
+                .map(state -> processStateSql(entityCode, String.valueOf(state), parameters))
                 .filter(StringUtils::hasText)
                 .map(sql -> "(" + sql + ")")
                 .toList();
@@ -389,22 +413,23 @@ public class PermissionSqlBuilder {
         };
     }
 
-    private String processStateSql(String entityCode, String state) {
+    /** 流程实例号为字符列；空串先归为 NULL，使状态判断不依赖厂商对空串的存储方式。 */
+    private String processStateSql(String entityCode, String state, Map<String, Object> parameters) {
         return switch (normalized(state, "")) {
             case "NOT_STARTED" ->
-                    "(process_instance_id IS NULL OR process_instance_id = '')";
+                    "(NULLIF(process_instance_id, '') IS NULL)";
             case "RUNNING" ->
-                    "(process_instance_id IS NOT NULL AND process_instance_id <> '' AND process_end_time IS NULL)";
+                    "(NULLIF(process_instance_id, '') IS NOT NULL AND process_end_time IS NULL)";
             case "WITHDRAWN" ->
-                    buildStatusCategorySql(entityCode, "EQ", "WITHDRAWN");
+                    buildStatusCategorySql(entityCode, "EQ", "WITHDRAWN", parameters);
             case "TERMINATED" ->
-                    buildStatusCategorySql(entityCode, "EQ", "TERMINATED");
+                    buildStatusCategorySql(entityCode, "EQ", "TERMINATED", parameters);
             case "COMPLETED" -> {
                 String excluded = buildStatusCategorySql(
                         entityCode,
                         "IN",
-                        List.of("WITHDRAWN", "TERMINATED"));
-                yield "(process_instance_id IS NOT NULL AND process_instance_id <> '' "
+                        List.of("WITHDRAWN", "TERMINATED"), parameters);
+                yield "(NULLIF(process_instance_id, '') IS NOT NULL "
                         + "AND process_end_time IS NOT NULL AND NOT (" + excluded + "))";
             }
             default -> "1=0";
@@ -414,7 +439,7 @@ public class PermissionSqlBuilder {
     private String buildStatusCategorySql(
             String entityCode,
             String operator,
-            Object value) {
+            Object value, Map<String, Object> parameters) {
         List<Object> categories = toValues(value);
         LinkedHashSet<String> statusCodes = new LinkedHashSet<>();
         if (statusMapper != null && StringUtils.hasText(entityCode)) {
@@ -438,63 +463,84 @@ public class PermissionSqlBuilder {
         return buildComparisonSql(
                 "status",
                 setOperator,
-                new ArrayList<>(statusCodes));
+                new ArrayList<>(statusCodes), parameters);
     }
 
-    private String buildComparisonSql(
-            String column,
-            String operator,
-            Object value) {
-        String op = normalized(operator, "EQ");
-        if (!FIELD_OPERATORS.contains(op)) {
-            return "1=0";
+    private String buildComparisonSql(String column, String operator, Object value, Map<String, Object> parameters) {
+        return buildComparisonSql(column, operator, value, SchemaType.string(4096), parameters);
+    }
+
+    /** 标量走物理列比较，多值走侧表；组件或不完整存储描述必须抛错，不能让 DENY 被误当作未命中。 */
+    private String buildFieldComparison(RuleFieldColumn field, String operator, Object value, Map<String, Object> parameters,
+                                       List<String> validityGuards) {
+        field.requireSupported();
+        if (field.multiValue() != null) {
+            return PermissionMultiValueSql.compare(field.multiValue(), normalized(operator, "EQ"), toValues(value), queryDialect, parameters, validityGuards);
         }
+        return buildComparisonSql(field.column(), operator, value, field.type(), parameters);
+    }
+
+    /** 字段名按目标库引用；比较值按存储类型绑定，避免依赖 MySQL 的隐式转换与字面量转义。 */
+    private String buildComparisonSql(String column, String operator, Object value, SchemaType type,
+                                      Map<String, Object> parameters) {
+        String op = normalized(operator, "EQ");
+        if (!FIELD_OPERATORS.contains(op) || type == null) return "1=0";
+        SchemaType.Kind kind = type.kind();
         return switch (op) {
-            case "EMPTY" -> "(" + column + " IS NULL OR " + column + " = '')";
-            case "NOT_EMPTY" -> "(" + column + " IS NOT NULL AND " + column + " <> '')";
-            case "EQ" -> equalitySql(column, value, false);
-            case "NE" -> equalitySql(column, value, true);
-            case "IN" -> inSql(column, toValues(value), false);
-            case "NOT_IN" -> inSql(column, toValues(value), true);
-            case "CONTAINS" -> likeSql(column, value, false);
-            case "NOT_CONTAINS" -> likeSql(column, value, true);
-            case "GT" -> orderedSql(column, ">", value);
-            case "GTE" -> orderedSql(column, ">=", value);
-            case "LT" -> orderedSql(column, "<", value);
-            case "LTE" -> orderedSql(column, "<=", value);
+            case "EMPTY" -> queryDialect.emptyValuePredicate(column, kind, true);
+            case "NOT_EMPTY" -> queryDialect.emptyValuePredicate(column, kind, false);
+            case "EQ" -> equalitySql(column, value, false, kind, parameters);
+            case "NE" -> equalitySql(column, value, true, kind, parameters);
+            case "IN" -> inSql(column, toValues(value), false, kind, parameters);
+            case "NOT_IN" -> inSql(column, toValues(value), true, kind, parameters);
+            case "CONTAINS" -> likeSql(queryDialect.patternValueExpression(column, type), value, false, parameters);
+            case "NOT_CONTAINS" -> likeSql(queryDialect.patternValueExpression(column, type), value, true, parameters);
+            case "GT" -> orderedSql(column, ">", value, kind, parameters);
+            case "GTE" -> orderedSql(column, ">=", value, kind, parameters);
+            case "LT" -> orderedSql(column, "<", value, kind, parameters);
+            case "LTE" -> orderedSql(column, "<=", value, kind, parameters);
             default -> "1=0";
         };
     }
 
-    private String equalitySql(String column, Object value, boolean negate) {
-        if (value == null) {
-            return column + (negate ? " IS NOT NULL" : " IS NULL");
-        }
-        return column + (negate ? " <> " : " = ") + literal(value);
+    private String equalitySql(String column, Object value, boolean negate, SchemaType.Kind kind,
+                               Map<String, Object> parameters) {
+        if (value == null) return queryDialect.quoteIdentifier(column) + (negate ? " IS NOT NULL" : " IS NULL");
+        return queryDialect.comparisonPredicate(column, kind, negate ? "<>" : "=",
+                PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect));
     }
 
-    private String inSql(String column, List<Object> values, boolean negate) {
-        if (values.isEmpty()) {
-            return negate ? "1=1" : "1=0";
+    private String inSql(String column, List<Object> values, boolean negate, SchemaType.Kind kind,
+                         Map<String, Object> parameters) {
+        if (values.isEmpty()) return negate ? "1=1" : "1=0";
+        if ("CLOB".equals(queryDialect.comparisonJdbcType(kind))) {
+            // CLOB 不能直接 IN；逐项全文比较以 OR/AND 组合，NULL 参数保持三值逻辑，尤其不能从 NOT IN 中删掉。
+            return values.stream().map(value -> queryDialect.comparisonPredicate(column, kind, negate ? "<>" : "=",
+                            PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect)))
+                    .collect(java.util.stream.Collectors.joining(negate ? " AND " : " OR ", "(", ")"));
         }
-        String joined = values.stream().map(this::literal).collect(java.util.stream.Collectors.joining(","));
-        return column + (negate ? " NOT IN (" : " IN (") + joined + ")";
+        // NULL 元素保留 SQL 三值逻辑，不能过滤后扩大 NOT IN 或拒绝条件的范围。
+        String joined = values.stream().map(value -> PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect))
+                .collect(java.util.stream.Collectors.joining(","));
+        return queryDialect.quoteIdentifier(column) + (negate ? " NOT IN (" : " IN (") + joined + ")";
     }
 
-    private String likeSql(String column, Object value, boolean negate) {
-        if (value == null) {
-            return negate ? "1=1" : "1=0";
-        }
-        String escaped = escapeLiteral(String.valueOf(value))
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_");
-        return column + (negate ? " NOT LIKE " : " LIKE ")
-                + "'%" + escaped + "%' ESCAPE '\\\\'";
+    private String likeSql(String quoted, Object value, boolean negate, Map<String, Object> parameters) {
+        if (value == null) return negate ? "1=1" : "1=0";
+        return quoted + (negate ? " NOT LIKE " : " LIKE ")
+                + PermissionSqlParameters.bindText(parameters, "%" + escapeLike(String.valueOf(value)) + "%")
+                + " ESCAPE '!'";
     }
 
-    private String orderedSql(String column, String operator, Object value) {
-        return value == null ? "1=0" : column + " " + operator + " " + literal(value);
+    /** 使用固定的普通字符作 LIKE 转义符，绑定模式不随 MySQL NO_BACKSLASH_ESCAPES 改变含义。 */
+    private String escapeLike(String value) {
+        return value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
+    }
+
+    private String orderedSql(String column, String operator, Object value, SchemaType.Kind kind,
+                              Map<String, Object> parameters) {
+        return value == null ? "1=0" : queryDialect.comparisonPredicate(column, kind, operator,
+                PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect));
     }
 
     private boolean evaluateUserField(EntityActionRuleDTO.RuleNode node, SysUser user) {
@@ -534,11 +580,11 @@ public class PermissionSqlBuilder {
     private String buildCustomSql(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
-            SysUser user) {
+            SysUser user, Map<String, Object> parameters) {
         return filterProviders.stream()
                 .filter(provider -> provider.getType().equalsIgnoreCase(node.getType()))
                 .findFirst()
-                .map(provider -> provider.toSql(entityCode, node, user))
+                .map(provider -> provider.toSql(entityCode, node, user, parameters))
                 .filter(StringUtils::hasText)
                 .orElse("1=0");
     }
@@ -546,7 +592,7 @@ public class PermissionSqlBuilder {
     private void validateRuleNode(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
-            Map<String, String> fieldColumns,
+            Map<String, RuleFieldColumn> fieldColumns,
             int depth,
             int[] count) {
         if (node == null) {
@@ -593,11 +639,23 @@ public class PermissionSqlBuilder {
                 requireAllowedValues(node.getValue(), STATUS_CATEGORIES, "状态分类");
             }
             case "FIELD" -> {
-                if (resolveFieldColumn(fieldColumns, node.getField()) == null) {
+                RuleFieldColumn column = resolveFieldColumn(fieldColumns, node.getField());
+                if (column == null) {
                     throw new IllegalArgumentException("字段不存在或不可用于数据权限: " + node.getField());
+                }
+                column.requireSupported();
+                if (column.kind() == null) {
+                    throw new IllegalArgumentException("字段缺少存储类型: " + node.getField());
                 }
                 requireOperator(node.getOperator(), FIELD_OPERATORS);
                 requireValues(node.getOperator(), node.getValue(), "字段条件");
+                if (column.multiValue() != null) {
+                    PermissionMultiValueSql.validate(normalized(node.getOperator(), "EQ"), toValues(node.getValue()));
+                }
+                // 文本包含与判空没有数值转换，其余操作必须在配置发布前确认比较值合法。
+                if (!Set.of("EMPTY", "NOT_EMPTY", "CONTAINS", "NOT_CONTAINS").contains(normalized(node.getOperator(), "EQ"))) {
+                    for (Object value : toValues(node.getValue())) PermissionSqlParameters.scalarValue(value, column.kind());
+                }
             }
             case "USER_FIELD" -> {
                 if (!Set.of("id", "username", "deptId", "orgId", "roleIds")
@@ -615,8 +673,12 @@ public class PermissionSqlBuilder {
         }
     }
 
-    private Map<String, String> resolveFieldColumns(String entityCode) {
-        Map<String, String> columns = new LinkedHashMap<>(SYSTEM_FIELD_COLUMNS);
+    /** 同时解析字段白名单与存储类型，避免 SQL 判空依赖数据库的隐式文本转换。 */
+    private Map<String, RuleFieldColumn> resolveFieldColumns(String entityCode) {
+        Map<String, RuleFieldColumn> columns = new LinkedHashMap<>();
+        Set<String> timestamps = Set.of("process_start_time", "process_end_time", "submit_time", "create_time", "update_time");
+        SYSTEM_FIELD_COLUMNS.forEach((code, column) -> columns.put(code, new RuleFieldColumn(column,
+                timestamps.contains(column) ? SchemaType.of(SchemaType.Kind.TIMESTAMP) : SchemaType.string(4096))));
         if (!StringUtils.hasText(entityCode)
                 || definitionMapper == null || fieldMapper == null) {
             return columns;
@@ -635,20 +697,31 @@ public class PermissionSqlBuilder {
             }
             String column = StringUtils.hasText(field.getDbColumnName())
                     ? field.getDbColumnName()
-                    : toColumnName(field.getFieldCode());
+                    : field.getFieldCode();
             if (SQL_IDENTIFIER.matcher(column).matches()) {
-                columns.put(field.getFieldCode(), column);
-                columns.put(column, column);
+                // 缺少类型的历史元数据不能猜成文本；编译规则时关闭访问，配置校验时明确报错。
+                SchemaType type = field.getFieldType() == null ? null : EntityTableDefinitionFactory.fieldType(field);
+                RuleFieldColumn resolved = describeField(entityCode, definition, field, column, type);
+                // 系统字段的基线列名/类型不可被同名自定义元数据覆盖；长度展示差异不改变其存储身份。
+                RuleFieldColumn system = columns.get(field.getFieldCode());
+                if (SYSTEM_FIELD_COLUMNS.containsKey(field.getFieldCode()) && system != null) {
+                    if (!system.column().equals(column) || system.kind() != resolved.kind() || resolved.multiValue() != null || resolved.failure() != null) {
+                        throw new IllegalArgumentException("权限字段元数据与系统列冲突: " + field.getFieldCode());
+                    }
+                    resolved = system;
+                }
+                putFieldAlias(columns, field.getFieldCode(), resolved);
+                putFieldAlias(columns, column, resolved);
             }
         }
         return columns;
     }
 
-    private String resolveFieldColumn(Map<String, String> columns, String field) {
+    private RuleFieldColumn resolveFieldColumn(Map<String, RuleFieldColumn> columns, String field) {
         if (!StringUtils.hasText(field)) {
             return null;
         }
-        String column = columns.get(field);
+        RuleFieldColumn column = columns.get(field);
         if (column == null) {
             String inferredColumn = toColumnName(field);
             // 审计字段只接受正式编码，不能借通用驼峰推算重新引入别名。
@@ -657,23 +730,74 @@ public class PermissionSqlBuilder {
             }
             column = columns.get(inferredColumn);
         }
-        return column != null && SQL_IDENTIFIER.matcher(column).matches() ? column : null;
+        return column != null && SQL_IDENTIFIER.matcher(column.column()).matches() ? column : null;
     }
 
-    private String buildDeptTreeSql(String deptField, String deptId) {
-        if (!StringUtils.hasText(deptId)) {
-            return "1=0";
+    /** 复用建表的存储分类；多值侧表只允许使用登记主表派生名称，不能根据实体编码猜测。 */
+    private RuleFieldColumn describeField(String entityCode, EntityDefinition definition, EntityField field, String column, SchemaType type) {
+        if (EntityTableDefinitionFactory.isSubFormField(field)) {
+            return new RuleFieldColumn(column, type, null, "页面组件没有可查询的数据存储: " + field.getFieldCode());
         }
-        String escapedDeptId = escapeLiteral(deptId);
-        return deptField + " IN ("
-                + "SELECT id FROM sys_organization "
-                + "WHERE id = '" + escapedDeptId + "' "
-                + "OR path LIKE '%/" + escapedDeptId + "/%')";
+        if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE || EntityTableDefinitionFactory.isMultiValueField(field)) {
+            String table = tableResolver == null ? definition.getPhysicalTableName() : resolvePhysicalTable(entityCode);
+            String target = field.getRefEntityId();
+            String dict = StringUtils.hasText(field.getDictType()) ? field.getDictType() : null;
+            if (dict != null) {
+                target = definitionMapper.findByEntityCode("sys_dict_item").map(EntityDefinition::getId).orElse(null);
+            }
+            if (!StringUtils.hasText(table) || !SQL_IDENTIFIER.matcher(table).matches() || table.length() + 6 > MAX_MULTI_TABLE_NAME_LENGTH
+                    || !StringUtils.hasText(target)) {
+                return new RuleFieldColumn(column, type, null, "多值权限字段缺少可信物理表或目标实体: " + field.getFieldCode());
+            }
+            return new RuleFieldColumn(column, SchemaType.string(64),
+                    new PermissionMultiValueSql.Field(table, field.getFieldCode(), target, dict), null);
+        }
+        if ("MULTI_TABLE".equalsIgnoreCase(field.getValueStorage())
+                || Boolean.TRUE.equals(field.getIsSystem()) && !SYSTEM_FIELD_COLUMNS.containsKey(field.getFieldCode())) {
+            return new RuleFieldColumn(column, type, null, "权限字段没有受支持的存储描述: " + field.getFieldCode());
+        }
+        return new RuleFieldColumn(column, type);
+    }
+
+    private void putFieldAlias(Map<String, RuleFieldColumn> columns, String alias, RuleFieldColumn field) {
+        RuleFieldColumn previous = columns.putIfAbsent(alias, field);
+        if (previous != null && !previous.equals(field)) {
+            throw new IllegalArgumentException("权限字段编码与物理列别名冲突: " + alias);
+        }
+    }
+
+    private RuleFieldColumn requireMappedField(Map<String, RuleFieldColumn> fields, String alias) {
+        RuleFieldColumn field = resolveFieldColumn(fields, alias);
+        if (field == null || field.kind() == null) throw new IllegalArgumentException("权限映射字段不存在或缺少存储类型: " + alias);
+        field.requireSupported();
+        return field;
+    }
+
+    /** 保留精度和存储位置；只保留字段类型会把独立关系表错误降为主表字符串列。 */
+    private record RuleFieldColumn(String column, SchemaType type, PermissionMultiValueSql.Field multiValue, String failure) {
+        RuleFieldColumn(String column, SchemaType type) { this(column, type, null, null); }
+        SchemaType.Kind kind() { return type == null ? null : type.kind(); }
+        void requireSupported() { if (failure != null) throw new IllegalArgumentException(failure); }
+    }
+
+    private String matchesMappedUserSql(RuleFieldColumn field, SysUser user, Map<String, Object> parameters, List<String> validityGuards) {
+        List<Object> identities = new ArrayList<>(userIdentities(user));
+        return identities.isEmpty() ? "1=0" : buildFieldComparison(field, "IN", identities, parameters, validityGuards);
+    }
+
+    private String buildDeptTreeSql(RuleFieldColumn deptField, String deptId, Map<String, Object> parameters) {
+        if (!StringUtils.hasText(deptId)) return "1=0";
+        if (deptField.multiValue() != null) {
+            if (deptField.multiValue().dictCode() != null) throw new IllegalArgumentException("部门树字段不能使用代码表多选存储");
+            return PermissionMultiValueSql.departments(deptField.multiValue(), deptId, queryDialect, parameters);
+        }
+        return queryDialect.quoteIdentifier(deptField.column()) + " IN ("
+                + PermissionMultiValueSql.departmentIds(deptId, queryDialect, parameters) + ")";
     }
 
     private String buildStatusSql(
             FilterConfigDTO.StatusLimitDTO statusLimit,
-            String statusField) {
+            RuleFieldColumn statusField, Map<String, Object> parameters, List<String> validityGuards) {
         if (statusLimit == null || !Boolean.TRUE.equals(statusLimit.getEnabled())) {
             return null;
         }
@@ -681,20 +805,20 @@ public class PermissionSqlBuilder {
         if (values == null || values.isEmpty()) {
             return null;
         }
-        return inSql(
+        return buildFieldComparison(
                 statusField,
-                new ArrayList<>(values),
-                "NOT_IN".equalsIgnoreCase(statusLimit.getMode()));
+                "NOT_IN".equalsIgnoreCase(statusLimit.getMode()) ? "NOT_IN" : "IN",
+                new ArrayList<>(values), parameters, validityGuards);
     }
 
     private String buildConfiguredSql(
             String entityCode,
             FilterConfigDTO filter,
-            SysUser user) {
+            SysUser user, Map<String, Object> parameters) {
         if (sqlFragmentCompiler == null) {
             return "1=0";
         }
-        return sqlFragmentCompiler.compileRecordSql(entityCode, firstSql(filter), user);
+        return sqlFragmentCompiler.compileRecordSql(entityCode, firstSql(filter), user, parameters);
     }
 
     private String firstSql(FilterConfigDTO filter) {
@@ -710,12 +834,12 @@ public class PermissionSqlBuilder {
      * 相关人只认 _team 已发生的参与事件，不含当前待办。
      * 待办可见性由独立的 HAS_TODO 规则绑定，列表自行选择。
      */
-    private String buildTeamSql(String entityCode, SysUser user) {
+    private String buildTeamSql(String entityCode, SysUser user, Map<String, Object> parameters) {
         if (teamService == null || user == null) {
             return "1=0";
         }
         return teamService.relatedPeopleSql(
-                entityCode, user.getId(), user.getUsername());
+                entityCode, user.getId(), user.getUsername(), parameters);
     }
 
     /**
@@ -738,7 +862,8 @@ public class PermissionSqlBuilder {
                 .distinct()
                 .map(id -> bindTaskRecordId(id, parameters))
                 .collect(java.util.stream.Collectors.joining(","));
-        return idList.isEmpty() ? "1=0" : "`" + tableName + "`.id IN (" + idList + ")";
+        return idList.isEmpty() ? "1=0"
+                : queryDialect.quoteIdentifier(tableName) + ".id IN (" + idList + ")";
     }
 
     /**
@@ -794,15 +919,16 @@ public class PermissionSqlBuilder {
         return "(" + left + ") OR (" + right + ")";
     }
 
-    private String matchesUserSql(String field, SysUser user) {
+    private String matchesUserSql(String field, SysUser user, Map<String, Object> parameters) {
         LinkedHashSet<String> identities = userIdentities(user);
         return identities.isEmpty()
                 ? "1=0"
-                : inSql(field, new ArrayList<>(identities), false);
+                : inSql(field, new ArrayList<>(identities), false, SchemaType.Kind.STRING, parameters);
     }
 
-    private String equalsSql(String field, String value) {
-        return StringUtils.hasText(value) ? field + " = '" + escapeLiteral(value) + "'" : "1=0";
+    private String equalsSql(String field, String value, Map<String, Object> parameters) {
+        return StringUtils.hasText(value) ? queryDialect.quoteIdentifier(field) + " = "
+                + PermissionSqlParameters.bindText(parameters, value) : "1=0";
     }
 
     private String safeField(String fieldName, String fallback) {
@@ -874,19 +1000,6 @@ public class PermissionSqlBuilder {
             throw new IllegalArgumentException(
                     "状态编码不存在: " + String.join(",", missing));
         }
-    }
-
-    private String literal(Object value) {
-        if (value == null) {
-            return "NULL";
-        }
-        if (value instanceof Number number) {
-            return new BigDecimal(String.valueOf(number)).toPlainString();
-        }
-        if (value instanceof Boolean bool) {
-            return bool ? "1" : "0";
-        }
-        return "'" + escapeLiteral(String.valueOf(value)) + "'";
     }
 
     private List<Object> toValues(Object value) {

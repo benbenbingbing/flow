@@ -1,5 +1,7 @@
 package com.workflow.admin.externalsystem.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
 import org.apache.ibatis.annotations.Mapper;
@@ -21,15 +23,24 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
      * @param systemCode 系统编码
      * @return 已占用该编码的记录，不存在时返回 null
      */
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default ExternalSystemRecord selectAnyByCode(String systemCode) {
+        return selectAnyByCodePage(new OffsetPage<>(0, 1), systemCode).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, system_name, system_code, status, address, description,
                    version,
                    created_by, updated_by, create_time, update_time, deleted
             FROM sys_external_system
             WHERE system_code = #{systemCode}
-            LIMIT 1
+
+            </script>
             """)
-    ExternalSystemRecord selectAnyByCode(
+    List<ExternalSystemRecord> selectAnyByCodePage(
+            @Param("page") OffsetPage<ExternalSystemRecord> page,
             @Param("systemCode") String systemCode);
 
     /**

@@ -1,6 +1,5 @@
 package com.workflow.entity.form.uniqueness.infrastructure.persistence.mapper;
 
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -9,14 +8,8 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface EntityFormUniqueValueGateMapper {
 
-    @Insert("INSERT IGNORE INTO entity_form_unique_value_gate "
-            + "(scope_key, value_hash) VALUES (#{scopeKey}, #{valueHash})")
-    int insertIgnore(
-            @Param("scopeKey") String scopeKey,
-            @Param("valueHash") String valueHash);
-
     /**
-     * 在当前事务内锁定指定值门闩。调用前必须先 insertIgnore，
+     * 在当前事务内锁定指定值门闩。调用前必须先通过 JdbcLockedRow 创建并锁定占位行，
      * 使首次出现的值也有可锁定的稳定行。
      */
     @Select("SELECT value_hash FROM entity_form_unique_value_gate "

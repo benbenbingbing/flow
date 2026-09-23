@@ -101,10 +101,10 @@ class ProcessCcRuntimeServiceTest {
         user.setStatus(SysUser.Status.ENABLED.getValue());
         user.setDeleted(0);
         when(userMapper.selectByUsername("observer")).thenReturn(user);
-        when(ccService.createCcRecord(any())).thenAnswer(invocation -> {
+        when(ccService.createCcRecordIfAbsent(any())).thenAnswer(invocation -> {
             ProcessCcRecord record = invocation.getArgument(0);
             record.setId("cc-1");
-            return record;
+            return true;
         });
         String config = """
                 {
@@ -122,7 +122,7 @@ class ProcessCcRuntimeServiceTest {
         assertEquals(1, service.trigger(context, config));
 
         ArgumentCaptor<ProcessCcRecord> captor = ArgumentCaptor.forClass(ProcessCcRecord.class);
-        verify(ccService).createCcRecord(captor.capture());
+        verify(ccService).createCcRecordIfAbsent(captor.capture());
         assertEquals("observer", captor.getValue().getCcUserId());
         assertEquals("AUTO:process-1:approve-node:TASK_COMPLETE:observer", captor.getValue().getUniqueKey());
         verify(notificationPublisher)
@@ -148,6 +148,7 @@ class ProcessCcRuntimeServiceTest {
     /** 启用用户组仍应正常解析其启用成员，防止状态收紧误伤正常知会。 */
     @Test
     void enabledGroupRuleCreatesCcRecipient() {
+        when(ccService.createCcRecordIfAbsent(any())).thenReturn(true);
         ProcessCcRuntimeService service = service();
         SysGroup enabledGroup = group("group-enabled", "enabled-group", true);
         SysUser member = enabledUser("user-1", "observer");
@@ -160,7 +161,7 @@ class ProcessCcRuntimeServiceTest {
                 context(), groupRuleConfig("enabled-group"));
 
         assertEquals(1, created);
-        verify(ccService).createCcRecord(any());
+        verify(ccService).createCcRecordIfAbsent(any());
         verify(notificationPublisher).enqueue(any(), eq(List.of("IN_APP")));
     }
 
@@ -233,6 +234,7 @@ class ProcessCcRuntimeServiceTest {
     /** 共享校验认可的业务组候选人应能人工知会，且不再依赖 Flowable 自带的用户组关系。 */
     @Test
     void manualCcAcceptsCandidateThroughSharedTaskAccess() {
+        when(ccService.createCcRecordIfAbsent(any())).thenReturn(true);
         UserContext.setCurrentUser("operator-id", "operator");
         Task task = manualCcTask();
         when(task.getProcessInstanceId()).thenReturn("process-1");
@@ -249,7 +251,7 @@ class ProcessCcRuntimeServiceTest {
 
         var order = inOrder(taskIdentityAccessService, ccService);
         order.verify(taskIdentityAccessService).requireCurrentUserAccess(task);
-        order.verify(ccService).createCcRecord(any());
+        order.verify(ccService).createCcRecordIfAbsent(any());
         verify(notificationPublisher).enqueue(any(), eq(List.of("IN_APP")));
         verify(operationLogMapper).insert(any(ProcessOperationLog.class));
     }

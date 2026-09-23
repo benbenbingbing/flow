@@ -1,8 +1,8 @@
 package com.workflow.admin.identity.group.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysUserGroup;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -35,22 +35,28 @@ public interface SysUserGroupMapper extends BaseMapper<SysUserGroup> {
      * @param groupId 组ID
      * @return 用户ID列表
      */
-    @Select("SELECT user_id FROM sys_user_group WHERE group_id = #{groupId}")
-    List<String> selectUserIdsByGroupId(@Param("groupId") String groupId);
+    default List<String> selectUserIdsByGroupId(String groupId) {
+        return selectObjs(Wrappers.<SysUserGroup>lambdaQuery()
+                .select(SysUserGroup::getUserId).eq(SysUserGroup::getGroupId, groupId));
+    }
     
     /**
      * 删除用户的所有组关联
      *
      * @param userId 用户ID
      */
-    @Delete("DELETE FROM sys_user_group WHERE user_id = #{userId}")
-    void deleteByUserId(@Param("userId") String userId);
+    default void deleteByUserId(String userId) {
+        // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        delete(Wrappers.<SysUserGroup>lambdaQuery().eq(SysUserGroup::getUserId, userId));
+    }
     
     /**
      * 删除组的所有用户关联
      *
      * @param groupId 组ID
      */
-    @Delete("DELETE FROM sys_user_group WHERE group_id = #{groupId}")
-    void deleteByGroupId(@Param("groupId") String groupId);
+    default void deleteByGroupId(String groupId) {
+        // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        delete(Wrappers.<SysUserGroup>lambdaQuery().eq(SysUserGroup::getGroupId, groupId));
+    }
 }

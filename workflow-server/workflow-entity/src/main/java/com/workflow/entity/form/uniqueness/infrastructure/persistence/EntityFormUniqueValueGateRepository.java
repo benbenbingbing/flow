@@ -2,6 +2,8 @@ package com.workflow.entity.form.uniqueness.infrastructure.persistence;
 
 import com.workflow.entity.form.uniqueness.infrastructure.persistence.mapper.EntityFormUniqueValueGateMapper;
 import lombok.RequiredArgsConstructor;
+import com.workflow.core.database.JdbcLockedRow;
+import java.util.Map;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -20,6 +22,7 @@ import java.util.Objects;
 public class EntityFormUniqueValueGateRepository {
 
     private final EntityFormUniqueValueGateMapper mapper;
+    private final JdbcLockedRow lockedRows;
 
     /**
      * 按稳定键顺序锁定全部字段 sentinel/value gate，避免多规则事务反序互锁。
@@ -34,9 +37,9 @@ public class EntityFormUniqueValueGateRepository {
                 .sorted()
                 .toList();
         for (GateKey key : ordered) {
-            mapper.insertIgnore(
-                    key.scopeKey(),
-                    key.valueHash());
+            lockedRows.ensureAndLock("entity_form_unique_value_gate",
+                    Map.of("scope_key", key.scopeKey(), "value_hash", key.valueHash()),
+                    List.of("scope_key", "value_hash"));
             String locked = mapper.lockForUpdate(
                     key.scopeKey(),
                     key.valueHash());

@@ -1,6 +1,8 @@
 package com.workflow.admin.organization.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -21,8 +23,11 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      * @param orgCode 组织编码
      * @return 组织部门对象，不存在返回 null
      */
-    @Select("SELECT * FROM sys_organization WHERE org_code = #{orgCode} AND deleted = 0 LIMIT 1")
-    SysOrganization selectByCode(@Param("orgCode") String orgCode);
+    default SysOrganization selectByCode(String orgCode) {
+        // 保留原查询仅取一行的语义，由分页插件生成目标数据库的限制语法。
+        return selectPage(new Page<SysOrganization>(1, 1, false), Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getOrgCode, orgCode)).getRecords().stream().findFirst().orElse(null);
+    }
 
     @Select("SELECT * FROM sys_organization WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     SysOrganization selectForUpdate(@Param("id") String id);
@@ -48,11 +53,14 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      * 检查编码是否存在
      *
      * @param orgCode   组织编码
-     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串）
+     * @param excludeId 排除的ID（更新时传入自身ID，新增传空串或 null）
      * @return 存在返回 true，否则 false
      */
-    @Select("SELECT COUNT(*) > 0 FROM sys_organization WHERE org_code = #{orgCode} AND deleted = 0 AND (#{excludeId} = '' OR id != #{excludeId})")
-    boolean existsCode(@Param("orgCode") String orgCode, @Param("excludeId") String excludeId);
+    default boolean existsCode(String orgCode, String excludeId) {
+        return selectCount(Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getOrgCode, orgCode)
+                .ne(excludeId != null && !excludeId.isEmpty(), SysOrganization::getId, excludeId)) > 0;
+    }
     
     /**
      * 查询子节点
@@ -60,26 +68,37 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      * @param parentId 父级ID
      * @return 直接子节点列表
      */
-    @Select("SELECT * FROM sys_organization WHERE parent_id = #{parentId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
-    List<SysOrganization> selectChildren(@Param("parentId") String parentId);
+    default List<SysOrganization> selectChildren(String parentId) {
+        return selectList(Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getParentId, parentId)
+                .orderByAsc(SysOrganization::getSortOrder)
+                .orderByAsc(SysOrganization::getCreateTime));
+    }
     
     /**
      * 查询所有子节点（使用path字段，避免递归）
      * 查询path以当前path开头的所有记录
      *
-     * @param path 当前节点路径
+     * @param path 当前节点路径；null 不匹配任何记录，避免厂商 NULL 拼接语义扩大查询范围
      * @return 所有后代节点列表
      */
-    @Select("SELECT * FROM sys_organization WHERE path LIKE CONCAT(#{path}, '%') AND deleted = 0")
-    List<SysOrganization> selectAllChildrenByPath(@Param("path") String path);
+    default List<SysOrganization> selectAllChildrenByPath(String path) {
+        // Wrapper 对 null 做字符串拼接会形成 "null%"，提前返回保持原来不匹配任何路径的语义。
+        return path == null ? List.of() : selectList(Wrappers.<SysOrganization>lambdaQuery()
+                .likeRight(SysOrganization::getPath, path));
+    }
     
     /**
      * 查询启用中的组织部门
      *
      * @return 启用中的组织部门列表
      */
-    @Select("SELECT * FROM sys_organization WHERE status = '0' AND deleted = 0 ORDER BY level ASC, sort_order ASC")
-    List<SysOrganization> selectEnabledList();
+    default List<SysOrganization> selectEnabledList() {
+        return selectList(Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getStatus, "0")
+                .orderByAsc(SysOrganization::getLevel)
+                .orderByAsc(SysOrganization::getSortOrder));
+    }
     
     /**
      * 根据类型查询
@@ -87,36 +106,46 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
      * @param type 组织类型（org-组织，dept-部门）
      * @return 指定类型且启用中的组织部门列表
      */
-    @Select("SELECT * FROM sys_organization WHERE type = #{type} AND status = '0' AND deleted = 0 ORDER BY sort_order ASC")
-    List<SysOrganization> selectByType(@Param("type") String type);
+    default List<SysOrganization> selectByType(String type) {
+        return selectList(Wrappers.<SysOrganization>lambdaQuery()
+                .eq(SysOrganization::getType, type)
+                .eq(SysOrganization::getStatus, "0")
+                .orderByAsc(SysOrganization::getSortOrder));
+    }
     
     /**
-     * 更新path字段（当父级变化时）
+     * 更新path字段（当父级变化时）。NULL 新路径显式写 NULL，
+     * 避免被部分数据库的 REPLACE 解释为删除原路径子串。
      *
-     * @param oldPath 原路径
+     * @param oldPath 原路径；null 不更新任何记录
      * @param newPath 新路径
      * @return 受影响的记录数
      */
-    @Update("UPDATE sys_organization SET path = REPLACE(path, #{oldPath}, #{newPath}) WHERE path LIKE CONCAT(#{oldPath}, '%') AND deleted = 0")
+    @Update("""
+            <script>
+            <bind name="_pathPrefix" value="oldPath == null ? null : oldPath + &quot;%&quot;"/>
+            UPDATE sys_organization SET path =
+            <choose>
+              <when test="newPath == null">NULL</when>
+              <otherwise>REPLACE(path, #{oldPath,jdbcType=VARCHAR}, #{newPath,jdbcType=VARCHAR})</otherwise>
+            </choose>
+            WHERE path LIKE #{_pathPrefix,jdbcType=VARCHAR} AND deleted = 0
+            </script>
+            """)
     int updateChildrenPath(@Param("oldPath") String oldPath, @Param("newPath") String newPath);
     
-    /**
-     * 统计组织下的用户数
-     *
-     * @param orgId 组织部门ID
-     * @return 关联用户数
-     */
-    @Select("SELECT COUNT(*) FROM sys_user WHERE (org_id = #{orgId} OR dept_id = #{orgId}) AND deleted = 0")
-    int countUsers(@Param("orgId") String orgId);
+
 
     /**
      * 仅由 UNIT_LEADER 任职服务单向维护旧负责人兼容投影。
      */
     @Update("""
+            <script>
             UPDATE sys_organization
             SET leader_id = #{leaderId}, leader_name = #{leaderName},
-                update_time = UTC_TIMESTAMP(6)
+                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE id = #{unitId} AND deleted = 0
+            </script>
             """)
     int updateLeaderProjection(
             @Param("unitId") String unitId,

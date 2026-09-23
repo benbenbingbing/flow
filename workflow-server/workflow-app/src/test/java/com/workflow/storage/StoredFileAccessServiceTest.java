@@ -1,5 +1,8 @@
 package com.workflow.storage;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -55,9 +58,14 @@ class StoredFileAccessServiceTest {
                     UNIQUE (owner_user_id, idempotency_key)
                 )
                 """);
+        // 本类保留原有 H2 业务契约夹具；MySQL 保存点和读守卫另有实库测试。
+        var errors = mock(com.workflow.integration.database.api.DatabaseInsertDialect.class);
+        org.mockito.Mockito.when(errors.isUniqueViolation("23505", 23505)).thenReturn(true);
+        var queries = mock(com.workflow.integration.database.api.DatabaseQueryDialect.class);
+        org.mockito.Mockito.when(queries.readGuardClause()).thenReturn(" FOR UPDATE");
         service = new StoredFileAccessService(
                 jdbcTemplate,
-                mock(CurrentUserRoleService.class));
+                mock(CurrentUserRoleService.class), new JdbcWriteAttempt(jdbcTemplate, errors), queries);
         UserContext.setCurrentUser("user-1", "tester");
     }
 

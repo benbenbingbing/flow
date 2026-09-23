@@ -1,6 +1,8 @@
 package com.workflow.entity.list.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -11,20 +13,28 @@ import java.util.List;
 /**
  * 实体列表配置 Mapper
  */
+// 普通查询使用 Wrapper；分页由 MyBatis-Plus 生成对应数据库语法。
 @Mapper
 public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
 
     /**
      * 根据实体ID查询列表配置
      */
-    @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND deleted = 0 ORDER BY create_time ASC")
-    List<EntityListConfig> findByEntityId(@Param("entityId") String entityId);
+    default List<EntityListConfig> findByEntityId(String entityId) {
+        return selectList(Wrappers.<EntityListConfig>lambdaQuery()
+                .eq(EntityListConfig::getEntityId, entityId)
+                .orderByAsc(EntityListConfig::getCreatedAt));
+    }
 
     /**
      * 根据实体ID和列表标识查询
      */
-    @Select("SELECT * FROM entity_list_config WHERE entity_id = #{entityId} AND list_key = #{listKey} AND deleted = 0 LIMIT 1")
-    EntityListConfig findByEntityIdAndListKey(@Param("entityId") String entityId, @Param("listKey") String listKey);
+    default EntityListConfig findByEntityIdAndListKey(String entityId, String listKey) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityListConfig>lambdaQuery()
+                .eq(EntityListConfig::getEntityId, entityId)
+                .eq(EntityListConfig::getListKey, listKey))
+                .stream().findFirst().orElse(null);
+    }
 
     /**
      * 根据实体编码和列表标识查询列表配置
@@ -33,12 +43,12 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
      * @param listKey    列表标识
      * @return 列表配置，无则返回 null
      */
-    @Select("SELECT * FROM entity_list_config "
-            + "WHERE entity_code = #{entityCode} AND list_key = #{listKey} "
-            + "AND deleted = 0 LIMIT 1")
-    EntityListConfig findByEntityCodeAndListKey(
-            @Param("entityCode") String entityCode,
-            @Param("listKey") String listKey);
+    default EntityListConfig findByEntityCodeAndListKey(String entityCode, String listKey) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityListConfig>lambdaQuery()
+                .eq(EntityListConfig::getEntityCode, entityCode)
+                .eq(EntityListConfig::getListKey, listKey))
+                .stream().findFirst().orElse(null);
+    }
 
     /**
      * 根据实体编码查询全部列表配置，默认列表优先，按创建时间升序排列。
@@ -46,10 +56,12 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
      * @param entityCode 实体编码
      * @return 列表配置列表
      */
-    @Select("SELECT * FROM entity_list_config "
-            + "WHERE entity_code = #{entityCode} AND deleted = 0 "
-            + "ORDER BY is_default DESC, create_time ASC")
-    List<EntityListConfig> findByEntityCode(@Param("entityCode") String entityCode);
+    default List<EntityListConfig> findByEntityCode(String entityCode) {
+        return selectList(Wrappers.<EntityListConfig>lambdaQuery()
+                .eq(EntityListConfig::getEntityCode, entityCode)
+                .orderByDesc(EntityListConfig::getIsDefault)
+                .orderByAsc(EntityListConfig::getCreatedAt));
+    }
 
     /**
      * 根据主键 ID 加锁查询列表配置（FOR UPDATE），用于并发更新场景。

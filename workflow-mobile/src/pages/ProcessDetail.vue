@@ -1,17 +1,33 @@
 <template>
-  <section class="detail-page" :class="{ 'has-actions': footerActions.length }">
-    <VanNavBar title="流程详情" left-arrow @click-left="back" />
+  <section class="detail-page" :class="{ 'has-actions': hasPrimaryActions }">
+    <VanNavBar title="流程详情" left-arrow @click-left="back">
+      <template #right><div ref="moreActionsTarget" class="detail-more-target" /></template>
+    </VanNavBar>
     <div v-if="loading" class="detail-loading"><VanLoading>正在加载</VanLoading></div>
     <div v-if="error" class="mobile-error" role="alert">{{ error }}<button v-if="!conflict" @click="load">重试</button><button v-else @click="refreshOperations">刷新任务状态</button></div>
     <template v-if="loaded">
-      <header class="detail-summary"><div><h1>{{ record.name || snapshot.processName || '流程详情' }}</h1><VanTag plain type="primary">{{ detail.getProcessStatusText(detail.progressData.value.status) }}</VanTag></div><p>{{ record.submitterName || snapshot.startUserName || '发起人' }} · {{ formatTime(record.processStartTime || snapshot.startTime) }}</p></header>
-      <VanTabs v-model:active="activeTab" :lazy-render="false" shrink class="detail-tabs">
-        <VanTab title="基本信息" name="basic"><main class="detail-content"><MobileFormRenderer v-if="form" ref="formRef" v-model="record" :form="form" :entity-fields="entityFields" :readonly="formReadonly" :mode="mode" :context="runtimeContext" :services="formServices" :data-source-runtime="dataSourceRuntime" :actions="formActions" :action-loading-key="pending" @action="handleAction" @error="showFailToast" /><VanEmpty v-else description="此流程未配置可展示的表单" /></main></VanTab>
+      <header class="detail-summary"><div><h1>{{ record.name || snapshot.processName || '流程详情' }}</h1><VanTag plain type="primary" :aria-label="`实体状态：${entityStatusText}`">{{ entityStatusText }}</VanTag></div><p>{{ record.submitterName || snapshot.startUserName || '发起人' }} · {{ formatTime(record.processStartTime || snapshot.startTime) }}</p></header>
+      <MobileFormRenderer v-if="form" ref="formRef" v-model="record" v-model:active-tab="activeTab" tabbed class="detail-tabs" :form="form" :entity-fields="entityFields" :readonly="formReadonly" :mode="mode" :context="runtimeContext" :services="formServices" :data-source-runtime="dataSourceRuntime" :actions="formActions" :action-loading-key="pending" @action="handleAction" @error="showFailToast">
+        <template #after-tabs>
+          <VanTab title="流程进度" name="progress"><main class="detail-content"><MobileProcessProgress :progress="detail.progressData.value" :nodes="diagramNodes" :has-diagram="Boolean(detail.bpmnXml.value)" @diagram="diagramOpen = true" /></main></VanTab>
+          <VanTab title="审批历史" name="history"><main class="detail-content"><MobileApprovalHistory :items="detail.processHistory.value" /></main></VanTab>
+        </template>
+      </MobileFormRenderer>
+      <VanTabs v-else v-model:active="activeTab" :lazy-render="false" shrink class="detail-tabs">
+        <VanTab title="基本信息" name="basic"><main class="detail-content"><VanEmpty description="此流程未配置可展示的表单" /></main></VanTab>
         <VanTab title="流程进度" name="progress"><main class="detail-content"><MobileProcessProgress :progress="detail.progressData.value" :nodes="diagramNodes" :has-diagram="Boolean(detail.bpmnXml.value)" @diagram="diagramOpen = true" /></main></VanTab>
         <VanTab title="审批历史" name="history"><main class="detail-content"><MobileApprovalHistory :items="detail.processHistory.value" /></main></VanTab>
       </VanTabs>
       <div v-if="ccError" class="mobile-error">{{ ccError }}<button @click="markRead">重新标记已读</button></div>
-      <MobileActionBar v-if="footerActions.length" :actions="footerActions" :loading-key="pending" @action="handleAction" />
+      <MobileActionBar v-if="footerActions.length" :actions="footerActions" :loading-key="pending" @action="handleAction">
+        <template #more="{ open, disabled, expanded }">
+          <Teleport v-if="moreActionsTarget" :to="moreActionsTarget">
+            <button class="detail-more-button" aria-label="更多操作" :aria-expanded="expanded" :disabled="disabled" @click="open">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="20" cy="12" r="2" /></svg>
+            </button>
+          </Teleport>
+        </template>
+      </MobileActionBar>
       <MobileApprovalPanel ref="approvalRef" v-model:show="approvalOpen" v-model:action="action" v-model:comment="comment" :config="approvalConfig" :preview="preview.preview.value" :loading="preview.loading.value || preview.dirty.value" :submitting="submitting" :task-id="taskId" :form-data="record" :load-options="tasks.getNextApproverOptions" @submit="submitApproval" />
     </template>
     <VanPopup v-model:show="diagramOpen" position="right" :style="{ width: '100%', height: '100%' }"><ProcessDiagram v-if="diagramOpen" :xml="detail.bpmnXml.value" :progress="detail.progressData.value" @close="diagramOpen = false" /></VanPopup>
@@ -36,27 +52,41 @@ import { useNextApproverPreview } from '@flow/workflow-core/vue/useNextApproverP
 import { createFormActionRuntime } from '@flow/workflow-core/form-action-runtime'
 import { createFormDataSourceRuntime, isRuntimeFormReadonly } from '@flow/workflow-core/form-runtime'
 import { footerFormActions } from '@flow/workflow-core/form-actions'
+import { resolveEntityStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { applyRuntimeFieldEffects } from '@flow/workflow-core/form-runtime/fieldEvents'
 import { getTodoTaskMoreActions, taskApprovalConflictMessage } from '@flow/workflow-core/workflow-task-actions'
 import { isReservedApprovalActionCode, resolveAllowedAddSignTypes } from '@flow/workflow-core/workflow-operation-guards'
 import { normalizeNextApproverPreview } from '@flow/workflow-core/next-approver'
-import { tasks, forms, request, ui, session } from '../adapters/services.js'
+import { tasks, forms, entities, request, ui, session } from '../adapters/services.js'
 import { formServices } from '../adapters/formServices.js'
 import { invalidateInboxes } from '../inbox.js'
+import { createFormReleaseSession } from '../formReleaseSession.js'
 const ProcessDiagram = defineAsyncComponent(() => import('../components/ProcessDiagram.vue'))
 const router = useRouter(), route = useRoute(), taskId = computed(() => String(route.query.taskId || ''))
 const snapshot = ref(history.state.row || {}), detail = useProcessDetail({ request, getProcessHistory: tasks.getProcessHistory })
 const loading = ref(false), loaded = ref(false), error = ref(''), ccError = ref(''), conflict = ref(false), record = ref({}), form = ref(null), entityFields = ref([]), task = ref(null), operations = ref({}), rejected = ref(null), formActions = ref([])
 const activeTab = ref('basic'), formRef = ref(), approvalRef = ref(), approvalOpen = ref(false), diagramOpen = ref(false), action = ref('approve'), comment = ref(''), pending = ref(''), submitting = ref(false)
 const processOperations = ref({})
+const moreActionsTarget = ref(null)
 const operation = ref(null), operationOpen = ref(false), operationUsers = ref([]), operationComment = ref(''), operationPicker = ref(false), addSignType = ref('')
 let sequence = 0, savedFingerprint = '', completed = false
+const releaseSession = createFormReleaseSession({
+  getForm: () => form.value,
+  async loadForm() {
+    const result = await forms.getProgress(route.params.instanceId, route.query.kind === 'todo' ? taskId.value : '')
+    return result.formConfigs?.[0] || result.formConfig
+  }
+})
+// 统一覆盖字段事件、校验、动作解析和审批提交；休眠恢复后第一次操作也会先续期。
+const releaseInterceptor = request.interceptors.request.use(releaseSession.prepare)
 const canApprove = computed(() => Boolean(task.value && String(task.value.status).toLowerCase() === 'todo' && operations.value.approve === true && !conflict.value))
 const isStarter = computed(() => [session.userInfo?.username, session.userInfo?.id].filter(Boolean).map(String).includes(String(record.value.submitterId || snapshot.value.startUserId || '')))
 const canResubmit = computed(() => isStarter.value && rejected.value?.canResubmit === true)
 const mode = computed(() => canApprove.value ? 'approve' : canResubmit.value ? 'edit' : 'view')
 const formReadonly = computed(() => mode.value === 'view' || isRuntimeFormReadonly(form.value))
 const entityCode = computed(() => record.value.entityCode || task.value?.entityCode || snapshot.value.entityCode || '')
+// 详情标签读取最新实体状态及配置名称，不使用流程进度状态或列表中的旧状态。
+const entityStatusText = computed(() => record.value._statusText || resolveEntityStatusLabel(record.value.status) || '—')
 const runtimeContext = computed(() => ({ form: form.value, permissions: session.permissions, entityCode: entityCode.value, entityId: form.value?.entityId, recordId: record.value.id, record: record.value, mode: mode.value, taskId: taskId.value, processInstanceId: route.params.instanceId, releaseResolutionToken: form.value?.releaseResolutionToken, initializationKey: `${route.params.instanceId}:${taskId.value}` }))
 const approvalConfig = computed(() => detail.approvalConfig.value || { enabled: true, commentLabel: '审批意见', options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] })
 const selectedOption = computed(() => approvalConfig.value.options?.find(option => option.value === action.value))
@@ -73,6 +103,8 @@ const footerActions = computed(() => {
   if (canResubmit.value) items.push({ key: 'resubmit', label: '重新提交', primary: true })
   return items
 })
+// 更多操作已移至标题栏，只有底部仍有主操作时才为固定操作栏预留空间。
+const hasPrimaryActions = computed(() => footerActions.value.some(item => item.visible !== false && (item.primary || item.key === 'submitApproval')))
 const diagramNodes = computed(() => {
   if (!detail.bpmnXml.value) return []
   const document = new DOMParser().parseFromString(detail.bpmnXml.value, 'text/xml')
@@ -86,8 +118,21 @@ async function refreshOperations() {
   try { operations.value = taskId.value ? await tasks.getTaskOperations(taskId.value) : {}; if (operations.value.approve !== true) conflict.value = true }
   catch { operations.value = {}; conflict.value = true }
 }
+/**
+ * 补齐代码表绑定等实体字段元数据，供移动端字段投影和选项加载使用。
+ * 流程表单 DTO 不保证返回 entityId，因此需沿用 PC 按实体编码读取元数据的路径；
+ * 这里只补充实体字段，不重新解析最新表单，保留流程固定的发布版本和字段权限。
+ */
+async function loadFormEntityFields() {
+  if (!form.value) return []
+  if (form.value.entityId) return forms.getEntityFields(form.value.entityId)
+  if (!entityCode.value) return []
+  const entity = await entities.entityApi.getByCode(entityCode.value)
+  return entity.fields || []
+}
 /** 审批入口必须经过任务详情鉴权和服务端能力确认；URL 中的 todo 类型不能授予办理权。 */
 async function load() {
+  releaseSession.reset()
   const current = ++sequence; loading.value = true; loaded.value = false; error.value = ''; conflict.value = false; task.value = null; operations.value = {}; preview.reset()
   try {
     let authorizedTask = null
@@ -104,7 +149,7 @@ async function load() {
     if (task.value) operations.value = await tasks.getTaskOperations(taskId.value)
     processOperations.value = await tasks.getProcessOperations(route.params.instanceId)
     rejected.value = isStarter.value ? await tasks.checkRejectedStatus(route.params.instanceId) : null
-    entityFields.value = form.value?.entityId ? await forms.getEntityFields(form.value.entityId) : []
+    entityFields.value = await loadFormEntityFields()
     action.value = approvalConfig.value.options?.[0]?.value || 'approve'
     formActions.value = await actionRuntime.resolveRuntimeFormActions(form.value || {}, actionContext())
     if (current !== sequence) return
@@ -120,7 +165,7 @@ async function markRead() {
 }
 async function validateForm() {
   if (!form.value || !formRef.value) { showFailToast('表单尚未加载，无法提交'); return false }
-  if (!(await formRef.value.validate())) { approvalOpen.value = false; activeTab.value = 'basic'; showFailToast(formRef.value.getValidationError() || '请检查表单内容'); return false }
+  if (!(await formRef.value.validate())) { approvalOpen.value = false; await formRef.value.reveal(); showFailToast(formRef.value.getValidationError() || '请检查表单内容'); return false }
   await dataSourceRuntime.prevalidateBeforeSubmit({ form: form.value, fields: form.value.fields || [], nodes: form.value.nodes || [] }); return true
 }
 /** 校验、预览确认和提交共用一次锁；冲突后保留草稿，不自动重试审批写操作。 */
@@ -139,7 +184,7 @@ async function submitApproval() {
     await tasks.completeTask(payload, { silentError: true, ...(trace ? { headers: { [BUSINESS_TRACE_HEADER]: trace } } : {}) })
     await finish('审批成功')
   } catch (cause) {
-    if (await formRef.value?.applyServerValidationError(cause)) { approvalOpen.value = false; activeTab.value = 'basic' }
+    if (await formRef.value?.applyServerValidationError(cause)) { approvalOpen.value = false }
     const message = taskApprovalConflictMessage(cause)
     if (message) { conflict.value = true; approvalOpen.value = false; error.value = message.replace('当前弹窗', '当前页面'); await refreshOperations() }
     else if ([cause.errorCode, cause.source?.errorCode, cause.response?.data?.errorCode].includes('NEXT_APPROVAL_SCOPE_CHANGED')) { await preview.refresh(); showFailToast('审批人范围已变化，请重新确认') }
@@ -196,8 +241,12 @@ async function finish(message) { completed = true; approvalOpen.value = false; o
 function back() { if (/^\/(?:m\/)?inbox\//.test(history.state.back || '')) router.back(); else return router.replace(`/inbox/${route.query.kind || 'todo'}`) }
 onBeforeRouteLeave(async () => { if (submitting.value && !completed) return false; if (!completed && mode.value !== 'view' && savedFingerprint && (JSON.stringify(record.value) !== savedFingerprint || comment.value)) { try { await showConfirmDialog({ title: '离开详情', message: '填写的内容尚未提交，确定离开？' }) } catch { return false } } })
 watch(() => [route.params.instanceId, route.query.taskId], load, { immediate: true })
-onBeforeUnmount(() => { sequence++; preview.reset() })
+onBeforeUnmount(() => { sequence++; preview.reset(); releaseSession.reset(); request.interceptors.request.eject(releaseInterceptor) })
 </script>
 <style scoped>
-.detail-page { min-height: 100dvh; background: var(--flow-mobile-surface); }.detail-page.has-actions { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }.detail-loading { padding: 48px 16px; text-align: center; }.detail-summary { padding: 18px 18px 20px; background: var(--flow-mobile-surface); }.detail-summary > div { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }.detail-summary h1 { font-size: 18px; line-height: 1.5; font-weight: 600; margin: 0; overflow-wrap: anywhere; }.detail-summary :deep(.van-tag) { flex-shrink: 0; margin-top: 3px; border: 0; background: var(--flow-mobile-accent-soft); color: var(--flow-mobile-accent-text); font-size: 11px; padding: 3px 7px; border-radius: 5px; }.detail-summary :deep(.van-tag:before) { border: 0; }.detail-summary p { font-size: 12px; line-height: 1.7; color: var(--flow-mobile-muted); margin: 8px 0 0; overflow-wrap: anywhere; }.detail-content { padding: 18px 18px 24px; }.detail-tabs :deep(.van-tabs__nav) { margin: 0; padding: 0 18px 12px; background: var(--flow-mobile-surface); border-bottom: 1px solid var(--flow-mobile-border); }.detail-tabs :deep(.van-tabs__wrap) { height: 44px; margin: 0; padding: 0; background: var(--flow-mobile-surface); }.detail-tabs :deep(.van-tab) { flex: 1; padding: 0 8px; font-size: 13px; color: var(--flow-mobile-muted); }.detail-tabs :deep(.van-tab--active) { color: var(--flow-mobile-accent-text); font-weight: 600; }.detail-tabs :deep(.van-tabs__line) { width: 24px; height: 3px; bottom: 12px; background: var(--flow-mobile-accent); }.operation-types { padding: 12px 16px; gap: 16px; }
+.detail-more-target { display: flex; align-items: center; }
+.detail-more-button { display: flex; align-items: center; justify-content: center; width: 32px; height: 44px; padding: 4px; border: 0; background: transparent; color: var(--flow-mobile-accent-text); cursor: pointer; }
+.detail-more-button:disabled { opacity: .5; cursor: default; }
+.detail-more-button svg { width: 24px; height: 24px; fill: currentColor; }
+.detail-page { min-height: 100dvh; background: var(--flow-mobile-surface); }.detail-page.has-actions { padding-bottom: calc(78px + env(safe-area-inset-bottom)); }.detail-loading { padding: 48px 16px; text-align: center; }.detail-summary { padding: 18px 18px 20px; background: var(--flow-mobile-surface); }.detail-summary > div { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }.detail-summary h1 { font-size: 18px; line-height: 1.5; font-weight: 600; margin: 0; overflow-wrap: anywhere; }.detail-summary :deep(.van-tag) { flex-shrink: 0; margin-top: 3px; border: 0; background: var(--flow-mobile-accent-soft); color: var(--flow-mobile-accent-text); font-size: 11px; padding: 3px 7px; border-radius: 5px; }.detail-summary :deep(.van-tag:before) { border: 0; }.detail-summary p { font-size: 12px; line-height: 1.7; color: var(--flow-mobile-muted); margin: 8px 0 0; overflow-wrap: anywhere; }.detail-content { padding: 18px 18px 24px; }.detail-tabs :deep(.van-tabs__nav) { margin: 0; padding: 0 18px 12px; background: var(--flow-mobile-surface); border-bottom: 1px solid var(--flow-mobile-border); }.detail-tabs :deep(.van-tabs__wrap) { height: 44px; margin: 0; padding: 0; background: var(--flow-mobile-surface); }.detail-tabs :deep(.van-tab) { flex: 1 0 auto; padding: 0 12px; font-size: 13px; color: var(--flow-mobile-muted); }.detail-tabs :deep(.van-tab--active) { color: var(--flow-mobile-accent-text); font-weight: 600; }.detail-tabs :deep(.van-tabs__line) { width: 24px; height: 3px; bottom: 12px; background: var(--flow-mobile-accent); }.operation-types { padding: 12px 16px; gap: 16px; }
 </style>

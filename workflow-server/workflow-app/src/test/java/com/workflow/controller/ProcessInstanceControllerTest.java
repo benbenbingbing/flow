@@ -28,6 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 流程实例控制器单元测试
  */
+@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
 @WebMvcTest(ProcessInstanceController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class ProcessInstanceControllerTest {

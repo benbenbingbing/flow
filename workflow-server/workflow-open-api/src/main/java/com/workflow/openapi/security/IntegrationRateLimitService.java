@@ -1,6 +1,7 @@
 package com.workflow.openapi.security;
 
 import com.workflow.core.error.RateLimitExceededException;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationRateLimitMapper;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -9,6 +10,8 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -21,29 +24,36 @@ public class IntegrationRateLimitService {
 
     private final IntegrationRateLimitMapper mapper;
     private final Clock clock;
+    private final JdbcLockedRow lockedRows;
 
     @Autowired
     public IntegrationRateLimitService(
-            IntegrationRateLimitMapper mapper) {
-        this(mapper, Clock.systemUTC());
+            IntegrationRateLimitMapper mapper, JdbcLockedRow lockedRows) {
+        this(mapper, Clock.systemUTC(), lockedRows);
     }
 
     IntegrationRateLimitService(
             IntegrationRateLimitMapper mapper,
-            Clock clock) {
+            Clock clock, JdbcLockedRow lockedRows) {
         this.mapper = mapper;
         this.clock = clock;
+        this.lockedRows = lockedRows;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void acquire(String namespace, String value, int limit) {
-        long epochSecond = clock.instant().getEpochSecond();
+        var instant = clock.instant();
+        long epochSecond = instant.getEpochSecond();
         long windowEpoch = epochSecond / WINDOW_SECONDS;
         String bucketKey = sha256(namespace + ":" + safeValue(value));
-        LocalDateTime now = LocalDateTime.ofInstant(
-                clock.instant(),
-                ZoneOffset.UTC);
-        mapper.increment(bucketKey, windowEpoch, now);
+        LocalDateTime now = LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+        // 零值只用于新桶；持有唯一键行锁后递增，防止竞争者覆盖计数或提前释放锁。
+        lockedRows.ensureAndLock("integration_rate_limit_bucket", Map.of(
+                "bucket_key", bucketKey, "window_epoch", windowEpoch, "request_count", 0,
+                "create_time", now, "update_time", now), List.of("bucket_key", "window_epoch"));
+        if (mapper.increment(bucketKey, windowEpoch, now) != 1) {
+            throw new IllegalStateException("接口限流桶递增失败");
+        }
         int count = mapper.currentCount(bucketKey, windowEpoch);
         if (count > limit) {
             long retryAfter = WINDOW_SECONDS

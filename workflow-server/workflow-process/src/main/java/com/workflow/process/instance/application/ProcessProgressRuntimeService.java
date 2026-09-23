@@ -13,6 +13,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.entity.form.application.EntityFormFieldRuntimeMapper;
@@ -67,6 +68,7 @@ public class ProcessProgressRuntimeService {
     private final ProcessOperationLogMapper operationLogMapper;
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     private final LocalAddSignTaskAccessService localAddSignTaskAccessService;
+    private final EntityStatusService entityStatusService;
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -724,6 +726,11 @@ public class ProcessProgressRuntimeService {
                     EntityDataDTO entityData = entityDataDynamicService.findById(entityCode, entityDataId);
                     if (entityData != null) {
                         progress.setEntityData(toRuntimeFormData(entityData));
+                        // 随已授权的详情返回业务状态名称，知会/审批用户无需额外申请实体元数据权限。
+                        if (StringUtils.hasText(entityData.getStatus())) {
+                            putIfNotNull(progress.getEntityData(), "_statusText",
+                                    entityStatusService.getStatusNameMap(entityCode).get(entityData.getStatus()));
+                        }
                     }
                 } catch (Exception e) {
                     log.debug("获取实体数据失败: {}", e.getMessage());

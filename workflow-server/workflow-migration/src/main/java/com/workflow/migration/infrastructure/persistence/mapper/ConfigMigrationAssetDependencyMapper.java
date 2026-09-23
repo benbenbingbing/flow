@@ -1,11 +1,9 @@
 package com.workflow.migration.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -24,15 +22,21 @@ public interface ConfigMigrationAssetDependencyMapper
      * @param assetId 资产ID
      * @return 依赖记录列表
      */
-    @Select("SELECT * FROM config_migration_asset_dependency "
-            + "WHERE asset_id = #{assetId} ORDER BY dependency_type, dependency_key")
-    List<ConfigMigrationAssetDependency> findByAssetId(@Param("assetId") String assetId);
+    default List<ConfigMigrationAssetDependency> findByAssetId(String assetId) {
+        return selectList(Wrappers.<ConfigMigrationAssetDependency>lambdaQuery()
+                .eq(ConfigMigrationAssetDependency::getAssetId, assetId)
+                .orderByAsc(ConfigMigrationAssetDependency::getDependencyType)
+                .orderByAsc(ConfigMigrationAssetDependency::getDependencyKey));
+    }
 
     /**
      * 按资产ID删除其全部依赖记录(用于重新保存依赖前的清空)。
      *
      * @param assetId 资产ID
      */
-    @Delete("DELETE FROM config_migration_asset_dependency WHERE asset_id = #{assetId}")
-    void deleteByAssetId(@Param("assetId") String assetId);
+    default void deleteByAssetId(String assetId) {
+        // 依赖记录没有逻辑删除字段，清空后由本次分析结果重新建立完整依赖集合。
+        delete(Wrappers.<ConfigMigrationAssetDependency>lambdaQuery()
+                .eq(ConfigMigrationAssetDependency::getAssetId, assetId));
+    }
 }

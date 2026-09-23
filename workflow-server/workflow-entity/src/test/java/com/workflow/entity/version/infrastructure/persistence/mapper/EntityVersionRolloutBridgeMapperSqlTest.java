@@ -72,21 +72,22 @@ class EntityVersionRolloutBridgeMapperSqlTest {
     }
 
     @Test
-    void currentReadsPreferValidActiveReleaseAndIgnoreLegacyDraft()
+    void currentReadsKeepBothDocumentSourcesAndIgnoreLegacyDraft()
             throws Exception {
         for (Method method : new Method[]{
                 EntityVersionConfigMapper.class.getMethod(
-                        "findByEntityCode", String.class),
-                EntityVersionConfigMapper.class.getMethod("findAllCurrent")
+                        "selectCurrentRow", String.class),
+                EntityVersionConfigMapper.class.getMethod("selectCurrentRows")
         }) {
             Select select = method.getAnnotation(Select.class);
             String sql = String.join(" ", select.value()).toLowerCase();
 
             assertTrue(sql.contains(
                     "left join entity_version_config_release"));
-            assertTrue(sql.contains("json_valid(r.config_document) = 1"));
-            assertTrue(sql.contains("coalesce(r.contract_version, 1)"));
-            assertTrue(sql.contains("else c.config_document"));
+            assertTrue(sql.contains("r.id = c.active_release_id and r.config_id = c.id"));
+            assertTrue(sql.contains("r.config_document as source_release_document"));
+            assertTrue(sql.contains("r.contract_version as source_contract_version"));
+            assertTrue(sql.contains("c.config_document"));
             assertFalse(sql.contains("draft_document"));
         }
     }

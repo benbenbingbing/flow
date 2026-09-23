@@ -1,10 +1,9 @@
 package com.workflow.entity.form.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -17,6 +16,9 @@ public interface FormConfigMapper extends BaseMapper<FormConfig> {
     /**
      * 根据节点配置ID查询表单列表
      */
-    @Select("SELECT * FROM process_form_config WHERE node_config_id = #{nodeConfigId} ORDER BY create_time ASC")
-    List<FormConfig> findByNodeConfigId(@Param("nodeConfigId") String nodeConfigId);
+    default List<FormConfig> findByNodeConfigId(String nodeConfigId) {
+        return selectList(Wrappers.<FormConfig>lambdaQuery()
+                .eq(FormConfig::getNodeConfigId, nodeConfigId)
+                .orderByAsc(FormConfig::getCreatedAt));
+    }
 }

@@ -16,14 +16,15 @@ class EmbedOperationsMapperContractTest {
     @Test
     void mapperRegistersAllDynamicStatements() {
         Configuration configuration = new Configuration();
+        configuration.setDatabaseId("MYSQL");
 
         configuration.addMapper(EmbedOperationsMapper.class);
 
         String namespace = EmbedOperationsMapper.class.getName() + ".";
-        assertTrue(configuration.hasStatement(namespace + "findLaunches"));
-        assertTrue(configuration.hasStatement(namespace + "findSessions"));
-        assertTrue(configuration.hasStatement(namespace + "findActiveSessionIdsByView"));
-        assertTrue(configuration.hasStatement(namespace + "findActiveSessionIdsByApplication"));
+        assertTrue(configuration.hasStatement(namespace + "findLaunchesPage"));
+        assertTrue(configuration.hasStatement(namespace + "findSessionsPage"));
+        assertTrue(configuration.hasStatement(namespace + "findActiveSessionIdsByViewPage"));
+        assertTrue(configuration.hasStatement(namespace + "findActiveSessionIdsByApplicationPage"));
     }
 
     @Test
@@ -47,7 +48,10 @@ class EmbedOperationsMapperContractTest {
                 "findActiveSessionIdsByView", "findActiveSessionIdsByApplication"}) {
             String sql = selectSql(methodName);
             assertTrue(sql.contains("ORDER BY"), methodName);
-            assertTrue(sql.contains("LIMIT #{fetchLimit}"), methodName);
+            assertFalse(sql.contains("DatabaseQuerySql@page"), methodName);
+            Method pageMethod = Arrays.stream(EmbedOperationsMapper.class.getDeclaredMethods())
+                    .filter(method -> method.getName().equals(methodName + "Page")).findFirst().orElseThrow();
+            assertTrue(com.baomidou.mybatisplus.core.metadata.IPage.class.isAssignableFrom(pageMethod.getParameterTypes()[0]));
         }
         assertTrue(selectSql("findLaunches").contains("id &lt; #{cursorId}"));
         assertTrue(selectSql("findSessions").contains("id &lt; #{cursorId}"));
@@ -58,16 +62,17 @@ class EmbedOperationsMapperContractTest {
     @Test
     void nonScriptSessionCursorsReachJdbcAsComparisonOperators() {
         Configuration configuration = new Configuration();
+        configuration.setDatabaseId("MYSQL");
         configuration.addMapper(EmbedOperationsMapper.class);
         String namespace = EmbedOperationsMapper.class.getName() + ".";
 
         String byView = normalize(configuration
-                .getMappedStatement(namespace + "findActiveSessionIdsByView")
+                .getMappedStatement(namespace + "findActiveSessionIdsByViewPage")
                 .getBoundSql(Map.of(
                         "viewId", "ev_1", "afterSessionId", "es_1", "fetchLimit", 2))
                 .getSql());
         String byApplication = normalize(configuration
-                .getMappedStatement(namespace + "findActiveSessionIdsByApplication")
+                .getMappedStatement(namespace + "findActiveSessionIdsByApplicationPage")
                 .getBoundSql(Map.of(
                         "applicationId", "app_1", "afterSessionId", "es_1", "fetchLimit", 2))
                 .getSql());
@@ -80,7 +85,9 @@ class EmbedOperationsMapperContractTest {
 
     private static String selectSql(String methodName) {
         Method method = Arrays.stream(EmbedOperationsMapper.class.getDeclaredMethods())
-                .filter(candidate -> candidate.getName().equals(methodName))
+                .filter(candidate -> candidate.getName().equals(methodName + "Page")
+                        || candidate.getName().equals(methodName))
+                .filter(candidate -> candidate.isAnnotationPresent(Select.class))
                 .findFirst()
                 .orElseThrow();
         return String.join(" ", method.getAnnotation(Select.class).value())

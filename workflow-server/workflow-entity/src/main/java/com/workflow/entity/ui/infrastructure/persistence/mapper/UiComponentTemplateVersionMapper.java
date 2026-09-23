@@ -1,16 +1,15 @@
 package com.workflow.entity.ui.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
 /**
  * UI 组件模板版本 Mapper
- * 
+ *
  * 提供按模板 ID 查询历史版本列表的能力。
  */
 @Mapper
@@ -22,11 +21,9 @@ public interface UiComponentTemplateVersionMapper extends BaseMapper<UiComponent
      * @param templateId 模板 ID
      * @return 版本列表
      */
-    @Select("SELECT id, template_id, version, snapshot_document, "
-            + "content_hash, description, created_by, "
-            + "create_time AS createdAt "
-            + "FROM ui_component_template_version "
-            + "WHERE template_id = #{templateId} ORDER BY version DESC")
-    List<UiComponentTemplateVersion> findByTemplateId(
-            @Param("templateId") String templateId);
+    default List<UiComponentTemplateVersion> findByTemplateId(String templateId) {
+        return selectList(Wrappers.<UiComponentTemplateVersion>lambdaQuery()
+                .eq(UiComponentTemplateVersion::getTemplateId, templateId)
+                .orderByDesc(UiComponentTemplateVersion::getVersion));
+    }
 }

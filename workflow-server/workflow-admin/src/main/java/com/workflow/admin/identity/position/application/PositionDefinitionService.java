@@ -7,6 +7,7 @@ import com.workflow.admin.identity.position.api.PositionManagementException;
 import com.workflow.admin.identity.position.api.request.PositionRequests;
 import com.workflow.admin.identity.position.api.response.PositionViews;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;
+import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPosition;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.AuditAction;
@@ -32,6 +33,8 @@ import java.util.Locale;
 public class PositionDefinitionService {
 
     private final SysPositionMapper positionMapper;
+    /** 从任职事实表读取历史引用和当前人数，避免职务定义 Mapper 查询其他业务表。 */
+    private final SysPositionAssignmentMapper assignmentMapper;
     private final PositionOrganizationScopeService scopeService;
 
     public PageResult<PositionViews.PositionView> page(
@@ -270,7 +273,7 @@ public class PositionDefinitionService {
                     PositionErrorCode.POSITION_REFERENCED,
                     "内置职务不可删除，只能保持启用");
         }
-        if (positionMapper.countAssignments(id) > 0
+        if (assignmentMapper.countAssignments(id) > 0
                 || positionMapper.countProcessReferences(
                         current.getPositionCode()) > 0) {
             throw new PositionManagementException(
@@ -288,7 +291,7 @@ public class PositionDefinitionService {
             LocalDateTime now) {
         return basicView(
                 position,
-                positionMapper.countCurrentAssignments(
+                assignmentMapper.countCurrentAssignments(
                         position.getId(), now, visibleUnitIds),
                 positionMapper.countProcessReferences(position.getPositionCode()),
                 now);

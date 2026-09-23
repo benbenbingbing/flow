@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.core.database.JdbcLockedRow;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -54,6 +56,9 @@ public class UiHotfixGovernanceService
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final UiConfigurationAccessService accessService;
+    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
+    private final JdbcLockedRow lockedRows;
 
     /** 发布后的指标观察窗口，至少保留一分钟。 */
     @Value("${workflow.ui.hotfix.observation-minutes:60}")
@@ -235,7 +240,8 @@ public class UiHotfixGovernanceService
                 "SELECT release_id FROM ui_config_hotfix_request "
                         + "WHERE config_type = ? AND config_id = ? "
                         + "AND status = 'OBSERVING' "
-                        + "ORDER BY published_at DESC LIMIT 1",
+                        + "ORDER BY published_at DESC, id DESC"
+                        + queryDialect.paginationClause("0", "1"),
                 String.class,
                 normalize(configType),
                 configId);
@@ -268,7 +274,8 @@ public class UiHotfixGovernanceService
                         + "WHERE target.process_version_history_id = ? "
                         + "AND target.status = 'ACTIVE' "
                         + "AND request.status = 'OBSERVING' "
-                        + "ORDER BY request.published_at DESC LIMIT 1",
+                        + "ORDER BY request.published_at DESC, request.id DESC"
+                        + queryDialect.paginationClause("0", "1"),
                 String.class,
                 processVersionHistoryId);
         if (!releaseIds.isEmpty()) {
@@ -300,18 +307,18 @@ public class UiHotfixGovernanceService
             refreshObservation(record);
             return;
         }
-        jdbcTemplate.update(
-                "INSERT INTO ui_hotfix_observation_metric "
-                        + "(id, request_id, release_id, metric_code, total_count, failure_count, last_error) "
-                        + "VALUES (?, ?, ?, ?, 1, ?, ?) ON DUPLICATE KEY UPDATE "
-                        + "total_count = total_count + 1, failure_count = failure_count + VALUES(failure_count), "
-                        + "last_error = COALESCE(VALUES(last_error), last_error), last_observed_at = NOW()",
-                compactId(),
-                record.getId(),
-                releaseId,
-                code,
+        // 初始计数为零，已有指标保留身份和错误证据；递增与初始化加入同一观察事务。
+        lockedRows.ensureAndLock("ui_hotfix_observation_metric", Map.of(
+                "id", compactId(), "request_id", record.getId(), "release_id", releaseId,
+                "metric_code", code, "total_count", 0L, "failure_count", 0L), List.of("request_id", "metric_code"));
+        int updated = jdbcTemplate.update(
+                "UPDATE ui_hotfix_observation_metric SET total_count = total_count + 1, "
+                        + "failure_count = failure_count + ?, last_error = COALESCE(?, last_error), "
+                        + "last_observed_at = CURRENT_TIMESTAMP WHERE request_id = ? AND metric_code = ?",
                 successful ? 0 : 1,
-                successful ? null : abbreviate(errorMessage, 1000));
+                successful ? null : abbreviate(errorMessage, 1000),
+                record.getId(), code);
+        if (updated != 1) throw new IllegalStateException("HOTFIX 观察指标递增失败");
     }
 
     public UiHotfixRequestDTO get(String id) {
@@ -401,11 +408,11 @@ public class UiHotfixGovernanceService
         return record;
     }
 
+    /** release_id 唯一约束保证一次发布只对应一个 HOTFIX 请求。 */
     private UiConfigHotfixRequest findByReleaseId(String releaseId) {
         return requestMapper.selectOne(
                 new LambdaQueryWrapper<>(UiConfigHotfixRequest.class)
-                        .eq(UiConfigHotfixRequest::getReleaseId, releaseId)
-                        .last("LIMIT 1"));
+                        .eq(UiConfigHotfixRequest::getReleaseId, releaseId));
     }
 
     private void requireConfigAccess(String configType, String configId) {

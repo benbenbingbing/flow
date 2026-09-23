@@ -1,11 +1,9 @@
 package com.workflow.admin.identity.user.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUserRole;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -21,8 +19,10 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
      * @param userId 用户ID
      * @return 角色ID列表
      */
-    @Select("SELECT role_id FROM sys_user_role WHERE user_id = #{userId}")
-    List<String> selectRoleIdsByUserId(@Param("userId") String userId);
+    default List<String> selectRoleIdsByUserId(String userId) {
+        return selectObjs(Wrappers.<SysUserRole>lambdaQuery()
+                .select(SysUserRole::getRoleId).eq(SysUserRole::getUserId, userId));
+    }
     
     /**
      * 根据角色ID查询用户ID列表
@@ -30,14 +30,23 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
      * @param roleId 角色ID
      * @return 用户ID列表
      */
-    @Select("SELECT user_id FROM sys_user_role WHERE role_id = #{roleId}")
-    List<String> selectUserIdsByRoleId(@Param("roleId") String roleId);
+    default List<String> selectUserIdsByRoleId(String roleId) {
+        return selectObjs(Wrappers.<SysUserRole>lambdaQuery()
+                .select(SysUserRole::getUserId).eq(SysUserRole::getRoleId, roleId));
+    }
     
     /**
      * 删除用户的所有角色
      *
      * @param userId 用户ID
      */
-    @Delete("DELETE FROM sys_user_role WHERE user_id = #{userId}")
-    void deleteByUserId(@Param("userId") String userId);
+    default void deleteByUserId(String userId) {
+        // 关联表没有逻辑删除字段，BaseMapper 保留物理删除关联关系的行为。
+        delete(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getUserId, userId));
+    }
+
+    /** 统计角色关联人数，包含禁用用户的既有关系，与角色管理页原口径保持一致。 */
+    default long countUsersByRoleId(String roleId) {
+        return selectCount(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getRoleId, roleId));
+    }
 }

@@ -6,6 +6,7 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -158,7 +159,7 @@ class ProcessProgressAutoSkipIntegrationTest {
                 engine.getTaskService(), mock(SysUserService.class), entityService, forms, entityMapper,
                 mock(ProcessTaskMapper.class), mock(SysGroupMapper.class), mock(SysUserGroupMapper.class),
                 mock(SysUserMapper.class), mock(ProcessOperationLogMapper.class), snapshots,
-                mock(LocalAddSignTaskAccessService.class));
+                mock(LocalAddSignTaskAccessService.class), mock(EntityStatusService.class));
     }
 
     private String bpmn() {

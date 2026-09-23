@@ -1,11 +1,10 @@
 package com.workflow.process.form.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -18,30 +17,52 @@ public interface ProcessNodeFormMapper extends BaseMapper<ProcessNodeForm> {
     /**
      * 查询流程的节点表单绑定
      */
-    @Select("SELECT * FROM process_node_form WHERE process_config_id = #{processConfigId} ORDER BY node_id ASC, sort_order ASC, create_time ASC")
-    List<ProcessNodeForm> selectByProcessConfigId(@Param("processConfigId") String processConfigId);
+    default List<ProcessNodeForm> selectByProcessConfigId(String processConfigId) {
+        return selectList(Wrappers.<ProcessNodeForm>lambdaQuery()
+                .eq(ProcessNodeForm::getProcessConfigId, processConfigId)
+                .orderByAsc(ProcessNodeForm::getNodeId)
+                .orderByAsc(ProcessNodeForm::getSortOrder)
+                .orderByAsc(ProcessNodeForm::getCreateTime));
+    }
     
     /**
      * 查询节点的表单绑定
      */
-    @Select("SELECT * FROM process_node_form WHERE process_config_id = #{processConfigId} AND node_id = #{nodeId} ORDER BY sort_order ASC, create_time ASC LIMIT 1")
-    ProcessNodeForm selectByNodeId(@Param("processConfigId") String processConfigId, @Param("nodeId") String nodeId);
+    default ProcessNodeForm selectByNodeId(String processConfigId, String nodeId) {
+        // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
+        return selectList(new Page<ProcessNodeForm>(1, 1, false), Wrappers.<ProcessNodeForm>lambdaQuery()
+                .eq(ProcessNodeForm::getProcessConfigId, processConfigId)
+                .eq(ProcessNodeForm::getNodeId, nodeId)
+                .orderByAsc(ProcessNodeForm::getSortOrder, ProcessNodeForm::getCreateTime)).stream().findFirst().orElse(null);
+    }
 
     /**
      * 查询节点的所有表单绑定
      */
-    @Select("SELECT * FROM process_node_form WHERE process_config_id = #{processConfigId} AND node_id = #{nodeId} ORDER BY sort_order ASC, create_time ASC")
-    List<ProcessNodeForm> selectListByNodeId(@Param("processConfigId") String processConfigId, @Param("nodeId") String nodeId);
+    default List<ProcessNodeForm> selectListByNodeId(String processConfigId, String nodeId) {
+        return selectList(Wrappers.<ProcessNodeForm>lambdaQuery()
+                .eq(ProcessNodeForm::getProcessConfigId, processConfigId)
+                .eq(ProcessNodeForm::getNodeId, nodeId)
+                .orderByAsc(ProcessNodeForm::getSortOrder)
+                .orderByAsc(ProcessNodeForm::getCreateTime));
+    }
 
     /**
      * 删除节点的所有表单绑定
      */
-    @Delete("DELETE FROM process_node_form WHERE process_config_id = #{processConfigId} AND node_id = #{nodeId}")
-    void deleteByProcessConfigIdAndNodeId(@Param("processConfigId") String processConfigId, @Param("nodeId") String nodeId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default void deleteByProcessConfigIdAndNodeId(String processConfigId, String nodeId) {
+        delete(Wrappers.<ProcessNodeForm>lambdaQuery()
+                .eq(ProcessNodeForm::getProcessConfigId, processConfigId)
+                .eq(ProcessNodeForm::getNodeId, nodeId));
+    }
     
     /**
      * 删除流程的所有节点表单绑定
      */
-    @Delete("DELETE FROM process_node_form WHERE process_config_id = #{processConfigId}")
-    void deleteByProcessConfigId(@Param("processConfigId") String processConfigId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default void deleteByProcessConfigId(String processConfigId) {
+        delete(Wrappers.<ProcessNodeForm>lambdaQuery()
+                .eq(ProcessNodeForm::getProcessConfigId, processConfigId));
+    }
 }

@@ -178,7 +178,8 @@ public class EntityRelationProjectionReadAdapter
         result.put("permissionParameters",
                 query.dataScopePlan().parameters() == null
                         ? Map.of()
-                        : Map.copyOf(query.dataScopePlan().parameters()));
+                        // 保留缺失用户属性或 IN 列表中的 SQL NULL，不能在投影读入口丢失绑定语义。
+                        : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(query.dataScopePlan().parameters())));
         result.put("offset", (query.pageNum() - 1) * query.pageSize());
         result.put("pageSize", query.pageSize());
         return result;

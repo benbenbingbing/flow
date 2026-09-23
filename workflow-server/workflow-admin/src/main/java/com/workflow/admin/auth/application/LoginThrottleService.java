@@ -1,6 +1,7 @@
 package com.workflow.admin.auth.application;
 
 import com.workflow.admin.auth.infrastructure.LoginThrottleMapper;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.core.error.RateLimitExceededException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -11,6 +12,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.List;
+import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -25,21 +28,23 @@ public class LoginThrottleService {
     private final LoginThrottleMapper mapper;
     private final LoginThrottleProperties properties;
     private final Clock clock;
+    private final JdbcLockedRow lockedRows;
 
     @Autowired
     public LoginThrottleService(
             LoginThrottleMapper mapper,
-            LoginThrottleProperties properties) {
-        this(mapper, properties, Clock.systemUTC());
+            LoginThrottleProperties properties, JdbcLockedRow lockedRows) {
+        this(mapper, properties, Clock.systemUTC(), lockedRows);
     }
 
     LoginThrottleService(
             LoginThrottleMapper mapper,
             LoginThrottleProperties properties,
-            Clock clock) {
+            Clock clock, JdbcLockedRow lockedRows) {
         this.mapper = mapper;
         this.properties = properties;
         this.clock = clock;
+        this.lockedRows = lockedRows;
     }
 
     public void assertAllowed(
@@ -62,6 +67,7 @@ public class LoginThrottleService {
         }
     }
 
+    /** 固定按账号再客户端的顺序加锁，两维计数与窗口变化在同一事务中提交。 */
     @Transactional(rollbackFor = Exception.class)
     public void recordFailure(
             String username,
@@ -76,7 +82,7 @@ public class LoginThrottleService {
                 properties.getBlockSeconds(),
                 60,
                 86_400);
-        mapper.recordFailure(
+        recordDimensionFailure(
                 accountKey(username),
                 now,
                 cutoff,
@@ -84,8 +90,8 @@ public class LoginThrottleService {
                         properties.getAccountMaxFailures(),
                         2,
                         100),
-                blockSeconds);
-        mapper.recordFailure(
+                now.plusSeconds(blockSeconds));
+        recordDimensionFailure(
                 clientKey(clientAddress),
                 now,
                 cutoff,
@@ -93,7 +99,18 @@ public class LoginThrottleService {
                         properties.getClientMaxFailures(),
                         5,
                         1000),
-                blockSeconds);
+                now.plusSeconds(blockSeconds));
+    }
+
+    /** 初次失败从零计数开始；初始化不会覆盖旧窗口和封禁，阈值仍由当前配置决定。 */
+    private void recordDimensionFailure(String key, LocalDateTime now, LocalDateTime cutoff,
+                                        int maximum, LocalDateTime blockedUntil) {
+        lockedRows.ensureAndLock("auth_login_throttle", Map.of(
+                "throttle_key", key, "failure_count", 0, "window_started_at", now, "update_time", now),
+                List.of("throttle_key"));
+        if (mapper.recordFailure(key, now, cutoff, maximum, blockedUntil) != 1) {
+            throw new IllegalStateException("登录失败计数更新失败");
+        }
     }
 
     public void recordSuccess(String username) {

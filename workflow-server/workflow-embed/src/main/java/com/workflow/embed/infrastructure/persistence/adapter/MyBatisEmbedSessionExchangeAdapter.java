@@ -29,6 +29,9 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Map;
+import java.util.List;
+import com.workflow.core.database.JdbcLockedRow;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,12 +48,15 @@ public class MyBatisEmbedSessionExchangeAdapter implements
 
     private final EmbedSessionExchangeMapper mapper;
     private final Clock clock;
+    private final JdbcLockedRow lockedRows;
 
     public MyBatisEmbedSessionExchangeAdapter(
             EmbedSessionExchangeMapper mapper,
-            @Qualifier("embedClock") Clock clock) {
+            @Qualifier("embedClock") Clock clock,
+            JdbcLockedRow lockedRows) {
         this.mapper = mapper;
         this.clock = clock;
+        this.lockedRows = lockedRows;
     }
 
     @Override
@@ -82,7 +88,12 @@ public class MyBatisEmbedSessionExchangeAdapter implements
             validateSecuritySnapshot(
                     candidate, application, view, grant, provider, binding, user, initialNow);
 
-            mapper.ensureCounter(candidate.grantId(), candidate.flowUserId(), local(initialNow));
+            // 初始化不能覆盖已有会话计数；锁一直持有到本次兑换事务提交/回滚。
+            lockedRows.ensureAndLock("embed_session_counter",
+                    Map.of("grant_id", candidate.grantId(), "flow_user_id", candidate.flowUserId(),
+                            "active_count", 0, "lock_version", 0L,
+                            "create_time", local(initialNow), "update_time", local(initialNow)),
+                    List.of("grant_id", "flow_user_id"));
             EmbedSessionCounterRow counter = mapper.lockCounter(
                     candidate.grantId(), candidate.flowUserId());
             if (counter == null || counter.activeCount() >= grant.maxActiveSessionsPerUser()) {

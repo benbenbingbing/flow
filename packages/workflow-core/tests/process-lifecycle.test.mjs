@@ -26,6 +26,19 @@ test('discarded progress requests cannot repopulate a newly opened record', asyn
   assert.equal(historyCalls, 0)
 })
 
+test('process details preserve configured entity status names and use shared fallbacks', async () => {
+  for (const [entity, expected] of [
+    [{ status: 'PENDING', _statusText: '财务复核中' }, '财务复核中'],
+    [{ status: 'PENDING' }, '处理中'],
+    [{ status: 'CUSTOM_REVIEW' }, 'CUSTOM_REVIEW']
+  ]) {
+    const detail = useProcessDetail({ request: { get: async () => ({ status: 'RUNNING', entityData: entity }) }, getProcessHistory: async () => [] })
+    assert.equal(await detail.loadProcessDetail('instance'), true)
+    assert.equal(detail.entityData.value._statusText, expected)
+    assert.equal(detail.progressData.value.status, 'RUNNING')
+  }
+})
+
 test('history returned after switching records is also ignored', async () => {
   let resolveHistory
   const detail = useProcessDetail({ request: { get: async () => ({ processInstanceId: 'old' }) }, getProcessHistory: () => new Promise(done => { resolveHistory = done }) })

@@ -3,12 +3,13 @@ package com.workflow.entity.ui.infrastructure.persistence.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 /**
  * UI 组件模板 Mapper
- * 
+ *
  * 提供按主键加锁查询组件模板的能力，用于并发更新场景。
  */
 @Mapper
@@ -22,5 +23,6 @@ public interface UiComponentTemplateMapper extends BaseMapper<UiComponentTemplat
      */
     @Select("SELECT * FROM ui_component_template "
             + "WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
     UiComponentTemplate selectByIdForUpdate(@Param("id") String id);
 }

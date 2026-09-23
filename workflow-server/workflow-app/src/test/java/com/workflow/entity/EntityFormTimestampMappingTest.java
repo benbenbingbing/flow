@@ -4,11 +4,15 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
-import org.apache.ibatis.annotations.Select;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import org.mockito.ArgumentCaptor;
+import java.util.List;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.any;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -35,18 +39,20 @@ class EntityFormTimestampMappingTest {
     }
 
     /**
-     * 表单 Mapper 的 selectByEntityId 查询 SQL 不应包含 create_time 字段名。
-     *
-     * <p>避免列名歧义，应使用表别名限定。</p>
+     * 表单实体查询不额外追加时间排序，字段条件由实体映射生成。
      */
     @Test
-    void formMapperOrdersBySchemaColumnName() throws Exception {
-        Method method = EntityFormMapper.class.getDeclaredMethod("selectByEntityId", String.class);
-        Select select = method.getAnnotation(Select.class);
-
-        assertNotNull(select);
-        String sql = String.join(" ", select.value()).toLowerCase();
-        assertFalse(sql.contains("create_time"));
+    void formMapperDoesNotAddTimestampOrdering() {
+        var configuration = new MybatisConfiguration();
+        configuration.setDatabaseId("MYSQL");
+        configuration.addMapper(EntityFormMapper.class);
+        var mapper = mock(EntityFormMapper.class, CALLS_REAL_METHODS);
+        doReturn(List.of()).when(mapper).selectList(any(Wrapper.class));
+        mapper.selectByEntityId("entity");
+        var wrapper = ArgumentCaptor.forClass(Wrapper.class);
+        verify(mapper).selectList(wrapper.capture());
+        assertFalse(wrapper.getValue().getSqlSegment().toLowerCase().contains("order by"));
+        assertFalse(wrapper.getValue().getSqlSegment().contains("create_time"));
     }
 
     /**

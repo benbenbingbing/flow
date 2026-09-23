@@ -179,13 +179,13 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /** 来源类型和编码由唯一约束保证单条；禁用映射仍回退原流程编码。 */
     private String mappedProcessKey(String sourceKey) {
         ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                         .eq(ConfigEnvironmentMapping::getSourceType, "PROCESS")
                         .eq(ConfigEnvironmentMapping::getSourceKey, sourceKey)
-                        .eq(ConfigEnvironmentMapping::getEnabled, true)
-                        .last("LIMIT 1"));
+                        .eq(ConfigEnvironmentMapping::getEnabled, true));
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
 

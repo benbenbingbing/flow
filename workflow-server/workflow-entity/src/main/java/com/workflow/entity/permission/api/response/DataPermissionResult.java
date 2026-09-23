@@ -128,11 +128,12 @@ public class DataPermissionResult {
         if (parameters == null || parameters.isEmpty()) {
             return;
         }
+        // NULL 也是已占用的参数值。先验证全部键，再合并，避免冲突覆盖原权限或留下部分结果。
         parameters.forEach((key, value) -> {
-            Object existing = sqlParameters.putIfAbsent(key, value);
-            if (existing != null && !java.util.Objects.equals(existing, value)) {
+            if (sqlParameters.containsKey(key) && !java.util.Objects.equals(sqlParameters.get(key), value)) {
                 throw new IllegalArgumentException("数据权限参数冲突: " + key);
             }
         });
+        sqlParameters.putAll(parameters);
     }
 }

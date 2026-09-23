@@ -10,11 +10,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.Optional;
+import java.time.LocalDateTime;
 import java.util.function.Supplier;
+import com.workflow.core.database.JdbcLockedRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 class DatabaseBootstrapJobCoordinatorTest {
+    private static final LocalDateTime NOW = LocalDateTime.parse("2026-09-22T02:00:00");
 
     @Test
     void skipsActionWhenRequiredVersionWasCompleted() {
@@ -25,7 +28,7 @@ class DatabaseBootstrapJobCoordinatorTest {
                         eq("catalog")))
                 .thenReturn(2);
         DatabaseBootstrapJobCoordinator coordinator =
-                new DatabaseBootstrapJobCoordinator(jdbcTemplate);
+                new DatabaseBootstrapJobCoordinator(jdbcTemplate, mock(JdbcLockedRow.class), () -> NOW);
         @SuppressWarnings("unchecked")
         Supplier<String> action = mock(Supplier.class);
 
@@ -48,10 +51,12 @@ class DatabaseBootstrapJobCoordinatorTest {
                         anyString(),
                         eq(2),
                         anyString(),
+                        eq(NOW),
+                        eq(NOW),
                         eq("catalog")))
                 .thenReturn(1);
         DatabaseBootstrapJobCoordinator coordinator =
-                new DatabaseBootstrapJobCoordinator(jdbcTemplate);
+                new DatabaseBootstrapJobCoordinator(jdbcTemplate, mock(JdbcLockedRow.class), () -> NOW);
 
         Optional<String> result =
                 coordinator.executeOnce(
@@ -64,6 +69,8 @@ class DatabaseBootstrapJobCoordinatorTest {
                 anyString(),
                 eq(2),
                 anyString(),
+                eq(NOW),
+                eq(NOW),
                 eq("catalog"));
     }
 
@@ -71,7 +78,7 @@ class DatabaseBootstrapJobCoordinatorTest {
     void rejectsInvalidJobIdentityAndVersion() {
         DatabaseBootstrapJobCoordinator coordinator =
                 new DatabaseBootstrapJobCoordinator(
-                        mock(JdbcTemplate.class));
+                        mock(JdbcTemplate.class), mock(JdbcLockedRow.class), () -> NOW);
 
         assertThrows(
                 IllegalArgumentException.class,

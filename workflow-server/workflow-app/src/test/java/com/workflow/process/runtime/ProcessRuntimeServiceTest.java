@@ -1,6 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessRuntimeService;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 
@@ -147,6 +148,7 @@ class ProcessRuntimeServiceTest {
                 final IdentityService identityService = mock(IdentityService.class);
                 final org.flowable.engine.TaskService taskService = mock(org.flowable.engine.TaskService.class);
                 final EntityProcessLinkMapper entityProcessLinkMapper = mock(EntityProcessLinkMapper.class);
+                final JdbcLockedRow lockedRows = mock(JdbcLockedRow.class);
                 final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
                 final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(
                                 MultiInstanceCollectionListener.class);
@@ -182,11 +184,15 @@ class ProcessRuntimeServiceTest {
                         processLink.setRequestId("request-1");
                         processLink.setState("PENDING");
                         processLink.setGeneration(1);
-                        when(entityProcessLinkMapper.insertPending(any(EntityProcessLink.class)))
-                                        .thenReturn(1);
+                        org.mockito.Mockito.doAnswer(invocation -> {
+                                Map<String, Object> values = invocation.getArgument(1);
+                                processLink.setId((String) values.get("id"));
+                                processLink.setRequestId((String) values.get("request_id"));
+                                return null;
+                        }).when(lockedRows).ensureAndLock(eq("entity_process_link"), anyMap(), any());
                         when(entityProcessLinkMapper.selectForUpdate("expense", "data-1", 1))
                                         .thenReturn(processLink);
-                        when(entityProcessLinkMapper.activate("link-1", "request-1", "pi-1"))
+                        when(entityProcessLinkMapper.activate(anyString(), anyString(), eq("pi-1")))
                                         .thenReturn(1);
 
                         Task task = mock(Task.class);
@@ -209,7 +215,7 @@ class ProcessRuntimeServiceTest {
                                         taskService,
                                         processTaskService,
                                         multiInstanceCollectionListener,
-                                        entityProcessLinkMapper);
+                                        entityProcessLinkMapper, lockedRows, () -> java.time.LocalDateTime.of(2026, 9, 22, 3, 0));
                 }
         }
 }

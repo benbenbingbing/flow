@@ -51,7 +51,9 @@ class EntityListScopePolicyPreviewTest {
         when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
         when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of());
         PermissionSqlBuilder builder = new PermissionSqlBuilder(
-                definitionMapper, fieldMapper, mock(EntityStatusMapper.class), List.of(), teamService);
+                definitionMapper, fieldMapper, mock(EntityStatusMapper.class), List.of(), teamService,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         service = new EntityListScopeService(
                 policyMapper, bindingMapper, releaseMapper, listMapper, definitionMapper,
                 builder, new PermissionRuleMatcher(null, null, List.of()), new ObjectMapper(),
@@ -78,8 +80,8 @@ class EntityListScopePolicyPreviewTest {
 
             EntityListScopePolicyPreviewDTO preview = service.previewPolicy("personal", user);
 
-            assertTrue(preview.getSql().contains("create_by IN ('u1','alice')"));
-            assertTrue(preview.getSql().contains("submitter_id IN ('u1','alice')"));
+            assertTrue(preview.getSql().contains("`create_by` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})"));
+            assertTrue(preview.getSql().contains("`submitter_id` IN (#{permissionParameters.permissionValue2,jdbcType=VARCHAR},#{permissionParameters.permissionValue3,jdbcType=VARCHAR})"));
             assertTrue(preview.getSql().contains(" OR "));
             assertTrue(preview.isAudienceMatched());
             assertEquals("personal", preview.getPolicyId());
@@ -96,7 +98,7 @@ class EntityListScopePolicyPreviewTest {
         policy("team", "{\"type\":\"TEAM\"}");
         String teamSql = "EXISTS (SELECT 1 FROM wf_expense_team team "
                 + "WHERE team.record_id = wf_expense.id AND team.user_id = 'u2')";
-        when(teamService.relatedPeopleSql("expense", "u2", "bob")).thenReturn(teamSql);
+        when(teamService.relatedPeopleSql(eq("expense"), eq("u2"), eq("bob"), org.mockito.ArgumentMatchers.anyMap())).thenReturn(teamSql);
         user.setId("u2");
         user.setUsername("bob");
 
@@ -122,7 +124,7 @@ class EntityListScopePolicyPreviewTest {
         assertFalse(preview.isEnabled());
         assertFalse(preview.isAudienceMatched());
         assertEquals("DENY", preview.getRuleEffect());
-        assertEquals("create_by IN ('u1','alice')", preview.getSql());
+        assertEquals("`create_by` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})", preview.getSql());
     }
 
     @Test

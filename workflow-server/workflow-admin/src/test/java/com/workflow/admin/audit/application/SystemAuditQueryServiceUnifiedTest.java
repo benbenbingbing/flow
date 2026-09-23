@@ -1,17 +1,25 @@
 package com.workflow.admin.audit.application;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.workflow.admin.audit.api.SystemAuditQuery;
 import com.workflow.admin.audit.api.UnifiedAuditEventView;
 import com.workflow.admin.audit.api.UnifiedAuditQuery;
 import com.workflow.admin.audit.domain.SystemOperationLog;
 import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
 import com.workflow.core.result.PageResult;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -20,6 +28,12 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class SystemAuditQueryServiceUnifiedTest {
+
+    @BeforeAll
+    static void initializeMybatisMetadata() {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), SystemOperationLog.class);
+    }
 
     @Test
     void unifiedPageReturnsOnlyNarrowedProjectionAndSourcePointer() {
@@ -31,7 +45,7 @@ class SystemAuditQueryServiceUnifiedTest {
         when(mapper.selectPage(any(Page.class), any()))
                 .thenReturn(page);
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper);
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         PageResult<UnifiedAuditEventView> result =
                 service.unifiedPage(new UnifiedAuditQuery());
@@ -67,7 +81,7 @@ class SystemAuditQueryServiceUnifiedTest {
         SystemOperationLogMapper mapper =
                 mock(SystemOperationLogMapper.class);
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper);
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.operationTimeline("x".repeat(129)));
@@ -81,14 +95,52 @@ class SystemAuditQueryServiceUnifiedTest {
                 mock(SystemOperationLogMapper.class);
         SystemOperationLog legacy = log();
         legacy.setOperationId(null);
-        when(mapper.selectList(any())).thenReturn(List.of(legacy));
+        when(mapper.selectPage(any(Page.class), any())).thenAnswer(invocation -> {
+            Page<SystemOperationLog> page = invocation.getArgument(0);
+            LambdaQueryWrapper<SystemOperationLog> query = invocation.getArgument(1);
+            assertEquals(1, page.getCurrent());
+            assertEquals(500, page.getSize());
+            assertFalse(page.searchCount());
+            String sql = query.getSqlSegment();
+            assertTrue(sql.contains("operation_id IS NULL"));
+            assertTrue(sql.contains("event_id ="));
+            assertTrue(sql.contains("ORDER BY create_time ASC,id ASC"));
+            assertTrue(query.getParamNameValuePairs().containsValue("event-1"));
+            assertTrue(query.getParamNameValuePairs().containsValue(""));
+            page.setRecords(List.of(legacy));
+            return page;
+        });
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper);
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         List<UnifiedAuditEventView> result =
                 service.operationTimeline("event-1");
 
         assertEquals("event-1", result.get(0).operationId());
+    }
+
+    @Test
+    void exportKeepsFullRecordsAndTenThousandRowLimitWithoutCount() {
+        SystemOperationLogMapper mapper = mock(SystemOperationLogMapper.class);
+        SystemOperationLog value = log();
+        when(mapper.selectPage(any(Page.class), any())).thenAnswer(invocation -> {
+            Page<SystemOperationLog> page = invocation.getArgument(0);
+            LambdaQueryWrapper<SystemOperationLog> query = invocation.getArgument(1);
+            assertEquals(1, page.getCurrent());
+            assertEquals(10000, page.getSize());
+            assertFalse(page.searchCount());
+            assertNull(query.getSqlSelect());
+            assertTrue(query.getSqlSegment().contains("ORDER BY create_time DESC,id DESC"));
+            assertTrue(query.getParamNameValuePairs().containsValue("ENTITY"));
+            page.setRecords(List.of(value));
+            return page;
+        });
+        var service = new SystemAuditQueryService(mapper,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        var query = new SystemAuditQuery();
+        query.setModule("entity");
+
+        assertEquals(List.of(value), service.export(query));
     }
 
     private SystemOperationLog log() {

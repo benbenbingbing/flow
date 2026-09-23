@@ -1,10 +1,9 @@
 package com.workflow.process.configuration.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -17,6 +16,9 @@ public interface AssigneeConfigMapper extends BaseMapper<AssigneeConfig> {
     /**
      * 根据节点配置ID查询审批人列表
      */
-    @Select("SELECT * FROM process_node_assignee WHERE node_config_id = #{nodeConfigId} ORDER BY priority ASC")
-    List<AssigneeConfig> findByNodeConfigId(@Param("nodeConfigId") String nodeConfigId);
+    default List<AssigneeConfig> findByNodeConfigId(String nodeConfigId) {
+        return selectList(Wrappers.<AssigneeConfig>lambdaQuery()
+                .eq(AssigneeConfig::getNodeConfigId, nodeConfigId)
+                .orderByAsc(AssigneeConfig::getPriority));
+    }
 }

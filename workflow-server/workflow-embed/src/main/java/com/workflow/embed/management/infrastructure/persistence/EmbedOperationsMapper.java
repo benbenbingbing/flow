@@ -1,5 +1,6 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.management.infrastructure.persistence.record.EmbedOperationsRows.LaunchRow;
 import com.workflow.embed.management.infrastructure.persistence.record.EmbedOperationsRows.SessionRow;
 import java.time.LocalDateTime;
@@ -13,6 +14,12 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedOperationsMapper {
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<LaunchRow> findLaunches(String applicationId, String viewId, String status, LocalDateTime createdFrom, LocalDateTime createdTo, LocalDateTime cursorTime, String cursorId, int fetchLimit) {
+        return findLaunchesPage(new OffsetPage<>(0, fetchLimit), applicationId, viewId, status, createdFrom, createdTo, cursorTime, cursorId, fetchLimit);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
             SELECT id, application_id, grant_id, view_id, view_release_id,
@@ -34,10 +41,11 @@ public interface EmbedOperationsMapper {
                     OR (create_time = #{cursorTime} AND id &lt; #{cursorId}))
               </if>
              ORDER BY create_time DESC, id DESC
-             LIMIT #{fetchLimit}
+
             </script>
             """)
-    List<LaunchRow> findLaunches(
+    List<LaunchRow> findLaunchesPage(
+            @Param("page") OffsetPage<LaunchRow> page,
             @Param("applicationId") String applicationId,
             @Param("viewId") String viewId,
             @Param("status") String status,
@@ -47,6 +55,12 @@ public interface EmbedOperationsMapper {
             @Param("cursorId") String cursorId,
             @Param("fetchLimit") int fetchLimit);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<SessionRow> findSessions(String applicationId, String viewId, String status, LocalDateTime createdFrom, LocalDateTime createdTo, LocalDateTime cursorTime, String cursorId, int fetchLimit) {
+        return findSessionsPage(new OffsetPage<>(0, fetchLimit), applicationId, viewId, status, createdFrom, createdTo, cursorTime, cursorId, fetchLimit);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
             <script>
             SELECT id, launch_id, application_id, grant_id, view_id, view_release_id,
@@ -69,10 +83,11 @@ public interface EmbedOperationsMapper {
                     OR (issued_at = #{cursorTime} AND id &lt; #{cursorId}))
               </if>
              ORDER BY issued_at DESC, id DESC
-             LIMIT #{fetchLimit}
+
             </script>
             """)
-    List<SessionRow> findSessions(
+    List<SessionRow> findSessionsPage(
+            @Param("page") OffsetPage<SessionRow> page,
             @Param("applicationId") String applicationId,
             @Param("viewId") String viewId,
             @Param("status") String status,
@@ -82,14 +97,24 @@ public interface EmbedOperationsMapper {
             @Param("cursorId") String cursorId,
             @Param("fetchLimit") int fetchLimit);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default LaunchRow findLaunch(String launchId) {
+        return findLaunchPage(new OffsetPage<>(0, 1), launchId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, application_id, grant_id, view_id, view_release_id,
                    status, entry_mode, expires_at, consumed_at, revoked_at, create_time
               FROM embed_launch
              WHERE id = #{launchId}
-             LIMIT 1
+
+            </script>
             """)
-    LaunchRow findLaunch(@Param("launchId") String launchId);
+    List<LaunchRow> findLaunchPage(
+            @Param("page") OffsetPage<LaunchRow> page,
+            @Param("launchId") String launchId);
 
     @Select("""
             SELECT id, application_id, grant_id, view_id, view_release_id,
@@ -118,42 +143,70 @@ public interface EmbedOperationsMapper {
             @Param("launchId") String launchId,
             @Param("now") LocalDateTime now);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default SessionRow findSession(String sessionId) {
+        return findSessionPage(new OffsetPage<>(0, 1), sessionId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, launch_id, application_id, grant_id, view_id, view_release_id,
                    status, entry_mode, issued_at, last_seen_at, idle_expires_at,
                    absolute_expires_at, revoked_at, revoke_reason
               FROM embed_session
              WHERE id = #{sessionId}
-             LIMIT 1
-            """)
-    SessionRow findSession(@Param("sessionId") String sessionId);
 
+            </script>
+            """)
+    List<SessionRow> findSessionPage(
+            @Param("page") OffsetPage<SessionRow> page,
+            @Param("sessionId") String sessionId);
+
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<String> findActiveSessionIdsByView(String viewId, String afterSessionId, int fetchLimit) {
+        return findActiveSessionIdsByViewPage(new OffsetPage<>(0, fetchLimit), viewId, afterSessionId, fetchLimit);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
+            <script>
             SELECT id
               FROM embed_session
              WHERE view_id = #{viewId}
                AND status = 'ACTIVE'
                AND slot_released = 0
-               AND (#{afterSessionId} IS NULL OR id > #{afterSessionId})
+               AND (#{afterSessionId,jdbcType=VARCHAR} IS NULL OR id > #{afterSessionId,jdbcType=VARCHAR})
              ORDER BY id
-             LIMIT #{fetchLimit}
+
+            </script>
             """)
-    List<String> findActiveSessionIdsByView(
+    List<String> findActiveSessionIdsByViewPage(
+            @Param("page") OffsetPage<String> page,
             @Param("viewId") String viewId,
             @Param("afterSessionId") String afterSessionId,
             @Param("fetchLimit") int fetchLimit);
 
+    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    default List<String> findActiveSessionIdsByApplication(String applicationId, String afterSessionId, int fetchLimit) {
+        return findActiveSessionIdsByApplicationPage(new OffsetPage<>(0, fetchLimit), applicationId, afterSessionId, fetchLimit);
+    }
+
+    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
     @Select("""
+            <script>
             SELECT id
               FROM embed_session
              WHERE application_id = #{applicationId}
                AND status = 'ACTIVE'
                AND slot_released = 0
-               AND (#{afterSessionId} IS NULL OR id > #{afterSessionId})
+               AND (#{afterSessionId,jdbcType=VARCHAR} IS NULL OR id > #{afterSessionId,jdbcType=VARCHAR})
              ORDER BY id
-             LIMIT #{fetchLimit}
+
+            </script>
             """)
-    List<String> findActiveSessionIdsByApplication(
+    List<String> findActiveSessionIdsByApplicationPage(
+            @Param("page") OffsetPage<String> page,
             @Param("applicationId") String applicationId,
             @Param("afterSessionId") String afterSessionId,
             @Param("fetchLimit") int fetchLimit);

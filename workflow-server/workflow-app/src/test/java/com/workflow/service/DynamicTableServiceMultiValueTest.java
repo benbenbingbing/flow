@@ -1,5 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.core.database.port.SchemaMetadataPort;
+
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.SchemaDdlExecutor;
@@ -25,6 +28,7 @@ class DynamicTableServiceMultiValueTest {
     /** 测试每个业务实体创建一张中性多值表：验证建表 SQL 含目标实体/记录字段与 unicode 校对，且不含 value_type/dict_code */
     @Test
     void createsOneNeutralMultiTablePerBusinessEntity() {
+        var metadata = mock(SchemaMetadataPort.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
@@ -34,7 +38,7 @@ class DynamicTableServiceMultiValueTest {
                 jdbcTemplate,
                 fieldMapper,
                 tableResolver,
-                schemaDdlExecutor);
+                schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         service.ensureEntityMultiValueTable("expense");
 

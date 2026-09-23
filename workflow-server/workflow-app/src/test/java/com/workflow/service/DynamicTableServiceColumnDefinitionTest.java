@@ -1,5 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.core.database.port.SchemaMetadataPort;
+
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.SchemaDdlExecutor;
@@ -22,17 +25,13 @@ class DynamicTableServiceColumnDefinitionTest {
 
     @Test
     void emitsOnlyConfiguredDefaultValueWhenModifyingColumn() {
+        var metadata = mock(SchemaMetadataPort.class);
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         SchemaDdlExecutor schemaDdlExecutor = mock(SchemaDdlExecutor.class);
         when(tableResolver.resolve("acceptance")).thenReturn("biz_acceptance");
-        when(jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.TABLES "
-                        + "WHERE table_schema = DATABASE() AND table_name = ?",
-                Integer.class,
-                "biz_acceptance"))
-                .thenReturn(1);
+        when(metadata.tableExists("biz_acceptance")).thenReturn(true);
 
         EntityField field = new EntityField();
         field.setFieldCode("priority");
@@ -44,7 +43,7 @@ class DynamicTableServiceColumnDefinitionTest {
                 jdbcTemplate,
                 fieldMapper,
                 tableResolver,
-                schemaDdlExecutor);
+                schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         service.modifyColumn("acceptance", field);
 

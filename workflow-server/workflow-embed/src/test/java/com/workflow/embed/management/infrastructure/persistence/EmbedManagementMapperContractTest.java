@@ -23,28 +23,30 @@ class EmbedManagementMapperContractTest {
     @Test
     void allAnnotatedStatementsCanBeRegistered() {
         Configuration configuration = new Configuration();
+        configuration.setDatabaseId("MYSQL");
 
         configuration.addMapper(EmbedManagementMapper.class);
 
         String namespace = EmbedManagementMapper.class.getName() + ".";
-        assertTrue(configuration.hasStatement(namespace + "findViews"));
-        assertTrue(configuration.hasStatement(namespace + "findListTarget"));
-        assertTrue(configuration.hasStatement(namespace + "findReleaseByConfigHash"));
-        assertTrue(configuration.hasStatement(namespace + "findBindingByDigests"));
+        assertTrue(configuration.hasStatement(namespace + "findViewsPage"));
+        assertTrue(configuration.hasStatement(namespace + "findListTargetPage"));
+        assertTrue(configuration.hasStatement(namespace + "findReleaseByConfigHashPage"));
+        assertTrue(configuration.hasStatement(namespace + "findBindingByDigestsPage"));
         assertTrue(configuration.hasStatement(namespace + "changeProviderStatus"));
-        assertTrue(configuration.hasStatement(namespace + "findApplicationOptions"));
-        assertTrue(configuration.hasStatement(namespace + "findIdentityProviderOptions"));
+        assertTrue(configuration.hasStatement(namespace + "findApplicationOptionsPage"));
+        assertTrue(configuration.hasStatement(namespace + "findIdentityProviderOptionsPage"));
     }
 
     @Test
     void optionQueriesHaveMinimalColumnsAndMatchingBoundCountFilters() {
         Configuration configuration = new Configuration();
+        configuration.setDatabaseId("MYSQL");
         configuration.addMapper(EmbedManagementMapper.class);
         String namespace = EmbedManagementMapper.class.getName() + ".";
         for (String directory : new String[]{"Application", "IdentityProvider"}) {
             Map<String, Object> parameters = new HashMap<>(Map.of(
                     "keyword", "partner' OR 1=1 --", "status", "ACTIVE", "limit", 20, "offset", 20));
-            String query = configuration.getMappedStatement(namespace + "find" + directory + "Options")
+            String query = configuration.getMappedStatement(namespace + "find" + directory + "OptionsPage")
                     .getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
             String count = configuration.getMappedStatement(namespace + "count" + directory + "Options")
                     .getBoundSql(parameters).getSql().replaceAll("\\s+", " ").trim();
@@ -68,18 +70,23 @@ class EmbedManagementMapperContractTest {
             }
             assertEquals(count.substring(count.indexOf(" WHERE")),
                     query.substring(query.indexOf(" WHERE"), query.indexOf(" ORDER BY")));
-            assertTrue(query.contains("id LIKE CONCAT('%', ?, '%')"));
+            assertTrue(query.contains("id LIKE ?"));
+            assertFalse(query.contains("CONCAT"));
             assertTrue(query.contains("status = ?"));
             assertTrue(query.contains("CASE WHEN") && query.contains("id = ? THEN 0 ELSE 1 END"),
                     "完整 ID 回查必须优先返回精确项");
-            assertTrue(query.endsWith("LIMIT ? OFFSET ?"));
+            assertFalse(query.contains("LIMIT"));
+            Method pageMethod = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
+                    .filter(method -> method.getName().equals("find" + directory + "OptionsPage"))
+                    .findFirst().orElseThrow();
+            assertTrue(com.baomidou.mybatisplus.core.metadata.IPage.class.isAssignableFrom(pageMethod.getParameterTypes()[0]));
             assertFalse(query.contains("partner'"), "搜索输入必须作为绑定参数传递");
             assertFalse(query.contains("issuer"));
             assertFalse(query.contains("jwks"));
 
             parameters.put("keyword", null);
             parameters.put("status", null);
-            String unfiltered = configuration.getMappedStatement(namespace + "find" + directory + "Options")
+            String unfiltered = configuration.getMappedStatement(namespace + "find" + directory + "OptionsPage")
                     .getBoundSql(parameters).getSql();
             assertFalse(unfiltered.contains("LIKE"));
             assertFalse(unfiltered.contains("status = ?"));
@@ -91,7 +98,9 @@ class EmbedManagementMapperContractTest {
         for (String methodName : new String[]{
                 "findViews", "findView", "lockView", "findViewByKey"}) {
             Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
-                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.getName().equals(methodName + "Page")
+                            || candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.isAnnotationPresent(Select.class))
                     .findFirst()
                     .orElseThrow();
             String sql = String.join("\n", method.getAnnotation(Select.class).value());
@@ -117,7 +126,10 @@ class EmbedManagementMapperContractTest {
                 "findBindings", "findBinding", "lockBinding", "findBindingByDigests");
 
         Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
-                .filter(method -> recordQueries.contains(method.getName()))
+                .filter(method -> recordQueries.contains(method.getName())
+                        || (method.getName().endsWith("Page")
+                            && recordQueries.contains(method.getName().substring(0, method.getName().length() - 4))))
+                .filter(method -> method.isAnnotationPresent(Select.class))
                 .forEach(method -> {
                     String sql = String.join("\n", method.getAnnotation(Select.class).value());
                     assertFalse(sql.matches("(?is).*SELECT\\s+(?:[a-z]+\\.)?\\*.*"),
@@ -130,7 +142,9 @@ class EmbedManagementMapperContractTest {
         for (String methodName : new String[]{
                 "findBindings", "findBinding", "findBindingByDigests"}) {
             Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
-                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.getName().equals(methodName + "Page")
+                            || candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.isAnnotationPresent(Select.class))
                     .findFirst()
                     .orElseThrow();
             String sql = String.join("\n", method.getAnnotation(Select.class).value());
@@ -148,25 +162,28 @@ class EmbedManagementMapperContractTest {
                 .findFirst()
                 .orElseThrow();
         String lockSql = String.join("\n", lock.getAnnotation(Select.class).value());
-        assertTrue(lockSql.contains("FALSE AS flow_user_ready"));
+        assertTrue(lockSql.contains("0 AS flow_user_ready"));
         assertFalse(lockSql.contains("sys_user"),
                 "Binding 状态锁不能额外锁定用户行或改变既有锁顺序");
     }
 
     @Test
-    void publishedResourceJoinsNormalizeLegacyCollationsExplicitly() {
+    void publishedResourceJoinsUseDialectTextConversionWithoutHardcodedCollations() {
         for (String methodName : new String[]{
                 "findListTarget",
                 "findFormTarget"}) {
             Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
-                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.getName().equals(methodName + "Page")
+                            || candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.isAnnotationPresent(Select.class))
                     .findFirst()
                     .orElseThrow();
             String sql = String.join("\n", method.getAnnotation(Select.class).value());
 
-            // V001 中 entity_definition/entity_form 使用 0900_ai_ci，而 list/release 使用
-            // unicode_ci；跨列 JOIN 不显式统一会在 MySQL 8 报 Illegal mix of collations。
-            assertTrue(sql.contains("COLLATE utf8mb4_unicode_ci"));
+            // 运行库的比较规则由结构和连接统一配置，查询不能硬编码 MySQL 排序规则。
+            assertFalse(sql.contains("COLLATE"));
+            assertFalse(sql.contains("CHARACTER SET"));
+            assertTrue(sql.contains("DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')"));
         }
     }
 
@@ -176,7 +193,9 @@ class EmbedManagementMapperContractTest {
                 "findProviderByIssuerAndNamespace",
                 "lockProviderByIssuerAndNamespace"}) {
             Method method = Arrays.stream(EmbedManagementMapper.class.getDeclaredMethods())
-                    .filter(candidate -> candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.getName().equals(methodName + "Page")
+                            || candidate.getName().equals(methodName))
+                    .filter(candidate -> candidate.isAnnotationPresent(Select.class))
                     .findFirst()
                     .orElseThrow();
             String sql = String.join("\n", method.getAnnotation(Select.class).value());
@@ -184,8 +203,8 @@ class EmbedManagementMapperContractTest {
             // 注解 SQL 不会像 XML Mapper 一样解码 &lt;=&gt;；直接写实体会把无效文本
             // 发送给 MySQL。显式展开 NULL 等价语义，兼容 SIGNED_JWT 与无 issuer 的受信模式。
             assertFalse(sql.contains("&lt;"), methodName + " 不能包含 XML 实体");
-            assertTrue(sql.contains("issuer = #{issuer}"));
-            assertTrue(sql.contains("issuer IS NULL AND #{issuer} IS NULL"));
+            assertTrue(sql.contains("issuer = #{issuer,jdbcType=VARCHAR}"));
+            assertTrue(sql.contains("issuer IS NULL AND #{issuer,jdbcType=VARCHAR} IS NULL"));
         }
     }
 

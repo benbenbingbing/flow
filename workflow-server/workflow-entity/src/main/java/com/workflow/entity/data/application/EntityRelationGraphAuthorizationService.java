@@ -116,8 +116,9 @@ public class EntityRelationGraphAuthorizationService {
             throw new IllegalStateException(
                     "关系图内部入口缺少显式允许范围，已拒绝执行");
         }
+        // 绑定值允许 SQL NULL；Map.copyOf 会拒绝 NULL，必须复制后只读封装并保留原值。
         Map<String, Object> parameters = permission.getSqlParameters() == null
-                ? Map.of() : Map.copyOf(permission.getSqlParameters());
+                ? Map.of() : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(permission.getSqlParameters()));
         DataScopePlan scope = new DataScopePlan(
                 permission.isHasPermission(),
                 sql,

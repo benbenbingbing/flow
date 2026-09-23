@@ -8,10 +8,14 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
 
 /** Embed 限流桶与跨 Pod 并发租约的 SQL 原语。 */
 @Mapper
 public interface EmbedTrafficControlMapper {
+
+    /** Embed 并发槽固定按 Grant 编码，不与开放接口的应用级占位值共用范围。 */
+    String RUNTIME_SCOPE_PREFIX = "embed-runtime-grant-v1:";
 
     /** 按现有 Session Exchange 的相同顺序先锁 Application，避免与停用/删除事务反向等待。 */
     @Select("""
@@ -39,15 +43,11 @@ public interface EmbedTrafficControlMapper {
             @Param("applicationId") String applicationId,
             @Param("grantId") String grantId);
 
-    @Insert("""
-            INSERT INTO integration_rate_limit_bucket (
-              bucket_key, window_epoch, request_count, create_time, update_time
-            ) VALUES (
-              #{bucketKey}, #{windowEpoch}, 1, #{now}, #{now}
-            )
-            ON DUPLICATE KEY UPDATE
-              request_count = request_count + 1,
-              update_time = #{now}
+    /** 调用方先按桶唯一键初始化并加锁；返回 1 表示递增一条已锁定记录。 */
+    @Update("""
+            UPDATE integration_rate_limit_bucket
+               SET request_count = request_count + 1, update_time = #{now}
+             WHERE bucket_key = #{bucketKey} AND window_epoch = #{windowEpoch}
             """)
     int incrementRateBucket(
             @Param("bucketKey") String bucketKey,
@@ -101,10 +101,11 @@ public interface EmbedTrafficControlMapper {
             @Param("expiresAt") LocalDateTime expiresAt,
             @Param("now") LocalDateTime now);
 
+    /** 仅释放 Embed Grant 范围，保留开放接口的历史空范围和非空占位范围。 */
     @Delete("""
             DELETE FROM integration_api_request_lease
              WHERE lease_id = #{leaseId}
-               AND scope_key <> ''
-            """)
+               AND scope_key LIKE
+            """ + "'" + RUNTIME_SCOPE_PREFIX + "%'")
     int releaseRuntimeLease(@Param("leaseId") String leaseId);
 }

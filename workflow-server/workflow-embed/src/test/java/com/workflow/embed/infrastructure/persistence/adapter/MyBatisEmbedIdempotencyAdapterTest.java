@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.database.JdbcIdempotentInsert;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.EmbedIdempotencyClaim;
@@ -23,6 +24,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 class MyBatisEmbedIdempotencyAdapterTest {
+    private final JdbcIdempotentInsert inserts = mock(JdbcIdempotentInsert.class);
 
     private static final Instant NOW = Instant.parse("2026-08-27T05:00:00Z");
     private static final LocalDateTime LOCAL_NOW =
@@ -31,10 +33,7 @@ class MyBatisEmbedIdempotencyAdapterTest {
     @Test
     void newClaimOwnsFenceAndProcessingLoserDoesNotReacquire() {
         EmbedIdempotencyMapper mapper = mock(EmbedIdempotencyMapper.class);
-        when(mapper.insertProcessing(
-                any(), eq("app-1"), eq("EMBED_RECORD_CREATE"),
-                eq("key-1"), eq("hash-1"), eq(LOCAL_NOW), any()))
-                .thenReturn(1);
+        when(inserts.insertIfAbsent(eq("integration_idempotency_record"), any())).thenReturn(true);
         when(mapper.find("app-1", "EMBED_RECORD_CREATE", "key-1"))
                 .thenReturn(row("PROCESSING", 1, "hash-1", null, null));
         MyBatisEmbedIdempotencyAdapter adapter = adapter(mapper);
@@ -45,8 +44,8 @@ class MyBatisEmbedIdempotencyAdapterTest {
         assertTrue(acquired.acquired());
         assertEquals(1, acquired.fencingToken());
 
-        when(mapper.insertProcessing(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(0);
+        when(inserts.insertIfAbsent(eq("integration_idempotency_record"), any()))
+                .thenReturn(false);
         when(mapper.find("app-1", "EMBED_RECORD_CREATE", "key-1"))
                 .thenReturn(row("PROCESSING", 1, "hash-1", null, null));
         assertTrue(adapter.claim(
@@ -57,8 +56,8 @@ class MyBatisEmbedIdempotencyAdapterTest {
     @Test
     void failedClaimIsReacquiredWithWinnerFence() {
         EmbedIdempotencyMapper mapper = mock(EmbedIdempotencyMapper.class);
-        when(mapper.insertProcessing(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(0);
+        when(inserts.insertIfAbsent(eq("integration_idempotency_record"), any()))
+                .thenReturn(false);
         when(mapper.find("app-1", "EMBED_RECORD_CREATE", "key-1"))
                 .thenReturn(
                         row("FAILED_RETRYABLE", 4, "hash-1", null, null),
@@ -78,8 +77,8 @@ class MyBatisEmbedIdempotencyAdapterTest {
     @Test
     void reacquireRaceObservesSucceededWinnerAsReplay() {
         EmbedIdempotencyMapper mapper = mock(EmbedIdempotencyMapper.class);
-        when(mapper.insertProcessing(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(0);
+        when(inserts.insertIfAbsent(eq("integration_idempotency_record"), any()))
+                .thenReturn(false);
         when(mapper.find("app-1", "EMBED_RECORD_CREATE", "key-1"))
                 .thenReturn(
                         row("FAILED_RETRYABLE", 2, "hash-1", null, null),
@@ -98,8 +97,8 @@ class MyBatisEmbedIdempotencyAdapterTest {
     @Test
     void sameKeyWithDifferentBodyIsConflict() {
         EmbedIdempotencyMapper mapper = mock(EmbedIdempotencyMapper.class);
-        when(mapper.insertProcessing(any(), any(), any(), any(), any(), any(), any()))
-                .thenReturn(0);
+        when(inserts.insertIfAbsent(eq("integration_idempotency_record"), any()))
+                .thenReturn(false);
         when(mapper.find("app-1", "EMBED_RECORD_CREATE", "key-1"))
                 .thenReturn(row("PROCESSING", 1, "different-hash", null, null));
 
@@ -154,10 +153,10 @@ class MyBatisEmbedIdempotencyAdapterTest {
                 fail.getAnnotation(Transactional.class).propagation());
     }
 
-    private static MyBatisEmbedIdempotencyAdapter adapter(
+    private MyBatisEmbedIdempotencyAdapter adapter(
             EmbedIdempotencyMapper mapper) {
         return new MyBatisEmbedIdempotencyAdapter(
-                mapper, new ObjectMapper().findAndRegisterModules());
+                mapper, new ObjectMapper().findAndRegisterModules(), inserts);
     }
 
     private static EmbedIdempotencyRow row(

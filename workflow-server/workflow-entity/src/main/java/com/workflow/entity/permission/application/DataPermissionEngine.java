@@ -234,7 +234,7 @@ public class DataPermissionEngine {
 
         boolean unboundAllow = !hasAllowBinding;
         UnboundDecision unboundDecision = unboundAllow
-                ? resolveUnboundDecision(entityCode, listKey, snapshot, user)
+                ? resolveUnboundDecision(entityCode, listKey, snapshot, user, sqlParameters)
                 : null;
         String allow = unboundAllow ? unboundDecision.sql() : or(listAllows);
         String delegatedAllow = buildDelegatedAllow(
@@ -285,7 +285,7 @@ public class DataPermissionEngine {
             String entityCode,
             String listKey,
             EntityListScopeSnapshotDTO snapshot,
-            SysUser user) {
+            SysUser user, Map<String, Object> sqlParameters) {
         EntityListScopeDefaultDTO configured = StringUtils.hasText(listKey)
                 && snapshot.getListDefaults() != null
                 ? snapshot.getListDefaults().get(listKey)
@@ -317,8 +317,8 @@ public class DataPermissionEngine {
         if ("PERSONAL".equals(policy)) {
             return new UnboundDecision(
                     or(List.of(
-                            userRelation("create_by", user),
-                            userRelation("submitter_id", user))),
+                            personalFilter("PERSONAL", user, sqlParameters),
+                            personalFilter("SUBMITTER", user, sqlParameters))),
                     "未绑定允许规则，仅可见本人创建或提交的数据");
         }
         if ("EXPLICIT_ALL".equals(policy)
@@ -353,15 +353,15 @@ public class DataPermissionEngine {
             try {
                 String scope = normalized(delegation.getDelegateScope(), "PERSONAL");
                 String sql = switch (scope) {
-                    case "CREATED" -> userRelation("create_by", delegator);
-                    case "SUBMITTED" -> userRelation("submitter_id", delegator);
-                    case "CURRENT_TASK" -> userRelation("current_task_assignee", delegator);
+                    case "CREATED" -> personalFilter("PERSONAL", delegator, sqlParameters);
+                    case "SUBMITTED" -> personalFilter("SUBMITTER", delegator, sqlParameters);
+                    case "CURRENT_TASK" -> personalFilter("CURRENT_ASSIGNEE", delegator, sqlParameters);
                     case "POLICY" -> compileDelegatedPolicy(
                             entityCode, policyMap.get(delegation.getPolicyId()), delegator, sqlParameters);
                     case "CONDITION" -> compileDelegatedCondition(
                             entityCode, delegation.getDelegateConfig(), delegator, sqlParameters);
-                    default -> "(" + userRelation("create_by", delegator)
-                            + ") OR (" + userRelation("submitter_id", delegator) + ")";
+                    default -> "(" + personalFilter("PERSONAL", delegator, sqlParameters)
+                            + ") OR (" + personalFilter("SUBMITTER", delegator, sqlParameters) + ")";
                 };
                 if (StringUtils.hasText(sql)) {
                     parts.add(sql);
@@ -403,20 +403,11 @@ public class DataPermissionEngine {
         }
     }
 
-    private String userRelation(String column, SysUser user) {
-        LinkedHashSet<String> values = new LinkedHashSet<>();
-        if (StringUtils.hasText(user.getId())) {
-            values.add(user.getId());
-        }
-        if (StringUtils.hasText(user.getUsername())) {
-            values.add(user.getUsername());
-        }
-        if (values.isEmpty()) {
-            return "1=0";
-        }
-        return column + " IN ('" + values.stream()
-                .map(sqlBuilder::escapeLiteral)
-                .collect(java.util.stream.Collectors.joining("','")) + "')";
+    /** 本人兜底与委托范围复用标准编译器，与显式允许/拒绝规则共享绑定参数。 */
+    private String personalFilter(String type, SysUser user, Map<String, Object> parameters) {
+        FilterConfigDTO filter = new FilterConfigDTO();
+        filter.setType(type);
+        return sqlBuilder.buildFilterSql(null, filter, user, parameters);
     }
 
     private boolean isEffective(

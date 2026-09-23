@@ -1,5 +1,9 @@
 package com.workflow.service;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.entity.ui.application.UiComponentTemplateService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -56,7 +60,8 @@ class UiComponentTemplateServiceTest {
                         mock(UiComponentTemplateMapper.class),
                         mock(UiComponentTemplateVersionMapper.class),
                         new JsonDocumentCodec(objectMapper),
-                        mock(UiExtensionDefinitionMapper.class))
+                        mock(UiExtensionDefinitionMapper.class), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)))
                         .save(request));
 
         assertTrue(error.getMessage().contains("fieldCode"));
@@ -82,7 +87,8 @@ class UiComponentTemplateServiceTest {
                         mock(UiComponentTemplateMapper.class),
                         mock(UiComponentTemplateVersionMapper.class),
                         new JsonDocumentCodec(new ObjectMapper()),
-                        mock(UiExtensionDefinitionMapper.class))
+                        mock(UiExtensionDefinitionMapper.class), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)))
                         .save(request));
 
         assertTrue(error.getMessage().contains("interfaceExtensionId"));
@@ -129,7 +135,8 @@ class UiComponentTemplateServiceTest {
                 templateMapper,
                 versionMapper,
                 codec,
-                mock(UiExtensionDefinitionMapper.class))
+                mock(UiExtensionDefinitionMapper.class), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)))
                 .upgrade("tpl-1", request);
         Map<?, ?> merged = (Map<?, ?>) result.get("mergedSnapshot");
 
@@ -158,7 +165,8 @@ class UiComponentTemplateServiceTest {
                         templateMapper,
                         mock(UiComponentTemplateVersionMapper.class),
                         new JsonDocumentCodec(new ObjectMapper()),
-                        mock(UiExtensionDefinitionMapper.class))
+                        mock(UiExtensionDefinitionMapper.class), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)))
                         .upgrade("tpl-1", new UiComponentTemplateUpgradeRequest()));
 
         assertTrue(error.getMessage().contains("一次性初始化"));
@@ -187,7 +195,8 @@ class UiComponentTemplateServiceTest {
                 templateMapper,
                 versionMapper,
                 codec,
-                mock(UiExtensionDefinitionMapper.class));
+                mock(UiExtensionDefinitionMapper.class), new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
                 () -> service.versions("tpl-1"));
@@ -231,7 +240,8 @@ class UiComponentTemplateServiceTest {
         when(extensionMapper.selectOne(any())).thenReturn(migrated);
 
         Map<String, Object> result = new UiComponentTemplateService(
-                templateMapper, versionMapper, codec, extensionMapper)
+                templateMapper, versionMapper, codec, extensionMapper, new JdbcWriteAttempt(new JdbcTemplate(),
+                        DatabaseDialects.insert(DatabaseVendor.MYSQL)))
                 .currentSnapshot("tpl-1");
         Map<?, ?> field = (Map<?, ?>) result.get("field");
 

@@ -1,5 +1,8 @@
 package com.workflow.process.assignment;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.resolver.PersonPrincipal;
 import com.workflow.contracts.identity.resolver.PersonPrincipalType;
@@ -46,14 +49,8 @@ class EmptyAssigneePolicyFlowableIntegrationTest {
                 .setAsyncExecutorActivate(false).buildProcessEngine();
         var dataSource = new DriverManagerDataSource(
                 "jdbc:h2:mem:empty_policy_incident_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
-        // H2 不支持 MySQL 的 DATE_ADD(... INTERVAL ? SECOND) 语法，仅适配日期函数；
-        // 原 SQL 的状态转换、参数值和实际落库结果仍由以下断言验证。
-        jdbc = new JdbcTemplate(dataSource) {
-            @Override public int update(String sql, Object... args) {
-                return super.update(sql.replace("DATE_ADD(CURRENT_TIMESTAMP, INTERVAL ? SECOND)",
-                        "DATEADD('SECOND', ?, CURRENT_TIMESTAMP)"), args);
-            }
-        };
+        // 生产方言生成的 TIMESTAMPADD 可在此 H2 业务夹具直接执行，不再替换被测 SQL。
+        jdbc = new JdbcTemplate(dataSource);
         jdbc.execute("""
                 CREATE TABLE process_assignee_incident (
                   id VARCHAR(64) PRIMARY KEY, process_config_id VARCHAR(64), process_definition_id VARCHAR(128),
@@ -63,7 +60,11 @@ class EmptyAssigneePolicyFlowableIntegrationTest {
                   fallback_group VARCHAR(100), responsibility_owner VARCHAR(100), retry_count INT, max_retries INT,
                   initial_delay_seconds INT, backoff_multiplier DOUBLE, next_retry_at TIMESTAMP,
                   resolution_action VARCHAR(64), resolved_by VARCHAR(100), resolved_at TIMESTAMP,
-                  detail_json CLOB, create_time TIMESTAMP, update_time TIMESTAMP)
+                  detail_json CLOB, create_time TIMESTAMP, update_time TIMESTAMP,
+                  open_slot VARCHAR(128) GENERATED ALWAYS AS (
+                    CASE WHEN status IN ('OPEN','RETRY_SCHEDULED','MANUAL_REQUIRED')
+                    THEN CONCAT(COALESCE(task_id, process_instance_id, 'NO_INSTANCE'), ':', node_id) ELSE NULL END),
+                  UNIQUE(open_slot))
                 """);
         jdbc.execute("""
                 CREATE TABLE process_assignee_incident_action (
@@ -74,12 +75,12 @@ class EmptyAssigneePolicyFlowableIntegrationTest {
         directory = mock(PersonResolverRuntimeService.class);
         var resolution = new AssigneeResolutionService(directory);
         var policyService = new EmptyAssigneePolicyService(new EmptyAssigneePolicyResolver(json), resolution,
-                new AssigneeIncidentRecorder(jdbc, json), engine.getTaskService());
+                new AssigneeIncidentRecorder(jdbc, json, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))), engine.getTaskService());
         var listener = new PersonResolverTaskAssignmentListener(mock(ProcessVersionHistoryMapper.class),
                 engine.getRepositoryService(), engine.getRuntimeService(), engine.getTaskService(), directory, json);
         ReflectionTestUtils.setField(listener, "emptyAssigneePolicyService", policyService);
         engine.getRuntimeService().addEventListener(listener, FlowableEngineEventType.TASK_CREATED);
-        incidents = new AssigneeIncidentService(jdbc, json, engine.getTaskService(), engine.getRuntimeService(), resolution);
+        incidents = new AssigneeIncidentService(jdbc, json, engine.getTaskService(), engine.getRuntimeService(), resolution, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
     }
 
     @BeforeEach

@@ -1,6 +1,9 @@
 package com.workflow.migration.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -163,6 +166,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ObjectMapper objectMapper;
+    private final DatabaseQueryDialect queryDialect;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
 
     @Transactional(readOnly = true)
@@ -192,13 +196,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return asset;
     }
 
+    /** 读取未删除的最新发布资产；同版本按主键打破平局，由 MyBatis-Plus 限制首行且不查询总数。 */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset findLatest(String assetType, String businessKey) {
-        return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
-                .eq(ConfigMigrationAsset::getAssetType, assetType)
-                .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
-                .orderByDesc(ConfigMigrationAsset::getSourceVersion)
-                .last("LIMIT 1"));
+        return assetMapper.selectPage(new Page<ConfigMigrationAsset>(1, 1, false),
+                new LambdaQueryWrapper<ConfigMigrationAsset>()
+                        .eq(ConfigMigrationAsset::getAssetType, assetType)
+                        .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
+                        .orderByDesc(ConfigMigrationAsset::getSourceVersion, ConfigMigrationAsset::getId))
+                .getRecords().stream().findFirst().orElse(null);
     }
 
     @Transactional
@@ -314,8 +320,7 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
         SysDict dictionary = dictMapper.selectOne(
                 new LambdaQueryWrapper<SysDict>()
-                        .eq(SysDict::getDictCode, dictCode)
-                        .last("LIMIT 1"));
+                        .eq(SysDict::getDictCode, dictCode));
         if (dictionary == null) {
             return null;
         }
@@ -1304,14 +1309,16 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                             firstNonBlank(
                                     text(service.get("sourceCode")),
                                     text(service.get("serviceCode"))));
-                    definition = extensionDefinitionMapper.selectOne(
+                    // 缺少固定 ID 的旧引用只剩业务编码，稳定选择最高实现版本，避免依赖数据库行序。
+                    definition = extensionDefinitionMapper.selectPage(new Page<UiExtensionDefinition>(1, 1, false),
                             new LambdaQueryWrapper<UiExtensionDefinition>()
                                     .eq(UiExtensionDefinition::getExtensionType,
                                             "INTERFACE")
                                     .eq(UiExtensionDefinition::getExtensionKey,
                                             extensionCode)
                                     .eq(UiExtensionDefinition::getDeleted, 0)
-                                    .last("LIMIT 1"));
+                                    .orderByDesc(UiExtensionDefinition::getVersion, UiExtensionDefinition::getId))
+                            .getRecords().stream().findFirst().orElse(null);
                 }
                 if (definition == null
                         || !StringUtils.hasText(definition.getExtensionKey())) {
@@ -1898,11 +1905,11 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return asset;
     }
 
+    /** asset_type/source_history_id 有唯一约束，通用 Mapper 还会过滤逻辑删除，无需分页。 */
     private ConfigMigrationAsset findByHistory(String assetType, String sourceHistoryId) {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
                 .eq(ConfigMigrationAsset::getAssetType, assetType)
-                .eq(ConfigMigrationAsset::getSourceHistoryId, sourceHistoryId)
-                .last("LIMIT 1"));
+                .eq(ConfigMigrationAsset::getSourceHistoryId, sourceHistoryId));
     }
 
     private boolean exists(String assetType, String sourceHistoryId) {

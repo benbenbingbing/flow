@@ -1,7 +1,6 @@
 package com.workflow.entity.version.infrastructure.persistence.mapper;
 
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionCounter;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -11,18 +10,15 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EntityRecordVersionCounterMapper {
 
-    @Insert("""
-            INSERT INTO entity_record_version_counter
-                (entity_code, record_id, last_version_no, update_time)
-            VALUES
-                (#{entityCode}, #{recordId}, #{initialVersion}, CURRENT_TIMESTAMP)
-            ON DUPLICATE KEY UPDATE
-                last_version_no = GREATEST(
-                        last_version_no,
-                        VALUES(last_version_no)),
+    /** 在调用方已持有计数器行锁后追平历史最大值，绝不覆盖更大的版本号。 */
+    @Update("""
+            UPDATE entity_record_version_counter
+            SET last_version_no = CASE WHEN last_version_no < #{initialVersion}
+                                       THEN #{initialVersion} ELSE last_version_no END,
                 update_time = CURRENT_TIMESTAMP
+            WHERE entity_code = #{entityCode} AND record_id = #{recordId}
             """)
-    int initialize(
+    int raiseMinimum(
             @Param("entityCode") String entityCode,
             @Param("recordId") String recordId,
             @Param("initialVersion") Integer initialVersion);

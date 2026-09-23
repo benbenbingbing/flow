@@ -11,6 +11,7 @@
     </parent>
     <artifactId>workflow-outbox</artifactId>
     <dependencies>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-database</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
         <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>

@@ -1,5 +1,8 @@
 package com.workflow.admin.identity.position.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionDirectoryRevisionRow;
+
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionAssignmentViewRow;
@@ -15,6 +18,7 @@ import java.util.List;
 /**
  * 任职事实查询、有效区间校验和并发更新入口。
  */
+// 搜索模式在 MyBatis 中组装并以 VARCHAR 绑定，保留通配符语义，避免数据库 CONCAT 差异。
 @Mapper
 public interface SysPositionAssignmentMapper
         extends BaseMapper<SysPositionAssignment> {
@@ -53,51 +57,48 @@ public interface SysPositionAssignmentMapper
     @Select("SELECT * FROM sys_position_assignment WHERE id = #{id} FOR UPDATE")
     SysPositionAssignment selectForUpdate(@Param("id") String id);
 
-    @Select("""
-            <script>
-            SELECT * FROM sys_position_assignment
-            WHERE position_id = #{positionId}
-              AND organization_unit_id = #{unitId}
-              AND revoked_at IS NULL
-              AND effective_from &lt; COALESCE(#{effectiveTo}, '9999-12-31 23:59:59.999999')
-              AND COALESCE(effective_to, '9999-12-31 23:59:59.999999') &gt; #{effectiveFrom}
-            <if test="excludeId != null and excludeId != ''">
-              AND id &lt;&gt; #{excludeId}
-            </if>
-            ORDER BY effective_from, id
-            </script>
-            """)
-    List<SysPositionAssignment> selectOverlaps(
-            @Param("positionId") String positionId,
-            @Param("unitId") String unitId,
-            @Param("effectiveFrom") LocalDateTime effectiveFrom,
-            @Param("effectiveTo") LocalDateTime effectiveTo,
-            @Param("excludeId") String excludeId);
+    /**
+     * 查询半开任职区间的重叠记录，开放结束时间沿用最大时间边界。
+     * 日期列直接比较已绑定的时间，避免 COALESCE 混合日期和参数后按文本比较，误判首尾相接。
+     * 对开放存量区间只在开始时间小于最大边界时放行，保持原有边界及 NULL 开始时间语义。
+     */
+    default List<SysPositionAssignment> selectOverlaps(
+            String positionId, String unitId, LocalDateTime effectiveFrom,
+            LocalDateTime effectiveTo, String excludeId) {
+        LocalDateTime maximum = LocalDateTime.of(9999, 12, 31, 23, 59, 59, 999999000);
+        return selectList(Wrappers.<SysPositionAssignment>lambdaQuery()
+                .eq(SysPositionAssignment::getPositionId, positionId)
+                .eq(SysPositionAssignment::getOrganizationUnitId, unitId)
+                .isNull(SysPositionAssignment::getRevokedAt)
+                // 显式 TIMESTAMP 绑定保留微秒和 null 语义；不能用字符串 COALESCE 比较日期。
+                .apply("effective_from < {0,jdbcType=TIMESTAMP}", effectiveTo == null ? maximum : effectiveTo)
+                .and(end -> end.apply("effective_to > {0,jdbcType=TIMESTAMP}", effectiveFrom)
+                        .or(effectiveFrom != null && effectiveFrom.isBefore(maximum),
+                                open -> open.isNull(SysPositionAssignment::getEffectiveTo)))
+                .ne(excludeId != null && !excludeId.isEmpty(), SysPositionAssignment::getId, excludeId)
+                .orderByAsc(SysPositionAssignment::getEffectiveFrom, SysPositionAssignment::getId));
+    }
+
+    /** 读取职务全部未撤销任职，后续区间调整以组织和时间的稳定顺序处理。 */
+    default List<SysPositionAssignment> selectNonRevokedByPosition(String positionId) {
+        return selectList(Wrappers.<SysPositionAssignment>lambdaQuery()
+                .eq(SysPositionAssignment::getPositionId, positionId)
+                .isNull(SysPositionAssignment::getRevokedAt)
+                .orderByAsc(SysPositionAssignment::getOrganizationUnitId,
+                        SysPositionAssignment::getEffectiveFrom, SysPositionAssignment::getId));
+    }
 
     @Select("""
             <script>
-            SELECT assignment_record.*
-            FROM sys_position_assignment assignment_record
-            WHERE assignment_record.position_id = #{positionId}
-              AND assignment_record.revoked_at IS NULL
-            ORDER BY assignment_record.organization_unit_id,
-                     assignment_record.effective_from,
-                     assignment_record.id
-            </script>
-            """)
-    List<SysPositionAssignment> selectNonRevokedByPosition(
-            @Param("positionId") String positionId);
-
-    @Select("""
-            <script>
+            <bind name="_contains_keyword" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
             """ + VIEW_COLUMNS + """
             WHERE position_record.deleted = 0
             <if test="keyword != null and keyword != ''">
-              AND (position_record.position_code LIKE CONCAT('%', #{keyword}, '%')
-                OR position_record.position_name LIKE CONCAT('%', #{keyword}, '%')
-                OR organization_unit.org_name LIKE CONCAT('%', #{keyword}, '%')
-                OR user_record.username LIKE CONCAT('%', #{keyword}, '%')
-                OR user_record.nickname LIKE CONCAT('%', #{keyword}, '%'))
+              AND (position_record.position_code LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                OR position_record.position_name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                OR organization_unit.org_name LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                OR user_record.username LIKE #{_contains_keyword,jdbcType=VARCHAR}
+                OR user_record.nickname LIKE #{_contains_keyword,jdbcType=VARCHAR})
             </if>
             <if test="positionCode != null and positionCode != ''">
               AND position_record.position_code = #{positionCode}
@@ -258,14 +259,13 @@ public interface SysPositionAssignmentMapper
             @Param("unitId") String unitId,
             @Param("asOf") LocalDateTime asOf);
 
+    /** 同一次聚合读取全部版本事实，避免分次查询引入不一致的版本标识。 */
     @Select("""
-            SELECT CONCAT(
-              position_record.revision, ':',
-              DATE_FORMAT(organization_unit.update_time, '%Y%m%d%H%i%s.%f'), ':',
-              COUNT(assignment_record.id), ':',
-              COALESCE(MAX(assignment_record.revision), 0), ':',
-              COALESCE(DATE_FORMAT(MAX(assignment_record.update_time),
-                '%Y%m%d%H%i%s.%f'), '0'))
+            SELECT position_record.revision AS position_revision,
+              organization_unit.update_time AS organization_updated_at,
+              COUNT(assignment_record.id) AS assignment_count,
+              COALESCE(MAX(assignment_record.revision), 0) AS assignment_revision,
+              MAX(assignment_record.update_time) AS assignment_updated_at
             FROM sys_position position_record
             JOIN sys_organization organization_unit
               ON organization_unit.id = #{unitId}
@@ -275,9 +275,15 @@ public interface SysPositionAssignmentMapper
             WHERE position_record.id = #{positionId}
             GROUP BY position_record.revision, organization_unit.update_time
             """)
-    String selectDirectoryRevision(
+    PositionDirectoryRevisionRow selectDirectoryRevisionState(
             @Param("positionId") String positionId,
             @Param("unitId") String unitId);
+
+    /** 对外保留目录版本字符串，数据库只读取事实，格式由目录协议统一定义。 */
+    default String selectDirectoryRevision(String positionId, String unitId) {
+        PositionDirectoryRevisionRow row = selectDirectoryRevisionState(positionId, unitId);
+        return row == null ? null : row.toRevisionToken();
+    }
 
     @Select("""
             SELECT DISTINCT organization_unit.id
@@ -295,10 +301,12 @@ public interface SysPositionAssignmentMapper
     List<String> selectLeaderProjectionUnitIds();
 
     @Update("""
+            <script>
             UPDATE sys_position_assignment
             SET effective_to = #{effectiveTo}, updated_by = #{actor},
-                revision = revision + 1, update_time = UTC_TIMESTAMP(6)
+                revision = revision + 1, update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE id = #{id} AND revision = #{expectedRevision}
+            </script>
             """)
     int closeAt(
             @Param("id") String id,
@@ -307,13 +315,15 @@ public interface SysPositionAssignmentMapper
             @Param("expectedRevision") int expectedRevision);
 
     @Update("""
+            <script>
             UPDATE sys_position_assignment
             SET revoked_at = #{revokedAt}, revoked_by = #{actor},
                 revoke_reason = #{reason}, effective_to = #{effectiveTo},
                 updated_by = #{actor}, revision = revision + 1,
-                update_time = UTC_TIMESTAMP(6)
+                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE id = #{id} AND revision = #{expectedRevision}
               AND revoked_at IS NULL
+            </script>
             """)
     int revoke(
             @Param("id") String id,
@@ -324,12 +334,14 @@ public interface SysPositionAssignmentMapper
             @Param("expectedRevision") int expectedRevision);
 
     @Update("""
+            <script>
             UPDATE sys_position_assignment
             SET effective_from = #{effectiveFrom}, effective_to = #{effectiveTo},
                 updated_by = #{actor}, revision = revision + 1,
-                update_time = UTC_TIMESTAMP(6)
+                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE id = #{id} AND revision = #{expectedRevision}
               AND revoked_at IS NULL
+            </script>
             """)
     int updatePeriod(
             @Param("id") String id,
@@ -337,4 +349,28 @@ public interface SysPositionAssignmentMapper
             @Param("effectiveTo") LocalDateTime effectiveTo,
             @Param("actor") String actor,
             @Param("expectedRevision") int expectedRevision);
+
+    /** 历史任职也阻止删除职务定义，因此此统计不排除已撤销或已结束的任职。 */
+    default long countAssignments(String positionId) {
+        return selectCount(Wrappers.<SysPositionAssignment>lambdaQuery()
+                .eq(SysPositionAssignment::getPositionId, positionId));
+    }
+
+    /**
+     * 统计调用方给定时点与组织范围内的有效任职，供职务列表展示。
+     * 使用半开时间区间；unitIds 为 null 表示全部组织，空集合表示没有可见组织。
+     */
+    default long countCurrentAssignments(String positionId, LocalDateTime asOf, List<String> unitIds) {
+        // 空权限范围不能省略 IN 条件，否则会扩大可见任职计数。
+        if (unitIds != null && unitIds.isEmpty()) {
+            return 0;
+        }
+        return selectCount(Wrappers.<SysPositionAssignment>lambdaQuery()
+                .eq(SysPositionAssignment::getPositionId, positionId)
+                .isNull(SysPositionAssignment::getRevokedAt)
+                .le(SysPositionAssignment::getEffectiveFrom, asOf)
+                .and(end -> end.isNull(SysPositionAssignment::getEffectiveTo)
+                        .or().gt(SysPositionAssignment::getEffectiveTo, asOf))
+                .in(unitIds != null, SysPositionAssignment::getOrganizationUnitId, unitIds));
+    }
 }

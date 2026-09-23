@@ -1,12 +1,15 @@
 package com.workflow.process.cc.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.util.StringUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
@@ -26,6 +29,7 @@ public class ProcessCcService {
     
     private final ProcessCcRecordMapper ccRecordMapper;
     private final ProcessCcSnapshotService snapshotService;
+    private final JdbcWriteAttempt writeAttempt;
     
     /**
      * 创建抄送记录（单条）。
@@ -37,17 +41,42 @@ public class ProcessCcService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessCcRecord createCcRecord(ProcessCcRecord record) {
+        prepareRecord(record);
+        ccRecordMapper.insert(record);
+        log.info("创建抄送记录: processInstanceId={}, ccUserId={}",
+                record.getProcessInstanceId(), record.getCcUserId());
+        return record;
+    }
+
+    /**
+     * 按非空 uniqueKey 幂等创建；true 表示本次新增，调用方才可发布通知。
+     * 重复键必须在本事务代理内部恢复和捕获，避免 REQUIRED 将外层标记为 rollback-only。
+     * 只吞掉已存在目标业务键的冲突，其他约束失败继续回滚整笔业务。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public boolean createCcRecordIfAbsent(ProcessCcRecord record) {
+        if (record == null || !StringUtils.hasText(record.getUniqueKey())) {
+            throw new IllegalArgumentException("幂等抄送必须提供 uniqueKey");
+        }
+        prepareRecord(record);
+        try {
+            if (writeAttempt.execute(() -> ccRecordMapper.insert(record)) != 1) {
+                throw new IllegalStateException("抄送记录未成功写入");
+            }
+            return true;
+        } catch (DuplicateKeyException conflict) {
+            if (ccRecordMapper.findIdByUniqueKeyForReplay(record.getUniqueKey()) == null) throw conflict;
+            return false;
+        }
+    }
+
+    private void prepareRecord(ProcessCcRecord record) {
         // 自动、人工和显式知会共用写入口，名称只在创建时补齐；读列表不回查业务表。
         snapshotService.captureNames(record);
         record.setCreateTime(LocalDateTime.now());
         record.setUpdateTime(LocalDateTime.now());
         record.setReadStatus("UNREAD");
         record.setDeleted(0);
-        
-        ccRecordMapper.insert(record);
-        log.info("创建抄送记录: processInstanceId={}, ccUserId={}", 
-                record.getProcessInstanceId(), record.getCcUserId());
-        return record;
     }
     
     /**

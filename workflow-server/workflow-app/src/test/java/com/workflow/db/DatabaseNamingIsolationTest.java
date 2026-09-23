@@ -145,20 +145,18 @@ class DatabaseNamingIsolationTest {
     @Test
     void dynamicTablesUseCanonicalPrefixAndUnicodeCollation()
             throws Exception {
-        String naming = Files.readString(Path.of(
-                "../workflow-entity/src/main/java/com/workflow/entity/data/"
-                        + "application/EntityPhysicalTableNaming.java"));
-        String dynamicTable = Files.readString(Path.of(
-                "../workflow-entity/src/main/java/com/workflow/entity/data/"
-                        + "application/DynamicTableService.java"));
-        String teamTable = Files.readString(Path.of(
-                "../workflow-entity/src/main/java/com/workflow/entity/data/"
-                        + "application/EntityRecordTeamService.java"));
-
-        assertTrue(naming.contains("BUSINESS_PREFIX = \"biz_\""));
-        assertFalse(naming.contains("LEGACY_PREFIX"));
-        assertTrue(dynamicTable.contains("COLLATE=utf8mb4_unicode_ci"));
-        assertTrue(teamTable.contains("COLLATE=utf8mb4_unicode_ci"));
+        var naming = new com.workflow.entity.data.application.EntityPhysicalTableNaming();
+        String name = naming.generate("Orders");
+        assertTrue(name.startsWith("biz_"));
+        var dialect = new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect();
+        var main = com.workflow.entity.data.application.EntityTableDefinitionFactory.mainTable(name, List.of(), "订单");
+        var team = com.workflow.entity.data.application.EntityTableDefinitionFactory.teamTable(name + "_team");
+        // 验证实际生成结果，避免把“特定业务类必须内嵌 MySQL 语法”固化成架构规则。
+        for (var table : List.of(main, team)) {
+            String ddl = String.join(";", dialect.createTable(table));
+            assertTrue(ddl.contains("CREATE TABLE " + (table.ifNotExists() ? "IF NOT EXISTS " : "") + "`" + table.name() + "`"));
+            assertTrue(ddl.contains("COLLATE=utf8mb4_unicode_ci"));
+        }
     }
 
     private boolean violatesRuntimeNaming(Path path) {

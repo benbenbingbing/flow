@@ -1,5 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -77,7 +80,8 @@ class UiEventExecutionReceiptTransactionIntegrationTest {
         EntityMutationReceiptMapper mapper = jdbcReceiptMapper();
         EntityMutationReceiptService receiptService =
                 new EntityMutationReceiptService(
-                        mapper, new ObjectMapper());
+                        mapper, new ObjectMapper(),
+                new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         SysUserService userService = mock(SysUserService.class);
         SysUser user = new SysUser();
         user.setId("user-a");
@@ -156,7 +160,7 @@ class UiEventExecutionReceiptTransactionIntegrationTest {
         when(mapper.findByIdempotencyKey(anyString()))
                 .thenAnswer(invocation -> findReceipt(
                         invocation.getArgument(0), false));
-        when(mapper.findByIdempotencyKeyForUpdate(anyString()))
+        when(mapper.findByIdempotencyKeyForReplay(anyString()))
                 .thenAnswer(invocation -> findReceipt(
                         invocation.getArgument(0), true));
         when(mapper.insert(any(EntityMutationReceipt.class)))

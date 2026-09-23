@@ -1,5 +1,6 @@
 package com.workflow.admin.audit.application;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -22,6 +23,8 @@ import java.util.List;
 public class SystemAuditQueryService {
 
     private final SystemOperationLogMapper operationLogMapper;
+    // 保留现有构造器依赖；普通查询的分页统一交由 MyBatis-Plus 处理。
+    private final DatabaseQueryDialect queryDialect;
 
     public PageResult<SystemOperationLog> page(SystemAuditQuery query) {
         int pageNum = Math.max(1, query.getPageNum());
@@ -39,9 +42,10 @@ public class SystemAuditQueryService {
         return value;
     }
 
+    /** 导出仍最多读取一万条，使用数据库分页避免把全部日志载入内存。 */
     public List<SystemOperationLog> export(SystemAuditQuery query) {
-        return operationLogMapper.selectList(
-                wrapper(query).last("LIMIT 10000"));
+        return operationLogMapper.selectPage(
+                new Page<SystemOperationLog>(1, 10000, false), wrapper(query)).getRecords();
     }
 
     /**
@@ -74,11 +78,10 @@ public class SystemAuditQueryService {
         LambdaQueryWrapper<SystemOperationLog> wrapper =
                 new LambdaQueryWrapper<>();
         applyOperationIdFilter(wrapper, normalized);
-        return operationLogMapper.selectList(wrapper
+        return operationLogMapper.selectPage(new Page<SystemOperationLog>(1, 500, false), wrapper
                         .orderByAsc(SystemOperationLog::getCreateTime)
-                        .orderByAsc(SystemOperationLog::getId)
-                        .last("LIMIT 500"))
-                .stream()
+                        .orderByAsc(SystemOperationLog::getId))
+                .getRecords().stream()
                 .map(this::toUnifiedView)
                 .toList();
     }
@@ -105,7 +108,7 @@ public class SystemAuditQueryService {
                 SystemOperationLog::getTargetId, query.getTargetId());
         wrapper.eq(StringUtils.hasText(query.getTraceId()),
                 SystemOperationLog::getTraceId, query.getTraceId());
-        return wrapper.orderByDesc(SystemOperationLog::getCreateTime);
+        return wrapper.orderByDesc(SystemOperationLog::getCreateTime).orderByDesc(SystemOperationLog::getId);
     }
 
     private LambdaQueryWrapper<SystemOperationLog> unifiedWrapper(

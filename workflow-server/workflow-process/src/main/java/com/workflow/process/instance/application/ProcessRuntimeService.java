@@ -1,6 +1,8 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.port.DatabaseClockPort;
 import com.workflow.process.task.application.TaskService;
 
 import com.workflow.core.error.BusinessConflictException;
@@ -38,6 +40,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.HexFormat;
 import java.util.UUID;
 
@@ -57,6 +61,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final ProcessTaskService processTaskService;
     private final MultiInstanceCollectionListener multiInstanceCollectionListener;
     private final EntityProcessLinkMapper entityProcessLinkMapper;
+    private final JdbcLockedRow lockedRows;
+    private final DatabaseClockPort databaseClock;
 
     @Autowired
     private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
@@ -147,6 +153,10 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 processInstance.isEnded() ? "COMPLETED" : "RUNNING");
     }
 
+    /**
+     * 当前实体写事务内占用本代流程链接；调用方已写入/锁定实体根记录。
+     * 同一代次由唯一约束和事务行锁保护，只有创建该行的请求允许首次启动引擎。
+     */
     private EntityProcessLink reserveLink(
             ProcessStartRequest request,
             ProcessDefinitionConfig processConfig) {
@@ -168,13 +178,29 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         candidate.setProcessDefinitionKey(processConfig.getProcessKey());
         candidate.setRequestId(requestId);
         candidate.setEntityStatus(request.processingStatus());
-        int inserted = entityProcessLinkMapper.insertPending(candidate);
+        var now = databaseClock.utcNow();
+        var initial = new LinkedHashMap<String, Object>();
+        initial.put("id", candidate.getId());
+        initial.put("entity_code", candidate.getEntityCode());
+        initial.put("entity_record_id", candidate.getEntityRecordId());
+        initial.put("generation", generation);
+        initial.put("process_definition_key", candidate.getProcessDefinitionKey());
+        initial.put("state", "PENDING");
+        initial.put("request_id", requestId);
+        initial.put("entity_status", candidate.getEntityStatus());
+        initial.put("version", 0L);
+        initial.put("create_time", now);
+        initial.put("update_time", now);
+        lockedRows.ensureAndLock("entity_process_link", initial,
+                List.of("entity_code", "entity_record_id", "generation"));
         EntityProcessLink locked = entityProcessLinkMapper.selectForUpdate(
                 request.entityCode(), request.entityRecordId(), generation);
         if (locked == null) {
             throw new IllegalStateException("实体流程链接写入失败: " + request.entityRecordId());
         }
-        if (inserted == 0 && "ACTIVE".equals(locked.getState())) {
+        // no-op 初始化不会覆盖旧行 ID；以随机候选 ID 判定创建者，避免厂商影响行数差异。
+        boolean inserted = candidate.getId().equals(locked.getId());
+        if (!inserted && "ACTIVE".equals(locked.getState())) {
             if (!processConfig.getProcessKey().equals(locked.getProcessDefinitionKey())) {
                 throw new BusinessConflictException(
                         "ENTITY_PROCESS_ALREADY_ACTIVE",
@@ -182,7 +208,7 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
             }
             return locked;
         }
-        if (inserted == 0) {
+        if (!inserted) {
             throw new BusinessConflictException(
                     "ENTITY_PROCESS_START_IN_PROGRESS",
                     "实体流程正在发起，请稍后重试");

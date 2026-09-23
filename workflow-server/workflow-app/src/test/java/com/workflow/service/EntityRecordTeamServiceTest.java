@@ -1,5 +1,8 @@
 package com.workflow.service;
 
+import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.core.database.port.SchemaMetadataPort;
+
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.data.application.SchemaDdlExecutor;
@@ -24,6 +27,7 @@ import static org.mockito.Mockito.*;
  */
 class EntityRecordTeamServiceTest {
 
+    private final SchemaMetadataPort metadata = mock(SchemaMetadataPort.class);
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
     private final EntityPublishedSnapshotService snapshotService =
@@ -32,7 +36,7 @@ class EntityRecordTeamServiceTest {
     /** 被测团队服务 */
     private final EntityRecordTeamService service =
             new EntityRecordTeamService(
-                    jdbcTemplate, tableResolver, snapshotService, schemaDdlExecutor);
+                    jdbcTemplate, tableResolver, snapshotService, schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata);
 
     /** 清理用户上下文，避免用例间污染 */
     @AfterEach
@@ -76,8 +80,7 @@ class EntityRecordTeamServiceTest {
         snapshot.setTeamVisibilityLevel(EntityDefinition.TeamVisibilityLevel.OVERRIDE_SCOPE);
         when(snapshotService.getLatestByEntityCode("expense")).thenReturn(snapshot);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
-                .thenReturn(1);
+        when(metadata.tableExists("wf_expense_team")).thenReturn(true);
 
         EntityRecordTeamService.TeamPermission permission =
                 service.teamPermission("expense", "user-1");
@@ -85,21 +88,22 @@ class EntityRecordTeamServiceTest {
         assertTrue(permission.enabled());
         assertEquals(EntityDefinition.TeamVisibilityLevel.OVERRIDE_SCOPE, permission.level());
         assertTrue(permission.sqlCondition().contains("team.record_id = `wf_expense`.id"));
-        assertTrue(permission.sqlCondition().contains("team.user_id = #{permissionParameters.teamUserId}"));
+        assertTrue(permission.sqlCondition().contains("team.user_id = #{permissionParameters.teamUserId,jdbcType=VARCHAR}"));
         assertEquals("user-1", permission.sqlParameters().get("teamUserId"));
     }
 
     @Test
-    void relatedPeopleSqlUsesTeamTableAndEscapesUserId() {
+    void relatedPeopleSqlUsesTeamTableAndBindsBothIdentities() {
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
-                .thenReturn(1);
+        when(metadata.tableExists("wf_expense_team")).thenReturn(true);
 
-        String sql = service.relatedPeopleSql("expense", "u'1", "li'si");
+        var parameters = new java.util.LinkedHashMap<String, Object>();
+        String sql = service.relatedPeopleSql("expense", "u'1", "li'si", parameters);
 
         assertTrue(sql.contains("`wf_expense_team`"));
         assertTrue(sql.contains("team.record_id = `wf_expense`.id"));
-        assertTrue(sql.contains("team.user_id IN ('u''1','li''si')"));
+        assertTrue(sql.contains("team.user_id IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})"));
+        assertEquals(java.util.Map.of("permissionValue0", "u'1", "permissionValue1", "li'si"), parameters);
         assertFalse(sql.contains("current_task_assignee"));
     }
 
@@ -107,8 +111,7 @@ class EntityRecordTeamServiceTest {
     void recordWritesWithoutPublishedSnapshot() {
         UserContext.setCurrentUser("2038628006255251457", "lisi");
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
-                .thenReturn(1);
+        when(metadata.tableExists("wf_expense_team")).thenReturn(true);
         when(snapshotService.getLatestByEntityCode("expense"))
                 .thenThrow(new RuntimeException("实体未发布: expense"));
 
@@ -129,8 +132,7 @@ class EntityRecordTeamServiceTest {
     @Test
     void relatedPeopleSqlFailsClosedWhenTeamTableMissing() {
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), eq("wf_expense_team")))
-                .thenReturn(0);
+        when(metadata.tableExists("wf_expense_team")).thenReturn(false);
 
         assertEquals("1=0", service.relatedPeopleSql("expense", "user-1"));
     }

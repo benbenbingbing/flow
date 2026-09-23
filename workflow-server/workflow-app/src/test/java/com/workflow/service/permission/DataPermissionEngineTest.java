@@ -76,7 +76,9 @@ class DataPermissionEngineTest {
                 definitionMapper,
                 fieldMapper,
                 statusMapper,
-                List.of());
+                List.of(),
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         engine = new DataPermissionEngine(
                 scopeService,
                 delegationMapper,
@@ -125,8 +127,8 @@ class DataPermissionEngineTest {
         var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("create_by IN ('u1','alice')"));
-        assertTrue(result.getSqlCondition().contains("submitter_id IN ('u1','alice')"));
+        assertTrue(result.getSqlCondition().contains("`create_by` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})"));
+        assertTrue(result.getSqlCondition().contains("`submitter_id` IN (#{permissionParameters.permissionValue2,jdbcType=VARCHAR},#{permissionParameters.permissionValue3,jdbcType=VARCHAR})"));
     }
 
     @Test
@@ -186,7 +188,7 @@ class DataPermissionEngineTest {
         var result = engine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertTrue(result.getSqlCondition().contains("NOT (status = 'SECRET')"));
+        assertTrue(result.getSqlCondition().contains("NOT (`status` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR})"));
     }
 
     @Test
@@ -206,7 +208,9 @@ class DataPermissionEngineTest {
                 null,
                 tableResolver,
                 null,
-                taskAccess);
+                taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine todoEngine = new DataPermissionEngine(
                 scopeService,
                 delegationMapper,
@@ -240,7 +244,7 @@ class DataPermissionEngineTest {
     void teamBindingDoesNotIncludeProcessTask() {
         com.workflow.entity.data.application.EntityRecordTeamService teamService =
                 mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
-        when(teamService.relatedPeopleSql("expense", "u1", "alice"))
+        when(teamService.relatedPeopleSql(eq("expense"), eq("u1"), eq("alice"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn("EXISTS (SELECT 1 FROM `wf_expense_team` team "
                         + "WHERE team.record_id = `wf_expense`.id "
                         + "AND team.user_id IN ('u1','alice'))");
@@ -249,7 +253,9 @@ class DataPermissionEngineTest {
                 fieldMapper,
                 statusMapper,
                 List.of(),
-                teamService);
+                teamService,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine teamEngine = new DataPermissionEngine(
                 scopeService,
                 delegationMapper,
@@ -279,9 +285,9 @@ class DataPermissionEngineTest {
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class))).thenReturn(1);
+        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver);
+                new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -289,7 +295,9 @@ class DataPermissionEngineTest {
                 List.of(),
                 null,
                 tableResolver,
-                compiler);
+                compiler,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine sqlEngine = new DataPermissionEngine(
                 scopeService,
                 delegationMapper,
@@ -318,7 +326,8 @@ class DataPermissionEngineTest {
         var result = sqlEngine.calculatePermission("expense", "default", user());
 
         assertTrue(result.isHasPermission());
-        assertEquals("`wf_expense`.create_by = 'u1'", result.getSqlCondition());
+        assertEquals("`wf_expense`.`create_by` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR}", result.getSqlCondition());
+        assertEquals(Map.of("permissionValue0", "u1"), result.getSqlParameters());
     }
 
     @Test
@@ -332,7 +341,7 @@ class DataPermissionEngineTest {
         assertFalse(result.isHasPermission());
     }
 
-    /** 测试覆盖模式仅用列表允许：验证 SQL 仅含 status = 'OPEN' 且模式为 OVERRIDE */
+    /** 测试覆盖模式仅用列表允许：验证 SQL 仅绑定 OPEN 状态且模式为 OVERRIDE */
     @Test
     void overrideUsesOnlyListAllow() {
         EntityListScopeSnapshotDTO snapshot = snapshot(
@@ -347,7 +356,8 @@ class DataPermissionEngineTest {
 
         var result = engine.calculatePermission("expense", "default", user());
 
-        assertEquals("status = 'OPEN'", result.getSqlCondition());
+        assertEquals("`status` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR}", result.getSqlCondition());
+        assertEquals(Map.of("permissionValue0", "OPEN"), result.getSqlParameters());
     }
 
     /** 测试对其他列表的拒绝不影响当前列表：验证当前列表仍有权限且无需过滤 */
@@ -396,6 +406,47 @@ class DataPermissionEngineTest {
         EntityListScopeDefaultDTO setting = snapshot.getListDefaults().get(listKey);
         setting.setUnboundPolicy("EXPLICIT_ALL");
         setting.setConfirmed(true);
+    }
+
+    @Test
+    void unboundAndDelegatedPersonalScopesKeepSeparateBoundIdentities() {
+        var snapshot = snapshot("INHERIT");
+        snapshot.getListDefaults().get("default").setUnboundPolicy("PERSONAL");
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+        var delegation = new com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeDelegation();
+        delegation.setFromUserId("from"); delegation.setDelegateScope("PERSONAL");
+        when(delegationMapper.findActiveByToUserId("u1", "expense")).thenReturn(List.of(delegation));
+        var delegator = user(); delegator.setId("from"); delegator.setUsername("李\\'!%_");
+        when(userService.getById("from")).thenReturn(delegator);
+        var result = engine.calculatePermission("expense", "default", user());
+        assertTrue(result.isHasPermission());
+        assertEquals(List.of("u1", "alice", "u1", "alice", "from", delegator.getUsername(), "from", delegator.getUsername()),
+                new java.util.ArrayList<>(result.getSqlParameters().values()));
+        assertFalse(result.getSqlCondition().contains(delegator.getUsername()));
+    }
+
+    @Test
+    void invalidTypedDenyDoesNotTurnIntoAnEmptyDenyRange() {
+        var definition = new com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition(); definition.setId("e");
+        var field = new com.workflow.entity.definition.infrastructure.persistence.record.EntityField();
+        field.setFieldCode("amount"); field.setFieldType(com.workflow.entity.definition.infrastructure.persistence.record.EntityField.FieldType.INTEGER);
+        when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
+        when(fieldMapper.findByEntityId("e")).thenReturn(List.of(field));
+        var node = condition("FIELD", "EQ", "12tail"); node.setField("amount");
+        var snapshot = snapshot("INHERIT", policy("bad", filter("RULE", node)));
+        snapshot.setBindings(List.of(binding("bad", "default", "DENY"))); allowExplicitAll(snapshot, "default");
+        when(scopeService.getActiveSnapshot("expense")).thenReturn(snapshot);
+        assertFalse(engine.calculatePermission("expense", "default", user()).isHasPermission());
+    }
+
+    @Test
+    void nullBindingCannotBeOverwrittenWhenCombiningPermissionResults() {
+        var values = new java.util.LinkedHashMap<String, Object>(); values.put("value", null);
+        var permission = com.workflow.entity.permission.api.response.DataPermissionResult.withCondition("original", values);
+        assertThrows(IllegalArgumentException.class, () -> permission.intersect("changed", Map.of("value", "replacement")));
+        assertEquals("original", permission.getSqlCondition()); assertEquals(values, permission.getSqlParameters());
+        permission.intersect("same", values);
+        assertNull(permission.getSqlParameters().get("value"));
     }
 
     /** 构造带 id 与过滤配置的策略对象 */

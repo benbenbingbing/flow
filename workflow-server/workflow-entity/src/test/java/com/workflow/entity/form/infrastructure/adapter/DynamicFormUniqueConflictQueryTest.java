@@ -211,6 +211,29 @@ class DynamicFormUniqueConflictQueryTest {
                         org.mockito.ArgumentMatchers.any());
     }
 
+    @Test
+    void largeTextUsesFullNativeReadForPreviewAndAuthoritativeCheck() {
+        QueryFixture fixture = fixture(EntityField.FieldType.TEXT);
+        fixture.query().findCandidates("event", "startsAt", "a".repeat(9000), null);
+        fixture.query().findCandidatesForAuthoritativeCheck("event", "startsAt", "a".repeat(9000), null);
+        verify(fixture.dynamicMapper()).selectList("wf_event");
+        verify(fixture.dynamicMapper()).selectListForUpdate("wf_event");
+        verify(fixture.dynamicMapper(), never()).selectFormUniqueCandidates(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void unknownAndVirtualFieldTypesCannotReachCandidateSql() {
+        for (var type : java.util.Arrays.asList(null, EntityField.FieldType.MULTI_REFERENCE,
+                EntityField.FieldType.SUB_LIST, EntityField.FieldType.RICH_TEXT)) {
+            QueryFixture fixture = fixture(type);
+            assertThrows(IllegalArgumentException.class,
+                    () -> fixture.query().findCandidates("event", "startsAt", "value", null));
+            org.mockito.Mockito.verifyNoInteractions(fixture.dynamicMapper());
+        }
+    }
+
     private QueryFixture fixture(
             EntityField.FieldType fieldType) {
         EntityDefinitionMapper definitionMapper =

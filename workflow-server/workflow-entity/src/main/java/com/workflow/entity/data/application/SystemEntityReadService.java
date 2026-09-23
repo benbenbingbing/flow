@@ -1,6 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.admin.authorization.application.PermissionUtil;
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -53,6 +54,7 @@ public class SystemEntityReadService {
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
     private final SystemEntityFieldPolicy fieldPolicy;
+    private final DatabaseQueryDialect queryDialect;
 
     public boolean isSystemEntity(String entityCode) {
         EntityDefinition definition =
@@ -146,20 +148,18 @@ public class SystemEntityReadService {
                 "SELECT COUNT(*) FROM " + table + where,
                 Long.class,
                 sqlFilter.parameters().toArray());
-        List<Object> pageParameters =
-                new ArrayList<>(sqlFilter.parameters());
-        pageParameters.add((safePageNum - 1) * safePageSize);
-        pageParameters.add(safePageSize);
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+        // 方言同时生成 SQL 和参数顺序，避免 PostgreSQL 的 LIMIT/OFFSET 交换绑定值。
+        var pageQuery = queryDialect.paginate(
                 "SELECT " + selectColumns
                         + " FROM " + table
                         + where
                         + orderBy(
                                 metadata,
                                 sortField,
-                                sortDirection)
-                        + " LIMIT ?, ?",
-                pageParameters.toArray());
+                                sortDirection),
+                sqlFilter.parameters(),
+                Math.multiplyExact(safePageNum - 1, safePageSize), safePageSize);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(pageQuery.sql(), pageQuery.parameters().toArray());
         List<EntityDataDTO> records = rows.stream()
                 .map(row -> toDto(definition, metadata, row))
                 .toList();
@@ -646,11 +646,12 @@ public class SystemEntityReadService {
             return null;
         }
         try {
+            // 调用点均按平台表的唯一主键读取；无需分页来掩盖重复数据，也不依赖 LIMIT。
             return jdbcTemplate.queryForObject(
                     "SELECT " + expression
                             + " FROM " + quote(table)
                             + " WHERE " + quote(idColumn)
-                            + " = ? LIMIT 1",
+                            + " = ?",
                     String.class,
                     id);
         } catch (RuntimeException ignored) {
@@ -664,7 +665,7 @@ public class SystemEntityReadService {
             return " ORDER BY "
                     + quote(metadata.readableColumns()
                             .get("create_time"))
-                    + " DESC";
+                    + " DESC" + stableIdOrder(metadata, metadata.readableColumns().get("create_time"));
         }
         if (metadata.readableColumns().containsKey("id")) {
             return " ORDER BY "
@@ -696,7 +697,13 @@ public class SystemEntityReadService {
                     "系统表排序方向只能是 ASC 或 DESC");
         }
         return " ORDER BY " + quote(column)
-                + " " + direction;
+                + " " + direction + stableIdOrder(metadata, column);
+    }
+
+    /** 非唯一排序字段可能重复，以主键打破平局，保证同一份数据的各页不重复或漏行。 */
+    private String stableIdOrder(QueryMetadata metadata, String primarySortColumn) {
+        String id = metadata.readableColumns().get("id");
+        return StringUtils.hasText(id) && !id.equals(primarySortColumn) ? ", " + quote(id) + " ASC" : "";
     }
 
     private Object value(
@@ -762,7 +769,7 @@ public class SystemEntityReadService {
             throw new IllegalArgumentException(
                     "非法系统表标识符: " + identifier);
         }
-        return "`" + identifier + "`";
+        return queryDialect.quoteIdentifier(identifier);
     }
 
     private String normalize(String value) {

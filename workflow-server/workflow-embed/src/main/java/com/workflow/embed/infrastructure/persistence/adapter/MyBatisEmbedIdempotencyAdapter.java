@@ -12,6 +12,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Objects;
+import java.util.LinkedHashMap;
+import com.workflow.core.database.JdbcIdempotentInsert;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Repository;
@@ -28,15 +30,18 @@ public class MyBatisEmbedIdempotencyAdapter implements EmbedIdempotencyPort {
 
     private final EmbedIdempotencyMapper mapper;
     private final ObjectMapper objectMapper;
+    private final JdbcIdempotentInsert inserts;
 
     public MyBatisEmbedIdempotencyAdapter(
             EmbedIdempotencyMapper mapper,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            JdbcIdempotentInsert inserts) {
         this.mapper = mapper;
         this.objectMapper = objectMapper;
+        this.inserts = inserts;
     }
 
-    /** INSERT IGNORE + 条件 reacquire 在独立事务中完成，竞态输家只观察最终状态。 */
+    /** 唯一约束插入和条件 reacquire 在独立事务中完成，竞态输家核验已有记录。 */
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EmbedIdempotencyClaim claim(
@@ -47,7 +52,7 @@ public class MyBatisEmbedIdempotencyAdapter implements EmbedIdempotencyPort {
             Instant now) {
         LocalDateTime current = local(now);
         try {
-            int inserted = mapper.insertProcessing(
+            boolean inserted = insertProcessing(
                     "eii_" + UUID.randomUUID().toString().replace("-", ""),
                     applicationId, operation, idempotencyKey, requestHash,
                     current, current.plusDays(RETENTION_DAYS));
@@ -56,7 +61,7 @@ public class MyBatisEmbedIdempotencyAdapter implements EmbedIdempotencyPort {
             if (!Objects.equals(requestHash, record.requestHash())) {
                 throw reused();
             }
-            if (inserted == 1) {
+            if (inserted) {
                 return acquired(record);
             }
             if ("SUCCEEDED".equals(record.status())) {
@@ -94,6 +99,24 @@ public class MyBatisEmbedIdempotencyAdapter implements EmbedIdempotencyPort {
         } catch (DataAccessException error) {
             throw unavailable(error);
         }
+    }
+
+    /** 初始占用仍依赖共享表的唯一约束；只忽略唯一冲突，不吞掉非法数据或连接错误。 */
+    private boolean insertProcessing(String id, String applicationId, String operation,
+            String idempotencyKey, String requestHash, LocalDateTime now, LocalDateTime expiresAt) {
+        var values = new LinkedHashMap<String, Object>();
+        values.put("id", id);
+        values.put("application_id", applicationId);
+        values.put("operation", operation);
+        values.put("idempotency_key", idempotencyKey);
+        values.put("request_hash", requestHash);
+        values.put("status", "PROCESSING");
+        values.put("fencing_token", 1L);
+        values.put("processing_started_at", now);
+        values.put("expires_at", expiresAt);
+        values.put("create_time", now);
+        values.put("update_time", now);
+        return inserts.insertIfAbsent("integration_idempotency_record", values);
     }
 
     /** complete 必须命中当前 fencing token，否则抛错以回滚同一业务事务。 */

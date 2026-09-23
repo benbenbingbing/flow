@@ -1,5 +1,6 @@
 package com.workflow.entity.version.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +52,7 @@ public class EntityVersionConfigurationService {
     private final ObjectMapper objectMapper;
     private final EntityVersionConfigurationValidator validator;
     private final EntityVersionScopeFreezer scopeFreezer;
+    private final JdbcWriteAttempt writeAttempt;
 
     /**
      * 返回兼容旧客户端的完整配置摘要列表。
@@ -492,14 +494,9 @@ public class EntityVersionConfigurationService {
         config.setConfigDocument(write(storedDocument(effective)));
         if (current == null) {
             try {
-                configMapper.insert(config);
+                writeAttempt.execute(() -> configMapper.insert(config));
             } catch (DuplicateKeyException exception) {
-                EntityVersionConfig latest =
-                        configMapper.findByEntityCode(entityCode);
-                throw revisionConflict(
-                        entityCode,
-                        latest == null ? null : latest.getRevision(),
-                        expectedRevision);
+                throw concurrentRevisionConflict(entityCode, expectedRevision);
             }
         } else {
             int updated = configMapper.updateCurrentIfRevision(
@@ -509,12 +506,7 @@ public class EntityVersionConfigurationService {
                     config.getConfigDocument(),
                     userId);
             if (updated != 1) {
-                EntityVersionConfig latest =
-                        configMapper.findByEntityCode(entityCode);
-                throw revisionConflict(
-                        entityCode,
-                        latest == null ? null : latest.getRevision(),
-                        expectedRevision);
+                throw concurrentRevisionConflict(entityCode, expectedRevision);
             }
         }
         syncRolloutBridge(config, effective);
@@ -578,25 +570,20 @@ public class EntityVersionConfigurationService {
                 throw revisionConflict(entityCode, 0, expectedRevision);
             }
             try {
-                int inserted = rolloutBridgeMapper.insertLegacyDraft(
+                int inserted = writeAttempt.execute(() -> rolloutBridgeMapper.insertLegacyDraft(
                         id(),
                         definition.getId(),
                         entityCode,
                         Boolean.TRUE.equals(normalized.getEnabled()),
                         value(normalized.getSchemaVersion(), 2),
                         document,
-                        userId);
+                        userId));
                 if (inserted != 1) {
                     throw new IllegalStateException(
                             "数据版本兼容草稿创建失败: entity=" + entityCode);
                 }
             } catch (DuplicateKeyException exception) {
-                EntityVersionRolloutState latest = rolloutBridgeMapper
-                        .findStateByEntityCode(entityCode);
-                throw revisionConflict(
-                        entityCode,
-                        latest == null ? null : latest.getRevision(),
-                        expectedRevision);
+                throw concurrentRevisionConflict(entityCode, expectedRevision);
             }
         } else {
             if (expectedRevision == null
@@ -612,12 +599,7 @@ public class EntityVersionConfigurationService {
                     document,
                     userId);
             if (updated != 1) {
-                EntityVersionRolloutState latest = rolloutBridgeMapper
-                        .findStateByEntityCode(entityCode);
-                throw revisionConflict(
-                        entityCode,
-                        latest == null ? null : latest.getRevision(),
-                        expectedRevision);
+                throw concurrentRevisionConflict(entityCode, expectedRevision);
             }
         }
         return legacyDraft(entityCode);
@@ -1008,6 +990,12 @@ public class EntityVersionConfigurationService {
                         .distinct()
                         .toList());
         node.setFields(new ArrayList<>());
+    }
+
+    /** 写入已经输掉竞争，冲突提示必须来自当前读取；不再解析旧 release 文档。 */
+    private BusinessConflictException concurrentRevisionConflict(String entityCode, Integer expectedRevision) {
+        return revisionConflict(entityCode,
+                configMapper.findCurrentRevisionForConflict(entityCode), expectedRevision);
     }
 
     private BusinessConflictException revisionConflict(

@@ -1,24 +1,27 @@
 package com.workflow.process.sla.calendar.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.sla.calendar.infrastructure.persistence.record.WorkCalendarPeriod;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
 @Mapper
 public interface WorkCalendarPeriodMapper extends BaseMapper<WorkCalendarPeriod> {
 
-    @Select("""
-            SELECT * FROM work_calendar_period
-            WHERE calendar_id = #{calendarId}
-            ORDER BY day_of_week, sort_order, start_minute
-            """)
-    List<WorkCalendarPeriod> findByCalendarId(@Param("calendarId") String calendarId);
+    /** 读取日历的每周工作时段，按星期及配置顺序排列。 */
+    default List<WorkCalendarPeriod> findByCalendarId(String calendarId) {
+        return selectList(Wrappers.<WorkCalendarPeriod>lambdaQuery()
+                .eq(WorkCalendarPeriod::getCalendarId, calendarId)
+                .orderByAsc(WorkCalendarPeriod::getDayOfWeek)
+                .orderByAsc(WorkCalendarPeriod::getSortOrder)
+                .orderByAsc(WorkCalendarPeriod::getStartMinute));
+    }
 
-    @Delete("DELETE FROM work_calendar_period WHERE calendar_id = #{calendarId}")
-    int deleteByCalendarId(@Param("calendarId") String calendarId);
+    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    default int deleteByCalendarId(String calendarId) {
+        return delete(Wrappers.<WorkCalendarPeriod>lambdaQuery()
+                .eq(WorkCalendarPeriod::getCalendarId, calendarId));
+    }
 }

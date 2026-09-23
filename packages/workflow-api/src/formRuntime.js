@@ -12,6 +12,10 @@ export function createFormRuntimeApi(request) {
     getEntityFields(entityId) {
       return request.get(`/entity-form/entity/${entityId}/fields`)
     },
+    /** 读取字段绑定的代码表；保存值使用 itemCode，展示使用 itemLabel。 */
+    getDictionaryItems(dictCode) {
+      return request.get(`/system/dict/item/tree/code/${encodeURIComponent(dictCode)}`)
+    },
     getProgress(instanceId, taskId) {
       return request.get(`/process-instance/${encodeURIComponent(instanceId)}/progress`, { params: taskId ? { taskId } : {} })
     },

@@ -1,8 +1,9 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedIdempotencyRow;
 import java.time.LocalDateTime;
-import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -12,27 +13,14 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedIdempotencyMapper {
 
-    @Insert("""
-            INSERT IGNORE INTO integration_idempotency_record (
-              id, application_id, operation, idempotency_key,
-              request_hash, status, fencing_token,
-              processing_started_at, expires_at, create_time, update_time
-            ) VALUES (
-              #{id}, #{applicationId}, #{operation}, #{idempotencyKey},
-              #{requestHash}, 'PROCESSING', 1,
-              #{now}, #{expiresAt}, #{now}, #{now}
-            )
-            """)
-    int insertProcessing(
-            @Param("id") String id,
-            @Param("applicationId") String applicationId,
-            @Param("operation") String operation,
-            @Param("idempotencyKey") String idempotencyKey,
-            @Param("requestHash") String requestHash,
-            @Param("now") LocalDateTime now,
-            @Param("expiresAt") LocalDateTime expiresAt);
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedIdempotencyRow find(String applicationId, String operation, String idempotencyKey) {
+        return findPage(new OffsetPage<>(0, 1), applicationId, operation, idempotencyKey).stream().findFirst().orElse(null);
+    }
 
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, request_hash, status, resource_type, resource_id,
                    response_status, response_body, fencing_token,
                    processing_started_at
@@ -40,9 +28,11 @@ public interface EmbedIdempotencyMapper {
              WHERE application_id = #{applicationId}
                AND operation = #{operation}
                AND idempotency_key = #{idempotencyKey}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedIdempotencyRow find(
+    List<EmbedIdempotencyRow> findPage(
+            @Param("page") OffsetPage<EmbedIdempotencyRow> page,
             @Param("applicationId") String applicationId,
             @Param("operation") String operation,
             @Param("idempotencyKey") String idempotencyKey);

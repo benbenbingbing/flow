@@ -40,6 +40,12 @@
               />
             </el-form-item>
             <el-form-item label="标签位置">
+              <template #label>
+                <ConfigHelpLabel
+                  label="标签位置"
+                  content="PC 端按所选方式展示。移动端选择“左对齐”或“右对齐”时，标签统一左对齐；选择“顶部”时仍显示在上方。富文本、图片和文件保持移动端的上下布局。"
+                />
+              </template>
               <el-segmented v-model="formLabelPosition" :options="FORM_LABEL_POSITION_OPTIONS" />
             </el-form-item>
             <el-form-item label="标签宽度">
@@ -183,6 +189,7 @@
 
 <script setup>
 import { computed, inject, ref } from 'vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import FormButtonConfigPanel from '@/components/FormButtonConfigPanel.vue'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'

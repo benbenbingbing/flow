@@ -1,5 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedRuntimeReleaseRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,7 +11,14 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface EmbedRuntimeReleaseMapper {
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedRuntimeReleaseRow find(String sessionId, String viewId, String releaseId) {
+        return findPage(new OffsetPage<>(0, 1), sessionId, viewId, releaseId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT r.id AS release_id, r.view_id,
                    v.view_key, v.name AS view_name,
                    r.revision, r.surface_type, r.entity_code, r.list_key,
@@ -29,9 +38,11 @@ public interface EmbedRuntimeReleaseMapper {
              WHERE s.id = #{sessionId}
                AND s.view_id = #{viewId}
                AND s.view_release_id = #{releaseId}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedRuntimeReleaseRow find(
+    List<EmbedRuntimeReleaseRow> findPage(
+            @Param("page") OffsetPage<EmbedRuntimeReleaseRow> page,
             @Param("sessionId") String sessionId,
             @Param("viewId") String viewId,
             @Param("releaseId") String releaseId);

@@ -1,6 +1,8 @@
 package com.workflow.entity.data.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
@@ -11,9 +13,10 @@ import java.util.List;
 
 /**
  * 实体关系 Mapper
- * 
+ *
  * 提供按父实体（ID/编码/字段编码/绑定引用）查询实体关系，以及按父实体 ID 删除关系的能力。
  */
+// 普通查询使用 Wrapper；分页由 MyBatis-Plus 生成对应数据库语法。
 @Mapper
 public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
 
@@ -23,8 +26,13 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
      * @param parentEntityId 父实体 ID
      * @return 关系列表
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
-    List<EntityRelation> selectByParentEntityId(@Param("parentEntityId") String parentEntityId);
+    default List<EntityRelation> selectByParentEntityId(String parentEntityId) {
+        return selectList(Wrappers.<EntityRelation>lambdaQuery()
+                .eq(EntityRelation::getParentEntityId, parentEntityId)
+                .eq(EntityRelation::getEnabled, 1)
+                .orderByAsc(EntityRelation::getSortOrder)
+                .orderByAsc(EntityRelation::getCreatedAt));
+    }
 
     /**
      * 根据父实体编码查询已启用且未删除的关系列表。
@@ -32,32 +40,57 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
      * @param parentEntityCode 父实体编码
      * @return 关系列表
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_code = #{parentEntityCode} AND enabled = 1 AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
-    List<EntityRelation> selectByParentEntityCode(@Param("parentEntityCode") String parentEntityCode);
+    default List<EntityRelation> selectByParentEntityCode(String parentEntityCode) {
+        return selectList(Wrappers.<EntityRelation>lambdaQuery()
+                .eq(EntityRelation::getParentEntityCode, parentEntityCode)
+                .eq(EntityRelation::getEnabled, 1)
+                .orderByAsc(EntityRelation::getSortOrder)
+                .orderByAsc(EntityRelation::getCreatedAt));
+    }
 
     /**
      * 根据父实体 ID 查询全部未删除关系（包含禁用草稿）。
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
-    List<EntityRelation> selectAllByParentEntityId(@Param("parentEntityId") String parentEntityId);
+    default List<EntityRelation> selectAllByParentEntityId(String parentEntityId) {
+        return selectList(Wrappers.<EntityRelation>lambdaQuery()
+                .eq(EntityRelation::getParentEntityId, parentEntityId)
+                .orderByAsc(EntityRelation::getSortOrder)
+                .orderByAsc(EntityRelation::getCreatedAt));
+    }
 
     /** 页面可反向引用既有关系，关系本身仍只在父实体定义一次。 */
-    @Select("SELECT * FROM entity_relation WHERE child_entity_id = #{entityId} AND deleted = 0 ORDER BY sort_order ASC, create_time ASC")
-    List<EntityRelation> selectAllByChildEntityId(@Param("entityId") String entityId);
+    default List<EntityRelation> selectAllByChildEntityId(String entityId) {
+        return selectList(Wrappers.<EntityRelation>lambdaQuery()
+                .eq(EntityRelation::getChildEntityId, entityId)
+                .orderByAsc(EntityRelation::getSortOrder)
+                .orderByAsc(EntityRelation::getCreatedAt));
+    }
 
     /**
      * 根据父实体 ID 和稳定关系编码查询关系（包含逻辑删除记录，防止稳定编码复用）。
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND relation_code = #{relationCode} LIMIT 1")
-    EntityRelation selectByRelationCode(
+    default EntityRelation selectByRelationCode(String parentEntityId, String relationCode) {
+        return selectByRelationCodeRows(new OffsetPage<>(0, 1), parentEntityId, relationCode);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @Select("<script> SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND relation_code = #{relationCode}  </script>")
+    EntityRelation selectByRelationCodeRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("parentEntityId") String parentEntityId,
             @Param("relationCode") String relationCode);
 
     /**
      * 根据父实体 ID 和聚合数据键查询关系（包含逻辑删除记录，防止稳定数据键复用）。
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND data_key = #{dataKey} LIMIT 1")
-    EntityRelation selectByDataKey(
+    default EntityRelation selectByDataKey(String parentEntityId, String dataKey) {
+        return selectByDataKeyRows(new OffsetPage<>(0, 1), parentEntityId, dataKey);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    @Select("<script> SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND data_key = #{dataKey}  </script>")
+    EntityRelation selectByDataKeyRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("parentEntityId") String parentEntityId,
             @Param("dataKey") String dataKey);
 
@@ -68,8 +101,12 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
      * @param parentFieldCode  父字段编码
      * @return 关系记录，无则返回 null
      */
-    @Select("SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND parent_field_code = #{parentFieldCode} AND deleted = 0 LIMIT 1")
-    EntityRelation selectByParentField(@Param("parentEntityId") String parentEntityId, @Param("parentFieldCode") String parentFieldCode);
+    default EntityRelation selectByParentField(String parentEntityId, String parentFieldCode) {
+        return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityRelation>lambdaQuery()
+                .eq(EntityRelation::getParentEntityId, parentEntityId)
+                .eq(EntityRelation::getParentFieldCode, parentFieldCode))
+                .stream().findFirst().orElse(null);
+    }
 
     /**
      * 根据父实体 ID 与绑定引用（bindingRef）查询已启用的关系。
@@ -79,7 +116,13 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
      * @param bindingRef     绑定引用（关系编码或字段编码）
      * @return 匹配的关系记录，无则返回 null
      */
+    default EntityRelation selectActiveByBindingRef(String parentEntityId, String bindingRef) {
+        return selectActiveByBindingRefRows(new OffsetPage<>(0, 1), parentEntityId, bindingRef);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
     @Select("""
+            <script>
             SELECT *
             FROM entity_relation
             WHERE parent_entity_id = #{parentEntityId}
@@ -88,9 +131,11 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
               AND (relation_code = #{bindingRef}
                    OR parent_field_code = #{bindingRef})
             ORDER BY CASE WHEN relation_code = #{bindingRef} THEN 0 ELSE 1 END
-            LIMIT 1
+
+            </script>
             """)
-    EntityRelation selectActiveByBindingRef(
+    EntityRelation selectActiveByBindingRefRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("parentEntityId") String parentEntityId,
             @Param("bindingRef") String bindingRef);
 

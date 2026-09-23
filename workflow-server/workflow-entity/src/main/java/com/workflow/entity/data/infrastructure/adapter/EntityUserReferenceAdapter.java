@@ -1,5 +1,6 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
+import com.workflow.integration.database.api.DatabaseQueryDialect;
 import com.workflow.contracts.entity.port.EntityUserReferencePort;
 import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
@@ -40,6 +41,8 @@ public class EntityUserReferenceAdapter
     private final EntityPhysicalTableResolver tableResolver;
     private final DynamicTableService dynamicTableService;
     private final JdbcTemplate jdbcTemplate;
+    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
+    private final DatabaseQueryDialect queryDialect;
 
     /**
      * 只接受已发布的用户选择、用户单选关系或用户多选关系字段。
@@ -108,11 +111,11 @@ public class EntityUserReferenceAdapter
             String multiTable = dynamicTableService.getMultiValueTableName(
                     definition.getEntityCode());
             List<String> values = jdbcTemplate.queryForList(
-                    "SELECT target_record_id FROM " + multiTable
+                    "SELECT target_record_id FROM " + queryDialect.quoteIdentifier(multiTable)
                             + " WHERE record_id = ? AND field_code = ?"
                             + " AND target_entity_id = ? AND deleted = 0"
-                            + " ORDER BY sort_order, id LIMIT "
-                            + (MAX_RESOLVED_USERS + 1),
+                            + " ORDER BY sort_order, id"
+                            + queryDialect.paginationClause("0", Integer.toString(MAX_RESOLVED_USERS + 1)),
                     String.class,
                     normalizedRecordId,
                     field.getFieldCode(),

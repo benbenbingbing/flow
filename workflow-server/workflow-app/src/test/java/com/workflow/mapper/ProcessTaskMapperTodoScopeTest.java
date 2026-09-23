@@ -233,7 +233,6 @@ class ProcessTaskMapperTodoScopeTest {
     private String selectSql(String method) throws Exception {
         Select select = ProcessTaskMapper.class.getMethod(method, String.class).getAnnotation(Select.class);
         return String.join("", select.value())
-                .replace(" COLLATE utf8mb4_unicode_ci", "")
                 .replace("#{userId}", ":userId");
     }
 }

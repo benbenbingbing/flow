@@ -42,7 +42,7 @@ class EntityMultiValueSystemReferenceTest {
                         definitionMapper,
                         dynamicTableService,
                         tableResolver,
-                        systemFieldPolicy);
+                        systemFieldPolicy, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         EntityDefinition purchaseOrder = definition(
                 "entity-purchase", "purchase_order",
@@ -86,7 +86,7 @@ class EntityMultiValueSystemReferenceTest {
                                         "target_record_id", "user-1",
                                         "sort_order", 1));
                     }
-                    if (sql.contains("FROM sys_user")) {
+                    if (sql.contains("FROM `sys_user`")) {
                         return List.of(Map.of("display_name", "张三"));
                     }
                     return List.of();

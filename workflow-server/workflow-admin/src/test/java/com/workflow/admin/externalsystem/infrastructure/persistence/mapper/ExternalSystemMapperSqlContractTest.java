@@ -1,6 +1,14 @@
 package com.workflow.admin.externalsystem.infrastructure.persistence.mapper;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
+import com.baomidou.mybatisplus.core.config.GlobalConfig;
+import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
+import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemParameterRecord;
+import java.util.Map;
 import org.apache.ibatis.annotations.Select;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +28,7 @@ class ExternalSystemMapperSqlContractTest {
     void codeLookupIncludesDeletedRowsAndUsesDirectIndexedEquality()
             throws Exception {
         Method method = ExternalSystemMapper.class.getDeclaredMethod(
-                "selectAnyByCode", String.class);
+                "selectAnyByCodePage", com.workflow.core.database.OffsetPage.class, String.class);
         String sql = sql(method.getAnnotation(Select.class).value());
 
         assertTrue(sql.contains("where system_code = #{systemcode}"));
@@ -70,13 +78,24 @@ class ExternalSystemMapperSqlContractTest {
     @Test
     void parameterQueriesOnlyExposeActiveRowsAndBulkDeleteChildren()
             throws Exception {
-        Method queryMethod = ExternalSystemParameterMapper.class
-                .getDeclaredMethod(
-                        "selectActiveByExternalSystemId", String.class);
-        String querySql = sql(
-                queryMethod.getAnnotation(Select.class).value());
-        assertTrue(querySql.contains("deleted = 0"));
-        assertTrue(querySql.contains("parameter_value"));
+        // 通过真实 MP 映射生成最终 SQL，验证框架追加的逻辑删除和 Wrapper 查询范围。
+        MybatisConfiguration configuration = new MybatisConfiguration();
+        GlobalConfigUtils.setGlobalConfig(configuration, new GlobalConfig()
+                .setDbConfig(new GlobalConfig.DbConfig().setLogicDeleteField("deleted")));
+        configuration.addMapper(ExternalSystemParameterMapper.class);
+        ExternalSystemParameterMapper mapper = mock(ExternalSystemParameterMapper.class, CALLS_REAL_METHODS);
+        doAnswer(invocation -> {
+            Wrapper<ExternalSystemParameterRecord> wrapper = invocation.getArgument(0);
+            var bound = configuration.getMappedStatement(ExternalSystemParameterMapper.class.getName() + ".selectList")
+                    .getBoundSql(Map.of("ew", wrapper));
+            String querySql = sql(new String[]{bound.getSql()});
+            assertTrue(querySql.contains("deleted=0"));
+            assertTrue(querySql.contains("parameter_value"));
+            assertTrue(querySql.contains("external_system_id = ?"));
+            assertTrue(querySql.contains("order by sort_order asc,parameter_name_en asc,id asc"));
+            return List.of();
+        }).when(mapper).selectList(any());
+        mapper.selectActiveByExternalSystemId("system-id");
 
         Method countMethod = ExternalSystemParameterMapper.class
                 .getDeclaredMethod(
@@ -85,14 +104,22 @@ class ExternalSystemMapperSqlContractTest {
                 countMethod.getAnnotation(Select.class).value());
         assertTrue(countSql.contains("group by external_system_id"));
 
-        Method deleteMethod = ExternalSystemParameterMapper.class
-                .getDeclaredMethod(
-                        "softDeleteByExternalSystemId",
-                        String.class, String.class, LocalDateTime.class);
-        String deleteSql = sql(
-                deleteMethod.getAnnotation(Update.class).value());
-        assertTrue(deleteSql.contains("set deleted = 1"));
-        assertTrue(deleteSql.contains("updated_by = #{updatedby}"));
+        doAnswer(invocation -> {
+            Wrapper<ExternalSystemParameterRecord> wrapper = invocation.getArgument(1);
+            Map<String, Object> parameters = new java.util.HashMap<>();
+            parameters.put("ew", wrapper);
+            parameters.put("et", null);
+            String deleteSql = sql(new String[]{configuration
+                    .getMappedStatement(ExternalSystemParameterMapper.class.getName() + ".update")
+                    .getBoundSql(parameters).getSql()});
+            assertTrue(deleteSql.contains("set deleted=?"));
+            assertTrue(deleteSql.contains("updated_by=?"));
+            assertTrue(deleteSql.contains("update_time=?"));
+            assertTrue(deleteSql.contains("deleted=0"));
+            assertTrue(deleteSql.contains("external_system_id = ?"));
+            return 1;
+        }).when(mapper).update(org.mockito.ArgumentMatchers.isNull(), any());
+        mapper.softDeleteByExternalSystemId("system-id", "actor", LocalDateTime.of(2026, 1, 1, 0, 0));
     }
 
     private String sql(String[] fragments) {

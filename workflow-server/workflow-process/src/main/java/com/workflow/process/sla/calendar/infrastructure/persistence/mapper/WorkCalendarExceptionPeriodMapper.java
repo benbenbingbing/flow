@@ -1,11 +1,9 @@
 package com.workflow.process.sla.calendar.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.sla.calendar.infrastructure.persistence.record.WorkCalendarExceptionPeriod;
-import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
-import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
 
@@ -13,17 +11,17 @@ import java.util.List;
 public interface WorkCalendarExceptionPeriodMapper
         extends BaseMapper<WorkCalendarExceptionPeriod> {
 
-    @Select("""
-            SELECT * FROM work_calendar_exception_period
-            WHERE exception_id = #{exceptionId}
-            ORDER BY sort_order, start_minute
-            """)
-    List<WorkCalendarExceptionPeriod> findByExceptionId(
-            @Param("exceptionId") String exceptionId);
+    /** 读取例外日期的工作时段，保持配置顺序及起始分钟排序。 */
+    default List<WorkCalendarExceptionPeriod> findByExceptionId(String exceptionId) {
+        return selectList(Wrappers.<WorkCalendarExceptionPeriod>lambdaQuery()
+                .eq(WorkCalendarExceptionPeriod::getExceptionId, exceptionId)
+                .orderByAsc(WorkCalendarExceptionPeriod::getSortOrder)
+                .orderByAsc(WorkCalendarExceptionPeriod::getStartMinute));
+    }
 
-    @Delete("""
-            DELETE FROM work_calendar_exception_period
-            WHERE exception_id = #{exceptionId}
-            """)
-    int deleteByExceptionId(@Param("exceptionId") String exceptionId);
+    /** 例外时段没有逻辑删除字段，按例外日期记录物理删除。 */
+    default int deleteByExceptionId(String exceptionId) {
+        return delete(Wrappers.<WorkCalendarExceptionPeriod>lambdaQuery()
+                .eq(WorkCalendarExceptionPeriod::getExceptionId, exceptionId));
+    }
 }

@@ -14,6 +14,12 @@
     <name>workflow-db-migrator</name>
 
     <dependencies>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
+        <!-- 仅 schema-worker 运行时通道使用；历史 Flyway 迁移流程保持原样。 -->
+        <dependency>
+            <groupId>com.workflow</groupId>
+            <artifactId>workflow-database</artifactId>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
@@ -66,4 +72,27 @@
             </plugin>
         </plugins>
     </build>
+    <!-- 国产驱动按目标环境提供的版本选择，避免默认 MySQL 构建依赖不可用的厂商制品。 -->
+    <profiles>
+        <profile>
+            <id>jdbc-postgresql</id>
+            <dependencies><dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency></dependencies>
+        </profile>
+        <profile>
+            <id>jdbc-oracle</id>
+            <dependencies><dependency><groupId>com.oracle.database.jdbc</groupId><artifactId>ojdbc11</artifactId><scope>runtime</scope></dependency></dependencies>
+        </profile>
+        <profile>
+            <id>jdbc-kingbase</id>
+            <dependencies><dependency><groupId>cn.com.kingbase</groupId><artifactId>kingbase8</artifactId><version>${kingbase.jdbc.version}</version><scope>runtime</scope></dependency></dependencies>
+        </profile>
+        <profile>
+            <id>jdbc-dm</id>
+            <dependencies><dependency><groupId>com.dameng</groupId><artifactId>DmJdbcDriver18</artifactId><version>${dm.jdbc.version}</version><scope>runtime</scope></dependency></dependencies>
+        </profile>
+        <profile>
+            <id>jdbc-oceanbase</id>
+            <dependencies><dependency><groupId>com.oceanbase</groupId><artifactId>oceanbase-client</artifactId><version>${oceanbase.jdbc.version}</version><scope>runtime</scope></dependency></dependencies>
+        </profile>
+    </profiles>
 </project>

@@ -10,8 +10,8 @@ import com.workflow.core.result.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.DataAccessException;
+import com.workflow.core.database.DatabaseExceptionClassifier;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -31,6 +31,12 @@ import java.sql.SQLException;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    private final DatabaseExceptionClassifier databaseErrors;
+
+    public GlobalExceptionHandler(DatabaseExceptionClassifier databaseErrors) {
+        this.databaseErrors = databaseErrors;
+    }
+
 
     /**
      * 处理无法反序列化的 JSON 请求体。
@@ -162,58 +168,26 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(404, "资源不存在"));
     }
 
-    /**
-     * 处理数据库唯一约束冲突异常
-     */
-    @ExceptionHandler({DuplicateKeyException.class, DataIntegrityViolationException.class})
-    public ApiResponse<Void> handleDuplicateKeyException(Exception e) {
-        log.error("数据完整性异常: {}", e.getMessage(), e);
-        
-        String message = e.getMessage();
-        if (message != null) {
-            if (message.contains("Data too long for column")) {
-                int start = message.indexOf("column '");
-                if (start >= 0) {
-                    int fieldStart = start + 8;
-                    int fieldEnd = message.indexOf("'", fieldStart);
-                    if (fieldEnd > fieldStart) {
-                        String fieldName = message.substring(fieldStart, fieldEnd);
-                        return ApiResponse.error("字段 '" + fieldName + "' 内容过长，请缩短后重试");
-                    }
-                }
-                return ApiResponse.error("字段内容过长，请缩短后重试");
-            }
-            // 处理没有默认值的字段错误
-            if (message.contains("doesn't have a default value")) {
-                int start = message.indexOf("Field '");
-                if (start >= 0) {
-                    int fieldStart = start + 7;
-                    int fieldEnd = message.indexOf("'", fieldStart);
-                    if (fieldEnd > fieldStart) {
-                        String fieldName = message.substring(fieldStart, fieldEnd);
-                        return ApiResponse.error("字段 '" + fieldName + "' 不能为空且没有默认值，请检查表单配置");
-                    }
-                }
-                return ApiResponse.error("必填字段没有填写且没有默认值");
-            }
-            // 提取重复键信息
-            if (message.contains("Duplicate entry")) {
-                int start = message.indexOf("Duplicate entry");
-                int end = message.indexOf(" for key");
-                if (start >= 0 && end > start) {
-                    String duplicateValue = message.substring(start + 16, end);
-                    String keyName = "";
-                    int keyStart = message.indexOf("'", end);
-                    int keyEnd = message.indexOf("'", keyStart + 1);
-                    if (keyStart > 0 && keyEnd > keyStart) {
-                        keyName = message.substring(keyStart + 1, keyEnd);
-                    }
-                    return ApiResponse.error("数据重复: 值 '" + duplicateValue + "' 在字段 '" + keyName + "' 中已存在");
-                }
-            }
-        }
-        
-        return ApiResponse.error("数据保存失败: " + (message != null ? message.substring(0, Math.min(100, message.length())) : ""));
+    /** 所有数据库访问错误使用统一分类；不向客户端拼接 SQL、约束名或驱动原文。 */
+    @ExceptionHandler(DataAccessException.class)
+    public ApiResponse<Void> handleDataAccessException(DataAccessException error) {
+        log.error("数据库访问异常: ", error);
+        return databaseFailure(error);
+    }
+
+    private ApiResponse<Void> databaseFailure(Throwable error) {
+        String message = switch (databaseErrors.classify(error)) {
+            case UNIQUE -> "数据重复，请检查唯一字段后重试";
+            case NOT_NULL -> "必填字段不能为空，请检查后重试";
+            case MISSING_DEFAULT -> "必填字段没有填写且没有默认值，请检查表单配置";
+            case VALUE_TOO_LONG -> "字段内容过长，请缩短后重试";
+            case FOREIGN_KEY -> "数据关联约束不满足，请检查关联数据后重试";
+            case CHECK -> "数据不满足校验约束，请检查后重试";
+            case NUMERIC_RANGE -> "数值超出字段允许范围，请检查后重试";
+            case DEADLOCK, LOCK_TIMEOUT, TRANSACTION_ROLLBACK -> "数据正在被其他请求修改，请刷新后重试";
+            case CONNECTION, UNKNOWN -> "数据库操作失败，请稍后重试";
+        };
+        return ApiResponse.error(message);
     }
 
     /**
@@ -231,7 +205,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(SQLException.class)
     public ApiResponse<Void> handleSQLException(SQLException e) {
         log.error("数据库异常: ", e);
-        return ApiResponse.error("数据库操作失败，请稍后重试");
+        return databaseFailure(e);
     }
 
     /**

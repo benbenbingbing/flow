@@ -2,10 +2,15 @@
   <div ref="root" class="mobile-form-renderer">
     <div v-if="loading" class="form-loading"><VanLoading size="18" />正在加载表单</div>
     <p v-if="loadError || modelError || submissionError" class="form-message" role="alert">{{ loadError || modelError || submissionError }}<button v-if="loadError" @click="initialize">重试</button></p>
-    <component v-if="customForm?.readonly" ref="customFormRef" :is="customForm.component" :form="form" :fields="fields" :entity-fields="entityFields" :model-value="record" :readonly="readonly || !customForm.editable" :mode="mode" :context="runtimeContext" :config="formConfig.customComponentProps || {}" :data-source-runtime="dataSourceRuntime" :services="services" :linkage-state="linkage" :entity-code="context.entityCode" :form-action-slots="formActionSlots" @update:model-value="replaceRecord" @form-action="$emit('action', $event)" />
-    <p v-else-if="form.customComponent" class="form-message" role="alert">此业务表单暂不支持手机展示，请在电脑端处理。</p>
-    <MobileFormSections v-else ref="sectionsRef" v-model:expanded="expanded" :items="tree" :record="record" :runtime-options="runtimeOptions" :linkage="linkage" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" :errors="errors" :actions="actions" :action-loading-key="actionLoadingKey" @update-field="setField" @field-change="fieldChange" @field-blur="fieldBlur" @action="$emit('action', $event)" />
-    <MobileRelatedContent v-for="composition in relatedContents" :key="composition.compositionKey" :composition="composition" :form="form" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" />
+    <MobileFormPages :tabbed="tabbed" :active-tab="activeTab" :pages="pageLayout.pages" @update:active-tab="$emit('update:activeTab', $event)">
+      <template #default="{ page }">
+        <component v-if="customForm?.readonly" ref="customFormRef" :is="customForm.component" :form="form" :fields="fields" :entity-fields="entityFields" :model-value="record" :readonly="readonly || !customForm.editable" :mode="mode" :context="runtimeContext" :config="formConfig.customComponentProps || {}" :data-source-runtime="dataSourceRuntime" :services="services" :linkage-state="linkage" :entity-code="context.entityCode" :form-action-slots="formActionSlots" @update:model-value="replaceRecord" @form-action="$emit('action', $event)" />
+        <p v-else-if="form.customComponent" class="form-message" role="alert">此业务表单暂不支持手机展示，请在电脑端处理。</p>
+        <MobileFormSections v-else :ref="value => setSectionsRef(page.name, value)" v-model:expanded="expanded" :items="page.items" :record="record" :runtime-options="runtimeOptions" :linkage="linkage" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" :errors="errors" :actions="actions" :action-loading-key="actionLoadingKey" @update-field="setField" @field-change="fieldChange" @field-blur="fieldBlur" @action="$emit('action', $event)" />
+        <MobileRelatedContent v-for="composition in page.relatedContents" :key="composition.compositionKey" :composition="composition" :form="form" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" />
+      </template>
+      <template #after-tabs><slot name="after-tabs" /></template>
+    </MobileFormPages>
   </div>
 </template>
 <script setup>
@@ -21,14 +26,15 @@ import { isEntitySelectionEventField } from '@flow/workflow-core/field-event-cap
 import { FIELD_SCRIPT_CONTEXT } from '@flow/workflow-core/browser/field-event-scripts'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { createCustomFormActionSlotContract } from '@flow/workflow-core/form-actions'
-import { buildMobileFormTree, groupsContainingField } from './mobileFormTree.js'
+import { buildMobileFormTree, buildMobileFormPages, groupsContainingField } from './mobileFormTree.js'
 import { getMobileExtension, mobileFieldCapability } from '../fields/registry.js'
 import MobileFormSections from './MobileFormSections.vue'
+import MobileFormPages from './MobileFormPages.vue'
 import MobileRelatedContent from './MobileRelatedContent.vue'
-const props = defineProps({ form: { type: Object, required: true }, modelValue: { type: Object, default: () => ({}) }, entityFields: { type: Array, default: () => [] }, readonly: Boolean, mode: { type: String, default: 'view' }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) }, dataSourceRuntime: { type: Object, default: null }, rootParentId: { type: [String, Number], default: '' }, actions: { type: Array, default: () => [] }, actionLoadingKey: String })
-const emit = defineEmits(['update:modelValue', 'action', 'error'])
+const props = defineProps({ tabbed: Boolean, activeTab: { type: String, default: 'basic' }, form: { type: Object, required: true }, modelValue: { type: Object, default: () => ({}) }, entityFields: { type: Array, default: () => [] }, readonly: Boolean, mode: { type: String, default: 'view' }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) }, dataSourceRuntime: { type: Object, default: null }, rootParentId: { type: [String, Number], default: '' }, actions: { type: Array, default: () => [] }, actionLoadingKey: String })
+const emit = defineEmits(['update:modelValue', 'update:activeTab', 'action', 'error'])
 const record = ref(props.modelValue), expanded = ref([]), baseErrors = ref({}), uniqueErrors = ref({}), loading = ref(false), loadError = ref(''), modelError = ref('')
-const root = ref(), sectionsRef = ref(), customFormRef = ref()
+const root = ref(), customFormRef = ref(), sectionRefs = new Map()
 let generation = 0
 const eventRevisions = new Map()
 const projection = computed(() => projectRuntimeFields(props.form, props.entityFields, { rootParentId: props.rootParentId, hasComponent: () => true }))
@@ -43,6 +49,8 @@ const relatedContents = computed(() => (props.form.viewCompositions || []).filte
   const node = projection.value.nodes.find(node => [node.id, node.nodeKey].map(String).includes(String(item.anchorKey)))
   return node && runtimeFieldState({ id: node.id, fieldCode: node.nodeKey }, runtimeOptions.value, linkage.value).visible
 }).sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0)))
+const pageLayout = computed(() => buildMobileFormPages(props.form, tree.value, relatedContents.value, props.tabbed && !props.rootParentId))
+function setSectionsRef(name, value) { if (value) sectionRefs.set(name, value); else sectionRefs.delete(name) }
 const customForm = computed(() => getMobileExtension('FORM', props.form.customComponent, props.form.customComponentVersion || 1))
 const formActionSlots = computed(() => createCustomFormActionSlotContract(props.actions, action => emit('action', action)))
 const options = { getForm: () => props.form, getRecord: () => record.value, getEntityFields: () => props.entityFields, getMode: () => props.mode, getReadonly: () => props.readonly, getContext: () => props.context, getEntityCode: () => props.context.entityCode, getRootParentId: () => props.rootParentId }
@@ -77,6 +85,7 @@ watch(() => [record.value, fields.value], () => {
 function defaultGroups(items) { return items.flatMap(item => item.children ? [...(item.defaultExpanded ? [item.id] : []), ...defaultGroups(item.children)] : []) }
 watch(() => [props.form.id, props.form.runtimeReleaseId || props.form.formReleaseId, props.context.initializationKey], () => {
   expanded.value = defaultGroups(tree.value); baseErrors.value = {}; unique.reset(record.value); initialize()
+  if (props.tabbed) emit('update:activeTab', pageLayout.value.defaultActiveTabName)
 }, { immediate: true })
 async function initialize() {
   const version = ++generation; loading.value = true; loadError.value = ''
@@ -144,16 +153,28 @@ async function validate() {
   const applicable = fields.value.filter(field => { const state = runtimeFieldState(field, runtimeOptions.value, linkage.value); return state.visible && state.editable })
   baseErrors.value = await validateRuntimeFields(fields.value, record.value, runtimeOptions.value, linkage.value)
   const crossResult = await cross.validate(), uniqueResult = await unique.checkAll(applicable, () => record.value), customResult = await custom.validate()
-  const componentResult = customForm.value ? { valid: (await customFormRef.value?.validate?.()) !== false } : await sectionsRef.value?.validate() || { valid: true }
+  let componentResult = { valid: true }
+  if (customForm.value) componentResult.valid = (await customFormRef.value?.validate?.()) !== false
+  else for (const page of pageLayout.value.pages) {
+    componentResult = await sectionRefs.get(page.name)?.validate() || { valid: true }
+    if (!componentResult.valid) break
+  }
   if (!componentResult.valid && componentResult.fieldCode) baseErrors.value[componentResult.fieldCode] = componentResult.message || '请检查该字段'
   const valid = !Object.keys(errors.value).length && crossResult.valid && uniqueResult.valid && customResult.valid && componentResult.valid
   if (!valid) await reveal(Object.keys(errors.value)[0] || componentResult.fieldCode)
   return valid
 }
 async function reveal(code) {
-  if (!code) return
-  expanded.value = [...new Set([...expanded.value, ...groupsContainingField(tree.value, code)])]
+  const groups = code ? groupsContainingField(tree.value, code) : []
+  // 第一层页签切换到错误所在页，内部折叠分组仍按原方式展开；所有校验继续覆盖完整表单。
+  if (props.tabbed) {
+    const pages = pageLayout.value.pages
+    const target = code ? pages.find(page => groups.includes(page.id)) || pages.find(page => page.name === 'basic') : pages.find(page => page.name === props.activeTab)
+    emit('update:activeTab', target?.name || pageLayout.value.defaultActiveTabName)
+  }
+  expanded.value = [...new Set([...expanded.value, ...groups])]
   await nextTick()
+  if (!code) return
   const element = [...(root.value?.querySelectorAll('[data-field-code]') || [])].find(item => item.dataset.fieldCode === String(code))
   element?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }

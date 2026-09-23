@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -35,7 +36,7 @@ import static org.mockito.Mockito.when;
 /**
  * 权限 SQL 构建器测试。
  *
- * <p>被测对象：{@link PermissionSqlBuilder}，覆盖非法字段名拒绝、遗留个人规则转义与状态限制、
+ * <p>被测对象：{@link PermissionSqlBuilder}，覆盖非法字段名拒绝、遗留个人规则绑定与状态限制、
  * 嵌套结构化条件编译、流程状态与部门关系编译、自定义过滤提供者扩展、遗留自定义 SQL 拒绝、
  * 缺失/未知结构化值拒绝、未知状态码与标量 IN 操作拒绝等场景。
  */
@@ -46,7 +47,7 @@ class PermissionSqlBuilderTest {
         var node = condition("PROCESS_STATE", null, "EQ", "COMPLETED");
         node.setLifecycleVersion(1); filter.setRoot(node);
         String sql = builder.buildFilterSql("expense", filter, user("u", "u", "d"));
-        assertTrue(sql.contains("process_status = 'COMPLETED'"));
+        assertTrue(sql.contains("`process_status` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR}"));
         assertFalse(sql.contains("process_end_time"));
         verifyNoInteractions(statusMapper);
         node.setValue("TERMINATED");
@@ -67,13 +68,16 @@ class PermissionSqlBuilderTest {
                 definitionMapper,
                 fieldMapper,
                 statusMapper,
-                List.of());
+                List.of(),
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
         definition.setEntityCode("expense");
         EntityField amount = new EntityField();
         amount.setFieldCode("amount");
         amount.setDbColumnName("amount");
+        amount.setFieldType(EntityField.FieldType.DECIMAL);
         when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
         when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of(amount));
     }
@@ -82,7 +86,7 @@ class PermissionSqlBuilderTest {
     void teamFilterCompilesRelatedPeopleSql() {
         com.workflow.entity.data.application.EntityRecordTeamService teamService =
                 mock(com.workflow.entity.data.application.EntityRecordTeamService.class);
-        when(teamService.relatedPeopleSql("expense", "u1", "alice"))
+        when(teamService.relatedPeopleSql(eq("expense"), eq("u1"), eq("alice"), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn("EXISTS (SELECT 1 FROM `wf_expense_team` team "
                         + "WHERE team.record_id = `wf_expense`.id "
                         + "AND team.user_id IN ('u1','alice'))");
@@ -91,7 +95,9 @@ class PermissionSqlBuilderTest {
                 fieldMapper,
                 statusMapper,
                 List.of(),
-                teamService);
+                teamService,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("TEAM");
 
@@ -119,7 +125,9 @@ class PermissionSqlBuilderTest {
                 null,
                 tableResolver,
                 null,
-                taskAccess);
+                taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
@@ -142,7 +150,9 @@ class PermissionSqlBuilderTest {
         ProcessTaskAccessPort taskAccess = mock(ProcessTaskAccessPort.class);
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
-                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess);
+                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
@@ -162,7 +172,9 @@ class PermissionSqlBuilderTest {
         String unusualId = "id\\' OR 1=1 --";
         when(taskAccess.findActionableEntityDataIds("u1", "expense")).thenReturn(List.of(unusualId));
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
-                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess);
+                definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
 
@@ -186,7 +198,7 @@ class PermissionSqlBuilderTest {
                 user("2038628006255251457", "lisi", "dept-1"));
 
         assertEquals(
-                "current_task_assignee IN ('2038628006255251457','lisi')",
+                "`current_task_assignee` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})",
                 sql);
     }
 
@@ -226,9 +238,9 @@ class PermissionSqlBuilderTest {
         assertEquals("1=0", sql);
     }
 
-    /** 测试遗留个人规则转义值并追加状态限制：验证 SQL 中值被转义且含状态 IN 条件 */
+    /** 测试遗留个人规则绑定值并追加状态限制：验证 SQL 中值使用绑定且含状态 IN 条件 */
     @Test
-    void buildLegacyPersonalRuleEscapesValuesAndAddsStatusLimit() {
+    void buildLegacyPersonalRuleBindsValuesAndAddsStatusLimit() {
         SysUser user = user("u'1", null, "dept-1");
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("PERSONAL");
@@ -240,7 +252,7 @@ class PermissionSqlBuilderTest {
         String sql = builder.buildFilterSql("expense", filter, user);
 
         assertEquals(
-                "(create_by IN ('u''1')) AND (status IN ('PENDING','A''B'))",
+                "(`create_by` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR})) AND (`status` IN (#{permissionParameters.permissionValue1,jdbcType=VARCHAR},#{permissionParameters.permissionValue2,jdbcType=VARCHAR}))",
                 sql);
     }
 
@@ -250,9 +262,9 @@ class PermissionSqlBuilderTest {
         for (String code : List.of("create_time", "update_time", "create_by", "update_by")) {
             FilterConfigDTO filter = new FilterConfigDTO();
             filter.setType("RULE");
-            filter.setRoot(condition("FIELD", code, "EQ", "value"));
+            filter.setRoot(condition("FIELD", code, "EQ", code.endsWith("time") ? "2026-09-22 12:13:14" : "value"));
             assertTrue(builder.buildFilterSql("expense", filter, user("u1", "alice", "dept-1"))
-                    .contains(code + " = 'value'"));
+                    .contains("`" + code + "` = #{permissionParameters.permissionValue0,"));
         }
         for (String code : List.of("createdAt", "updatedAt", "createdBy", "updatedBy", "createBy", "updateBy")) {
             FilterConfigDTO filter = new FilterConfigDTO();
@@ -282,9 +294,9 @@ class PermissionSqlBuilderTest {
                 filter,
                 user("u1", "alice", "dept-1"));
 
-        assertTrue(sql.contains("create_by IN ('u1','alice')"));
-        assertTrue(sql.contains("amount >= 100"));
-        assertTrue(sql.contains("status IN ('PENDING_REVIEW')"));
+        assertTrue(sql.contains("`create_by` IN (#{permissionParameters.permissionValue0,jdbcType=VARCHAR},#{permissionParameters.permissionValue1,jdbcType=VARCHAR})"));
+        assertTrue(sql.contains("`amount` >= #{permissionParameters.permissionValue2,jdbcType=DECIMAL}"));
+        assertTrue(sql.contains("`status` IN (#{permissionParameters.permissionValue3,jdbcType=VARCHAR})"));
         assertTrue(sql.contains(" AND "));
     }
 
@@ -309,9 +321,9 @@ class PermissionSqlBuilderTest {
                 filter,
                 user("u1", "alice", "dept-1"));
 
-        assertTrue(sql.contains("dept_id = 'dept-1'"));
+        assertTrue(sql.contains("`dept_id` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR}"));
         assertTrue(sql.contains("process_end_time IS NOT NULL"));
-        assertTrue(sql.contains("status IN ('WITHDRAWN','TERMINATED')"));
+        assertTrue(sql.contains("`status` IN (#{permissionParameters.permissionValue1,jdbcType=VARCHAR},#{permissionParameters.permissionValue2,jdbcType=VARCHAR})"));
     }
 
     /** 测试自定义过滤提供者扩展校验与编译：验证自定义类型经提供者转为 SQL 且通过校验 */
@@ -335,7 +347,9 @@ class PermissionSqlBuilderTest {
                 definitionMapper,
                 fieldMapper,
                 statusMapper,
-                List.of(provider));
+                List.of(provider),
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("RULE");
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
@@ -367,7 +381,7 @@ class PermissionSqlBuilderTest {
     void compilesControlledSqlAndRewritesMainAlias() {
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(null, tableResolver);
+        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(null, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -375,7 +389,9 @@ class PermissionSqlBuilderTest {
                 List.of(),
                 null,
                 tableResolver,
-                compiler);
+                compiler,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("SQL");
         filter.setSql("biz.create_by = #{userId} OR biz.submitter_id = #{username}");
@@ -387,7 +403,7 @@ class PermissionSqlBuilderTest {
                 user("u1", "alice", "dept-1"));
 
         assertEquals(
-                "`wf_expense`.create_by = 'u1' OR `wf_expense`.submitter_id = 'alice'",
+                "`wf_expense`.`create_by` = #{permissionParameters.permissionValue0,jdbcType=VARCHAR} OR `wf_expense`.`submitter_id` = #{permissionParameters.permissionValue1,jdbcType=VARCHAR}",
                 sql);
     }
 
@@ -395,7 +411,7 @@ class PermissionSqlBuilderTest {
     void rejectsUnsafeControlledSql() {
         PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(
                 null,
-                mock(EntityPhysicalTableResolver.class));
+                mock(EntityPhysicalTableResolver.class), com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -403,7 +419,9 @@ class PermissionSqlBuilderTest {
                 List.of(),
                 null,
                 null,
-                compiler);
+                compiler,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("SQL");
         filter.setSql("1=1; DELETE FROM t");

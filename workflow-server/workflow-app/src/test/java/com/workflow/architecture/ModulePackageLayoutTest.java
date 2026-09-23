@@ -73,6 +73,9 @@ class ModulePackageLayoutTest {
                         "workflow-devtools",
                         "com.workflow.devtools"),
                 new ModuleLayout(
+                        "workflow-integration/workflow-database",
+                        "com.workflow.integration.database"),
+                new ModuleLayout(
                         "workflow-integration/workflow-outbox",
                         "com.workflow.outbox"),
                 new ModuleLayout(

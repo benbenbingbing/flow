@@ -1,5 +1,13 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.core.database.schema.JdbcSchemaMetadata;
+import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.core.database.port.SchemaMetadataPort;
+import static org.mockito.AdditionalAnswers.delegatesTo;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.DynamicTableService;
@@ -42,7 +50,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 用真实连接和 Spring 事务代理覆盖迁移的“新建未提交 -> 独立事务准备/完成结构发布”。
- * 元数据、物理表和操作台账均实际落库；只将 MySQL 表统计列适配为 H2 对应列。
+ * 元数据、物理表和操作台账均实际落库；只替换数据库行数估计，结构读取使用 JDBC 元数据。
  */
 class EntitySchemaOperationTransactionIntegrationTest {
     private JdbcTemplate jdbc;
@@ -58,7 +66,7 @@ class EntitySchemaOperationTransactionIntegrationTest {
     @BeforeEach
     void setUp() {
         String database = "entity_schema_" + UUID.randomUUID().toString().replace("-", "");
-        // 让 H2 的 catalog 与 schema 同名，生产 information_schema 查询中的 DATABASE() 可直接使用。
+        // 为本测试隔离 catalog/schema，避免不同发布事务用例共享结构。
         String url = "jdbc:h2:mem:" + database
                 + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=2000"
                 + ";INIT=CREATE SCHEMA IF NOT EXISTS " + database + "\\;SET SCHEMA " + database;
@@ -79,15 +87,15 @@ class EntitySchemaOperationTransactionIntegrationTest {
                     value.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
                     return value;
                 }, invocation.getArgument(0, String.class)).stream().findFirst());
-        JdbcTemplate schemaJdbc = spy(new JdbcTemplate(dataSource));
-        doAnswer(invocation -> jdbc.queryForObject(
-                invocation.getArgument(0, String.class).replace("TABLE_ROWS", "ROW_COUNT_ESTIMATE"),
-                Long.class, invocation.getArgument(2, String.class)))
-                .when(schemaJdbc).queryForObject(contains("COALESCE(TABLE_ROWS"), eq(Long.class), anyString());
+        var metadata = mock(SchemaMetadataPort.class, delegatesTo(new JdbcSchemaMetadata(jdbc, new MySqlSchemaDdlDialect())));
+        // H2 的发布事务测试只替换行数统计，表列与索引读取仍通过真正 JDBC 元数据。
+        doAnswer(invocation -> metadata.tableExists(invocation.getArgument(0))
+                ? jdbc.queryForObject("SELECT COUNT(*) FROM " + invocation.getArgument(0), Long.class) : 0L)
+                .when(metadata).estimateRows(anyString());
         EntityPhysicalTableResolver resolver = new EntityPhysicalTableResolver(
-                entityMapper, new EntityPhysicalTableNaming(), schemaJdbc);
+                entityMapper, new EntityPhysicalTableNaming(), metadata);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
-        tables = new DynamicTableService(schemaJdbc, fieldMapper, resolver, ddlJdbc::execute);
+        tables = new DynamicTableService(jdbc, fieldMapper, resolver, ddlJdbc::execute, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         DataSourceTransactionManager manager = new DataSourceTransactionManager(dataSource);
         migrationTransaction = new TransactionTemplate(manager);
@@ -96,7 +104,9 @@ class EntitySchemaOperationTransactionIntegrationTest {
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(manager);
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
-        ProxyFactory proxy = new ProxyFactory(new EntitySchemaOperationService(jdbc, new ObjectMapper(), tables));
+        ProxyFactory proxy = new ProxyFactory(new EntitySchemaOperationService(jdbc, new ObjectMapper(), tables,
+                com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"),
+                new JdbcLockedRow(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
         proxy.setProxyTargetClass(true);
         proxy.addAdvice(interceptor);
         service = (EntitySchemaOperationService) proxy.getProxy();

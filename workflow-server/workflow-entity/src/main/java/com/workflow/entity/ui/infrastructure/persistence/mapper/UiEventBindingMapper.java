@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -13,6 +14,7 @@ import java.util.Set;
 /**
  * UI 事件绑定持久化入口。
  */
+// LIKE 搜索模式由 Wrapper 绑定参数，保留已有通配符语义。
 @Mapper
 public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
 
@@ -23,23 +25,34 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
      * 候选集，应用层仍会解析 JSON 并做 serviceId 精确相等判断，避免 LIKE
      * 的通配或旧数据格式导致误报。</p>
      */
-    @Select("SELECT * FROM ui_event_binding "
-            + "WHERE deleted = 0 AND steps_document IS NOT NULL "
-            + "AND TRIM(steps_document) <> '' "
-            + "AND (steps_document LIKE CONCAT('%', #{compactNeedle}, '%') "
-            + "OR steps_document LIKE CONCAT('%', #{spacedNeedle}, '%')) "
-            + "ORDER BY owner_type, owner_id, target_type, "
-            + "target_key, event_code")
-    List<UiEventBinding> findDraftReferenceCandidates(
-            @Param("compactNeedle") String compactNeedle,
-            @Param("spacedNeedle") String spacedNeedle);
+    default List<UiEventBinding> findDraftReferenceCandidates(String compactNeedle, String spacedNeedle) {
+        if (compactNeedle == null && spacedNeedle == null) {
+            return List.of();
+        }
+        return selectList(Wrappers.<UiEventBinding>lambdaQuery()
+                .isNotNull(UiEventBinding::getStepsDocument)
+                .apply("LENGTH(TRIM(steps_document)) > 0")
+                .and(query -> {
+                    if (compactNeedle != null) {
+                        query.like(UiEventBinding::getStepsDocument, compactNeedle);
+                    }
+                    if (spacedNeedle != null) {
+                        query.or(compactNeedle != null).like(UiEventBinding::getStepsDocument, spacedNeedle);
+                    }
+                })
+                .orderByAsc(UiEventBinding::getOwnerType, UiEventBinding::getOwnerId,
+                        UiEventBinding::getTargetType, UiEventBinding::getTargetKey, UiEventBinding::getEventCode));
+    }
 
-    @Select("SELECT * FROM ui_event_binding "
-            + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
-            + "AND deleted = 0 ORDER BY target_type, target_key, event_code")
-    List<UiEventBinding> findByOwner(
-            @Param("ownerType") String ownerType,
-            @Param("ownerId") String ownerId);
+    /** 查询归属对象的有效事件绑定，按目标及事件编码稳定排列。 */
+    default List<UiEventBinding> findByOwner(String ownerType, String ownerId) {
+        return selectList(Wrappers.<UiEventBinding>lambdaQuery()
+                .eq(UiEventBinding::getOwnerType, ownerType)
+                .eq(UiEventBinding::getOwnerId, ownerId)
+                .orderByAsc(UiEventBinding::getTargetType)
+                .orderByAsc(UiEventBinding::getTargetKey)
+                .orderByAsc(UiEventBinding::getEventCode));
+    }
 
     /**
      * 锁定指定所有者的全部事件绑定（包含逻辑删除行）。
@@ -81,14 +94,18 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
             @Param("formId") String formId,
             @Param("targetKeys") Set<String> targetKeys);
 
-    @Select("SELECT * FROM ui_event_binding "
-            + "WHERE ((owner_type = 'ENTITY' AND owner_id = #{entityId}) "
-            + "OR (owner_type = #{configType} AND owner_id = #{configId})) "
-            + "AND deleted = 0 AND enabled = 1 "
-            + "ORDER BY CASE owner_type WHEN 'ENTITY' THEN 0 ELSE 1 END, "
-            + "target_type, target_key, event_code")
-    List<UiEventBinding> findForSnapshot(
-            @Param("configType") String configType,
-            @Param("configId") String configId,
-            @Param("entityId") String entityId);
+    /** 快照合并实体级和当前配置级绑定，实体级顺序优先且只包含已启用的活动草稿。 */
+    default List<UiEventBinding> findForSnapshot(String configType, String configId, String entityId) {
+        // CASE 只表达固定的归属优先级；所有配置标识仍由 Wrapper 绑定参数。
+        return selectList(Wrappers.<UiEventBinding>query()
+                .orderByAsc("CASE owner_type WHEN 'ENTITY' THEN 0 ELSE 1 END",
+                        "target_type", "target_key", "event_code")
+                .lambda()
+                .and(query -> query
+                        .and(entity -> entity.eq(UiEventBinding::getOwnerType, "ENTITY")
+                                .eq(UiEventBinding::getOwnerId, entityId))
+                        .or(config -> config.eq(UiEventBinding::getOwnerType, configType)
+                                .eq(UiEventBinding::getOwnerId, configId)))
+                .eq(UiEventBinding::getEnabled, 1));
+    }
 }

@@ -13,6 +13,7 @@
     <name>workflow-open-api</name>
 
     <dependencies>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-database</artifactId></dependency>
         <dependency>
             <groupId>com.workflow</groupId>
             <artifactId>workflow-core</artifactId>

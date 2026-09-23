@@ -105,10 +105,9 @@ public class DynamicFormUniqueConflictQuery
                 : recordMapper.toColumnName(fieldCode);
         List<Map<String, Object>> rows;
         if (requiresFullScan(targetField)) {
-            // 数字规范化会去除尾零；BOOLEAN 在请求中是 true/false，而 MySQL
-            // 常以 1/0 返回；DATE/DATETIME 的 Java ISO 形状与 MySQL
-            // CAST 文本的时间分隔符不同。这些字段直接做文本 SQL 预筛会
-            // 漏报，因此保留全量回退，其他高频文本字段走数据库预筛选。
+            // 数字、布尔和日期必须按 Java 的类型规则比较，不能依赖数据库转文本。
+            // TEXT 在 Oracle 等产品是 CLOB；转换成 VARCHAR 会丢失尾部或超过上限，
+            // 因此读取完整大字段后复用规则策略。普通 VARCHAR 仍使用不会漏报的预筛。
             rows = authoritativeCheck
                     ? dynamicMapper.selectListForUpdate(
                             dynamicTableService.getTableName(
@@ -147,14 +146,16 @@ public class DynamicFormUniqueConflictQuery
         return List.copyOf(result);
     }
 
+    /** 历史元数据也必须具有可验证的物理类型，不能把虚拟、多值或未知类型送入字符 SQL。 */
     private boolean requiresFullScan(EntityField field) {
-        return field.getFieldType() == EntityField.FieldType.INTEGER
-                || field.getFieldType() == EntityField.FieldType.LONG
-                || field.getFieldType() == EntityField.FieldType.DECIMAL
-                || field.getFieldType() == EntityField.FieldType.BOOLEAN
-                || field.getFieldType() == EntityField.FieldType.DATE
-                || field.getFieldType()
-                == EntityField.FieldType.DATETIME;
+        if (field.getFieldType() == null) {
+            throw new IllegalArgumentException("表单唯一规则字段缺少存储类型: " + field.getFieldCode());
+        }
+        return switch (field.getFieldType()) {
+            case TEXT, INTEGER, LONG, DECIMAL, BOOLEAN, DATE, DATETIME -> true;
+            case STRING, SELECT, RADIO, USER, DEPT, REFERENCE -> false;
+            default -> throw new IllegalArgumentException("表单唯一规则不支持字段类型: " + field.getFieldType());
+        };
     }
 
     private RuntimeEntity requireRuntimeEntity(String entityCode) {

@@ -213,12 +213,12 @@ public class PersonResolverCatalogService {
         return option;
     }
 
+    /** resolver_code/deleted 唯一约束保证单条读取，无需再附加分页语法。 */
     private PersonResolverDefinition findByCode(String resolverCode) {
         return mapper.selectOne(
                 new LambdaQueryWrapper<PersonResolverDefinition>()
                         .eq(PersonResolverDefinition::getResolverCode, resolverCode)
-                        .eq(PersonResolverDefinition::getDeleted, 0)
-                        .last("LIMIT 1"));
+                        .eq(PersonResolverDefinition::getDeleted, 0));
     }
 
     private boolean matchesKeyword(

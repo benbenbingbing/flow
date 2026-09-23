@@ -20,11 +20,10 @@ spring:
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: ${DB_DRIVER_CLASS_NAME:}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
-      connection-init-sql: SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci
       transaction-isolation: ${DB_TRANSACTION_ISOLATION:TRANSACTION_READ_COMMITTED}
       maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
       minimum-idle: ${DB_POOL_MIN_IDLE:5}
@@ -178,6 +177,8 @@ file:
       access-url: ${FILE_STORAGE_MINIO_ACCESS_URL:}
 
 workflow:
+  database:
+    vendor: ${WORKFLOW_DATABASE_VENDOR:auto}
   open-api:
     enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
     issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
@@ -263,9 +264,11 @@ workflow:
     wait-timeout: ${SCHEMA_PUBLISHER_WAIT_TIMEOUT:120s}
     poll-interval: ${SCHEMA_PUBLISHER_POLL_INTERVAL:500ms}
     datasource:
-      url: ${SCHEMA_DATASOURCE_URL}
-      username: ${SCHEMA_DB_USERNAME}
-      password: ${SCHEMA_DB_PASSWORD}
+      # queue 模式的运行进程不持有结构账号；仅 direct 执行器创建结构连接时校验必填配置。
+      url: ${SCHEMA_DATASOURCE_URL:}
+      username: ${SCHEMA_DB_USERNAME:}
+      password: ${SCHEMA_DB_PASSWORD:}
+      driver-class-name: ${SCHEMA_DB_DRIVER_CLASS_NAME:}
   outbox:
     delay-ms: ${OUTBOX_DELAY_MS:3000}
     batch-size: ${OUTBOX_BATCH_SIZE:100}

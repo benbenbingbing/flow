@@ -1,5 +1,6 @@
 package com.workflow.entity.version.infrastructure.persistence.mapper;
 
+import com.workflow.core.database.OffsetPage;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionRolloutState;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;
@@ -17,11 +18,18 @@ import org.apache.ibatis.annotations.Update;
  * N+1 Pod 和在途事务退出；N+3 才执行 pre-upgrade contract，删除旧表、旧字段和
  * 发布权限。</p>
  */
+// 旧模型查询保留业务 SQL，首行限制由 MyBatis-Plus 分页插件生成。
 @Mapper
 public interface EntityVersionRolloutBridgeMapper {
 
     /** 一次读取旧草稿和当前文档，供兼容路由判断是否需要接管。 */
+    default EntityVersionRolloutState findStateByEntityCode(String entityCode) {
+        return findStateByEntityCodeRows(new OffsetPage<>(0, 1), entityCode);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
     @Select("""
+            <script>
             SELECT id,
                    entity_id,
                    entity_code,
@@ -36,20 +44,30 @@ public interface EntityVersionRolloutBridgeMapper {
             FROM entity_version_config
             WHERE entity_code = #{entityCode}
               AND deleted = 0
-            LIMIT 1
+
+            </script>
             """)
-    EntityVersionRolloutState findStateByEntityCode(
+    EntityVersionRolloutState findStateByEntityCodeRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("entityCode") String entityCode);
 
     /** 旧草稿响应只暴露 active release 的版本号，不读取历史文档。 */
+    default Integer findReleaseVersion(String releaseId, String configId) {
+        return findReleaseVersionRows(new OffsetPage<>(0, 1), releaseId, configId);
+    }
+
+    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
     @Select("""
+            <script>
             SELECT version
             FROM entity_version_config_release
             WHERE id = #{releaseId}
               AND config_id = #{configId}
-            LIMIT 1
+
+            </script>
             """)
-    Integer findReleaseVersion(
+    Integer findReleaseVersionRows(
+            @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("releaseId") String releaseId,
             @Param("configId") String configId);
 

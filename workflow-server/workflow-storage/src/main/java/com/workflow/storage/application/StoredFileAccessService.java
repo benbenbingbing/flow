@@ -1,5 +1,8 @@
 package com.workflow.storage.application;
 
+import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
@@ -36,6 +39,8 @@ public class StoredFileAccessService {
 
     private final JdbcTemplate jdbcTemplate;
     private final CurrentUserRoleService currentUserRoleService;
+    private final JdbcWriteAttempt writeAttempt;
+    private final DatabaseQueryDialect queryDialect;
 
     public UploadClaim prepareUpload(
             String idempotencyKey,
@@ -52,7 +57,7 @@ public class StoredFileAccessService {
         String requestHash = requestHash(file);
         StoredUpload existing = findByIdempotencyKey(
                 owner,
-                idempotencyKey);
+                idempotencyKey, false);
         if (existing != null) {
             validateReplay(existing, requestHash);
             return UploadClaim.replay(
@@ -83,7 +88,7 @@ public class StoredFileAccessService {
         int inserted;
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         try {
-            inserted = jdbcTemplate.update("""
+            inserted = writeAttempt.execute(() -> jdbcTemplate.update("""
                     INSERT INTO storage_file_object (
                       id, storage_url, storage_key, owner_user_id,
                       idempotency_key, request_hash,
@@ -101,7 +106,7 @@ public class StoredFileAccessService {
                     file.getContentType(),
                     file.getSize(),
                     now,
-                    now);
+                    now));
         } catch (DuplicateKeyException exception) {
             if (claim.idempotencyKey() == null) {
                 throw exception;
@@ -116,7 +121,7 @@ public class StoredFileAccessService {
         }
         StoredUpload existing = findByIdempotencyKey(
                 claim.ownerUserId(),
-                claim.idempotencyKey());
+                claim.idempotencyKey(), true);
         if (existing == null) {
             throw new IllegalStateException("文件幂等记录读取失败");
         }
@@ -134,25 +139,26 @@ public class StoredFileAccessService {
         requireOwnerOrAdministrator(storageUrl);
     }
 
+    /** 按唯一存储地址逻辑删除并记录数据库 UTC 时间；与调用方事务一起提交或回滚。 */
     @Transactional
     public void markDeleted(String storageUrl) {
         jdbcTemplate.update("""
                 UPDATE storage_file_object
                 SET deleted = 1,
-                    update_time = UTC_TIMESTAMP(6)
+                    update_time = %s
                 WHERE storage_url = ?
                   AND deleted = 0
-                """,
+                """.formatted(DatabaseDialects.runtime(queryDialect.vendor()).utcTimestampExpression()),
                 storageUrl);
     }
 
+    /** storage_url 唯一索引保证精确地址只返回一个所有者，保留原有删除及权限判断。 */
     private void requireOwnerOrAdministrator(String storageUrl) {
         String owner = jdbcTemplate.query("""
                 SELECT owner_user_id
                 FROM storage_file_object
                 WHERE storage_url = ?
                   AND deleted = 0
-                LIMIT 1
                 """,
                 resultSet -> resultSet.next()
                         ? resultSet.getString("owner_user_id")
@@ -176,17 +182,17 @@ public class StoredFileAccessService {
         return userId;
     }
 
+    /** 唯一索引保证至多一条；冲突后用读守卫取得当前结果，不升级为排他锁。 */
     private StoredUpload findByIdempotencyKey(
             String owner,
-            String idempotencyKey) {
+            String idempotencyKey, boolean currentRead) {
         return jdbcTemplate.query("""
                 SELECT storage_url, storage_key, original_name,
                        content_length, request_hash, deleted
                 FROM storage_file_object
                 WHERE owner_user_id = ?
                   AND idempotency_key = ?
-                LIMIT 1
-                """,
+                """ + (currentRead ? queryDialect.readGuardClause() : ""),
                 resultSet -> {
                     if (!resultSet.next()) {
                         return null;

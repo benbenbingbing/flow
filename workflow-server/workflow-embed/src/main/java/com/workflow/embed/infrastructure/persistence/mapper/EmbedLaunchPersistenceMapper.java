@@ -1,5 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
+import java.util.List;
+import com.workflow.core.database.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedExternalIdentityBindingRow;
 import com.workflow.embed.infrastructure.persistence.record.EmbedFlowUserRow;
 import com.workflow.embed.infrastructure.persistence.record.EmbedLaunchConfigurationRow;
@@ -84,7 +86,14 @@ public interface EmbedLaunchPersistenceMapper {
             """)
     Set<String> findAllowedOrigins(@Param("grantId") String grantId);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedExternalIdentityBindingRow findBinding(String applicationId, String identityProviderId, String subjectDigest, String subjectDigestKeyVersion) {
+        return findBindingPage(new OffsetPage<>(0, 1), applicationId, identityProviderId, subjectDigest, subjectDigestKeyVersion).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, application_id, identity_provider_id,
                    subject_digest, subject_digest_key_version,
                    flow_user_id, status, binding_version,
@@ -94,21 +103,33 @@ public interface EmbedLaunchPersistenceMapper {
                AND identity_provider_id = #{identityProviderId}
                AND subject_digest = #{subjectDigest}
                AND subject_digest_key_version = #{subjectDigestKeyVersion}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedExternalIdentityBindingRow findBinding(
+    List<EmbedExternalIdentityBindingRow> findBindingPage(
+            @Param("page") OffsetPage<EmbedExternalIdentityBindingRow> page,
             @Param("applicationId") String applicationId,
             @Param("identityProviderId") String identityProviderId,
             @Param("subjectDigest") String subjectDigest,
             @Param("subjectDigestKeyVersion") String subjectDigestKeyVersion);
 
+    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    default EmbedFlowUserRow findFlowUser(String flowUserId) {
+        return findFlowUserPage(new OffsetPage<>(0, 1), flowUserId).stream().findFirst().orElse(null);
+    }
+
+    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
     @Select("""
+            <script>
             SELECT id, username, status, deleted, password_reset_required
               FROM sys_user
              WHERE id = #{flowUserId}
-             LIMIT 1
+
+            </script>
             """)
-    EmbedFlowUserRow findFlowUser(@Param("flowUserId") String flowUserId);
+    List<EmbedFlowUserRow> findFlowUserPage(
+            @Param("page") OffsetPage<EmbedFlowUserRow> page,
+            @Param("flowUserId") String flowUserId);
 
     @Insert("""
             INSERT INTO embed_assertion_replay (

@@ -6,7 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 
 /**
  * 实体列表数据范围审计日志 Mapper
- * 
+ *
  * 数据范围操作的审计日志持久化接口，目前仅继承通用 CRUD 能力，暂无自定义方法。
  */
 @Mapper

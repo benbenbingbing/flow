@@ -42,6 +42,21 @@ class EntityRelationProjectionReadAdapterTest {
     }
 
     @Test
+    void projectionForwardsNullPermissionBindingsWithoutChangingScope() {
+        var values = new java.util.LinkedHashMap<String, Object>(); values.put("owner", null);
+        var scope = new DataScopePlan(true, "owner_id = #{permissionParameters.owner,jdbcType=VARCHAR}",
+                values, List.of(), List.of(), "", 1);
+        when(mapper.count(anyMap())).thenReturn(0L);
+        adapter.readPage(new ProjectionQuery("requirement", List.of(), PredicateType.ID_IN,
+                null, List.of("r-1"), scope, 1, 20, 100));
+        ArgumentCaptor<Map<String, Object>> parameters = ArgumentCaptor.forClass(Map.class);
+        verify(mapper).count(parameters.capture());
+        assertEquals(values, parameters.getValue().get("permissionParameters"));
+        values.put("owner", "changed");
+        org.junit.jupiter.api.Assertions.assertNull(((Map<?, ?>) parameters.getValue().get("permissionParameters")).get("owner"));
+    }
+
+    @Test
     void readsOnlyPinnedScalarColumnAndForwardsScopeParameters() {
         LinkField project = scalar(
                 "projectId", "pinned_project_fk", "project-id");

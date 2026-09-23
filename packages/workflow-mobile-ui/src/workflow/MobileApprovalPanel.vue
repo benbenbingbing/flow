@@ -4,7 +4,7 @@
     <div class="approval-content">
       <VanField v-if="config.enabled !== false" label="审批结果" label-align="top"><template #input><VanRadioGroup :model-value="action" direction="horizontal" :disabled="submitting" @update:model-value="$emit('update:action', $event)"><VanRadio v-for="option in config.options || []" :key="option.value" :name="option.value">{{ option.label }}</VanRadio></VanRadioGroup></template></VanField>
       <VanField v-if="selectedOption?.showComment !== false" :model-value="comment" :label="config.commentLabel || '审批意见'" type="textarea" rows="3" autosize maxlength="2000" show-word-limit :disabled="submitting" placeholder="请输入审批意见" label-align="top" @update:model-value="$emit('update:comment', $event)" />
-      <div v-if="loading" class="next-loading"><VanLoading size="18" />正在确认下一审批节点</div>
+      <!-- 查询期间不插入加载占位，保留已返回的预览；新响应到达后更新，避免空结果使弹层高度闪动。 -->
       <p v-if="preview.message" class="preview-message" :class="{ blocked: preview.status === 'BLOCKED' }">{{ preview.message }}</p>
       <section v-for="node in visibleNodes" :key="node.nodeId" class="next-node">
         <VanCell :title="node.nodeName" :label="node.assignmentMode === 'MULTI_INSTANCE' ? '多实例办理 · 按所选顺序' : '下一审批人'" :is-link="node.editable" @click="openNode(node)" />
@@ -18,7 +18,7 @@
 </template>
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { Popup as VanPopup, NavBar as VanNavBar, Field as VanField, Radio as VanRadio, RadioGroup as VanRadioGroup, Cell as VanCell, Loading as VanLoading, Button as VanButton } from 'vant'
+import { Popup as VanPopup, NavBar as VanNavBar, Field as VanField, Radio as VanRadio, RadioGroup as VanRadioGroup, Cell as VanCell, Button as VanButton } from 'vant'
 import { normalizeNextApproverUser, reconcileNextApproverDraftState, buildChangedNextApproverSelections, validateNextApproverDraft, reorderNextApproverValues, createNextApproverPreviewRequestSignature } from '@flow/workflow-core/next-approver'
 import MobileUserPicker from '../pickers/MobileUserPicker.vue'
 const props = defineProps({ show: Boolean, config: { type: Object, required: true }, action: String, comment: String, preview: { type: Object, required: true }, loading: Boolean, submitting: Boolean, taskId: String, formData: Object, loadOptions: { type: Function, required: true } })
@@ -49,5 +49,5 @@ function validate() { const result = validateNextApproverDraft(props.preview, dr
 defineExpose({ validate, getChangedSelections: () => buildChangedNextApproverSelections(props.preview, drafts.value) })
 </script>
 <style scoped>
-.approval-popup { max-height: 88dvh; display: flex; flex-direction: column; }.approval-content { overflow: auto; padding: 0 16px 12px; }.approval-content :deep(.van-field) { padding: 14px 0; }.approval-content :deep(.van-radio) { margin: 6px 18px 6px 0; }.approval-submit { padding: 12px 16px; border-top: 1px solid var(--flow-mobile-border); }.next-loading { display: flex; gap: 8px; align-items: center; color: var(--flow-mobile-muted); font-size: 13px; padding: 16px 0; }.next-node { border-top: 1px solid var(--flow-mobile-border); }.next-node :deep(.van-cell) { padding: 12px 0; }.next-node ol { margin: 0; padding: 0 0 0 20px; font-size: 14px; }.next-node li span { display: inline-block; margin-right: 12px; }.next-node button { border: 0; background: none; color: var(--flow-mobile-accent-text); min-height: 44px; }.next-node button:disabled { opacity: .35; }.preview-message { font-size: 13px; line-height: 1.6; background: var(--flow-mobile-inset); padding: 12px; border-radius: 8px; }.blocked { background: #fff2ed; color: #b14c38; }
+.approval-popup { max-height: 88dvh; display: flex; flex-direction: column; }.approval-content { overflow: auto; padding: 0 16px 12px; }.approval-content :deep(.van-field) { padding: 14px 0; }.approval-content :deep(.van-radio) { margin: 6px 18px 6px 0; }.approval-submit { padding: 12px 16px; border-top: 1px solid var(--flow-mobile-border); }.next-node { border-top: 1px solid var(--flow-mobile-border); }.next-node :deep(.van-cell) { padding: 12px 0; }.next-node ol { margin: 0; padding: 0 0 0 20px; font-size: 14px; }.next-node li span { display: inline-block; margin-right: 12px; }.next-node button { border: 0; background: none; color: var(--flow-mobile-accent-text); min-height: 44px; }.next-node button:disabled { opacity: .35; }.preview-message { font-size: 13px; line-height: 1.6; background: var(--flow-mobile-inset); padding: 12px; border-radius: 8px; }.blocked { background: #fff2ed; color: #b14c38; }
 </style>

@@ -65,11 +65,11 @@ public class PersonResolverRuntimeService {
             // 兼容不启动 Spring 的轻量单测；应用上下文中该 Mapper 必然注入。
             return true;
         }
+        // resolver_code/deleted 唯一约束已保证至多一条有效目录。
         PersonResolverDefinition definition = resolverDefinitionMapper.selectOne(
                 new LambdaQueryWrapper<PersonResolverDefinition>()
                         .eq(PersonResolverDefinition::getResolverCode, resolverCode)
-                        .eq(PersonResolverDefinition::getDeleted, 0)
-                        .last("LIMIT 1"));
+                        .eq(PersonResolverDefinition::getDeleted, 0));
         return definition != null
                 && Boolean.TRUE.equals(definition.getEnabled());
     }

@@ -52,7 +52,9 @@ class SystemEntityReadServiceTest {
                 jdbcTemplate,
                 definitionMapper,
                 fieldMapper,
-                new SystemEntityFieldPolicy());
+                new SystemEntityFieldPolicy(),
+                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                        com.workflow.integration.database.api.DatabaseVendor.MYSQL));
 
         SysMenuMapper menuMapper = mock(SysMenuMapper.class);
         when(menuMapper.selectPermsByUserId("user-1"))

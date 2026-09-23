@@ -53,7 +53,8 @@ const status = computed(() => {
   return { label: props.item.statusText || ({ RUNNING: '运行中', COMPLETED: '已完成', TERMINATED: '已终止', SUSPENDED: '已挂起', REJECTED: '已驳回', WITHDRAWN: '已撤回' }[value]) || '已发起', tone: ['REJECTED', 'TERMINATED'].includes(value) ? 'danger' : ['SUSPENDED', 'WITHDRAWN'].includes(value) ? 'neutral' : value === 'COMPLETED' ? 'success' : 'brand' }
 })
 const time = computed(() => {
-  const raw = props.kind === 'started' ? props.item.startTime || props.item.createTime : props.kind === 'done' ? props.item.endTime || props.item.createTime : props.item.createTime || props.item.startTime
+  // TaskVO.createTime 是当前任务到达时间，endTime 是办理时间；缺失时不能互相替代或回退到流程发起时间。
+  const raw = props.kind === 'todo' ? props.item.createTime : props.kind === 'done' ? props.item.endTime : props.kind === 'started' ? props.item.startTime || props.item.createTime : props.item.createTime || props.item.startTime
   if (!raw) return '—'
   const date = new Date(raw)
   return Number.isNaN(date.getTime()) ? String(raw) : date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })

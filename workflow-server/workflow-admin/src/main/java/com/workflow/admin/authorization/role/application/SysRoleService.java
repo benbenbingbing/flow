@@ -11,6 +11,7 @@ import com.workflow.admin.authorization.role.infrastructure.persistence.record.S
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRoleMenu;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMenuMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,8 @@ public class SysRoleService {
     private final SysMenuMapper menuMapper;
     /** 角色菜单关联 Mapper，维护角色与菜单权限的关系 */
     private final SysRoleMenuMapper roleMenuMapper;
+    /** 用户角色关系 Mapper，按实际关系表统计角色关联人数。 */
+    private final SysUserRoleMapper userRoleMapper;
     
     /**
      * 查询角色列表（已填充菜单权限ID）
@@ -54,7 +57,7 @@ public class SysRoleService {
         // 填充菜单权限
         roles.forEach(role -> {
             fillRoleMenus(role);
-            role.setUserCount(roleMapper.countUsersByRoleId(role.getId()));
+            role.setUserCount(userRoleMapper.countUsersByRoleId(role.getId()));
         });
         return roles;
     }
@@ -82,7 +85,7 @@ public class SysRoleService {
         SysRole role = roleMapper.selectById(id);
         if (role != null) {
             fillRoleMenus(role);
-            role.setUserCount(roleMapper.countUsersByRoleId(role.getId()));
+            role.setUserCount(userRoleMapper.countUsersByRoleId(role.getId()));
         }
         return role;
     }

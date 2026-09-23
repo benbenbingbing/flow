@@ -1,5 +1,5 @@
 <template>
-  <div class="readonly-field" :class="{ multiline }">
+  <div class="readonly-field" :class="[{ multiline }, `label-${labelPosition}`]">
     <div class="readonly-label">{{ label }}</div>
     <div v-if="richText" class="readonly-rich" v-html="safeHtml" />
     <div v-else-if="isFile" class="readonly-files"><template v-if="attachments.length"><button v-for="(file, index) in attachments" :key="index" @click="services.openFile?.(file.url)"><VanIcon name="description-o" /><span>{{ file.label }}</span><VanIcon name="arrow" /></button></template><span v-else>—</span></div>
@@ -11,8 +11,10 @@ import { computed } from 'vue'
 import DOMPurify from 'dompurify'
 import { Icon as VanIcon } from 'vant'
 import { formatReadonlyValue, fileName } from '@flow/workflow-core/workflow/approval-display'
+import { isEntityStatusField, isProcessStatusField, resolveEntityStatusLabel, resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { mobileFieldType } from './registry.js'
-const props = defineProps({ field: { type: Object, required: true }, modelValue: null, options: { type: Array, default: () => [] }, services: { type: Object, default: () => ({}) } })
+import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
+const props = defineProps({ field: { type: Object, required: true }, modelValue: null, options: { type: Array, default: () => [] }, context: { type: Object, default: () => ({}) }, services: { type: Object, default: () => ({}) } })
 const label = computed(() => props.field.fieldLabel || props.field.fieldName || props.field.fieldCode)
 const type = computed(() => mobileFieldType(props.field))
 const richText = computed(() => type.value === 'rich_text')
@@ -21,10 +23,22 @@ const safeHtml = computed(() => DOMPurify.sanitize(String(props.modelValue || '�
 const display = computed(() => {
   const value = props.modelValue
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return '—'
+  if (isProcessStatusField(props.field)) return resolveProcessStatusLabel(value)
+  if (isEntityStatusField(props.field)) {
+    // 与详情顶部保持同一口径，优先展示当前记录由服务端解析的实体状态名称。
+    // 子表使用自己的行上下文，且只转换显示文本，原状态编码仍用于审批提交。
+    const record = props.context.getFormData?.() || props.context.record
+    if (record?._statusText && String(record.status) === String(value)) return record._statusText
+    const options = props.context.entityStatusMap || props.context.entityStatusOptions || props.options.map(option => ({ value: option.value ?? option.id, label: option.label ?? option.text }))
+    return resolveEntityStatusLabel(value, options)
+  }
   const labelFor = item => props.options.find(option => String(option.value ?? option.id) === String(item))?.label ?? props.options.find(option => String(option.value ?? option.id) === String(item))?.text ?? formatReadonlyValue(item)
   return Array.isArray(value) ? value.map(labelFor).join('、') : labelFor(value)
 })
-const multiline = computed(() => richText.value || isFile.value || ['textarea', 'sub_form', 'sub_list'].includes(type.value) || display.value.length > 32)
+const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
+// 只读文本同样服从表单位置；长内容在值区域换行，不再因字数切换标签位置。
+// 大块内容保留原来的上下布局，避免富文本和附件被挤入狭窄的值列。
+const multiline = computed(() => richText.value || isFile.value || ['sub_form', 'sub_list'].includes(type.value) || labelPosition.value === 'top')
 const attachments = computed(() => {
   const result = []
   function collect(value, prefix = '') {

@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.core.error.RateLimitExceededException;
+import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationRateLimitMapper;
 import java.time.Clock;
 import java.time.Instant;
@@ -30,10 +31,11 @@ class IntegrationRateLimitServiceTest {
                 mock(IntegrationRateLimitMapper.class);
         when(mapper.currentCount(anyString(), anyLong()))
                 .thenReturn(4);
+        when(mapper.increment(anyString(), anyLong(), any())).thenReturn(1);
         IntegrationRateLimitService service =
                 new IntegrationRateLimitService(
                         mapper,
-                        Clock.fixed(NOW, ZoneOffset.UTC));
+                        Clock.fixed(NOW, ZoneOffset.UTC), mock(JdbcLockedRow.class));
 
         RateLimitExceededException failure = assertThrows(
                 RateLimitExceededException.class,
@@ -63,10 +65,11 @@ class IntegrationRateLimitServiceTest {
                 mock(IntegrationRateLimitMapper.class);
         when(mapper.currentCount(anyString(), anyLong()))
                 .thenReturn(1);
+        when(mapper.increment(anyString(), anyLong(), any())).thenReturn(1);
         IntegrationRateLimitService service =
                 new IntegrationRateLimitService(
                         mapper,
-                        Clock.fixed(NOW, ZoneOffset.UTC));
+                        Clock.fixed(NOW, ZoneOffset.UTC), mock(JdbcLockedRow.class));
 
         service.acquire("token-client", "same", 10);
         service.acquire("token-address", "same", 10);
@@ -90,7 +93,7 @@ class IntegrationRateLimitServiceTest {
         IntegrationRateLimitService service =
                 new IntegrationRateLimitService(
                         mapper,
-                        Clock.fixed(NOW, ZoneOffset.UTC));
+                        Clock.fixed(NOW, ZoneOffset.UTC), mock(JdbcLockedRow.class));
 
         service.cleanup();
 

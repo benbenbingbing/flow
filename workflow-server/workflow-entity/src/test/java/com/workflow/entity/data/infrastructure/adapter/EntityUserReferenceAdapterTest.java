@@ -55,7 +55,7 @@ class EntityUserReferenceAdapterTest {
                 dataMapper,
                 tableResolver,
                 dynamicTableService,
-                jdbcTemplate);
+                jdbcTemplate, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         when(definitionMapper.findByEntityCode(ENTITY_CODE))
                 .thenReturn(Optional.of(definition(
@@ -272,10 +272,10 @@ class EntityUserReferenceAdapterTest {
 
         assertEquals(List.of("bob", "alice"), result);
         verify(jdbcTemplate).queryForList(
-                "SELECT target_record_id FROM biz_leave_request_multi"
+                "SELECT target_record_id FROM `biz_leave_request_multi`"
                         + " WHERE record_id = ? AND field_code = ?"
                         + " AND target_entity_id = ? AND deleted = 0"
-                        + " ORDER BY sort_order, id LIMIT 201",
+                        + " ORDER BY sort_order, id LIMIT 0, 201",
                 String.class,
                 RECORD_ID,
                 "approverIds",

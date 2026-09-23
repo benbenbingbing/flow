@@ -210,13 +210,13 @@ public class EntityListScopeService {
             validateMatchConfig(filter.getAudience());
         }
 
+        // entity_code/policy_key/deleted 唯一约束保证候选至多一条。
         EntityListScopePolicy duplicate = policyMapper.selectOne(
                 new LambdaQueryWrapper<EntityListScopePolicy>()
                         .eq(EntityListScopePolicy::getEntityCode, request.getEntityCode())
                         .eq(EntityListScopePolicy::getPolicyKey, request.getPolicyKey())
                         .eq(EntityListScopePolicy::getDeleted, 0)
-                        .ne(StringUtils.hasText(id), EntityListScopePolicy::getId, id)
-                        .last("LIMIT 1"));
+                        .ne(StringUtils.hasText(id), EntityListScopePolicy::getId, id));
         if (duplicate != null) {
             throw new IllegalArgumentException("方案编码已存在: " + request.getPolicyKey());
         }
@@ -567,11 +567,11 @@ public class EntityListScopeService {
             captureArguments = true,
             captureResult = true)
     public EntityListScopeRelease activateRelease(String entityCode, int version) {
+        // entity_code/version 唯一约束保证指定发布版本只对应一条记录。
         EntityListScopeRelease release = releaseMapper.selectOne(
                 new LambdaQueryWrapper<EntityListScopeRelease>()
                         .eq(EntityListScopeRelease::getEntityCode, entityCode)
-                        .eq(EntityListScopeRelease::getVersion, version)
-                        .last("LIMIT 1"));
+                        .eq(EntityListScopeRelease::getVersion, version));
         if (release == null) {
             throw new IllegalArgumentException("数据范围发布版本不存在");
         }
