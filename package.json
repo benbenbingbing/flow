@@ -12,7 +12,8 @@
     "npm": ">=10"
   },
   "scripts": {
-    "build:packages": "npm run extensions:generate --workspace workflow-web && npm run build --workspace @flow/workflow-core && npm run build --workspace @flow/workflow-api && npm run build --workspace @flow/workflow-mobile-ui --if-present",
+    "check:lockfile": "node scripts/check-native-lockfile.mjs",
+    "build:packages": "npm run check:lockfile && npm run extensions:generate --workspace workflow-web && npm run build --workspace @flow/workflow-core && npm run build --workspace @flow/workflow-api && npm run build --workspace @flow/workflow-mobile-ui --if-present",
     "build:web": "npm run build:packages && npm run build --workspace workflow-web",
     "build:mobile": "npm run build:packages && npm run build --workspace workflow-mobile",
     "build": "npm run build:packages && npm run build --workspace workflow-web && npm run build --workspace workflow-mobile",
