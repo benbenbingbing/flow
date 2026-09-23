@@ -15,7 +15,11 @@ import org.springframework.stereotype.Service;
 @Service
 public class EntityRelationGraphInternalCapabilityService {
 
-    /** 校验当前用户是否具有指定内部用途的专用能力。 */
+    /**
+     * 校验当前用户是否具有指定内部用途的专用能力。
+     *
+     * @param purpose 用途，供本方法校验并获取实体关系图内部能力时使用
+     */
     public void require(InternalPurpose purpose) {
         if (purpose == null) {
             throw new IllegalArgumentException("关系图内部授权用途不能为空");

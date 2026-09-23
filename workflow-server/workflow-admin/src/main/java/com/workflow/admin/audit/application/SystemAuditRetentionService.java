@@ -27,6 +27,9 @@ public class SystemAuditRetentionService {
     @Value("${workflow.audit.retention-days:365}")
     private int retentionDays;
 
+    /**
+     * 处理{@code cleanup}，并将结果传给后续步骤。
+     */
     @Scheduled(cron = "${workflow.audit.retention-cron:0 30 3 * * *}")
     @Transactional(rollbackFor = Exception.class)
     public void cleanup() {

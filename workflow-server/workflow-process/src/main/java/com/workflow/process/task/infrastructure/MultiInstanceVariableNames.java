@@ -13,6 +13,9 @@ import org.springframework.util.StringUtils;
  */
 public final class MultiInstanceVariableNames {
 
+    /**
+     * 初始化多实例变量名称集合，保存构造参数供后续方法使用。
+     */
     private MultiInstanceVariableNames() {
     }
 
@@ -85,6 +88,9 @@ public final class MultiInstanceVariableNames {
     /**
      * 读取多实例节点的业务 collection 变量名。动态 handler 节点优先读取
      * 发布器保存的原变量名，普通节点继续从 loop 表达式解析。
+     *
+     * @param activity 活动，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @return 解析后的集合变量文本，供调用方比较或展示
      */
     public static String resolveCollectionVariable(Activity activity) {
         if (activity == null) {
@@ -98,7 +104,12 @@ public final class MultiInstanceVariableNames {
         return resolveCollectionVariable(activity.getLoopCharacteristics());
     }
 
-    /** 从原始 loop 配置解析简单 collection 变量。 */
+    /**
+     * 从原始 loop 配置解析简单 collection 变量。
+     *
+     * @param loop {@code loop}，供本方法解析集合变量时使用
+     * @return 解析后的集合变量文本，供调用方比较或展示
+     */
     public static String resolveCollectionVariable(
             MultiInstanceLoopCharacteristics loop) {
         if (loop == null) {
@@ -109,6 +120,12 @@ public final class MultiInstanceVariableNames {
         return simpleVariable(raw);
     }
 
+    /**
+     * 生成简要变量文本，供后续匹配或展示。
+     *
+     * @param raw 待处理简要变量的原始输入，结果供调用方继续使用
+     * @return 处理后的简要变量文本，供调用方比较或展示
+     */
     private static String simpleVariable(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;

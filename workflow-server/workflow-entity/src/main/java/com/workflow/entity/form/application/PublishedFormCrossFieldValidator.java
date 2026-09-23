@@ -30,7 +30,12 @@ public class PublishedFormCrossFieldValidator {
     private final JsonDocumentCodec codec;
     private final PublishedFormConditionEvaluator conditionEvaluator;
 
-    /** 没有跨字段配置时跳过新链路，保持历史表单和既有必填校验行为。 */
+    /**
+     * 没有跨字段配置时跳过新链路，保持历史表单和既有必填校验行为。
+     *
+     * @param form 表单，供本方法判断是否具有规则集合时使用
+     * @return 规则集合条件成立时为 true，否则为 false
+     */
     public boolean hasRules(EntityForm form) {
         if (form == null || form.getFields() == null) return false;
         return form.getFields().stream().anyMatch(field -> {
@@ -39,7 +44,14 @@ public class PublishedFormCrossFieldValidator {
         });
     }
 
-    /** 一次读取原记录并构造提交前检查视图；实际写入前还需在持有记录锁时重检。 */
+    /**
+     * 一次读取原记录并构造提交前检查视图；实际写入前还需在持有记录锁时重检。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param patch 补丁，作为 {@code PublishedFormRecordView.merge} 的输入影响后续处理
+     * @return {@code final}记录键值结果，供调用方继续处理
+     */
     public Map<String, Object> finalRecord(String entityCode, String recordId, Map<String, Object> patch) {
         Map<String, Object> existing = StringUtils.hasText(recordId)
                 ? objectMapper.convertValue(dataService.findById(entityCode, recordId), new TypeReference<>() {})
@@ -49,6 +61,10 @@ public class PublishedFormCrossFieldValidator {
 
     /**
      * 校验可信发布表单与最终记录。mode 由服务端入口确定，客户端字段状态不能覆盖它。
+     *
+     * @param form 表单，作为 {@code FormCrossFieldRulePolicy.boundFields} 的输入影响后续处理
+     * @param mode 模式标识，决定后续记录采用的处理分支
+     * @param record 记录，供本方法校验记录时使用
      * @throws FormCrossFieldValidationException 比较失败或非空值无法按声明类型解释
      */
     public void validateRecord(EntityForm form, String mode, Map<String, Object> record) {
@@ -88,7 +104,15 @@ public class PublishedFormCrossFieldValidator {
         if (!errors.isEmpty()) throw new FormCrossFieldValidationException(errors);
     }
 
-    /** 当前字段按默认状态、模式权限、条件联动及祖先容器计算；布局折叠不改变可编辑性。 */
+    /**
+     * 当前字段按默认状态、模式权限、条件联动及祖先容器计算；布局折叠不改变可编辑性。
+     *
+     * @param form 表单，供本方法处理可编辑与可见时使用
+     * @param field 字段，作为 {@code codec.readObject} 的输入影响后续处理
+     * @param mode 模式标识，决定后续可编辑与可见采用的处理分支
+     * @param record 记录，供本方法处理可编辑与可见时使用
+     * @return 可编辑与可见条件成立时为 true，否则为 false
+     */
     private boolean editableAndVisible(EntityForm form, EntityFormField field, String mode, Map<String, Object> record) {
         if ("view".equals(mode) || flag(field.getIsHidden()) || flag(field.getIsReadonly())) return false;
         Map<?, ?> extension = codec.readObject(field.getExtensionConfig(), "已发布字段扩展配置");
@@ -115,16 +139,52 @@ public class PublishedFormCrossFieldValidator {
         return true;
     }
 
+    /**
+     * 处理跨字段配置，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code codec.read} 的输入影响后续处理
+     * @return 处理后的跨字段配置结果，供调用方继续处理
+     */
     private Object crossFieldConfig(EntityFormField field) {
         if (field == null || !StringUtils.hasText(field.getValidationRules())) return null;
         // 历史发布快照允许数组形式的单字段校验；其中没有跨字段配置，不改变其旧行为。
         Object validation = codec.read(field.getValidationRules(), "已发布字段校验规则");
         return validation instanceof Map<?, ?> map ? map.get("crossField") : null;
     }
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     private static Map<?, ?> map(Object value) { return value instanceof Map<?, ?> map ? map : Map.of(); }
+    /**
+     * 标记已发布表单跨字段；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待标记已发布表单跨字段的原始输入，结果供调用方继续使用
+     * @return 已发布表单跨字段条件成立时为 true，否则为 false
+     */
     private static boolean flag(Object value) { return Boolean.TRUE.equals(value) || Integer.valueOf(1).equals(value) || "1".equals(value); }
+    /**
+     * 判断空白条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理空白的原始输入，结果供调用方继续使用
+     * @return 空白条件成立时为 true，否则为 false
+     */
     private static boolean blank(Object value) { return value == null || "".equals(value); }
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) { return value == null ? "" : value.toString(); }
+    /**
+     * 生成标签文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理标签时使用
+     * @return 处理后的标签文本，供调用方比较或展示
+     */
     private static String label(EntityFormField field) {
         return StringUtils.hasText(field.getFieldLabel()) ? field.getFieldLabel()
                 : StringUtils.hasText(field.getFieldName()) ? field.getFieldName() : field.getFieldCode();

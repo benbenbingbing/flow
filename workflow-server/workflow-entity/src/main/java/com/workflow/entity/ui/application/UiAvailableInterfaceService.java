@@ -11,7 +11,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.ui.api.response.UiAvailableInterface;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -69,6 +69,14 @@ public class UiAvailableInterfaceService {
     /** 当前实体、表单或列表的配置访问校验服务。 */
     private final UiConfigurationAccessService configurationAccessService;
 
+    /**
+     * 整理可用数据，供调用方遍历或继续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续可用采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理可用时定位或关联目标
+     * @param bindingCode 绑定编码，后续用于处理可用时定位或关联目标
+     * @return 界面可用接口集合，供调用方遍历或展示
+     */
     public List<UiAvailableInterface> available(
             String ownerType,
             String ownerId,
@@ -126,6 +134,10 @@ public class UiAvailableInterfaceService {
     /**
      * 实体默认 UI 事件最终随 FORM/LIST 发布并以页面类型执行，因此按事件
      * 消费域选择操作；真正的实体变更等非 UI 绑定仍要求 ENTITY 上下文。
+     *
+     * @param owner 归属方，供本方法处理允许操作{@code contexts}时使用
+     * @param bindingCode 绑定编码，后续用于处理允许操作{@code contexts}时定位或关联目标
+     * @return 界面可用接口集合，供调用方遍历或展示
      */
     private Set<String> allowedOperationContexts(
             Owner owner,
@@ -139,6 +151,12 @@ public class UiAvailableInterfaceService {
                 ? Set.of(owner.type()) : pageContexts;
     }
 
+    /**
+     * 判断是否无效全局扩展；判断结果决定调用方的后续分支。
+     *
+     * @param definition 定义，作为 {@code equals} 的输入影响后续处理
+     * @return 无效全局扩展条件成立时为 true，否则为 false
+     */
     private boolean isInvalidGlobalExtension(
             UiExtensionDefinition definition) {
         return "GLOBAL".equals(normalize(definition.getScopeType()))
@@ -146,6 +164,13 @@ public class UiAvailableInterfaceService {
                         normalize(definition.getImplementationType()));
     }
 
+    /**
+     * 判断结构匹配条件是否成立，供调用方选择后续分支。
+     *
+     * @param bindingCode 绑定编码，后续用于处理结构匹配时定位或关联目标
+     * @param definition 定义，作为 {@code readSchema} 的输入影响后续处理
+     * @return 结构匹配条件成立时为 true，否则为 false
+     */
     private boolean schemaMatches(
             String bindingCode,
             UiExtensionDefinition definition) {
@@ -163,6 +188,12 @@ public class UiAvailableInterfaceService {
         };
     }
 
+    /**
+     * 分页查询结构；查询结果供调用方展示或继续处理。
+     *
+     * @param schema 结构，供本方法分页查询结构时使用
+     * @return 结构条件成立时为 true，否则为 false
+     */
     private boolean pageSchema(
             java.util.Map<String, Object> schema) {
         if (!"OBJECT".equals(schemaType(schema))) {
@@ -178,11 +209,25 @@ public class UiAvailableInterfaceService {
                 stringMap(recordsSchema)));
     }
 
+    /**
+     * 生成结构类型文本，供后续匹配或展示。
+     *
+     * @param schema 结构，作为 {@code normalize} 的输入影响后续处理
+     * @return 处理后的结构类型文本，供调用方比较或展示
+     */
     private String schemaType(
             java.util.Map<String, Object> schema) {
         return normalize(text(schema.get("type")));
     }
 
+    /**
+     * 解析归属方；输出作为后续校验或处理的输入。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于解析归属方时定位或关联目标
+     * @return 解析后的归属方结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Owner resolveOwner(String ownerType, String ownerId) {
         String type = normalize(ownerType);
         if (!StringUtils.hasText(ownerId)) {
@@ -214,6 +259,13 @@ public class UiAvailableInterfaceService {
         throw new IllegalArgumentException("ownerType 仅支持 FORM/LIST/ENTITY");
     }
 
+    /**
+     * 校验并获取实体；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于校验并获取实体时定位或关联目标
+     * @return 校验并获取后的实体结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireEntity(String entityId) {
         EntityDefinition entity = definitionMapper.selectById(entityId);
         if (entity == null) {
@@ -222,6 +274,13 @@ public class UiAvailableInterfaceService {
         return entity;
     }
 
+    /**
+     * 判断作用域匹配条件是否成立，供调用方选择后续分支。
+     *
+     * @param definition 定义，供本方法处理作用域匹配时使用
+     * @param owner 归属方，作为 {@code equals} 的输入影响后续处理
+     * @return 作用域匹配条件成立时为 true，否则为 false
+     */
     private boolean scopeMatches(
             UiExtensionDefinition definition,
             Owner owner) {
@@ -238,6 +297,13 @@ public class UiAvailableInterfaceService {
         };
     }
 
+    /**
+     * 读取结构；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 读取后的结构结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private java.util.Map<String, Object> readSchema(String document) {
         if (!StringUtils.hasText(document)) {
             return java.util.Map.of();
@@ -252,10 +318,22 @@ public class UiAvailableInterfaceService {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 处理后的字符串映射结果，供调用方继续处理
+     */
     private java.util.Map<String, Object> stringMap(
             java.util.Map<?, ?> source) {
         java.util.LinkedHashMap<String, Object> result =
@@ -265,6 +343,12 @@ public class UiAvailableInterfaceService {
         return result;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面可用接口的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面可用接口文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)

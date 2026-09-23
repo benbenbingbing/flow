@@ -55,6 +55,11 @@ public class CurrentProcessTaskAssigneeLookup {
 
     /**
      * 将未受信 taskId 重新绑定到当前用户和已鉴权业务记录的真实活动待办。
+     *
+     * @param row 行，供本方法查询可执行任务上下文时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 匹配的可执行任务上下文；未找到时为空
      */
     public Optional<ActionableTaskContext> findActionableTaskContext(
             EntityDataDTO row,
@@ -72,12 +77,23 @@ public class CurrentProcessTaskAssigneeLookup {
                 row.getId(), row.getProcessInstanceId());
     }
 
-    /** 优先使用认证用户 ID；流程端口负责统一匹配 ID 与用户名别名。 */
+    /**
+     * 优先使用认证用户 ID；流程端口负责统一匹配 ID 与用户名别名。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的身份文本，供调用方比较或展示
+     */
     private String identity(SysUser user) {
         return StringUtils.hasText(user.getId()) ? user.getId() : user.getUsername();
     }
 
-    /** 缺少认证用户或记录坐标时不查询，避免把用户在其他记录上的任务误当本行能力。 */
+    /**
+     * 缺少认证用户或记录坐标时不查询，避免把用户在其他记录上的任务误当本行能力。
+     *
+     * @param row 行，供本方法判断是否具有查找{@code coordinates}时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 查找{@code coordinates}条件成立时为 true，否则为 false
+     */
     private boolean hasLookupCoordinates(EntityDataDTO row, SysUser user) {
         return row != null && user != null && StringUtils.hasText(identity(user))
                 && (StringUtils.hasText(row.getProcessInstanceId())

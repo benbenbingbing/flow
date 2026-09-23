@@ -1,7 +1,7 @@
 package com.workflow.admin.organization.application;
 
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
+import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
 
 import java.util.List;
 
@@ -31,6 +31,8 @@ public interface SysOrganizationService {
 
     /**
      * 返回组织编辑表单可用的业务层级，不要求额外的字典管理权限。
+     *
+     * @return 组织业务层级视图集合，供调用方遍历或展示
      */
     List<OrganizationBusinessLevelView> getBusinessLevelOptions();
     

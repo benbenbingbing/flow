@@ -7,7 +7,7 @@ import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
+import com.workflow.contracts.entity.ui.model.UiExtensionCatalogItem;
 import org.springframework.beans.factory.ObjectProvider;
 import org.junit.jupiter.api.Test;
 

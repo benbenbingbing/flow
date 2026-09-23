@@ -18,6 +18,14 @@ import java.util.Set;
 @Component
 public class UiEventValueMapper {
 
+    /**
+     * 应用界面事件值，并将结果传给后续步骤。
+     *
+     * @param mappingValue 映射值，供本方法应用界面事件值时使用
+     * @param source 待应用界面事件值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 应用后的界面事件值结果，供调用方继续处理
+     */
     public Object apply(
             Object mappingValue,
             Map<String, Object> source,
@@ -43,6 +51,14 @@ public class UiEventValueMapper {
         return result;
     }
 
+    /**
+     * 应用行，并将结果传给后续步骤。
+     *
+     * @param mappings 映射集合，供本方法应用行时使用
+     * @param source 待应用行的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 应用后的行结果，供调用方继续处理
+     */
     private Object applyRows(
             List<?> mappings,
             Map<String, Object> source,
@@ -79,6 +95,13 @@ public class UiEventValueMapper {
         return mapped ? result : fallback;
     }
 
+    /**
+     * 校验并获取兼容类型集合；不满足约束时阻止后续处理。
+     *
+     * @param sourceType 来源类型标识，决定后续兼容类型集合采用的处理分支
+     * @param targetType 目标类型标识，决定后续兼容类型集合采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireCompatibleTypes(
             String sourceType,
             String targetType) {
@@ -92,6 +115,13 @@ public class UiEventValueMapper {
                         + sourceType + " -> " + targetType);
     }
 
+    /**
+     * 判断兼容条件是否成立，供调用方选择后续分支。
+     *
+     * @param sourceType 来源类型标识，决定后续兼容采用的处理分支
+     * @param targetType 目标类型标识，决定后续兼容采用的处理分支
+     * @return 兼容条件成立时为 true，否则为 false
+     */
     private boolean compatible(
             String sourceType,
             String targetType) {
@@ -119,6 +149,13 @@ public class UiEventValueMapper {
                 && collectionTypes.contains(target);
     }
 
+    /**
+     * 判断是否匹配界面事件值；判断结果决定调用方的后续分支。
+     *
+     * @param conditionValue 条件值，供本方法判断是否匹配界面事件值时使用
+     * @param source 待判断是否匹配界面事件值的原始输入，结果供调用方继续使用
+     * @return 界面事件值条件成立时为 true，否则为 false
+     */
     public boolean matches(
             Object conditionValue,
             Map<String, Object> source) {
@@ -165,6 +202,13 @@ public class UiEventValueMapper {
         return true;
     }
 
+    /**
+     * 解析界面事件值；输出作为后续校验或处理的输入。
+     *
+     * @param source 待解析界面事件值的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法解析界面事件值时使用
+     * @return 解析后的界面事件值结果，供调用方继续处理
+     */
     public Object resolve(
             Object source,
             String path) {
@@ -190,6 +234,13 @@ public class UiEventValueMapper {
         return current;
     }
 
+    /**
+     * 设置界面事件值；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法设置界面事件值时使用
+     * @param path 路径，供本方法设置界面事件值时使用
+     * @param value 待设置界面事件值的原始输入，结果供调用方继续使用
+     */
     @SuppressWarnings("unchecked")
     public void set(
             Map<String, Object> target,
@@ -211,6 +262,12 @@ public class UiEventValueMapper {
         current.put(parts[parts.length - 1], value);
     }
 
+    /**
+     * 判断{@code truthy}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理{@code truthy}的原始输入，结果供调用方继续使用
+     * @return {@code truthy}条件成立时为 true，否则为 false
+     */
     private boolean truthy(Object value) {
         if (value == null) {
             return false;
@@ -227,6 +284,14 @@ public class UiEventValueMapper {
         return StringUtils.hasText(String.valueOf(value));
     }
 
+    /**
+     * 转换界面事件值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换界面事件值的原始输入，结果供调用方继续使用
+     * @param transform {@code transform}，供本方法转换界面事件值时使用
+     * @param separator {@code separator}，供本方法转换界面事件值时使用
+     * @return 转换后的界面事件值结果，供调用方继续处理
+     */
     private Object transform(
             Object value,
             String transform,
@@ -250,6 +315,12 @@ public class UiEventValueMapper {
         return value;
     }
 
+    /**
+     * 判断空条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private boolean empty(Object value) {
         if (value == null) {
             return true;
@@ -263,6 +334,12 @@ public class UiEventValueMapper {
         return false;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }

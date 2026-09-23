@@ -1,11 +1,11 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.api.OutboxPublisher;
 import org.junit.jupiter.api.Test;

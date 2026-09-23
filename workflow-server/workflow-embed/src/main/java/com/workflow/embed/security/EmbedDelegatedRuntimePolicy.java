@@ -1,8 +1,8 @@
 package com.workflow.embed.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target;
@@ -49,6 +49,15 @@ public class EmbedDelegatedRuntimePolicy {
     private final EmbedNativeListRuntimePort listRuntimePort;
     private final EmbedNativeFormRuntimePort formRuntimePort;
 
+    /**
+     * 初始化嵌入式委托运行时策略，保存构造参数供后续方法使用。
+     *
+     * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
+     * @param processPortProvider 流程端口提供者，保存在对象中供后续校验、查询或展示
+     * @param traversalPortProvider 遍历端口提供者，保存在对象中供后续校验、查询或展示
+     * @param listPortProvider 列表端口提供者，保存在对象中供后续校验、查询或展示
+     * @param formPortProvider 表单端口提供者，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EmbedDelegatedRuntimePolicy(
             EmbedNativeFormTargetResolver targetResolver,
@@ -64,7 +73,13 @@ public class EmbedDelegatedRuntimePolicy {
         this.formRuntimePort = formPortProvider.getIfAvailable();
     }
 
-    /** 兼容旧单元测试构造；根 LIST 令牌校验会失败关闭。 */
+    /**
+     * 兼容旧单元测试构造；根 LIST 令牌校验会失败关闭。
+     *
+     * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
+     * @param processPortProvider 流程端口提供者，保存在对象中供后续校验、查询或展示
+     * @param traversalPortProvider 遍历端口提供者，保存在对象中供后续校验、查询或展示
+     */
     public EmbedDelegatedRuntimePolicy(
             EmbedNativeFormTargetResolver targetResolver,
             ObjectProvider<EmbedNativeProcessRuntimePort> processPortProvider,
@@ -77,7 +92,11 @@ public class EmbedDelegatedRuntimePolicy {
         this.formRuntimePort = null;
     }
 
-    /** 兼容不启动 Process/Traversal 模块的轻量策略测试；相关 binding 会失败关闭。 */
+    /**
+     * 兼容不启动 Process/Traversal 模块的轻量策略测试；相关 binding 会失败关闭。
+     *
+     * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedDelegatedRuntimePolicy(
             EmbedNativeFormTargetResolver targetResolver) {
         this.targetResolver = targetResolver;
@@ -94,6 +113,12 @@ public class EmbedDelegatedRuntimePolicy {
      * <p>View/Grant capability 只约束 Embed 入口和宿主 Bridge；进入原生
      * Flow 数据面后，操作权限继续由 mapped user 的平台权限、对象授权和
      * DataScope 决定，不在此处再做 capability ceiling。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理授权
+     * @param session 会话，作为 {@code targetResolver.resolveRoot} 的输入影响后续处理
+     * @param body 请求体，后续用于处理授权并传递处理结果
+     * @param declaration {@code declaration}，作为 {@code requireDeclarationContract} 的输入影响后续处理
+     * @return 处理后的授权结果，供调用方继续处理
      */
     public EmbedNativeFormTarget authorize(
             HttpServletRequest request,
@@ -171,6 +196,11 @@ public class EmbedDelegatedRuntimePolicy {
 
     /**
      * 根 LIST schema/query 必须同时匹配 Session 固定坐标和专用签名令牌。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权根列表请求
+     * @param body 请求体，后续用于处理授权根列表请求并传递处理结果
+     * @param root 根，供本方法处理授权根列表请求时使用
+     * @param session 会话，供本方法处理授权根列表请求时使用
      */
     private void authorizeRootListRequest(
             HttpServletRequest request,
@@ -214,6 +244,9 @@ public class EmbedDelegatedRuntimePolicy {
 
     /**
      * 校验稳定的请求形状，不依赖 endpoint path，因此新增原生端点无需修改中央清单。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取{@code declaration}契约
+     * @param declaration {@code declaration}，供本方法校验并获取{@code declaration}契约时使用
      */
     private static void requireDeclarationContract(
             HttpServletRequest request,
@@ -262,6 +295,15 @@ public class EmbedDelegatedRuntimePolicy {
         }
     }
 
+    /**
+     * 处理授权根实体，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权根实体
+     * @param body 请求体，后续用于处理授权根实体并传递处理结果
+     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @return 处理后的授权根实体结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeRootEntity(
             HttpServletRequest request,
             JsonNode body,
@@ -277,6 +319,16 @@ public class EmbedDelegatedRuntimePolicy {
         return target;
     }
 
+    /**
+     * 处理授权表单目标，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权表单目标
+     * @param body 请求体，后续用于处理授权表单目标并传递处理结果
+     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @param mode 模式标识，决定后续授权表单目标采用的处理分支
+     * @return 处理后的授权表单目标结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeFormTarget(
             HttpServletRequest request,
             JsonNode body,
@@ -308,6 +360,14 @@ public class EmbedDelegatedRuntimePolicy {
                 text(body, "recordId"));
     }
 
+    /**
+     * 处理授权运行时发布版本，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权运行时发布版本
+     * @param root 根，供本方法处理授权运行时发布版本时使用
+     * @param session 会话，供本方法处理授权运行时发布版本时使用
+     * @return 处理后的授权运行时发布版本结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeRuntimeRelease(
             HttpServletRequest request,
             EmbedNativeFormTarget root,
@@ -355,6 +415,21 @@ public class EmbedDelegatedRuntimePolicy {
     /**
      * 将签名 Form Release 目标恢复为原生表单访问，并继续执行
      * mapped user 的对象权限与 DataScope。
+     *
+     * @param session 会话，作为 {@code verifySignedForm} 的输入影响后续处理
+     * @param root 根，作为 {@code verifySignedForm} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param formId 表单ID，后续用于处理授权已签名表单时定位或关联目标
+     * @param formReleaseId 表单发布版本ID，后续用于处理授权已签名表单时定位或关联目标
+     * @param formReleaseVersion 表单发布版本，作为 {@code verifySignedForm} 的输入影响后续处理
+     * @param formReleaseToken 表单发布版本令牌，后续用于授权校验、关联或幂等去重
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param listReleaseId 列表发布版本ID，后续用于处理授权已签名表单时定位或关联目标
+     * @param listReleaseVersion 列表发布版本，供本方法处理授权已签名表单时使用
+     * @param listReleaseToken 列表发布版本令牌，后续用于授权校验、关联或幂等去重
+     * @param mode 模式标识，决定后续授权已签名表单采用的处理分支
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的授权已签名表单结果，供调用方继续处理
      */
     private EmbedNativeFormTarget authorizeSignedForm(
             AuthenticatedEmbedSession session,
@@ -381,6 +456,19 @@ public class EmbedDelegatedRuntimePolicy {
     /**
      * 仅相信 Entity 边界对签名 token 恢复的坐标；请求中的
      * entity/form/release 必须与签名值逐项一致。
+     *
+     * @param session 会话，作为 {@code VerificationTarget} 的输入影响后续处理
+     * @param root 根，作为 {@code verifyPinnedList} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param formId 表单ID，后续用于验证已签名表单时定位或关联目标
+     * @param formReleaseId 表单发布版本ID，后续用于验证已签名表单时定位或关联目标
+     * @param formReleaseVersion 表单发布版本，作为 {@code VerificationTarget} 的输入影响后续处理
+     * @param formReleaseToken 表单发布版本令牌，后续用于授权校验、关联或幂等去重
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param listReleaseId 列表发布版本ID，后续用于验证已签名表单时定位或关联目标
+     * @param listReleaseVersion 列表发布版本，供本方法验证已签名表单时使用
+     * @param listReleaseToken 列表发布版本令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的已签名表单结果，供调用方继续处理
      */
     private EmbedNativeFormTarget verifySignedForm(
             AuthenticatedEmbedSession session,
@@ -444,6 +532,15 @@ public class EmbedDelegatedRuntimePolicy {
      * 详情请求可携带根列表或 open-list 的固定发布坐标。
      * 有 release 坐标时必须用同 Session 签名的 List token 验证；
      * 表单按钮只携带根 listKey 时可直接复用 Session 根坐标。
+     *
+     * @param session 会话，供本方法验证固定列表时使用
+     * @param root 根，作为 {@code PinnedList} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于验证固定列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code listRuntimePort.verifyReleaseResolutionToken} 的输入影响后续处理
+     * @param releaseToken 发布版本令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的固定列表结果，供调用方继续处理
      */
     private PinnedList verifyPinnedList(
             AuthenticatedEmbedSession session,
@@ -486,6 +583,13 @@ public class EmbedDelegatedRuntimePolicy {
         return new PinnedList(listKey, releaseId, releaseVersion);
     }
 
+    /**
+     * 判断是否匹配动作；判断结果决定调用方的后续分支。
+     *
+     * @param body 请求体，后续用于判断是否匹配动作并传递处理结果
+     * @param target 目标，作为 {@code intEquals} 的输入影响后续处理
+     * @return 动作条件成立时为 true，否则为 false
+     */
     private static boolean matchesAction(
             JsonNode body,
             EmbedNativeFormTarget target) {
@@ -501,6 +605,15 @@ public class EmbedDelegatedRuntimePolicy {
                 && StringUtils.hasText(text(body, "releaseResolutionToken"));
     }
 
+    /**
+     * 处理授权唯一预检查，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权唯一预检查
+     * @param body 请求体，后续用于处理授权唯一预检查并传递处理结果
+     * @param root 根，作为 {@code authorizeFormTarget} 的输入影响后续处理
+     * @param session 会话，作为 {@code authorizeFormTarget} 的输入影响后续处理
+     * @return 处理后的授权唯一预检查结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeUniquePrecheck(
             HttpServletRequest request,
             JsonNode body,
@@ -524,6 +637,15 @@ public class EmbedDelegatedRuntimePolicy {
         return target;
     }
 
+    /**
+     * 处理授权记录详情，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权记录详情
+     * @param body 请求体，后续用于处理授权记录详情并传递处理结果
+     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @return 处理后的授权记录详情结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeRecordDetail(
             HttpServletRequest request,
             JsonNode body,
@@ -571,6 +693,15 @@ public class EmbedDelegatedRuntimePolicy {
         return target;
     }
 
+    /**
+     * 处理授权表单归属方，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权表单归属方
+     * @param body 请求体，后续用于处理授权表单归属方并传递处理结果
+     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
+     * @return 处理后的授权表单归属方结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeFormOwner(
             HttpServletRequest request,
             JsonNode body,
@@ -625,6 +756,14 @@ public class EmbedDelegatedRuntimePolicy {
         return target;
     }
 
+    /**
+     * 判断是否匹配事件；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否匹配事件
+     * @param body 请求体，后续用于判断是否匹配事件并传递处理结果
+     * @param target 目标，作为 {@code textEquals} 的输入影响后续处理
+     * @return 事件条件成立时为 true，否则为 false
+     */
     private static boolean matchesEvent(
             HttpServletRequest request,
             JsonNode body,
@@ -641,6 +780,13 @@ public class EmbedDelegatedRuntimePolicy {
                 && StringUtils.hasText(text(body, "releaseResolutionToken"));
     }
 
+    /**
+     * 判断是否匹配文件写入；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否匹配文件写入
+     * @param root 根，供本方法判断是否匹配文件写入时使用
+     * @return 文件写入条件成立时为 true，否则为 false
+     */
     private static boolean matchesFileWrite(
             HttpServletRequest request,
             EmbedNativeFormTarget root) {
@@ -658,6 +804,14 @@ public class EmbedDelegatedRuntimePolicy {
                                 entityCode.trim())));
     }
 
+    /**
+     * 处理授权流程记录，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权流程记录
+     * @param root 根，供本方法处理授权流程记录时使用
+     * @param session 会话，作为 {@code targetResolver.authorize} 的输入影响后续处理
+     * @return 处理后的授权流程记录结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeProcessRecord(
             HttpServletRequest request,
             EmbedNativeFormTarget root,
@@ -677,7 +831,15 @@ public class EmbedDelegatedRuntimePolicy {
         return targetResolver.authorize(session, "VIEW", mapped.recordId());
     }
 
-    /** 仅沿 Flow 服务端签发的关联内容遍历链进入非根实体。 */
+    /**
+     * 仅沿 Flow 服务端签发的关联内容遍历链进入非根实体。
+     *
+     * @param request 本次请求，后续经校验后用于处理授权遍历目标
+     * @param body 请求体，后续用于处理授权遍历目标并传递处理结果
+     * @param root 根，供本方法处理授权遍历目标时使用
+     * @param session 会话，作为 {@code targetResolver.authorize} 的输入影响后续处理
+     * @return 处理后的授权遍历目标结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizeTraversalTarget(
             HttpServletRequest request,
             JsonNode body,
@@ -738,6 +900,13 @@ public class EmbedDelegatedRuntimePolicy {
                 null, Map.of(), Map.of(), Map.of());
     }
 
+    /**
+     * 判断是否具有已签名运行时上下文；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否具有已签名运行时上下文
+     * @param body 请求体，后续用于判断是否具有已签名运行时上下文并传递处理结果
+     * @return 已签名运行时上下文条件成立时为 true，否则为 false
+     */
     private static boolean hasSignedRuntimeContext(
             HttpServletRequest request,
             JsonNode body) {
@@ -755,6 +924,13 @@ public class EmbedDelegatedRuntimePolicy {
                 || StringUtils.hasText(text(body, "actionContextToken"));
     }
 
+    /**
+     * 记录匹配；供后续追溯或审计使用。
+     *
+     * @param body 请求体，后续用于记录匹配并传递处理结果
+     * @param target 目标，作为 {@code equals} 的输入影响后续处理
+     * @return 匹配条件成立时为 true，否则为 false
+     */
     private static boolean recordMatches(
             JsonNode body,
             EmbedNativeFormTarget target) {
@@ -764,6 +940,14 @@ public class EmbedDelegatedRuntimePolicy {
                 : Objects.equals(target.recordId(), value);
     }
 
+    /**
+     * 判断坐标相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于处理坐标相等
+     * @param name 名称，后续用于处理坐标相等时匹配或展示
+     * @param expected 预期，供本方法处理坐标相等时使用
+     * @return 坐标相等条件成立时为 true，否则为 false
+     */
     private static boolean coordinateEquals(
             HttpServletRequest request,
             String name,
@@ -774,6 +958,14 @@ public class EmbedDelegatedRuntimePolicy {
                 : !StringUtils.hasText(actual);
     }
 
+    /**
+     * 判断坐标整数相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于处理坐标整数相等
+     * @param name 名称，后续用于处理坐标整数相等时匹配或展示
+     * @param expected 预期，供本方法处理坐标整数相等时使用
+     * @return 坐标整数相等条件成立时为 true，否则为 false
+     */
     private static boolean coordinateIntEquals(
             HttpServletRequest request,
             String name,
@@ -784,6 +976,12 @@ public class EmbedDelegatedRuntimePolicy {
                 : Objects.equals(expected, positiveInt(actual));
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @return 处理后的正数整数结果，供调用方继续处理
+     */
     private static Integer positiveInt(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -796,6 +994,12 @@ public class EmbedDelegatedRuntimePolicy {
         }
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @return 处理后的正数整数结果，供调用方继续处理
+     */
     private static Integer positiveInt(JsonNode value) {
         return value != null && value.canConvertToInt()
                 && value.asInt() > 0 ? value.asInt() : null;
@@ -804,6 +1008,9 @@ public class EmbedDelegatedRuntimePolicy {
     /**
      * 原生页面使用 edit，平台记录授权模型使用 VIEW；APPROVE 保留原值，
      * 由目标解析器先执行 VIEW/DataScope，再交给流程任务权限做最终审批授权。
+     *
+     * @param value 待规范化模式的原始输入，结果供调用方继续使用
+     * @return 规范化后的模式文本，供调用方比较或展示
      */
     private static String normalizeMode(String value) {
         if (!StringUtils.hasText(value)) {
@@ -813,10 +1020,24 @@ public class EmbedDelegatedRuntimePolicy {
         return "EDIT".equals(mode) ? "VIEW" : mode;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param first 首个，供本方法处理首个文本时使用
+     * @param second {@code second}，供本方法处理首个文本时使用
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private static String firstText(String first, String second) {
         return StringUtils.hasText(first) ? first : second;
     }
 
+    /**
+     * 处理首个正数整数，并将结果传给后续步骤。
+     *
+     * @param first 首个，作为 {@code positiveInt} 的输入影响后续处理
+     * @param second {@code second}，供本方法处理首个正数整数时使用
+     * @return 处理后的首个正数整数结果，供调用方继续处理
+     */
     private static Integer firstPositiveInt(
             String first,
             JsonNode second) {
@@ -828,6 +1049,12 @@ public class EmbedDelegatedRuntimePolicy {
                 && second.asInt() > 0 ? second.asInt() : null;
     }
 
+    /**
+     * 整理{@code uri}流程变量数据，供调用方遍历或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code uri}流程变量
+     * @return {@code uri}流程变量键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private static Map<String, String> uriVariables(
             HttpServletRequest request) {
@@ -837,13 +1064,25 @@ public class EmbedDelegatedRuntimePolicy {
                 ? (Map<String, String>) map : Collections.emptyMap();
     }
 
+    /**
+     * 生成{@code uri}变量文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code uri}变量
+     * @param name 名称，后续用于处理{@code uri}变量时匹配或展示
+     * @return 处理后的{@code uri}变量文本，供调用方比较或展示
+     */
     private static String uriVariable(
             HttpServletRequest request,
             String name) {
         return uriVariables(request).get(name);
     }
 
-    /** 接受常见稳定代码字符，不赋予任何特定事件码额外权限。 */
+    /**
+     * 接受常见稳定代码字符，不赋予任何特定事件码额外权限。
+     *
+     * @param value 待处理安全运行时键的原始输入，结果供调用方继续使用
+     * @return 安全运行时键条件成立时为 true，否则为 false
+     */
     private static boolean safeRuntimeKey(String value) {
         if (!StringUtils.hasText(value) || value.length() > 100) {
             return false;
@@ -858,10 +1097,24 @@ public class EmbedDelegatedRuntimePolicy {
         return true;
     }
 
+    /**
+     * 判断是否对象；判断结果决定调用方的后续分支。
+     *
+     * @param body 请求体，后续用于判断是否对象并传递处理结果
+     * @return 对象条件成立时为 true，否则为 false
+     */
     private static boolean isObject(JsonNode body) {
         return body != null && body.isObject();
     }
 
+    /**
+     * 判断文本相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param body 请求体，后续用于处理文本相等并传递处理结果
+     * @param field 字段，供本方法处理文本相等时使用
+     * @param expected 预期，供本方法处理文本相等时使用
+     * @return 文本相等条件成立时为 true，否则为 false
+     */
     private static boolean textEquals(
             JsonNode body,
             String field,
@@ -869,6 +1122,14 @@ public class EmbedDelegatedRuntimePolicy {
         return Objects.equals(expected, text(body, field));
     }
 
+    /**
+     * 判断文本相等{@code ignore}分支条件是否成立，供调用方选择后续分支。
+     *
+     * @param body 请求体，后续用于处理文本相等{@code ignore}分支并传递处理结果
+     * @param field 字段，作为 {@code text} 的输入影响后续处理
+     * @param expected 预期，供本方法处理文本相等{@code ignore}分支时使用
+     * @return 文本相等{@code ignore}分支条件成立时为 true，否则为 false
+     */
     private static boolean textEqualsIgnoreCase(
             JsonNode body,
             String field,
@@ -877,6 +1138,14 @@ public class EmbedDelegatedRuntimePolicy {
         return actual != null && expected.equalsIgnoreCase(actual);
     }
 
+    /**
+     * 判断整数相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param body 请求体，后续用于处理整数相等并传递处理结果
+     * @param field 字段，作为 {@code body.get} 的输入影响后续处理
+     * @param expected 预期，供本方法处理整数相等时使用
+     * @return 整数相等条件成立时为 true，否则为 false
+     */
     private static boolean intEquals(
             JsonNode body,
             String field,
@@ -886,12 +1155,24 @@ public class EmbedDelegatedRuntimePolicy {
                 && value.asInt() == expected;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param body 请求体，后续用于处理文本并传递处理结果
+     * @param field 字段，作为 {@code body.get} 的输入影响后续处理
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(JsonNode body, String field) {
         JsonNode value = body == null ? null : body.get(field);
         return value == null || value.isNull() || !value.isTextual()
                 ? null : value.asText();
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因并终止后续处理。
+     *
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static EmbedException denied() {
         return new EmbedException(
                 403,
@@ -899,6 +1180,13 @@ public class EmbedDelegatedRuntimePolicy {
                 "Embed delegated runtime operation is not allowed");
     }
 
+    /**
+     * 封装固定列表的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     */
     private record PinnedList(
             String listKey,
             String releaseId,

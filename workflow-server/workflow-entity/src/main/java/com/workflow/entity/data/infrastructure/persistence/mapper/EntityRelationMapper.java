@@ -50,6 +50,9 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
 
     /**
      * 根据父实体 ID 查询全部未删除关系（包含禁用草稿）。
+     *
+     * @param parentEntityId 父级实体ID，后续用于查询全部父级实体ID时定位或关联目标
+     * @return 实体关系集合，供调用方遍历或展示
      */
     default List<EntityRelation> selectAllByParentEntityId(String parentEntityId) {
         return selectList(Wrappers.<EntityRelation>lambdaQuery()
@@ -58,7 +61,12 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
                 .orderByAsc(EntityRelation::getCreatedAt));
     }
 
-    /** 页面可反向引用既有关系，关系本身仍只在父实体定义一次。 */
+    /**
+     * 页面可反向引用既有关系，关系本身仍只在父实体定义一次。
+     *
+     * @param entityId 实体ID，后续用于查询全部子级实体ID时定位或关联目标
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     default List<EntityRelation> selectAllByChildEntityId(String entityId) {
         return selectList(Wrappers.<EntityRelation>lambdaQuery()
                 .eq(EntityRelation::getChildEntityId, entityId)
@@ -68,12 +76,23 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
 
     /**
      * 根据父实体 ID 和稳定关系编码查询关系（包含逻辑删除记录，防止稳定编码复用）。
+     *
+     * @param parentEntityId 父级实体ID，后续用于查询关系编码时定位或关联目标
+     * @param relationCode 关系编码，后续用于查询关系编码时定位或关联目标
+     * @return 查询后的关系编码结果，供调用方继续处理
      */
     default EntityRelation selectByRelationCode(String parentEntityId, String relationCode) {
         return selectByRelationCodeRows(new OffsetPage<>(0, 1), parentEntityId, relationCode);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param parentEntityId 父级实体ID，后续用于查询关系编码行时定位或关联目标
+     * @param relationCode 关系编码，后续用于查询关系编码行时定位或关联目标
+     * @return 查询后的关系编码行结果，供调用方继续处理
+     */
     @Select("<script> SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND relation_code = #{relationCode}  </script>")
     EntityRelation selectByRelationCodeRows(
             @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
@@ -82,12 +101,23 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
 
     /**
      * 根据父实体 ID 和聚合数据键查询关系（包含逻辑删除记录，防止稳定数据键复用）。
+     *
+     * @param parentEntityId 父级实体ID，后续用于查询数据键时定位或关联目标
+     * @param dataKey 数据键，后续用于授权校验、关联或幂等去重
+     * @return 查询后的数据键结果，供调用方继续处理
      */
     default EntityRelation selectByDataKey(String parentEntityId, String dataKey) {
         return selectByDataKeyRows(new OffsetPage<>(0, 1), parentEntityId, dataKey);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param parentEntityId 父级实体ID，后续用于查询数据键行时定位或关联目标
+     * @param dataKey 数据键，后续用于授权校验、关联或幂等去重
+     * @return 查询后的数据键行结果，供调用方继续处理
+     */
     @Select("<script> SELECT * FROM entity_relation WHERE parent_entity_id = #{parentEntityId} AND data_key = #{dataKey}  </script>")
     EntityRelation selectByDataKeyRows(
             @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
@@ -120,7 +150,14 @@ public interface EntityRelationMapper extends BaseMapper<EntityRelation> {
         return selectActiveByBindingRefRows(new OffsetPage<>(0, 1), parentEntityId, bindingRef);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param parentEntityId 父级实体ID，后续用于查询活动绑定引用行时定位或关联目标
+     * @param bindingRef 绑定引用，供本方法查询活动绑定引用行时使用
+     * @return 查询后的活动绑定引用行结果，供调用方继续处理
+     */
     @Select("""
             <script>
             SELECT *

@@ -4,6 +4,18 @@ import java.util.Map;
 
 /**
  * 指定 UI 绑定位置可选择的完整接口扩展。
+ *
+ * @param extensionId 扩展ID，后续用于处理界面可用接口时定位或关联目标
+ * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+ * @param displayName 用户可见名称，供界面和日志展示
+ * @param implementationType 实现类型标识，决定后续界面可用接口采用的处理分支
+ * @param providerCode 提供者编码，后续用于处理界面可用接口时定位或关联目标
+ * @param scopeType 作用域类型标识，决定后续界面可用接口采用的处理分支
+ * @param scopeId 作用域ID，后续用于处理界面可用接口时定位或关联目标
+ * @param kind 类型，保存在对象中供后续校验、查询或展示
+ * @param contextType 上下文类型标识，决定后续界面可用接口采用的处理分支
+ * @param inputSchema 输入结构，保存在对象中供后续校验、查询或展示
+ * @param outputSchema 输出结构，保存在对象中供后续校验、查询或展示
  */
 public record UiAvailableInterface(
         /** 接口扩展 ID。 */

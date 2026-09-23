@@ -22,6 +22,13 @@ public class ProcessCcNotificationOutboxHandler
     private final ObjectMapper objectMapper;
     private final Map<String, CcNotificationChannel> channels;
 
+    /**
+     * 初始化流程抄送通知待发送事件处理器，保存构造参数供后续方法使用。
+     *
+     * @param recordMapper 记录映射器依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param channels {@code channels}，保存在对象中供后续校验、查询或展示
+     */
     public ProcessCcNotificationOutboxHandler(
             ProcessCcRecordMapper recordMapper,
             ObjectMapper objectMapper,
@@ -31,11 +38,23 @@ public class ProcessCcNotificationOutboxHandler
         this.channels = indexChannels(channels);
     }
 
+    /**
+     * 生成{@code topic}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code topic}文本，供调用方比较或展示
+     */
     @Override
     public String topic() {
         return ProcessCcNotificationPublisher.TOPIC;
     }
 
+    /**
+     * 处理流程抄送通知待发送事件，并将结果传给后续步骤。
+     *
+     * @param event 事件，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @Override
     public void handle(OutboxEvent event) throws Exception {
         CcNotificationPayload payload = objectMapper.readValue(
@@ -60,6 +79,13 @@ public class ProcessCcNotificationOutboxHandler
                         : payload.message());
     }
 
+    /**
+     * 整理索引{@code channels}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 索引{@code channels}键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, CcNotificationChannel> indexChannels(
             List<CcNotificationChannel> values) {
         Map<String, CcNotificationChannel> result =

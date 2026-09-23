@@ -172,20 +172,42 @@ public class ProcessCcEventListener implements FlowableEventListener {
         return new ProcessInfo(key, name, businessKey, startUserId);
     }
 
-    /** 流程关键信息快照，用于抄送上下文组装 */
+    /**
+     * 流程关键信息快照，用于抄送上下文组装
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param name 展示名称，供界面或日志识别
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param startUserId 启动用户ID，后续用于处理流程{@code info}时定位或关联目标
+     */
     private record ProcessInfo(String key, String name, String businessKey, String startUserId) {
     }
 
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFailOnException() {
         return false;
     }
 
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return true;
     }
 
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override
     public String getOnTransaction() {
         return "COMMITTED";

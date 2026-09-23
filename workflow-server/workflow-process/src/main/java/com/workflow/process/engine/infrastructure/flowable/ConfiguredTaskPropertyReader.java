@@ -14,6 +14,9 @@ import java.util.Map;
  */
 public final class ConfiguredTaskPropertyReader {
 
+    /**
+     * 初始化已配置任务属性{@code reader}，保存构造参数供后续方法使用。
+     */
     private ConfiguredTaskPropertyReader() {
     }
 

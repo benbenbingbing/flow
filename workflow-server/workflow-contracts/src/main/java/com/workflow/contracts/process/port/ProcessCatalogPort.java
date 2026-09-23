@@ -1,7 +1,7 @@
 package com.workflow.contracts.process.port;
 
-import com.workflow.contracts.process.ProcessBindingState;
-import com.workflow.contracts.process.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessBindingState;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;

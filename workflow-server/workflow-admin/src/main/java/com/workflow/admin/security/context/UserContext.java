@@ -73,6 +73,12 @@ public class UserContext {
         return SESSION_ID.get();
     }
 
+    /**
+     * 校验并获取用户名或ID；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的用户名或ID文本，供调用方比较或展示
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     public static String requireUsernameOrId() {
         if (StringUtils.hasText(getUsername())) {
             return getUsername();

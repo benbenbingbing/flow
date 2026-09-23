@@ -187,6 +187,10 @@ public class ConfigMigrationReadService {
 
     /**
      * 统一收敛分页边界，防止非法页码与过大页容量绕过接口默认值。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的{@code page<t>}结果，供调用方继续处理
      */
     private <T> Page<T> page(Integer pageNum, Integer pageSize) {
         int safePageNum = pageNum == null ? 1 : Math.max(1, pageNum);
@@ -196,6 +200,13 @@ public class ConfigMigrationReadService {
         return new Page<>(safePageNum, safePageSize);
     }
 
+    /**
+     * 分页查询配置迁移读取结果；查询结果供调用方展示或继续处理。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param records 记录集合，供本方法分页查询配置迁移读取结果时使用
+     * @return 符合条件的{@code r}结果，供调用方继续处理
+     */
     private <T, R> PageResult<R> pageResult(
             Page<T> page, List<R> records) {
         return new PageResult<>(records, page.getTotal(),
@@ -204,6 +215,8 @@ public class ConfigMigrationReadService {
 
     /**
      * 复用导入批次摘要列投影，保证分页列表与对比选择器的字段和排序一致。
+     *
+     * @return 处理后的导入摘要查询结果，供调用方继续处理
      */
     private LambdaQueryWrapper<ConfigImportPackage> importSummaryQuery() {
         return new LambdaQueryWrapper<ConfigImportPackage>()
@@ -227,6 +240,12 @@ public class ConfigMigrationReadService {
                 .orderByDesc(ConfigImportPackage::getId);
     }
 
+    /**
+     * 整理导出摘要数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理导出摘要的原始输入，结果供调用方继续使用
+     * @return 导出摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> exportSummary(ConfigExportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -243,6 +262,12 @@ public class ConfigMigrationReadService {
         return result;
     }
 
+    /**
+     * 整理导入摘要数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理导入摘要的原始输入，结果供调用方继续使用
+     * @return 导入摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> importSummary(ConfigImportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());

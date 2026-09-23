@@ -27,6 +27,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
     /**
      * 配置静态资源映射
+     *
+     * @param registry {@code registry}，供本方法添加资源{@code handlers}时使用
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {

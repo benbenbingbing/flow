@@ -1,41 +1,74 @@
-# 测试环境配置
-server:
-  port: 0  # 随机端口
+# 测试环境独立配置：使用 H2 和测试凭据；默认不导入主配置，验证真实配置加载的测试需显式指定主文件。
 
+# Web 服务入口，控制监听端口、请求容量和停机行为。
+server:
+  # 测试使用随机可用端口，避免并行运行时争抢固定端口。
+  port: 0
+
+# Spring Boot 基础设施配置，由对应自动配置或应用配置类读取。
 spring:
+  # 测试业务数据源，使用独立 H2 内存数据库，不读取生产数据库凭据。
   datasource:
+    # H2 测试业务库地址，连接关闭后保留内存数据，并关闭 JVM 退出时的自动关闭钩子。
     url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    # 测试明确使用 H2 JDBC 驱动。
     driver-class-name: org.h2.Driver
+    # H2 测试内置账号，仅用于内存测试库。
     username: sa
+    # H2 测试账号使用空密码，不用于任何部署环境。
     password:
-  
+  # 测试持久化配置，仅在测试上下文启用 JPA 时生效。
   jpa:
+    # 测试 Hibernate 建表策略，避免依赖持久化数据库。
     hibernate:
+      # 测试上下文启动时建表、关闭时删表，仅适用于测试数据库。
       ddl-auto: create-drop
+    # 启用 JPA 的测试 SQL 输出，辅助定位持久化问题。
     show-sql: true
 
+# 数据访问框架配置，统一 Mapper 扫描、字段映射和逻辑删除行为。
 mybatis-plus:
+  # 扫描全部依赖模块的 Mapper XML，确保模块拆分后仍可找到 SQL 映射。
   mapper-locations: classpath*:/mapper/**/*.xml
+  # 实体类型别名扫描包，供 Mapper XML 简写 Java 类型名。
   type-aliases-package: com.workflow.entity
+  # MyBatis 原生运行设置，控制字段映射与 SQL 日志。
   configuration:
+    # 测试向控制台输出 SQL，方便定位断言失败；不作为生产日志默认值。
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
+# 流程引擎配置，控制引擎表结构、历史记录和异步任务执行。
 flowable:
+  # 测试允许流程引擎自动创建和更新内存库表结构。
   database-schema-update: true
+  # 测试默认关闭引擎异步执行器，避免后台作业影响断言时序。
   async-executor-activate: false
 
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
 workflow:
+  # 动态实体结构发布策略，与应用启动时的 Flyway 版本迁移分开管理。
   schema-publisher:
+    # 测试结构发布专用数据源，独立于业务测试库。
     datasource:
+      # H2 结构发布测试库地址，启用 MySQL 兼容模式并在连接关闭后保留数据。
       url: jdbc:h2:mem:schema_publisher;MODE=MySQL;DB_CLOSE_DELAY=-1
+      # 结构发布测试库账号，仅用于内存测试环境。
       username: sa
+      # 测试专用占位密码，用于通过结构发布凭据校验，不是真实环境凭据。
       password: schema-publisher-test-password
 
+# 平台登录访问令牌配置，与开放接口的 RSA 令牌密钥分别管理。
 jwt:
+  # 测试专用 JWT 签名文本，满足测试长度要求，禁止用于真实环境。
   secret: workflow-test-only-jwt-secret-32-bytes-minimum
+  # 登录访问令牌有效期，单位毫秒，过期后通过登录会话刷新。
   expiration: 900000
 
+# 应用日志级别和输出格式，默认输出到控制台供部署平台采集。
 logging:
+  # 按包或类指定日志阈值，控制日志量与敏感信息暴露。
   level:
+    # 未单独配置的组件使用 INFO 级别。
     root: INFO
+    # 测试输出业务 DEBUG 日志，便于诊断失败上下文。
     com.workflow: DEBUG

@@ -13,11 +13,22 @@ public class EmbedLifecycleMetrics {
 
     private final MeterRegistry registry;
 
+    /**
+     * 初始化嵌入式生命周期指标集合，保存构造参数供后续方法使用。
+     *
+     * @param registryProvider {@code registry}提供者，保存在对象中供后续校验、查询或展示
+     */
     public EmbedLifecycleMetrics(ObjectProvider<MeterRegistry> registryProvider) {
         this.registry = registryProvider.getIfAvailable();
     }
 
-    /** 标签值只接受封闭枚举，禁止把任何业务 ID、Origin 或外部输入变成指标标签。 */
+    /**
+     * 标签值只接受封闭枚举，禁止把任何业务 ID、Origin 或外部输入变成指标标签。
+     *
+     * @param surface 界面，作为 {@code registry.counter} 的输入影响后续处理
+     * @param outcome 结果，供本方法记录嵌入式生命周期指标集合时使用
+     * @param reason 原因，供本方法记录嵌入式生命周期指标集合时使用
+     */
     public void record(Surface surface, Outcome outcome, Reason reason) {
         if (registry == null) {
             return;
@@ -29,6 +40,9 @@ public class EmbedLifecycleMetrics {
                 "reason", reason.tag()).increment();
     }
 
+    /**
+     * 定义界面的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Surface {
         LAUNCH("launch"),
         EXCHANGE("exchange"),
@@ -40,15 +54,28 @@ public class EmbedLifecycleMetrics {
 
         private final String tag;
 
+        /**
+         * 初始化界面，保存构造参数供后续方法使用。
+         *
+         * @param tag 标签依赖，保存到当前对象供后续业务方法调用
+         */
         Surface(String tag) {
             this.tag = tag;
         }
 
+        /**
+         * 生成标签文本，供后续匹配或展示。
+         *
+         * @return 处理后的标签文本，供调用方比较或展示
+         */
         public String tag() {
             return tag;
         }
     }
 
+    /**
+     * 定义结果的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Outcome {
         SUCCESS("success"),
         REJECTED("rejected"),
@@ -56,15 +83,28 @@ public class EmbedLifecycleMetrics {
 
         private final String tag;
 
+        /**
+         * 初始化结果，保存构造参数供后续方法使用。
+         *
+         * @param tag 标签依赖，保存到当前对象供后续业务方法调用
+         */
         Outcome(String tag) {
             this.tag = tag;
         }
 
+        /**
+         * 生成标签文本，供后续匹配或展示。
+         *
+         * @return 处理后的标签文本，供调用方比较或展示
+         */
         public String tag() {
             return tag;
         }
     }
 
+    /**
+     * 定义原因的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Reason {
         NONE("none"),
         INVALID_REQUEST("invalid_request"),
@@ -82,15 +122,30 @@ public class EmbedLifecycleMetrics {
 
         private final String tag;
 
+        /**
+         * 初始化原因，保存构造参数供后续方法使用。
+         *
+         * @param tag 标签依赖，保存到当前对象供后续业务方法调用
+         */
         Reason(String tag) {
             this.tag = tag;
         }
 
+        /**
+         * 生成标签文本，供后续匹配或展示。
+         *
+         * @return 处理后的标签文本，供调用方比较或展示
+         */
         public String tag() {
             return tag;
         }
 
-        /** 将公开错误码压缩到固定的低基数原因集合。 */
+        /**
+         * 将公开错误码压缩到固定的低基数原因集合。
+         *
+         * @param errorCode 错误编码，后续用于处理起始时定位或关联目标
+         * @return 处理后的起始结果，供调用方继续处理
+         */
         public static Reason from(EmbedErrorCode errorCode) {
             if (errorCode == null) {
                 return INTERNAL_ERROR;

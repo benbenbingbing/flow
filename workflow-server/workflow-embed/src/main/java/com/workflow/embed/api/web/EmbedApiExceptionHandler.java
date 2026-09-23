@@ -23,6 +23,13 @@ public class EmbedApiExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(EmbedApiExceptionHandler.class);
 
+    /**
+     * 处理嵌入式API异常，并将结果传给后续步骤。
+     *
+     * @param error 错误，作为 {@code headers.set} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理嵌入式API异常
+     * @return 处理后的嵌入式API异常结果，供调用方继续处理
+     */
     @ExceptionHandler(EmbedException.class)
     public ResponseEntity<Map<String, Object>> handle(
             EmbedException error,
@@ -39,6 +46,13 @@ public class EmbedApiExceptionHandler {
                         error.getErrorCode().name(), error.getData(), request));
     }
 
+    /**
+     * 处理无效请求，并将结果传给后续步骤。
+     *
+     * @param error 错误，供本方法处理无效请求时使用
+     * @param request 本次请求，后续经校验后用于处理无效请求
+     * @return 处理后的无效请求结果，供调用方继续处理
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> invalidRequest(
             MethodArgumentNotValidException error,
@@ -48,6 +62,13 @@ public class EmbedApiExceptionHandler {
                 .body(errorBody(400, "Embed request is invalid", "INVALID_REQUEST", null, request));
     }
 
+    /**
+     * 处理{@code malformed}请求，并将结果传给后续步骤。
+     *
+     * @param error 错误，供本方法处理{@code malformed}请求时使用
+     * @param request 本次请求，后续经校验后用于处理{@code malformed}请求
+     * @return 处理后的{@code malformed}请求结果，供调用方继续处理
+     */
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
             MissingRequestHeaderException.class,
@@ -65,6 +86,10 @@ public class EmbedApiExceptionHandler {
 
     /**
      * Embed 边界的未知故障必须折叠为稳定 503，不能落入通用异常处理器并泄露 SQL、类名或配置。
+     *
+     * @param error 错误，供本方法处理{@code unexpected}时使用
+     * @param request 本次请求，后续经校验后用于处理{@code unexpected}
+     * @return 处理后的{@code unexpected}结果，供调用方继续处理
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unexpected(
@@ -85,6 +110,16 @@ public class EmbedApiExceptionHandler {
                         request));
     }
 
+    /**
+     * 整理错误请求体数据，供调用方遍历或继续处理。
+     *
+     * @param status 状态标识，决定后续错误请求体采用的处理分支
+     * @param message 消息，作为 {@code body.put} 的输入影响后续处理
+     * @param errorCode 错误编码，后续用于处理错误请求体时定位或关联目标
+     * @param data 数据，后续用于处理错误请求体并传递处理结果
+     * @param request 本次请求，后续经校验后用于处理错误请求体
+     * @return 错误请求体键值结果，供调用方继续处理
+     */
     private static Map<String, Object> errorBody(
             int status,
             String message,
@@ -102,6 +137,9 @@ public class EmbedApiExceptionHandler {
 
     /**
      * 错误响应复用 Guard 已规范化的 traceId；独立 MVC 测试或 Guard 之前的失败也会生成安全值。
+     *
+     * @param request 本次请求，后续经校验后用于处理响应{@code headers}
+     * @return 处理后的响应{@code headers}结果，供调用方继续处理
      */
     private static HttpHeaders responseHeaders(HttpServletRequest request) {
         HttpHeaders headers = new HttpHeaders();

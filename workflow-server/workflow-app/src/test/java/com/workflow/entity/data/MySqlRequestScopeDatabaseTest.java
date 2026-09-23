@@ -1,7 +1,7 @@
 package com.workflow.entity.data;
 
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedTrafficControlMapper;
-import com.workflow.integration.database.api.DatabaseScalarValues;
+import com.workflow.integration.database.api.sql.DatabaseScalarValues;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApiRequestLeaseMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
 import com.workflow.openapi.security.OpenApiConcurrencyLeaseService;

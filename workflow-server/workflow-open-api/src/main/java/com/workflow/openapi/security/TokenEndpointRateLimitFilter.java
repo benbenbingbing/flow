@@ -1,11 +1,11 @@
 package com.workflow.openapi.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.core.logging.LogValue;
@@ -25,6 +25,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+/**
+ * 封装令牌接口端点频率上限过滤相关能力和状态；供同一业务流程的后续处理使用。
+ */
 public class TokenEndpointRateLimitFilter
         extends OncePerRequestFilter {
 
@@ -42,6 +45,17 @@ public class TokenEndpointRateLimitFilter
     private final SystemAuditPort auditPort;
     private final IntegrationCredentialUsageService credentialUsageService;
 
+    /**
+     * 初始化令牌接口端点频率上限过滤，保存构造参数供后续方法使用。
+     *
+     * @param rateLimitService 频率上限服务依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param networkPolicy {@code network}策略依赖，保存到当前对象供后续业务方法调用
+     * @param addressResolver 地址解析器依赖，保存到当前对象供后续业务方法调用
+     * @param auditPort 审计端口依赖，保存到当前对象供后续业务方法调用
+     * @param credentialUsageService 凭据使用场景服务依赖，保存到当前对象供后续业务方法调用
+     */
     public TokenEndpointRateLimitFilter(
             IntegrationRateLimitService rateLimitService,
             OpenIntegrationProperties properties,
@@ -59,11 +73,26 @@ public class TokenEndpointRateLimitFilter
         this.credentialUsageService = credentialUsageService;
     }
 
+    /**
+     * 判断是否需要非过滤；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否需要非过滤
+     * @return 非过滤条件成立时为 true，否则为 false
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         return !"/oauth2/token".equals(request.getRequestURI());
     }
 
+    /**
+     * 处理{@code do}过滤内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code do}过滤内部
+     * @param response 响应，作为 {@code writeInvalidClient} 的输入影响后续处理
+     * @param filterChain 过滤链，供本方法处理{@code do}过滤内部时使用
+     * @throws ServletException 过滤器或请求处理链执行失败时抛出
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -142,6 +171,11 @@ public class TokenEndpointRateLimitFilter
         }
     }
 
+    /**
+     * 记录成功凭据{@code use}；供后续追溯或审计使用。
+     *
+     * @param clientId 客户端ID，后续用于记录成功凭据{@code use}时定位或关联目标
+     */
     private void recordSuccessfulCredentialUse(String clientId) {
         try {
             credentialUsageService.recordSuccessfulUse(clientId);
@@ -154,6 +188,16 @@ public class TokenEndpointRateLimitFilter
         }
     }
 
+    /**
+     * 记录审计；供后续追溯或审计使用。
+     *
+     * @param request 本次请求，后续经校验后用于记录审计
+     * @param applicationId 应用ID，后续用于记录审计时定位或关联目标
+     * @param clientId 客户端ID，后续用于记录审计时定位或关联目标
+     * @param clientAddress 客户端地址，供本方法记录审计时使用
+     * @param completed {@code completed}，供本方法记录审计时使用
+     * @param status 状态标识，决定后续审计采用的处理分支
+     */
     private void recordAudit(
             HttpServletRequest request,
             String applicationId,
@@ -199,6 +243,12 @@ public class TokenEndpointRateLimitFilter
         }
     }
 
+    /**
+     * 写入无效客户端；后续读取或执行将使用更新后的状态。
+     *
+     * @param response 响应，作为 {@code objectMapper.writeValue} 的输入影响后续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     private void writeInvalidClient(HttpServletResponse response)
             throws IOException {
         response.setHeader(
@@ -215,6 +265,12 @@ public class TokenEndpointRateLimitFilter
                 Map.of("error", "invalid_client"));
     }
 
+    /**
+     * 提取客户端ID；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于提取客户端ID
+     * @return 提取后的客户端ID文本，供调用方比较或展示
+     */
     private String extractClientId(HttpServletRequest request) {
         String header = request.getHeader("Authorization");
         if (header == null

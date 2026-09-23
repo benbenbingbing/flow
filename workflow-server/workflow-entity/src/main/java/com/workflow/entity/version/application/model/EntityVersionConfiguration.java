@@ -37,6 +37,9 @@ public class EntityVersionConfiguration {
     /** 仅用于管理端选择，不进入运行时匹配。 */
     private List<FieldPresentation> fieldOptions = new ArrayList<>();
 
+    /**
+     * 负责捕获触发条件的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class CaptureTrigger {
 
@@ -53,6 +56,9 @@ public class EntityVersionConfiguration {
         private Boolean enabled = true;
     }
 
+    /**
+     * 负责快照作用域的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class SnapshotScope {
 
@@ -63,6 +69,9 @@ public class EntityVersionConfiguration {
         private String scopeHash;
     }
 
+    /**
+     * 负责作用域节点的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class ScopeNode {
 
@@ -81,10 +90,16 @@ public class EntityVersionConfiguration {
         private List<FieldPresentation> fields = new ArrayList<>();
     }
 
+    /**
+     * 负责关系作用域的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     @EqualsAndHashCode(callSuper = true)
     public static class RelationScope extends ScopeNode {
 
+        /**
+         * 初始化关系作用域，保存构造参数供后续方法使用。
+         */
         public RelationScope() {
             setNodeCode(null);
         }
@@ -143,6 +158,9 @@ public class EntityVersionConfiguration {
         private String relationDefinitionHash;
     }
 
+    /**
+     * 负责固定过滤的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class FixedFilter {
 
@@ -150,6 +168,9 @@ public class EntityVersionConfiguration {
         private List<FilterCondition> conditions = new ArrayList<>();
     }
 
+    /**
+     * 负责过滤条件的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class FilterCondition {
 
@@ -158,6 +179,9 @@ public class EntityVersionConfiguration {
         private Object value;
     }
 
+    /**
+     * 负责作用域限制集合的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class ScopeLimits {
 
@@ -171,6 +195,9 @@ public class EntityVersionConfiguration {
         private String overflowPolicy = "FAIL";
     }
 
+    /**
+     * 负责差异策略的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class DiffPolicy {
 
@@ -179,6 +206,9 @@ public class EntityVersionConfiguration {
         private List<String> ignoredFieldCodes = new ArrayList<>();
     }
 
+    /**
+     * 负责字段展示的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class FieldPresentation {
 
@@ -195,6 +225,9 @@ public class EntityVersionConfiguration {
         private Map<String, String> optionLabels = new LinkedHashMap<>();
     }
 
+    /**
+     * 负责关系选项的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class RelationOption {
 
@@ -206,6 +239,9 @@ public class EntityVersionConfiguration {
         private List<FieldPresentation> fields = new ArrayList<>();
     }
 
+    /**
+     * 负责{@code scenario}的业务处理；协调校验、状态变化及后续结果传递。
+     */
     @Data
     public static class Scenario {
 

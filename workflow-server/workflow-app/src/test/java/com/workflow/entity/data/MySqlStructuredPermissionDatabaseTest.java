@@ -10,7 +10,7 @@ import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.entity.permission.application.PermissionSqlParameters;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import org.apache.ibatis.type.JdbcType;
 import org.junit.jupiter.api.Test;
@@ -185,7 +185,7 @@ class MySqlStructuredPermissionDatabaseTest {
             h.jdbc.update("INSERT INTO biz_structured_scope(id,i,deleted) VALUES ('match',12,0),('other',2,0),('null',NULL,0),('deleted',12,1)");
             var parameters = new LinkedHashMap<String, Object>();
             String predicate = builder().buildFilterSql("asset", rule("i", "IN", Arrays.asList("12", null)), user("u", null, null), parameters);
-            var plan = new com.workflow.contracts.entity.list.DataScopePlan(true, predicate, parameters, List.of(), List.of("number"), "", 1);
+            var plan = new com.workflow.contracts.entity.list.model.DataScopePlan(true, predicate, parameters, List.of(), List.of("number"), "", 1);
             var page = service(h).findPageWithDataScopePlan("asset", Map.of(), 1, 10, plan);
             assertEquals(1, page.getTotal());
             assertEquals(List.of("match"), page.getRecords().stream().map(row -> row.getId()).toList());

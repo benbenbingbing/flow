@@ -82,6 +82,15 @@ public class EntityRecordSnapshotService {
     private final SysOrganizationService organizationService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 捕获实体记录快照；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param aggregateRecord 聚合对象记录，作为 {@code deepCopy} 的输入影响后续处理
+     * @param deletedSnapshot 已删除快照，作为 {@code document.put} 的输入影响后续处理
+     * @return 捕获后的实体记录快照结果，供调用方继续处理
+     */
     public SnapshotCapture capture(
             String entityCode,
             String recordId,
@@ -163,6 +172,12 @@ public class EntityRecordSnapshotService {
      * <p>旧一层范围仍走同一逻辑；多层节点必须带有保存时冻结的父节点和关系路径。
      * 捕获严格拒绝发布漂移、记录环、同一组成子记录归属多个父记录以及任何预算超限，
      * 不允许用截断快照冒充完整业务版本。</p>
+     *
+     * @param configuration 配置内容，决定后续{@code v2}的处理规则
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param aggregateRecord 聚合对象记录，作为 {@code deepCopy} 的输入影响后续处理
+     * @param deletedSnapshot 已删除快照，作为 {@code rootDocument.put} 的输入影响后续处理
+     * @return 捕获后的{@code v2}结果，供调用方继续处理
      */
     public SnapshotCaptureV2 captureV2(
             EntityVersionConfiguration configuration,
@@ -426,6 +441,13 @@ public class EntityRecordSnapshotService {
                 size);
     }
 
+    /**
+     * 处理预览{@code v2}，并将结果传给后续步骤。
+     *
+     * @param configuration 配置内容，决定后续预览{@code v2}的处理规则
+     * @param aggregateRecord 聚合对象记录，作为 {@code deepCopy} 的输入影响后续处理
+     * @return 处理后的预览{@code v2}结果，供调用方继续处理
+     */
     public EntityVersionScopePreview previewV2(
             EntityVersionConfiguration configuration,
             Map<String, Object> aggregateRecord) {
@@ -494,13 +516,26 @@ public class EntityRecordSnapshotService {
                 previews, List.copyOf(warnings));
     }
 
-    /** RELATED_MUTATION 触发判定与实际捕获共用同一固定过滤语义。 */
+    /**
+     * RELATED_MUTATION 触发判定与实际捕获共用同一固定过滤语义。
+     *
+     * @param row 行，作为 {@code matchesFilter} 的输入影响后续处理
+     * @param filter 过滤，供本方法判断是否匹配固定过滤时使用
+     * @return 固定过滤条件成立时为 true，否则为 false
+     */
     public boolean matchesFixedFilter(
             Map<String, Object> row,
             EntityVersionConfiguration.FixedFilter filter) {
         return matchesFilter(row == null ? Map.of() : row, filter);
     }
 
+    /**
+     * 捕获系统字段；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param record 记录，供本方法捕获系统字段时使用
+     * @return 实体记录快照集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> captureSystemFields(
             String entityCode,
             Map<String, Object> record) {
@@ -522,6 +557,13 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 捕获业务字段；结果供调用方的后续步骤使用。
+     *
+     * @param field 字段，作为 {@code customData.get} 的输入影响后续处理
+     * @param customData 自定义数据，供本方法捕获业务字段时使用
+     * @return 业务字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> captureBusinessField(
             EntityField field,
             Map<String, Object> customData) {
@@ -543,6 +585,18 @@ public class EntityRecordSnapshotService {
                 field.getSortOrder());
     }
 
+    /**
+     * 整理字段数据，供调用方遍历或继续处理。
+     *
+     * @param code 编码，后续用于处理字段时定位或关联目标
+     * @param name 名称，后续用于处理字段时匹配或展示
+     * @param type 类型标识，决定后续字段采用的处理分支
+     * @param value 待处理字段的原始输入，结果供调用方继续使用
+     * @param displayValue 展示值，作为 {@code result.put} 的输入影响后续处理
+     * @param group 分组，作为 {@code result.put} 的输入影响后续处理
+     * @param sortOrder 排序顺序，作为 {@code result.put} 的输入影响后续处理
+     * @return 字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> field(
             String code,
             String name,
@@ -562,6 +616,14 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 处理展示系统值，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param type 类型标识，决定后续展示系统值采用的处理分支
+     * @param value 待处理展示系统值的原始输入，结果供调用方继续使用
+     * @return 处理后的展示系统值结果，供调用方继续处理
+     */
     private Object displaySystemValue(
             String entityCode,
             String type,
@@ -585,6 +647,13 @@ public class EntityRecordSnapshotService {
         return value;
     }
 
+    /**
+     * 处理展示字段值，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code displayDictionary} 的输入影响后续处理
+     * @param value 待处理展示字段值的原始输入，结果供调用方继续使用
+     * @return 处理后的展示字段值结果，供调用方继续处理
+     */
     private Object displayFieldValue(
             EntityField field,
             Object value) {
@@ -623,6 +692,12 @@ public class EntityRecordSnapshotService {
         return value;
     }
 
+    /**
+     * 处理展示用户集合，并将结果传给后续步骤。
+     *
+     * @param value 待处理展示用户集合的原始输入，结果供调用方继续使用
+     * @return 处理后的展示用户集合结果，供调用方继续处理
+     */
     private Object displayUsers(Object value) {
         List<String> values = stringValues(value);
         if (values.isEmpty()) {
@@ -633,6 +708,12 @@ public class EntityRecordSnapshotService {
                 : userService.getDisplayNames(values);
     }
 
+    /**
+     * 处理展示{@code departments}，并将结果传给后续步骤。
+     *
+     * @param value 待处理展示{@code departments}的原始输入，结果供调用方继续使用
+     * @return 处理后的展示{@code departments}结果，供调用方继续处理
+     */
     private Object displayDepartments(Object value) {
         List<String> values = stringValues(value);
         if (values.isEmpty()) {
@@ -647,6 +728,13 @@ public class EntityRecordSnapshotService {
                 ? value : String.join(",", names);
     }
 
+    /**
+     * 处理展示{@code dictionary}，并将结果传给后续步骤。
+     *
+     * @param dictCode 字典编码，后续用于处理展示{@code dictionary}时定位或关联目标
+     * @param value 待处理展示{@code dictionary}的原始输入，结果供调用方继续使用
+     * @return 处理后的展示{@code dictionary}结果，供调用方继续处理
+     */
     private Object displayDictionary(
             String dictCode,
             Object value) {
@@ -657,6 +745,13 @@ public class EntityRecordSnapshotService {
         return displayMapped(value, labels);
     }
 
+    /**
+     * 处理展示选项，并将结果传给后续步骤。
+     *
+     * @param field 字段，供本方法处理展示选项时使用
+     * @param value 待处理展示选项的原始输入，结果供调用方继续使用
+     * @return 处理后的展示选项结果，供调用方继续处理
+     */
     private Object displayOptions(
             EntityField field,
             Object value) {
@@ -692,6 +787,13 @@ public class EntityRecordSnapshotService {
         return displayMapped(value, labels);
     }
 
+    /**
+     * 处理展示{@code mapped}，并将结果传给后续步骤。
+     *
+     * @param value 待处理展示{@code mapped}的原始输入，结果供调用方继续使用
+     * @param labels {@code labels}，供本方法处理展示{@code mapped}时使用
+     * @return 处理后的展示{@code mapped}结果，供调用方继续处理
+     */
     private Object displayMapped(
             Object value,
             Map<String, String> labels) {
@@ -707,6 +809,12 @@ public class EntityRecordSnapshotService {
                 : String.join(",", result);
     }
 
+    /**
+     * 处理关系展示，并将结果传给后续步骤。
+     *
+     * @param value 待处理关系展示的原始输入，结果供调用方继续使用
+     * @return 处理后的关系展示结果，供调用方继续处理
+     */
     private Object relationDisplay(Object value) {
         if (value instanceof Collection<?> values) {
             return values.stream()
@@ -725,6 +833,12 @@ public class EntityRecordSnapshotService {
         return value;
     }
 
+    /**
+     * 判断是否关系；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否关系时使用
+     * @return 关系条件成立时为 true，否则为 false
+     */
     private boolean isRelation(EntityField field) {
         return switch (field.getFieldType()) {
             case REFERENCE, MULTI_REFERENCE, SUB_FORM -> true;
@@ -732,6 +846,12 @@ public class EntityRecordSnapshotService {
         };
     }
 
+    /**
+     * 判断是否选项字段；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否选项字段时使用
+     * @return 选项字段条件成立时为 true，否则为 false
+     */
     private boolean isOptionField(EntityField field) {
         return switch (field.getFieldType()) {
             case SELECT, MULTI_SELECT, RADIO, CHECKBOX -> true;
@@ -739,6 +859,12 @@ public class EntityRecordSnapshotService {
         };
     }
 
+    /**
+     * 处理{@code flatten}字典条目，并将结果传给后续步骤。
+     *
+     * @param items 条目，供本方法处理{@code flatten}字典条目时使用
+     * @param labels {@code labels}，供本方法处理{@code flatten}字典条目时使用
+     */
     private void flattenDictItems(
             List<SysDictItem> items,
             Map<String, String> labels) {
@@ -758,6 +884,12 @@ public class EntityRecordSnapshotService {
         }
     }
 
+    /**
+     * 整理字符串值集合数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串值集合的原始输入，结果供调用方继续使用
+     * @return 实体记录快照集合，供调用方遍历或展示
+     */
     private List<String> stringValues(Object value) {
         if (value instanceof Collection<?> values) {
             return values.stream()
@@ -776,6 +908,12 @@ public class EntityRecordSnapshotService {
                 : List.of(String.valueOf(value));
     }
 
+    /**
+     * 读取选项；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 实体记录快照集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> readOptions(
             String json) {
         try {
@@ -788,6 +926,12 @@ public class EntityRecordSnapshotService {
         }
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         if (value instanceof Map<?, ?> source) {
@@ -796,6 +940,12 @@ public class EntityRecordSnapshotService {
         return Map.of();
     }
 
+    /**
+     * 整理{@code deep}副本数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code deep}副本的原始输入，结果供调用方继续使用
+     * @return {@code deep}副本键值结果，供调用方继续处理
+     */
     private Map<String, Object> deepCopy(
             Map<String, Object> value) {
         if (value == null) {
@@ -807,6 +957,13 @@ public class EntityRecordSnapshotService {
                 });
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param material 材料，供本方法处理哈希时使用
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(Object material) {
         try {
             String canonical = objectMapper.writer()
@@ -823,6 +980,12 @@ public class EntityRecordSnapshotService {
         }
     }
 
+    /**
+     * 整理根{@code presentations}数据，供调用方遍历或继续处理。
+     *
+     * @param root 根，作为 {@code result.putAll} 的输入影响后续处理
+     * @return 根{@code presentations}键值结果，供调用方继续处理
+     */
     private Map<String, EntityVersionConfiguration.FieldPresentation>
             rootPresentations(EntityVersionConfiguration.ScopeNode root) {
         Map<String, EntityVersionConfiguration.FieldPresentation> result =
@@ -843,6 +1006,12 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 整理索引展示数据，供调用方遍历或继续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 索引展示键值结果，供调用方继续处理
+     */
     private Map<String, EntityVersionConfiguration.FieldPresentation>
             indexPresentation(
                     List<EntityVersionConfiguration.FieldPresentation> fields) {
@@ -856,6 +1025,12 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 整理展示数据，供调用方遍历或继续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 展示键值结果，供调用方继续处理
+     */
     private Map<String, Object> presentation(
             Map<String, EntityVersionConfiguration.FieldPresentation> fields) {
         Map<String, List<EntityVersionConfiguration.FieldPresentation>> sections =
@@ -887,6 +1062,14 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 处理{@code frozen}值，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param field 字段，作为 {@code flattenDictItems} 的输入影响后续处理
+     * @param raw 待处理{@code frozen}值的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code frozen}值结果，供调用方继续处理
+     */
     private FrozenValue frozenValue(
             String entityCode,
             EntityVersionConfiguration.FieldPresentation field,
@@ -946,6 +1129,14 @@ public class EntityRecordSnapshotService {
                 "PRESENT", "RESOLVED");
     }
 
+    /**
+     * 处理根值，并将结果传给后续步骤。
+     *
+     * @param record 记录，供本方法处理根值时使用
+     * @param customData 自定义数据，供本方法处理根值时使用
+     * @param fieldCode 字段编码，后续用于处理根值时定位或关联目标
+     * @return 处理后的根值结果，供调用方继续处理
+     */
     private Object rootValue(
             Map<String, Object> record,
             Map<String, Object> customData,
@@ -954,6 +1145,14 @@ public class EntityRecordSnapshotService {
                 ? record.get(fieldCode) : customData.get(fieldCode);
     }
 
+    /**
+     * 整理关系行数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理关系行的原始输入，结果供调用方继续使用
+     * @param relationType 关系类型标识，决定后续关系行采用的处理分支
+     * @return 实体记录快照集合，供调用方遍历或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private List<Map<String, Object>> relationRows(
             Object value,
             String relationType) {
@@ -976,6 +1175,13 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 判断是否匹配过滤；判断结果决定调用方的后续分支。
+     *
+     * @param row 行，作为 {@code matchesCondition} 的输入影响后续处理
+     * @param filter 过滤，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @return 过滤条件成立时为 true，否则为 false
+     */
     private boolean matchesFilter(
             Map<String, Object> row,
             EntityVersionConfiguration.FixedFilter filter) {
@@ -996,6 +1202,13 @@ public class EntityRecordSnapshotService {
         return !any;
     }
 
+    /**
+     * 判断是否匹配条件；判断结果决定调用方的后续分支。
+     *
+     * @param row 行，作为 {@code rowValue} 的输入影响后续处理
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 条件条件成立时为 true，否则为 false
+     */
     private boolean matchesCondition(
             Map<String, Object> row,
             EntityVersionConfiguration.FilterCondition condition) {
@@ -1027,6 +1240,13 @@ public class EntityRecordSnapshotService {
         };
     }
 
+    /**
+     * 判断{@code equivalent}条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，作为 {@code booleanValue} 的输入影响后续处理
+     * @param right 右侧，作为 {@code booleanValue} 的输入影响后续处理
+     * @return {@code equivalent}条件成立时为 true，否则为 false
+     */
     private boolean equivalent(Object left, Object right) {
         if (Objects.equals(left, right)) {
             return true;
@@ -1056,6 +1276,12 @@ public class EntityRecordSnapshotService {
         return String.valueOf(left).equals(String.valueOf(right));
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值值结果，供调用方继续处理
+     */
     private Boolean booleanValue(Object value) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -1070,12 +1296,25 @@ public class EntityRecordSnapshotService {
         return null;
     }
 
+    /**
+     * 判断布尔值{@code word}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理布尔值{@code word}的原始输入，结果供调用方继续使用
+     * @return 布尔值{@code word}条件成立时为 true，否则为 false
+     */
     private boolean booleanWord(Object value) {
         String text = String.valueOf(value).trim();
         return "true".equalsIgnoreCase(text)
                 || "false".equalsIgnoreCase(text);
     }
 
+    /**
+     * 处理路径，并将结果传给后续步骤。
+     *
+     * @param row 行，供本方法处理路径时使用
+     * @param fieldCode 字段编码，后续用于处理路径时定位或关联目标
+     * @return 处理后的路径结果，供调用方继续处理
+     */
     private Object path(Map<String, Object> row, String fieldCode) {
         if (!StringUtils.hasText(fieldCode)) {
             return null;
@@ -1090,6 +1329,13 @@ public class EntityRecordSnapshotService {
         return current;
     }
 
+    /**
+     * 处理行值，并将结果传给后续步骤。
+     *
+     * @param row 行，作为 {@code path} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理行值时定位或关联目标
+     * @return 处理后的行值结果，供调用方继续处理
+     */
     private Object rowValue(
             Map<String, Object> row,
             String fieldCode) {
@@ -1100,11 +1346,24 @@ public class EntityRecordSnapshotService {
         return path(map(row.get("data")), fieldCode);
     }
 
+    /**
+     * 整理集合数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理集合的原始输入，结果供调用方继续使用
+     * @return {@code collection<?>}集合，供调用方遍历或展示
+     */
     private Collection<?> collection(Object value) {
         return value instanceof Collection<?> values
                 ? values : value == null ? List.of() : List.of(value);
     }
 
+    /**
+     * 比较实体记录快照；结果供调用方的后续步骤使用。
+     *
+     * @param left 左侧，作为 {@code java.math.BigDecimal} 的输入影响后续处理
+     * @param right 右侧，供本方法比较实体记录快照时使用
+     * @return 比较后的实体记录快照结果，供调用方继续处理
+     */
     private int compare(Object left, Object right) {
         if (left == null || right == null) {
             return left == right ? 0 : left == null ? -1 : 1;
@@ -1117,6 +1376,12 @@ public class EntityRecordSnapshotService {
         }
     }
 
+    /**
+     * 整理原始值集合数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 原始值集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> rawValues(Map<String, FrozenValue> values) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<String, FrozenValue> entry : values.entrySet()) {
@@ -1125,6 +1390,12 @@ public class EntityRecordSnapshotService {
         return result;
     }
 
+    /**
+     * 处理已配置关系上限，并将结果传给后续步骤。
+     *
+     * @param scope 作用域，供本方法处理已配置关系上限时使用
+     * @return 处理后的已配置关系上限结果，供调用方继续处理
+     */
     private int configuredRelationLimit(
             EntityVersionConfiguration.SnapshotScope scope) {
         Integer value = scope.getLimits() == null
@@ -1133,6 +1404,13 @@ public class EntityRecordSnapshotService {
                 value == null ? HARD_MAX_ROWS_PER_RELATION : value);
     }
 
+    /**
+     * 处理有效关系上限，并将结果传给后续步骤。
+     *
+     * @param scope 作用域，作为 {@code Math.min} 的输入影响后续处理
+     * @param relation 关系，供本方法处理有效关系上限时使用
+     * @return 处理后的有效关系上限结果，供调用方继续处理
+     */
     private int effectiveRelationLimit(
             EntityVersionConfiguration.SnapshotScope scope,
             EntityVersionConfiguration.RelationScope relation) {
@@ -1142,6 +1420,12 @@ public class EntityRecordSnapshotService {
                 Math.min(HARD_MAX_ROWS_PER_RELATION, override));
     }
 
+    /**
+     * 处理已配置总数上限，并将结果传给后续步骤。
+     *
+     * @param scope 作用域，供本方法处理已配置总数上限时使用
+     * @return 处理后的已配置总数上限结果，供调用方继续处理
+     */
     private int configuredTotalLimit(
             EntityVersionConfiguration.SnapshotScope scope) {
         Integer value = scope.getLimits() == null
@@ -1150,6 +1434,12 @@ public class EntityRecordSnapshotService {
                 value == null ? HARD_MAX_ROWS_PER_VERSION : value);
     }
 
+    /**
+     * 处理已配置{@code byte}上限，并将结果传给后续步骤。
+     *
+     * @param scope 作用域，供本方法处理已配置{@code byte}上限时使用
+     * @return 处理后的已配置{@code byte}上限结果，供调用方继续处理
+     */
     private long configuredByteLimit(
             EntityVersionConfiguration.SnapshotScope scope) {
         Long value = scope.getLimits() == null
@@ -1158,6 +1448,14 @@ public class EntityRecordSnapshotService {
                 value == null ? HARD_MAX_BYTES_PER_VERSION : value);
     }
 
+    /**
+     * 构造上限失败异常，供调用方区分失败原因。
+     *
+     * @param relationName 关系名称，后续用于处理上限失败时匹配或展示
+     * @param actual 实际，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 处理后的上限失败结果，供调用方继续处理
+     */
     private BusinessConflictException limitFailure(
             String relationName,
             int actual,
@@ -1173,6 +1471,8 @@ public class EntityRecordSnapshotService {
      *
      * <p>旧一层发布没有指纹时保留 historyId 校验；任何多层发布缺少路径或指纹都
      * fail-closed，防止配置损坏后降级成一层捕获。</p>
+     *
+     * @param scope 作用域，作为 {@code requireCurrentRelease} 的输入影响后续处理
      */
     private void requireFrozenScopeCurrent(
             EntityVersionConfiguration.SnapshotScope scope) {
@@ -1276,7 +1576,13 @@ public class EntityRecordSnapshotService {
         }
     }
 
-    /** 路径末跳必须完整等于节点冻结定义，不能只比较 relationCode。 */
+    /**
+     * 路径末跳必须完整等于节点冻结定义，不能只比较 relationCode。
+     *
+     * @param step 步骤，供本方法处理路径步骤匹配关系时使用
+     * @param relation 关系，供本方法处理路径步骤匹配关系时使用
+     * @return 路径步骤匹配关系条件成立时为 true，否则为 false
+     */
     private boolean pathStepMatchesRelation(
             EntityVersionConfiguration.RelationPathStep step,
             EntityVersionConfiguration.RelationScope relation) {
@@ -1310,6 +1616,15 @@ public class EntityRecordSnapshotService {
                     relation.getRelationDefinitionHash());
     }
 
+    /**
+     * 校验并获取当前发布版本；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param frozenReleaseId {@code frozen}发布版本ID，后续用于校验并获取当前发布版本时定位或关联目标
+     * @param frozenSchemaHash {@code frozen}结构哈希，供本方法校验并获取当前发布版本时使用
+     * @param label 标签，后续用于校验并获取当前发布版本时匹配或展示
+     * @return 校验并获取后的当前发布版本结果，供调用方继续处理
+     */
     private EntityPublishedSnapshot requireCurrentRelease(
             String entityCode,
             String frozenReleaseId,
@@ -1329,22 +1644,47 @@ public class EntityRecordSnapshotService {
         return current;
     }
 
+    /**
+     * 构造{@code stale}异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的{@code stale}结果，供调用方继续处理
+     */
     private BusinessConflictException stale(String message) {
         return new BusinessConflictException(
                 "ENTITY_VERSION_SCOPE_STALE",
                 message + "，请重新保存数据版本配置后再固化");
     }
 
+    /**
+     * 生成规范化父级节点文本，供后续匹配或展示。
+     *
+     * @param relation 关系，供本方法处理规范化父级节点时使用
+     * @return 处理后的规范化父级节点文本，供调用方比较或展示
+     */
     private String normalizedParentNode(
             EntityVersionConfiguration.RelationScope relation) {
         return StringUtils.hasText(relation.getParentNodeCode())
                 ? relation.getParentNodeCode().trim() : "ROOT";
     }
 
+    /**
+     * 记录身份；供后续追溯或审计使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 记录后的身份文本，供调用方比较或展示
+     */
     private String recordIdentity(String entityCode, String recordId) {
         return String.valueOf(entityCode) + ":" + String.valueOf(recordId);
     }
 
+    /**
+     * 生成实体结构哈希文本，供后续匹配或展示。
+     *
+     * @param snapshot 快照，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的实体结构哈希文本，供调用方比较或展示
+     */
     private String entitySchemaHash(EntityPublishedSnapshot snapshot) {
         Map<String, Object> material = new LinkedHashMap<>();
         material.put("historyId", snapshot.getHistoryId());
@@ -1358,6 +1698,14 @@ public class EntityRecordSnapshotService {
         return hash(material);
     }
 
+    /**
+     * 生成关系定义哈希文本，供后续匹配或展示。
+     *
+     * @param parent 父级，作为 {@code material.put} 的输入影响后续处理
+     * @param child 子级，作为 {@code material.put} 的输入影响后续处理
+     * @param relation 关系，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的关系定义哈希文本，供调用方比较或展示
+     */
     private String relationDefinitionHash(
             EntityPublishedSnapshot parent,
             EntityPublishedSnapshot child,
@@ -1382,6 +1730,13 @@ public class EntityRecordSnapshotService {
         return hash(material);
     }
 
+    /**
+     * 处理{@code serialized}大小，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code serialized}大小的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code serialized}大小结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private long serializedSize(Object value) {
         try {
             return objectMapper.writeValueAsBytes(value).length;
@@ -1390,6 +1745,12 @@ public class EntityRecordSnapshotService {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null
@@ -1401,12 +1762,27 @@ public class EntityRecordSnapshotService {
         return null;
     }
 
+    /**
+     * 封装系统字段的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param code 业务编码，供后续匹配和引用
+     * @param name 展示名称，供界面或日志识别
+     * @param type 类型标识，决定后续系统字段采用的处理分支
+     */
     private record SystemField(
             String code,
             String name,
             String type) {
     }
 
+    /**
+     * 封装快照捕获的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param document 文档，保存在对象中供后续校验、查询或展示
+     * @param hash 哈希，保存在对象中供后续校验、查询或展示
+     * @param entityReleaseId 实体发布版本ID，后续用于处理快照捕获时定位或关联目标
+     * @param entityReleaseVersion 实体发布版本，保存在对象中供后续校验、查询或展示
+     */
     public record SnapshotCapture(
             Map<String, Object> document,
             String hash,
@@ -1414,6 +1790,19 @@ public class EntityRecordSnapshotService {
             Integer entityReleaseVersion) {
     }
 
+    /**
+     * 封装快照捕获{@code v2}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param rootDocument 根文档，保存在对象中供后续校验、查询或展示
+     * @param dataHash 数据哈希，保存在对象中供后续校验、查询或展示
+     * @param presentationHash 展示哈希，保存在对象中供后续校验、查询或展示
+     * @param scopeHash 作用域哈希，保存在对象中供后续校验、查询或展示
+     * @param entityReleaseId 实体发布版本ID，后续用于处理快照捕获{@code v2}时定位或关联目标
+     * @param entityReleaseVersion 实体发布版本，保存在对象中供后续校验、查询或展示
+     * @param datasets {@code datasets}，保存在对象中供后续校验、查询或展示
+     * @param relationRowCount 关系行数量，保存在对象中供后续校验、查询或展示
+     * @param sizeBytes 大小字节，保存在对象中供后续校验、查询或展示
+     */
     public record SnapshotCaptureV2(
             Map<String, Object> rootDocument,
             String dataHash,
@@ -1426,6 +1815,23 @@ public class EntityRecordSnapshotService {
             long sizeBytes) {
     }
 
+    /**
+     * 封装数据集捕获的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param nodeCode 节点编码，后续用于处理数据集捕获时定位或关联目标
+     * @param relationCode 关系编码，后续用于处理数据集捕获时定位或关联目标
+     * @param relationName 关系名称，后续用于处理数据集捕获时匹配或展示
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityName 实体名称，后续用于处理数据集捕获时匹配或展示
+     * @param entityReleaseId 实体发布版本ID，后续用于处理数据集捕获时定位或关联目标
+     * @param entityReleaseVersion 实体发布版本，保存在对象中供后续校验、查询或展示
+     * @param selector {@code selector}，保存在对象中供后续校验、查询或展示
+     * @param presentation 展示，保存在对象中供后续校验、查询或展示
+     * @param rows 行，保存在对象中供后续校验、查询或展示
+     * @param dataHash 数据哈希，保存在对象中供后续校验、查询或展示
+     * @param presentationHash 展示哈希，保存在对象中供后续校验、查询或展示
+     * @param scopeHash 作用域哈希，保存在对象中供后续校验、查询或展示
+     */
     public record DatasetCapture(
             String nodeCode,
             String relationCode,
@@ -1442,6 +1848,15 @@ public class EntityRecordSnapshotService {
             String scopeHash) {
     }
 
+    /**
+     * 封装数据集行捕获的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param recordTitle 记录{@code title}，后续用于处理数据集行捕获时匹配或展示
+     * @param rowOrder 行顺序，保存在对象中供后续校验、查询或展示
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param rowHash 行哈希，保存在对象中供后续校验、查询或展示
+     */
     public record DatasetRowCapture(
             String recordId,
             String recordTitle,
@@ -1450,14 +1865,27 @@ public class EntityRecordSnapshotService {
             String rowHash) {
     }
 
-    /** 捕获过程中保留原始节点及祖先身份，仅在内存中用于继续遍历和环检测。 */
+    /**
+     * 捕获过程中保留原始节点及祖先身份，仅在内存中用于继续遍历和环检测。
+     *
+     * @param record 记录，保存在对象中供后续校验、查询或展示
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param ancestry {@code ancestry}，保存在对象中供后续校验、查询或展示
+     */
     private record CaptureNodeRecord(
             Map<String, Object> record,
             String recordId,
             java.util.Set<String> ancestry) {
     }
 
-    /** 一个已解析但尚未冻结展示值的子节点。 */
+    /**
+     * 一个已解析但尚未冻结展示值的子节点。
+     *
+     * @param record 记录，保存在对象中供后续校验、查询或展示
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param parentRecordId 父级记录ID，后续用于处理{@code captured}原始行时定位或关联目标
+     * @param ancestry {@code ancestry}，保存在对象中供后续校验、查询或展示
+     */
     private record CapturedRawRow(
             Map<String, Object> record,
             String recordId,
@@ -1465,6 +1893,12 @@ public class EntityRecordSnapshotService {
             java.util.Set<String> ancestry) {
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体记录快照集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }

@@ -2,6 +2,7 @@ package com.workflow.listener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.engine.infrastructure.flowable.EntityTransitionStatusListener;
 import com.workflow.process.status.application.ProcessEntityStatusPolicy;
@@ -40,7 +41,7 @@ class EntityTransitionStatusFlowableTest {
         engine = cfg.buildProcessEngine();
         jdbc.execute("CREATE TABLE status_write(id VARCHAR(100), status VARCHAR(30))");
         when(mutations.execute(any())).thenAnswer(call -> {
-            var command = (com.workflow.contracts.entity.mutation.EntityMutationCommand) call.getArgument(0);
+            var command = (com.workflow.contracts.entity.mutation.model.EntityMutationCommand) call.getArgument(0);
             jdbc.update("INSERT INTO status_write VALUES (?,?)", command.operationId(), command.payload().get("status"));
             if (rejectWrite) throw new IllegalStateException("模拟业务写入失败");
             return null;
@@ -128,7 +129,7 @@ class EntityTransitionStatusFlowableTest {
         configuration.setDatabaseId("MYSQL");
         // 测试单独建立会话工厂，需要注册生产分页插件才能验证实际页大小和偏移。
         configuration.addInterceptor(new com.workflow.config.database.DatabaseMybatisConfiguration()
-                .mybatisPlusInterceptor(new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect()));
+                .mybatisPlusInterceptor(new MySqlSchemaDdlDialect()));
         configuration.addMapper(com.workflow.process.instance.infrastructure.persistence.mapper.StartedProcessPageMapper.class);
         var factory = new com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean();
         factory.setDataSource(dataSource); factory.setConfiguration(configuration);

@@ -25,9 +25,18 @@ final class BpmnExecutableContentValidator {
             "${restServiceTaskDelegate}",
             "${sequenceFlowExecutionListener}");
 
+    /**
+     * 初始化BPMN{@code executable}内容校验器，保存构造参数供后续方法使用。
+     */
     private BpmnExecutableContentValidator() {
     }
 
+    /**
+     * 校验BPMN{@code executable}内容；不满足约束时阻止后续处理。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parse} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     static void validate(String bpmnXml) {
         try {
             Document document = parse(bpmnXml);
@@ -44,6 +53,11 @@ final class BpmnExecutableContentValidator {
         }
     }
 
+    /**
+     * 校验元素；不满足约束时阻止后续处理。
+     *
+     * @param element 元素，作为 {@code rejected} 的输入影响后续处理
+     */
     private static void validateElement(Element element) {
         for (int index = 0; index < element.getAttributes().getLength(); index++) {
             Node attribute = element.getAttributes().item(index);
@@ -74,6 +88,13 @@ final class BpmnExecutableContentValidator {
         }
     }
 
+    /**
+     * 校验数据表达式；不满足约束时阻止后续处理。
+     *
+     * @param expression 表达式，供本方法校验数据表达式时使用
+     * @param element 元素，作为 {@code rejected} 的输入影响后续处理
+     * @param feature {@code feature}，作为 {@code rejected} 的输入影响后续处理
+     */
     private static void validateDataExpression(
             String expression,
             Element element,
@@ -83,7 +104,12 @@ final class BpmnExecutableContentValidator {
         }
     }
 
-    /** 与历史部署运行时安全闸共用的受控数据表达式语法。 */
+    /**
+     * 与历史部署运行时安全闸共用的受控数据表达式语法。
+     *
+     * @param expression 表达式，作为 {@code expression.substring} 的输入影响后续处理
+     * @return 安全数据表达式条件成立时为 true，否则为 false
+     */
     static boolean isSafeDataExpression(String expression) {
         if (expression == null || !expression.startsWith("${")
                 || !expression.endsWith("}") || expression.length() > 1002) {
@@ -118,6 +144,9 @@ final class BpmnExecutableContentValidator {
      * 表达式便可能在开启 skipExpression 后修改上下文。这里按运算符逐个消费，只接受
      * {@code ==}、{@code !=}、{@code >=} 与 {@code <=} 中的等号，并拒绝三等号等
      * 非结构化条件生成器产物。</p>
+     *
+     * @param expression 表达式，供本方法判断是否具有{@code unsupported}相等时使用
+     * @return {@code unsupported}相等条件成立时为 true，否则为 false
      */
     private static boolean hasUnsupportedEquals(String expression) {
         for (int index = 0; index < expression.length(); index++) {
@@ -141,6 +170,13 @@ final class BpmnExecutableContentValidator {
         return false;
     }
 
+    /**
+     * 生成{@code strip}{@code quoted}{@code literals}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code strip}{@code quoted}{@code literals}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code strip}{@code quoted}{@code literals}文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static String stripQuotedLiterals(String value) {
         StringBuilder result = new StringBuilder(value.length());
         char quote = 0;
@@ -170,6 +206,13 @@ final class BpmnExecutableContentValidator {
         return result.toString();
     }
 
+    /**
+     * 解析BPMN{@code executable}内容；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析BPMN{@code executable}内容时使用
+     * @return 解析后的BPMN{@code executable}内容结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private static Document parse(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
@@ -183,6 +226,13 @@ final class BpmnExecutableContentValidator {
         return factory.newDocumentBuilder().parse(new InputSource(new StringReader(bpmnXml)));
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因。
+     *
+     * @param element 元素，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param feature {@code feature}，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static IllegalArgumentException rejected(Element element, String feature) {
         return new IllegalArgumentException(
                 "BPMN_EXECUTABLE_SURFACE_REJECTED: 禁止发布可执行扩展 "

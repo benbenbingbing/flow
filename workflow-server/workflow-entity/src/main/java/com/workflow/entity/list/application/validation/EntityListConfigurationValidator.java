@@ -204,19 +204,34 @@ public class EntityListConfigurationValidator {
         field.setRenderConfig(blankToNull(field.getRenderConfig()));
     }
 
-    /** 校验扩展组件/提供者标识格式 */
+    /**
+     * 校验扩展组件/提供者标识格式
+     *
+     * @param name 名称，后续用于校验扩展名称时匹配或展示
+     * @param label 标签，后续用于校验扩展名称时匹配或展示
+     */
     private void validateExtensionName(String name, String label) {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
     }
 
-    /** 空白字符串转 null */
+    /**
+     * 空白字符串转 null
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }
 
-    /** 校验结构化配置：非空时通过 JsonDocumentCodec 序列化校验其合法性 */
+    /**
+     * 校验结构化配置：非空时通过 JsonDocumentCodec 序列化校验其合法性
+     *
+     * @param value 待校验{@code structured}的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验{@code structured}时匹配或展示
+     */
     private void validateStructured(Object value, String label) {
         if (value != null) {
             jsonDocumentCodec.write(value, label);

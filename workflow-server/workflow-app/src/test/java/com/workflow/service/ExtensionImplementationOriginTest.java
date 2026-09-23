@@ -1,9 +1,9 @@
 package com.workflow.service;
 
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.notification.SendNotificationHandler;

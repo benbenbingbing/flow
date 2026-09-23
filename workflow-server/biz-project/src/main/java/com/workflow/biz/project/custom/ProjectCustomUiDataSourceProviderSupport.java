@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
-import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -39,11 +39,18 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 返回该 Provider 推荐配置的接口扩展作用范围。
+     *
+     * @return 处理后的推荐作用域文本，供调用方比较或展示
      */
     protected abstract String recommendedScope();
 
     /**
      * 执行具体 usage 的业务示例。
+     *
+     * @param context 执行上下文，向后续使用场景步骤传递身份、配置或状态
+     * @param configuration 配置内容，决定后续使用场景的处理规则
+     * @param input 待执行使用场景的原始输入，结果供调用方继续使用
+     * @return 执行后的使用场景结果，供调用方继续处理
      */
     protected abstract Object executeUsage(
             UiInvocationContext context,
@@ -56,6 +63,9 @@ abstract class ProjectCustomUiDataSourceProviderSupport
      * <p>真正的 scopeType/scopeId 校验已经由平台完成；这里仅用于帮助开发者
      * 尽早发现把 FORM Provider 绑定到 LIST、或把 LIST Provider 绑定到 FORM
      * 之类的配置错误。</p>
+     *
+     * @param context 执行上下文，向后续{@code accepts}上下文步骤传递身份、配置或状态
+     * @return {@code accepts}上下文条件成立时为 true，否则为 false
      */
     protected boolean acceptsContext(
             UiInvocationContext context) {
@@ -64,12 +74,24 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 返回上下文不匹配时的可读原因。
+     *
+     * @param context 执行上下文，向后续上下文{@code mismatch}原因步骤传递身份、配置或状态
+     * @return 处理后的上下文{@code mismatch}原因文本，供调用方比较或展示
      */
     protected String contextMismatchReason(
             UiInvocationContext context) {
         return "CONTEXT_NOT_SUPPORTED";
     }
 
+    /**
+     * 执行项目自定义界面数据来源提供者支持，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续项目自定义界面数据来源提供者支持步骤传递身份、配置或状态
+     * @param dataScopePlan 数据作用域方案，供本方法执行项目自定义界面数据来源提供者支持时使用
+     * @param configuration 配置内容，决定后续项目自定义界面数据来源提供者支持的处理规则
+     * @param input 待执行项目自定义界面数据来源提供者支持的原始输入，结果供调用方继续使用
+     * @return 执行后的项目自定义界面数据来源提供者支持结果，供调用方继续处理
+     */
     @Override
     public final Object execute(
             UiInvocationContext context,
@@ -184,6 +206,9 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 返回各类 usage 对应的安全空结果，避免日志示例伪造业务数据。
+     *
+     * @param usage 使用场景，供本方法处理空结果时使用
+     * @return 处理后的空结果，供调用方继续处理
      */
     protected Object emptyResult(
             String usage) {
@@ -199,6 +224,10 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 构造列表虚拟列要求的“记录 ID -> 列值”结果。
+     *
+     * @param input 待处理列值集合的原始输入，结果供调用方继续使用
+     * @param valuePrefix 值前缀，作为 {@code result.put} 的输入影响后续处理
+     * @return 列值集合键值结果，供调用方继续处理
      */
     protected Map<String, Object> columnValues(
             Map<String, Object> input,
@@ -225,6 +254,10 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 构造表单初始化、加载后处理、提交前处理使用的字段补丁。
+     *
+     * @param targetField 目标字段，作为 {@code result.put} 的输入影响后续处理
+     * @param value 待处理字段补丁的原始输入，结果供调用方继续使用
+     * @return 字段补丁键值结果，供调用方继续处理
      */
     protected Map<String, Object> fieldPatch(
             String targetField,
@@ -243,6 +276,9 @@ abstract class ProjectCustomUiDataSourceProviderSupport
      *
      * <p>前端同时兼容直接标量和 {@code {"value": ...}}；示例统一返回对象，
      * 便于在接口扩展中定义稳定的输出 Schema。</p>
+     *
+     * @param value 待处理字段值的原始输入，结果供调用方继续使用
+     * @return 字段值键值结果，供调用方继续处理
      */
     protected Map<String, Object> fieldValue(
             Object value) {
@@ -254,6 +290,10 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 构造 UI 事件链可识别的消息结果。
+     *
+     * @param message 消息，作为 {@code result.put} 的输入影响后续处理
+     * @param context 执行上下文，向后续事件消息步骤传递身份、配置或状态
+     * @return 事件消息键值结果，供调用方继续处理
      */
     protected Map<String, Object> eventMessage(
             String message,
@@ -276,6 +316,11 @@ abstract class ProjectCustomUiDataSourceProviderSupport
 
     /**
      * 构造接口调试入口使用的诊断结果，仅返回上下文元数据，不回显业务数据。
+     *
+     * @param context 执行上下文，向后续{@code diagnostic}结果步骤传递身份、配置或状态
+     * @param configuration 配置内容，决定后续{@code diagnostic}结果的处理规则
+     * @param input 待处理{@code diagnostic}结果的原始输入，结果供调用方继续使用
+     * @return {@code diagnostic}结果键值结果，供调用方继续处理
      */
     protected Map<String, Object> diagnosticResult(
             UiInvocationContext context,
@@ -304,6 +349,12 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         return result;
     }
 
+    /**
+     * 整理选项数据，供调用方遍历或继续处理。
+     *
+     * @param labelPrefix 标签前缀，供本方法处理选项时使用
+     * @return 项目自定义界面数据来源提供者支持集合，供调用方遍历或展示
+     */
     protected List<Map<String, Object>> options(
             String labelPrefix) {
         return List.of(
@@ -315,6 +366,12 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                         "value", "B"));
     }
 
+    /**
+     * 生成字段编码文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理字段编码时使用
+     * @return 处理后的字段编码文本，供调用方比较或展示
+     */
     protected String fieldCode(
             Object field) {
         if (field instanceof EntityListField value) {
@@ -328,6 +385,13 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         return null;
     }
 
+    /**
+     * 记录值；供后续追溯或审计使用。
+     *
+     * @param record 记录，供本方法记录值时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 记录后的值文本，供调用方比较或展示
+     */
     protected String recordValue(
             Object record,
             String key) {
@@ -358,23 +422,47 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         return null;
     }
 
+    /**
+     * 整理安全映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理安全映射的原始输入，结果供调用方继续使用
+     * @return 安全映射键值结果，供调用方继续处理
+     */
     protected Map<String, Object> safeMap(
             Map<String, Object> value) {
         return value == null ? Map.of() : value;
     }
 
+    /**
+     * 列出值；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待列出值的原始输入，结果供调用方继续使用
+     * @return {@code list<?>}集合，供调用方遍历或展示
+     */
     protected List<?> listValue(
             Object value) {
         return value instanceof List<?> list
                 ? list : List.of();
     }
 
+    /**
+     * 生成使用场景文本，供后续匹配或展示。
+     *
+     * @param context 执行上下文，向后续使用场景步骤传递身份、配置或状态
+     * @return 处理后的使用场景文本，供调用方比较或展示
+     */
     protected String usage(
             UiInvocationContext context) {
         return normalize(context == null
                 ? null : context.usage());
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化项目自定义界面数据来源提供者支持的原始输入，结果供调用方继续使用
+     * @return 规范化后的项目自定义界面数据来源提供者支持文本，供调用方比较或展示
+     */
     protected String normalize(
             String value) {
         return hasText(value)
@@ -382,12 +470,25 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 : "";
     }
 
+    /**
+     * 判断是否具有文本；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有文本的原始输入，结果供调用方继续使用
+     * @return 文本条件成立时为 true，否则为 false
+     */
     protected boolean hasText(
             Object value) {
         return value != null
                 && !String.valueOf(value).isBlank();
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     protected String text(
             Object value,
             String fallback) {
@@ -396,6 +497,13 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 : fallback;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     protected int integer(
             Object value,
             int fallback) {
@@ -411,6 +519,12 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         }
     }
 
+    /**
+     * 生成结果类型文本，供后续匹配或展示。
+     *
+     * @param result 结果，供本方法处理结果类型时使用
+     * @return 处理后的结果类型文本，供调用方比较或展示
+     */
     private String resultType(
             Object result) {
         return result == null
@@ -418,6 +532,12 @@ abstract class ProjectCustomUiDataSourceProviderSupport
                 : result.getClass().getSimpleName();
     }
 
+    /**
+     * 处理结果数量，并将结果传给后续步骤。
+     *
+     * @param result 结果，供本方法处理结果数量时使用
+     * @return 处理后的结果数量结果，供调用方继续处理
+     */
     private int resultCount(
             Object result) {
         if (result == null) {
@@ -436,6 +556,12 @@ abstract class ProjectCustomUiDataSourceProviderSupport
         return 1;
     }
 
+    /**
+     * 处理时长{@code ms}，并将结果传给后续步骤。
+     *
+     * @param startedAt 已启动时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的时长{@code ms}结果，供调用方继续处理
+     */
     private long durationMs(
             long startedAt) {
         return (System.nanoTime() - startedAt)

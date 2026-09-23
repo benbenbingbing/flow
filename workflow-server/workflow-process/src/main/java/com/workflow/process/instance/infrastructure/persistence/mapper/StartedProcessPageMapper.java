@@ -17,15 +17,44 @@ public interface StartedProcessPageMapper {
             <if test="end != null">AND START_TIME_ &lt; #{end}</if>
             """;
 
+    /**
+     * 统计已启动流程分页；结果供后续判断或展示使用。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param definitionIds 定义ID 集合，供本方法统计已启动流程分页时使用
+     * @param start 启动，供本方法统计已启动流程分页时使用
+     * @param end 结束，供本方法统计已启动流程分页时使用
+     * @return 符合条件的已启动流程分页数量
+     */
     @Select("<script>SELECT COUNT(*) " + WHERE + "</script>")
     long count(@Param("userId") String userId, @Param("definitionIds") Set<String> definitionIds,
                @Param("start") Date start, @Param("end") Date end);
 
+    /**
+     * 分页查询已启动流程分页；查询结果供调用方展示或继续处理。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param definitionIds 定义ID 集合，供本方法分页查询已启动流程分页时使用
+     * @param start 启动，供本方法分页查询已启动流程分页时使用
+     * @param end 结束，供本方法分页查询已启动流程分页时使用
+     * @param offset 偏移参数，用于限制后续查询范围和返回数量
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 已启动流程分页集合，供调用方遍历或展示
+     */
     default List<String> page(String userId, Set<String> definitionIds, Date start, Date end, long offset, int limit) {
         return pageRows(new OffsetPage<>(offset, limit), userId, definitionIds, start, end);
     }
 
-    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    /**
+     * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param definitionIds 定义ID 集合，供本方法分页查询行时使用
+     * @param start 启动，供本方法分页查询行时使用
+     * @param end 结束，供本方法分页查询行时使用
+     * @return 已启动流程分页集合，供调用方遍历或展示
+     */
     @Select("<script>SELECT PROC_INST_ID_ " + WHERE
             + " ORDER BY START_TIME_ DESC, PROC_INST_ID_ DESC </script>")
     List<String> pageRows(

@@ -10,7 +10,7 @@ import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueRefer
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;

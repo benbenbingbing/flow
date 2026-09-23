@@ -8,9 +8,9 @@ import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGr
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.identity.IdentityUser;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;

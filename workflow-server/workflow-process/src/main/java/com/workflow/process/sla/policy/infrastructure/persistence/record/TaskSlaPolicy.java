@@ -8,6 +8,9 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
+/**
+ * 封装任务SLA策略的数据访问；应用服务通过它读取或持久化业务状态。
+ */
 @Data
 @TableName("task_sla_policy")
 public class TaskSlaPolicy {

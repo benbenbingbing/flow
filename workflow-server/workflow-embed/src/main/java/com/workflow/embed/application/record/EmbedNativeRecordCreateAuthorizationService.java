@@ -34,12 +34,23 @@ public class EmbedNativeRecordCreateAuthorizationService {
 
     private final EmbedNativeFormTargetResolver targetResolver;
 
+    /**
+     * 初始化嵌入式原生记录创建授权服务，保存构造参数供后续方法使用。
+     *
+     * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedNativeRecordCreateAuthorizationService(
             EmbedNativeFormTargetResolver targetResolver) {
         this.targetResolver = targetResolver;
     }
 
-    /** 固定 CREATE 目标和动作，并把服务端 Context 放在浏览器值之后强制覆盖。 */
+    /**
+     * 固定 CREATE 目标和动作，并把服务端 Context 放在浏览器值之后强制覆盖。
+     *
+     * @param requestedData 请求数据，作为 {@code nativePayload} 的输入影响后续处理
+     * @param requestedAction 请求动作，供本方法处理授权时使用
+     * @return 处理后的授权结果，供调用方继续处理
+     */
     public Authorization authorize(
             Map<String, Object> requestedData,
             String requestedAction) {
@@ -70,6 +81,12 @@ public class EmbedNativeRecordCreateAuthorizationService {
                 "saveAndStart".equals(actionKey));
     }
 
+    /**
+     * 整理原生载荷数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理原生载荷的原始输入，结果供调用方继续使用
+     * @return 原生载荷键值结果，供调用方继续处理
+     */
     private static Map<String, Object> nativePayload(
             Map<String, Object> source) {
         if (source == null || source.size() > 500) {
@@ -89,6 +106,11 @@ public class EmbedNativeRecordCreateAuthorizationService {
     /**
      * 限制浏览器 JSON 深度和节点数，防止资源消耗及原型污染；这不是字段类型或
      * 组件兼容校验，合法业务值仍由 Flow 标准提交服务判定。
+     *
+     * @param value 待处理原生值的原始输入，结果供调用方继续使用
+     * @param depth 深度，供本方法处理原生值时使用
+     * @param entries {@code entries}，供本方法处理原生值时使用
+     * @return 处理后的原生值结果，供调用方继续处理
      */
     private static Object nativeValue(
             Object value,
@@ -124,24 +146,50 @@ public class EmbedNativeRecordCreateAuthorizationService {
         throw invalid();
     }
 
+    /**
+     * 判断禁止键条件是否成立，供调用方选择后续分支。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 禁止键条件成立时为 true，否则为 false
+     */
     private static boolean forbiddenKey(String key) {
         return Set.of("__proto__", "prototype", "constructor").contains(key)
                 || SENSITIVE_KEY.matcher(key).find();
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedException invalid() {
         return new EmbedException(
                 400, EmbedErrorCode.INVALID_REQUEST,
                 "Embed request is invalid");
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因并终止后续处理。
+     *
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static EmbedException denied() {
         return new EmbedException(
                 403, EmbedErrorCode.EMBED_OPERATION_NOT_ALLOWED,
                 "Embed operation is not allowed");
     }
 
-    /** RECORD_CREATE 幂等与事务服务内部使用的服务端可信材料。 */
+    /**
+     * RECORD_CREATE 幂等与事务服务内部使用的服务端可信材料。
+     *
+     * @param session 会话，保存在对象中供后续校验、查询或展示
+     * @param viewKey 视图键，后续用于授权校验、关联或幂等去重
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     * @param effectiveData 有效数据，保存在对象中供后续校验、查询或展示
+     * @param contextFilters 上下文过滤条件，保存在对象中供后续校验、查询或展示
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @param startProcess 启动流程，保存在对象中供后续校验、查询或展示
+     */
     public record Authorization(
             AuthenticatedEmbedSession session,
             String viewKey,

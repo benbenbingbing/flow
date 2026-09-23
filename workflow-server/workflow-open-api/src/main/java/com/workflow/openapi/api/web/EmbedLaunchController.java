@@ -1,6 +1,6 @@
 package com.workflow.openapi.api.web;
 
-import com.workflow.contracts.embed.EmbedApplicationActor;
+import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
 import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
@@ -44,6 +44,11 @@ public class EmbedLaunchController {
 
     /**
      * Issues a one-time launch without retaining its secret in the Open API layer.
+     *
+     * @param body 请求体，后续用于处理签发并传递处理结果
+     * @param authentication 认证，作为 {@code actorResolver.resolve} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理签发
+     * @return 处理后的签发结果，供调用方继续处理
      */
     @PostMapping("/embed-launches")
     public ResponseEntity<OpenApiResponse<OpenEmbedLaunchResponse>> issue(

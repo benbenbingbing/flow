@@ -1,10 +1,10 @@
 package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;

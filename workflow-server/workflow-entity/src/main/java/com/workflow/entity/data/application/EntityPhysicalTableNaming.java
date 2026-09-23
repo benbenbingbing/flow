@@ -58,6 +58,13 @@ public class EntityPhysicalTableNaming {
         return normalized;
     }
 
+    /**
+     * 校验标识符；不满足约束时阻止后续处理。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 校验后的标识符文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String validateIdentifier(String tableName) {
         if (!StringUtils.hasText(tableName)) {
             throw new IllegalArgumentException("实体物理表名不能为空");
@@ -83,6 +90,13 @@ public class EntityPhysicalTableNaming {
                 && tableName.toLowerCase(Locale.ROOT).startsWith(BUSINESS_PREFIX);
     }
 
+    /**
+     * 规范化实体编码；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 规范化后的实体编码文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeEntityCode(String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
             throw new IllegalArgumentException("实体编码不能为空");
@@ -123,16 +137,34 @@ public class EntityPhysicalTableNaming {
         return normalized;
     }
 
+    /**
+     * 判断{@code ends}{@code without}{@code separator}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理{@code ends}{@code without}{@code separator}的原始输入，结果供调用方继续使用
+     * @return {@code ends}{@code without}{@code separator}条件成立时为 true，否则为 false
+     */
     private boolean endsWithoutSeparator(StringBuilder value) {
         return value.length() > 0 && value.charAt(value.length() - 1) != '_';
     }
 
+    /**
+     * 追加{@code separator}；结果供后续流程传递或持久化。
+     *
+     * @param value 待追加{@code separator}的原始输入，结果供调用方继续使用
+     */
     private void appendSeparator(StringBuilder value) {
         if (endsWithoutSeparator(value)) {
             value.append('_');
         }
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

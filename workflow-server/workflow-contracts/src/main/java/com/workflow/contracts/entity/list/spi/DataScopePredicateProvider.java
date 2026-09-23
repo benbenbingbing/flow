@@ -1,6 +1,6 @@
 package com.workflow.contracts.entity.list.spi;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 
 import java.util.List;
 import java.util.Map;

@@ -21,18 +21,36 @@ public class EntitySchemaOperationController {
 
     private final EntitySchemaOperationService operationService;
 
+    /**
+     * 处理最新，并将结果传给后续步骤。
+     *
+     * @param entityId 实体ID，后续用于处理最新时定位或关联目标
+     * @return 处理后的最新结果，供调用方继续处理
+     */
     @GetMapping("/{entityId}/latest")
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntitySchemaOperationDTO> latest(@PathVariable String entityId) {
         return ApiResponse.success(operationService.latest(entityId));
     }
 
+    /**
+     * 处理重试，并将结果传给后续步骤。
+     *
+     * @param entityId 实体ID，后续用于处理重试时定位或关联目标
+     * @return 处理后的重试结果，供调用方继续处理
+     */
     @PostMapping("/{entityId}/retry")
     @RequiresPermission("entity:definition:publish")
     public ApiResponse<EntitySchemaOperationDTO> retry(@PathVariable String entityId) {
         return ApiResponse.success(operationService.retry(entityId));
     }
 
+    /**
+     * 终止实体结构操作；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于终止实体结构操作时定位或关联目标
+     * @return 终止后的实体结构操作结果，供调用方继续处理
+     */
     @PostMapping("/{entityId}/terminate")
     @RequiresPermission("entity:definition:publish")
     public ApiResponse<EntitySchemaOperationDTO> terminate(@PathVariable String entityId) {

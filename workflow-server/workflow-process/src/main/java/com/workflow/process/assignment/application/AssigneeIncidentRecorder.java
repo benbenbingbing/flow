@@ -1,7 +1,7 @@
 package com.workflow.process.assignment.application;
 
 import com.workflow.core.database.JdbcWriteAttempt;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -30,7 +30,12 @@ public class AssigneeIncidentRecorder {
     private final DatabaseQueryDialect queryDialect;
     private final JdbcWriteAttempt writeAttempt;
 
-    /** 创建事件；相同任务/实例与节点已有开放事件时幂等返回原 ID。 */
+    /**
+     * 创建事件；相同任务/实例与节点已有开放事件时幂等返回原 ID。
+     *
+     * @param command 本次命令，后续经校验后用于创建办理人异常事件{@code recorder}
+     * @return 创建后的办理人异常事件{@code recorder}文本，供调用方比较或展示
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String create(CreateCommand command) {
         String existing = findOpen(command, false);
@@ -84,6 +89,9 @@ public class AssigneeIncidentRecorder {
      * <p>成功状态必须加入 Flowable 节点进入事务；后续实例创建失败时
      * 与外层一起回滚，避免实际未恢复却提前关闭 incident。失败创建仍由
      * {@link #create(CreateCommand)} 使用 REQUIRES_NEW 留存证据。</p>
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param nodeId 节点ID，后续用于解析打开节点入口时定位或关联目标
      */
     @Transactional(propagation = Propagation.REQUIRED)
     public void resolveOpenNodeEntry(
@@ -103,7 +111,13 @@ public class AssigneeIncidentRecorder {
                 """, processInstanceId, nodeId);
     }
 
-    /** 开放槽唯一索引保证至多一行；冲突后用当前读避开 MySQL 的旧快照。 */
+    /**
+     * 开放槽唯一索引保证至多一行；冲突后用当前读避开 MySQL 的旧快照。
+     *
+     * @param command 本次命令，后续经校验后用于查询打开
+     * @param currentRead 当前读取，供本方法查询打开时使用
+     * @return 查询后的打开文本，供调用方比较或展示
+     */
     private String findOpen(CreateCommand command, boolean currentRead) {
         var parameters = new ArrayList<Object>(List.of(openSlot(command), command.nodeId()));
         String task = emptyToNull(command.taskId());
@@ -120,15 +134,33 @@ public class AssigneeIncidentRecorder {
         return ids.isEmpty() ? null : ids.get(0);
     }
 
+    /**
+     * 生成空截止空值文本，供后续匹配或展示。
+     *
+     * @param value 待处理空截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空截止空值文本，供调用方比较或展示
+     */
     private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }
 
-    /** 与既有开放槽约束一致：有任务取任务，否则取实例，均缺失时保留固定命名空间。 */
+    /**
+     * 与既有开放槽约束一致：有任务取任务，否则取实例，均缺失时保留固定命名空间。
+     *
+     * @param command 本次命令，后续经校验后用于处理打开{@code slot}
+     * @return 处理后的打开{@code slot}文本，供调用方比较或展示
+     */
     private static String openSlot(CreateCommand command) {
         String owner = command.taskId() != null ? command.taskId()
                 : command.processInstanceId() != null ? command.processInstanceId() : "NO_INSTANCE";
         return owner + ":" + command.nodeId();
     }
 
+    /**
+     * 生成JSON文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String json(Object value) {
         if (value == null) {
             return null;
@@ -140,10 +172,39 @@ public class AssigneeIncidentRecorder {
         }
     }
 
+    /**
+     * 生成ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的ID文本，供调用方比较或展示
+     */
     private String id() {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
+    /**
+     * 封装创建的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param processConfigId 流程配置 ID，后续定位已发布的节点配置
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param nodeId 节点ID，后续用于处理创建命令时定位或关联目标
+     * @param nodeName 节点名称，后续用于处理创建命令时匹配或展示
+     * @param policy 策略内容，决定后续创建命令的处理规则
+     * @param status 状态标识，决定后续创建命令采用的处理分支
+     * @param reasonCode 原因编码，后续用于处理创建命令时定位或关联目标
+     * @param reasonMessage 原因消息，保存在对象中供后续校验、查询或展示
+     * @param resolverCode 解析器编码，后续用于处理创建命令时定位或关联目标
+     * @param extraParams 附加参数，后续传给解析器或执行器
+     * @param fallbackUser 兜底用户，主值不可用时供后续处理兜底
+     * @param fallbackGroup 兜底分组，主值不可用时供后续处理兜底
+     * @param responsibilityOwner {@code responsibility}归属方，保存在对象中供后续校验、查询或展示
+     * @param maxRetries 最大{@code retries}，保存在对象中供后续校验、查询或展示
+     * @param initialDelaySeconds 初始{@code delay}秒数，保存在对象中供后续校验、查询或展示
+     * @param backoffMultiplier {@code backoff}{@code multiplier}，保存在对象中供后续校验、查询或展示
+     * @param nextRetryAt 下一步重试时间，后续用于判断有效期或展示该事件的发生时间
+     * @param detail 详情，保存在对象中供后续校验、查询或展示
+     */
     public record CreateCommand(
             String processConfigId,
             String processDefinitionId,

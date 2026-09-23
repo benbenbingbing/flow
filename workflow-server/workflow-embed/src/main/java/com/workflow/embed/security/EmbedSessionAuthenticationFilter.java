@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort.Scope;
 import com.workflow.contracts.embed.runtime.port.EmbedRequestUserContextPort;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.audit.EmbedLifecycleMetrics;
@@ -68,6 +68,17 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
     private final EmbedRuntimeAudit runtimeAudit;
     private final String delegatedClientOrigin;
 
+    /**
+     * 初始化嵌入式会话认证过滤，保存构造参数供后续方法使用。
+     *
+     * @param authenticationService 认证服务，保存在对象中供后续校验、查询或展示
+     * @param userContextPort 用户上下文端口，保存在对象中供后续校验、查询或展示
+     * @param trafficControlPort {@code traffic}{@code control}端口，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param metrics 指标集合，保存在对象中供后续校验、查询或展示
+     * @param runtimeAudit 运行时审计，保存在对象中供后续校验、查询或展示
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
@@ -93,6 +104,13 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
     /**
      * 保留给组件单测的构造器；生产组装必须使用上方带
      * {@link EmbedProperties} 的构造器。
+     *
+     * @param authenticationService 认证服务，保存在对象中供后续校验、查询或展示
+     * @param userContextPort 用户上下文端口，保存在对象中供后续校验、查询或展示
+     * @param trafficControlPort {@code traffic}{@code control}端口，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param metrics 指标集合，保存在对象中供后续校验、查询或展示
+     * @param runtimeAudit 运行时审计，保存在对象中供后续校验、查询或展示
      */
     public EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
@@ -111,6 +129,18 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
                 "http://localhost:8080");
     }
 
+    /**
+     * 初始化嵌入式会话认证过滤，保存构造参数供后续方法使用。
+     *
+     * @param authenticationService 认证服务依赖，保存到当前对象供后续业务方法调用
+     * @param userContextPort 用户上下文端口依赖，保存到当前对象供后续业务方法调用
+     * @param trafficControlPort {@code traffic}{@code control}端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param metrics 指标集合依赖，保存到当前对象供后续业务方法调用
+     * @param runtimeAudit 运行时审计依赖，保存到当前对象供后续业务方法调用
+     * @param delegatedClientOrigin 委托客户端来源依赖，保存到当前对象供后续业务方法调用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EmbedSessionAuthenticationFilter(
             EmbedSessionAuthenticationService authenticationService,
             EmbedRequestUserContextPort userContextPort,
@@ -133,6 +163,12 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
         this.delegatedClientOrigin = delegatedClientOrigin;
     }
 
+    /**
+     * 判断是否需要非过滤；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否需要非过滤
+     * @return 非过滤条件成立时为 true，否则为 false
+     */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
@@ -150,6 +186,15 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
         return !isDelegatedRequest(request);
     }
 
+    /**
+     * 处理{@code do}过滤内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code do}过滤内部
+     * @param response 响应，作为 {@code filterChain.doFilter} 的输入影响后续处理
+     * @param filterChain 过滤链，供本方法处理{@code do}过滤内部时使用
+     * @throws ServletException 过滤器或请求处理链执行失败时抛出
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
@@ -295,6 +340,9 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
      * <p>只有无副作用的 GET/HEAD 可在缺少 Origin 时使用
      * Fetch Metadata 的 same-origin 证明；如果浏览器已发送 Origin，则无论请求
      * 方法都必须与 publicBaseUrl 字节级一致。</p>
+     *
+     * @param request 本次请求，后续经校验后用于判断是否委托来源允许
+     * @return 委托来源允许条件成立时为 true，否则为 false
      */
     private boolean isDelegatedOriginAllowed(HttpServletRequest request) {
         String origin = request.getHeader(HttpHeaders.ORIGIN);
@@ -307,11 +355,23 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
                 request.getHeader("Sec-Fetch-Site"));
     }
 
+    /**
+     * 处理{@code elapsed}{@code millis}，并将结果传给后续步骤。
+     *
+     * @param startedNanos 已启动{@code nanos}，供本方法处理{@code elapsed}{@code millis}时使用
+     * @return 处理后的{@code elapsed}{@code millis}结果，供调用方继续处理
+     */
     private static long elapsedMillis(long startedNanos) {
         return Math.max(0L, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
                 System.nanoTime() - startedNanos));
     }
 
+    /**
+     * 判断是否委托请求；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否委托请求
+     * @return 委托请求条件成立时为 true，否则为 false
+     */
     private static boolean isDelegatedRequest(HttpServletRequest request) {
         String path = request.getRequestURI();
         return path != null
@@ -320,6 +380,12 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
                 && request.getHeader(PROTOCOL_HEADER) != null;
     }
 
+    /**
+     * 判断是否具有JSON内容类型；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否具有JSON内容类型
+     * @return JSON内容类型条件成立时为 true，否则为 false
+     */
     private static boolean hasJsonContentType(HttpServletRequest request) {
         String value = request.getContentType();
         if (value == null || value.isBlank()) {
@@ -336,12 +402,25 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * 处理缓存请求体，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理缓存请求体
+     * @return 处理后的缓存请求体结果，供调用方继续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     private CachedBodyRequest cacheBody(HttpServletRequest request)
             throws IOException {
         byte[] body = request.getInputStream().readAllBytes();
         return new CachedBodyRequest(request, body);
     }
 
+    /**
+     * 解析请求体；输出作为后续校验或处理的输入。
+     *
+     * @param body 请求体，后续用于解析请求体并传递处理结果
+     * @return 解析后的请求体结果，供调用方继续处理
+     */
     private JsonNode parseBody(byte[] body) {
         if (body == null || body.length == 0) {
             return null;
@@ -356,6 +435,14 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * 写入错误；后续读取或执行将使用更新后的状态。
+     *
+     * @param request 本次请求，后续经校验后用于写入错误
+     * @param response 响应，作为 {@code objectMapper.writeValue} 的输入影响后续处理
+     * @param error 错误，作为 {@code response.setStatus} 的输入影响后续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     private void writeError(
             HttpServletRequest request,
             HttpServletResponse response,
@@ -380,6 +467,9 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
     /**
      * 仅精确列出 V1 的读取型 POST；未来新增的其他非 GET 路由默认归入
      * WRITE，避免新写接口因忘记更新分类而绕过更低的写配额。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code traffic}{@code class}
+     * @return 处理后的{@code traffic}{@code class}结果，供调用方继续处理
      */
     private static RuntimeRequestClass trafficClass(HttpServletRequest request) {
         String method = request.getMethod();
@@ -406,6 +496,12 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
 
         private final byte[] body;
 
+        /**
+         * 初始化{@code cached}请求体请求，保存构造参数供后续方法使用。
+         *
+         * @param request 本次请求，后续经校验后用于初始化{@code cached}请求体
+         * @param body 请求体依赖，保存到当前对象供后续业务方法调用
+         */
         private CachedBodyRequest(
                 HttpServletRequest request,
                 byte[] body) {
@@ -413,10 +509,21 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
             this.body = body == null ? new byte[0] : body.clone();
         }
 
+        /**
+         * 处理请求体，并将结果传给后续步骤。
+         *
+         * @return 处理后的请求体结果，供调用方继续处理
+         */
         private byte[] body() {
             return body.clone();
         }
 
+        /**
+         * 读取输入流；查询结果供调用方展示或继续处理。
+         *
+         * @return 符合条件的Servlet输入流结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         @Override
         public ServletInputStream getInputStream() {
             ByteArrayInputStream input = new ByteArrayInputStream(body);
@@ -455,6 +562,11 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
             };
         }
 
+        /**
+         * 读取{@code reader}；查询结果供调用方展示或继续处理。
+         *
+         * @return 符合条件的{@code buffered}{@code reader}结果，供调用方继续处理
+         */
         @Override
         public BufferedReader getReader() {
             return new BufferedReader(new InputStreamReader(

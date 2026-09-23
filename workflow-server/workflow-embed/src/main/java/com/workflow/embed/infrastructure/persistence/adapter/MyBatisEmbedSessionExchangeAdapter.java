@@ -50,6 +50,13 @@ public class MyBatisEmbedSessionExchangeAdapter implements
     private final Clock clock;
     private final JdbcLockedRow lockedRows;
 
+    /**
+     * 初始化MyBatis嵌入式会话交换适配器，保存构造参数供后续方法使用。
+     *
+     * @param mapper 映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     * @param lockedRows 已锁定行依赖，保存到当前对象供后续业务方法调用
+     */
     public MyBatisEmbedSessionExchangeAdapter(
             EmbedSessionExchangeMapper mapper,
             @Qualifier("embedClock") Clock clock,
@@ -59,6 +66,12 @@ public class MyBatisEmbedSessionExchangeAdapter implements
         this.lockedRows = lockedRows;
     }
 
+    /**
+     * 按编码摘要查询嵌入式启动记录交换候选人；结果供后续展示或处理。
+     *
+     * @param launchCodeDigest 启动记录编码摘要，作为 {@code Optional.ofNullable} 的输入影响后续处理
+     * @return 匹配的编码摘要；未找到时为空
+     */
     @Override
     public Optional<EmbedLaunchExchangeCandidate> findByCodeDigest(String launchCodeDigest) {
         try {
@@ -72,6 +85,8 @@ public class MyBatisEmbedSessionExchangeAdapter implements
     /**
      * Locks security roots in the documented global order, then Counter before Launch. The guarded
      * counter update, conditional launch consumption and session insert share one transaction.
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -147,6 +162,18 @@ public class MyBatisEmbedSessionExchangeAdapter implements
         }
     }
 
+    /**
+     * 校验安全快照；不满足约束时阻止后续处理。
+     *
+     * @param launch 启动记录，供本方法校验安全快照时使用
+     * @param application 应用，供本方法校验安全快照时使用
+     * @param view 视图，作为 {@code equals} 的输入影响后续处理
+     * @param grant 授权，作为 {@code expired} 的输入影响后续处理
+     * @param provider 提供者，供本方法校验安全快照时使用
+     * @param binding 绑定，作为 {@code expired} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param now 当前时间，供本方法校验安全快照时使用
+     */
     private void validateSecuritySnapshot(
             PersistedEmbedLaunch launch,
             EmbedApplicationLockRow application,
@@ -182,6 +209,13 @@ public class MyBatisEmbedSessionExchangeAdapter implements
         }
     }
 
+    /**
+     * 校验已锁定启动记录；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验已锁定启动记录时使用
+     * @param actual 实际，作为 {@code equals} 的输入影响后续处理
+     * @param now 当前时间，供本方法校验已锁定启动记录时使用
+     */
     private void validateLockedLaunch(
             PersistedEmbedLaunch expected,
             EmbedLaunchLockRow actual,
@@ -208,6 +242,12 @@ public class MyBatisEmbedSessionExchangeAdapter implements
         }
     }
 
+    /**
+     * 处理映射候选人，并将结果传给后续步骤。
+     *
+     * @param row 行，作为 {@code PersistedEmbedLaunch} 的输入影响后续处理
+     * @return 处理后的映射候选人结果，供调用方继续处理
+     */
     private EmbedLaunchExchangeCandidate mapCandidate(EmbedLaunchExchangeRow row) {
         PersistedEmbedLaunch launch = new PersistedEmbedLaunch(
                 row.id(), row.applicationId(), row.grantId(), row.viewId(), row.viewReleaseId(),
@@ -256,23 +296,53 @@ public class MyBatisEmbedSessionExchangeAdapter implements
                         row.flowUserDeleted() != 0, row.flowUserPasswordResetRequired() != 0));
     }
 
+    /**
+     * 判断过期条件是否成立，供调用方选择后续分支。
+     *
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param now 当前时间，作为 {@code expiresAt.isAfter} 的输入影响后续处理
+     * @return 过期条件成立时为 true，否则为 false
+     */
     private static boolean expired(LocalDateTime expiresAt, Instant now) {
         return expiresAt != null && !expiresAt.isAfter(local(now));
     }
 
+    /**
+     * 处理绝对时间，并将结果传给后续步骤。
+     *
+     * @param value 待处理绝对时间的原始输入，结果供调用方继续使用
+     * @return 处理后的绝对时间结果，供调用方继续处理
+     */
     private static Instant instant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }
 
+    /**
+     * 处理本地，并将结果传给后续步骤。
+     *
+     * @param value 待处理本地的原始输入，结果供调用方继续使用
+     * @return 处理后的本地结果，供调用方继续处理
+     */
     private static LocalDateTime local(Instant value) {
         return LocalDateTime.ofInstant(value, ZoneOffset.UTC);
     }
 
+    /**
+     * 构造启动记录无效异常，供调用方区分失败原因。
+     *
+     * @return 处理后的启动记录无效结果，供调用方继续处理
+     */
     private static EmbedException launchInvalid() {
         return new EmbedException(401, EmbedErrorCode.EMBED_LAUNCH_INVALID,
                 "Embed launch is invalid");
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @param error 错误，供本方法处理不可用时使用
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static EmbedException unavailable(Throwable error) {
         return new EmbedException(
                 503,

@@ -20,11 +20,21 @@ public class ProjectCustomOutboxEventHandler
     public static final String TOPIC =
             "PROJECT_CUSTOM_OUTBOX";
 
+    /**
+     * 生成{@code topic}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code topic}文本，供调用方比较或展示
+     */
     @Override
     public String topic() {
         return TOPIC;
     }
 
+    /**
+     * 处理项目自定义待发送事件事件，并将结果传给后续步骤。
+     *
+     * @param event 事件，作为 {@code LogValue.safe} 的输入影响后续处理
+     */
     @Override
     public void handle(OutboxEvent event) {
         log.info(
@@ -47,6 +57,11 @@ public class ProjectCustomOutboxEventHandler
                                 .isBlank());
     }
 
+    /**
+     * 判断可重试条件是否成立，供调用方选择后续分支。
+     *
+     * @return 可重试条件成立时为 true，否则为 false
+     */
     @Override
     public boolean retryable() {
         return false;

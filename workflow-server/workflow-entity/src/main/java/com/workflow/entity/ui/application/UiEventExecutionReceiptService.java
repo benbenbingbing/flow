@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
@@ -182,7 +182,12 @@ public class UiEventExecutionReceiptService {
         }
     }
 
-    /** 成功完成整条事件链后持久化可重放响应。 */
+    /**
+     * 成功完成整条事件链后持久化可重放响应。
+     *
+     * @param receiptCommand 回执命令，供本方法处理完成时使用
+     * @param result 结果，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     */
     public void complete(
             EntityMutationCommand receiptCommand,
             UiEventExecutionResult result) {
@@ -203,6 +208,13 @@ public class UiEventExecutionReceiptService {
                         false));
     }
 
+    /**
+     * 恢复界面事件执行回执结果；结果供调用方的后续步骤使用。
+     *
+     * @param stored 已存储，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param requestId 请求ID，后续用于恢复界面事件执行回执结果时定位或关联目标
+     * @return 恢复后的界面事件执行回执结果，供调用方继续处理
+     */
     private UiEventExecutionResult restoreResult(
             Map<String, Object> stored,
             String requestId) {
@@ -214,6 +226,12 @@ public class UiEventExecutionReceiptService {
         return result;
     }
 
+    /**
+     * 校验并获取表单按钮请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取表单按钮请求
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireFormButtonRequest(UiEventExecuteRequest request) {
         if (request == null
                 || !UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
@@ -228,6 +246,12 @@ public class UiEventExecutionReceiptService {
         }
     }
 
+    /**
+     * 校验并获取已发布链；不满足约束时阻止后续处理。
+     *
+     * @param chain 链，供本方法校验并获取已发布链时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requirePublishedChain(
             UiEventBindingService.ResolvedEventChain chain) {
         if (chain == null
@@ -244,7 +268,12 @@ public class UiEventExecutionReceiptService {
         }
     }
 
-    /** 返回可安全进入日志/审计的 requestId；非法输入返回 null。 */
+    /**
+     * 返回可安全进入日志/审计的 requestId；非法输入返回 null。
+     *
+     * @param requestId 请求ID，后续用于处理有效请求ID或空值时定位或关联目标
+     * @return 处理后的有效请求ID或空值文本，供调用方比较或展示
+     */
     static String validRequestIdOrNull(String requestId) {
         return StringUtils.hasText(requestId)
                 && requestId.length() <= MAX_REQUEST_ID_LENGTH
@@ -252,12 +281,24 @@ public class UiEventExecutionReceiptService {
                 ? requestId.trim() : null;
     }
 
+    /**
+     * 生成当前租户ID文本，供后续匹配或展示。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 处理后的当前租户ID文本，供调用方比较或展示
+     */
     private String currentTenantId(String userId) {
         SysUser user = userService.getById(userId);
         return user == null || !StringUtils.hasText(user.getOrgId())
                 ? "_" : user.getOrgId().trim();
     }
 
+    /**
+     * 校验并获取用户ID；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的用户ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String requireUserId() {
         if (!StringUtils.hasText(UserContext.getUserId())) {
             throw new IllegalStateException(
@@ -266,6 +307,13 @@ public class UiEventExecutionReceiptService {
         return UserContext.getUserId().trim();
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -277,15 +325,33 @@ public class UiEventExecutionReceiptService {
         }
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面事件执行回执的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面事件执行回执文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(java.util.Locale.ROOT) : "";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    /**
+     * 封装获取的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param receiptCommand 回执命令，保存在对象中供后续校验、查询或展示
+     * @param replayedResult {@code replayed}结果，保存在对象中供后续校验、查询或展示
+     */
     public record AcquireResult(
             EntityMutationCommand receiptCommand,
             UiEventExecutionResult replayedResult) {

@@ -105,6 +105,11 @@ public class ProcessProgressDTO {
      */
     private List<FormConfigDTO> formConfigs;
 
+    /**
+     * 设置表单{@code configs}；后续读取或执行将使用更新后的状态。
+     *
+     * @param formConfigs 表单{@code configs}，供本方法设置表单{@code configs}时使用
+     */
     public void setFormConfigs(List<FormConfigDTO> formConfigs) {
         this.formConfigs = formConfigs == null || formConfigs.isEmpty()
                 ? List.of()

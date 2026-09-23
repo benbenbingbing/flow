@@ -2,7 +2,7 @@ package com.workflow.entity.data.infrastructure.persistence.provider;
 
 import org.apache.ibatis.jdbc.SQL;
 import org.apache.ibatis.builder.annotation.ProviderContext;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.entity.data.application.EntityQueryConditions;
 import com.workflow.entity.data.application.EntityQueryScalarValues;
 
@@ -24,6 +24,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 根据 ID 查询
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续ID步骤传递身份、配置或状态
+     * @return 查询后的ID文本，供调用方比较或展示
      */
     public String selectById(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -38,6 +42,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 在当前事务中锁定并读取目标记录。
+     *
+     * @param params 参数，作为 {@code selectById} 的输入影响后续处理
+     * @param context 执行上下文，向后续ID更新步骤传递身份、配置或状态
+     * @return 查询后的ID更新文本，供调用方比较或展示
      */
     public String selectByIdForUpdate(Map<String, Object> params, ProviderContext context) {
         return selectById(params, context) + " FOR UPDATE";
@@ -45,6 +53,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 根据 ID 查询（带数据权限过滤）。
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续ID权限步骤传递身份、配置或状态
+     * @return 查询后的ID权限文本，供调用方比较或展示
      */
     public String selectByIdWithPermission(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -58,13 +70,25 @@ public class EntityDataSqlProvider {
         return sql.toString();
     }
 
-    /** 历史审计读取：包含逻辑删除行，但仍由调用方附加数据权限。 */
+    /**
+     * 历史审计读取：包含逻辑删除行，但仍由调用方附加数据权限。
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续ID{@code including}已删除步骤传递身份、配置或状态
+     * @return 查询后的ID{@code including}已删除文本，供调用方比较或展示
+     */
     public String selectByIdIncludingDeleted(Map<String, Object> params, ProviderContext context) {
         return "SELECT * FROM " + tableName(params, context)
                 + " WHERE id = #{id}";
     }
 
-    /** 历史审计读取：只移除 deleted 条件，不移除行级权限条件。 */
+    /**
+     * 历史审计读取：只移除 deleted 条件，不移除行级权限条件。
+     *
+     * @param params 参数，供本方法查询ID{@code including}已删除权限时使用
+     * @param context 执行上下文，向后续ID{@code including}已删除权限步骤传递身份、配置或状态
+     * @return 查询后的ID{@code including}已删除权限文本，供调用方比较或展示
+     */
     public String selectByIdIncludingDeletedWithPermission(
             Map<String, Object> params, ProviderContext context) {
         String permissionSql = (String) params.get("permissionSql");
@@ -79,6 +103,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 根据流程实例ID查询
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续流程实例ID步骤传递身份、配置或状态
+     * @return 查询后的流程实例ID文本，供调用方比较或展示
      */
     public String selectByProcessInstanceId(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -93,6 +121,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 查询列表（支持排序）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体数据SQL提供者列表步骤传递身份、配置或状态
+     * @return 查询后的实体数据SQL提供者列表文本，供调用方比较或展示
      */
     public String selectList(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -115,6 +147,10 @@ public class EntityDataSqlProvider {
      * <p>MySQL 的 {@code FOR UPDATE} 是 current read：即使调用方事务使用
      * REPEATABLE READ，也会在 gate 等待结束后读取最新已提交版本。这里不用
      * FOR SHARE，避免两个预写扫描随后更新各自记录时形成 S 到 X 的升级死锁。</p>
+     *
+     * @param params 参数，作为 {@code selectList} 的输入影响后续处理
+     * @param context 执行上下文，向后续列表更新步骤传递身份、配置或状态
+     * @return 查询后的列表更新文本，供调用方比较或展示
      */
     public String selectListForUpdate(
             Map<String, Object> params, ProviderContext context) {
@@ -127,6 +163,10 @@ public class EntityDataSqlProvider {
      * <p>只对可打印 ASCII 证明 trim/大小写等价性：显式字母对避免数据库 locale 影响；
      * Unicode 和控制字符行全部保留，防止 Java trim/ROOT 小写与数据库函数差异漏报。
      * 模式和值均参数绑定，NULL/零长度只在查空值时纳入。LOB、数值与日期由适配器全量读取。</p>
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续表单唯一候选集合步骤传递身份、配置或状态
+     * @return 查询后的表单唯一候选集合文本，供调用方比较或展示
      */
     public String selectFormUniqueCandidates(
             Map<String, Object> params, ProviderContext context) {
@@ -163,6 +203,10 @@ public class EntityDataSqlProvider {
     /**
      * 为唯一性权威写前终检生成按值预筛的 exclusive locking read。
      * 普通预检继续调用无锁版本，避免用户输入阶段占用行锁。
+     *
+     * @param params 参数，作为 {@code selectFormUniqueCandidates} 的输入影响后续处理
+     * @param context 执行上下文，向后续表单唯一候选集合更新步骤传递身份、配置或状态
+     * @return 查询后的表单唯一候选集合更新文本，供调用方比较或展示
      */
     public String selectFormUniqueCandidatesForUpdate(
             Map<String, Object> params, ProviderContext context) {
@@ -171,6 +215,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 条件查询（支持 LIKE 模糊查询和 BETWEEN 范围查询）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件步骤传递身份、配置或状态
+     * @return 查询后的条件文本，供调用方比较或展示
      */
     public String selectByCondition(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -189,6 +237,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 插入数据（动态字段）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体数据SQL提供者步骤传递身份、配置或状态
+     * @return 插入后的实体数据SQL提供者文本，供调用方比较或展示
      */
     public String insert(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -211,6 +263,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 更新数据（动态字段）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体数据SQL提供者步骤传递身份、配置或状态
+     * @return 更新后的实体数据SQL提供者文本，供调用方比较或展示
      */
     public String update(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -240,6 +296,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 更新当前任务信息，允许显式置空任务字段
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续当前任务步骤传递身份、配置或状态
+     * @return 更新后的当前任务文本，供调用方比较或展示
      */
     public String updateCurrentTask(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -256,6 +316,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 逻辑删除
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续ID步骤传递身份、配置或状态
+     * @return 删除后的ID文本，供调用方比较或展示
      */
     public String deleteById(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -270,6 +334,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 物理删除
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续物理删除ID步骤传递身份、配置或状态
+     * @return 处理后的物理删除ID文本，供调用方比较或展示
      */
     public String physicalDeleteById(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -282,6 +350,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 查询列表（带数据权限过滤）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续列表权限步骤传递身份、配置或状态
+     * @return 查询后的列表权限文本，供调用方比较或展示
      */
     public String selectListWithPermission(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -301,6 +373,7 @@ public class EntityDataSqlProvider {
      * 分页查询（不带条件），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
      *
      * @param params 参数 Map，需含 tableName；行范围由 Mapper 的 MP Page 提供
+     * @param context 执行上下文，向后续实体数据SQL提供者分页步骤传递身份、配置或状态
      * @return 过滤及排序 SQL，由 MyBatis-Plus 追加分页
      */
     public String selectPage(Map<String, Object> params, ProviderContext context) {
@@ -313,6 +386,7 @@ public class EntityDataSqlProvider {
      * 分页查询（带数据权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
      *
      * @param params 参数 Map，需含 tableName、permissionSql；行范围由 Mapper 的 MP Page 提供
+     * @param context 执行上下文，向后续分页权限步骤传递身份、配置或状态
      * @return 过滤及排序 SQL，由 MyBatis-Plus 追加分页
      */
     public String selectPageWithPermission(Map<String, Object> params, ProviderContext context) {
@@ -330,6 +404,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 条件查询（带数据权限过滤）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件权限步骤传递身份、配置或状态
+     * @return 查询后的条件权限文本，供调用方比较或展示
      */
     public String selectByConditionWithPermission(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -357,6 +435,7 @@ public class EntityDataSqlProvider {
      * 分页条件查询（不带权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
      *
      * @param params 参数 Map，需含 tableName、condition；行范围由 Mapper 的 MP Page 提供
+     * @param context 执行上下文，向后续分页条件步骤传递身份、配置或状态
      * @return 条件及排序 SQL，由 MyBatis-Plus 追加分页
      */
     public String selectPageByCondition(Map<String, Object> params, ProviderContext context) {
@@ -375,6 +454,7 @@ public class EntityDataSqlProvider {
      * 分页条件查询（带数据权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
      *
      * @param params 参数 Map，需含 tableName、condition、permissionSql；行范围由 Mapper 的 MP Page 提供
+     * @param context 执行上下文，向后续分页条件权限步骤传递身份、配置或状态
      * @return 条件及排序 SQL，由 MyBatis-Plus 追加分页
      */
     public String selectPageByConditionWithPermission(Map<String, Object> params, ProviderContext context) {
@@ -395,6 +475,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 统计查询
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体数据SQL提供者步骤传递身份、配置或状态
+     * @return 统计后的实体数据SQL提供者文本，供调用方比较或展示
      */
     public String count(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -408,6 +492,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 统计查询（根据条件）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件步骤传递身份、配置或状态
+     * @return 统计后的条件文本，供调用方比较或展示
      */
     public String countByCondition(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -425,6 +513,10 @@ public class EntityDataSqlProvider {
 
     /**
      * 统计查询（带数据权限过滤）
+     *
+     * @param params 参数，作为 {@code tableName} 的输入影响后续处理
+     * @param context 执行上下文，向后续权限步骤传递身份、配置或状态
+     * @return 统计后的权限文本，供调用方比较或展示
      */
     public String countWithPermission(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
@@ -443,6 +535,7 @@ public class EntityDataSqlProvider {
      * 统计查询（根据条件并带数据权限过滤）。
      *
      * @param params 参数 Map，需含 tableName、condition、permissionSql
+     * @param context 执行上下文，向后续条件权限步骤传递身份、配置或状态
      * @return 拼接后的统计 SQL
      */
     public String countByConditionWithPermission(Map<String, Object> params, ProviderContext context) {
@@ -465,6 +558,7 @@ public class EntityDataSqlProvider {
      * 字符列通过 NULLIF 统一空串和 NULL，避免 Oracle 的空串比较丢失已启动记录。
      *
      * @param params 参数 Map，需含 tableName
+     * @param context 执行上下文，向后续流程{@code instances}步骤传递身份、配置或状态
      * @return 拼接后的统计 SQL
      */
     public String countProcessInstances(Map<String, Object> params, ProviderContext context) {
@@ -481,6 +575,11 @@ public class EntityDataSqlProvider {
      * 支持查询方式：EQ(等于)、NE(不等于)、LIKE(包含)、GT(大于)、LT(小于)、
      * BETWEEN(范围)、IN(包含于)、NOT_IN(不包含于)、IS_NULL(为空)
      * 通过 _op 后缀参数指定查询方式，例如：name=xxx&name_op=EQ
+     *
+     * @param sql SQL，作为 {@code appendInCondition} 的输入影响后续处理
+     * @param params 参数，作为 {@code appendInCondition} 的输入影响后续处理
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param context 执行上下文，向后续条件SQL步骤传递身份、配置或状态
      */
     private void appendConditionSql(
             StringBuilder sql,
@@ -594,7 +693,18 @@ public class EntityDataSqlProvider {
         }
     }
 
-    /** 比较的列名取可信物理映射；产品方言负责 CLOB 全文比较，不能在此截取前缀。 */
+    /**
+     * 比较的列名取可信物理映射；产品方言负责 CLOB 全文比较，不能在此截取前缀。
+     *
+     * @param params 参数，作为 {@code bindConditionScalar} 的输入影响后续处理
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param field 字段，作为 {@code conditionColumnName} 的输入影响后续处理
+     * @param operator 操作人，供本方法处理条件比较时使用
+     * @param value 待处理条件比较的原始输入，结果供调用方继续使用
+     * @param originalProperty 原始属性，作为 {@code bindConditionScalar} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件比较步骤传递身份、配置或状态
+     * @return 处理后的条件比较文本，供调用方比较或展示
+     */
     private String conditionComparison(Map<String, Object> params, Map<String, Object> condition,
                                        String field, String operator, Object value, String originalProperty,
                                        ProviderContext context) {
@@ -611,6 +721,14 @@ public class EntityDataSqlProvider {
     /**
      * 只有确定比较操作符后才转换值，保留未指定操作符的字符串 LIKE 语义。
      * 无可信发布元数据的内部旧调用保留原绑定，不从请求值猜物理列类型。
+     *
+     * @param params 参数，供本方法处理绑定条件标量时使用
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param field 字段，作为 {@code typed.column} 的输入影响后续处理
+     * @param value 待处理绑定条件标量的原始输入，结果供调用方继续使用
+     * @param originalProperty 原始属性，供本方法处理绑定条件标量时使用
+     * @param context 执行上下文，向后续绑定条件标量步骤传递身份、配置或状态
+     * @return 处理后的绑定条件标量文本，供调用方比较或展示
      */
     @SuppressWarnings("unchecked")
     private String bindConditionScalar(Map<String, Object> params, Map<String, Object> condition,
@@ -626,7 +744,14 @@ public class EntityDataSqlProvider {
         return "#{__conditionScalars." + key + ",jdbcType=" + jdbcType + "}";
     }
 
-    /** 普通请求只含条件值；已发布元数据由服务端封装，别名解析不能覆盖参数绑定键。 */
+    /**
+     * 普通请求只含条件值；已发布元数据由服务端封装，别名解析不能覆盖参数绑定键。
+     *
+     * @param field 字段，作为 {@code columnName} 的输入影响后续处理
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param context 执行上下文，向后续条件列名称步骤传递身份、配置或状态
+     * @return 处理后的条件列名称文本，供调用方比较或展示
+     */
     private String conditionColumnName(String field, Map<String, Object> condition, ProviderContext context) {
         // 即使字段有可信映射，也先校验原键，因为它仍会成为 MyBatis 绑定属性的一部分。
         columnName(field, context);
@@ -635,6 +760,18 @@ public class EntityDataSqlProvider {
                 : columnName(field, context);
     }
 
+    /**
+     * 追加条件；结果供后续流程传递或持久化。
+     *
+     * @param sql SQL，供本方法追加条件时使用
+     * @param params 参数，作为 {@code placeholders.add} 的输入影响后续处理
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param columnName 列名称，后续用于追加条件时匹配或展示
+     * @param fieldKey 字段键，后续用于授权校验、关联或幂等去重
+     * @param rawValue 原始值，作为 {@code normalizeInValues} 的输入影响后续处理
+     * @param negated {@code negated}，作为 {@code sql.append} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件步骤传递身份、配置或状态
+     */
     private void appendInCondition(
             StringBuilder sql,
             Map<String, Object> params,
@@ -676,6 +813,12 @@ public class EntityDataSqlProvider {
                 .append(")");
     }
 
+    /**
+     * 规范化值集合；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化值集合的原始输入，结果供调用方继续使用
+     * @return 实体数据SQL提供者集合，供调用方遍历或展示
+     */
     private List<Object> normalizeInValues(Object value) {
         List<Object> values = new ArrayList<>();
         if (value instanceof Collection<?> collection) {
@@ -710,17 +853,36 @@ public class EntityDataSqlProvider {
         return values;
     }
 
-    /** 从参数中取出并校验表名 */
+    /**
+     * 从参数中取出并校验表名
+     *
+     * @param params 参数，供本方法处理表名称时使用
+     * @param context 执行上下文，向后续表名称步骤传递身份、配置或状态
+     * @return 处理后的表名称文本，供调用方比较或展示
+     */
     private String tableName(Map<String, Object> params, ProviderContext context) {
         return requireIdentifier((String) params.get("tableName"), "表名", context);
     }
 
-    /** 将驼峰字段 key 转为下划线列名并校验合法性 */
+    /**
+     * 将驼峰字段 key 转为下划线列名并校验合法性
+     *
+     * @param fieldKey 字段键，后续用于授权校验、关联或幂等去重
+     * @param context 执行上下文，向后续列名称步骤传递身份、配置或状态
+     * @return 处理后的列名称文本，供调用方比较或展示
+     */
     private String columnName(String fieldKey, ProviderContext context) {
         return requireIdentifier(camelToUnderscore(fieldKey), "字段名", context);
     }
 
-    /** 校验标识符是否符合 SQL 标识符规范，不合法抛出 IllegalArgumentException */
+    /**
+     * 校验标识符是否符合 SQL 标识符规范，不合法抛出 IllegalArgumentException
+     *
+     * @param value 待校验并获取标识符的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取标识符时匹配或展示
+     * @param context 执行上下文，向后续标识符步骤传递身份、配置或状态
+     * @return 校验并获取后的标识符文本，供调用方比较或展示
+     */
     private String requireIdentifier(String value, String label, ProviderContext context) {
         if (value == null || !SQL_IDENTIFIER.matcher(value).matches()) {
             throw new IllegalArgumentException(label + "不合法");
@@ -731,6 +893,9 @@ public class EntityDataSqlProvider {
     /**
      * 驼峰命名转换为下划线命名
      * 例如：processInstanceId -> process_instance_id
+     *
+     * @param camelCase {@code camel}分支，供本方法处理{@code camel}截止{@code underscore}时使用
+     * @return 处理后的{@code camel}截止{@code underscore}文本，供调用方比较或展示
      */
     private String camelToUnderscore(String camelCase) {
         if (camelCase == null || camelCase.isEmpty()) {

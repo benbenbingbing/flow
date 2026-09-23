@@ -3,7 +3,7 @@ package com.workflow.entity.form.infrastructure.adapter;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -49,6 +49,16 @@ public class EntityEmbedNativeFormAccessAdapter
     private final EntityFormActionService formActionService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化实体嵌入式原生表单访问适配器，保存构造参数供后续方法使用。
+     *
+     * @param releaseService 发布版本服务依赖，保存到当前对象供后续业务方法调用
+     * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
+     * @param dataActionService 数据动作服务依赖，保存到当前对象供后续业务方法调用
+     * @param listRuntimeService 列表运行时服务依赖，保存到当前对象供后续业务方法调用
+     * @param formActionService 表单动作服务依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityEmbedNativeFormAccessAdapter(
             UiConfigReleaseService releaseService,
             EntityDefinitionMapper definitionMapper,
@@ -64,7 +74,12 @@ public class EntityEmbedNativeFormAccessAdapter
         this.objectMapper = objectMapper;
     }
 
-    /** 复用普通 Flow 表单操作栏解析结果，不维护 Embed 按钮副本。 */
+    /**
+     * 复用普通 Flow 表单操作栏解析结果，不维护 Embed 按钮副本。
+     *
+     * @param target 目标，作为 {@code resolve} 的输入影响后续处理
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     */
     @Override
     public void requireCreateAction(Target target, String actionKey) {
         if (!Set.of("save", "saveAndStart").contains(actionKey)) {
@@ -87,6 +102,11 @@ public class EntityEmbedNativeFormAccessAdapter
     /**
      * 先校验固定 List Release 的成员关系，再走普通详情读取和固定过滤条件；任何
      * 一层拒绝都折叠为空，避免记录枚举。
+     *
+     * @param target 目标，作为 {@code requireTarget} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param trustedContextFilters 可信上下文过滤条件，供本方法处理授权视图时使用
+     * @return 匹配的授权视图；未找到时为空
      */
     @Override
     public Optional<ViewAccess> authorizeView(
@@ -120,6 +140,13 @@ public class EntityEmbedNativeFormAccessAdapter
         }
     }
 
+    /**
+     * 解析实体嵌入式原生表单访问；输出作为后续校验或处理的输入。
+     *
+     * @param target 目标，作为 {@code requireTarget} 的输入影响后续处理
+     * @return 解析后的实体嵌入式原生表单访问结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private RuntimeForm resolve(Target target) {
         requireTarget(target);
         ResolvedEntityFormRelease resolved =
@@ -145,6 +172,15 @@ public class EntityEmbedNativeFormAccessAdapter
         return new RuntimeForm(form, definition);
     }
 
+    /**
+     * 判断是否匹配固定列表；判断结果决定调用方的后续分支。
+     *
+     * @param target 目标，作为 {@code listRuntimeService.queryPinned} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param contextFilters 上下文过滤条件，供本方法判断是否匹配固定列表时使用
+     * @return 固定列表条件成立时为 true，否则为 false
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private boolean matchesPinnedList(
             Target target,
             String recordId,
@@ -190,6 +226,14 @@ public class EntityEmbedNativeFormAccessAdapter
         return viewAllowed(records.get(0));
     }
 
+    /**
+     * 判断是否匹配可信上下文过滤条件；判断结果决定调用方的后续分支。
+     *
+     * @param row 行，作为 {@code standardValue} 的输入影响后续处理
+     * @param contextFilters 上下文过滤条件，供本方法判断是否匹配可信上下文过滤条件时使用
+     * @return 可信上下文过滤条件条件成立时为 true，否则为 false
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private boolean matchesTrustedContextFilters(
             EntityDataDTO row,
             Map<String, Object> contextFilters) {
@@ -223,6 +267,12 @@ public class EntityEmbedNativeFormAccessAdapter
         return true;
     }
 
+    /**
+     * 处理固定列表发布版本上下文，并将结果传给后续步骤。
+     *
+     * @param target 目标，作为 {@code EntityListReleaseContext} 的输入影响后续处理
+     * @return 处理后的固定列表发布版本上下文结果，供调用方继续处理
+     */
     private static EntityListReleaseContext pinnedListReleaseContext(
             Target target) {
         if (!StringUtils.hasText(target.listReleaseId())
@@ -233,6 +283,12 @@ public class EntityEmbedNativeFormAccessAdapter
                 target.listReleaseId(), target.listReleaseVersion(), null);
     }
 
+    /**
+     * 判断视图允许条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理视图允许的原始输入，结果供调用方继续使用
+     * @return 视图允许条件成立时为 true，否则为 false
+     */
     private boolean viewAllowed(Object value) {
         if (value instanceof EntityDataDTO row) {
             Map<String, EntityActionCapabilityDTO> capabilities =
@@ -248,6 +304,12 @@ public class EntityEmbedNativeFormAccessAdapter
                 && action.path("enabled").asBoolean(false);
     }
 
+    /**
+     * 记录ID；供后续追溯或审计使用。
+     *
+     * @param value 待记录ID的原始输入，结果供调用方继续使用
+     * @return 记录后的ID文本，供调用方比较或展示
+     */
     private String recordId(Object value) {
         if (value instanceof EntityDataDTO row) {
             return row.getId();
@@ -257,6 +319,13 @@ public class EntityEmbedNativeFormAccessAdapter
                 ? node.path("id").asText(null) : null;
     }
 
+    /**
+     * 处理标准值，并将结果传给后续步骤。
+     *
+     * @param row 行，供本方法处理标准值时使用
+     * @param code 编码，后续用于处理标准值时定位或关联目标
+     * @return 匹配的标准值；未找到时为空
+     */
     private static Optional<Object> standardValue(
             EntityDataDTO row,
             String code) {
@@ -287,6 +356,13 @@ public class EntityEmbedNativeFormAccessAdapter
         return Optional.ofNullable(value);
     }
 
+    /**
+     * 判断相同过滤值条件是否成立，供调用方选择后续分支。
+     *
+     * @param actual 实际，供本方法处理相同过滤值时使用
+     * @param expected 预期，供本方法处理相同过滤值时使用
+     * @return 相同过滤值条件成立时为 true，否则为 false
+     */
     private static boolean sameFilterValue(Object actual, Object expected) {
         if (actual instanceof Number left && expected instanceof Number right) {
             try {
@@ -299,6 +375,12 @@ public class EntityEmbedNativeFormAccessAdapter
         return Objects.equals(actual, expected);
     }
 
+    /**
+     * 校验并获取目标；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，作为 {@code hasText} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireTarget(Target target) {
         if (target == null
                 || !StringUtils.hasText(target.entityCode())
@@ -309,14 +391,32 @@ public class EntityEmbedNativeFormAccessAdapter
         }
     }
 
+    /**
+     * 生成空截止空值文本，供后续匹配或展示。
+     *
+     * @param value 待处理空截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空截止空值文本，供调用方比较或展示
+     */
     private static String emptyToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因并终止后续处理。
+     *
+     * @param message 消息，作为 {@code OperationNotAllowedException} 的输入影响后续处理
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static OperationNotAllowedException denied(String message) {
         return new OperationNotAllowedException(message);
     }
 
+    /**
+     * 封装运行时表单的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param form 表单，保存在对象中供后续校验、查询或展示
+     * @param definition 定义，保存在对象中供后续校验、查询或展示
+     */
     private record RuntimeForm(
             EntityForm form,
             EntityDefinition definition) {

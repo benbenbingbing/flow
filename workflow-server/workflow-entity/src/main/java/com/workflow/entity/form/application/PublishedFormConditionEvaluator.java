@@ -39,7 +39,13 @@ public class PublishedFormConditionEvaluator {
 
     private final ObjectMapper objectMapper;
 
-    /** 优先求值结构化条件；配置不存在或不完整时返回 false。 */
+    /**
+     * 优先求值结构化条件；配置不存在或不完整时返回 false。
+     *
+     * @param configuration 配置内容，决定后续{@code structured}的处理规则
+     * @param record 记录，供本方法求值{@code structured}时使用
+     * @return {@code structured}条件成立时为 true，否则为 false
+     */
     public boolean evaluateStructured(
             Object configuration,
             Map<String, Object> record) {
@@ -48,7 +54,15 @@ public class PublishedFormConditionEvaluator {
                 && evaluateNode(root, safeRecord(record));
     }
 
-    /** 结构化条件优先，不完整或不可解析时按浏览器语义回退历史表达式。 */
+    /**
+     * 结构化条件优先，不完整或不可解析时按浏览器语义回退历史表达式。
+     *
+     * @param configuration 配置内容，决定后续已发布表单条件求值器的处理规则
+     * @param legacyExpression 旧版表达式，供本方法求值已发布表单条件求值器时使用
+     * @param record 记录，作为 {@code evaluateNode} 的输入影响后续处理
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 已发布表单条件求值器条件成立时为 true，否则为 false
+     */
     public boolean evaluate(
             Object configuration,
             String legacyExpression,
@@ -63,7 +77,13 @@ public class PublishedFormConditionEvaluator {
                 : defaultValue;
     }
 
-    /** 校验结构化条件完整性及字段引用。 */
+    /**
+     * 校验结构化条件完整性及字段引用。
+     *
+     * @param configuration 配置内容，决定后续{@code structured}的处理规则
+     * @param validProperties 有效属性集合，供本方法校验{@code structured}时使用
+     * @param label 标签，后续用于校验{@code structured}时匹配或展示
+     */
     public void validateStructured(
             Object configuration,
             Set<String> validProperties,
@@ -85,6 +105,14 @@ public class PublishedFormConditionEvaluator {
                 0);
     }
 
+    /**
+     * 校验节点；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @param validProperties 有效属性集合，供本方法校验节点时使用
+     * @param label 标签，后续用于校验节点时匹配或展示
+     * @param depth 深度，供本方法校验节点时使用
+     */
     private void validateNode(
             Map<String, Object> node,
             Set<String> validProperties,
@@ -136,6 +164,13 @@ public class PublishedFormConditionEvaluator {
         }
     }
 
+    /**
+     * 求值节点，并将结果传给后续步骤。
+     *
+     * @param node 节点，作为 {@code equals} 的输入影响后续处理
+     * @param record 记录，作为 {@code path} 的输入影响后续处理
+     * @return 节点条件成立时为 true，否则为 false
+     */
     private boolean evaluateNode(
             Map<String, Object> node,
             Map<String, Object> record) {
@@ -184,6 +219,13 @@ public class PublishedFormConditionEvaluator {
         };
     }
 
+    /**
+     * 求值旧版，并将结果传给后续步骤。
+     *
+     * @param expression 表达式，供本方法求值旧版时使用
+     * @param record 记录，作为 {@code evaluateLegacyNode} 的输入影响后续处理
+     * @return 旧版条件成立时为 true，否则为 false
+     */
     private boolean evaluateLegacy(
             String expression,
             Map<String, Object> record) {
@@ -196,6 +238,13 @@ public class PublishedFormConditionEvaluator {
         return evaluateLegacyNode(source, safeRecord(record));
     }
 
+    /**
+     * 求值旧版节点，并将结果传给后续步骤。
+     *
+     * @param expression 表达式，作为 {@code stripOuterParentheses} 的输入影响后续处理
+     * @param record 记录，作为 {@code isEmpty} 的输入影响后续处理
+     * @return 旧版节点条件成立时为 true，否则为 false
+     */
     private boolean evaluateLegacyNode(
             String expression,
             Map<String, Object> record) {
@@ -235,6 +284,14 @@ public class PublishedFormConditionEvaluator {
                 expected);
     }
 
+    /**
+     * 求值比较，并将结果传给后续步骤。
+     *
+     * @param operator 操作人，供本方法求值比较时使用
+     * @param actual 实际，作为 {@code equalsValue} 的输入影响后续处理
+     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
+     * @return 比较条件成立时为 true，否则为 false
+     */
     private boolean evaluateComparison(
             String operator,
             Object actual,
@@ -254,6 +311,13 @@ public class PublishedFormConditionEvaluator {
         };
     }
 
+    /**
+     * 判断{@code comparable}条件是否成立，供调用方选择后续分支。
+     *
+     * @param actual 实际，供本方法处理{@code comparable}时使用
+     * @param expected 预期，作为 {@code Number} 的输入影响后续处理
+     * @return {@code comparable}条件成立时为 true，否则为 false
+     */
     private boolean comparable(Object actual, Object expected) {
         if (actual == MISSING || actual == null || expected == null) {
             return false;
@@ -264,6 +328,13 @@ public class PublishedFormConditionEvaluator {
                 || number(actual) != null && number(expected) != null;
     }
 
+    /**
+     * 处理路径，并将结果传给后续步骤。
+     *
+     * @param source 待处理路径的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理路径时使用
+     * @return 处理后的路径结果，供调用方继续处理
+     */
     private Object path(Map<String, Object> source, String path) {
         Object current = source;
         for (String key : String.valueOf(path).split("\\.")) {
@@ -276,6 +347,13 @@ public class PublishedFormConditionEvaluator {
         return current;
     }
 
+    /**
+     * 处理{@code coerce}预期，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code coerce}预期的原始输入，结果供调用方继续使用
+     * @param actual 实际，供本方法处理{@code coerce}预期时使用
+     * @return 处理后的{@code coerce}预期结果，供调用方继续处理
+     */
     private Object coerceExpected(Object value, Object actual) {
         if (actual instanceof Boolean) {
             return Boolean.valueOf(String.valueOf(value));
@@ -290,6 +368,13 @@ public class PublishedFormConditionEvaluator {
         return value;
     }
 
+    /**
+     * 判断相等值条件是否成立，供调用方选择后续分支。
+     *
+     * @param actual 实际，作为 {@code number} 的输入影响后续处理
+     * @param expected 预期，作为 {@code number} 的输入影响后续处理
+     * @return 相等值条件成立时为 true，否则为 false
+     */
     private boolean equalsValue(Object actual, Object expected) {
         if (actual instanceof Number) {
             BigDecimal left = number(actual);
@@ -300,6 +385,13 @@ public class PublishedFormConditionEvaluator {
         return Objects.equals(actual, expected);
     }
 
+    /**
+     * 比较已发布表单条件求值器；结果供调用方的后续步骤使用。
+     *
+     * @param actual 实际，作为 {@code number} 的输入影响后续处理
+     * @param expected 预期，作为 {@code number} 的输入影响后续处理
+     * @return 比较后的已发布表单条件求值器结果，供调用方继续处理
+     */
     private int compare(Object actual, Object expected) {
         if (actual instanceof Number) {
             BigDecimal left = number(actual);
@@ -317,12 +409,22 @@ public class PublishedFormConditionEvaluator {
      * <p>MULTI_SELECT/CHECKBOX 在浏览器中是数组；{@code String(array)} 使用逗号
      * 连接元素，且 null/undefined 元素变成空片段。Java Collection.toString() 的
      * 方括号和空格会改变 contains 结果，因此不能直接使用 String.valueOf。</p>
+     *
+     * @param actual 实际，作为 {@code javascriptNullishString} 的输入影响后续处理
+     * @param expected 预期，供本方法判断是否包含值时使用
+     * @return 值条件成立时为 true，否则为 false
      */
     private boolean containsValue(Object actual, Object expected) {
         return javascriptNullishString(actual)
                 .contains(javascriptNullishString(expected));
     }
 
+    /**
+     * 生成{@code javascript}{@code nullish}字符串文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code javascript}{@code nullish}字符串的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code javascript}{@code nullish}字符串文本，供调用方比较或展示
+     */
     private String javascriptNullishString(Object value) {
         if (value == MISSING || value == null) {
             return "";
@@ -330,6 +432,12 @@ public class PublishedFormConditionEvaluator {
         return javascriptString(value);
     }
 
+    /**
+     * 生成{@code javascript}字符串文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code javascript}字符串的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code javascript}字符串文本，供调用方比较或展示
+     */
     private String javascriptString(Object value) {
         if (value instanceof Collection<?> values) {
             return values.stream()
@@ -350,11 +458,23 @@ public class PublishedFormConditionEvaluator {
         return String.valueOf(value);
     }
 
+    /**
+     * 生成{@code javascript}数组元素字符串文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code javascript}数组元素字符串的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code javascript}数组元素字符串文本，供调用方比较或展示
+     */
     private String javascriptArrayElementString(Object value) {
         return value == null || value == MISSING
                 ? "" : javascriptString(value);
     }
 
+    /**
+     * 处理数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理数值的原始输入，结果供调用方继续使用
+     * @return 处理后的数值结果，供调用方继续处理
+     */
     private BigDecimal number(Object value) {
         if (value == null || value instanceof Boolean) {
             return null;
@@ -366,6 +486,12 @@ public class PublishedFormConditionEvaluator {
         }
     }
 
+    /**
+     * 判断是否空；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private boolean isEmpty(Object value) {
         if (value == MISSING || value == null) {
             return true;
@@ -387,6 +513,9 @@ public class PublishedFormConditionEvaluator {
      *
      * <p>发布校验仍会严格拒绝未知类型、操作符和版本；这里保留浏览器的兼容归一化，
      * 让历史快照在服务端鉴权/必填校验与页面联动中得到相同结果。</p>
+     *
+     * @param configuration 配置内容，决定后续运行时根的处理规则
+     * @return 运行时根键值结果，供调用方继续处理
      */
     private Map<String, Object> runtimeRoot(Object configuration) {
         Object root = objectMap(configuration).get("root");
@@ -396,7 +525,12 @@ public class PublishedFormConditionEvaluator {
         return normalizeRuntimeNode(rootMap);
     }
 
-    /** 递归丢弃浏览器无法识别的节点，并规范化组逻辑、操作符和条件值。 */
+    /**
+     * 递归丢弃浏览器无法识别的节点，并规范化组逻辑、操作符和条件值。
+     *
+     * @param configured 已配置，供本方法规范化运行时节点时使用
+     * @return 运行时节点键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeRuntimeNode(Object configured) {
         if (!(configured instanceof Map<?, ?> configuredMap)) {
             return Map.of();
@@ -437,7 +571,12 @@ public class PublishedFormConditionEvaluator {
         return result;
     }
 
-    /** 与浏览器 {@code isFlowConditionGroupComplete} 保持同一完整性判定。 */
+    /**
+     * 与浏览器 {@code isFlowConditionGroupComplete} 保持同一完整性判定。
+     *
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @return 运行时节点完成条件成立时为 true，否则为 false
+     */
     private boolean isRuntimeNodeComplete(Map<String, Object> node) {
         if ("GROUP".equals(text(node.get("type")))) {
             if (!(node.get("children") instanceof List<?> children)
@@ -457,6 +596,12 @@ public class PublishedFormConditionEvaluator {
                 || !isEmpty(node.get("value"));
     }
 
+    /**
+     * 整理对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+     * @return 对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> objectMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return stringMap(map);
@@ -473,10 +618,22 @@ public class PublishedFormConditionEvaluator {
         }
     }
 
+    /**
+     * 整理安全记录数据，供调用方遍历或继续处理。
+     *
+     * @param record 记录，供本方法处理安全记录时使用
+     * @return 安全记录键值结果，供调用方继续处理
+     */
     private Map<String, Object> safeRecord(Map<String, Object> record) {
         return record == null ? Map.of() : record;
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         java.util.LinkedHashMap<String, Object> result =
                 new java.util.LinkedHashMap<>();
@@ -485,6 +642,13 @@ public class PublishedFormConditionEvaluator {
         return result;
     }
 
+    /**
+     * 整理{@code split}{@code top}层级数据，供调用方遍历或继续处理。
+     *
+     * @param expression 表达式，作为 {@code parts.add} 的输入影响后续处理
+     * @param operator 操作人，供本方法处理{@code split}{@code top}层级时使用
+     * @return 已发布表单条件求值器集合，供调用方遍历或展示
+     */
     private List<String> splitTopLevel(
             String expression,
             String operator) {
@@ -522,6 +686,12 @@ public class PublishedFormConditionEvaluator {
         return parts.stream().filter(StringUtils::hasText).toList();
     }
 
+    /**
+     * 生成{@code strip}{@code outer}{@code parentheses}文本，供后续匹配或展示。
+     *
+     * @param expression 表达式，供本方法处理{@code strip}{@code outer}{@code parentheses}时使用
+     * @return 处理后的{@code strip}{@code outer}{@code parentheses}文本，供调用方比较或展示
+     */
     private String stripOuterParentheses(String expression) {
         String result = expression;
         while (isWrappedParentheses(result)) {
@@ -530,6 +700,12 @@ public class PublishedFormConditionEvaluator {
         return result;
     }
 
+    /**
+     * 判断是否{@code wrapped}{@code parentheses}；判断结果决定调用方的后续分支。
+     *
+     * @param expression 表达式，供本方法判断是否{@code wrapped}{@code parentheses}时使用
+     * @return {@code wrapped}{@code parentheses}条件成立时为 true，否则为 false
+     */
     private boolean isWrappedParentheses(String expression) {
         if (!expression.startsWith("(") || !expression.endsWith(")")) {
             return false;
@@ -560,6 +736,12 @@ public class PublishedFormConditionEvaluator {
         return depth == 0 && quote == 0;
     }
 
+    /**
+     * 判断是否{@code wrapped}模板；判断结果决定调用方的后续分支。
+     *
+     * @param expression 表达式，供本方法判断是否{@code wrapped}模板时使用
+     * @return {@code wrapped}模板条件成立时为 true，否则为 false
+     */
     private boolean isWrappedTemplate(String expression) {
         if (!expression.startsWith("${") || !expression.endsWith("}")) {
             return false;
@@ -574,6 +756,12 @@ public class PublishedFormConditionEvaluator {
         return false;
     }
 
+    /**
+     * 规范化旧版空{@code conditions}；输出作为后续校验或处理的输入。
+     *
+     * @param expression 表达式，供本方法规范化旧版空{@code conditions}时使用
+     * @return 规范化后的旧版空{@code conditions}文本，供调用方比较或展示
+     */
     private String normalizeLegacyEmptyConditions(String expression) {
         return expression
                 .replaceAll(
@@ -584,6 +772,12 @@ public class PublishedFormConditionEvaluator {
                         "notEmpty($1)");
     }
 
+    /**
+     * 解码字面值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码字面值的原始输入，结果供调用方继续使用
+     * @return 解码后的字面值结果，供调用方继续处理
+     */
     private Object decodeLiteral(String value) {
         String source = value.trim();
         if (source.length() >= 2
@@ -605,11 +799,23 @@ public class PublishedFormConditionEvaluator {
         return numeric == null ? source : numeric;
     }
 
+    /**
+     * 规范化操作人；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化操作人的原始输入，结果供调用方继续使用
+     * @return 规范化后的操作人文本，供调用方比较或展示
+     */
     private String normalizeOperator(String value) {
         return "===".equals(value) ? "=="
                 : "!==".equals(value) ? "!=" : value;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private int integer(Object value) {
         try {
             return Integer.parseInt(String.valueOf(value));
@@ -618,10 +824,23 @@ public class PublishedFormConditionEvaluator {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param label 标签，后续用于处理无效时匹配或展示
+     * @param detail 详情，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private IllegalArgumentException invalid(
             String label,
             String detail) {

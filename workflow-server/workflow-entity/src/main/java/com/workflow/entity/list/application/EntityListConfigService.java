@@ -9,10 +9,10 @@ import com.workflow.entity.form.application.EntityFormNodeService;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.api.request.EntityListFieldSaveRequest;
 import com.workflow.entity.list.api.request.EntityListItemReorderRequest;
@@ -58,6 +58,9 @@ public class EntityListConfigService {
                     "LT",
                     "LE",
                     "IS_NULL");
+    /**
+     * 定义保存模式的可选值；调用方据此选择对应的处理分支。
+     */
     private enum SaveMode {
         USER_CAS,
         SYSTEM_IMPORT,
@@ -78,6 +81,23 @@ public class EntityListConfigService {
     private final EntityListRelationalConfigService relationalConfigService;
     private final EntityListFieldPropertySupport fieldProperties;
 
+    /**
+     * 初始化实体列表配置服务，保存构造参数供后续方法使用。
+     *
+     * @param configMapper 配置映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param definitionFieldMapper 定义字段映射器，保存在对象中供后续校验、查询或展示
+     * @param systemEntityFieldPolicy 系统实体字段策略，保存在对象中供后续校验、查询或展示
+     * @param actionConfigService 动作配置服务，保存在对象中供后续校验、查询或展示
+     * @param permissionCatalogService 权限目录服务，保存在对象中供后续校验、查询或展示
+     * @param actionCapabilityService 动作能力服务，保存在对象中供后续校验、查询或展示
+     * @param configurationValidator 配置校验器，保存在对象中供后续校验、查询或展示
+     * @param currentUserRoleService 当前用户角色服务，保存在对象中供后续校验、查询或展示
+     * @param entityUiConfigurationPolicy 实体界面配置策略，保存在对象中供后续校验、查询或展示
+     * @param jsonDocumentCodec JSON文档编解码器，保存在对象中供后续校验、查询或展示
+     * @param relationalConfigService {@code relational}配置服务，保存在对象中供后续校验、查询或展示
+     */
     public EntityListConfigService(
             EntityListConfigMapper configMapper,
             EntityListFieldMapper fieldMapper,
@@ -101,6 +121,9 @@ public class EntityListConfigService {
 
     /**
      * 查询实体的所有列表配置
+     *
+     * @param entityId 实体ID，后续用于查询实体ID时定位或关联目标
+     * @return 实体列表配置集合，供调用方遍历或展示
      */
     public List<EntityListConfigDTO> findByEntityId(String entityId) {
         List<EntityListConfig> configs = configMapper.findByEntityId(entityId);
@@ -108,6 +131,9 @@ public class EntityListConfigService {
     }
     /**
      * 根据ID查询配置（含字段）
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的实体列表配置结果，供调用方继续处理
      */
     public EntityListConfigDTO findById(String id) {
         EntityListConfig config = configMapper.selectById(id);
@@ -120,6 +146,9 @@ public class EntityListConfigService {
      * 兼容既有迁移模块的系统导入入口。
      *
      * 普通 HTTP 更新必须调用带 expectedRevision 的重载。
+     *
+     * @param dto DTO，作为 {@code saveConfigInternal} 的输入影响后续处理
+     * @return 保存后的配置结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -136,6 +165,10 @@ public class EntityListConfigService {
     }
     /**
      * 普通整包列表保存，已有配置必须携带 expectedRevision。
+     *
+     * @param dto DTO，作为 {@code saveConfigInternal} 的输入影响后续处理
+     * @param expectedRevision 预期修订版本，作为 {@code saveConfigInternal} 的输入影响后续处理
+     * @return 保存后的配置结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO saveConfig(
@@ -145,6 +178,9 @@ public class EntityListConfigService {
     }
     /**
      * 显式系统导入入口。
+     *
+     * @param dto DTO，作为 {@code saveConfigInternal} 的输入影响后续处理
+     * @return 保存后的配置导入结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO saveConfigForImport(EntityListConfigDTO dto) {
@@ -153,6 +189,8 @@ public class EntityListConfigService {
 
     /**
      * 锁定列表字段和按钮草稿，供配置级撤销重算 canonical hash。
+     *
+     * @param listConfigId 列表配置ID，后续用于锁定草稿子节点发布版本时定位或关联目标
      */
     public void lockDraftChildrenForRelease(String listConfigId) {
         fieldMapper.findAllByListConfigIdForUpdate(listConfigId);
@@ -165,6 +203,10 @@ public class EntityListConfigService {
      * <p>字段和按钮采用物理重建，以便复用发布快照中的稳定 ID，避免逻辑删除
      * 行占用主键或生成新 ID。独立的数据范围规则不属于 UI 发布快照，本方法不
      * 读取也不修改这些即时配置。</p>
+     *
+     * @param dto DTO，作为 {@code lockList} 的输入影响后续处理
+     * @param expectedRevision 预期修订版本，作为 {@code requireExpectedRevision} 的输入影响后续处理
+     * @return 恢复后的配置发布版本结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO restoreConfigForRelease(
@@ -195,6 +237,15 @@ public class EntityListConfigService {
         return findById(restored.getId());
     }
 
+    /**
+     * 保存配置内部；后续读取或执行将使用更新后的状态。
+     *
+     * @param source 待保存配置内部的原始输入，结果供调用方继续使用
+     * @param expectedRevision 预期修订版本，作为 {@code requireExpectedRevision} 的输入影响后续处理
+     * @param saveMode 保存模式标识，决定后续配置内部采用的处理分支
+     * @return 保存后的配置内部结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfigDTO saveConfigInternal(
             EntityListConfigDTO source,
             Integer expectedRevision,
@@ -262,6 +313,14 @@ public class EntityListConfigService {
         permissionCatalogService.synchronizeCustomPermissions(config);
         return findById(config.getId());
     }
+    /**
+     * 创建字段；结果供后续流程传递或持久化。
+     *
+     * @param listConfigId 列表配置ID，后续用于创建字段时定位或关联目标
+     * @param request 本次请求，后续经校验后用于创建字段
+     * @return 创建后的字段结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListField createField(
             String listConfigId,
@@ -289,6 +348,15 @@ public class EntityListConfigService {
         touchList(listConfigId);
         return field;
     }
+    /**
+     * 处理补丁字段，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理补丁字段时定位或关联目标
+     * @param fieldId 字段ID，后续用于处理补丁字段时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理补丁字段
+     * @return 处理后的补丁字段结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListField patchField(
             String listConfigId,
@@ -331,6 +399,15 @@ public class EntityListConfigService {
         touchList(listConfigId);
         return requireField(listConfigId, fieldId);
     }
+    /**
+     * 处理{@code reorder}字段，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理{@code reorder}字段时定位或关联目标
+     * @param fieldId 字段ID，后续用于处理{@code reorder}字段时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理{@code reorder}字段
+     * @return 处理后的{@code reorder}字段结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityListField reorderField(
             String listConfigId,
@@ -370,6 +447,13 @@ public class EntityListConfigService {
         saveRequest.setField(patch);
         return patchField(listConfigId, fieldId, saveRequest);
     }
+    /**
+     * 删除字段；后续读取或执行将使用更新后的状态。
+     *
+     * @param listConfigId 列表配置ID，后续用于删除字段时定位或关联目标
+     * @param fieldId 字段ID，后续用于删除字段时定位或关联目标
+     * @param expectedRevision 预期修订版本，供本方法删除字段时使用
+     */
     @Transactional(rollbackFor = Exception.class)
     public void deleteField(
             String listConfigId,
@@ -397,6 +481,8 @@ public class EntityListConfigService {
     }
     /**
      * 删除列表配置（逻辑删除，级联删除字段）
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -414,6 +500,12 @@ public class EntityListConfigService {
         fieldMapper.deleteByListConfigId(id);
         actionConfigService.deleteRelationalConfig(id);
     }
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续截止DTO的处理规则
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityListConfigDTO convertToDTO(EntityListConfig config) {
         EntityListConfigDTO dto = new EntityListConfigDTO();
         BeanUtils.copyProperties(config, dto);
@@ -433,12 +525,25 @@ public class EntityListConfigService {
         }
         return dto;
     }
+    /**
+     * 转换截止DTO字段；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续截止DTO字段的处理规则
+     * @return 转换后的截止DTO字段结果，供调用方继续处理
+     */
     private EntityListConfigDTO convertToDTOWithFields(EntityListConfig config) {
         EntityListConfigDTO dto = convertToDTO(config);
         List<EntityListField> fields = fieldMapper.findByListConfigId(config.getId());
         dto.setFields(fields);
         return dto;
     }
+    /**
+     * 处理{@code synchronize}字段差异，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续{@code synchronize}字段差异的处理规则
+     * @param incoming {@code incoming}，供本方法处理{@code synchronize}字段差异时使用
+     * @param saveMode 保存模式标识，决定后续{@code synchronize}字段差异采用的处理分支
+     */
     private void synchronizeFieldsByDiff(
             EntityListConfig config,
             List<EntityListField> incoming,
@@ -562,6 +667,13 @@ public class EntityListConfigService {
             }
         }
     }
+    /**
+     * 构建候选人；结果供后续流程传递或持久化。
+     *
+     * @param source 待构建候选人的原始输入，结果供调用方继续使用
+     * @param current 当前，作为 {@code candidate.setId} 的输入影响后续处理
+     * @return 构建后的候选人结果，供调用方继续处理
+     */
     private EntityListConfigDTO buildCandidate(
             EntityListConfigDTO source,
             EntityListConfig current) {
@@ -592,6 +704,14 @@ public class EntityListConfigService {
         candidate.setFields(source.getFields());
         return candidate;
     }
+    /**
+     * 构建{@code persistent}配置；结果供后续流程传递或持久化。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @param current 当前，作为 {@code config.setId} 的输入影响后续处理
+     * @param saveMode 保存模式标识，决定后续{@code persistent}配置采用的处理分支
+     * @return 构建后的{@code persistent}配置结果，供调用方继续处理
+     */
     private EntityListConfig buildPersistentConfig(
             EntityListConfigDTO candidate,
             EntityListConfig current,
@@ -639,6 +759,11 @@ public class EntityListConfigService {
         applyConfigDefaults(config);
         return config;
     }
+    /**
+     * 应用配置{@code defaults}，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续配置{@code defaults}的处理规则
+     */
     private void applyConfigDefaults(EntityListConfig config) {
         if (!StringUtils.hasText(config.getDataScopeMode())) {
             config.setDataScopeMode("INHERIT");
@@ -649,6 +774,11 @@ public class EntityListConfigService {
                             + "\"returnMappings\":[]}");
         }
     }
+    /**
+     * 校验并获取实体访问；不满足约束时阻止后续处理。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     */
     private void requireEntityAccess(EntityListConfigDTO candidate) {
         if (StringUtils.hasText(candidate.getEntityId())) {
             entityUiConfigurationPolicy.requireConfigurableById(
@@ -658,6 +788,11 @@ public class EntityListConfigService {
                     candidate.getEntityCode());
         }
     }
+    /**
+     * 校验并获取覆盖权限；不满足约束时阻止后续处理。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     */
     private void requireOverridePermission(EntityListConfigDTO candidate) {
         if ("OVERRIDE".equalsIgnoreCase(candidate.getDataScopeMode())
                 && !currentUserRoleService.isSuperAdmin()) {
@@ -665,6 +800,12 @@ public class EntityListConfigService {
                     "只有超级管理员可以将列表配置为独立数据范围");
         }
     }
+    /**
+     * 设置可变配置列集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param wrapper {@code wrapper}，供本方法设置可变配置列集合时使用
+     * @param config 配置内容，决定后续可变配置列集合的处理规则
+     */
     private void setMutableConfigColumns(
             UpdateWrapper<EntityListConfig> wrapper,
             EntityListConfig config) {
@@ -684,6 +825,12 @@ public class EntityListConfigService {
                 .set("query_interface_extension_id",
                         config.getQueryInterfaceExtensionId());
     }
+    /**
+     * 处理配置修订版本条件，并将结果传给后续步骤。
+     *
+     * @param current 当前，作为 {@code wrapper.eq} 的输入影响后续处理
+     * @return 处理后的配置修订版本条件结果，供调用方继续处理
+     */
     private UpdateWrapper<EntityListConfig> configRevisionCondition(
             EntityListConfig current) {
         UpdateWrapper<EntityListConfig> wrapper = new UpdateWrapper<>();
@@ -695,6 +842,14 @@ public class EntityListConfigService {
         }
         return wrapper;
     }
+    /**
+     * 校验并获取预期修订版本；不满足约束时阻止后续处理。
+     *
+     * @param expectedRevision 预期修订版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @param message 消息，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireExpectedRevision(
             Integer expectedRevision,
             EntityListConfig current,
@@ -708,6 +863,13 @@ public class EntityListConfigService {
                     findById(current.getId()));
         }
     }
+    /**
+     * 锁定实体列表配置列表；避免后续并发处理覆盖状态。
+     *
+     * @param listConfigId 列表配置ID，后续用于锁定实体列表配置列表时定位或关联目标
+     * @return 锁定后的实体列表配置列表结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig lockList(String listConfigId) {
         EntityListConfig current =
                 configMapper.selectByIdForUpdate(listConfigId);
@@ -716,6 +878,13 @@ public class EntityListConfigService {
         }
         return current;
     }
+    /**
+     * 列出冲突；查询结果供调用方展示或继续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于列出冲突时定位或关联目标
+     * @param message 消息，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @return 符合条件的修订版本冲突异常结果，供调用方继续处理
+     */
     private RevisionConflictException listConflict(
             String listConfigId,
             String message) {
@@ -723,12 +892,30 @@ public class EntityListConfigService {
                 message,
                 findById(listConfigId));
     }
+    /**
+     * 处理修订版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续修订版本的处理规则
+     * @return 处理后的修订版本结果，供调用方继续处理
+     */
     private int revisionOf(EntityListConfig config) {
         return config.getRevision() == null ? 0 : config.getRevision();
     }
+    /**
+     * 处理修订版本，并将结果传给后续步骤。
+     *
+     * @param field 字段，供本方法处理修订版本时使用
+     * @return 处理后的修订版本结果，供调用方继续处理
+     */
     private int revisionOf(EntityListField field) {
         return field.getRevision() == null ? 0 : field.getRevision();
     }
+    /**
+     * 复制{@code whole}字段属性集合；结果供后续流程传递或持久化。
+     *
+     * @param source 待复制{@code whole}字段属性集合的原始输入，结果供调用方继续使用
+     * @param target 目标，供本方法复制{@code whole}字段属性集合时使用
+     */
     private void copyWholeFieldProperties(
             EntityListField source,
             EntityListField target) {
@@ -753,6 +940,13 @@ public class EntityListConfigService {
         target.setLocalOverridesDocument(
                 source.getLocalOverridesDocument());
     }
+    /**
+     * 列出字段修订版本条件；查询结果供调用方展示或继续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于列出字段修订版本条件时定位或关联目标
+     * @param current 当前，作为 {@code wrapper.eq} 的输入影响后续处理
+     * @return 符合条件的更新{@code wrapper<entity}列表{@code field>}结果，供调用方继续处理
+     */
     private UpdateWrapper<EntityListField> listFieldRevisionCondition(
             String listConfigId,
             EntityListField current) {
@@ -767,6 +961,13 @@ public class EntityListConfigService {
         }
         return wrapper;
     }
+    /**
+     * 校验并获取配置；不满足约束时阻止后续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于校验并获取配置时定位或关联目标
+     * @return 校验并获取后的配置结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfigDTO requireConfig(String listConfigId) {
         EntityListConfigDTO config = findById(listConfigId);
         if (config == null) {
@@ -774,6 +975,14 @@ public class EntityListConfigService {
         }
         return config;
     }
+    /**
+     * 校验并获取字段；不满足约束时阻止后续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于校验并获取字段时定位或关联目标
+     * @param fieldId 字段ID，后续用于校验并获取字段时定位或关联目标
+     * @return 校验并获取后的字段结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListField requireField(String listConfigId, String fieldId) {
         EntityListField field = fieldMapper.selectById(fieldId);
         if (field == null || !listConfigId.equals(field.getListConfigId())
@@ -782,6 +991,13 @@ public class EntityListConfigService {
         }
         return field;
     }
+    /**
+     * 校验{@code single}字段；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续{@code single}字段的处理规则
+     * @param field 字段，作为 {@code fields.add} 的输入影响后续处理
+     * @param replacingId {@code replacing}ID，后续用于校验{@code single}字段时定位或关联目标
+     */
     private void validateSingleField(
             EntityListConfigDTO config,
             EntityListField field,
@@ -795,6 +1011,12 @@ public class EntityListConfigService {
         validateSystemListConfiguration(config);
         configurationValidator.validate(config);
     }
+    /**
+     * 校验系统列表配置；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续系统列表配置的处理规则
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSystemListConfiguration(
             EntityListConfigDTO config) {
         EntityDefinition entity =
@@ -895,6 +1117,12 @@ public class EntityListConfigService {
             }
         }
     }
+    /**
+     * 处理下一步字段顺序键，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理下一步字段顺序键时定位或关联目标
+     * @return 处理后的下一步字段顺序键结果，供调用方继续处理
+     */
     private long nextFieldOrderKey(String listConfigId) {
         List<EntityListField> fields = fieldMapper.findByListConfigId(listConfigId);
         return fields.isEmpty()
@@ -902,6 +1130,14 @@ public class EntityListConfigService {
                 : fields.get(fields.size() - 1).getOrderKey()
                         + EntityFormNodeService.ORDER_STEP;
     }
+    /**
+     * 处理{@code boundary}顺序，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理{@code boundary}顺序时定位或关联目标
+     * @param fieldId 字段ID，后续用于处理{@code boundary}顺序时定位或关联目标
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的{@code boundary}顺序结果，供调用方继续处理
+     */
     private long boundaryOrder(
             String listConfigId,
             String fieldId,
@@ -911,6 +1147,11 @@ public class EntityListConfigService {
         }
         return requireField(listConfigId, fieldId).getOrderKey();
     }
+    /**
+     * 处理{@code rebalance}字段，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理{@code rebalance}字段时定位或关联目标
+     */
     private void rebalanceFields(String listConfigId) {
         long order = EntityFormNodeService.ORDER_STEP;
         for (EntityListField field : fieldMapper.findByListConfigId(listConfigId)) {
@@ -925,6 +1166,11 @@ public class EntityListConfigService {
             order += EntityFormNodeService.ORDER_STEP;
         }
     }
+    /**
+     * 处理更新访问时间列表，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理更新访问时间列表时定位或关联目标
+     */
     private void touchList(String listConfigId) {
         EntityListConfig current = lockList(listConfigId);
         UpdateWrapper<EntityListConfig> wrapper =
@@ -938,9 +1184,23 @@ public class EntityListConfigService {
                     "列表配置已被其他人修改，请刷新后重试");
         }
     }
+    /**
+     * 写入实体列表配置；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入实体列表配置的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于写入实体列表配置时匹配或展示
+     * @return 写入后的实体列表配置文本，供调用方比较或展示
+     */
     private String write(Object value, String label) {
         return value == null ? null : jsonDocumentCodec.write(value, label);
     }
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param document 文档，供本方法读取映射时使用
+     * @param label 标签，后续用于读取映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> readMap(String document, String label) {
         return StringUtils.hasText(document)
                 ? jsonDocumentCodec.readObject(document, label)

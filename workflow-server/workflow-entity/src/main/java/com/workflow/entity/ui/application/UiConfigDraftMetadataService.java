@@ -2,7 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.list.application.EntityListConfigService;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
@@ -258,6 +258,14 @@ public class UiConfigDraftMetadataService {
         }
     }
 
+    /**
+     * 校验并获取修订版本；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验并获取修订版本时使用
+     * @param current 当前，供本方法校验并获取修订版本时使用
+     * @param currentData 当前数据，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireRevision(
             Integer expected,
             Integer current,
@@ -270,10 +278,23 @@ public class UiConfigDraftMetadataService {
         }
     }
 
+    /**
+     * 写入界面配置草稿元数据；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入界面配置草稿元数据的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于写入界面配置草稿元数据时匹配或展示
+     * @return 写入后的界面配置草稿元数据文本，供调用方比较或展示
+     */
     private String write(Object value, String label) {
         return value == null ? null : codec.write(value, label);
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

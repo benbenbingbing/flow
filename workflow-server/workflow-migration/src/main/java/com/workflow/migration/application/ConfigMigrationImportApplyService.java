@@ -1,6 +1,6 @@
 package com.workflow.migration.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -17,16 +17,16 @@ import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMa
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -356,6 +356,8 @@ public class ConfigMigrationImportApplyService {
     /**
      * 按字典编码和字典项编码非破坏性合并字典配置，并通过 parentItemCode 重建树关系。
      * 目标环境额外存在的字典项会被保留，避免实体迁移误删生产专用配置。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
      */
     private void applyDictionary(ConfigImportItem item) {
         Map<String, Object> snapshot =
@@ -456,6 +458,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 应用工作日历，并将结果传给后续步骤。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
+     * @param migrationTag 迁移标签，供本方法应用工作日历时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void applyWorkCalendar(
             ConfigImportItem item,
             String migrationTag) {
@@ -509,6 +518,12 @@ public class ConfigMigrationImportApplyService {
                 migrationRequest(item, migrationTag));
     }
 
+    /**
+     * 应用任务SLA策略，并将结果传给后续步骤。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
+     * @param migrationTag 迁移标签，供本方法应用任务SLA策略时使用
+     */
     private void applyTaskSlaPolicy(
             ConfigImportItem item,
             String migrationTag) {
@@ -560,6 +575,13 @@ public class ConfigMigrationImportApplyService {
                 migrationRequest(item, migrationTag));
     }
 
+    /**
+     * 解析SLA用户引用；输出作为后续校验或处理的输入。
+     *
+     * @param document 文档，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 解析后的SLA用户引用文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String resolveSlaUserReferences(String document) {
         if (!StringUtils.hasText(document)) {
             return document;
@@ -577,6 +599,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 解析SLA用户引用；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析SLA用户引用的原始输入，结果供调用方继续使用
+     * @return 解析后的SLA用户引用文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String resolveSlaUserReference(String value) {
         if (!StringUtils.hasText(value)) {
             return value;
@@ -602,6 +631,12 @@ public class ConfigMigrationImportApplyService {
         return user.getId();
     }
 
+    /**
+     * 处理重写SLA用户引用，并将结果传给后续步骤。
+     *
+     * @param node 节点，供本方法处理重写SLA用户引用时使用
+     * @param converter {@code converter}，作为 {@code objectNode.put} 的输入影响后续处理
+     */
     private void rewriteSlaUserReferences(
             JsonNode node,
             java.util.function.UnaryOperator<String> converter) {
@@ -640,6 +675,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 处理迁移请求，并将结果传给后续步骤。
+     *
+     * @param item 条目，供本方法处理迁移请求时使用
+     * @param migrationTag 迁移标签，作为 {@code request.setVersionDescription} 的输入影响后续处理
+     * @return 处理后的迁移请求结果，供调用方继续处理
+     */
     private ConfigMigrationPublishRequest migrationRequest(
             ConfigImportItem item,
             String migrationTag) {
@@ -845,6 +887,9 @@ public class ConfigMigrationImportApplyService {
     /**
      * 为回滚锁计划选择真实将要应用的条目；新增资产没有历史快照，使用原条目
      * 以锁定其当前实体绑定后再执行停用。
+     *
+     * @param plans {@code plans}，供本方法处理回滚锁定条目时使用
+     * @return 配置导入条目集合，供调用方遍历或展示
      */
     static List<ConfigImportItem> rollbackLockItems(
             List<RollbackItemPlan> plans) {
@@ -855,6 +900,13 @@ public class ConfigMigrationImportApplyService {
                 .toList();
     }
 
+    /**
+     * 准备系统实体界面；结果供调用方的后续步骤使用。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
+     * @return 准备后的系统实体界面结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private SystemEntityUiContext prepareSystemEntityUi(
             ConfigImportItem item) {
         Map<String, Object> snapshot =
@@ -884,6 +936,11 @@ public class ConfigMigrationImportApplyService {
                 item, snapshot, definition, entity);
     }
 
+    /**
+     * 应用系统实体界面配置，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续系统实体界面配置步骤传递身份、配置或状态
+     */
     private void applySystemEntityUiConfiguration(
             SystemEntityUiContext context) {
         Map<String, Object> snapshot = context.snapshot();
@@ -934,6 +991,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 校验系统实体界面字段；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code fieldsByCode} 的输入影响后续处理
+     * @param snapshot 快照，作为 {@code stringList} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void validateSystemEntityUiFields(
             EntityDefinition entity,
             Map<String, Object> snapshot) {
@@ -980,6 +1044,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 生成系统节点字段编码文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的系统节点字段编码文本，供调用方比较或展示
+     */
     private String systemNodeFieldCode(
             Map<String, Object> node) {
         if ("ENTITY_FIELD".equalsIgnoreCase(
@@ -1069,6 +1139,9 @@ public class ConfigMigrationImportApplyService {
     /**
      * 应用实体快照中的各分区配置：字段、状态、编码规则、扩展、数据源、表单、列表、数据范围、菜单，
      * 最后同步实体权限目录。
+     *
+     * @param context 执行上下文，向后续实体配置步骤传递身份、配置或状态
+     * @param rollbackMode 回滚模式标识，决定后续实体配置采用的处理分支
      */
     private void applyEntityConfiguration(EntityContext context, boolean rollbackMode) {
         Map<String, Object> snapshot = context.snapshot();
@@ -1165,6 +1238,11 @@ public class ConfigMigrationImportApplyService {
      * <p>迁移包中的接口扩展先于完整表单、列表配置恢复；新环境此时没有可写入
      * scope_id 的目标记录。这里只建立同事务内的最小 shell，后续 applyForms/
      * applyLists 会按稳定业务 key 复用并补全，任何后续失败都会随导入事务回滚。</p>
+     *
+     * @param entity 实体，作为 {@code ensureInterfaceScopeForm} 的输入影响后续处理
+     * @param interfaces {@code interfaces}，供本方法确保接口作用域{@code owners}时使用
+     * @param forms 表单集合，供本方法确保接口作用域{@code owners}时使用
+     * @param lists {@code lists}，供本方法确保接口作用域{@code owners}时使用
      */
     void ensureInterfaceScopeOwners(
             EntityDefinition entity,
@@ -1211,6 +1289,16 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 确保接口作用域表单；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code shell.setEntityId} 的输入影响后续处理
+     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
+     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @param incoming {@code incoming}，作为 {@code shell.setFormName} 的输入影响后续处理
+     * @param interfaceDefinition 接口定义，供本方法确保接口作用域表单时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void ensureInterfaceScopeForm(
             EntityDefinition entity,
             String formKey,
@@ -1240,6 +1328,16 @@ public class ConfigMigrationImportApplyService {
                 interfaceKey(interfaceDefinition));
     }
 
+    /**
+     * 确保接口作用域列表；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code shell.setEntityId} 的输入影响后续处理
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @param incoming {@code incoming}，作为 {@code shell.setListName} 的输入影响后续处理
+     * @param interfaceDefinition 接口定义，供本方法确保接口作用域列表时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void ensureInterfaceScopeList(
             EntityDefinition entity,
             String listKey,
@@ -1274,12 +1372,23 @@ public class ConfigMigrationImportApplyService {
                 interfaceKey(interfaceDefinition));
     }
 
+    /**
+     * 生成接口键文本，供后续匹配或展示。
+     *
+     * @param definition 定义，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的接口键文本，供调用方比较或展示
+     */
     private String interfaceKey(Map<String, Object> definition) {
         return text(definition.get("extensionKey"),
                 text(definition.get("sourceCode"), null));
     }
 
-    /** 新包优先读 interfaceExtensions，仅在其缺失时兼容旧 dataSources。 */
+    /**
+     * 新包优先读 interfaceExtensions，仅在其缺失时兼容旧 dataSources。
+     *
+     * @param snapshot 快照，供本方法处理接口扩展值集合时使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> interfaceExtensionValues(
             Map<String, Object> snapshot) {
         return snapshot.containsKey("interfaceExtensions")
@@ -1287,6 +1396,14 @@ public class ConfigMigrationImportApplyService {
                 : mapList(snapshot.get("dataSources"));
     }
 
+    /**
+     * 转换为实体字段{@code dtos}；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，供本方法转换为实体字段{@code dtos}时使用
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @param rollbackMode 回滚模式标识，决定后续实体字段{@code dtos}采用的处理分支
+     * @return 实体字段集合，供调用方遍历或展示
+     */
     private List<EntityFieldDTO> toEntityFieldDtos(EntityDefinition entity,
                                                    Map<String, Object> snapshot,
                                                    boolean rollbackMode) {
@@ -1335,6 +1452,13 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 应用表单集合，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code fieldsByCode} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void applyForms(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
         List<String> formIds = new ArrayList<>();
@@ -1417,6 +1541,12 @@ public class ConfigMigrationImportApplyService {
                 "配置迁移导入表单初始发布");
     }
 
+    /**
+     * 处理重写附件条目引用，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code fieldsByCode} 的输入影响后续处理
+     * @param snapshot 快照，供本方法处理重写附件条目引用时使用
+     */
     private void rewriteAttachmentItemReferences(
             EntityDefinition entity,
             Map<String, Object> snapshot) {
@@ -1449,6 +1579,14 @@ public class ConfigMigrationImportApplyService {
         snapshot.put("forms", rewrittenForms);
     }
 
+    /**
+     * 整理重写附件条目引用字段数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param node 节点，供本方法处理重写附件条目引用字段时使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> rewriteAttachmentItemReferencesByField(
             List<Map<String, Object>> values,
             Map<String, EntityField> fields,
@@ -1531,6 +1669,10 @@ public class ConfigMigrationImportApplyService {
      *
      * <p>新包使用 interfaceExtensions；旧 dataSources 仅在导入时按
      * operationsDocument 拆分为多条接口扩展，绝不重建多操作服务。</p>
+     *
+     * @param entity 实体，作为 {@code saveInterfaceExtension} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 接口{@code extensions}键值结果，供调用方继续处理
      */
     Map<String, String> applyInterfaceExtensions(
             EntityDefinition entity,
@@ -1568,6 +1710,16 @@ public class ConfigMigrationImportApplyService {
         return idsByCode;
     }
 
+    /**
+     * 保存接口扩展；后续读取或执行将使用更新后的状态。
+     *
+     * @param entity 实体，作为 {@code request.setScopeId} 的输入影响后续处理
+     * @param value 待保存接口扩展的原始输入，结果供调用方继续使用
+     * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+     * @param legacyOperation 旧版操作，作为 {@code text} 的输入影响后续处理
+     * @param legacy 旧版，作为 {@code request.setDisplayName} 的输入影响后续处理
+     * @return 保存后的接口扩展结果，供调用方继续处理
+     */
     private UiExtensionDefinition saveInterfaceExtension(
             EntityDefinition entity,
             Map<String, Object> value,
@@ -1641,6 +1793,13 @@ public class ConfigMigrationImportApplyService {
         return dataSourceService.save(request);
     }
 
+    /**
+     * 合并{@code documents}；结果供后续流程传递或持久化。
+     *
+     * @param base 基础，供本方法合并{@code documents}时使用
+     * @param override 覆盖，作为 {@code result.putAll} 的输入影响后续处理
+     * @return {@code documents}键值结果，供调用方继续处理
+     */
     private Map<String, Object> mergeDocuments(
             Map<String, Object> base,
             Object override) {
@@ -1651,6 +1810,15 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 解析接口作用域ID；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，作为 {@code formMapper.selectByEntityIdAndFormKey} 的输入影响后续处理
+     * @param scopeType 作用域类型标识，决定后续接口作用域ID采用的处理分支
+     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @return 解析后的接口作用域ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     String resolveInterfaceScopeId(
             EntityDefinition entity,
             String scopeType,
@@ -1691,6 +1859,14 @@ public class ConfigMigrationImportApplyService {
                 "迁移暂不支持的接口扩展作用域: " + scopeType);
     }
 
+    /**
+     * 处理重写接口引用，并将结果传给后续步骤。
+     *
+     * @param value 待处理重写接口引用的原始输入，结果供调用方继续使用
+     * @param idsByCode ID 集合编码，后续用于处理重写接口引用时定位或关联目标
+     * @return 处理后的重写接口引用结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Object rewriteInterfaceReferences(
             Object value,
             Map<String, String> idsByCode) {
@@ -1788,6 +1964,12 @@ public class ConfigMigrationImportApplyService {
         };
     }
 
+    /**
+     * 解析JSON文档；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析JSON文档的原始输入，结果供调用方继续使用
+     * @return 解析后的JSON文档结果，供调用方继续处理
+     */
     private Object parseJsonDocument(String value) {
         try {
             return objectMapper.readValue(value, Object.class);
@@ -1796,6 +1978,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -1805,6 +1994,11 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 应用{@code extensions}，并将结果传给后续步骤。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private void applyExtensions(List<Map<String, Object>> values) {
         for (Map<String, Object> value : values) {
             String extensionType =
@@ -1852,6 +2046,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 应用{@code lists}，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code fieldsByCode} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private void applyLists(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
         List<String> listIds = new ArrayList<>();
@@ -1896,6 +2096,10 @@ public class ConfigMigrationImportApplyService {
      * <p>调用时目标环境的表单、列表、节点和接口扩展必须已经就绪。
      * 解析仅使用业务编码，不接受源环境数据库 ID 或 releaseId；实际发布在所有
      * 实体草稿恢复完成后统一执行。</p>
+     *
+     * @param entity 实体，作为 {@code formMapper.selectByEntityIdAndFormKey} 的输入影响后续处理
+     * @param snapshot 快照，供本方法应用{@code imported}视图{@code compositions}时使用
+     * @return {@code imported}界面归属方集合，供调用方遍历或展示
      */
     private List<ImportedUiOwner> applyImportedViewCompositions(
             EntityDefinition entity,
@@ -1956,6 +2160,15 @@ public class ConfigMigrationImportApplyService {
         return owners;
     }
 
+    /**
+     * 解析可移植视图组合；输出作为后续校验或处理的输入。
+     *
+     * @param sourceEntity 来源实体，作为 {@code source.put} 的输入影响后续处理
+     * @param sourceItem 来源条目，供本方法解析可移植视图组合时使用
+     * @param nodeIdsByKey 节点ID 集合键，后续用于授权校验、关联或幂等去重
+     * @return 可移植视图组合键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> resolvePortableViewComposition(
             EntityDefinition sourceEntity,
             Map<String, Object> sourceItem,
@@ -2109,6 +2322,11 @@ public class ConfigMigrationImportApplyService {
         return item;
     }
 
+    /**
+     * 发布{@code imported}视图{@code compositions}；后续由接收方或异步任务继续处理。
+     *
+     * @param owners {@code owners}，供本方法发布{@code imported}视图{@code compositions}时使用
+     */
     private void publishImportedViewCompositions(
             List<ImportedUiOwner> owners) {
         Map<String, List<String>> idsByType = owners.stream()
@@ -2129,6 +2347,9 @@ public class ConfigMigrationImportApplyService {
     /**
      * 旧历史快照没有 viewCompositions 字段时，用显式空数组表示回滚删除。
      * 仅对本次导入确实携带该字段的宿主加标记，普通旧包仍保持兼容、不触碰目标配置。
+     *
+     * @param rollbackSnapshot 回滚快照，供本方法标记{@code removed}视图{@code compositions}回滚时使用
+     * @param importedSnapshot {@code imported}快照，供本方法标记{@code removed}视图{@code compositions}回滚时使用
      */
     static void markRemovedViewCompositionsForRollback(
             Map<String, Object> rollbackSnapshot,
@@ -2164,6 +2385,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 整理{@code static}映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code static}映射列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private static List<Map<String, Object>> staticMapList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return List.of();
@@ -2182,6 +2409,10 @@ public class ConfigMigrationImportApplyService {
 
     /**
      * 将源环境事件绑定改写到目标所有者后恢复；绑定自身 ID 和修订号不参与导入。
+     *
+     * @param ownerType 归属方类型标识，决定后续事件绑定集合采用的处理分支
+     * @param ownerId 归属方ID，后续用于恢复事件绑定集合时定位或关联目标
+     * @param bindings 绑定集合，供本方法恢复事件绑定集合时使用
      */
     private void restoreEventBindings(
             String ownerType,
@@ -2202,6 +2433,12 @@ public class ConfigMigrationImportApplyService {
                 ownerType, ownerId, targetBindings);
     }
 
+    /**
+     * 解析列表目标表单引用；输出作为后续校验或处理的输入。
+     *
+     * @param source 待解析列表目标表单引用的原始输入，结果供调用方继续使用
+     * @return 列表目标表单引用键值结果，供调用方继续处理
+     */
     private Map<String, Object> resolveListTargetFormReferences(
             Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>(source);
@@ -2233,6 +2470,14 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 发布{@code imported}{@code configurations}；后续由接收方或异步任务继续处理。
+     *
+     * @param configType 配置类型标识，决定后续{@code imported}{@code configurations}采用的处理分支
+     * @param configIds 配置ID 集合，供本方法发布{@code imported}{@code configurations}时使用
+     * @param releaseNote 发布版本{@code note}，作为 {@code uiConfigReleaseService.publish} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void publishImportedConfigurations(
             String configType,
             List<String> configIds,
@@ -2271,6 +2516,14 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 应用数据{@code scopes}，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code listScopeBindingMapper.purgeDeletedByEntityCode} 的输入影响后续处理
+     * @param policyValues 策略值集合，供本方法应用数据{@code scopes}时使用
+     * @param bindingValues 绑定值集合，供本方法应用数据{@code scopes}时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void applyDataScopes(
             EntityDefinition entity,
             List<Map<String, Object>> policyValues,
@@ -2316,6 +2569,9 @@ public class ConfigMigrationImportApplyService {
      *
      * <p>实体列表菜单是导航资源，不能复用隐藏功能权限的权限码，否则会把 F 类型权限节点
      * 误更新为 C 类型侧栏菜单。目录本身也不归属于某个实体。</p>
+     *
+     * @param menu 菜单，作为 {@code menu.setEntityCode} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      */
     static void normalizeImportedMenu(SysMenu menu, String entityCode) {
         if (menu == null) {
@@ -2328,6 +2584,12 @@ public class ConfigMigrationImportApplyService {
         menu.setEntityCode("M".equals(menu.getMenuType()) ? null : entityCode);
     }
 
+    /**
+     * 生成实体列表身份文本，供后续匹配或展示。
+     *
+     * @param menu 菜单，供本方法处理实体列表身份时使用
+     * @return 处理后的实体列表身份文本，供调用方比较或展示
+     */
     static String entityListIdentity(SysMenu menu) {
         if (!isEntityListMenu(menu)
                 || !StringUtils.hasText(menu.getEntityCode())
@@ -2337,6 +2599,12 @@ public class ConfigMigrationImportApplyService {
         return menu.getEntityCode() + ":" + menu.getListKey();
     }
 
+    /**
+     * 判断是否实体列表菜单；判断结果决定调用方的后续分支。
+     *
+     * @param menu 菜单，作为 {@code equals} 的输入影响后续处理
+     * @return 实体列表菜单条件成立时为 true，否则为 false
+     */
     static boolean isEntityListMenu(SysMenu menu) {
         return menu != null
                 && "C".equals(menu.getMenuType())
@@ -2344,6 +2612,12 @@ public class ConfigMigrationImportApplyService {
                 || StringUtils.hasText(menu.getListKey()));
     }
 
+    /**
+     * 整理父级菜单类型集合数据，供调用方遍历或继续处理。
+     *
+     * @param parentPath 父级路径，供本方法处理父级菜单类型集合时使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     static List<String> parentMenuTypes(String parentPath) {
         if ("/__entity_permissions__".equals(parentPath)) {
             return List.of("M");
@@ -2407,6 +2681,12 @@ public class ConfigMigrationImportApplyService {
         return new ProcessContext(item, snapshot, definition, process);
     }
 
+    /**
+     * 处理绑定{@code entities}，并将结果传给后续步骤。
+     *
+     * @param entities {@code entities}，供本方法处理绑定{@code entities}时使用
+     * @param processes {@code processes}，供本方法处理绑定{@code entities}时使用
+     */
     private void bindEntities(List<EntityContext> entities, List<ProcessContext> processes) {
         Map<String, ProcessDefinitionConfig> processByKey = processes.stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -2446,6 +2726,9 @@ public class ConfigMigrationImportApplyService {
 
     /**
      * 应用流程快照中的节点表单、节点审批、流程动作、状态映射，并发布流程新版本。
+     *
+     * @param context 执行上下文，向后续流程配置步骤传递身份、配置或状态
+     * @param importPackage 导入包，作为 {@code request.setVersionDescription} 的输入影响后续处理
      */
     private void applyProcessConfiguration(ProcessContext context, ConfigImportPackage importPackage) {
         Map<String, Object> snapshot = context.snapshot();
@@ -2507,6 +2790,12 @@ public class ConfigMigrationImportApplyService {
         processService.publish(process.getId(), request);
     }
 
+    /**
+     * 发布实体；后续由接收方或异步任务继续处理。
+     *
+     * @param context 执行上下文，向后续实体步骤传递身份、配置或状态
+     * @param importPackage 导入包，作为 {@code request.setVersionDescription} 的输入影响后续处理
+     */
     private void publishEntity(EntityContext context, ConfigImportPackage importPackage) {
         ConfigMigrationPublishRequest request = new ConfigMigrationPublishRequest();
         request.setVersionDescription("配置迁移导入: " + importPackage.getMigrationTag());
@@ -2572,6 +2861,14 @@ public class ConfigMigrationImportApplyService {
                 target.getSourceVersion());
     }
 
+    /**
+     * 处理刷新{@code baseline}目标{@code hashes}，并将结果传给后续步骤。
+     *
+     * @param assetType 资产类型标识，决定后续刷新{@code baseline}目标{@code hashes}采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param target 目标，作为 {@code baseline.setTargetVersion} 的输入影响后续处理
+     * @param excludedScopeKey {@code excluded}作用域键，后续用于授权校验、关联或幂等去重
+     */
     private void refreshBaselineTargetHashes(
             String assetType,
             String businessKey,
@@ -2611,6 +2908,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 整理{@code baseline}选择数据，供调用方遍历或继续处理。
+     *
+     * @param baseline {@code baseline}，作为 {@code eq} 的输入影响后续处理
+     * @return {@code baseline}选择键值结果，供调用方继续处理
+     */
     private Map<String, Object> baselineSelection(
             ConfigAssetBaseline baseline) {
         if ("FULL".equals(baseline.getScopeKey())) {
@@ -2638,7 +2941,12 @@ public class ConfigMigrationImportApplyService {
                 .orElse(null);
     }
 
-    /** 同一内容可以多次发布，回退目标按版本及主键稳定取首条，继续排除已逻辑删除资产。 */
+    /**
+     * 同一内容可以多次发布，回退目标按版本及主键稳定取首条，继续排除已逻辑删除资产。
+     *
+     * @param item 条目，供本方法处理上一项资产时使用
+     * @return 处理后的上一项资产结果，供调用方继续处理
+     */
     private ConfigMigrationAsset previousAsset(ConfigImportItem item) {
         if (!StringUtils.hasText(item.getTargetBeforeHash())) {
             return null;
@@ -2654,6 +2962,8 @@ public class ConfigMigrationImportApplyService {
 
     /**
      * 回滚场景下停用新增资产：实体置为 DISABLED 并禁用其权限，流程调用 disable。
+     *
+     * @param item 条目，作为 {@code entityMapper.findByEntityCodeForUpdate} 的输入影响后续处理
      */
     private void disableNewAsset(ConfigImportItem item) {
         if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())) {
@@ -2714,6 +3024,11 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 停用系统界面{@code configurations}；结果供调用方的后续步骤使用。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
+     */
     private void disableSystemUiConfigurations(
             ConfigImportItem item) {
         Map<String, Object> snapshot =
@@ -2724,6 +3039,12 @@ public class ConfigMigrationImportApplyService {
                 listKeys(snapshot));
     }
 
+    /**
+     * 停用系统界面{@code configurations}{@code absent}起始；结果供调用方的后续步骤使用。
+     *
+     * @param importedItem {@code imported}条目，作为 {@code readMap} 的输入影响后续处理
+     * @param restoredSnapshot {@code restored}快照，作为 {@code removedForms.removeAll} 的输入影响后续处理
+     */
     private void disableSystemUiConfigurationsAbsentFrom(
             ConfigImportItem importedItem,
             Map<String, Object> restoredSnapshot) {
@@ -2741,6 +3062,12 @@ public class ConfigMigrationImportApplyService {
                 removedLists);
     }
 
+    /**
+     * 移除实体{@code configurations}{@code absent}起始；后续读取或执行将使用更新后的状态。
+     *
+     * @param importedItem {@code imported}条目，作为 {@code readMap} 的输入影响后续处理
+     * @param restoredSnapshot {@code restored}快照，作为 {@code removedForms.removeAll} 的输入影响后续处理
+     */
     private void removeEntityConfigurationsAbsentFrom(
             ConfigImportItem importedItem,
             Map<String, Object> restoredSnapshot) {
@@ -2785,6 +3112,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 停用系统界面{@code configurations}；结果供调用方的后续步骤使用。
+     *
+     * @param item 条目，作为 {@code readMap} 的输入影响后续处理
+     * @param formKeys 表单键集合，供本方法停用系统界面{@code configurations}时使用
+     * @param listKeys 列表键集合，供本方法停用系统界面{@code configurations}时使用
+     */
     private void disableSystemUiConfigurations(
             ConfigImportItem item,
             Set<String> formKeys,
@@ -2843,6 +3177,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 处理{@code deactivate}界面{@code releases}，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code deactivate}界面{@code releases}采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code deactivate}界面{@code releases}时定位或关联目标
+     */
     private void deactivateUiReleases(
             String configType,
             String configId) {
@@ -2855,6 +3195,12 @@ public class ConfigMigrationImportApplyService {
         uiConfigReleaseMapper.update(null, update);
     }
 
+    /**
+     * 整理表单键集合数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private Set<String> formKeys(
             Map<String, Object> snapshot) {
         return mapList(snapshot.get("forms"))
@@ -2865,6 +3211,12 @@ public class ConfigMigrationImportApplyService {
                         LinkedHashSet::new));
     }
 
+    /**
+     * 列出键集合；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private Set<String> listKeys(
             Map<String, Object> snapshot) {
         return mapList(snapshot.get("lists"))
@@ -2877,6 +3229,10 @@ public class ConfigMigrationImportApplyService {
 
     /**
      * 将表单引用还原为目标 ID，人员声明按字段映射为目标登录名/编码。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析可移植BPMN时使用
+     * @param snapshot 快照，作为 {@code ConfigMigrationAssignmentSupport.rewriteBpmn} 的输入影响后续处理
+     * @return 解析后的可移植BPMN文本，供调用方比较或展示
      */
     private String resolvePortableBpmn(String bpmnXml, Map<String, Object> snapshot) {
         String result = bpmnXml;
@@ -2894,6 +3250,8 @@ public class ConfigMigrationImportApplyService {
     /**
      * 将可移植表单引用(wf-form://entityCode/formKey)解析为目标环境的表单ID。
      *
+     * @param formRef 表单引用，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @return 解析后的表单ID文本，供调用方比较或展示
      * @throws IllegalStateException 引用格式非法、所属实体或表单不存在
      */
     private String resolveFormId(String formRef) {
@@ -2918,6 +3276,9 @@ public class ConfigMigrationImportApplyService {
     /**
      * 按目标目录解析人员声明。Flowable 的办理人标识使用登录名，不能写入本地用户 ID。
      *
+     * @param type 类型标识，决定后续办理人值采用的处理分支
+     * @param portableValue 可移植值，作为 {@code mappedKey} 的输入影响后续处理
+     * @return 解析后的办理人值文本，供调用方比较或展示
      * @throws IllegalStateException 用户或部门不存在
      */
     private String resolveAssigneeValue(String type, String portableValue) {
@@ -2940,6 +3301,13 @@ public class ConfigMigrationImportApplyService {
         return mappedKey(type, portableValue);
     }
 
+    /**
+     * 生成{@code mapped}键文本，供后续匹配或展示。
+     *
+     * @param type 类型标识，决定后续{@code mapped}键采用的处理分支
+     * @param sourceKey 来源键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code mapped}键文本，供调用方比较或展示
+     */
     private String mappedKey(String type, String sourceKey) {
         if (!StringUtils.hasText(sourceKey)) {
             return sourceKey;
@@ -2952,6 +3320,12 @@ public class ConfigMigrationImportApplyService {
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
 
+    /**
+     * 整理字段编码数据，供调用方遍历或继续处理。
+     *
+     * @param entityId 实体ID，后续用于处理字段编码时定位或关联目标
+     * @return 字段编码键值结果，供调用方继续处理
+     */
     private Map<String, EntityField> fieldsByCode(String entityId) {
         return fieldMapper.findByEntityId(entityId).stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -2961,11 +3335,24 @@ public class ConfigMigrationImportApplyService {
                         LinkedHashMap::new));
     }
 
+    /**
+     * 整理全部条目数据，供调用方遍历或继续处理。
+     *
+     * @param importId 导入ID，后续用于处理全部条目时定位或关联目标
+     * @return 配置导入条目集合，供调用方遍历或展示
+     */
     private List<ConfigImportItem> allItems(String importId) {
         return importItemMapper.selectList(new LambdaQueryWrapper<ConfigImportItem>()
                 .eq(ConfigImportItem::getImportPackageId, importId));
     }
 
+    /**
+     * 整理条目类型数据，供调用方遍历或继续处理。
+     *
+     * @param items 条目，供本方法处理条目类型时使用
+     * @param type 类型标识，决定后续条目类型采用的处理分支
+     * @return 配置导入条目集合，供调用方遍历或展示
+     */
     private List<ConfigImportItem> itemsOfType(List<ConfigImportItem> items, String type) {
         return items.stream()
                 .filter(item -> type.equals(item.getAssetType()))
@@ -2973,6 +3360,13 @@ public class ConfigMigrationImportApplyService {
                 .toList();
     }
 
+    /**
+     * 处理必填导入，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的必填导入结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ConfigImportPackage requiredImport(String id) {
         ConfigImportPackage importPackage = importPackageMapper.selectById(id);
         if (importPackage == null) {
@@ -2981,6 +3375,13 @@ public class ConfigMigrationImportApplyService {
         return importPackage;
     }
 
+    /**
+     * 发布配置迁移导入应用结果；后续由接收方或异步任务继续处理。
+     *
+     * @param importPackage 导入包，作为 {@code result.put} 的输入影响后续处理
+     * @param items 条目，作为 {@code result.put} 的输入影响后续处理
+     * @return 配置迁移导入应用结果键值结果，供调用方继续处理
+     */
     private Map<String, Object> publishResult(ConfigImportPackage importPackage, List<ConfigImportItem> items) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("importId", importPackage.getId());
@@ -2992,6 +3393,13 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> readMap(String value) {
         try {
             return objectMapper.readValue(value, new TypeReference<>() {});
@@ -3000,6 +3408,12 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return new LinkedHashMap<>();
@@ -3009,6 +3423,12 @@ public class ConfigMigrationImportApplyService {
         return converted;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return List.of();
@@ -3022,6 +3442,12 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
+    /**
+     * 整理字符串设置数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串设置的原始输入，结果供调用方继续使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     */
     private Set<String> stringSet(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return Set.of();
@@ -3033,6 +3459,13 @@ public class ConfigMigrationImportApplyService {
                         LinkedHashSet::new));
     }
 
+    /**
+     * 转换配置迁移导入应用；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换配置迁移导入应用的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续配置迁移导入应用采用的处理分支
+     * @return 转换后的配置迁移导入应用结果，供调用方继续处理
+     */
     private <T> T convert(Map<String, Object> value, Class<T> type) {
         ObjectMapper tolerant = objectMapper.copy()
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -3042,6 +3475,9 @@ public class ConfigMigrationImportApplyService {
     /**
      * 在配置包导入边界将历史动作绑定转换为规范字段，并立即丢弃旧键。
      * 已提供的 scopeType/elementId 始终优先，避免历史值覆盖新配置。
+     *
+     * @param source 待规范化流程动作绑定的原始输入，结果供调用方继续使用
+     * @return 流程动作绑定键值结果，供调用方继续处理
      */
     static Map<String, Object> normalizeFlowActionBinding(
             Map<String, Object> source) {
@@ -3075,6 +3511,13 @@ public class ConfigMigrationImportApplyService {
         return normalized;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value, String fallback) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return fallback;
@@ -3082,6 +3525,13 @@ public class ConfigMigrationImportApplyService {
         return String.valueOf(value);
     }
 
+    /**
+     * 处理整数对象，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数对象的原始输入，结果供调用方继续使用
+     * @return 处理后的整数对象结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Integer integerObject(Object value) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return null;
@@ -3095,6 +3545,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 整理字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移导入应用集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<String> stringList(Object value) {
         if (value == null) {
             return List.of();
@@ -3108,6 +3565,13 @@ public class ConfigMigrationImportApplyService {
                 .toList();
     }
 
+    /**
+     * 整理文档映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理文档映射的原始输入，结果供调用方继续使用
+     * @return 文档映射键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> documentMap(Object value) {
         if (value == null) {
             return Map.of();
@@ -3144,6 +3608,13 @@ public class ConfigMigrationImportApplyService {
                 .toList();
     }
 
+    /**
+     * 解码文档；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码文档的原始输入，结果供调用方继续使用
+     * @return 解码后的文档结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Object decodeDocument(Object value) {
         if (!(value instanceof String document)) {
             return value;
@@ -3160,6 +3631,13 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 处理生命周期模式，并将结果传给后续步骤。
+     *
+     * @param definition 定义，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的生命周期模式结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private EntityDefinition.LifecycleMode lifecycleMode(Map<String, Object> definition) {
         String value = text(definition.get("lifecycleMode"), EntityDefinition.LifecycleMode.STANDALONE.name());
         try {
@@ -3169,16 +3647,38 @@ public class ConfigMigrationImportApplyService {
         }
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(Object value) {
         return Boolean.TRUE.equals(value) || "true".equalsIgnoreCase(String.valueOf(value))
                 || "1".equals(String.valueOf(value));
     }
 
+    /**
+     * 处理布尔值对象，并将结果传给后续步骤。
+     *
+     * @param value 待处理布尔值对象的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值对象结果，供调用方继续处理
+     */
     private Boolean booleanObject(Object value) {
         return value == null ? null : booleanValue(value);
     }
 
-    /** 实体应用上下文：导入条目、快照、定义、实体、绑定流程Key与是否回滚模式。 */
+    /**
+     * 实体应用上下文：导入条目、快照、定义、实体、绑定流程Key与是否回滚模式。
+     *
+     * @param item 条目，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param definition 定义，保存在对象中供后续校验、查询或展示
+     * @param entity 实体，保存在对象中供后续校验、查询或展示
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param applyBinding 应用绑定，保存在对象中供后续校验、查询或展示
+     * @param rollbackMode 回滚模式标识，决定后续实体上下文采用的处理分支
+     */
     private record EntityContext(ConfigImportItem item,
                                  Map<String, Object> snapshot,
                                  Map<String, Object> definition,
@@ -3188,19 +3688,36 @@ public class ConfigMigrationImportApplyService {
                                  boolean rollbackMode) {
     }
 
-    /** 实体回滚上下文：恢复快照之外保留原导入条目，用于移除本次新增的表单和列表。 */
+    /**
+     * 实体回滚上下文：恢复快照之外保留原导入条目，用于移除本次新增的表单和列表。
+     *
+     * @param context 执行上下文，向后续实体回滚上下文步骤传递身份、配置或状态
+     * @param originalItem 原始条目，保存在对象中供后续校验、查询或展示
+     */
     private record EntityRollbackContext(
             EntityContext context,
             ConfigImportItem originalItem) {
     }
 
-    /** 原导入条目及由上一版本快照生成的实际回滚条目；后者为空表示停用新增资产。 */
+    /**
+     * 原导入条目及由上一版本快照生成的实际回滚条目；后者为空表示停用新增资产。
+     *
+     * @param originalItem 原始条目，保存在对象中供后续校验、查询或展示
+     * @param rollbackItem 回滚条目，保存在对象中供后续校验、查询或展示
+     */
     record RollbackItemPlan(
             ConfigImportItem originalItem,
             ConfigImportItem rollbackItem) {
     }
 
-    /** 系统实体UI应用上下文，只允许写入表单、列表及其只读依赖配置。 */
+    /**
+     * 系统实体UI应用上下文，只允许写入表单、列表及其只读依赖配置。
+     *
+     * @param item 条目，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param definition 定义，保存在对象中供后续校验、查询或展示
+     * @param entity 实体，保存在对象中供后续校验、查询或展示
+     */
     private record SystemEntityUiContext(
             ConfigImportItem item,
             Map<String, Object> snapshot,
@@ -3208,17 +3725,34 @@ public class ConfigMigrationImportApplyService {
             EntityDefinition entity) {
     }
 
-    /** 系统实体UI回滚上下文，保留原导入条目用于停用新增配置。 */
+    /**
+     * 系统实体UI回滚上下文，保留原导入条目用于停用新增配置。
+     *
+     * @param context 执行上下文，向后续系统实体界面回滚上下文步骤传递身份、配置或状态
+     * @param originalItem 原始条目，保存在对象中供后续校验、查询或展示
+     */
     private record SystemEntityUiRollbackContext(
             SystemEntityUiContext context,
             ConfigImportItem originalItem) {
     }
 
-    /** 已恢复关联内容草稿、等待统一重新发布的宿主。 */
+    /**
+     * 已恢复关联内容草稿、等待统一重新发布的宿主。
+     *
+     * @param ownerType 归属方类型标识，决定后续{@code imported}界面归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理{@code imported}界面归属方时定位或关联目标
+     */
     private record ImportedUiOwner(String ownerType, String ownerId) {
     }
 
-    /** 流程应用上下文：导入条目、快照、定义与流程定义配置。 */
+    /**
+     * 流程应用上下文：导入条目、快照、定义与流程定义配置。
+     *
+     * @param item 条目，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param definition 定义，保存在对象中供后续校验、查询或展示
+     * @param process 流程，保存在对象中供后续校验、查询或展示
+     */
     private record ProcessContext(ConfigImportItem item,
                                   Map<String, Object> snapshot,
                                   Map<String, Object> definition,

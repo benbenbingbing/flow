@@ -3,10 +3,10 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,6 +39,16 @@ public class UiReleaseResolutionTokenService {
     @Value("${ui.release-resolution.secret:${jwt.secret}}")
     private String secret;
 
+    /**
+     * 生成签发文本，供后续匹配或展示。
+     *
+     * @param context 执行上下文，向后续签发步骤传递身份、配置或状态
+     * @param parentFormId 父级表单ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseId 父级发布版本ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseVersion 父级发布版本，供本方法处理签发时使用
+     * @param depth 深度，供本方法处理签发时使用
+     * @return 处理后的签发文本，供调用方比较或展示
+     */
     public String issue(
             UiRuntimeResolutionContext context,
             String parentFormId,
@@ -62,6 +72,14 @@ public class UiReleaseResolutionTokenService {
      * <p>普通 Flow 页面仍使用五分钟默认时限；长驻运行容器可以显式传入其服务端
      * 会话上限。该上限最长一天，且派生令牌必须继续继承父令牌的到期时间，避免
      * 通过嵌套解析滚动延长授权。</p>
+     *
+     * @param context 执行上下文，向后续签发步骤传递身份、配置或状态
+     * @param parentFormId 父级表单ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseId 父级发布版本ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseVersion 父级发布版本，供本方法处理签发时使用
+     * @param depth 深度，供本方法处理签发时使用
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的签发文本，供调用方比较或展示
      */
     public String issue(
             UiRuntimeResolutionContext context,
@@ -94,6 +112,19 @@ public class UiReleaseResolutionTokenService {
                 expiresAt);
     }
 
+    /**
+     * 生成签发文本，供后续匹配或展示。
+     *
+     * @param context 执行上下文，向后续签发步骤传递身份、配置或状态
+     * @param parentFormId 父级表单ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseId 父级发布版本ID，后续用于处理签发时定位或关联目标
+     * @param parentReleaseVersion 父级发布版本，供本方法处理签发时使用
+     * @param depth 深度，供本方法处理签发时使用
+     * @param now 当前时间，供本方法处理签发时使用
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的签发文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String issue(
             UiRuntimeResolutionContext context,
             String parentFormId,
@@ -162,6 +193,12 @@ public class UiReleaseResolutionTokenService {
         }
     }
 
+    /**
+     * 验证界面发布版本解析令牌；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的界面发布版本解析令牌结果，供调用方继续处理
+     */
     public Claims verify(String token) {
         if (!StringUtils.hasText(token)) {
             throw forbidden("表单发布解析令牌不能为空");
@@ -241,6 +278,15 @@ public class UiReleaseResolutionTokenService {
      *
      * <p>该令牌与“父表单引用子列表”令牌分离，绑定映射 Flow 用户、
      * 实体、列表 ID 和精确 Release，且不得晚于 Session 绝对到期时间失效。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listConfigId 列表配置ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理签发嵌入式列表时使用
+     * @param sessionId 会话ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param viewReleaseId 视图发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的签发嵌入式列表文本，供调用方比较或展示
      */
     public String issueEmbedList(
             String entityCode,
@@ -261,6 +307,18 @@ public class UiReleaseResolutionTokenService {
      *
      * <p>令牌只携带 closure 版本和 SHA-256，不序列化节点集合，避免复杂列表让
      * schema/query URL 超过容器或代理的请求行上限。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listConfigId 列表配置ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理签发嵌入式列表时使用
+     * @param sessionId 会话ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param viewId 视图ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param viewReleaseId 视图发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param dependencyClosureVersion 依赖闭包版本，供本方法处理签发嵌入式列表时使用
+     * @param dependencyClosureHash 依赖闭包哈希，供本方法处理签发嵌入式列表时使用
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的签发嵌入式列表文本，供调用方比较或展示
      */
     public String issueEmbedList(
             String entityCode,
@@ -280,6 +338,23 @@ public class UiReleaseResolutionTokenService {
                 absoluteExpiresAt, true);
     }
 
+    /**
+     * 生成签发嵌入式列表文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listConfigId 列表配置ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code EmbedListClaims} 的输入影响后续处理
+     * @param sessionId 会话ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param viewId 视图ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param viewReleaseId 视图发布版本ID，后续用于处理签发嵌入式列表时定位或关联目标
+     * @param dependencyClosureVersion 依赖闭包版本，供本方法处理签发嵌入式列表时使用
+     * @param dependencyClosureHash 依赖闭包哈希，供本方法处理签发嵌入式列表时使用
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param requireDependencyClosure {@code require}依赖闭包，供本方法处理签发嵌入式列表时使用
+     * @return 处理后的签发嵌入式列表文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String issueEmbedList(
             String entityCode,
             String listConfigId,
@@ -342,13 +417,23 @@ public class UiReleaseResolutionTokenService {
         }
     }
 
-    /** 识别与表单父子解析令牌用途隔离的 Embed 根列表令牌。 */
+    /**
+     * 识别与表单父子解析令牌用途隔离的 Embed 根列表令牌。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 嵌入式列表令牌条件成立时为 true，否则为 false
+     */
     public boolean isEmbedListToken(String token) {
         return StringUtils.hasText(token)
                 && token.startsWith(EMBED_LIST_TOKEN_PREFIX + ".");
     }
 
-    /** 验证 Embed 根列表令牌的签名、映射用户和会话时限。 */
+    /**
+     * 验证 Embed 根列表令牌的签名、映射用户和会话时限。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的嵌入式列表结果，供调用方继续处理
+     */
     public EmbedListClaims verifyEmbedList(String token) {
         if (!isEmbedListToken(token)) {
             throw forbidden("Embed 列表发布解析令牌格式不正确");
@@ -395,6 +480,13 @@ public class UiReleaseResolutionTokenService {
         }
     }
 
+    /**
+     * 生成签名文本，供后续匹配或展示。
+     *
+     * @param payload 载荷，后续用于处理签名并传递处理结果
+     * @return 处理后的签名文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private String sign(String payload) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(
@@ -406,7 +498,12 @@ public class UiReleaseResolutionTokenService {
                         payload.getBytes(StandardCharsets.UTF_8)));
     }
 
-    /** closure 短引用必须整体缺省或整体存在，拒绝半截 claims。 */
+    /**
+     * closure 短引用必须整体缺省或整体存在，拒绝半截 claims。
+     *
+     * @param claims 声明集合，供本方法处理有效依赖闭包引用时使用
+     * @return 有效依赖闭包引用条件成立时为 true，否则为 false
+     */
     private static boolean validDependencyClosureReference(
             EmbedListClaims claims) {
         boolean hasView = StringUtils.hasText(claims.viewId());
@@ -418,6 +515,12 @@ public class UiReleaseResolutionTokenService {
                 && claims.dependencyClosureVersion() > 0;
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param message 消息，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private BusinessForbiddenException forbidden(String message) {
         log.info(
                 "表单发布解析令牌校验失败: reason={}",
@@ -427,6 +530,26 @@ public class UiReleaseResolutionTokenService {
                 message);
     }
 
+    /**
+     * 封装声明集合的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param purpose 用途，保存在对象中供后续校验、查询或展示
+     * @param processVersionHistoryId 流程版本历史ID，后续用于处理声明集合时定位或关联目标
+     * @param nodeId 节点ID，后续用于处理声明集合时定位或关联目标
+     * @param parentFormId 父级表单ID，后续用于处理声明集合时定位或关联目标
+     * @param parentReleaseId 父级发布版本ID，后续用于处理声明集合时定位或关联目标
+     * @param parentReleaseVersion 父级发布版本，保存在对象中供后续校验、查询或展示
+     * @param depth 深度，保存在对象中供后续校验、查询或展示
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param embedSessionId 嵌入式会话ID，后续用于处理声明集合时定位或关联目标
+     * @param embedViewReleaseId 嵌入式视图发布版本ID，后续用于处理声明集合时定位或关联目标
+     * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     */
     public record Claims(
             UiRuntimePurpose purpose,
             String processVersionHistoryId,
@@ -445,7 +568,22 @@ public class UiReleaseResolutionTokenService {
             long issuedAt,
             long expiresAt) {
 
-        /** 兼容历史令牌与既有测试构造；审批按钮会拒绝这些未绑定任务主体的令牌。 */
+        /**
+         * 兼容历史令牌与既有测试构造；审批按钮会拒绝这些未绑定任务主体的令牌。
+         *
+         * @param purpose 用途，保存在对象中供后续校验、查询或展示
+         * @param processVersionHistoryId 流程版本历史ID，后续用于初始化声明集合时定位或关联目标
+         * @param nodeId 节点ID，后续用于初始化声明集合时定位或关联目标
+         * @param parentFormId 父级表单ID，后续用于初始化声明集合时定位或关联目标
+         * @param parentReleaseId 父级发布版本ID，后续用于初始化声明集合时定位或关联目标
+         * @param parentReleaseVersion 父级发布版本，保存在对象中供后续校验、查询或展示
+         * @param depth 深度，保存在对象中供后续校验、查询或展示
+         * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+         * @param embedSessionId 嵌入式会话ID，后续用于初始化声明集合时定位或关联目标
+         * @param embedViewReleaseId 嵌入式视图发布版本ID，后续用于初始化声明集合时定位或关联目标
+         * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+         * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+         */
         public Claims(
                 UiRuntimePurpose purpose,
                 String processVersionHistoryId,
@@ -467,6 +605,11 @@ public class UiReleaseResolutionTokenService {
                     issuedAt, expiresAt);
         }
 
+        /**
+         * 处理上下文，并将结果传给后续步骤。
+         *
+         * @return 处理后的上下文结果，供调用方继续处理
+         */
         public UiRuntimeResolutionContext context() {
             return new UiRuntimeResolutionContext(
                     purpose,
@@ -479,7 +622,22 @@ public class UiReleaseResolutionTokenService {
         }
     }
 
-    /** Embed Session 固定根列表的签名声明。 */
+    /**
+     * Embed Session 固定根列表的签名声明。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listConfigId 列表配置ID，后续用于处理嵌入式列表声明集合时定位或关联目标
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param sessionId 会话ID，后续用于处理嵌入式列表声明集合时定位或关联目标
+     * @param viewId 视图ID，后续用于处理嵌入式列表声明集合时定位或关联目标
+     * @param viewReleaseId 视图发布版本ID，后续用于处理嵌入式列表声明集合时定位或关联目标
+     * @param dependencyClosureVersion 依赖闭包版本，保存在对象中供后续校验、查询或展示
+     * @param dependencyClosureHash 依赖闭包哈希，保存在对象中供后续校验、查询或展示
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     */
     public record EmbedListClaims(
             String entityCode,
             String listConfigId,
@@ -494,7 +652,19 @@ public class UiReleaseResolutionTokenService {
             long issuedAt,
             long expiresAt) {
 
-        /** 兼容不含 open-list closure 引用的历史内部令牌。 */
+        /**
+         * 兼容不含 open-list closure 引用的历史内部令牌。
+         *
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param listConfigId 列表配置ID，后续用于初始化嵌入式列表声明集合时定位或关联目标
+         * @param releaseId 发布版本 ID，后续用于解析固定配置
+         * @param releaseVersion 发布版本号，后续用于校验快照一致性
+         * @param sessionId 会话ID，后续用于初始化嵌入式列表声明集合时定位或关联目标
+         * @param viewReleaseId 视图发布版本ID，后续用于初始化嵌入式列表声明集合时定位或关联目标
+         * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+         * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+         * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+         */
         public EmbedListClaims(
                 String entityCode,
                 String listConfigId,

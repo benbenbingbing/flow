@@ -43,6 +43,19 @@ public class SysUserController {
         return Result.success(userService.getUserList());
     }
 
+    /**
+     * 分页查询系统用户；查询结果供调用方展示或继续处理。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
+     * @param status 状态标识，决定后续系统用户采用的处理分支
+     * @param orgId 组织ID，后续用于分页查询系统用户时定位或关联目标
+     * @param deptId 部门ID，后续用于分页查询系统用户时定位或关联目标
+     * @param roleId 角色ID，后续用于分页查询系统用户时定位或关联目标
+     * @param positionCode 位置编码，后续用于分页查询系统用户时定位或关联目标
+     * @return 符合条件的系统用户结果，供调用方继续处理
+     */
     @GetMapping("/page")
     public Result<PageResult<SysUser>> page(
             @RequestParam(defaultValue = "1") Integer pageNum,
@@ -129,6 +142,13 @@ public class SysUserController {
         return Result.success();
     }
 
+    /**
+     * 处理批次更新状态，并将结果传给后续步骤。
+     *
+     * @param body 请求体，后续用于处理批次更新状态并传递处理结果
+     * @return 处理后的批次更新状态结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @PostMapping("/batch/status")
     @RequiresPermission("system:user:manage")
     public Result<Void> batchUpdateStatus(@RequestBody Map<String, Object> body) {
@@ -140,6 +160,12 @@ public class SysUserController {
         return Result.success();
     }
 
+    /**
+     * 处理批次{@code assign}角色集合，并将结果传给后续步骤。
+     *
+     * @param body 请求体，后续用于处理批次{@code assign}角色集合并传递处理结果
+     * @return 处理后的批次{@code assign}角色集合结果，供调用方继续处理
+     */
     @PostMapping("/batch/roles")
     @RequiresPermission("system:user:manage")
     public Result<Void> batchAssignRoles(@RequestBody Map<String, Object> body) {
@@ -151,6 +177,7 @@ public class SysUserController {
      * 重置密码
      *
      * @param id 用户ID
+     * @param request 本次请求，后续经校验后用于处理重置密码
      * @return 操作结果
      */
     @PostMapping("/{id}/reset-password")
@@ -172,6 +199,12 @@ public class SysUserController {
         return Result.success(roleService.getEnabledRoles());
     }
 
+    /**
+     * 整理字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串列表的原始输入，结果供调用方继续使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<String> stringList(Object value) {
         if (!(value instanceof List<?> values)) {
             return List.of();

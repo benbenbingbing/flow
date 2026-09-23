@@ -47,7 +47,7 @@ public interface ProcessTaskAddSignUserMapper extends BaseMapper<ProcessTaskAddS
      */
     @Update("""
             <script>
-            UPDATE process_task_add_sign_user SET status = 'DONE', complete_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@currentNow(_databaseId)}
+            UPDATE process_task_add_sign_user SET status = 'DONE', complete_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}
              WHERE generated_task_id = #{taskId}
              AND status = 'TODO'
             </script>

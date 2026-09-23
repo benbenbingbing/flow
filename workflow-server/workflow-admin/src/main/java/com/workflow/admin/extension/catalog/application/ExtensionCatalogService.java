@@ -9,7 +9,7 @@ import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
+import com.workflow.contracts.entity.ui.model.UiExtensionCatalogItem;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
@@ -39,6 +39,17 @@ public class ExtensionCatalogService {
     private final ObjectProvider<UiActionCommandPlanProvider>
             actionCommandPlanProviders;
 
+    /**
+     * 处理{@code manage}，并将结果传给后续步骤。
+     *
+     * @param capabilityType 能力类型标识，决定后续{@code manage}采用的处理分支
+     * @param keyword 关键字，作为 {@code lower} 的输入影响后续处理
+     * @param status 状态标识，决定后续{@code manage}采用的处理分支
+     * @param implementationOrigin 实现来源，作为 {@code normalize} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的{@code manage}结果，供调用方继续处理
+     */
     public PageResult<ExtensionCatalogItem> manage(
             String capabilityType,
             String keyword,
@@ -83,6 +94,17 @@ public class ExtensionCatalogService {
                 currentSize);
     }
 
+    /**
+     * 整理选项数据，供调用方遍历或继续处理。
+     *
+     * @param capabilityType 能力类型标识，决定后续选项采用的处理分支
+     * @param keyword 关键字，作为 {@code lower} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param processConfigId 流程配置ID，后续用于处理选项时定位或关联目标
+     * @param usage 使用场景，作为 {@code listVisible} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 扩展目录条目集合，供调用方遍历或展示
+     */
     public List<ExtensionCatalogItem> options(
             String capabilityType,
             String keyword,
@@ -129,6 +151,11 @@ public class ExtensionCatalogService {
                 .toList();
     }
 
+    /**
+     * 整理全部条目数据，供调用方遍历或继续处理。
+     *
+     * @return 扩展目录条目集合，供调用方遍历或展示
+     */
     public List<ExtensionCatalogItem> allItems() {
         List<ExtensionCatalogItem> items = new ArrayList<>();
         flowActionCatalogService.listCatalog().stream()
@@ -143,6 +170,12 @@ public class ExtensionCatalogService {
         return items;
     }
 
+    /**
+     * 处理动作条目，并将结果传给后续步骤。
+     *
+     * @param source 待处理动作条目的原始输入，结果供调用方继续使用
+     * @return 处理后的动作条目结果，供调用方继续处理
+     */
     private ExtensionCatalogItem actionItem(
             FlowActionHandlerOption source) {
         ExtensionCatalogItem item = new ExtensionCatalogItem();
@@ -180,6 +213,12 @@ public class ExtensionCatalogService {
         return item;
     }
 
+    /**
+     * 处理人员条目，并将结果传给后续步骤。
+     *
+     * @param source 待处理人员条目的原始输入，结果供调用方继续使用
+     * @return 处理后的人员条目结果，供调用方继续处理
+     */
     private ExtensionCatalogItem personItem(
             PersonResolverOption source) {
         ExtensionCatalogItem item = new ExtensionCatalogItem();
@@ -212,6 +251,12 @@ public class ExtensionCatalogService {
         return item;
     }
 
+    /**
+     * 处理界面条目，并将结果传给后续步骤。
+     *
+     * @param source 待处理界面条目的原始输入，结果供调用方继续使用
+     * @return 处理后的界面条目结果，供调用方继续处理
+     */
     private ExtensionCatalogItem uiItem(UiExtensionCatalogItem source) {
         ExtensionCatalogItem item = new ExtensionCatalogItem();
         item.setId(source.id());
@@ -272,6 +317,10 @@ public class ExtensionCatalogService {
 
     /**
      * UI 组件目录当前只收项目注册实现；接口扩展则按执行机制与 Provider 声明判定。
+     *
+     * @param source 待处理界面实现来源的原始输入，结果供调用方继续使用
+     * @param interfaceExtension 接口扩展，供本方法处理界面实现来源时使用
+     * @return 处理后的界面实现来源文本，供调用方比较或展示
      */
     private String uiImplementationOrigin(
             UiExtensionCatalogItem source,
@@ -290,6 +339,9 @@ public class ExtensionCatalogService {
 
     /**
      * 根据接口读写类型查找对应 Provider；未加载或归属声明冲突时返回 UNKNOWN。
+     *
+     * @param source 待处理{@code registered}提供者来源的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code registered}提供者来源文本，供调用方比较或展示
      */
     private String registeredProviderOrigin(UiExtensionCatalogItem source) {
         if (!StringUtils.hasText(source.providerCode())) {
@@ -314,12 +366,26 @@ public class ExtensionCatalogService {
                 : ExtensionImplementationOrigin.UNKNOWN.name();
     }
 
+    /**
+     * 判断相同提供者编码条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同提供者编码时使用
+     * @param right 右侧，供本方法处理相同提供者编码时使用
+     * @return 相同提供者编码条件成立时为 true，否则为 false
+     */
     private boolean sameProviderCode(String left, String right) {
         return StringUtils.hasText(left)
                 && StringUtils.hasText(right)
                 && left.trim().equalsIgnoreCase(right.trim());
     }
 
+    /**
+     * 判断是否匹配实体作用域；判断结果决定调用方的后续分支。
+     *
+     * @param item 条目，供本方法判断是否匹配实体作用域时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 实体作用域条件成立时为 true，否则为 false
+     */
     private boolean matchesEntityScope(
             ExtensionCatalogItem item,
             String entityCode) {
@@ -336,6 +402,14 @@ public class ExtensionCatalogService {
                         configured.equalsIgnoreCase(entityCode.trim()));
     }
 
+    /**
+     * 生成状态文本，供后续匹配或展示。
+     *
+     * @param configured 已配置，供本方法处理状态时使用
+     * @param available 可用，供本方法处理状态时使用
+     * @param enabled 启用，作为 {@code Boolean.TRUE.equals} 的输入影响后续处理
+     * @return 处理后的状态文本，供调用方比较或展示
+     */
     private String status(
             Boolean configured,
             Boolean available,
@@ -349,6 +423,13 @@ public class ExtensionCatalogService {
         return Boolean.TRUE.equals(enabled) ? "ACTIVE" : "DISABLED";
     }
 
+    /**
+     * 判断是否匹配关键字；判断结果决定调用方的后续分支。
+     *
+     * @param item 条目，作为 {@code lower} 的输入影响后续处理
+     * @param keyword 关键字，供本方法判断是否匹配关键字时使用
+     * @return 关键字条件成立时为 true，否则为 false
+     */
     private boolean matchesKeyword(
             ExtensionCatalogItem item,
             String keyword) {
@@ -362,26 +443,56 @@ public class ExtensionCatalogService {
                 || lower(item.getImplementationClass()).contains(keyword);
     }
 
+    /**
+     * 整理空设置数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理空设置的原始输入，结果供调用方继续使用
+     * @return 扩展目录集合，供调用方遍历或展示
+     */
     private <T> Set<T> emptySet(Set<T> value) {
         return value == null ? Set.of() : value;
     }
 
+    /**
+     * 整理值或空数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理值或空的原始输入，结果供调用方继续使用
+     * @return 值或空键值结果，供调用方继续处理
+     */
     private Map<String, Object> valueOrEmpty(Map<String, Object> value) {
         return value == null ? Map.of() : value;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化扩展目录的原始输入，结果供调用方继续使用
+     * @return 规范化后的扩展目录文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 生成{@code lower}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code lower}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code lower}文本，供调用方比较或展示
+     */
     private String lower(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toLowerCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 生成安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理安全的原始输入，结果供调用方继续使用
+     * @return 处理后的安全文本，供调用方比较或展示
+     */
     private String safe(String value) {
         return value == null ? "" : value;
     }

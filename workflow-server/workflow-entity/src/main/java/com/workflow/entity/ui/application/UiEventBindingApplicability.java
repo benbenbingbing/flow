@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.application;
 
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -38,10 +38,18 @@ final class UiEventBindingApplicability {
             UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
             UiDataSourceUsages.ROW_BUTTON_CLICK);
 
+    /**
+     * 初始化界面事件绑定{@code applicability}，保存构造参数供后续方法使用。
+     */
     private UiEventBindingApplicability() {
     }
 
-    /** 返回事件可能实际触发的页面上下文，顺序固定为 FORM、LIST。 */
+    /**
+     * 返回事件可能实际触发的页面上下文，顺序固定为 FORM、LIST。
+     *
+     * @param eventCode 事件编码，后续用于处理{@code contexts}事件时定位或关联目标
+     * @return 界面事件绑定{@code applicability}集合，供调用方遍历或展示
+     */
     static Set<String> contextsForEvent(String eventCode) {
         Set<String> result = new LinkedHashSet<>();
         if (FORM_EVENTS.contains(eventCode)) {
@@ -53,6 +61,13 @@ final class UiEventBindingApplicability {
         return Set.copyOf(result);
     }
 
+    /**
+     * 判断{@code applies}截止条件是否成立，供调用方选择后续分支。
+     *
+     * @param eventCode 事件编码，后续用于处理{@code applies}截止时定位或关联目标
+     * @param configType 配置类型标识，决定后续{@code applies}截止采用的处理分支
+     * @return {@code applies}截止条件成立时为 true，否则为 false
+     */
     static boolean appliesTo(String eventCode, String configType) {
         return contextsForEvent(eventCode).contains(configType);
     }

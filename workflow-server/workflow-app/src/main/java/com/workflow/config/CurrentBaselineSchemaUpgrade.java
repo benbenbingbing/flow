@@ -19,7 +19,11 @@ public class CurrentBaselineSchemaUpgrade {
 
     private static final String PATCH_RESOURCE =
             "db/upgrade/V001__current_baseline_patch.sql";
-    /** 执行仍需保留的幂等基线补丁。 */
+    /**
+     * 执行仍需保留的幂等基线补丁。
+     *
+     * @param flyway Flyway 实例，用于取得当前数据源并执行基线补丁
+     */
     public void apply(Flyway flyway) {
         DataSource dataSource =
                 flyway.getConfiguration().getDataSource();

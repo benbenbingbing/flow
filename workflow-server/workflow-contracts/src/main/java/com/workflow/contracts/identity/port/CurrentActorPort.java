@@ -1,6 +1,6 @@
 package com.workflow.contracts.identity.port;
 
-import com.workflow.contracts.identity.CurrentActor;
+import com.workflow.contracts.identity.model.CurrentActor;
 
 /**
  * 获取当前操作人，隔离具体认证上下文实现的稳定端口。

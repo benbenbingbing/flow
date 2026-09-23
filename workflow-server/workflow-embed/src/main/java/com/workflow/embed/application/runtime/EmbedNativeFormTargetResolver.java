@@ -47,6 +47,13 @@ public class EmbedNativeFormTargetResolver {
     private final EmbedNativeFormAccessPort accessPort;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式原生表单目标解析器，保存构造参数供后续方法使用。
+     *
+     * @param releasePort 发布版本端口依赖，保存到当前对象供后续业务方法调用
+     * @param accessPort 访问端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedNativeFormTargetResolver(
             EmbedRuntimeReleasePort releasePort,
             EmbedNativeFormAccessPort accessPort,
@@ -59,6 +66,9 @@ public class EmbedNativeFormTargetResolver {
     /**
      * 恢复并授权当前 FORM Session 的固定目标；VIEW 会执行普通 Flow 的权限与
      * DataScope 校验。
+     *
+     * @param session 会话，作为 {@code authorize} 的输入影响后续处理
+     * @return 解析后的嵌入式原生表单目标解析器结果，供调用方继续处理
      */
     public EmbedNativeFormTarget resolve(AuthenticatedEmbedSession session) {
         return authorize(session, session == null ? null : session.entryMode(),
@@ -72,6 +82,11 @@ public class EmbedNativeFormTargetResolver {
      * entryModes 限制；LIST 页面内的原生新建/查看按钮已经由
      * Flow 按 mapped user 权限求值，不能再被 Embed 入口能力二次
      * 裁剪。</p>
+     *
+     * @param session 会话，作为 {@code resolveRoot} 的输入影响后续处理
+     * @param requestedMode 请求模式标识，决定后续授权采用的处理分支
+     * @param requestedRecordId 请求记录ID，后续用于处理授权时定位或关联目标
+     * @return 处理后的授权结果，供调用方继续处理
      */
     public EmbedNativeFormTarget authorize(
             AuthenticatedEmbedSession session,
@@ -96,6 +111,12 @@ public class EmbedNativeFormTargetResolver {
      * entryModes/capability ceiling。EDIT 是原生表单的 VIEW 记录模式别名；
      * APPROVE 只复用 VIEW 的记录读取与 DataScope，真正的任务审批权限仍由
      * Flow 原生流程服务在读取任务和提交审批时校验。</p>
+     *
+     * @param session 会话，作为 {@code release} 的输入影响后续处理
+     * @param pinned 固定，供本方法处理授权固定表单时使用
+     * @param requestedMode 请求模式标识，决定后续授权固定表单采用的处理分支
+     * @param requestedRecordId 请求记录ID，后续用于处理授权固定表单时定位或关联目标
+     * @return 处理后的授权固定表单结果，供调用方继续处理
      */
     public EmbedNativeFormTarget authorizePinnedForm(
             AuthenticatedEmbedSession session,
@@ -109,6 +130,17 @@ public class EmbedNativeFormTargetResolver {
                 isRootFormTarget(release, pinned));
     }
 
+    /**
+     * 处理授权固定表单，并将结果传给后续步骤。
+     *
+     * @param session 会话，作为 {@code validateRecordCoordinate} 的输入影响后续处理
+     * @param pinned 固定，作为 {@code requireCompleteFormTarget} 的输入影响后续处理
+     * @param release 发布版本，供本方法处理授权固定表单时使用
+     * @param mode 模式标识，决定后续授权固定表单采用的处理分支
+     * @param requestedRecordId 请求记录ID，后续用于处理授权固定表单时定位或关联目标
+     * @param rootNavigation 根{@code navigation}，作为 {@code validateRecordCoordinate} 的输入影响后续处理
+     * @return 处理后的授权固定表单结果，供调用方继续处理
+     */
     private EmbedNativeFormTarget authorizePinnedForm(
             AuthenticatedEmbedSession session,
             EmbedNativeFormTarget pinned,
@@ -144,6 +176,9 @@ public class EmbedNativeFormTargetResolver {
     /**
      * 恢复 LIST/FORM Release 共同固定的根坐标。该方法只做不可变快照完整性校验，
      * 具体 CREATE/VIEW 授权必须调用 {@link #authorize}。
+     *
+     * @param session 会话，作为 {@code release} 的输入影响后续处理
+     * @return 解析后的根结果，供调用方继续处理
      */
     public EmbedNativeFormTarget resolveRoot(AuthenticatedEmbedSession session) {
         if (session == null) {
@@ -194,7 +229,12 @@ public class EmbedNativeFormTargetResolver {
         }
     }
 
-    /** RECORD_CREATE 幂等摘要使用的稳定 View 标识。 */
+    /**
+     * RECORD_CREATE 幂等摘要使用的稳定 View 标识。
+     *
+     * @param session 会话，作为 {@code release} 的输入影响后续处理
+     * @return 处理后的视图键文本，供调用方比较或展示
+     */
     public String viewKey(AuthenticatedEmbedSession session) {
         String viewKey = release(session).viewKey();
         if (!StringUtils.hasText(viewKey)) {
@@ -203,13 +243,23 @@ public class EmbedNativeFormTargetResolver {
         return viewKey;
     }
 
-    /** RECORD_CREATE 用例的服务端固定过滤条件；浏览器不能提交或覆盖。 */
+    /**
+     * RECORD_CREATE 用例的服务端固定过滤条件；浏览器不能提交或覆盖。
+     *
+     * @param session 会话，供本方法处理固定上下文过滤条件时使用
+     * @return 固定上下文过滤条件键值结果，供调用方继续处理
+     */
     public Map<String, Object> fixedContextFilters(
             AuthenticatedEmbedSession session) {
         return fixedContextFilters(release(session), session.context());
     }
 
-    /** 按固定 Published Form 校验当前映射用户的原生 CREATE 按钮。 */
+    /**
+     * 按固定 Published Form 校验当前映射用户的原生 CREATE 按钮。
+     *
+     * @param target 目标，供本方法校验并获取创建动作时使用
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     */
     public void requireCreateAction(
             EmbedNativeFormTarget target,
             String actionKey) {
@@ -222,6 +272,12 @@ public class EmbedNativeFormTargetResolver {
         }
     }
 
+    /**
+     * 处理发布版本，并将结果传给后续步骤。
+     *
+     * @param session 会话，作为 {@code releasePort.find} 的输入影响后续处理
+     * @return 处理后的发布版本结果，供调用方继续处理
+     */
     private EmbedRuntimeReleaseSnapshot release(
             AuthenticatedEmbedSession session) {
         EmbedRuntimeReleaseSnapshot release = session == null ? null
@@ -235,6 +291,13 @@ public class EmbedNativeFormTargetResolver {
         return release;
     }
 
+    /**
+     * 校验并获取模式；不满足约束时阻止后续处理。
+     *
+     * @param session 会话，供本方法校验并获取模式时使用
+     * @param release 发布版本，作为 {@code stringSet} 的输入影响后续处理
+     * @param mode 模式标识，决定后续模式采用的处理分支
+     */
     private void requireMode(
             AuthenticatedEmbedSession session,
             EmbedRuntimeReleaseSnapshot release,
@@ -255,6 +318,15 @@ public class EmbedNativeFormTargetResolver {
         }
     }
 
+    /**
+     * 校验记录坐标；不满足约束时阻止后续处理。
+     *
+     * @param session 会话，作为 {@code normalizeOptionalId} 的输入影响后续处理
+     * @param mode 模式标识，决定后续记录坐标采用的处理分支
+     * @param requestedRecordId 请求记录ID，后续用于校验记录坐标时定位或关联目标
+     * @param bindToSessionRecord 绑定截止会话记录，供本方法校验记录坐标时使用
+     * @return 校验后的记录坐标文本，供调用方比较或展示
+     */
     private static String validateRecordCoordinate(
             AuthenticatedEmbedSession session,
             String mode,
@@ -283,7 +355,13 @@ public class EmbedNativeFormTargetResolver {
         return requested;
     }
 
-    /** 只有 FORM Session 的根表单 VIEW 必须与 Launch recordId 一致。 */
+    /**
+     * 只有 FORM Session 的根表单 VIEW 必须与 Launch recordId 一致。
+     *
+     * @param release 发布版本，作为 {@code object} 的输入影响后续处理
+     * @param target 目标，供本方法判断是否根表单目标时使用
+     * @return 根表单目标条件成立时为 true，否则为 false
+     */
     private boolean isRootFormTarget(
             EmbedRuntimeReleaseSnapshot release,
             EmbedNativeFormTarget target) {
@@ -298,6 +376,13 @@ public class EmbedNativeFormTargetResolver {
                         target.formReleaseVersion());
     }
 
+    /**
+     * 处理绑定上下文，并将结果传给后续步骤。
+     *
+     * @param release 发布版本，作为 {@code json} 的输入影响后续处理
+     * @param context 执行上下文，向后续绑定上下文步骤传递身份、配置或状态
+     * @return 处理后的绑定上下文结果，供调用方继续处理
+     */
     private BoundContext boundContext(
             EmbedRuntimeReleaseSnapshot release,
             Map<String, Object> context) {
@@ -331,6 +416,13 @@ public class EmbedNativeFormTargetResolver {
                 Collections.unmodifiableMap(exposed));
     }
 
+    /**
+     * 整理固定上下文过滤条件数据，供调用方遍历或继续处理。
+     *
+     * @param release 发布版本，作为 {@code json} 的输入影响后续处理
+     * @param context 执行上下文，向后续固定上下文过滤条件步骤传递身份、配置或状态
+     * @return 固定上下文过滤条件键值结果，供调用方继续处理
+     */
     private Map<String, Object> fixedContextFilters(
             EmbedRuntimeReleaseSnapshot release,
             Map<String, Object> context) {
@@ -360,6 +452,12 @@ public class EmbedNativeFormTargetResolver {
         return Collections.unmodifiableMap(result);
     }
 
+    /**
+     * 处理访问目标，并将结果传给后续步骤。
+     *
+     * @param target 目标，作为 {@code Target} 的输入影响后续处理
+     * @return 处理后的访问目标结果，供调用方继续处理
+     */
     private static Target accessTarget(
             EmbedNativeFormTarget target) {
         return new Target(
@@ -369,6 +467,11 @@ public class EmbedNativeFormTargetResolver {
                 target.listReleaseVersion());
     }
 
+    /**
+     * 校验并获取完成表单目标；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，作为 {@code hasText} 的输入影响后续处理
+     */
     private static void requireCompleteFormTarget(
             EmbedNativeFormTarget target) {
         if (target == null
@@ -381,6 +484,12 @@ public class EmbedNativeFormTargetResolver {
         }
     }
 
+    /**
+     * 处理JSON，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 处理后的JSON结果，供调用方继续处理
+     */
     private JsonNode json(String document) {
         try {
             return objectMapper.readTree(document);
@@ -389,6 +498,12 @@ public class EmbedNativeFormTargetResolver {
         }
     }
 
+    /**
+     * 处理对象，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code json} 的输入影响后续处理
+     * @return 处理后的对象结果，供调用方继续处理
+     */
     private JsonNode object(String document) {
         JsonNode value = json(document);
         if (value == null || !value.isObject()) {
@@ -397,6 +512,12 @@ public class EmbedNativeFormTargetResolver {
         return value;
     }
 
+    /**
+     * 整理字符串设置数据，供调用方遍历或继续处理。
+     *
+     * @param array 数组，供本方法处理字符串设置时使用
+     * @return 嵌入式原生表单目标解析器集合，供调用方遍历或展示
+     */
     private static Set<String> stringSet(JsonNode array) {
         if (array == null || !array.isArray()) {
             return Set.of();
@@ -410,12 +531,25 @@ public class EmbedNativeFormTargetResolver {
         return Collections.unmodifiableSet(result);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param object 对象，供本方法处理文本时使用
+     * @param field 字段，作为 {@code object.get} 的输入影响后续处理
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(JsonNode object, String field) {
         JsonNode value = object == null ? null : object.get(field);
         return value != null && value.isTextual()
                 ? value.asText() : null;
     }
 
+    /**
+     * 规范化模式；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化模式的原始输入，结果供调用方继续使用
+     * @return 规范化后的模式文本，供调用方比较或展示
+     */
     private static String normalizeMode(String value) {
         String mode = value == null ? null : value.trim().toUpperCase();
         if ("EDIT".equals(mode)) {
@@ -427,6 +561,12 @@ public class EmbedNativeFormTargetResolver {
         return mode;
     }
 
+    /**
+     * 规范化可选ID；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化可选ID的原始输入，结果供调用方继续使用
+     * @return 规范化后的可选ID文本，供调用方比较或展示
+     */
     private static String normalizeOptionalId(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -436,6 +576,12 @@ public class EmbedNativeFormTargetResolver {
                 ? normalized : null;
     }
 
+    /**
+     * 判断标量条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理标量的原始输入，结果供调用方继续使用
+     * @return 标量条件成立时为 true，否则为 false
+     */
     private static boolean scalar(Object value) {
         return value == null
                 || value instanceof String
@@ -443,30 +589,57 @@ public class EmbedNativeFormTargetResolver {
                 || value instanceof Boolean;
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedException invalid() {
         return new EmbedException(
                 400, EmbedErrorCode.INVALID_REQUEST,
                 "Embed request is invalid");
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因并终止后续处理。
+     *
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static EmbedException denied() {
         return new EmbedException(
                 403, EmbedErrorCode.EMBED_OPERATION_NOT_ALLOWED,
                 "Embed operation is not allowed");
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private static EmbedException notFound() {
         return new EmbedException(
                 404, EmbedErrorCode.EMBED_RESOURCE_NOT_FOUND,
                 "Embed resource was not found");
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @param cause 原因，作为 {@code EmbedException} 的输入影响后续处理
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static EmbedException unavailable(Throwable cause) {
         return new EmbedException(
                 503, EmbedErrorCode.EMBED_RUNTIME_UNAVAILABLE,
                 "Embed runtime is unavailable", null, cause);
     }
 
+    /**
+     * 封装绑定上下文的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param initialData 初始数据，保存在对象中供后续校验、查询或展示
+     * @param exposed {@code exposed}，保存在对象中供后续校验、查询或展示
+     */
     private record BoundContext(
             Map<String, Object> initialData,
             Map<String, Object> exposed) {

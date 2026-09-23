@@ -59,7 +59,12 @@ public class EntityUniqueValueService {
         }
     }
 
-    /** 释放逻辑删除或物理删除记录持有的唯一值，使该值可以再次使用。 */
+    /**
+     * 释放逻辑删除或物理删除记录持有的唯一值，使该值可以再次使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     public void release(String entityCode, String recordId) {
         jdbcTemplate.update(
                 "DELETE FROM entity_unique_value WHERE entity_code = ? AND record_id = ?",
@@ -67,6 +72,12 @@ public class EntityUniqueValueService {
                 recordId);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化实体唯一值的原始输入，结果供调用方继续使用
+     * @return 规范化后的实体唯一值文本，供调用方比较或展示
+     */
     static String normalize(Object value) {
         if (value == null) {
             return null;
@@ -78,10 +89,23 @@ public class EntityUniqueValueService {
         return text.isEmpty() ? null : text.toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 截断实体唯一值；结果供调用方的后续步骤使用。
+     *
+     * @param value 待截断实体唯一值的原始输入，结果供调用方继续使用
+     * @return 截断后的实体唯一值文本，供调用方比较或展示
+     */
     private static String abbreviate(String value) {
         return value.length() <= 1000 ? value : value.substring(0, 1000);
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");

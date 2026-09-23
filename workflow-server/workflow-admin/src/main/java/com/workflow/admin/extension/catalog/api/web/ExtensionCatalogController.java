@@ -29,6 +29,17 @@ public class ExtensionCatalogController {
     private final ExtensionCatalogService service;
     private final CurrentUserRoleService currentUserRoleService;
 
+    /**
+     * 处理{@code manage}，并将结果传给后续步骤。
+     *
+     * @param capabilityType 能力类型标识，决定后续{@code manage}采用的处理分支
+     * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
+     * @param status 状态标识，决定后续{@code manage}采用的处理分支
+     * @param implementationOrigin 实现来源，作为 {@code Result.success} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的{@code manage}结果，供调用方继续处理
+     */
     @GetMapping("/manage")
     public Result<PageResult<ExtensionCatalogItem>> manage(
             @RequestParam(required = false) String capabilityType,
@@ -47,6 +58,17 @@ public class ExtensionCatalogController {
                 pageSize));
     }
 
+    /**
+     * 处理选项，并将结果传给后续步骤。
+     *
+     * @param capabilityType 能力类型标识，决定后续选项采用的处理分支
+     * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param processConfigId 流程配置ID，后续用于处理选项时定位或关联目标
+     * @param usage 使用场景，作为 {@code Result.success} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 处理后的选项结果，供调用方继续处理
+     */
     @GetMapping("/options")
     public Result<List<ExtensionCatalogItem>> options(
             @RequestParam(required = false) String capabilityType,
@@ -64,6 +86,11 @@ public class ExtensionCatalogController {
                 entityCode));
     }
 
+    /**
+     * 校验并获取列表访问；不满足约束时阻止后续处理。
+     *
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireListAccess() {
         if (currentUserRoleService.isAdministrator()
                 || PermissionUtil.hasPermission("system:extension:list")) {

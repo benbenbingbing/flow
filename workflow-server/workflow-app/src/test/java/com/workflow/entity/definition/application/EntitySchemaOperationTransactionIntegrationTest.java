@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.application;
 
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
 import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.integration.database.api.DatabaseDialects;
@@ -39,7 +39,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
@@ -95,7 +94,7 @@ class EntitySchemaOperationTransactionIntegrationTest {
         EntityPhysicalTableResolver resolver = new EntityPhysicalTableResolver(
                 entityMapper, new EntityPhysicalTableNaming(), metadata);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
-        tables = new DynamicTableService(jdbc, fieldMapper, resolver, ddlJdbc::execute, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        tables = new DynamicTableService(jdbc, fieldMapper, resolver, ddlJdbc::execute, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         DataSourceTransactionManager manager = new DataSourceTransactionManager(dataSource);
         migrationTransaction = new TransactionTemplate(manager);
@@ -105,7 +104,7 @@ class EntitySchemaOperationTransactionIntegrationTest {
         interceptor.setTransactionManager(manager);
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
         ProxyFactory proxy = new ProxyFactory(new EntitySchemaOperationService(jdbc, new ObjectMapper(), tables,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"),
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"),
                 new JdbcLockedRow(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
         proxy.setProxyTargetClass(true);
         proxy.addAdvice(interceptor);

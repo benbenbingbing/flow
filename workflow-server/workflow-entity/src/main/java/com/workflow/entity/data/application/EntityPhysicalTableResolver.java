@@ -81,6 +81,12 @@ public class EntityPhysicalTableResolver {
         return tableExists(naming.validateStoredName(tableName));
     }
 
+    /**
+     * 判断表存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 表存在条件成立时为 true，否则为 false
+     */
     private boolean tableExists(String tableName) {
         return metadata.tableExists(tableName);
     }

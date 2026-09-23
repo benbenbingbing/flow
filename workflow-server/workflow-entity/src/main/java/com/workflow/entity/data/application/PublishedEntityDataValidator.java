@@ -12,9 +12,20 @@ import java.util.Map;
  */
 final class PublishedEntityDataValidator {
 
+    /**
+     * 初始化已发布实体数据校验器，保存构造参数供后续方法使用。
+     */
     private PublishedEntityDataValidator() {
     }
 
+    /**
+     * 清洗与校验；结果供调用方的后续步骤使用。
+     *
+     * @param snapshot 快照，供本方法清洗与校验时使用
+     * @param storageData 存储数据，供本方法清洗与校验时使用
+     * @param recordMapper 记录映射器，供本方法清洗与校验时使用
+     * @param richTextSanitizer {@code rich}文本{@code sanitizer}，供本方法清洗与校验时使用
+     */
     static void sanitizeAndValidate(
             EntityPublishedSnapshot snapshot,
             Map<String, Object> storageData,
@@ -40,11 +51,23 @@ final class PublishedEntityDataValidator {
         }
     }
 
+    /**
+     * 判断是否关系字段；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否关系字段时使用
+     * @return 关系字段条件成立时为 true，否则为 false
+     */
     private static boolean isRelationField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.SUB_FORM
                 || field.getFieldType() == EntityField.FieldType.SUB_LIST;
     }
 
+    /**
+     * 判断是否空白；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空白的原始输入，结果供调用方继续使用
+     * @return 空白条件成立时为 true，否则为 false
+     */
     private static boolean isBlank(Object value) {
         return value == null || (value instanceof String string && string.isBlank());
     }

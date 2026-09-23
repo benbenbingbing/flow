@@ -66,13 +66,24 @@ public class LocalAddSignTaskAccessService {
         return new AuthorizedAddSignTask(localTask, sourceTask);
     }
 
-    /** 仅把当前有效的本地加签办理人算作实例参与者，不改变普通任务或历史阅读规则。 */
+    /**
+     * 仅把当前有效的本地加签办理人算作实例参与者，不改变普通任务或历史阅读规则。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 当前用户任务流程条件成立时为 true，否则为 false
+     */
     @Transactional(readOnly = true)
     public boolean hasCurrentUserTaskInProcess(String processInstanceId) {
         return StringUtils.hasText(processInstanceId)
                 && taskMapper.countActionableAddSignTasksInProcess(currentIdentity(), processInstanceId) > 0;
     }
 
+    /**
+     * 生成当前身份文本，供后续匹配或展示。
+     *
+     * @return 处理后的当前身份文本，供调用方比较或展示
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private String currentIdentity() {
         if (StringUtils.hasText(UserContext.getUserId())) {
             return UserContext.getUserId();
@@ -83,10 +94,20 @@ public class LocalAddSignTaskAccessService {
         throw new ForbiddenException("用户未登录");
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private ForbiddenException unavailable() {
         return new ForbiddenException("当前加签任务不存在、未激活、已处理或无办理权限");
     }
 
-    /** localTask 保留实际提交 ID；节点和部署表单必须使用 sourceTask 的运行时身份。 */
+    /**
+     * localTask 保留实际提交 ID；节点和部署表单必须使用 sourceTask 的运行时身份。
+     *
+     * @param localTask 本地任务，保存在对象中供后续校验、查询或展示
+     * @param sourceTask 来源任务，保存在对象中供后续校验、查询或展示
+     */
     public record AuthorizedAddSignTask(ProcessTask localTask, Task sourceTask) { }
 }

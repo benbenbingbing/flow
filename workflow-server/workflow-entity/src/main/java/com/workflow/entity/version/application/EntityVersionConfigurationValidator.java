@@ -41,6 +41,12 @@ public class EntityVersionConfigurationValidator {
 
     private final EntityDefinitionMapper definitionMapper;
 
+    /**
+     * 校验实体版本配置；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，作为 {@code validateV2} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void validate(EntityVersionConfiguration document) {
         if (document == null) {
             throw new IllegalArgumentException("数据版本配置不能为空");
@@ -73,6 +79,12 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 校验{@code v2}；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，供本方法校验{@code v2}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateV2(EntityVersionConfiguration document) {
         List<EntityVersionConfiguration.CaptureTrigger> triggers =
                 document.getTriggers() == null
@@ -152,12 +164,25 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 校验触发条件条件；不满足约束时阻止后续处理。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param triggerCode 触发条件编码，后续用于校验触发条件条件时定位或关联目标
+     */
     private void validateTriggerCondition(
             Map<String, Object> condition,
             String triggerCode) {
         validateTriggerCondition(condition, triggerCode, 0);
     }
 
+    /**
+     * 校验触发条件条件；不满足约束时阻止后续处理。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param triggerCode 触发条件编码，后续用于校验触发条件条件时定位或关联目标
+     * @param depth 深度，供本方法校验触发条件条件时使用
+     */
     private void validateTriggerCondition(
             Map<String, Object> condition,
             String triggerCode,
@@ -231,12 +256,25 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 转换为字符串对象映射；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为字符串对象映射的原始输入，结果供调用方继续使用
+     * @return 字符串对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> toStringObjectMap(Map<?, ?> value) {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         value.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
     }
 
+    /**
+     * 构造无效条件异常，供调用方区分失败原因。
+     *
+     * @param triggerCode 触发条件编码，后续用于处理无效条件时定位或关联目标
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的无效条件结果，供调用方继续处理
+     */
     private IllegalArgumentException invalidCondition(
             String triggerCode,
             String message) {
@@ -244,6 +282,13 @@ public class EntityVersionConfigurationValidator {
                 "版本触发器条件不合法 " + triggerCode + ": " + message);
     }
 
+    /**
+     * 校验节点；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code upper} 的输入影响后续处理
+     * @param label 标签，后续用于校验节点时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateNode(
             EntityVersionConfiguration.ScopeNode node,
             String label) {
@@ -264,6 +309,12 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 校验过滤；不满足约束时阻止后续处理。
+     *
+     * @param relation 关系，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateFilter(
             EntityVersionConfiguration.RelationScope relation) {
         EntityVersionConfiguration.FixedFilter filter = relation.getFilter();
@@ -289,6 +340,12 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 校验限制集合；不满足约束时阻止后续处理。
+     *
+     * @param limits 限制集合，供本方法校验限制集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateLimits(
             EntityVersionConfiguration.ScopeLimits limits) {
         EntityVersionConfiguration.ScopeLimits value = limits == null
@@ -326,6 +383,9 @@ public class EntityVersionConfigurationValidator {
     /**
      * 校验内部树形 scope。旧一层配置未提供 parentNodeCode 时自动视为 ROOT，
      * 因而不会改变既有发布行为。
+     *
+     * @param scopes {@code scopes}，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param limits 限制集合，作为 {@code value} 的输入影响后续处理
      */
     private void validateScopeTree(
             Map<String, EntityVersionConfiguration.RelationScope> scopes,
@@ -378,6 +438,16 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 处理作用域深度，并将结果传给后续步骤。
+     *
+     * @param nodeCode 节点编码，后续用于处理作用域深度时定位或关联目标
+     * @param scopes {@code scopes}，供本方法处理作用域深度时使用
+     * @param memo {@code memo}，供本方法处理作用域深度时使用
+     * @param visiting {@code visiting}，供本方法处理作用域深度时使用
+     * @return 处理后的作用域深度结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int scopeDepth(
             String nodeCode,
             Map<String, EntityVersionConfiguration.RelationScope> scopes,
@@ -408,6 +478,12 @@ public class EntityVersionConfigurationValidator {
         return depth;
     }
 
+    /**
+     * 生成有效节点编码文本，供后续匹配或展示。
+     *
+     * @param relation 关系，供本方法处理有效节点编码时使用
+     * @return 处理后的有效节点编码文本，供调用方比较或展示
+     */
     private String effectiveNodeCode(
             EntityVersionConfiguration.RelationScope relation) {
         return StringUtils.hasText(relation.getNodeCode())
@@ -415,10 +491,21 @@ public class EntityVersionConfigurationValidator {
                 : "REL_" + relation.getRelationCode();
     }
 
+    /**
+     * 生成规范化父级文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化父级的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化父级文本，供调用方比较或展示
+     */
     private String normalizedParent(String value) {
         return StringUtils.hasText(value) ? value.trim() : "ROOT";
     }
 
+    /**
+     * 规范化触发条件；输出作为后续校验或处理的输入。
+     *
+     * @param trigger 触发条件，作为 {@code trigger.setTriggerCode} 的输入影响后续处理
+     */
     private void normalizeTrigger(
             EntityVersionConfiguration.CaptureTrigger trigger) {
         trigger.setTriggerCode(upper(trigger.getTriggerCode()));
@@ -427,6 +514,12 @@ public class EntityVersionConfigurationValidator {
         trigger.setPriority(value(trigger.getPriority(), 0));
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireDefinition(String entityCode) {
         if (!StringUtils.hasText(entityCode)
                 || definitionMapper.findByEntityCode(entityCode.trim())
@@ -436,6 +529,12 @@ public class EntityVersionConfigurationValidator {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -444,16 +543,35 @@ public class EntityVersionConfigurationValidator {
         return normalized.isEmpty() ? null : normalized;
     }
 
+    /**
+     * 生成{@code upper}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code upper}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code upper}文本，供调用方比较或展示
+     */
     private String upper(String value) {
         String normalized = text(value);
         return normalized == null
                 ? null : normalized.toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private int value(Integer value, int fallback) {
         return value == null ? fallback : value;
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体版本配置校验器集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }

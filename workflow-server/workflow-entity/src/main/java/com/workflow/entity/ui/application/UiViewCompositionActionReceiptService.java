@@ -5,11 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilityDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionChangedReferenceDTO;
@@ -46,6 +46,18 @@ public class UiViewCompositionActionReceiptService {
 
     /**
      * 占用批次回执；首次调用返回待完成句柄，精确重放直接返回历史响应。
+     *
+     * @param ownerType 归属方类型标识，决定后续获取采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理获取时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理获取时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理获取时使用
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理获取时定位或关联目标
+     * @param sourceRecordId 来源记录ID，后续用于处理获取时定位或关联目标
+     * @param action 动作标识，决定后续获取采用的处理分支
+     * @param targetRecordIds 目标记录ID 集合，作为 {@code payload.put} 的输入影响后续处理
+     * @param operationId 操作ID，后续用于处理获取时定位或关联目标
+     * @return 处理后的获取结果，供调用方继续处理
      */
     public AcquireResult acquire(
             String ownerType,
@@ -112,7 +124,12 @@ public class UiViewCompositionActionReceiptService {
                         restoreResponse(replayed.record()));
     }
 
-    /** 整批实体写入成功后，将受控动作响应写入同一事务中的持久化回执。 */
+    /**
+     * 整批实体写入成功后，将受控动作响应写入同一事务中的持久化回执。
+     *
+     * @param receiptCommand 回执命令，供本方法处理完成时使用
+     * @param response 响应，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     */
     public void complete(
             EntityMutationCommand receiptCommand,
             UiViewCompositionActionResponse response) {
@@ -134,6 +151,12 @@ public class UiViewCompositionActionReceiptService {
                         false));
     }
 
+    /**
+     * 恢复响应；结果供调用方的后续步骤使用。
+     *
+     * @param stored 已存储，供本方法恢复响应时使用
+     * @return 恢复后的响应结果，供调用方继续处理
+     */
     private UiViewCompositionActionResponse restoreResponse(
             Map<String, Object> stored) {
         Map<String, Object> value = stored == null ? Map.of() : stored;
@@ -194,12 +217,24 @@ public class UiViewCompositionActionReceiptService {
                 .build();
     }
 
+    /**
+     * 生成当前租户ID文本，供后续匹配或展示。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 处理后的当前租户ID文本，供调用方比较或展示
+     */
     private String currentTenantId(String userId) {
         SysUser user = userService.getById(userId);
         return user == null || !StringUtils.hasText(user.getOrgId())
                 ? "_" : user.getOrgId().trim();
     }
 
+    /**
+     * 校验并获取用户ID；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的用户ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String requireUserId() {
         if (!StringUtils.hasText(UserContext.getUserId())) {
             throw new IllegalStateException("关联内容批次幂等缺少当前用户");
@@ -207,6 +242,13 @@ public class UiViewCompositionActionReceiptService {
         return UserContext.getUserId().trim();
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -217,10 +259,22 @@ public class UiViewCompositionActionReceiptService {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    /**
+     * 封装获取的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param receiptCommand 回执命令，保存在对象中供后续校验、查询或展示
+     * @param replayedResponse {@code replayed}响应，保存在对象中供后续校验、查询或展示
+     */
     public record AcquireResult(
             EntityMutationCommand receiptCommand,
             UiViewCompositionActionResponse replayedResponse) {

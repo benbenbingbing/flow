@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.entity.list.EntityListRuntimeContext;
+import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
@@ -25,16 +25,33 @@ public class ProjectCustomEntityListSchemaProvider
     public static final String CODE =
             "PROJECT_CUSTOM_LIST_SCHEMA";
 
+    /**
+     * 读取编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     @Override
     public String getCode() {
         return CODE;
     }
 
+    /**
+     * 读取用户可见名称，供页面和操作日志展示。
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     @Override
     public String getDisplayName() {
         return "项目自定义列表结构";
     }
 
+    /**
+     * 整理{@code enhance}数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续{@code enhance}步骤传递身份、配置或状态
+     * @param schema 结构，供本方法处理{@code enhance}时使用
+     * @return {@code enhance}键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> enhance(
             EntityListRuntimeContext context,

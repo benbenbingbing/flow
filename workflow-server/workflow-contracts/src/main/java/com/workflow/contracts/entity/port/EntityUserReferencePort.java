@@ -41,6 +41,13 @@ public interface EntityUserReferencePort {
 
         private final String reasonCode;
 
+        /**
+         * 初始化实体用户引用异常，保存构造参数供后续方法使用。
+         *
+         * @param reasonCode 原因编码依赖，保存到当前对象供后续业务方法调用
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         public EntityUserReferenceException(
                 String reasonCode,
                 String message) {
@@ -51,12 +58,23 @@ public interface EntityUserReferencePort {
             this.reasonCode = reasonCode.trim();
         }
 
+        /**
+         * 生成原因编码文本，供后续匹配或展示。
+         *
+         * @return 处理后的原因编码文本，供调用方比较或展示
+         */
         public String reasonCode() {
             return reasonCode;
         }
     }
 
-    /** 已验证的用户关系字段。 */
+    /**
+     * 已验证的用户关系字段。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于处理用户引用字段时定位或关联目标
+     * @param multiple {@code multiple}，保存在对象中供后续校验、查询或展示
+     */
     record UserReferenceField(
             String entityCode,
             String fieldCode,

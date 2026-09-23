@@ -30,6 +30,12 @@ public class OrganizationPositionAssignmentController {
     private final PositionAssignmentQueryService queryService;
     private final PositionAssignmentService assignmentService;
 
+    /**
+     * 处理分配集合，并将结果传给后续步骤。
+     *
+     * @param unitId 单元ID，后续用于处理分配集合时定位或关联目标
+     * @return 处理后的分配集合结果，供调用方继续处理
+     */
     @GetMapping("/{unitId}/position-assignments")
     @RequiresPermission("system:position:view")
     public Result<PositionViews.OrganizationAssignmentMatrix> assignments(
@@ -39,6 +45,11 @@ public class OrganizationPositionAssignmentController {
 
     /**
      * 负责人快捷编辑仍写 UNIT_LEADER 任职；旧 leader_id 不接受独立权威写入。
+     *
+     * @param unitId 单元ID，后续用于处理变更{@code leader}时定位或关联目标
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param request 本次请求，后续经校验后用于处理变更{@code leader}
+     * @return 处理后的变更{@code leader}结果，供调用方继续处理
      */
     @PostMapping("/{unitId}/leader")
     @RequiresPermission("system:position:assign")

@@ -2,7 +2,7 @@ package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,12 +49,27 @@ public class PermissionSqlFragmentCompiler {
     private final EntityPhysicalTableResolver tableResolver;
     private final DatabaseQueryDialect queryDialect;
 
-    /** 仅供预览的重载；执行查询必须保留共享参数容器。 */
+    /**
+     * 仅供预览的重载；执行查询必须保留共享参数容器。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fragment {@code fragment}，供本方法编译记录SQL时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 编译后的记录SQL文本，供调用方比较或展示
+     */
     public String compileRecordSql(String entityCode, String fragment, SysUser user) {
         return compileRecordSql(entityCode, fragment, user, new LinkedHashMap<>());
     }
 
-    /** 主表和字段均按产品引用，用户属性绑定到该次权限查询共享的命名空间。 */
+    /**
+     * 主表和字段均按产品引用，用户属性绑定到该次权限查询共享的命名空间。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fragment {@code fragment}，作为 {@code validate} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，作为 {@code substitute} 的输入影响后续处理
+     * @return 编译后的记录SQL文本，供调用方比较或展示
+     */
     public String compileRecordSql(String entityCode, String fragment, SysUser user, Map<String, Object> parameters) {
         validate(fragment, true);
         String table = queryDialect.quoteIdentifier(resolveTable(entityCode));
@@ -62,7 +77,13 @@ public class PermissionSqlFragmentCompiler {
         return substitute(rewritten, user, value -> PermissionSqlParameters.bindText(parameters, value));
     }
 
-    /** 以绑定参数执行单行条件判断；失败按未命中处理，缺失用户属性保持 SQL NULL。 */
+    /**
+     * 以绑定参数执行单行条件判断；失败按未命中处理，缺失用户属性保持 SQL NULL。
+     *
+     * @param fragment {@code fragment}，作为 {@code validate} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 用户条件成立时为 true，否则为 false
+     */
     public boolean matchesUser(String fragment, SysUser user) {
         if (user == null) return false;
         try {
@@ -83,6 +104,9 @@ public class PermissionSqlFragmentCompiler {
     /**
      * 校验受控条件片段及四种用户占位符。占位符必须作为 SQL 值独立使用，不能放在
      * 字符串或标识符引号内，否则 JDBC 参数个数及语义会改变；不接受 MyBatis 文本插值。
+     *
+     * @param fragment {@code fragment}，供本方法校验权限SQL{@code fragment}{@code compiler}时使用
+     * @param allowMainAlias 允许主{@code alias}，供本方法校验权限SQL{@code fragment}{@code compiler}时使用
      */
     public void validate(String fragment, boolean allowMainAlias) {
         if (!StringUtils.hasText(fragment)) throw new IllegalArgumentException("SQL 条件不能为空");
@@ -123,7 +147,13 @@ public class PermissionSqlFragmentCompiler {
         }
     }
 
-    /** 只重写字符串常量之外的主表引用，避免把 'biz.name' 这类业务文本改成物理表名。 */
+    /**
+     * 只重写字符串常量之外的主表引用，避免把 'biz.name' 这类业务文本改成物理表名。
+     *
+     * @param fragment {@code fragment}，作为 {@code result.append} 的输入影响后续处理
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 处理后的重写主引用文本，供调用方比较或展示
+     */
     private String rewriteMainReferences(String fragment, String table) {
         var result = new StringBuilder();
         int start = 0;
@@ -137,6 +167,13 @@ public class PermissionSqlFragmentCompiler {
         return result.append(rewriteReferences(fragment.substring(start), table)).toString();
     }
 
+    /**
+     * 生成重写引用文本，供后续匹配或展示。
+     *
+     * @param text 待处理重写引用的原始输入，结果供调用方继续使用
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 处理后的重写引用文本，供调用方比较或展示
+     */
     private String rewriteReferences(String text, String table) {
         Matcher matcher = MAIN_REFERENCE.matcher(text);
         var result = new StringBuilder();
@@ -147,7 +184,13 @@ public class PermissionSqlFragmentCompiler {
         return result.toString();
     }
 
-    /** 使用 SQL 标准的成对引号规则；不根据某个 MySQL 会话的反斜杠模式猜测配置文本。 */
+    /**
+     * 使用 SQL 标准的成对引号规则；不根据某个 MySQL 会话的反斜杠模式猜测配置文本。
+     *
+     * @param source 待处理{@code quoted}结束的原始输入，结果供调用方继续使用
+     * @param start 启动，作为 {@code source.charAt} 的输入影响后续处理
+     * @return 处理后的{@code quoted}结束结果，供调用方继续处理
+     */
     private static int quotedEnd(String source, int start) {
         char quote = source.charAt(start);
         for (int index = start + 1; index < source.length(); index++) {
@@ -158,6 +201,15 @@ public class PermissionSqlFragmentCompiler {
         throw new IllegalArgumentException("SQL 条件包含未闭合的引号");
     }
 
+    /**
+     * 生成{@code substitute}文本，供后续匹配或展示。
+     *
+     * @param fragment {@code fragment}，作为 {@code PLACEHOLDER.matcher} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameter 参数，作为 {@code matcher.appendReplacement} 的输入影响后续处理
+     * @return 处理后的{@code substitute}文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String substitute(String fragment, SysUser user, Function<String, String> parameter) {
         Matcher matcher = PLACEHOLDER.matcher(fragment);
         var result = new StringBuilder();
@@ -175,6 +227,13 @@ public class PermissionSqlFragmentCompiler {
         return result.toString();
     }
 
+    /**
+     * 解析表；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 解析后的表文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String resolveTable(String entityCode) {
         if (tableResolver == null || !StringUtils.hasText(entityCode)) {
             throw new IllegalArgumentException("数据范围 SQL 需要实体编码以解析主表");
@@ -184,6 +243,11 @@ public class PermissionSqlFragmentCompiler {
         return table;
     }
 
+    /**
+     * 整理{@code placeholder}{@code help}数据，供调用方遍历或继续处理。
+     *
+     * @return {@code placeholder}{@code help}键值结果，供调用方继续处理
+     */
     public Map<String, String> placeholderHelp() {
         return Map.of("biz", "业务主表别名，数据范围 SQL 中写 biz.字段",
                 "#{userId}", "当前用户 ID", "#{username}", "当前用户名",

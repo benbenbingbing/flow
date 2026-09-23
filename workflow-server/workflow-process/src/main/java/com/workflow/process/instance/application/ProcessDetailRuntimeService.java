@@ -100,6 +100,12 @@ public class ProcessDetailRuntimeService {
         return detail;
     }
 
+    /**
+     * 加载流程定义；查询结果供调用方展示或继续处理。
+     *
+     * @param detail 详情，供本方法加载流程定义时使用
+     * @return 加载后的流程定义文本，供调用方比较或展示
+     */
     private String loadProcessDefinition(ProcessDetailVO detail) {
         String processKey = null;
         if (detail.getProcessDefinitionId() == null) {
@@ -122,6 +128,14 @@ public class ProcessDetailRuntimeService {
         return processKey;
     }
 
+    /**
+     * 加载历史实例；查询结果供调用方展示或继续处理。
+     *
+     * @param detail 详情，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @param historicInstance 历史实例，作为 {@code detail.setStartTime} 的输入影响后续处理
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的流程详情结果，供调用方继续处理
+     */
     private void loadHistoricInstance(ProcessDetailVO detail, HistoricProcessInstance historicInstance, String processKey) {
         if (historicInstance == null) {
             return;
@@ -149,6 +163,14 @@ public class ProcessDetailRuntimeService {
         detail.setBusinessKey(historicInstance.getBusinessKey() != null ? historicInstance.getBusinessKey() : "-");
     }
 
+    /**
+     * 加载当前节点；查询结果供调用方展示或继续处理。
+     *
+     * @param detail 详情，供本方法加载当前节点时使用
+     * @param processInstance 流程实例，供本方法加载当前节点时使用
+     * @param instanceId 实例ID，后续用于加载当前节点时定位或关联目标
+     * @return 符合条件的流程详情结果，供调用方继续处理
+     */
     private void loadCurrentNode(ProcessDetailVO detail, ProcessInstance processInstance, String instanceId) {
         if (processInstance == null) {
             return;
@@ -165,6 +187,13 @@ public class ProcessDetailRuntimeService {
                 });
     }
 
+    /**
+     * 加载{@code completed}节点集合；查询结果供调用方展示或继续处理。
+     *
+     * @param detail 详情，供本方法加载{@code completed}节点集合时使用
+     * @param instanceId 实例ID，后续用于加载{@code completed}节点集合时定位或关联目标
+     * @return 符合条件的流程详情结果，供调用方继续处理
+     */
     private void loadCompletedNodes(ProcessDetailVO detail, String instanceId) {
         List<HistoricActivityInstance> historicActivities = historyService.createHistoricActivityInstanceQuery()
                 .processInstanceId(instanceId)
@@ -179,6 +208,14 @@ public class ProcessDetailRuntimeService {
         detail.setCompletedNodes(completedNodes);
     }
 
+    /**
+     * 构建历史；结果供后续流程传递或持久化。
+     *
+     * @param instanceId 实例ID，后续用于构建历史时定位或关联目标
+     * @param historicInstance 历史实例，作为 {@code startHistory.setStartTime} 的输入影响后续处理
+     * @param historicTasks 历史任务集合，供本方法构建历史时使用
+     * @return 流程详情集合，供调用方遍历或展示
+     */
     private List<ProcessDetailVO.HistoryVO> buildHistory(String instanceId,
                                                          HistoricProcessInstance historicInstance,
                                                          List<HistoricTaskInstance> historicTasks) {
@@ -215,6 +252,13 @@ public class ProcessDetailRuntimeService {
         return mergeMultiInstanceHistory(historyList);
     }
 
+    /**
+     * 加载任务流程变量；查询结果供调用方展示或继续处理。
+     *
+     * @param history 历史，供本方法加载任务流程变量时使用
+     * @param task 任务，供本方法加载任务流程变量时使用
+     * @return 符合条件的流程详情结果，供调用方继续处理
+     */
     private void loadTaskVariables(ProcessDetailVO.HistoryVO history, HistoricTaskInstance task) {
         try {
             List<org.flowable.variable.api.history.HistoricVariableInstance> taskVars =
@@ -239,6 +283,12 @@ public class ProcessDetailRuntimeService {
         }
     }
 
+    /**
+     * 合并多实例历史；结果供后续流程传递或持久化。
+     *
+     * @param historyList 历史列表，供本方法合并多实例历史时使用
+     * @return 流程详情集合，供调用方遍历或展示
+     */
     private List<ProcessDetailVO.HistoryVO> mergeMultiInstanceHistory(List<ProcessDetailVO.HistoryVO> historyList) {
         Map<String, List<ProcessDetailVO.HistoryVO>> historyGroup = new LinkedHashMap<>();
         for (ProcessDetailVO.HistoryVO history : historyList) {
@@ -257,6 +307,12 @@ public class ProcessDetailRuntimeService {
         return mergedHistory;
     }
 
+    /**
+     * 合并历史分组；结果供后续流程传递或持久化。
+     *
+     * @param list 列表，作为 {@code merged.setTaskName} 的输入影响后续处理
+     * @return 合并后的历史分组结果，供调用方继续处理
+     */
     private ProcessDetailVO.HistoryVO mergeHistoryGroup(List<ProcessDetailVO.HistoryVO> list) {
         ProcessDetailVO.HistoryVO merged = new ProcessDetailVO.HistoryVO();
         merged.setTaskName(list.get(0).getTaskName());
@@ -303,6 +359,14 @@ public class ProcessDetailRuntimeService {
         return merged;
     }
 
+    /**
+     * 构建节点办理人映射；结果供后续流程传递或持久化。
+     *
+     * @param instanceId 实例ID，后续用于构建节点办理人映射时定位或关联目标
+     * @param processInstance 流程实例，供本方法构建节点办理人映射时使用
+     * @param historicTasks 历史任务集合，供本方法构建节点办理人映射时使用
+     * @return 节点办理人映射键值结果，供调用方继续处理
+     */
     private Map<String, ProcessDetailVO.AssigneeVO> buildNodeAssigneeMap(String instanceId,
                                                                           ProcessInstance processInstance,
                                                                           List<HistoricTaskInstance> historicTasks) {
@@ -330,6 +394,12 @@ public class ProcessDetailRuntimeService {
         return nodeAssigneeMap;
     }
 
+    /**
+     * 构建活动办理人；结果供后续流程传递或持久化。
+     *
+     * @param task 任务，作为 {@code fillCandidateAssignee} 的输入影响后续处理
+     * @return 构建后的活动办理人结果，供调用方继续处理
+     */
     private ProcessDetailVO.AssigneeVO buildActiveAssignee(Task task) {
         ProcessDetailVO.AssigneeVO assignee = new ProcessDetailVO.AssigneeVO();
         String userId = task.getAssignee();
@@ -346,6 +416,12 @@ public class ProcessDetailRuntimeService {
         return assignee;
     }
 
+    /**
+     * 处理{@code fill}候选人办理人，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code taskService.getIdentityLinksForTask} 的输入影响后续处理
+     * @param assignee 办理人，供本方法处理{@code fill}候选人办理人时使用
+     */
     private void fillCandidateAssignee(Task task, ProcessDetailVO.AssigneeVO assignee) {
         try {
             List<org.flowable.identitylink.api.IdentityLink> identityLinks = taskService.getIdentityLinksForTask(task.getId());
@@ -377,6 +453,13 @@ public class ProcessDetailRuntimeService {
         }
     }
 
+    /**
+     * 加载表单数据；查询结果供调用方展示或继续处理。
+     *
+     * @param detail 详情，供本方法加载表单数据时使用
+     * @param historicInstance 历史实例，供本方法加载表单数据时使用
+     * @return 符合条件的流程详情结果，供调用方继续处理
+     */
     private void loadFormData(ProcessDetailVO detail, HistoricProcessInstance historicInstance) {
         if (historicInstance == null || historicInstance.getProcessVariables() == null) {
             return;
@@ -387,6 +470,13 @@ public class ProcessDetailRuntimeService {
         detail.setFormData(formData);
     }
 
+    /**
+     * 读取活动名称；查询结果供调用方展示或继续处理。
+     *
+     * @param activityId 活动ID，后续用于读取活动名称时定位或关联目标
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 读取后的活动名称文本，供调用方比较或展示
+     */
     private String getActivityName(String activityId, String processDefinitionId) {
         try {
             org.flowable.bpmn.model.BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
@@ -402,6 +492,12 @@ public class ProcessDetailRuntimeService {
         return activityId;
     }
 
+    /**
+     * 按实例ID查询流程详情；结果供后续展示或处理。
+     *
+     * @param instanceId 实例ID，后续用于读取BPMNXML实例ID时定位或关联目标
+     * @return 读取后的BPMNXML实例ID文本，供调用方比较或展示
+     */
     private String getBpmnXmlByInstanceId(String instanceId) {
         HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
                 .processInstanceId(instanceId)
@@ -412,6 +508,12 @@ public class ProcessDetailRuntimeService {
         return getBpmnXmlByProcessDefinitionId(historicInstance.getProcessDefinitionId());
     }
 
+    /**
+     * 按流程定义ID查询流程详情；结果供后续展示或处理。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 读取后的BPMNXML流程定义ID文本，供调用方比较或展示
+     */
     private String getBpmnXmlByProcessDefinitionId(String processDefinitionId) {
         if (processDefinitionId == null) {
             return null;
@@ -453,6 +555,12 @@ public class ProcessDetailRuntimeService {
         return null;
     }
 
+    /**
+     * 格式化日期；输出作为后续校验或处理的输入。
+     *
+     * @param date 日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 格式化后的日期文本，供调用方比较或展示
+     */
     private String formatDate(java.util.Date date) {
         if (date == null) {
             return null;

@@ -4,8 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.process.task.api.response.TaskDetailDTO;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
@@ -63,6 +63,9 @@ public class TaskDetailService {
     
     /**
      * 获取任务详情（包含表单和实体数据）
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的任务详情结果，供调用方继续处理
      */
     public TaskDetailDTO getTaskDetail(String taskId) {
         TaskDetailDTO dto = new TaskDetailDTO();
@@ -349,6 +352,15 @@ public class TaskDetailService {
         return dto;
     }
     
+    /**
+     * 构建表单配置；结果供后续流程传递或持久化。
+     *
+     * @param form 表单，作为 {@code formConfig.setEntityFormId} 的输入影响后续处理
+     * @param nodeForm 节点表单，作为 {@code formConfig.setIsReadonly} 的输入影响后续处理
+     * @param entityFieldCodeMap 实体字段编码映射，供本方法构建表单配置时使用
+     * @param fallbackFormKey 兜底表单键，主值不可用时供后续处理兜底
+     * @return 构建后的表单配置结果，供调用方继续处理
+     */
     private TaskDetailDTO.FormConfigDTO buildFormConfig(
             EntityForm form,
             com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm nodeForm,
@@ -393,8 +405,10 @@ public class TaskDetailService {
     
     /**
      * 转换字段配置为Map
+     *
      * @param f 表单字段配置
      * @param entityFieldCodeMap 实体字段ID到fieldCode的映射
+     * @return 字段截止映射键值结果，供调用方继续处理
      */
     private Map<String, Object> convertFieldToMap(EntityFormField f, Map<String, String> entityFieldCodeMap) {
         // 发布表单字段视图中的 fieldId 对应 entity_field.id

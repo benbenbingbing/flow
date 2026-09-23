@@ -1,0 +1,55 @@
+# 文件存储配置：上传容量限制与 local、S3、MinIO 后端；由 file.storage.type 选择实际存储策略。
+
+# Spring Boot 基础设施配置，由对应自动配置或应用配置类读取。
+spring:
+  # Servlet 上传请求配置，约束进入存储服务前的请求体大小。
+  servlet:
+    # 多段上传容量限制，分别约束单文件和整个请求。
+    multipart:
+      # 单个上传文件的大小上限，使用 MB 等容量单位。
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:50MB}
+      # 一次 multipart 请求的总大小上限，包含所有文件和其他表单内容。
+      max-request-size: ${MAX_MULTIPART_REQUEST_SIZE:100MB}
+
+# 文件服务配置，供上传、存储及文件定位使用。
+file:
+  # 文件存储策略和各后端连接参数，仅选中的策略用于实际存储。
+  storage:
+    # 存储策略标识：local、s3、minio 或已注册的业务扩展策略。
+    type: ${FILE_STORAGE_TYPE:local}
+    # 本地磁盘存储参数，适用于本地开发或具备共享文件方案的部署。
+    local:
+      # 上传文件保存目录；相对路径以进程工作目录为基准。
+      path: ${FILE_STORAGE_PATH:./uploads}
+      # 生成本地文件访问标识时使用的 URL 前缀。
+      access-url: ${FILE_STORAGE_ACCESS_URL:/uploads}
+    # S3 兼容对象存储参数，供多实例共享附件使用。
+    s3:
+      # S3 兼容 API 地址；使用自建或兼容服务时指定目标端点。
+      endpoint: ${FILE_STORAGE_S3_ENDPOINT:}
+      # 对象存储区域，用于请求签名和目标区域选择。
+      region: ${FILE_STORAGE_S3_REGION:us-east-1}
+      # 已创建的目标存储桶，上传对象写入此桶。
+      bucket: ${FILE_STORAGE_S3_BUCKET:}
+      # 对象存储访问身份，由部署环境注入。
+      access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
+      # 对象存储签名密钥，由部署环境注入，不写入仓库。
+      secret-key: ${FILE_STORAGE_S3_SECRET_KEY:}
+      # 可选对象访问前缀；留空时保留稳定的 s3://bucket/key 文件标识。
+      access-url: ${FILE_STORAGE_S3_ACCESS_URL:}
+      # 启用路径式桶寻址，以兼容不支持虚拟主机式寻址的对象存储。
+      path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
+    # MinIO 独立参数，通过 S3 协议访问并固定使用路径式桶寻址。
+    minio:
+      # MinIO 对象 API 地址，通常为 9000 端口，不是控制台地址。
+      endpoint: ${FILE_STORAGE_MINIO_ENDPOINT:}
+      # MinIO 请求签名区域，需与服务端配置一致。
+      region: ${FILE_STORAGE_MINIO_REGION:us-east-1}
+      # 已创建的 MinIO 存储桶，应用不会自动建桶或修改桶策略。
+      bucket: ${FILE_STORAGE_MINIO_BUCKET:}
+      # MinIO 访问身份，由部署环境注入。
+      access-key: ${FILE_STORAGE_MINIO_ACCESS_KEY:}
+      # MinIO 签名密钥，由部署环境注入，不写入仓库。
+      secret-key: ${FILE_STORAGE_MINIO_SECRET_KEY:}
+      # 可选对象访问前缀；留空时返回稳定的 s3://bucket/key 文件标识。
+      access-url: ${FILE_STORAGE_MINIO_ACCESS_URL:}

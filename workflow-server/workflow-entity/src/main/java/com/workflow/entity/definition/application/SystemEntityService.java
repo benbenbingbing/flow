@@ -84,6 +84,10 @@ public class SystemEntityService {
 
     /**
      * 根据ID查询系统实体
+     *
+     * @param entityType 实体类型标识，决定后续ID采用的处理分支
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return ID键值结果，供调用方继续处理
      */
     public Map<String, Object> selectById(String entityType, String id) {
         requirePermission(entityType);
@@ -122,6 +126,10 @@ public class SystemEntityService {
 
     /**
      * 批量查询系统实体
+     *
+     * @param entityType 实体类型标识，决定后续系统实体批次采用的处理分支
+     * @param ids ID 集合，供本方法查询系统实体批次时使用
+     * @return 系统实体集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> selectBatch(String entityType, List<String> ids) {
         return selectBatch(entityType, ids, "id");
@@ -129,6 +137,11 @@ public class SystemEntityService {
 
     /**
      * 按 ID 或业务编码批量查询系统实体，并保持调用方的值顺序。
+     *
+     * @param entityType 实体类型标识，决定后续系统实体批次采用的处理分支
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> selectBatch(
             String entityType,
@@ -184,6 +197,12 @@ public class SystemEntityService {
 
     // ========== 私有方法 ==========
 
+    /**
+     * 规范化选择值集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<String> normalizeSelectionValues(List<String> values) {
         if (values == null || values.isEmpty()) {
             return List.of();
@@ -196,6 +215,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 规范化值键；输出作为后续校验或处理的输入。
+     *
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 规范化后的值键文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeValueKey(String valueKey) {
         String normalized = StringUtils.hasText(valueKey)
                 ? valueKey.trim().toLowerCase(Locale.ROOT)
@@ -207,6 +233,13 @@ public class SystemEntityService {
         return normalized;
     }
 
+    /**
+     * 查询用户集合值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectUsersByValues(
             List<String> values,
             String valueKey) {
@@ -221,6 +254,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询{@code departments}值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectDepartmentsByValues(
             List<String> values,
             String valueKey) {
@@ -236,6 +276,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询角色集合值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectRolesByValues(
             List<String> values,
             String valueKey) {
@@ -250,6 +297,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询分组集合值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectGroupsByValues(
             List<String> values,
             String valueKey) {
@@ -264,6 +318,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询菜单集合值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectMenusByValues(
             List<String> values,
             String valueKey) {
@@ -279,6 +340,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询{@code dictionaries}值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectDictionariesByValues(
             List<String> values,
             String valueKey) {
@@ -294,6 +362,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询{@code dictionary}条目值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
+     * @return 系统实体集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectDictionaryItemsByValues(
             List<String> values,
             String valueKey) {
@@ -309,6 +384,13 @@ public class SystemEntityService {
                 .toList();
     }
 
+    /**
+     * 查询用户列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的用户列表结果，供调用方继续处理
+     */
     private Selection selectUserList(String keyword, PageRequest page) {
         LambdaQueryWrapper<SysUser> query = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -320,6 +402,13 @@ public class SystemEntityService {
         return new Selection(result.getRecords().stream().map(this::convertUser).toList(), result.getTotal());
     }
 
+    /**
+     * 查询部门列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的部门列表结果，供调用方继续处理
+     */
     private Selection selectDeptList(String keyword, PageRequest page) {
         LambdaQueryWrapper<SysOrganization> query = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -331,6 +420,13 @@ public class SystemEntityService {
         return new Selection(result.getRecords().stream().map(this::convertDept).toList(), result.getTotal());
     }
 
+    /**
+     * 查询角色列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的角色列表结果，供调用方继续处理
+     */
     private Selection selectRoleList(String keyword, PageRequest page) {
         LambdaQueryWrapper<SysRole> query = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -342,6 +438,13 @@ public class SystemEntityService {
         return new Selection(result.getRecords().stream().map(this::convertRole).toList(), result.getTotal());
     }
 
+    /**
+     * 查询分组列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的分组列表结果，供调用方继续处理
+     */
     private Selection selectGroupList(String keyword, PageRequest page) {
         LambdaQueryWrapper<SysGroup> query = new LambdaQueryWrapper<>();
         if (StringUtils.hasText(keyword)) {
@@ -353,6 +456,13 @@ public class SystemEntityService {
         return new Selection(result.getRecords().stream().map(this::convertGroup).toList(), result.getTotal());
     }
 
+    /**
+     * 查询菜单列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的菜单列表结果，供调用方继续处理
+     */
     private Selection selectMenuList(
             String keyword,
             PageRequest page) {
@@ -375,6 +485,13 @@ public class SystemEntityService {
                 result.getTotal());
     }
 
+    /**
+     * 查询字典列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的字典列表结果，供调用方继续处理
+     */
     private Selection selectDictList(
             String keyword,
             PageRequest page) {
@@ -395,6 +512,13 @@ public class SystemEntityService {
                 result.getTotal());
     }
 
+    /**
+     * 查询字典条目列表；查询结果供调用方展示或继续处理。
+     *
+     * @param keyword 关键字，作为 {@code query.and} 的输入影响后续处理
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 查询后的字典条目列表结果，供调用方继续处理
+     */
     private Selection selectDictItemList(
             String keyword,
             PageRequest page) {
@@ -423,11 +547,23 @@ public class SystemEntityService {
                 result.getTotal());
     }
 
+    /**
+     * 封装选择的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param records 记录集合，保存在对象中供后续校验、查询或展示
+     * @param total 总数，保存在对象中供后续校验、查询或展示
+     */
     private record Selection(List<Map<String, Object>> records, long total) {
     }
 
     // ========== 转换方法 ==========
 
+    /**
+     * 转换用户；输出作为后续校验或处理的输入。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 用户键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertUser(SysUser user) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", user.getId());
@@ -438,6 +574,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换部门；输出作为后续校验或处理的输入。
+     *
+     * @param dept 部门，作为 {@code map.put} 的输入影响后续处理
+     * @return 部门键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertDept(SysOrganization dept) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", dept.getId());
@@ -448,6 +590,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换角色；输出作为后续校验或处理的输入。
+     *
+     * @param role 角色，作为 {@code map.put} 的输入影响后续处理
+     * @return 角色键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertRole(SysRole role) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", role.getId());
@@ -458,6 +606,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换分组；输出作为后续校验或处理的输入。
+     *
+     * @param group 分组，作为 {@code map.put} 的输入影响后续处理
+     * @return 分组键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertGroup(SysGroup group) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", group.getId());
@@ -467,6 +621,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换菜单；输出作为后续校验或处理的输入。
+     *
+     * @param menu 菜单，作为 {@code map.put} 的输入影响后续处理
+     * @return 菜单键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertMenu(SysMenu menu) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", menu.getId());
@@ -478,6 +638,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换字典；输出作为后续校验或处理的输入。
+     *
+     * @param dict 字典，作为 {@code map.put} 的输入影响后续处理
+     * @return 字典键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertDict(SysDict dict) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", dict.getId());
@@ -488,6 +654,12 @@ public class SystemEntityService {
         return map;
     }
 
+    /**
+     * 转换字典条目；输出作为后续校验或处理的输入。
+     *
+     * @param item 条目，作为 {@code map.put} 的输入影响后续处理
+     * @return 字典条目键值结果，供调用方继续处理
+     */
     private Map<String, Object> convertDictItem(
             SysDictItem item) {
         Map<String, Object> map = new HashMap<>();
@@ -503,6 +675,8 @@ public class SystemEntityService {
      * 校验系统实体读取权限。
      * USER/DEPT/ROLE/GROUP 供运行态选择器回显和选人，已登录即可；
      * MENU/DICT 仍属于后台配置数据，继续要求对应管理权限。
+     *
+     * @param entityType 实体类型标识，决定后续权限采用的处理分支
      */
     private void requirePermission(String entityType) {
         String normalized = entityType.toUpperCase(Locale.ROOT);

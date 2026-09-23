@@ -3,7 +3,7 @@ package com.workflow.openapi.api.error;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-import com.workflow.contracts.embed.EmbedBoundaryFailure;
+import com.workflow.contracts.embed.error.EmbedBoundaryFailure;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;

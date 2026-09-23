@@ -2,10 +2,10 @@ package com.workflow.admin.identity.group.application;
 
 import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysUserGroup;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -272,6 +272,11 @@ public class SysGroupService {
 
     /**
      * 校验并规范化可编辑字段。更新时缺省状态和排序沿用已有值，新增时使用系统默认值。
+     *
+     * @param request 本次请求，后续经校验后用于校验分组输入
+     * @param defaultStatus 默认状态标识，决定后续分组输入采用的处理分支
+     * @param defaultSort 默认排序，供本方法校验分组输入时使用
+     * @return 校验后的分组输入结果，供调用方继续处理
      */
     private ValidatedGroupInput validateGroupInput(
             SysGroup request,
@@ -310,6 +315,10 @@ public class SysGroupService {
      *
      * <p>更新接口兼容旧客户端的部分字段提交：null 表示未提供并沿用原值；
      * 显式空字符串仍按正常输入处理，因此名称/编码为空会被拒绝，描述可被清空。</p>
+     *
+     * @param request 本次请求，后续经校验后用于校验更新分组输入
+     * @param existing 已有，作为 {@code validateGroupInput} 的输入影响后续处理
+     * @return 校验后的更新分组输入结果，供调用方继续处理
      */
     private ValidatedGroupInput validateUpdateGroupInput(
             SysGroup request,
@@ -339,6 +348,9 @@ public class SysGroupService {
 
     /**
      * 仅构造允许持久化的用户组字段，防止请求实体中的系统字段被透传。
+     *
+     * @param input 待处理新分组记录的原始输入，结果供调用方继续使用
+     * @return 处理后的新分组记录结果，供调用方继续处理
      */
     private SysGroup newGroupRecord(ValidatedGroupInput input) {
         SysGroup group = new SysGroup();
@@ -352,6 +364,9 @@ public class SysGroupService {
 
     /**
      * 校验成员 ID、按首次出现顺序去重，并拒绝已删除或不存在的用户。
+     *
+     * @param userIds 用户ID 集合，供本方法校验成员用户ID 集合时使用
+     * @return 系统分组集合，供调用方遍历或展示
      */
     private List<String> validateMemberUserIds(List<String> userIds) {
         if (userIds == null) {
@@ -391,6 +406,9 @@ public class SysGroupService {
 
     /**
      * 在所有校验完成后原子替换成员关系；调用方事务负责失败回滚。
+     *
+     * @param groupId 分组ID，后续用于处理替换分组用户集合时定位或关联目标
+     * @param userIds 用户ID 集合，供本方法处理替换分组用户集合时使用
      */
     private void replaceGroupUsers(String groupId, List<String> userIds) {
         userGroupMapper.deleteByGroupId(groupId);
@@ -408,6 +426,9 @@ public class SysGroupService {
 
     /**
      * 查询并返回可管理用户组，避免更新零行仍向客户端报告成功。
+     *
+     * @param groupId 分组ID，后续用于校验并获取分组时定位或关联目标
+     * @return 校验并获取后的分组结果，供调用方继续处理
      */
     private SysGroup requireGroup(String groupId) {
         SysGroup group = groupMapper.selectById(groupId);
@@ -419,6 +440,10 @@ public class SysGroupService {
 
     /**
      * 规范化用户组状态，仅允许数据库约定的启用/禁用值。
+     *
+     * @param status 状态标识，决定后续状态采用的处理分支
+     * @param defaultStatus 默认状态标识，决定后续状态采用的处理分支
+     * @return 规范化后的状态文本，供调用方比较或展示
      */
     private String normalizeStatus(String status, String defaultStatus) {
         String normalized = StringUtils.hasText(status)
@@ -432,6 +457,11 @@ public class SysGroupService {
 
     /**
      * 读取必填文本并统一执行去空格和长度校验。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param fieldName 字段名称，后续用于处理必填文本时匹配或展示
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的必填文本文本，供调用方比较或展示
      */
     private String requiredText(String value, String fieldName, int maxLength) {
         if (!StringUtils.hasText(value)) {
@@ -505,7 +535,15 @@ public class SysGroupService {
         }
     }
 
-    /** 通过校验且已规范化的用户组可编辑字段。 */
+    /**
+     * 通过校验且已规范化的用户组可编辑字段。
+     *
+     * @param groupName 分组名称，后续用于处理已校验分组输入时匹配或展示
+     * @param groupCode 分组编码，后续用于处理已校验分组输入时定位或关联目标
+     * @param description 描述，保存在对象中供后续校验、查询或展示
+     * @param sort 排序，保存在对象中供后续校验、查询或展示
+     * @param status 状态标识，决定后续已校验分组输入采用的处理分支
+     */
     private record ValidatedGroupInput(
             String groupName,
             String groupCode,

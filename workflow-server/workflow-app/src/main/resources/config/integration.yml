@@ -1,0 +1,46 @@
+# 外部集成配置：开放接口令牌及流程出站 HTTP 访问；两者使用各自的访问控制策略。
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 开放接口认证与访问控制配置，供第三方服务接入使用。
+  open-api:
+    # 是否启用开放接口能力，默认关闭，启用前需准备签名密钥和发行方信息。
+    enabled: ${WORKFLOW_OPEN_API_ENABLED:false}
+    # 访问令牌发行方标识；启用开放接口时需配置有效 HTTPS 地址。
+    issuer: ${WORKFLOW_OPEN_API_ISSUER:https://flow.invalid}
+    # 访问令牌的目标受众，资源接口据此校验令牌用途。
+    audience: ${WORKFLOW_OPEN_API_AUDIENCE:flow-open-api}
+    # 开放接口访问令牌的有效期，使用带单位的时长。
+    access-token-ttl: ${WORKFLOW_OPEN_API_ACCESS_TOKEN_TTL:10m}
+    # 当前签名密钥的唯一标识，写入令牌 kid 以便验签和密钥轮换。
+    key-id: ${WORKFLOW_OPEN_API_KEY_ID:}
+    # 签发令牌的 RSA 私钥资源位置，由部署环境配置安全的密钥文件路径。
+    private-key-location: ${WORKFLOW_OPEN_API_PRIVATE_KEY_LOCATION:}
+    # 与当前私钥匹配的 RSA 公钥资源位置，用于验证签名。
+    public-key-location: ${WORKFLOW_OPEN_API_PUBLIC_KEY_LOCATION:}
+    # 轮换期保留的历史验签公钥，格式为 kid=资源位置，逗号分隔且最多 3 把。
+    previous-public-keys: ${WORKFLOW_OPEN_API_PREVIOUS_PUBLIC_KEYS:}
+    # 单个客户端每分钟请求令牌的次数上限。
+    token-client-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_CLIENT_LIMIT:30}
+    # 单个来源地址每分钟请求令牌的次数上限。
+    token-address-limit-per-minute: ${WORKFLOW_OPEN_API_TOKEN_ADDRESS_LIMIT:300}
+    # 是否使用可信代理转发的地址信息，需同时配置受信任代理网段。
+    trust-forwarded-headers: ${WORKFLOW_OPEN_API_TRUST_FORWARDED_HEADERS:false}
+    # 受信任代理的 CIDR 列表，以逗号分隔，限定可提供转发地址的代理来源。
+    trusted-proxy-cidrs: ${WORKFLOW_OPEN_API_TRUSTED_PROXY_CIDRS:}
+  # 流程出站 HTTP 调用的目标限制、超时和载荷上限。
+  http:
+    # 允许调用的目标主机列表，以逗号分隔，用于限制流程外部访问范围。
+    allowed-hosts: ${WORKFLOW_HTTP_ALLOWED_HOSTS:}
+    # 是否允许明文 HTTP；默认只接受 HTTPS，避免传输内容被窃听。
+    allow-http: ${WORKFLOW_HTTP_ALLOW_HTTP:false}
+    # 是否允许访问私有网络地址；按需开启，限制对内网资源的访问。
+    allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
+    # 建立出站 HTTP 连接的超时，单位秒。
+    connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
+    # 单次出站调用可设置的超时上限，单位秒，防止长期占用执行线程。
+    max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
+    # 出站请求体字节数上限，限制外部调用载荷。
+    max-request-bytes: ${WORKFLOW_HTTP_MAX_REQUEST_BYTES:262144}
+    # 读取外部响应的字节数上限，避免超大响应耗尽内存。
+    max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}

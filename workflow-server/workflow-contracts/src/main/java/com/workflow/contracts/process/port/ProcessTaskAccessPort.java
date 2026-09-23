@@ -67,7 +67,17 @@ public interface ProcessTaskAccessPort {
      */
     List<String> findActionableEntityDataIds(String userId, String entityCode);
 
-    /** 服务端从待办表和流程发布历史联合解析出的可信审批上下文。 */
+    /**
+     * 服务端从待办表和流程发布历史联合解析出的可信审批上下文。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param processVersionHistoryId 流程版本历史ID，后续用于处理可执行任务上下文时定位或关联目标
+     * @param nodeId 节点ID，后续用于处理可执行任务上下文时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     record ActionableTaskContext(
             String taskId,
             String processInstanceId,

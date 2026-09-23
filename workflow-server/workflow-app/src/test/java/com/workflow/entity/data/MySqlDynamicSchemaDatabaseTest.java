@@ -4,12 +4,12 @@ import com.workflow.entity.data.application.*;
 import com.workflow.entity.data.infrastructure.JdbcSchemaDdlExecutor;
 import com.workflow.core.database.port.DatabaseConnections;
 import com.workflow.core.database.InitializedDriverDataSource;
-import com.workflow.integration.database.api.DatabaseJdbcProfiles;
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import javax.sql.DataSource;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import org.junit.jupiter.api.*;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
 import com.workflow.migration.schema.SchemaDdlReplayVerifier;
@@ -57,7 +57,7 @@ class MySqlDynamicSchemaDatabaseTest {
             public DataSource schema() { return independent; }
         };
         SchemaDdlExecutor executor = new JdbcSchemaDdlExecutor(connections, dialect);
-        service = new DynamicTableService(jdbc, fieldMapper, resolver, executor, dialect, new JdbcSchemaMetadata(jdbc, dialect), com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        service = new DynamicTableService(jdbc, fieldMapper, resolver, executor, dialect, new JdbcSchemaMetadata(jdbc, dialect), com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
     }
 
     @AfterEach

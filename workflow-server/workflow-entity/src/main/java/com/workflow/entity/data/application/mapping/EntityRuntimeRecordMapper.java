@@ -216,6 +216,13 @@ public class EntityRuntimeRecordMapper {
         return result.toString();
     }
 
+    /**
+     * 提取自定义字段；输出作为后续校验或处理的输入。
+     *
+     * @param data 数据，后续用于提取自定义字段并传递处理结果
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 自定义字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> extractCustomFields(
             Map<String, Object> data,
             Collection<EntityField> fields) {
@@ -243,6 +250,12 @@ public class EntityRuntimeRecordMapper {
         return customData;
     }
 
+    /**
+     * 解析JSON值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析JSON值的原始输入，结果供调用方继续使用
+     * @return 解析后的JSON值结果，供调用方继续处理
+     */
     private Object parseJsonValue(Object value) {
         if (!(value instanceof String str)) {
             return value;
@@ -258,6 +271,13 @@ public class EntityRuntimeRecordMapper {
         }
     }
 
+    /**
+     * 规范化值；输出作为后续校验或处理的输入。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待规范化值的原始输入，结果供调用方继续使用
+     * @return 规范化后的值结果，供调用方继续处理
+     */
     private Object normalizeValue(String key, Object value) {
         if (value instanceof String str && str.isEmpty()) {
             return null;
@@ -273,6 +293,12 @@ public class EntityRuntimeRecordMapper {
         return value;
     }
 
+    /**
+     * 生成{@code underscore}截止{@code camel}文本，供后续匹配或展示。
+     *
+     * @param underscore {@code underscore}，供本方法处理{@code underscore}截止{@code camel}时使用
+     * @return 处理后的{@code underscore}截止{@code camel}文本，供调用方比较或展示
+     */
     private String underscoreToCamel(String underscore) {
         if (underscore == null || underscore.isEmpty()) {
             return underscore;
@@ -293,11 +319,25 @@ public class EntityRuntimeRecordMapper {
         return result.toString();
     }
 
+    /**
+     * 读取字符串；查询结果供调用方展示或继续处理。
+     *
+     * @param data 数据，后续用于读取字符串并传递处理结果
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 读取后的字符串文本，供调用方比较或展示
+     */
     private String getString(Map<String, Object> data, String key) {
         Object value = data.get(key);
         return value != null ? value.toString() : null;
     }
 
+    /**
+     * 读取日期时间；查询结果供调用方展示或继续处理。
+     *
+     * @param data 数据，后续用于读取日期时间并传递处理结果
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的本地日期时间结果，供调用方继续处理
+     */
     private LocalDateTime getDateTime(Map<String, Object> data, String key) {
         Object value = data.get(key);
         if (value instanceof LocalDateTime dateTime) {
@@ -306,6 +346,13 @@ public class EntityRuntimeRecordMapper {
         return null;
     }
 
+    /**
+     * 写入条件非空值；后续读取或执行将使用更新后的状态。
+     *
+     * @param data 数据，后续用于写入条件非空值并传递处理结果
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待写入条件非空值的原始输入，结果供调用方继续使用
+     */
     private void putIfNotNull(Map<String, Object> data, String key, Object value) {
         if (value != null) {
             data.put(key, value);

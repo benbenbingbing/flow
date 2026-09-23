@@ -29,11 +29,20 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
                 .eq(SysOrganization::getOrgCode, orgCode)).getRecords().stream().findFirst().orElse(null);
     }
 
+    /**
+     * 查询更新；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 查询后的更新结果，供调用方继续处理
+     */
     @Select("SELECT * FROM sys_organization WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     SysOrganization selectForUpdate(@Param("id") String id);
 
     /**
      * 任职批量事务按组织 ID 排序锁定稳定存在的组织行。
+     *
+     * @param ids ID 集合，供本方法查询更新ID 集合时使用
+     * @return 系统组织集合，供调用方遍历或展示
      */
     @Select("""
             <script>
@@ -138,12 +147,17 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
 
     /**
      * 仅由 UNIT_LEADER 任职服务单向维护旧负责人兼容投影。
+     *
+     * @param unitId 单元ID，后续用于更新{@code leader}投影时定位或关联目标
+     * @param leaderId {@code leader}ID，后续用于更新{@code leader}投影时定位或关联目标
+     * @param leaderName {@code leader}名称，后续用于更新{@code leader}投影时匹配或展示
+     * @return 更新后的{@code leader}投影结果，供调用方继续处理
      */
     @Update("""
             <script>
             UPDATE sys_organization
             SET leader_id = #{leaderId}, leader_name = #{leaderName},
-                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+                update_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE id = #{unitId} AND deleted = 0
             </script>
             """)

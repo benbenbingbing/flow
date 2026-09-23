@@ -22,11 +22,22 @@ public class ProjectCustomCcNotificationChannel
     public static final String CHANNEL =
             "PROJECT_LOG";
 
+    /**
+     * 生成通道文本，供后续匹配或展示。
+     *
+     * @return 处理后的通道文本，供调用方比较或展示
+     */
     @Override
     public String channel() {
         return CHANNEL;
     }
 
+    /**
+     * 发送项目自定义抄送通知通道；后续由接收方或异步任务继续处理。
+     *
+     * @param record 记录，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @param message 消息，供本方法发送项目自定义抄送通知通道时使用
+     */
     @Override
     public void send(
             ProcessCcRecord record,

@@ -46,6 +46,11 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
     private final FileStorageProperties.S3Config config;
     private final S3Client client;
 
+    /**
+     * 初始化{@code s3}文件存储{@code strategy}，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public S3FileStorageStrategy(FileStorageProperties properties) {
         this(properties.getS3(), null);
@@ -69,6 +74,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                 : client;
     }
 
+    /**
+     * 构建客户端；结果供后续流程传递或持久化。
+     *
+     * @param config 配置内容，决定后续客户端的处理规则
+     * @return 构建后的客户端结果，供调用方继续处理
+     */
     private S3Client buildClient(
             FileStorageProperties.S3Config config) {
         S3ClientBuilder builder = S3Client.builder()
@@ -88,6 +99,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         return builder.build();
     }
 
+    /**
+     * 整理上传数据，供调用方遍历或继续处理。
+     *
+     * @param file 文件，作为 {@code objectKey} 的输入影响后续处理
+     * @return 上传键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public Map<String, String> upload(MultipartFile file) {
         String key = objectKey(file.getOriginalFilename());
@@ -122,6 +140,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         return result;
     }
 
+    /**
+     * 删除{@code s3}文件存储{@code strategy}；后续读取或执行将使用更新后的状态。
+     *
+     * @param fileUrl 文件URL，作为 {@code extractKey} 的输入影响后续处理
+     * @return {@code s3}文件存储{@code strategy}条件成立时为 true，否则为 false
+     */
     @Override
     public boolean delete(String fileUrl) {
         String key = extractKey(fileUrl);
@@ -135,6 +159,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         return true;
     }
 
+    /**
+     * 处理打开，并将结果传给后续步骤。
+     *
+     * @param fileUrl 文件URL，作为 {@code extractKey} 的输入影响后续处理
+     * @return 处理后的打开结果，供调用方继续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     @Override
     public StoredFile open(String fileUrl) throws IOException {
         String key = extractKey(fileUrl);
@@ -169,6 +200,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                         : response.contentLength());
     }
 
+    /**
+     * 读取访问URL；查询结果供调用方展示或继续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 读取后的访问URL文本，供调用方比较或展示
+     */
     @Override
     public String getAccessUrl(String key) {
         if (StringUtils.hasText(config.getAccessUrl())) {
@@ -180,6 +217,11 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         return "s3://" + config.getBucket() + "/" + key;
     }
 
+    /**
+     * 读取存储类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的存储类型文本，供调用方比较或展示
+     */
     @Override
     public String getStorageType() {
         return "s3";
@@ -192,6 +234,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         client.close();
     }
 
+    /**
+     * 生成对象键文本，供后续匹配或展示。
+     *
+     * @param originalName 原始名称，后续用于处理对象键时匹配或展示
+     * @return 处理后的对象键文本，供调用方比较或展示
+     */
     private String objectKey(String originalName) {
         String extension = "";
         if (StringUtils.hasText(originalName)) {
@@ -211,6 +259,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                 + extension;
     }
 
+    /**
+     * 提取键；输出作为后续校验或处理的输入。
+     *
+     * @param fileUrl 文件URL，供本方法提取键时使用
+     * @return 提取后的键文本，供调用方比较或展示
+     */
     private String extractKey(String fileUrl) {
         if (!StringUtils.hasText(fileUrl)) {
             return null;
@@ -239,6 +293,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                 : key;
     }
 
+    /**
+     * 编码原始名称；输出作为后续校验或处理的输入。
+     *
+     * @param originalName 原始名称，后续用于编码原始名称时匹配或展示
+     * @return 编码后的原始名称文本，供调用方比较或展示
+     */
     private String encodeOriginalName(String originalName) {
         if (!StringUtils.hasText(originalName)) {
             originalName = "file";
@@ -250,6 +310,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                                 .getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 解码原始名称；输出作为后续校验或处理的输入。
+     *
+     * @param encoded 已编码，供本方法解码原始名称时使用
+     * @return 解码后的原始名称文本，供调用方比较或展示
+     */
     private String decodeOriginalName(String encoded) {
         if (!StringUtils.hasText(encoded)) {
             return null;
@@ -263,6 +329,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         }
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param property 属性，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requireText(String value, String property) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalStateException(
@@ -270,6 +343,12 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         }
     }
 
+    /**
+     * 校验{@code credentials}；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验{@code credentials}的原始输入，结果供调用方继续使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void validateCredentials(
             FileStorageProperties.S3Config value) {
         boolean accessKey = StringUtils.hasText(value.getAccessKey());

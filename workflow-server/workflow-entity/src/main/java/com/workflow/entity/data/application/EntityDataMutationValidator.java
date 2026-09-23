@@ -36,6 +36,13 @@ public class EntityDataMutationValidator {
     @Autowired(required = false)
     private EntityUniqueValueService uniqueValueService;
 
+    /**
+     * 校验流程启动；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，供本方法校验流程启动时使用
+     * @param definition 定义，供本方法校验流程启动时使用
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     public void validateProcessStart(
             boolean requested,
             EntityDefinition definition) {
@@ -56,6 +63,13 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 校验已发布字段；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param storageData 存储数据，作为 {@code validateRequired} 的输入影响后续处理
+     * @param excludeId 排除ID，后续用于校验已发布字段时定位或关联目标
+     */
     public void validatePublishedFields(
             String entityCode,
             Map<String, Object> storageData,
@@ -76,6 +90,12 @@ public class EntityDataMutationValidator {
                 excludeId);
     }
 
+    /**
+     * 校验必填；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，供本方法校验必填时使用
+     * @param storageData 存储数据，供本方法校验必填时使用
+     */
     private void validateRequired(
             EntityPublishedSnapshot snapshot,
             Map<String, Object> storageData) {
@@ -102,6 +122,12 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 校验必填附件条目；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，作为 {@code throwMissingAttachmentItem} 的输入影响后续处理
+     * @param value 待校验必填附件条目的原始输入，结果供调用方继续使用
+     */
     private void validateRequiredAttachmentItems(
             EntityField field,
             Object value) {
@@ -144,6 +170,14 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 处理附件条目值，并将结果传给后续步骤。
+     *
+     * @param groupedValue {@code grouped}值，供本方法处理附件条目值时使用
+     * @param item 条目，作为 {@code keys.add} 的输入影响后续处理
+     * @param index 索引，作为 {@code keys.add} 的输入影响后续处理
+     * @return 处理后的附件条目值结果，供调用方继续处理
+     */
     private Object attachmentItemValue(
             Map<?, ?> groupedValue,
             EntityFieldFileItem item,
@@ -178,6 +212,12 @@ public class EntityDataMutationValidator {
         return null;
     }
 
+    /**
+     * 解析附件值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析附件值的原始输入，结果供调用方继续使用
+     * @return 解析后的附件值结果，供调用方继续处理
+     */
     private Object parseAttachmentValue(Object value) {
         if (!(value instanceof String text)) {
             return value;
@@ -196,6 +236,12 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 判断是否具有附件值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有附件值的原始输入，结果供调用方继续使用
+     * @return 附件值条件成立时为 true，否则为 false
+     */
     private boolean hasAttachmentValue(Object value) {
         if (value == null) {
             return false;
@@ -239,6 +285,12 @@ public class EntityDataMutationValidator {
         return false;
     }
 
+    /**
+     * 判断是否具有附件文件值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有附件文件值的原始输入，结果供调用方继续使用
+     * @return 附件文件值条件成立时为 true，否则为 false
+     */
     private boolean hasAttachmentFileValue(Object value) {
         Object parsed = parseAttachmentValue(value);
         if (parsed == null) {
@@ -264,6 +316,12 @@ public class EntityDataMutationValidator {
         return false;
     }
 
+    /**
+     * 处理{@code throw}缺失附件条目，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code requiredFailure} 的输入影响后续处理
+     * @param item 条目，供本方法处理{@code throw}缺失附件条目时使用
+     */
     private void throwMissingAttachmentItem(
             EntityField field,
             EntityFieldFileItem item) {
@@ -276,6 +334,12 @@ public class EntityDataMutationValidator {
                         + itemName);
     }
 
+    /**
+     * 构造必填失败异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的必填失败结果，供调用方继续处理
+     */
     private BusinessConflictException requiredFailure(
             String message) {
         return new BusinessConflictException(
@@ -283,6 +347,14 @@ public class EntityDataMutationValidator {
                 message);
     }
 
+    /**
+     * 校验唯一；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param snapshot 快照，作为 {@code EntityQueryConditions.fromPublishedFields} 的输入影响后续处理
+     * @param storageData 存储数据，供本方法校验唯一时使用
+     * @param excludeId 排除ID，后续用于校验唯一时定位或关联目标
+     */
     private void validateUnique(
             String entityCode,
             EntityPublishedSnapshot snapshot,
@@ -328,6 +400,12 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 校验规则集合；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，供本方法校验规则集合时使用
+     * @param storageData 存储数据，作为 {@code fieldValidationRuleService.validateValue} 的输入影响后续处理
+     */
     private void validateRules(
             EntityPublishedSnapshot snapshot,
             Map<String, Object> storageData) {
@@ -344,6 +422,12 @@ public class EntityDataMutationValidator {
         }
     }
 
+    /**
+     * 判断是否关系字段；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否关系字段时使用
+     * @return 关系字段条件成立时为 true，否则为 false
+     */
     public boolean isRelationField(EntityField field) {
         return field.getFieldType()
                 == EntityField.FieldType.SUB_FORM
@@ -351,11 +435,23 @@ public class EntityDataMutationValidator {
                 == EntityField.FieldType.SUB_LIST;
     }
 
+    /**
+     * 判断是否附件字段；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否附件字段时使用
+     * @return 附件字段条件成立时为 true，否则为 false
+     */
     private boolean isAttachmentField(EntityField field) {
         return field.getFieldType() == EntityField.FieldType.FILE
                 || field.getFieldType() == EntityField.FieldType.IMAGE;
     }
 
+    /**
+     * 判断是否空白；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空白的原始输入，结果供调用方继续使用
+     * @return 空白条件成立时为 true，否则为 false
+     */
     private boolean isBlank(Object value) {
         return value == null
                 || value instanceof String text

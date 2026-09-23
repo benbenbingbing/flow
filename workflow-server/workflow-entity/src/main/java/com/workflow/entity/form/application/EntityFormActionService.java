@@ -2,7 +2,7 @@ package com.workflow.entity.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
@@ -75,6 +75,9 @@ public class EntityFormActionService {
 
     /**
      * 解析当前用户在指定表单上下文中的按钮。
+     *
+     * @param request 本次请求，后续经校验后用于解析实体表单动作
+     * @return 表单动作运行时集合，供调用方遍历或展示
      */
     public List<FormActionRuntimeDTO> resolve(
             FormActionResolveRequest request) {
@@ -290,6 +293,9 @@ public class EntityFormActionService {
 
     /**
      * FORM_BUTTON_CLICK 服务端执行前的最终鉴权。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取自定义按钮
+     * @return 校验并获取后的自定义按钮文本，供调用方比较或展示
      */
     public String requireCustomButton(UiEventExecuteRequest request) {
         RuntimeSource source = loadSource(
@@ -325,6 +331,12 @@ public class EntityFormActionService {
     /**
      * 使用事件链已经固定的基准 Release 身份鉴权按钮；热修复快照仍绑定原流程
      * 基准 Release，不能从客户端请求字段推断。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取自定义按钮
+     * @param verifiedSnapshot 已验证快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param resolvedReleaseId 已解析发布版本ID，后续用于校验并获取自定义按钮时定位或关联目标
+     * @param resolvedReleaseVersion 已解析发布版本，供本方法校验并获取自定义按钮时使用
+     * @return 校验并获取后的自定义按钮文本，供调用方比较或展示
      */
     public String requireCustomButton(
             UiEventExecuteRequest request,
@@ -355,6 +367,14 @@ public class EntityFormActionService {
                         resolvedReleaseVersion));
     }
 
+    /**
+     * 校验并获取自定义按钮；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取自定义按钮
+     * @param source 待校验并获取自定义按钮的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的自定义按钮文本，供调用方比较或展示
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private String requireCustomButton(
             UiEventExecuteRequest request,
             RuntimeSource source) {
@@ -411,6 +431,16 @@ public class EntityFormActionService {
         return mode;
     }
 
+    /**
+     * 加载来源；查询结果供调用方展示或继续处理。
+     *
+     * @param formId 表单ID，后续用于加载来源时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于加载来源时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code releaseService.resolveRuntimeEventSnapshot} 的输入影响后续处理
+     * @param resolutionToken 解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的运行时来源结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private RuntimeSource loadSource(
             String formId,
             String releaseId,
@@ -467,18 +497,37 @@ public class EntityFormActionService {
                 null);
     }
 
+    /**
+     * 处理可见数量，并将结果传给后续步骤。
+     *
+     * @param actions 动作集合，供本方法处理可见数量时使用
+     * @return 处理后的可见数量结果，供调用方继续处理
+     */
     private long visibleCount(List<FormActionRuntimeDTO> actions) {
         return actions.stream()
                 .filter(FormActionRuntimeDTO::isVisible)
                 .count();
     }
 
+    /**
+     * 处理启用数量，并将结果传给后续步骤。
+     *
+     * @param actions 动作集合，供本方法处理启用数量时使用
+     * @return 处理后的启用数量结果，供调用方继续处理
+     */
     private long enabledCount(List<FormActionRuntimeDTO> actions) {
         return actions.stream()
                 .filter(FormActionRuntimeDTO::isEnabled)
                 .count();
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param form 表单，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @return 校验并获取后的定义结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireDefinition(EntityForm form) {
         EntityDefinition definition =
                 definitionMapper.selectById(form.getEntityId());
@@ -488,6 +537,13 @@ public class EntityFormActionService {
         return definition;
     }
 
+    /**
+     * 校验并获取实体编码；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，供本方法校验并获取实体编码时使用
+     * @param definition 定义，供本方法校验并获取实体编码时使用
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireEntityCode(
             String requested,
             EntityDefinition definition) {
@@ -509,9 +565,13 @@ public class EntityFormActionService {
      * 记录、流程实例和发布令牌全部匹配后才返回，不能仅凭 mode/taskId 放行。
      * 流程查看以实例只读权限和实际记录/版本绑定鉴权，其余模式保持原有实体数据权限。</p>
      *
+     * @param definition 定义，作为 {@code dataService.findById} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param mode 已归一化的表单运行模式
      * @param taskId 审批请求声明的确切任务 ID，不能用实体任务摘要替代
      * @param releaseResolutionToken 绑定当前用户、任务及发布版本的签名令牌
+     * @param source 待加载行的原始输入，结果供调用方继续使用
      * @return 已鉴权记录及审批任务上下文；新增模式的记录为空
      * @throws BusinessForbiddenException 审批上下文缺失、失效或与记录不匹配
      */
@@ -576,9 +636,24 @@ public class EntityFormActionService {
                 listKey), null);
     }
 
-    /** 审批任务上下文仅在记录和发布令牌联合校验通过后附加。 */
+    /**
+     * 审批任务上下文仅在记录和发布令牌联合校验通过后附加。
+     *
+     * @param row 行，保存在对象中供后续校验、查询或展示
+     * @param task 任务，保存在对象中供后续校验、查询或展示
+     */
     private record AuthorizedRecord(EntityDataDTO row, ActionableTaskContext task) {}
 
+    /**
+     * 处理{@code built}能力，并将结果传给后续步骤。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param definition 定义，作为 {@code evaluateOverrideRule} 的输入影响后续处理
+     * @param mode 模式标识，决定后续{@code built}能力采用的处理分支
+     * @param row 行，供本方法处理{@code built}能力时使用
+     * @param button 按钮，供本方法处理{@code built}能力时使用
+     * @return 处理后的{@code built}能力结果，供调用方继续处理
+     */
     private EntityActionCapabilityDTO builtInCapability(
             String key,
             EntityDefinition definition,
@@ -634,6 +709,11 @@ public class EntityFormActionService {
      * <p>custom perm/availabilityRule 是附加约束，不能替代 CREATE/UPDATE/VIEW
      * 标准权限或审批待办校验。缺少编辑、查看、审批记录上下文时按禁用处理，避免
      * 解析接口先乐观返回 enabled，随后执行接口才拒绝。</p>
+     *
+     * @param definition 定义，作为 {@code capabilityService.evaluateApprovalAction} 的输入影响后续处理
+     * @param mode 模式标识，决定后续自定义模式能力采用的处理分支
+     * @param row 行，供本方法处理自定义模式能力时使用
+     * @return 处理后的自定义模式能力结果，供调用方继续处理
      */
     private EntityActionCapabilityDTO customModeCapability(
             EntityDefinition definition,
@@ -671,7 +751,13 @@ public class EntityFormActionService {
                 row);
     }
 
-    /** 取模式能力与按钮自定义能力的最严格交集。 */
+    /**
+     * 取模式能力与按钮自定义能力的最严格交集。
+     *
+     * @param modeCapability 模式能力，作为 {@code EntityActionCapabilityDTO.disabled} 的输入影响后续处理
+     * @param configuredCapability 已配置能力，供本方法处理{@code intersect}能力集合时使用
+     * @return 处理后的{@code intersect}能力集合结果，供调用方继续处理
+     */
     private EntityActionCapabilityDTO intersectCapabilities(
             EntityActionCapabilityDTO modeCapability,
             EntityActionCapabilityDTO configuredCapability) {
@@ -695,6 +781,14 @@ public class EntityFormActionService {
         return configuredCapability;
     }
 
+    /**
+     * 求值覆盖规则，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param button 按钮，作为 {@code readRule} 的输入影响后续处理
+     * @param row 行，作为 {@code capabilityService.evaluateConfiguredAction} 的输入影响后续处理
+     * @return 求值后的覆盖规则结果，供调用方继续处理
+     */
     private EntityActionCapabilityDTO evaluateOverrideRule(
             String entityCode,
             Map<String, Object> button,
@@ -710,6 +804,12 @@ public class EntityFormActionService {
                 row);
     }
 
+    /**
+     * 判断工作流就绪条件是否成立，供调用方选择后续分支。
+     *
+     * @param definition 定义，作为 {@code processCatalogPort.findItemsByIds} 的输入影响后续处理
+     * @return 工作流就绪条件成立时为 true，否则为 false
+     */
     private boolean workflowReady(EntityDefinition definition) {
         if (definition.getLifecycleMode()
                 != EntityDefinition.LifecycleMode.WORKFLOW
@@ -726,6 +826,11 @@ public class EntityFormActionService {
                 && "PUBLISHED".equalsIgnoreCase(process.status());
     }
 
+    /**
+     * 处理审批规则，并将结果传给后续步骤。
+     *
+     * @return 处理后的审批规则结果，供调用方继续处理
+     */
     private EntityActionRuleDTO approvalRule() {
         EntityActionRuleDTO rule = new EntityActionRuleDTO();
         EntityActionRuleDTO.RuleNode relation =
@@ -746,6 +851,13 @@ public class EntityFormActionService {
         return rule;
     }
 
+    /**
+     * 整理默认{@code built}数据，供调用方遍历或继续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param mode 模式标识，决定后续默认{@code built}采用的处理分支
+     * @return 默认{@code built}键值结果，供调用方继续处理
+     */
     private Map<String, Object> defaultBuiltIn(
             String key,
             String mode) {
@@ -790,6 +902,14 @@ public class EntityFormActionService {
         return button;
     }
 
+    /**
+     * 应用覆盖，并将结果传给后续步骤。
+     *
+     * @param base 基础，供本方法应用覆盖时使用
+     * @param override 覆盖，作为 {@code result.put} 的输入影响后续处理
+     * @param mode 模式标识，决定后续覆盖采用的处理分支
+     * @return 覆盖键值结果，供调用方继续处理
+     */
     private Map<String, Object> applyOverride(
             Map<String, Object> base,
             Map<String, Object> override,
@@ -811,6 +931,13 @@ public class EntityFormActionService {
         return result;
     }
 
+    /**
+     * 判断启用模式条件是否成立，供调用方选择后续分支。
+     *
+     * @param button 按钮，作为 {@code Boolean.FALSE.equals} 的输入影响后续处理
+     * @param mode 模式标识，决定后续启用模式采用的处理分支
+     * @return 启用模式条件成立时为 true，否则为 false
+     */
     private boolean enabledForMode(
             Map<String, Object> button,
             String mode) {
@@ -818,6 +945,12 @@ public class EntityFormActionService {
                 && modes(button).contains(mode);
     }
 
+    /**
+     * 规范化自定义；输出作为后续校验或处理的输入。
+     *
+     * @param source 待规范化自定义的原始输入，结果供调用方继续使用
+     * @return 自定义键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeCustom(
             Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>(source);
@@ -830,6 +963,15 @@ public class EntityFormActionService {
         return result;
     }
 
+    /**
+     * 转换为运行时；输出作为后续校验或处理的输入。
+     *
+     * @param formId 表单ID，后续用于转换为运行时时定位或关联目标
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @param capability 能力，作为 {@code dto.setVisible} 的输入影响后续处理
+     * @param custom 自定义，作为 {@code dto.setRuntimeKey} 的输入影响后续处理
+     * @return 转换为后的运行时结果，供调用方继续处理
+     */
     private FormActionRuntimeDTO toRuntime(
             String formId,
             Map<String, Object> button,
@@ -863,6 +1005,10 @@ public class EntityFormActionService {
 
     /**
      * 只向自定义按钮暴露外观配置，并为旧发布快照或异常值提供安全默认值。
+     *
+     * @param button 按钮，作为 {@code firstText} 的输入影响后续处理
+     * @param custom 自定义，供本方法处理运行时按钮{@code appearance}时使用
+     * @return 处理后的运行时按钮{@code appearance}文本，供调用方比较或展示
      */
     private String runtimeButtonAppearance(
             Map<String, Object> button,
@@ -892,6 +1038,11 @@ public class EntityFormActionService {
      * <p>新增态严格由 recordId 缺失推导；编辑/查看必须具备对应标准权限；审批
      * 还必须命中当前用户真实可办理任务。这样 modes 只负责展示适用性，不能单独
      * 成为提权依据。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理已授权请求模式
+     * @param definition 定义，作为 {@code capabilityService.requireStandardPermission} 的输入影响后续处理
+     * @param record 记录，供本方法处理已授权请求模式时使用
+     * @return 处理后的已授权请求模式文本，供调用方比较或展示
      */
     private String authorizedRequestMode(
             UiEventExecuteRequest request,
@@ -933,6 +1084,14 @@ public class EntityFormActionService {
      * 才可信；会签时不能要求它等于能力摘要中的另一待办。发布令牌必须为该任务的
      * ACTIVE_TASK 历史/节点，不能省略后回退
      * 当前 ACTIVE，也不能用 NEW_INSTANCE 或另一流程版本的令牌替代。</p>
+     *
+     * @param requestedTaskId 请求任务ID，后续用于校验并获取审批任务绑定时定位或关联目标
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param source 待校验并获取审批任务绑定的原始输入，结果供调用方继续使用
+     * @param definition 定义，供本方法校验并获取审批任务绑定时使用
+     * @param row 行，作为 {@code findActionableApprovalTaskContext} 的输入影响后续处理
+     * @param approval 审批，供本方法校验并获取审批任务绑定时使用
+     * @return 校验并获取后的审批任务绑定结果，供调用方继续处理
      */
     private ActionableTaskContext requireApprovalTaskBinding(
             String requestedTaskId,
@@ -982,7 +1141,12 @@ public class EntityFormActionService {
         return task;
     }
 
-    /** 统一解析模式声明，防止记录鉴权与按钮执行使用相互冲突的模式。 */
+    /**
+     * 统一解析模式声明，防止记录鉴权与按钮执行使用相互冲突的模式。
+     *
+     * @param request 本次请求，后续经校验后用于处理请求模式
+     * @return 处理后的请求模式文本，供调用方比较或展示
+     */
     private String requestedMode(UiEventExecuteRequest request) {
         Object contextMode = request.getContext() == null
                 ? null : request.getContext().get("mode");
@@ -998,11 +1162,24 @@ public class EntityFormActionService {
                 contextMode != null ? contextMode : inputMode));
     }
 
+    /**
+     * 规范化模式；输出作为后续校验或处理的输入。
+     *
+     * @param mode 模式标识，决定后续模式采用的处理分支
+     * @return 规范化后的模式文本，供调用方比较或展示
+     */
     private String normalizeMode(String mode) {
         return StringUtils.hasText(mode)
                 ? mode.trim().toLowerCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 校验并获取模式；不满足约束时阻止后续处理。
+     *
+     * @param mode 模式标识，决定后续模式采用的处理分支
+     * @return 校验并获取后的模式文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requireMode(String mode) {
         String normalized = text(mode)
                 .toLowerCase(Locale.ROOT);
@@ -1013,6 +1190,12 @@ public class EntityFormActionService {
         return normalized;
     }
 
+    /**
+     * 读取规则；查询结果供调用方展示或继续处理。
+     *
+     * @param button 按钮，供本方法读取规则时使用
+     * @return 读取后的规则结果，供调用方继续处理
+     */
     private EntityActionRuleDTO readRule(
             Map<String, Object> button) {
         Object raw = button.get("availabilityRule");
@@ -1026,6 +1209,12 @@ public class EntityFormActionService {
                 EntityActionRuleDTO.class);
     }
 
+    /**
+     * 整理模式集合数据，供调用方遍历或继续处理。
+     *
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @return 实体表单动作集合，供调用方遍历或展示
+     */
     private Set<String> modes(Map<String, Object> button) {
         Object raw = button.containsKey("modes")
                 ? button.get("modes")
@@ -1046,12 +1235,24 @@ public class EntityFormActionService {
         return result;
     }
 
+    /**
+     * 读取视图配置；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，供本方法读取视图配置时使用
+     * @return 视图配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> readViewConfig(String document) {
         return StringUtils.hasText(document)
                 ? codec.readObject(document, "表单视图配置")
                 : Map.of();
     }
 
+    /**
+     * 整理快照节点集合数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 实体表单节点集合，供调用方遍历或展示
+     */
     private List<EntityFormNode> snapshotNodes(
             Map<String, Object> snapshot) {
         return objectMapper.convertValue(
@@ -1059,6 +1260,12 @@ public class EntityFormActionService {
                 new TypeReference<List<EntityFormNode>>() {});
     }
 
+    /**
+     * 整理快照绑定集合数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 实体表单动作集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> snapshotBindings(
             Map<String, Object> snapshot) {
         return objectMapper.convertValue(
@@ -1066,6 +1273,12 @@ public class EntityFormActionService {
                 MAP_LIST);
     }
 
+    /**
+     * 整理映射或空数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射或空的原始输入，结果供调用方继续使用
+     * @return 映射或空键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapOrEmpty(Object value) {
         if (!(value instanceof Map<?, ?> source)) {
@@ -1077,11 +1290,23 @@ public class EntityFormActionService {
         return result;
     }
 
+    /**
+     * 整理映射或空值数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射或空值的原始输入，结果供调用方继续使用
+     * @return 映射或空值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapOrNull(Object value) {
         Map<String, Object> result = mapOrEmpty(value);
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 实体表单动作集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> source)) {
             return List.of();
@@ -1093,6 +1318,13 @@ public class EntityFormActionService {
         return result;
     }
 
+    /**
+     * 处理数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理数值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的数值结果，供调用方继续处理
+     */
     private int number(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -1106,15 +1338,38 @@ public class EntityFormActionService {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param value 待处理首个文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object value, String fallback) {
         String result = text(value);
         return StringUtils.hasText(result) ? result : fallback;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    /**
+     * 封装运行时来源的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param form 表单，保存在对象中供后续校验、查询或展示
+     * @param viewConfig 视图配置内容，决定后续运行时来源的处理规则
+     * @param nodes 节点集合，保存在对象中供后续校验、查询或展示
+     * @param bindings 绑定集合，保存在对象中供后续校验、查询或展示
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     */
     private record RuntimeSource(
             EntityForm form,
             Map<String, Object> viewConfig,

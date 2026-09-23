@@ -1,7 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -56,6 +56,12 @@ public class SystemEntityReadService {
     private final SystemEntityFieldPolicy fieldPolicy;
     private final DatabaseQueryDialect queryDialect;
 
+    /**
+     * 判断是否系统实体；判断结果决定调用方的后续分支。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 系统实体条件成立时为 true，否则为 false
+     */
     public boolean isSystemEntity(String entityCode) {
         EntityDefinition definition =
                 definitionMapper.findByEntityCode(entityCode)
@@ -65,6 +71,15 @@ public class SystemEntityReadService {
                 == EntityDefinition.StorageMode.SYSTEM;
     }
 
+    /**
+     * 按筛选条件分页查询实体数据；结果供列表展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param filters 过滤条件，供本方法查询系统实体读取分页时使用
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPage(
             String entityCode,
@@ -80,6 +95,17 @@ public class SystemEntityReadService {
                 null);
     }
 
+    /**
+     * 按筛选条件分页查询实体数据；结果供列表展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param filters 过滤条件，作为 {@code executePage} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param sortField 排序字段，供本方法查询系统实体读取分页时使用
+     * @param sortDirection 排序{@code direction}，供本方法查询系统实体读取分页时使用
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPage(
             String entityCode,
@@ -103,6 +129,12 @@ public class SystemEntityReadService {
 
     /**
      * 为实体记录选择器提供系统实体的安全分页查询。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param keyword 关键字，作为 {@code executePage} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findSelectorPage(
@@ -123,6 +155,18 @@ public class SystemEntityReadService {
                 null);
     }
 
+    /**
+     * 执行系统实体读取分页，并将结果传给后续步骤。
+     *
+     * @param definition 定义，供本方法执行系统实体读取分页时使用
+     * @param metadata 元数据，作为 {@code quote} 的输入影响后续处理
+     * @param sqlFilter SQL过滤，供本方法执行系统实体读取分页时使用
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param sortField 排序字段，供本方法执行系统实体读取分页时使用
+     * @param sortDirection 排序{@code direction}，供本方法执行系统实体读取分页时使用
+     * @return 执行后的系统实体读取分页结果，供调用方继续处理
+     */
     private PageResult<EntityDataDTO> executePage(
             EntityDefinition definition,
             QueryMetadata metadata,
@@ -170,6 +214,16 @@ public class SystemEntityReadService {
                 safePageSize);
     }
 
+    /**
+     * 按ID查询实体数据；结果供后续展示或处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO findById(
             String entityCode,
@@ -197,6 +251,8 @@ public class SystemEntityReadService {
      * 校验平台系统表读取权限。
      * USER/DEPT/ROLE/GROUP 对应的身份表供运行态选择器和已授权列表使用，已登录即可；
      * 菜单、字典等配置表仍要求对应后台管理权限。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      */
     public void requirePermissions(String entityCode) {
         if (!fieldPolicy.isSupportedEntity(entityCode)) {
@@ -220,6 +276,14 @@ public class SystemEntityReadService {
         }
     }
 
+    /**
+     * 校验并获取系统实体；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的系统实体结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private EntityDefinition requireSystemEntity(
             String entityCode) {
         EntityDefinition definition =
@@ -243,6 +307,13 @@ public class SystemEntityReadService {
         return definition;
     }
 
+    /**
+     * 处理元数据，并将结果传给后续步骤。
+     *
+     * @param definition 定义，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @return 处理后的元数据结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private QueryMetadata metadata(
             EntityDefinition definition) {
         Map<String, String> readableColumns =
@@ -271,6 +342,14 @@ public class SystemEntityReadService {
                 readableColumns);
     }
 
+    /**
+     * 构建过滤；结果供后续流程传递或持久化。
+     *
+     * @param metadata 元数据，作为 {@code conditions.add} 的输入影响后续处理
+     * @param filters 过滤条件，供本方法构建过滤时使用
+     * @return 构建后的过滤结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private SqlFilter buildFilter(
             QueryMetadata metadata,
             Map<String, Object> filters) {
@@ -318,6 +397,14 @@ public class SystemEntityReadService {
                 parameters);
     }
 
+    /**
+     * 构建{@code selector}过滤；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param metadata 元数据，作为 {@code conditions.add} 的输入影响后续处理
+     * @param keyword 关键字，作为 {@code parameters.add} 的输入影响后续处理
+     * @return 构建后的{@code selector}过滤结果，供调用方继续处理
+     */
     private SqlFilter buildSelectorFilter(
             String entityCode,
             QueryMetadata metadata,
@@ -367,6 +454,12 @@ public class SystemEntityReadService {
                 parameters);
     }
 
+    /**
+     * 生成编码字段文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 处理后的编码字段文本，供调用方比较或展示
+     */
     private String codeField(String entityCode) {
         return switch (normalize(entityCode)) {
             case "sys_user" -> "username";
@@ -379,6 +472,18 @@ public class SystemEntityReadService {
         };
     }
 
+    /**
+     * 追加条件；结果供后续流程传递或持久化。
+     *
+     * @param column 列，作为 {@code conditions.add} 的输入影响后续处理
+     * @param operator 操作人，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param value 待追加条件的原始输入，结果供调用方继续使用
+     * @param start 启动，供本方法追加条件时使用
+     * @param end 结束，供本方法追加条件时使用
+     * @param conditions {@code conditions}，供本方法追加条件时使用
+     * @param parameters 参数集合，供本方法追加条件时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void appendCondition(
             String column,
             String operator,
@@ -444,6 +549,16 @@ public class SystemEntityReadService {
         }
     }
 
+    /**
+     * 规范化操作人；输出作为后续校验或处理的输入。
+     *
+     * @param requested 请求，供本方法规范化操作人时使用
+     * @param start 启动，供本方法规范化操作人时使用
+     * @param end 结束，供本方法规范化操作人时使用
+     * @param value 待规范化操作人的原始输入，结果供调用方继续使用
+     * @return 规范化后的操作人文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeOperator(
             Object requested,
             Object start,
@@ -470,6 +585,14 @@ public class SystemEntityReadService {
         return operator;
     }
 
+    /**
+     * 转换为DTO；输出作为后续校验或处理的输入。
+     *
+     * @param definition 定义，作为 {@code enrichReferenceDisplays} 的输入影响后续处理
+     * @param metadata 元数据，供本方法转换为DTO时使用
+     * @param row 行，供本方法转换为DTO时使用
+     * @return 转换为后的DTO结果，供调用方继续处理
+     */
     private EntityDataDTO toDto(
             EntityDefinition definition,
             QueryMetadata metadata,
@@ -496,6 +619,12 @@ public class SystemEntityReadService {
         return dto;
     }
 
+    /**
+     * 补充引用{@code displays}；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param data 数据，后续用于补充引用{@code displays}并传递处理结果
+     */
     private void enrichReferenceDisplays(
             String entityCode,
             Map<String, Object> data) {
@@ -521,6 +650,13 @@ public class SystemEntityReadService {
         });
     }
 
+    /**
+     * 处理引用展示，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于处理引用展示时定位或关联目标
+     * @return 处理后的引用展示结果，供调用方继续处理
+     */
     private ReferenceDisplay referenceDisplay(
             String entityCode,
             String fieldCode) {
@@ -571,6 +707,13 @@ public class SystemEntityReadService {
         };
     }
 
+    /**
+     * 解析名称；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param data 数据，后续用于解析名称并传递处理结果
+     * @return 解析后的名称文本，供调用方比较或展示
+     */
     private String resolveName(
             String entityCode,
             Map<String, Object> data) {
@@ -623,6 +766,13 @@ public class SystemEntityReadService {
         };
     }
 
+    /**
+     * 解析编码；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param data 数据，后续用于解析编码并传递处理结果
+     * @return 解析后的编码文本，供调用方比较或展示
+     */
     private String resolveCode(
             String entityCode,
             Map<String, Object> data) {
@@ -637,6 +787,15 @@ public class SystemEntityReadService {
         };
     }
 
+    /**
+     * 查找系统实体读取；结果供调用方的后续步骤使用。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @param idColumn ID列，供本方法查找系统实体读取时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param expression 表达式，作为 {@code jdbcTemplate.queryForObject} 的输入影响后续处理
+     * @return 查找后的系统实体读取文本，供调用方比较或展示
+     */
     private String lookup(
             String table,
             String idColumn,
@@ -659,6 +818,12 @@ public class SystemEntityReadService {
         }
     }
 
+    /**
+     * 生成默认顺序文本，供后续匹配或展示。
+     *
+     * @param metadata 元数据，作为 {@code quote} 的输入影响后续处理
+     * @return 处理后的默认顺序文本，供调用方比较或展示
+     */
     private String defaultOrder(QueryMetadata metadata) {
         if (metadata.readableColumns()
                 .containsKey("create_time")) {
@@ -675,6 +840,15 @@ public class SystemEntityReadService {
         return "";
     }
 
+    /**
+     * 生成顺序文本，供后续匹配或展示。
+     *
+     * @param metadata 元数据，作为 {@code defaultOrder} 的输入影响后续处理
+     * @param sortField 排序字段，作为 {@code normalize} 的输入影响后续处理
+     * @param sortDirection 排序{@code direction}，供本方法处理顺序时使用
+     * @return 处理后的顺序文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String orderBy(
             QueryMetadata metadata,
             String sortField,
@@ -700,12 +874,25 @@ public class SystemEntityReadService {
                 + " " + direction + stableIdOrder(metadata, column);
     }
 
-    /** 非唯一排序字段可能重复，以主键打破平局，保证同一份数据的各页不重复或漏行。 */
+    /**
+     * 非唯一排序字段可能重复，以主键打破平局，保证同一份数据的各页不重复或漏行。
+     *
+     * @param metadata 元数据，供本方法处理稳定ID顺序时使用
+     * @param primarySortColumn 主要排序列，供本方法处理稳定ID顺序时使用
+     * @return 处理后的稳定ID顺序文本，供调用方比较或展示
+     */
     private String stableIdOrder(QueryMetadata metadata, String primarySortColumn) {
         String id = metadata.readableColumns().get("id");
         return StringUtils.hasText(id) && !id.equals(primarySortColumn) ? ", " + quote(id) + " ASC" : "";
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param row 行，供本方法处理值时使用
+     * @param column 列，作为 {@code row.get} 的输入影响后续处理
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private Object value(
             Map<String, Object> row,
             String column) {
@@ -720,6 +907,12 @@ public class SystemEntityReadService {
         return null;
     }
 
+    /**
+     * 处理日期时间，并将结果传给后续步骤。
+     *
+     * @param value 待处理日期时间的原始输入，结果供调用方继续使用
+     * @return 处理后的日期时间结果，供调用方继续处理
+     */
     private LocalDateTime dateTime(Object value) {
         if (value instanceof LocalDateTime localDateTime) {
             return localDateTime;
@@ -730,6 +923,12 @@ public class SystemEntityReadService {
         return null;
     }
 
+    /**
+     * 整理值集合数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理值集合的原始输入，结果供调用方继续使用
+     * @return {@code list<?>}集合，供调用方遍历或展示
+     */
     private List<?> values(Object value) {
         if (value instanceof Collection<?> collection) {
             return new ArrayList<>(collection);
@@ -743,6 +942,13 @@ public class SystemEntityReadService {
         return value == null ? List.of() : List.of(value);
     }
 
+    /**
+     * 生成关系名称文本，供后续匹配或展示。
+     *
+     * @param left 左侧，作为 {@code firstNonBlank} 的输入影响后续处理
+     * @param right 右侧，作为 {@code firstNonBlank} 的输入影响后续处理
+     * @return 处理后的关系名称文本，供调用方比较或展示
+     */
     private String relationName(String left, String right) {
         if (StringUtils.hasText(left)
                 && StringUtils.hasText(right)) {
@@ -751,6 +957,12 @@ public class SystemEntityReadService {
         return firstNonBlank(left, right, "关系记录");
     }
 
+    /**
+     * 生成{@code strip}后缀文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code strip}后缀文本，供调用方比较或展示
+     */
     private String stripSuffix(String key) {
         for (String suffix :
                 List.of("_start", "_end", "_op")) {
@@ -763,6 +975,13 @@ public class SystemEntityReadService {
         return key;
     }
 
+    /**
+     * 生成引用文本，供后续匹配或展示。
+     *
+     * @param identifier 标识符，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的引用文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String quote(String identifier) {
         if (!StringUtils.hasText(identifier)
                 || !IDENTIFIER.matcher(identifier).matches()) {
@@ -772,16 +991,34 @@ public class SystemEntityReadService {
         return queryDialect.quoteIdentifier(identifier);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化系统实体读取的原始输入，结果供调用方继续使用
+     * @return 规范化后的系统实体读取文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return value == null
                 ? ""
                 : value.trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -791,16 +1028,34 @@ public class SystemEntityReadService {
         return null;
     }
 
+    /**
+     * 封装查询元数据的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param readableColumns 可读列集合，保存在对象中供后续校验、查询或展示
+     */
     private record QueryMetadata(
             String tableName,
             Map<String, String> readableColumns) {
     }
 
+    /**
+     * 封装SQL过滤的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sql SQL，保存在对象中供后续校验、查询或展示
+     * @param parameters 参数集合，保存在对象中供后续校验、查询或展示
+     */
     private record SqlFilter(
             String sql,
             List<Object> parameters) {
     }
 
+    /**
+     * 封装引用展示的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @param expression 表达式，保存在对象中供后续校验、查询或展示
+     */
     private record ReferenceDisplay(
             String table,
             String expression) {

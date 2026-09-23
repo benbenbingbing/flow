@@ -6,8 +6,8 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
-import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.permission.api.response.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -160,6 +160,10 @@ public class UiDataSourceExecutionAccessService {
     /**
      * 接口服务中心调试入口。管理员必须明确选择一个 FORM/LIST/ENTITY 业务上下文，
      * 但不要求先把待调试操作绑定到该草稿。
+     *
+     * @param definition 定义，作为 {@code requireScopeCompatibility} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理授权管理预览
+     * @return 处理后的授权管理预览结果，供调用方继续处理
      */
     public UiDataSourceExecutionAuthorization authorizeManagementPreview(
             UiExtensionDefinition definition,
@@ -296,7 +300,15 @@ public class UiDataSourceExecutionAccessService {
         return authorizeResolvedFormEvent(definition, request, resolvedSnapshot, expectedSnapshotHash);
     }
 
-    /** 复用同一有效制品验证绑定，禁止重新读取 ACTIVE 或基础版本造成跨版本授权。 */
+    /**
+     * 复用同一有效制品验证绑定，禁止重新读取 ACTIVE 或基础版本造成跨版本授权。
+     *
+     * @param definition 定义，作为 {@code requireScopeCompatibility} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理授权已解析表单事件
+     * @param resolvedSnapshot 已解析快照，作为 {@code releaseService.verifyResolvedEventSnapshot} 的输入影响后续处理
+     * @param expectedSnapshotHash 预期快照哈希，作为 {@code releaseService.verifyResolvedEventSnapshot} 的输入影响后续处理
+     * @return 处理后的授权已解析表单事件结果，供调用方继续处理
+     */
     private UiDataSourceExecutionAuthorization authorizeResolvedFormEvent(
             UiExtensionDefinition definition,
             UiExtensionExecuteRequest request,
@@ -354,6 +366,11 @@ public class UiDataSourceExecutionAccessService {
                 request);
     }
 
+    /**
+     * 校验并获取已解析绑定身份；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取已解析绑定身份
+     */
     private void requireResolvedBindingIdentity(
             UiExtensionExecuteRequest request) {
         String targetType = normalize(
@@ -370,6 +387,13 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 校验并获取已解析表单身份；不满足约束时阻止后续处理。
+     *
+     * @param origin 来源，供本方法校验并获取已解析表单身份时使用
+     * @param target 目标，供本方法校验并获取已解析表单身份时使用
+     * @param snapshot 快照，供本方法校验并获取已解析表单身份时使用
+     */
     private void requireResolvedFormIdentity(
             Origin origin,
             ConfigTarget target,
@@ -387,6 +411,14 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 解析已发布发布版本；输出作为后续校验或处理的输入。
+     *
+     * @param origin 来源，作为 {@code releaseMapper.findActive} 的输入影响后续处理
+     * @param target 目标，作为 {@code requireActiveOwnerRelease} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于解析已发布发布版本
+     * @return 解析后的已发布发布版本结果，供调用方继续处理
+     */
     private UiConfigRelease resolvePublishedRelease(
             Origin origin,
             ConfigTarget target,
@@ -455,6 +487,18 @@ public class UiDataSourceExecutionAccessService {
         return release;
     }
 
+    /**
+     * 处理授权，并将结果传给后续步骤。
+     *
+     * @param preview 预览，作为 {@code UiDataSourceExecutionAuthorization} 的输入影响后续处理
+     * @param origin 来源，作为 {@code requireClaimConsistency} 的输入影响后续处理
+     * @param releaseId 发布版本ID，后续用于处理授权时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理授权时使用
+     * @param bindingPath 绑定路径，供本方法处理授权时使用
+     * @param target 目标，作为 {@code requireClaimConsistency} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理授权
+     * @return 处理后的授权结果，供调用方继续处理
+     */
     private UiDataSourceExecutionAuthorization authorization(
             boolean preview,
             Origin origin,
@@ -488,6 +532,12 @@ public class UiDataSourceExecutionAccessService {
                 request.getServerIdempotencyKey());
     }
 
+    /**
+     * 解析来源；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析来源
+     * @return 解析后的来源结果，供调用方继续处理
+     */
     private Origin resolveOrigin(UiExtensionExecuteRequest request) {
         if (request == null) {
             throw originRequired();
@@ -533,6 +583,12 @@ public class UiDataSourceExecutionAccessService {
         return new Origin(configType, configId);
     }
 
+    /**
+     * 校验并获取目标；不满足约束时阻止后续处理。
+     *
+     * @param origin 来源，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @return 校验并获取后的目标结果，供调用方继续处理
+     */
     private ConfigTarget requireTarget(Origin origin) {
         if (ENTITY.equals(origin.configType())) {
             EntityDefinition entity = definitionMapper.selectById(
@@ -600,6 +656,18 @@ public class UiDataSourceExecutionAccessService {
                 list);
     }
 
+    /**
+     * 查询草稿绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param origin 来源，作为 {@code bindingMatcher.findDraftEvent} 的输入影响后续处理
+     * @param target 目标，供本方法查询草稿绑定时使用
+     * @param usage 使用场景，作为 {@code bindingMatcher.findForm} 的输入影响后续处理
+     * @param targetType 目标类型标识，决定后续草稿绑定采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param sourceId 来源ID，后续用于查询草稿绑定时定位或关联目标
+     * @param operationCode 操作编码，后续用于查询草稿绑定时定位或关联目标
+     * @return 查询后的草稿绑定文本，供调用方比较或展示
+     */
     private String findDraftBinding(
             Origin origin,
             ConfigTarget target,
@@ -661,6 +729,18 @@ public class UiDataSourceExecutionAccessService {
                 "$.draft.list");
     }
 
+    /**
+     * 查询已发布绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param origin 来源，供本方法查询已发布绑定时使用
+     * @param snapshot 快照，供本方法查询已发布绑定时使用
+     * @param usage 使用场景，供本方法查询已发布绑定时使用
+     * @param targetType 目标类型标识，决定后续已发布绑定采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param sourceId 来源ID，后续用于查询已发布绑定时定位或关联目标
+     * @param operationCode 操作编码，后续用于查询已发布绑定时定位或关联目标
+     * @return 查询后的已发布绑定文本，供调用方比较或展示
+     */
     private String findPublishedBinding(
             Origin origin,
             Map<String, Object> snapshot,
@@ -681,6 +761,20 @@ public class UiDataSourceExecutionAccessService {
                 null);
     }
 
+    /**
+     * 查询已发布绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param origin 来源，作为 {@code bindingMatcher.findPublished} 的输入影响后续处理
+     * @param snapshot 快照，作为 {@code normalize} 的输入影响后续处理
+     * @param usage 使用场景，供本方法查询已发布绑定时使用
+     * @param targetType 目标类型标识，决定后续已发布绑定采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param sourceId 来源ID，后续用于查询已发布绑定时定位或关联目标
+     * @param operationCode 操作编码，后续用于查询已发布绑定时定位或关联目标
+     * @param bindingOwnerType 绑定归属方类型标识，决定后续已发布绑定采用的处理分支
+     * @param bindingOwnerId 绑定归属方ID，后续用于查询已发布绑定时定位或关联目标
+     * @return 查询后的已发布绑定文本，供调用方比较或展示
+     */
     private String findPublishedBinding(
             Origin origin,
             Map<String, Object> snapshot,
@@ -709,6 +803,11 @@ public class UiDataSourceExecutionAccessService {
                 bindingOwnerId);
     }
 
+    /**
+     * 校验并获取预览访问；不满足约束时阻止后续处理。
+     *
+     * @param origin 来源，作为 {@code configurationAccessService.requireEntityAccess} 的输入影响后续处理
+     */
     private void requirePreviewAccess(Origin origin) {
         if (ENTITY.equals(origin.configType())) {
             configurationAccessService.requireEntityAccess(
@@ -720,6 +819,12 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 校验并获取列表运行时访问；不满足约束时阻止后续处理。
+     *
+     * @param origin 来源，供本方法校验并获取列表运行时访问时使用
+     * @param target 目标，供本方法校验并获取列表运行时访问时使用
+     */
     private void requireListRuntimeAccess(
             Origin origin,
             ConfigTarget target) {
@@ -740,6 +845,13 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 校验并获取活动归属方发布版本；不满足约束时阻止后续处理。
+     *
+     * @param origin 来源，作为 {@code conflict} 的输入影响后续处理
+     * @param target 目标，供本方法校验并获取活动归属方发布版本时使用
+     * @param release 发布版本，供本方法校验并获取活动归属方发布版本时使用
+     */
     private void requireActiveOwnerRelease(
             Origin origin,
             ConfigTarget target,
@@ -752,6 +864,13 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 校验并获取作用域兼容性；不满足约束时阻止后续处理。
+     *
+     * @param definition 定义，作为 {@code normalize} 的输入影响后续处理
+     * @param origin 来源，作为 {@code FORM.equals} 的输入影响后续处理
+     * @param target 目标，供本方法校验并获取作用域兼容性时使用
+     */
     private void requireScopeCompatibility(
             UiExtensionDefinition definition,
             Origin origin,
@@ -775,6 +894,13 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 校验并获取认领{@code consistency}；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取认领{@code consistency}
+     * @param origin 来源，供本方法校验并获取认领{@code consistency}时使用
+     * @param target 目标，供本方法校验并获取认领{@code consistency}时使用
+     */
     private void requireClaimConsistency(
             UiExtensionExecuteRequest request,
             Origin origin,
@@ -790,6 +916,11 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
+    /**
+     * 处理当前用户，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前用户结果，供调用方继续处理
+     */
     private SysUser currentUser() {
         String userId = UserContext.getUserId();
         if (!StringUtils.hasText(userId)) {
@@ -807,6 +938,14 @@ public class UiDataSourceExecutionAccessService {
         return user;
     }
 
+    /**
+     * 处理权限方案，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的权限方案结果，供调用方继续处理
+     */
     private DataScopePlan permissionPlan(
             String entityCode,
             String listKey,
@@ -842,6 +981,11 @@ public class UiDataSourceExecutionAccessService {
                 permission.getReleaseVersion());
     }
 
+    /**
+     * 处理驳回可信元数据，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理驳回可信元数据
+     */
     private void rejectTrustedMetadata(
             UiExtensionExecuteRequest request) {
         if (request == null) {
@@ -864,18 +1008,40 @@ public class UiDataSourceExecutionAccessService {
         validateBusinessInput(request.getInput());
     }
 
+    /**
+     * 生成保留键文本，供后续匹配或展示。
+     *
+     * @param value 待处理保留键的原始输入，结果供调用方继续使用
+     * @param trustedIdempotencyKey 可信幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的保留键文本，供调用方比较或展示
+     */
     private static String reservedKey(
             Map<String, Object> value,
             String trustedIdempotencyKey) {
         return reservedKey(value, trustedIdempotencyKey, false);
     }
 
+    /**
+     * 生成保留表单按钮键文本，供后续匹配或展示。
+     *
+     * @param value 待处理保留表单按钮键的原始输入，结果供调用方继续使用
+     * @param trustedIdempotencyKey 可信幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的保留表单按钮键文本，供调用方比较或展示
+     */
     private static String reservedFormButtonKey(
             Map<String, Object> value,
             String trustedIdempotencyKey) {
         return reservedKey(value, trustedIdempotencyKey, true);
     }
 
+    /**
+     * 生成保留键文本，供后续匹配或展示。
+     *
+     * @param value 待处理保留键的原始输入，结果供调用方继续使用
+     * @param trustedIdempotencyKey 可信幂等键，后续用于授权校验、关联或幂等去重
+     * @param includeFormButtonKeys {@code include}表单按钮键集合，供本方法处理保留键时使用
+     * @return 处理后的保留键文本，供调用方比较或展示
+     */
     private static String reservedKey(
             Map<String, Object> value,
             String trustedIdempotencyKey,
@@ -913,7 +1079,14 @@ public class UiDataSourceExecutionAccessService {
         }
     }
 
-    /** 字段事件使用已验真的有效表单快照解析其精确绑定。 */
+    /**
+     * 字段事件使用已验真的有效表单快照解析其精确绑定。
+     *
+     * @param configType 配置类型标识，决定后续表单字段事件采用的处理分支
+     * @param targetType 目标类型标识，决定后续表单字段事件采用的处理分支
+     * @param eventCode 事件编码，后续用于判断是否表单字段事件时定位或关联目标
+     * @return 表单字段事件条件成立时为 true，否则为 false
+     */
     static boolean isFormFieldEvent(
             String configType, String targetType, String eventCode) {
         return FORM.equals(normalize(configType))
@@ -928,6 +1101,16 @@ public class UiDataSourceExecutionAccessService {
      * 检查上下文中的保留元数据，或仅检查业务输入的深度、大小和循环结构。
      * 业务输入与可信身份分别传给 Provider，不能按业务字段名推断认证语义。
      * 上下文仍拒绝嵌套身份声明；服务端幂等种子仅允许出现在根层且必须精确匹配。
+     *
+     * @param value 待处理保留键的原始输入，结果供调用方继续使用
+     * @param trustedIdempotencyKey 可信幂等键，后续用于授权校验、关联或幂等去重
+     * @param path 路径，供本方法处理保留键时使用
+     * @param depth 深度，供本方法处理保留键时使用
+     * @param visitedNodes {@code visited}节点集合，供本方法处理保留键时使用
+     * @param visitedContainers {@code visited}{@code containers}，供本方法处理保留键时使用
+     * @param inspectReservedKeys 检查保留键集合，供本方法处理保留键时使用
+     * @param includeFormButtonKeys {@code include}表单按钮键集合，供本方法处理保留键时使用
+     * @return 处理后的保留键文本，供调用方比较或展示
      */
     private static String reservedKey(
             Object value,
@@ -1011,6 +1194,12 @@ public class UiDataSourceExecutionAccessService {
         return null;
     }
 
+    /**
+     * 清洗上下文；结果供调用方的后续步骤使用。
+     *
+     * @param context 执行上下文，向后续上下文步骤传递身份、配置或状态
+     * @return 上下文键值结果，供调用方继续处理
+     */
     private Map<String, Object> sanitizeContext(
             Map<String, Object> context) {
         if (context == null || context.isEmpty()) {
@@ -1033,6 +1222,9 @@ public class UiDataSourceExecutionAccessService {
      * 判断客户端上下文键是否属于只能由服务端注入的可信元数据。
      * 包内事件运行时复用此规则，在构造 Provider 请求前剥离前端展示上下文中的
      * formId/listKey 等身份声明；上下文中嵌套的伪造值仍由递归校验拒绝。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 保留请求键条件成立时为 true，否则为 false
      */
     static boolean isReservedRequestKey(String key) {
         if (key == null) {
@@ -1041,19 +1233,36 @@ public class UiDataSourceExecutionAccessService {
         return RESERVED_REQUEST_KEYS.contains(normalizeRequestKey(key));
     }
 
-    /** FORM_BUTTON_CLICK 额外保护服务端核验后的 task/process 坐标。 */
+    /**
+     * FORM_BUTTON_CLICK 额外保护服务端核验后的 task/process 坐标。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 保留表单按钮请求键条件成立时为 true，否则为 false
+     */
     static boolean isReservedFormButtonRequestKey(String key) {
         String normalized = normalizeRequestKey(key);
         return RESERVED_REQUEST_KEYS.contains(normalized)
                 || FORM_BUTTON_RESERVED_REQUEST_KEYS.contains(normalized);
     }
 
+    /**
+     * 规范化请求键；输出作为后续校验或处理的输入。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 规范化后的请求键文本，供调用方比较或展示
+     */
     private static String normalizeRequestKey(String key) {
         return key == null ? "" : key.replace("_", "")
                 .replace("-", "")
                 .toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param value 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();
@@ -1064,6 +1273,12 @@ public class UiDataSourceExecutionAccessService {
         return result;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String candidate = text(value);
@@ -1074,45 +1289,99 @@ public class UiDataSourceExecutionAccessService {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面数据来源执行访问的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面数据来源执行访问文本，供调用方比较或展示
+     */
     private static String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 构造来源必填异常，供调用方区分失败原因。
+     *
+     * @return 处理后的来源必填结果，供调用方继续处理
+     */
     private BusinessForbiddenException originRequired() {
         return forbidden(
                 "UI_DATA_SOURCE_EXECUTION_ORIGIN_REQUIRED",
                 "数据源执行必须声明可验证的 FORM/LIST/ENTITY 配置来源");
     }
 
+    /**
+     * 构造{@code spoofed}异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code forbidden} 的输入影响后续处理
+     * @return 处理后的{@code spoofed}结果，供调用方继续处理
+     */
     private BusinessForbiddenException spoofed(String message) {
         return forbidden(
                 "UI_DATA_SOURCE_EXECUTION_CONTEXT_SPOOFED",
                 message);
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param errorCode 错误编码，后续用于处理禁止时定位或关联目标
+     * @param message 消息，作为 {@code BusinessForbiddenException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private BusinessForbiddenException forbidden(
             String errorCode,
             String message) {
         return new BusinessForbiddenException(errorCode, message);
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param errorCode 错误编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private BusinessConflictException conflict(
             String errorCode,
             String message) {
         return new BusinessConflictException(errorCode, message);
     }
 
+    /**
+     * 封装来源的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param configType 配置类型标识，决定后续来源采用的处理分支
+     * @param configId 配置ID，后续用于处理来源时定位或关联目标
+     */
     private record Origin(
             String configType,
             String configId) {
     }
 
+    /**
+     * 封装配置目标的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityId 实体ID，后续用于处理配置目标时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param activeReleaseId 活动发布版本ID，后续用于处理配置目标时定位或关联目标
+     * @param accessPermissionCode 访问权限编码，后续用于处理配置目标时定位或关联目标
+     * @param form 表单，保存在对象中供后续校验、查询或展示
+     * @param list 列表，保存在对象中供后续校验、查询或展示
+     */
     private record ConfigTarget(
             String entityId,
             String entityCode,

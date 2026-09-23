@@ -23,6 +23,9 @@ public class OutboxRetentionService {
     @Value("${workflow.outbox.retention-days:7}")
     private int retentionDays = 7;
 
+    /**
+     * 处理{@code cleanup}，并将结果传给后续步骤。
+     */
     @Scheduled(cron = "${workflow.outbox.retention-cron:0 15 3 * * *}")
     @Transactional(rollbackFor = Exception.class)
     public void cleanup() {

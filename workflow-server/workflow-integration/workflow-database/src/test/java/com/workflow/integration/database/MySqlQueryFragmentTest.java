@@ -1,9 +1,9 @@
 package com.workflow.integration.database;
 
-import com.workflow.integration.database.api.DatabaseQuerySql;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
-import com.workflow.integration.database.api.DatabaseSort;
-import com.workflow.integration.database.api.SchemaType;
+import com.workflow.integration.database.api.query.DatabaseQuerySql;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseSort;
+import com.workflow.integration.database.api.schema.SchemaType;
 import java.util.List;
 import org.apache.ibatis.mapping.BoundSql;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
@@ -39,7 +39,7 @@ class MySqlQueryFragmentTest {
         }
         assertThrows(IllegalArgumentException.class, () -> DatabaseQuerySql.integerIdentifierText("MYSQL", null));
         var bound = render("""
-                <script>SELECT ${@com.workflow.integration.database.api.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')}
+                <script>SELECT ${@com.workflow.integration.database.api.query.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')}
                 FROM entity_definition e WHERE entity_code=#{code}</script>
                 """, Map.of("code", "x' OR 1=1 --"));
         assertEquals("SELECT CAST(`e`.`id` AS CHAR) FROM entity_definition e WHERE entity_code=?", normalize(bound.getSql()));
@@ -73,7 +73,7 @@ class MySqlQueryFragmentTest {
         var params = Map.of("owner", "a' OR 1=1 --", "offset", 7, "limit", 3);
         var bound = render("""
                 <script>SELECT id FROM sample WHERE owner=#{owner} ORDER BY id
-                ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, 'offset', 'limit')}
+                ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, 'offset', 'limit')}
                 </script>
                 """, params);
         assertEquals("SELECT id FROM sample WHERE owner=? ORDER BY id LIMIT ?, ?", normalize(bound.getSql()));
@@ -86,7 +86,7 @@ class MySqlQueryFragmentTest {
     void singleCharacterConstantsAndNestedQueriesAreRenderedWithoutRuntimeParameters() {
         var bound = render("""
                 <script>SELECT id FROM sample WHERE id=(SELECT id FROM other WHERE owner=#{owner}
-                ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', '1')})</script>
+                ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})</script>
                 """, Map.of("owner", "reader"));
         assertEquals("SELECT id FROM sample WHERE id=(SELECT id FROM other WHERE owner=? LIMIT 0, 1)", normalize(bound.getSql()));
         assertEquals(1, bound.getParameterMappings().size());
@@ -98,7 +98,7 @@ class MySqlQueryFragmentTest {
                 <script>SELECT id FROM sample WHERE id IN
                 <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
                 <if test="end != null">AND create_time &lt; #{end}</if> ORDER BY id
-                ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', 'limit')}</script>
+                ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', 'limit')}</script>
                 """, Map.of("ids", java.util.List.of("a", "b"), "end", "2026-01-01", "limit", 2));
         assertTrue(bound.getSql().contains("create_time < ?"));
         assertTrue(normalize(bound.getSql()).endsWith("ORDER BY id LIMIT 0, ?"));

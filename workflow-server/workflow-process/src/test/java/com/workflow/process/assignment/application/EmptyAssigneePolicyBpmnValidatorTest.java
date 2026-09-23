@@ -106,7 +106,7 @@ class EmptyAssigneePolicyBpmnValidatorTest {
                 true)));
 
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<com.workflow.contracts.identity.resolver.PersonPrincipal>>
+        ArgumentCaptor<List<com.workflow.contracts.process.assignment.model.PersonPrincipal>>
                 principals = ArgumentCaptor.forClass(List.class);
         verify(resolutionService).resolvePrincipals(
                 principals.capture(), anyString());

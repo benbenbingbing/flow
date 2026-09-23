@@ -210,6 +210,9 @@ public class EntityField {
     @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
     
+    /**
+     * 定义字段类型的可选值；调用方据此选择对应的处理分支。
+     */
     public enum FieldType {
         STRING,         // 字符串
         TEXT,           // 长文本

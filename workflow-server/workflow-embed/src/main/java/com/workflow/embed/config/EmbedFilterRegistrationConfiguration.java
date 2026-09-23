@@ -11,6 +11,12 @@ import org.springframework.context.annotation.Configuration;
 @ConditionalOnProperty(prefix = "workflow.embed", name = "enabled", havingValue = "true")
 public class EmbedFilterRegistrationConfiguration {
 
+    /**
+     * 停用嵌入式过滤{@code auto}{@code registration}；结果供调用方的后续步骤使用。
+     *
+     * @param filter 过滤，供本方法停用嵌入式过滤{@code auto}{@code registration}时使用
+     * @return 停用后的嵌入式过滤{@code auto}{@code registration}结果，供调用方继续处理
+     */
     @Bean
     FilterRegistrationBean<EmbedSessionAuthenticationFilter> disableEmbedFilterAutoRegistration(
             EmbedSessionAuthenticationFilter filter) {

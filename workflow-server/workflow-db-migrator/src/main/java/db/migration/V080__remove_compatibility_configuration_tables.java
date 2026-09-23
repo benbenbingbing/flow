@@ -17,6 +17,12 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
     private final ObjectMapper json = new ObjectMapper();
     private final List<Write> writes = new ArrayList<>();
 
+    /**
+     * 处理迁移，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续迁移步骤传递身份、配置或状态
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @Override
     public void migrate(Context context) throws Exception {
         writes.clear();
@@ -35,7 +41,12 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         }
     }
 
-    /** 节点显式属性优先；只有旧字段尚未形成字段节点时才建立节点。 */
+    /**
+     * 节点显式属性优先；只有旧字段尚未形成字段节点时才建立节点。
+     *
+     * @param connection 连接，作为 {@code group} 的输入影响后续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private void migrateForms(Connection connection) throws Exception {
         Map<String, List<Map<String, Object>>> nodesByForm = group(rows(connection,
                 "SELECT * FROM entity_form_node WHERE deleted = 0"), "form_id");
@@ -90,7 +101,12 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         }
     }
 
-    /** 草稿迁到 V2；旧发布中的执行规则独立发布，不能将未发布草稿激活为运行配置。 */
+    /**
+     * 草稿迁到 V2；旧发布中的执行规则独立发布，不能将未发布草稿激活为运行配置。
+     *
+     * @param connection 连接，作为 {@code group} 的输入影响后续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private void migrateVersionPolicies(Connection connection) throws Exception {
         Map<String, List<Map<String, Object>>> scenarios = group(rows(connection, "SELECT * FROM entity_version_scenario ORDER BY priority DESC,id"), "config_id");
         Map<String, List<Map<String, Object>>> steps = group(rows(connection, "SELECT * FROM entity_version_step ORDER BY sort_order,id"), "config_id");
@@ -152,6 +168,17 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         }
     }
 
+    /**
+     * 整理旧版文档数据，供调用方遍历或继续处理。
+     *
+     * @param config 配置内容，决定后续旧版文档的处理规则
+     * @param scenarios {@code scenarios}，作为 {@code result.put} 的输入影响后续处理
+     * @param steps 步骤集合，作为 {@code result.put} 的输入影响后续处理
+     * @param targets 目标集合，供本方法处理旧版文档时使用
+     * @return 旧版文档键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Map<String, Object> legacyDocument(Map<String, Object> config, List<Map<String, Object>> scenarios,
             List<Map<String, Object>> steps, List<Map<String, Object>> targets) throws Exception {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -191,6 +218,13 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         return result;
     }
 
+    /**
+     * 整理变更文档数据，供调用方遍历或继续处理。
+     *
+     * @param config 配置内容，决定后续变更文档的处理规则
+     * @param source 待处理变更文档的原始输入，结果供调用方继续使用
+     * @return 变更文档键值结果，供调用方继续处理
+     */
     private Map<String, Object> mutationDocument(Map<String, Object> config, Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("schemaVersion", 1);
@@ -213,6 +247,13 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         return result;
     }
 
+    /**
+     * 整理列集合数据，供调用方遍历或继续处理。
+     *
+     * @param row 行，供本方法处理列集合时使用
+     * @param names 名称集合，供本方法处理列集合时使用
+     * @return 列集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> columns(Map<String, Object> row, String... names) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (String name : names) {
@@ -226,6 +267,14 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         }
         return result;
     }
+    /**
+     * 整理行数据，供调用方遍历或继续处理。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param sql SQL，作为 {@code statement.executeQuery} 的输入影响后续处理
+     * @return {@code v080}{@code remove}兼容性配置{@code tables}集合，供调用方遍历或展示
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private List<Map<String, Object>> rows(Connection connection, String sql) throws SQLException {
         List<Map<String, Object>> result = new ArrayList<>();
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
@@ -237,30 +286,125 @@ public class V080__remove_compatibility_configuration_tables extends BaseJavaMig
         }
         return result;
     }
+    /**
+     * 整理分组数据，供调用方遍历或继续处理。
+     *
+     * @param rows 行，供本方法处理分组时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 分组键值结果，供调用方继续处理
+     */
     private Map<String, List<Map<String, Object>>> group(List<Map<String, Object>> rows, String key) {
         Map<String, List<Map<String, Object>>> result = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) result.computeIfAbsent(string(row.get(key)), ignored -> new ArrayList<>()).add(row);
         return result;
     }
+    /**
+     * 整理索引数据，供调用方遍历或继续处理。
+     *
+     * @param rows 行，供本方法处理索引时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 索引键值结果，供调用方继续处理
+     */
     private Map<String, Map<String, Object>> index(List<Map<String, Object>> rows, String key) {
         Map<String, Map<String, Object>> result = new HashMap<>();
         for (Map<String, Object> row : rows) result.put(string(row.get(key)), row);
         return result;
     }
+    /**
+     * 解析{@code v080}{@code remove}兼容性配置{@code tables}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析{@code v080}{@code remove}兼容性配置{@code tables}的原始输入，结果供调用方继续使用
+     * @return 解析后的{@code v080}{@code remove}兼容性配置{@code tables}结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Object parse(Object value) throws Exception { return json.readValue(string(value), Object.class); }
+    /**
+     * 整理对象数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象的原始输入，结果供调用方继续使用
+     * @return 对象键值结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Map<String, Object> object(Object value) throws Exception {
         return !present(value) ? new LinkedHashMap<>() : json.readValue(string(value), new TypeReference<LinkedHashMap<String,Object>>() {});
     }
+    /**
+     * 处理数组，并将结果传给后续步骤。
+     *
+     * @param value 待处理数组的原始输入，结果供调用方继续使用
+     * @return 处理后的数组结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Object array(Object value) throws Exception { return !present(value) ? List.of() : json.readValue(string(value), List.class); }
+    /**
+     * 列出{@code v080}{@code remove}兼容性配置{@code tables}；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待列出{@code v080}{@code remove}兼容性配置{@code tables}的原始输入，结果供调用方继续使用
+     * @return {@code v080}{@code remove}兼容性配置{@code tables}集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String,Object>> list(Object value) { return value == null ? List.of() : (List<Map<String,Object>>) value; }
+    /**
+     * 判断是否具有{@code behavior}；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有{@code behavior}的原始输入，结果供调用方继续使用
+     * @return {@code behavior}条件成立时为 true，否则为 false
+     */
     private boolean hasBehavior(Map<String,Object> value) { return !list(value.get("steps")).isEmpty() || !list(value.get("targetBindings")).isEmpty(); }
+    /**
+     * 判断字段节点条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理字段节点的原始输入，结果供调用方继续使用
+     * @return 字段节点条件成立时为 true，否则为 false
+     */
     private boolean fieldNode(Map<String,Object> value) { return Set.of("FIELD","SUB_FORM","REPEATER").contains(value.get("node_type")); }
+    /**
+     * 编码{@code v080}{@code remove}兼容性配置{@code tables}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待编码{@code v080}{@code remove}兼容性配置{@code tables}的原始输入，结果供调用方继续使用
+     * @return 编码后的{@code v080}{@code remove}兼容性配置{@code tables}文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private String encode(Object value) throws Exception { return json.writeValueAsString(value); }
+    /**
+     * 生成字符串文本，供后续匹配或展示。
+     *
+     * @param value 待处理字符串的原始输入，结果供调用方继续使用
+     * @return 处理后的字符串文本，供调用方比较或展示
+     */
     private String string(Object value) { return value == null ? null : String.valueOf(value); }
+    /**
+     * 判断存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理存在的原始输入，结果供调用方继续使用
+     * @return 存在条件成立时为 true，否则为 false
+     */
     private boolean present(Object value) { return value != null && !String.valueOf(value).isBlank(); }
+    /**
+     * 标记{@code v080}{@code remove}兼容性配置{@code tables}；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待标记{@code v080}{@code remove}兼容性配置{@code tables}的原始输入，结果供调用方继续使用
+     * @return {@code v080}{@code remove}兼容性配置{@code tables}条件成立时为 true，否则为 false
+     */
     private boolean flag(Object value) { return Boolean.TRUE.equals(value) || value instanceof Number n && n.intValue() == 1 || "1".equals(value); }
+    /**
+     * 生成{@code uuid}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code uuid}文本，供调用方比较或展示
+     */
     private String uuid() { return UUID.randomUUID().toString().replace("-", ""); }
+    /**
+     * 处理队列，并将结果传给后续步骤。
+     *
+     * @param sql SQL，作为 {@code writes.add} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private void queue(String sql, Object... values) { writes.add(new Write(sql, values)); }
+    /**
+     * 封装写入的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sql SQL，保存在对象中供后续校验、查询或展示
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private record Write(String sql, Object[] values) {}
 }

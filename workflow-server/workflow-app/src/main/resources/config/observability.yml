@@ -1,0 +1,94 @@
+# 可观测性配置：管理端点、指标、追踪与日志；生产日志格式由 application-production.yml 覆盖。
+
+# Actuator、指标与链路追踪配置，供健康检查和运维监控使用。
+management:
+  # 管理接口独立监听设置，便于与业务流量分别管控。
+  server:
+    # 管理端口，供健康探针和指标采集访问。
+    port: ${MANAGEMENT_SERVER_PORT:9090}
+  # Actuator 端点对外暴露范围。
+  endpoints:
+    # 通过 HTTP 暴露的管理端点设置。
+    web:
+      # 管理端点允许列表，限制运维接口的可访问范围。
+      exposure:
+        # 仅暴露健康、应用信息、Prometheus 和指标端点。
+        include: health,info,prometheus,metrics
+  # 单个管理端点的内容和行为设置。
+  endpoint:
+    # 健康端点设置，供部署平台判断实例存活与就绪状态。
+    health:
+      # 启用面向编排平台的存活和就绪探针。
+      probes:
+        # 提供 liveness、readiness 健康分组，供容器探针使用。
+        enabled: true
+      # 不在健康响应中披露组件详情，避免暴露内部依赖信息。
+      show-details: never
+    # 环境配置查询端点的内容策略。
+    env:
+      # 即使后续开放 env 端点也不展示属性值，避免泄露凭据。
+      show-values: never
+    # 配置绑定查询端点的内容策略。
+    configprops:
+      # 不展示绑定属性值，避免监控响应泄露密钥等敏感配置。
+      show-values: never
+  # 指标公共标签与延迟分布设置，供聚合查询和告警使用。
+  metrics:
+    # 所有指标共享的身份标签，用于按应用、环境和版本筛选。
+    tags:
+      # 应用名称标签，引用主配置中的服务名。
+      application: ${spring.application.name}
+      # 服务名称标签，与监控平台的服务维度保持一致。
+      service: ${spring.application.name}
+      # 部署环境标签，用于区分本地、测试和生产指标。
+      environment: ${WORKFLOW_ENVIRONMENT:local}
+      # 发布版本标签，优先用 WORKFLOW_VERSION，其次 BUILD_VERSION，缺省为 dev。
+      version: ${WORKFLOW_VERSION:${BUILD_VERSION:dev}}
+    # 指标分布统计策略，控制时间序列数量和延迟观测粒度。
+    distribution:
+      # 自动百分位直方图开关，按指标选择是否生成预设桶。
+      percentiles-histogram:
+        # 关闭 HTTP 请求自动百分位桶，控制指标规模，仍保留显式 SLO 桶。
+        http.server.requests: false
+      # 按目标阈值生成直方图桶，用于服务时延达标率统计。
+      slo:
+        # HTTP 请求耗时阈值列表，用于统计各延迟区间的请求量。
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s
+  # 分布式调用链采集开关和采样策略。
+  tracing:
+    # 是否启用链路追踪，默认关闭，部署追踪采集服务后按需开启。
+    enabled: ${OTEL_TRACES_ENABLED:false}
+    # 调用链采样比例，控制采集开销和数据量。
+    sampling:
+      # 调用链采样概率，取值 0 到 1，默认采集约 5%。
+      probability: ${OTEL_TRACES_SAMPLER_PROBABILITY:0.05}
+  # OpenTelemetry 协议导出设置，供追踪数据发送到采集端。
+  otlp:
+    # 调用链导出地址和超时设置。
+    tracing:
+      # OTLP HTTP traces 接收地址，指向部署环境中的采集器。
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://flow-otel-collector:4318/v1/traces}
+      # 单次追踪数据导出的超时，带时间单位，避免采集端异常长期阻塞导出。
+      timeout: ${OTEL_EXPORTER_OTLP_TIMEOUT:500ms}
+
+# 应用日志级别和输出格式，默认输出到控制台供部署平台采集。
+logging:
+  # 按包或类指定日志阈值，控制日志量与敏感信息暴露。
+  level:
+    # 未单独配置的组件使用 INFO 级别。
+    root: INFO
+    # 业务代码日志级别，可通过环境变量临时调整排障粒度。
+    com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}
+    # 全局设置包含签名密钥，此 Mapper 固定 INFO，禁止 DEBUG 参数日志输出设置值。
+    com.workflow.admin.setting.infrastructure.persistence.mapper.GlobalSettingMapper: INFO
+  # 非结构化日志格式，供本地及默认环境阅读。
+  pattern:
+    # 控制台输出时间、线程、追踪标识、级别和消息，无 traceId 时显示 system。
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{traceId:-system}] %-5level %logger{36} - %msg%n"
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 业务指标采集设置，供监控系统观察后台队列等运行状态。
+  metrics:
+    # 队列指标刷新间隔，单位毫秒，平衡监控时效与数据库查询压力。
+    queue-refresh-ms: ${QUEUE_METRICS_REFRESH_MS:15000}

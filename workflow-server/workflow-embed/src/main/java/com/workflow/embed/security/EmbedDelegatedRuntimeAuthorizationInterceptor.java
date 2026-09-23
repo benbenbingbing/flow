@@ -2,8 +2,8 @@ package com.workflow.embed.security;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
@@ -37,6 +37,12 @@ public class EmbedDelegatedRuntimeAuthorizationInterceptor
     private final EmbedDelegatedRuntimePolicy policy;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式委托运行时授权{@code interceptor}，保存构造参数供后续方法使用。
+     *
+     * @param policy 策略依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedDelegatedRuntimeAuthorizationInterceptor(
             EmbedDelegatedRuntimePolicy policy,
             ObjectMapper objectMapper) {
@@ -44,6 +50,15 @@ public class EmbedDelegatedRuntimeAuthorizationInterceptor
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 判断{@code pre}{@code handle}条件是否成立，供调用方选择后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code pre}{@code handle}
+     * @param response 响应，作为 {@code writeError} 的输入影响后续处理
+     * @param handler 处理器，供本方法处理{@code pre}{@code handle}时使用
+     * @return {@code pre}{@code handle}条件成立时为 true，否则为 false
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @Override
     public boolean preHandle(
             HttpServletRequest request,
@@ -98,6 +113,14 @@ public class EmbedDelegatedRuntimeAuthorizationInterceptor
         }
     }
 
+    /**
+     * 写入错误；后续读取或执行将使用更新后的状态。
+     *
+     * @param request 本次请求，后续经校验后用于写入错误
+     * @param response 响应，作为 {@code objectMapper.writeValue} 的输入影响后续处理
+     * @param error 错误，作为 {@code response.setStatus} 的输入影响后续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private void writeError(
             HttpServletRequest request,
             HttpServletResponse response,
@@ -115,6 +138,11 @@ public class EmbedDelegatedRuntimeAuthorizationInterceptor
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 
+    /**
+     * 构造已拒绝异常，供调用方区分失败原因并终止后续处理。
+     *
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private static EmbedException denied() {
         return new EmbedException(
                 403,

@@ -10,9 +10,18 @@ public final class PageParameterPolicy {
     private static final Set<String> SOURCES = Set.of("FIELD", "RECORD_ID", "PARAMETER", "LITERAL");
     private static final Set<String> OPS = Set.of("EQ", "NE", "LIKE", "IN");
     private static final ObjectMapper JSON = new ObjectMapper();
+    /**
+     * 初始化分页参数策略，保存构造参数供后续方法使用。
+     */
     private PageParameterPolicy() {}
 
-    /** 保存/发布时检查参数及用途；字段存在性由所属页面校验器检查。 */
+    /**
+     * 保存/发布时检查参数及用途；字段存在性由所属页面校验器检查。
+     *
+     * @param config 配置内容，决定后续分页参数策略的处理规则
+     * @param kind 类型，供本方法校验分页参数策略时使用
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     */
     public static void validate(Map<String, Object> config, String kind, Set<String> fields) {
         Map<String, Object> schema = map(config.get("inputParameterSchema"));
         Map<String, Object> properties = map(schema.get("properties"));
@@ -44,7 +53,13 @@ public final class PageParameterPolicy {
         }
     }
 
-    /** 运行时使用目标发布声明补默认值和类型；未声明的输入不进入业务上下文。 */
+    /**
+     * 运行时使用目标发布声明补默认值和类型；未声明的输入不进入业务上下文。
+     *
+     * @param config 配置内容，决定后续分页参数策略的处理规则
+     * @param supplied {@code supplied}，供本方法解析分页参数策略时使用
+     * @return 分页参数策略键值结果，供调用方继续处理
+     */
     public static Map<String, Object> resolve(Map<String, Object> config, Map<String, Object> supplied) {
         if (!config.containsKey("inputParameterSchema")) return supplied == null ? Map.of() : new LinkedHashMap<>(supplied);
         Map<String, Object> schema = map(config.get("inputParameterSchema"));
@@ -62,7 +77,13 @@ public final class PageParameterPolicy {
         return result;
     }
 
-    /** 由发布用途生成附加过滤，调用方必须与关系、固定条件和权限范围求交。 */
+    /**
+     * 由发布用途生成附加过滤，调用方必须与关系、固定条件和权限范围求交。
+     *
+     * @param config 配置内容，决定后续过滤条件的处理规则
+     * @param parameters 参数集合，供本方法处理过滤条件时使用
+     * @return 过滤条件键值结果，供调用方继续处理
+     */
     public static Map<String, Object> filters(Map<String, Object> config, Map<String, Object> parameters) {
         Map<String, Object> filters = new LinkedHashMap<>();
         for (Object value : list(config.get("inputParameterBindings"))) {
@@ -78,7 +99,12 @@ public final class PageParameterPolicy {
         return filters;
     }
 
-    /** 来源映射保存结构校验，不执行表达式；固定对象值也必须符合 JSON 数据结构。 */
+    /**
+     * 来源映射保存结构校验，不执行表达式；固定对象值也必须符合 JSON 数据结构。
+     *
+     * @param value 待处理映射集合的原始输入，结果供调用方继续使用
+     * @return 分页参数策略集合，供调用方遍历或展示
+     */
     public static List<Map<String, Object>> mappings(Object value) {
         List<?> rows = list(value);
         if (rows.size() > 50) throw new IllegalArgumentException("最多配置 50 个参数映射");
@@ -97,7 +123,12 @@ public final class PageParameterPolicy {
         return result;
     }
 
-    /** 统一读取对象或 JSON 文档；空配置返回空 Map，非对象输入拒绝保存或执行。 */
+    /**
+     * 统一读取对象或 JSON 文档；空配置返回空 Map，非对象输入拒绝保存或执行。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     public static Map<String, Object> map(Object value) {
         if (value == null) return Map.of();
         if (value instanceof String text) {
@@ -110,18 +141,45 @@ public final class PageParameterPolicy {
         raw.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
     }
+    /**
+     * 列出分页参数策略；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待列出分页参数策略的原始输入，结果供调用方继续使用
+     * @return {@code list<?>}集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static List<?> list(Object value) {
         if (value == null) return List.of();
         if (!(value instanceof List<?> rows)) throw new IllegalArgumentException("参数配置必须为数组");
         return rows;
     }
+    /**
+     * 处理标识符，并将结果传给后续步骤。
+     *
+     * @param value 待处理标识符的原始输入，结果供调用方继续使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void identifier(String value) {
         if (value == null || !value.matches("[A-Za-z][A-Za-z0-9_]{0,99}") || Set.of("constructor", "prototype", "__proto__", "null").contains(value))
             throw new IllegalArgumentException("参数或字段编码不合法: " + value);
     }
+    /**
+     * 判断空条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private static boolean empty(Object value) {
         return value == null || "".equals(value) || (value instanceof Collection<?> rows && rows.isEmpty());
     }
+    /**
+     * 转换分页参数策略；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换分页参数策略的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续分页参数策略采用的处理分支
+     * @return 转换后的分页参数策略结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static Object convert(Object value, String type) {
         if (value == null) return null;
         try {

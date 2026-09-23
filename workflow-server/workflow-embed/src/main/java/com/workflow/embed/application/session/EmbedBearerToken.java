@@ -10,9 +10,18 @@ public final class EmbedBearerToken {
 
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[A-Za-z0-9_-]{43,128}");
 
+    /**
+     * 初始化嵌入式{@code bearer}令牌，保存构造参数供后续方法使用。
+     */
     private EmbedBearerToken() {
     }
 
+    /**
+     * 生成起始授权{@code header}文本，供后续匹配或展示。
+     *
+     * @param authorization 授权，供本方法处理起始授权{@code header}时使用
+     * @return 处理后的起始授权{@code header}文本，供调用方比较或展示
+     */
     public static String fromAuthorizationHeader(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")
                 || authorization.indexOf(' ', 7) >= 0) {
@@ -32,6 +41,11 @@ public final class EmbedBearerToken {
         return token;
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedException invalid() {
         return new EmbedException(
                 401,

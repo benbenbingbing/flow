@@ -3,21 +3,21 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.UiActionCommandPlan;
-import com.workflow.contracts.ui.UiActionMutationCommand;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
+import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.result.PageResult;
@@ -111,6 +111,9 @@ public class UiViewCompositionActionService {
      * <p>该结果同时考虑发布声明、关系类型、已固定字段以及当前用户标准权限。
      * CREATE/EDIT 仅在精确发布表单提交桥可用时开放；SELECT/LINK/UNLINK 则要求
      * 已发布映射、候选范围和目标记录权限全部通过，任何校验失败都会关闭动作。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理能力集合
+     * @return 处理后的能力集合结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public UiViewCompositionActionCapabilitiesResponse capabilities(
@@ -134,6 +137,9 @@ public class UiViewCompositionActionService {
      * 列表的“当前已关联”条件不会被复用：反向引用和普通实体关系只查询引用字段
      * 为空的记录；单值正向引用可排除当前引用。候选令牌仍由列表运行时叠加目标
      * 列表固定条件和当前用户数据范围。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理链接候选集合
+     * @return 处理后的链接候选集合结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public UiViewCompositionLinkCandidatesResponse linkCandidates(
@@ -205,6 +211,14 @@ public class UiViewCompositionActionService {
      * 会先加锁再复核，避免关系在校验与写入之间变化。CREATE 的初值同样在锁后
      * 从来源记录重新计算，浏览器提交的同名字段不能覆盖它们。</p>
      *
+     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param action 动作标识，决定后续授权表单提交采用的处理分支
+     * @param targetEntityCode 目标实体编码，后续用于处理授权表单提交时定位或关联目标
+     * @param targetRecordId 目标记录ID，后续用于处理授权表单提交时定位或关联目标
+     * @param targetFormId 目标表单ID，后续用于处理授权表单提交时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理授权表单提交时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，供本方法处理授权表单提交时使用
+     * @param targetReleaseResolutionToken 目标发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return CREATE 时必须合并到目标数据的可信初值；EDIT 时为空
      */
     @Transactional(rollbackFor = Exception.class)
@@ -260,6 +274,9 @@ public class UiViewCompositionActionService {
 
     /**
      * 执行已发布动作。写动作使用实体变更管道的原子批次与持久化幂等回执。
+     *
+     * @param request 本次请求，后续经校验后用于执行界面视图组合动作
+     * @return 执行后的界面视图组合动作结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -304,6 +321,16 @@ public class UiViewCompositionActionService {
                 capabilities);
     }
 
+    /**
+     * 执行{@code select}，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续{@code select}采用的处理分支
+     * @param context 执行上下文，向后续{@code select}步骤传递身份、配置或状态
+     * @param capabilities 能力集合，作为 {@code requireAvailable} 的输入影响后续处理
+     * @param actionResult 动作结果，作为 {@code executeRelationMutation} 的输入影响后续处理
+     * @return 执行后的{@code select}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiViewCompositionActionResponse executeSelect(
             ValidatedAction action,
             ActionContext context,
@@ -345,6 +372,18 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
+    /**
+     * 执行关系变更，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续关系变更采用的处理分支
+     * @param context 执行上下文，向后续关系变更步骤传递身份、配置或状态
+     * @param link 链接，作为 {@code requireAvailable} 的输入影响后续处理
+     * @param requireResolvedMembership {@code require}已解析{@code membership}，供本方法执行关系变更时使用
+     * @param responseAction 响应动作，供本方法执行关系变更时使用
+     * @param capabilities 能力集合，作为 {@code requireAvailable} 的输入影响后续处理
+     * @param actionResult 动作结果，供本方法执行关系变更时使用
+     * @return 执行后的关系变更结果，供调用方继续处理
+     */
     private UiViewCompositionActionResponse executeRelationMutation(
             ValidatedAction action,
             ActionContext context,
@@ -477,6 +516,12 @@ public class UiViewCompositionActionService {
      * <p>客户端只提交 actionKey、记录 ID 和 operationId。服务、操作、映射与
      * 可执行快照都从签名宿主版本恢复；READ 只返回映射后的界面结果，WRITE
      * 则先取得持久批次回执，再通过受控计划和 EntityMutationPort 原子执行。</p>
+     *
+     * @param action 动作标识，决定后续接口动作采用的处理分支
+     * @param context 执行上下文，向后续接口动作步骤传递身份、配置或状态
+     * @param binding 绑定，作为 {@code validateActionBinding} 的输入影响后续处理
+     * @param capabilities 能力集合，作为 {@code actionResponse} 的输入影响后续处理
+     * @return 执行后的接口动作结果，供调用方继续处理
      */
     private UiViewCompositionActionResponse executeInterfaceAction(
             ValidatedAction action,
@@ -584,6 +629,11 @@ public class UiViewCompositionActionService {
     /**
      * 标准选择/关系动作始终由平台权威链执行；同名 READ 绑定只作为前置校验、
      * 计算或界面结果补充，失败会使整个事务终止，绝不能替代关系写入。
+     *
+     * @param action 动作标识，决定后续标准动作读取采用的处理分支
+     * @param context 执行上下文，向后续标准动作读取步骤传递身份、配置或状态
+     * @param binding 绑定，作为 {@code validateActionBinding} 的输入影响后续处理
+     * @return 标准动作读取键值结果，供调用方继续处理
      */
     private Map<String, Object> executeStandardActionRead(
             ValidatedAction action,
@@ -635,6 +685,16 @@ public class UiViewCompositionActionService {
         return mapActionOutput(binding, raw);
     }
 
+    /**
+     * 处理动作响应，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续动作响应采用的处理分支
+     * @param context 执行上下文，向后续动作响应步骤传递身份、配置或状态
+     * @param capabilities 能力集合，作为 {@code actionCapabilities} 的输入影响后续处理
+     * @param result 结果，供本方法处理动作响应时使用
+     * @param replayed {@code replayed}，供本方法处理动作响应时使用
+     * @return 处理后的动作响应结果，供调用方继续处理
+     */
     private UiViewCompositionActionResponse actionResponse(
             ValidatedAction action,
             ActionContext context,
@@ -651,6 +711,15 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
+    /**
+     * 处理动作{@code execute}请求，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续动作{@code execute}请求采用的处理分支
+     * @param context 执行上下文，向后续动作{@code execute}请求步骤传递身份、配置或状态
+     * @param binding 绑定，作为 {@code request.setOperationCode} 的输入影响后续处理
+     * @param input 待处理动作{@code execute}请求的原始输入，结果供调用方继续使用
+     * @return 处理后的动作{@code execute}请求结果，供调用方继续处理
+     */
     private UiExtensionExecuteRequest actionExecuteRequest(
             ValidatedAction action,
             ActionContext context,
@@ -676,6 +745,13 @@ public class UiViewCompositionActionService {
         return request;
     }
 
+    /**
+     * 校验动作绑定；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续动作绑定步骤传递身份、配置或状态
+     * @param binding 绑定，作为 {@code requiredField} 的输入影响后续处理
+     * @return 校验后的动作绑定结果，供调用方继续处理
+     */
     private UiInterfaceExtensionService.ActionOperationDescriptor
             validateActionBinding(
             ActionContext context,
@@ -711,6 +787,13 @@ public class UiViewCompositionActionService {
                 context.claims().ownerType());
     }
 
+    /**
+     * 校验并获取动作服务；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续动作服务步骤传递身份、配置或状态
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @return 动作服务键值结果，供调用方继续处理
+     */
     private Map<String, Object> requireActionService(
             ActionContext context,
             String actionKey) {
@@ -723,6 +806,13 @@ public class UiViewCompositionActionService {
                         "已发布关联内容未显式绑定该接口动作"));
     }
 
+    /**
+     * 整理可选动作服务数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续可选动作服务步骤传递身份、配置或状态
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @return 可选动作服务键值结果，供调用方继续处理
+     */
     private Map<String, Object> optionalActionService(
             ActionContext context,
             String actionKey) {
@@ -733,13 +823,27 @@ public class UiViewCompositionActionService {
                 .orElse(Map.of());
     }
 
+    /**
+     * 整理动作{@code services}数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续动作{@code services}步骤传递身份、配置或状态
+     * @return 界面视图组合动作集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> actionServices(
             ActionContext context) {
         return mapList(map(context.config().get("specialHandling"))
                 .get("actionServices"));
     }
 
-    /** 只按发布映射读取来源或已授权目标字段，不传递整行 data。 */
+    /**
+     * 只按发布映射读取来源或已授权目标字段，不传递整行 data。
+     *
+     * @param context 执行上下文，向后续动作输入步骤传递身份、配置或状态
+     * @param binding 绑定，作为 {@code mapList} 的输入影响后续处理
+     * @param source 待处理动作输入的原始输入，结果供调用方继续使用
+     * @param targets 目标集合，供本方法处理动作输入时使用
+     * @return 动作输入键值结果，供调用方继续处理
+     */
     private Map<String, Object> actionInput(
             ActionContext context,
             Map<String, Object> binding,
@@ -780,6 +884,15 @@ public class UiViewCompositionActionService {
         return Collections.unmodifiableMap(input);
     }
 
+    /**
+     * 处理动作来源值，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续动作来源值步骤传递身份、配置或状态
+     * @param source 待处理动作来源值的原始输入，结果供调用方继续使用
+     * @param targets 目标集合，作为 {@code recordValue} 的输入影响后续处理
+     * @param path 路径，供本方法处理动作来源值时使用
+     * @return 处理后的动作来源值结果，供调用方继续处理
+     */
     private Object actionSourceValue(
             ActionContext context,
             EntityDataDTO source,
@@ -809,6 +922,12 @@ public class UiViewCompositionActionService {
         return recordValue(targets.get(0), fieldCode);
     }
 
+    /**
+     * 校验并获取可读目标已发布字段；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续可读目标已发布字段步骤传递身份、配置或状态
+     * @param fieldCode 字段编码，后续用于校验并获取可读目标已发布字段时定位或关联目标
+     */
     private void requireReadableTargetPublishedField(
             ActionContext context,
             String fieldCode) {
@@ -836,6 +955,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 整理映射动作输出数据，供调用方遍历或继续处理。
+     *
+     * @param binding 绑定，作为 {@code mapList} 的输入影响后续处理
+     * @param raw 待处理映射动作输出的原始输入，结果供调用方继续使用
+     * @return 映射动作输出键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapActionOutput(
             Map<String, Object> binding,
             Object raw) {
@@ -862,6 +988,13 @@ public class UiViewCompositionActionService {
         return Collections.unmodifiableMap(result);
     }
 
+    /**
+     * 处理动作路径值，并将结果传给后续步骤。
+     *
+     * @param source 待处理动作路径值的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理动作路径值时使用
+     * @return 处理后的动作路径值结果，供调用方继续处理
+     */
     private Object actionPathValue(
             Map<String, Object> source,
             String path) {
@@ -875,6 +1008,13 @@ public class UiViewCompositionActionService {
         return current;
     }
 
+    /**
+     * 写入动作路径；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入动作路径时使用
+     * @param path 路径，作为 {@code conflict} 的输入影响后续处理
+     * @param value 待写入动作路径的原始输入，结果供调用方继续使用
+     */
     @SuppressWarnings("unchecked")
     private void putActionPath(
             Map<String, Object> target,
@@ -899,6 +1039,12 @@ public class UiViewCompositionActionService {
         current.put(parts[parts.length - 1], value);
     }
 
+    /**
+     * 判断安全动作路径条件是否成立，供调用方选择后续分支。
+     *
+     * @param path 路径，供本方法处理安全动作路径时使用
+     * @return 安全动作路径条件成立时为 true，否则为 false
+     */
     private boolean safeActionPath(String path) {
         return StringUtils.hasText(path)
                 && path.matches(
@@ -911,6 +1057,12 @@ public class UiViewCompositionActionService {
      * <p>单次最多 100 条；每条重新校验 CRUD 权限、记录数据范围和发布字段，
      * operationId、幂等键及上下文全部由平台生成。MutationPort 随后还会执行
      * 实体字段校验、唯一性和版本规则，Provider 无法跳过任一层。</p>
+     *
+     * @param action 动作标识，决定后续动作变更{@code commands}采用的处理分支
+     * @param context 执行上下文，向后续动作变更{@code commands}步骤传递身份、配置或状态
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
+     * @return 实体变更命令集合，供调用方遍历或展示
      */
     private List<EntityMutationCommand> actionMutationCommands(
             ValidatedAction action,
@@ -986,6 +1138,15 @@ public class UiViewCompositionActionService {
         return List.copyOf(commands);
     }
 
+    /**
+     * 校验并获取动作目标；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续动作目标步骤传递身份、配置或状态
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 校验并获取后的动作目标结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDataDTO requireActionTarget(
             ActionContext context,
             String entityCode,
@@ -1010,6 +1171,18 @@ public class UiViewCompositionActionService {
         return requireResolvedMembership(context, recordId);
     }
 
+    /**
+     * 处理动作变更命令，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续动作变更命令采用的处理分支
+     * @param context 执行上下文，向后续动作变更命令步骤传递身份、配置或状态
+     * @param item 条目，作为 {@code requireActionTarget} 的输入影响后续处理
+     * @param index 索引，作为 {@code sha256} 的输入影响后续处理
+     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的动作变更命令结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityMutationCommand actionMutationCommand(
             ValidatedAction action,
             ActionContext context,
@@ -1126,6 +1299,11 @@ public class UiViewCompositionActionService {
      * 回填宿主模型，用户随后保存旧表单值会把刚建立或解除的关系反向覆盖。
      * 其它当前支持的关系写在目标记录上，来源表单没有对应字段，因此不返回
      * 浏览器可猜测的多值补丁。</p>
+     *
+     * @param context 执行上下文，向后续关系来源补丁步骤传递身份、配置或状态
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param link 链接，供本方法处理关系来源补丁时使用
+     * @return 关系来源补丁键值结果，供调用方继续处理
      */
     private Map<String, Object> relationSourcePatch(
             ActionContext context,
@@ -1145,6 +1323,18 @@ public class UiViewCompositionActionService {
                 singletonNullable(sourceField, linkedId));
     }
 
+    /**
+     * 处理变更方案，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续变更方案步骤传递身份、配置或状态
+     * @param source 待处理变更方案的原始输入，结果供调用方继续使用
+     * @param targets 目标集合，供本方法处理变更方案时使用
+     * @param link 链接，供本方法处理变更方案时使用
+     * @param operationId 操作ID，后续用于处理变更方案时定位或关联目标
+     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的变更方案结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private MutationPlan mutationPlan(
             ActionContext context,
             EntityDataDTO source,
@@ -1228,6 +1418,9 @@ public class UiViewCompositionActionService {
     /**
      * 组成型关系必须随父聚合提交。这里仅允许普通关联，避免 UNLINK 被错误
      * 实现成删除子记录，或绕开既有子项归属校验。
+     *
+     * @param context 执行上下文，向后续{@code association}关系步骤传递身份、配置或状态
+     * @return 校验并获取后的{@code association}关系结果，供调用方继续处理
      */
     private EntityRelation requireAssociationRelation(
             ActionContext context) {
@@ -1269,6 +1462,19 @@ public class UiViewCompositionActionService {
         return definition;
     }
 
+    /**
+     * 更新命令；后续读取或执行将使用更新后的状态。
+     *
+     * @param context 执行上下文，向后续命令步骤传递身份、配置或状态
+     * @param operationId 操作ID，后续用于更新命令时定位或关联目标
+     * @param index 索引，作为 {@code sha256} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fieldCode 字段编码，后续用于更新命令时定位或关联目标
+     * @param value 待更新命令的原始输入，结果供调用方继续使用
+     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
+     * @return 更新后的命令结果，供调用方继续处理
+     */
     private EntityMutationCommand updateCommand(
             ActionContext context,
             String operationId,
@@ -1314,6 +1520,13 @@ public class UiViewCompositionActionService {
                 mutationContext);
     }
 
+    /**
+     * 整理{@code singleton}可空数据，供调用方遍历或继续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待处理{@code singleton}可空的原始输入，结果供调用方继续使用
+     * @return {@code singleton}可空键值结果，供调用方继续处理
+     */
     private Map<String, Object> singletonNullable(
             String key,
             Object value) {
@@ -1322,6 +1535,13 @@ public class UiViewCompositionActionService {
         return result;
     }
 
+    /**
+     * 校验并获取{@code relationship}状态；不满足约束时阻止后续处理。
+     *
+     * @param current 当前，供本方法校验并获取{@code relationship}状态时使用
+     * @param relatedRecordId 关联记录ID，后续用于校验并获取{@code relationship}状态时定位或关联目标
+     * @param link 链接，供本方法校验并获取{@code relationship}状态时使用
+     */
     private void requireRelationshipState(
             Object current,
             String relatedRecordId,
@@ -1343,6 +1563,13 @@ public class UiViewCompositionActionService {
         // 重放都具有一致结果，且不会为了识别重放而新增进程内状态。
     }
 
+    /**
+     * 锁定变更行；避免后续并发处理覆盖状态。
+     *
+     * @param context 执行上下文，向后续变更行步骤传递身份、配置或状态
+     * @param source 待锁定变更行的原始输入，结果供调用方继续使用
+     * @param targets 目标集合，供本方法锁定变更行时使用
+     */
     private void lockMutationRows(
             ActionContext context,
             EntityDataDTO source,
@@ -1366,6 +1593,14 @@ public class UiViewCompositionActionService {
                         key.entityCode(), key.recordId()));
     }
 
+    /**
+     * 读取目标集合；查询结果供调用方展示或继续处理。
+     *
+     * @param context 执行上下文，向后续目标集合步骤传递身份、配置或状态
+     * @param ids ID 集合，供本方法读取目标集合时使用
+     * @param requireResolvedMembership {@code require}已解析{@code membership}，供本方法读取目标集合时使用
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     private List<EntityDataDTO> readTargets(
             ActionContext context,
             List<String> ids,
@@ -1392,6 +1627,13 @@ public class UiViewCompositionActionService {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验并获取候选人上下文；不满足约束时阻止后续处理。
+     *
+     * @param action 动作标识，决定后续候选人上下文采用的处理分支
+     * @param context 执行上下文，向后续候选人上下文步骤传递身份、配置或状态
+     * @return 校验并获取后的候选人上下文结果，供调用方继续处理
+     */
     private UiViewCompositionTokenService.Claims requireCandidateContext(
             ValidatedAction action,
             ActionContext context) {
@@ -1425,6 +1667,13 @@ public class UiViewCompositionActionService {
         return candidate;
     }
 
+    /**
+     * 校验并获取无候选人上下文；不满足约束时阻止后续处理。
+     *
+     * @param action 动作标识，决定后续无候选人上下文采用的处理分支
+     * @return 校验并获取后的无候选人上下文结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiViewCompositionTokenService.Claims requireNoCandidateContext(
             ValidatedAction action) {
         if (StringUtils.hasText(action.candidateListContextToken())) {
@@ -1437,6 +1686,9 @@ public class UiViewCompositionActionService {
     /**
      * 锁前和锁后都重新计算候选计划。来源引用或固定关系在等待锁期间变化时，旧
      * 候选令牌立即失效，调用方必须重新打开候选列表，不能依据陈旧范围写入。
+     *
+     * @param context 执行上下文，向后续候选人作用域{@code still}当前步骤传递身份、配置或状态
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
      */
     private void requireCandidateScopeStillCurrent(
             ActionContext context,
@@ -1451,6 +1703,14 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 读取候选人目标集合；查询结果供调用方展示或继续处理。
+     *
+     * @param context 执行上下文，向后续候选人目标集合步骤传递身份、配置或状态
+     * @param ids ID 集合，供本方法读取候选人目标集合时使用
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     private List<EntityDataDTO> readCandidateTargets(
             ActionContext context,
             List<String> ids,
@@ -1480,6 +1740,14 @@ public class UiViewCompositionActionService {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验并获取候选人{@code membership}；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续候选人{@code membership}步骤传递身份、配置或状态
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @param record 记录，供本方法校验并获取候选人{@code membership}时使用
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void requireCandidateMembership(
             ActionContext context,
             UiViewCompositionTokenService.Claims candidate,
@@ -1533,6 +1801,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 整理过滤基础数据，供调用方遍历或继续处理。
+     *
+     * @param filters 过滤条件，作为 {@code result.put} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理过滤基础时定位或关联目标
+     * @return 过滤基础键值结果，供调用方继续处理
+     */
     private Map<String, Object> filterForBase(
             Map<String, Object> filters,
             String fieldCode) {
@@ -1546,6 +1821,12 @@ public class UiViewCompositionActionService {
         return result;
     }
 
+    /**
+     * 移除过滤基础；后续读取或执行将使用更新后的状态。
+     *
+     * @param filters 过滤条件，供本方法移除过滤基础时使用
+     * @param fieldCode 字段编码，后续用于移除过滤基础时定位或关联目标
+     */
     private void removeFilterBase(
             Map<String, Object> filters,
             String fieldCode) {
@@ -1554,6 +1835,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 生成{@code strip}过滤后缀文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code strip}过滤后缀文本，供调用方比较或展示
+     */
     private String stripFilterSuffix(String key) {
         for (String suffix : List.of("_start", "_end", "_op")) {
             if (key.endsWith(suffix)) {
@@ -1563,7 +1850,13 @@ public class UiViewCompositionActionService {
         return key;
     }
 
-    /** 只用于已签名候选条件和固定列表的 id 条件，不接收浏览器任意表达式。 */
+    /**
+     * 只用于已签名候选条件和固定列表的 id 条件，不接收浏览器任意表达式。
+     *
+     * @param record 记录，作为 {@code recordValue} 的输入影响后续处理
+     * @param filters 过滤条件，作为 {@code filterOperator} 的输入影响后续处理
+     * @return 过滤条件条件成立时为 true，否则为 false
+     */
     private boolean matchesFilters(
             EntityDataDTO record,
             Map<String, Object> filters) {
@@ -1604,6 +1897,13 @@ public class UiViewCompositionActionService {
         return true;
     }
 
+    /**
+     * 比较过滤值集合；结果供调用方的后续步骤使用。
+     *
+     * @param left 左侧，作为 {@code java.math.BigDecimal} 的输入影响后续处理
+     * @param right 右侧，供本方法比较过滤值集合时使用
+     * @return 比较后的过滤值集合结果，供调用方继续处理
+     */
     private int compareFilterValues(Object left, Object right) {
         if (left == null || right == null) {
             return left == right ? 0 : left == null ? -1 : 1;
@@ -1619,6 +1919,13 @@ public class UiViewCompositionActionService {
         return text(left).compareTo(text(right));
     }
 
+    /**
+     * 校验并获取已解析{@code membership}；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续已解析{@code membership}步骤传递身份、配置或状态
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 校验并获取后的已解析{@code membership}结果，供调用方继续处理
+     */
     private EntityDataDTO requireResolvedMembership(
             ActionContext context,
             String recordId) {
@@ -1673,6 +1980,14 @@ public class UiViewCompositionActionService {
         return page.getRecords().get(0);
     }
 
+    /**
+     * 读取可访问；查询结果供调用方展示或继续处理。
+     *
+     * @param entity 实体，作为 {@code dynamicDataService.findAccessibleById} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @return 读取后的可访问结果，供调用方继续处理
+     */
     private EntityDataDTO readAccessible(
             EntityDefinition entity,
             String recordId,
@@ -1684,6 +1999,14 @@ public class UiViewCompositionActionService {
                         entity.getEntityCode(), recordId, listKey);
     }
 
+    /**
+     * 构建来源补丁；结果供后续流程传递或持久化。
+     *
+     * @param context 执行上下文，向后续来源补丁步骤传递身份、配置或状态
+     * @param select {@code select}，作为 {@code validateSelectMappings} 的输入影响后续处理
+     * @param targetRecord 目标记录，作为 {@code recordValue} 的输入影响后续处理
+     * @return 来源补丁键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildSourcePatch(
             ActionContext context,
             Map<String, Object> select,
@@ -1708,6 +2031,13 @@ public class UiViewCompositionActionService {
         return patch;
     }
 
+    /**
+     * 校验{@code select}映射集合；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续{@code select}映射集合步骤传递身份、配置或状态
+     * @param select {@code select}，作为 {@code mapList} 的输入影响后续处理
+     * @return 字段映射集合，供调用方遍历或展示
+     */
     private List<FieldMapping> validateSelectMappings(
             ActionContext context,
             Map<String, Object> select) {
@@ -1751,6 +2081,12 @@ public class UiViewCompositionActionService {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验并获取可读目标列表字段；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续可读目标列表字段步骤传递身份、配置或状态
+     * @param fieldCode 字段编码，后续用于校验并获取可读目标列表字段时定位或关联目标
+     */
     private void requireReadableTargetListField(
             ActionContext context,
             String fieldCode) {
@@ -1785,6 +2121,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 校验并获取可编辑来源表单字段；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续可编辑来源表单字段步骤传递身份、配置或状态
+     * @param fieldCode 字段编码，后续用于校验并获取可编辑来源表单字段时定位或关联目标
+     */
     private void requireEditableSourceFormField(
             ActionContext context,
             String fieldCode) {
@@ -1812,6 +2154,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 判断可编辑模式条件是否成立，供调用方选择后续分支。
+     *
+     * @param field 字段，供本方法处理可编辑模式时使用
+     * @param mode 模式标识，决定后续可编辑模式采用的处理分支
+     * @return 可编辑模式条件成立时为 true，否则为 false
+     */
     private boolean editableInMode(
             Map<String, Object> field,
             String mode) {
@@ -1835,6 +2184,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 整理能力集合数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续能力集合步骤传递身份、配置或状态
+     * @return 能力集合键值结果，供调用方继续处理
+     */
     private Map<String, UiViewCompositionActionCapabilityDTO> capabilities(
             ActionContext context) {
         Set<String> declared = new LinkedHashSet<>(
@@ -1866,6 +2221,14 @@ public class UiViewCompositionActionService {
         return Collections.unmodifiableMap(result);
     }
 
+    /**
+     * 处理能力，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续能力步骤传递身份、配置或状态
+     * @param action 动作标识，决定后续能力采用的处理分支
+     * @param declared {@code declared}，作为 {@code selectCapability} 的输入影响后续处理
+     * @return 处理后的能力结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO capability(
             ActionContext context,
             String action,
@@ -1882,6 +2245,12 @@ public class UiViewCompositionActionService {
         };
     }
 
+    /**
+     * 创建能力；结果供后续流程传递或持久化。
+     *
+     * @param context 执行上下文，向后续能力步骤传递身份、配置或状态
+     * @return 创建后的能力结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO createCapability(
             ActionContext context) {
         if (!FORM.equals(context.resolved().getTargetContentType())) {
@@ -1912,6 +2281,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 处理{@code edit}能力，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续{@code edit}能力步骤传递身份、配置或状态
+     * @return 处理后的{@code edit}能力结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO editCapability(
             ActionContext context) {
         if (!FORM.equals(context.resolved().getTargetContentType())) {
@@ -1947,6 +2322,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 解析创建初始值集合；输出作为后续校验或处理的输入。
+     *
+     * @param context 执行上下文，向后续创建初始值集合步骤传递身份、配置或状态
+     * @param create 创建，作为 {@code mapList} 的输入影响后续处理
+     * @return 创建初始值集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> resolveCreateInitialValues(
             ActionContext context,
             Map<String, Object> create) {
@@ -2002,6 +2384,12 @@ public class UiViewCompositionActionService {
         return Collections.unmodifiableMap(values);
     }
 
+    /**
+     * 校验并获取可读来源已发布字段；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续可读来源已发布字段步骤传递身份、配置或状态
+     * @param fieldCode 字段编码，后续用于校验并获取可读来源已发布字段时定位或关联目标
+     */
     private void requireReadableSourcePublishedField(
             ActionContext context,
             String fieldCode) {
@@ -2043,6 +2431,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 校验并获取可编辑目标表单字段；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续可编辑目标表单字段步骤传递身份、配置或状态
+     * @param fieldCode 字段编码，后续用于校验并获取可编辑目标表单字段时定位或关联目标
+     * @param mode 模式标识，决定后续可编辑目标表单字段采用的处理分支
+     */
     private void requireEditableTargetFormField(
             ActionContext context,
             String fieldCode,
@@ -2071,6 +2466,18 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 校验并获取精确目标表单；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续精确目标表单步骤传递身份、配置或状态
+     * @param action 动作标识，决定后续精确目标表单采用的处理分支
+     * @param targetEntityCode 目标实体编码，后续用于校验并获取精确目标表单时定位或关联目标
+     * @param targetRecordId 目标记录ID，后续用于校验并获取精确目标表单时定位或关联目标
+     * @param targetFormId 目标表单ID，后续用于校验并获取精确目标表单时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于校验并获取精确目标表单时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，作为 {@code releaseService.resolveAuthorizedRuntimeFormRelease} 的输入影响后续处理
+     * @param targetReleaseResolutionToken 目标发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     */
     private void requireExactTargetForm(
             ActionContext context,
             String action,
@@ -2130,6 +2537,13 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 查询能力；查询结果供调用方展示或继续处理。
+     *
+     * @param context 执行上下文，向后续能力步骤传递身份、配置或状态
+     * @param declared {@code declared}，供本方法查询能力时使用
+     * @return 查询后的能力结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO selectCapability(
             ActionContext context,
             Set<String> declared) {
@@ -2160,6 +2574,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 处理关系能力，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续关系能力步骤传递身份、配置或状态
+     * @return 处理后的关系能力结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO relationCapability(
             ActionContext context) {
         String type = normalize(text(context.relation().get("type")));
@@ -2209,7 +2629,12 @@ public class UiViewCompositionActionService {
         return allowed();
     }
 
-    /** 根据固定关系生成最小候选条件，并与目标列表固定条件安全求交。 */
+    /**
+     * 根据固定关系生成最小候选条件，并与目标列表固定条件安全求交。
+     *
+     * @param context 执行上下文，向后续候选人方案步骤传递身份、配置或状态
+     * @return 处理后的候选人方案结果，供调用方继续处理
+     */
     private CandidatePlan candidatePlan(ActionContext context) {
         String relationType = normalize(text(
                 context.relation().get("type")));
@@ -2264,6 +2689,12 @@ public class UiViewCompositionActionService {
                 Collections.unmodifiableMap(candidate), matchNone);
     }
 
+    /**
+     * 整理目标列表固定过滤条件数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续目标列表固定过滤条件步骤传递身份、配置或状态
+     * @return 目标列表固定过滤条件键值结果，供调用方继续处理
+     */
     private Map<String, Object> targetListFixedFilters(
             ActionContext context) {
         Object raw = map(context.targetSnapshot().get("list"))
@@ -2289,6 +2720,13 @@ public class UiViewCompositionActionService {
                 "固定目标列表的筛选条件格式不正确");
     }
 
+    /**
+     * 判断是否具有过滤基础；判断结果决定调用方的后续分支。
+     *
+     * @param filters 过滤条件，供本方法判断是否具有过滤基础时使用
+     * @param fieldCode 字段编码，后续用于判断是否具有过滤基础时定位或关联目标
+     * @return 过滤基础条件成立时为 true，否则为 false
+     */
     private boolean hasFilterBase(
             Map<String, Object> filters,
             String fieldCode) {
@@ -2298,6 +2736,13 @@ public class UiViewCompositionActionService {
                 || filters.containsKey(fieldCode + "_end");
     }
 
+    /**
+     * 生成过滤操作人文本，供后续匹配或展示。
+     *
+     * @param filters 过滤条件，作为 {@code normalize} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理过滤操作人时定位或关联目标
+     * @return 处理后的过滤操作人文本，供调用方比较或展示
+     */
     private String filterOperator(
             Map<String, Object> filters,
             String fieldCode) {
@@ -2313,6 +2758,13 @@ public class UiViewCompositionActionService {
                 ? "IN" : "EQ";
     }
 
+    /**
+     * 判断是否具有权限；判断结果决定调用方的后续分支。
+     *
+     * @param entity 实体，供本方法判断是否具有权限时使用
+     * @param action 动作标识，决定后续权限采用的处理分支
+     * @return 权限条件成立时为 true，否则为 false
+     */
     private boolean hasPermission(
             EntityDefinition entity,
             EntityPermissionAction action) {
@@ -2321,10 +2773,21 @@ public class UiViewCompositionActionService {
                         action.permissionCode(entity.getEntityCode()));
     }
 
+    /**
+     * 处理允许，并将结果传给后续步骤。
+     *
+     * @return 处理后的允许结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO allowed() {
         return allowed(Map.of());
     }
 
+    /**
+     * 处理允许，并将结果传给后续步骤。
+     *
+     * @param initialValues 缺失行首次创建时的列值；已有行的业务值不会被覆盖
+     * @return 处理后的允许结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO allowed(
             Map<String, Object> initialValues) {
         return UiViewCompositionActionCapabilityDTO.builder()
@@ -2335,6 +2798,12 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
+    /**
+     * 处理已拒绝，并将结果传给后续步骤。
+     *
+     * @param reason 原因，供本方法处理已拒绝时使用
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private UiViewCompositionActionCapabilityDTO denied(String reason) {
         return UiViewCompositionActionCapabilityDTO.builder()
                 .available(false)
@@ -2342,6 +2811,12 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
+    /**
+     * 校验并获取可用；不满足约束时阻止后续处理。
+     *
+     * @param capabilities 能力集合，供本方法校验并获取可用时使用
+     * @param action 动作标识，决定后续可用采用的处理分支
+     */
     private void requireAvailable(
             Map<String, UiViewCompositionActionCapabilityDTO> capabilities,
             String action) {
@@ -2356,6 +2831,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 解析上下文；输出作为后续校验或处理的输入。
+     *
+     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的上下文结果，供调用方继续处理
+     */
     private ActionContext resolveContext(String actionContextToken) {
         UiViewCompositionTokenService.Claims claims =
                 tokenService.verifySourceRow(actionContextToken);
@@ -2444,6 +2925,13 @@ public class UiViewCompositionActionService {
                 targetSchema);
     }
 
+    /**
+     * 处理固定结构，并将结果传给后续步骤。
+     *
+     * @param pin 固定，作为 {@code text} 的输入影响后续处理
+     * @param label 标签，后续用于处理固定结构时匹配或展示
+     * @return 处理后的固定结构结果，供调用方继续处理
+     */
     private EntityPublishedSnapshot pinnedSchema(
             Map<String, Object> pin,
             String label) {
@@ -2485,6 +2973,13 @@ public class UiViewCompositionActionService {
         return schema;
     }
 
+    /**
+     * 校验请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验请求
+     * @return 校验后的请求结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ValidatedAction validateRequest(
             UiViewCompositionActionRequest request) {
         if (request == null
@@ -2529,6 +3024,13 @@ public class UiViewCompositionActionService {
                 operationId);
     }
 
+    /**
+     * 规范化记录ID 集合；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化记录ID 集合的原始输入，结果供调用方继续使用
+     * @return 界面视图组合动作集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> normalizeRecordIds(List<String> raw) {
         if (raw == null || raw.isEmpty()) {
             throw new IllegalArgumentException("请选择至少一条目标记录");
@@ -2552,6 +3054,13 @@ public class UiViewCompositionActionService {
         return List.copyOf(ids);
     }
 
+    /**
+     * 校验并获取选择数量；不满足约束时阻止后续处理。
+     *
+     * @param ids ID 集合，供本方法校验并获取选择数量时使用
+     * @param mode 模式标识，决定后续选择数量采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireSelectionCount(List<String> ids, String mode) {
         if (!Set.of("SINGLE", "MULTIPLE").contains(mode)) {
             throw conflict(
@@ -2563,6 +3072,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 校验并获取动态；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，供本方法校验并获取动态时使用
+     * @param label 标签，后续用于校验并获取动态时匹配或展示
+     */
     private void requireDynamic(
             EntityDefinition entity,
             String label) {
@@ -2573,6 +3088,14 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 校验并获取固定字段；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，供本方法校验并获取固定字段时使用
+     * @param fieldCode 字段编码，后续用于校验并获取固定字段时定位或关联目标
+     * @param label 标签，后续用于校验并获取固定字段时匹配或展示
+     * @return 校验并获取后的固定字段结果，供调用方继续处理
+     */
     private EntityField requirePinnedField(
             EntityPublishedSnapshot schema,
             String fieldCode,
@@ -2592,6 +3115,13 @@ public class UiViewCompositionActionService {
         return field;
     }
 
+    /**
+     * 校验并获取引用；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，供本方法校验并获取引用时使用
+     * @param expectedEntityId 预期实体ID，后续用于校验并获取引用时定位或关联目标
+     * @param label 标签，后续用于校验并获取引用时匹配或展示
+     */
     private void requireReference(
             EntityField field,
             String expectedEntityId,
@@ -2605,6 +3135,14 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 生成必填字段文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填字段的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param label 标签，后续用于处理必填字段时匹配或展示
+     * @return 处理后的必填字段文本，供调用方比较或展示
+     */
     private String requiredField(
             Map<String, Object> value,
             String key,
@@ -2618,6 +3156,13 @@ public class UiViewCompositionActionService {
         return result;
     }
 
+    /**
+     * 记录值；供后续追溯或审计使用。
+     *
+     * @param record 记录，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于记录值时定位或关联目标
+     * @return 记录后的值结果，供调用方继续处理
+     */
     private Object recordValue(
             EntityDataDTO record,
             String fieldCode) {
@@ -2633,6 +3178,13 @@ public class UiViewCompositionActionService {
         return values.get(fieldCode);
     }
 
+    /**
+     * 处理标量，并将结果传给后续步骤。
+     *
+     * @param value 待处理标量的原始输入，结果供调用方继续使用
+     * @param fieldCode 字段编码，后续用于处理标量时定位或关联目标
+     * @return 处理后的标量结果，供调用方继续处理
+     */
     private Object scalar(Object value, String fieldCode) {
         if (value instanceof Collection<?> || value instanceof Map<?, ?>) {
             throw conflict(
@@ -2642,6 +3194,12 @@ public class UiViewCompositionActionService {
         return value;
     }
 
+    /**
+     * 判断{@code truthy}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理{@code truthy}的原始输入，结果供调用方继续使用
+     * @return {@code truthy}条件成立时为 true，否则为 false
+     */
     private boolean truthy(Object value) {
         return Boolean.TRUE.equals(value)
                 || value instanceof Number number && number.intValue() != 0
@@ -2649,6 +3207,13 @@ public class UiViewCompositionActionService {
                 && ("true".equalsIgnoreCase(text) || "1".equals(text));
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -2659,6 +3224,12 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> map(Object value) {
         if (!(value instanceof Map<?, ?> source)) {
             return Map.of();
@@ -2669,6 +3240,12 @@ public class UiViewCompositionActionService {
         return result;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面视图组合动作集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> source)) {
             return List.of();
@@ -2679,6 +3256,12 @@ public class UiViewCompositionActionService {
                 .toList();
     }
 
+    /**
+     * 整理字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串列表的原始输入，结果供调用方继续使用
+     * @return 界面视图组合动作集合，供调用方遍历或展示
+     */
     private List<String> stringList(Object value) {
         if (!(value instanceof Collection<?> source)) {
             return List.of();
@@ -2690,6 +3273,12 @@ public class UiViewCompositionActionService {
                 .toList();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String candidate = trim(text(value));
@@ -2700,24 +3289,54 @@ public class UiViewCompositionActionService {
         return null;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面视图组合动作的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面视图组合动作文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 规范化哈希；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化哈希的原始输入，结果供调用方继续使用
+     * @return 规范化后的哈希文本，供调用方比较或展示
+     */
     private String normalizeHash(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toLowerCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 清理界面视图组合动作；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待清理界面视图组合动作的原始输入，结果供调用方继续使用
+     * @return 清理后的界面视图组合动作文本，供调用方比较或展示
+     */
     private String trim(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -2729,18 +3348,46 @@ public class UiViewCompositionActionService {
         }
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private BusinessConflictException conflict(
             String code,
             String message) {
         return new BusinessConflictException(code, message);
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param code 编码，后续用于处理禁止时定位或关联目标
+     * @param message 消息，作为 {@code BusinessForbiddenException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private BusinessForbiddenException forbidden(
             String code,
             String message) {
         return new BusinessForbiddenException(code, message);
     }
 
+    /**
+     * 封装动作上下文的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param claims 声明集合，保存在对象中供后续校验、查询或展示
+     * @param resolved 已解析，保存在对象中供后续校验、查询或展示
+     * @param ownerSnapshot 归属方快照，保存在对象中供后续校验、查询或展示
+     * @param targetSnapshot 目标快照，保存在对象中供后续校验、查询或展示
+     * @param config 配置内容，决定后续动作上下文的处理规则
+     * @param relation 关系，保存在对象中供后续校验、查询或展示
+     * @param sourceEntity 来源实体，保存在对象中供后续校验、查询或展示
+     * @param targetEntity 目标实体，保存在对象中供后续校验、查询或展示
+     * @param sourceSchema 来源结构，保存在对象中供后续校验、查询或展示
+     * @param targetSchema 目标结构，保存在对象中供后续校验、查询或展示
+     */
     private record ActionContext(
             UiViewCompositionTokenService.Claims claims,
             UiViewCompositionResolveResponse resolved,
@@ -2754,6 +3401,15 @@ public class UiViewCompositionActionService {
             EntityPublishedSnapshot targetSchema) {
     }
 
+    /**
+     * 封装已校验动作的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param candidateListContextToken 候选人列表上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param action 动作标识，决定后续已校验动作采用的处理分支
+     * @param targetRecordIds 目标记录ID 集合，保存在对象中供后续校验、查询或展示
+     * @param operationId 操作ID，后续用于处理已校验动作时定位或关联目标
+     */
     private record ValidatedAction(
             String actionContextToken,
             String candidateListContextToken,
@@ -2762,22 +3418,47 @@ public class UiViewCompositionActionService {
             String operationId) {
     }
 
+    /**
+     * 封装字段映射的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param fromTarget 起始目标，保存在对象中供后续校验、查询或展示
+     * @param toSource 截止来源，保存在对象中供后续校验、查询或展示
+     * @param required 必填，保存在对象中供后续校验、查询或展示
+     */
     private record FieldMapping(
             String fromTarget,
             String toSource,
             boolean required) {
     }
 
+    /**
+     * 封装变更方案的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param commands {@code commands}，保存在对象中供后续校验、查询或展示
+     * @param targetRecordIds 目标记录ID 集合，保存在对象中供后续校验、查询或展示
+     */
     private record MutationPlan(
             List<EntityMutationCommand> commands,
             List<String> targetRecordIds) {
     }
 
+    /**
+     * 封装候选人方案的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param filters 过滤条件，保存在对象中供后续校验、查询或展示
+     * @param matchNone 匹配{@code none}，保存在对象中供后续校验、查询或展示
+     */
     private record CandidatePlan(
             Map<String, Object> filters,
             boolean matchNone) {
     }
 
+    /**
+     * 封装锁定键的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private record LockKey(String entityCode, String recordId) {
     }
 }

@@ -1,7 +1,7 @@
 package com.workflow.core.database;
 
-import com.workflow.integration.database.api.DatabaseInsertDialect;
-import com.workflow.integration.database.api.DatabaseErrorKind;
+import com.workflow.integration.database.api.write.DatabaseInsertDialect;
+import com.workflow.integration.database.api.error.DatabaseErrorKind;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
@@ -20,6 +20,12 @@ public class JdbcWriteAttempt {
     private final JdbcTemplate jdbc;
     private final DatabaseExceptionClassifier errors;
 
+    /**
+     * 初始化JDBC写入{@code attempt}，保存构造参数供后续方法使用。
+     *
+     * @param jdbc JDBC，保存在对象中供后续校验、查询或展示
+     * @param dialect 方言，保存在对象中供后续校验、查询或展示
+     */
     public JdbcWriteAttempt(JdbcTemplate jdbc, DatabaseInsertDialect dialect) {
         this.jdbc = Objects.requireNonNull(jdbc);
         this.errors = DatabaseExceptionClassifier.forInsert(dialect);
@@ -33,6 +39,9 @@ public class JdbcWriteAttempt {
      * 使用批处理延迟执行或执行 DDL。Spring JDBC 事务内不提交、不回滚先前工作；没有
      * Spring 事务时按自动提交处理，仅翻译错误，不支持调用方手工管理的独立连接事务。
      * 保存点不会撤销 Java 对象赋值或缓存；业务重读须绕过旧缓存。</p>
+     *
+     * @param statement {@code statement}，供本方法执行JDBC写入{@code attempt}时使用
+     * @return 执行后的JDBC写入{@code attempt}结果，供调用方继续处理
      */
     public int execute(IntSupplier statement) {
         Objects.requireNonNull(statement);
@@ -65,7 +74,12 @@ public class JdbcWriteAttempt {
         });
     }
 
-    /** 厂商错误码来自纯方言；混合连接/事务错误链绝不能只因存在重复键而被吞掉。 */
+    /**
+     * 厂商错误码来自纯方言；混合连接/事务错误链绝不能只因存在重复键而被吞掉。
+     *
+     * @param error 错误，作为 {@code DuplicateKeyException} 的输入影响后续处理
+     * @return 处理后的{@code classify}结果，供调用方继续处理
+     */
     private RuntimeException classify(RuntimeException error) {
         if (errors.classify(error) == DatabaseErrorKind.UNIQUE) {
             return error instanceof DuplicateKeyException ? error : new DuplicateKeyException("数据库唯一约束冲突", error);
@@ -74,6 +88,13 @@ public class JdbcWriteAttempt {
                 ? new DataAccessResourceFailureException("重复键异常同时包含无法恢复的其他数据库错误", error) : error;
     }
 
+    /**
+     * 处理发布版本，并将结果传给后续步骤。
+     *
+     * @param connection 连接，供本方法处理发布版本时使用
+     * @param point {@code point}，作为 {@code connection.releaseSavepoint} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static void release(Connection connection, Savepoint point) throws SQLException {
         try { connection.releaseSavepoint(point); }
         catch (SQLFeatureNotSupportedException unsupported) {

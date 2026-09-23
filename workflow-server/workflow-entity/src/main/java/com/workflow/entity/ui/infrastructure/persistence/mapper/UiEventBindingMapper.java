@@ -24,6 +24,10 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
      * <p>参数是已经完成 JSON 字符串转义的完整属性片段。SQL 只用于缩小
      * 候选集，应用层仍会解析 JSON 并做 serviceId 精确相等判断，避免 LIKE
      * 的通配或旧数据格式导致误报。</p>
+     *
+     * @param compactNeedle {@code compact}{@code needle}，作为 {@code query.like} 的输入影响后续处理
+     * @param spacedNeedle {@code spaced}{@code needle}，供本方法查询草稿引用候选集合时使用
+     * @return 界面事件绑定集合，供调用方遍历或展示
      */
     default List<UiEventBinding> findDraftReferenceCandidates(String compactNeedle, String spacedNeedle) {
         if (compactNeedle == null && spacedNeedle == null) {
@@ -44,7 +48,13 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
                         UiEventBinding::getTargetType, UiEventBinding::getTargetKey, UiEventBinding::getEventCode));
     }
 
-    /** 查询归属对象的有效事件绑定，按目标及事件编码稳定排列。 */
+    /**
+     * 查询归属对象的有效事件绑定，按目标及事件编码稳定排列。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于查询归属方时定位或关联目标
+     * @return 界面事件绑定集合，供调用方遍历或展示
+     */
     default List<UiEventBinding> findByOwner(String ownerType, String ownerId) {
         return selectList(Wrappers.<UiEventBinding>lambdaQuery()
                 .eq(UiEventBinding::getOwnerType, ownerType)
@@ -59,6 +69,10 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
      *
      * <p>撤销草稿会以 owner 范围作为串行化边界，防止事件绑定未更新 FORM/LIST
      * revision 时绕过配置级 CAS。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方更新采用的处理分支
+     * @param ownerId 归属方ID，后续用于查询归属方更新时定位或关联目标
+     * @return 界面事件绑定集合，供调用方遍历或展示
      */
     @Select("SELECT * FROM ui_event_binding "
             + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId} "
@@ -67,7 +81,13 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
             @Param("ownerType") String ownerType,
             @Param("ownerId") String ownerId);
 
-    /** 物理清理指定所有者的草稿绑定，发布快照不在本表且不受影响。 */
+    /**
+     * 物理清理指定所有者的草稿绑定，发布快照不在本表且不受影响。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于删除归属方时定位或关联目标
+     * @return 删除后的归属方结果，供调用方继续处理
+     */
     @Delete("DELETE FROM ui_event_binding "
             + "WHERE owner_type = #{ownerType} AND owner_id = #{ownerId}")
     int deleteByOwner(
@@ -82,6 +102,7 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
      *
      * @param formId 当前表单 ID
      * @param targetKeys 已经没有有效节点承载的字段编码，必须非空
+     * @return 删除后的表单字段绑定集合结果，供调用方继续处理
      */
     @Delete({"<script>",
             "DELETE FROM ui_event_binding WHERE owner_type = 'FORM'",
@@ -94,7 +115,14 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
             @Param("formId") String formId,
             @Param("targetKeys") Set<String> targetKeys);
 
-    /** 快照合并实体级和当前配置级绑定，实体级顺序优先且只包含已启用的活动草稿。 */
+    /**
+     * 快照合并实体级和当前配置级绑定，实体级顺序优先且只包含已启用的活动草稿。
+     *
+     * @param configType 配置类型标识，决定后续快照采用的处理分支
+     * @param configId 配置ID，后续用于查询快照时定位或关联目标
+     * @param entityId 实体ID，后续用于查询快照时定位或关联目标
+     * @return 界面事件绑定集合，供调用方遍历或展示
+     */
     default List<UiEventBinding> findForSnapshot(String configType, String configId, String entityId) {
         // CASE 只表达固定的归属优先级；所有配置标识仍由 Wrapper 绑定参数。
         return selectList(Wrappers.<UiEventBinding>query()

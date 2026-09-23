@@ -1,6 +1,6 @@
 package com.workflow.contracts.embed.runtime.port;
 
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
 import java.util.List;
 
 /**
@@ -16,11 +16,22 @@ public interface EmbedNativeListDependencyRuntimePort {
      */
     ResolvedList resolveExact(ListCoordinate target);
 
-    /** 已验证、并补全列表配置 ID 的依赖节点。 */
+    /**
+     * 已验证、并补全列表配置 ID 的依赖节点。
+     *
+     * @param list 列表，保存在对象中供后续校验、查询或展示
+     * @param openListTargets 打开列表目标集合，保存在对象中供后续校验、查询或展示
+     */
     record ResolvedList(
             ListCoordinate list,
             List<ListCoordinate> openListTargets) {
 
+        /**
+         * 初始化已解析列表，保存构造参数供后续方法使用。
+         *
+         * @param list 列表，保存在对象中供后续校验、查询或展示
+         * @param openListTargets 打开列表目标集合，保存在对象中供后续校验、查询或展示
+         */
         public ResolvedList {
             openListTargets = openListTargets == null
                     ? List.of() : List.copyOf(openListTargets);

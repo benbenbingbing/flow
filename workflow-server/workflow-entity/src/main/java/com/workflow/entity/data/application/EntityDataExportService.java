@@ -5,10 +5,10 @@ import com.workflow.entity.list.application.EntityDataListConfigService;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 
 import com.workflow.core.error.ForbiddenException;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.api.request.EntityDataExportRequest;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -192,6 +192,14 @@ public class EntityDataExportService {
         }
     }
 
+    /**
+     * 查询数据；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param request 本次请求，后续经校验后用于查询数据
+     * @param config 配置内容，决定后续数据的处理规则
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     private List<EntityDataDTO> queryData(
             String entityCode,
             EntityDataExportRequest request,
@@ -210,6 +218,13 @@ public class EntityDataExportService {
         return allRecords;
     }
 
+    /**
+     * 读取字段值；查询结果供调用方展示或继续处理。
+     *
+     * @param record 记录，作为 {@code dtoField.get} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于读取字段值时定位或关联目标
+     * @return 符合条件的实体数据导出结果，供调用方继续处理
+     */
     private Object getFieldValue(EntityDataDTO record, String fieldCode) {
         if (record == null || !StringUtils.hasText(fieldCode)) {
             return null;
@@ -244,6 +259,12 @@ public class EntityDataExportService {
         return null;
     }
 
+    /**
+     * 格式化值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待格式化值的原始输入，结果供调用方继续使用
+     * @return 格式化后的值文本，供调用方比较或展示
+     */
     private String formatValue(Object value) {
         if (value == null) {
             return "";
@@ -251,6 +272,12 @@ public class EntityDataExportService {
         return value.toString();
     }
 
+    /**
+     * 生成{@code join}CSV{@code line}文本，供后续匹配或展示。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的{@code join}CSV{@code line}文本，供调用方比较或展示
+     */
     private String joinCsvLine(List<String> values) {
         return values.stream()
                 .map(v -> {

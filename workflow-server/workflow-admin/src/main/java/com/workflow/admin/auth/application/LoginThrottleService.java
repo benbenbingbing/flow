@@ -30,6 +30,13 @@ public class LoginThrottleService {
     private final Clock clock;
     private final JdbcLockedRow lockedRows;
 
+    /**
+     * 初始化{@code login}{@code throttle}服务，保存构造参数供后续方法使用。
+     *
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     * @param lockedRows 已锁定行，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public LoginThrottleService(
             LoginThrottleMapper mapper,
@@ -37,6 +44,14 @@ public class LoginThrottleService {
         this(mapper, properties, Clock.systemUTC(), lockedRows);
     }
 
+    /**
+     * 初始化{@code login}{@code throttle}服务，保存构造参数供后续方法使用。
+     *
+     * @param mapper 映射器依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     * @param lockedRows 已锁定行依赖，保存到当前对象供后续业务方法调用
+     */
     LoginThrottleService(
             LoginThrottleMapper mapper,
             LoginThrottleProperties properties,
@@ -47,6 +62,12 @@ public class LoginThrottleService {
         this.lockedRows = lockedRows;
     }
 
+    /**
+     * 处理{@code assert}允许，并将结果传给后续步骤。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param clientAddress 客户端地址，供本方法处理{@code assert}允许时使用
+     */
     public void assertAllowed(
             String username,
             String clientAddress) {
@@ -67,7 +88,12 @@ public class LoginThrottleService {
         }
     }
 
-    /** 固定按账号再客户端的顺序加锁，两维计数与窗口变化在同一事务中提交。 */
+    /**
+     * 固定按账号再客户端的顺序加锁，两维计数与窗口变化在同一事务中提交。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param clientAddress 客户端地址，作为 {@code recordDimensionFailure} 的输入影响后续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public void recordFailure(
             String username,
@@ -102,7 +128,15 @@ public class LoginThrottleService {
                 now.plusSeconds(blockSeconds));
     }
 
-    /** 初次失败从零计数开始；初始化不会覆盖旧窗口和封禁，阈值仍由当前配置决定。 */
+    /**
+     * 初次失败从零计数开始；初始化不会覆盖旧窗口和封禁，阈值仍由当前配置决定。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param now 当前时间，作为 {@code lockedRows.ensureAndLock} 的输入影响后续处理
+     * @param cutoff 截止点，供本方法记录{@code dimension}失败时使用
+     * @param maximum {@code maximum}，供本方法记录{@code dimension}失败时使用
+     * @param blockedUntil {@code blocked}{@code until}，供本方法记录{@code dimension}失败时使用
+     */
     private void recordDimensionFailure(String key, LocalDateTime now, LocalDateTime cutoff,
                                         int maximum, LocalDateTime blockedUntil) {
         lockedRows.ensureAndLock("auth_login_throttle", Map.of(
@@ -113,10 +147,18 @@ public class LoginThrottleService {
         }
     }
 
+    /**
+     * 记录成功；供后续追溯或审计使用。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     */
     public void recordSuccess(String username) {
         mapper.delete(accountKey(username));
     }
 
+    /**
+     * 处理{@code cleanup}，并将结果传给后续步骤。
+     */
     @Scheduled(
             cron =
                     "${workflow.security.login-throttle.cleanup-cron:"
@@ -126,6 +168,12 @@ public class LoginThrottleService {
                 now().minusDays(2));
     }
 
+    /**
+     * 生成{@code account}键文本，供后续匹配或展示。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return 处理后的{@code account}键文本，供调用方比较或展示
+     */
     private String accountKey(String username) {
         String normalized = username == null
                 ? ""
@@ -133,6 +181,12 @@ public class LoginThrottleService {
         return "a:" + sha256(normalized);
     }
 
+    /**
+     * 生成客户端键文本，供后续匹配或展示。
+     *
+     * @param clientAddress 客户端地址，作为 {@code sha256} 的输入影响后续处理
+     * @return 处理后的客户端键文本，供调用方比较或展示
+     */
     private String clientKey(String clientAddress) {
         return "i:" + sha256(
                 clientAddress == null
@@ -140,6 +194,13 @@ public class LoginThrottleService {
                         : clientAddress.trim());
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -153,12 +214,25 @@ public class LoginThrottleService {
         }
     }
 
+    /**
+     * 处理当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前时间结果，供调用方继续处理
+     */
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(
                 clock.instant(),
                 ZoneOffset.UTC);
     }
 
+    /**
+     * 处理{@code bounded}，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code bounded}的原始输入，结果供调用方继续使用
+     * @param minimum {@code minimum}，作为 {@code Math.max} 的输入影响后续处理
+     * @param maximum {@code maximum}，作为 {@code Math.max} 的输入影响后续处理
+     * @return 处理后的{@code bounded}结果，供调用方继续处理
+     */
     private int bounded(
             int value,
             int minimum,

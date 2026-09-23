@@ -42,7 +42,7 @@ class EntityMultiValueSystemReferenceTest {
                         definitionMapper,
                         dynamicTableService,
                         tableResolver,
-                        systemFieldPolicy, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                        systemFieldPolicy, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         EntityDefinition purchaseOrder = definition(
                 "entity-purchase", "purchase_order",

@@ -2,19 +2,18 @@ package com.workflow.process.action.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.process.action.api.request.FlowActionSaveRequest;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
-import com.workflow.process.action.application.FlowActionConfigurationValidator;
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
+import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -37,6 +36,9 @@ public class FlowActionService {
     
     /**
      * 查询流程配置下所有草稿动作
+     *
+     * @param processConfigId 流程配置ID，后续用于查询草稿动作集合时定位或关联目标
+     * @return 流程动作集合，供调用方遍历或展示
      */
     public List<FlowAction> findDraftActions(String processConfigId) {
         return flowActionMapper.findDraftActionsByProcessConfigId(processConfigId);
@@ -60,6 +62,9 @@ public class FlowActionService {
     
     /**
      * 保存动作（草稿状态）
+     *
+     * @param request 本次请求，后续经校验后用于保存动作
+     * @return 保存后的动作结果，供调用方继续处理
      */
     @Transactional
     @SystemAudit(
@@ -75,6 +80,12 @@ public class FlowActionService {
         return saveAction(action);
     }
 
+    /**
+     * 保存动作；后续读取或执行将使用更新后的状态。
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @return 保存后的动作结果，供调用方继续处理
+     */
     @Transactional
     @SystemAudit(
             module = AuditModule.ACTION,
@@ -114,6 +125,8 @@ public class FlowActionService {
     
     /**
      * 删除动作（仅可删除草稿状态）
+     *
+     * @param actionId 动作ID，后续用于删除动作时定位或关联目标
      */
     @Transactional
     @SystemAudit(
@@ -135,6 +148,9 @@ public class FlowActionService {
     /**
      * 发布动作 - 将当前草稿动作复制到版本
      * 这是关键点：发布时复制，草稿和已发布分离
+     *
+     * @param processConfigId 流程配置ID，后续用于发布动作集合时定位或关联目标
+     * @param versionId 版本ID，后续用于发布动作集合时定位或关联目标
      */
     @Transactional
     public void publishActions(String processConfigId, String versionId) {
@@ -177,6 +193,9 @@ public class FlowActionService {
     
     /**
      * 查询版本下所有已发布动作
+     *
+     * @param versionId 版本ID，后续用于查询已发布动作集合时定位或关联目标
+     * @return 流程动作集合，供调用方遍历或展示
      */
     public List<FlowAction> findPublishedActions(String versionId) {
         return flowActionMapper.findPublishedActionsByVersionId(versionId);
@@ -206,6 +225,8 @@ public class FlowActionService {
     
     /**
      * 更新动作排序
+     *
+     * @param actionIds 动作ID 集合，作为 {@code action.setId} 的输入影响后续处理
      */
     @Transactional
     @SystemAudit(
@@ -227,6 +248,8 @@ public class FlowActionService {
     
     /**
      * 切换动作启用状态
+     *
+     * @param actionId 动作ID，后续用于处理{@code toggle}启用时定位或关联目标
      */
     @Transactional
     @SystemAudit(
@@ -254,6 +277,8 @@ public class FlowActionService {
     
     /**
      * 根据版本ID删除动作
+     *
+     * @param versionId 版本ID，后续用于删除动作集合版本ID时定位或关联目标
      */
     @Transactional
     public void deleteActionsByVersionId(String versionId) {
@@ -262,7 +287,12 @@ public class FlowActionService {
         log.info("Logic deleted actions for version {}", LogValue.safe(versionId));
     }
 
-    /** 将保存请求转换为动作实体 */
+    /**
+     * 将保存请求转换为动作实体
+     *
+     * @param request 本次请求，后续经校验后用于转换为实体
+     * @return 转换为后的实体结果，供调用方继续处理
+     */
     private FlowAction toEntity(FlowActionSaveRequest request) {
         FlowAction action = new FlowAction();
         action.setId(request.getId());
@@ -283,7 +313,11 @@ public class FlowActionService {
         return action;
     }
 
-    /** 归一化动作配置：补全作用域、元素 ID、触发时机、执行方式、失败策略等缺省值 */
+    /**
+     * 归一化动作配置：补全作用域、元素 ID、触发时机、执行方式、失败策略等缺省值
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     */
     private void normalizeAction(FlowAction action) {
         String scopeType = normalizeScope(action.getScopeType());
         action.setScopeType(scopeType);
@@ -310,7 +344,12 @@ public class FlowActionService {
         action.setDeleted(0);
     }
 
-    /** 归一化显式作用域；缺失值交由配置校验器拒绝，避免猜错 BPMN 元素类型。 */
+    /**
+     * 归一化显式作用域；缺失值交由配置校验器拒绝，避免猜错 BPMN 元素类型。
+     *
+     * @param scopeType 作用域类型标识，决定后续作用域采用的处理分支
+     * @return 规范化后的作用域文本，供调用方比较或展示
+     */
     private String normalizeScope(String scopeType) {
         if (org.springframework.util.StringUtils.hasText(scopeType)) {
             return scopeType.trim().toUpperCase(java.util.Locale.ROOT);
@@ -318,12 +357,23 @@ public class FlowActionService {
         return scopeType;
     }
 
-    /** 流程级作用域返回 null，其他作用域返回原元素 ID */
+    /**
+     * 流程级作用域返回 null，其他作用域返回原元素 ID
+     *
+     * @param scopeType 作用域类型标识，决定后续元素ID采用的处理分支
+     * @param elementId 元素ID，后续用于规范化元素ID时定位或关联目标
+     * @return 规范化后的元素ID文本，供调用方比较或展示
+     */
     private String normalizeElementId(String scopeType, String elementId) {
         return FlowActionScopeType.PROCESS.name().equalsIgnoreCase(scopeType) ? null : elementId;
     }
 
-    /** 按触发时机取默认执行方式；解析失败回退为事务内执行 */
+    /**
+     * 按触发时机取默认执行方式；解析失败回退为事务内执行
+     *
+     * @param triggerTiming 触发条件时机，作为 {@code FlowActionTriggerTiming.valueOf} 的输入影响后续处理
+     * @return 处理后的默认执行模式文本，供调用方比较或展示
+     */
     private String defaultExecutionMode(String triggerTiming) {
         try {
             return FlowActionTriggerTiming.valueOf(triggerTiming).getDefaultExecutionMode().name();
@@ -332,7 +382,12 @@ public class FlowActionService {
         }
     }
 
-    /** 按触发时机取默认失败策略；解析失败回退为 ROLLBACK */
+    /**
+     * 按触发时机取默认失败策略；解析失败回退为 ROLLBACK
+     *
+     * @param triggerTiming 触发条件时机，作为 {@code FlowActionTriggerTiming.valueOf} 的输入影响后续处理
+     * @return 处理后的默认失败策略文本，供调用方比较或展示
+     */
     private String defaultFailurePolicy(String triggerTiming) {
         try {
             return FlowActionTriggerTiming.valueOf(triggerTiming).getDefaultFailurePolicy().name();

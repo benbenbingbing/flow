@@ -28,6 +28,12 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
     private final SysMenuMapper menuMapper;
     private final CurrentUserRoleService currentUserRoleService;
 
+    /**
+     * 初始化接口端点授权{@code interceptor}，保存构造参数供后续方法使用。
+     *
+     * @param menuMapperProvider 菜单映射器提供者，保存在对象中供后续校验、查询或展示
+     * @param currentUserRoleServiceProvider 当前用户角色服务提供者，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EndpointAuthorizationInterceptor(
             ObjectProvider<SysMenuMapper> menuMapperProvider,
@@ -37,6 +43,12 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
                 currentUserRoleServiceProvider.getIfAvailable());
     }
 
+    /**
+     * 初始化接口端点授权{@code interceptor}，保存构造参数供后续方法使用。
+     *
+     * @param menuMapper 菜单映射器依赖，保存到当前对象供后续业务方法调用
+     * @param currentUserRoleService 当前用户角色服务依赖，保存到当前对象供后续业务方法调用
+     */
     public EndpointAuthorizationInterceptor(
             SysMenuMapper menuMapper,
             CurrentUserRoleService currentUserRoleService) {
@@ -44,6 +56,15 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
         this.currentUserRoleService = currentUserRoleService;
     }
 
+    /**
+     * 判断{@code pre}{@code handle}条件是否成立，供调用方选择后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code pre}{@code handle}
+     * @param response 响应，供本方法处理{@code pre}{@code handle}时使用
+     * @param handler 处理器，供本方法处理{@code pre}{@code handle}时使用
+     * @return {@code pre}{@code handle}条件成立时为 true，否则为 false
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     @Override
     public boolean preHandle(
             HttpServletRequest request,
@@ -92,6 +113,12 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
         throw new ForbiddenException("接口未配置访问策略");
     }
 
+    /**
+     * 校验并获取权限；不满足约束时阻止后续处理。
+     *
+     * @param requirement {@code requirement}，作为 {@code Arrays.stream} 的输入影响后续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requirePermission(RequiresPermission requirement) {
         String[] required = Arrays.stream(requirement.value())
                 .filter(value -> value != null && !value.isBlank())
@@ -117,6 +144,12 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
         }
     }
 
+    /**
+     * 判断是否状态{@code changing}；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否状态{@code changing}
+     * @return 状态{@code changing}条件成立时为 true，否则为 false
+     */
     private boolean isStateChanging(HttpServletRequest request) {
         String method = request.getMethod();
         return "POST".equals(method)
@@ -125,6 +158,13 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
                 || "DELETE".equals(method);
     }
 
+    /**
+     * 查询{@code method}{@code annotation}；查询结果供调用方展示或继续处理。
+     *
+     * @param handlerMethod 处理器{@code method}，作为 {@code AnnotatedElementUtils.findMergedAnnotation} 的输入影响后续处理
+     * @param annotationType {@code annotation}类型标识，决定后续{@code method}{@code annotation}采用的处理分支
+     * @return 符合条件的{@code a}结果，供调用方继续处理
+     */
     private <A extends java.lang.annotation.Annotation> A findMethodAnnotation(
             HandlerMethod handlerMethod,
             Class<A> annotationType) {
@@ -132,6 +172,13 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
                 handlerMethod.getMethod(), annotationType);
     }
 
+    /**
+     * 查询{@code class}{@code annotation}；查询结果供调用方展示或继续处理。
+     *
+     * @param handlerMethod 处理器{@code method}，作为 {@code AnnotatedElementUtils.findMergedAnnotation} 的输入影响后续处理
+     * @param annotationType {@code annotation}类型标识，决定后续{@code class}{@code annotation}采用的处理分支
+     * @return 符合条件的{@code a}结果，供调用方继续处理
+     */
     private <A extends java.lang.annotation.Annotation> A findClassAnnotation(
             HandlerMethod handlerMethod,
             Class<A> annotationType) {

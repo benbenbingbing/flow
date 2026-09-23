@@ -1,8 +1,8 @@
 package com.workflow.core.database;
 
-import com.workflow.integration.database.api.DatabaseErrorDialect;
-import com.workflow.integration.database.api.DatabaseErrorKind;
-import com.workflow.integration.database.api.DatabaseInsertDialect;
+import com.workflow.integration.database.api.error.DatabaseErrorDialect;
+import com.workflow.integration.database.api.error.DatabaseErrorKind;
+import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import java.sql.SQLException;
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -14,9 +14,19 @@ import org.springframework.dao.DuplicateKeyException;
 public final class DatabaseExceptionClassifier {
     private final DatabaseErrorDialect dialect;
 
+    /**
+     * 初始化数据库异常{@code classifier}，保存构造参数供后续方法使用。
+     *
+     * @param dialect 方言，保存在对象中供后续校验、查询或展示
+     */
     public DatabaseExceptionClassifier(DatabaseErrorDialect dialect) { this.dialect = Objects.requireNonNull(dialect); }
 
-    /** 兼容现有插入执行器端口，复用异常图遍历，唯一规则仍由其注入的方言提供。 */
+    /**
+     * 兼容现有插入执行器端口，复用异常图遍历，唯一规则仍由其注入的方言提供。
+     *
+     * @param dialect 方言，供本方法处理{@code insert}时使用
+     * @return 处理后的{@code insert}结果，供调用方继续处理
+     */
     static DatabaseExceptionClassifier forInsert(DatabaseInsertDialect dialect) {
         Objects.requireNonNull(dialect);
         return new DatabaseExceptionClassifier((state, code) -> dialect.isUniqueViolation(state, code)
@@ -26,6 +36,9 @@ public final class DatabaseExceptionClassifier {
     /**
      * 检查 cause、suppressed 和 JDBC nextException 的完整错误链。混合类型或未知错误返回 UNKNOWN，
      * 防止批处理、驱动包装或恢复错误被根异常中的一个重复键掩盖；用身份集合阻止循环链。
+     *
+     * @param error 错误，作为 {@code pending.add} 的输入影响后续处理
+     * @return 处理后的{@code classify}结果，供调用方继续处理
      */
     public DatabaseErrorKind classify(Throwable error) {
         if (error == null) return DatabaseErrorKind.UNKNOWN;

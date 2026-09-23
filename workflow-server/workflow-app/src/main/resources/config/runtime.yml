@@ -1,0 +1,99 @@
+# 运行基础配置：Web 服务、线程池、停机与初始化角色；保持原属性路径和部署变量不变。
+
+# Web 服务入口，控制监听端口、请求容量和停机行为。
+server:
+  # 业务 HTTP 监听端口；部署时可通过 SERVER_PORT 覆盖。
+  port: 8080
+  # 启用优雅停机，停止接收新请求并等待正在处理的请求结束。
+  shutdown: graceful
+  # 内嵌 Tomcat 的连接与工作线程容量，限制单实例请求负载。
+  tomcat:
+    # 处理 HTTP 请求的线程池；应结合数据库连接池容量调整。
+    threads:
+      # 请求处理线程上限，防止高并发耗尽实例资源。
+      max: ${SERVER_TOMCAT_THREADS_MAX:100}
+      # 保持就绪的最少工作线程数，减少突发请求的线程创建开销。
+      min-spare: ${SERVER_TOMCAT_THREADS_MIN_SPARE:10}
+    # 操作系统连接等待队列的长度上限，限制尚未被服务器接受的连接积压。
+    accept-count: ${SERVER_TOMCAT_ACCEPT_COUNT:100}
+    # 实例同时接受的连接数上限，用于限制连接资源占用。
+    max-connections: ${SERVER_TOMCAT_MAX_CONNECTIONS:4096}
+    # 建立连接后等待请求行的超时，带时间单位；不是业务执行超时。
+    connection-timeout: ${SERVER_TOMCAT_CONNECTION_TIMEOUT:5s}
+  # Servlet 请求处理设置，统一接口的字符编码行为。
+  servlet:
+    # 请求与响应编码策略，避免中文等字符在传输时乱码。
+    encoding:
+      # HTTP 请求和响应使用的默认字符集。
+      charset: UTF-8
+      # 启用 Servlet 字符编码过滤器。
+      enabled: true
+      # 强制请求和响应采用指定字符集，避免客户端默认编码造成差异。
+      force: true
+
+# Spring Boot 基础设施配置，由对应自动配置或应用配置类读取。
+spring:
+  # 应用生命周期设置，控制关闭阶段的等待窗口。
+  lifecycle:
+    # 每个优雅停机阶段允许等待的最长时间，需与部署平台终止宽限期配合。
+    timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:30s}
+  # Spring 通用异步执行和定时调度线程池，不替代各业务专用执行器。
+  task:
+    # 通用异步任务执行器的容量与停机策略。
+    execution:
+      # 异步执行线程池，限制后台任务的并行度与排队量。
+      pool:
+        # 常驻核心线程数，用于承接正常异步任务负载。
+        core-size: ${APPLICATION_EXECUTOR_CORE_SIZE:4}
+        # 队列饱和后允许扩展到的最大线程数。
+        max-size: ${APPLICATION_EXECUTOR_MAX_SIZE:16}
+        # 等待执行的任务数量上限，避免任务积压无限占用内存。
+        queue-capacity: ${APPLICATION_EXECUTOR_QUEUE_CAPACITY:100}
+        # 非核心线程空闲存活时间，带时间单位，用于回收峰值后多余线程。
+        keep-alive: ${APPLICATION_EXECUTOR_KEEP_ALIVE:60s}
+      # 应用关闭时的异步任务收尾设置。
+      shutdown:
+        # 关闭时等待已提交任务完成，减少中途终止带来的不完整处理。
+        await-termination: true
+        # 异步执行器关闭等待上限，带时间单位，超过后继续停机。
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+    # Spring 定时任务调度器配置，服务于已启用的调度任务。
+    scheduling:
+      # 定时任务线程池，避免单个耗时任务阻塞所有调度。
+      pool:
+        # 可并行执行定时任务的线程数。
+        size: ${APPLICATION_SCHEDULER_POOL_SIZE:4}
+      # 应用关闭时的定时任务收尾设置。
+      shutdown:
+        # 关闭时等待正在运行的定时任务结束。
+        await-termination: true
+        # 调度器关闭等待上限，带时间单位，需落在部署停机窗口内。
+        await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 应用初始数据安装设置，用于管理员及系统实体等初始化。
+  bootstrap:
+    # 启用初始数据安装；生产服务关闭，仅 bootstrap 作业开启。
+    enabled: ${WORKFLOW_BOOTSTRAP_ENABLED:true}
+    # 初始化完成后退出进程，供一次性 bootstrap 作业使用。
+    exit-on-complete: ${WORKFLOW_BOOTSTRAP_EXIT_ON_COMPLETE:false}
+    # 初始管理员创建参数，仅在需要初始化管理员时使用。
+    admin:
+      # 初始管理员密码，由部署环境提供，不在配置仓库保存真实凭据。
+      password: ${WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD:}
+  # 进程角色声明，用于校验生产服务与初始化作业的职责边界。
+  deployment:
+    # 本地默认为 development；生产使用 server 或 bootstrap，并配套设置初始化和调度开关。
+    role: ${WORKFLOW_DEPLOYMENT_ROLE:development}
+  # 业务定时任务总开关，供服务进程和一次性作业选择执行职责。
+  scheduling:
+    # 是否启用 Spring 业务调度；bootstrap 作业应关闭，不替代 Flowable 异步执行器开关。
+    enabled: ${WORKFLOW_SCHEDULING_ENABLED:true}
+
+# 业务配置管理入口，供配置包导入导出等功能使用。
+config:
+  # 业务配置迁移包设置，用于标识导出来源，不属于 Flyway 数据库结构迁移。
+  migration:
+    # 写入业务配置迁移包的来源环境名称，便于跨环境导入时识别来源。
+    environment-name: ${CONFIG_MIGRATION_ENVIRONMENT_NAME:local}

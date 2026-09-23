@@ -103,6 +103,13 @@ public class ConfigMigrationProcessLockCoordinator {
                 .forEach(entry -> lockAndValidateEntity(entry.getValue()));
     }
 
+    /**
+     * 添加已有流程键；结果供后续流程传递或持久化。
+     *
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param processesByKey {@code processes}键，后续用于授权校验、关联或幂等去重
+     * @param processIds 流程ID 集合，供本方法添加已有流程键时使用
+     */
     private void addExistingProcessByKey(
             String processKey,
             Map<String, ProcessDefinitionConfig> processesByKey,
@@ -118,6 +125,12 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /**
+     * 添加流程ID；结果供后续流程传递或持久化。
+     *
+     * @param processId 流程ID，后续用于添加流程ID时定位或关联目标
+     * @param processIds 流程ID 集合，供本方法添加流程ID时使用
+     */
     private void addProcessId(String processId, Map<String, String> processIds) {
         String canonicalId = canonicalProcessId(processId);
         if (canonicalId != null) {
@@ -125,6 +138,13 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /**
+     * 添加实体快照；结果供后续流程传递或持久化。
+     *
+     * @param entity 实体，作为 {@code canonicalPositiveId} 的输入影响后续处理
+     * @param entitySnapshots 实体{@code snapshots}，供本方法添加实体快照时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void addEntitySnapshot(
             EntityDefinition entity,
             Map<String, EntityBindingSnapshot> entitySnapshots) {
@@ -146,6 +166,11 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /**
+     * 锁定与校验实体；避免后续并发处理覆盖状态。
+     *
+     * @param snapshot 快照，作为 {@code entityMapper.findByIdForUpdate} 的输入影响后续处理
+     */
     private void lockAndValidateEntity(EntityBindingSnapshot snapshot) {
         EntityDefinition locked = entityMapper.findByIdForUpdate(snapshot.entityId())
                 .orElseThrow(() -> bindingChanged(snapshot.entityCode()));
@@ -156,17 +181,34 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /**
+     * 构造绑定已变更异常，供调用方区分失败原因。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 处理后的绑定已变更结果，供调用方继续处理
+     */
     private BusinessConflictException bindingChanged(String entityCode) {
         return new BusinessConflictException(
                 "ENTITY_WORKFLOW_BINDING_CHANGED",
                 "实体流程绑定已被其他请求修改，请重试迁移: " + entityCode);
     }
 
-    /** process_definition_config.id 是 BIGINT，只接受正整数并消除 01/1 数字别名。 */
+    /**
+     * process_definition_config.id 是 BIGINT，只接受正整数并消除 01/1 数字别名。
+     *
+     * @param processId 流程ID，后续用于处理规范流程ID时定位或关联目标
+     * @return 处理后的规范流程ID文本，供调用方比较或展示
+     */
     static String canonicalProcessId(String processId) {
         return canonicalPositiveId(processId);
     }
 
+    /**
+     * 生成规范正数ID文本，供后续匹配或展示。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的规范正数ID文本，供调用方比较或展示
+     */
     private static String canonicalPositiveId(String id) {
         if (!StringUtils.hasText(id)) {
             return null;
@@ -179,7 +221,12 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
-    /** 来源类型和编码由唯一约束保证单条；禁用映射仍回退原流程编码。 */
+    /**
+     * 来源类型和编码由唯一约束保证单条；禁用映射仍回退原流程编码。
+     *
+     * @param sourceKey 来源键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code mapped}流程键文本，供调用方比较或展示
+     */
     private String mappedProcessKey(String sourceKey) {
         ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
@@ -189,6 +236,13 @@ public class ConfigMigrationProcessLockCoordinator {
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> readMap(String value) {
         try {
             return objectMapper.readValue(value, MAP_TYPE);
@@ -197,6 +251,12 @@ public class ConfigMigrationProcessLockCoordinator {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return new LinkedHashMap<>();
@@ -206,12 +266,25 @@ public class ConfigMigrationProcessLockCoordinator {
         return converted;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value, String fallback) {
         String result = value == null ? null : String.valueOf(value);
         return StringUtils.hasText(result) ? result : fallback;
     }
 
-    /** 加流程锁前读取的实体绑定快照，用于实体加锁后的竞态校验。 */
+    /**
+     * 加流程锁前读取的实体绑定快照，用于实体加锁后的竞态校验。
+     *
+     * @param entityId 实体ID，后续用于处理实体绑定快照时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     */
     private record EntityBindingSnapshot(
             String entityId,
             String entityCode,

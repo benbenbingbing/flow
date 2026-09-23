@@ -44,6 +44,12 @@ public class PublishedFormRequiredValidator {
 
     /**
      * 合并旧记录与本次提交结果后校验整字段和附件项逻辑必填。
+     *
+     * @param form 表单，作为 {@code currentAttachmentItems} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param mode 模式标识，决定后续已发布表单必填采用的处理分支
+     * @param submittedData 已提交数据，作为 {@code mergedRecord} 的输入影响后续处理
      */
     public void validate(
             EntityForm form,
@@ -73,6 +79,12 @@ public class PublishedFormRequiredValidator {
         }
     }
 
+    /**
+     * 判断是否具有{@code conditional}必填规则集合；判断结果决定调用方的后续分支。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return {@code conditional}必填规则集合条件成立时为 true，否则为 false
+     */
     private boolean hasConditionalRequiredRules(
             List<EntityFormField> fields) {
         for (EntityFormField field : fields) {
@@ -106,6 +118,14 @@ public class PublishedFormRequiredValidator {
         return false;
     }
 
+    /**
+     * 校验字段；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，作为 {@code readObject} 的输入影响后续处理
+     * @param mode 模式标识，决定后续字段采用的处理分支
+     * @param record 记录，作为 {@code visible} 的输入影响后续处理
+     * @param currentItems 当前条目，供本方法校验字段时使用
+     */
     private void validateField(
             EntityFormField field,
             String mode,
@@ -154,6 +174,15 @@ public class PublishedFormRequiredValidator {
                 currentItems);
     }
 
+    /**
+     * 判断可见条件是否成立，供调用方选择后续分支。
+     *
+     * @param field 字段，作为 {@code readObject} 的输入影响后续处理
+     * @param mode 模式标识，决定后续可见采用的处理分支
+     * @param linkageRules {@code linkage}规则集合，作为 {@code conditionEvaluator.evaluate} 的输入影响后续处理
+     * @param record 记录，供本方法处理可见时使用
+     * @return 可见条件成立时为 true，否则为 false
+     */
     private boolean visible(
             EntityFormField field,
             String mode,
@@ -180,6 +209,17 @@ public class PublishedFormRequiredValidator {
                 true);
     }
 
+    /**
+     * 校验附件条目；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，作为 {@code failure} 的输入影响后续处理
+     * @param componentProps 组件属性，供本方法校验附件条目时使用
+     * @param configured 已配置，作为 {@code mapValue} 的输入影响后续处理
+     * @param fieldValue 字段值，作为 {@code attachmentItemValue} 的输入影响后续处理
+     * @param record 记录，供本方法校验附件条目时使用
+     * @param fieldVisible 字段可见，供本方法校验附件条目时使用
+     * @param currentItems 当前条目，作为 {@code attachmentItemValue} 的输入影响后续处理
+     */
     private void validateAttachmentItems(
             EntityFormField field,
             Map<String, Object> componentProps,
@@ -256,6 +296,14 @@ public class PublishedFormRequiredValidator {
         }
     }
 
+    /**
+     * 整理{@code merged}记录数据，供调用方遍历或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param submittedData 已提交数据，作为 {@code flattenSubmitted} 的输入影响后续处理
+     * @return {@code merged}记录键值结果，供调用方继续处理
+     */
     private Map<String, Object> mergedRecord(
             String entityCode,
             String recordId,
@@ -284,6 +332,12 @@ public class PublishedFormRequiredValidator {
         return result;
     }
 
+    /**
+     * 整理{@code flatten}已提交数据，供调用方遍历或继续处理。
+     *
+     * @param submittedData 已提交数据，作为 {@code result.putAll} 的输入影响后续处理
+     * @return {@code flatten}已提交键值结果，供调用方继续处理
+     */
     private Map<String, Object> flattenSubmitted(
             Map<String, Object> submittedData) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -298,6 +352,15 @@ public class PublishedFormRequiredValidator {
         return result;
     }
 
+    /**
+     * 处理附件条目值，并将结果传给后续步骤。
+     *
+     * @param value 待处理附件条目值的原始输入，结果供调用方继续使用
+     * @param item 条目，作为 {@code findCurrentItem} 的输入影响后续处理
+     * @param index 索引，作为 {@code keys.add} 的输入影响后续处理
+     * @param currentItems 当前条目，作为 {@code findCurrentItem} 的输入影响后续处理
+     * @return 处理后的附件条目值结果，供调用方继续处理
+     */
     private Object attachmentItemValue(
             Object value,
             Map<String, Object> item,
@@ -327,6 +390,12 @@ public class PublishedFormRequiredValidator {
         return null;
     }
 
+    /**
+     * 整理当前附件条目数据，供调用方遍历或继续处理。
+     *
+     * @param form 表单，作为 {@code entityFieldMapper.findByEntityId} 的输入影响后续处理
+     * @return 当前附件条目键值结果，供调用方继续处理
+     */
     private Map<String, List<EntityFieldFileItem>> currentAttachmentItems(
             EntityForm form) {
         if (form == null || !StringUtils.hasText(form.getEntityId())) {
@@ -367,6 +436,13 @@ public class PublishedFormRequiredValidator {
         return result;
     }
 
+    /**
+     * 查询当前条目；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshotItem 快照条目，作为 {@code text} 的输入影响后续处理
+     * @param currentItems 当前条目，供本方法查询当前条目时使用
+     * @return 符合条件的实体字段文件条目结果，供调用方继续处理
+     */
     private EntityFieldFileItem findCurrentItem(
             Map<String, Object> snapshotItem,
             List<EntityFieldFileItem> currentItems) {
@@ -396,6 +472,12 @@ public class PublishedFormRequiredValidator {
         return null;
     }
 
+    /**
+     * 整理{@code aliases}数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code aliases}的原始输入，结果供调用方继续使用
+     * @return 已发布表单必填校验器集合，供调用方遍历或展示
+     */
     private List<String> aliases(Object value) {
         Object parsed = parseJsonValue(value);
         if (!(parsed instanceof Collection<?> values)) {
@@ -408,6 +490,13 @@ public class PublishedFormRequiredValidator {
                 .toList();
     }
 
+    /**
+     * 判断是否具有字段值；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否具有字段值时使用
+     * @param value 待判断是否具有字段值的原始输入，结果供调用方继续使用
+     * @return 字段值条件成立时为 true，否则为 false
+     */
     private boolean hasFieldValue(
             EntityFormField field,
             Object value) {
@@ -419,6 +508,12 @@ public class PublishedFormRequiredValidator {
                 : !isEmpty(value);
     }
 
+    /**
+     * 判断是否具有附件值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有附件值的原始输入，结果供调用方继续使用
+     * @return 附件值条件成立时为 true，否则为 false
+     */
     private boolean hasAttachmentValue(Object value) {
         Object parsed = parseJsonValue(value);
         if (parsed == null) {
@@ -447,6 +542,12 @@ public class PublishedFormRequiredValidator {
         return false;
     }
 
+    /**
+     * 判断是否具有附件文件值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有附件文件值的原始输入，结果供调用方继续使用
+     * @return 附件文件值条件成立时为 true，否则为 false
+     */
     private boolean hasAttachmentFileValue(Object value) {
         Object parsed = parseJsonValue(value);
         if (parsed == null) {
@@ -467,6 +568,12 @@ public class PublishedFormRequiredValidator {
         return false;
     }
 
+    /**
+     * 判断是否空；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private boolean isEmpty(Object value) {
         if (value == null) return true;
         if (value instanceof String text) return text.trim().isEmpty();
@@ -475,6 +582,12 @@ public class PublishedFormRequiredValidator {
         return value.getClass().isArray() && Array.getLength(value) == 0;
     }
 
+    /**
+     * 解析JSON值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析JSON值的原始输入，结果供调用方继续使用
+     * @return 解析后的JSON值结果，供调用方继续处理
+     */
     private Object parseJsonValue(Object value) {
         if (!(value instanceof String text)) {
             return value;
@@ -491,11 +604,24 @@ public class PublishedFormRequiredValidator {
         }
     }
 
+    /**
+     * 生成条目名称文本，供后续匹配或展示。
+     *
+     * @param item 条目，作为 {@code text} 的输入影响后续处理
+     * @param index 索引，供本方法处理条目名称时使用
+     * @return 处理后的条目名称文本，供调用方比较或展示
+     */
     private String itemName(Map<String, Object> item, int index) {
         String name = text(item.get("itemName"));
         return StringUtils.hasText(name) ? name : "附件项" + (index + 1);
     }
 
+    /**
+     * 生成字段标签文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理字段标签时使用
+     * @return 处理后的字段标签文本，供调用方比较或展示
+     */
     private String fieldLabel(EntityFormField field) {
         String label = StringUtils.hasText(field.getFieldLabel())
                 ? field.getFieldLabel()
@@ -505,6 +631,13 @@ public class PublishedFormRequiredValidator {
         return "字段“" + label + "”";
     }
 
+    /**
+     * 读取对象；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，供本方法读取对象时使用
+     * @param label 标签，后续用于读取对象时匹配或展示
+     * @return 对象键值结果，供调用方继续处理
+     */
     private Map<String, Object> readObject(
             String document,
             String label) {
@@ -512,11 +645,23 @@ public class PublishedFormRequiredValidator {
                 ? codec.readObject(document, label) : Map.of();
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> map
                 ? stringMap(map) : Map.of();
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) ->
@@ -524,16 +669,34 @@ public class PublishedFormRequiredValidator {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(Object value) {
         return Boolean.TRUE.equals(value)
                 || Integer.valueOf(1).equals(value)
                 || "1".equals(String.valueOf(value));
     }
 
+    /**
+     * 处理整数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数值的原始输入，结果供调用方继续使用
+     * @return 处理后的整数值结果，供调用方继续处理
+     */
     private int integerValue(Object value) {
         try {
             return Integer.parseInt(String.valueOf(value));
@@ -542,6 +705,12 @@ public class PublishedFormRequiredValidator {
         }
     }
 
+    /**
+     * 构造失败异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的失败结果，供调用方继续处理
+     */
     private BusinessConflictException failure(String message) {
         return new BusinessConflictException(ERROR_CODE, message);
     }

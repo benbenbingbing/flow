@@ -1,7 +1,7 @@
 package com.workflow.openapi.api.error;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.embed.EmbedBoundaryFailure;
+import com.workflow.contracts.embed.error.EmbedBoundaryFailure;
 import com.workflow.openapi.api.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.web.OpenRequestTrace;
@@ -21,11 +21,21 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+/**
+ * 负责打开API异常的业务处理；协调校验、状态变化及后续结果传递。
+ */
 @Slf4j
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice(annotations = OpenIntegrationEndpoint.class)
 public class OpenApiExceptionHandler {
 
+    /**
+     * 处理打开API，并将结果传给后续步骤。
+     *
+     * @param exception 异常，作为 {@code ResponseEntity.status} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理打开API
+     * @return 处理后的打开API结果，供调用方继续处理
+     */
     @ExceptionHandler(OpenApiException.class)
     public ResponseEntity<OpenApiResponse<Object>> handleOpenApi(
             OpenApiException exception,
@@ -47,6 +57,13 @@ public class OpenApiExceptionHandler {
                 OpenRequestTrace.get(request)));
     }
 
+    /**
+     * 处理校验，并将结果传给后续步骤。
+     *
+     * @param exception 异常，供本方法处理校验时使用
+     * @param request 本次请求，后续经校验后用于处理校验
+     * @return 处理后的校验结果，供调用方继续处理
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<OpenApiResponse<Object>> handleValidation(
             MethodArgumentNotValidException exception,
@@ -68,6 +85,13 @@ public class OpenApiExceptionHandler {
                 request);
     }
 
+    /**
+     * 处理无效，并将结果传给后续步骤。
+     *
+     * @param exception 异常，供本方法处理无效时使用
+     * @param request 本次请求，后续经校验后用于处理无效
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
             MissingRequestHeaderException.class,
@@ -95,6 +119,13 @@ public class OpenApiExceptionHandler {
                 request);
     }
 
+    /**
+     * 判断是否具有原因；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有原因的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续原因采用的处理分支
+     * @return 原因条件成立时为 true，否则为 false
+     */
     private boolean hasCause(
             Throwable value,
             Class<? extends Throwable> type) {
@@ -108,6 +139,13 @@ public class OpenApiExceptionHandler {
         return false;
     }
 
+    /**
+     * 处理{@code unexpected}，并将结果传给后续步骤。
+     *
+     * @param exception 异常，供本方法处理{@code unexpected}时使用
+     * @param request 本次请求，后续经校验后用于处理{@code unexpected}
+     * @return 处理后的{@code unexpected}结果，供调用方继续处理
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<OpenApiResponse<Object>> handleUnexpected(
             Exception exception,
@@ -130,6 +168,10 @@ public class OpenApiExceptionHandler {
     /**
      * 保留 Embed 业务边界已经完成脱敏的状态码与错误码，同时避免 Open API 反向依赖
      * workflow-embed 实现模块。
+     *
+     * @param exception 异常，作为 {@code handleUnexpected} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理{@code boundary}失败
+     * @return 处理后的{@code boundary}失败结果，供调用方继续处理
      */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<OpenApiResponse<Object>> handleBoundaryFailure(
@@ -158,6 +200,14 @@ public class OpenApiExceptionHandler {
                 OpenRequestTrace.get(request)));
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，供本方法处理无效时使用
+     * @param data 数据，后续用于处理无效并传递处理结果
+     * @param request 本次请求，后续经校验后用于处理无效
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private ResponseEntity<OpenApiResponse<Object>> invalid(
             String message,
             Object data,

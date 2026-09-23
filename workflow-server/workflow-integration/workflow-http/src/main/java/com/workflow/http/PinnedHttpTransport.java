@@ -12,6 +12,9 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.stereotype.Component;
 
+/**
+ * 封装固定HTTP传输相关能力和状态；供同一业务流程的后续处理使用。
+ */
 @Component
 public class PinnedHttpTransport {
 
@@ -26,6 +29,12 @@ public class PinnedHttpTransport {
     private final RestEndpointPolicy endpointPolicy;
     private final WorkflowHttpProperties properties;
 
+    /**
+     * 初始化固定HTTP传输，保存构造参数供后续方法使用。
+     *
+     * @param endpointPolicy 接口端点策略依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     */
     public PinnedHttpTransport(
             RestEndpointPolicy endpointPolicy,
             WorkflowHttpProperties properties) {
@@ -33,6 +42,13 @@ public class PinnedHttpTransport {
         this.properties = properties;
     }
 
+    /**
+     * 执行固定HTTP传输，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于执行固定HTTP传输
+     * @return 执行后的固定HTTP传输结果，供调用方继续处理
+     * @throws java.io.IOException 读取或写入外部资源失败时抛出
+     */
     public HttpTransportResult execute(HttpTransportRequest request)
             throws java.io.IOException {
         return execute(request, false);
@@ -41,6 +57,11 @@ public class PinnedHttpTransport {
     /**
      * Executes an allowlisted request with an explicit private-address policy.
      * The default entry point remains strict; callers must opt in deliberately.
+     *
+     * @param request 本次请求，后续经校验后用于执行固定HTTP传输
+     * @param allowPrivateAddresses 允许{@code private}{@code addresses}，作为 {@code executeInternal} 的输入影响后续处理
+     * @return 执行后的固定HTTP传输结果，供调用方继续处理
+     * @throws java.io.IOException 读取或写入外部资源失败时抛出
      */
     public HttpTransportResult execute(
             HttpTransportRequest request,
@@ -48,12 +69,28 @@ public class PinnedHttpTransport {
         return executeInternal(request, allowPrivateAddresses);
     }
 
+    /**
+     * 执行旧版，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于执行旧版
+     * @param allowPrivateAddresses 允许{@code private}{@code addresses}，作为 {@code executeInternal} 的输入影响后续处理
+     * @return 执行后的旧版结果，供调用方继续处理
+     * @throws java.io.IOException 读取或写入外部资源失败时抛出
+     */
     HttpTransportResult executeLegacy(
             HttpTransportRequest request,
             boolean allowPrivateAddresses) throws java.io.IOException {
         return executeInternal(request, allowPrivateAddresses);
     }
 
+    /**
+     * 执行内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于执行内部
+     * @param allowPrivateAddresses 允许{@code private}{@code addresses}，供本方法执行内部时使用
+     * @return 执行后的内部结果，供调用方继续处理
+     * @throws java.io.IOException 读取或写入外部资源失败时抛出
+     */
     private HttpTransportResult executeInternal(
             HttpTransportRequest request,
             boolean allowPrivateAddresses) throws java.io.IOException {
@@ -142,6 +179,12 @@ public class PinnedHttpTransport {
         }
     }
 
+    /**
+     * 校验请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验请求
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateRequest(HttpTransportRequest request) {
         if (request == null
                 || request.uri() == null
@@ -202,6 +245,14 @@ public class PinnedHttpTransport {
         });
     }
 
+    /**
+     * 处理{@code bounded}，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code bounded}的原始输入，结果供调用方继续使用
+     * @param minimum {@code minimum}，作为 {@code Math.max} 的输入影响后续处理
+     * @param maximum {@code maximum}，作为 {@code Math.max} 的输入影响后续处理
+     * @return 处理后的{@code bounded}结果，供调用方继续处理
+     */
     private int bounded(int value, int minimum, int maximum) {
         return Math.max(minimum, Math.min(maximum, value));
     }

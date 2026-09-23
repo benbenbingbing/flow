@@ -5,10 +5,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort.ResolvedList;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
@@ -67,6 +67,15 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
     private final EmbedNativeListDependencyRuntimePort listDependencyPort;
     private final EntityNewDataFormRuntimePort newDataFormRuntimePort;
 
+    /**
+     * 初始化嵌入式启动记录运行时快照{@code materializer}，保存构造参数供后续方法使用。
+     *
+     * @param validator 校验器依赖，保存到当前对象供后续业务方法调用
+     * @param repository 仓储依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param listDependencyPort 列表依赖端口依赖，保存到当前对象供后续业务方法调用
+     * @param newDataFormRuntimePort 新数据表单运行时端口依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedLaunchRuntimeSnapshotMaterializer(
             EmbedViewConfigurationValidator validator,
             EmbedManagementRepository repository,
@@ -82,6 +91,13 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
 
     /**
      * 解析并持久化当前 ACTIVE 资源坐标；任一校验失败都会回滚整个 Launch 事务。
+     *
+     * @param viewId 视图ID，后续用于处理{@code materialize}时定位或关联目标
+     * @param surfaceType 界面类型标识，决定后续{@code materialize}采用的处理分支
+     * @param currentConfigJson 当前配置JSON，作为 {@code validator.validateCurrentActive} 的输入影响后续处理
+     * @param materializedBy {@code materialized}，供本方法处理{@code materialize}时使用
+     * @param now 当前时间，作为 {@code LocalDateTime.ofInstant} 的输入影响后续处理
+     * @return 处理后的{@code materialize}结果，供调用方继续处理
      */
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
@@ -142,6 +158,10 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
      *
      * <p>目标默认表单 ACTIVE 的变化会改变摘要并产生新快照；已经创建的 Session
      * 继续引用旧快照，因此不会在页面停留期间漂移。</p>
+     *
+     * @param surface 界面，供本方法处理{@code materialized}配置时使用
+     * @param validation 校验，作为 {@code read} 的输入影响后续处理
+     * @return 处理后的{@code materialized}配置结果，供调用方继续处理
      */
     private MaterializedConfig materializedConfig(
             SurfaceType surface,
@@ -186,6 +206,9 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
 
     /**
      * 从根 exact List Release 做有界广度遍历；同坐标只解析一次，但保留循环边。
+     *
+     * @param root 根，作为 {@code ListCoordinate} 的输入影响后续处理
+     * @return 构建后的列表依赖闭包结果，供调用方继续处理
      */
     private EmbedNativeListDependencyClosure buildListDependencyClosure(
             com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource root) {
@@ -256,6 +279,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                 ordered);
     }
 
+    /**
+     * 处理根默认表单，并将结果传给后续步骤。
+     *
+     * @param root 根，作为 {@code FormCoordinate} 的输入影响后续处理
+     * @return 处理后的根默认表单结果，供调用方继续处理
+     */
     private ResolvedDefaultForm rootDefaultForm(
             com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource root) {
         boolean hasId = StringUtils.hasText(root.defaultFormId());
@@ -274,6 +303,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
         return new ResolvedDefaultForm(true, form);
     }
 
+    /**
+     * 解析默认表单；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 解析后的默认表单结果，供调用方继续处理
+     */
     private ResolvedDefaultForm resolveDefaultForm(String entityCode) {
         ResolvedForm resolved =
                 newDataFormRuntimePort.resolveForNewData(entityCode)
@@ -295,6 +330,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                         resolved.releaseVersion()));
     }
 
+    /**
+     * 校验并获取相同坐标；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，供本方法校验并获取相同坐标时使用
+     * @param resolved 已解析，供本方法校验并获取相同坐标时使用
+     */
     private static void requireSameCoordinate(
             ListCoordinate requested,
             ListCoordinate resolved) {
@@ -313,6 +354,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
         }
     }
 
+    /**
+     * 生成坐标键文本，供后续匹配或展示。
+     *
+     * @param value 待处理坐标键的原始输入，结果供调用方继续使用
+     * @return 处理后的坐标键文本，供调用方比较或展示
+     */
     private static String coordinateKey(ListCoordinate value) {
         if (value == null) {
             throw unavailableConfiguration();
@@ -324,6 +371,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                 String.valueOf(value.listReleaseVersion()));
     }
 
+    /**
+     * 处理界面，并将结果传给后续步骤。
+     *
+     * @param value 待处理界面的原始输入，结果供调用方继续使用
+     * @return 处理后的界面结果，供调用方继续处理
+     */
     private SurfaceType surface(String value) {
         try {
             return SurfaceType.valueOf(value);
@@ -332,6 +385,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
         }
     }
 
+    /**
+     * 读取嵌入式启动记录运行时快照{@code materializer}；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 读取后的嵌入式启动记录运行时快照{@code materializer}结果，供调用方继续处理
+     */
     private JsonNode read(String json) {
         try {
             JsonNode result = objectMapper.readTree(json);
@@ -344,6 +403,12 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
         }
     }
 
+    /**
+     * 写入嵌入式启动记录运行时快照{@code materializer}；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入嵌入式启动记录运行时快照{@code materializer}的原始输入，结果供调用方继续使用
+     * @return 写入后的嵌入式启动记录运行时快照{@code materializer}文本，供调用方比较或展示
+     */
     private String write(JsonNode value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -354,11 +419,23 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
         }
     }
 
+    /**
+     * 生成规范化操作人文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化操作人的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化操作人文本，供调用方比较或展示
+     */
     private static String normalizedActor(String value) {
         String actor = value == null ? "embed-runtime" : value.trim();
         return actor.isEmpty() || actor.length() > 64 ? "embed-runtime" : actor;
     }
 
+    /**
+     * 处理快照，并将结果传给后续步骤。
+     *
+     * @param value 待处理快照的原始输入，结果供调用方继续使用
+     * @return 处理后的快照结果，供调用方继续处理
+     */
     private static EmbedReleaseSnapshot snapshot(ReleaseState value) {
         return new EmbedReleaseSnapshot(
                 value.id(), value.revision(), value.surfaceType().name(),
@@ -366,6 +443,11 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                 value.contextSchemaJson(), value.uiConfigJson());
     }
 
+    /**
+     * 构造不可用配置异常，供调用方区分失败原因。
+     *
+     * @return 处理后的不可用配置结果，供调用方继续处理
+     */
     private static EmbedException unavailableConfiguration() {
         return new EmbedException(
                 403,
@@ -373,14 +455,32 @@ public class EmbedLaunchRuntimeSnapshotMaterializer
                 "Embed configuration has no active Flow resource");
     }
 
+    /**
+     * 封装待处理列表的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param coordinate 坐标，保存在对象中供后续校验、查询或展示
+     * @param depth 深度，保存在对象中供后续校验、查询或展示
+     */
     private record PendingList(ListCoordinate coordinate, int depth) {
     }
 
+    /**
+     * 封装已解析默认表单的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param resolved 已解析，保存在对象中供后续校验、查询或展示
+     * @param form 表单，保存在对象中供后续校验、查询或展示
+     */
     private record ResolvedDefaultForm(
             boolean resolved,
             FormCoordinate form) {
     }
 
+    /**
+     * 封装{@code materialized}配置的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param canonicalConfig 规范配置内容，决定后续{@code materialized}配置的处理规则
+     * @param configHash 配置哈希，保存在对象中供后续校验、查询或展示
+     */
     private record MaterializedConfig(
             String canonicalConfig,
             String configHash) {

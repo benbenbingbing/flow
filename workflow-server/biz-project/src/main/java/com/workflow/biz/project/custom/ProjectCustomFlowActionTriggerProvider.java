@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
+import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -26,6 +26,11 @@ public class ProjectCustomFlowActionTriggerProvider
     public static final String TIMING =
             "PROJECT_CUSTOM_MANUAL_EVENT";
 
+    /**
+     * 读取触发条件选项；查询结果供调用方展示或继续处理。
+     *
+     * @return 流程动作时机选项集合，供调用方遍历或展示
+     */
     @Override
     public Collection<FlowActionTimingOption>
             getTriggerOptions() {

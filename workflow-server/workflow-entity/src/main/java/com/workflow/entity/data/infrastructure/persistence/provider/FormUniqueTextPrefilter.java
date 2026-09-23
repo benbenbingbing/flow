@@ -10,12 +10,18 @@ final class FormUniqueTextPrefilter {
     static final String NON_PRINTABLE_ASCII = nonPrintableAscii();
     private static final int PREFIX_LENGTH = 64;
 
+    /**
+     * 初始化表单唯一文本{@code prefilter}，保存构造参数供后续方法使用。
+     */
     private FormUniqueTextPrefilter() { }
 
     /**
      * 非 ASCII 目标不可能由纯 ASCII 字段归一化得到，只需保留非 ASCII/控制字符分支。
      * 长目标最多预筛 64 字符前缀，控制模式在 Oracle 的 512 字节以内；截短只增加候选，
      * 不截断数据库值，也不能把前缀相同直接认定为唯一冲突。
+     *
+     * @param normalizedValue 规范化值，供本方法处理{@code ascii}{@code pattern}时使用
+     * @return 处理后的{@code ascii}{@code pattern}文本，供调用方比较或展示
      */
     static String asciiPattern(String normalizedValue) {
         String value = normalizedValue == null ? "" : normalizedValue;
@@ -36,6 +42,11 @@ final class FormUniqueTextPrefilter {
         return pattern.toString();
     }
 
+    /**
+     * 生成非{@code printable}{@code ascii}文本，供后续匹配或展示。
+     *
+     * @return 处理后的非{@code printable}{@code ascii}文本，供调用方比较或展示
+     */
     private static String nonPrintableAscii() {
         var pattern = new StringBuilder("[^]");
         for (char character = 32; character <= 126; character++) {

@@ -27,6 +27,7 @@ public class NodeOperationConfigReader {
     /**
      * 读取显式简化配置。任一新字段存在即视为新配置，其余字段缺省为 {@code true}。
      *
+     * @param element 元素，供本方法读取节点操作配置{@code reader}时使用
      * @return 新配置；三个字段均不存在时返回空，以便调用方继续执行旧矩阵兼容逻辑
      */
     public Optional<NodeOperationConfig> read(BaseElement element) {
@@ -57,6 +58,14 @@ public class NodeOperationConfigReader {
         }
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param root 根，供本方法处理布尔值值时使用
+     * @param field 字段，作为 {@code root.get} 的输入影响后续处理
+     * @return 布尔值值条件成立时为 true，否则为 false
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private boolean booleanValue(JsonNode root, String field) {
         JsonNode value = root.get(field);
         if (value == null) {

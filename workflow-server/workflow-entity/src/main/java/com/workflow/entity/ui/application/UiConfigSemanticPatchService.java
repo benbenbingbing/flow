@@ -69,6 +69,11 @@ public class UiConfigSemanticPatchService {
 
     /**
      * 构建表单或列表发布快照之间的稳定 ID 语义补丁。
+     *
+     * @param configType 配置类型标识，决定后续界面配置语义补丁采用的处理分支
+     * @param source 待构建界面配置语义补丁的原始输入，结果供调用方继续使用
+     * @param target 目标，作为 {@code mapValue} 的输入影响后续处理
+     * @return 构建后的界面配置语义补丁结果，供调用方继续处理
      */
     public PatchAnalysis build(
             String configType,
@@ -170,6 +175,11 @@ public class UiConfigSemanticPatchService {
 
     /**
      * 将语义补丁应用到某个流程版本原始或上一有效快照。
+     *
+     * @param baseSnapshot 基础快照，作为 {@code deepCopy} 的输入影响后续处理
+     * @param operations 操作集合，供本方法应用界面配置语义补丁时使用
+     * @param allowDivergedTarget 允许{@code diverged}目标，供本方法应用界面配置语义补丁时使用
+     * @return 应用后的界面配置语义补丁结果，供调用方继续处理
      */
     public PatchApplication apply(
             Map<String, Object> baseSnapshot,
@@ -240,6 +250,11 @@ public class UiConfigSemanticPatchService {
                 divergedTarget);
     }
 
+    /**
+     * 规范化热修复风险；输出作为后续校验或处理的输入。
+     *
+     * @param operations 操作集合，供本方法规范化热修复风险时使用
+     */
     private void normalizeHotfixRisk(
             List<UiConfigSemanticPatchOperation> operations) {
         for (UiConfigSemanticPatchOperation operation : operations) {
@@ -253,6 +268,12 @@ public class UiConfigSemanticPatchService {
         }
     }
 
+    /**
+     * 判断是否集合变更；判断结果决定调用方的后续分支。
+     *
+     * @param operation 操作标识，决定后续集合变更采用的处理分支
+     * @return 集合变更条件成立时为 true，否则为 false
+     */
     private boolean isCollectionChange(
             UiConfigSemanticPatchOperation operation) {
         return "/".equals(operation.getPath())
@@ -260,6 +281,13 @@ public class UiConfigSemanticPatchService {
                         operation.getChangeType());
     }
 
+    /**
+     * 定位集合；结果供调用方的后续步骤使用。
+     *
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @param operation 操作标识，决定后续集合采用的处理分支
+     * @return 定位后的集合结果，供调用方继续处理
+     */
     private CollectionLocation locateCollection(
             Map<String, Object> snapshot,
             UiConfigSemanticPatchOperation operation) {
@@ -309,10 +337,22 @@ public class UiConfigSemanticPatchService {
                         : List.of("id", "key", "actionCode"));
     }
 
+    /**
+     * 写入补丁；后续读取或执行将使用更新后的状态。
+     *
+     * @param operations 操作集合，作为 {@code codec.write} 的输入影响后续处理
+     * @return 写入后的补丁文本，供调用方比较或展示
+     */
     public String writePatch(List<UiConfigSemanticPatchOperation> operations) {
         return codec.write(operations, "UI热修复语义补丁");
     }
 
+    /**
+     * 读取补丁；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code codec.read} 的输入影响后续处理
+     * @return 界面配置语义补丁操作集合，供调用方遍历或展示
+     */
     public List<UiConfigSemanticPatchOperation> readPatch(String document) {
         if (!StringUtils.hasText(document)) {
             return List.of();
@@ -323,6 +363,15 @@ public class UiConfigSemanticPatchService {
                 "UI热修复语义补丁");
     }
 
+    /**
+     * 处理差异集合，并将结果传给后续步骤。
+     *
+     * @param section 区段，作为 {@code operations.add} 的输入影响后续处理
+     * @param sourceItems 来源条目，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param targetItems 目标条目，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param idKeys ID键集合，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param operations 操作集合，作为 {@code diffMap} 的输入影响后续处理
+     */
     private void diffCollection(
             String section,
             List<Map<String, Object>> sourceItems,
@@ -355,6 +404,16 @@ public class UiConfigSemanticPatchService {
         }
     }
 
+    /**
+     * 处理差异映射，并将结果传给后续步骤。
+     *
+     * @param section 区段，作为 {@code operations.add} 的输入影响后续处理
+     * @param itemId 条目ID，后续用于处理差异映射时定位或关联目标
+     * @param source 待处理差异映射的原始输入，结果供调用方继续使用
+     * @param target 目标，作为 {@code keys.addAll} 的输入影响后续处理
+     * @param prefix 前缀，供本方法处理差异映射时使用
+     * @param operations 操作集合，供本方法处理差异映射时使用
+     */
     private void diffMap(
             String section,
             String itemId,
@@ -409,6 +468,14 @@ public class UiConfigSemanticPatchService {
         }
     }
 
+    /**
+     * 解析{@code documents}；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，供本方法解析{@code documents}时使用
+     * @param before 之前，作为 {@code ParsedDocument} 的输入影响后续处理
+     * @param after 之后，供本方法解析{@code documents}时使用
+     * @return 解析后的{@code documents}结果，供调用方继续处理
+     */
     private ParsedDocument parseDocuments(
             String field,
             Object before,
@@ -427,12 +494,24 @@ public class UiConfigSemanticPatchService {
         }
     }
 
+    /**
+     * 判断是否对象文档值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否对象文档值的原始输入，结果供调用方继续使用
+     * @return 对象文档值条件成立时为 true，否则为 false
+     */
     private boolean isObjectDocumentValue(Object value) {
         return value == null
                 || value instanceof String
                 || value instanceof Map<?, ?>;
     }
 
+    /**
+     * 解析对象文档值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析对象文档值的原始输入，结果供调用方继续使用
+     * @return 对象文档值键值结果，供调用方继续处理
+     */
     private Map<String, Object> parseObjectDocumentValue(Object value) {
         if (value instanceof Map<?, ?>) {
             return mapValue(value);
@@ -440,12 +519,26 @@ public class UiConfigSemanticPatchService {
         return parseObjectDocument((String) value);
     }
 
+    /**
+     * 解析对象文档；输出作为后续校验或处理的输入。
+     *
+     * @param document 文档，供本方法解析对象文档时使用
+     * @return 对象文档键值结果，供调用方继续处理
+     */
     private Map<String, Object> parseObjectDocument(String document) {
         return StringUtils.hasText(document)
                 ? codec.readObject(document, "UI配置嵌入文档")
                 : new LinkedHashMap<>();
     }
 
+    /**
+     * 处理{@code classify}，并将结果传给后续步骤。
+     *
+     * @param path 路径，作为 {@code lastSegment} 的输入影响后续处理
+     * @param before 之前，供本方法处理{@code classify}时使用
+     * @param after 之后，供本方法处理{@code classify}时使用
+     * @return 处理后的{@code classify}结果，供调用方继续处理
+     */
     private Risk classify(String path, Object before, Object after) {
         String field = lastSegment(path);
         if (HIGH_RISK_FIELDS.contains(field)
@@ -463,6 +556,12 @@ public class UiConfigSemanticPatchService {
         return new Risk(REVIEW, "未知配置路径需要复核，但不阻止热修复");
     }
 
+    /**
+     * 判断是否包含{@code high}风险{@code marker}；判断结果决定调用方的后续分支。
+     *
+     * @param path 路径，供本方法判断是否包含{@code high}风险{@code marker}时使用
+     * @return {@code high}风险{@code marker}条件成立时为 true，否则为 false
+     */
     private boolean containsHighRiskMarker(String path) {
         String normalized = path.toLowerCase();
         return normalized.contains("permission")
@@ -475,6 +574,13 @@ public class UiConfigSemanticPatchService {
                 || normalized.contains("provider");
     }
 
+    /**
+     * 定位界面配置语义补丁；结果供调用方的后续步骤使用。
+     *
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @param operation 操作标识，决定后续界面配置语义补丁采用的处理分支
+     * @return 定位后的界面配置语义补丁结果，供调用方继续处理
+     */
     private ApplyLocation locate(
             Map<String, Object> snapshot,
             UiConfigSemanticPatchOperation operation) {
@@ -542,6 +648,13 @@ public class UiConfigSemanticPatchService {
         return locatePath(item, operation.getPath());
     }
 
+    /**
+     * 定位路径；结果供调用方的后续步骤使用。
+     *
+     * @param root 根，供本方法定位路径时使用
+     * @param path 路径，作为 {@code java.util.Arrays.stream} 的输入影响后续处理
+     * @return 定位后的路径结果，供调用方继续处理
+     */
     private ApplyLocation locatePath(
             Map<String, Object> root,
             String path) {
@@ -602,6 +715,14 @@ public class UiConfigSemanticPatchService {
                 });
     }
 
+    /**
+     * 查询条目；查询结果供调用方展示或继续处理。
+     *
+     * @param items 条目，供本方法查询条目时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param idKeys ID键集合，供本方法查询条目时使用
+     * @return 条目键值结果，供调用方继续处理
+     */
     private Map<String, Object> findItem(
             List<Map<String, Object>> items,
             String id,
@@ -614,6 +735,13 @@ public class UiConfigSemanticPatchService {
         return null;
     }
 
+    /**
+     * 整理索引稳定ID数据，供调用方遍历或继续处理。
+     *
+     * @param items 条目，供本方法处理索引稳定ID时使用
+     * @param idKeys ID键集合，作为 {@code stableId} 的输入影响后续处理
+     * @return 索引稳定ID键值结果，供调用方继续处理
+     */
     private Map<String, Map<String, Object>> indexByStableId(
             List<Map<String, Object>> items,
             List<String> idKeys) {
@@ -627,6 +755,13 @@ public class UiConfigSemanticPatchService {
         return indexed;
     }
 
+    /**
+     * 生成稳定ID文本，供后续匹配或展示。
+     *
+     * @param item 条目，供本方法处理稳定ID时使用
+     * @param idKeys ID键集合，供本方法处理稳定ID时使用
+     * @return 处理后的稳定ID文本，供调用方比较或展示
+     */
     private String stableId(
             Map<String, Object> item,
             List<String> idKeys) {
@@ -639,6 +774,19 @@ public class UiConfigSemanticPatchService {
         return null;
     }
 
+    /**
+     * 处理操作，并将结果传给后续步骤。
+     *
+     * @param section 区段，供本方法处理操作时使用
+     * @param itemId 条目ID，后续用于处理操作时定位或关联目标
+     * @param changeType 变更类型标识，决定后续操作采用的处理分支
+     * @param path 路径，供本方法处理操作时使用
+     * @param before 之前，作为 {@code deepCopyValue} 的输入影响后续处理
+     * @param after 之后，供本方法处理操作时使用
+     * @param risk 风险，供本方法处理操作时使用
+     * @param reason 原因，供本方法处理操作时使用
+     * @return 处理后的操作结果，供调用方继续处理
+     */
     private UiConfigSemanticPatchOperation operation(
             String section,
             String itemId,
@@ -660,18 +808,37 @@ public class UiConfigSemanticPatchService {
                 .build();
     }
 
+    /**
+     * 移除映射列表；后续读取或执行将使用更新后的状态。
+     *
+     * @param source 待移除映射列表的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 界面配置语义补丁集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> removeMapList(
             Map<String, Object> source,
             String key) {
         return mapList(source.remove(key));
     }
 
+    /**
+     * 整理{@code deep}副本数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code deep}副本的原始输入，结果供调用方继续使用
+     * @return {@code deep}副本键值结果，供调用方继续处理
+     */
     private Map<String, Object> deepCopy(Map<String, Object> value) {
         return codec.readObject(
                 codec.write(value, "UI配置快照复制"),
                 "UI配置快照复制");
     }
 
+    /**
+     * 处理{@code deep}副本值，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code deep}副本值的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code deep}副本值结果，供调用方继续处理
+     */
     private Object deepCopyValue(Object value) {
         if (value == null
                 || value instanceof String
@@ -684,6 +851,12 @@ public class UiConfigSemanticPatchService {
                 "UI语义补丁值");
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param source 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object source) {
         if (!(source instanceof Map<?, ?> map)) {
             return new LinkedHashMap<>();
@@ -693,6 +866,12 @@ public class UiConfigSemanticPatchService {
         return result;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面配置语义补丁集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object source) {
         if (!(source instanceof List<?> list)) {
             return new ArrayList<>();
@@ -706,6 +885,13 @@ public class UiConfigSemanticPatchService {
         return result;
     }
 
+    /**
+     * 判断{@code equivalent}条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理{@code equivalent}时使用
+     * @param right 右侧，作为 {@code codec.canonicalize} 的输入影响后续处理
+     * @return {@code equivalent}条件成立时为 true，否则为 false
+     */
     private boolean equivalent(Object left, Object right) {
         if (Objects.equals(left, right)) {
             return true;
@@ -723,6 +909,12 @@ public class UiConfigSemanticPatchService {
         }
     }
 
+    /**
+     * 判断是否{@code volatile}；判断结果决定调用方的后续分支。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return {@code volatile}条件成立时为 true，否则为 false
+     */
     private boolean isVolatile(String key) {
         return Set.of(
                 "revision", "activeReleaseId", "draftHash",
@@ -731,6 +923,13 @@ public class UiConfigSemanticPatchService {
                 "deleted").contains(key);
     }
 
+    /**
+     * 生成最大风险文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理最大风险时使用
+     * @param right 右侧，供本方法处理最大风险时使用
+     * @return 处理后的最大风险文本，供调用方比较或展示
+     */
     private String maxRisk(String left, String right) {
         if (Set.of(REVIEW, BLOCKED).contains(left)
                 || Set.of(REVIEW, BLOCKED).contains(right)) {
@@ -739,50 +938,111 @@ public class UiConfigSemanticPatchService {
         return SAFE;
     }
 
+    /**
+     * 生成最后片段文本，供后续匹配或展示。
+     *
+     * @param path 路径，供本方法处理最后片段时使用
+     * @return 处理后的最后片段文本，供调用方比较或展示
+     */
     private String lastSegment(String path) {
         int index = path.lastIndexOf('/');
         return index < 0 ? path : path.substring(index + 1);
     }
 
+    /**
+     * 封装补丁{@code analysis}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param operations 操作集合，保存在对象中供后续校验、查询或展示
+     * @param riskLevel 风险层级，保存在对象中供后续校验、查询或展示
+     * @param riskItems 风险条目，保存在对象中供后续校验、查询或展示
+     */
     public record PatchAnalysis(
             List<UiConfigSemanticPatchOperation> operations,
             String riskLevel,
             List<UiConfigHotfixRiskItemDTO> riskItems) {
     }
 
+    /**
+     * 封装补丁应用的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param blockers 阻断项，保存在对象中供后续校验、查询或展示
+     * @param diverged {@code diverged}，保存在对象中供后续校验、查询或展示
+     */
     public record PatchApplication(
             Map<String, Object> snapshot,
             List<String> blockers,
             boolean diverged) {
 
+        /**
+         * 判断兼容条件是否成立，供调用方选择后续分支。
+         *
+         * @return 兼容条件成立时为 true，否则为 false
+         */
         public boolean compatible() {
             return blockers == null || blockers.isEmpty();
         }
     }
 
+    /**
+     * 封装风险的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param level 层级，保存在对象中供后续校验、查询或展示
+     * @param reason 原因，保存在对象中供后续校验、查询或展示
+     */
     private record Risk(String level, String reason) {
     }
 
+    /**
+     * 封装{@code parsed}文档的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param before 之前，保存在对象中供后续校验、查询或展示
+     * @param after 之后，保存在对象中供后续校验、查询或展示
+     */
     private record ParsedDocument(
             Map<String, Object> before,
             Map<String, Object> after) {
     }
 
+    /**
+     * 封装集合{@code location}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param items 条目，保存在对象中供后续校验、查询或展示
+     * @param idKeys ID键集合，保存在对象中供后续校验、查询或展示
+     */
     private record CollectionLocation(
             List<Map<String, Object>> items,
             List<String> idKeys) {
     }
 
+    /**
+     * 封装{@code embedded}文档的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param owner 归属方，保存在对象中供后续校验、查询或展示
+     * @param field 字段，保存在对象中供后续校验、查询或展示
+     * @param document 文档，保存在对象中供后续校验、查询或展示
+     */
     private record EmbeddedDocument(
             Map<String, Object> owner,
             String field,
             Map<String, Object> document) {
     }
 
+    /**
+     * 封装应用{@code location}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param currentValue 当前值，保存在对象中供后续校验、查询或展示
+     * @param writer 写入器，保存在对象中供后续校验、查询或展示
+     */
     private record ApplyLocation(
             Object currentValue,
             java.util.function.Consumer<Object> writer) {
 
+        /**
+         * 写入应用{@code location}；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待写入应用{@code location}的原始输入，结果供调用方继续使用
+         */
         void write(Object value) {
             writer.accept(value);
         }

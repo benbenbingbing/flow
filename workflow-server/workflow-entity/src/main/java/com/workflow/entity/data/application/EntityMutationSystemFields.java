@@ -11,6 +11,9 @@ public final class EntityMutationSystemFields {
     public static final String PROCESS_END = "PROCESS_END";
     public static final String CURRENT_TASK = "CURRENT_TASK";
 
+    /**
+     * 初始化实体变更系统字段，保存构造参数供后续方法使用。
+     */
     private EntityMutationSystemFields() {
     }
 }

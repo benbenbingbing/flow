@@ -4,10 +4,10 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.PageRequest;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.process.instance.application.WorkflowReservedVariables;
 import com.workflow.process.workbench.api.response.TaskStatisticsVO;
 import com.workflow.process.task.api.response.TaskVO;
@@ -55,6 +55,11 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     /** 办理权威入口。本类不再维护第二套会签完成逻辑。 */
     private final TaskActionService taskActionService;
 
+    /**
+     * 读取{@code statistics}；查询结果供调用方展示或继续处理。
+     *
+     * @return 符合条件的任务{@code statistics}结果，供调用方继续处理
+     */
     @Override
     public TaskStatisticsVO getStatistics() {
         TaskStatisticsVO statistics = new TaskStatisticsVO();
@@ -103,6 +108,13 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
      *
      * <p>业务用户组和角色由 ProcessTaskService 统一匹配，不能使用未同步成员
      * 关系的 Flowable IDM，也不能让旧版接口查询其他用户的全部活跃任务。</p>
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param processName 流程名称，后续用于读取待办列表时匹配或展示
+     * @param taskName 任务名称，后续用于读取待办列表时匹配或展示
+     * @param timeRange 时间范围，供本方法读取待办列表时使用
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
@@ -140,6 +152,16 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         return new PageResult<>(records, (long) matching.size(), page.pageNumber(), page.pageSize());
     }
 
+    /**
+     * 读取{@code done}列表；查询结果供调用方展示或继续处理。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param processName 流程名称，后续用于读取{@code done}列表时匹配或展示
+     * @param taskName 任务名称，后续用于读取{@code done}列表时匹配或展示
+     * @param timeRange 时间范围，作为 {@code getStartDateByRange} 的输入影响后续处理
+     * @return 符合条件的任务结果，供调用方继续处理
+     */
     @Override
     public PageResult<TaskVO> getDoneList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
         PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
@@ -179,6 +201,15 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
+    /**
+     * 处理完成任务，并将结果传给后续步骤。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param action 动作标识，决定后续完成任务采用的处理分支
+     * @param comment 注释，供本方法处理完成任务时使用
+     * @param transferTo 转办截止，供本方法处理完成任务时使用
+     * @param actionLabel 动作标签，后续用于处理完成任务时匹配或展示
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -201,6 +232,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 actionLabel);
     }
 
+    /**
+     * 读取任务详情；查询结果供调用方展示或继续处理。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的任务结果，供调用方继续处理
+     */
     @Override
     public TaskVO getTaskDetail(String taskId) {
         org.flowable.task.api.Task task = flowableTaskService.createTaskQuery()
@@ -312,6 +349,9 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     /**
      * 转换为待办VO
+     *
+     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
+     * @return 转换后的截止待办VO结果，供调用方继续处理
      */
     private TaskVO convertToTodoVO(Task task) {
         TaskVO vo = new TaskVO();
@@ -376,6 +416,9 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     /**
      * 将已通过统一访问查询的本地加签子任务转换为列表项。
      * 加签办理人已由明细确定，不提供认领；保留 ADD_SIGN 类型以进入专用通过/驳回流程。
+     *
+     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
+     * @return 转换后的添加签名截止待办VO结果，供调用方继续处理
      */
     private TaskVO convertAddSignToTodoVO(ProcessTask task) {
         TaskVO vo = new TaskVO();
@@ -405,6 +448,9 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     /**
      * 转换为已办VO
+     *
+     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
+     * @return 转换后的截止{@code done}VO结果，供调用方继续处理
      */
     private TaskVO convertToDoneVO(HistoricTaskInstance task) {
         TaskVO vo = new TaskVO();
@@ -477,6 +523,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         return vo;
     }
 
+    /**
+     * 应用SLA摘要，并将结果传给后续步骤。
+     *
+     * @param vo VO，供本方法应用SLA摘要时使用
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     */
     private void applySlaSummary(TaskVO vo, String taskId) {
         ProcessTask local = processTaskService.getTaskByTaskId(taskId);
         if (local == null) {
@@ -487,6 +539,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         vo.setDueTime(toDate(local.getDueTime()));
     }
 
+    /**
+     * 转换为日期；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为日期的原始输入，结果供调用方继续使用
+     * @return 转换为后的日期结果，供调用方继续处理
+     */
     private Date toDate(LocalDateTime value) {
         return value == null
                 ? null
@@ -495,6 +553,9 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     /**
      * 根据时间范围获取开始日期
+     *
+     * @param range 范围，供本方法读取启动日期范围时使用
+     * @return 符合条件的日期结果，供调用方继续处理
      */
     private Date getStartDateByRange(String range) {
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
@@ -510,6 +571,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
     }
 
+    /**
+     * 处理{@code withdraw}流程，并将结果传给后续步骤。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param reason 原因，供本方法处理{@code withdraw}流程时使用
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -550,6 +617,12 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
                 reason);
     }
 
+    /**
+     * 读取流程历史；查询结果供调用方展示或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 任务集合，供调用方遍历或展示
+     */
     @Override
     public List<TaskVO> getProcessHistory(String processInstanceId) {
         // 查询流程的所有历史任务（包括已完成的和进行中的）
@@ -567,6 +640,9 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
 
     /**
      * 转换为历史记录VO
+     *
+     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
+     * @return 转换后的截止历史VO结果，供调用方继续处理
      */
     private TaskVO convertToHistoryVO(HistoricTaskInstance task) {
         TaskVO vo = new TaskVO();
@@ -606,6 +682,13 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         return vo;
     }
 
+    /**
+     * 处理{@code resubmit}任务，并将结果传给后续步骤。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param comment 注释，作为 {@code flowableTaskService.addComment} 的输入影响后续处理
+     * @param formData 表单数据，作为 {@code WorkflowReservedVariables.sanitizeRuntimeMutation} 的输入影响后续处理
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(

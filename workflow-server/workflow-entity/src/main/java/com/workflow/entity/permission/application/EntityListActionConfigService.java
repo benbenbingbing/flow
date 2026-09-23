@@ -129,6 +129,11 @@ public class EntityListActionConfigService {
 
     /**
      * 从已经解析的列表发布快照读取按钮，避免动作执行时重新落到草稿配置。
+     *
+     * @param config 配置内容，决定后续按钮的处理规则
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     * @return 按钮键值结果，供调用方继续处理
      */
     public Map<String, Object> resolveButton(
             EntityListConfig config,
@@ -161,6 +166,8 @@ public class EntityListActionConfigService {
      * <p>实体生命周期可能在发布后变化。恢复时若按当前生命周期过滤审批按钮，
      * projected 与物理结果会产生假漂移，或吞掉 ACTIVE 原有语义；因此仅补齐按钮
      * 默认属性，不过滤快照中已经存在的 approve。</p>
+     *
+     * @param config 配置内容，决定后续发布版本恢复的处理规则
      */
     public void normalizeForReleaseRestore(EntityListConfig config) {
         config.setToolbarConfig(writeButtons(normalizeButtons(
@@ -248,6 +255,8 @@ public class EntityListActionConfigService {
 
     /**
      * 从发布快照同步关系型按钮，保留快照中用于事件绑定的稳定按钮 ID。
+     *
+     * @param config 配置内容，决定后续{@code synchronize}{@code relational}配置发布版本的处理规则
      */
     public void synchronizeRelationalConfigForRelease(
             EntityListConfig config) {
@@ -326,6 +335,11 @@ public class EntityListActionConfigService {
         validateAvailabilityRules(config.getRowActionConfig());
     }
 
+    /**
+     * 校验{@code availability}规则集合；不满足约束时阻止后续处理。
+     *
+     * @param buttons 按钮集合，供本方法校验{@code availability}规则集合时使用
+     */
     private void validateAvailabilityRules(
             List<Map<String, Object>> buttons) {
         if (buttons == null) {
@@ -355,6 +369,15 @@ public class EntityListActionConfigService {
         return action == null ? null : action.permissionCode(entityCode);
     }
 
+    /**
+     * 解析与规范化；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code normalizeButtons} 的输入影响后续处理
+     * @param toolbar {@code toolbar}，供本方法解析与规范化时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param strictCustomPermission {@code strict}自定义权限，供本方法解析与规范化时使用
+     * @return 实体列表动作配置集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> parseAndNormalize(
             String json,
             boolean toolbar,
@@ -364,6 +387,15 @@ public class EntityListActionConfigService {
                 parseButtons(json), toolbar, entityCode, strictCustomPermission);
     }
 
+    /**
+     * 规范化按钮集合；输出作为后续校验或处理的输入。
+     *
+     * @param source 待规范化按钮集合的原始输入，结果供调用方继续使用
+     * @param toolbar {@code toolbar}，供本方法规范化按钮集合时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param strictCustomPermission {@code strict}自定义权限，供本方法规范化按钮集合时使用
+     * @return 实体列表动作配置集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> normalizeButtons(
             List<Map<String, Object>> source,
             boolean toolbar,
@@ -377,6 +409,17 @@ public class EntityListActionConfigService {
                 true);
     }
 
+    /**
+     * 规范化按钮集合；输出作为后续校验或处理的输入。
+     *
+     * @param source 待规范化按钮集合的原始输入，结果供调用方继续使用
+     * @param toolbar {@code toolbar}，作为 {@code defaultButtons} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param strictCustomPermission {@code strict}自定义权限，供本方法规范化按钮集合时使用
+     * @param filterUnavailableApprove 过滤不可用{@code approve}，供本方法规范化按钮集合时使用
+     * @return 实体列表动作配置集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> normalizeButtons(
             List<Map<String, Object>> source,
             boolean toolbar,
@@ -472,6 +515,13 @@ public class EntityListActionConfigService {
         return result;
     }
 
+    /**
+     * 解析按钮集合；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 实体列表动作配置集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> parseButtons(String json) {
         if (!StringUtils.hasText(json)) {
             return new ArrayList<>();
@@ -483,6 +533,13 @@ public class EntityListActionConfigService {
         }
     }
 
+    /**
+     * 写入按钮集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param buttons 按钮集合，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的按钮集合文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writeButtons(List<Map<String, Object>> buttons) {
         try {
             return objectMapper.writeValueAsString(buttons);
@@ -491,6 +548,14 @@ public class EntityListActionConfigService {
         }
     }
 
+    /**
+     * 校验权限；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param permissionCode 权限编码，后续用于校验权限时定位或关联目标
+     * @param strict {@code strict}，供本方法校验权限时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validatePermission(String entityCode, String permissionCode, boolean strict) {
         if (!StringUtils.hasText(permissionCode)) {
             return;
@@ -515,10 +580,22 @@ public class EntityListActionConfigService {
         throw new IllegalArgumentException("权限码不属于当前实体或未注册扩展提供器: " + permissionCode);
     }
 
+    /**
+     * 判断是否{@code toolbar}键；判断结果决定调用方的后续分支。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return {@code toolbar}键条件成立时为 true，否则为 false
+     */
     private boolean isToolbarKey(String key) {
         return List.of("create", "exportSelected", "exportAll", "batchDelete").contains(key);
     }
 
+    /**
+     * 整理默认按钮集合数据，供调用方遍历或继续处理。
+     *
+     * @param toolbar {@code toolbar}，供本方法处理默认按钮集合时使用
+     * @return 实体列表动作配置集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> defaultButtons(boolean toolbar) {
         return toolbar ? List.of(
                 button("create", "新增数据", 1),
@@ -533,6 +610,14 @@ public class EntityListActionConfigService {
         );
     }
 
+    /**
+     * 整理按钮数据，供调用方遍历或继续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param label 标签，后续用于处理按钮时匹配或展示
+     * @param sort 排序，作为 {@code button.put} 的输入影响后续处理
+     * @return 按钮键值结果，供调用方继续处理
+     */
     private Map<String, Object> button(String key, String label, int sort) {
         Map<String, Object> button = new LinkedHashMap<>();
         button.put("key", key);
@@ -544,6 +629,12 @@ public class EntityListActionConfigService {
         return button;
     }
 
+    /**
+     * 生成默认按钮类型文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的默认按钮类型文本，供调用方比较或展示
+     */
     private String defaultButtonType(String key) {
         return switch (key) {
             case "create", "view", "edit" -> "primary";
@@ -583,6 +674,12 @@ public class EntityListActionConfigService {
         return null;
     }
 
+    /**
+     * 处理可见规则，并将结果传给后续步骤。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 处理后的可见规则结果，供调用方继续处理
+     */
     private EntityActionRuleDTO visibleRule(
             EntityActionRuleDTO.RuleNode condition) {
         EntityActionRuleDTO rule = new EntityActionRuleDTO();
@@ -590,6 +687,11 @@ public class EntityListActionConfigService {
         return rule;
     }
 
+    /**
+     * 处理{@code own}草稿或{@code withdrawn}条件，并将结果传给后续步骤。
+     *
+     * @return 处理后的{@code own}草稿或{@code withdrawn}条件结果，供调用方继续处理
+     */
     private EntityActionRuleDTO.RuleNode ownDraftOrWithdrawnCondition() {
         return group("AND",
                 group("OR",
@@ -602,6 +704,13 @@ public class EntityListActionConfigService {
                         condition("STATUS_CATEGORY", "EQ", "WITHDRAWN")));
     }
 
+    /**
+     * 处理分组，并将结果传给后续步骤。
+     *
+     * @param logic {@code logic}，作为 {@code node.setLogic} 的输入影响后续处理
+     * @param children 子节点，作为 {@code node.setChildren} 的输入影响后续处理
+     * @return 处理后的分组结果，供调用方继续处理
+     */
     private EntityActionRuleDTO.RuleNode group(String logic, EntityActionRuleDTO.RuleNode... children) {
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
         node.setType("GROUP");
@@ -610,6 +719,12 @@ public class EntityListActionConfigService {
         return node;
     }
 
+    /**
+     * 处理关系，并将结果传给后续步骤。
+     *
+     * @param relation 关系，作为 {@code node.setRelation} 的输入影响后续处理
+     * @return 处理后的关系结果，供调用方继续处理
+     */
     private EntityActionRuleDTO.RuleNode relation(String relation) {
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
         node.setType("RELATION");
@@ -617,6 +732,14 @@ public class EntityListActionConfigService {
         return node;
     }
 
+    /**
+     * 处理条件，并将结果传给后续步骤。
+     *
+     * @param type 类型标识，决定后续条件采用的处理分支
+     * @param operator 操作人，作为 {@code node.setOperator} 的输入影响后续处理
+     * @param value 待处理条件的原始输入，结果供调用方继续使用
+     * @return 处理后的条件结果，供调用方继续处理
+     */
     private EntityActionRuleDTO.RuleNode condition(String type, String operator, Object value) {
         EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
         node.setType(type);
@@ -626,6 +749,12 @@ public class EntityListActionConfigService {
         return node;
     }
 
+    /**
+     * 转换为字符串；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为字符串的原始输入，结果供调用方继续使用
+     * @return 转换为后的字符串文本，供调用方比较或展示
+     */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }

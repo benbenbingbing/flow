@@ -151,6 +151,11 @@ public class EntityListScopeController {
 
     /**
      * 覆盖指定列表的规则绑定。POST /api/entity-list-scopes/{entityCode}/lists/{listKey}/bindings/update
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param request 本次请求，后续经校验后用于处理替换列表绑定集合
+     * @return 处理后的替换列表绑定集合结果，供调用方继续处理
      */
     @PostMapping("/{entityCode}/lists/{listKey}/bindings/update")
     public Result<List<EntityListScopeBindingDTO>> replaceListBindings(

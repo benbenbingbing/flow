@@ -3,10 +3,10 @@ package com.workflow.process.form.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +32,9 @@ public class ProcessNodeFormService {
     
     /**
      * 查询流程的节点表单绑定
+     *
+     * @param processConfigId 流程配置ID，后续用于读取流程配置ID时定位或关联目标
+     * @return 流程节点表单集合，供调用方遍历或展示
      */
     public List<ProcessNodeForm> getByProcessConfigId(String processConfigId) {
         List<ProcessNodeForm> list = nodeFormMapper.selectByProcessConfigId(processConfigId);
@@ -41,6 +44,10 @@ public class ProcessNodeFormService {
     
     /**
      * 查询节点的表单绑定
+     *
+     * @param processConfigId 流程配置ID，后续用于读取节点ID时定位或关联目标
+     * @param nodeId 节点ID，后续用于读取节点ID时定位或关联目标
+     * @return 符合条件的流程节点表单结果，供调用方继续处理
      */
     public ProcessNodeForm getByNodeId(String processConfigId, String nodeId) {
         ProcessNodeForm nodeForm = nodeFormMapper.selectByNodeId(processConfigId, nodeId);
@@ -54,6 +61,10 @@ public class ProcessNodeFormService {
      * 查询节点表单绑定列表。
      *
      * <p>返回列表是为兼容已有接口，当前业务规则下最多返回一条。</p>
+     *
+     * @param processConfigId 流程配置ID，后续用于读取列表节点ID时定位或关联目标
+     * @param nodeId 节点ID，后续用于读取列表节点ID时定位或关联目标
+     * @return 流程节点表单集合，供调用方遍历或展示
      */
     public List<ProcessNodeForm> getListByNodeId(String processConfigId, String nodeId) {
         ProcessNodeForm nodeForm = getByNodeId(processConfigId, nodeId);
@@ -62,6 +73,9 @@ public class ProcessNodeFormService {
     
     /**
      * 保存节点表单绑定
+     *
+     * @param nodeForm 节点表单，作为 {@code nodeFormMapper.selectByNodeId} 的输入影响后续处理
+     * @return 保存后的节点表单结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -100,6 +114,8 @@ public class ProcessNodeFormService {
     
     /**
      * 删除节点表单绑定
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -115,6 +131,9 @@ public class ProcessNodeFormService {
     
     /**
      * 批量保存节点表单绑定
+     *
+     * @param processConfigId 流程配置ID，后续用于保存节点表单集合时定位或关联目标
+     * @param nodeForms 节点表单集合，供本方法保存节点表单集合时使用
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -149,6 +168,8 @@ public class ProcessNodeFormService {
     
     /**
      * 填充表单信息
+     *
+     * @param nodeForm 节点表单，作为 {@code formMapper.selectById} 的输入影响后续处理
      */
     private void fillFormInfo(ProcessNodeForm nodeForm) {
         if (nodeForm.getFormId() != null) {

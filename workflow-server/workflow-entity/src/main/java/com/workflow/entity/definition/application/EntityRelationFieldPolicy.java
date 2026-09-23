@@ -14,6 +14,9 @@ public final class EntityRelationFieldPolicy {
             EntityField.FieldType.RADIO, EntityField.FieldType.REFERENCE,
             EntityField.FieldType.USER, EntityField.FieldType.DEPT);
 
+    /**
+     * 初始化实体关系字段策略，保存构造参数供后续方法使用。
+     */
     private EntityRelationFieldPolicy() {
     }
 
@@ -57,6 +60,12 @@ public final class EntityRelationFieldPolicy {
         return null;
     }
 
+    /**
+     * 封装冲突的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param code 业务编码，供后续匹配和引用
+     * @param message 消息，保存在对象中供后续校验、查询或展示
+     */
     public record Violation(String code, String message) {
     }
 }

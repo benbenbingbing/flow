@@ -13,15 +13,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.ui.CommonInvocationContext;
-import com.workflow.contracts.ui.EntityDescriptor;
-import com.workflow.contracts.ui.ListInvocationContext;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
+import com.workflow.contracts.entity.ui.context.CommonInvocationContext;
+import com.workflow.contracts.entity.ui.model.EntityDescriptor;
+import com.workflow.contracts.entity.ui.context.ListInvocationContext;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
-import com.workflow.contracts.ui.UiActionCommandPlan;
+import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
-import com.workflow.contracts.ui.UiActionMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
@@ -443,7 +443,7 @@ class UiInterfaceExtensionServiceTest {
 
                     @Override
                     public UiActionCommandPlan plan(
-                            com.workflow.contracts.ui.UiInvocationContext call,
+                            com.workflow.contracts.entity.ui.context.UiInvocationContext call,
                             Map<String, Object> configuration,
                             Map<String, Object> input) {
                         return new UiActionCommandPlan(

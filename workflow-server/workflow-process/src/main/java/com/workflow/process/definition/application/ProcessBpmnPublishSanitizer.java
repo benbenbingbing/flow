@@ -7,8 +7,8 @@ import com.workflow.process.sla.calendar.application.WorkCalendarService;
 import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
@@ -74,6 +74,13 @@ public class ProcessBpmnPublishSanitizer {
     private List<PersonResolverConfigurationValidator>
             personResolverConfigurationValidators = List.of();
 
+    /**
+     * 初始化流程BPMN发布{@code sanitizer}，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param taskSlaPolicyService 任务SLA策略服务依赖，保存到当前对象供后续业务方法调用
+     * @param workCalendarService 工作日历服务依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public ProcessBpmnPublishSanitizer(
             ObjectMapper objectMapper,
@@ -86,6 +93,8 @@ public class ProcessBpmnPublishSanitizer {
 
     /**
      * 兼容不涉及 SLA 的轻量单元测试。
+     *
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
      */
     public ProcessBpmnPublishSanitizer(ObjectMapper objectMapper) {
         this(objectMapper, null, null);
@@ -108,7 +117,10 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 带流程配置身份执行发布净化，使人员解析器可校验流程绑定实体。
      *
+     * @param bpmnXml BPMNXML，作为 {@code ProcessBpmnSynchronousExecutionNormalizer.normalize} 的输入影响后续处理
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
      * @param processConfigId 流程配置 ID；轻量测试或无绑定上下文时可为空
+     * @return 清洗后的流程BPMN发布{@code sanitizer}文本，供调用方比较或展示
      */
     public String sanitize(
             String bpmnXml,
@@ -160,6 +172,9 @@ public class ProcessBpmnPublishSanitizer {
      * <p>发布器需要兼容外部工具常用的 {@code bpmn2:} 乃至默认命名空间。
      * 后续历史字符串净化链以 {@code bpmn:} 为规范前缀；若它已被业务扩展
      * 命名空间占用，发布必须明确拒绝，不能覆盖绑定后静默改变扩展语义。</p>
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parseXml} 的输入影响后续处理
+     * @return 规范化后的BPMN元素{@code prefixes}文本，供调用方比较或展示
      */
     private String normalizeBpmnElementPrefixes(String bpmnXml) {
         try {
@@ -197,7 +212,12 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 确认规范前缀未被扩展命名空间占用，避免发布净化改变 XML 语义。 */
+    /**
+     * 确认规范前缀未被扩展命名空间占用，避免发布净化改变 XML 语义。
+     *
+     * @param document 文档，供本方法查询规范BPMN前缀时使用
+     * @return 查询后的规范BPMN前缀文本，供调用方比较或展示
+     */
     private String selectCanonicalBpmnPrefix(Document document) {
         if (isPrefixBoundToOtherNamespace(document, "bpmn")) {
             throw new IllegalArgumentException(
@@ -206,6 +226,13 @@ public class ProcessBpmnPublishSanitizer {
         return "bpmn";
     }
 
+    /**
+     * 判断是否前缀绑定截止{@code other}命名空间；判断结果决定调用方的后续分支。
+     *
+     * @param document 文档，供本方法判断是否前缀绑定截止{@code other}命名空间时使用
+     * @param prefix 前缀，供本方法判断是否前缀绑定截止{@code other}命名空间时使用
+     * @return 前缀绑定截止{@code other}命名空间条件成立时为 true，否则为 false
+     */
     private boolean isPrefixBoundToOtherNamespace(
             Document document,
             String prefix) {
@@ -243,6 +270,9 @@ public class ProcessBpmnPublishSanitizer {
      * <p>该 handler 在引擎真正读取 collection 时解析人员，这一时点早于
      * ACTIVITY_STARTED。相对职务由此读取当前任职，实体用户字段则读取此前
      * 任一表单刚保存的权威实体记录；两者都能在创建 0 个实例前失败关闭。</p>
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parseXml} 的输入影响后续处理
+     * @return 处理后的{@code install}入口动态解析器集合{@code handlers}文本，供调用方比较或展示
      */
     private String installEntryDynamicResolverCollectionHandlers(
             String bpmnXml) {
@@ -309,7 +339,13 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 仅这些内置解析器要求等到节点进入时读取可变的权威业务状态。 */
+    /**
+     * 仅这些内置解析器要求等到节点进入时读取可变的权威业务状态。
+     *
+     * @param config 配置内容，决定后续使用入口动态解析器的处理规则
+     * @param multiInstanceSource 多实例来源，作为 {@code configuredPersonResolverCode} 的输入影响后续处理
+     * @return 使用入口动态解析器条件成立时为 true，否则为 false
+     */
     private boolean usesEntryDynamicResolver(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -323,6 +359,13 @@ public class ProcessBpmnPublishSanitizer {
                 .equals(resolverCode);
     }
 
+    /**
+     * 生成已配置人员解析器编码文本，供后续匹配或展示。
+     *
+     * @param config 配置内容，决定后续已配置人员解析器编码的处理规则
+     * @param multiInstanceSource 多实例来源，作为 {@code effectiveResolver} 的输入影响后续处理
+     * @return 处理后的已配置人员解析器编码文本，供调用方比较或展示
+     */
     private String configuredPersonResolverCode(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -331,7 +374,13 @@ public class ProcessBpmnPublishSanitizer {
                 .resolverCode();
     }
 
-    /** 判断基础办理人配置是否声明了受控人员解析器。 */
+    /**
+     * 判断基础办理人配置是否声明了受控人员解析器。
+     *
+     * @param config 配置内容，决定后续使用人员解析器的处理规则
+     * @param multiInstanceSource 多实例来源，供本方法处理使用人员解析器时使用
+     * @return 使用人员解析器条件成立时为 true，否则为 false
+     */
     private boolean usesPersonResolver(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -339,12 +388,26 @@ public class ProcessBpmnPublishSanitizer {
                 config, multiInstanceSource));
     }
 
+    /**
+     * 处理首个{@code descendant}，并将结果传给后续步骤。
+     *
+     * @param parent 父级，供本方法处理首个{@code descendant}时使用
+     * @param localName 本地名称，后续用于处理首个{@code descendant}时匹配或展示
+     * @return 处理后的首个{@code descendant}结果，供调用方继续处理
+     */
     private Element firstDescendant(Element parent, String localName) {
         NodeList elements = parent.getElementsByTagNameNS("*", localName);
         return elements.getLength() == 0
                 ? null : (Element) elements.item(0);
     }
 
+    /**
+     * 处理{@code install}集合处理器，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code upsertFlowableProperty} 的输入影响后续处理
+     * @param userTask 用户任务，作为 {@code readFlowableProperty} 的输入影响后续处理
+     * @param loop {@code loop}，作为 {@code loop.insertBefore} 的输入影响后续处理
+     */
     private void installCollectionHandler(
             Document document,
             Element userTask,
@@ -424,7 +487,11 @@ public class ProcessBpmnPublishSanitizer {
         extensionElements.appendChild(handler);
     }
 
-    /** 拒绝可能竞争写不同业务状态的并发分支，避免实体最终状态由执行先后决定。 */
+    /**
+     * 拒绝可能竞争写不同业务状态的并发分支，避免实体最终状态由执行先后决定。
+     *
+     * @param xml XML，作为 {@code EntityTransitionStateValidator.validate} 的输入影响后续处理
+     */
     private void validateParallelEntityStates(String xml) {
         try {
             EntityTransitionStateValidator.validate(parseXml(xml));
@@ -435,7 +502,12 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 将状态语义固定在部署 XML 中，旧部署不受新代码发布影响。 */
+    /**
+     * 将状态语义固定在部署 XML 中，旧部署不受新代码发布影响。
+     *
+     * @param xml XML，作为 {@code parseXml} 的输入影响后续处理
+     * @return 处理后的{@code install}实体状态策略文本，供调用方比较或展示
+     */
     private String installEntityStatusPolicy(String xml) {
         try {
             Document document = parseXml(xml);
@@ -451,7 +523,14 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 在用户任务扩展属性中保存平台生成的动态 collection 契约。 */
+    /**
+     * 在用户任务扩展属性中保存平台生成的动态 collection 契约。
+     *
+     * @param document 文档，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param task 任务，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param name 名称，后续用于处理新增或更新Flowable属性时匹配或展示
+     * @param value 待处理新增或更新Flowable属性的原始输入，结果供调用方继续使用
+     */
     private void upsertFlowableProperty(
             Document document,
             Element task,
@@ -512,6 +591,13 @@ public class ProcessBpmnPublishSanitizer {
         properties.appendChild(property);
     }
 
+    /**
+     * 读取Flowable属性；查询结果供调用方展示或继续处理。
+     *
+     * @param task 任务，供本方法读取Flowable属性时使用
+     * @param name 名称，后续用于读取Flowable属性时匹配或展示
+     * @return 读取后的Flowable属性文本，供调用方比较或展示
+     */
     private String readFlowableProperty(
             Element task,
             String name) {
@@ -526,6 +612,12 @@ public class ProcessBpmnPublishSanitizer {
         return null;
     }
 
+    /**
+     * 生成简要集合变量文本，供后续匹配或展示。
+     *
+     * @param raw 待处理简要集合变量的原始输入，结果供调用方继续使用
+     * @return 处理后的简要集合变量文本，供调用方比较或展示
+     */
     private String simpleCollectionVariable(String raw) {
         if (!StringUtils.hasText(raw)) {
             return null;
@@ -541,6 +633,10 @@ public class ProcessBpmnPublishSanitizer {
 
     /**
      * 发布时校验下一节点审批人展示/修改配置，防止无效策略进入不可变部署。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @param processConfigId 流程配置ID，后续用于校验下一步审批人{@code selections}时定位或关联目标
+     * @return 校验后的下一步审批人{@code selections}文本，供调用方比较或展示
      */
     private String validateNextApproverSelections(
             String bpmnXml,
@@ -764,6 +860,10 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 历史流程可能把会签人员写在 multiInstanceConfig。发布校验与运行时
      * 使用同一保序并集视图，避免只校验 assigneeConfig 而遗漏实际参与人。
+     *
+     * @param element 元素，作为 {@code readPropertyValue} 的输入影响后续处理
+     * @param assigneeConfig 办理人配置内容，决定后续{@code deployed}分配配置的处理规则
+     * @return 合并后的{@code deployed}分配配置结果，供调用方继续处理
      */
     @SuppressWarnings("unchecked")
     private com.fasterxml.jackson.databind.JsonNode
@@ -794,6 +894,9 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 校验统一办理人配置版本。未声明版本的部署按历史格式读取；版本 2 表示
      * 多实例与普通任务都使用 assigneeType 等基础字段，禁止静默猜测未来版本。
+     *
+     * @param nodeId 节点ID，后续用于校验分配配置版本时定位或关联目标
+     * @param assigneeConfig 办理人配置内容，决定后续分配配置版本的处理规则
      */
     private void validateAssignmentConfigVersion(
             String nodeId,
@@ -819,6 +922,10 @@ public class ProcessBpmnPublishSanitizer {
      * NODE_ASSIGNMENT 必须能从目标节点的基础配置枚举出人员。
      * 表达式可能调用 Bean 或依赖未信任上下文，预览无法与 Flowable
      * 任务创建保持一致，因此在发布边界明确拒绝。
+     *
+     * @param element 元素，供本方法校验{@code enumerable}节点分配时使用
+     * @param assigneeConfig 办理人配置内容，决定后续{@code enumerable}节点分配的处理规则
+     * @param processConfigId 流程配置ID，后续用于校验{@code enumerable}节点分配时定位或关联目标
      */
     private void validateEnumerableNodeAssignment(
             ConfiguredElement element,
@@ -839,11 +946,15 @@ public class ProcessBpmnPublishSanitizer {
     }
 
     /**
+     *
+     * @param element 元素，作为 {@code rejectAssignmentExpressions} 的输入影响后续处理
+     * @param assigneeConfig 办理人配置内容，决定后续{@code enumerable}节点分配的处理规则
      * @param outputMultiInstance 输出模式来自引用者
-     * @param sourceMultiInstance 真正提供规则的 UserTask 是否为多实例
-     * @param outputAssignmentMode 引用者运行时实际 direct/candidate/MI 模式
      * @param allowBpmnFallback 是否允许使用规则源的 BPMN 字面量属性
      * @param inspectBpmnExpressions 是否检查规则源的 BPMN 动态表达式
+     * @param processConfigId 流程配置ID，后续用于校验{@code enumerable}节点分配时定位或关联目标
+     * @param sourceMultiInstance 真正提供规则的 UserTask 是否为多实例
+     * @param outputAssignmentMode 引用者运行时实际 direct/candidate/MI 模式
      */
     private void validateEnumerableNodeAssignment(
             ConfiguredElement element,
@@ -992,6 +1103,14 @@ public class ProcessBpmnPublishSanitizer {
      * 校验无 v2 标记的历史多实例来源，并返回是否命中了历史格式。
      * 发布校验与运行时都采用 legacy-first，避免校验基础 resolver、运行却调用
      * collection resolver 的用途漂移。
+     *
+     * @param element 元素，作为 {@code nextApproverConfigError} 的输入影响后续处理
+     * @param config 配置内容，决定后续旧版多实例分配的处理规则
+     * @param processConfigId 流程配置ID，后续用于校验旧版多实例分配时定位或关联目标
+     * @param usage 使用场景，供本方法校验旧版多实例分配时使用
+     * @param assignmentMode 分配模式标识，决定后续旧版多实例分配采用的处理分支
+     * @param outputMultiInstance 输出多实例，供本方法校验旧版多实例分配时使用
+     * @return 旧版多实例分配条件成立时为 true，否则为 false
      */
     @SuppressWarnings("unchecked")
     private boolean validateLegacyMultiInstanceAssignment(
@@ -1044,6 +1163,10 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 可编辑独立范围允许没有默认人员，但已配置的默认 resolver 仍必须
      * 按真实 legacy/v2 来源完成目录、用途和静态参数校验。
+     *
+     * @param element 元素，作为 {@code validateLegacyMultiInstanceAssignment} 的输入影响后续处理
+     * @param config 配置内容，决定后续有效多实例解析器的处理规则
+     * @param processConfigId 流程配置ID，后续用于校验有效多实例解析器时定位或关联目标
      */
     @SuppressWarnings("unchecked")
     private void validateEffectiveMultiInstanceResolver(
@@ -1075,6 +1198,14 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 判断是否具有字面值BPMN分配；判断结果决定调用方的后续分支。
+     *
+     * @param element 元素，作为 {@code attributeValue} 的输入影响后续处理
+     * @param allowBpmnFallback 允许BPMN兜底，供本方法判断是否具有字面值BPMN分配时使用
+     * @param attributeNames 属性名称集合，供本方法判断是否具有字面值BPMN分配时使用
+     * @return 字面值BPMN分配条件成立时为 true，否则为 false
+     */
     private boolean hasLiteralBpmnAssignment(
             ConfiguredElement element,
             boolean allowBpmnFallback,
@@ -1093,6 +1224,14 @@ public class ProcessBpmnPublishSanitizer {
         return false;
     }
 
+    /**
+     * 处理驳回分配{@code expressions}，并将结果传给后续步骤。
+     *
+     * @param element 元素，作为 {@code nextApproverConfigError} 的输入影响后续处理
+     * @param outputMultiInstance 输出多实例，供本方法处理驳回分配{@code expressions}时使用
+     * @param inspectBpmnExpressions 检查BPMN{@code expressions}，供本方法处理驳回分配{@code expressions}时使用
+     * @param configuredValues 已配置值集合，供本方法处理驳回分配{@code expressions}时使用
+     */
     private void rejectAssignmentExpressions(
             ConfiguredElement element,
             boolean outputMultiInstance,
@@ -1121,6 +1260,12 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 判断是否包含表达式；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否包含表达式的原始输入，结果供调用方继续使用
+     * @return 表达式条件成立时为 true，否则为 false
+     */
     private boolean containsExpression(
             com.fasterxml.jackson.databind.JsonNode value) {
         if (value == null || value.isMissingNode() || value.isNull()) {
@@ -1137,11 +1282,25 @@ public class ProcessBpmnPublishSanitizer {
         return containsExpression(value.asText(""));
     }
 
+    /**
+     * 判断是否包含表达式；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否包含表达式的原始输入，结果供调用方继续使用
+     * @return 表达式条件成立时为 true，否则为 false
+     */
     private boolean containsExpression(String value) {
         return StringUtils.hasText(value)
                 && (value.contains("${") || value.contains("#{"));
     }
 
+    /**
+     * 校验节点分配解析器；不满足约束时阻止后续处理。
+     *
+     * @param nodeId 节点ID，后续用于校验节点分配解析器时定位或关联目标
+     * @param assigneeConfig 办理人配置内容，决定后续节点分配解析器的处理规则
+     * @param multiInstance 多实例，供本方法校验节点分配解析器时使用
+     * @param processConfigId 流程配置ID，后续用于校验节点分配解析器时定位或关联目标
+     */
     private void validateNodeAssignmentResolver(
             String nodeId,
             com.fasterxml.jackson.databind.JsonNode assigneeConfig,
@@ -1155,6 +1314,15 @@ public class ProcessBpmnPublishSanitizer {
                 null);
     }
 
+    /**
+     * 校验节点分配解析器；不满足约束时阻止后续处理。
+     *
+     * @param nodeId 节点ID，后续用于校验节点分配解析器时定位或关联目标
+     * @param assigneeConfig 办理人配置内容，决定后续节点分配解析器的处理规则
+     * @param multiInstance 多实例，供本方法校验节点分配解析器时使用
+     * @param processConfigId 流程配置ID，后续用于校验节点分配解析器时定位或关联目标
+     * @param assignmentModeOverride 分配模式覆盖，作为 {@code validateResolverConfiguration} 的输入影响后续处理
+     */
     private void validateNodeAssignmentResolver(
             String nodeId,
             com.fasterxml.jackson.databind.JsonNode assigneeConfig,
@@ -1201,6 +1369,14 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 将解析器特有的配置交给对应 validator；相对职务属于安全关键内置解析器，
      * 若实现未注册则必须阻断发布，不能仅依赖目录记录。
+     *
+     * @param nodeId 节点ID，后续用于校验解析器配置时定位或关联目标
+     * @param resolverCode 解析器编码，后续用于校验解析器配置时定位或关联目标
+     * @param usage 使用场景，作为 {@code validator.validate} 的输入影响后续处理
+     * @param assignmentMode 分配模式标识，决定后续解析器配置采用的处理分支
+     * @param multiInstance 多实例，供本方法校验解析器配置时使用
+     * @param processConfigId 流程配置ID，后续用于校验解析器配置时定位或关联目标
+     * @param rawExtraParams 原始附加参数，供本方法校验解析器配置时使用
      */
     private void validateResolverConfiguration(
             String nodeId,
@@ -1257,6 +1433,14 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 校验已配置解析器；不满足约束时阻止后续处理。
+     *
+     * @param nodeId 节点ID，后续用于校验已配置解析器时定位或关联目标
+     * @param resolverCode 解析器编码，后续用于校验已配置解析器时定位或关联目标
+     * @param usage 使用场景，作为 {@code personResolverRuntimeService.requireConfigured} 的输入影响后续处理
+     * @param label 标签，后续用于校验已配置解析器时匹配或展示
+     */
     private void validateConfiguredResolver(
             String nodeId,
             String resolverCode,
@@ -1285,6 +1469,12 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 判断是否具有已配置值集合；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有已配置值集合的原始输入，结果供调用方继续使用
+     * @return 已配置值集合条件成立时为 true，否则为 false
+     */
     private boolean hasConfiguredValues(
             com.fasterxml.jackson.databind.JsonNode value) {
         if (value == null || value.isMissingNode() || value.isNull()) {
@@ -1303,6 +1493,11 @@ public class ProcessBpmnPublishSanitizer {
                 : !value.asText("").isBlank();
     }
 
+    /**
+     * 校验可编辑多实例{@code collections}；不满足约束时阻止后续处理。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code tasks.matcher} 的输入影响后续处理
+     */
     private void validateEditableMultiInstanceCollections(
             String bpmnXml) {
         Pattern tasks = Pattern.compile(
@@ -1490,6 +1685,13 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 构造多实例变量错误异常，供调用方区分失败原因。
+     *
+     * @param nodeId 节点ID，后续用于处理多实例变量错误时定位或关联目标
+     * @param detail 详情，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的多实例变量错误结果，供调用方继续处理
+     */
     private IllegalArgumentException multiInstanceVariableError(
             String nodeId,
             String detail) {
@@ -1503,6 +1705,9 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 对整张发布模型执行 node_reference 图校验，并按引用者的输出模式校验
      * 终端人员规则。引用目标的多实例属性不得改变当前节点的 resolver usage。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parseXml} 的输入影响后续处理
+     * @param processConfigId 流程配置ID，后续用于校验节点分配引用时定位或关联目标
      */
     private void validateNodeAssignmentReferences(
             String bpmnXml,
@@ -1566,6 +1771,14 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 解析已发布引用；输出作为后续校验或处理的输入。
+     *
+     * @param current 当前，作为 {@code nextApproverConfigError} 的输入影响后续处理
+     * @param userTasks 用户任务集合，供本方法解析已发布引用时使用
+     * @param allElements 全部{@code elements}，供本方法解析已发布引用时使用
+     * @return 解析后的已发布引用结果，供调用方继续处理
+     */
     private PublishedAssignmentNode resolvePublishedReference(
             PublishedAssignmentNode current,
             Map<String, PublishedAssignmentNode> userTasks,
@@ -1625,6 +1838,12 @@ public class ProcessBpmnPublishSanitizer {
                 current.id(), "审批人节点引用深度校验失败");
     }
 
+    /**
+     * 读取{@code merged}分配配置；查询结果供调用方展示或继续处理。
+     *
+     * @param userTask 用户任务，作为 {@code readPropertyValue} 的输入影响后续处理
+     * @return {@code merged}分配配置键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readMergedAssignmentConfig(
             Element userTask) {
@@ -1653,12 +1872,25 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 判断是否具有多实例{@code loop}；判断结果决定调用方的后续分支。
+     *
+     * @param userTask 用户任务，供本方法判断是否具有多实例{@code loop}时使用
+     * @return 多实例{@code loop}条件成立时为 true，否则为 false
+     */
     private boolean hasMultiInstanceLoop(Element userTask) {
         return userTask.getElementsByTagNameNS(
                 "*", "multiInstanceLoopCharacteristics")
                 .getLength() > 0;
     }
 
+    /**
+     * 生成已发布分配模式文本，供后续匹配或展示。
+     *
+     * @param current 当前，作为 {@code NodeAssignmentReferenceResolver.assignmentMode} 的输入影响后续处理
+     * @param terminal 终态，作为 {@code attributeValues} 的输入影响后续处理
+     * @return 处理后的已发布分配模式文本，供调用方比较或展示
+     */
     private String publishedAssignmentMode(
             PublishedAssignmentNode current,
             PublishedAssignmentNode terminal) {
@@ -1673,6 +1905,12 @@ public class ProcessBpmnPublishSanitizer {
                 terminal.assigneeConfig());
     }
 
+    /**
+     * 整理属性值集合数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理属性值集合的原始输入，结果供调用方继续使用
+     * @return 流程BPMN发布{@code sanitizer}集合，供调用方遍历或展示
+     */
     private List<String> attributeValues(String value) {
         if (!StringUtils.hasText(value)) {
             return List.of();
@@ -1685,6 +1923,10 @@ public class ProcessBpmnPublishSanitizer {
 
     /**
      * 构造校验视图：循环模式来自引用者，字面量 BPMN 分配属性来自终端源。
+     *
+     * @param current 当前，供本方法处理引用校验元素时使用
+     * @param terminal 终态，作为 {@code flowableAttribute} 的输入影响后续处理
+     * @return 处理后的引用校验元素结果，供调用方继续处理
      */
     private ConfiguredElement referenceValidationElement(
             PublishedAssignmentNode current,
@@ -1714,7 +1956,13 @@ public class ProcessBpmnPublishSanitizer {
                 "", "userTask", startTag.toString(), content, current.id());
     }
 
-    /** 仅忽略源 MI 节点绑定 elementVariable 的 Flowable 技术 assignee。 */
+    /**
+     * 仅忽略源 MI 节点绑定 elementVariable 的 Flowable 技术 assignee。
+     *
+     * @param source 待判断是否{@code technical}多实例办理人的原始输入，结果供调用方继续使用
+     * @param assignee 办理人，供本方法判断是否{@code technical}多实例办理人时使用
+     * @return {@code technical}多实例办理人条件成立时为 true，否则为 false
+     */
     private boolean isTechnicalMultiInstanceAssignee(
             PublishedAssignmentNode source,
             String assignee) {
@@ -1739,6 +1987,13 @@ public class ProcessBpmnPublishSanitizer {
                 || normalized.equals("#{" + variable.trim() + "}");
     }
 
+    /**
+     * 生成Flowable属性文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理Flowable属性时使用
+     * @param localName 本地名称，后续用于处理Flowable属性时匹配或展示
+     * @return 处理后的Flowable属性文本，供调用方比较或展示
+     */
     private String flowableAttribute(
             Element element,
             String localName) {
@@ -1753,6 +2008,13 @@ public class ProcessBpmnPublishSanitizer {
         return value;
     }
 
+    /**
+     * 构造下一步审批人配置错误异常，供调用方区分失败原因。
+     *
+     * @param nodeId 节点ID，后续用于处理下一步审批人配置错误时定位或关联目标
+     * @param detail 详情，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的下一步审批人配置错误结果，供调用方继续处理
+     */
     private IllegalArgumentException nextApproverConfigError(
             String nodeId,
             String detail) {
@@ -1763,6 +2025,13 @@ public class ProcessBpmnPublishSanitizer {
                         + detail);
     }
 
+    /**
+     * 生成{@code fix}已配置用户任务{@code slas}文本，供后续匹配或展示。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置用户任务{@code slas}文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String fixConfiguredUserTaskSlas(String bpmnXml) {
         return rewriteConfiguredElements(
                 bpmnXml,
@@ -1852,6 +2121,12 @@ public class ProcessBpmnPublishSanitizer {
                 });
     }
 
+    /**
+     * 校验并获取任务SLA策略服务；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的任务SLA策略服务结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private TaskSlaPolicyService requireTaskSlaPolicyService() {
         if (taskSlaPolicyService == null) {
             throw new IllegalStateException("SLA策略服务未初始化");
@@ -1859,6 +2134,12 @@ public class ProcessBpmnPublishSanitizer {
         return taskSlaPolicyService;
     }
 
+    /**
+     * 校验并获取工作日历服务；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的工作日历服务结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private WorkCalendarService requireWorkCalendarService() {
         if (workCalendarService == null) {
             throw new IllegalStateException("工作日历服务未初始化");
@@ -1866,6 +2147,13 @@ public class ProcessBpmnPublishSanitizer {
         return workCalendarService;
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -1878,6 +2166,9 @@ public class ProcessBpmnPublishSanitizer {
      * 为服务任务和发送任务附加显式知会。
      * <p>
      * 已有主实现时在节点结束后执行知会监听器；没有主实现时将节点本身作为纯知会节点。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}{@code explicit}抄送任务集合文本，供调用方比较或展示
      */
     private String fixExplicitCcTasks(String bpmnXml) {
         String result = rewriteConfiguredElements(
@@ -1892,6 +2183,14 @@ public class ProcessBpmnPublishSanitizer {
                 (element, config) -> configureExplicitCc(element, config, "sendConfig"));
     }
 
+    /**
+     * 处理{@code configure}{@code explicit}抄送，并将结果传给后续步骤。
+     *
+     * @param element 元素，作为 {@code removeGeneratedCcListener} 的输入影响后续处理
+     * @param config 配置内容，决定后续{@code configure}{@code explicit}抄送的处理规则
+     * @param primaryConfigProperty 主要配置属性，作为 {@code readPropertyValue} 的输入影响后续处理
+     * @return 处理后的{@code configure}{@code explicit}抄送结果，供调用方继续处理
+     */
     private ConfiguredElement configureExplicitCc(
             ConfiguredElement element,
             com.fasterxml.jackson.databind.JsonNode config,
@@ -1937,6 +2236,13 @@ public class ProcessBpmnPublishSanitizer {
                 .withContent(appendToExtensionElements(content, listener));
     }
 
+    /**
+     * 判断是否包含文本值；判断结果决定调用方的后续分支。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param expected 预期，供本方法判断是否包含文本值时使用
+     * @return 文本值条件成立时为 true，否则为 false
+     */
     private boolean containsTextValue(
             com.fasterxml.jackson.databind.JsonNode values,
             String expected) {
@@ -1951,6 +2257,13 @@ public class ProcessBpmnPublishSanitizer {
         return false;
     }
 
+    /**
+     * 判断是否具有属性；判断结果决定调用方的后续分支。
+     *
+     * @param startTag 启动标签，供本方法判断是否具有属性时使用
+     * @param name 名称，后续用于判断是否具有属性时匹配或展示
+     * @return 属性条件成立时为 true，否则为 false
+     */
     private boolean hasAttribute(String startTag, String name) {
         return Pattern.compile(
                 "(?i)\\s+(?:flowable:)?" + Pattern.quote(name) + "=\"[^\"]*\"")
@@ -1958,6 +2271,12 @@ public class ProcessBpmnPublishSanitizer {
                 .find();
     }
 
+    /**
+     * 移除{@code generated}抄送监听器；后续读取或执行将使用更新后的状态。
+     *
+     * @param content 内容，后续用于移除{@code generated}抄送监听器并传递处理结果
+     * @return 移除后的{@code generated}抄送监听器文本，供调用方比较或展示
+     */
     private String removeGeneratedCcListener(String content) {
         return content.replaceAll(
                 "(?i)<flowable:executionListener\\b"
@@ -1969,6 +2288,9 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 改写配置化的服务任务：将扩展属性 restConfig 解析后，
      * 设置为统一的服务任务代理表达式，并按需注入结果变量名。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置服务任务集合文本，供调用方比较或展示
      */
     private String fixConfiguredServiceTasks(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "serviceTask", "restConfig", (element, config) -> {
@@ -2010,6 +2332,8 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 改写配置化的发送任务：校验渠道与接收人，并将 sendTask 转为 serviceTask 绑定发送代理。
      *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置{@code send}任务集合文本，供调用方比较或展示
      * @throws IllegalArgumentException 当缺少发送渠道或接收人时抛出
      */
     private String fixConfiguredSendTasks(String bpmnXml) {
@@ -2039,6 +2363,8 @@ public class ProcessBpmnPublishSanitizer {
     /**
      * 改写配置化的业务规则任务：校验决策表Key，并将 businessRuleTask 转为 serviceTask 绑定 DMN 代理。
      *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置业务规则任务集合文本，供调用方比较或展示
      * @throws IllegalArgumentException 当缺少决策表Key时抛出
      */
     private String fixConfiguredBusinessRuleTasks(String bpmnXml) {
@@ -2061,6 +2387,9 @@ public class ProcessBpmnPublishSanitizer {
 
     /**
      * 改写配置化的调用活动：设置子流程Key、调用类型、业务Key及输入输出参数映射。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置{@code call}{@code activities}文本，供调用方比较或展示
      */
     private String fixConfiguredCallActivities(String bpmnXml) {
         return rewriteConfiguredElements(bpmnXml, "callActivity", "callConfig", (element, config) -> {
@@ -2093,6 +2422,9 @@ public class ProcessBpmnPublishSanitizer {
      *
      * <p>定时器先进入平台超时处理代理，再复用接收任务原有出线。continue 策略会设置
      * 超时变量后继续；error 策略由代理抛出异常并交给 Flowable 作业重试/失败机制处理。</p>
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parseXml} 的输入影响后续处理
+     * @return 处理后的{@code fix}已配置接收任务集合文本，供调用方比较或展示
      */
     private String fixConfiguredReceiveTasks(String bpmnXml) {
         if (!bpmnXml.contains("receiveConfig")
@@ -2152,6 +2484,16 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 追加接收{@code timeout}；结果供后续流程传递或持久化。
+     *
+     * @param document 文档，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param container {@code container}，作为 {@code directSequenceFlows} 的输入影响后续处理
+     * @param receiveTask 接收任务，供本方法追加接收{@code timeout}时使用
+     * @param duration 时长，作为 {@code timeDuration.setTextContent} 的输入影响后续处理
+     * @param action 动作标识，决定后续接收{@code timeout}采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void appendReceiveTimeout(
             Document document,
             Element container,
@@ -2261,6 +2603,16 @@ public class ProcessBpmnPublishSanitizer {
         timeoutFlows.forEach(container::appendChild);
     }
 
+    /**
+     * 追加接收{@code timeout}属性集合；结果供后续流程传递或持久化。
+     *
+     * @param document 文档，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param handler 处理器，供本方法追加接收{@code timeout}属性集合时使用
+     * @param namespace 命名空间，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param prefix 前缀，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param receiveTaskId 接收任务ID，后续用于追加接收{@code timeout}属性集合时定位或关联目标
+     * @param action 动作标识，决定后续接收{@code timeout}属性集合采用的处理分支
+     */
     private void appendReceiveTimeoutProperties(
             Document document,
             Element handler,
@@ -2288,6 +2640,14 @@ public class ProcessBpmnPublishSanitizer {
         handler.appendChild(extensionElements);
     }
 
+    /**
+     * 处理Flowable属性，并将结果传给后续步骤。
+     *
+     * @param document 文档，供本方法处理Flowable属性时使用
+     * @param name 名称，后续用于处理Flowable属性时匹配或展示
+     * @param value 待处理Flowable属性的原始输入，结果供调用方继续使用
+     * @return 处理后的Flowable属性结果，供调用方继续处理
+     */
     private Element flowableProperty(
             Document document,
             String name,
@@ -2300,6 +2660,16 @@ public class ProcessBpmnPublishSanitizer {
         return property;
     }
 
+    /**
+     * 追加引用元素；结果供后续流程传递或持久化。
+     *
+     * @param document 文档，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param parent 父级，供本方法追加引用元素时使用
+     * @param namespace 命名空间，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param prefix 前缀，作为 {@code createBpmnElement} 的输入影响后续处理
+     * @param localName 本地名称，后续用于追加引用元素时匹配或展示
+     * @param value 待追加引用元素的原始输入，结果供调用方继续使用
+     */
     private void appendReferenceElement(
             Document document,
             Element parent,
@@ -2316,6 +2686,15 @@ public class ProcessBpmnPublishSanitizer {
         parent.appendChild(reference);
     }
 
+    /**
+     * 创建BPMN元素；结果供后续流程传递或持久化。
+     *
+     * @param document 文档，供本方法创建BPMN元素时使用
+     * @param namespace 命名空间，作为 {@code document.createElementNS} 的输入影响后续处理
+     * @param prefix 前缀，供本方法创建BPMN元素时使用
+     * @param localName 本地名称，后续用于创建BPMN元素时匹配或展示
+     * @return 创建后的BPMN元素结果，供调用方继续处理
+     */
     private Element createBpmnElement(
             Document document,
             String namespace,
@@ -2327,6 +2706,13 @@ public class ProcessBpmnPublishSanitizer {
         return document.createElementNS(namespace, qualifiedName);
     }
 
+    /**
+     * 整理{@code direct}序列{@code flows}数据，供调用方遍历或继续处理。
+     *
+     * @param container {@code container}，供本方法处理{@code direct}序列{@code flows}时使用
+     * @param sourceRef 来源引用，供本方法处理{@code direct}序列{@code flows}时使用
+     * @return 元素集合，供调用方遍历或展示
+     */
     private List<Element> directSequenceFlows(
             Element container,
             String sourceRef) {
@@ -2343,6 +2729,13 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 移除{@code generated}接收{@code timeout}；后续读取或执行将使用更新后的状态。
+     *
+     * @param container {@code container}，作为 {@code generated.forEach} 的输入影响后续处理
+     * @param receiveTaskId 接收任务ID，后续用于移除{@code generated}接收{@code timeout}时定位或关联目标
+     * @return {@code generated}接收{@code timeout}条件成立时为 true，否则为 false
+     */
     private boolean removeGeneratedReceiveTimeout(
             Element container,
             String receiveTaskId) {
@@ -2360,6 +2753,15 @@ public class ProcessBpmnPublishSanitizer {
         return !generated.isEmpty();
     }
 
+    /**
+     * 接收{@code timeout}时长；结果供调用方的后续步骤使用。
+     *
+     * @param timeout {@code timeout}，供本方法接收{@code timeout}时长时使用
+     * @param unit 单元，供本方法接收{@code timeout}时长时使用
+     * @param receiveTaskId 接收任务ID，后续用于接收{@code timeout}时长时定位或关联目标
+     * @return 接收后的{@code timeout}时长文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String receiveTimeoutDuration(
             int timeout,
             String unit,
@@ -2373,6 +2775,14 @@ public class ProcessBpmnPublishSanitizer {
         };
     }
 
+    /**
+     * 处理{@code strict}正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code strict}正数整数的原始输入，结果供调用方继续使用
+     * @param receiveTaskId 接收任务ID，后续用于处理{@code strict}正数整数时定位或关联目标
+     * @return 处理后的{@code strict}正数整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int strictPositiveInteger(
             com.fasterxml.jackson.databind.JsonNode value,
             String receiveTaskId) {
@@ -2388,6 +2798,13 @@ public class ProcessBpmnPublishSanitizer {
         return timeout;
     }
 
+    /**
+     * 整理{@code elements}本地名称数据，供调用方遍历或继续处理。
+     *
+     * @param document 文档，供本方法处理{@code elements}本地名称时使用
+     * @param localName 本地名称，后续用于处理{@code elements}本地名称时匹配或展示
+     * @return 元素集合，供调用方遍历或展示
+     */
     private List<Element> elementsByLocalName(
             Document document,
             String localName) {
@@ -2399,6 +2816,13 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 读取属性值；查询结果供调用方展示或继续处理。
+     *
+     * @param element 元素，供本方法读取属性值时使用
+     * @param propertyName 属性名称，后续用于读取属性值时匹配或展示
+     * @return 读取后的属性值文本，供调用方比较或展示
+     */
     private String readPropertyValue(
             Element element,
             String propertyName) {
@@ -2414,6 +2838,13 @@ public class ProcessBpmnPublishSanitizer {
         return null;
     }
 
+    /**
+     * 解析XML；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析XML时使用
+     * @return 解析后的XML结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Document parseXml(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
@@ -2432,6 +2863,13 @@ public class ProcessBpmnPublishSanitizer {
                 new InputSource(new StringReader(bpmnXml)));
     }
 
+    /**
+     * 写入XML；后续读取或执行将使用更新后的状态。
+     *
+     * @param document 文档，作为 {@code transformer.transform} 的输入影响后续处理
+     * @return 写入后的XML文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private String writeXml(Document document) throws Exception {
         TransformerFactory factory = TransformerFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -2443,6 +2881,14 @@ public class ProcessBpmnPublishSanitizer {
         return writer.toString();
     }
 
+    /**
+     * 校验JSON对象文档；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，供本方法校验JSON对象文档时使用
+     * @param label 标签，后续用于校验JSON对象文档时匹配或展示
+     * @param elementId 元素ID，后续用于校验JSON对象文档时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateJsonObjectDocument(
             String document,
             String label,
@@ -2464,6 +2910,14 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 校验JSON{@code container}文档；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @param label 标签，后续用于校验JSON{@code container}文档时匹配或展示
+     * @param elementId 元素ID，后续用于校验JSON{@code container}文档时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateJsonContainerDocument(
             String document,
             String label,
@@ -2542,6 +2996,13 @@ public class ProcessBpmnPublishSanitizer {
         return result.toString();
     }
 
+    /**
+     * 读取属性值；查询结果供调用方展示或继续处理。
+     *
+     * @param content 内容，后续用于读取属性值并传递处理结果
+     * @param propertyName 属性名称，后续用于读取属性值时匹配或展示
+     * @return 读取后的属性值文本，供调用方比较或展示
+     */
     private String readPropertyValue(String content, String propertyName) {
         Pattern nameFirst = Pattern.compile(
                 "(?i)<flowable:property\\b[^>]*name=\"" + Pattern.quote(propertyName)
@@ -2557,6 +3018,15 @@ public class ProcessBpmnPublishSanitizer {
         return matcher.find() ? decodeXml(matcher.group(1)) : null;
     }
 
+    /**
+     * 生成替换属性值文本，供后续匹配或展示。
+     *
+     * @param content 内容，后续用于处理替换属性值并传递处理结果
+     * @param propertyName 属性名称，后续用于处理替换属性值时匹配或展示
+     * @param value 待处理替换属性值的原始输入，结果供调用方继续使用
+     * @return 处理后的替换属性值文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String replacePropertyValue(
             String content,
             String propertyName,
@@ -2590,6 +3060,13 @@ public class ProcessBpmnPublishSanitizer {
                 "节点扩展属性不存在: " + propertyName);
     }
 
+    /**
+     * 移除{@code attributes}；后续读取或执行将使用更新后的状态。
+     *
+     * @param startTag 启动标签，供本方法移除{@code attributes}时使用
+     * @param names 名称集合，供本方法移除{@code attributes}时使用
+     * @return 移除后的{@code attributes}文本，供调用方比较或展示
+     */
     private String removeAttributes(String startTag, String... names) {
         String result = startTag;
         for (String name : names) {
@@ -2600,14 +3077,38 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 设置{@code qualified}属性；后续读取或执行将使用更新后的状态。
+     *
+     * @param startTag 启动标签，作为 {@code setAttributeInternal} 的输入影响后续处理
+     * @param name 名称，后续用于设置{@code qualified}属性时匹配或展示
+     * @param value 待设置{@code qualified}属性的原始输入，结果供调用方继续使用
+     * @return 设置后的{@code qualified}属性文本，供调用方比较或展示
+     */
     private String setQualifiedAttribute(String startTag, String name, String value) {
         return setAttributeInternal(startTag, "flowable:" + name, value);
     }
 
+    /**
+     * 设置属性；后续读取或执行将使用更新后的状态。
+     *
+     * @param startTag 启动标签，作为 {@code setAttributeInternal} 的输入影响后续处理
+     * @param name 名称，后续用于设置属性时匹配或展示
+     * @param value 待设置属性的原始输入，结果供调用方继续使用
+     * @return 设置后的属性文本，供调用方比较或展示
+     */
     private String setAttribute(String startTag, String name, String value) {
         return setAttributeInternal(startTag, name, value);
     }
 
+    /**
+     * 设置属性内部；后续读取或执行将使用更新后的状态。
+     *
+     * @param startTag 启动标签，供本方法设置属性内部时使用
+     * @param qualifiedName {@code qualified}名称，后续用于设置属性内部时匹配或展示
+     * @param value 待设置属性内部的原始输入，结果供调用方继续使用
+     * @return 设置后的属性内部文本，供调用方比较或展示
+     */
     private String setAttributeInternal(String startTag, String qualifiedName, String value) {
         String result = startTag.replaceAll(
                 "(?i)\\s+" + Pattern.quote(qualifiedName) + "=\"[^\"]*\"",
@@ -2624,6 +3125,13 @@ public class ProcessBpmnPublishSanitizer {
                 + "\">";
     }
 
+    /**
+     * 生成属性值文本，供后续匹配或展示。
+     *
+     * @param startTag 启动标签，供本方法处理属性值时使用
+     * @param name 名称，后续用于处理属性值时匹配或展示
+     * @return 处理后的属性值文本，供调用方比较或展示
+     */
     private String attributeValue(String startTag, String name) {
         Matcher matcher = Pattern.compile(
                 "(?i)\\b" + Pattern.quote(name) + "=\"([^\"]*)\"")
@@ -2631,6 +3139,14 @@ public class ProcessBpmnPublishSanitizer {
         return matcher.find() ? decodeXml(matcher.group(1)) : "";
     }
 
+    /**
+     * 生成{@code call}映射集合文本，供后续匹配或展示。
+     *
+     * @param json JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @param direction {@code direction}，供本方法处理{@code call}映射集合时使用
+     * @return 处理后的{@code call}映射集合文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String callMappings(String json, String direction) {
         if (json == null || json.isBlank()) {
             return "";
@@ -2667,12 +3183,25 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
+    /**
+     * 移除{@code generated}{@code call}映射集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param content 内容，后续用于移除{@code generated}{@code call}映射集合并传递处理结果
+     * @return 移除后的{@code generated}{@code call}映射集合文本，供调用方比较或展示
+     */
     private String removeGeneratedCallMappings(String content) {
         return content.replaceAll(
                 "(?i)<flowable:(?:in|out)\\b[^>]*/>",
                 "");
     }
 
+    /**
+     * 追加截止扩展{@code elements}；结果供后续流程传递或持久化。
+     *
+     * @param content 内容，后续用于追加截止扩展{@code elements}并传递处理结果
+     * @param extensionXml 扩展XML，供本方法追加截止扩展{@code elements}时使用
+     * @return 追加后的截止扩展{@code elements}文本，供调用方比较或展示
+     */
     private String appendToExtensionElements(String content, String extensionXml) {
         if (content.matches("(?is).*?</bpmn:extensionElements>.*")) {
             return content.replaceFirst(
@@ -2687,6 +3216,12 @@ public class ProcessBpmnPublishSanitizer {
         return "<bpmn:extensionElements>" + extensionXml + "</bpmn:extensionElements>" + content;
     }
 
+    /**
+     * 生成{@code escape}XML文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code escape}XML的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code escape}XML文本，供调用方比较或展示
+     */
     private String escapeXml(String value) {
         return value
                 .replace("&", "&amp;")
@@ -2695,36 +3230,86 @@ public class ProcessBpmnPublishSanitizer {
                 .replace(">", "&gt;");
     }
 
+    /**
+     * 定义已配置元素{@code rewriter}的调用契约；实现层按此提供能力，调用方无需依赖具体实现。
+     */
     @FunctionalInterface
     private interface ConfiguredElementRewriter {
+        /**
+         * 处理重写，并将结果传给后续步骤。
+         *
+         * @param element 元素，供本方法处理重写时使用
+         * @param config 配置内容，决定后续重写的处理规则
+         * @return 处理后的重写结果，供调用方继续处理
+         */
         ConfiguredElement rewrite(
                 ConfiguredElement element,
                 com.fasterxml.jackson.databind.JsonNode config);
     }
 
+    /**
+     * 封装已配置元素的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param prefix 前缀，保存在对象中供后续校验、查询或展示
+     * @param tagName 标签名称，后续用于处理已配置元素时匹配或展示
+     * @param startTag 启动标签，保存在对象中供后续校验、查询或展示
+     * @param content 内容，后续用于处理已配置元素并传递处理结果
+     * @param id 对象标识，供后续引用、更新或关联
+     */
     private record ConfiguredElement(
             String prefix,
             String tagName,
             String startTag,
             String content,
             String id) {
+        /**
+         * 处理标签名称，并将结果传给后续步骤。
+         *
+         * @param value 待处理标签名称的原始输入，结果供调用方继续使用
+         * @return 处理后的标签名称结果，供调用方继续处理
+         */
         private ConfiguredElement withTagName(String value) {
             return new ConfiguredElement(prefix, value, startTag, content, id);
         }
 
+        /**
+         * 处理启动标签，并将结果传给后续步骤。
+         *
+         * @param value 待处理启动标签的原始输入，结果供调用方继续使用
+         * @return 处理后的启动标签结果，供调用方继续处理
+         */
         private ConfiguredElement withStartTag(String value) {
             return new ConfiguredElement(prefix, tagName, value, content, id);
         }
 
+        /**
+         * 处理内容，并将结果传给后续步骤。
+         *
+         * @param value 待处理内容的原始输入，结果供调用方继续使用
+         * @return 处理后的内容结果，供调用方继续处理
+         */
         private ConfiguredElement withContent(String value) {
             return new ConfiguredElement(prefix, tagName, startTag, value, id);
         }
 
+        /**
+         * 生成XML文本，供后续匹配或展示。
+         *
+         * @return 处理后的XML文本，供调用方比较或展示
+         */
         private String xml() {
             return startTag + content + "</" + prefix + tagName + ">";
         }
     }
 
+    /**
+     * 封装已发布分配节点的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param element 元素，保存在对象中供后续校验、查询或展示
+     * @param assigneeConfig 办理人配置内容，决定后续已发布分配节点的处理规则
+     * @param multiInstance 是否多实例节点，决定后续候选人解析和人数校验
+     */
     private record PublishedAssignmentNode(
             String id,
             Element element,
@@ -2732,6 +3317,12 @@ public class ProcessBpmnPublishSanitizer {
             boolean multiInstance) {
     }
 
+    /**
+     * 移除{@code duplicate}{@code camunda}分配集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param bpmnXml BPMNXML，供本方法移除{@code duplicate}{@code camunda}分配集合时使用
+     * @return 移除后的{@code duplicate}{@code camunda}分配集合文本，供调用方比较或展示
+     */
     private String removeDuplicateCamundaAssignments(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll(
@@ -2755,6 +3346,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 转换{@code camunda}分配集合；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法转换{@code camunda}分配集合时使用
+     * @return 转换后的{@code camunda}分配集合文本，供调用方比较或展示
+     */
     private String convertCamundaAssignments(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll("camunda:candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
@@ -2763,6 +3360,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 转换{@code camunda}属性集合；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法转换{@code camunda}属性集合时使用
+     * @return 转换后的{@code camunda}属性集合文本，供调用方比较或展示
+     */
     private String convertCamundaProperties(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll("(?i)<camunda:Properties", "<flowable:Properties");
@@ -2772,6 +3375,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 移除{@code camunda}{@code elements}；后续读取或执行将使用更新后的状态。
+     *
+     * @param bpmnXml BPMNXML，供本方法移除{@code camunda}{@code elements}时使用
+     * @return 移除后的{@code camunda}{@code elements}文本，供调用方比较或展示
+     */
     private String removeCamundaElements(String bpmnXml) {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
                 "(?i)<camunda:(?!properties|property)[^>]*>[\\s\\S]*?</camunda:[^>]*>",
@@ -2787,6 +3396,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 转换{@code bare}Flowable{@code attributes}；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法转换{@code bare}Flowable{@code attributes}时使用
+     * @return 转换后的{@code bare}Flowable{@code attributes}文本，供调用方比较或展示
+     */
     private String convertBareFlowableAttributes(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll("(?<!flowable:)candidateGroups=\"([^\"]*)\"", "flowable:candidateGroups=\"$1\"");
@@ -2795,6 +3410,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 转换多实例{@code attributes}；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法转换多实例{@code attributes}时使用
+     * @return 转换后的多实例{@code attributes}文本，供调用方比较或展示
+     */
     private String convertMultiInstanceAttributes(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll(
@@ -2806,6 +3427,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 确保Flowable命名空间；不满足约束时阻止后续处理。
+     *
+     * @param bpmnXml BPMNXML，供本方法确保Flowable命名空间时使用
+     * @return 确保后的Flowable命名空间文本，供调用方比较或展示
+     */
     private String ensureFlowableNamespace(String bpmnXml) {
         if (bpmnXml.contains("xmlns:flowable")) {
             return bpmnXml;
@@ -2886,7 +3513,12 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 多流程文档必须显式且唯一地标记平台负责部署的可执行主流程。 */
+    /**
+     * 多流程文档必须显式且唯一地标记平台负责部署的可执行主流程。
+     *
+     * @param processes {@code processes}，供本方法解析{@code executable}流程时使用
+     * @return 解析后的{@code executable}流程结果，供调用方继续处理
+     */
     private Element resolveExecutableProcess(List<Element> processes) {
         if (processes.size() == 1) {
             return processes.get(0);
@@ -2903,7 +3535,14 @@ public class ProcessBpmnPublishSanitizer {
         return executableProcesses.get(0);
     }
 
-    /** 查找除主流程自身外占用了目标流程 Key 的 BPMN 元素。 */
+    /**
+     * 查找除主流程自身外占用了目标流程 Key 的 BPMN 元素。
+     *
+     * @param document 文档，供本方法查询元素ID时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param ignoredElement {@code ignored}元素，供本方法查询元素ID时使用
+     * @return 符合条件的元素结果，供调用方继续处理
+     */
     private Element findElementById(
             Document document,
             String id,
@@ -2921,6 +3560,12 @@ public class ProcessBpmnPublishSanitizer {
 
     /**
      * 仅更新指向旧主流程 ID 的引用。elementLocalName 为空时检查所有元素，供 DI 引用使用。
+     *
+     * @param document 文档，供本方法更新属性引用时使用
+     * @param elementLocalName 元素本地名称，后续用于更新属性引用时匹配或展示
+     * @param attributeName 属性名称，后续用于更新属性引用时匹配或展示
+     * @param previousValue 上一项值，作为 {@code renameIdOrQNameReference} 的输入影响后续处理
+     * @param nextValue 下一步值，作为 {@code renameIdOrQNameReference} 的输入影响后续处理
      */
     private void updateAttributeReferences(
             Document document,
@@ -2950,7 +3595,15 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 裸 ID 直接替换；QName 仅替换 local part，并保留其已绑定前缀。 */
+    /**
+     * 裸 ID 直接替换；QName 仅替换 local part，并保留其已绑定前缀。
+     *
+     * @param context 执行上下文，向后续{@code rename}ID或{@code q}名称引用步骤传递身份、配置或状态
+     * @param currentValue 当前值，供本方法处理{@code rename}ID或{@code q}名称引用时使用
+     * @param previousValue 上一项值，供本方法处理{@code rename}ID或{@code q}名称引用时使用
+     * @param nextValue 下一步值，供本方法处理{@code rename}ID或{@code q}名称引用时使用
+     * @return 处理后的{@code rename}ID或{@code q}名称引用文本，供调用方比较或展示
+     */
     private String renameIdOrQNameReference(
             Element context,
             String currentValue,
@@ -3047,7 +3700,13 @@ public class ProcessBpmnPublishSanitizer {
         }
     }
 
-    /** 支持标准裸 ID 以及带命名空间前缀的 QName 引用。 */
+    /**
+     * 支持标准裸 ID 以及带命名空间前缀的 QName 引用。
+     *
+     * @param reference 引用，供本方法处理引用数据对象时使用
+     * @param dataObjectId 数据对象ID，后续用于处理引用数据对象时定位或关联目标
+     * @return 引用数据对象条件成立时为 true，否则为 false
+     */
     private boolean referencesDataObject(
             Element reference,
             String dataObjectId) {
@@ -3056,6 +3715,12 @@ public class ProcessBpmnPublishSanitizer {
                 || value.endsWith(":" + dataObjectId);
     }
 
+    /**
+     * 移除无效多实例配置；后续读取或执行将使用更新后的状态。
+     *
+     * @param bpmnXml BPMNXML，供本方法移除无效多实例配置时使用
+     * @return 移除后的无效多实例配置文本，供调用方比较或展示
+     */
     private String removeInvalidMultiInstanceConfig(String bpmnXml) {
         String result = bpmnXml;
         result = result.replaceAll(
@@ -3082,6 +3747,12 @@ public class ProcessBpmnPublishSanitizer {
         return sb.toString();
     }
 
+    /**
+     * 生成{@code fix}多实例办理人文本，供后续匹配或展示。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code pattern.matcher} 的输入影响后续处理
+     * @return 处理后的{@code fix}多实例办理人文本，供调用方比较或展示
+     */
     private String fixMultiInstanceAssignee(String bpmnXml) {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
                 "(?i)<(bpmn:)?userTask\\b([^>]*)(?<!/)>([\\s\\S]*?)</\\1userTask>",
@@ -3114,6 +3785,13 @@ public class ProcessBpmnPublishSanitizer {
         return sb.toString();
     }
 
+    /**
+     * 生成{@code fix}{@code script}任务集合文本，供后续匹配或展示。
+     *
+     * @param bpmnXml BPMNXML，供本方法处理{@code fix}{@code script}任务集合时使用
+     * @return 处理后的{@code fix}{@code script}任务集合文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String fixScriptTasks(String bpmnXml) {
         if (Pattern.compile("(?i)<(?:bpmn:)?scriptTask\\b")
                 .matcher(bpmnXml)
@@ -3130,6 +3808,9 @@ public class ProcessBpmnPublishSanitizer {
      *
      * <p>扩展属性只承担设计态三态标记；部署态以 skipExpression 为唯一权威。
      * {@code skipNode=false} 的条件表达式必须原样保留。</p>
+     *
+     * @param bpmnXml BPMNXML，作为 {@code pattern.matcher} 的输入影响后续处理
+     * @return 处理后的跳过节点任务集合文本，供调用方比较或展示
      */
     private String processSkipNodeTasks(String bpmnXml) {
         Pattern pattern = Pattern.compile(
@@ -3170,6 +3851,9 @@ public class ProcessBpmnPublishSanitizer {
      * 但 approved 变量已统一为字符串 "approve"/"reject"，布尔比较会导致条件永远不成立。
      * 发布时把 {@code approved == true} 改为 {@code approved == 'approve'}，
      * {@code approved == false} 改为 {@code approved == 'reject'}（兼容 == 与 !=）。</p>
+     *
+     * @param bpmnXml BPMNXML，供本方法处理迁移{@code approved}{@code expressions}时使用
+     * @return 处理后的迁移{@code approved}{@code expressions}文本，供调用方比较或展示
      */
     private String migrateApprovedExpressions(String bpmnXml) {
         String result = bpmnXml;
@@ -3188,6 +3872,12 @@ public class ProcessBpmnPublishSanitizer {
         return result;
     }
 
+    /**
+     * 解码XML；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码XML的原始输入，结果供调用方继续使用
+     * @return 解码后的XML文本，供调用方比较或展示
+     */
     private String decodeXml(String value) {
         return value.replace("&quot;", "\"")
                 .replace("&#34;", "\"")

@@ -1,0 +1,68 @@
+# 第三方嵌入配置：入口、会话、请求限流、维护与版本化密钥；所有时间和容量上限由服务端控制。
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 第三方嵌入页面的入口、会话、限流、清理及密钥配置。
+  embed:
+    # 是否启用嵌入能力，默认关闭，启用前需完成接入与密钥配置。
+    enabled: ${WORKFLOW_EMBED_ENABLED:false}
+    # 生成嵌入入口的公开 origin；生产使用 HTTPS，HTTP 仅允许本机回环地址。
+    public-base-url: ${WORKFLOW_EMBED_PUBLIC_BASE_URL:http://localhost:8080}
+    # 嵌入入口 JavaScript 路径，必须位于 /embed-assets/ 专用目录。
+    entry-asset-path: ${WORKFLOW_EMBED_ENTRY_ASSET_PATH:/embed-assets/embed-main.js}
+    # 嵌入入口 CSS 路径，必须位于 /embed-assets/ 专用目录。
+    entry-style-path: ${WORKFLOW_EMBED_ENTRY_STYLE_PATH:/embed-assets/embed-main.css}
+    # 一次性 Launch 凭据的有效期，单位秒，限制入口兑换窗口。
+    launch-ttl-seconds: ${WORKFLOW_EMBED_LAUNCH_TTL_SECONDS:60}
+    # 嵌入会话允许空闲的最长时间，单位秒，超过后失效。
+    session-idle-seconds: ${WORKFLOW_EMBED_SESSION_IDLE_SECONDS:300}
+    # 嵌入会话绝对寿命，单位秒，不因续期突破此上限。
+    session-absolute-seconds: ${WORKFLOW_EMBED_SESSION_ABSOLUTE_SECONDS:1800}
+    # 生成随机嵌入凭据的字节数，决定凭据随机强度。
+    secret-bytes: ${WORKFLOW_EMBED_SECRET_BYTES:32}
+    # 嵌入列表单页记录数上限，限制一次读取的数据量。
+    max-page-size: ${WORKFLOW_EMBED_MAX_PAGE_SIZE:100}
+    # 嵌入请求载荷的字节数上限，防止超大请求占用资源。
+    max-payload-bytes: ${WORKFLOW_EMBED_MAX_PAYLOAD_BYTES:1048576}
+    # 嵌入操作可同时选择的记录数量上限，约束批量操作范围。
+    max-selection-size: ${WORKFLOW_EMBED_MAX_SELECTION_SIZE:100}
+    # 单个 Launch 每分钟允许的 code 兑换尝试次数。
+    exchange-launch-limit-per-minute: ${WORKFLOW_EMBED_EXCHANGE_LAUNCH_LIMIT_PER_MINUTE:10}
+    # 同一直连对端地址每分钟允许的 code 兑换尝试次数。
+    exchange-address-limit-per-minute: ${WORKFLOW_EMBED_EXCHANGE_ADDRESS_LIMIT_PER_MINUTE:120}
+    # 单个嵌入会话每分钟所有已认证请求的总次数上限。
+    runtime-session-limit-per-minute: ${WORKFLOW_EMBED_RUNTIME_SESSION_LIMIT_PER_MINUTE:120}
+    # 单个嵌入会话每分钟写请求次数上限。
+    write-session-limit-per-minute: ${WORKFLOW_EMBED_WRITE_SESSION_LIMIT_PER_MINUTE:30}
+    # 单个嵌入会话每分钟心跳请求次数上限。
+    heartbeat-session-limit-per-minute: ${WORKFLOW_EMBED_HEARTBEAT_SESSION_LIMIT_PER_MINUTE:12}
+    # 并发请求租约的故障回收时长，单位秒；正常响应后立即释放，请求超时应小于此值。
+    runtime-request-lease-seconds: ${WORKFLOW_EMBED_RUNTIME_REQUEST_LEASE_SECONDS:300}
+    # 扫描并终结过期嵌入会话的固定延迟，单位毫秒。
+    session-expiry-scan-ms: ${WORKFLOW_EMBED_SESSION_EXPIRY_SCAN_MS:60000}
+    # 清理维护批次之间的固定延迟，单位毫秒，避免高频维护形成数据库压力。
+    maintenance-scan-ms: ${WORKFLOW_EMBED_MAINTENANCE_SCAN_MS:60000}
+    # 每条维护 SQL 的最大影响行数，避免清理形成大事务。
+    maintenance-batch-size: ${WORKFLOW_EMBED_MAINTENANCE_BATCH_SIZE:200}
+    # 会话进入终态后保留上下文密文的秒数，不得超过完整会话记录保留时长。
+    terminal-context-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_CONTEXT_RETENTION_SECONDS:3600}
+    # 嵌入操作最小业务回执的独立保留秒数，支持幂等记录清理后的结果追踪。
+    operation-receipt-retention-seconds: ${WORKFLOW_EMBED_OPERATION_RECEIPT_RETENTION_SECONDS:2592000}
+    # 终态会话完整记录的保留秒数，用于会话追踪后清理。
+    terminal-session-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_SESSION_RETENTION_SECONDS:7776000}
+    # 无会话引用的终态 Launch 记录保留秒数，用于入口追踪后清理。
+    terminal-launch-retention-seconds: ${WORKFLOW_EMBED_TERMINAL_LAUNCH_RETENTION_SECONDS:7776000}
+    # 上下文加密和主体隐私索引的版本化密钥，支持轮换期间兼容旧数据。
+    crypto:
+      # 当前上下文加密密钥，Base64 编码且解码后为 32 字节，由环境注入。
+      context-key-base64: ${WORKFLOW_EMBED_CONTEXT_KEY_BASE64:}
+      # 新上下文加密使用的密钥版本，随密文保存以便后续选择解密密钥。
+      context-key-version: ${WORKFLOW_EMBED_CONTEXT_KEY_VERSION:embed-context-v1}
+      # 仍可解密的历史版本，逗号分隔；还需提供 workflow.embed.crypto.context-keys.<版本> 密钥。
+      accepted-context-key-versions: ${WORKFLOW_EMBED_ACCEPTED_CONTEXT_KEY_VERSIONS:}
+      # 主体隐私摘要使用的 HMAC 密钥，Base64 编码且解码后至少 32 字节。
+      hmac-key-base64: ${WORKFLOW_EMBED_HMAC_KEY_BASE64:}
+      # 当前 HMAC 密钥版本，用于区分轮换前后的主体摘要。
+      hmac-key-version: ${WORKFLOW_EMBED_HMAC_KEY_VERSION:embed-hmac-v1}
+      # 仍接受的历史 HMAC 版本，逗号分隔；还需提供 workflow.embed.crypto.hmac-keys.<版本> 密钥。
+      accepted-hmac-key-versions: ${WORKFLOW_EMBED_ACCEPTED_HMAC_KEY_VERSIONS:}

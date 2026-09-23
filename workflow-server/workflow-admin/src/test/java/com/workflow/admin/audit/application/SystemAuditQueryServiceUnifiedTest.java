@@ -45,7 +45,7 @@ class SystemAuditQueryServiceUnifiedTest {
         when(mapper.selectPage(any(Page.class), any()))
                 .thenReturn(page);
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         PageResult<UnifiedAuditEventView> result =
                 service.unifiedPage(new UnifiedAuditQuery());
@@ -81,7 +81,7 @@ class SystemAuditQueryServiceUnifiedTest {
         SystemOperationLogMapper mapper =
                 mock(SystemOperationLogMapper.class);
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         assertThrows(IllegalArgumentException.class,
                 () -> service.operationTimeline("x".repeat(129)));
@@ -111,7 +111,7 @@ class SystemAuditQueryServiceUnifiedTest {
             return page;
         });
         SystemAuditQueryService service =
-                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new SystemAuditQueryService(mapper, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         List<UnifiedAuditEventView> result =
                 service.operationTimeline("event-1");
@@ -136,7 +136,7 @@ class SystemAuditQueryServiceUnifiedTest {
             return page;
         });
         var service = new SystemAuditQueryService(mapper,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         var query = new SystemAuditQuery();
         query.setModule("entity");
 

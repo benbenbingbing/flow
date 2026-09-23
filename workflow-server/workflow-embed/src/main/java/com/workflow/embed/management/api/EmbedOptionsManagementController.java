@@ -26,11 +26,24 @@ public class EmbedOptionsManagementController {
 
     private final EmbedOptionsQueryService service;
 
+    /**
+     * 初始化嵌入式选项管理控制器，保存构造参数供后续方法使用。
+     *
+     * @param service 服务依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedOptionsManagementController(EmbedOptionsQueryService service) {
         this.service = service;
     }
 
-    /** 按 ID、名称或 clientId 分页搜索应用；status 省略时可回显已禁用、撤销或过期项。 */
+    /**
+     * 按 ID、名称或 clientId 分页搜索应用；status 省略时可回显已禁用、撤销或过期项。
+     *
+     * @param keyword 关键字，供本方法处理{@code applications}时使用
+     * @param status 状态标识，决定后续{@code applications}采用的处理分支
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的{@code applications}结果，供调用方继续处理
+     */
     @GetMapping("/applications")
     public ApiResponse<PageResult<EmbedManagementViews.ApplicationOptionView>> applications(
             @RequestParam(required = false) String keyword,
@@ -49,7 +62,15 @@ public class EmbedOptionsManagementController {
                 .toList(), page.total(), page.pageNum(), page.pageSize()));
     }
 
-    /** 按 ID 或名称分页搜索身份源；完整验证配置仍由身份管理权限保护。 */
+    /**
+     * 按 ID 或名称分页搜索身份源；完整验证配置仍由身份管理权限保护。
+     *
+     * @param keyword 关键字，供本方法处理身份提供者集合时使用
+     * @param status 状态标识，决定后续身份提供者集合采用的处理分支
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的身份提供者集合结果，供调用方继续处理
+     */
     @GetMapping("/identity-providers")
     public ApiResponse<PageResult<EmbedManagementViews.IdentityProviderOptionView>> identityProviders(
             @RequestParam(required = false) String keyword,

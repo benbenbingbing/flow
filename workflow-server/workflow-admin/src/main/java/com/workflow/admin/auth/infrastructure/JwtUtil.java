@@ -140,6 +140,12 @@ public class JwtUtil {
         return claims != null ? claims.get("username", String.class) : null;
     }
 
+    /**
+     * 读取令牌版本起始令牌；查询结果供调用方展示或继续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的{@code jwt}{@code util}结果，供调用方继续处理
+     */
     public static Long getTokenVersionFromToken(String token) {
         Claims claims = parseToken(token);
         Object value = claims == null ? null : claims.get("tokenVersion");
@@ -218,6 +224,13 @@ public class JwtUtil {
                 == JwtTokenInspection.Status.VALID;
     }
 
+    /**
+     * 处理{@code inspection}，并将结果传给后续步骤。
+     *
+     * @param status 状态标识，决定后续{@code inspection}采用的处理分支
+     * @param claims 声明集合，供本方法处理{@code inspection}时使用
+     * @return 处理后的{@code inspection}结果，供调用方继续处理
+     */
     private static JwtTokenInspection inspection(
             JwtTokenInspection.Status status,
             Claims claims) {
@@ -268,6 +281,13 @@ public class JwtUtil {
         }
     }
 
+    /**
+     * 校验配置；不满足约束时阻止后续处理。
+     *
+     * @param configuredSecret 已配置密钥，供本方法校验配置时使用
+     * @param configuredExpiration 已配置{@code expiration}，供本方法校验配置时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void validateConfiguration(String configuredSecret, Long configuredExpiration) {
         if (configuredSecret == null
                 || configuredSecret.getBytes(StandardCharsets.UTF_8).length < MINIMUM_SECRET_BYTES) {

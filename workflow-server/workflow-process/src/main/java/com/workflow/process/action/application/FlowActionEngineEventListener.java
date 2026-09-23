@@ -1,8 +1,8 @@
 package com.workflow.process.action.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
+import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import lombok.RequiredArgsConstructor;
@@ -247,6 +247,12 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
                 stringValue(variables.get("initiator"))));
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -256,25 +262,51 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
         return null;
     }
 
+    /**
+     * 生成字符串值文本，供后续匹配或展示。
+     *
+     * @param value 待处理字符串值的原始输入，结果供调用方继续使用
+     * @return 处理后的字符串值文本，供调用方比较或展示
+     */
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFailOnException() {
         return true;
     }
 
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return false;
     }
 
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override
     public String getOnTransaction() {
         return null;
     }
 
+    /**
+     * 读取类型集合；查询结果供调用方展示或继续处理。
+     *
+     * @return {@code collection<?}{@code extends}{@code org.flowable.common.engine.api.delegate.event.flowable}事件{@code type>}集合，供调用方遍历或展示
+     */
     @Override
     public Collection<? extends org.flowable.common.engine.api.delegate.event.FlowableEventType> getTypes() {
         return EVENT_TYPES;

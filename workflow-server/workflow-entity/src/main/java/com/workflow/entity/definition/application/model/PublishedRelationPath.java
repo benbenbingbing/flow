@@ -7,6 +7,11 @@ import java.util.List;
  *
  * <p>路径只保存稳定业务编码和精确实体发布版本。运行时必须重新校验每个
  * {@code historyId/schemaHash}，禁止回退到目标实体当前最新定义。</p>
+ *
+ * @param sourceEntityCode 来源实体编码，后续用于处理已发布关系路径时定位或关联目标
+ * @param sourceHistoryId 来源历史ID，后续用于处理已发布关系路径时定位或关联目标
+ * @param sourceSchemaHash 来源结构哈希，保存在对象中供后续校验、查询或展示
+ * @param hops {@code hops}，保存在对象中供后续校验、查询或展示
  */
 public record PublishedRelationPath(
         String sourceEntityCode,
@@ -14,6 +19,14 @@ public record PublishedRelationPath(
         String sourceSchemaHash,
         List<Hop> hops) {
 
+    /**
+     * 初始化已发布关系路径，保存构造参数供后续方法使用。
+     *
+     * @param sourceEntityCode 来源实体编码，后续用于初始化已发布关系路径时定位或关联目标
+     * @param sourceHistoryId 来源历史ID，后续用于初始化已发布关系路径时定位或关联目标
+     * @param sourceSchemaHash 来源结构哈希，保存在对象中供后续校验、查询或展示
+     * @param hops {@code hops}，保存在对象中供后续校验、查询或展示
+     */
     public PublishedRelationPath {
         hops = hops == null ? List.of() : List.copyOf(hops);
     }
@@ -57,6 +70,10 @@ public record PublishedRelationPath(
     /**
      * 发布前的路径选择。反向引用需要 targetEntityId，其余类型由已发布定义
      * 自动推导目标实体。
+     *
+     * @param type 类型标识，决定后续步骤{@code spec}采用的处理分支
+     * @param code 业务编码，供后续匹配和引用
+     * @param targetEntityId 目标实体ID，后续用于处理步骤{@code spec}时定位或关联目标
      */
     public record StepSpec(
             StepType type,
@@ -64,7 +81,26 @@ public record PublishedRelationPath(
             String targetEntityId) {
     }
 
-    /** 发布后冻结的一跳关系。 */
+    /**
+     * 发布后冻结的一跳关系。
+     *
+     * @param index 索引，保存在对象中供后续校验、查询或展示
+     * @param type 类型标识，决定后续跳采用的处理分支
+     * @param code 业务编码，供后续匹配和引用
+     * @param sourceEntityCode 来源实体编码，后续用于处理跳时定位或关联目标
+     * @param sourceHistoryId 来源历史ID，后续用于处理跳时定位或关联目标
+     * @param sourceSchemaHash 来源结构哈希，保存在对象中供后续校验、查询或展示
+     * @param targetEntityCode 目标实体编码，后续用于处理跳时定位或关联目标
+     * @param targetHistoryId 目标历史ID，后续用于处理跳时定位或关联目标
+     * @param targetSchemaHash 目标结构哈希，保存在对象中供后续校验、查询或展示
+     * @param sourceFieldCode 来源字段编码，后续用于处理跳时定位或关联目标
+     * @param targetFieldCode 目标字段编码，后续用于处理跳时定位或关联目标
+     * @param relationCode 关系编码，后续用于处理跳时定位或关联目标
+     * @param ownershipType {@code ownership}类型标识，决定后续跳采用的处理分支
+     * @param multiple {@code multiple}，保存在对象中供后续校验、查询或展示
+     * @param sourceLinkField 来源链接字段，保存在对象中供后续校验、查询或展示
+     * @param targetLinkField 目标链接字段，保存在对象中供后续校验、查询或展示
+     */
     public record Hop(
             int index,
             StepType type,

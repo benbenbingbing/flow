@@ -7,8 +7,8 @@ import com.workflow.config.database.NumericBooleanTypeHandler;
 import com.workflow.core.database.InitializedDriverDataSource;
 
 import com.workflow.core.database.port.DatabaseConnections;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
 import com.zaxxer.hikari.HikariDataSource;

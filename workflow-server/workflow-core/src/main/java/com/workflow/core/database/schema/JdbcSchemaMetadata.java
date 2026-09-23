@@ -1,7 +1,11 @@
 package com.workflow.core.database.schema;
 
-import com.workflow.integration.database.api.*;
-import com.workflow.integration.database.api.SchemaDdlDialect;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
+import com.workflow.integration.database.api.schema.SchemaIndexMetadata;
+import com.workflow.integration.database.api.schema.SchemaTableMetadata;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,12 +20,24 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
     private final JdbcTemplate jdbc;
     private final SchemaDdlDialect dialect;
     private final DatabaseRuntimeDialect runtimeDialect;
+    /**
+     * 初始化JDBC结构元数据，保存构造参数供后续方法使用。
+     *
+     * @param jdbc JDBC依赖，保存到当前对象供后续业务方法调用
+     * @param dialect 方言依赖，保存到当前对象供后续业务方法调用
+     */
     public JdbcSchemaMetadata(JdbcTemplate jdbc, SchemaDdlDialect dialect) {
         this.jdbc = jdbc;
         this.dialect = dialect;
         this.runtimeDialect = DatabaseDialects.runtime(dialect.vendor());
     }
 
+    /**
+     * 判断表存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 表存在条件成立时为 true，否则为 false
+     */
     @Override
     public boolean tableExists(String table) {
         dialect.quoteIdentifier(table);
@@ -36,6 +52,11 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         }));
     }
 
+    /**
+     * 整理{@code tables}数据，供调用方遍历或继续处理。
+     *
+     * @return 结构表元数据集合，供调用方遍历或展示
+     */
     @Override
     public List<SchemaTableMetadata> tables() {
         return jdbc.execute((ConnectionCallback<List<SchemaTableMetadata>>) connection -> {
@@ -54,6 +75,12 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         });
     }
 
+    /**
+     * 整理列集合数据，供调用方遍历或继续处理。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 结构列元数据集合，供调用方遍历或展示
+     */
     @Override
     public List<SchemaColumnMetadata> columns(String table) {
         dialect.quoteIdentifier(table);
@@ -99,6 +126,12 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         });
     }
 
+    /**
+     * 整理{@code indexes}数据，供调用方遍历或继续处理。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 结构索引元数据集合，供调用方遍历或展示
+     */
     @Override
     public List<SchemaIndexMetadata> indexes(String table) {
         dialect.quoteIdentifier(table);
@@ -129,6 +162,12 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         });
     }
 
+    /**
+     * 处理{@code estimate}行，并将结果传给后续步骤。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @return 处理后的{@code estimate}行结果，供调用方继续处理
+     */
     @Override
     public long estimateRows(String table) {
         if (!tableExists(table)) return 0;
@@ -140,10 +179,23 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         return count == null ? 0 : count;
     }
 
+    /**
+     * 生成物理名称文本，供后续匹配或展示。
+     *
+     * @param name 名称，后续用于处理物理名称时匹配或展示
+     * @return 处理后的物理名称文本，供调用方比较或展示
+     */
     private String physicalName(String name) {
         return runtimeDialect.physicalName(name);
     }
 
+    /**
+     * 处理作用域，并将结果传给后续步骤。
+     *
+     * @param connection 连接，作为 {@code Scope} 的输入影响后续处理
+     * @return 处理后的作用域结果，供调用方继续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private Scope scope(Connection connection) throws SQLException {
         if (runtimeDialect.metadataScope() == DatabaseRuntimeDialect.MetadataScope.CATALOG_ONLY) {
             return new Scope(connection.getCatalog(), null);
@@ -162,15 +214,36 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
         return new Scope(connection.getCatalog(), schema);
     }
 
-    /** JDBC 的表名参数是 LIKE 模式；必须转义下划线，避免匹配到其他实体表。 */
+    /**
+     * JDBC 的表名参数是 LIKE 模式；必须转义下划线，避免匹配到其他实体表。
+     *
+     * @param meta {@code meta}，供本方法处理{@code pattern}时使用
+     * @param name 名称，后续用于处理{@code pattern}时匹配或展示
+     * @return 处理后的{@code pattern}文本，供调用方比较或展示
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private String pattern(DatabaseMetaData meta, String name) throws SQLException {
         String escape = meta.getSearchStringEscape();
         if (escape == null || escape.isEmpty()) return name; // 结果仍做精确表名匹配。
         return name.replace(escape, escape + escape).replace("_", escape + "_").replace("%", escape + "%");
     }
+    /**
+     * 处理可空整数，并将结果传给后续步骤。
+     *
+     * @param rows 行，供本方法处理可空整数时使用
+     * @param column 列，作为 {@code rows.getInt} 的输入影响后续处理
+     * @return 处理后的可空整数结果，供调用方继续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private Integer nullableInt(ResultSet rows, String column) throws SQLException {
         int value = rows.getInt(column);
         return rows.wasNull() ? null : value;
     }
+    /**
+     * 封装作用域的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param catalog 目录，保存在对象中供后续校验、查询或展示
+     * @param schema 结构，保存在对象中供后续校验、查询或展示
+     */
     private record Scope(String catalog, String schema) {}
 }

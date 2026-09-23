@@ -7,11 +7,20 @@ import java.util.Set;
 
 /** 行按钮功能映射契约：配置归按钮所有，不以字段当前是否展示作为保存条件。 */
 public final class ListCellActionMappingPolicy {
+    /**
+     * 初始化列表{@code cell}动作映射策略，保存构造参数供后续方法使用。
+     */
     private ListCellActionMappingPolicy() {}
 
     /**
      * 校验单个按钮映射的类型与执行能力。字段可以暂不展示，运行时保留原按钮入口。
      * 不支持的按钮位置、执行方式或参数类型会抛出 IllegalArgumentException。
+     *
+     * @param position 位置，供本方法校验列表{@code cell}动作映射策略时使用
+     * @param type 类型标识，决定后续列表{@code cell}动作映射策略采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param mode 模式标识，决定后续列表{@code cell}动作映射策略采用的处理分支
+     * @param params 参数，供本方法校验列表{@code cell}动作映射策略时使用
      */
     public static void validate(String position, String type, String key, String mode, Map<String, Object> params) {
         Object hidden = params.get("hideWhenMapped");
@@ -32,7 +41,12 @@ public final class ListCellActionMappingPolicy {
         }
     }
 
-    /** 发布或整包保存前检查所有按钮，包含停用按钮，防止重新启用后同一字段对应多个动作。 */
+    /**
+     * 发布或整包保存前检查所有按钮，包含停用按钮，防止重新启用后同一字段对应多个动作。
+     *
+     * @param position 位置，作为 {@code validate} 的输入影响后续处理
+     * @param buttons 按钮集合，供本方法校验按钮集合时使用
+     */
     public static void validateButtons(String position, List<Map<String, Object>> buttons) {
         if (buttons == null) return;
         Set<String> fields = new HashSet<>();
@@ -46,6 +60,13 @@ public final class ListCellActionMappingPolicy {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Map<String, Object> value, String key) {
         return value.get(key) instanceof String text ? text : "";
     }

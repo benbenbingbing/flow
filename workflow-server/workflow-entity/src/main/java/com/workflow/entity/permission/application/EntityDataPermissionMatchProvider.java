@@ -10,6 +10,8 @@ public interface EntityDataPermissionMatchProvider {
 
     /**
      * 自定义范围类型。
+     *
+     * @return 读取后的作用域类型文本，供调用方比较或展示
      */
     String getScopeType();
 

@@ -29,6 +29,10 @@ public interface FileStorageStrategy {
 
     /**
      * Open a stored object for streaming.
+     *
+     * @param fileUrl 文件URL，供本方法处理打开时使用
+     * @return 处理后的打开结果，供调用方继续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
      */
     StoredFile open(String fileUrl) throws IOException;
 
@@ -42,6 +46,8 @@ public interface FileStorageStrategy {
 
     /**
      * 获取存储类型标识
+     *
+     * @return 读取后的存储类型文本，供调用方比较或展示
      */
     String getStorageType();
 }

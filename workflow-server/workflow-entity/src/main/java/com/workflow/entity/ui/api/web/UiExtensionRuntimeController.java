@@ -2,8 +2,8 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +28,13 @@ public class UiExtensionRuntimeController {
     /** 接口扩展定义、绑定授权和执行编排服务。 */
     private final UiInterfaceExtensionService service;
 
+    /**
+     * 执行界面扩展运行时，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于执行界面扩展运行时
+     * @param servletRequest Servlet请求，供本方法执行界面扩展运行时时使用
+     * @return 执行后的界面扩展运行时结果，供调用方继续处理
+     */
     @PostMapping("/execute")
     public Result<Object> execute(
             @RequestBody UiBoundExtensionExecuteRequest request,

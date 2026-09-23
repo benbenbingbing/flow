@@ -23,12 +23,23 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedSessionExchangeMapper {
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param launchCodeDigest 启动记录编码摘要，供本方法查询编码摘要时使用
+     * @return 符合条件的嵌入式启动记录交换行结果，供调用方继续处理
+     */
     default EmbedLaunchExchangeRow findByCodeDigest(String launchCodeDigest) {
         return findByCodeDigestPage(new OffsetPage<>(0, 1), launchCodeDigest).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param launchCodeDigest 启动记录编码摘要，供本方法查询编码摘要分页时使用
+     * @return 嵌入式启动记录交换行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT l.id, l.application_id, l.grant_id, l.view_id, l.view_release_id,
@@ -90,6 +101,12 @@ public interface EmbedSessionExchangeMapper {
             @Param("page") OffsetPage<EmbedLaunchExchangeRow> page,
             @Param("launchCodeDigest") String launchCodeDigest);
 
+    /**
+     * 锁定应用；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的应用结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, expires_at, version
               FROM integration_application
@@ -98,6 +115,12 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedApplicationLockRow lockApplication(@Param("id") String id);
 
+    /**
+     * 锁定视图；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的视图结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, security_version
               FROM embed_view
@@ -106,6 +129,12 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedViewLockRow lockView(@Param("id") String id);
 
+    /**
+     * 锁定授权；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的授权结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, expires_at, security_version,
                    max_active_sessions_per_user, max_session_seconds
@@ -115,6 +144,12 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedGrantLockRow lockGrant(@Param("id") String id);
 
+    /**
+     * 锁定提供者；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的提供者结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, security_version
               FROM embed_identity_provider
@@ -123,6 +158,12 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedProviderLockRow lockProvider(@Param("id") String id);
 
+    /**
+     * 锁定绑定；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的绑定结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, flow_user_id, binding_version,
                    effective_at, expires_at
@@ -132,6 +173,12 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedBindingLockRow lockBinding(@Param("id") String id);
 
+    /**
+     * 锁定流程用户；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的流程用户结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, username, status, deleted, password_reset_required
               FROM sys_user
@@ -140,6 +187,13 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedFlowUserRow lockFlowUser(@Param("id") String id);
 
+    /**
+     * 锁定计数器；避免后续并发处理覆盖状态。
+     *
+     * @param grantId 授权ID，后续用于锁定计数器时定位或关联目标
+     * @param flowUserId 流程用户ID，后续用于锁定计数器时定位或关联目标
+     * @return 锁定后的计数器结果，供调用方继续处理
+     */
     @Select("""
             SELECT grant_id, flow_user_id, active_count, lock_version
               FROM embed_session_counter
@@ -151,6 +205,12 @@ public interface EmbedSessionExchangeMapper {
             @Param("grantId") String grantId,
             @Param("flowUserId") String flowUserId);
 
+    /**
+     * 锁定启动记录；避免后续并发处理覆盖状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 锁定后的启动记录结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, status, application_id, grant_id, view_id, view_release_id,
                    identity_provider_id, identity_binding_id, flow_user_id,
@@ -163,6 +223,15 @@ public interface EmbedSessionExchangeMapper {
             """)
     EmbedLaunchLockRow lockLaunch(@Param("id") String id);
 
+    /**
+     * 处理{@code increment}计数器，并将结果传给后续步骤。
+     *
+     * @param grantId 授权ID，后续用于处理{@code increment}计数器时定位或关联目标
+     * @param flowUserId 流程用户ID，后续用于处理{@code increment}计数器时定位或关联目标
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param now 当前时间，供本方法处理{@code increment}计数器时使用
+     * @return 处理后的{@code increment}计数器结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_session_counter
                SET active_count = active_count + 1,
@@ -178,6 +247,17 @@ public interface EmbedSessionExchangeMapper {
             @Param("limit") int limit,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 处理消费启动记录，并将结果传给后续步骤。
+     *
+     * @param launchId 启动记录ID，后续用于处理消费启动记录时定位或关联目标
+     * @param sessionId 会话ID，后续用于处理消费启动记录时定位或关联目标
+     * @param launchCodeDigest 启动记录编码摘要，供本方法处理消费启动记录时使用
+     * @param channelId 通道ID，后续用于处理消费启动记录时定位或关联目标
+     * @param parentOrigin 父级来源，供本方法处理消费启动记录时使用
+     * @param now 当前时间，供本方法处理消费启动记录时使用
+     * @return 处理后的消费启动记录结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_launch
                SET status = 'CONSUMED',
@@ -199,6 +279,15 @@ public interface EmbedSessionExchangeMapper {
             @Param("parentOrigin") String parentOrigin,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 插入会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+     * @param idleExpiresAt 空闲过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 插入后的会话结果，供调用方继续处理
+     */
     @Insert("""
             INSERT INTO embed_session (
               id, session_token_digest, launch_id,

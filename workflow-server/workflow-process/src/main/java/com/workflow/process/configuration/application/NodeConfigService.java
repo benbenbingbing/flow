@@ -16,10 +16,10 @@ import com.workflow.process.configuration.infrastructure.persistence.record.Node
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -152,7 +152,12 @@ public class NodeConfigService {
         nodeMapper.deleteById(id);
     }
     
-    /** 将节点配置实体转换为DTO，并加载关联的审批人、表单及字段 */
+    /**
+     * 将节点配置实体转换为DTO，并加载关联的审批人、表单及字段
+     *
+     * @param node 节点，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private NodeConfigDTO convertToDTO(NodeConfig node) {
         NodeConfigDTO dto = new NodeConfigDTO();
         dto.setId(node.getId());
@@ -181,6 +186,12 @@ public class NodeConfigService {
         return dto;
     }
     
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param assignee 办理人，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private AssigneeConfigDTO convertToDTO(AssigneeConfig assignee) {
         AssigneeConfigDTO dto = new AssigneeConfigDTO();
         dto.setId(assignee.getId());
@@ -191,6 +202,12 @@ public class NodeConfigService {
         return dto;
     }
     
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param form 表单，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private FormConfigDTO convertToDTO(FormConfig form) {
         FormConfigDTO dto = new FormConfigDTO();
         dto.setId(form.getId());
@@ -210,6 +227,12 @@ public class NodeConfigService {
         return dto;
     }
     
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private FormFieldConfigDTO convertToDTO(FormFieldConfig field) {
         FormFieldConfigDTO dto = new FormFieldConfigDTO();
         dto.setId(field.getId());
@@ -224,6 +247,12 @@ public class NodeConfigService {
         return dto;
     }
     
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code node.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private NodeConfig convertToEntity(NodeConfigDTO dto) {
         NodeConfig node = new NodeConfig();
         node.setId(dto.getId());
@@ -235,6 +264,12 @@ public class NodeConfigService {
         return node;
     }
     
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code assignee.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private AssigneeConfig convertToEntity(AssigneeConfigDTO dto) {
         AssigneeConfig assignee = new AssigneeConfig();
         assignee.setId(dto.getId());
@@ -245,6 +280,12 @@ public class NodeConfigService {
         return assignee;
     }
     
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code form.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private FormConfig convertToEntity(FormConfigDTO dto) {
         FormConfig form = new FormConfig();
         form.setId(dto.getId());
@@ -255,6 +296,12 @@ public class NodeConfigService {
         return form;
     }
     
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code field.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private FormFieldConfig convertToEntity(FormFieldConfigDTO dto) {
         FormFieldConfig field = new FormFieldConfig();
         field.setId(dto.getId());

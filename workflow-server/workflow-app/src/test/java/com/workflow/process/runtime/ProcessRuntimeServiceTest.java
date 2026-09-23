@@ -5,8 +5,8 @@ import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 
-import com.workflow.contracts.process.ProcessStartRequest;
-import com.workflow.contracts.process.ProcessStartResult;
+import com.workflow.contracts.process.model.ProcessStartRequest;
+import com.workflow.contracts.process.model.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;

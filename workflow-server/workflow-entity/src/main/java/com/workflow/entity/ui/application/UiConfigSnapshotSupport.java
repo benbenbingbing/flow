@@ -37,11 +37,24 @@ public class UiConfigSnapshotSupport {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 生成规范文本，供后续匹配或展示。
+     *
+     * @param snapshot 快照，作为 {@code codec.write} 的输入影响后续处理
+     * @return 处理后的规范文本，供调用方比较或展示
+     */
     public String canonical(Map<String, Object> snapshot) {
         String document = codec.write(snapshot, "UI配置快照");
         return codec.canonicalize(document, "UI配置快照");
     }
 
+    /**
+     * 判断{@code equivalent}条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，作为 {@code codec.write} 的输入影响后续处理
+     * @param right 右侧，作为 {@code codec.write} 的输入影响后续处理
+     * @return {@code equivalent}条件成立时为 true，否则为 false
+     */
     public boolean equivalent(Object left, Object right) {
         if (left == null || right == null) {
             return Objects.equals(left, right);
@@ -53,6 +66,12 @@ public class UiConfigSnapshotSupport {
                 codec.canonicalize(rightDocument, "UI配置差异右值"));
     }
 
+    /**
+     * 整理稳定映射数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理稳定映射的原始输入，结果供调用方继续使用
+     * @return 稳定映射键值结果，供调用方继续处理
+     */
     public Map<String, Object> stableMap(Map<String, Object> source) {
         Object value = stableValue(source);
         if (!(value instanceof Map<?, ?> map)) {
@@ -64,11 +83,24 @@ public class UiConfigSnapshotSupport {
         return result;
     }
 
+    /**
+     * 处理稳定值，并将结果传给后续步骤。
+     *
+     * @param source 待处理稳定值的原始输入，结果供调用方继续使用
+     * @return 处理后的稳定值结果，供调用方继续处理
+     */
     public Object stableValue(Object source) {
         return stripVolatile(
                 objectMapper.convertValue(source, Object.class));
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param value 待处理哈希的原始输入，结果供调用方继续使用
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public String hash(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -81,6 +113,12 @@ public class UiConfigSnapshotSupport {
         }
     }
 
+    /**
+     * 处理{@code strip}{@code volatile}，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code strip}{@code volatile}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code strip}{@code volatile}结果，供调用方继续处理
+     */
     private Object stripVolatile(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();

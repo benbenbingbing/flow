@@ -6,7 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;

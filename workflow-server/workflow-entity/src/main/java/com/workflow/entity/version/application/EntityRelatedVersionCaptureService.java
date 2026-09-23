@@ -2,8 +2,8 @@ package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
@@ -41,7 +41,13 @@ public class EntityRelatedVersionCaptureService {
     private final EntityAggregateWriter aggregateWriter;
     private final ObjectMapper objectMapper;
 
-    /** 在锁子记录前先按父实体、父ID排序锁根，统一 A -> B 锁顺序。 */
+    /**
+     * 在锁子记录前先按父实体、父ID排序锁根，统一 A -> B 锁顺序。
+     *
+     * @param command 本次命令，后续经校验后用于锁定关联{@code roots}
+     * @param currentRecord 当前记录，作为 {@code requiredRoots} 的输入影响后续处理
+     * @return 根键集合，供调用方遍历或展示
+     */
     @Transactional(rollbackFor = Exception.class)
     public Set<RootKey> lockRelatedRoots(
             EntityMutationCommand command,
@@ -57,7 +63,13 @@ public class EntityRelatedVersionCaptureService {
         return Set.copyOf(keys);
     }
 
-    /** 批量管道先收集全部父根，再统一按稳定顺序加锁。 */
+    /**
+     * 批量管道先收集全部父根，再统一按稳定顺序加锁。
+     *
+     * @param command 本次命令，后续经校验后用于处理必填根键集合
+     * @param currentRecord 当前记录，作为 {@code Set.copyOf} 的输入影响后续处理
+     * @return 根键集合，供调用方遍历或展示
+     */
     public Set<RootKey> requiredRootKeys(
             EntityMutationCommand command,
             Map<String, Object> currentRecord) {
@@ -67,6 +79,10 @@ public class EntityRelatedVersionCaptureService {
     /**
      * B 锁等待结束后必须重新校验父集合。若 B 已被并发移动到未预锁的 A，
      * 此时不能按 B -> A 反向补锁，只能回滚并由调用方重试。
+     *
+     * @param command 本次命令，后续经校验后用于校验并获取{@code roots}已锁定
+     * @param lockedRoots 已锁定{@code roots}，供本方法校验并获取{@code roots}已锁定时使用
+     * @param currentRecords 当前记录集合，作为 {@code requiredRoots} 的输入影响后续处理
      */
     public void requireRootsLocked(
             EntityMutationCommand command,
@@ -80,6 +96,13 @@ public class EntityRelatedVersionCaptureService {
         }
     }
 
+    /**
+     * 整理必填{@code roots}数据，供调用方遍历或继续处理。
+     *
+     * @param command 本次命令，后续经校验后用于处理必填{@code roots}
+     * @param currentRecords 当前记录集合，作为 {@code rootIds} 的输入影响后续处理
+     * @return 根键集合，供调用方遍历或展示
+     */
     @SafeVarargs
     private final Set<RootKey> requiredRoots(
             EntityMutationCommand command,
@@ -189,6 +212,15 @@ public class EntityRelatedVersionCaptureService {
         }
     }
 
+    /**
+     * 捕获父级；结果供调用方的后续步骤使用。
+     *
+     * @param configuration 配置内容，决定后续父级的处理规则
+     * @param relation 关系，供本方法捕获父级时使用
+     * @param parentId 父级ID，后续用于捕获父级时定位或关联目标
+     * @param childCommand 子级命令，作为 {@code EntityMutationCommand} 的输入影响后续处理
+     * @param scenario {@code scenario}，作为 {@code versionService.createIfMatched} 的输入影响后续处理
+     */
     private void captureParent(
             EntityVersionConfiguration configuration,
             EntityVersionConfiguration.RelationScope relation,
@@ -229,6 +261,13 @@ public class EntityRelatedVersionCaptureService {
                 parentCommand, scenario, aggregate, false);
     }
 
+    /**
+     * 整理关系集合子级数据，供调用方遍历或继续处理。
+     *
+     * @param configuration 配置内容，决定后续关系集合子级的处理规则
+     * @param childEntityCode 子级实体编码，后续用于处理关系集合子级时定位或关联目标
+     * @return 实体版本配置集合，供调用方遍历或展示
+     */
     private List<EntityVersionConfiguration.RelationScope> relationsForChild(
             EntityVersionConfiguration configuration,
             String childEntityCode) {
@@ -249,6 +288,13 @@ public class EntityRelatedVersionCaptureService {
                 .toList();
     }
 
+    /**
+     * 整理{@code scoped}关系集合子级数据，供调用方遍历或继续处理。
+     *
+     * @param configuration 配置内容，决定后续{@code scoped}关系集合子级的处理规则
+     * @param childEntityCode 子级实体编码，后续用于处理{@code scoped}关系集合子级时定位或关联目标
+     * @return 实体版本配置集合，供调用方遍历或展示
+     */
     private List<EntityVersionConfiguration.RelationScope>
             scopedRelationsForChild(
                     EntityVersionConfiguration configuration,
@@ -262,6 +308,13 @@ public class EntityRelatedVersionCaptureService {
                 .toList();
     }
 
+    /**
+     * 整理父级ID 集合数据，供调用方遍历或继续处理。
+     *
+     * @param relation 关系，作为 {@code text} 的输入影响后续处理
+     * @param records 记录集合，供本方法处理父级ID 集合时使用
+     * @return 实体关联版本捕获集合，供调用方遍历或展示
+     */
     private Set<String> parentIds(
             EntityVersionConfiguration.RelationScope relation,
             Map<String, Object>... records) {
@@ -285,6 +338,10 @@ public class EntityRelatedVersionCaptureService {
      *
      * <p>预锁阶段允许无锁读取中间节点，但子记录锁获得后会再次执行完全相同的解析；
      * 若路径在等待期间变化，{@link #requireRootsLocked} 会 fail-closed，而不是反向补锁。</p>
+     *
+     * @param relation 关系，作为 {@code parentIds} 的输入影响后续处理
+     * @param records 记录集合，作为 {@code parentIds} 的输入影响后续处理
+     * @return 实体关联版本捕获集合，供调用方遍历或展示
      */
     private Set<String> rootIds(
             EntityVersionConfiguration.RelationScope relation,
@@ -333,6 +390,13 @@ public class EntityRelatedVersionCaptureService {
         return currentIds;
     }
 
+    /**
+     * 生成首个父级ID文本，供后续匹配或展示。
+     *
+     * @param record 记录，作为 {@code text} 的输入影响后续处理
+     * @param childRefFieldCode 子级引用字段编码，后续用于处理首个父级ID时定位或关联目标
+     * @return 处理后的首个父级ID文本，供调用方比较或展示
+     */
     private String firstParentId(
             Map<String, Object> record,
             String childRefFieldCode) {
@@ -344,6 +408,13 @@ public class EntityRelatedVersionCaptureService {
         return value;
     }
 
+    /**
+     * 整理记录集合载荷数据，供调用方遍历或继续处理。
+     *
+     * @param command 本次命令，后续经校验后用于处理记录集合载荷
+     * @param currentRecords 当前记录集合，作为 {@code System.arraycopy} 的输入影响后续处理
+     * @return 记录集合载荷键值结果，供调用方继续处理
+     */
     private Map<String, Object>[] recordsWithPayload(
             EntityMutationCommand command,
             Map<String, Object>[] currentRecords) {
@@ -354,6 +425,13 @@ public class EntityRelatedVersionCaptureService {
         return result;
     }
 
+    /**
+     * 处理路径，并将结果传给后续步骤。
+     *
+     * @param source 待处理路径的原始输入，结果供调用方继续使用
+     * @param code 编码，后续用于处理路径时定位或关联目标
+     * @return 处理后的路径结果，供调用方继续处理
+     */
     private Object path(Map<String, Object> source, String code) {
         if (source == null || !StringUtils.hasText(code)) {
             return null;
@@ -368,12 +446,24 @@ public class EntityRelatedVersionCaptureService {
         return current;
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         return value instanceof Map<?, ?> map
                 ? (Map<String, Object>) map : Map.of();
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -382,18 +472,43 @@ public class EntityRelatedVersionCaptureService {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体关联版本捕获集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }
 
+    /**
+     * 整理安全设置数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 根键集合，供调用方遍历或展示
+     */
     private Set<RootKey> safeSet(Set<RootKey> values) {
         return values == null ? Set.of() : values;
     }
 
+    /**
+     * 封装根键的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     public record RootKey(String entityCode, String recordId) {
     }
 
-    /** 一个关联根版本的不可变捕获计划。 */
+    /**
+     * 一个关联根版本的不可变捕获计划。
+     *
+     * @param configuration 配置内容，决定后续关联捕获方案的处理规则
+     * @param relation 关系，保存在对象中供后续校验、查询或展示
+     * @param parentId 父级ID，后续用于处理关联捕获方案时定位或关联目标
+     * @param scenario {@code scenario}，保存在对象中供后续校验、查询或展示
+     */
     private record RelatedCapturePlan(
             EntityVersionConfiguration configuration,
             EntityVersionConfiguration.RelationScope relation,

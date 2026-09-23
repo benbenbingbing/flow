@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
+import com.workflow.contracts.entity.ui.model.UiExtensionCatalogItem;
 import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import lombok.extern.slf4j.Slf4j;
 
@@ -16,6 +16,11 @@ import java.util.List;
 public class ProjectCustomUiExtensionCatalogAdapter
         implements UiExtensionCatalogPort {
 
+    /**
+     * 列出目录条目；查询结果供调用方展示或继续处理。
+     *
+     * @return 界面扩展目录条目集合，供调用方遍历或展示
+     */
     @Override
     public List<UiExtensionCatalogItem>
             listCatalogItems() {

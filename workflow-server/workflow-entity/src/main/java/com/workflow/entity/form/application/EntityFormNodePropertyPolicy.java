@@ -1,6 +1,6 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -129,6 +129,9 @@ final class EntityFormNodePropertyPolicy {
                             Set.of("defaultExpanded", "accordion")),
                     "TEXT", Set.of("text", "textStyle"));
 
+    /**
+     * 初始化实体表单节点属性策略，保存构造参数供后续方法使用。
+     */
     private EntityFormNodePropertyPolicy() {
     }
     /**
@@ -573,6 +576,11 @@ final class EntityFormNodePropertyPolicy {
                 : new LinkedHashMap<>(source);
     }
 
+    /**
+     * 构建允许属性；结果供后续流程传递或持久化。
+     *
+     * @return 允许属性键值结果，供调用方继续处理
+     */
     private static Map<String, Set<String>> buildAllowedProps() {
         Map<String, Set<String>> result = new LinkedHashMap<>();
         result.put("SECTION", union(
@@ -604,6 +612,13 @@ final class EntityFormNodePropertyPolicy {
         return Map.copyOf(result);
     }
 
+    /**
+     * 整理{@code union}数据，供调用方遍历或继续处理。
+     *
+     * @param left 左侧，供本方法处理{@code union}时使用
+     * @param right 右侧，作为 {@code result.addAll} 的输入影响后续处理
+     * @return 实体表单节点属性策略集合，供调用方遍历或展示
+     */
     private static Set<String> union(
             Set<String> left,
             Set<String> right) {
@@ -612,6 +627,12 @@ final class EntityFormNodePropertyPolicy {
         return Set.copyOf(result);
     }
 
+    /**
+     * 校验活动属性；不满足约束时阻止后续处理。
+     *
+     * @param nodeType 节点类型标识，决定后续活动属性采用的处理分支
+     * @param props 属性，作为 {@code requireText} 的输入影响后续处理
+     */
     private static void validateActiveProps(
             String nodeType,
             Map<String, Object> props) {
@@ -651,6 +672,12 @@ final class EntityFormNodePropertyPolicy {
         rejectArbitraryUrl(props.get("componentProps"), "componentProps");
     }
 
+    /**
+     * 校验字段属性；不满足约束时阻止后续处理。
+     *
+     * @param props 属性，作为 {@code requireText} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void validateFieldProps(Map<String, Object> props) {
         requireText(props, "fieldCode", 200);
         requireText(props, "fieldName", 500);
@@ -688,6 +715,11 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验子级列表配置；不满足约束时阻止后续处理。
+     *
+     * @param props 属性，作为 {@code objectMap} 的输入影响后续处理
+     */
     private static void validateSubListConfig(Map<String, Object> props) {
         Map<String, Object> componentProps =
                 objectMap(props.get("componentProps"));
@@ -703,6 +735,13 @@ final class EntityFormNodePropertyPolicy {
         requireIntegerRange(config, "maxHeight", 120, 2000);
     }
 
+    /**
+     * 校验子级表单属性；不满足约束时阻止后续处理。
+     *
+     * @param nodeType 节点类型标识，决定后续子级表单属性采用的处理分支
+     * @param props 属性，作为 {@code requireText} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void validateSubFormProps(
             String nodeType,
             Map<String, Object> props) {
@@ -744,12 +783,26 @@ final class EntityFormNodePropertyPolicy {
                         Map.of("componentProps", componentProps)));
     }
 
+    /**
+     * 校验{@code container}{@code appearance}属性；不满足约束时阻止后续处理。
+     *
+     * @param props 属性，作为 {@code requireBoolean} 的输入影响后续处理
+     */
     private static void validateContainerAppearanceProps(
             Map<String, Object> props) {
         requireBoolean(props, "showPadding");
         requireBoolean(props, "showBorder");
     }
 
+    /**
+     * 处理{@code move}{@code unsupported}校验，并将结果传给后续步骤。
+     *
+     * @param validation 校验，作为 {@code inactive.put} 的输入影响后续处理
+     * @param inactive {@code inactive}，供本方法处理{@code move}{@code unsupported}校验时使用
+     * @param fieldType 字段类型标识，决定后续{@code move}{@code unsupported}校验采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param supportedTypes {@code supported}类型集合，供本方法处理{@code move}{@code unsupported}校验时使用
+     */
     private static void moveUnsupportedValidation(
             Map<String, Object> validation,
             Map<String, Object> inactive,
@@ -762,6 +815,12 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验校验值集合；不满足约束时阻止后续处理。
+     *
+     * @param validation 校验，作为 {@code FormCustomValidatorRulePolicy.validate} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void validateValidationValues(
             Map<String, Object> validation) {
         if (validation.containsKey("customValidators")) {
@@ -799,6 +858,14 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireText(
             Map<String, Object> value,
             String key,
@@ -816,6 +883,13 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验并获取布尔值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取布尔值的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireBoolean(
             Map<String, Object> value,
             String key) {
@@ -827,6 +901,15 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验并获取整数范围；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取整数范围的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param min {@code min}，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param max 最大，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireIntegerRange(
             Map<String, Object> value,
             String key,
@@ -842,6 +925,13 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验并获取数值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取数值的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireNumber(
             Map<String, Object> value,
             String key) {
@@ -853,6 +943,14 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 校验并获取枚举；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取枚举的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param allowed 允许，供本方法校验并获取枚举时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireEnum(
             Map<String, Object> value,
             String key,
@@ -873,6 +971,12 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 处理整数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数值的原始输入，结果供调用方继续使用
+     * @return 处理后的整数值结果，供调用方继续处理
+     */
     private static Integer integerValue(Object value) {
         if (!(value instanceof Number number)) {
             return null;
@@ -884,12 +988,25 @@ final class EntityFormNodePropertyPolicy {
         return number.intValue();
     }
 
+    /**
+     * 处理数值值，并将结果传给后续步骤。
+     *
+     * @param value 待处理数值值的原始输入，结果供调用方继续使用
+     * @return 处理后的数值值结果，供调用方继续处理
+     */
     private static Double numberValue(Object value) {
         return value instanceof Number number
                 ? number.doubleValue()
                 : null;
     }
 
+    /**
+     * 处理驳回{@code arbitrary}URL，并将结果传给后续步骤。
+     *
+     * @param value 待处理驳回{@code arbitrary}URL的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void rejectArbitraryUrl(
             Object value,
             String path) {
@@ -916,6 +1033,12 @@ final class EntityFormNodePropertyPolicy {
         }
     }
 
+    /**
+     * 整理{@code prune}映射数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理{@code prune}映射的原始输入，结果供调用方继续使用
+     * @return {@code prune}映射键值结果，供调用方继续处理
+     */
     private static Map<String, Object> pruneMap(Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (source == null) {
@@ -936,6 +1059,12 @@ final class EntityFormNodePropertyPolicy {
         return result;
     }
 
+    /**
+     * 处理{@code prune}值，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code prune}值的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code prune}值结果，供调用方继续处理
+     */
     private static Object pruneValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -967,6 +1096,12 @@ final class EntityFormNodePropertyPolicy {
         return value;
     }
 
+    /**
+     * 整理对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+     * @return 对象映射键值结果，供调用方继续处理
+     */
     private static Map<String, Object> objectMap(Object value) {
         if (!(value instanceof Map<?, ?> source)) {
             return Map.of();
@@ -977,6 +1112,12 @@ final class EntityFormNodePropertyPolicy {
         return result;
     }
 
+    /**
+     * 复制值；结果供后续流程传递或持久化。
+     *
+     * @param value 待复制值的原始输入，结果供调用方继续使用
+     * @return 复制后的值结果，供调用方继续处理
+     */
     private static Object copyValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -992,21 +1133,45 @@ final class EntityFormNodePropertyPolicy {
         return value;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化实体表单节点属性策略的原始输入，结果供调用方继续使用
+     * @return 规范化后的实体表单节点属性策略文本，供调用方比较或展示
+     */
     private static String normalize(String value) {
         return String.valueOf(value == null ? "" : value)
                 .trim()
                 .toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 封装规范化属性的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param active 活动，保存在对象中供后续校验、查询或展示
+     * @param inactive {@code inactive}，保存在对象中供后续校验、查询或展示
+     */
     record NormalizedProps(
             Map<String, Object> active,
             Map<String, Object> inactive) {
     }
 
+    /**
+     * 封装规范化规则集合的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param active 活动，保存在对象中供后续校验、查询或展示
+     * @param inactive {@code inactive}，保存在对象中供后续校验、查询或展示
+     */
     record NormalizedRules(
             Map<String, Object> active,
             Map<String, Object> inactive) {

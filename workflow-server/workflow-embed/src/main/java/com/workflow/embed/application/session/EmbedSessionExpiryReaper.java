@@ -23,6 +23,13 @@ public class EmbedSessionExpiryReaper {
     private final EmbedSessionTerminationService terminationService;
     private final Clock clock;
 
+    /**
+     * 初始化嵌入式会话{@code expiry}{@code reaper}，保存构造参数供后续方法使用。
+     *
+     * @param persistencePort 持久化端口依赖，保存到当前对象供后续业务方法调用
+     * @param terminationService 终止服务依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedSessionExpiryReaper(
             EmbedSessionPersistencePort persistencePort,
             EmbedSessionTerminationService terminationService,

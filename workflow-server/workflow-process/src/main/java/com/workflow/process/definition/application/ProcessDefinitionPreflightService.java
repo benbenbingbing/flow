@@ -122,6 +122,9 @@ public class ProcessDefinitionPreflightService {
      * 对已锁定或已读取的流程草稿执行预检。
      *
      * <p>正式发布在数据库行锁内调用该方法，确保预检结论和实际部署内容一致。</p>
+     *
+     * @param config 配置内容，决定后续预览的处理规则
+     * @return 处理后的预览结果，供调用方继续处理
      */
     public ProcessPublishPreviewDTO preview(ProcessDefinitionConfig config) {
         List<ProcessValidationIssueDTO> issues = new ArrayList<>();
@@ -198,7 +201,12 @@ public class ProcessDefinitionPreflightService {
                 activeInstances, versions.size(), previewToken, Instant.now());
     }
 
-    /** 返回当前草稿的结构化差异。 */
+    /**
+     * 返回当前草稿的结构化差异。
+     *
+     * @param processId 流程ID，后续用于处理差异时定位或关联目标
+     * @return 处理后的差异结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public ProcessDefinitionDiffDTO diff(String processId) {
         ProcessDefinitionConfig config = processMapper.selectById(processId);
@@ -216,6 +224,13 @@ public class ProcessDefinitionPreflightService {
         return buildDiff(config, parsed, safeVersions(processId));
     }
 
+    /**
+     * 校验{@code structure}；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续{@code structure}的处理规则
+     * @param parsed {@code parsed}，作为 {@code addDataComponentModelingWarnings} 的输入影响后续处理
+     * @param issues {@code issues}，作为 {@code addIssue} 的输入影响后续处理
+     */
     private void validateStructure(
             ProcessDefinitionConfig config,
             ParsedBpmn parsed,
@@ -291,6 +306,11 @@ public class ProcessDefinitionPreflightService {
      * 自旋。普通用户任务、接收任务、捕获事件和事件网关会形成等待边界；调用活动
      * 是否同步返回无法仅由当前草稿证明，按非确定同步节点处理。嵌入子流程只有在其
      * 内部没有等待节点时才视为同步穿透。</p>
+     *
+     * @param config 配置内容，决定后续{@code always}跳过{@code cycles}的处理规则
+     * @param parsed {@code parsed}，作为 {@code findAlwaysSkipCycle} 的输入影响后续处理
+     * @param reachable {@code reachable}，供本方法校验{@code always}跳过{@code cycles}时使用
+     * @param issues {@code issues}，作为 {@code addIssue} 的输入影响后续处理
      */
     private void validateAlwaysSkipCycles(
             ProcessDefinitionConfig config,
@@ -351,6 +371,12 @@ public class ProcessDefinitionPreflightService {
         }
     }
 
+    /**
+     * 判断是否{@code synchronous}跳过路径节点；判断结果决定调用方的后续分支。
+     *
+     * @param element 元素，作为 {@code localName} 的输入影响后续处理
+     * @return {@code synchronous}跳过路径节点条件成立时为 true，否则为 false
+     */
     private boolean isSynchronousSkipPathNode(Element element) {
         String type = localName(element);
         if ("userTask".equals(type)) {
@@ -367,6 +393,9 @@ public class ProcessDefinitionPreflightService {
 
     /**
      * 可触发、外部工作者和 CMMN case 服务任务均需等待外部完成，不能视为同步穿透。
+     *
+     * @param serviceTask 服务任务，作为 {@code valueOrEmpty} 的输入影响后续处理
+     * @return {@code waiting}服务任务条件成立时为 true，否则为 false
      */
     private boolean isWaitingServiceTask(Element serviceTask) {
         if (Boolean.parseBoolean(valueOrEmpty(
@@ -387,6 +416,9 @@ public class ProcessDefinitionPreflightService {
      * Flowable 会在同一 agenda 中执行到子流程出口。只要存在普通用户任务、接收任务、
      * 捕获事件、事件网关、调用活动或等待型服务任务，就保守地把整个子流程视为等待边界，
      * 避免阻断含真实人工/外部等待的合法业务回路。</p>
+     *
+     * @param subProcess 子级流程，供本方法判断是否{@code synchronously}{@code completing}子级流程时使用
+     * @return {@code synchronously}{@code completing}子级流程条件成立时为 true，否则为 false
      */
     private boolean isSynchronouslyCompletingSubProcess(Element subProcess) {
         if (Boolean.parseBoolean(valueOrEmpty(
@@ -414,6 +446,13 @@ public class ProcessDefinitionPreflightService {
 
     /**
      * 以三色 DFS 定位候选子图中第一个包含始终跳过任务的环。
+     *
+     * @param nodeId 节点ID，后续用于查询{@code always}跳过{@code cycle}时定位或关联目标
+     * @param parsed {@code parsed}，供本方法查询{@code always}跳过{@code cycle}时使用
+     * @param adjacency {@code adjacency}，供本方法查询{@code always}跳过{@code cycle}时使用
+     * @param states {@code states}，供本方法查询{@code always}跳过{@code cycle}时使用
+     * @param path 路径，作为 {@code path.subList} 的输入影响后续处理
+     * @return 流程定义{@code preflight}集合，供调用方遍历或展示
      */
     private List<String> findAlwaysSkipCycle(
             String nodeId,
@@ -462,6 +501,10 @@ public class ProcessDefinitionPreflightService {
      *
      * <p>这些提示不阻断发布，目的是避免用户把 DataStore 图元理解为持久化设施，或把普通
      * Activity 上的数据关联理解为自动变量映射。</p>
+     *
+     * @param config 配置内容，决定后续数据组件{@code modeling}{@code warnings}的处理规则
+     * @param parsed {@code parsed}，供本方法添加数据组件{@code modeling}{@code warnings}时使用
+     * @param issues {@code issues}，作为 {@code addIssue} 的输入影响后续处理
      */
     private void addDataComponentModelingWarnings(
             ProcessDefinitionConfig config,
@@ -492,6 +535,13 @@ public class ProcessDefinitionPreflightService {
         }
     }
 
+    /**
+     * 校验分配集合；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续分配集合的处理规则
+     * @param parsed {@code parsed}，供本方法校验分配集合时使用
+     * @param issues {@code issues}，作为 {@code addIssue} 的输入影响后续处理
+     */
     private void validateAssignments(
             ProcessDefinitionConfig config,
             ParsedBpmn parsed,
@@ -540,6 +590,9 @@ public class ProcessDefinitionPreflightService {
      * 条件跳过在表达式为 false 时仍会创建任务，因此必须配置办理人兜底。字面量
      * {@code ${true}} / {@code #{true}} 以及历史 {@code skipNodeEnabled} 表达式在
      * 运行时客观恒真，即使设计态错误残留了 {@code skipNode=false} 也必须按始终跳过处理。</p>
+     *
+     * @param userTask 用户任务，作为 {@code extensionPropertyValue} 的输入影响后续处理
+     * @return {@code always}{@code skipped}条件成立时为 true，否则为 false
      */
     private boolean isAlwaysSkipped(Element userTask) {
         String skipNode = extensionPropertyValue(
@@ -565,6 +618,13 @@ public class ProcessDefinitionPreflightService {
                         "(?i)^[#$]\\{\\s*(?:true|skipNodeEnabled)\\s*}$");
     }
 
+    /**
+     * 生成扩展属性值文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理扩展属性值时使用
+     * @param propertyName 属性名称，后续用于处理扩展属性值时匹配或展示
+     * @return 处理后的扩展属性值文本，供调用方比较或展示
+     */
     private String extensionPropertyValue(
             Element element,
             String propertyName) {
@@ -582,6 +642,13 @@ public class ProcessDefinitionPreflightService {
         return null;
     }
 
+    /**
+     * 生成属性本地名称文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理属性本地名称时使用
+     * @param expectedName 预期名称，后续用于处理属性本地名称时匹配或展示
+     * @return 处理后的属性本地名称文本，供调用方比较或展示
+     */
     private String attributeByLocalName(
             Element element,
             String expectedName) {
@@ -595,10 +662,22 @@ public class ProcessDefinitionPreflightService {
         return null;
     }
 
+    /**
+     * 生成值或空文本，供后续匹配或展示。
+     *
+     * @param value 待处理值或空的原始输入，结果供调用方继续使用
+     * @return 处理后的值或空文本，供调用方比较或展示
+     */
     private String valueOrEmpty(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * 判断是否具有已存储分配；判断结果决定调用方的后续分支。
+     *
+     * @param nodeConfig 节点配置内容，决定后续已存储分配的处理规则
+     * @return 已存储分配条件成立时为 true，否则为 false
+     */
     private boolean hasStoredAssignment(NodeConfig nodeConfig) {
         if (nodeConfig == null || !StringUtils.hasText(nodeConfig.getId())) {
             return false;
@@ -611,6 +690,9 @@ public class ProcessDefinitionPreflightService {
     /**
      * 按运行时使用的基础配置及历史多实例优先级识别办理人来源。
      * 这里只检查声明，不调用人员接口；目录、用途、参数和节点引用图仍由发布净化器校验。
+     *
+     * @param userTask 用户任务，作为 {@code LegacyMultiInstanceAssignmentParser.mergeConfigs} 的输入影响后续处理
+     * @return XML分配条件成立时为 true，否则为 false
      */
     private boolean hasXmlAssignment(Element userTask) {
         Map<String, Object> assignment = LegacyMultiInstanceAssignmentParser.mergeConfigs(
@@ -677,12 +759,24 @@ public class ProcessDefinitionPreflightService {
                 && !collection.contains(MultiInstanceVariableNames.ENTRY_DYNAMIC_COLLECTION_LITERAL);
     }
 
+    /**
+     * 判断是否具有分配配置；判断结果决定调用方的后续分支。
+     *
+     * @param userTask 用户任务，作为 {@code extensionPropertyValue} 的输入影响后续处理
+     * @return 分配配置条件成立时为 true，否则为 false
+     */
     private boolean hasAssignmentConfig(Element userTask) {
         return extensionPropertyValue(userTask, "assigneeConfig") != null
                 || extensionPropertyValue(userTask, "multiInstanceConfig") != null;
     }
 
-    /** 空属性视为未填；非法 JSON 定位为节点配置问题，避免误报整个 BPMN 无法解析。 */
+    /**
+     * 空属性视为未填；非法 JSON 定位为节点配置问题，避免误报整个 BPMN 无法解析。
+     *
+     * @param userTask 用户任务，作为 {@code extensionPropertyValue} 的输入影响后续处理
+     * @param propertyName 属性名称，后续用于读取分配配置时匹配或展示
+     * @return 分配配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> readAssignmentConfig(Element userTask, String propertyName) {
         String document = extensionPropertyValue(userTask, propertyName);
         if (!StringUtils.hasText(document)) {
@@ -699,6 +793,12 @@ public class ProcessDefinitionPreflightService {
         }
     }
 
+    /**
+     * 判断是否具有可编辑{@code independent}来源；判断结果决定调用方的后续分支。
+     *
+     * @param assignment 分配，供本方法判断是否具有可编辑{@code independent}来源时使用
+     * @return 可编辑{@code independent}来源条件成立时为 true，否则为 false
+     */
     @SuppressWarnings("unchecked")
     private boolean hasEditableIndependentSource(Map<String, Object> assignment) {
         if (!(assignment.get("nextApproverSelection") instanceof Map<?, ?> raw)) {
@@ -710,6 +810,12 @@ public class ProcessDefinitionPreflightService {
                 || "RESOLVER".equalsIgnoreCase(selection.sourceType()));
     }
 
+    /**
+     * 判断是否具有已配置值集合；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有已配置值集合的原始输入，结果供调用方继续使用
+     * @return 已配置值集合条件成立时为 true，否则为 false
+     */
     private boolean hasConfiguredValues(Object value) {
         if (value instanceof Collection<?> values) {
             return values.stream().anyMatch(this::hasConfiguredValues);
@@ -718,6 +824,14 @@ public class ProcessDefinitionPreflightService {
                 && java.util.Arrays.stream(text.split(",")).anyMatch(StringUtils::hasText);
     }
 
+    /**
+     * 构建差异；结果供后续流程传递或持久化。
+     *
+     * @param config 配置内容，决定后续差异的处理规则
+     * @param current 当前，供本方法构建差异时使用
+     * @param versions {@code versions}，供本方法构建差异时使用
+     * @return 构建后的差异结果，供调用方继续处理
+     */
     private ProcessDefinitionDiffDTO buildDiff(
             ProcessDefinitionConfig config,
             ParsedBpmn current,
@@ -751,6 +865,13 @@ public class ProcessDefinitionPreflightService {
                 hasChanges, List.copyOf(metadataChanges), added, removed, changed);
     }
 
+    /**
+     * 处理活动实例数量，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续活动实例数量的处理规则
+     * @param issues {@code issues}，作为 {@code addIssue} 的输入影响后续处理
+     * @return 处理后的活动实例数量结果，供调用方继续处理
+     */
     private long activeInstanceCount(
             ProcessDefinitionConfig config,
             List<ProcessValidationIssueDTO> issues) {
@@ -764,6 +885,12 @@ public class ProcessDefinitionPreflightService {
         }
     }
 
+    /**
+     * 整理{@code reachable}节点集合数据，供调用方遍历或继续处理。
+     *
+     * @param parsed {@code parsed}，供本方法处理{@code reachable}节点集合时使用
+     * @return 流程定义{@code preflight}集合，供调用方遍历或展示
+     */
     private Set<String> reachableNodes(ParsedBpmn parsed) {
         Map<String, List<String>> adjacency = new HashMap<>();
         for (FlowEdge edge : parsed.edges()) {
@@ -784,6 +911,13 @@ public class ProcessDefinitionPreflightService {
         return visited;
     }
 
+    /**
+     * 解析流程定义{@code preflight}；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析流程定义{@code preflight}时使用
+     * @return 解析后的流程定义{@code preflight}结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private ParsedBpmn parse(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
@@ -846,6 +980,12 @@ public class ProcessDefinitionPreflightService {
                 List.copyOf(modelingOnlyElements));
     }
 
+    /**
+     * 判断是否具有条件；判断结果决定调用方的后续分支。
+     *
+     * @param sequenceFlow 序列流程，供本方法判断是否具有条件时使用
+     * @return 条件条件成立时为 true，否则为 false
+     */
     private boolean hasCondition(Element sequenceFlow) {
         NodeList descendants = sequenceFlow.getElementsByTagName("*");
         for (int index = 0; index < descendants.getLength(); index++) {
@@ -857,12 +997,24 @@ public class ProcessDefinitionPreflightService {
         return false;
     }
 
+    /**
+     * 生成指纹文本，供后续匹配或展示。
+     *
+     * @param element 元素，作为 {@code appendFingerprint} 的输入影响后续处理
+     * @return 处理后的指纹文本，供调用方比较或展示
+     */
     private String fingerprint(Element element) {
         StringBuilder result = new StringBuilder();
         appendFingerprint(element, result);
         return sha256(result.toString());
     }
 
+    /**
+     * 追加指纹；结果供后续流程传递或持久化。
+     *
+     * @param element 元素，供本方法追加指纹时使用
+     * @param result 结果，供本方法追加指纹时使用
+     */
     private void appendFingerprint(Element element, StringBuilder result) {
         result.append('<').append(localName(element));
         Map<String, String> attributes = new TreeMap<>();
@@ -887,11 +1039,27 @@ public class ProcessDefinitionPreflightService {
         result.append("</").append(localName(element)).append('>');
     }
 
+    /**
+     * 整理安全{@code versions}数据，供调用方遍历或继续处理。
+     *
+     * @param processId 流程ID，后续用于处理安全{@code versions}时定位或关联目标
+     * @return 流程版本历史集合，供调用方遍历或展示
+     */
     private List<ProcessVersionHistory> safeVersions(String processId) {
         List<ProcessVersionHistory> versions = versionHistoryMapper.findByProcessConfigId(processId);
         return versions == null ? List.of() : versions;
     }
 
+    /**
+     * 生成预览令牌文本，供后续匹配或展示。
+     *
+     * @param processId 流程ID，后续用于处理预览令牌时定位或关联目标
+     * @param revision 修订版本，供本方法处理预览令牌时使用
+     * @param draftHash 草稿哈希，供本方法处理预览令牌时使用
+     * @param issues {@code issues}，供本方法处理预览令牌时使用
+     * @param diff 差异，供本方法处理预览令牌时使用
+     * @return 处理后的预览令牌文本，供调用方比较或展示
+     */
     private String previewToken(
             String processId,
             long revision,
@@ -908,6 +1076,13 @@ public class ProcessDefinitionPreflightService {
         return sha256(input.toString());
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
@@ -917,6 +1092,18 @@ public class ProcessDefinitionPreflightService {
         }
     }
 
+    /**
+     * 添加签发；结果供后续流程传递或持久化。
+     *
+     * @param issues {@code issues}，供本方法添加签发时使用
+     * @param code 编码，后续用于添加签发时定位或关联目标
+     * @param severity {@code severity}，作为 {@code issues.add} 的输入影响后续处理
+     * @param elementId 元素ID，后续用于添加签发时定位或关联目标
+     * @param elementType 元素类型标识，决定后续签发采用的处理分支
+     * @param message 消息，作为 {@code issues.add} 的输入影响后续处理
+     * @param suggestion {@code suggestion}，作为 {@code issues.add} 的输入影响后续处理
+     * @param processId 流程ID，后续用于添加签发时定位或关联目标
+     */
     private void addIssue(
             List<ProcessValidationIssueDTO> issues,
             String code,
@@ -939,15 +1126,34 @@ public class ProcessDefinitionPreflightService {
                 elementId, elementType, message, suggestion, route));
     }
 
+    /**
+     * 整理{@code difference}数据，供调用方遍历或继续处理。
+     *
+     * @param left 左侧，供本方法处理{@code difference}时使用
+     * @param right 右侧，供本方法处理{@code difference}时使用
+     * @return 流程定义{@code preflight}集合，供调用方遍历或展示
+     */
     private List<String> difference(Set<String> left, Set<String> right) {
         return left.stream().filter(value -> !right.contains(value)).sorted().toList();
     }
 
+    /**
+     * 处理修订版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续修订版本的处理规则
+     * @return 处理后的修订版本结果，供调用方继续处理
+     */
     private long revisionOf(ProcessDefinitionConfig config) {
         return config.getDraftRevision() == null || config.getDraftRevision() < 1
                 ? 1L : config.getDraftRevision();
     }
 
+    /**
+     * 处理基础已发布版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续基础已发布版本的处理规则
+     * @return 处理后的基础已发布版本结果，供调用方继续处理
+     */
     private int basePublishedVersionOf(ProcessDefinitionConfig config) {
         if (config.getBasePublishedVersion() != null) {
             return Math.max(config.getBasePublishedVersion(), 0);
@@ -955,11 +1161,23 @@ public class ProcessDefinitionPreflightService {
         return config.getVersion() == null ? 0 : Math.max(config.getVersion(), 0);
     }
 
+    /**
+     * 生成草稿哈希文本，供后续匹配或展示。
+     *
+     * @param config 配置内容，决定后续草稿哈希的处理规则
+     * @return 处理后的草稿哈希文本，供调用方比较或展示
+     */
     private String draftHashOf(ProcessDefinitionConfig config) {
         return StringUtils.hasText(config.getDraftHash())
                 ? config.getDraftHash() : ProcessDraftHashSupport.hash(config);
     }
 
+    /**
+     * 处理{@code severity}顺序，并将结果传给后续步骤。
+     *
+     * @param severity {@code severity}，供本方法处理{@code severity}顺序时使用
+     * @return 处理后的{@code severity}顺序结果，供调用方继续处理
+     */
     private int severityOrder(Severity severity) {
         return switch (severity) {
             case BLOCKER -> 0;
@@ -968,6 +1186,13 @@ public class ProcessDefinitionPreflightService {
         };
     }
 
+    /**
+     * 生成稳定编码文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理稳定编码时使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的稳定编码文本，供调用方比较或展示
+     */
     private String stableCode(RuntimeException exception, String fallback) {
         String message = exception.getMessage();
         if (message == null) {
@@ -978,6 +1203,12 @@ public class ProcessDefinitionPreflightService {
         return candidate.matches("[A-Z][A-Z0-9_]{2,80}") ? candidate : fallback;
     }
 
+    /**
+     * 生成元素ID起始文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理元素ID起始时使用
+     * @return 处理后的元素ID起始文本，供调用方比较或展示
+     */
     private String elementIdFrom(RuntimeException exception) {
         String message = exception.getMessage();
         if (message == null) {
@@ -992,15 +1223,34 @@ public class ProcessDefinitionPreflightService {
         return end < 0 ? value : value.substring(0, end);
     }
 
+    /**
+     * 生成安全消息文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理安全消息时使用
+     * @return 处理后的安全消息文本，供调用方比较或展示
+     */
     private String safeMessage(Throwable exception) {
         return StringUtils.hasText(exception.getMessage())
                 ? exception.getMessage() : exception.getClass().getSimpleName();
     }
 
+    /**
+     * 判断安全相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，作为 {@code java.util.Objects.equals} 的输入影响后续处理
+     * @param right 右侧，作为 {@code java.util.Objects.equals} 的输入影响后续处理
+     * @return 安全相等条件成立时为 true，否则为 false
+     */
     private boolean safeEquals(Object left, Object right) {
         return java.util.Objects.equals(left, right);
     }
 
+    /**
+     * 生成本地名称文本，供后续匹配或展示。
+     *
+     * @param node 节点，供本方法处理本地名称时使用
+     * @return 处理后的本地名称文本，供调用方比较或展示
+     */
     private static String localName(Node node) {
         if (node.getLocalName() != null) {
             return node.getLocalName();
@@ -1010,12 +1260,38 @@ public class ProcessDefinitionPreflightService {
         return separator < 0 ? name : name.substring(separator + 1);
     }
 
+    /**
+     * 封装流程边的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param sourceRef 来源引用，保存在对象中供后续校验、查询或展示
+     * @param targetRef 目标引用，保存在对象中供后续校验、查询或展示
+     * @param hasCondition {@code has}条件，保存在对象中供后续校验、查询或展示
+     */
     private record FlowEdge(String id, String sourceRef, String targetRef, boolean hasCondition) {
     }
 
+    /**
+     * 封装{@code modeling}仅元素的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param type 类型标识，决定后续{@code modeling}仅元素采用的处理分支
+     */
     private record ModelingOnlyElement(String id, String type) {
     }
 
+    /**
+     * 封装{@code parsed}BPMN的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param processCount 流程数量，保存在对象中供后续校验、查询或展示
+     * @param flowNodes 流程节点集合，保存在对象中供后续校验、查询或展示
+     * @param edges {@code edges}，保存在对象中供后续校验、查询或展示
+     * @param startIds 启动ID 集合，保存在对象中供后续校验、查询或展示
+     * @param endIds 结束ID 集合，保存在对象中供后续校验、查询或展示
+     * @param duplicateIds {@code duplicate}ID 集合，保存在对象中供后续校验、查询或展示
+     * @param fingerprints {@code fingerprints}，保存在对象中供后续校验、查询或展示
+     * @param modelingOnlyElements {@code modeling}仅{@code elements}，保存在对象中供后续校验、查询或展示
+     */
     private record ParsedBpmn(
             int processCount,
             Map<String, Element> flowNodes,
@@ -1027,13 +1303,22 @@ public class ProcessDefinitionPreflightService {
             List<ModelingOnlyElement> modelingOnlyElements) {
     }
 
+    /**
+     * 设置空办理人策略BPMN校验器；后续读取或执行将使用更新后的状态。
+     *
+     * @param validator 校验器，供本方法设置空办理人策略BPMN校验器时使用
+     */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setEmptyAssigneePolicyBpmnValidator(
             com.workflow.process.assignment.application.EmptyAssigneePolicyBpmnValidator validator) {
         this.emptyAssigneePolicyBpmnValidator = validator;
     }
 
-    /** 可选注入矩阵校验器，保留现有轻量单元测试的构造函数兼容性。 */
+    /**
+     * 可选注入矩阵校验器，保留现有轻量单元测试的构造函数兼容性。
+     *
+     * @param validator 校验器，供本方法设置节点操作策略BPMN校验器时使用
+     */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setNodeOperationPolicyBpmnValidator(
             com.workflow.process.task.application.operation.NodeOperationPolicyBpmnValidator validator) {

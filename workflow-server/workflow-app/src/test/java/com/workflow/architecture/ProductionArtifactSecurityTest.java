@@ -38,23 +38,28 @@ class ProductionArtifactSecurityTest {
 
     @Test
     void datasourceDoesNotEnableMultipleStatements() throws Exception {
-        String applicationConfig = Files.readString(
-                Path.of("src/main/resources/application.yml"));
+        // 检查各职责分组中的原始值，确保拆分后仍保留凭据占位符与安全日志默认值。
+        String databaseConfig = Files.readString(
+                Path.of("src/main/resources/config/database.yml"));
+        String securityConfig = Files.readString(
+                Path.of("src/main/resources/config/security.yml"));
+        String observabilityConfig = Files.readString(
+                Path.of("src/main/resources/config/observability.yml"));
         String jwtSource = Files.readString(Path.of(
                 "../workflow-admin/src/main/java/com/workflow/admin/auth/"
                         + "infrastructure/JwtUtil.java"));
 
-        assertFalse(applicationConfig.contains("allowMultiQueries=true"));
-        assertTrue(applicationConfig.contains("serverTimezone=UTC"));
-        assertFalse(applicationConfig.contains("zhoudawei"));
-        assertTrue(applicationConfig.contains("password: ${DB_PASSWORD}"));
-        assertTrue(applicationConfig.contains("url: ${SCHEMA_DATASOURCE_URL}"));
-        assertTrue(applicationConfig.contains("user: ${SCHEMA_DB_USERNAME}"));
-        assertTrue(applicationConfig.contains("password: ${SCHEMA_DB_PASSWORD}"));
-        assertTrue(applicationConfig.contains("secret: ${JWT_SECRET}"));
-        assertTrue(applicationConfig.contains(
+        assertFalse(databaseConfig.contains("allowMultiQueries=true"));
+        assertTrue(databaseConfig.contains("serverTimezone=UTC"));
+        assertFalse(databaseConfig.contains("zhoudawei"));
+        assertTrue(databaseConfig.contains("password: ${DB_PASSWORD}"));
+        assertTrue(databaseConfig.contains("url: ${SCHEMA_DATASOURCE_URL}"));
+        assertTrue(databaseConfig.contains("user: ${SCHEMA_DB_USERNAME}"));
+        assertTrue(databaseConfig.contains("password: ${SCHEMA_DB_PASSWORD}"));
+        assertTrue(securityConfig.contains("secret: ${JWT_SECRET}"));
+        assertTrue(databaseConfig.contains(
                 "log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl"));
-        assertTrue(applicationConfig.contains(
+        assertTrue(observabilityConfig.contains(
                 "com.workflow: ${WORKFLOW_LOG_LEVEL:INFO}"));
         assertFalse(jwtSource.contains("${jwt.secret:"));
     }
@@ -64,7 +69,7 @@ class ProductionArtifactSecurityTest {
         String productionConfig = Files.readString(
                 Path.of("src/main/resources/application-production.yml"));
         String defaultConfig = Files.readString(
-                Path.of("src/main/resources/application.yml"));
+                Path.of("src/main/resources/config/observability.yml"));
 
         assertTrue(productionConfig.contains("console: ecs"));
         assertFalse(defaultConfig.contains("logging.file.name"));

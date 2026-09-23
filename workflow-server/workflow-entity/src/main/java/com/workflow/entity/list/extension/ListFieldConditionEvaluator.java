@@ -56,6 +56,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 判断指定字段在条件中是否存在有效值（普通值或 _start/_end 范围值）。
+     *
+     * @param condition 待求值条件，后续用于决定流程或权限分支
+     * @param fieldCode 字段编码，后续用于判断是否具有条件时定位或关联目标
+     * @return 条件条件成立时为 true，否则为 false
      */
     private boolean hasCondition(Map<String, Object> condition, String fieldCode) {
         return hasValue(condition.get(fieldCode))
@@ -66,6 +70,11 @@ public class ListFieldConditionEvaluator {
     /**
      * 判断单条记录是否匹配指定字段的查询条件。
      * 操作符优先取条件中的 {fieldCode}_op，否则使用字段配置的 queryType，默认 EQ。
+     *
+     * @param record 记录，作为 {@code getValue} 的输入影响后续处理
+     * @param field 字段，供本方法判断是否匹配列表字段条件求值器时使用
+     * @param condition 待求值条件，后续用于决定流程或权限分支
+     * @return 列表字段条件求值器条件成立时为 true，否则为 false
      */
     private boolean matches(EntityDataDTO record, EntityListField field, Map<String, Object> condition) {
         String fieldCode = field.getFieldCode();
@@ -102,6 +111,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 按优先级从记录中取字段值：扩展数据 > 业务数据 > 系统基础字段。
+     *
+     * @param record 记录，供本方法读取值时使用
+     * @param fieldCode 字段编码，后续用于读取值时定位或关联目标
+     * @return 符合条件的列表字段条件求值器结果，供调用方继续处理
      */
     private Object getValue(EntityDataDTO record, String fieldCode) {
         if (record.getExtData() != null && record.getExtData().containsKey(fieldCode)) {
@@ -139,6 +152,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 判断 actual 是否包含 expected（支持集合递归匹配，比较时忽略大小写）。
+     *
+     * @param actual 实际，供本方法判断是否包含列表字段条件求值器时使用
+     * @param expected 预期，供本方法判断是否包含列表字段条件求值器时使用
+     * @return 列表字段条件求值器条件成立时为 true，否则为 false
      */
     private boolean contains(Object actual, Object expected) {
         if (!hasValue(actual) || !hasValue(expected)) {
@@ -153,6 +170,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 判断 actual 是否在 expected 集合/数组/逗号分隔字符串中。
+     *
+     * @param actual 实际，作为 {@code equalsValue} 的输入影响后续处理
+     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
+     * @return in条件成立时为 true，否则为 false
      */
     private boolean in(Object actual, Object expected) {
         if (expected instanceof Collection<?> collection) {
@@ -179,6 +200,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 比较 actual 与 expected 的大小。数值按 BigDecimal 比较，其余按字符串比较；任一为空返回 -1。
+     *
+     * @param actual 实际，作为 {@code number} 的输入影响后续处理
+     * @param expected 预期，作为 {@code number} 的输入影响后续处理
+     * @return 比较后的列表字段条件求值器结果，供调用方继续处理
      */
     private int compare(Object actual, Object expected) {
         if (!hasValue(actual) || !hasValue(expected)) {
@@ -194,6 +219,9 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 将值转换为 BigDecimal，转换失败返回 null。
+     *
+     * @param value 待处理数值的原始输入，结果供调用方继续使用
+     * @return 处理后的数值结果，供调用方继续处理
      */
     private BigDecimal number(Object value) {
         try {
@@ -205,6 +233,10 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 判断两个值是否相等，数值按 BigDecimal 比较，其余按字符串比较。
+     *
+     * @param actual 实际，作为 {@code number} 的输入影响后续处理
+     * @param expected 预期，作为 {@code number} 的输入影响后续处理
+     * @return 相等值条件成立时为 true，否则为 false
      */
     private boolean equalsValue(Object actual, Object expected) {
         BigDecimal actualNumber = number(actual);
@@ -219,6 +251,9 @@ public class ListFieldConditionEvaluator {
 
     /**
      * 判断值是否有效（非 null、非空白字符串、非空集合）。
+     *
+     * @param value 待判断是否具有值的原始输入，结果供调用方继续使用
+     * @return 值条件成立时为 true，否则为 false
      */
     private boolean hasValue(Object value) {
         if (value == null) {

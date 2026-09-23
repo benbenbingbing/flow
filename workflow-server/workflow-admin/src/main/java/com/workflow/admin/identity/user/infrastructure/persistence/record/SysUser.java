@@ -128,6 +128,15 @@ public class SysUser {
 
     /**
      * 用户列表所需的最小任职摘要，职务仍不等同于权限角色。
+     *
+     * @param assignmentId 分配ID，后续用于处理当前位置分配时定位或关联目标
+     * @param positionCode 位置编码，后续用于处理当前位置分配时定位或关联目标
+     * @param positionName 位置名称，后续用于处理当前位置分配时匹配或展示
+     * @param organizationUnitId 组织单元ID，后续用于处理当前位置分配时定位或关联目标
+     * @param organizationUnitName 组织单元名称，后续用于处理当前位置分配时匹配或展示
+     * @param isPrimary 是否主要，保存在对象中供后续校验、查询或展示
+     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
+     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
      */
     public record CurrentPositionAssignment(
             String assignmentId,
@@ -140,6 +149,9 @@ public class SysUser {
             Instant effectiveTo) {
     }
 
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         /** 启用 */
         ENABLED("0"),
@@ -148,10 +160,20 @@ public class SysUser {
         
         private final String value;
         
+        /**
+         * 初始化状态，保存构造参数供后续方法使用。
+         *
+         * @param value 值依赖，保存到当前对象供后续业务方法调用
+         */
         Status(String value) {
             this.value = value;
         }
         
+        /**
+         * 读取值；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的值文本，供调用方比较或展示
+         */
         public String getValue() {
             return value;
         }

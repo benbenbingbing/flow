@@ -17,7 +17,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.contracts.process.port.ProcessRecordReadAccessPort;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;

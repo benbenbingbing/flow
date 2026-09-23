@@ -21,20 +21,42 @@ public enum EntityPermissionAction {
     private final String label;
     private final String description;
 
+    /**
+     * 初始化实体权限动作，保存构造参数供后续方法使用。
+     *
+     * @param code 编码依赖，保存到当前对象供后续业务方法调用
+     * @param label 标签依赖，保存到当前对象供后续业务方法调用
+     * @param description 描述依赖，保存到当前对象供后续业务方法调用
+     */
     EntityPermissionAction(String code, String label, String description) {
         this.code = code;
         this.label = label;
         this.description = description;
     }
 
+    /**
+     * 读取编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     public String getCode() {
         return code;
     }
 
+    /**
+     * 读取标签；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的标签文本，供调用方比较或展示
+     */
     public String getLabel() {
         return label;
     }
 
+    /**
+     * 读取描述；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的描述文本，供调用方比较或展示
+     */
     public String getDescription() {
         return description;
     }

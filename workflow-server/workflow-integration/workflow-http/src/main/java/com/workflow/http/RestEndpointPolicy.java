@@ -22,11 +22,22 @@ public class RestEndpointPolicy {
     private final WorkflowHttpProperties properties;
     private final HostAddressResolver resolver;
 
+    /**
+     * 初始化{@code rest}接口端点策略，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public RestEndpointPolicy(WorkflowHttpProperties properties) {
         this(properties, InetAddress::getAllByName);
     }
 
+    /**
+     * 初始化{@code rest}接口端点策略，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param resolver 解析器依赖，保存到当前对象供后续业务方法调用
+     */
     RestEndpointPolicy(
             WorkflowHttpProperties properties,
             HostAddressResolver resolver) {
@@ -34,6 +45,11 @@ public class RestEndpointPolicy {
         this.resolver = resolver;
     }
 
+    /**
+     * 校验{@code rest}接口端点策略；不满足约束时阻止后续处理。
+     *
+     * @param uri {@code uri}，作为 {@code validateAndResolve} 的输入影响后续处理
+     */
     public void validate(URI uri) {
         validateAndResolve(
                 uri,
@@ -41,6 +57,15 @@ public class RestEndpointPolicy {
                 properties.isAllowPrivateAddresses());
     }
 
+    /**
+     * 校验与{@code resolve}；不满足约束时阻止后续处理。
+     *
+     * @param uri {@code uri}，作为 {@code ApprovedEndpoint} 的输入影响后续处理
+     * @param allowedHosts 允许{@code hosts}，供本方法校验与{@code resolve}时使用
+     * @param allowPrivateAddresses 允许{@code private}{@code addresses}，供本方法校验与{@code resolve}时使用
+     * @return 校验后的与{@code resolve}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public ApprovedEndpoint validateAndResolve(
             URI uri,
             Set<String> allowedHosts,
@@ -74,6 +99,13 @@ public class RestEndpointPolicy {
         return new ApprovedEndpoint(uri, host, List.copyOf(addresses));
     }
 
+    /**
+     * 判断是否允许主机；判断结果决定调用方的后续分支。
+     *
+     * @param host 主机，供本方法判断是否允许主机时使用
+     * @param allowedHosts 允许{@code hosts}，供本方法判断是否允许主机时使用
+     * @return 允许主机条件成立时为 true，否则为 false
+     */
     private boolean isAllowedHost(
             String host,
             Set<String> allowedHosts) {
@@ -93,6 +125,13 @@ public class RestEndpointPolicy {
         return false;
     }
 
+    /**
+     * 解析{@code rest}接口端点策略；输出作为后续校验或处理的输入。
+     *
+     * @param host 主机，供本方法解析{@code rest}接口端点策略时使用
+     * @return {@code inet}地址集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<InetAddress> resolve(String host) {
         try {
             InetAddress[] addresses = resolver.resolve(host);
@@ -108,6 +147,12 @@ public class RestEndpointPolicy {
         }
     }
 
+    /**
+     * 校验公开{@code addresses}；不满足约束时阻止后续处理。
+     *
+     * @param addresses {@code addresses}，供本方法校验公开{@code addresses}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validatePublicAddresses(
             List<InetAddress> addresses) {
         for (InetAddress address : addresses) {
@@ -118,6 +163,12 @@ public class RestEndpointPolicy {
         }
     }
 
+    /**
+     * 判断是否非公开；判断结果决定调用方的后续分支。
+     *
+     * @param address 地址，供本方法判断是否非公开时使用
+     * @return 非公开条件成立时为 true，否则为 false
+     */
     boolean isNonPublic(InetAddress address) {
         if (address.isAnyLocalAddress()
                 || address.isLoopbackAddress()
@@ -165,6 +216,14 @@ public class RestEndpointPolicy {
         return true;
     }
 
+    /**
+     * 判断{@code ipv4}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理{@code ipv4}的原始输入，结果供调用方继续使用
+     * @param network {@code network}，供本方法处理{@code ipv4}时使用
+     * @param prefix 前缀，供本方法处理{@code ipv4}时使用
+     * @return {@code ipv4}条件成立时为 true，否则为 false
+     */
     private boolean inIpv4(long value, String network, int prefix) {
         String[] parts = network.split("\\.");
         long base = 0;
@@ -177,6 +236,14 @@ public class RestEndpointPolicy {
         return (value & mask) == (base & mask);
     }
 
+    /**
+     * 判断是否匹配{@code rest}接口端点策略；判断结果决定调用方的后续分支。
+     *
+     * @param address 地址，供本方法判断是否匹配{@code rest}接口端点策略时使用
+     * @param prefix 前缀，作为 {@code Byte.toUnsignedInt} 的输入影响后续处理
+     * @param prefixBits 前缀{@code bits}，供本方法判断是否匹配{@code rest}接口端点策略时使用
+     * @return {@code rest}接口端点策略条件成立时为 true，否则为 false
+     */
     private boolean matches(
             byte[] address,
             byte[] prefix,

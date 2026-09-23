@@ -18,6 +18,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(basePackages = "com.workflow.embed.management.api")
 public class EmbedManagementExceptionHandler {
 
+    /**
+     * 处理嵌入式管理异常，并将结果传给后续步骤。
+     *
+     * @param exception 异常，作为 {@code ApiResponse.error} 的输入影响后续处理
+     * @return 处理后的嵌入式管理异常结果，供调用方继续处理
+     */
     @ExceptionHandler(EmbedManagementException.class)
     public ResponseEntity<ApiResponse<Object>> handle(EmbedManagementException exception) {
         ApiResponse<Object> response = ApiResponse.error(
@@ -26,7 +32,12 @@ public class EmbedManagementExceptionHandler {
         return ResponseEntity.status(exception.status()).body(response);
     }
 
-    /** 将 Bean Validation 失败稳定映射为 HTTP 400，并返回有限的字段级修复信息。 */
+    /**
+     * 将 Bean Validation 失败稳定映射为 HTTP 400，并返回有限的字段级修复信息。
+     *
+     * @param exception 异常，供本方法处理校验时使用
+     * @return 处理后的校验结果，供调用方继续处理
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Object>> handleValidation(
             MethodArgumentNotValidException exception) {
@@ -44,7 +55,12 @@ public class EmbedManagementExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
-    /** 坏 JSON、方法参数约束及应用层参数错误都使用相同的管理 API 400 契约。 */
+    /**
+     * 坏 JSON、方法参数约束及应用层参数错误都使用相同的管理 API 400 契约。
+     *
+     * @param exception 异常，供本方法处理无效请求时使用
+     * @return 处理后的无效请求结果，供调用方继续处理
+     */
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
             MethodArgumentTypeMismatchException.class,

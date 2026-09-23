@@ -64,7 +64,12 @@ public class TaskActionController {
         return Result.success(null);
     }
 
-    /** 路径式兼容入口不能绕过发布表单内置审批按钮。 */
+    /**
+     * 路径式兼容入口不能绕过发布表单内置审批按钮。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     */
     private void requireSubmitApprovalAction(
             Map<String, Object> values,
             String taskId) {
@@ -85,10 +90,23 @@ public class TaskActionController {
                 request, "submitApproval");
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer integer(Object value) {
         if (value == null) {
             return null;

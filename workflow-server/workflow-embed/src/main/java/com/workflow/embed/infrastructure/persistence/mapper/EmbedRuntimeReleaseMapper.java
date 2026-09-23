@@ -11,12 +11,27 @@ import org.apache.ibatis.annotations.Select;
 @Mapper
 public interface EmbedRuntimeReleaseMapper {
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param sessionId 会话ID，后续用于查询嵌入式运行时发布版本时定位或关联目标
+     * @param viewId 视图ID，后续用于查询嵌入式运行时发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于查询嵌入式运行时发布版本时定位或关联目标
+     * @return 符合条件的嵌入式运行时发布版本行结果，供调用方继续处理
+     */
     default EmbedRuntimeReleaseRow find(String sessionId, String viewId, String releaseId) {
         return findPage(new OffsetPage<>(0, 1), sessionId, viewId, releaseId).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param sessionId 会话ID，后续用于查询嵌入式运行时发布版本分页时定位或关联目标
+     * @param viewId 视图ID，后续用于查询嵌入式运行时发布版本分页时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于查询嵌入式运行时发布版本分页时定位或关联目标
+     * @return 嵌入式运行时发布版本行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT r.id AS release_id, r.view_id,

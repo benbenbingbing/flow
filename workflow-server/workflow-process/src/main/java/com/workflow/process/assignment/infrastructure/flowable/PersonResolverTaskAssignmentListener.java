@@ -1,11 +1,11 @@
 package com.workflow.process.assignment.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
@@ -67,6 +67,11 @@ public class PersonResolverTaskAssignmentListener
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.workflow.process.assignment.application.EmptyAssigneePolicyService emptyAssigneePolicyService;
 
+    /**
+     * 响应事件阶段的回调，并将结果传给后续处理。
+     *
+     * @param event 事件，供本方法处理事件时使用
+     */
     @Override
     public void onEvent(FlowableEvent event) {
         if (event.getType() == null
@@ -95,6 +100,13 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 处理{@code assign}，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code nextApproverOverrideStore.consumeForTask} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @SuppressWarnings("unchecked")
     private void assign(Task task) throws Exception {
         if (nextApproverOverrideStore != null) {
@@ -400,6 +412,12 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 生成已发布流程配置ID文本，供后续匹配或展示。
+     *
+     * @param definition 定义，作为 {@code findByDeploymentId} 的输入影响后续处理
+     * @return 处理后的已发布流程配置ID文本，供调用方比较或展示
+     */
     private String publishedProcessConfigId(
             ProcessDefinition definition) {
         if (definition == null
@@ -415,6 +433,14 @@ public class PersonResolverTaskAssignmentListener
     /**
      * 将被引用节点的 legacy/v2 静态规则或受控解析器展开为本地用户名。
      * 解析器用途由当前任务决定为 ASSIGNEE，不能继承源节点的多实例属性。
+     *
+     * @param currentTask 当前任务，写入当前任务信息供后续待办展示和状态同步
+     * @param processConfigId 流程配置ID，后续用于解析已引用用户集合时定位或关联目标
+     * @param sourceTask 来源任务，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param config 配置内容，决定后续已引用用户集合的处理规则
+     * @param assignmentVersion 分配版本，供本方法解析已引用用户集合时使用
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 人员解析器任务分配监听器集合，供调用方遍历或展示
      */
     private List<String> resolveReferencedUsers(
             Task currentTask,
@@ -523,6 +549,16 @@ public class PersonResolverTaskAssignmentListener
                 principals);
     }
 
+    /**
+     * 解析已引用解析器用户集合；输出作为后续校验或处理的输入。
+     *
+     * @param task 任务，供本方法解析已引用解析器用户集合时使用
+     * @param processConfigId 流程配置ID，后续用于解析已引用解析器用户集合时定位或关联目标
+     * @param resolverCode 解析器编码，后续用于解析已引用解析器用户集合时定位或关联目标
+     * @param extraParams 附加参数，供本方法解析已引用解析器用户集合时使用
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 人员解析器任务分配监听器集合，供调用方遍历或展示
+     */
     private List<String> resolveReferencedResolverUsers(
             Task task,
             String processConfigId,
@@ -559,6 +595,14 @@ public class PersonResolverTaskAssignmentListener
                         extraParams));
     }
 
+    /**
+     * 应用已解析用户集合，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code clearDefaultAssignments} 的输入影响后续处理
+     * @param users 用户集合，供本方法应用已解析用户集合时使用
+     * @param assignmentMode 分配模式标识，决定后续已解析用户集合采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void applyResolvedUsers(
             Task task,
             List<String> users,
@@ -585,6 +629,13 @@ public class PersonResolverTaskAssignmentListener
                 taskService.addCandidateUser(task.getId(), user));
     }
 
+    /**
+     * 添加{@code principals}；结果供后续流程传递或持久化。
+     *
+     * @param principals {@code principals}，供本方法添加{@code principals}时使用
+     * @param raw 待添加{@code principals}的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续{@code principals}采用的处理分支
+     */
     private void addPrincipals(
             List<PersonPrincipal> principals,
             Object raw,
@@ -596,6 +647,12 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 添加分组或角色{@code principals}；结果供后续流程传递或持久化。
+     *
+     * @param principals {@code principals}，作为 {@code values.forEach} 的输入影响后续处理
+     * @param raw 待添加分组或角色{@code principals}的原始输入，结果供调用方继续使用
+     */
     private void addGroupOrRolePrincipals(
             List<PersonPrincipal> principals,
             Object raw) {
@@ -605,6 +662,12 @@ public class PersonResolverTaskAssignmentListener
                 principals, value));
     }
 
+    /**
+     * 添加分组或角色{@code principal}；结果供后续流程传递或持久化。
+     *
+     * @param principals {@code principals}，供本方法添加分组或角色{@code principal}时使用
+     * @param value 待添加分组或角色{@code principal}的原始输入，结果供调用方继续使用
+     */
     private void addGroupOrRolePrincipal(
             List<PersonPrincipal> principals,
             String value) {
@@ -617,6 +680,12 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 添加CSV；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加CSV时使用
+     * @param raw 待添加CSV的原始输入，结果供调用方继续使用
+     */
     private void addCsv(Set<String> target, Object raw) {
         if (raw instanceof Iterable<?> values) {
             for (Object value : values) {
@@ -638,12 +707,26 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 判断字面值来源分配条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理字面值来源分配的原始输入，结果供调用方继续使用
+     * @return 字面值来源分配条件成立时为 true，否则为 false
+     */
     private boolean literalSourceAssignment(String value) {
         return StringUtils.hasText(value)
                 && !value.contains("${")
                 && !value.contains("#{");
     }
 
+    /**
+     * 校验并获取字面值引用值；不满足约束时阻止后续处理。
+     *
+     * @param sourceTask 来源任务，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param value 待校验并获取字面值引用值的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireLiteralReferenceValue(
             UserTask sourceTask,
             String value,
@@ -656,6 +739,12 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 规范化分配类型；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化分配类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的分配类型文本，供调用方比较或展示
+     */
     private String normalizeAssignmentType(Object value) {
         String type = text(value);
         if (!StringUtils.hasText(type)) {
@@ -666,6 +755,11 @@ public class PersonResolverTaskAssignmentListener
                 ? "resolver" : normalized;
     }
 
+    /**
+     * 处理节点引用解析器，并将结果传给后续步骤。
+     *
+     * @return 处理后的节点引用解析器结果，供调用方继续处理
+     */
     private NodeAssignmentReferenceResolver nodeReferenceResolver() {
         if (nodeReferenceResolver != null) {
             return nodeReferenceResolver;
@@ -675,6 +769,8 @@ public class PersonResolverTaskAssignmentListener
 
     /**
      * 覆盖人员必须替换而非叠加 BPMN 创建任务时生成的默认分配。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
      */
     private void clearDefaultAssignments(String taskId) {
         taskService.setAssignee(taskId, null);
@@ -705,6 +801,9 @@ public class PersonResolverTaskAssignmentListener
     /**
      * 判断 Flowable 已创建的任务是否包含实际办理人或候选身份。
      * 仅检查运行时事实，不信任配置 JSON 中尚未落到任务上的默认值。
+     *
+     * @param task 任务，作为 {@code resolverRuntimeService.resolvePrincipalUsernames} 的输入影响后续处理
+     * @return 当前分配条件成立时为 true，否则为 false
      */
     private boolean hasCurrentAssignment(Task task) {
         if (StringUtils.hasText(task.getAssignee())) {
@@ -744,6 +843,12 @@ public class PersonResolverTaskAssignmentListener
                 principals).isEmpty();
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?>
@@ -751,6 +856,12 @@ public class PersonResolverTaskAssignmentListener
                 : Map.of();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value);
@@ -761,10 +872,23 @@ public class PersonResolverTaskAssignmentListener
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 处理分配配置版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续分配配置版本的处理规则
+     * @return 处理后的分配配置版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int assignmentConfigVersion(Map<String, Object> config) {
         Object value = config.get("assignmentConfigVersion");
         if (value == null) {
@@ -779,24 +903,48 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFailOnException() {
         return true;
     }
 
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override
     public String getOnTransaction() {
         return null;
     }
 
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return false;
     }
 
+    /**
+     * 表示必填分配处理失败；调用方可据此区分错误并终止后续操作。
+     */
     private static class RequiredAssignmentException
             extends RuntimeException {
 
+        /**
+         * 初始化必填分配异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @param cause 原因，保存在对象中供后续校验、查询或展示
+         */
         private RequiredAssignmentException(
                 String message,
                 Throwable cause) {
@@ -804,9 +952,18 @@ public class PersonResolverTaskAssignmentListener
         }
     }
 
+    /**
+     * 表示覆盖应用处理失败；调用方可据此区分错误并终止后续操作。
+     */
     private static final class OverrideApplicationException
             extends RequiredAssignmentException {
 
+        /**
+         * 初始化覆盖应用异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @param cause 原因，保存在对象中供后续校验、查询或展示
+         */
         private OverrideApplicationException(
                 String message,
                 Throwable cause) {
@@ -816,6 +973,14 @@ public class PersonResolverTaskAssignmentListener
 
     /**
      * Applies the version-snapshotted empty-assignee policy and keeps unresolved work visible.
+     *
+     * @param task 任务，作为 {@code emptyAssigneePolicyService.handleEmpty} 的输入影响后续处理
+     * @param bpmnModel BPMN模型，作为 {@code emptyAssigneePolicyService.handleEmpty} 的输入影响后续处理
+     * @param effectiveConfig 有效配置内容，决定后续空分配的处理规则
+     * @param processConfigId 流程配置ID，后续用于处理空分配时定位或关联目标
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param reasonCode 原因编码，后续用于处理空分配时定位或关联目标
+     * @param reasonMessage 原因消息，作为 {@code RequiredAssignmentException} 的输入影响后续处理
      */
     private void handleEmptyAssignment(
             org.flowable.task.api.Task task,

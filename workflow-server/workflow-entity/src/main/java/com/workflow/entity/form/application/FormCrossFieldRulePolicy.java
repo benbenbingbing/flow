@@ -21,21 +21,49 @@ public final class FormCrossFieldRulePolicy {
     private static final Pattern FIELD_CODE = Pattern.compile("[A-Za-z][A-Za-z0-9_]{0,99}");
     private static final Pattern RULE_ID = Pattern.compile("[A-Za-z0-9_-]{1,100}");
 
+    /**
+     * 初始化表单跨字段规则策略，保存构造参数供后续方法使用。
+     */
     private FormCrossFieldRulePolicy() {}
 
-    /** 已验证的不可变规则；当前字段由规则所属节点确定。 */
+    /**
+     * 已验证的不可变规则；当前字段由规则所属节点确定。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param operator 操作人，保存在对象中供后续校验、查询或展示
+     * @param targetFieldCode 目标字段编码，后续用于处理规则时定位或关联目标
+     * @param message 消息，保存在对象中供后续校验、查询或展示
+     */
     public record Rule(String id, String operator, String targetFieldCode, String message) {}
 
+    /**
+     * 判断是否支持表单跨字段规则策略；判断结果决定调用方的后续分支。
+     *
+     * @param type 类型标识，决定后续表单跨字段规则策略采用的处理分支
+     * @return 表单跨字段规则策略条件成立时为 true，否则为 false
+     */
     public static boolean supports(String type) {
         return type != null && (NUMBER_TYPES.contains(type) || "DATE".equals(type) || "DATETIME".equals(type));
     }
 
+    /**
+     * 判断兼容条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，作为 {@code NUMBER_TYPES.contains} 的输入影响后续处理
+     * @param right 右侧，供本方法处理兼容时使用
+     * @return 兼容条件成立时为 true，否则为 false
+     */
     public static boolean compatible(String left, String right) {
         if (left == null || right == null) return false;
         return NUMBER_TYPES.contains(left) ? NUMBER_TYPES.contains(right) : supports(left) && left.equals(right);
     }
 
-    /** 返回当前实体的普通绑定字段；容器内 FIELD 仍属本实体，子表容器内字段不参与。 */
+    /**
+     * 返回当前实体的普通绑定字段；容器内 FIELD 仍属本实体，子表容器内字段不参与。
+     *
+     * @param form 表单，供本方法处理绑定字段时使用
+     * @return 实体表单字段集合，供调用方遍历或展示
+     */
     public static List<EntityFormField> boundFields(EntityForm form) {
         List<EntityFormField> fields = form.getFields() == null ? List.of() : form.getFields();
         if (form.getNodes() == null || form.getNodes().isEmpty()) return fields;
@@ -61,6 +89,10 @@ public final class FormCrossFieldRulePolicy {
 
     /**
      * 校验节点配置结构与字段类型，不查询其他节点。空配置/空数组表示删除规则。
+     *
+     * @param value 待解析表单跨字段规则策略的原始输入，结果供调用方继续使用
+     * @param fieldType 字段类型标识，决定后续表单跨字段规则策略采用的处理分支
+     * @return 规则集合，供调用方遍历或展示
      * @throws IllegalArgumentException 未知版本、非法键、重复规则或类型不支持
      */
     public static List<Rule> parse(Object value, String fieldType) {
@@ -98,6 +130,10 @@ public final class FormCrossFieldRulePolicy {
     /**
      * 保存/发布时校验完整引用。fieldTypes 必须是当前表单 FIELD 与所属实体真实字段的交集，
      * 类型来自实体元数据，不能接受虚拟字段或客户端伪造类型。
+     *
+     * @param config 配置内容，决定后续引用的处理规则
+     * @param ownerCode 归属方编码，后续用于校验引用时定位或关联目标
+     * @param fieldTypes 字段类型集合，供本方法校验引用时使用
      */
     public static void validateReferences(Object config, String ownerCode, Map<String, String> fieldTypes) {
         if (config == null) return;
@@ -111,6 +147,13 @@ public final class FormCrossFieldRulePolicy {
         }
     }
 
+    /**
+     * 判断{@code passes}条件是否成立，供调用方选择后续分支。
+     *
+     * @param operator 操作人，供本方法处理{@code passes}时使用
+     * @param comparison 比较，供本方法处理{@code passes}时使用
+     * @return {@code passes}条件成立时为 true，否则为 false
+     */
     public static boolean passes(String operator, int comparison) {
         return switch (operator) {
             case "EQ" -> comparison == 0;
@@ -123,6 +166,12 @@ public final class FormCrossFieldRulePolicy {
         };
     }
 
+    /**
+     * 生成操作人标签文本，供后续匹配或展示。
+     *
+     * @param operator 操作人，供本方法处理操作人标签时使用
+     * @return 处理后的操作人标签文本，供调用方比较或展示
+     */
     public static String operatorLabel(String operator) {
         return switch (operator) {
             case "EQ" -> "等于";
@@ -135,11 +184,24 @@ public final class FormCrossFieldRulePolicy {
         };
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param map 映射，供本方法处理必填文本时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     */
     private static String requiredText(Map<?, ?> map, String key) {
         if (!(map.get(key) instanceof String text) || text.isEmpty()) throw invalid(key + " 不能为空");
         return text;
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static IllegalArgumentException invalid(String message) {
         return new IllegalArgumentException("跨字段校验：" + message);
     }

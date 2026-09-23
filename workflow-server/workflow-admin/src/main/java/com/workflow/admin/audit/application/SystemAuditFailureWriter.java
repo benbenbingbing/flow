@@ -20,6 +20,11 @@ public class SystemAuditFailureWriter {
     private final SystemOperationLogMapper operationLogMapper;
     private final JdbcWriteAttempt writeAttempt;
 
+    /**
+     * 处理{@code persist}，并将结果传给后续步骤。
+     *
+     * @param payload 载荷，后续用于处理{@code persist}并传递处理结果
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void persist(AuditLogPayload payload) {
         try {
@@ -29,6 +34,12 @@ public class SystemAuditFailureWriter {
         }
     }
 
+    /**
+     * 转换为日志；输出作为后续校验或处理的输入。
+     *
+     * @param payload 载荷，后续用于转换为日志并传递处理结果
+     * @return 转换为后的日志结果，供调用方继续处理
+     */
     static SystemOperationLog toLog(AuditLogPayload payload) {
         SystemOperationLog log = new SystemOperationLog();
         log.setEventId(payload.eventId());

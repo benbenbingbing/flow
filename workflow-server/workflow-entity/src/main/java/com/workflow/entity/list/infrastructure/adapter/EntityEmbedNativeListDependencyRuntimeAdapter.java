@@ -1,6 +1,6 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -35,6 +35,12 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
     private final EntityListConfigMapper listConfigMapper;
     private final UiConfigReleaseService releaseService;
 
+    /**
+     * 初始化实体嵌入式原生列表依赖运行时适配器，保存构造参数供后续方法使用。
+     *
+     * @param listConfigMapper 列表配置映射器依赖，保存到当前对象供后续业务方法调用
+     * @param releaseService 发布版本服务依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityEmbedNativeListDependencyRuntimeAdapter(
             EntityListConfigMapper listConfigMapper,
             UiConfigReleaseService releaseService) {
@@ -44,6 +50,9 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
 
     /**
      * 校验精确列表版本并抽取 toolbar/row action 中的 open-list 边。
+     *
+     * @param requested 请求，作为 {@code requireOwner} 的输入影响后续处理
+     * @return 解析后的精确结果，供调用方继续处理
      */
     @Override
     public ResolvedList resolveExact(ListCoordinate requested) {
@@ -72,6 +81,13 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
                 targets.stream().sorted(COORDINATE_ORDER).toList());
     }
 
+    /**
+     * 校验并获取归属方；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，作为 {@code listConfigMapper.findByEntityCodeAndListKey} 的输入影响后续处理
+     * @return 校验并获取后的归属方结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig requireOwner(ListCoordinate requested) {
         if (requested == null
                 || !StringUtils.hasText(requested.entityCode())
@@ -91,6 +107,13 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
         return owner;
     }
 
+    /**
+     * 收集目标集合；结果供调用方的后续步骤使用。
+     *
+     * @param buttons 按钮集合，供本方法收集目标集合时使用
+     * @param targets 目标集合，供本方法收集目标集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void collectTargets(
             List<Map<String, Object>> buttons,
             LinkedHashSet<ListCoordinate> targets) {
@@ -127,6 +150,12 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         if (value == null) {
             return null;
@@ -135,6 +164,12 @@ public class EntityEmbedNativeListDependencyRuntimeAdapter
         return text.isEmpty() ? null : text;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private static Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();

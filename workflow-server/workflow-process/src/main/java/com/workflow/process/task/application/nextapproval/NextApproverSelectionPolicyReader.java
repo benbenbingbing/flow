@@ -34,6 +34,12 @@ public class NextApproverSelectionPolicyReader {
     private final ObjectMapper objectMapper;
     private final NodeAssignmentReferenceResolver referenceResolver;
 
+    /**
+     * 初始化下一步审批人选择策略{@code reader}，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param referenceResolver 引用解析器依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public NextApproverSelectionPolicyReader(
             ObjectMapper objectMapper,
@@ -42,12 +48,23 @@ public class NextApproverSelectionPolicyReader {
         this.referenceResolver = referenceResolver;
     }
 
-    /** 兼容不涉及节点引用的轻量单元测试。 */
+    /**
+     * 兼容不涉及节点引用的轻量单元测试。
+     *
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     */
     public NextApproverSelectionPolicyReader(ObjectMapper objectMapper) {
         this(objectMapper,
                 new NodeAssignmentReferenceResolver(objectMapper));
     }
 
+    /**
+     * 读取下一步审批人选择策略{@code reader}；查询结果供调用方展示或继续处理。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param userTask 用户任务，供本方法读取下一步审批人选择策略{@code reader}时使用
+     * @return 读取后的下一步审批人选择策略{@code reader}结果，供调用方继续处理
+     */
     public NextApprovalTarget read(
             String processDefinitionId,
             UserTask userTask) {
@@ -56,6 +73,11 @@ public class NextApproverSelectionPolicyReader {
 
     /**
      * 读取策略并在同一已部署模型中解析基础办理人的节点引用。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param userTask 用户任务，作为 {@code readAssigneeConfig} 的输入影响后续处理
+     * @param bpmnModel BPMN模型，作为 {@code resolveAssignment} 的输入影响后续处理
+     * @return 读取后的下一步审批人选择策略{@code reader}结果，供调用方继续处理
      */
     public NextApprovalTarget read(
             String processDefinitionId,
@@ -173,6 +195,14 @@ public class NextApproverSelectionPolicyReader {
                 assignmentSourceTask);
     }
 
+    /**
+     * 解析分配；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnModel BPMN模型，作为 {@code referenceResolver.resolve} 的输入影响后续处理
+     * @param userTask 用户任务，作为 {@code invalid} 的输入影响后续处理
+     * @param currentConfig 当前配置内容，决定后续分配的处理规则
+     * @return 解析后的分配结果，供调用方继续处理
+     */
     private ResolvedAssignment resolveAssignment(
             BpmnModel bpmnModel,
             UserTask userTask,
@@ -191,6 +221,13 @@ public class NextApproverSelectionPolicyReader {
                 bpmnModel, userTask, currentConfig);
     }
 
+    /**
+     * 整理规范节点分配数据，供调用方遍历或继续处理。
+     *
+     * @param config 配置内容，决定后续规范节点分配的处理规则
+     * @param userTask 用户任务，作为 {@code result.put} 的输入影响后续处理
+     * @return 规范节点分配键值结果，供调用方继续处理
+     */
     private Map<String, Object> canonicalNodeAssignment(
             Map<String, Object> config,
             UserTask userTask) {
@@ -233,6 +270,12 @@ public class NextApproverSelectionPolicyReader {
         return result;
     }
 
+    /**
+     * 读取办理人配置；查询结果供调用方展示或继续处理。
+     *
+     * @param userTask 用户任务，作为 {@code readConfigProperty} 的输入影响后续处理
+     * @return 办理人配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> readAssigneeConfig(UserTask userTask) {
         Map<String, Object> assigneeConfig = readConfigProperty(
                 userTask, "assigneeConfig");
@@ -242,6 +285,13 @@ public class NextApproverSelectionPolicyReader {
                 assigneeConfig, multiInstanceConfig);
     }
 
+    /**
+     * 读取配置属性；查询结果供调用方展示或继续处理。
+     *
+     * @param userTask 用户任务，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @param propertyName 属性名称，后续用于读取配置属性时匹配或展示
+     * @return 配置属性键值结果，供调用方继续处理
+     */
     private Map<String, Object> readConfigProperty(
             UserTask userTask,
             String propertyName) {
@@ -260,6 +310,13 @@ public class NextApproverSelectionPolicyReader {
         }
     }
 
+    /**
+     * 读取{@code scopes}；查询结果供调用方展示或继续处理。
+     *
+     * @param rawScopes 原始{@code scopes}，供本方法读取{@code scopes}时使用
+     * @param userTask 用户任务，作为 {@code invalid} 的输入影响后续处理
+     * @return 下一步审批人选择策略集合，供调用方遍历或展示
+     */
     private List<NextApproverSelectionPolicy.Scope> readScopes(
             Object rawScopes,
             UserTask userTask) {
@@ -276,6 +333,14 @@ public class NextApproverSelectionPolicyReader {
         return result;
     }
 
+    /**
+     * 生成分配模式文本，供后续匹配或展示。
+     *
+     * @param assigneeConfig 办理人配置内容，决定后续分配模式的处理规则
+     * @param userTask 用户任务，供本方法处理分配模式时使用
+     * @param assignmentSourceTask 分配来源任务，供本方法处理分配模式时使用
+     * @return 处理后的分配模式文本，供调用方比较或展示
+     */
     private String assignmentMode(
             Map<String, Object> assigneeConfig,
             UserTask userTask,
@@ -284,6 +349,13 @@ public class NextApproverSelectionPolicyReader {
                 userTask, assignmentSourceTask, assigneeConfig);
     }
 
+    /**
+     * 读取作用域；查询结果供调用方展示或继续处理。
+     *
+     * @param scope 作用域，作为 {@code text} 的输入影响后续处理
+     * @param userTask 用户任务，作为 {@code invalid} 的输入影响后续处理
+     * @return 读取后的作用域结果，供调用方继续处理
+     */
     private NextApproverSelectionPolicy.Scope readScope(
             Map<String, Object> scope,
             UserTask userTask) {
@@ -308,6 +380,13 @@ public class NextApproverSelectionPolicyReader {
                 booleanValue(scope.get("includeChildren"), false));
     }
 
+    /**
+     * 读取附加参数；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待读取附加参数的原始输入，结果供调用方继续使用
+     * @param userTask 用户任务，作为 {@code invalid} 的输入影响后续处理
+     * @return 附加参数键值结果，供调用方继续处理
+     */
     private Map<String, Object> readExtraParams(
             Object value,
             UserTask userTask) {
@@ -320,6 +399,13 @@ public class NextApproverSelectionPolicyReader {
         return stringObjectMap(rawMap);
     }
 
+    /**
+     * 处理来源类型，并将结果传给后续步骤。
+     *
+     * @param value 待处理来源类型的原始输入，结果供调用方继续使用
+     * @param userTask 用户任务，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的来源类型结果，供调用方继续处理
+     */
     private NextApproverSelectionPolicy.SourceType sourceType(
             Object value,
             UserTask userTask) {
@@ -335,6 +421,13 @@ public class NextApproverSelectionPolicyReader {
         }
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param canonical 规范，供本方法处理哈希时使用
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(Map<String, Object> canonical) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -348,6 +441,12 @@ public class NextApproverSelectionPolicyReader {
         }
     }
 
+    /**
+     * 整理字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串列表的原始输入，结果供调用方继续使用
+     * @return 下一步审批人选择策略{@code reader}集合，供调用方遍历或展示
+     */
     private List<String> stringList(Object value) {
         if (value instanceof List<?> list) {
             return list.stream()
@@ -363,12 +462,24 @@ public class NextApproverSelectionPolicyReader {
                 : List.of();
     }
 
+    /**
+     * 整理字符串对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串对象映射的原始输入，结果供调用方继续使用
+     * @return 字符串对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringObjectMap(Map<?, ?> value) {
         Map<String, Object> result = new LinkedHashMap<>();
         value.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String result = text(value);
@@ -379,18 +490,46 @@ public class NextApproverSelectionPolicyReader {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(Object value, boolean defaultValue) {
         return value == null ? defaultValue : Boolean.parseBoolean(String.valueOf(value));
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param task 任务，供本方法处理无效时使用
+     * @param detail 详情，供本方法处理无效时使用
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private IllegalArgumentException invalid(UserTask task, String detail) {
         return invalid(task, detail, null);
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param task 任务，供本方法处理无效时使用
+     * @param detail 详情，供本方法处理无效时使用
+     * @param cause 原因，供本方法处理无效时使用
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private IllegalArgumentException invalid(
             UserTask task,
             String detail,

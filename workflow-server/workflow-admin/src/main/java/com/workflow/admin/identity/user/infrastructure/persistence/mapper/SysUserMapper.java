@@ -36,6 +36,10 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     /**
      * Atomically activates the disabled built-in account only while it still
      * carries the historical public password hash.
+     *
+     * @param passwordHash 密码哈希，供本方法激活初始化管理员时使用
+     * @param expectedPasswordHash 预期密码哈希，供本方法激活初始化管理员时使用
+     * @return 激活后的初始化管理员结果，供调用方继续处理
      */
     @Update("UPDATE sys_user SET password = #{passwordHash}, "
             + "password_reset_required = 0, status = '0', update_time = CURRENT_TIMESTAMP "
@@ -45,7 +49,12 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             @Param("passwordHash") String passwordHash,
             @Param("expectedPasswordHash") String expectedPasswordHash);
 
-    /** 检查内置管理员是否仍处于可激活状态；密码哈希保持参数绑定。 */
+    /**
+     * 检查内置管理员是否仍处于可激活状态；密码哈希保持参数绑定。
+     *
+     * @param expectedPasswordHash 预期密码哈希，供本方法判断是否初始化管理员待处理时使用
+     * @return 初始化管理员待处理条件成立时为 true，否则为 false
+     */
     default boolean isBootstrapAdministratorPending(String expectedPasswordHash) {
         return selectCount(Wrappers.<SysUser>lambdaQuery()
                 .eq(SysUser::getId, "1").eq(SysUser::getUsername, "admin")
@@ -63,9 +72,21 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
                 .eq(SysUser::getUsername, username));
     }
 
+    /**
+     * 查询更新；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 查询后的更新结果，供调用方继续处理
+     */
     @Select("SELECT * FROM sys_user WHERE id = #{id} AND deleted = 0 FOR UPDATE")
     SysUser selectForUpdate(@Param("id") String id);
 
+    /**
+     * 查询更新ID 集合；查询结果供调用方展示或继续处理。
+     *
+     * @param ids ID 集合，供本方法查询更新ID 集合时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT * FROM sys_user
@@ -80,6 +101,12 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             """)
     List<SysUser> selectForUpdateByIds(@Param("ids") List<String> ids);
 
+    /**
+     * 处理{@code increment}令牌版本，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的{@code increment}令牌版本结果，供调用方继续处理
+     */
     @Update("""
             UPDATE sys_user
             SET token_version = token_version + 1,
@@ -130,6 +157,20 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             @Param("roleId") String roleId,
             @Param("keyword") String keyword);
 
+    /**
+     * 查询用户分页；查询结果供调用方展示或继续处理。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，供本方法查询用户分页时使用
+     * @param status 状态标识，决定后续用户分页采用的处理分支
+     * @param orgId 组织ID，后续用于查询用户分页时定位或关联目标
+     * @param deptId 部门ID，后续用于查询用户分页时定位或关联目标
+     * @param roleId 角色ID，后续用于查询用户分页时定位或关联目标
+     * @param positionCode 位置编码，后续用于查询用户分页时定位或关联目标
+     * @param asOf {@code as}，供本方法查询用户分页时使用
+     * @param assignmentUnitIds 分配单元ID 集合，供本方法查询用户分页时使用
+     * @return 查询后的用户分页结果，供调用方继续处理
+     */
     @Select({
             "<script>",
             "<bind name=\"_contains_keyword\" value=\"keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;\"/>",
@@ -190,7 +231,12 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
             "WHERE ur.user_id = #{userId} AND r.deleted = 0 AND r.status = '0'")
     List<SysUser> selectUserRoles(@Param("userId") String userId);
 
-    /** 统计关联到组织或部门的未删除用户；同一用户两个字段均匹配时只计一次。 */
+    /**
+     * 统计关联到组织或部门的未删除用户；同一用户两个字段均匹配时只计一次。
+     *
+     * @param orgId 组织ID，后续用于统计组织时定位或关联目标
+     * @return 符合条件的组织数量
+     */
     default int countByOrganization(String orgId) {
         return selectCount(Wrappers.<SysUser>lambdaQuery()
                 .and(organization -> organization.eq(SysUser::getOrgId, orgId)

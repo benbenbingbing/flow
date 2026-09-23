@@ -8,11 +8,27 @@ import java.util.List;
  */
 public final class ExternalSystemViews {
 
+    /**
+     * 初始化外部系统视图，保存构造参数供后续方法使用。
+     */
     private ExternalSystemViews() {
     }
 
     /**
      * 列表页使用的外部系统摘要，避免在分页响应中批量暴露参数值。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param systemCode 系统编码，后续用于处理外部系统摘要时定位或关联目标
+     * @param systemName 系统名称，后续用于处理外部系统摘要时匹配或展示
+     * @param status 状态标识，决定后续外部系统摘要采用的处理分支
+     * @param address 地址，保存在对象中供后续校验、查询或展示
+     * @param description 描述，保存在对象中供后续校验、查询或展示
+     * @param version 版本，保存在对象中供后续校验、查询或展示
+     * @param parameterCount 参数数量，保存在对象中供后续校验、查询或展示
+     * @param createdBy 已创建，保存在对象中供后续校验、查询或展示
+     * @param updatedBy {@code updated}，保存在对象中供后续校验、查询或展示
+     * @param createTime 创建时间，后续用于判断有效期或展示该事件的发生时间
+     * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
      */
     public record ExternalSystemSummary(
             String id,
@@ -31,6 +47,19 @@ public final class ExternalSystemViews {
 
     /**
      * 外部系统详情，包含当前活动参数集合。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param systemCode 系统编码，后续用于处理外部系统详情时定位或关联目标
+     * @param systemName 系统名称，后续用于处理外部系统详情时匹配或展示
+     * @param status 状态标识，决定后续外部系统详情采用的处理分支
+     * @param address 地址，保存在对象中供后续校验、查询或展示
+     * @param description 描述，保存在对象中供后续校验、查询或展示
+     * @param version 版本，保存在对象中供后续校验、查询或展示
+     * @param parameters 参数集合，保存在对象中供后续校验、查询或展示
+     * @param createdBy 已创建，保存在对象中供后续校验、查询或展示
+     * @param updatedBy {@code updated}，保存在对象中供后续校验、查询或展示
+     * @param createTime 创建时间，后续用于判断有效期或展示该事件的发生时间
+     * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
      */
     public record ExternalSystemDetail(
             String id,
@@ -58,6 +87,12 @@ public final class ExternalSystemViews {
 
     /**
      * 外部系统参数详情。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param nameZh 名称{@code zh}，保存在对象中供后续校验、查询或展示
+     * @param nameEn 名称{@code en}，保存在对象中供后续校验、查询或展示
+     * @param value 待处理外部系统参数视图的原始输入，结果供调用方继续使用
+     * @param sortOrder 排序权重，后续用于稳定展示顺序
      */
     public record ExternalSystemParameterView(
             String id,

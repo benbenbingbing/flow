@@ -38,6 +38,15 @@ public class ProjectSystemRemovalGuard {
 
     private final EntityDataDynamicService entityDataService;
 
+    /**
+     * 收集阻断项；结果供调用方的后续步骤使用。
+     *
+     * @param requestId 请求ID，后续用于收集阻断项时定位或关联目标
+     * @param projectId 项目ID，后续用于收集阻断项时定位或关联目标
+     * @param systemId 系统ID，后续用于收集阻断项时定位或关联目标
+     * @param linkId 链接ID，后续用于收集阻断项时定位或关联目标
+     * @return 项目系统{@code removal}保护集合，供调用方遍历或展示
+     */
     public List<String> collectBlockers(
             String requestId,
             String projectId,
@@ -100,6 +109,13 @@ public class ProjectSystemRemovalGuard {
         return blockers;
     }
 
+    /**
+     * 添加{@code requirement}{@code blocker}；结果供后续流程传递或持久化。
+     *
+     * @param blockers 阻断项，供本方法添加{@code requirement}{@code blocker}时使用
+     * @param projectId 项目ID，后续用于添加{@code requirement}{@code blocker}时定位或关联目标
+     * @param systemId 系统ID，后续用于添加{@code requirement}{@code blocker}时定位或关联目标
+     */
     private void addRequirementBlocker(
             List<String> blockers,
             String projectId,
@@ -144,6 +160,15 @@ public class ProjectSystemRemovalGuard {
         }
     }
 
+    /**
+     * 添加可选{@code blocker}；结果供后续流程传递或持久化。
+     *
+     * @param blockers 阻断项，供本方法添加可选{@code blocker}时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param terminalStatuses 终态{@code statuses}，供本方法添加可选{@code blocker}时使用
+     * @param messageSuffix 消息后缀，作为 {@code blockers.add} 的输入影响后续处理
+     */
     private void addOptionalBlocker(
             List<String> blockers,
             String entityCode,
@@ -164,6 +189,13 @@ public class ProjectSystemRemovalGuard {
         }
     }
 
+    /**
+     * 整理可选{@code find}数据，供调用方遍历或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     private List<EntityDataDTO> optionalFind(
             String entityCode,
             Map<String, Object> condition) {

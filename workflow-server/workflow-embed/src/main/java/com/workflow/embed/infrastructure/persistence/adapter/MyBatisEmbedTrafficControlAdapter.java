@@ -54,6 +54,15 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
     private final Clock clock;
     private final JdbcLockedRow lockedRows;
 
+    /**
+     * 初始化MyBatis嵌入式{@code traffic}{@code control}适配器，保存构造参数供后续方法使用。
+     *
+     * @param mapper 映射器依赖，保存到当前对象供后续业务方法调用
+     * @param digestPort 摘要端口依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     * @param lockedRows 已锁定行依赖，保存到当前对象供后续业务方法调用
+     */
     public MyBatisEmbedTrafficControlAdapter(
             EmbedTrafficControlMapper mapper,
             EmbedDigestPort digestPort,
@@ -68,6 +77,9 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
 
     /**
      * 从当前 Grant 行读取 Launch 上限，不信任 Controller/Launch DTO 中的任何配额值。
+     *
+     * @param applicationId 应用ID，后续用于处理消费启动记录时定位或关联目标
+     * @param grantId 授权ID，后续用于处理消费启动记录时定位或关联目标
      */
     @Override
     @Transactional(
@@ -96,6 +108,9 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
      * 
      * <p>两个 bucket 在同一独立事务中计数；其中任一超限时仍提交已消耗
      * 计数，避免拒绝请求回滚后可继续无限尝试。</p>
+     *
+     * @param launchId 启动记录ID，后续用于处理消费交换时定位或关联目标
+     * @param peerAddress {@code peer}地址，作为 {@code consumeStandaloneRate} 的输入影响后续处理
      */
     @Override
     @Transactional(
@@ -124,6 +139,12 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
     /**
      * 在同一 REQUIRES_NEW 事务中锁定 Grant、扣减分钟配额并抢占并发租约。
      * Grant 行锁是所有 Pod 共享的串行化点，避免 count-then-insert 竞态超额。
+     *
+     * @param applicationId 应用ID，后续用于处理获取运行时时定位或关联目标
+     * @param grantId 授权ID，后续用于处理获取运行时时定位或关联目标
+     * @param sessionId 会话ID，后续用于处理获取运行时时定位或关联目标
+     * @param requestClass 请求{@code class}，供本方法处理获取运行时时使用
+     * @return 处理后的获取运行时结果，供调用方继续处理
      */
     @Override
     @Transactional(
@@ -197,6 +218,8 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
 
     /**
      * 释放是独立幂等事务；即使请求主事务回滚，并发槽位也不能被长时占用。
+     *
+     * @param lease 租约，作为 {@code mapper.releaseRuntimeLease} 的输入影响后续处理
      */
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -214,6 +237,15 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
         }
     }
 
+    /**
+     * 处理当前授权，并将结果传给后续步骤。
+     *
+     * @param applicationId 应用ID，后续用于处理当前授权时定位或关联目标
+     * @param grantId 授权ID，后续用于处理当前授权时定位或关联目标
+     * @param now 当前时间，作为 {@code isAfter} 的输入影响后续处理
+     * @param runtime 运行时，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的当前授权结果，供调用方继续处理
+     */
     private EmbedTrafficGrantRow currentGrant(
             String applicationId,
             String grantId,
@@ -249,6 +281,15 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
         return grant;
     }
 
+    /**
+     * 处理消费频率，并将结果传给后续步骤。
+     *
+     * @param namespace 命名空间，供本方法处理消费频率时使用
+     * @param applicationId 应用ID，后续用于处理消费频率时定位或关联目标
+     * @param grantId 授权ID，后续用于处理消费频率时定位或关联目标
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param now 当前时间，作为 {@code consumeBucket} 的输入影响后续处理
+     */
     private void consumeRate(
             String namespace,
             String applicationId,
@@ -262,6 +303,14 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
         consumeBucket(material, limit, now);
     }
 
+    /**
+     * 处理消费{@code standalone}频率，并将结果传给后续步骤。
+     *
+     * @param namespace 命名空间，作为 {@code consumeBucket} 的输入影响后续处理
+     * @param coordinate 坐标，供本方法处理消费{@code standalone}频率时使用
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param now 当前时间，供本方法处理消费{@code standalone}频率时使用
+     */
     private void consumeStandaloneRate(
             String namespace,
             String coordinate,
@@ -278,6 +327,13 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
                 now);
     }
 
+    /**
+     * 处理消费{@code bucket}，并将结果传给后续步骤。
+     *
+     * @param material 材料，作为 {@code digestPort.sha256} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param now 当前时间，作为 {@code local} 的输入影响后续处理
+     */
     private void consumeBucket(String material, int limit, Instant now) {
         long epochSecond = now.getEpochSecond();
         long windowEpoch = epochSecond / WINDOW_SECONDS;
@@ -299,18 +355,43 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
         }
     }
 
+    /**
+     * 生成运行时作用域文本，供后续匹配或展示。
+     *
+     * @param grantId 授权ID，后续用于处理运行时作用域时定位或关联目标
+     * @return 处理后的运行时作用域文本，供调用方比较或展示
+     */
     private static String runtimeScope(String grantId) {
         return EmbedTrafficControlMapper.RUNTIME_SCOPE_PREFIX + grantId;
     }
 
+    /**
+     * 构造{@code quota}{@code exceeded}异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code TrafficQuotaExceededException} 的输入影响后续处理
+     * @param retryAfter 重试之后，作为 {@code TrafficQuotaExceededException} 的输入影响后续处理
+     * @return 处理后的{@code quota}{@code exceeded}结果，供调用方继续处理
+     */
     private static EmbedException quotaExceeded(String message, long retryAfter) {
         return new TrafficQuotaExceededException(message, retryAfter);
     }
 
+    /**
+     * 处理本地，并将结果传给后续步骤。
+     *
+     * @param value 待处理本地的原始输入，结果供调用方继续使用
+     * @return 处理后的本地结果，供调用方继续处理
+     */
     private static LocalDateTime local(Instant value) {
         return LocalDateTime.ofInstant(value, ZoneOffset.UTC);
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @param error 错误，供本方法处理不可用时使用
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static EmbedException unavailable(Throwable error) {
         return new EmbedException(
                 503,
@@ -325,6 +406,12 @@ public class MyBatisEmbedTrafficControlAdapter implements EmbedTrafficControlPor
      */
     private static final class TrafficQuotaExceededException extends EmbedException {
 
+        /**
+         * 初始化{@code traffic}{@code quota}{@code exceeded}异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @param retryAfter 重试之后，保存在对象中供后续校验、查询或展示
+         */
         private TrafficQuotaExceededException(String message, long retryAfter) {
             super(429, EmbedErrorCode.RATE_LIMIT_EXCEEDED, message, retryAfter);
         }

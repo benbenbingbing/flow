@@ -1,5 +1,5 @@
 package com.workflow.biz.project.service;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +47,10 @@ public class ProjectMemberChangeService {
     private final ProjectMemberChangeTraceSupport traceSupport;
     /**
      * 启动流程前执行完整跨实体校验并固化快照和路由变量。
+     *
+     * @param request 本次请求，后续经校验后用于校验变更
+     * @param context 执行上下文，向后续变更步骤传递身份、配置或状态
+     * @return 变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateChange(
@@ -72,6 +76,12 @@ public class ProjectMemberChangeService {
                     return result;
                 });
     }
+    /**
+     * 校验变更；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验变更
+     * @return 变更键值结果，供调用方继续处理
+     */
     Map<String, Object> validateChange(EntityDataDTO request) {
         return mutationExecutor.inSession(
                 null,
@@ -79,6 +89,12 @@ public class ProjectMemberChangeService {
                 "项目成员变更前置校验",
                 () -> validateChangeInternal(request));
     }
+    /**
+     * 校验变更内部；不满足约束时阻止后续处理。
+     *
+     * @param request 成员变更申请，读取操作类型、目标人员和计划生效日期，并回写校验快照
+     * @return 包含权限复核、交接和安全复核结论的校验结果，供后续审批节点使用
+     */
     private Map<String, Object> validateChangeInternal(
             EntityDataDTO request) {
         requireEntity(request, REQUEST);
@@ -114,6 +130,7 @@ public class ProjectMemberChangeService {
         boolean accessReviewRequired;
         boolean securityReviewRequired;
         boolean handoverRequired = false;
+        // 加入与存量成员变更的校验依据不同：加入检查容量，离开还需检查角色和资源交接。
         if ("JOIN".equals(operation)) {
             targetUserId = requireText(
                     requestData, "target_user_id", "加入人员不能为空");
@@ -196,6 +213,7 @@ public class ProjectMemberChangeService {
                             data(member),
                             "environment_access_required_flag"));
         }
+        // 统一输出审批分支所需的复核标志，避免后续节点重复推导当前业务状态。
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("allowed", true);
         result.put("operation", operation);
@@ -211,6 +229,7 @@ public class ProjectMemberChangeService {
                 "securityReviewRequired",
                 securityReviewRequired);
         result.put("checkedAt", LocalDateTime.now());
+        // 固化变更前后快照和本次冲突检查结果，供审批及审计复查，避免依赖后续可变数据。
         Map<String, Object> snapshotUpdate =
                 new LinkedHashMap<>();
         snapshotUpdate.put(
@@ -243,6 +262,10 @@ public class ProjectMemberChangeService {
     }
     /**
      * 项目经理节点完成时写入业务检查点。
+     *
+     * @param request 本次请求，后续经校验后用于捕获{@code manager}{@code review}
+     * @param context 执行上下文，向后续{@code manager}{@code review}步骤传递身份、配置或状态
+     * @return {@code manager}{@code review}键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> captureManagerReview(
@@ -256,6 +279,11 @@ public class ProjectMemberChangeService {
     }
     /**
      * 最终审批连线被选中时记录决策轨迹。
+     *
+     * @param request 本次请求，后续经校验后用于记录决策
+     * @param context 执行上下文，向后续决策步骤传递身份、配置或状态
+     * @param decision 决策，供本方法记录决策时使用
+     * @return 决策键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> recordDecision(
@@ -270,6 +298,10 @@ public class ProjectMemberChangeService {
     }
     /**
      * 流程批准后幂等生效成员和角色变化。
+     *
+     * @param request 本次请求，后续经校验后用于应用变更
+     * @param context 执行上下文，向后续变更步骤传递身份、配置或状态
+     * @return 变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyChange(
@@ -281,6 +313,12 @@ public class ProjectMemberChangeService {
                 "项目成员变更审批生效",
                 () -> applyChangeInternal(request));
     }
+    /**
+     * 应用变更，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用变更
+     * @return 变更键值结果，供调用方继续处理
+     */
     Map<String, Object> applyChange(EntityDataDTO request) {
         return mutationExecutor.inSession(
                 null,
@@ -288,6 +326,12 @@ public class ProjectMemberChangeService {
                 "项目成员变更审批生效",
                 () -> applyChangeInternal(request));
     }
+    /**
+     * 应用变更内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用变更内部
+     * @return 变更内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> applyChangeInternal(
             EntityDataDTO request) {
         requireEntity(request, REQUEST);
@@ -412,6 +456,14 @@ public class ProjectMemberChangeService {
         result.put("reused", false);
         return result;
     }
+    /**
+     * 创建成员；结果供后续流程传递或持久化。
+     *
+     * @param request 本次请求，后续经校验后用于创建成员
+     * @param projectId 项目ID，后续用于创建成员时定位或关联目标
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 创建后的成员结果，供调用方继续处理
+     */
     private EntityDataDTO createMember(
             EntityDataDTO request,
             String projectId,
@@ -491,6 +543,14 @@ public class ProjectMemberChangeService {
                         Map.of("source_process", "F07")));
         return created;
     }
+    /**
+     * 应用{@code leave}，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用{@code leave}
+     * @param member 成员，作为 {@code rules.activeRoles} 的输入影响后续处理
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 应用后的{@code leave}结果，供调用方继续处理
+     */
     private int applyLeave(
             EntityDataDTO request,
             EntityDataDTO member,
@@ -556,6 +616,14 @@ public class ProjectMemberChangeService {
         }
         return activeRoles.size();
     }
+    /**
+     * 处理转办角色，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理转办角色
+     * @param assignment 分配，作为 {@code data} 的输入影响后续处理
+     * @param handoverMember {@code handover}成员，作为 {@code newData.put} 的输入影响后续处理
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     */
     private void transferRole(
             EntityDataDTO request,
             EntityDataDTO assignment,
@@ -617,6 +685,14 @@ public class ProjectMemberChangeService {
                         "ACTIVE",
                         Map.of("source_process", "F07")));
     }
+    /**
+     * 更新成员与角色集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param member 成员，作为 {@code mutationExecutor.update} 的输入影响后续处理
+     * @param memberStatus 成员状态标识，决定后续成员与角色集合采用的处理分支
+     * @param roleStatus 角色状态标识，决定后续成员与角色集合采用的处理分支
+     * @param customData 自定义数据，供本方法更新成员与角色集合时使用
+     */
     private void updateMemberAndRoles(
             EntityDataDTO member,
             String memberStatus,
@@ -641,6 +717,12 @@ public class ProjectMemberChangeService {
             }
         }
     }
+    /**
+     * 校验项目日期；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，作为 {@code date} 的输入影响后续处理
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     */
     private void validateProjectDate(
             EntityDataDTO project,
             LocalDate effectiveDate) {
@@ -661,6 +743,13 @@ public class ProjectMemberChangeService {
                     "成员变更生效日期不得晚于项目结束日期");
         }
     }
+    /**
+     * 校验{@code join}{@code dates}；不满足约束时阻止后续处理。
+     *
+     * @param requestData 请求数据，作为 {@code date} 的输入影响后续处理
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     * @param employmentType {@code employment}类型标识，决定后续{@code join}{@code dates}采用的处理分支
+     */
     private void validateJoinDates(
             Map<String, Object> requestData,
             LocalDate effectiveDate,
@@ -681,6 +770,11 @@ public class ProjectMemberChangeService {
                     "供应商和合同人员必须填写计划退出日期");
         }
     }
+    /**
+     * 校验访问作用域；不满足约束时阻止后续处理。
+     *
+     * @param requestData 请求数据，供本方法校验访问作用域时使用
+     */
     private void validateAccessScope(
             Map<String, Object> requestData) {
         if (bool(read(
@@ -694,6 +788,12 @@ public class ProjectMemberChangeService {
                     "申请环境权限时必须选择环境范围");
         }
     }
+    /**
+     * 校验操作状态；不满足约束时阻止后续处理。
+     *
+     * @param operation 操作标识，决定后续操作状态采用的处理分支
+     * @param member 成员，作为 {@code equals} 的输入影响后续处理
+     */
     private void validateOperationStatus(
             String operation,
             EntityDataDTO member) {
@@ -715,6 +815,12 @@ public class ProjectMemberChangeService {
                             + operation + "操作");
         }
     }
+    /**
+     * 校验有效日期；不满足约束时阻止后续处理。
+     *
+     * @param member 成员，作为 {@code date} 的输入影响后续处理
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     */
     private void validateEffectiveDate(
             EntityDataDTO member,
             LocalDate effectiveDate) {
@@ -727,6 +833,16 @@ public class ProjectMemberChangeService {
                     "变更生效日期不得早于成员加入日期");
         }
     }
+    /**
+     * 校验{@code leave}；不满足约束时阻止后续处理。
+     *
+     * @param requestData 请求数据，作为 {@code text} 的输入影响后续处理
+     * @param projectId 项目ID，后续用于校验{@code leave}时定位或关联目标
+     * @param member 成员，供本方法校验{@code leave}时使用
+     * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
+     * @param handoverRequired {@code handover}必填，供本方法校验{@code leave}时使用
+     * @param activeRoles 活动角色集合，供本方法校验{@code leave}时使用
+     */
     private void validateLeave(
             Map<String, Object> requestData,
             String projectId,

@@ -1,10 +1,10 @@
 package com.workflow.process.assignment.api.web;
 
-import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.PositionDefinitionView;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.position.model.PositionDefinitionView;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.process.assignment.api.request.RelativePositionPreviewRequest;
@@ -32,6 +32,12 @@ public class RelativePositionProcessDesignController {
     private final OrganizationPositionDirectoryPort directoryPort;
     private final RelativeOrgPositionPersonResolver resolver;
 
+    /**
+     * 初始化相对位置流程{@code design}控制器，保存构造参数供后续方法使用。
+     *
+     * @param directoryPort 目录端口依赖，保存到当前对象供后续业务方法调用
+     * @param resolver 解析器依赖，保存到当前对象供后续业务方法调用
+     */
     public RelativePositionProcessDesignController(
             OrganizationPositionDirectoryPort directoryPort,
             RelativeOrgPositionPersonResolver resolver) {
@@ -41,6 +47,10 @@ public class RelativePositionProcessDesignController {
 
     /**
      * 返回已启用职务；同时兼容前端传入 anchor 或直接传单位类型。
+     *
+     * @param applicableUnitType 适用单元类型标识，决定后续位置选项采用的处理分支
+     * @param anchor 锚点，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 处理后的位置选项结果，供调用方继续处理
      */
     @GetMapping("/position-options")
     public ApiResponse<List<PositionDefinitionView>> positionOptions(
@@ -50,7 +60,11 @@ public class RelativePositionProcessDesignController {
                 normalizedUnitType(applicableUnitType, anchor)));
     }
 
-    /** 返回可被 BUSINESS_LEVEL 模式引用的稳定业务层级。 */
+    /**
+     * 返回可被 BUSINESS_LEVEL 模式引用的稳定业务层级。
+     *
+     * @return 处理后的业务{@code levels}结果，供调用方继续处理
+     */
     @GetMapping("/organization-business-levels")
     public ApiResponse<List<OrganizationBusinessLevelView>> businessLevels() {
         return ApiResponse.success(
@@ -59,6 +73,9 @@ public class RelativePositionProcessDesignController {
 
     /**
      * 捕获样例用户当前快照，并调用运行时同一 resolver 返回扫描轨迹。
+     *
+     * @param request 本次请求，后续经校验后用于处理预览
+     * @return 处理后的预览结果，供调用方继续处理
      */
     @PostMapping("/relative-position-preview")
     public ApiResponse<RelativeOrgPositionPreview> preview(
@@ -82,6 +99,14 @@ public class RelativePositionProcessDesignController {
         }
     }
 
+    /**
+     * 处理失败预览，并将结果传给后续步骤。
+     *
+     * @param resultCode 结果编码，后续用于处理失败预览时定位或关联目标
+     * @param message 消息，供本方法处理失败预览时使用
+     * @param rawTrace 原始追踪，作为 {@code RelativeOrgPositionPreview} 的输入影响后续处理
+     * @return 处理后的失败预览结果，供调用方继续处理
+     */
     private RelativeOrgPositionPreview failedPreview(
             String resultCode,
             String message,
@@ -98,6 +123,12 @@ public class RelativePositionProcessDesignController {
                 null);
     }
 
+    /**
+     * 整理失败追踪数据，供调用方遍历或继续处理。
+     *
+     * @param rawTrace 原始追踪，供本方法处理失败追踪时使用
+     * @return 相对组织位置预览集合，供调用方遍历或展示
+     */
     private List<RelativeOrgPositionPreview.ScannedUnit> failedTrace(
             Object rawTrace) {
         if (!(rawTrace instanceof Iterable<?> values)) {
@@ -121,6 +152,14 @@ public class RelativePositionProcessDesignController {
         return List.copyOf(result);
     }
 
+    /**
+     * 生成规范化单元类型文本，供后续匹配或展示。
+     *
+     * @param applicableUnitType 适用单元类型标识，决定后续规范化单元类型采用的处理分支
+     * @param anchor 锚点，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的规范化单元类型文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizedUnitType(
             String applicableUnitType,
             String anchor) {

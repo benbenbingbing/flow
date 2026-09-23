@@ -19,10 +19,10 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -70,6 +70,9 @@ public class PositionAssignmentService {
     /**
      * 使用正式提交同一校验器执行只读预检；结果只具提示意义，提交仍会
      * 在加锁后重新验证全部条件。
+     *
+     * @param request 本次请求，后续经校验后用于处理预检查
+     * @return 处理后的预检查结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PositionViews.PrecheckResult precheck(
@@ -105,6 +108,13 @@ public class PositionAssignmentService {
                 List.copyOf(results));
     }
 
+    /**
+     * 处理批次{@code assign}，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理批次{@code assign}
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的批次{@code assign}结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -195,6 +205,12 @@ public class PositionAssignmentService {
                 normalizedKey, false, List.copyOf(assignmentIds));
     }
 
+    /**
+     * 撤销位置分配；后续读取或执行将使用更新后的状态。
+     *
+     * @param assignmentId 分配ID，后续用于撤销位置分配时定位或关联目标
+     * @param request 本次请求，后续经校验后用于撤销位置分配
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -250,6 +266,12 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 更新时段；后续读取或执行将使用更新后的状态。
+     *
+     * @param assignmentId 分配ID，后续用于更新时段时定位或关联目标
+     * @param request 本次请求，后续经校验后用于更新时段
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -331,6 +353,9 @@ public class PositionAssignmentService {
     /**
      * 清空组织负责人等价于撤销当前有效 UNIT_LEADER 任职，旧 leader 字段
      * 仅由本方法的投影刷新，不再作为权威写入口。
+     *
+     * @param unitId 单元ID，后续用于清理当前{@code leader}时定位或关联目标
+     * @param reason 原因，作为 {@code requiredReason} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -374,7 +399,12 @@ public class PositionAssignmentService {
         refreshLeaderProjection(unitId, now);
     }
 
-    /** 根据权威的当前 UNIT_LEADER 任职单向刷新旧负责人字段。 */
+    /**
+     * 根据权威的当前 UNIT_LEADER 任职单向刷新旧负责人字段。
+     *
+     * @param unitId 单元ID，后续用于处理刷新{@code leader}投影时定位或关联目标
+     * @param asOf {@code as}，作为 {@code assignmentMapper.selectEffectiveRows} 的输入影响后续处理
+     */
     public void refreshLeaderProjection(String unitId, LocalDateTime asOf) {
         List<PositionAssignmentViewRow> holders =
                 assignmentMapper.selectEffectiveRows(UNIT_LEADER, unitId, asOf);
@@ -389,6 +419,15 @@ public class PositionAssignmentService {
                 unitId, leader.getUserId(), displayName);
     }
 
+    /**
+     * 校验数据库{@code overlap}；不满足约束时阻止后续处理。
+     *
+     * @param position 位置，作为 {@code assignmentMapper.selectOverlaps} 的输入影响后续处理
+     * @param item 条目，作为 {@code closeReplacedAssignments} 的输入影响后续处理
+     * @param excludeAssignmentId 排除分配ID，后续用于校验数据库{@code overlap}时定位或关联目标
+     * @param applyReplacement 应用{@code replacement}，供本方法校验数据库{@code overlap}时使用
+     * @param reason 原因，供本方法校验数据库{@code overlap}时使用
+     */
     private void validateDatabaseOverlap(
             SysPosition position,
             PreparedItem item,
@@ -428,6 +467,10 @@ public class PositionAssignmentService {
     /**
      * 转任时，已开始事实缩短到新任职开始；尚未开始的预约事实使用撤销
      * 标记保留。这样不会生成 effectiveTo <= effectiveFrom 的非法区间。
+     *
+     * @param overlaps {@code overlaps}，供本方法处理关闭{@code replaced}分配集合时使用
+     * @param replacementFrom {@code replacement}起始，供本方法处理关闭{@code replaced}分配集合时使用
+     * @param reason 原因，供本方法处理关闭{@code replaced}分配集合时使用
      */
     private void closeReplacedAssignments(
             List<SysPositionAssignment> overlaps,
@@ -450,6 +493,14 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 插入分配；后续读取或执行将使用更新后的状态。
+     *
+     * @param position 位置，作为 {@code assignment.setPositionId} 的输入影响后续处理
+     * @param item 条目，作为 {@code assignment.setOrganizationUnitId} 的输入影响后续处理
+     * @param actor 操作人，作为 {@code assignment.setCreatedBy} 的输入影响后续处理
+     * @return 插入后的分配结果，供调用方继续处理
+     */
     private SysPositionAssignment insertAssignment(
             SysPosition position,
             PreparedItem item,
@@ -472,6 +523,13 @@ public class PositionAssignmentService {
         return assignment;
     }
 
+    /**
+     * 校验{@code pairwise}；不满足约束时阻止后续处理。
+     *
+     * @param position 位置，供本方法校验{@code pairwise}时使用
+     * @param accepted {@code accepted}，供本方法校验{@code pairwise}时使用
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     */
     private void validatePairwise(
             SysPosition position,
             List<PreparedItem> accepted,
@@ -501,6 +559,13 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 判断{@code overlaps}条件是否成立，供调用方选择后续分支。
+     *
+     * @param first 首个，供本方法处理{@code overlaps}时使用
+     * @param second {@code second}，供本方法处理{@code overlaps}时使用
+     * @return {@code overlaps}条件成立时为 true，否则为 false
+     */
     private boolean overlaps(PreparedItem first, PreparedItem second) {
         return (second.effectiveTo() == null
                 || first.effectiveFrom().isBefore(second.effectiveTo()))
@@ -508,6 +573,14 @@ public class PositionAssignmentService {
                     || second.effectiveFrom().isBefore(first.effectiveTo()));
     }
 
+    /**
+     * 校验目标；不满足约束时阻止后续处理。
+     *
+     * @param position 位置，供本方法校验目标时使用
+     * @param organization 组织，作为 {@code requireUserWithinTargetUnit} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param item 条目，作为 {@code validatePeriod} 的输入影响后续处理
+     */
     private void validateTarget(
             SysPosition position,
             SysOrganization organization,
@@ -556,6 +629,9 @@ public class PositionAssignmentService {
      * 保守 V1 不开放跨单位兼任：用户的部门（无部门时使用组织）必须位于
      * 目标单位子树内。该规则与管理员自身数据范围同时生效，防止仅凭功能
      * 权限把范围外用户任命到本范围单位。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param target 目标，供本方法校验并获取用户{@code within}目标单元时使用
      */
     private void requireUserWithinTargetUnit(
             SysUser user,
@@ -590,6 +666,12 @@ public class PositionAssignmentService {
         throw forbidden("任职用户不属于目标组织节点子树");
     }
 
+    /**
+     * 准备位置分配；结果供调用方的后续步骤使用。
+     *
+     * @param request 本次请求，后续经校验后用于准备位置分配
+     * @return 准备后的位置分配结果，供调用方继续处理
+     */
     private PreparedBatch prepare(PositionRequests.AssignmentBatch request) {
         if (request == null || request.items() == null
                 || request.items().isEmpty()) {
@@ -641,12 +723,24 @@ public class PositionAssignmentService {
                 reason, List.copyOf(items), codes, units, users);
     }
 
+    /**
+     * 整理映射{@code positions}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 映射{@code positions}键值结果，供调用方继续处理
+     */
     private Map<String, SysPosition> mapPositions(List<SysPosition> values) {
         Map<String, SysPosition> result = new HashMap<>();
         values.forEach(value -> result.put(value.getPositionCode(), value));
         return result;
     }
 
+    /**
+     * 整理映射{@code organizations}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 映射{@code organizations}键值结果，供调用方继续处理
+     */
     private Map<String, SysOrganization> mapOrganizations(
             List<SysOrganization> values) {
         Map<String, SysOrganization> result = new HashMap<>();
@@ -654,12 +748,25 @@ public class PositionAssignmentService {
         return result;
     }
 
+    /**
+     * 整理映射用户集合数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 映射用户集合键值结果，供调用方继续处理
+     */
     private Map<String, SysUser> mapUsers(List<SysUser> values) {
         Map<String, SysUser> result = new HashMap<>();
         values.forEach(value -> result.put(value.getId(), value));
         return result;
     }
 
+    /**
+     * 校验并获取位置；不满足约束时阻止后续处理。
+     *
+     * @param positions {@code positions}，供本方法校验并获取位置时使用
+     * @param code 编码，后续用于校验并获取位置时定位或关联目标
+     * @return 校验并获取后的位置结果，供调用方继续处理
+     */
     private SysPosition requirePosition(
             Map<String, SysPosition> positions,
             String code) {
@@ -672,6 +779,12 @@ public class PositionAssignmentService {
         return position;
     }
 
+    /**
+     * 校验时段；不满足约束时阻止后续处理。
+     *
+     * @param from 起始，供本方法校验时段时使用
+     * @param to 截止，供本方法校验时段时使用
+     */
     private void validatePeriod(LocalDateTime from, LocalDateTime to) {
         if (from == null || (to != null && !to.isAfter(from))) {
             throw invalid(
@@ -680,6 +793,13 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 校验并获取分配修订版本；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，供本方法校验并获取分配修订版本时使用
+     * @param current 当前，供本方法校验并获取分配修订版本时使用
+     * @return 校验并获取后的分配修订版本结果，供调用方继续处理
+     */
     private int requireAssignmentRevision(
             Integer requested,
             SysPositionAssignment current) {
@@ -691,6 +811,11 @@ public class PositionAssignmentService {
         return requested;
     }
 
+    /**
+     * 校验并获取分配已变更；不满足约束时阻止后续处理。
+     *
+     * @param changed 已变更，供本方法校验并获取分配已变更时使用
+     */
     private void requireAssignmentChanged(int changed) {
         if (changed != 1) {
             throw conflict(
@@ -699,11 +824,22 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 构造分配非已找到异常，供调用方区分失败原因。
+     *
+     * @return 处理后的分配非已找到结果，供调用方继续处理
+     */
     private PositionManagementException assignmentNotFound() {
         return new PositionManagementException(
                 404, PositionErrorCode.ASSIGNMENT_NOT_FOUND, "任职不存在");
     }
 
+    /**
+     * 校验并获取幂等键；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取幂等键的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的幂等键文本，供调用方比较或展示
+     */
     private String requireIdempotencyKey(String value) {
         if (!StringUtils.hasText(value)) {
             throw invalid(PositionErrorCode.IDEMPOTENCY_KEY_REQUIRED,
@@ -717,6 +853,12 @@ public class PositionAssignmentService {
         return normalized;
     }
 
+    /**
+     * 生成必填原因文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填原因的原始输入，结果供调用方继续使用
+     * @return 处理后的必填原因文本，供调用方比较或展示
+     */
     private String requiredReason(String value) {
         String reason = requiredText(value, "变更原因");
         if (reason.length() > 500) {
@@ -726,6 +868,13 @@ public class PositionAssignmentService {
         return reason;
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理必填文本时匹配或展示
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     */
     private String requiredText(String value, String label) {
         if (!StringUtils.hasText(value)) {
             throw invalid(PositionErrorCode.BATCH_ASSIGNMENT_INVALID,
@@ -734,6 +883,12 @@ public class PositionAssignmentService {
         return value.trim();
     }
 
+    /**
+     * 处理非{@code negative}，并将结果传给后续步骤。
+     *
+     * @param value 待处理非{@code negative}的原始输入，结果供调用方继续使用
+     * @return 处理后的非{@code negative}结果，供调用方继续处理
+     */
     private int nonNegative(Integer value) {
         int normalized = value == null ? 0 : value;
         if (normalized < 0) {
@@ -743,6 +898,11 @@ public class PositionAssignmentService {
         return normalized;
     }
 
+    /**
+     * 校验并获取操作人ID；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的操作人ID文本，供调用方比较或展示
+     */
     private String requireActorId() {
         String actorId = UserContext.getUserId();
         if (!StringUtils.hasText(actorId)) {
@@ -751,6 +911,13 @@ public class PositionAssignmentService {
         return actorId;
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理哈希
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(PreparedBatch request) {
         StringBuilder canonical = new StringBuilder(request.reason());
         request.items().forEach(item -> canonical.append('|')
@@ -771,6 +938,13 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 写入分配ID 集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param assignmentIds 分配ID 集合，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的分配ID 集合文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeAssignmentIds(List<String> assignmentIds) {
         try {
             return objectMapper.writeValueAsString(assignmentIds);
@@ -779,6 +953,13 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 读取分配ID 集合；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 位置分配集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<String> readAssignmentIds(String json) {
         try {
             return objectMapper.readValue(json, new TypeReference<>() { });
@@ -787,31 +968,71 @@ public class PositionAssignmentService {
         }
     }
 
+    /**
+     * 处理UTC，并将结果传给后续步骤。
+     *
+     * @param value 待处理UTC的原始输入，结果供调用方继续使用
+     * @return 处理后的UTC结果，供调用方继续处理
+     */
     private LocalDateTime utc(OffsetDateTime value) {
         return LocalDateTime.ofInstant(value.toInstant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 处理UTC当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的UTC当前时间结果，供调用方继续处理
+     */
     private LocalDateTime utcNow() {
         return LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param code 编码，后续用于处理无效时定位或关联目标
+     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private PositionManagementException invalid(
             PositionErrorCode code,
             String message) {
         return new PositionManagementException(400, code, message);
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private PositionManagementException conflict(
             PositionErrorCode code,
             String message) {
         return new PositionManagementException(409, code, message);
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private PositionManagementException forbidden(String message) {
         return new PositionManagementException(
                 403, PositionErrorCode.ORGANIZATION_SCOPE_FORBIDDEN, message);
     }
 
+    /**
+     * 封装已准备批次的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param reason 原因，保存在对象中供后续校验、查询或展示
+     * @param items 条目，保存在对象中供后续校验、查询或展示
+     * @param positionCodes 位置编码集合，保存在对象中供后续校验、查询或展示
+     * @param organizationUnitIds 组织单元ID 集合，保存在对象中供后续校验、查询或展示
+     * @param userIds 用户ID 集合，保存在对象中供后续校验、查询或展示
+     */
     private record PreparedBatch(
             String reason,
             List<PreparedItem> items,
@@ -820,6 +1041,19 @@ public class PositionAssignmentService {
             List<String> userIds) {
     }
 
+    /**
+     * 封装已准备条目的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param index 索引，保存在对象中供后续校验、查询或展示
+     * @param positionCode 位置编码，后续用于处理已准备条目时定位或关联目标
+     * @param organizationUnitId 组织单元ID，后续用于处理已准备条目时定位或关联目标
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param effectiveFrom 有效起始，保存在对象中供后续校验、查询或展示
+     * @param effectiveTo 有效截止，保存在对象中供后续校验、查询或展示
+     * @param primary 主要，保存在对象中供后续校验、查询或展示
+     * @param sortOrder 排序权重，后续用于稳定展示顺序
+     * @param replaceExisting 替换已有，保存在对象中供后续校验、查询或展示
+     */
     private record PreparedItem(
             int index,
             String positionCode,

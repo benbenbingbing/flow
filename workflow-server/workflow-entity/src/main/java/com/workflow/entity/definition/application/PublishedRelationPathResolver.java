@@ -71,6 +71,9 @@ public class PublishedRelationPathResolver {
     /**
      * 运行时按精确历史重新验证路径。任何历史缺失、指纹漂移或关系身份变化
      * 都会失败，禁止静默改用最新定义。
+     *
+     * @param path 路径，作为 {@code requireSteps} 的输入影响后续处理
+     * @return 校验后的已发布关系路径解析器结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PublishedRelationPath validate(PublishedRelationPath path) {
@@ -110,6 +113,14 @@ public class PublishedRelationPathResolver {
         return path;
     }
 
+    /**
+     * 编译跳；结果供调用方的后续步骤使用。
+     *
+     * @param source 待编译跳的原始输入，结果供调用方继续使用
+     * @param sourceHash 来源哈希，作为 {@code compileRelation} 的输入影响后续处理
+     * @param step 步骤，作为 {@code required} 的输入影响后续处理
+     * @return 编译后的跳结果，供调用方继续处理
+     */
     private CompiledHop compileHop(
             EntityPublishedSnapshot source,
             String sourceHash,
@@ -123,6 +134,14 @@ public class PublishedRelationPathResolver {
         };
     }
 
+    /**
+     * 编译关系；结果供调用方的后续步骤使用。
+     *
+     * @param source 待编译关系的原始输入，结果供调用方继续使用
+     * @param sourceHash 来源哈希，作为 {@code CompiledHop} 的输入影响后续处理
+     * @param relationCode 关系编码，后续用于编译关系时定位或关联目标
+     * @return 编译后的关系结果，供调用方继续处理
+     */
     private CompiledHop compileRelation(
             EntityPublishedSnapshot source,
             String sourceHash,
@@ -163,6 +182,14 @@ public class PublishedRelationPathResolver {
                 relationLinkField(childReference, source.getEntityId()));
     }
 
+    /**
+     * 编译引用；结果供调用方的后续步骤使用。
+     *
+     * @param source 待编译引用的原始输入，结果供调用方继续使用
+     * @param sourceHash 来源哈希，作为 {@code CompiledHop} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于编译引用时定位或关联目标
+     * @return 编译后的引用结果，供调用方继续处理
+     */
     private CompiledHop compileReference(
             EntityPublishedSnapshot source,
             String sourceHash,
@@ -187,6 +214,15 @@ public class PublishedRelationPathResolver {
                 null);
     }
 
+    /**
+     * 编译{@code reverse}；结果供调用方的后续步骤使用。
+     *
+     * @param source 待编译{@code reverse}的原始输入，结果供调用方继续使用
+     * @param sourceHash 来源哈希，作为 {@code CompiledHop} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于编译{@code reverse}时定位或关联目标
+     * @param targetEntityId 目标实体ID，后续用于编译{@code reverse}时定位或关联目标
+     * @return 编译后的{@code reverse}结果，供调用方继续处理
+     */
     private CompiledHop compileReverse(
             EntityPublishedSnapshot source,
             String sourceHash,
@@ -215,6 +251,13 @@ public class PublishedRelationPathResolver {
                 linkField(field));
     }
 
+    /**
+     * 校验跳身份；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验跳身份的原始输入，结果供调用方继续使用
+     * @param expected 预期，作为 {@code validateRelationHop} 的输入影响后续处理
+     * @param target 目标，作为 {@code validateRelationHop} 的输入影响后续处理
+     */
     private void validateHopIdentity(
             EntityPublishedSnapshot source,
             Hop expected,
@@ -231,6 +274,13 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 校验关系跳；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验关系跳的原始输入，结果供调用方继续使用
+     * @param expected 预期，作为 {@code hasText} 的输入影响后续处理
+     * @param target 目标，作为 {@code requireRelationChildField} 的输入影响后续处理
+     */
     private void validateRelationHop(
             EntityPublishedSnapshot source,
             Hop expected,
@@ -268,6 +318,13 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 校验引用跳；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验引用跳的原始输入，结果供调用方继续使用
+     * @param expected 预期，作为 {@code requireReferenceField} 的输入影响后续处理
+     * @param target 目标，供本方法校验引用跳时使用
+     */
     private void validateReferenceHop(
             EntityPublishedSnapshot source,
             Hop expected,
@@ -289,6 +346,13 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 校验{@code reverse}跳；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验{@code reverse}跳的原始输入，结果供调用方继续使用
+     * @param expected 预期，作为 {@code requireReferenceField} 的输入影响后续处理
+     * @param target 目标，作为 {@code requireReferenceField} 的输入影响后续处理
+     */
     private void validateReverseHop(
             EntityPublishedSnapshot source,
             Hop expected,
@@ -308,6 +372,15 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 校验并获取固定；不满足约束时阻止后续处理。
+     *
+     * @param historyId 历史ID，后续用于校验并获取固定时定位或关联目标
+     * @param schemaHash 结构哈希，供本方法校验并获取固定时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param label 标签，后续用于校验并获取固定时匹配或展示
+     * @return 校验并获取后的固定结果，供调用方继续处理
+     */
     private PinnedEntitySnapshot requirePinned(
             String historyId,
             String schemaHash,
@@ -324,6 +397,14 @@ public class PublishedRelationPathResolver {
         return pinned;
     }
 
+    /**
+     * 校验并获取引用字段；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code safe} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取引用字段时定位或关联目标
+     * @param label 标签，后续用于校验并获取引用字段时匹配或展示
+     * @return 校验并获取后的引用字段结果，供调用方继续处理
+     */
     private EntityField requireReferenceField(
             EntityPublishedSnapshot snapshot,
             String fieldCode,
@@ -354,6 +435,12 @@ public class PublishedRelationPathResolver {
      *
      * <p>普通单值字符串也可承载关系，使用同一兼容规则校验精确发布快照，
      * 不能放开引用字段自身的目标校验，也不能退回当前草稿字段。</p>
+     *
+     * @param target 目标，作为 {@code safe} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取关系子级字段时定位或关联目标
+     * @param expectedParentEntityId 预期父级实体ID，后续用于校验并获取关系子级字段时定位或关联目标
+     * @param label 标签，后续用于校验并获取关系子级字段时匹配或展示
+     * @return 校验并获取后的关系子级字段结果，供调用方继续处理
      */
     private EntityField requireRelationChildField(
             EntityPublishedSnapshot target,
@@ -375,13 +462,24 @@ public class PublishedRelationPathResolver {
         return field;
     }
 
-    /** 普通字段没有引用元数据，链接投影的目标必须取自已校验的关系来源实体。 */
+    /**
+     * 普通字段没有引用元数据，链接投影的目标必须取自已校验的关系来源实体。
+     *
+     * @param field 字段，作为 {@code LinkField} 的输入影响后续处理
+     * @param parentEntityId 父级实体ID，后续用于处理关系链接字段时定位或关联目标
+     * @return 处理后的关系链接字段结果，供调用方继续处理
+     */
     private LinkField relationLinkField(EntityField field, String parentEntityId) {
         return new LinkField(field.getFieldCode(), LinkValueType.SCALAR_REFERENCE,
                 storageColumn(field), parentEntityId);
     }
 
-    /** 从发布字段生成运行时唯一允许使用的最小投影描述。 */
+    /**
+     * 从发布字段生成运行时唯一允许使用的最小投影描述。
+     *
+     * @param field 字段，作为 {@code LinkField} 的输入影响后续处理
+     * @return 处理后的链接字段结果，供调用方继续处理
+     */
     private LinkField linkField(EntityField field) {
         boolean multiple = field.getFieldType()
                 == EntityField.FieldType.MULTI_REFERENCE;
@@ -394,6 +492,12 @@ public class PublishedRelationPathResolver {
                 field.getRefEntityId());
     }
 
+    /**
+     * 生成存储列文本，供后续匹配或展示。
+     *
+     * @param field 字段，作为 {@code required} 的输入影响后续处理
+     * @return 处理后的存储列文本，供调用方比较或展示
+     */
     private String storageColumn(EntityField field) {
         String configured = field.getDbColumnName();
         if (StringUtils.hasText(configured)) {
@@ -404,16 +508,35 @@ public class PublishedRelationPathResolver {
                 .toLowerCase(java.util.Locale.ROOT);
     }
 
+    /**
+     * 判断相同链接条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同链接时使用
+     * @param right 右侧，作为 {@code left.equals} 的输入影响后续处理
+     * @return 相同链接条件成立时为 true，否则为 false
+     */
     private boolean sameLink(LinkField left, LinkField right) {
         return left == null ? right == null : left.equals(right);
     }
 
+    /**
+     * 校验并获取关系快照；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，供本方法校验并获取关系快照时使用
+     */
     private void requireRelationSnapshot(EntityPublishedSnapshot snapshot) {
         if (!snapshot.isRelationsSnapshotAvailable()) {
             throw invalid("实体发布版本未冻结关系定义，请重新发布实体后再配置关联路径");
         }
     }
 
+    /**
+     * 校验并获取实体；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，供本方法校验并获取实体时使用
+     * @param expectedCode 预期编码，后续用于校验并获取实体时定位或关联目标
+     * @param message 消息，作为 {@code invalid} 的输入影响后续处理
+     */
     private void requireEntity(
             EntityPublishedSnapshot snapshot,
             String expectedCode,
@@ -423,6 +546,11 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 校验并获取步骤集合；不满足约束时阻止后续处理。
+     *
+     * @param steps 步骤集合，供本方法校验并获取步骤集合时使用
+     */
     private void requireSteps(List<?> steps) {
         int size = steps == null ? 0 : steps.size();
         if (size < 1 || size > MAX_PATH_DEPTH) {
@@ -431,6 +559,13 @@ public class PublishedRelationPathResolver {
         }
     }
 
+    /**
+     * 生成必填文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填的原始输入，结果供调用方继续使用
+     * @param message 消息，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的必填文本，供调用方比较或展示
+     */
     private String required(String value, String message) {
         if (!StringUtils.hasText(value)) {
             throw invalid(message);
@@ -438,18 +573,53 @@ public class PublishedRelationPathResolver {
         return value.trim();
     }
 
+    /**
+     * 判断相同条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同时使用
+     * @param right 右侧，作为 {@code left.equals} 的输入影响后续处理
+     * @return 相同条件成立时为 true，否则为 false
+     */
     private boolean same(String left, String right) {
         return left == null ? right == null : left.equals(right);
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 已发布关系路径解析器集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private IllegalArgumentException invalid(String message) {
         return new IllegalArgumentException(message);
     }
 
+    /**
+     * 封装{@code compiled}跳的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param source 待处理{@code compiled}跳的原始输入，结果供调用方继续使用
+     * @param sourceHash 来源哈希，保存在对象中供后续校验、查询或展示
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     * @param type 类型标识，决定后续{@code compiled}跳采用的处理分支
+     * @param code 业务编码，供后续匹配和引用
+     * @param sourceFieldCode 来源字段编码，后续用于处理{@code compiled}跳时定位或关联目标
+     * @param targetFieldCode 目标字段编码，后续用于处理{@code compiled}跳时定位或关联目标
+     * @param relationCode 关系编码，后续用于处理{@code compiled}跳时定位或关联目标
+     * @param ownershipType {@code ownership}类型标识，决定后续{@code compiled}跳采用的处理分支
+     * @param multiple {@code multiple}，保存在对象中供后续校验、查询或展示
+     * @param sourceLinkField 来源链接字段，保存在对象中供后续校验、查询或展示
+     * @param targetLinkField 目标链接字段，保存在对象中供后续校验、查询或展示
+     */
     private record CompiledHop(
             EntityPublishedSnapshot source,
             String sourceHash,
@@ -464,6 +634,12 @@ public class PublishedRelationPathResolver {
             LinkField sourceLinkField,
             LinkField targetLinkField) {
 
+        /**
+         * 处理跳，并将结果传给后续步骤。
+         *
+         * @param index 索引，作为 {@code Hop} 的输入影响后续处理
+         * @return 处理后的跳结果，供调用方继续处理
+         */
         private Hop hop(int index) {
             return new Hop(
                     index,

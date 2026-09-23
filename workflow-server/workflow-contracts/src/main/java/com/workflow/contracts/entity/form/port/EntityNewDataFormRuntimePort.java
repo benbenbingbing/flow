@@ -17,7 +17,13 @@ public interface EntityNewDataFormRuntimePort {
      */
     Optional<ResolvedForm> resolveForNewData(String entityCode);
 
-    /** 原生解析得到的精确表单发布坐标。 */
+    /**
+     * 原生解析得到的精确表单发布坐标。
+     *
+     * @param formId 表单 ID，后续用于定位已发布表单
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     */
     record ResolvedForm(
             String formId,
             String releaseId,

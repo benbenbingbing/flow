@@ -1,13 +1,13 @@
 package com.workflow.biz.project.action;
 
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -32,26 +32,52 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
 
     private final EntityMutationPort entityMutationPort;
 
+    /**
+     * 初始化创建系统资产处理器，保存构造参数供后续方法使用。
+     *
+     * @param entityMutationPort 实体变更端口依赖，保存到当前对象供后续业务方法调用
+     */
     public CreateSystemAssetHandler(
             EntityMutationPort entityMutationPort) {
         this.entityMutationPort = entityMutationPort;
     }
 
+    /**
+     * 列出支持的触发条件时机集合；结果供调用方的后续步骤使用。
+     *
+     * @return 创建系统资产集合，供调用方遍历或展示
+     */
     @Override
     public Set<String> supportedTriggerTimings() {
         return Set.of("PROCESS_COMPLETED");
     }
 
+    /**
+     * 列出支持的执行模式集合；结果供调用方的后续步骤使用。
+     *
+     * @return 创建系统资产集合，供调用方遍历或展示
+     */
     @Override
     public Set<String> supportedExecutionModes() {
         return Set.of("AFTER_COMMIT");
     }
 
+    /**
+     * 生成推荐执行模式文本，供后续匹配或展示。
+     *
+     * @return 处理后的推荐执行模式文本，供调用方比较或展示
+     */
     @Override
     public String recommendedExecutionMode() {
         return "AFTER_COMMIT";
     }
 
+    /**
+     * 执行创建系统资产，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续创建系统资产步骤传递身份、配置或状态
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public void execute(FlowActionContext context) {
         if (!SOURCE_ENTITY.equals(context.getEntityCode())
@@ -126,6 +152,14 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
     /**
      * 为审批生效的每一步实体写入生成独立幂等键，并传递流程动作参数。
      * EntityMutationContext 在构建时复制参数，避免后续写入与动作上下文共享可变 Map。
+     *
+     * @param flowContext 执行上下文，向后续变更命令步骤传递身份、配置或状态
+     * @param sequence 序列，供本方法处理变更命令时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param operationType 操作类型标识，决定后续变更命令采用的处理分支
+     * @param payload 载荷，后续用于处理变更命令并传递处理结果
+     * @return 处理后的变更命令结果，供调用方继续处理
      */
     private EntityMutationCommand mutationCommand(
             FlowActionContext flowContext,
@@ -172,6 +206,13 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
                 mutationContext);
     }
 
+    /**
+     * 构建资产数据；结果供后续流程传递或持久化。
+     *
+     * @param application 应用，作为 {@code target.put} 的输入影响后续处理
+     * @param source 待构建资产数据的原始输入，结果供调用方继续使用
+     * @return 资产数据键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildAssetData(
             EntityDataDTO application,
             Map<String, Object> source) {
@@ -196,6 +237,14 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
         return target;
     }
 
+    /**
+     * 复制创建系统资产；结果供后续流程传递或持久化。
+     *
+     * @param source 待复制创建系统资产的原始输入，结果供调用方继续使用
+     * @param target 目标，供本方法复制创建系统资产时使用
+     * @param sourceKey 来源键，后续用于授权校验、关联或幂等去重
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     */
     private void copy(
             Map<String, Object> source,
             Map<String, Object> target,
@@ -207,6 +256,13 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
         }
     }
 
+    /**
+     * 读取创建系统资产；查询结果供调用方展示或继续处理。
+     *
+     * @param source 待读取创建系统资产的原始输入，结果供调用方继续使用
+     * @param snakeCaseKey {@code snake}分支键，后续用于授权校验、关联或幂等去重
+     * @return 读取后的创建系统资产结果，供调用方继续处理
+     */
     private Object read(Map<String, Object> source, String snakeCaseKey) {
         if (source.containsKey(snakeCaseKey)) {
             return source.get(snakeCaseKey);
@@ -226,6 +282,12 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
         return source.get(camelCaseKey.toString());
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }

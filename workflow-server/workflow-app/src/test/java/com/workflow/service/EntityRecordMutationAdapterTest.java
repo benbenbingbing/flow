@@ -1,8 +1,8 @@
 package com.workflow.service;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
+import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.data.infrastructure.adapter.EntityRecordMutationAdapter;
 import com.workflow.entity.version.application.EntityMutationIsolationExecutor;

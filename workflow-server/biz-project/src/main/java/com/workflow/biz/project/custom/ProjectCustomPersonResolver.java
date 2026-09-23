@@ -1,10 +1,10 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -60,11 +60,22 @@ public class ProjectCustomPersonResolver
                                             "title", "无配置时回退发起人"))),
                     false);
 
+    /**
+     * 处理描述，并将结果传给后续步骤。
+     *
+     * @return 处理后的描述结果，供调用方继续处理
+     */
     @Override
     public PersonResolverDescriptor descriptor() {
         return DESCRIPTOR;
     }
 
+    /**
+     * 解析项目自定义人员解析器；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析项目自定义人员解析器
+     * @return 解析后的项目自定义人员解析器结果，供调用方继续处理
+     */
     @Override
     public PersonResolveResult resolve(
             PersonResolveRequest request) {

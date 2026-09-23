@@ -108,7 +108,7 @@ class MySqlIdempotentInsertDatabaseTest {
                 } else url += (url.contains("?") ? "&" : "?") + "useAffectedRows=" + affected;
                 var source = new com.workflow.core.database.InitializedDriverDataSource(url,
                         System.getenv("FLOW_MYSQL_TEST_USER"), System.getenv("FLOW_MYSQL_TEST_PASSWORD"), null,
-                        com.workflow.integration.database.api.DatabaseJdbcProfiles.connectionInitSql(DatabaseVendor.MYSQL));
+                        com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles.connectionInitSql(DatabaseVendor.MYSQL));
                 var insert = new JdbcIdempotentInsert(new JdbcTemplate(source), DatabaseDialects.insert(DatabaseVendor.MYSQL));
                 assertTrue(insert.insertIfAbsent(table, Map.of("id", "row-" + affected)));
                 assertFalse(insert.insertIfAbsent(table, Map.of("id", "row-" + affected)));

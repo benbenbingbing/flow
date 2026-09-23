@@ -1,11 +1,11 @@
 package com.workflow.entity.list.infrastructure.adapter;
 
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
@@ -38,6 +38,14 @@ public class EntityEmbedNativeListRuntimeAdapter
     private final UiConfigReleaseService releaseService;
     private final UiReleaseResolutionTokenService resolutionTokenService;
 
+    /**
+     * 初始化实体嵌入式原生列表运行时适配器，保存构造参数供后续方法使用。
+     *
+     * @param listConfigMapper 列表配置映射器依赖，保存到当前对象供后续业务方法调用
+     * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
+     * @param releaseService 发布版本服务依赖，保存到当前对象供后续业务方法调用
+     * @param resolutionTokenService 解析令牌服务依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityEmbedNativeListRuntimeAdapter(
             EntityListConfigMapper listConfigMapper,
             EntityDefinitionMapper definitionMapper,
@@ -51,6 +59,9 @@ public class EntityEmbedNativeListRuntimeAdapter
 
     /**
      * 重新验证 Release 属于指定实体列表，然后签发不可延长的令牌。
+     *
+     * @param target 目标，作为 {@code hasText} 的输入影响后续处理
+     * @return 处理后的签发发布版本解析令牌文本，供调用方比较或展示
      */
     @Override
     public String issueReleaseResolutionToken(Target target) {
@@ -108,7 +119,12 @@ public class EntityEmbedNativeListRuntimeAdapter
         return token;
     }
 
-    /** 在每次委托请求入口重新比对令牌与当前 Session 固定坐标。 */
+    /**
+     * 在每次委托请求入口重新比对令牌与当前 Session 固定坐标。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @param target 目标，作为 {@code findByEntityCodeAndListKey} 的输入影响后续处理
+     */
     @Override
     public void verifyReleaseResolutionToken(String token, Target target) {
         if (target == null) {
@@ -141,6 +157,9 @@ public class EntityEmbedNativeListRuntimeAdapter
      *
      * <p>完整闭包只在服务端方法调用中传递，不进入令牌；验证完成后令牌仅保存
      * version/hash 短引用。</p>
+     *
+     * @param target 目标，作为 {@code coordinateKey} 的输入影响后续处理
+     * @param rootListConfigId 根列表配置ID，后续用于校验依赖闭包时定位或关联目标
      */
     private void validateDependencyClosure(
             Target target,
@@ -204,6 +223,12 @@ public class EntityEmbedNativeListRuntimeAdapter
         }
     }
 
+    /**
+     * 校验列表坐标；不满足约束时阻止后续处理。
+     *
+     * @param coordinate 坐标，作为 {@code listConfigMapper.findByEntityCodeAndListKey} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateListCoordinate(ListCoordinate coordinate) {
         if (coordinate == null
                 || !StringUtils.hasText(coordinate.entityCode())
@@ -233,6 +258,13 @@ public class EntityEmbedNativeListRuntimeAdapter
         }
     }
 
+    /**
+     * 校验默认表单；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param form 表单，作为 {@code resolveRuntimeFormRelease} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateDefaultForm(
             String entityCode,
             FormCoordinate form) {
@@ -266,6 +298,13 @@ public class EntityEmbedNativeListRuntimeAdapter
         }
     }
 
+    /**
+     * 生成坐标键文本，供后续匹配或展示。
+     *
+     * @param coordinate 坐标，供本方法处理坐标键时使用
+     * @return 处理后的坐标键文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static String coordinateKey(ListCoordinate coordinate) {
         if (coordinate == null) {
             throw new IllegalArgumentException("Embed LIST 依赖坐标为空");

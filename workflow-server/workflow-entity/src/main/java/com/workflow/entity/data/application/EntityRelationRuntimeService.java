@@ -63,6 +63,21 @@ public class EntityRelationRuntimeService {
     private final EntityPublishedRelationService publishedRelationService;
     private final EntityFormUniqueClaimService formUniqueClaimService;
 
+    /**
+     * 初始化实体关系运行时服务，保存构造参数供后续方法使用。
+     *
+     * @param dynamicMapper 动态映射器依赖，保存到当前对象供后续业务方法调用
+     * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
+     * @param publishHistoryMapper 发布历史映射器依赖，保存到当前对象供后续业务方法调用
+     * @param fieldMapper 字段映射器依赖，保存到当前对象供后续业务方法调用
+     * @param relationMapper 关系映射器依赖，保存到当前对象供后续业务方法调用
+     * @param dynamicTableService 动态表服务依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param recordMapper 记录映射器依赖，保存到当前对象供后续业务方法调用
+     * @param codeGeneratorService 编码生成器服务依赖，保存到当前对象供后续业务方法调用
+     * @param publishedRelationService 已发布关系服务依赖，保存到当前对象供后续业务方法调用
+     * @param formUniqueClaimService 表单唯一认领服务依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public EntityRelationRuntimeService(
             EntityDataDynamicMapper dynamicMapper,
@@ -89,7 +104,20 @@ public class EntityRelationRuntimeService {
         this.formUniqueClaimService = formUniqueClaimService;
     }
 
-    /** 兼容显式装配；生产容器使用包含子表单唯一终检服务的主构造器。 */
+    /**
+     * 兼容显式装配；生产容器使用包含子表单唯一终检服务的主构造器。
+     *
+     * @param dynamicMapper 动态映射器，保存在对象中供后续校验、查询或展示
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param publishHistoryMapper 发布历史映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param relationMapper 关系映射器，保存在对象中供后续校验、查询或展示
+     * @param dynamicTableService 动态表服务，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param recordMapper 记录映射器，保存在对象中供后续校验、查询或展示
+     * @param codeGeneratorService 编码生成器服务，保存在对象中供后续校验、查询或展示
+     * @param publishedRelationService 已发布关系服务，保存在对象中供后续校验、查询或展示
+     */
     public EntityRelationRuntimeService(
             EntityDataDynamicMapper dynamicMapper,
             EntityDefinitionMapper definitionMapper,
@@ -115,7 +143,19 @@ public class EntityRelationRuntimeService {
                 null);
     }
 
-    /** 兼容显式装配；生产容器使用包含发布历史 Mapper 的主构造器。 */
+    /**
+     * 兼容显式装配；生产容器使用包含发布历史 Mapper 的主构造器。
+     *
+     * @param dynamicMapper 动态映射器，保存在对象中供后续校验、查询或展示
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param relationMapper 关系映射器，保存在对象中供后续校验、查询或展示
+     * @param dynamicTableService 动态表服务，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param recordMapper 记录映射器，保存在对象中供后续校验、查询或展示
+     * @param codeGeneratorService 编码生成器服务，保存在对象中供后续校验、查询或展示
+     * @param publishedRelationService 已发布关系服务，保存在对象中供后续校验、查询或展示
+     */
     public EntityRelationRuntimeService(
             EntityDataDynamicMapper dynamicMapper,
             EntityDefinitionMapper definitionMapper,
@@ -142,6 +182,15 @@ public class EntityRelationRuntimeService {
 
     /**
      * 旧单元测试和嵌入式集成的兼容构造器；生产 Spring 容器使用带发布关系解析器的构造器。
+     *
+     * @param dynamicMapper 动态映射器，保存在对象中供后续校验、查询或展示
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param relationMapper 关系映射器，保存在对象中供后续校验、查询或展示
+     * @param dynamicTableService 动态表服务，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param recordMapper 记录映射器，保存在对象中供后续校验、查询或展示
+     * @param codeGeneratorService 编码生成器服务，保存在对象中供后续校验、查询或展示
      */
     public EntityRelationRuntimeService(
             EntityDataDynamicMapper dynamicMapper,
@@ -401,6 +450,11 @@ public class EntityRelationRuntimeService {
     /**
      * 使用统一变更事务生成的 out-of-band 父计划递归写关系数据。
      * 缺失/漂移的 Marker 或 token 会在任何子业务行锁/写入前失败。
+     *
+     * @param parentId 父级ID，后续用于保存关系数据时定位或关联目标
+     * @param relations 关系集合，供本方法保存关系数据时使用
+     * @param relationData 关系数据，供本方法保存关系数据时使用
+     * @param prepared 已准备，供本方法保存关系数据时使用
      */
     @Transactional(
             propagation = Propagation.MANDATORY,
@@ -424,6 +478,7 @@ public class EntityRelationRuntimeService {
      * 一对一关系填充单个对象，一对多关系填充列表。
      *
      * @param dto 实体数据 DTO
+     * @return 符合条件的实体关系结果，供调用方继续处理
      */
     public void loadRelationData(EntityDataDTO dto) {
         if (dto == null || dto.getId() == null || dto.getEntityCode() == null) {
@@ -470,6 +525,18 @@ public class EntityRelationRuntimeService {
                 new HashSet<>());
     }
 
+    /**
+     * 保存关系数据；后续读取或执行将使用更新后的状态。
+     *
+     * @param parentId 父级ID，后续用于保存关系数据时定位或关联目标
+     * @param relations 关系集合，供本方法保存关系数据时使用
+     * @param relationData 关系数据，作为 {@code formUniqueClaimService.verifyRelationPrepared} 的输入影响后续处理
+     * @param prepared 已准备，作为 {@code formUniqueClaimService.verifyRelationPrepared} 的输入影响后续处理
+     * @param depth 深度，供本方法保存关系数据时使用
+     * @param path 路径，供本方法保存关系数据时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void saveRelationData(
             String parentId,
             List<EntityRelation> relations,
@@ -690,6 +757,17 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 加载关系数据；查询结果供调用方展示或继续处理。
+     *
+     * @param parentDefinition 父级定义，作为 {@code loadRelations} 的输入影响后续处理
+     * @param parentId 父级ID，后续用于加载关系数据时定位或关联目标
+     * @param target 目标，供本方法加载关系数据时使用
+     * @param depth 深度，供本方法加载关系数据时使用
+     * @param path 路径，供本方法加载关系数据时使用
+     * @return 符合条件的实体关系结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void loadRelationData(EntityDefinition parentDefinition, String parentId, Map<String, Object> target,
                                   int depth, Set<String> path) {
         if (parentDefinition == null || !StringUtils.hasText(parentId) || target == null || depth > MAX_RELATION_DEPTH) {
@@ -745,6 +823,16 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 处理{@code cascade}删除关系集合，并将结果传给后续步骤。
+     *
+     * @param parentDefinition 父级定义，供本方法处理{@code cascade}删除关系集合时使用
+     * @param parentId 父级ID，后续用于处理{@code cascade}删除关系集合时定位或关联目标
+     * @param physical 物理，供本方法处理{@code cascade}删除关系集合时使用
+     * @param guardedRelations {@code guarded}关系集合，供本方法处理{@code cascade}删除关系集合时使用
+     * @param depth 深度，供本方法处理{@code cascade}删除关系集合时使用
+     * @param path 路径，供本方法处理{@code cascade}删除关系集合时使用
+     */
     private void cascadeDeleteRelations(
             EntityDefinition parentDefinition,
             String parentId,
@@ -807,6 +895,12 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 加载子级实体；查询结果供调用方展示或继续处理。
+     *
+     * @param relation 关系，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @return 符合条件的实体定义结果，供调用方继续处理
+     */
     private EntityDefinition loadChildEntity(EntityRelation relation) {
         EntityDefinition childDefinition = null;
         if (StringUtils.hasText(relation.getChildEntityId())) {
@@ -821,6 +915,12 @@ public class EntityRelationRuntimeService {
         return childDefinition;
     }
 
+    /**
+     * 加载实体字段；查询结果供调用方展示或继续处理。
+     *
+     * @param definition 定义，作为 {@code fieldMapper.findByEntityId} 的输入影响后续处理
+     * @return 实体字段集合，供调用方遍历或展示
+     */
     private List<EntityField> loadEntityFields(EntityDefinition definition) {
         if (definition == null || definition.getId() == null) {
             return List.of();
@@ -829,12 +929,25 @@ public class EntityRelationRuntimeService {
         return fields != null ? fields : List.of();
     }
 
+    /**
+     * 确保实体表；不满足约束时阻止后续处理。
+     *
+     * @param definition 定义，作为 {@code dynamicTableService.createEntityTable} 的输入影响后续处理
+     */
     private void ensureEntityTable(EntityDefinition definition) {
         if (!dynamicTableService.tableExists(definition.getEntityCode())) {
             dynamicTableService.createEntityTable(definition);
         }
     }
 
+    /**
+     * 转换为关系行；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为关系行的原始输入，结果供调用方继续使用
+     * @param relationType 关系类型标识，决定后续关系行采用的处理分支
+     * @return 实体关系集合，供调用方遍历或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private List<Map<String, Object>> toRelationRows(Object value, EntityRelation.RelationType relationType) {
         if (value == null) {
             return List.of();
@@ -863,6 +976,14 @@ public class EntityRelationRuntimeService {
         return rows;
     }
 
+    /**
+     * 按引用查询实体关系；结果供后续展示或处理。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param refFieldCode 引用字段编码，后续用于查询行引用时定位或关联目标
+     * @param parentId 父级ID，后续用于查询行引用时定位或关联目标
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> findRowsByReference(String tableName, String refFieldCode, String parentId) {
         Map<String, Object> condition = new HashMap<>();
         condition.put(refFieldCode, parentId);
@@ -876,6 +997,12 @@ public class EntityRelationRuntimeService {
      *
      * <p>关系查询和逐行锁之间仍可能发生直接写入，因此锁后再次核对承载外键；
      * 发现归属改变即终止整个事务，不使用过期快照继续覆盖。</p>
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param refFieldCode 引用字段编码，后续用于锁定与{@code collect}{@code owned}子级ID 集合时定位或关联目标
+     * @param parentId 父级ID，后续用于锁定与{@code collect}{@code owned}子级ID 集合时定位或关联目标
+     * @param existingRows 已有行，供本方法锁定与{@code collect}{@code owned}子级ID 集合时使用
+     * @return 实体关系集合，供调用方遍历或展示
      */
     private Set<String> lockAndCollectOwnedChildIds(
             String tableName,
@@ -904,7 +1031,12 @@ public class EntityRelationRuntimeService {
         return Set.copyOf(result);
     }
 
-    /** 返回当前已发布关系中的同实体父引用，所有权类型不影响树完整性约束。 */
+    /**
+     * 返回当前已发布关系中的同实体父引用，所有权类型不影响树完整性约束。
+     *
+     * @param definition 定义，作为 {@code loadRelations} 的输入影响后续处理
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     private List<EntityRelation> selfRelations(
             EntityDefinition definition) {
         if (definition == null) {
@@ -919,6 +1051,13 @@ public class EntityRelationRuntimeService {
                 .toList();
     }
 
+    /**
+     * 判断是否相同实体；判断结果决定调用方的后续分支。
+     *
+     * @param definition 定义，供本方法判断是否相同实体时使用
+     * @param relation 关系，供本方法判断是否相同实体时使用
+     * @return 相同实体条件成立时为 true，否则为 false
+     */
     private boolean isSameEntity(
             EntityDefinition definition,
             EntityRelation relation) {
@@ -936,6 +1075,10 @@ public class EntityRelationRuntimeService {
 
     /**
      * 运行时再次确认发布关系的承载字段，旧快照配置不完整时也必须关闭写入。
+     *
+     * @param definition 定义，作为 {@code fieldMapper.findByEntityIdAndFieldCode} 的输入影响后续处理
+     * @param relation 关系，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 校验并获取后的{@code self}引用字段结果，供调用方继续处理
      */
     private EntityField requireSelfReferenceField(
             EntityDefinition definition,
@@ -959,6 +1102,15 @@ public class EntityRelationRuntimeService {
         return field;
     }
 
+    /**
+     * 处理{@code proposed}引用值，并将结果传给后续步骤。
+     *
+     * @param storageData 存储数据，供本方法处理{@code proposed}引用值时使用
+     * @param currentRecord 当前记录，供本方法处理{@code proposed}引用值时使用
+     * @param fieldCode 字段编码，后续用于处理{@code proposed}引用值时定位或关联目标
+     * @param columnName 列名称，后续用于处理{@code proposed}引用值时匹配或展示
+     * @return 处理后的{@code proposed}引用值结果，供调用方继续处理
+     */
     private Object proposedReferenceValue(
             Map<String, Object> storageData,
             Map<String, Object> currentRecord,
@@ -981,6 +1133,14 @@ public class EntityRelationRuntimeService {
         return currentRecord.get(fieldCode);
     }
 
+    /**
+     * 规范化引用ID；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化引用ID的原始输入，结果供调用方继续使用
+     * @param fieldCode 字段编码，后续用于规范化引用ID时定位或关联目标
+     * @return 规范化后的引用ID文本，供调用方比较或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private String normalizeReferenceId(
             Object value,
             String fieldCode) {
@@ -1000,6 +1160,12 @@ public class EntityRelationRuntimeService {
 
     /**
      * 从拟设置的直接父级向上逐级锁定并读取，确保校验依据与后续更新处于同一事务。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param proposedParentId {@code proposed}父级ID，后续用于校验{@code ancestor}链时定位或关联目标
+     * @param fieldCode 字段编码，后续用于校验{@code ancestor}链时定位或关联目标
+     * @param columnName 列名称，后续用于校验{@code ancestor}链时匹配或展示
      */
     private void validateAncestorChain(
             String tableName,
@@ -1049,6 +1215,14 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 删除缺失行；后续读取或执行将使用更新后的状态。
+     *
+     * @param childEntityCode 子级实体编码，后续用于删除缺失行时定位或关联目标
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param existingRows 已有行，供本方法删除缺失行时使用
+     * @param activeIds 活动ID 集合，供本方法删除缺失行时使用
+     */
     private void deleteMissingRows(
             String childEntityCode,
             String tableName,
@@ -1071,6 +1245,13 @@ public class EntityRelationRuntimeService {
      *
      * <p>无可信表单标记时不解析任何规则，只清理该子记录曾经留下的
      * 旧占位。终检异常会继续向外抛出，由父聚合写事务回滚子行及占位。</p>
+     *
+     * @param childDefinition 子级定义，作为 {@code formUniqueClaimService.releaseRecord} 的输入影响后续处理
+     * @param childTableName 子级表名称，后续用于对账{@code written}子级时匹配或展示
+     * @param childId 子级ID，后续用于对账{@code written}子级时定位或关联目标
+     * @param projectedRecord {@code projected}记录，供本方法对账{@code written}子级时使用
+     * @param formReferences 表单引用，供本方法对账{@code written}子级时使用
+     * @param prepared 已准备，供本方法对账{@code written}子级时使用
      */
     private void reconcileWrittenChild(
             EntityDefinition childDefinition,
@@ -1109,6 +1290,17 @@ public class EntityRelationRuntimeService {
                 prepared);
     }
 
+    /**
+     * 封装待处理子级写入的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param childId 子级ID，后续用于处理待处理子级写入时定位或关联目标
+     * @param newChild 新子级，保存在对象中供后续校验、查询或展示
+     * @param projectedRecord {@code projected}记录，保存在对象中供后续校验、查询或展示
+     * @param childData 子级数据，保存在对象中供后续校验、查询或展示
+     * @param childRelationData 子级关系数据，保存在对象中供后续校验、查询或展示
+     * @param formReferences 表单引用，保存在对象中供后续校验、查询或展示
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     */
     private record PendingChildWrite(
             String childId,
             boolean newChild,
@@ -1119,7 +1311,12 @@ public class EntityRelationRuntimeService {
             PreparedUniqueClaims prepared) {
     }
 
-    /** 关系级联或集合替换删除子行时，同事务释放它的历史占位。 */
+    /**
+     * 关系级联或集合替换删除子行时，同事务释放它的历史占位。
+     *
+     * @param childEntityCode 子级实体编码，后续用于处理发布版本子级声明集合时定位或关联目标
+     * @param childId 子级ID，后续用于处理发布版本子级声明集合时定位或关联目标
+     */
     private void releaseChildClaims(
             String childEntityCode,
             String childId) {
@@ -1130,11 +1327,22 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 处理空关系值，并将结果传给后续步骤。
+     *
+     * @param relation 关系，供本方法处理空关系值时使用
+     * @return 处理后的空关系值结果，供调用方继续处理
+     */
     private Object emptyRelationValue(EntityRelation relation) {
         return relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE ? null : List.of();
     }
 
-    /** 聚合数据键：V2 dataKey 优先，旧关系回退承载字段，最后回退关系编码。 */
+    /**
+     * 聚合数据键：V2 dataKey 优先，旧关系回退承载字段，最后回退关系编码。
+     *
+     * @param relation 关系，供本方法处理有效数据键时使用
+     * @return 处理后的有效数据键文本，供调用方比较或展示
+     */
     public String effectiveDataKey(EntityRelation relation) {
         if (relation == null) {
             return null;
@@ -1148,12 +1356,25 @@ public class EntityRelationRuntimeService {
         return relation.getRelationCode();
     }
 
+    /**
+     * 转换为子级表单行；输出作为后续校验或处理的输入。
+     *
+     * @param row 行，供本方法转换为子级表单行时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 子级表单行键值结果，供调用方继续处理
+     */
     private Map<String, Object> toChildFormRow(Map<String, Object> row, String entityCode) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         return toChildFormRow(row, definition);
     }
 
-    /** 将存储列视角的动态行还原为表单字段编码视角。 */
+    /**
+     * 将存储列视角的动态行还原为表单字段编码视角。
+     *
+     * @param row 行，作为 {@code recordMapper.toDto} 的输入影响后续处理
+     * @param definition 定义，供本方法转换为子级表单行时使用
+     * @return 子级表单行键值结果，供调用方继续处理
+     */
     private Map<String, Object> toChildFormRow(
             Map<String, Object> row,
             EntityDefinition definition) {
@@ -1180,12 +1401,24 @@ public class EntityRelationRuntimeService {
         return data;
     }
 
+    /**
+     * 写入条件存在；后续读取或执行将使用更新后的状态。
+     *
+     * @param map 映射，供本方法写入条件存在时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待写入条件存在的原始输入，结果供调用方继续使用
+     */
     private void putIfPresent(Map<String, Object> map, String key, Object value) {
         if (value != null) {
             map.put(key, value);
         }
     }
 
+    /**
+     * 规范化JSON值集合；输出作为后续校验或处理的输入。
+     *
+     * @param data 数据，后续用于规范化JSON值集合并传递处理结果
+     */
     private void normalizeJsonValues(Map<String, Object> data) {
         for (Map.Entry<String, Object> entry : data.entrySet()) {
             Object value = entry.getValue();
@@ -1203,10 +1436,21 @@ public class EntityRelationRuntimeService {
         }
     }
 
+    /**
+     * 生成字符串值文本，供后续匹配或展示。
+     *
+     * @param value 待处理字符串值的原始输入，结果供调用方继续使用
+     * @return 处理后的字符串值文本，供调用方比较或展示
+     */
     private String stringValue(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
 
+    /**
+     * 生成ID；结果供调用方的后续步骤使用。
+     *
+     * @return 生成后的ID文本，供调用方比较或展示
+     */
     private String generateId() {
         return UUID.randomUUID().toString().replace("-", "");
     }

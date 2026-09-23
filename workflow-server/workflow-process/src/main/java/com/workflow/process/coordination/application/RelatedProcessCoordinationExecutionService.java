@@ -2,10 +2,10 @@ package com.workflow.process.coordination.application;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -114,6 +114,16 @@ public class RelatedProcessCoordinationExecutionService {
         };
     }
 
+    /**
+     * 处理路由，并将结果传给后续步骤。
+     *
+     * @param outboxEventId 待发送事件事件ID，后续用于处理路由时定位或关联目标
+     * @param eventKey 事件键，后续用于授权校验、关联或幂等去重
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param original 原始，供本方法处理路由时使用
+     * @param current 当前，作为 {@code runtimeService.getVariable} 的输入影响后续处理
+     * @return 处理后的路由结果，供调用方继续处理
+     */
     private ExecutionResult route(
             String outboxEventId,
             String eventKey,
@@ -174,6 +184,16 @@ public class RelatedProcessCoordinationExecutionService {
                 alreadyApplied ? "IDEMPOTENT_RECOVERY" : "EXECUTED");
     }
 
+    /**
+     * 终止关联流程协同执行；后续读取或执行将使用更新后的状态。
+     *
+     * @param outboxEventId 待发送事件事件ID，后续用于终止关联流程协同执行时定位或关联目标
+     * @param eventKey 事件键，后续用于授权校验、关联或幂等去重
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param original 原始，供本方法终止关联流程协同执行时使用
+     * @param current 当前，作为 {@code writeLog} 的输入影响后续处理
+     * @return 终止后的关联流程协同执行结果，供调用方继续处理
+     */
     private ExecutionResult terminate(
             String outboxEventId,
             String eventKey,
@@ -236,6 +256,13 @@ public class RelatedProcessCoordinationExecutionService {
                 "EXECUTED");
     }
 
+    /**
+     * 校验并获取当前目标；不满足约束时阻止后续处理。
+     *
+     * @param currentTargets 当前目标集合，供本方法校验并获取当前目标时使用
+     * @param expected 预期，供本方法校验并获取当前目标时使用
+     * @return 校验并获取后的当前目标结果，供调用方继续处理
+     */
     private TargetImpact requireCurrentTarget(
             List<TargetImpact> currentTargets,
             TargetImpact expected) {
@@ -247,6 +274,12 @@ public class RelatedProcessCoordinationExecutionService {
                         "预览中的目标记录已不在当前关系图中"));
     }
 
+    /**
+     * 校验并获取固定目标；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验并获取固定目标时使用
+     * @param current 当前，供本方法校验并获取固定目标时使用
+     */
     private void requirePinnedTarget(
             TargetImpact expected,
             TargetImpact current) {
@@ -267,6 +300,16 @@ public class RelatedProcessCoordinationExecutionService {
         }
     }
 
+    /**
+     * 写入日志；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param before 之前，作为 {@code log.setOldValue} 的输入影响后续处理
+     * @param after 之后，作为 {@code newValue.put} 的输入影响后续处理
+     * @param operationType 操作类型标识，决定后续日志采用的处理分支
+     */
     private void writeLog(
             String id,
             String processInstanceId,
@@ -304,6 +347,13 @@ public class RelatedProcessCoordinationExecutionService {
         operationLogMapper.insert(log);
     }
 
+    /**
+     * 生成JSON文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -314,6 +364,14 @@ public class RelatedProcessCoordinationExecutionService {
         }
     }
 
+    /**
+     * 校验并获取事件；不满足约束时阻止后续处理。
+     *
+     * @param outboxEventId 待发送事件事件ID，后续用于校验并获取事件时定位或关联目标
+     * @param eventKey 事件键，后续用于授权校验、关联或幂等去重
+     * @param event 事件，供本方法校验并获取事件时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireEvent(
             String outboxEventId,
             String eventKey,
@@ -334,6 +392,9 @@ public class RelatedProcessCoordinationExecutionService {
      *
      * <p>关系与权限会在随后重查，这里先防止损坏或人工修改的
      * Outbox 载荷把另一条目标或命令塞进已有计划。</p>
+     *
+     * @param eventKey 事件键，后续用于授权校验、关联或幂等去重
+     * @param event 事件，供本方法校验并获取快照{@code consistency}时使用
      */
     private void requireSnapshotConsistency(
             String eventKey,
@@ -351,17 +412,38 @@ public class RelatedProcessCoordinationExecutionService {
         }
     }
 
+    /**
+     * 判断相同条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同时使用
+     * @param right 右侧，作为 {@code left.equals} 的输入影响后续处理
+     * @return 相同条件成立时为 true，否则为 false
+     */
     private boolean same(Object left, Object right) {
         return left == null ? right == null : left.equals(right);
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private BusinessConflictException conflict(
             String code,
             String message) {
         return new BusinessConflictException(code, message);
     }
 
-    /** 写操作的幂等执行结果。 */
+    /**
+     * 写操作的幂等执行结果。
+     *
+     * @param eventKey 事件键，后续用于授权校验、关联或幂等去重
+     * @param operation 操作标识，决定后续执行结果采用的处理分支
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param status 状态标识，决定后续执行结果采用的处理分支
+     */
     public record ExecutionResult(
             String eventKey,
             Operation operation,

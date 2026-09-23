@@ -24,6 +24,9 @@ public class EntityPublishHistoryController {
 
     /**
      * 获取实体的版本历史列表
+     *
+     * @param entityId 实体ID，后续用于读取版本历史时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     @GetMapping("/entity/{entityId}")
     public ApiResponse<List<EntityPublishHistoryDTO>> getVersionHistory(@PathVariable String entityId) {
@@ -49,6 +52,9 @@ public class EntityPublishHistoryController {
 
     /**
      * 获取实体的最新版本
+     *
+     * @param entityId 实体ID，后续用于读取最新版本时定位或关联目标
+     * @return 符合条件的API{@code response<entity}发布历史{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/entity/{entityId}/latest")
     public ApiResponse<EntityPublishHistoryDTO> getLatestVersion(@PathVariable String entityId) {
@@ -57,6 +63,9 @@ public class EntityPublishHistoryController {
 
     /**
      * 获取版本详情
+     *
+     * @param historyId 历史ID，后续用于读取版本详情时定位或关联目标
+     * @return 符合条件的API{@code response<entity}发布历史{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/{historyId}")
     public ApiResponse<EntityPublishHistoryDTO> getVersionDetail(@PathVariable String historyId) {
@@ -65,6 +74,10 @@ public class EntityPublishHistoryController {
 
     /**
      * 比较两个版本
+     *
+     * @param version1 {@code version1}，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @param version2 {@code version2}，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 比较后的{@code versions}结果，供调用方继续处理
      */
     @GetMapping("/compare")
     public ApiResponse<String> compareVersions(

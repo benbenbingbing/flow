@@ -24,12 +24,25 @@ public class EntityRelationController {
 
     private final EntityRelationDefinitionService relationService;
 
+    /**
+     * 列出实体关系；查询结果供调用方展示或继续处理。
+     *
+     * @param entityId 实体ID，后续用于列出实体关系时定位或关联目标
+     * @return 符合条件的实体关系结果，供调用方继续处理
+     */
     @GetMapping
     public ApiResponse<List<EntityRelationDTO>> list(
             @PathVariable String entityId) {
         return ApiResponse.success(relationService.list(entityId));
     }
 
+    /**
+     * 读取API{@code response<entity}关系{@code dto>}；结果供调用方展示或继续处理。
+     *
+     * @param entityId 实体ID，后续用于读取实体关系时定位或关联目标
+     * @param relationId 关系ID，后续用于读取实体关系时定位或关联目标
+     * @return 符合条件的API{@code response<entity}关系{@code dto>}结果，供调用方继续处理
+     */
     @GetMapping("/{relationId}")
     public ApiResponse<EntityRelationDTO> get(
             @PathVariable String entityId,
@@ -38,12 +51,24 @@ public class EntityRelationController {
                 relationService.get(entityId, relationId));
     }
 
-    /** 表单和列表共用关系目录，包含反向查看所属记录的入口。 */
+    /**
+     * 表单和列表共用关系目录，包含反向查看所属记录的入口。
+     *
+     * @param entityId 实体ID，后续用于处理可用时定位或关联目标
+     * @return 处理后的可用结果，供调用方继续处理
+     */
     @GetMapping("/available")
     public ApiResponse<List<EntityRelationDTO>> available(@PathVariable String entityId) {
         return ApiResponse.success(relationService.available(entityId));
     }
 
+    /**
+     * 创建实体关系；结果供后续流程传递或持久化。
+     *
+     * @param entityId 实体ID，后续用于创建实体关系时定位或关联目标
+     * @param request 本次请求，后续经校验后用于创建实体关系
+     * @return 创建后的实体关系结果，供调用方继续处理
+     */
     @PostMapping
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityRelationDTO> create(
@@ -53,6 +78,14 @@ public class EntityRelationController {
                 relationService.create(entityId, request));
     }
 
+    /**
+     * 更新实体关系；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于更新实体关系时定位或关联目标
+     * @param relationId 关系ID，后续用于更新实体关系时定位或关联目标
+     * @param request 本次请求，后续经校验后用于更新实体关系
+     * @return 更新后的实体关系结果，供调用方继续处理
+     */
     @PostMapping("/{relationId}")
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<EntityRelationDTO> update(
@@ -63,6 +96,13 @@ public class EntityRelationController {
                 relationService.update(entityId, relationId, request));
     }
 
+    /**
+     * 删除实体关系；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于删除实体关系时定位或关联目标
+     * @param relationId 关系ID，后续用于删除实体关系时定位或关联目标
+     * @return 删除后的实体关系结果，供调用方继续处理
+     */
     @PostMapping("/{relationId}/delete")
     @RequiresPermission("entity:definition:manage")
     public ApiResponse<Void> delete(

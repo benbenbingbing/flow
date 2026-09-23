@@ -20,15 +20,15 @@ import com.workflow.entity.ui.application.UiViewCompositionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
 import com.workflow.contracts.entity.ui.port.UiHotfixProcessImpactPort;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -1466,7 +1466,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetHandler.class));
+                mock(MigrationAssetPort.class));
         attachViewCompositionService(service);
 
         Map<String, Object> legacySnapshot = objectMapper.convertValue(
@@ -1967,7 +1967,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetHandler.class));
+                mock(MigrationAssetPort.class));
         attachViewCompositionService(service);
 
         UiConfigDiffDTO diff = service.diff(
@@ -3379,7 +3379,7 @@ class UiConfigReleaseServiceTest {
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
-                mock(MigrationAssetHandler.class));
+                mock(MigrationAssetPort.class));
         UiViewCompositionService viewCompositionService =
                 attachViewCompositionService(service);
         UiHotfixGovernanceService governanceService =

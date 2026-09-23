@@ -4,16 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.UiActionCommandPlan;
-import com.workflow.contracts.ui.UiActionMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
+import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
@@ -136,18 +136,14 @@ class UiViewCompositionActionServiceTest {
                 org.mockito.ArgumentMatchers.anyString()))
                 .thenAnswer(invocation ->
                         new UiViewCompositionActionReceiptService.AcquireResult(
-                                new com.workflow.contracts.entity.mutation
-                                        .EntityMutationCommand(
+                                new com.workflow.contracts.entity.mutation.model.EntityMutationCommand(
                                         "batch-receipt",
                                         "source_entity",
                                         "source-1",
-                                        com.workflow.contracts.entity.mutation
-                                                .EntityMutationOperationType.UPDATE,
+                                        com.workflow.contracts.entity.mutation.model.EntityMutationOperationType.UPDATE,
                                         Map.of(),
-                                        com.workflow.contracts.entity.mutation
-                                                .EntityMutationContext.builder(
-                                                com.workflow.contracts.entity.mutation
-                                                        .EntityMutationSourceType.FORM,
+                                        com.workflow.contracts.entity.mutation.model.EntityMutationContext.builder(
+                                                com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.FORM,
                                                 "TEST",
                                                 "测试")
                                                 .trace(

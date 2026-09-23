@@ -235,7 +235,7 @@ class ProcessTaskServiceTest {
         when(flowableTask.getAssignee()).thenReturn("user-1");
         when(identityDirectoryPort.getDisplayName("user-1")).thenReturn("张三(alice)");
         when(identityDirectoryPort.findUser("alice")).thenReturn(java.util.Optional.of(
-                new com.workflow.contracts.identity.IdentityUser("user-1", "alice", "张三", null, null)));
+                new com.workflow.contracts.identity.model.IdentityUser("user-1", "alice", "张三", null, null)));
 
         List<ProcessTask> result = service.getTodoList("alice");
 

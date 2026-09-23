@@ -17,25 +17,43 @@ public interface ListFieldDataProvider {
     /**
      * 返回支持的数据源类型
      * 对应 EntityListField.dataSourceType 的值
+     *
+     * @return 读取后的数据来源类型文本，供调用方比较或展示
      */
     String getDataSourceType();
 
-    /** 数据源在选项清单中展示的名称，默认与数据源类型相同 */
+    /**
+     * 数据源在选项清单中展示的名称，默认与数据源类型相同
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     default String getDisplayName() {
         return getDataSourceType();
     }
 
-    /** 数据源描述文本，默认为空 */
+    /**
+     * 数据源描述文本，默认为空
+     *
+     * @return 读取后的描述文本，供调用方比较或展示
+     */
     default String getDescription() {
         return "";
     }
 
-    /** 是否支持虚拟字段（无对应实体字段的计算列），默认支持 */
+    /**
+     * 是否支持虚拟字段（无对应实体字段的计算列），默认支持
+     *
+     * @return {@code virtual}字段条件成立时为 true，否则为 false
+     */
     default boolean supportsVirtualField() {
         return true;
     }
 
-    /** 是否支持作为查询条件使用，默认不支持 */
+    /**
+     * 是否支持作为查询条件使用，默认不支持
+     *
+     * @return 查询条件成立时为 true，否则为 false
+     */
     default boolean supportsQuery() {
         return false;
     }
@@ -43,17 +61,28 @@ public interface ListFieldDataProvider {
     /**
      * 适用实体编码。空列表或包含 * 表示全部实体。
      * 只收窄设计器数据源下拉，不阻止已保存列在运行时继续补数。
+     *
+     * @return 列表字段数据提供者集合，供调用方遍历或展示
      */
     default List<String> getSupportedEntityCodes() {
         return List.of();
     }
 
-    /** 返回数据源配置项 schema（key/label/type/required/defaultValue），默认无配置项 */
+    /**
+     * 返回数据源配置项 schema（key/label/type/required/defaultValue），默认无配置项
+     *
+     * @return 列表字段数据提供者集合，供调用方遍历或展示
+     */
     default List<Map<String, Object>> getConfigSchema() {
         return List.of();
     }
 
-    /** 对字段配置进行自定义校验，默认不做任何校验 */
+    /**
+     * 对字段配置进行自定义校验，默认不做任何校验
+     *
+     * @param field 字段，供本方法校验配置时使用
+     * @param config 配置内容，决定后续配置的处理规则
+     */
     default void validateConfig(EntityListField field, Map<String, Object> config) {
     }
 

@@ -50,6 +50,12 @@ public class EntityListActionRulePolicy {
         return objectMapper.convertValue(read(rawRule), Map.class);
     }
 
+    /**
+     * 校验自定义节点；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code provider.validate} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateCustomNode(EntityActionRuleDTO.RuleNode node) {
         if (node == null) {
             return;
@@ -74,6 +80,12 @@ public class EntityListActionRulePolicy {
         }
     }
 
+    /**
+     * 查询条件提供者；查询结果供调用方展示或继续处理。
+     *
+     * @param type 类型标识，决定后续条件提供者采用的处理分支
+     * @return 符合条件的实体动作规则条件提供者结果，供调用方继续处理
+     */
     private EntityActionRuleConditionProvider findConditionProvider(
             String type) {
         return conditionProviders.stream()

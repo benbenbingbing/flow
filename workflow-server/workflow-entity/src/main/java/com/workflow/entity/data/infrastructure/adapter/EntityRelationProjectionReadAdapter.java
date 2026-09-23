@@ -1,6 +1,6 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityRelationProjectionReadPort;
@@ -35,6 +35,12 @@ public class EntityRelationProjectionReadAdapter
     private final EntityRelationProjectionMapper mapper;
     private final DynamicTableService dynamicTableService;
 
+    /**
+     * 读取实体关系投影读取分页；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code validate} 的输入影响后续处理
+     * @return 读取后的实体关系投影读取分页结果，供调用方继续处理
+     */
     @Override
     public ProjectionPage readPage(ProjectionQuery query) {
         ValidatedQuery validated = validate(query);
@@ -51,6 +57,13 @@ public class EntityRelationProjectionReadAdapter
                 validated.pageSize());
     }
 
+    /**
+     * 校验实体关系投影读取；不满足约束时阻止后续处理。
+     *
+     * @param query 查询，作为 {@code normalizeValues} 的输入影响后续处理
+     * @return 校验后的实体关系投影读取结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ValidatedQuery validate(ProjectionQuery query) {
         if (query == null || !StringUtils.hasText(query.entityCode())) {
             throw new IllegalArgumentException("关系图投影实体不能为空");
@@ -93,6 +106,13 @@ public class EntityRelationProjectionReadAdapter
                 query.maxMultiValues());
     }
 
+    /**
+     * 校验作用域；不满足约束时阻止后续处理。
+     *
+     * @param scope 作用域，供本方法校验作用域时使用
+     * @return 校验后的作用域结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private DataScopePlan validateScope(DataScopePlan scope) {
         if (scope == null || !StringUtils.hasText(scope.sqlFragment())) {
             throw new IllegalArgumentException("关系图数据权限计划不能为空");
@@ -109,6 +129,13 @@ public class EntityRelationProjectionReadAdapter
         return scope;
     }
 
+    /**
+     * 整理唯一字段数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 链接字段集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<LinkField> uniqueFields(List<LinkField> values) {
         Map<String, LinkField> result = new LinkedHashMap<>();
         if (values == null) {
@@ -124,6 +151,12 @@ public class EntityRelationProjectionReadAdapter
         return List.copyOf(result.values());
     }
 
+    /**
+     * 校验字段；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，供本方法校验字段时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateField(LinkField field) {
         if (field == null
                 || !StringUtils.hasText(field.fieldCode())
@@ -141,6 +174,12 @@ public class EntityRelationProjectionReadAdapter
         }
     }
 
+    /**
+     * 查询参数集合；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code result.put} 的输入影响后续处理
+     * @return 参数集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> queryParameters(ValidatedQuery query) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tableName", dynamicTableService.getTableName(
@@ -185,6 +224,13 @@ public class EntityRelationProjectionReadAdapter
         return result;
     }
 
+    /**
+     * 整理映射标量行数据，供调用方遍历或继续处理。
+     *
+     * @param rawRows 原始行，供本方法处理映射标量行时使用
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 可变行集合，供调用方遍历或展示
+     */
     private List<MutableRow> mapScalarRows(
             List<Map<String, Object>> rawRows,
             List<LinkField> fields) {
@@ -211,6 +257,13 @@ public class EntityRelationProjectionReadAdapter
         return result;
     }
 
+    /**
+     * 加载多实例值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param rows 行，供本方法加载多实例值集合时使用
+     * @param query 查询，作为 {@code parameters.put} 的输入影响后续处理
+     * @return 符合条件的实体关系投影读取结果，供调用方继续处理
+     */
     private void loadMultiValues(
             List<MutableRow> rows,
             ValidatedQuery query) {
@@ -260,6 +313,14 @@ public class EntityRelationProjectionReadAdapter
         }
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param primary 主要，作为 {@code values.containsKey} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private Object value(
             Map<String, Object> values,
             String primary,
@@ -271,6 +332,12 @@ public class EntityRelationProjectionReadAdapter
                 ? values.get(primary) : values.get(fallback);
     }
 
+    /**
+     * 规范化值集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体关系投影读取集合，供调用方遍历或展示
+     */
     private List<String> normalizeValues(List<String> values) {
         Set<String> result = new LinkedHashSet<>();
         if (values != null) {
@@ -283,19 +350,50 @@ public class EntityRelationProjectionReadAdapter
         return List.copyOf(result);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体关系投影读取集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private BusinessConflictException invalid(String message) {
         return new BusinessConflictException(
                 "ENTITY_RELATION_PROJECTION_INVALID", message);
     }
 
+    /**
+     * 封装已校验查询的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param predicateType 判断条件类型标识，决定后续已校验查询采用的处理分支
+     * @param predicateField 判断条件字段，保存在对象中供后续校验、查询或展示
+     * @param predicateValues 判断条件值集合，保存在对象中供后续校验、查询或展示
+     * @param dataScopePlan 数据作用域方案，保存在对象中供后续校验、查询或展示
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param maxMultiValues 最大多实例值集合，保存在对象中供后续校验、查询或展示
+     */
     private record ValidatedQuery(
             String entityCode,
             List<LinkField> fields,
@@ -308,10 +406,22 @@ public class EntityRelationProjectionReadAdapter
             int maxMultiValues) {
     }
 
+    /**
+     * 封装可变行的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param links {@code links}，保存在对象中供后续校验、查询或展示
+     */
     private record MutableRow(
             String id,
             Map<String, Object> links) {
 
+        /**
+         * 添加多实例；结果供后续流程传递或持久化。
+         *
+         * @param fieldCode 字段编码，后续用于添加多实例时定位或关联目标
+         * @param targetRecordId 目标记录ID，后续用于添加多实例时定位或关联目标
+         */
         @SuppressWarnings("unchecked")
         private void addMulti(String fieldCode, String targetRecordId) {
             List<String> values = (List<String>) links.computeIfAbsent(
@@ -321,6 +431,11 @@ public class EntityRelationProjectionReadAdapter
             }
         }
 
+        /**
+         * 处理{@code freeze}，并将结果传给后续步骤。
+         *
+         * @return 处理后的{@code freeze}结果，供调用方继续处理
+         */
         private ProjectionRow freeze() {
             Map<String, Object> frozen = new LinkedHashMap<>();
             links.forEach((key, value) -> frozen.put(

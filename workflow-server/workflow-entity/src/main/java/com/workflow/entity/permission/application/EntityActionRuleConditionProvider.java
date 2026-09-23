@@ -11,6 +11,8 @@ public interface EntityActionRuleConditionProvider {
 
     /**
      * 自定义条件类型，建议使用大写命名空间，如 CRM:CUSTOMER_LEVEL。
+     *
+     * @return 读取后的类型文本，供调用方比较或展示
      */
     String getType();
 

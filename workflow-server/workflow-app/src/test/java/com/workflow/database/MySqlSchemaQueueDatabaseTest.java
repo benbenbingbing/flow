@@ -1,14 +1,18 @@
 package com.workflow.database;
 
-import com.workflow.integration.database.api.DatabaseJdbcProfiles;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.schema.SchemaColumn;
+import com.workflow.integration.database.api.schema.SchemaDefault;
+import com.workflow.integration.database.api.schema.SchemaIndex;
+import com.workflow.integration.database.api.schema.SchemaTable;
+import com.workflow.integration.database.api.schema.SchemaType;
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.core.database.InitializedDriverDataSource;
 import com.workflow.core.database.JdbcDatabaseClock;
 
-import com.workflow.integration.database.api.*;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.entity.data.infrastructure.schema.JdbcSchemaChangeQueue;
 import com.workflow.migration.schema.JdbcSchemaChangeWorker;
-import com.workflow.integration.database.schema.*;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
 import com.workflow.migration.schema.SchemaDdlReplayVerifier;
 import com.workflow.core.database.lock.JdbcDatabaseLock;

@@ -1,6 +1,6 @@
 package com.workflow.database;
 
-import com.workflow.integration.database.api.DatabaseJdbcProfiles;
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.core.database.InitializedDriverDataSource;
 
 import com.workflow.core.database.lock.JdbcDatabaseLock;

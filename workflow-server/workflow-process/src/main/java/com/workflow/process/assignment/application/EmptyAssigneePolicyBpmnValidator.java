@@ -1,8 +1,8 @@
 package com.workflow.process.assignment.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import com.workflow.process.assignment.domain.EmptyAssigneePolicy;
 import lombok.RequiredArgsConstructor;
@@ -36,7 +36,11 @@ public class EmptyAssigneePolicyBpmnValidator {
     private final EmptyAssigneePolicyResolver policyResolver;
     private final AssigneeResolutionService resolutionService;
 
-    /** 校验流程默认策略、每个用户任务的有效策略、兜底身份和静态空结果。 */
+    /**
+     * 校验流程默认策略、每个用户任务的有效策略、兜底身份和静态空结果。
+     *
+     * @param bpmnXml BPMNXML，作为 {@code parse} 的输入影响后续处理
+     */
     public void validate(String bpmnXml) {
         Document document = parse(bpmnXml);
         Element process = firstElement(document, "process");
@@ -73,7 +77,14 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
-    /** 自动重试只能重放已配置的人员接口，提前阻止无法执行的重试计划。 */
+    /**
+     * 自动重试只能重放已配置的人员接口，提前阻止无法执行的重试计划。
+     *
+     * @param task 任务，供本方法校验重试来源时使用
+     * @param config 配置内容，决定后续重试来源的处理规则
+     * @param policy 策略内容，决定后续重试来源的处理规则
+     * @param bpmnXml BPMNXML，作为 {@code factory.createXMLStreamReader} 的输入影响后续处理
+     */
     private void validateRetrySource(
             Element task, Map<String, Object> config, EmptyAssigneePolicy policy, String bpmnXml) {
         if (policy.strategy() != EmptyAssigneePolicy.Strategy.WAIT_AND_RETRY) {
@@ -110,6 +121,13 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 校验兜底身份；不满足约束时阻止后续处理。
+     *
+     * @param policy 策略内容，决定后续兜底身份的处理规则
+     * @param nodeId 节点ID，后续用于校验兜底身份时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateFallbackIdentity(
             EmptyAssigneePolicy policy,
             String nodeId) {
@@ -130,6 +148,14 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 校验{@code static}分配；不满足约束时阻止后续处理。
+     *
+     * @param task 任务，作为 {@code addUsers} 的输入影响后续处理
+     * @param config 配置内容，决定后续{@code static}分配的处理规则
+     * @param policy 策略内容，决定后续{@code static}分配的处理规则
+     * @param nodeId 节点ID，后续用于校验{@code static}分配时定位或关联目标
+     */
     private void validateStaticAssignment(
             Element task,
             Map<String, Object> config,
@@ -179,6 +205,13 @@ public class EmptyAssigneePolicyBpmnValidator {
         requireResolvedStatic(principals, nodeId);
     }
 
+    /**
+     * 校验并获取已解析{@code static}；不满足约束时阻止后续处理。
+     *
+     * @param principals {@code principals}，作为 {@code resolvePrincipals} 的输入影响后续处理
+     * @param nodeId 节点ID，后续用于校验并获取已解析{@code static}时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireResolvedStatic(
             List<PersonPrincipal> principals,
             String nodeId) {
@@ -191,6 +224,13 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 解析空办理人策略BPMN；输出作为后续校验或处理的输入。
+     *
+     * @param xml XML，作为 {@code factory.setFeature} 的输入影响后续处理
+     * @return 解析后的空办理人策略BPMN结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Document parse(String xml) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -207,6 +247,14 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @param nodeId 节点ID，后续用于读取映射时定位或关联目标
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readMap(String value, String nodeId) {
         if (!StringUtils.hasText(value)) {
@@ -219,11 +267,25 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 处理首个元素，并将结果传给后续步骤。
+     *
+     * @param document 文档，供本方法处理首个元素时使用
+     * @param localName 本地名称，后续用于处理首个元素时匹配或展示
+     * @return 处理后的首个元素结果，供调用方继续处理
+     */
     private Element firstElement(Document document, String localName) {
         NodeList nodes = document.getElementsByTagNameNS("*", localName);
         return nodes.getLength() == 0 ? null : (Element) nodes.item(0);
     }
 
+    /**
+     * 生成属性文本，供后续匹配或展示。
+     *
+     * @param owner 归属方，供本方法处理属性时使用
+     * @param name 名称，后续用于处理属性时匹配或展示
+     * @return 处理后的属性文本，供调用方比较或展示
+     */
     private String property(Element owner, String name) {
         if (owner == null) {
             return null;
@@ -244,6 +306,13 @@ public class EmptyAssigneePolicyBpmnValidator {
         return null;
     }
 
+    /**
+     * 生成属性文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理属性时使用
+     * @param localName 本地名称，后续用于处理属性时匹配或展示
+     * @return 处理后的属性文本，供调用方比较或展示
+     */
     private String attribute(Element element, String localName) {
         if (element.hasAttribute(localName)) {
             return element.getAttribute(localName);
@@ -257,6 +326,12 @@ public class EmptyAssigneePolicyBpmnValidator {
         return null;
     }
 
+    /**
+     * 添加用户集合；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加用户集合时使用
+     * @param raw 待添加用户集合的原始输入，结果供调用方继续使用
+     */
     private void addUsers(List<PersonPrincipal> target, Object raw) {
         values(raw).forEach(value -> {
             if (!value.contains("${") && !value.contains("#{")) {
@@ -265,6 +340,13 @@ public class EmptyAssigneePolicyBpmnValidator {
         });
     }
 
+    /**
+     * 添加分组集合；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加分组集合时使用
+     * @param raw 待添加分组集合的原始输入，结果供调用方继续使用
+     * @param forceRole {@code force}角色，供本方法添加分组集合时使用
+     */
     private void addGroups(List<PersonPrincipal> target, Object raw, boolean forceRole) {
         values(raw).forEach(value -> {
             boolean role = forceRole || value.startsWith("ROLE_");
@@ -274,6 +356,12 @@ public class EmptyAssigneePolicyBpmnValidator {
         });
     }
 
+    /**
+     * 整理值集合数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理值集合的原始输入，结果供调用方继续使用
+     * @return 空办理人策略BPMN校验器集合，供调用方遍历或展示
+     */
     private List<String> values(Object raw) {
         LinkedHashSet<String> values = new LinkedHashSet<>();
         if (raw instanceof Iterable<?> iterable) {
@@ -286,6 +374,12 @@ public class EmptyAssigneePolicyBpmnValidator {
         return List.copyOf(values);
     }
 
+    /**
+     * 添加空办理人策略BPMN；结果供后续流程传递或持久化。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param raw 待添加空办理人策略BPMN的原始输入，结果供调用方继续使用
+     */
     private void add(LinkedHashSet<String> values, Object raw) {
         String value = raw == null ? null : String.valueOf(raw).trim();
         if (StringUtils.hasText(value)) {
@@ -293,11 +387,26 @@ public class EmptyAssigneePolicyBpmnValidator {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 负责设置{@code like}的业务处理；协调校验、状态变化及后续结果传递。
+     */
     private static final class SetLike {
+        /**
+         * 判断动态条件是否成立，供调用方选择后续分支。
+         *
+         * @param type 类型标识，决定后续动态采用的处理分支
+         * @return 动态条件成立时为 true，否则为 false
+         */
         private static boolean dynamic(String type) {
             return java.util.Set.of("resolver", "interface", "expression", "node_reference")
                     .contains(type == null ? "" : type.toLowerCase(Locale.ROOT));

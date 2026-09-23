@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 

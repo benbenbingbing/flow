@@ -4,8 +4,8 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.process.port.ProcessRuntimePort;
-import com.workflow.contracts.process.ProcessStartRequest;
-import com.workflow.contracts.process.ProcessStartResult;
+import com.workflow.contracts.process.model.ProcessStartRequest;
+import com.workflow.contracts.process.model.ProcessStartResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -61,12 +61,24 @@ public class EntityDataMutationService {
     @Autowired(required = false)
     private EntityUniqueValueService uniqueValueService;
 
+    /**
+     * 保存实体数据变更；后续读取或执行将使用更新后的状态。
+     *
+     * @param dto DTO，供本方法保存实体数据变更时使用
+     * @return 保存后的实体数据变更结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(EntityDataDTO dto) {
         return save(dto, null);
     }
 
-    /** 统一变更入口写入时显式下传不可伪造的递归唯一性计划。 */
+    /**
+     * 统一变更入口写入时显式下传不可伪造的递归唯一性计划。
+     *
+     * @param dto DTO，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @param prepared 已准备，供本方法保存实体数据变更时使用
+     * @return 保存后的实体数据变更结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO save(
             EntityDataDTO dto,
@@ -173,6 +185,14 @@ public class EntityDataMutationService {
         return dto;
     }
 
+    /**
+     * 更新实体数据变更；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param formData 表单数据，供本方法更新实体数据变更时使用
+     * @return 更新后的实体数据变更结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO update(
             String entityCode,
@@ -181,7 +201,15 @@ public class EntityDataMutationService {
         return update(entityCode, id, formData, null);
     }
 
-    /** 统一变更入口更新时显式下传不可伪造的递归唯一性计划。 */
+    /**
+     * 统一变更入口更新时显式下传不可伪造的递归唯一性计划。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param formData 表单数据，作为 {@code withoutRelationDataFromRequest} 的输入影响后续处理
+     * @param prepared 已准备，作为 {@code relationRuntimeService.saveRelationData} 的输入影响后续处理
+     * @return 更新后的实体数据变更结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityDataDTO update(
             String entityCode,
@@ -283,6 +311,12 @@ public class EntityDataMutationService {
                 dto);
     }
 
+    /**
+     * 删除实体数据变更；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(
             String entityCode,
@@ -320,6 +354,12 @@ public class EntityDataMutationService {
                 null);
     }
 
+    /**
+     * 处理物理删除，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     */
     @Transactional(rollbackFor = Exception.class)
     public void physicalDelete(
             String entityCode,
@@ -353,6 +393,9 @@ public class EntityDataMutationService {
     /**
      * 在级联递归前锁定聚合根，维持“根定义/发布守卫 → 根业务行 → 子定义/发布
      * 守卫 → 子业务行”的固定顺序；目标不存在时终止，不能删除孤立子记录。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
      */
     private void lockDeleteRoot(
             String tableName,
@@ -364,6 +407,15 @@ public class EntityDataMutationService {
         }
     }
 
+    /**
+     * 更新当前任务；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param currentTaskId 当前任务ID，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskName 当前任务名称，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskAssignee 当前任务办理人，写入当前任务信息供后续待办展示和状态同步
+     */
     @Transactional(rollbackFor = Exception.class)
     public void updateCurrentTask(
             String entityCode,
@@ -380,7 +432,14 @@ public class EntityDataMutationService {
                 currentTaskAssignee);
     }
 
-    /** 兼容内部旧调用；跨模块事件必须使用携带实例 ID 的重载。 */
+    /**
+     * 兼容内部旧调用；跨模块事件必须使用携带实例 ID 的重载。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param fallbackStatus 状态类别无法映射时写入实体的后备状态
+     */
     @Transactional(rollbackFor = Exception.class)
     public void markProcessEnded(String entityCode, String entityDataId,
             String statusCategory, String fallbackStatus) {
@@ -390,6 +449,12 @@ public class EntityDataMutationService {
     /**
      * 回写流程结束投影。正常结束只更新新版本生命周期；fallbackStatus 用于旧版兼容及明确的终止等特殊操作。
      * 延迟事件必须匹配当前实例，避免旧一代流程结束覆盖重新发起的流程。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param fallbackStatus 状态类别无法映射时写入实体的后备状态
      */
     @Transactional(rollbackFor = Exception.class)
     public void markProcessEnded(String processInstanceId, String entityCode, String entityDataId,
@@ -455,7 +520,15 @@ public class EntityDataMutationService {
                 null);
     }
 
-    /** 新记录统一生成 code 作为业务编号，独立实体与流程实体使用同一套编码规则。 */
+    /**
+     * 新记录统一生成 code 作为业务编号，独立实体与流程实体使用同一套编码规则。
+     *
+     * @param dto DTO，作为 {@code getDefaultStatus} 的输入影响后续处理
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param data 数据，后续用于插入实体数据变更并传递处理结果
+     * @param currentUserId 当前用户ID，后续用于插入实体数据变更时定位或关联目标
+     * @param currentUserName 当前用户名称，后续用于插入实体数据变更时匹配或展示
+     */
     private void insert(
             EntityDataDTO dto,
             String tableName,
@@ -509,6 +582,18 @@ public class EntityDataMutationService {
                 null);
     }
 
+    /**
+     * 启动工作流条件请求；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param formData 表单数据，供本方法启动工作流条件请求时使用
+     * @param definition 定义，作为 {@code validator.validateProcessStart} 的输入影响后续处理
+     * @param existingData 已有数据，作为 {@code asText} 的输入影响后续处理
+     * @param relationData 关系数据，供本方法启动工作流条件请求时使用
+     * @param dto DTO，作为 {@code startWorkflow} 的输入影响后续处理
+     * @return 启动后的工作流条件请求结果，供调用方继续处理
+     */
     private EntityDataDTO startWorkflowIfRequested(
             String entityCode,
             String id,
@@ -562,6 +647,12 @@ public class EntityDataMutationService {
         return refreshed;
     }
 
+    /**
+     * 读取当前用户ID；查询结果供调用方展示或继续处理。
+     *
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 读取后的当前用户ID文本，供调用方比较或展示
+     */
     private String getCurrentUserId(
             String defaultValue) {
         if (StringUtils.hasText(defaultValue)) {
@@ -571,6 +662,12 @@ public class EntityDataMutationService {
         return userId == null ? "system" : userId;
     }
 
+    /**
+     * 读取当前用户名称；查询结果供调用方展示或继续处理。
+     *
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 读取后的当前用户名称文本，供调用方比较或展示
+     */
     private String getCurrentUserName(
             String defaultValue) {
         if (StringUtils.hasText(defaultValue)) {
@@ -580,6 +677,11 @@ public class EntityDataMutationService {
         return userName == null ? "系统" : userName;
     }
 
+    /**
+     * 读取当前部门ID；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的当前部门ID文本，供调用方比较或展示
+     */
     private String getCurrentDeptId() {
         String userId = UserContext.getUserId();
         if (userId == null) {
@@ -589,6 +691,12 @@ public class EntityDataMutationService {
         return user == null ? null : user.getDeptId();
     }
 
+    /**
+     * 补充多实例值集合；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param records 记录集合，作为 {@code multiValueRuntimeService.enrich} 的输入影响后续处理
+     */
     private void enrichMultiValues(
             String entityCode,
             Collection<EntityDataDTO> records) {
@@ -606,16 +714,33 @@ public class EntityDataMutationService {
                 records);
     }
 
+    /**
+     * 生成ID；结果供调用方的后续步骤使用。
+     *
+     * @return 生成后的ID文本，供调用方比较或展示
+     */
     private String generateId() {
         return UUID.randomUUID().toString()
                 .replace("-", "");
     }
 
+    /**
+     * 转换为文本；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为文本的原始输入，结果供调用方继续使用
+     * @return 转换为后的文本文本，供调用方比较或展示
+     */
     private String asText(Object value) {
         return value == null
                 ? null : String.valueOf(value);
     }
 
+    /**
+     * 读取默认状态；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 读取后的默认状态文本，供调用方比较或展示
+     */
     private String getDefaultStatus(
             String entityCode) {
         try {
@@ -637,6 +762,12 @@ public class EntityDataMutationService {
         return "DRAFT";
     }
 
+    /**
+     * 启动工作流；结果供调用方的后续步骤使用。
+     *
+     * @param dto DTO，作为 {@code snapshotService.getLatestByEntityCode} 的输入影响后续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void startWorkflow(EntityDataDTO dto) {
         EntityPublishedSnapshot snapshot =
                 snapshotService.getLatestByEntityCode(
@@ -725,6 +856,14 @@ public class EntityDataMutationService {
                 result.currentTaskId());
     }
 
+    /**
+     * 写入已发布时间戳条件存在；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param updateData 更新数据，供本方法写入已发布时间戳条件存在时使用
+     * @param fieldCode 字段编码，后续用于写入已发布时间戳条件存在时定位或关联目标
+     * @param value 待写入已发布时间戳条件存在的原始输入，结果供调用方继续使用
+     */
     private void putPublishedTimestampIfPresent(
             String entityCode,
             Map<String, Object> updateData,
@@ -747,6 +886,14 @@ public class EntityDataMutationService {
         }
     }
 
+    /**
+     * 写入已发布时间戳条件存在；后续读取或执行将使用更新后的状态。
+     *
+     * @param snapshot 快照，供本方法写入已发布时间戳条件存在时使用
+     * @param updateData 更新数据，供本方法写入已发布时间戳条件存在时使用
+     * @param fieldCode 字段编码，后续用于写入已发布时间戳条件存在时定位或关联目标
+     * @param value 待写入已发布时间戳条件存在的原始输入，结果供调用方继续使用
+     */
     private void putPublishedTimestampIfPresent(
             EntityPublishedSnapshot snapshot,
             Map<String, Object> updateData,
@@ -774,6 +921,14 @@ public class EntityDataMutationService {
                 });
     }
 
+    /**
+     * 按类别查询实体数据变更；结果供后续展示或处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param category 类别，决定后续状态或结果的归类
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 读取后的状态类别文本，供调用方比较或展示
+     */
     private String getStatusByCategory(
             String entityCode,
             String category,

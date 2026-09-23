@@ -26,6 +26,9 @@ public final class EntityActionRuleStructurePolicy {
     private static final Set<String> ROOT_KEYS = Set.of(
             "version", "visibleWhen", "enabledWhen", "disabledMessage");
 
+    /**
+     * 初始化实体动作规则{@code structure}策略，保存构造参数供后续方法使用。
+     */
     private EntityActionRuleStructurePolicy() {
     }
 
@@ -76,6 +79,15 @@ public final class EntityActionRuleStructurePolicy {
         return result;
     }
 
+    /**
+     * 规范化节点；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化节点的原始输入，结果供调用方继续使用
+     * @param depth 深度，供本方法规范化节点时使用
+     * @param count 数量，供本方法规范化节点时使用
+     * @return 节点键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static Map<String, Object> normalizeNode(
             Object value,
             int depth,
@@ -147,7 +159,12 @@ public final class EntityActionRuleStructurePolicy {
         return result;
     }
 
-    /** 内置枚举在持久化前统一为大写，避免校验与执行读取不同形态。 */
+    /**
+     * 内置枚举在持久化前统一为大写，避免校验与执行读取不同形态。
+     *
+     * @param value 待规范化枚举值的原始输入，结果供调用方继续使用
+     * @return 规范化后的枚举值结果，供调用方继续处理
+     */
     private static Object normalizeEnumValue(Object value) {
         if (value instanceof List<?> values) {
             return values.stream()
@@ -159,6 +176,14 @@ public final class EntityActionRuleStructurePolicy {
                 : value;
     }
 
+    /**
+     * 处理精确整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理精确整数的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理精确整数时匹配或展示
+     * @return 处理后的精确整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static int exactInteger(Object value, String label) {
         if (value instanceof Number number) {
             try {
@@ -174,6 +199,14 @@ public final class EntityActionRuleStructurePolicy {
         }
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static Map<String, Object> map(Object value, String label) {
         if (!(value instanceof Map<?, ?> source)) {
             throw new IllegalArgumentException(label + "必须是对象");
@@ -183,6 +216,12 @@ public final class EntityActionRuleStructurePolicy {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

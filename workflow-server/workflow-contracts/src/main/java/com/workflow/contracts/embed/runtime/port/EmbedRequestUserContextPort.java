@@ -19,6 +19,9 @@ public interface EmbedRequestUserContextPort {
     @FunctionalInterface
     interface Scope extends AutoCloseable {
 
+        /**
+         * 处理关闭，并将结果传给后续步骤。
+         */
         @Override
         void close();
     }

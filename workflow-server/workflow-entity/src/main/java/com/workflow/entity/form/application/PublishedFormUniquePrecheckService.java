@@ -37,7 +37,13 @@ public class PublishedFormUniquePrecheckService {
     private final SysUserService userService;
     private final DataPermissionEngine dataPermissionEngine;
 
-    /** 按当前用户可使用的精确表单发布版执行提前查重。 */
+    /**
+     * 按当前用户可使用的精确表单发布版执行提前查重。
+     *
+     * @param formId 表单ID，后续用于处理预检查时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理预检查
+     * @return 处理后的预检查结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public FormUniquePrecheckResponse precheck(
             String formId,
@@ -95,6 +101,13 @@ public class PublishedFormUniquePrecheckService {
                         true));
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param resolved 已解析，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @return 校验并获取后的定义结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireDefinition(
             ResolvedEntityFormRelease resolved) {
         if (resolved == null || resolved.form() == null
@@ -111,6 +124,12 @@ public class PublishedFormUniquePrecheckService {
         return definition;
     }
 
+    /**
+     * 校验并获取变更权限；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void requireMutationPermission(
             String entityCode,
             String recordId) {
@@ -132,6 +151,9 @@ public class PublishedFormUniquePrecheckService {
      *
      * <p>这里故意使用实体默认数据范围且只接受 allow-all；任何过滤、拒绝、
      * 缺失用户或损坏权限结果都不能进入无 DataScope 的唯一候选查询。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return {@code reveal}全局{@code uniqueness}条件成立时为 true，否则为 false
      */
     private boolean canRevealGlobalUniqueness(
             String entityCode) {

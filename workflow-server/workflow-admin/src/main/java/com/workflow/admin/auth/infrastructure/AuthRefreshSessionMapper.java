@@ -14,6 +14,19 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface AuthRefreshSessionMapper {
 
+    /**
+     * 插入认证刷新会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param refreshTokenHash 刷新令牌哈希，供本方法插入认证刷新会话时使用
+     * @param tokenVersion 令牌版本，供本方法插入认证刷新会话时使用
+     * @param createTime 创建时间，后续用于判断有效期或展示该事件的发生时间
+     * @param lastUsedAt 最后{@code used}时间，后续用于判断有效期或展示该事件的发生时间
+     * @param idleExpiresAt 空闲过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param absoluteExpiresAt 绝对过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 插入后的认证刷新会话结果，供调用方继续处理
+     */
     @Insert("""
             INSERT INTO auth_refresh_session (
               id, user_id, refresh_token_hash, token_version,
@@ -35,6 +48,12 @@ public interface AuthRefreshSessionMapper {
             @Param("idleExpiresAt") LocalDateTime idleExpiresAt,
             @Param("absoluteExpiresAt") LocalDateTime absoluteExpiresAt);
 
+    /**
+     * 查询令牌哈希；查询结果供调用方展示或继续处理。
+     *
+     * @param refreshTokenHash 刷新令牌哈希，供本方法查询令牌哈希时使用
+     * @return 查询后的令牌哈希结果，供调用方继续处理
+     */
     @Select("""
             SELECT s.id,
                    s.user_id AS userId,
@@ -58,6 +77,12 @@ public interface AuthRefreshSessionMapper {
     AuthRefreshSessionRecord selectByTokenHash(
             @Param("refreshTokenHash") String refreshTokenHash);
 
+    /**
+     * 查询ID；查询结果供调用方展示或继续处理。
+     *
+     * @param sessionId 会话ID，后续用于查询ID时定位或关联目标
+     * @return 查询后的ID结果，供调用方继续处理
+     */
     @Select("""
             SELECT s.id,
                    s.user_id AS userId,
@@ -81,6 +106,15 @@ public interface AuthRefreshSessionMapper {
     AuthRefreshSessionRecord selectById(
             @Param("sessionId") String sessionId);
 
+    /**
+     * 处理更新访问时间，并将结果传给后续步骤。
+     *
+     * @param sessionId 会话ID，后续用于处理更新访问时间时定位或关联目标
+     * @param lastUsedAt 最后{@code used}时间，后续用于判断有效期或展示该事件的发生时间
+     * @param idleExpiresAt 空闲过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param now 当前时间，供本方法处理更新访问时间时使用
+     * @return 处理后的更新访问时间结果，供调用方继续处理
+     */
     @Update("""
             UPDATE auth_refresh_session
                SET last_used_at = #{lastUsedAt},
@@ -96,6 +130,14 @@ public interface AuthRefreshSessionMapper {
             @Param("idleExpiresAt") LocalDateTime idleExpiresAt,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 撤销ID；后续读取或执行将使用更新后的状态。
+     *
+     * @param sessionId 会话ID，后续用于撤销ID时定位或关联目标
+     * @param revokedAt 已撤销时间，后续用于判断有效期或展示该事件的发生时间
+     * @param reason 原因，供本方法撤销ID时使用
+     * @return 撤销后的ID结果，供调用方继续处理
+     */
     @Update("""
             UPDATE auth_refresh_session
                SET revoked_at = #{revokedAt},
@@ -108,6 +150,14 @@ public interface AuthRefreshSessionMapper {
             @Param("revokedAt") LocalDateTime revokedAt,
             @Param("reason") String reason);
 
+    /**
+     * 撤销用户ID；后续读取或执行将使用更新后的状态。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param revokedAt 已撤销时间，后续用于判断有效期或展示该事件的发生时间
+     * @param reason 原因，供本方法撤销用户ID时使用
+     * @return 撤销后的用户ID结果，供调用方继续处理
+     */
     @Update("""
             UPDATE auth_refresh_session
                SET revoked_at = #{revokedAt},
@@ -120,6 +170,13 @@ public interface AuthRefreshSessionMapper {
             @Param("revokedAt") LocalDateTime revokedAt,
             @Param("reason") String reason);
 
+    /**
+     * 删除过期或已撤销之前；后续读取或执行将使用更新后的状态。
+     *
+     * @param expiredCutoff 过期截止点，供本方法删除过期或已撤销之前时使用
+     * @param revokedCutoff 已撤销截止点，供本方法删除过期或已撤销之前时使用
+     * @return 删除后的过期或已撤销之前结果，供调用方继续处理
+     */
     @Delete("""
             DELETE FROM auth_refresh_session
              WHERE absolute_expires_at < #{expiredCutoff}

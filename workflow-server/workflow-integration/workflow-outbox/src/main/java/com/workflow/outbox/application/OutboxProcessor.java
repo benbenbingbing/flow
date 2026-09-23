@@ -35,6 +35,13 @@ public class OutboxProcessor {
     @Value("${workflow.outbox.retry-max-seconds:3600}")
     private long retryMaxSeconds = 3600;
 
+    /**
+     * 初始化待发送事件{@code processor}，保存构造参数供后续方法使用。
+     *
+     * @param mapper 映射器依赖，保存到当前对象供后续业务方法调用
+     * @param handlers {@code handlers}，保存在对象中供后续校验、查询或展示
+     * @param heartbeatScheduler 心跳{@code scheduler}依赖，保存到当前对象供后续业务方法调用
+     */
     public OutboxProcessor(
             OutboxRecordMapper mapper,
             List<OutboxEventHandler> handlers,
@@ -44,6 +51,15 @@ public class OutboxProcessor {
         this.heartbeatScheduler = heartbeatScheduler;
     }
 
+    /**
+     * 处理待发送事件，并将结果传给后续步骤。
+     *
+     * @param outboxId 待发送事件ID，后续用于处理待发送事件时定位或关联目标
+     * @param ownerId 归属方ID，后续用于处理待发送事件时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     * @param leaseSeconds 租约秒数，作为 {@code Duration.ofSeconds} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public void process(
             String outboxId,
             String ownerId,
@@ -85,6 +101,15 @@ public class OutboxProcessor {
         }
     }
 
+    /**
+     * 处理心跳，并将结果传给后续步骤。
+     *
+     * @param outboxId 待发送事件ID，后续用于处理心跳时定位或关联目标
+     * @param ownerId 归属方ID，后续用于处理心跳时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     * @param leaseSeconds 租约秒数，供本方法处理心跳时使用
+     * @param heartbeatActive 心跳活动，供本方法处理心跳时使用
+     */
     private void heartbeat(
             String outboxId,
             String ownerId,
@@ -108,6 +133,13 @@ public class OutboxProcessor {
         }
     }
 
+    /**
+     * 整理索引{@code handlers}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 索引{@code handlers}键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, OutboxEventHandler> indexHandlers(
             List<OutboxEventHandler> values) {
         Map<String, OutboxEventHandler> result = new LinkedHashMap<>();
@@ -129,6 +161,12 @@ public class OutboxProcessor {
         return Map.copyOf(result);
     }
 
+    /**
+     * 转换为事件；输出作为后续校验或处理的输入。
+     *
+     * @param record 记录，作为 {@code OutboxEvent} 的输入影响后续处理
+     * @return 转换为后的事件结果，供调用方继续处理
+     */
     private OutboxEvent toEvent(OutboxRecord record) {
         return new OutboxEvent(
                 record.getId(),
@@ -143,6 +181,13 @@ public class OutboxProcessor {
                 record.getCreateTime());
     }
 
+    /**
+     * 标记{@code processed}；后续读取或执行将使用更新后的状态。
+     *
+     * @param record 记录，供本方法标记{@code processed}时使用
+     * @param ownerId 归属方ID，后续用于标记{@code processed}时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     */
     private void markProcessed(
             OutboxRecord record,
             String ownerId,
@@ -153,6 +198,14 @@ public class OutboxProcessor {
         }
     }
 
+    /**
+     * 标记失败；后续读取或执行将使用更新后的状态。
+     *
+     * @param record 记录，作为 {@code handlers.get} 的输入影响后续处理
+     * @param ownerId 归属方ID，后续用于标记失败时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     * @param exception 异常，作为 {@code errorMessage} 的输入影响后续处理
+     */
     private void markFailed(
             OutboxRecord record,
             String ownerId,
@@ -194,6 +247,12 @@ public class OutboxProcessor {
                 exception);
     }
 
+    /**
+     * 处理重试{@code delay}秒数，并将结果传给后续步骤。
+     *
+     * @param retries {@code retries}，作为 {@code Math.min} 的输入影响后续处理
+     * @return 处理后的重试{@code delay}秒数结果，供调用方继续处理
+     */
     private long retryDelaySeconds(int retries) {
         long initial = Math.max(1, retryInitialSeconds);
         long maximum = Math.max(initial, retryMaxSeconds);
@@ -204,6 +263,12 @@ public class OutboxProcessor {
         return Math.min(maximum, initial * multiplier);
     }
 
+    /**
+     * 生成错误消息文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理错误消息时使用
+     * @return 处理后的错误消息文本，供调用方比较或展示
+     */
     private String errorMessage(Throwable exception) {
         String value = exception.getMessage();
         if (value == null || value.isBlank()) {

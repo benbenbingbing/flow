@@ -28,6 +28,9 @@ public class PositionLeaderProjectionReconciler {
     private final SysOrganizationMapper organizationMapper;
     private final PositionAssignmentService assignmentService;
 
+    /**
+     * 对账位置{@code leader}投影{@code reconciler}；结果供调用方的后续步骤使用。
+     */
     @Scheduled(fixedDelayString =
             "${workflow.position.leader-projection-reconcile-ms:60000}")
     @Transactional(rollbackFor = Exception.class)

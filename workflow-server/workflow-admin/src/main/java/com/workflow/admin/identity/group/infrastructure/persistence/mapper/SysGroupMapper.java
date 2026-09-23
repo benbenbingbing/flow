@@ -102,18 +102,38 @@ public interface SysGroupMapper extends BaseMapper<SysGroup> {
         private String groupId;
         private String userId;
 
+        /**
+         * 读取分组ID；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的分组ID文本，供调用方比较或展示
+         */
         public String getGroupId() {
             return groupId;
         }
 
+        /**
+         * 设置分组ID；后续读取或执行将使用更新后的状态。
+         *
+         * @param groupId 分组ID，后续用于设置分组ID时定位或关联目标
+         */
         public void setGroupId(String groupId) {
             this.groupId = groupId;
         }
 
+        /**
+         * 读取用户ID；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的用户ID文本，供调用方比较或展示
+         */
         public String getUserId() {
             return userId;
         }
 
+        /**
+         * 设置用户ID；后续读取或执行将使用更新后的状态。
+         *
+         * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+         */
         public void setUserId(String userId) {
             this.userId = userId;
         }

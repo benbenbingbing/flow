@@ -116,6 +116,13 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
         }
     }
 
+    /**
+     * 处理打开，并将结果传给后续步骤。
+     *
+     * @param fileUrl 文件URL，作为 {@code extractSafeFilename} 的输入影响后续处理
+     * @return 处理后的打开结果，供调用方继续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     @Override
     public StoredFile open(String fileUrl) throws IOException {
         String filename = extractSafeFilename(fileUrl);

@@ -75,6 +75,13 @@ public class DataPermissionResult {
         return r;
     }
 
+    /**
+     * 处理条件，并将结果传给后续步骤。
+     *
+     * @param sql SQL，供本方法处理条件时使用
+     * @param parameters 参数集合，作为 {@code result.mergeSqlParameters} 的输入影响后续处理
+     * @return 处理后的条件结果，供调用方继续处理
+     */
     public static DataPermissionResult withCondition(String sql, Map<String, Object> parameters) {
         DataPermissionResult result = withCondition(sql);
         result.mergeSqlParameters(parameters);
@@ -83,11 +90,21 @@ public class DataPermissionResult {
 
     /**
      * 与另一个条件取并集（OR）
+     *
+     * @param sql SQL，供本方法处理{@code union}时使用
+     * @return 处理后的{@code union}结果，供调用方继续处理
      */
     public DataPermissionResult union(String sql) {
         return union(sql, Map.of());
     }
 
+    /**
+     * 处理{@code union}，并将结果传给后续步骤。
+     *
+     * @param sql SQL，作为 {@code OR} 的输入影响后续处理
+     * @param parameters 参数集合，作为 {@code mergeSqlParameters} 的输入影响后续处理
+     * @return 处理后的{@code union}结果，供调用方继续处理
+     */
     public DataPermissionResult union(String sql, Map<String, Object> parameters) {
         if (sql == null || sql.isBlank()) {
             return this;
@@ -105,11 +122,21 @@ public class DataPermissionResult {
 
     /**
      * 与另一个条件取交集（AND）
+     *
+     * @param sql SQL，供本方法处理{@code intersect}时使用
+     * @return 处理后的{@code intersect}结果，供调用方继续处理
      */
     public DataPermissionResult intersect(String sql) {
         return intersect(sql, Map.of());
     }
 
+    /**
+     * 处理{@code intersect}，并将结果传给后续步骤。
+     *
+     * @param sql SQL，作为 {@code AND} 的输入影响后续处理
+     * @param parameters 参数集合，作为 {@code mergeSqlParameters} 的输入影响后续处理
+     * @return 处理后的{@code intersect}结果，供调用方继续处理
+     */
     public DataPermissionResult intersect(String sql, Map<String, Object> parameters) {
         if (sql == null || sql.isBlank()) {
             return this;
@@ -124,6 +151,12 @@ public class DataPermissionResult {
         return this;
     }
 
+    /**
+     * 合并SQL参数集合；结果供后续流程传递或持久化。
+     *
+     * @param parameters 参数集合，作为 {@code sqlParameters.putAll} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void mergeSqlParameters(Map<String, Object> parameters) {
         if (parameters == null || parameters.isEmpty()) {
             return;

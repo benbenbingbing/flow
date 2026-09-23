@@ -64,6 +64,12 @@ public class EmbedViewConfigurationValidator {
     private final ObjectMapper objectMapper;
     private final EmbedManagementRepository repository;
 
+    /**
+     * 初始化嵌入式视图配置校验器，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param repository 仓储依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedViewConfigurationValidator(
             ObjectMapper objectMapper,
             EmbedManagementRepository repository) {
@@ -71,7 +77,13 @@ public class EmbedViewConfigurationValidator {
         this.repository = repository;
     }
 
-    /** 校验配置并返回 Runtime Snapshot 可直接持久化的解析结果。 */
+    /**
+     * 校验配置并返回 Runtime Snapshot 可直接持久化的解析结果。
+     *
+     * @param surfaceType 界面类型标识，决定后续嵌入式视图配置采用的处理分支
+     * @param draft 草稿，作为 {@code add} 的输入影响后续处理
+     * @return 校验后的嵌入式视图配置结果，供调用方继续处理
+     */
     public ValidationResult validate(SurfaceType surfaceType, JsonNode draft) {
         List<Violation> violations = new ArrayList<>();
         if (draft == null || !draft.isObject()) {
@@ -168,6 +180,10 @@ public class EmbedViewConfigurationValidator {
      *
      * <p>产品不再让管理员选择 FOLLOW_ACTIVE/PINNED。旧配置中的 releasePolicy 和
      * resolved 坐标会被丢弃，避免历史参数继续影响新的 Launch。</p>
+     *
+     * @param surfaceType 界面类型标识，决定后续当前活动采用的处理分支
+     * @param currentConfig 当前配置内容，决定后续当前活动的处理规则
+     * @return 校验后的当前活动结果，供调用方继续处理
      */
     public ValidationResult validateCurrentActive(
             SurfaceType surfaceType, JsonNode currentConfig) {
@@ -180,7 +196,12 @@ public class EmbedViewConfigurationValidator {
         return validate(surfaceType, normalized);
     }
 
-    /** 保存时只保留稳定配置，不落库 ACTIVE release 坐标或历史发布策略。 */
+    /**
+     * 保存时只保留稳定配置，不落库 ACTIVE release 坐标或历史发布策略。
+     *
+     * @param currentConfig 当前配置内容，决定后续规范化当前配置的处理规则
+     * @return 处理后的规范化当前配置结果，供调用方继续处理
+     */
     public ObjectNode normalizedCurrentConfig(JsonNode currentConfig) {
         if (currentConfig == null || !currentConfig.isObject()) {
             throw new IllegalArgumentException("draft 必须是 JSON Object");
@@ -191,6 +212,15 @@ public class EmbedViewConfigurationValidator {
         return normalized;
     }
 
+    /**
+     * 校验已解析资源；不满足约束时阻止后续处理。
+     *
+     * @param surfaceType 界面类型标识，决定后续已解析资源采用的处理分支
+     * @param draft 草稿，作为 {@code validateContextBindings} 的输入影响后续处理
+     * @param capabilities 能力集合，作为 {@code add} 的输入影响后续处理
+     * @param resource 资源，作为 {@code Set.copyOf} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private void validateResolvedResource(
             SurfaceType surfaceType,
             JsonNode draft,
@@ -259,6 +289,9 @@ public class EmbedViewConfigurationValidator {
      *
      * <p>三个历史显式字段数组保留专门错误码，便于管理员识别旧配置；其余未知键统一
      * Fail Closed，避免配置看似生效、运行时实际忽略而形成错误预期。</p>
+     *
+     * @param fieldPolicy 字段策略，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
      */
     private static void rejectLegacyFieldArrays(
             JsonNode fieldPolicy,
@@ -282,6 +315,13 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验入口能力集合；不满足约束时阻止后续处理。
+     *
+     * @param entryModes 入口模式集合，作为 {@code required.get} 的输入影响后续处理
+     * @param capabilities 能力集合，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void validateEntryCapabilities(
             List<String> entryModes,
             List<Capability> capabilities,
@@ -305,6 +345,12 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验上下文结构；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code inspectSchema} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private void validateContextSchema(JsonNode schema, List<Violation> violations) {
         if (schema.isMissingNode() || schema.isNull()) {
             // Runtime 会无条件解析 context_schema_json；缺失值会落成 null，导致所有 Launch
@@ -336,6 +382,11 @@ public class EmbedViewConfigurationValidator {
      *
      * <p>不能让管理端接受运行端会忽略的关键字，否则管理员以为已经发布的约束实际不会生效；
      * 同样也不能接受运行时必然报错的类型、边界或正则。</p>
+     *
+     * @param schema 结构，作为 {@code validateRequired} 的输入影响后续处理
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param root 根，供本方法校验结构节点时使用
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
      */
     private void validateSchemaNode(
             JsonNode schema,
@@ -400,6 +451,14 @@ public class EmbedViewConfigurationValidator {
         validatePattern(schema.get("pattern"), path + ".pattern", violations);
     }
 
+    /**
+     * 校验必填；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，供本方法校验必填时使用
+     * @param properties 属性集合，作为 {@code add} 的输入影响后续处理
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void validateRequired(
             JsonNode schema,
             JsonNode properties,
@@ -430,6 +489,15 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验非{@code negative}范围；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，供本方法校验非{@code negative}范围时使用
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param minimumName {@code minimum}名称，后续用于校验非{@code negative}范围时匹配或展示
+     * @param maximumName {@code maximum}名称，后续用于校验非{@code negative}范围时匹配或展示
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void validateNonNegativeRange(
             JsonNode schema,
             String path,
@@ -454,6 +522,13 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验{@code decimal}范围；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，供本方法校验{@code decimal}范围时使用
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void validateDecimalRange(
             JsonNode schema, String path, List<Violation> violations) {
         JsonNode minimum = schema.get("minimum");
@@ -472,6 +547,13 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验{@code pattern}；不满足约束时阻止后续处理。
+     *
+     * @param pattern {@code pattern}，作为 {@code add} 的输入影响后续处理
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void validatePattern(
             JsonNode pattern, String path, List<Violation> violations) {
         if (pattern == null) {
@@ -484,6 +566,15 @@ public class EmbedViewConfigurationValidator {
                 "Embed V1 不支持 pattern；请使用 enum 或长度约束");
     }
 
+    /**
+     * 检查结构；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，供本方法检查结构时使用
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param depth 深度，供本方法检查结构时使用
+     * @param stats {@code stats}，供本方法检查结构时使用
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private void inspectSchema(JsonNode node, String path, int depth,
                                SchemaStats stats, List<Violation> violations) {
         if (depth > MAX_SCHEMA_DEPTH) {
@@ -514,6 +605,16 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验上下文绑定集合；不满足约束时阻止后续处理。
+     *
+     * @param bindings 绑定集合，供本方法校验上下文绑定集合时使用
+     * @param contextSchema 上下文结构，作为 {@code add} 的输入影响后续处理
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param queryable {@code queryable}，供本方法校验上下文绑定集合时使用
+     * @param writable {@code writable}，供本方法校验上下文绑定集合时使用
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private void validateContextBindings(
             JsonNode bindings,
             JsonNode contextSchema,
@@ -605,6 +706,14 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 校验入口模式集合；不满足约束时阻止后续处理。
+     *
+     * @param surfaceType 界面类型标识，决定后续入口模式集合采用的处理分支
+     * @param node 节点，作为 {@code stringArray} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code stringArray} 的输入影响后续处理
+     * @return 嵌入式视图配置校验器集合，供调用方遍历或展示
+     */
     private List<String> validateEntryModes(
             SurfaceType surfaceType, JsonNode node, List<Violation> violations) {
         List<String> modes = stringArray(node, "entryModes", violations);
@@ -618,6 +727,12 @@ public class EmbedViewConfigurationValidator {
         return modes;
     }
 
+    /**
+     * 处理已解析节点，并将结果传给后续步骤。
+     *
+     * @param resource 资源，作为 {@code put} 的输入影响后续处理
+     * @return 处理后的已解析节点结果，供调用方继续处理
+     */
     private ObjectNode resolvedNode(ResolvedResource resource) {
         ObjectNode node = objectMapper.createObjectNode();
         put(node, "entityCode", resource.entityCode());
@@ -630,6 +745,13 @@ public class EmbedViewConfigurationValidator {
         return node;
     }
 
+    /**
+     * 写入嵌入式视图配置；后续读取或执行将使用更新后的状态。
+     *
+     * @param node 节点，供本方法写入嵌入式视图配置时使用
+     * @param name 名称，后续用于写入嵌入式视图配置时匹配或展示
+     * @param value 待写入嵌入式视图配置的原始输入，结果供调用方继续使用
+     */
     private static void put(ObjectNode node, String name, Object value) {
         if (value == null) {
             node.putNull(name);
@@ -640,7 +762,12 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
-    /** 与配置校验使用同一字段排序规则，供 Launch 追加运行时闭包后重新规范化。 */
+    /**
+     * 与配置校验使用同一字段排序规则，供 Launch 追加运行时闭包后重新规范化。
+     *
+     * @param node 节点，供本方法规范化嵌入式视图配置时使用
+     * @return 规范化后的嵌入式视图配置结果，供调用方继续处理
+     */
     JsonNode canonicalize(JsonNode node) {
         if (node.isObject()) {
             ObjectNode result = objectMapper.createObjectNode();
@@ -658,6 +785,15 @@ public class EmbedViewConfigurationValidator {
         return node.deepCopy();
     }
 
+    /**
+     * 整理枚举数组数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，作为 {@code stringArray} 的输入影响后续处理
+     * @param type 类型标识，决定后续枚举数组采用的处理分支
+     * @param path 路径，作为 {@code stringArray} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code stringArray} 的输入影响后续处理
+     * @return {@code e}集合，供调用方遍历或展示
+     */
     private static <E extends Enum<E>> List<E> enumArray(
             JsonNode node, Class<E> type, String path, List<Violation> violations) {
         List<String> strings = stringArray(node, path, violations);
@@ -673,6 +809,14 @@ public class EmbedViewConfigurationValidator {
         return List.copyOf(values);
     }
 
+    /**
+     * 整理字符串数组数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，供本方法处理字符串数组时使用
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     * @return 嵌入式视图配置校验器集合，供调用方遍历或展示
+     */
     private static List<String> stringArray(
             JsonNode node, String path, List<Violation> violations) {
         if (node.isMissingNode() || node.isNull()) {
@@ -696,6 +840,15 @@ public class EmbedViewConfigurationValidator {
         return List.copyOf(values);
     }
 
+    /**
+     * 处理{@code subset}，并将结果传给后续步骤。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param allowed 允许，供本方法处理{@code subset}时使用
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param code 编码，后续用于处理{@code subset}时定位或关联目标
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void subset(List<String> values, Set<String> allowed, String path,
                                String code, List<Violation> violations) {
         for (int index = 0; index < values.size(); index++) {
@@ -706,6 +859,14 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 处理必填文本，并将结果传给后续步骤。
+     *
+     * @param parent 父级，供本方法处理必填文本时使用
+     * @param name 名称，后续用于处理必填文本时匹配或展示
+     * @param path 路径，作为 {@code add} 的输入影响后续处理
+     * @param violations 违规项，作为 {@code add} 的输入影响后续处理
+     */
     private static void requiredText(JsonNode parent, String name, String path,
                                      List<Violation> violations) {
         if (!StringUtils.hasText(text(parent, name))) {
@@ -713,6 +874,13 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param parent 父级，供本方法处理文本时使用
+     * @param name 名称，后续用于处理文本时匹配或展示
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(JsonNode parent, String name) {
         if (parent == null || !parent.isObject()) {
             return null;
@@ -721,6 +889,13 @@ public class EmbedViewConfigurationValidator {
         return value != null && value.isTextual() ? value.textValue() : null;
     }
 
+    /**
+     * 处理{@code serialized}大小，并将结果传给后续步骤。
+     *
+     * @param node 节点，作为 {@code objectMapper.writeValueAsBytes} 的输入影响后续处理
+     * @return 处理后的{@code serialized}大小结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int serializedSize(JsonNode node) {
         try {
             return objectMapper.writeValueAsBytes(node).length;
@@ -729,7 +904,12 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
-    /** 计算 canonical Runtime Snapshot 的稳定摘要。 */
+    /**
+     * 计算 canonical Runtime Snapshot 的稳定摘要。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     */
     static String sha256(String value) {
         try {
             return java.util.HexFormat.of().formatHex(
@@ -740,12 +920,26 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param violations 违规项，作为 {@code ValidationResult} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static ValidationResult invalid(List<Violation> violations) {
         return new ValidationResult(false, null,
                 List.copyOf(violations.subList(0, Math.min(violations.size(), MAX_VIOLATIONS))),
                 List.of(), null, null);
     }
 
+    /**
+     * 添加嵌入式视图配置；结果供后续流程传递或持久化。
+     *
+     * @param violations 违规项，供本方法添加嵌入式视图配置时使用
+     * @param path 路径，供本方法添加嵌入式视图配置时使用
+     * @param code 编码，后续用于添加嵌入式视图配置时定位或关联目标
+     * @param message 消息，供本方法添加嵌入式视图配置时使用
+     */
     private static void add(List<Violation> violations, String path,
                             String code, String message) {
         if (violations.size() < MAX_VIOLATIONS) {
@@ -753,6 +947,9 @@ public class EmbedViewConfigurationValidator {
         }
     }
 
+    /**
+     * 负责结构{@code stats}的业务处理；协调校验、状态变化及后续结果传递。
+     */
     private static final class SchemaStats {
         private int properties;
     }

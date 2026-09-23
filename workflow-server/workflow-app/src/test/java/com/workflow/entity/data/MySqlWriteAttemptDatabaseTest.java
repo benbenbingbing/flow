@@ -1,5 +1,10 @@
 package com.workflow.entity.data;
 
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,13 +12,13 @@ import com.workflow.admin.audit.application.SystemAuditFailureWriter;
 import com.workflow.admin.audit.application.SystemAuditOutboxHandler;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
-import com.workflow.contracts.entity.mutation.*;
 import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.version.application.EntityMutationReceiptService;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.application.DatabaseOutboxPublisher;
@@ -270,7 +275,7 @@ class MySqlWriteAttemptDatabaseTest {
                     .getDbConfig().setLogicDeleteField("deleted");
             // Mapper 默认方法复用 BaseMapper 分页，夹具须安装与应用相同的官方分页插件。
             config.addInterceptor(new com.workflow.config.database.DatabaseMybatisConfiguration()
-                    .mybatisPlusInterceptor(new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect()));
+                    .mybatisPlusInterceptor(new MySqlSchemaDdlDialect()));
             for (var mapper : mappers) config.addMapper(mapper);
             var factory = new MybatisSqlSessionFactoryBean(); factory.setDataSource(source); factory.setConfiguration(config);
             try { session = new SqlSessionTemplate(Objects.requireNonNull(factory.getObject())); }

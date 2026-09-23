@@ -1,6 +1,7 @@
 package com.workflow.entity.definition.application;
 
-import com.workflow.integration.database.api.*;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
+import com.workflow.integration.database.api.schema.SchemaTableMetadata;
 import com.workflow.core.database.port.SchemaMetadataPort;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.*;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;

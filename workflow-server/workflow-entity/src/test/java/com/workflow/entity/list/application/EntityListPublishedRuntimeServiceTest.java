@@ -1,12 +1,12 @@
 package com.workflow.entity.list.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;

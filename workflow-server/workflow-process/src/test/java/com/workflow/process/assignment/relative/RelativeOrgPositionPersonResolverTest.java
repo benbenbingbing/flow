@@ -1,18 +1,18 @@
 package com.workflow.process.assignment.relative;
 
-import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.OrganizationPositionErrorCode;
-import com.workflow.contracts.identity.position.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.PositionDefinitionView;
-import com.workflow.contracts.identity.position.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.PositionHolderResolution;
-import com.workflow.contracts.identity.position.PositionHolderView;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.position.error.OrganizationPositionErrorCode;
+import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
+import com.workflow.contracts.identity.position.model.PositionDefinitionView;
+import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.contracts.identity.position.model.PositionHolderResolution;
+import com.workflow.contracts.identity.position.model.PositionHolderView;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

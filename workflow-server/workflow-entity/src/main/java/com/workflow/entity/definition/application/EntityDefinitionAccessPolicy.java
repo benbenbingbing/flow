@@ -52,6 +52,9 @@ public class EntityDefinitionAccessPolicy {
 
     /**
      * Lock and validate a dynamic entity for a serialized write transaction.
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的动态编码更新结果，供调用方继续处理
      */
     public EntityDefinition requireDynamicByCodeForUpdate(
             String entityCode) {

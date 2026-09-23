@@ -52,6 +52,9 @@ public class UiPublishedDataSourceReferenceGuard {
      *
      * <p>旧发布快照不会重算内容哈希，因此删除保护不能只用新主键
      * 缩小候选集，否则会漏掉仍可执行的历史引用。</p>
+     *
+     * @param serviceId 服务ID，后续用于校验并获取无{@code executable}引用时定位或关联目标
+     * @param legacyServiceId 旧版服务ID，后续用于校验并获取无{@code executable}引用时定位或关联目标
      */
     public void requireNoExecutableReferences(
             String serviceId,
@@ -103,6 +106,16 @@ public class UiPublishedDataSourceReferenceGuard {
         }
     }
 
+    /**
+     * 生成引用路径文本，供后续匹配或展示。
+     *
+     * @param value 待处理引用路径的原始输入，结果供调用方继续使用
+     * @param serviceId 服务ID，后续用于处理引用路径时定位或关联目标
+     * @param path 路径，供本方法处理引用路径时使用
+     * @param embeddedDepth {@code embedded}深度，供本方法处理引用路径时使用
+     * @return 处理后的引用路径文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String referencePath(
             Object value,
             String serviceId,
@@ -159,6 +172,12 @@ public class UiPublishedDataSourceReferenceGuard {
         return null;
     }
 
+    /**
+     * 构造{@code unverifiable}异常，供调用方区分失败原因。
+     *
+     * @param source 待处理{@code unverifiable}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code unverifiable}结果，供调用方继续处理
+     */
     private BusinessConflictException unverifiable(String source) {
         return new BusinessConflictException(
                 "UI_INTERFACE_PUBLISHED_REFERENCE_UNVERIFIABLE",
@@ -166,10 +185,22 @@ public class UiPublishedDataSourceReferenceGuard {
                         + "，但文档无法可靠校验；请先修复发布版本后再删除");
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 界面已发布数据来源引用保护集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

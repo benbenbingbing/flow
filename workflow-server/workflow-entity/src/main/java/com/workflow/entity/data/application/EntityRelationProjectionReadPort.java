@@ -1,6 +1,6 @@
 package com.workflow.entity.data.application;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.entity.definition.application.model.PublishedRelationPath.LinkField;
 
 import java.util.List;
@@ -15,7 +15,12 @@ import java.util.Map;
  */
 public interface EntityRelationProjectionReadPort {
 
-    /** 执行一页最小投影查询。 */
+    /**
+     * 执行一页最小投影查询。
+     *
+     * @param query 查询，供本方法读取实体关系投影读取分页时使用
+     * @return 读取后的实体关系投影读取分页结果，供调用方继续处理
+     */
     ProjectionPage readPage(ProjectionQuery query);
 
     /** 查询谓词类型。 */
@@ -48,6 +53,19 @@ public interface EntityRelationProjectionReadPort {
             long pageSize,
             int maxMultiValues) {
 
+        /**
+         * 初始化投影查询，保存构造参数供后续方法使用。
+         *
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param projectedFields {@code projected}字段，保存在对象中供后续校验、查询或展示
+         * @param predicateType 判断条件类型标识，决定后续投影查询采用的处理分支
+         * @param predicateField 判断条件字段，保存在对象中供后续校验、查询或展示
+         * @param predicateValues 判断条件值集合，保存在对象中供后续校验、查询或展示
+         * @param dataScopePlan 数据作用域方案，保存在对象中供后续校验、查询或展示
+         * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+         * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+         * @param maxMultiValues 最大多实例值集合，保存在对象中供后续校验、查询或展示
+         */
         public ProjectionQuery {
             projectedFields = projectedFields == null
                     ? List.of() : List.copyOf(projectedFields);
@@ -56,24 +74,50 @@ public interface EntityRelationProjectionReadPort {
         }
     }
 
-    /** 一条最小记录投影。 */
+    /**
+     * 一条最小记录投影。
+     *
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param linkValues 链接值集合，保存在对象中供后续校验、查询或展示
+     */
     record ProjectionRow(
             String recordId,
             Map<String, Object> linkValues) {
 
+        /**
+         * 初始化投影行，保存构造参数供后续方法使用。
+         *
+         * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+         * @param linkValues 链接值集合，保存在对象中供后续校验、查询或展示
+         */
         public ProjectionRow {
             linkValues = linkValues == null
                     ? Map.of() : Map.copyOf(linkValues);
         }
     }
 
-    /** 分页投影结果。 */
+    /**
+     * 分页投影结果。
+     *
+     * @param rows 行，保存在对象中供后续校验、查询或展示
+     * @param total 总数，保存在对象中供后续校验、查询或展示
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     */
     record ProjectionPage(
             List<ProjectionRow> rows,
             long total,
             long pageNum,
             long pageSize) {
 
+        /**
+         * 初始化投影分页，保存构造参数供后续方法使用。
+         *
+         * @param rows 行，保存在对象中供后续校验、查询或展示
+         * @param total 总数，保存在对象中供后续校验、查询或展示
+         * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+         * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+         */
         public ProjectionPage {
             rows = rows == null ? List.of() : List.copyOf(rows);
         }

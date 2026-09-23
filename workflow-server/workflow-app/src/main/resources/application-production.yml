@@ -1,8 +1,17 @@
+# 生产环境差异配置：激活 production profile 后生效；只覆盖日志相关差异，其余默认值沿用分组文件。
+
+# 应用日志级别和输出格式，默认输出到控制台供部署平台采集。
 logging:
+  # 生产结构化日志设置，便于日志平台解析字段。
   structured:
+    # 结构化日志编码格式选择。
     format:
+      # 生产控制台使用 ECS JSON 格式，供集中日志平台检索和关联追踪。
       console: ecs
 
+# 数据访问框架配置，统一 Mapper 扫描、字段映射和逻辑删除行为。
 mybatis-plus:
+  # MyBatis 原生运行设置，控制字段映射与 SQL 日志。
   configuration:
+    # 生产 SQL 日志实现可由环境覆盖，默认关闭参数日志；调整时需避免输出敏感业务数据。
     log-impl: ${MYBATIS_LOG_IMPL:org.apache.ibatis.logging.nologging.NoLoggingImpl}

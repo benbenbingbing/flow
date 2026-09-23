@@ -36,6 +36,13 @@ final class SubFormParameterContractReleaseValidator {
     private final UiConfigReleaseMapper releaseMapper;
     private final JsonDocumentCodec codec;
 
+    /**
+     * 校验节点；不满足约束时阻止后续处理。
+     *
+     * @param parentForm 父级表单，作为 {@code fieldMapper.findByEntityId} 的输入影响后续处理
+     * @param node 节点，作为 {@code SubFormParameterContractPolicy.contract} 的输入影响后续处理
+     * @param release 发布版本，作为 {@code codec.readObject} 的输入影响后续处理
+     */
     void validateNode(
             EntityForm parentForm,
             EntityFormNode node,
@@ -67,6 +74,12 @@ final class SubFormParameterContractReleaseValidator {
                 childRefFieldCode(parentForm, node));
     }
 
+    /**
+     * 校验快照；不满足约束时阻止后续处理。
+     *
+     * @param parentForm 父级表单，作为 {@code validateRelationReleaseEntity} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     void validateSnapshot(EntityForm parentForm) {
         if (parentForm == null) {
             throw new IllegalArgumentException(
@@ -93,6 +106,13 @@ final class SubFormParameterContractReleaseValidator {
         }
     }
 
+    /**
+     * 生成子级引用字段编码文本，供后续匹配或展示。
+     *
+     * @param parentForm 父级表单，作为 {@code requireBoundRelation} 的输入影响后续处理
+     * @param node 节点，作为 {@code requireBoundRelation} 的输入影响后续处理
+     * @return 处理后的子级引用字段编码文本，供调用方比较或展示
+     */
     private String childRefFieldCode(
             EntityForm parentForm,
             EntityFormNode node) {
@@ -105,6 +125,14 @@ final class SubFormParameterContractReleaseValidator {
                 .childRefFieldCode();
     }
 
+    /**
+     * 校验关系发布版本实体；不满足约束时阻止后续处理。
+     *
+     * @param parentForm 父级表单，作为 {@code requireBoundRelation} 的输入影响后续处理
+     * @param node 节点，作为 {@code requireBoundRelation} 的输入影响后续处理
+     * @param release 发布版本，作为 {@code formMapper.selectById} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateRelationReleaseEntity(
             EntityForm parentForm,
             EntityFormNode node,
@@ -126,6 +154,14 @@ final class SubFormParameterContractReleaseValidator {
         }
     }
 
+    /**
+     * 校验并获取绑定关系；不满足约束时阻止后续处理。
+     *
+     * @param parentForm 父级表单，作为 {@code relationMapper.selectActiveByBindingRef} 的输入影响后续处理
+     * @param node 节点，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 校验并获取后的绑定关系结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityRelation requireBoundRelation(
             EntityForm parentForm,
             EntityFormNode node) {
@@ -149,6 +185,13 @@ final class SubFormParameterContractReleaseValidator {
         return relation;
     }
 
+    /**
+     * 校验并获取发布版本；不满足约束时阻止后续处理。
+     *
+     * @param reference 引用，作为 {@code releaseMapper.selectById} 的输入影响后续处理
+     * @return 校验并获取后的发布版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiConfigRelease requireRelease(
             SubFormParameterContractPolicy.RelationConfig reference) {
         if (!StringUtils.hasText(reference.childFormId())
@@ -197,6 +240,12 @@ final class SubFormParameterContractReleaseValidator {
         return release;
     }
 
+    /**
+     * 判断是否具有发布版本引用；判断结果决定调用方的后续分支。
+     *
+     * @param reference 引用，供本方法判断是否具有发布版本引用时使用
+     * @return 发布版本引用条件成立时为 true，否则为 false
+     */
     private boolean hasReleaseReference(
             SubFormParameterContractPolicy.RelationConfig reference) {
         return StringUtils.hasText(reference.childFormId())
@@ -205,6 +254,12 @@ final class SubFormParameterContractReleaseValidator {
                 || reference.childFormReleaseVersion() != null;
     }
 
+    /**
+     * 整理{@code released}字段数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，供本方法处理{@code released}字段时使用
+     * @return 实体表单字段集合，供调用方遍历或展示
+     */
     private List<EntityFormField> releasedFields(
             Map<String, Object> snapshot) {
         Object configured = snapshot.get("legacyFields");
@@ -234,6 +289,13 @@ final class SubFormParameterContractReleaseValidator {
         return result;
     }
 
+    /**
+     * 整理对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理对象映射时匹配或展示
+     * @return 对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> objectMap(
             Object value,
             String label) {
@@ -250,6 +312,12 @@ final class SubFormParameterContractReleaseValidator {
         return new LinkedHashMap<>();
     }
 
+    /**
+     * 处理布尔值{@code flag}，并将结果传给后续步骤。
+     *
+     * @param value 待处理布尔值{@code flag}的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值{@code flag}结果，供调用方继续处理
+     */
     private Integer booleanFlag(Object value) {
         if (value instanceof Boolean flag) {
             return flag ? 1 : 0;
@@ -262,6 +330,12 @@ final class SubFormParameterContractReleaseValidator {
                 ? 1 : 0;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String current = text(value);
@@ -272,10 +346,22 @@ final class SubFormParameterContractReleaseValidator {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化子级表单参数契约发布版本的原始输入，结果供调用方继续使用
+     * @return 规范化后的子级表单参数契约发布版本文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return value == null
                 ? "" : value.trim().toUpperCase();

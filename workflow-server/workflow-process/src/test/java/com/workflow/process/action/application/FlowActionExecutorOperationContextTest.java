@@ -1,10 +1,10 @@
 package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;

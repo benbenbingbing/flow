@@ -19,6 +19,9 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
 
     /**
      * 根据实体ID查询列表配置
+     *
+     * @param entityId 实体ID，后续用于查询实体ID时定位或关联目标
+     * @return 实体列表配置集合，供调用方遍历或展示
      */
     default List<EntityListConfig> findByEntityId(String entityId) {
         return selectList(Wrappers.<EntityListConfig>lambdaQuery()
@@ -28,6 +31,10 @@ public interface EntityListConfigMapper extends BaseMapper<EntityListConfig> {
 
     /**
      * 根据实体ID和列表标识查询
+     *
+     * @param entityId 实体ID，后续用于查询实体ID与列表键时定位或关联目标
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @return 符合条件的实体列表配置结果，供调用方继续处理
      */
     default EntityListConfig findByEntityIdAndListKey(String entityId, String listKey) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityListConfig>lambdaQuery()

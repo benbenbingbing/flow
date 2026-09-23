@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+/** 定时认领到期的 SLA 事件，并把每个事件交给独立事务处理器执行。 */
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -20,6 +21,7 @@ public class TaskSlaEventWorker {
     private final ProcessTaskSlaMapper slaMapper;
     private final TaskSlaEventProcessor processor;
     private final TaskSlaRuntimeService runtimeService;
+    /** 本工作器实例的租约身份，认领及写回必须保持一致。 */
     private final String ownerId = "task-sla-" + UUID.randomUUID();
 
     @Value("${workflow.task-sla.batch-size:50}")
@@ -28,6 +30,10 @@ public class TaskSlaEventWorker {
     @Value("${workflow.task-sla.lease-seconds:120}")
     private int leaseSeconds;
 
+    /**
+ * 每轮先恢复达到暂停上限的任务，再回收过期租约并认领待执行事件。
+ * claim 失败代表其他实例抢先取得租约，不应重复执行动作。
+ */
     @Scheduled(fixedDelayString =
             "${workflow.task-sla.poll-delay-ms:5000}")
     public void poll() {
@@ -56,6 +62,7 @@ public class TaskSlaEventWorker {
         }
     }
 
+    /** 分批恢复超出暂停上限的任务，单条失败只记录日志，不阻断其他任务和事件。 */
     private void resumeExpiredPauses() {
         for (var sla : slaMapper.findPaused(Math.max(1, batchSize))) {
             try {

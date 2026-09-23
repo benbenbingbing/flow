@@ -10,8 +10,8 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.bpmn.model.BpmnModel;

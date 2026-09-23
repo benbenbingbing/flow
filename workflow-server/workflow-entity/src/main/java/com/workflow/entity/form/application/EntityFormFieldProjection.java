@@ -12,6 +12,11 @@ import java.util.*;
 public final class EntityFormFieldProjection {
     private final JsonDocumentCodec codec;
 
+    /**
+     * 初始化实体表单字段投影，保存构造参数供后续方法使用。
+     *
+     * @param codec 编解码器依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityFormFieldProjection(JsonDocumentCodec codec) {
         this.codec = codec;
     }
@@ -41,14 +46,26 @@ public final class EntityFormFieldProjection {
         return keys;
     }
 
-    /** 草稿的字段完全由节点生成；发布快照可通过另一重载补充快照中的字段元数据。 */
+    /**
+     * 草稿的字段完全由节点生成；发布快照可通过另一重载补充快照中的字段元数据。
+     *
+     * @param formId 表单ID，后续用于处理{@code derive}时定位或关联目标
+     * @param nodes 节点集合，供本方法处理{@code derive}时使用
+     * @return 实体表单字段集合，供调用方遍历或展示
+     */
     public List<EntityFormField> derive(String formId, List<EntityFormNode> nodes) {
         EntityForm form = new EntityForm();
         form.setId(formId);
         return derive(form, nodes);
     }
 
-    /** 节点显式设置（包括清空值）优先；字段列表只用于补充已发布快照或实体字段元数据。 */
+    /**
+     * 节点显式设置（包括清空值）优先；字段列表只用于补充已发布快照或实体字段元数据。
+     *
+     * @param form 表单，作为 {@code field.setFormId} 的输入影响后续处理
+     * @param publishedNodes 已发布节点集合，供本方法处理{@code derive}时使用
+     * @return 实体表单字段集合，供调用方遍历或展示
+     */
     public List<EntityFormField> derive(
             EntityForm form,
             List<EntityFormNode> publishedNodes) {
@@ -169,6 +186,11 @@ public final class EntityFormFieldProjection {
     /**
      * 导入或撤销草稿时，将快照中的字段补充到节点。已有节点属性优先，显式 null 表示清空。
      * 有字段节点时仅补齐属性，不把旧快照中已移出节点树的字段重新加入设计。
+     *
+     * @param formId 表单ID，后续用于处理{@code materialize}时定位或关联目标
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param nodes 节点集合，作为 {@code derive} 的输入影响后续处理
+     * @return 实体表单节点集合，供调用方遍历或展示
      */
     public List<EntityFormNode> materialize(
             String formId, List<EntityFormField> fields, List<EntityFormNode> nodes) {
@@ -221,7 +243,13 @@ public final class EntityFormFieldProjection {
         return result;
     }
 
-    /** 转换仅发生在输入边界，不会回写或修改不可变发布快照。 */
+    /**
+     * 转换仅发生在输入边界，不会回写或修改不可变发布快照。
+     *
+     * @param node 节点，作为 {@code rules.putAll} 的输入影响后续处理
+     * @param field 字段，作为 {@code props.put} 的输入影响后续处理
+     * @param overrides {@code overrides}，作为 {@code props.putAll} 的输入影响后续处理
+     */
     private void mergeField(EntityFormNode node, EntityFormField field, Map<String, Object> overrides) {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("fieldId", field.getFieldId());
@@ -255,11 +283,30 @@ public final class EntityFormFieldProjection {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) { return value == null ? null : String.valueOf(value); }
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value, int fallback) {
         if (value instanceof Number number) return number.intValue();
         try { return value == null ? fallback : Integer.parseInt(String.valueOf(value)); }
         catch (NumberFormatException exception) { return fallback; }
     }
+    /**
+     * 处理布尔值{@code flag}，并将结果传给后续步骤。
+     *
+     * @param value 待处理布尔值{@code flag}的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值{@code flag}结果，供调用方继续处理
+     */
     private Integer booleanFlag(Object value) { return Boolean.TRUE.equals(value) ? 1 : 0; }
 }

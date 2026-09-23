@@ -50,6 +50,15 @@ public class EntityRecordVersionComparisonService {
     private final EntityRecordVersionDatasetRowMapper rowMapper;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 比较实体记录版本比较；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fromVersionNo 起始版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @param toVersionNo 截止版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @return 比较后的实体记录版本比较结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public RecordVersionComparisonV2 compare(
             String entityCode,
@@ -152,6 +161,20 @@ public class EntityRecordVersionComparisonService {
                 warnings);
     }
 
+    /**
+     * 比较行；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fromVersionNo 起始版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @param toVersionNo 截止版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @param nodeCode 节点编码，后续用于比较行时定位或关联目标
+     * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @param changedOnly 已变更仅，供本方法比较行时使用
+     * @return 比较后的行结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(readOnly = true)
     public RowComparisonPage compareRows(
             String entityCode,
@@ -205,6 +228,18 @@ public class EntityRecordVersionComparisonService {
                 changes.size(), pageNum, pageSize, diff.counts());
     }
 
+    /**
+     * 处理快照行，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @param nodeCode 节点编码，后续用于处理快照行时定位或关联目标
+     * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @return 处理后的快照行结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(readOnly = true)
     public SnapshotRowPage snapshotRows(
             String entityCode,
@@ -247,6 +282,14 @@ public class EntityRecordVersionComparisonService {
                 pageSize);
     }
 
+    /**
+     * 处理数据集差异，并将结果传给后续步骤。
+     *
+     * @param left 左侧，作为 {@code rowComparisons} 的输入影响后续处理
+     * @param right 右侧，作为 {@code Boolean.TRUE.equals} 的输入影响后续处理
+     * @param ignored {@code ignored}，作为 {@code rowComparisons} 的输入影响后续处理
+     * @return 处理后的数据集差异结果，供调用方继续处理
+     */
     private DatasetDiff datasetDiff(
             EntityRecordVersionDataset left,
             EntityRecordVersionDataset right,
@@ -291,6 +334,14 @@ public class EntityRecordVersionComparisonService {
                 false, data, display, schema);
     }
 
+    /**
+     * 整理行{@code comparisons}数据，供调用方遍历或继续处理。
+     *
+     * @param left 左侧，作为 {@code indexRows} 的输入影响后续处理
+     * @param right 右侧，作为 {@code indexRows} 的输入影响后续处理
+     * @param ignored {@code ignored}，供本方法处理行{@code comparisons}时使用
+     * @return 行比较集合，供调用方遍历或展示
+     */
     private List<RowComparison> rowComparisons(
             EntityRecordVersionDataset left,
             EntityRecordVersionDataset right,
@@ -365,6 +416,14 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 比较字段；结果供调用方的后续步骤使用。
+     *
+     * @param left 左侧，供本方法比较字段时使用
+     * @param right 右侧，供本方法比较字段时使用
+     * @param ignored {@code ignored}，供本方法比较字段时使用
+     * @return 比较后的字段结果，供调用方继续处理
+     */
     private FieldDiff compareFields(
             NodeSnapshot left,
             NodeSnapshot right,
@@ -468,6 +527,13 @@ public class EntityRecordVersionComparisonService {
         return new FieldDiff(grouped, data, display, schema);
     }
 
+    /**
+     * 处理根快照，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code NodeSnapshot} 的输入影响后续处理
+     * @param schemaVersion 结构版本，供本方法处理根快照时使用
+     * @return 处理后的根快照结果，供调用方继续处理
+     */
     private NodeSnapshot rootSnapshot(
             Map<String, Object> document,
             int schemaVersion) {
@@ -505,6 +571,13 @@ public class EntityRecordVersionComparisonService {
         return new NodeSnapshot(entityName(document), fields, values);
     }
 
+    /**
+     * 处理数据集快照，并将结果传给后续步骤。
+     *
+     * @param dataset 数据集，作为 {@code NodeSnapshot} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的数据集快照结果，供调用方继续处理
+     */
     private NodeSnapshot datasetSnapshot(
             EntityRecordVersionDataset dataset,
             Map<String, FrozenValue> values) {
@@ -514,6 +587,12 @@ public class EntityRecordVersionComparisonService {
                 values);
     }
 
+    /**
+     * 整理展示字段数据，供调用方遍历或继续处理。
+     *
+     * @param presentation 展示，供本方法处理展示字段时使用
+     * @return 展示字段键值结果，供调用方继续处理
+     */
     private Map<String, EntityVersionConfiguration.FieldPresentation>
             presentationFields(Map<String, Object> presentation) {
         Map<String, EntityVersionConfiguration.FieldPresentation> result =
@@ -529,6 +608,12 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 整理{@code frozen}值集合数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理{@code frozen}值集合的原始输入，结果供调用方继续使用
+     * @return {@code frozen}值集合键值结果，供调用方继续处理
+     */
     private Map<String, FrozenValue> frozenValues(Map<String, Object> raw) {
         Map<String, FrozenValue> result = new LinkedHashMap<>();
         raw.forEach((code, value) -> result.put(code,
@@ -536,6 +621,13 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 读取值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 值集合键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, FrozenValue> readValues(String document) {
         try {
             return objectMapper.readValue(document,
@@ -545,7 +637,12 @@ public class EntityRecordVersionComparisonService {
         }
     }
 
-    /** 内部图身份用于比较和恢复预演，历史详情不得把它当作业务字段返回。 */
+    /**
+     * 内部图身份用于比较和恢复预演，历史详情不得把它当作业务字段返回。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 公开值集合键值结果，供调用方继续处理
+     */
     private Map<String, FrozenValue> publicValues(
             Map<String, FrozenValue> values) {
         Map<String, FrozenValue> result = new LinkedHashMap<>(values);
@@ -554,7 +651,14 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
-    /** 子记录换父是关系图变化，即使业务字段完全相同也必须显示为修改。 */
+    /**
+     * 子记录换父是关系图变化，即使业务字段完全相同也必须显示为修改。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param oldParent 旧父级，作为 {@code internalValue} 的输入影响后续处理
+     * @param newParent 新父级，作为 {@code internalValue} 的输入影响后续处理
+     * @return 处理后的父级变更结果，供调用方继续处理
+     */
     private FieldDiff withParentChange(
             FieldDiff fields,
             Object oldParent,
@@ -580,16 +684,36 @@ public class EntityRecordVersionComparisonService {
                 fields.schemaChanges());
     }
 
+    /**
+     * 处理内部值，并将结果传给后续步骤。
+     *
+     * @param value 待处理内部值的原始输入，结果供调用方继续使用
+     * @return 处理后的内部值结果，供调用方继续处理
+     */
     private FrozenValue internalValue(Object value) {
         return value == null ? null : new FrozenValue(
                 value, String.valueOf(value), List.of(),
                 "INTERNAL", "RESOLVED");
     }
 
+    /**
+     * 处理原始值，并将结果传给后续步骤。
+     *
+     * @param value 待处理原始值的原始输入，结果供调用方继续使用
+     * @return 处理后的原始值结果，供调用方继续处理
+     */
     private Object rawValue(FrozenValue value) {
         return value == null ? null : value.rawValue();
     }
 
+    /**
+     * 处理侧，并将结果传给后续步骤。
+     *
+     * @param version 版本，作为 {@code VersionSide} 的输入影响后续处理
+     * @param document 文档，供本方法处理侧时使用
+     * @param schemaVersion 结构版本，供本方法处理侧时使用
+     * @return 处理后的侧结果，供调用方继续处理
+     */
     private VersionSide side(
             EntityRecordVersion version,
             Map<String, Object> document,
@@ -606,10 +730,22 @@ public class EntityRecordVersionComparisonService {
                 version.getCreateTime());
     }
 
+    /**
+     * 生成实体名称文本，供后续匹配或展示。
+     *
+     * @param document 文档，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的实体名称文本，供调用方比较或展示
+     */
     private String entityName(Map<String, Object> document) {
         return text(map(document.get("entity")).get("entityName"));
     }
 
+    /**
+     * 整理{@code ignored}字段数据，供调用方遍历或继续处理。
+     *
+     * @param document 文档，作为 {@code list} 的输入影响后续处理
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private Set<String> ignoredFields(Map<String, Object> document) {
         return list(map(document.get("diffPolicy"))
                 .get("ignoredFieldCodes")).stream()
@@ -617,6 +753,12 @@ public class EntityRecordVersionComparisonService {
                 .collect(java.util.stream.Collectors.toSet());
     }
 
+    /**
+     * 处理差异策略，并将结果传给后续步骤。
+     *
+     * @param document 文档，供本方法处理差异策略时使用
+     * @return 处理后的差异策略结果，供调用方继续处理
+     */
     private EntityVersionConfiguration.DiffPolicy diffPolicy(
             Map<String, Object> document) {
         Object value = document.get("diffPolicy");
@@ -632,6 +774,12 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 整理索引{@code datasets}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 索引{@code datasets}键值结果，供调用方继续处理
+     */
     private Map<String, EntityRecordVersionDataset> indexDatasets(
             List<EntityRecordVersionDataset> values) {
         Map<String, EntityRecordVersionDataset> result = new LinkedHashMap<>();
@@ -641,6 +789,12 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 整理索引行数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 索引行键值结果，供调用方继续处理
+     */
     private Map<String, EntityRecordVersionDatasetRow> indexRows(
             List<EntityRecordVersionDatasetRow> values) {
         Map<String, EntityRecordVersionDatasetRow> result = new LinkedHashMap<>();
@@ -650,6 +804,15 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 校验并获取版本；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code versionMapper.findVersion} 的输入影响后续处理
+     * @return 校验并获取后的版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityRecordVersion requireVersion(
             String entityCode, String recordId, Integer versionNo) {
         EntityRecordVersion value = versionMapper.findVersion(
@@ -662,6 +825,13 @@ public class EntityRecordVersionComparisonService {
         return value;
     }
 
+    /**
+     * 处理结构版本，并将结果传给后续步骤。
+     *
+     * @param version 版本，供本方法处理结构版本时使用
+     * @param document 文档，供本方法处理结构版本时使用
+     * @return 处理后的结构版本结果，供调用方继续处理
+     */
     private int schemaVersion(
             EntityRecordVersion version,
             Map<String, Object> document) {
@@ -672,11 +842,24 @@ public class EntityRecordVersionComparisonService {
         return value instanceof Number number ? number.intValue() : 1;
     }
 
+    /**
+     * 统计实体记录版本比较；结果供后续判断或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param type 类型标识，决定后续实体记录版本比较采用的处理分支
+     * @return 符合条件的实体记录版本比较数量
+     */
     private int count(List<RowComparison> values, String type) {
         return (int) values.stream()
                 .filter(item -> type.equals(item.changeType())).count();
     }
 
+    /**
+     * 处理字段{@code totals}，并将结果传给后续步骤。
+     *
+     * @param sections 区段集合，作为 {@code FieldDiff} 的输入影响后续处理
+     * @return 处理后的字段{@code totals}结果，供调用方继续处理
+     */
     private FieldDiff fieldTotals(List<FormSectionComparison> sections) {
         int data = 0;
         int display = 0;
@@ -696,10 +879,22 @@ public class EntityRecordVersionComparisonService {
         return new FieldDiff(sections, data, display, schema);
     }
 
+    /**
+     * 处理规范化分页大小，并将结果传给后续步骤。
+     *
+     * @param requested 请求，作为 {@code Math.max} 的输入影响后续处理
+     * @return 处理后的规范化分页大小结果，供调用方继续处理
+     */
     private long normalizedPageSize(long requested) {
         return Math.max(1, Math.min(100, requested));
     }
 
+    /**
+     * 生成字段名称文本，供后续匹配或展示。
+     *
+     * @param field 字段，作为 {@code firstText} 的输入影响后续处理
+     * @return 处理后的字段名称文本，供调用方比较或展示
+     */
     private String fieldName(
             EntityVersionConfiguration.FieldPresentation field) {
         return field == null ? null
@@ -707,6 +902,12 @@ public class EntityRecordVersionComparisonService {
                         field.getFieldCode());
     }
 
+    /**
+     * 生成区段名称文本，供后续匹配或展示。
+     *
+     * @param code 编码，后续用于处理区段名称时定位或关联目标
+     * @return 处理后的区段名称文本，供调用方比较或展示
+     */
     private String sectionName(String code) {
         return switch (code) {
             case "SYSTEM" -> "系统字段";
@@ -716,12 +917,24 @@ public class EntityRecordVersionComparisonService {
         };
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         return value instanceof Map<?, ?> map
                 ? (Map<String, Object>) map : Map.of();
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Object item : list(value)) {
@@ -732,11 +945,24 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 列出实体记录版本比较；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待列出实体记录版本比较的原始输入，结果供调用方继续使用
+     * @return {@code collection<?>}集合，供调用方遍历或展示
+     */
     private Collection<?> list(Object value) {
         return value instanceof Collection<?> collection
                 ? collection : List.of();
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> readMap(String document) {
         try {
             return objectMapper.readValue(document,
@@ -746,6 +972,13 @@ public class EntityRecordVersionComparisonService {
         }
     }
 
+    /**
+     * 整理{@code union}数据，供调用方遍历或继续处理。
+     *
+     * @param left 左侧，作为 {@code result.addAll} 的输入影响后续处理
+     * @param right 右侧，作为 {@code result.addAll} 的输入影响后续处理
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private <T> Set<T> union(Collection<T> left, Collection<T> right) {
         Set<T> result = new LinkedHashSet<>();
         result.addAll(left);
@@ -753,7 +986,13 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
-    /** 目标版本字段和分组优先；旧版已删除字段按旧冻结顺序追加。 */
+    /**
+     * 目标版本字段和分组优先；旧版已删除字段按旧冻结顺序追加。
+     *
+     * @param left 左侧，供本方法处理{@code ordered}字段编码集合时使用
+     * @param right 右侧，作为 {@code orderedCodes} 的输入影响后续处理
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private List<String> orderedFieldCodes(
             Map<String, EntityVersionConfiguration.FieldPresentation> left,
             Map<String, EntityVersionConfiguration.FieldPresentation> right) {
@@ -766,6 +1005,12 @@ public class EntityRecordVersionComparisonService {
         return result;
     }
 
+    /**
+     * 整理{@code ordered}编码集合数据，供调用方遍历或继续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private List<String> orderedCodes(
             Map<String, EntityVersionConfiguration.FieldPresentation> fields) {
         Map<String, Integer> sectionOrder = new LinkedHashMap<>();
@@ -788,23 +1033,55 @@ public class EntityRecordVersionComparisonService {
                 .toList();
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private int value(Integer value, int fallback) {
         return value == null ? fallback : value;
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(Object value) {
         return value instanceof Boolean bool
                 ? bool : Boolean.parseBoolean(String.valueOf(value));
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 生成默认文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理默认文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的默认文本文本，供调用方比较或展示
+     */
     private String defaultText(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -814,20 +1091,47 @@ public class EntityRecordVersionComparisonService {
         return null;
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体记录版本比较集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }
 
+    /**
+     * 封装节点快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityName 实体名称，后续用于处理节点快照时匹配或展示
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private record NodeSnapshot(
             String entityName,
             Map<String, EntityVersionConfiguration.FieldPresentation> fields,
             Map<String, FrozenValue> values) {
 
+        /**
+         * 处理值集合，并将结果传给后续步骤。
+         *
+         * @param newValues 新值集合，作为 {@code NodeSnapshot} 的输入影响后续处理
+         * @return 处理后的值集合结果，供调用方继续处理
+         */
         private NodeSnapshot withValues(Map<String, FrozenValue> newValues) {
             return new NodeSnapshot(entityName, fields, newValues);
         }
     }
 
+    /**
+     * 封装字段差异的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sections 区段集合，保存在对象中供后续校验、查询或展示
+     * @param dataChanges 数据变更集合，保存在对象中供后续校验、查询或展示
+     * @param displayChanges 展示变更集合，保存在对象中供后续校验、查询或展示
+     * @param schemaChanges 结构变更集合，保存在对象中供后续校验、查询或展示
+     */
     private record FieldDiff(
             List<FormSectionComparison> sections,
             int dataChanges,
@@ -835,6 +1139,16 @@ public class EntityRecordVersionComparisonService {
             int schemaChanges) {
     }
 
+    /**
+     * 封装数据集差异的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param comparability {@code comparability}，保存在对象中供后续校验、查询或展示
+     * @param counts {@code counts}，保存在对象中供后续校验、查询或展示
+     * @param scopeChanged 作用域已变更，保存在对象中供后续校验、查询或展示
+     * @param dataChanges 数据变更集合，保存在对象中供后续校验、查询或展示
+     * @param displayChanges 展示变更集合，保存在对象中供后续校验、查询或展示
+     * @param schemaChanges 结构变更集合，保存在对象中供后续校验、查询或展示
+     */
     private record DatasetDiff(
             String comparability,
             RowChangeCounts counts,
@@ -844,6 +1158,9 @@ public class EntityRecordVersionComparisonService {
             int schemaChanges) {
     }
 
+    /**
+     * 负责{@code totals}的业务处理；协调校验、状态变化及后续结果传递。
+     */
     private static final class Totals {
         private int data;
         private int display;
@@ -853,12 +1170,22 @@ public class EntityRecordVersionComparisonService {
         private int modified;
         private int moved;
 
+        /**
+         * 添加{@code totals}；结果供后续流程传递或持久化。
+         *
+         * @param value 待添加{@code totals}的原始输入，结果供调用方继续使用
+         */
         private void add(FieldDiff value) {
             data += value.dataChanges();
             display += value.displayChanges();
             schema += value.schemaChanges();
         }
 
+        /**
+         * 添加{@code totals}；结果供后续流程传递或持久化。
+         *
+         * @param value 待添加{@code totals}的原始输入，结果供调用方继续使用
+         */
         private void add(DatasetDiff value) {
             data += value.dataChanges();
             display += value.displayChanges();

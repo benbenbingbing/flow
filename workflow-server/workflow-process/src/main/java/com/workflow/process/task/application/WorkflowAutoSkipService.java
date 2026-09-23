@@ -148,6 +148,11 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
                 false);
     }
 
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFailOnException() {
         // 安全模型的兼容变量写入异常已在 onEvent 内降级为人工待办；
@@ -155,11 +160,21 @@ public class WorkflowAutoSkipService implements FlowableEventListener {
         return true;
     }
 
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override
     public String getOnTransaction() {
         return null;
     }
 
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return false;

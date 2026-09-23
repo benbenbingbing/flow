@@ -1,7 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;
@@ -49,6 +49,7 @@ public class EntitySelectorController {
      *
      * @param entityType 实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
      * @param entityCode 实体编码（CUSTOM类型时必填）
+     * @param refEntityId 引用实体ID，后续用于查询实体{@code selector}列表时定位或关联目标
      * @param keyword 搜索关键词（匹配name、code）
      * @param pageNum 页码
      * @param pageSize 每页数量
@@ -94,6 +95,7 @@ public class EntitySelectorController {
      * @param entityType 实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
      * @param id 数据ID
      * @param entityCode 实体编码（CUSTOM类型时必填）
+     * @param refEntityId 引用实体ID，后续用于读取ID时定位或关联目标
      * @return 实体数据
      */
     @GetMapping("/{entityType}/{id}")
@@ -144,6 +146,8 @@ public class EntitySelectorController {
      * @param entityType 实体类型（CUSTOM/USER/DEPT/ROLE/GROUP）
      * @param ids ID列表，逗号分隔
      * @param entityCode 实体编码（CUSTOM类型时必填）
+     * @param refEntityId 引用实体ID，后续用于读取实体{@code selector}批次时定位或关联目标
+     * @param valueKey 值键，后续用于授权校验、关联或幂等去重
      * @return 实体数据列表
      */
     @GetMapping("/{entityType}/batch")
@@ -220,6 +224,9 @@ public class EntitySelectorController {
     /**
      * 查询实体的引用配置信息
      * 用于前端获取实体类型和字段配置
+     *
+     * @param fieldId 字段ID，后续用于读取实体配置时定位或关联目标
+     * @return 符合条件的{@code result<map<string,}{@code object>>}结果，供调用方继续处理
      */
     @GetMapping("/config/{fieldId}")
     public Result<Map<String, Object>> getEntityConfig(@PathVariable String fieldId) {
@@ -256,6 +263,12 @@ public class EntitySelectorController {
 
     /**
      * 查询用户自定义实体
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param keyword 关键字，供本方法查询自定义实体时使用
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 查询后的自定义实体结果，供调用方继续处理
      */
     private Result<Map<String, Object>> selectCustomEntity(String entityCode, String keyword, 
                                                            Integer pageNum, Integer pageSize) {
@@ -300,6 +313,15 @@ public class EntitySelectorController {
         return Result.success(result);
     }
 
+    /**
+     * 查询系统实体；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param keyword 关键字，作为 {@code systemEntityReadService.findSelectorPage} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 查询后的系统实体结果，供调用方继续处理
+     */
     private Result<Map<String, Object>> selectSystemEntity(
             String entityCode,
             String keyword,
@@ -325,6 +347,9 @@ public class EntitySelectorController {
 
     /**
      * 简化实体数据，只保留关键字段
+     *
+     * @param data 数据，后续用于处理{@code simplify}实体数据并传递处理结果
+     * @return {@code simplify}实体数据键值结果，供调用方继续处理
      */
     private Map<String, Object> simplifyEntityData(Map<String, Object> data) {
         Map<String, Object> simplified = new HashMap<>();
@@ -336,6 +361,12 @@ public class EntitySelectorController {
         return simplified;
     }
 
+    /**
+     * 整理{@code simplify}实体数据数据，供调用方遍历或继续处理。
+     *
+     * @param detail 详情，作为 {@code simplified.put} 的输入影响后续处理
+     * @return {@code simplify}实体数据键值结果，供调用方继续处理
+     */
     private Map<String, Object> simplifyEntityData(EntityDataDTO detail) {
         Map<String, Object> data = detail.getData() == null
                 ? Map.of()
@@ -355,6 +386,12 @@ public class EntitySelectorController {
         return simplified;
     }
 
+    /**
+     * 处理首个值，并将结果传给后续步骤。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个值结果，供调用方继续处理
+     */
     private Object firstValue(Object... values) {
         for (Object value : values) {
             if (value != null
@@ -365,11 +402,25 @@ public class EntitySelectorController {
         return null;
     }
 
+    /**
+     * 读取字符串值；查询结果供调用方展示或继续处理。
+     *
+     * @param data 数据，后续用于读取字符串值并传递处理结果
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 读取后的字符串值文本，供调用方比较或展示
+     */
     private String getStringValue(Map<String, Object> data, String key) {
         Object value = data.get(key);
         return value != null ? value.toString() : null;
     }
     
+    /**
+     * 解析目标实体；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param refEntityId 引用实体ID，后续用于解析目标实体时定位或关联目标
+     * @return 解析后的目标实体结果，供调用方继续处理
+     */
     private TargetEntity resolveTargetEntity(
             String entityCode,
             String refEntityId) {
@@ -394,6 +445,12 @@ public class EntitySelectorController {
         return null;
     }
 
+    /**
+     * 封装目标实体的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param system 系统，保存在对象中供后续校验、查询或展示
+     */
     private record TargetEntity(
             String entityCode,
             boolean system) {

@@ -9,7 +9,7 @@ import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionOptionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.application.EntityDefinitionOptionService;

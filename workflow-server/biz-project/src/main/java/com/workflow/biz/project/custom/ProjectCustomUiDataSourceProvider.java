@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.ui.UiInvocationContext;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,16 +48,31 @@ public class ProjectCustomUiDataSourceProvider
                     UiDataSourceUsages.ROW_BUTTON_CLICK,
                     UiDataSourceUsages.FORM_BUTTON_CLICK);
 
+    /**
+     * 读取编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     @Override
     public String getCode() {
         return CODE;
     }
 
+    /**
+     * 读取用户可见名称，供页面和操作日志展示。
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     @Override
     public String getDisplayName() {
         return "项目自定义统一数据源 [ENTITY/复合上下文]";
     }
 
+    /**
+     * 整理配置结构数据，供调用方遍历或继续处理。
+     *
+     * @return 配置结构键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> configurationSchema() {
         return Map.of(
@@ -83,11 +98,24 @@ public class ProjectCustomUiDataSourceProvider
                                 "default", "GLOBAL_DEFAULT")));
     }
 
+    /**
+     * 生成推荐作用域文本，供后续匹配或展示。
+     *
+     * @return 处理后的推荐作用域文本，供调用方比较或展示
+     */
     @Override
     protected String recommendedScope() {
         return RECOMMENDED_SCOPE;
     }
 
+    /**
+     * 执行使用场景，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续使用场景步骤传递身份、配置或状态
+     * @param configuration 配置内容，决定后续使用场景的处理规则
+     * @param input 待执行使用场景的原始输入，结果供调用方继续使用
+     * @return 执行后的使用场景结果，供调用方继续处理
+     */
     @Override
     protected Object executeUsage(
             UiInvocationContext context,
@@ -150,6 +178,12 @@ public class ProjectCustomUiDataSourceProvider
         };
     }
 
+    /**
+     * 生成{@code branch}文本，供后续匹配或展示。
+     *
+     * @param usage 使用场景，作为 {@code BUTTON_USAGES.contains} 的输入影响后续处理
+     * @return 处理后的{@code branch}文本，供调用方比较或展示
+     */
     private String branch(
             String usage) {
         return switch (usage) {

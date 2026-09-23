@@ -11,7 +11,7 @@ import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.form.api.request.EntityFormNodeCreateRequest;
 import com.workflow.entity.form.api.request.EntityFormNodePatchRequest;
 import com.workflow.entity.form.api.request.EntityFormNodeReorderRequest;
@@ -133,6 +133,8 @@ public class EntityFormNodeService {
         /**
          * 节点草稿落库前把历史 service/operation pair 迁移为 extensionId。
          * 使用可选 setter 以兼容不启动 Spring 的节点策略单元测试。
+         *
+         * @param value 待设置接口引用{@code normalizer}的原始输入，结果供调用方继续使用
          */
         @Autowired(required = false)
         public void setInterfaceReferenceNormalizer(
@@ -165,6 +167,14 @@ public class EntityFormNodeService {
                 return createInternal(formId, request, false);
         }
 
+        /**
+         * 创建内部；结果供后续流程传递或持久化。
+         *
+         * @param formId 表单ID，后续用于创建内部时定位或关联目标
+         * @param request 本次请求，后续经校验后用于创建内部
+         * @param migrateUnsupported 迁移{@code unsupported}，供本方法创建内部时使用
+         * @return 创建后的内部结果，供调用方继续处理
+         */
         private EntityFormNode createInternal(
                         String formId,
                         EntityFormNodeCreateRequest request,
@@ -176,6 +186,15 @@ public class EntityFormNodeService {
                                 true);
         }
 
+        /**
+         * 创建内部；结果供后续流程传递或持久化。
+         *
+         * @param formId 表单ID，后续用于创建内部时定位或关联目标
+         * @param request 本次请求，后续经校验后用于创建内部
+         * @param migrateUnsupported 迁移{@code unsupported}，作为 {@code normalizeAndValidateConfiguration} 的输入影响后续处理
+         * @param touchOwner 更新访问时间归属方，供本方法创建内部时使用
+         * @return 创建后的内部结果，供调用方继续处理
+         */
         private EntityFormNode createInternal(
                         String formId,
                         EntityFormNodeCreateRequest request,
@@ -256,6 +275,16 @@ public class EntityFormNodeService {
                                 formId, nodeId, request, PatchMode.USER_PROPERTY);
         }
 
+        /**
+         * 处理补丁内部，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理补丁内部时定位或关联目标
+         * @param nodeId 节点ID，后续用于处理补丁内部时定位或关联目标
+         * @param request 本次请求，后续经校验后用于处理补丁内部
+         * @param mode 模式标识，决定后续补丁内部采用的处理分支
+         * @return 处理后的补丁内部结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private EntityFormNode patchInternal(
                         String formId,
                         String nodeId,
@@ -406,6 +435,9 @@ public class EntityFormNodeService {
          * 字段事件按编码绑定；仅在最后一个同编码节点删除后清理本表单的 FIELD 绑定。
          * 与节点删除共用事务，防止重新添加同编码字段时接上旧执行链；
          * OWNER、BUTTON、实体默认事件以及其他表单的绑定不属于本次删除范围。
+         *
+         * @param formId 表单ID，后续用于移除已删除字段事件绑定集合时定位或关联目标
+         * @param removed {@code removed}，作为 {@code projection.fieldEventTargetKeys} 的输入影响后续处理
          */
         private void removeDeletedFieldEventBindings(String formId, EntityFormNode removed) {
                 EntityFormFieldProjection projection = new EntityFormFieldProjection(codec);
@@ -422,6 +454,8 @@ public class EntityFormNodeService {
 
         /**
          * 锁定表单下全部节点草稿，供配置级撤销在重算 hash 前建立并发边界。
+         *
+         * @param formId 表单ID，后续用于锁定草稿节点集合发布版本时定位或关联目标
          */
         public void lockDraftNodesForRelease(String formId) {
                 nodeMapper.findAllByFormIdForUpdate(formId);
@@ -433,6 +467,9 @@ public class EntityFormNodeService {
          * <p>节点逻辑删除后原稳定 ID 仍占用主键，因此恢复时先物理清理当前
          * 草稿节点，再按父节点优先顺序以发布 ID 重建。调用方必须已锁定表单
          * owner；本方法不触碰 owner revision，确保一次撤销只递增一次配置修订号。</p>
+         *
+         * @param formId 表单ID，后续用于恢复已发布节点集合时定位或关联目标
+         * @param publishedNodes 已发布节点集合，作为 {@code nodesInRestoreOrder} 的输入影响后续处理
          */
         @Transactional(rollbackFor = Exception.class)
         public void restorePublishedNodes(
@@ -458,6 +495,13 @@ public class EntityFormNodeService {
                 validateTree(formId);
         }
 
+        /**
+         * 整理节点集合恢复顺序数据，供调用方遍历或继续处理。
+         *
+         * @param nodes 节点集合，供本方法处理节点集合恢复顺序时使用
+         * @return 实体表单节点集合，供调用方遍历或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private List<EntityFormNode> nodesInRestoreOrder(
                         List<EntityFormNode> nodes) {
                 Map<String, EntityFormNode> byId = new HashMap<>();
@@ -518,6 +562,14 @@ public class EntityFormNodeService {
                                 PatchMode.USER_REPLACE);
         }
 
+        /**
+         * 处理替换差异内部，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理替换差异内部时定位或关联目标
+         * @param incoming {@code incoming}，供本方法处理替换差异内部时使用
+         * @param expectedRevision 预期修订版本，作为 {@code requireFormForUpdate} 的输入影响后续处理
+         * @param mode 模式标识，决定后续替换差异内部采用的处理分支
+         */
         private void replaceByDiffInternal(
                         String formId,
                         List<EntityFormNode> incoming,
@@ -567,6 +619,13 @@ public class EntityFormNodeService {
                 validateTree(formId);
         }
 
+        /**
+         * 整理缺失节点集合{@code deletion}顺序数据，供调用方遍历或继续处理。
+         *
+         * @param existing 已有，供本方法处理缺失节点集合{@code deletion}顺序时使用
+         * @param retained {@code retained}，供本方法处理缺失节点集合{@code deletion}顺序时使用
+         * @return 实体表单节点集合，供调用方遍历或展示
+         */
         private List<EntityFormNode> missingNodesInDeletionOrder(
                         List<EntityFormNode> existing,
                         Set<String> retained) {
@@ -584,6 +643,15 @@ public class EntityFormNodeService {
                                 .toList();
         }
 
+        /**
+         * 解析节点深度；输出作为后续校验或处理的输入。
+         *
+         * @param node 节点，作为 {@code depthById.get} 的输入影响后续处理
+         * @param byId ID，后续用于解析节点深度时定位或关联目标
+         * @param depthById 深度ID，后续用于解析节点深度时定位或关联目标
+         * @return 解析后的节点深度结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private int resolveNodeDepth(
                         EntityFormNode node,
                         Map<String, EntityFormNode> byId,
@@ -658,6 +726,12 @@ public class EntityFormNodeService {
                 validateReferencedForms(formId, nodes);
         }
 
+        /**
+         * 校验已引用表单集合；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验已引用表单集合时定位或关联目标
+         * @param currentDraftNodes 当前草稿节点集合，作为 {@code validateReferencedFormGraph} 的输入影响后续处理
+         */
         private void validateReferencedForms(
                         String formId,
                         List<EntityFormNode> currentDraftNodes) {
@@ -669,6 +743,16 @@ public class EntityFormNodeService {
                                 new HashMap<>());
         }
 
+        /**
+         * 校验已引用表单图；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验已引用表单图时定位或关联目标
+         * @param references 引用，供本方法校验已引用表单图时使用
+         * @param depth 深度，供本方法校验已引用表单图时使用
+         * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+         * @param releaseReferenceCache 发布版本引用缓存，供本方法校验已引用表单图时使用
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateReferencedFormGraph(
                         String formId,
                         List<FormReleaseReference> references,
@@ -708,6 +792,12 @@ public class EntityFormNodeService {
                 path.remove(formId);
         }
 
+        /**
+         * 整理已引用表单{@code releases}数据，供调用方遍历或继续处理。
+         *
+         * @param nodes 节点集合，供本方法处理已引用表单{@code releases}时使用
+         * @return 表单发布版本引用集合，供调用方遍历或展示
+         */
         private List<FormReleaseReference> referencedFormReleases(
                         List<EntityFormNode> nodes) {
                 List<FormReleaseReference> references = new ArrayList<>();
@@ -723,6 +813,12 @@ public class EntityFormNodeService {
                 return references;
         }
 
+        /**
+         * 整理已引用表单{@code releases}数据，供调用方遍历或继续处理。
+         *
+         * @param release 发布版本，作为 {@code codec.readObject} 的输入影响后续处理
+         * @return 表单发布版本引用集合，供调用方遍历或展示
+         */
         private List<FormReleaseReference> referencedFormReleases(
                         UiConfigRelease release) {
                 Map<String, Object> snapshot = codec.readObject(
@@ -750,6 +846,12 @@ public class EntityFormNodeService {
                 return references;
         }
 
+        /**
+         * 读取快照节点属性；查询结果供调用方展示或继续处理。
+         *
+         * @param node 节点，作为 {@code objectMap} 的输入影响后续处理
+         * @return 快照节点属性键值结果，供调用方继续处理
+         */
         private Map<String, Object> readSnapshotNodeProps(Map<?, ?> node) {
                 Object propsDocument = node.get("propsDocument");
                 if (propsDocument instanceof String document
@@ -759,6 +861,12 @@ public class EntityFormNodeService {
                 return objectMap(node.get("props"), "子表单发布节点属性");
         }
 
+        /**
+         * 添加表单发布版本引用；结果供后续流程传递或持久化。
+         *
+         * @param references 引用，供本方法添加表单发布版本引用时使用
+         * @param reference 引用，作为 {@code references.add} 的输入影响后续处理
+         */
         private void addFormReleaseReference(
                         List<FormReleaseReference> references,
                         FormReleaseReference reference) {
@@ -773,6 +881,17 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 规范化子级表单属性；输出作为后续校验或处理的输入。
+         *
+         * @param nodeType 节点类型标识，决定后续子级表单属性采用的处理分支
+         * @param source 待规范化子级表单属性的原始输入，结果供调用方继续使用
+         * @param explicitFormId {@code explicit}表单ID，后续用于规范化子级表单属性时定位或关联目标
+         * @param explicitReleaseId {@code explicit}发布版本ID，后续用于规范化子级表单属性时定位或关联目标
+         * @param explicitReleaseVersion {@code explicit}发布版本，作为 {@code firstInteger} 的输入影响后续处理
+         * @param pinLegacyReference 固定旧版引用，供本方法规范化子级表单属性时使用
+         * @return 子级表单属性键值结果，供调用方继续处理
+         */
         private Map<String, Object> normalizeSubFormProps(
                         String nodeType,
                         Map<String, Object> source,
@@ -895,6 +1014,13 @@ public class EntityFormNodeService {
                 return props;
         }
 
+        /**
+         * 清理子级表单绑定集合；后续读取或执行将使用更新后的状态。
+         *
+         * @param source 待清理子级表单绑定集合的原始输入，结果供调用方继续使用
+         * @param clearFields {@code clear}字段，供本方法清理子级表单绑定集合时使用
+         * @return 子级表单绑定集合键值结果，供调用方继续处理
+         */
         private Map<String, Object> clearSubFormBindings(
                         Map<String, Object> source,
                         Set<String> clearFields) {
@@ -929,24 +1055,46 @@ public class EntityFormNodeService {
                 return props;
         }
 
+        /**
+         * 移除表单ID{@code aliases}；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待移除表单ID{@code aliases}的原始输入，结果供调用方继续使用
+         */
         private void removeFormIdAliases(Map<String, Object> value) {
                 value.remove("childFormId");
                 value.remove("refFormId");
                 value.remove("publishedFormId");
         }
 
+        /**
+         * 移除发布版本ID{@code aliases}；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待移除发布版本ID{@code aliases}的原始输入，结果供调用方继续使用
+         */
         private void removeReleaseIdAliases(Map<String, Object> value) {
                 value.remove("childFormReleaseId");
                 value.remove("refFormReleaseId");
                 value.remove("publishedFormReleaseId");
         }
 
+        /**
+         * 移除发布版本{@code aliases}；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待移除发布版本{@code aliases}的原始输入，结果供调用方继续使用
+         */
         private void removeReleaseVersionAliases(Map<String, Object> value) {
                 value.remove("childFormReleaseVersion");
                 value.remove("refFormReleaseVersion");
                 value.remove("publishedFormReleaseVersion");
         }
 
+        /**
+         * 规范化关系绑定子级表单属性；输出作为后续校验或处理的输入。
+         *
+         * @param node 节点，作为 {@code requireBoundRelation} 的输入影响后续处理
+         * @return 关系绑定子级表单属性键值结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private Map<String, Object> normalizeRelationBoundSubFormProps(
                         EntityFormNode node) {
                 EntityRelation relation = requireBoundRelation(node);
@@ -1013,6 +1161,14 @@ public class EntityFormNodeService {
                 return props;
         }
 
+        /**
+         * 写入规范关系值；后续读取或执行将使用更新后的状态。
+         *
+         * @param target 目标，供本方法写入规范关系值时使用
+         * @param key 键，后续用于授权校验、关联或幂等去重
+         * @param expected 预期，作为 {@code target.put} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void putCanonicalRelationValue(
                         Map<String, Object> target,
                         String key,
@@ -1030,6 +1186,13 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验并获取绑定关系；不满足约束时阻止后续处理。
+         *
+         * @param node 节点，作为 {@code requireForm} 的输入影响后续处理
+         * @return 校验并获取后的绑定关系结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private EntityRelation requireBoundRelation(EntityFormNode node) {
                 EntityForm form = requireForm(node.getFormId());
                 EntityRelation relation = relationMapper.selectActiveByBindingRef(
@@ -1050,6 +1213,11 @@ public class EntityFormNodeService {
                 return relation;
         }
 
+        /**
+         * 校验子级表单发布版本绑定；不满足约束时阻止后续处理。
+         *
+         * @param node 节点，作为 {@code readFormReleaseReference} 的输入影响后续处理
+         */
         private void validateSubFormReleaseBinding(EntityFormNode node) {
                 if (!Set.of("SUB_FORM", "REPEATER").contains(node.getNodeType())) {
                         return;
@@ -1074,6 +1242,8 @@ public class EntityFormNodeService {
          * 用于历史版本激活和热修复快照校验，避免只校验当前草稿节点而遗漏
          * 快照中已经失效的参数或子字段映射。
          * </p>
+         *
+         * @param parentForm 父级表单，供本方法校验快照子级表单参数{@code contracts}时使用
          */
         public void validateSnapshotSubFormParameterContracts(
                         EntityForm parentForm) {
@@ -1081,6 +1251,11 @@ public class EntityFormNodeService {
                                 .validateSnapshot(parentForm);
         }
 
+        /**
+         * 处理子级表单参数契约校验器，并将结果传给后续步骤。
+         *
+         * @return 处理后的子级表单参数契约校验器结果，供调用方继续处理
+         */
         private SubFormParameterContractReleaseValidator subFormParameterContractValidator() {
                 return new SubFormParameterContractReleaseValidator(
                                 formMapper,
@@ -1090,6 +1265,13 @@ public class EntityFormNodeService {
                                 codec);
         }
 
+        /**
+         * 校验关系发布版本实体；不满足约束时阻止后续处理。
+         *
+         * @param node 节点，作为 {@code requireBoundRelation} 的输入影响后续处理
+         * @param release 发布版本，作为 {@code formMapper.selectById} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateRelationReleaseEntity(
                         EntityFormNode node,
                         UiConfigRelease release) {
@@ -1109,6 +1291,13 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 读取表单发布版本引用；查询结果供调用方展示或继续处理。
+         *
+         * @param props 属性，作为 {@code objectMap} 的输入影响后续处理
+         * @param nodeLabel 节点标签，后续用于读取表单发布版本引用时匹配或展示
+         * @return 读取后的表单发布版本引用结果，供调用方继续处理
+         */
         private FormReleaseReference readFormReleaseReference(
                         Map<String, Object> props,
                         String nodeLabel) {
@@ -1169,6 +1358,13 @@ public class EntityFormNodeService {
                                 releaseVersion);
         }
 
+        /**
+         * 校验并获取已引用发布版本；不满足约束时阻止后续处理。
+         *
+         * @param reference 引用，作为 {@code releaseMapper.selectById} 的输入影响后续处理
+         * @return 校验并获取后的已引用发布版本结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private UiConfigRelease requireReferencedRelease(
                         FormReleaseReference reference) {
                 UiConfigRelease release = releaseMapper.selectById(reference.releaseId());
@@ -1200,12 +1396,25 @@ public class EntityFormNodeService {
                 return release;
         }
 
+        /**
+         * 整理可变映射数据，供调用方遍历或继续处理。
+         *
+         * @param source 待处理可变映射的原始输入，结果供调用方继续使用
+         * @return 可变映射键值结果，供调用方继续处理
+         */
         private Map<String, Object> mutableMap(Map<String, Object> source) {
                 return source == null
                                 ? new LinkedHashMap<>()
                                 : new LinkedHashMap<>(source);
         }
 
+        /**
+         * 整理对象映射数据，供调用方遍历或继续处理。
+         *
+         * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于处理对象映射时匹配或展示
+         * @return 对象映射键值结果，供调用方继续处理
+         */
         private Map<String, Object> objectMap(Object value, String label) {
                 if (value instanceof Map<?, ?> map) {
                         Map<String, Object> result = new LinkedHashMap<>();
@@ -1218,6 +1427,12 @@ public class EntityFormNodeService {
                 return new LinkedHashMap<>();
         }
 
+        /**
+         * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+         *
+         * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+         * @return 处理后的首个文本文本，供调用方比较或展示
+         */
         private String firstText(Object... values) {
                 for (Object value : values) {
                         String text = text(value);
@@ -1228,6 +1443,13 @@ public class EntityFormNodeService {
                 return null;
         }
 
+        /**
+         * 处理首个整数，并将结果传给后续步骤。
+         *
+         * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+         * @return 处理后的首个整数结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private Integer firstInteger(Object... values) {
                 for (Object value : values) {
                         if (value instanceof Number number) {
@@ -1245,16 +1467,36 @@ public class EntityFormNodeService {
                 return null;
         }
 
+        /**
+         * 将输入转换为文本，供后续校验、映射或展示使用。
+         *
+         * @param value 待处理文本的原始输入，结果供调用方继续使用
+         * @return 处理后的文本文本，供调用方比较或展示
+         */
         private String text(Object value) {
                 return value == null ? null : String.valueOf(value);
         }
 
+        /**
+         * 封装表单发布版本引用的不可变数据；各分量供后续校验、传递或结果展示使用。
+         *
+         * @param formId 表单 ID，后续用于定位已发布表单
+         * @param releaseId 发布版本 ID，后续用于解析固定配置
+         * @param releaseVersion 发布版本号，后续用于校验快照一致性
+         */
         private record FormReleaseReference(
                         String formId,
                         String releaseId,
                         Integer releaseVersion) {
         }
 
+        /**
+         * 校验创建配置；不满足约束时阻止后续处理。
+         *
+         * @param request 本次请求，后续经校验后用于校验创建配置
+         * @param nodeType 节点类型标识，决定后续创建配置采用的处理分支
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateCreateConfiguration(
                         EntityFormNodeCreateRequest request,
                         String nodeType) {
@@ -1290,6 +1532,12 @@ public class EntityFormNodeService {
                                 request.getLocalOverrides());
         }
 
+        /**
+         * 规范化与校验配置；输出作为后续校验或处理的输入。
+         *
+         * @param node 节点，作为 {@code normalize} 的输入影响后续处理
+         * @param migrateUnsupported 迁移{@code unsupported}，供本方法规范化与校验配置时使用
+         */
         private void normalizeAndValidateConfiguration(
                         EntityFormNode node,
                         boolean migrateUnsupported) {
@@ -1425,6 +1673,13 @@ public class EntityFormNodeService {
                 mergeInactiveConfiguration(node, nodeType, inactive);
         }
 
+        /**
+         * 合并{@code inactive}配置；结果供后续流程传递或持久化。
+         *
+         * @param node 节点，作为 {@code mutableMap} 的输入影响后续处理
+         * @param nodeType 节点类型标识，决定后续{@code inactive}配置采用的处理分支
+         * @param inactive {@code inactive}，作为 {@code typeProperties.putAll} 的输入影响后续处理
+         */
         private void mergeInactiveConfiguration(
                         EntityFormNode node,
                         String nodeType,
@@ -1446,6 +1701,13 @@ public class EntityFormNodeService {
                 node.setLegacyPropsDocument(write(legacy, "历史节点属性"));
         }
 
+        /**
+         * 校验节点；不满足约束时阻止后续处理。
+         *
+         * @param node 节点，作为 {@code node.setNodeType} 的输入影响后续处理
+         * @param excludeId 排除ID，后续用于校验节点时定位或关联目标
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateNode(EntityFormNode node, String excludeId) {
                 if (!StringUtils.hasText(node.getNodeKey())
                                 || !NODE_KEY.matcher(node.getNodeKey()).matches()) {
@@ -1520,6 +1782,12 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验系统节点；不满足约束时阻止后续处理。
+         *
+         * @param node 节点，作为 {@code formMapper.selectById} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateSystemNode(EntityFormNode node) {
                 EntityForm form = formMapper.selectById(node.getFormId());
                 EntityDefinition entity = form == null
@@ -1595,6 +1863,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验父级；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验父级时定位或关联目标
+         * @param nodeId 节点ID，后续用于校验父级时定位或关联目标
+         * @param parentId 父级ID，后续用于校验父级时定位或关联目标
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateParent(String formId, String nodeId, String parentId) {
                 int parentDepth = 0;
                 if (StringUtils.hasText(parentId)) {
@@ -1624,6 +1900,13 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 处理当前{@code subtree}{@code height}，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理当前{@code subtree}{@code height}时定位或关联目标
+         * @param nodeId 节点ID，后续用于处理当前{@code subtree}{@code height}时定位或关联目标
+         * @return 处理后的当前{@code subtree}{@code height}结果，供调用方继续处理
+         */
         private int currentSubtreeHeight(String formId, String nodeId) {
                 if (!StringUtils.hasText(nodeId)) {
                         return 1;
@@ -1646,6 +1929,15 @@ public class EntityFormNodeService {
                                 new HashSet<>());
         }
 
+        /**
+         * 处理当前{@code subtree}{@code height}，并将结果传给后续步骤。
+         *
+         * @param nodeId 节点ID，后续用于处理当前{@code subtree}{@code height}时定位或关联目标
+         * @param childrenByParent 子节点父级，供本方法处理当前{@code subtree}{@code height}时使用
+         * @param visiting {@code visiting}，供本方法处理当前{@code subtree}{@code height}时使用
+         * @return 处理后的当前{@code subtree}{@code height}结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private int currentSubtreeHeight(
                         String nodeId,
                         Map<String, List<EntityFormNode>> childrenByParent,
@@ -1666,6 +1958,13 @@ public class EntityFormNodeService {
                 return height;
         }
 
+        /**
+         * 校验父级子级类型；不满足约束时阻止后续处理。
+         *
+         * @param child 子级，供本方法校验父级子级类型时使用
+         * @param parent 父级，作为 {@code ALLOWED_CHILD_TYPES.get} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateParentChildType(
                         EntityFormNode child,
                         EntityFormNode parent) {
@@ -1691,6 +1990,11 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验已有子节点；不满足约束时阻止后续处理。
+         *
+         * @param parent 父级，作为 {@code nodeMapper.findSiblings} 的输入影响后续处理
+         */
         private void validateExistingChildren(EntityFormNode parent) {
                 List<EntityFormNode> children = nodeMapper.findSiblings(parent.getFormId(), parent.getId());
                 for (EntityFormNode child : children) {
@@ -1698,6 +2002,12 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 应用补丁，并将结果传给后续步骤。
+         *
+         * @param target 目标，作为 {@code target.setPropsDocument} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于应用补丁
+         */
         private void applyPatch(EntityFormNode target, EntityFormNodePatchRequest request) {
                 Set<String> clear = request.getClearFields() == null
                                 ? Set.of()
@@ -1809,6 +2119,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验补丁{@code constraints}；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code validateTechnicalIdentity} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验补丁{@code constraints}
+         * @param mode 模式标识，决定后续补丁{@code constraints}采用的处理分支
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validatePatchConstraints(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1832,6 +2150,15 @@ public class EntityFormNodeService {
                                 clear);
         }
 
+        /**
+         * 校验{@code technical}身份；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code normalize} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验{@code technical}身份
+         * @param clear {@code clear}，作为 {@code validateUnboundSubFormRelationRepair} 的输入影响后续处理
+         * @param mode 模式标识，决定后续{@code technical}身份采用的处理分支
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateTechnicalIdentity(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1877,6 +2204,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 判断是否{@code unbound}子级表单关系{@code repair}；判断结果决定调用方的后续分支。
+         *
+         * @param current 当前，作为 {@code normalize} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于判断是否{@code unbound}子级表单关系{@code repair}
+         * @param clear {@code clear}，供本方法判断是否{@code unbound}子级表单关系{@code repair}时使用
+         * @return {@code unbound}子级表单关系{@code repair}条件成立时为 true，否则为 false
+         */
         private boolean isUnboundSubFormRelationRepair(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1898,6 +2233,14 @@ public class EntityFormNodeService {
                                 && StringUtils.hasText(requestedRef);
         }
 
+        /**
+         * 校验{@code unbound}子级表单关系{@code repair}；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code validateInvalidBindingRepair} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验{@code unbound}子级表单关系{@code repair}
+         * @param clear {@code clear}，作为 {@code validateInvalidBindingRepair} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateUnboundSubFormRelationRepair(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1925,6 +2268,12 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 生成有效数据键文本，供后续匹配或展示。
+         *
+         * @param relation 关系，供本方法处理有效数据键时使用
+         * @return 处理后的有效数据键文本，供调用方比较或展示
+         */
         private String effectiveDataKey(EntityRelation relation) {
                 if (StringUtils.hasText(relation.getDataKey())) {
                         return relation.getDataKey();
@@ -1937,6 +2286,14 @@ public class EntityFormNodeService {
                 return null;
         }
 
+        /**
+         * 校验无效绑定{@code repair}；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code blankToNull} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验无效绑定{@code repair}
+         * @param clear {@code clear}，作为 {@code validateBoundProps} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateInvalidBindingRepair(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1965,6 +2322,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验绑定节点身份；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code normalize} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验绑定节点身份
+         * @param clear {@code clear}，作为 {@code validateBoundProps} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateBoundNodeIdentity(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -1988,6 +2353,13 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验读取仅展示属性；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code normalize} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验读取仅展示属性
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateReadOnlyDisplayProps(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request) {
@@ -2008,6 +2380,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验绑定属性；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，作为 {@code read} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于校验绑定属性
+         * @param clear {@code clear}，供本方法校验绑定属性时使用
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateBoundProps(
                         EntityFormNode current,
                         EntityFormNodePatchRequest request,
@@ -2058,6 +2438,15 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验并获取相同{@code meaningful}值集合；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，供本方法校验并获取相同{@code meaningful}值集合时使用
+         * @param requested 请求，供本方法校验并获取相同{@code meaningful}值集合时使用
+         * @param keys 键集合，供本方法校验并获取相同{@code meaningful}值集合时使用
+         * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void requireSameMeaningfulValues(
                         Map<String, Object> current,
                         Map<String, Object> requested,
@@ -2075,6 +2464,15 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 校验请求补丁配置；不满足约束时阻止后续处理。
+         *
+         * @param current 当前，供本方法校验请求补丁配置时使用
+         * @param nodeType 节点类型标识，决定后续请求补丁配置采用的处理分支
+         * @param request 本次请求，后续经校验后用于校验请求补丁配置
+         * @param clear {@code clear}，供本方法校验请求补丁配置时使用
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateRequestedPatchConfiguration(
                         EntityFormNode current,
                         String nodeType,
@@ -2137,6 +2535,12 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 判断是否具有有效绑定状态；判断结果决定调用方的后续分支。
+         *
+         * @param node 节点，作为 {@code EntityFormNodePropertyPolicy.validateBinding} 的输入影响后续处理
+         * @return 有效绑定状态条件成立时为 true，否则为 false
+         */
         private boolean hasValidBindingState(EntityFormNode node) {
                 try {
                         EntityFormNodePropertyPolicy.validateBinding(
@@ -2149,11 +2553,23 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 判断是否绑定；判断结果决定调用方的后续分支。
+         *
+         * @param node 节点，作为 {@code equals} 的输入影响后续处理
+         * @return 绑定条件成立时为 true，否则为 false
+         */
         private boolean isBound(EntityFormNode node) {
                 return !"NONE".equals(normalize(node.getBindingType(), "NONE"))
                                 || StringUtils.hasText(node.getBindingRef());
         }
 
+        /**
+         * 复制实体表单节点；结果供后续流程传递或持久化。
+         *
+         * @param source 待复制实体表单节点的原始输入，结果供调用方继续使用
+         * @return 复制后的实体表单节点结果，供调用方继续处理
+         */
         private EntityFormNode copy(EntityFormNode source) {
                 EntityFormNode target = new EntityFormNode();
                 target.setId(source.getId());
@@ -2180,6 +2596,14 @@ public class EntityFormNodeService {
                 return target;
         }
 
+        /**
+         * 转换为创建请求；输出作为后续校验或处理的输入。
+         *
+         * @param source 待转换为创建请求的原始输入，结果供调用方继续使用
+         * @param fallbackOrder 兜底顺序，主值不可用时供后续处理兜底
+         * @param mode 模式标识，决定后续创建请求采用的处理分支
+         * @return 转换为后的创建请求结果，供调用方继续处理
+         */
         private EntityFormNodeCreateRequest toCreateRequest(
                         EntityFormNode source,
                         long fallbackOrder,
@@ -2212,6 +2636,14 @@ public class EntityFormNodeService {
                 return request;
         }
 
+        /**
+         * 转换为补丁请求；输出作为后续校验或处理的输入。
+         *
+         * @param source 待转换为补丁请求的原始输入，结果供调用方继续使用
+         * @param current 当前，供本方法转换为补丁请求时使用
+         * @param mode 模式标识，决定后续补丁请求采用的处理分支
+         * @return 转换为后的补丁请求结果，供调用方继续处理
+         */
         private EntityFormNodePatchRequest toPatchRequest(
                         EntityFormNode source,
                         EntityFormNode current,
@@ -2285,6 +2717,14 @@ public class EntityFormNodeService {
                 return request;
         }
 
+        /**
+         * 添加{@code clear}条件缺失；结果供后续流程传递或持久化。
+         *
+         * @param clear {@code clear}，供本方法添加{@code clear}条件缺失时使用
+         * @param field 字段，作为 {@code clear.add} 的输入影响后续处理
+         * @param sourceValue 来源值，供本方法添加{@code clear}条件缺失时使用
+         * @param currentValue 当前值，供本方法添加{@code clear}条件缺失时使用
+         */
         private void addClearIfMissing(
                         Set<String> clear,
                         String field,
@@ -2295,6 +2735,14 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 判断是否具有变更集合；判断结果决定调用方的后续分支。
+         *
+         * @param source 待判断是否具有变更集合的原始输入，结果供调用方继续使用
+         * @param current 当前，供本方法判断是否具有变更集合时使用
+         * @param mode 模式标识，决定后续变更集合采用的处理分支
+         * @return 变更集合条件成立时为 true，否则为 false
+         */
         private boolean hasChanges(
                         EntityFormNode source,
                         EntityFormNode current,
@@ -2324,6 +2772,12 @@ public class EntityFormNodeService {
                                                 current.getLocalOverridesDocument());
         }
 
+        /**
+         * 判断需要旧版发布版本固定条件是否成立，供调用方选择后续分支。
+         *
+         * @param node 节点，作为 {@code read} 的输入影响后续处理
+         * @return 需要旧版发布版本固定条件成立时为 true，否则为 false
+         */
         private boolean requiresLegacyReleasePin(EntityFormNode node) {
                 if (!Set.of("SUB_FORM", "REPEATER").contains(
                                 normalize(node.getNodeType(), null))) {
@@ -2368,6 +2822,13 @@ public class EntityFormNodeService {
                                 && (!StringUtils.hasText(releaseId) || releaseVersion == null);
         }
 
+        /**
+         * 校验并获取预期修订版本；不满足约束时阻止后续处理。
+         *
+         * @param expected 预期，供本方法校验并获取预期修订版本时使用
+         * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void requireExpectedRevision(Integer expected, EntityFormNode current) {
                 if (expected == null) {
                         throw new IllegalArgumentException("expectedRevision 不能为空");
@@ -2377,6 +2838,13 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 构造业务冲突异常，供调用方刷新或重试。
+         *
+         * @param formId 表单ID，后续用于处理冲突时定位或关联目标
+         * @param nodeId 节点ID，后续用于处理冲突时定位或关联目标
+         * @return 处理后的冲突结果，供调用方继续处理
+         */
         private RevisionConflictException conflict(String formId, String nodeId) {
                 EntityFormNode latest = nodeMapper.selectById(nodeId);
                 return new RevisionConflictException(
@@ -2384,6 +2852,13 @@ public class EntityFormNodeService {
                                 latest != null && formId.equals(latest.getFormId()) ? latest : null);
         }
 
+        /**
+         * 构造{@code duplicate}节点键冲突异常，供调用方区分失败原因。
+         *
+         * @param formId 表单ID，后续用于处理{@code duplicate}节点键冲突时定位或关联目标
+         * @param nodeKey 节点键，后续用于授权校验、关联或幂等去重
+         * @return 处理后的{@code duplicate}节点键冲突结果，供调用方继续处理
+         */
         private RevisionConflictException duplicateNodeKeyConflict(
                         String formId,
                         String nodeKey) {
@@ -2396,6 +2871,12 @@ public class EntityFormNodeService {
         /**
          * 唯一冲突已由执行器恢复事务并按方言识别；再用当前读确认实际占用节点。
          * 不依赖驱动错误文本或约束名称，主键冲突等无对应占用节点的失败仍原样抛出。
+         *
+         * @param formId 表单ID，后续用于处理{@code translate}节点写入异常时定位或关联目标
+         * @param nodeKey 节点键，后续用于授权校验、关联或幂等去重
+         * @param attemptedNodeId {@code attempted}节点ID，后续用于处理{@code translate}节点写入异常时定位或关联目标
+         * @param exception 异常，供本方法处理{@code translate}节点写入异常时使用
+         * @return 处理后的{@code translate}节点写入异常结果，供调用方继续处理
          */
         private RuntimeException translateNodeWriteException(
                         String formId,
@@ -2412,6 +2893,13 @@ public class EntityFormNodeService {
                 return exception;
         }
 
+        /**
+         * 校验并获取表单；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验并获取表单时定位或关联目标
+         * @return 校验并获取后的表单结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private EntityForm requireForm(String formId) {
                 EntityForm form = formMapper.selectById(formId);
                 if (form == null) {
@@ -2422,6 +2910,14 @@ public class EntityFormNodeService {
                 return form;
         }
 
+        /**
+         * 校验并获取表单更新；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验并获取表单更新时定位或关联目标
+         * @param expectedRevision 预期修订版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+         * @return 校验并获取后的表单更新结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private EntityForm requireFormForUpdate(
                         String formId,
                         Integer expectedRevision) {
@@ -2443,6 +2939,14 @@ public class EntityFormNodeService {
                 return form;
         }
 
+        /**
+         * 校验并获取节点；不满足约束时阻止后续处理。
+         *
+         * @param formId 表单ID，后续用于校验并获取节点时定位或关联目标
+         * @param nodeId 节点ID，后续用于校验并获取节点时定位或关联目标
+         * @return 校验并获取后的节点结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private EntityFormNode requireNode(String formId, String nodeId) {
                 EntityFormNode node = nodeMapper.selectById(nodeId);
                 if (node == null || !formId.equals(node.getFormId())
@@ -2452,6 +2956,11 @@ public class EntityFormNodeService {
                 return node;
         }
 
+        /**
+         * 处理更新访问时间表单，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理更新访问时间表单时定位或关联目标
+         */
         private void touchForm(String formId) {
                 UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();
                 wrapper.eq("id", formId)
@@ -2461,6 +2970,13 @@ public class EntityFormNodeService {
                 formMapper.update(null, wrapper);
         }
 
+        /**
+         * 处理下一步顺序键，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理下一步顺序键时定位或关联目标
+         * @param parentId 父级ID，后续用于处理下一步顺序键时定位或关联目标
+         * @return 处理后的下一步顺序键结果，供调用方继续处理
+         */
         private long nextOrderKey(String formId, String parentId) {
                 List<EntityFormNode> siblings = nodeMapper.findSiblings(formId, parentId);
                 return siblings.isEmpty()
@@ -2468,6 +2984,16 @@ public class EntityFormNodeService {
                                 : siblings.get(siblings.size() - 1).getOrderKey() + ORDER_STEP;
         }
 
+        /**
+         * 解析{@code boundary}；输出作为后续校验或处理的输入。
+         *
+         * @param formId 表单ID，后续用于解析{@code boundary}时定位或关联目标
+         * @param parentId 父级ID，后续用于解析{@code boundary}时定位或关联目标
+         * @param nodeId 节点ID，后续用于解析{@code boundary}时定位或关联目标
+         * @param fallback 兜底，主值不可用时供后续处理兜底
+         * @return 解析后的{@code boundary}结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private long resolveBoundary(
                         String formId,
                         String parentId,
@@ -2483,6 +3009,12 @@ public class EntityFormNodeService {
                 return node.getOrderKey();
         }
 
+        /**
+         * 处理{@code rebalance}，并将结果传给后续步骤。
+         *
+         * @param formId 表单ID，后续用于处理{@code rebalance}时定位或关联目标
+         * @param parentId 父级ID，后续用于处理{@code rebalance}时定位或关联目标
+         */
         private void rebalance(String formId, String parentId) {
                 List<EntityFormNode> siblings = new ArrayList<>(nodeMapper.findSiblings(formId, parentId));
                 long order = ORDER_STEP;
@@ -2499,14 +3031,35 @@ public class EntityFormNodeService {
                 }
         }
 
+        /**
+         * 写入实体表单节点；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待写入实体表单节点的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于写入实体表单节点时匹配或展示
+         * @return 写入后的实体表单节点文本，供调用方比较或展示
+         */
         private String write(Map<String, Object> value, String label) {
                 return value == null || value.isEmpty() ? null : codec.write(value, label);
         }
 
+        /**
+         * 读取实体表单节点；查询结果供调用方展示或继续处理。
+         *
+         * @param value 待读取实体表单节点的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于读取实体表单节点时匹配或展示
+         * @return 实体表单节点键值结果，供调用方继续处理
+         */
         private Map<String, Object> read(String value, String label) {
                 return StringUtils.hasText(value) ? codec.readObject(value, label) : null;
         }
 
+        /**
+         * 规范化输入值，确保后续比较和持久化使用一致格式。
+         *
+         * @param value 待规范化实体表单节点的原始输入，结果供调用方继续使用
+         * @param fallback 兜底，主值不可用时供后续处理兜底
+         * @return 规范化后的实体表单节点文本，供调用方比较或展示
+         */
         private String normalize(String value, String fallback) {
                 if (!StringUtils.hasText(value)) {
                         return fallback;
@@ -2514,16 +3067,30 @@ public class EntityFormNodeService {
                 return value.trim().toUpperCase(Locale.ROOT);
         }
 
+        /**
+         * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+         *
+         * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+         * @return 处理后的空白截止空值文本，供调用方比较或展示
+         */
         private String blankToNull(String value) {
                 return StringUtils.hasText(value) ? value.trim() : null;
         }
 
+        /**
+         * 定义补丁模式的可选值；调用方据此选择对应的处理分支。
+         */
         private enum PatchMode {
                 USER_PROPERTY,
                 USER_REORDER,
                 USER_REPLACE,
                 SYSTEM_IMPORT;
 
+                /**
+                 * 判断用户{@code facing}条件是否成立，供调用方选择后续分支。
+                 *
+                 * @return 用户{@code facing}条件成立时为 true，否则为 false
+                 */
                 boolean userFacing() {
                         return this != SYSTEM_IMPORT;
                 }

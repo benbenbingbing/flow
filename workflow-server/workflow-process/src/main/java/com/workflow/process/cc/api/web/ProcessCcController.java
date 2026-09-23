@@ -45,6 +45,10 @@ public class ProcessCcController {
      *
      * @param pageNum  页码，默认 1
      * @param pageSize 每页条数，默认 10
+     * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
+     * @param startUserName 启动用户名称，后续用于读取我的抄送列表时匹配或展示
+     * @param startDate 启动日期，后续用于判断有效期或展示该事件的发生时间
+     * @param endDate 结束日期，后续用于判断有效期或展示该事件的发生时间
      * @return 抄送记录列表
      */
     @GetMapping("/my-cc")
@@ -86,6 +90,7 @@ public class ProcessCcController {
      * <p>标记后该记录不再计入"抄送我的"页签的未读数量。
      *
      * @param ccId 抄送记录ID
+     * @return 标记后的{@code as}读取结果，供调用方继续处理
      */
     @PostMapping("/read/{ccId}")
     public Result<Void> markAsRead(@PathVariable String ccId) {
@@ -97,6 +102,8 @@ public class ProcessCcController {
      * 将当前用户的所有抄送记录标记为已读。
      *
      * <p>用于"全部已读"操作，执行后该用户的未读抄送数归零。
+     *
+     * @return 标记后的全部{@code as}读取结果，供调用方继续处理
      */
     @PostMapping("/read-all")
     public Result<Void> markAllAsRead() {

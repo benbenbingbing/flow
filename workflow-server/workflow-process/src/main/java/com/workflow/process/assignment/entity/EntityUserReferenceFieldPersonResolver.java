@@ -5,14 +5,14 @@ import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceF
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.contracts.entity.port.EntityUserReferencePort;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
-import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -62,6 +62,12 @@ public class EntityUserReferenceFieldPersonResolver
     private final EntityUserReferencePort referencePort;
     private final EntityCodeCatalogPort entityCodeCatalogPort;
 
+    /**
+     * 初始化实体用户引用字段人员解析器，保存构造参数供后续方法使用。
+     *
+     * @param referencePort 引用端口依赖，保存到当前对象供后续业务方法调用
+     * @param entityCodeCatalogPort 实体编码目录端口依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityUserReferenceFieldPersonResolver(
             EntityUserReferencePort referencePort,
             EntityCodeCatalogPort entityCodeCatalogPort) {
@@ -69,22 +75,41 @@ public class EntityUserReferenceFieldPersonResolver
         this.entityCodeCatalogPort = entityCodeCatalogPort;
     }
 
+    /**
+     * 处理实现来源，并将结果传给后续步骤。
+     *
+     * @return 处理后的实现来源结果，供调用方继续处理
+     */
     @Override
     public ExtensionImplementationOrigin implementationOrigin() {
         return ExtensionImplementationOrigin.PLATFORM;
     }
 
+    /**
+     * 处理描述，并将结果传给后续步骤。
+     *
+     * @return 处理后的描述结果，供调用方继续处理
+     */
     @Override
     public PersonResolverDescriptor descriptor() {
         return DESCRIPTOR;
     }
 
+    /**
+     * 生成解析器编码文本，供后续匹配或展示。
+     *
+     * @return 处理后的解析器编码文本，供调用方比较或展示
+     */
     @Override
     public String resolverCode() {
         return EntityUserReferenceFieldConfig.RESOLVER_CODE;
     }
 
-    /** 发布时使用实体元数据校验字段，而不是相信设计器提交的字段类型。 */
+    /**
+     * 发布时使用实体元数据校验字段，而不是相信设计器提交的字段类型。
+     *
+     * @param request 本次请求，后续经校验后用于校验实体用户引用字段人员解析器
+     */
     @Override
     public void validate(
             PersonResolverConfigurationValidationRequest request) {
@@ -116,6 +141,9 @@ public class EntityUserReferenceFieldPersonResolver
 
     /**
      * 节点激活时重新读取实体记录，确保此前任一表单保存的最新字段值都能生效。
+     *
+     * @param request 本次请求，后续经校验后用于解析实体用户引用字段人员解析器
+     * @return 解析后的实体用户引用字段人员解析器结果，供调用方继续处理
      */
     @Override
     public PersonResolveResult resolve(PersonResolveRequest request) {

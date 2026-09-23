@@ -23,9 +23,17 @@ public final class DatabaseMigrator {
     private static final String MYSQL_DRIVER =
             "com.mysql.cj.jdbc.Driver";
 
+    /**
+     * 初始化数据库{@code migrator}，保存构造参数供后续方法使用。
+     */
     private DatabaseMigrator() {
     }
 
+    /**
+     * 启动数据库{@code migrator}；命令行参数决定后续执行环境。
+     *
+     * @param args {@code args}，供本方法处理主时使用
+     */
     public static void main(String[] args) {
         if ("schema-worker".equalsIgnoreCase(
                 System.getenv("MIGRATION_COMMAND"))) {
@@ -94,6 +102,10 @@ public final class DatabaseMigrator {
     /**
      * Flowable 的 MySQL 建表脚本显式使用 utf8/utf8_bin，因此必须在四个引擎
      * 完成 schema 更新并关闭后，再复用 V074 安装的过程收敛新增表。
+     *
+     * @param jdbcUrl JDBCURL，作为 {@code try} 的输入影响后续处理
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param password 密码，作为 {@code try} 的输入影响后续处理
      */
     private static void normalizeDatabaseCollation(
             String jdbcUrl,
@@ -111,6 +123,14 @@ public final class DatabaseMigrator {
         }
     }
 
+    /**
+     * 验证业务迁移{@code preconditions}；不满足约束时阻止后续处理。
+     *
+     * @param jdbcUrl JDBCURL，作为 {@code try} 的输入影响后续处理
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param password 密码，作为 {@code try} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void verifyBusinessMigrationPreconditions(
             String jdbcUrl,
             String username,
@@ -125,6 +145,14 @@ public final class DatabaseMigrator {
         }
     }
 
+    /**
+     * 处理{@code configure}，并将结果传给后续步骤。
+     *
+     * @param configuration 配置内容，决定后续{@code configure}的处理规则
+     * @param jdbcUrl JDBCURL，作为 {@code configuration.setJdbcUrl} 的输入影响后续处理
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param password 密码，作为 {@code configuration.setJdbcPassword} 的输入影响后续处理
+     */
     private static void configure(
             AbstractEngineConfiguration configuration,
             String jdbcUrl,
@@ -138,6 +166,13 @@ public final class DatabaseMigrator {
                 AbstractEngineConfiguration.DB_SCHEMA_UPDATE_TRUE);
     }
 
+    /**
+     * 生成必填文本，供后续匹配或展示。
+     *
+     * @param name 名称，后续用于处理必填时匹配或展示
+     * @return 处理后的必填文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static String required(String name) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
@@ -147,6 +182,14 @@ public final class DatabaseMigrator {
         return value;
     }
 
+    /**
+     * 处理非{@code negative}整数，并将结果传给后续步骤。
+     *
+     * @param name 名称，后续用于处理非{@code negative}整数时匹配或展示
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 处理后的非{@code negative}整数结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static int nonNegativeInt(
             String name,
             int defaultValue) {

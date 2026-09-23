@@ -1,7 +1,7 @@
 package com.workflow.process.coordination.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationService;
 import com.workflow.entity.data.application.EntityRelationGraphReadService;

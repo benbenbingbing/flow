@@ -1,6 +1,9 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
-import com.workflow.contracts.entity.mutation.*;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.process.status.application.ProcessEntityStatusPolicy;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +25,11 @@ public class EntityTransitionStatusListener implements FlowableEventListener {
     private final ProcessEntityStatusPolicy statusPolicy;
     private final EntityMutationPort mutationPort;
 
+    /**
+     * 响应事件阶段的回调，并将结果传给后续处理。
+     *
+     * @param event 事件，供本方法处理事件时使用
+     */
     @Override
     public void onEvent(FlowableEvent event) {
         if (event.getType() != FlowableEngineEventType.SEQUENCEFLOW_TAKEN
@@ -47,7 +55,22 @@ public class EntityTransitionStatusListener implements FlowableEventListener {
                         .process(flow.getProcessDefinitionId(), instanceId, null)
                         .operator("system", "流程引擎").trace(instanceId, operationId).build()));
     }
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override public boolean isFailOnException() { return true; }
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override public boolean isFireOnTransactionLifecycleEvent() { return false; }
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override public String getOnTransaction() { return null; }
 }

@@ -15,6 +15,13 @@ public final class HmacEmbedSubjectDigest implements EmbedSubjectDigestPort {
     private final byte[] key;
     private final String keyVersion;
 
+    /**
+     * 初始化HMAC嵌入式主体摘要，保存构造参数供后续方法使用。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param keyVersion 键版本依赖，保存到当前对象供后续业务方法调用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public HmacEmbedSubjectDigest(byte[] key, String keyVersion) {
         if (key == null || key.length < 32) {
             throw new IllegalArgumentException("HMAC key must be at least 32 bytes");
@@ -26,6 +33,16 @@ public final class HmacEmbedSubjectDigest implements EmbedSubjectDigestPort {
         this.keyVersion = keyVersion;
     }
 
+    /**
+     * 处理摘要，并将结果传给后续步骤。
+     *
+     * @param applicationId 应用ID，后续用于处理摘要时定位或关联目标
+     * @param identityProviderId 身份提供者ID，后续用于处理摘要时定位或关联目标
+     * @param namespace 命名空间，供本方法处理摘要时使用
+     * @param externalSubject 外部主体，供本方法处理摘要时使用
+     * @return 处理后的摘要结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public SubjectDigest digest(
             String applicationId,

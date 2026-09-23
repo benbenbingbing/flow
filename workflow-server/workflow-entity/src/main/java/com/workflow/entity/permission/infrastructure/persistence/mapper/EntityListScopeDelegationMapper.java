@@ -44,13 +44,16 @@ public interface EntityListScopeDelegationMapper extends BaseMapper<EntityListSc
      * 执行当前有效期比较；Wrapper 仅由上面的业务方法在服务端构造，不接受请求中的 SQL。
      * 时间片段按当前 SqlSessionFactory 的 databaseId 选择，PostgreSQL 使用语句时间，
      * 避免长事务跨过委托起止边界后仍按事务开始时间授权；不把方言依赖扩散到权限引擎。
+     *
+     * @param conditions {@code conditions}，供本方法查询活动行时使用
+     * @return 实体列表作用域{@code delegation}集合，供调用方遍历或展示
      */
     @Select("""
             <script>
             SELECT ${ew.sqlSelect} FROM entity_list_scope_delegation
             ${ew.customSqlSegment}
-            AND (start_time IS NULL OR start_time &lt;= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@currentNow(_databaseId)})
-            AND (end_time IS NULL OR end_time >= ${@com.workflow.integration.database.api.DatabaseRuntimeSql@currentNow(_databaseId)})
+            AND (start_time IS NULL OR start_time &lt;= ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)})
+            AND (end_time IS NULL OR end_time >= ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)})
             </script>
             """)
     List<EntityListScopeDelegation> selectActiveRows(

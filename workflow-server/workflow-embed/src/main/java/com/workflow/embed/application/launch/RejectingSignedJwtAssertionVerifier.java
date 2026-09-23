@@ -13,6 +13,14 @@ import java.time.Instant;
  */
 public class RejectingSignedJwtAssertionVerifier implements EmbedSignedAssertionVerifierPort {
 
+    /**
+     * 验证{@code rejecting}已签名{@code jwt}断言验证器；不满足约束时阻止后续处理。
+     *
+     * @param provider 提供者，供本方法验证{@code rejecting}已签名{@code jwt}断言验证器时使用
+     * @param assertion 断言，供本方法验证{@code rejecting}已签名{@code jwt}断言验证器时使用
+     * @param now 当前时间，供本方法验证{@code rejecting}已签名{@code jwt}断言验证器时使用
+     * @return 验证后的{@code rejecting}已签名{@code jwt}断言验证器结果，供调用方继续处理
+     */
     @Override
     public VerifiedExternalSubject verify(
             EmbedIdentityProviderSnapshot provider,

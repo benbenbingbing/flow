@@ -5,9 +5,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.CurrentActor;
+import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.Capability;
@@ -48,6 +48,16 @@ public class EmbedGrantAdministrationService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    /**
+     * 初始化嵌入式授权管理服务，保存构造参数供后续方法使用。
+     *
+     * @param repository 仓储，保存在对象中供后续校验、查询或展示
+     * @param validator 校验器，保存在对象中供后续校验、查询或展示
+     * @param originPolicy 来源策略，保存在对象中供后续校验、查询或展示
+     * @param actorProvider 操作人提供者，保存在对象中供后续校验、查询或展示
+     * @param auditPort 审计端口，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EmbedGrantAdministrationService(
             EmbedManagementRepository repository,
@@ -60,6 +70,17 @@ public class EmbedGrantAdministrationService {
                 Clock.systemUTC());
     }
 
+    /**
+     * 初始化嵌入式授权管理服务，保存构造参数供后续方法使用。
+     *
+     * @param repository 仓储依赖，保存到当前对象供后续业务方法调用
+     * @param validator 校验器依赖，保存到当前对象供后续业务方法调用
+     * @param originPolicy 来源策略依赖，保存到当前对象供后续业务方法调用
+     * @param actorProvider 操作人提供者依赖，保存到当前对象供后续业务方法调用
+     * @param auditPort 审计端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     EmbedGrantAdministrationService(
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
@@ -77,13 +98,26 @@ public class EmbedGrantAdministrationService {
         this.clock = clock;
     }
 
+    /**
+     * 列出嵌入式授权管理；查询结果供调用方展示或继续处理。
+     *
+     * @param viewId 视图ID，后续用于列出嵌入式授权管理时定位或关联目标
+     * @return 授权状态集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<GrantState> list(String viewId) {
         requireView(viewId);
         return repository.findGrants(viewId);
     }
 
-    /** 首次 PUT 创建授权，后续 PUT 必须带当前 expectedVersion 才能覆盖。 */
+    /**
+     * 首次 PUT 创建授权，后续 PUT 必须带当前 expectedVersion 才能覆盖。
+     *
+     * @param viewId 视图ID，后续用于处理新增或更新时定位或关联目标
+     * @param applicationId 应用ID，后续用于处理新增或更新时定位或关联目标
+     * @param command 本次命令，后续经校验后用于处理新增或更新
+     * @return 处理后的新增或更新结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public GrantState upsert(
             String viewId,
@@ -170,6 +204,15 @@ public class EmbedGrantAdministrationService {
         return result;
     }
 
+    /**
+     * 处理变更状态，并将结果传给后续步骤。
+     *
+     * @param viewId 视图ID，后续用于处理变更状态时定位或关联目标
+     * @param applicationId 应用ID，后续用于处理变更状态时定位或关联目标
+     * @param command 本次命令，后续经校验后用于处理变更状态
+     * @param revoke 撤销，作为 {@code EmbedManagementSupport.audit} 的输入影响后续处理
+     * @return 处理后的变更状态结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public GrantState changeStatus(
             String viewId,
@@ -207,6 +250,14 @@ public class EmbedGrantAdministrationService {
         return result;
     }
 
+    /**
+     * 校验命令；不满足约束时阻止后续处理。
+     *
+     * @param view 视图，作为 {@code validator.validateCurrentActive} 的输入影响后续处理
+     * @param provider 提供者，供本方法校验命令时使用
+     * @param command 本次命令，后续经校验后用于校验命令
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateCommand(
             ViewState view,
             ProviderState provider,
@@ -259,6 +310,13 @@ public class EmbedGrantAdministrationService {
         }
     }
 
+    /**
+     * 读取视图能力集合；查询结果供调用方展示或继续处理。
+     *
+     * @param configJson 配置JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 嵌入式授权管理集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Set<String> readViewCapabilities(String configJson) {
         try {
             JsonNode capabilities = objectMapper.readTree(configJson).path("capabilities");
@@ -271,6 +329,13 @@ public class EmbedGrantAdministrationService {
         }
     }
 
+    /**
+     * 读取配置；查询结果供调用方展示或继续处理。
+     *
+     * @param configJson 配置JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 读取后的配置结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private JsonNode readConfig(String configJson) {
         try {
             return objectMapper.readTree(configJson);
@@ -279,6 +344,13 @@ public class EmbedGrantAdministrationService {
         }
     }
 
+    /**
+     * 写入能力集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param capabilities 能力集合，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的能力集合文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writeCapabilities(List<Capability> capabilities) {
         try {
             return objectMapper.writeValueAsString(capabilities.stream().map(Enum::name).toList());
@@ -287,10 +359,22 @@ public class EmbedGrantAdministrationService {
         }
     }
 
+    /**
+     * 校验并获取视图；不满足约束时阻止后续处理。
+     *
+     * @param viewId 视图ID，后续用于校验并获取视图时定位或关联目标
+     * @return 校验并获取后的视图结果，供调用方继续处理
+     */
     private ViewState requireView(String viewId) {
         return requireViewState(repository.findView(viewId));
     }
 
+    /**
+     * 校验并获取视图状态；不满足约束时阻止后续处理。
+     *
+     * @param view 视图，供本方法校验并获取视图状态时使用
+     * @return 校验并获取后的视图状态结果，供调用方继续处理
+     */
     private static ViewState requireViewState(ViewState view) {
         if (view == null) {
             throw notFound("Embed View 不存在");
@@ -298,6 +382,13 @@ public class EmbedGrantAdministrationService {
         return view;
     }
 
+    /**
+     * 校验并获取授权；不满足约束时阻止后续处理。
+     *
+     * @param viewId 视图ID，后续用于校验并获取授权时定位或关联目标
+     * @param applicationId 应用ID，后续用于校验并获取授权时定位或关联目标
+     * @return 校验并获取后的授权结果，供调用方继续处理
+     */
     private GrantState requireGrant(String viewId, String applicationId) {
         GrantState grant = repository.findGrant(viewId, applicationId);
         if (grant == null) {
@@ -306,12 +397,28 @@ public class EmbedGrantAdministrationService {
         return grant;
     }
 
+    /**
+     * 处理范围，并将结果传给后续步骤。
+     *
+     * @param value 待处理范围的原始输入，结果供调用方继续使用
+     * @param min {@code min}，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param max 最大，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param name 名称，后续用于处理范围时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void range(int value, int min, int max, String name) {
         if (value < min || value > max) {
             throw new IllegalArgumentException(name + " 必须在 " + min + " 到 " + max + " 之间");
         }
     }
 
+    /**
+     * 解析{@code toggle}状态；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析{@code toggle}状态的原始输入，结果供调用方继续使用
+     * @return 解析后的{@code toggle}状态结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static SecurityStatus parseToggleStatus(String value) {
         try {
             SecurityStatus status = SecurityStatus.valueOf(
@@ -325,16 +432,33 @@ public class EmbedGrantAdministrationService {
         }
     }
 
+    /**
+     * 处理当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前时间结果，供调用方继续处理
+     */
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 构造版本冲突异常，供调用方区分失败原因。
+     *
+     * @param current 当前，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的版本冲突结果，供调用方继续处理
+     */
     private static EmbedManagementException versionConflict(GrantState current) {
         return new EmbedManagementException(409,
                 "EMBED_CONFIGURATION_VERSION_CONFLICT", "Embed Grant 版本冲突",
                 Map.of("currentVersion", current == null ? 0L : current.lockVersion()));
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @param message 消息，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private static EmbedManagementException notFound(String message) {
         return new EmbedManagementException(404, "EMBED_RESOURCE_NOT_FOUND", message);
     }

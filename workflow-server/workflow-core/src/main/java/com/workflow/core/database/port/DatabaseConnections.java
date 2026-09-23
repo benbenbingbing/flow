@@ -7,8 +7,16 @@ import javax.sql.DataSource;
  * 每次 getConnection 都必须创建独立物理连接；close 必须关闭会话，而非归还业务池。
  */
 public interface DatabaseConnections {
-    /** 普通数据库身份，用于发布互斥、队列入库与结果轮询。 */
+    /**
+     * 普通数据库身份，用于发布互斥、队列入库与结果轮询。
+     *
+     * @return 处理后的应用结果，供调用方继续处理
+     */
     DataSource application();
-    /** 具有运行时结构发布权限的身份，用于 DDL。 */
+    /**
+     * 具有运行时结构发布权限的身份，用于 DDL。
+     *
+     * @return 处理后的结构结果，供调用方继续处理
+     */
     DataSource schema();
 }

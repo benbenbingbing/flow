@@ -1,7 +1,7 @@
 package com.workflow.entity.data.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.Result;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
@@ -27,6 +27,9 @@ public class EntityFieldFileItemController {
 
     /**
      * 根据字段ID查询附件项列表
+     *
+     * @param fieldId 字段ID，后续用于列出字段ID时定位或关联目标
+     * @return 符合条件的实体字段文件条目结果，供调用方继续处理
      */
     @GetMapping("/field/{fieldId}")
     public Result<List<EntityFieldFileItem>> listByFieldId(@PathVariable String fieldId) {

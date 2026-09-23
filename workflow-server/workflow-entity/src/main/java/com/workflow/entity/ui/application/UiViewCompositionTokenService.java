@@ -43,6 +43,18 @@ public class UiViewCompositionTokenService {
     @Value("${ui.view-composition.secret:${ui.release-resolution.secret:${jwt.secret}}}")
     private String secret;
 
+    /**
+     * 生成签发来源行文本，供后续匹配或展示。
+     *
+     * @param ownerType 归属方类型标识，决定后续签发来源行采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理签发来源行时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发来源行时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code issue} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理签发来源行时定位或关联目标
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的签发来源行文本，供调用方比较或展示
+     */
     public String issueSourceRow(
             String ownerType,
             String ownerId,
@@ -77,6 +89,24 @@ public class UiViewCompositionTokenService {
                 now() + TOKEN_TTL_SECONDS));
     }
 
+    /**
+     * 生成签发目标列表文本，供后续匹配或展示。
+     *
+     * @param ownerType 归属方类型标识，决定后续签发目标列表采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理签发目标列表时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发目标列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code issueListContext} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理签发目标列表时定位或关联目标
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param targetEntityCode 目标实体编码，后续用于处理签发目标列表时定位或关联目标
+     * @param targetContentId 目标内容ID，后续用于处理签发目标列表时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理签发目标列表时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，供本方法处理签发目标列表时使用
+     * @param fixedFilters 固定过滤条件，供本方法处理签发目标列表时使用
+     * @param matchNone 匹配{@code none}，供本方法处理签发目标列表时使用
+     * @return 处理后的签发目标列表文本，供调用方比较或展示
+     */
     public String issueTargetList(
             String ownerType,
             String ownerId,
@@ -114,6 +144,21 @@ public class UiViewCompositionTokenService {
      * <p>候选令牌与普通已关联列表令牌用途隔离。前者只能由动作服务根据已发布
      * 关系生成，并在 LINK 执行时再次校验；浏览器不能把普通列表上下文冒充为
      * 候选范围。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续签发候选人列表采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理签发候选人列表时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发候选人列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code issueListContext} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理签发候选人列表时定位或关联目标
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param targetEntityCode 目标实体编码，后续用于处理签发候选人列表时定位或关联目标
+     * @param targetContentId 目标内容ID，后续用于处理签发候选人列表时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理签发候选人列表时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，供本方法处理签发候选人列表时使用
+     * @param fixedFilters 固定过滤条件，供本方法处理签发候选人列表时使用
+     * @param matchNone 匹配{@code none}，供本方法处理签发候选人列表时使用
+     * @return 处理后的签发候选人列表文本，供调用方比较或展示
      */
     public String issueCandidateList(
             String ownerType,
@@ -146,6 +191,12 @@ public class UiViewCompositionTokenService {
                 matchNone);
     }
 
+    /**
+     * 验证来源行；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的来源行结果，供调用方继续处理
+     */
     public Claims verifySourceRow(String token) {
         Claims claims = verify(token);
         if (!SOURCE_ROW.equals(claims.purpose())) {
@@ -154,6 +205,12 @@ public class UiViewCompositionTokenService {
         return claims;
     }
 
+    /**
+     * 验证目标列表；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的目标列表结果，供调用方继续处理
+     */
     public Claims verifyTargetList(String token) {
         Claims claims = verify(token);
         if (!TARGET_LIST.equals(claims.purpose())) {
@@ -162,7 +219,12 @@ public class UiViewCompositionTokenService {
         return claims;
     }
 
-    /** 校验专用候选列表令牌，普通已关联列表令牌不能通过。 */
+    /**
+     * 校验专用候选列表令牌，普通已关联列表令牌不能通过。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的候选人列表结果，供调用方继续处理
+     */
     public Claims verifyCandidateList(String token) {
         Claims claims = verify(token);
         if (!CANDIDATE_LIST.equals(claims.purpose())) {
@@ -174,6 +236,9 @@ public class UiViewCompositionTokenService {
     /**
      * 列表 schema/query 读取入口可接受普通已关联列表或候选列表令牌；动作执行
      * 仍必须分别调用严格用途校验方法，避免两种授权范围互换。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的列表上下文结果，供调用方继续处理
      */
     public Claims verifyListContext(String token) {
         Claims claims = verify(token);
@@ -184,6 +249,25 @@ public class UiViewCompositionTokenService {
         return claims;
     }
 
+    /**
+     * 生成签发列表上下文文本，供后续匹配或展示。
+     *
+     * @param purpose 用途，作为 {@code issue} 的输入影响后续处理
+     * @param ownerType 归属方类型标识，决定后续签发列表上下文采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理签发列表上下文时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理签发列表上下文时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code issue} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理签发列表上下文时定位或关联目标
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param targetEntityCode 目标实体编码，后续用于处理签发列表上下文时定位或关联目标
+     * @param targetContentId 目标内容ID，后续用于处理签发列表上下文时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理签发列表上下文时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，供本方法处理签发列表上下文时使用
+     * @param fixedFilters 固定过滤条件，供本方法处理签发列表上下文时使用
+     * @param matchNone 匹配{@code none}，供本方法处理签发列表上下文时使用
+     * @return 处理后的签发列表上下文文本，供调用方比较或展示
+     */
     private String issueListContext(
             String purpose,
             String ownerType,
@@ -233,6 +317,14 @@ public class UiViewCompositionTokenService {
      * <p>该授权仅允许解析父层已经固定的目标发布；宿主、实体和记录权限仍由
      * 运行时服务重新校验。LIST 目标不会预先绑定某一行，FORM 目标则会绑定
      * 解析出的唯一目标记录。</p>
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @param ownerType 归属方类型标识，决定后续遍历入口采用的处理分支
+     * @param ownerId 归属方ID，后续用于验证遍历入口时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于验证遍历入口时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code requirePositiveVersion} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void verifyTraversalEntry(
             String token,
@@ -277,6 +369,20 @@ public class UiViewCompositionTokenService {
      * 同一业务页面可以打开同一资产的不同记录或不同关联内容，但导航不能
      * 再次进入完全相同的运行时节点；链路总深度最多八层。令牌只承担递归
      * 保护和精确下一跳传递，不替代实体或记录权限校验。</p>
+     *
+     * @param previousToken 上一项令牌，后续用于授权校验、关联或幂等去重
+     * @param ownerType 归属方类型标识，决定后续{@code advance}遍历采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理{@code advance}遍历时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理{@code advance}遍历时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code requirePositiveVersion} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param nextOwnerType 下一步归属方类型标识，决定后续{@code advance}遍历采用的处理分支
+     * @param nextOwnerId 下一步归属方ID，后续用于处理{@code advance}遍历时定位或关联目标
+     * @param nextReleaseId 下一步发布版本ID，后续用于处理{@code advance}遍历时定位或关联目标
+     * @param nextReleaseVersion 下一步发布版本，作为 {@code requirePositiveVersion} 的输入影响后续处理
+     * @param nextRecordId 下一步记录ID，后续用于处理{@code advance}遍历时定位或关联目标
+     * @return 处理后的{@code advance}遍历文本，供调用方比较或展示
      */
     public String advanceTraversal(
             String previousToken,
@@ -347,6 +453,12 @@ public class UiViewCompositionTokenService {
                 now() + TOKEN_TTL_SECONDS));
     }
 
+    /**
+     * 验证遍历；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的遍历结果，供调用方继续处理
+     */
     private Claims verifyTraversal(String token) {
         Claims claims = verify(token);
         if (!TRAVERSAL.equals(claims.purpose())) {
@@ -360,11 +472,19 @@ public class UiViewCompositionTokenService {
      *
      * <p>调用方只能使用返回值收窄到令牌固定的下一跳；不得把声明中的坐标
      * 当作设计态查询条件。签名、有效期和当前用户在返回前已经统一校验。</p>
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的遍历上下文结果，供调用方继续处理
      */
     public Claims verifyTraversalContext(String token) {
         return verifyTraversal(token);
     }
 
+    /**
+     * 构造{@code reentry}{@code blocked}异常，供调用方区分失败原因。
+     *
+     * @return 处理后的{@code reentry}{@code blocked}结果，供调用方继续处理
+     */
     private BusinessConflictException reentryBlocked() {
         return new BusinessConflictException(
                 "VIEW_COMPOSITION_RUNTIME_REENTRY_BLOCKED",
@@ -372,6 +492,11 @@ public class UiViewCompositionTokenService {
                         + "请返回上一层，或改用其他记录。");
     }
 
+    /**
+     * 构造深度{@code exceeded}异常，供调用方区分失败原因。
+     *
+     * @return 处理后的深度{@code exceeded}结果，供调用方继续处理
+     */
     private BusinessConflictException depthExceeded() {
         return new BusinessConflictException(
                 "VIEW_COMPOSITION_RUNTIME_DEPTH_EXCEEDED",
@@ -379,6 +504,13 @@ public class UiViewCompositionTokenService {
                         + " 层，已停止继续加载。请返回上一层后再打开其他内容。");
     }
 
+    /**
+     * 生成签发文本，供后续匹配或展示。
+     *
+     * @param claims 声明集合，供本方法处理签发时使用
+     * @return 处理后的签发文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String issue(Claims claims) {
         requireSecret();
         if (!StringUtils.hasText(claims.userId())) {
@@ -396,6 +528,12 @@ public class UiViewCompositionTokenService {
         }
     }
 
+    /**
+     * 验证界面视图组合令牌；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的界面视图组合令牌结果，供调用方继续处理
+     */
     private Claims verify(String token) {
         requireSecret();
         if (!StringUtils.hasText(token)) {
@@ -429,12 +567,24 @@ public class UiViewCompositionTokenService {
         }
     }
 
+    /**
+     * 校验并获取密钥；不满足约束时阻止后续处理。
+     *
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requireSecret() {
         if (!StringUtils.hasText(secret)) {
             throw new IllegalStateException("关联内容令牌密钥未配置");
         }
     }
 
+    /**
+     * 生成签名文本，供后续匹配或展示。
+     *
+     * @param payload 载荷，后续用于处理签名并传递处理结果
+     * @return 处理后的签名文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private String sign(String payload) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(
@@ -446,16 +596,35 @@ public class UiViewCompositionTokenService {
                         payload.getBytes(StandardCharsets.UTF_8)));
     }
 
+    /**
+     * 处理当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前时间结果，供调用方继续处理
+     */
     private long now() {
         return Instant.now().getEpochSecond();
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param message 消息，作为 {@code BusinessForbiddenException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private BusinessForbiddenException forbidden(String message) {
         return new BusinessForbiddenException(
                 "INVALID_VIEW_COMPOSITION_TOKEN",
                 message);
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取文本时匹配或展示
+     * @return 校验并获取后的文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requireText(String value, String label) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException(label + "不能为空");
@@ -463,6 +632,13 @@ public class UiViewCompositionTokenService {
         return value.trim();
     }
 
+    /**
+     * 校验并获取正数版本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取正数版本的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的正数版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer requirePositiveVersion(Integer value) {
         if (value == null || value < 1) {
             throw new IllegalArgumentException("宿主发布版本号必须为正整数");
@@ -470,6 +646,33 @@ public class UiViewCompositionTokenService {
         return value;
     }
 
+    /**
+     * 封装声明集合的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param purpose 用途，保存在对象中供后续校验、查询或展示
+     * @param ownerType 归属方类型标识，决定后续声明集合采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理声明集合时定位或关联目标
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理声明集合时定位或关联目标
+     * @param sourceRecordId 来源记录ID，后续用于处理声明集合时定位或关联目标
+     * @param targetEntityCode 目标实体编码，后续用于处理声明集合时定位或关联目标
+     * @param targetContentId 目标内容ID，后续用于处理声明集合时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理声明集合时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，保存在对象中供后续校验、查询或展示
+     * @param fixedFilters 固定过滤条件，保存在对象中供后续校验、查询或展示
+     * @param matchNone 匹配{@code none}，保存在对象中供后续校验、查询或展示
+     * @param nextOwnerType 下一步归属方类型标识，决定后续声明集合采用的处理分支
+     * @param nextOwnerId 下一步归属方ID，后续用于处理声明集合时定位或关联目标
+     * @param nextReleaseId 下一步发布版本ID，后续用于处理声明集合时定位或关联目标
+     * @param nextReleaseVersion 下一步发布版本，保存在对象中供后续校验、查询或展示
+     * @param nextRecordId 下一步记录ID，后续用于处理声明集合时定位或关联目标
+     * @param traversal 遍历，保存在对象中供后续校验、查询或展示
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param issuedAt 已签发时间，后续用于判断有效期或展示该事件的发生时间
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     */
     public record Claims(
             String purpose,
             String ownerType,
@@ -496,7 +699,16 @@ public class UiViewCompositionTokenService {
             long expiresAt) {
     }
 
-    /** 单个已解析运行时节点，字段组合用于精确判定重入。 */
+    /**
+     * 单个已解析运行时节点，字段组合用于精确判定重入。
+     *
+     * @param ownerType 归属方类型标识，决定后续遍历跳采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理遍历跳时定位或关联目标
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     public record TraversalHop(
             String ownerType,
             String ownerId,

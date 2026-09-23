@@ -21,4 +21,4 @@
 - 实体运行态通过 `ProcessRuntimePort` 发起流程，不直接依赖流程模块实现。
 - 流程模块通过 `EntityRecordPort` 更新实体流程字段和活动记录。
 - 流程表单解析通过 `EntityFormRuntimePort` 读取实体表单上下文。
-- 发布资产通过 `MigrationAssetHandler` 登记到迁移模块。
+- 发布资产通过 `MigrationAssetPort` 登记到迁移模块。

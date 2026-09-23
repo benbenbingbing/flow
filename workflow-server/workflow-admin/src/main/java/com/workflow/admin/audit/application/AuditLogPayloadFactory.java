@@ -1,9 +1,9 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.contracts.audit.SystemAuditEvent;
-import com.workflow.contracts.audit.AuditSourcePointer;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditSourcePointer;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.AuditDiffCalculator;
 import com.workflow.admin.audit.infrastructure.AuditPayloadSanitizer;
@@ -26,6 +26,12 @@ public class AuditLogPayloadFactory {
     private final AuditDiffCalculator diffCalculator;
     private final AuditRequestMetadataProvider metadataProvider;
 
+    /**
+     * 创建审计日志载荷工厂；结果供后续流程传递或持久化。
+     *
+     * @param event 事件，作为 {@code defaultValue} 的输入影响后续处理
+     * @return 创建后的审计日志载荷工厂结果，供调用方继续处理
+     */
     public AuditLogPayload create(SystemAuditEvent event) {
         AuditRequestMetadataProvider.AuditRequestMetadata metadata = metadataProvider.current();
         String eventId = defaultValue(event.eventId(), newId());
@@ -90,6 +96,10 @@ public class AuditLogPayloadFactory {
     /**
      * 显式来源优先，其次继承调用链来源；最后只使用目标稳定标识构造指针，
      * 绝不把请求参数或业务载荷复制进来源字段。
+     *
+     * @param event 事件，作为 {@code AuditSourcePointer} 的输入影响后续处理
+     * @param operationContext 执行上下文，向后续来源指针步骤传递身份、配置或状态
+     * @return 处理后的来源指针结果，供调用方继续处理
      */
     private AuditSourcePointer sourcePointer(
             SystemAuditEvent event,
@@ -112,10 +122,24 @@ public class AuditLogPayloadFactory {
                 null);
     }
 
+    /**
+     * 生成默认值文本，供后续匹配或展示。
+     *
+     * @param preferred {@code preferred}，供本方法处理默认值时使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的默认值文本，供调用方比较或展示
+     */
     private String defaultValue(String preferred, String fallback) {
         return StringUtils.hasText(preferred) ? preferred : fallback;
     }
 
+    /**
+     * 生成{@code truncate}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code truncate}的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code value.substring} 的输入影响后续处理
+     * @return 处理后的{@code truncate}文本，供调用方比较或展示
+     */
     private String truncate(String value, int maxLength) {
         if (value == null || value.length() <= maxLength) {
             return value;
@@ -123,6 +147,11 @@ public class AuditLogPayloadFactory {
         return value.substring(0, maxLength);
     }
 
+    /**
+     * 生成新ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的新ID文本，供调用方比较或展示
+     */
     private String newId() {
         return UUID.randomUUID().toString().replace("-", "");
     }

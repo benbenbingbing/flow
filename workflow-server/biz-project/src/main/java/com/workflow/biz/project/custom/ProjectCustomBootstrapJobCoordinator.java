@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 
@@ -15,8 +15,17 @@ import java.util.function.Supplier;
  */
 @Slf4j
 public class ProjectCustomBootstrapJobCoordinator
-        implements BootstrapJobCoordinator {
+        implements BootstrapJobPort {
 
+    /**
+     * 执行{@code once}，并将结果传给后续步骤。
+     *
+     * @param jobName {@code job}名称，后续用于执行{@code once}时匹配或展示
+     * @param requiredVersion 必填版本，供本方法执行{@code once}时使用
+     * @param action 动作标识，决定后续{@code once}采用的处理分支
+     * @return 匹配的{@code once}；未找到时为空
+     * @throws UnsupportedOperationException 当前实现不支持指定操作时抛出
+     */
     @Override
     public <T> Optional<T> executeOnce(
             String jobName,

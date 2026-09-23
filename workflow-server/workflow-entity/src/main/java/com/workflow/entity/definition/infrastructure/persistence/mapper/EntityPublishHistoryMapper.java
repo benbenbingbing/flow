@@ -9,11 +9,14 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.builder.annotation.ProviderContext;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
-import com.workflow.integration.database.api.DatabaseSort;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseSort;
 
 import java.util.List;
 
+/**
+ * 定义实体发布历史的调用契约；实现层按此提供能力，调用方无需依赖具体实现。
+ */
 @Mapper
 
 /**
@@ -23,6 +26,9 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
 
     /**
      * 根据实体ID查询版本历史列表（按版本号降序）
+     *
+     * @param entityId 实体ID，后续用于查询实体ID时定位或关联目标
+     * @return 实体发布历史集合，供调用方遍历或展示
      */
     default List<EntityPublishHistory> findByEntityId(String entityId) {
         return selectList(Wrappers.<EntityPublishHistory>lambdaQuery()
@@ -71,6 +77,9 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
 
     /**
      * 获取实体的最新版本号
+     *
+     * @param entityId 实体ID，后续用于读取最新版本时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     default Integer getLatestVersion(String entityId) {
         List<Object> values = selectObjs(Wrappers.<EntityPublishHistory>query()
@@ -81,6 +90,9 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
 
     /**
      * 查询实体的最新发布记录
+     *
+     * @param entityId 实体ID，后续用于查询最新实体ID时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     default EntityPublishHistory findLatestByEntityId(String entityId) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityPublishHistory>lambdaQuery()
@@ -93,6 +105,9 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
      * 锁定当前发布历史作为同一实体自关联写入的稳定互斥点。
      * 实体发布先持有 entity_definition 独占锁，因此不会与历史锁形成反序。
      * 禁用缓存以保证与 JDBC 混用时仍能读取当前已锁定的发布记录。
+     *
+     * @param entityId 实体ID，后续用于查询最新实体ID更新时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     @SelectProvider(type = LockingSql.class, method = "latest")
     @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
@@ -101,6 +116,12 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
 
     /** 发布顺序和实体条件由业务指定，方言仅生成安全的首行基表锁查询。 */
     class LockingSql {
+        /**
+         * 生成最新文本，供后续匹配或展示。
+         *
+         * @param context 执行上下文，向后续最新步骤传递身份、配置或状态
+         * @return 处理后的最新文本，供调用方比较或展示
+         */
         public static String latest(ProviderContext context) {
             return DatabaseQueryDialects.forDatabaseId(context.getDatabaseId()).firstForUpdate(
                     "entity_publish_history", "entity_id = #{entityId}",
@@ -110,6 +131,9 @@ public interface EntityPublishHistoryMapper extends BaseMapper<EntityPublishHist
 
     /**
      * 按实体编码查询最新发布记录
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     default EntityPublishHistory findLatestByEntityCode(String entityCode) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityPublishHistory>lambdaQuery()

@@ -1,7 +1,7 @@
 package com.workflow.process.coordination.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan;
@@ -97,6 +97,10 @@ public class RelatedProcessCoordinationPlanService {
      *
      * <p>这个入口会重走路径快照校验、专用能力校验和逐跳数据
      * 权限。返回的是现状，由执行器再与原始计划逐项对比。</p>
+     *
+     * @param source 待处理{@code replan}的原始输入，结果供调用方继续使用
+     * @param command 本次命令，后续经校验后用于处理{@code replan}
+     * @return 处理后的{@code replan}结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public RelatedProcessCoordinationPlan replan(
@@ -106,6 +110,14 @@ public class RelatedProcessCoordinationPlanService {
         return inspect(source, normalize(command));
     }
 
+    /**
+     * 检查关联流程协同方案；不满足约束时阻止后续处理。
+     *
+     * @param source 待检查关联流程协同方案的原始输入，结果供调用方继续使用
+     * @param command 本次命令，后续经校验后用于检查关联流程协同方案
+     * @return 检查后的关联流程协同方案结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private RelatedProcessCoordinationPlan inspect(
             Source source,
             Command command) {
@@ -184,6 +196,12 @@ public class RelatedProcessCoordinationPlanService {
                                 == Operation.PROPAGATE_TERMINATION);
     }
 
+    /**
+     * 检查目标；不满足约束时阻止后续处理。
+     *
+     * @param record 记录，作为 {@code entityProcessLinkMapper.selectLatest} 的输入影响后续处理
+     * @return 检查后的目标结果，供调用方继续处理
+     */
     private TargetImpact inspectTarget(RecordRef record) {
         EntityProcessLink link = entityProcessLinkMapper.selectLatest(
                 record.entityCode(), record.recordId());
@@ -259,7 +277,11 @@ public class RelatedProcessCoordinationPlanService {
                 activeActivities);
     }
 
-    /** 宿主动作也必须绑定它触发时的精确流程发布历史。 */
+    /**
+     * 宿主动作也必须绑定它触发时的精确流程发布历史。
+     *
+     * @param source 待校验并获取固定来源流程的原始输入，结果供调用方继续使用
+     */
     private void requirePinnedSourceProcess(Source source) {
         ProcessVersionHistory sourceVersion = snapshotService
                 .getVersionByProcessDefinitionId(
@@ -272,6 +294,13 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 处理状态，并将结果传给后续步骤。
+     *
+     * @param active 活动，供本方法处理状态时使用
+     * @param historic 历史，供本方法处理状态时使用
+     * @return 处理后的状态结果，供调用方继续处理
+     */
     private ProcessState state(
             ProcessInstance active,
             HistoricProcessInstance historic) {
@@ -285,6 +314,12 @@ public class RelatedProcessCoordinationPlanService {
                 ? ProcessState.TERMINATED : ProcessState.COMPLETED;
     }
 
+    /**
+     * 校验操作；不满足约束时阻止后续处理。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param command 本次命令，后续经校验后用于校验操作
+     */
     private void validateOperation(
             RelatedProcessCoordinationPlan plan,
             Command command) {
@@ -296,6 +331,12 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 校验并获取允许{@code states}；不满足约束时阻止后续处理。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param wait {@code wait}，作为 {@code conflict} 的输入影响后续处理
+     */
     private void requireAllowedStates(
             RelatedProcessCoordinationPlan plan,
             boolean wait) {
@@ -319,6 +360,11 @@ public class RelatedProcessCoordinationPlanService {
                         : "关联流程状态不符合要求: " + ids);
     }
 
+    /**
+     * 校验路由；不满足约束时阻止后续处理。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     */
     private void validateRoute(RelatedProcessCoordinationPlan plan) {
         if (plan.targets().size() != 1) {
             throw conflict(
@@ -336,6 +382,11 @@ public class RelatedProcessCoordinationPlanService {
                 plan.targetActivityId());
     }
 
+    /**
+     * 校验终止；不满足约束时阻止后续处理。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     */
     private void validateTermination(RelatedProcessCoordinationPlan plan) {
         List<TargetImpact> unsafe = plan.targets().stream()
                 .filter(item -> item.state() == ProcessState.STARTING
@@ -348,6 +399,13 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 校验并获取用户任务；不满足约束时阻止后续处理。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param targetActivityId 目标活动ID，后续用于校验并获取用户任务时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireUserTask(
             String processDefinitionId,
             String targetActivityId) {
@@ -366,6 +424,14 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 校验并获取来源；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续来源步骤传递身份、配置或状态
+     * @return 校验并获取后的来源结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private Source requireSource(FlowActionContext context) {
         if (context == null
                 || !StringUtils.hasText(context.getEntityCode())
@@ -397,6 +463,12 @@ public class RelatedProcessCoordinationPlanService {
                         ? UserContext.getUsername() : operatorId);
     }
 
+    /**
+     * 校验并获取已认证来源；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验并获取已认证来源的原始输入，结果供调用方继续使用
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireAuthenticatedSource(Source source) {
         if (source == null
                 || !StringUtils.hasText(source.operatorId())
@@ -410,6 +482,13 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param command 本次命令，后续经校验后用于规范化关联流程协同方案
+     * @return 规范化后的关联流程协同方案结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Command normalize(Command command) {
         if (command == null || command.operation() == null
                 || command.publishedRelationPath() == null) {
@@ -456,6 +535,13 @@ public class RelatedProcessCoordinationPlanService {
                 reason);
     }
 
+    /**
+     * 生成图指纹文本，供后续匹配或展示。
+     *
+     * @param path 路径，供本方法处理图指纹时使用
+     * @param records 记录集合，供本方法处理图指纹时使用
+     * @return 处理后的图指纹文本，供调用方比较或展示
+     */
     private String graphFingerprint(
             PublishedRelationPath path,
             List<RecordRef> records) {
@@ -474,6 +560,15 @@ public class RelatedProcessCoordinationPlanService {
         return sha256(value.toString());
     }
 
+    /**
+     * 生成方案ID文本，供后续匹配或展示。
+     *
+     * @param source 待处理方案ID的原始输入，结果供调用方继续使用
+     * @param command 本次命令，后续经校验后用于处理方案ID
+     * @param graphFingerprint 图指纹，供本方法处理方案ID时使用
+     * @param impacts {@code impacts}，供本方法处理方案ID时使用
+     * @return 处理后的方案ID文本，供调用方比较或展示
+     */
     private String planId(
             Source source,
             Command command,
@@ -501,6 +596,13 @@ public class RelatedProcessCoordinationPlanService {
         return sha256(value.toString());
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -511,20 +613,46 @@ public class RelatedProcessCoordinationPlanService {
         }
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private BusinessConflictException conflict(
             String code,
             String message) {
         return new BusinessConflictException(code, message);
     }
 
+    /**
+     * 判断相同条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同时使用
+     * @param right 右侧，作为 {@code left.equals} 的输入影响后续处理
+     * @return 相同条件成立时为 true，否则为 false
+     */
     private boolean same(String left, String right) {
         return left == null ? right == null : left.equals(right);
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return !StringUtils.hasText(value) ? null : value.trim();
     }
 
+    /**
+     * 清理截止空；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待清理截止空的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空文本，供调用方比较或展示
+     */
     private String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
     }

@@ -1,10 +1,10 @@
 package com.workflow.storage.api.web;
 
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.contracts.entity.port.EntityFileUploadAuthorizationPort;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.Result;
@@ -48,6 +48,7 @@ public class FileController {
      * 上传文件
      *
      * @param file 上传的文件
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
      * @return 文件信息（url、filename 等）或错误信息
      */
     @PostMapping("/upload")
@@ -114,6 +115,8 @@ public class FileController {
 
     /**
      * 解析唯一的实体上传授权实现；缺失或重复实现都失败关闭，避免退回全局上传。
+     *
+     * @return 处理后的实体上传{@code authorizer}结果，供调用方继续处理
      */
     private EntityFileUploadAuthorizationPort entityUploadAuthorizer() {
         if (entityUploadAuthorizationPorts.size() != 1) {
@@ -122,6 +125,13 @@ public class FileController {
         return entityUploadAuthorizationPorts.get(0);
     }
 
+    /**
+     * 处理{@code store}，并将结果传给后续步骤。
+     *
+     * @param file 文件，作为 {@code fileAccessService.prepareUpload} 的输入影响后续处理
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code store}结果，供调用方继续处理
+     */
     private Result<Map<String, String>> store(
             MultipartFile file,
             String idempotencyKey) {
@@ -162,6 +172,12 @@ public class FileController {
         }
     }
 
+    /**
+     * 删除之后失败{@code registration}；后续读取或执行将使用更新后的状态。
+     *
+     * @param strategy {@code strategy}，供本方法删除之后失败{@code registration}时使用
+     * @param stored 已存储，供本方法删除之后失败{@code registration}时使用
+     */
     private void deleteAfterFailedRegistration(
             FileStorageStrategy strategy,
             Map<String, String> stored) {
@@ -180,6 +196,7 @@ public class FileController {
      * @param file     上传的图片文件
      * @param maxWidth  最大宽度，默认 1920
      * @param quality   压缩质量，默认 0.8
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
      * @return 文件信息或错误信息
      */
     @PostMapping("/upload-image")

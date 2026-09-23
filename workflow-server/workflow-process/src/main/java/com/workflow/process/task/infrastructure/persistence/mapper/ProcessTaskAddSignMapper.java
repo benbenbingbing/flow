@@ -11,8 +11,8 @@ import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.annotations.SelectProvider;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.builder.annotation.ProviderContext;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
-import com.workflow.integration.database.api.DatabaseSort;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseSort;
 import java.util.List;
 
 /**
@@ -47,6 +47,12 @@ public interface ProcessTaskAddSignMapper extends BaseMapper<ProcessTaskAddSign>
 
     /** 同一创建时间按主键稳定取一条，状态过滤仍属于加签业务。 */
     class LockingSql {
+        /**
+         * 生成打开文本，供后续匹配或展示。
+         *
+         * @param context 执行上下文，向后续打开步骤传递身份、配置或状态
+         * @return 处理后的打开文本，供调用方比较或展示
+         */
         public static String open(ProviderContext context) {
             return DatabaseQueryDialects.forDatabaseId(context.getDatabaseId()).firstForUpdate(
                     "process_task_add_sign", "source_task_id = #{taskId} AND status IN ('ACTIVE','WAITING_SOURCE')",
@@ -86,7 +92,7 @@ public interface ProcessTaskAddSignMapper extends BaseMapper<ProcessTaskAddSign>
      */
     @Update("""
             <script>
-            UPDATE process_task_add_sign SET status = 'CANCELLED', complete_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@currentNow(_databaseId)}
+            UPDATE process_task_add_sign SET status = 'CANCELLED', complete_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}
              WHERE id = #{addSignId}
              AND status IN ('ACTIVE','WAITING_SOURCE')
             </script>

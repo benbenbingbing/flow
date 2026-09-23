@@ -67,7 +67,7 @@ class HasTodoPermissionBindingTest {
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         taskAccess = mock(ProcessTaskAccessPort.class);
         builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
     }
 

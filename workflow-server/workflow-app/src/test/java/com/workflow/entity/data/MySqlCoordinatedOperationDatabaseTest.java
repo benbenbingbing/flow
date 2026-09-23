@@ -13,7 +13,7 @@ import com.workflow.entity.ui.application.UiHotfixGovernanceService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixRequestMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixRequest;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import java.time.LocalDateTime;
 import java.util.List;

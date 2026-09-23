@@ -3,7 +3,7 @@ package com.workflow.process.task.application;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.IdentityUser;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
@@ -58,6 +58,9 @@ public class TaskIdentityAccessService {
     /**
      * 只读判断当前用户是否具有任务办理身份，供流程实例参与者可见性判断使用。
      * 与认领授权使用同一候选规则；未登录返回 false。
+     *
+     * @param task 任务，供本方法判断能否当前用户访问时使用
+     * @return 当前用户访问条件成立时为 true，否则为 false
      */
     public boolean canCurrentUserAccess(Task task) {
         String userId = UserContext.getUserId();
@@ -70,6 +73,14 @@ public class TaskIdentityAccessService {
                 : isCandidate(task, userId, username);
     }
 
+    /**
+     * 判断是否候选人；判断结果决定调用方的后续分支。
+     *
+     * @param task 任务，供本方法判断是否候选人时使用
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return 候选人条件成立时为 true，否则为 false
+     */
     private boolean isCandidate(Task task, String userId, String username) {
         Set<String> candidateGroups = new HashSet<>();
         for (var link : taskService.getIdentityLinksForTask(task.getId())) {
@@ -90,6 +101,11 @@ public class TaskIdentityAccessService {
     /**
      * 按当前业务成员关系匹配组与 ROLE_ 角色身份，兼容历史流程保存的 ID 和编码。
      * Mapper 只返回启用且未删除的组/角色，不将会话中可能过期的角色缓存用于授权。
+     *
+     * @param candidates 候选集合，供本方法处理{@code belongs}截止候选人分组时使用
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return {@code belongs}截止候选人分组条件成立时为 true，否则为 false
      */
     private boolean belongsToCandidateGroup(Set<String> candidates, String userId, String username) {
         String directoryUserId = userId;
@@ -120,12 +136,27 @@ public class TaskIdentityAccessService {
         return false;
     }
 
+    /**
+     * 判断是否匹配分组候选人；判断结果决定调用方的后续分支。
+     *
+     * @param candidates 候选集合，供本方法判断是否匹配分组候选人时使用
+     * @param groupIdentity 分组身份，供本方法判断是否匹配分组候选人时使用
+     * @return 分组候选人条件成立时为 true，否则为 false
+     */
     private boolean matchesGroupCandidate(Set<String> candidates, String groupIdentity) {
         // 混合候选中 ROLE_ 专属于角色，不能被恰好同名的普通用户组匹配。
         return StringUtils.hasText(groupIdentity)
                 && !groupIdentity.startsWith("ROLE_") && candidates.contains(groupIdentity);
     }
 
+    /**
+     * 判断是否匹配用户；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否匹配用户的原始输入，结果供调用方继续使用
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return 用户条件成立时为 true，否则为 false
+     */
     private boolean matchesUser(String value, String userId, String username) {
         return StringUtils.hasText(value) && (value.equals(userId) || value.equals(username));
     }

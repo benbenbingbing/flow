@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.application;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 
 import java.util.Map;

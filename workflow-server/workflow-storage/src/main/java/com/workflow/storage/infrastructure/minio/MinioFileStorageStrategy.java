@@ -21,16 +21,29 @@ public class MinioFileStorageStrategy extends S3FileStorageStrategy {
 
     /**
      * 从独立的 MinIO 配置创建客户端；配置缺失或 endpoint 非对象 API 根地址时启动失败。
+     *
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
      */
     @Autowired
     public MinioFileStorageStrategy(FileStorageProperties properties) {
         this(properties.getMinio(), null);
     }
 
+    /**
+     * 初始化{@code minio}文件存储{@code strategy}，保存构造参数供后续方法使用。
+     *
+     * @param config 配置内容，决定后续{@code minio}文件存储{@code strategy}的处理规则
+     * @param client 客户端，保存在对象中供后续校验、查询或展示
+     */
     MinioFileStorageStrategy(FileStorageProperties.MinioConfig config, S3Client client) {
         super(toS3Config(config), client);
     }
 
+    /**
+     * 读取存储类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的存储类型文本，供调用方比较或展示
+     */
     @Override
     public String getStorageType() {
         return "minio";
@@ -38,6 +51,9 @@ public class MinioFileStorageStrategy extends S3FileStorageStrategy {
 
     /**
      * 校验后复制配置，避免误用默认 AWS endpoint、默认凭证链或修改原始配置对象。
+     *
+     * @param config 配置内容，决定后续{@code s3}配置的处理规则
+     * @return 转换为后的{@code s3}配置结果，供调用方继续处理
      */
     private static FileStorageProperties.S3Config toS3Config(
             FileStorageProperties.MinioConfig config) {
@@ -60,13 +76,24 @@ public class MinioFileStorageStrategy extends S3FileStorageStrategy {
         return s3;
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param property 属性，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void requireText(String value, String property) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalStateException("file.storage.minio." + property + " must be configured");
         }
     }
 
-    /** endpoint 只接受 HTTP(S) 根地址；桶名由配置单独提供，凭证不允许放入 URL。 */
+    /**
+     * endpoint 只接受 HTTP(S) 根地址；桶名由配置单独提供，凭证不允许放入 URL。
+     *
+     * @param endpoint 接口端点，作为 {@code URI.create} 的输入影响后续处理
+     */
     private static void validateEndpoint(String endpoint) {
         try {
             URI uri = URI.create(endpoint);

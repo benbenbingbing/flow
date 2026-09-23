@@ -1,8 +1,8 @@
 package com.workflow.entity.data.application;
 
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
-import com.workflow.integration.database.api.SchemaColumnMetadata;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -10,7 +10,6 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 
 import java.util.List;
 
@@ -20,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 
 class DynamicTableServiceTest {
@@ -47,7 +45,7 @@ class DynamicTableServiceTest {
             var jdbc = mock(JdbcTemplate.class);
             var metadata = mock(SchemaMetadataPort.class);
             var service = new DynamicTableService(jdbc, fields,
-                    resolver, mock(SchemaDdlExecutor.class), new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                    resolver, mock(SchemaDdlExecutor.class), new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
             String ddl = service.planEntityTableStructure(entity).get(0);
             assertTrue(ddl.contains("`name` VARCHAR(200)"));

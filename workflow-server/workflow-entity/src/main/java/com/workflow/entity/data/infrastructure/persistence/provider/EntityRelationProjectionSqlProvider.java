@@ -2,7 +2,7 @@ package com.workflow.entity.data.infrastructure.persistence.provider;
 
 import org.springframework.util.StringUtils;
 import org.apache.ibatis.builder.annotation.ProviderContext;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,7 +20,13 @@ public class EntityRelationProjectionSqlProvider {
     private static final Pattern IDENTIFIER = Pattern.compile(
             "^[A-Za-z_][A-Za-z0-9_]*$");
 
-    /** 查询 id + 标量链接列及稳定顺序，行范围交由 MP 分页插件。 */
+    /**
+     * 查询 id + 标量链接列及稳定顺序，行范围交由 MP 分页插件。
+     *
+     * @param parameters 参数集合，作为 {@code appendWhere} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体关系投影SQL提供者分页步骤传递身份、配置或状态
+     * @return 查询后的实体关系投影SQL提供者分页文本，供调用方比较或展示
+     */
     public String selectPage(Map<String, Object> parameters, ProviderContext context) {
         StringBuilder sql = new StringBuilder("SELECT id AS ")
                 .append(DatabaseQueryDialects.forDatabaseId(context.getDatabaseId()).quoteAlias("record_id"));
@@ -36,7 +42,13 @@ public class EntityRelationProjectionSqlProvider {
         return sql.toString();
     }
 
-    /** 统计应用相同关系条件和数据范围后的记录数。 */
+    /**
+     * 统计应用相同关系条件和数据范围后的记录数。
+     *
+     * @param parameters 参数集合，作为 {@code appendWhere} 的输入影响后续处理
+     * @param context 执行上下文，向后续实体关系投影SQL提供者步骤传递身份、配置或状态
+     * @return 统计后的实体关系投影SQL提供者文本，供调用方比较或展示
+     */
     public String count(Map<String, Object> parameters, ProviderContext context) {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM ")
                 .append(table(parameters, context));
@@ -46,6 +58,10 @@ public class EntityRelationProjectionSqlProvider {
 
     /**
      * 批量读取多值表中的链接值。Mapper 的 MP Page 以 limitPlusOne 在进入内存前发现超限。
+     *
+     * @param parameters 参数集合，作为 {@code values} 的输入影响后续处理
+     * @param context 执行上下文，向后续多实例值集合步骤传递身份、配置或状态
+     * @return 查询后的多实例值集合文本，供调用方比较或展示
      */
     public String selectMultiValues(Map<String, Object> parameters, ProviderContext context) {
         List<?> recordIds = values(parameters, "recordIds");
@@ -66,6 +82,14 @@ public class EntityRelationProjectionSqlProvider {
         return sql.toString();
     }
 
+    /**
+     * 追加{@code where}；结果供后续流程传递或持久化。
+     *
+     * @param sql SQL，供本方法追加{@code where}时使用
+     * @param parameters 参数集合，作为 {@code text} 的输入影响后续处理
+     * @param context 执行上下文，向后续{@code where}步骤传递身份、配置或状态
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void appendWhere(
             StringBuilder sql,
             Map<String, Object> parameters, ProviderContext context) {
@@ -116,10 +140,23 @@ public class EntityRelationProjectionSqlProvider {
         throw new IllegalArgumentException("关系图查询谓词无效");
     }
 
+    /**
+     * 生成表文本，供后续匹配或展示。
+     *
+     * @param parameters 参数集合，作为 {@code identifier} 的输入影响后续处理
+     * @param context 执行上下文，向后续表步骤传递身份、配置或状态
+     * @return 处理后的表文本，供调用方比较或展示
+     */
     private String table(Map<String, Object> parameters, ProviderContext context) {
         return identifier(text(parameters, "tableName"), context);
     }
 
+    /**
+     * 整理列集合数据，供调用方遍历或继续处理。
+     *
+     * @param parameters 参数集合，供本方法处理列集合时使用
+     * @return 列投影集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private List<ColumnProjection> columns(Map<String, Object> parameters) {
         Object raw = parameters.get("columns");
@@ -127,6 +164,14 @@ public class EntityRelationProjectionSqlProvider {
                 ? (List<ColumnProjection>) values : List.of();
     }
 
+    /**
+     * 整理值集合数据，供调用方遍历或继续处理。
+     *
+     * @param parameters 参数集合，供本方法处理值集合时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return {@code list<?>}集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<?> values(
             Map<String, Object> parameters,
             String key) {
@@ -137,6 +182,14 @@ public class EntityRelationProjectionSqlProvider {
         return List.copyOf(collection);
     }
 
+    /**
+     * 生成{@code placeholders}文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param size 大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的{@code placeholders}文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String placeholders(String key, int size) {
         if (size < 1 || size > 10000) {
             throw new IllegalArgumentException("关系图查询值数量无效");
@@ -152,11 +205,26 @@ public class EntityRelationProjectionSqlProvider {
         return result.toString();
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param parameters 参数集合，供本方法处理文本时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Map<String, Object> parameters, String key) {
         Object value = parameters.get(key);
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 生成标识符文本，供后续匹配或展示。
+     *
+     * @param value 待处理标识符的原始输入，结果供调用方继续使用
+     * @param context 执行上下文，向后续标识符步骤传递身份、配置或状态
+     * @return 处理后的标识符文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String identifier(String value, ProviderContext context) {
         if (!StringUtils.hasText(value)
                 || !IDENTIFIER.matcher(value).matches()) {
@@ -165,7 +233,12 @@ public class EntityRelationProjectionSqlProvider {
         return DatabaseQueryDialects.forDatabaseId(context.getDatabaseId()).quoteIdentifier(value);
     }
 
-    /** 查询列与固定返回别名。 */
+    /**
+     * 查询列与固定返回别名。
+     *
+     * @param column 列，保存在对象中供后续校验、查询或展示
+     * @param alias {@code alias}，保存在对象中供后续校验、查询或展示
+     */
     public record ColumnProjection(String column, String alias) {
     }
 }

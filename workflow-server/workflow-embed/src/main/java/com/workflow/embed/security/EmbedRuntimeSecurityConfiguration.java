@@ -33,6 +33,17 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 @EnableConfigurationProperties(EmbedProperties.class)
 public class EmbedRuntimeSecurityConfiguration {
 
+    /**
+     * 处理嵌入式运行时安全，并将结果传给后续步骤。
+     *
+     * @param http HTTP，供本方法处理嵌入式运行时安全时使用
+     * @param objectMapper 对象映射器，供本方法处理嵌入式运行时安全时使用
+     * @param properties 属性集合，供本方法处理嵌入式运行时安全时使用
+     * @param filterProvider 过滤提供者，供本方法处理嵌入式运行时安全时使用
+     * @return 处理后的嵌入式运行时安全结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @Bean
     @Order(3)
     SecurityFilterChain embedRuntimeSecurity(
@@ -106,11 +117,19 @@ public class EmbedRuntimeSecurityConfiguration {
     }
 
     /**
-     * 带 Embed 协议头的普通 {@code /api/**} 请求进入独立委托链。
+     * 带 Embed 协议头的普通 {@code /api/**
+     * } 请求进入独立委托链。
      *
      * <p>匹配任意协议值而不是只匹配 {@code 1}，确保错误版本也不会落入普通 JWT
      * 链。opaque Bearer 必须先由 Embed filter 验证，之后 MVC 的 EndpointAuthorization
      * 和 DataScope 仍按映射 Flow 用户执行。</p>
+     *
+     * @param http HTTP，供本方法处理嵌入式委托运行时安全时使用
+     * @param objectMapper 对象映射器，作为 {@code writeDenied} 的输入影响后续处理
+     * @param properties 属性集合，供本方法处理嵌入式委托运行时安全时使用
+     * @param filterProvider 过滤提供者，供本方法处理嵌入式委托运行时安全时使用
+     * @return 处理后的嵌入式委托运行时安全结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
      */
     @Bean
     @Order(4)
@@ -176,6 +195,14 @@ public class EmbedRuntimeSecurityConfiguration {
 
     /**
      * 输出稳定且不泄露内部鉴权原因的错误包络。
+     *
+     * @param objectMapper 对象映射器，供本方法写入已拒绝时使用
+     * @param request 本次请求，后续经校验后用于写入已拒绝
+     * @param response 响应，作为 {@code objectMapper.writeValue} 的输入影响后续处理
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     * @param errorCode 错误编码，后续用于写入已拒绝时定位或关联目标
+     * @param message 消息，作为 {@code body.put} 的输入影响后续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
      */
     private static void writeDenied(
             ObjectMapper objectMapper,

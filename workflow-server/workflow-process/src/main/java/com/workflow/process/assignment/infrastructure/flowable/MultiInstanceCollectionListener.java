@@ -104,6 +104,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
 
     /**
      * 流程启动前预计算多实例集合变量（主要入口）
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
      */
     public void prepareVariables(
             String processDefinitionId,
@@ -286,6 +289,7 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
      *
      * @param processInstanceId 流程实例ID
      * @param activityId        活动（节点）ID
+     * @param eventProcessDefinitionId 事件流程定义ID，后续用于准备多实例集合时定位或关联目标
      * @throws Exception 查询流程实例或解析配置失败时抛出
      */
     private void prepareMultiInstanceCollection(
@@ -296,6 +300,15 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 processInstanceId, activityId, eventProcessDefinitionId, null);
     }
 
+    /**
+     * 准备多实例集合；结果供调用方的后续步骤使用。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param activityId 活动ID，后续用于准备多实例集合时定位或关联目标
+     * @param eventProcessDefinitionId 事件流程定义ID，后续用于准备多实例集合时定位或关联目标
+     * @param executionId 执行ID，后续用于准备多实例集合时定位或关联目标
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private void prepareMultiInstanceCollection(
             String processInstanceId,
             String activityId,
@@ -477,6 +490,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
     }
 
+    /**
+     * 判断是否具有{@code participants}；判断结果决定调用方的后续分支。
+     *
+     * @param collection 集合，作为 {@code lang.reflect.Array.getLength} 的输入影响后续处理
+     * @return {@code participants}条件成立时为 true，否则为 false
+     */
     private boolean hasParticipants(Object collection) {
         if (collection instanceof Collection<?> values) {
             return values.stream().anyMatch(value -> value != null
@@ -492,6 +511,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         return false;
     }
 
+    /**
+     * 判断是否具有{@code staged}覆盖；判断结果决定调用方的后续分支。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param activityId 活动ID，后续用于判断是否具有{@code staged}覆盖时定位或关联目标
+     * @return {@code staged}覆盖条件成立时为 true，否则为 false
+     */
     private boolean hasStagedOverride(
             String processInstanceId,
             String activityId) {
@@ -500,6 +526,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                         processInstanceId, activityId);
     }
 
+    /**
+     * 构造必填异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code RequiredMultiInstanceAssignmentException} 的输入影响后续处理
+     * @param cause 原因，作为 {@code RequiredMultiInstanceAssignmentException} 的输入影响后续处理
+     * @return 处理后的必填结果，供调用方继续处理
+     */
     private RequiredMultiInstanceAssignmentException required(
             String message,
             Throwable cause) {
@@ -507,6 +540,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 message, cause);
     }
 
+    /**
+     * 收集{@code activities}；结果供调用方的后续步骤使用。
+     *
+     * @param elements {@code elements}，供本方法收集{@code activities}时使用
+     * @param target 目标，供本方法收集{@code activities}时使用
+     */
     private void collectActivities(
             Collection<FlowElement> elements,
             List<Activity> target) {
@@ -526,6 +565,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     /**
      * 只从部署 BPMN 恢复人员配置。新版本读取 assigneeConfig；历史版本可从
      * 同一部署的 multiInstanceConfig 及字面量 assignee/candidate 属性兼容。
+     *
+     * @param activity 活动，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @return {@code deployed}办理人配置键值结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> deployedAssigneeConfig(
@@ -597,6 +640,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     /**
      * 解析同一部署中的节点引用，并用终端 UserTask 的历史 BPMN 字面量补齐
      * 兼容配置。引用者是否为多实例只影响后续输出，不受源节点循环属性影响。
+     *
+     * @param model 模型，供本方法处理有效分配时使用
+     * @param currentActivity 当前活动，作为 {@code EffectiveAssignment} 的输入影响后续处理
+     * @param currentConfig 当前配置内容，决定后续有效分配的处理规则
+     * @return 处理后的有效分配结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
      */
     private EffectiveAssignment effectiveAssignment(
             BpmnModel model,
@@ -618,13 +667,25 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 resolved.sourceTask(), sourceConfig);
     }
 
+    /**
+     * 判断字面值条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理字面值的原始输入，结果供调用方继续使用
+     * @return 字面值条件成立时为 true，否则为 false
+     */
     private boolean literal(String value) {
         return StringUtils.hasText(value)
                 && !value.contains("${")
                 && !value.contains("#{");
     }
 
-    /** 判断是否必须推迟到节点进入时读取权威业务状态。 */
+    /**
+     * 判断是否必须推迟到节点进入时读取权威业务状态。
+     *
+     * @param config 配置内容，决定后续使用入口动态解析器的处理规则
+     * @param multiInstanceSource 多实例来源，作为 {@code effectiveResolver} 的输入影响后续处理
+     * @return 使用入口动态解析器条件成立时为 true，否则为 false
+     */
     private boolean usesEntryDynamicResolver(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -636,6 +697,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 resolverCode);
     }
 
+    /**
+     * 规范化分配类型；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化分配类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的分配类型文本，供调用方比较或展示
+     */
     private String normalizeAssignmentType(Object raw) {
         String value = text(raw);
         if (!StringUtils.hasText(value)) {
@@ -647,6 +714,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 ? "resolver" : normalized;
     }
 
+    /**
+     * 生成已发布流程配置ID文本，供后续匹配或展示。
+     *
+     * @param definition 定义，作为 {@code findByDeploymentId} 的输入影响后续处理
+     * @return 处理后的已发布流程配置ID文本，供调用方比较或展示
+     */
     private String publishedProcessConfigId(
             ProcessDefinition definition) {
         if (definition == null
@@ -659,21 +732,42 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 .orElse(null);
     }
 
+    /**
+     * 判断是否失败异常；判断结果决定调用方的后续分支。
+     *
+     * @return 失败异常条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFailOnException() {
         return true;
     }
 
+    /**
+     * 读取事务；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的事务文本，供调用方比较或展示
+     */
     @Override
     public String getOnTransaction() {
         return null;
     }
 
+    /**
+     * 判断是否{@code fire}事务生命周期事件；判断结果决定调用方的后续分支。
+     *
+     * @return {@code fire}事务生命周期事件条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isFireOnTransactionLifecycleEvent() {
         return false;
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?>
@@ -681,6 +775,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 : Map.of();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value);
@@ -691,10 +791,22 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 生成空值安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理空值安全的原始输入，结果供调用方继续使用
+     * @return 处理后的空值安全文本，供调用方比较或展示
+     */
     private String nullSafe(String value) {
         return value == null ? "" : value;
     }
@@ -702,6 +814,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     /**
      * 流程启动时为每个会签节点准备通过人数与否决标记。
      * 启动阶段每次都写成初始值，避免沿用调用方传入的脏计数。
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param activityId 活动ID，后续用于处理{@code initialize}结果流程变量时定位或关联目标
      */
     private void initializeOutcomeVariables(
             Map<String, Object> variables,
@@ -720,6 +835,10 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     /**
      * 节点重入时重置计数。串行会签后续实例的 ACTIVITY_STARTED 不能清零，
      * 因此只在 nrOfCompletedInstances 仍为 0（新一轮多实例）时重置。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param executionId 执行ID，后续用于处理重置结果流程变量条件新{@code cycle}时定位或关联目标
+     * @param activityId 活动ID，后续用于处理重置结果流程变量条件新{@code cycle}时定位或关联目标
      */
     private void resetOutcomeVariablesIfNewCycle(
             String processInstanceId,
@@ -742,6 +861,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 false);
     }
 
+    /**
+     * 判断是否新多实例{@code cycle}；判断结果决定调用方的后续分支。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param executionId 执行ID，后续用于判断是否新多实例{@code cycle}时定位或关联目标
+     * @return 新多实例{@code cycle}条件成立时为 true，否则为 false
+     */
     private boolean isNewMultiInstanceCycle(
             String processInstanceId,
             String executionId) {
@@ -782,7 +908,19 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
     }
 
-    /** 将人员展开委托给独立组件，监听器只保留版本门禁和变量编排。 */
+    /**
+     * 将人员展开委托给独立组件，监听器只保留版本门禁和变量编排。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析已发布用户集合时定位或关联目标
+     * @param nodeId 节点ID，后续用于解析已发布用户集合时定位或关联目标
+     * @param nodeName 节点名称，后续用于解析已发布用户集合时匹配或展示
+     * @param assigneeConfig 办理人配置内容，决定后续已发布用户集合的处理规则
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param multiInstanceSource 多实例来源，供本方法解析已发布用户集合时使用
+     * @return 多实例集合监听器集合，供调用方遍历或展示
+     */
     private List<String> resolvePublishedUsers(
             String processConfigId,
             String nodeId,
@@ -808,6 +946,8 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
 
     /**
      * 兼容直接构造监听器的轻量测试；生产环境使用 Spring 注入的共享解析器。
+     *
+     * @return 处理后的分配解析器结果，供调用方继续处理
      */
     private MultiInstanceAssignmentResolver assignmentResolver() {
         if (multiInstanceAssignmentResolver != null) {
@@ -822,6 +962,11 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
                 personResolverRuntimeService);
     }
 
+    /**
+     * 处理节点引用解析器，并将结果传给后续步骤。
+     *
+     * @return 处理后的节点引用解析器结果，供调用方继续处理
+     */
     private NodeAssignmentReferenceResolver nodeReferenceResolver() {
         if (nodeReferenceResolver != null) {
             return nodeReferenceResolver;
@@ -829,6 +974,13 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         return new NodeAssignmentReferenceResolver(objectMapper);
     }
 
+    /**
+     * 处理分配配置版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续分配配置版本的处理规则
+     * @return 处理后的分配配置版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int assignmentConfigVersion(
             Map<String, Object> config) {
         Object raw = config.get("assignmentConfigVersion");
@@ -846,6 +998,9 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     /**
      * 运行时仅接受当前已实现的显式 v2；无版本才按历史 v1 读取。
      * 即使集合变量已由客户端提供也必须先校验，防止未知版本绕过部署语义。
+     *
+     * @param config 配置内容，决定后续{@code supported}分配配置版本的处理规则
+     * @return 校验并获取后的{@code supported}分配配置版本结果，供调用方继续处理
      */
     private int requireSupportedAssignmentConfigVersion(
             Map<String, Object> config) {
@@ -867,6 +1022,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     }
 
 
+    /**
+     * 添加CSV；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，作为 {@code forEach} 的输入影响后续处理
+     * @param raw 待添加CSV的原始输入，结果供调用方继续使用
+     */
     private void addCsv(
             java.util.Set<String> target,
             Object raw) {
@@ -889,9 +1050,18 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
     }
 
+    /**
+     * 表示必填多实例分配处理失败；调用方可据此区分错误并终止后续操作。
+     */
     private static final class RequiredMultiInstanceAssignmentException
             extends RuntimeException {
 
+        /**
+         * 初始化必填多实例分配异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @param cause 原因，保存在对象中供后续校验、查询或展示
+         */
         private RequiredMultiInstanceAssignmentException(
                 String message,
                 Throwable cause) {
@@ -899,6 +1069,12 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
         }
     }
 
+    /**
+     * 封装有效分配的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sourceActivity 来源活动，保存在对象中供后续校验、查询或展示
+     * @param assigneeConfig 办理人配置内容，决定后续有效分配的处理规则
+     */
     private record EffectiveAssignment(
             Activity sourceActivity,
             Map<String, Object> assigneeConfig) {

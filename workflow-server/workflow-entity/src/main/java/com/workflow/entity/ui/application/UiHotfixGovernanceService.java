@@ -1,6 +1,6 @@
 package com.workflow.entity.ui.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.core.database.JdbcLockedRow;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -70,6 +70,8 @@ public class UiHotfixGovernanceService
      * <p>调用方必须先锁定配置归属记录并完成技术预检。方法会关闭同配置遗留的
      * 待复核或已批准记录，但不会抢占已经进入发布阶段的记录。</p>
      *
+     * @param publishRequest 发布请求，作为 {@code record.setReason} 的输入影响后续处理
+     * @param preview 预览，作为 {@code requireDirectPublishPreview} 的输入影响后续处理
      * @return 新建的 HOTFIX 治理记录 ID
      */
     @Transactional(rollbackFor = Exception.class)
@@ -136,6 +138,13 @@ public class UiHotfixGovernanceService
         return record.getId();
     }
 
+    /**
+     * 标记已发布；后续读取或执行将使用更新后的状态。
+     *
+     * @param requestId 请求ID，后续用于标记已发布时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于标记已发布时定位或关联目标
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void markPublished(String requestId, String releaseId) {
         LocalDateTime now = LocalDateTime.now();
@@ -159,7 +168,13 @@ public class UiHotfixGovernanceService
         }
     }
 
-    /** 回滚要求专用权限和明确原因；无治理记录的历史 HOTFIX 仍可受控兼容回滚。 */
+    /**
+     * 回滚要求专用权限和明确原因；无治理记录的历史 HOTFIX 仍可受控兼容回滚。
+     *
+     * @param releaseId 发布版本ID，后续用于处理授权回滚时定位或关联目标
+     * @param reason 原因，供本方法处理授权回滚时使用
+     * @return 处理后的授权回滚结果，供调用方继续处理
+     */
     public UiConfigHotfixRequest authorizeRollback(String releaseId, String reason) {
         accessService.requireHotfixRollbackAccess();
         if (!StringUtils.hasText(reason)) {
@@ -168,6 +183,12 @@ public class UiHotfixGovernanceService
         return findByReleaseId(releaseId);
     }
 
+    /**
+     * 标记{@code rolled}{@code back}；后续读取或执行将使用更新后的状态。
+     *
+     * @param releaseId 发布版本ID，后续用于标记{@code rolled}{@code back}时定位或关联目标
+     * @param reason 原因，供本方法标记{@code rolled}{@code back}时使用
+     */
     @Transactional(rollbackFor = Exception.class)
     public void markRolledBack(String releaseId, String reason) {
         UiConfigHotfixRequest record = findByReleaseId(releaseId);
@@ -187,7 +208,12 @@ public class UiHotfixGovernanceService
                         .set(UiConfigHotfixRequest::getUpdatedAt, now));
     }
 
-    /** API 适配入口；由服务端把请求对象转换为稳定观察端口参数。 */
+    /**
+     * API 适配入口；由服务端把请求对象转换为稳定观察端口参数。
+     *
+     * @param releaseId 发布版本ID，后续用于记录发布版本指标时定位或关联目标
+     * @param metric 指标，作为 {@code recordReleaseMetricInternal} 的输入影响后续处理
+     */
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
             rollbackFor = Exception.class)
@@ -204,7 +230,14 @@ public class UiHotfixGovernanceService
                 metric.getErrorMessage());
     }
 
-    /** 由表单加载和提交链路记录观察指标。 */
+    /**
+     * 由表单加载和提交链路记录观察指标。
+     *
+     * @param releaseId 发布版本ID，后续用于记录发布版本指标时定位或关联目标
+     * @param metricCode 指标编码，后续用于记录发布版本指标时定位或关联目标
+     * @param successful 成功，作为 {@code recordReleaseMetricInternal} 的输入影响后续处理
+     * @param errorMessage 错误消息，作为 {@code recordReleaseMetricInternal} 的输入影响后续处理
+     */
     @Override
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
@@ -221,7 +254,15 @@ public class UiHotfixGovernanceService
                 errorMessage);
     }
 
-    /** 加载失败时按配置定位处于观察期的发布。 */
+    /**
+     * 加载失败时按配置定位处于观察期的发布。
+     *
+     * @param configType 配置类型标识，决定后续配置指标采用的处理分支
+     * @param configId 配置ID，后续用于记录配置指标时定位或关联目标
+     * @param metricCode 指标编码，后续用于记录配置指标时定位或关联目标
+     * @param successful 成功，供本方法记录配置指标时使用
+     * @param errorMessage 错误消息，供本方法记录配置指标时使用
+     */
     @Override
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
@@ -254,7 +295,13 @@ public class UiHotfixGovernanceService
         }
     }
 
-    /** 流程任务按发布历史映射到当前生效的 HOTFIX 目标。 */
+    /**
+     * 流程任务按发布历史映射到当前生效的 HOTFIX 目标。
+     *
+     * @param processVersionHistoryId 流程版本历史ID，后续用于记录流程版本指标时定位或关联目标
+     * @param successful 成功，供本方法记录流程版本指标时使用
+     * @param errorMessage 错误消息，供本方法记录流程版本指标时使用
+     */
     @Override
     @Transactional(
             propagation = Propagation.REQUIRES_NEW,
@@ -287,6 +334,15 @@ public class UiHotfixGovernanceService
         }
     }
 
+    /**
+     * 记录发布版本指标内部；供后续追溯或审计使用。
+     *
+     * @param releaseId 发布版本ID，后续用于记录发布版本指标内部时定位或关联目标
+     * @param metricCode 指标编码，后续用于记录发布版本指标内部时定位或关联目标
+     * @param successful 成功，供本方法记录发布版本指标内部时使用
+     * @param errorMessage 错误消息，作为 {@code abbreviate} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void recordReleaseMetricInternal(
             String releaseId,
             String metricCode,
@@ -321,6 +377,12 @@ public class UiHotfixGovernanceService
         if (updated != 1) throw new IllegalStateException("HOTFIX 观察指标递增失败");
     }
 
+    /**
+     * 读取界面热修复请求；结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的界面热修复请求结果，供调用方继续处理
+     */
     public UiHotfixRequestDTO get(String id) {
         accessService.requireHotfixAccess(false);
         UiConfigHotfixRequest record = requireRequest(id);
@@ -329,6 +391,13 @@ public class UiHotfixGovernanceService
         return toDto(requireRequest(id), true);
     }
 
+    /**
+     * 列出界面热修复治理；查询结果供调用方展示或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续界面热修复治理采用的处理分支
+     * @param configId 配置ID，后续用于列出界面热修复治理时定位或关联目标
+     * @return 界面热修复请求集合，供调用方遍历或展示
+     */
     public List<UiHotfixRequestDTO> list(String configType, String configId) {
         accessService.requireHotfixAccess(false);
         requireConfigAccess(normalize(configType), configId);
@@ -340,6 +409,11 @@ public class UiHotfixGovernanceService
                 .stream().map(record -> toDto(record, false)).toList();
     }
 
+    /**
+     * 处理刷新观察，并将结果传给后续步骤。
+     *
+     * @param record 记录，供本方法处理刷新观察时使用
+     */
     private void refreshObservation(UiConfigHotfixRequest record) {
         if (!"OBSERVING".equals(record.getStatus())
                 || record.getObservationEnd() == null
@@ -361,6 +435,12 @@ public class UiHotfixGovernanceService
                         .set(UiConfigHotfixRequest::getUpdatedAt, LocalDateTime.now()));
     }
 
+    /**
+     * 整理指标集合数据，供调用方遍历或继续处理。
+     *
+     * @param requestId 请求ID，后续用于处理指标集合时定位或关联目标
+     * @return 界面热修复观察指标集合，供调用方遍历或展示
+     */
     private List<UiHotfixObservationMetricDTO> metrics(String requestId) {
         return jdbcTemplate.query(
                 "SELECT metric_code, total_count, failure_count, last_error, last_observed_at "
@@ -378,6 +458,13 @@ public class UiHotfixGovernanceService
                 requestId);
     }
 
+    /**
+     * 校验并获取{@code direct}发布预览；不满足约束时阻止后续处理。
+     *
+     * @param preview 预览，供本方法校验并获取{@code direct}发布预览时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void requireDirectPublishPreview(
             UiConfigPublishPreviewDTO preview) {
         if (preview == null || !"HOTFIX".equals(preview.getReleaseMode())) {
@@ -391,6 +478,12 @@ public class UiHotfixGovernanceService
         }
     }
 
+    /**
+     * 发布原因；后续由接收方或异步任务继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于发布原因
+     * @return 发布后的原因文本，供调用方比较或展示
+     */
     private String publishReason(UiConfigPublishRequest request) {
         String reason = request != null
                 && StringUtils.hasText(request.getDescription())
@@ -400,6 +493,13 @@ public class UiHotfixGovernanceService
         return reason.substring(0, Math.min(reason.length(), 1000));
     }
 
+    /**
+     * 校验并获取请求；不满足约束时阻止后续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的请求结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiConfigHotfixRequest requireRequest(String id) {
         UiConfigHotfixRequest record = requestMapper.selectById(id);
         if (record == null) {
@@ -408,13 +508,25 @@ public class UiHotfixGovernanceService
         return record;
     }
 
-    /** release_id 唯一约束保证一次发布只对应一个 HOTFIX 请求。 */
+    /**
+     * release_id 唯一约束保证一次发布只对应一个 HOTFIX 请求。
+     *
+     * @param releaseId 发布版本ID，后续用于查询发布版本ID时定位或关联目标
+     * @return 符合条件的界面配置热修复请求结果，供调用方继续处理
+     */
     private UiConfigHotfixRequest findByReleaseId(String releaseId) {
         return requestMapper.selectOne(
                 new LambdaQueryWrapper<>(UiConfigHotfixRequest.class)
                         .eq(UiConfigHotfixRequest::getReleaseId, releaseId));
     }
 
+    /**
+     * 校验并获取配置访问；不满足约束时阻止后续处理。
+     *
+     * @param configType 配置类型标识，决定后续配置访问采用的处理分支
+     * @param configId 配置ID，后续用于校验并获取配置访问时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireConfigAccess(String configType, String configId) {
         if ("FORM".equals(normalize(configType))) {
             accessService.requireFormAccess(configId);
@@ -427,6 +539,14 @@ public class UiHotfixGovernanceService
         throw new IllegalArgumentException("配置类型只能是 FORM 或 LIST");
     }
 
+    /**
+     * 转换为DTO；输出作为后续校验或处理的输入。
+     *
+     * @param record 记录，作为 {@code BeanUtils.copyProperties} 的输入影响后续处理
+     * @param includeMetrics {@code include}指标集合，供本方法转换为DTO时使用
+     * @return 转换为后的DTO结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private UiHotfixRequestDTO toDto(UiConfigHotfixRequest record, boolean includeMetrics) {
         UiHotfixRequestDTO dto = new UiHotfixRequestDTO();
         // 使用目标 DTO 白名单复制，避免 impactTokenHash 等内部治理字段意外出站。
@@ -442,6 +562,13 @@ public class UiHotfixGovernanceService
         return dto;
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -450,6 +577,12 @@ public class UiHotfixGovernanceService
         }
     }
 
+    /**
+     * 生成当前用户ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的当前用户ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static String currentUserId() {
         if (!StringUtils.hasText(UserContext.getUserId())) {
             throw new IllegalStateException("HOTFIX 操作缺少登录用户");
@@ -457,11 +590,24 @@ public class UiHotfixGovernanceService
         return UserContext.getUserId();
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面热修复治理的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面热修复治理文本，供调用方比较或展示
+     */
     private static String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : null;
     }
 
+    /**
+     * 截断界面热修复治理；结果供调用方的后续步骤使用。
+     *
+     * @param value 待截断界面热修复治理的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，供本方法截断界面热修复治理时使用
+     * @return 截断后的界面热修复治理文本，供调用方比较或展示
+     */
     private static String abbreviate(String value, int maxLength) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -469,6 +615,12 @@ public class UiHotfixGovernanceService
         return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     */
     private static String sha256(String value) {
         if (value == null) {
             return sha256Bytes(new byte[0]);
@@ -476,6 +628,13 @@ public class UiHotfixGovernanceService
         return sha256Bytes(value.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 生成{@code sha256}字节文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code sha256}字节的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}字节文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static String sha256Bytes(byte[] value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
@@ -484,6 +643,11 @@ public class UiHotfixGovernanceService
         }
     }
 
+    /**
+     * 生成{@code compact}ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code compact}ID文本，供调用方比较或展示
+     */
     private static String compactId() {
         return UUID.randomUUID().toString().replace("-", "");
     }

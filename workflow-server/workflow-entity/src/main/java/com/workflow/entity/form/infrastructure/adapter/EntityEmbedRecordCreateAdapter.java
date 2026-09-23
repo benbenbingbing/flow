@@ -2,13 +2,13 @@ package com.workflow.entity.form.infrastructure.adapter;
 
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
@@ -44,6 +44,15 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
     private final PublishedFormSubmissionService formSubmissionService;
     private final EntityMutationPort mutationPort;
 
+    /**
+     * 初始化实体嵌入式记录创建适配器，保存构造参数供后续方法使用。
+     *
+     * @param capabilityService 能力服务依赖，保存到当前对象供后续业务方法调用
+     * @param releaseService 发布版本服务依赖，保存到当前对象供后续业务方法调用
+     * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
+     * @param formSubmissionService 表单提交服务依赖，保存到当前对象供后续业务方法调用
+     * @param mutationPort 变更端口依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityEmbedRecordCreateAdapter(
             EntityActionCapabilityService capabilityService,
             UiConfigReleaseService releaseService,
@@ -59,6 +68,9 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
 
     /**
      * 重查实时 CREATE 权限和精确 Form Release，应用发布表单校验后写入统一变更管道。
+     *
+     * @param command 本次命令，后续经校验后用于创建实体嵌入式记录创建
+     * @return 创建后的实体嵌入式记录创建结果，供调用方继续处理
      */
     @Override
     @Transactional(
@@ -138,6 +150,14 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
         return new CreatedRecord(result.recordId(), null);
     }
 
+    /**
+     * 校验并获取固定表单；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，作为 {@code findByEntityCode} 的输入影响后续处理
+     * @param resolved 已解析，供本方法校验并获取固定表单时使用
+     * @return 校验并获取后的固定表单结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private EntityForm requirePinnedForm(
             EmbedRecordCreatePort.Target target,
             ResolvedEntityFormRelease resolved) {
@@ -161,6 +181,12 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
         return form;
     }
 
+    /**
+     * 校验并获取命令；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验并获取命令
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireCommand(CreateCommand command) {
         if (command == null || command.target() == null
                 || command.data() == null
@@ -170,6 +196,13 @@ public class EntityEmbedRecordCreateAdapter implements EmbedRecordCreatePort {
         }
     }
 
+    /**
+     * 写入文本；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入文本时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待写入文本的原始输入，结果供调用方继续使用
+     */
     private static void putText(
             Map<String, Object> target,
             String key,

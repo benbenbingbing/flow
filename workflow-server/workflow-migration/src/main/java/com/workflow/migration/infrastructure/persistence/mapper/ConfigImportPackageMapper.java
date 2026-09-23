@@ -16,6 +16,12 @@ public interface ConfigImportPackageMapper extends BaseMapper<ConfigImportPackag
 
     /**
      * 更新批次分析结果，并显式允许清空上一次阻断原因。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     * @param validationReportJson 校验{@code report}JSON，供本方法更新{@code analysis}结果时使用
+     * @param errorMessage 错误消息，供本方法更新{@code analysis}结果时使用
+     * @return 更新后的{@code analysis}结果，供调用方继续处理
      */
     @Update("""
             UPDATE config_import_package

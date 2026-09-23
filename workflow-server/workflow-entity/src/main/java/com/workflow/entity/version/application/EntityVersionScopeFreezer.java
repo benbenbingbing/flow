@@ -62,6 +62,7 @@ public class EntityVersionScopeFreezer {
     public EntityVersionConfiguration freeze(
             EntityVersionConfiguration source) {
         EntityVersionConfiguration document = copy(source);
+        // 冻结副本和当前已发布实体快照，避免后续修改原配置或发布新版本改变本次范围。
         EntityPublishedSnapshot rootSnapshot = snapshotService
                 .getLatestByEntityCode(document.getEntityCode());
         EntityVersionConfiguration.SnapshotScope scope =
@@ -90,6 +91,7 @@ public class EntityVersionScopeFreezer {
                 scope.getRelations()).stream()
                 .filter(item -> !Boolean.FALSE.equals(item.getEnabled()))
                 .toList();
+        // 用户配置只能收紧硬上限，不能放大固化范围导致捕获和恢复成本失控。
         int configuredNodeLimit = scope.getLimits() == null
                 || scope.getLimits().getMaxScopeNodes() == null
                 ? HARD_MAX_SCOPE_NODES
@@ -127,6 +129,7 @@ public class EntityVersionScopeFreezer {
                 new LinkedHashMap<>();
         List<EntityVersionConfiguration.RelationScope> frozenRelations =
                 new ArrayList<>();
+        // 仅在父节点已冻结后解析子关系；无法推进说明路径缺失或存在环。
         while (!pending.isEmpty()) {
             boolean progressed = false;
             for (Map.Entry<String,
@@ -189,6 +192,7 @@ public class EntityVersionScopeFreezer {
                 .thenComparing(
                         EntityVersionConfiguration.RelationScope::getNodeCode));
         scope.setRelations(frozenRelations);
+        // 摘要绑定最终范围内容，后续捕获和恢复据此检测配置漂移。
         scope.setScopeHash(hash(scopeMaterial(scope)));
         document.setSchemaVersion(2);
         document.setRelationOptions(List.of());
@@ -201,6 +205,13 @@ public class EntityVersionScopeFreezer {
      *
      * <p>路径被冗余保存是有意的：捕获、锁根和恢复预演都能仅依赖单个节点完成
      * fail-closed 校验，不需要运行时再拼接当前关系。</p>
+     *
+     * @param scope 作用域，作为 {@code relationPathStep} 的输入影响后续处理
+     * @param parentNodeCode 父级节点编码，后续用于处理{@code freeze}关系节点时定位或关联目标
+     * @param parent 父级，作为 {@code scope.setParentEntityCode} 的输入影响后续处理
+     * @param child 子级，作为 {@code scope.setEntityCode} 的输入影响后续处理
+     * @param relation 关系，作为 {@code scope.setRelationName} 的输入影响后续处理
+     * @param parentScope 父级作用域，作为 {@code scope.setDepth} 的输入影响后续处理
      */
     private void freezeRelationNode(
             EntityVersionConfiguration.RelationScope scope,
@@ -254,6 +265,12 @@ public class EntityVersionScopeFreezer {
         scope.setRelationPath(path);
     }
 
+    /**
+     * 处理关系路径步骤，并将结果传给后续步骤。
+     *
+     * @param scope 作用域，作为 {@code step.setParentNodeCode} 的输入影响后续处理
+     * @return 处理后的关系路径步骤结果，供调用方继续处理
+     */
     private EntityVersionConfiguration.RelationPathStep relationPathStep(
             EntityVersionConfiguration.RelationScope scope) {
         EntityVersionConfiguration.RelationPathStep step =
@@ -323,6 +340,15 @@ public class EntityVersionScopeFreezer {
         return document;
     }
 
+    /**
+     * 查询字段；查询结果供调用方展示或继续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param fieldMode 字段模式标识，决定后续字段采用的处理分支
+     * @param selectedCodes 已选择编码集合，供本方法查询字段时使用
+     * @return 实体版本配置集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<EntityVersionConfiguration.FieldPresentation> selectFields(
             List<EntityField> fields,
             String fieldMode,
@@ -371,6 +397,14 @@ public class EntityVersionScopeFreezer {
         return result;
     }
 
+    /**
+     * 校验与规范化过滤；不满足约束时阻止后续处理。
+     *
+     * @param filter 过滤，供本方法校验与规范化过滤时使用
+     * @param childFields 子级字段，供本方法校验与规范化过滤时使用
+     * @param relationName 关系名称，后续用于校验与规范化过滤时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateAndNormalizeFilter(
             EntityVersionConfiguration.FixedFilter filter,
             List<EntityField> childFields,
@@ -400,6 +434,12 @@ public class EntityVersionScopeFreezer {
         }
     }
 
+    /**
+     * 整理作用域材料数据，供调用方遍历或继续处理。
+     *
+     * @param scope 作用域，作为 {@code result.put} 的输入影响后续处理
+     * @return 作用域材料键值结果，供调用方继续处理
+     */
     private Map<String, Object> scopeMaterial(
             EntityVersionConfiguration.SnapshotScope scope) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -411,6 +451,12 @@ public class EntityVersionScopeFreezer {
         return result;
     }
 
+    /**
+     * 整理节点作用域材料数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，作为 {@code result.put} 的输入影响后续处理
+     * @return 节点作用域材料键值结果，供调用方继续处理
+     */
     private Map<String, Object> nodeScopeMaterial(
             EntityVersionConfiguration.ScopeNode node) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -425,6 +471,12 @@ public class EntityVersionScopeFreezer {
         return result;
     }
 
+    /**
+     * 整理关系作用域材料数据，供调用方遍历或继续处理。
+     *
+     * @param relation 关系，作为 {@code nodeScopeMaterial} 的输入影响后续处理
+     * @return 关系作用域材料键值结果，供调用方继续处理
+     */
     private Map<String, Object> relationScopeMaterial(
             EntityVersionConfiguration.RelationScope relation) {
         Map<String, Object> result = nodeScopeMaterial(relation);
@@ -450,6 +502,12 @@ public class EntityVersionScopeFreezer {
         return result;
     }
 
+    /**
+     * 整理组合关系集合数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，供本方法处理组合关系集合时使用
+     * @return 组合关系集合键值结果，供调用方继续处理
+     */
     private Map<String, EntityRelation> compositionRelations(
             EntityPublishedSnapshot snapshot) {
         Map<String, EntityRelation> result = new LinkedHashMap<>();
@@ -465,7 +523,12 @@ public class EntityVersionScopeFreezer {
         return result;
     }
 
-    /** 实体指纹覆盖身份、字段和关系，避免只固定 historyId 时历史行被改写。 */
+    /**
+     * 实体指纹覆盖身份、字段和关系，避免只固定 historyId 时历史行被改写。
+     *
+     * @param snapshot 快照，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的实体结构哈希文本，供调用方比较或展示
+     */
     private String entitySchemaHash(EntityPublishedSnapshot snapshot) {
         Map<String, Object> material = new LinkedHashMap<>();
         material.put("historyId", snapshot.getHistoryId());
@@ -479,7 +542,14 @@ public class EntityVersionScopeFreezer {
         return hash(material);
     }
 
-    /** 关系摘要只包含决定遍历、归属和基数的服务端字段。 */
+    /**
+     * 关系摘要只包含决定遍历、归属和基数的服务端字段。
+     *
+     * @param parent 父级，作为 {@code material.put} 的输入影响后续处理
+     * @param child 子级，作为 {@code material.put} 的输入影响后续处理
+     * @param relation 关系，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的关系定义哈希文本，供调用方比较或展示
+     */
     private String relationDefinitionHash(
             EntityPublishedSnapshot parent,
             EntityPublishedSnapshot child,
@@ -504,6 +574,12 @@ public class EntityVersionScopeFreezer {
         return hash(material);
     }
 
+    /**
+     * 读取选项{@code labels}；查询结果供调用方展示或继续处理。
+     *
+     * @param field 字段，供本方法读取选项{@code labels}时使用
+     * @return 选项{@code labels}键值结果，供调用方继续处理
+     */
     private Map<String, String> readOptionLabels(EntityField field) {
         Map<String, String> structured = new LinkedHashMap<>();
         if (StringUtils.hasText(field.getId())) {
@@ -546,6 +622,12 @@ public class EntityVersionScopeFreezer {
         }
     }
 
+    /**
+     * 生成{@code render}{@code hint}文本，供后续匹配或展示。
+     *
+     * @param type 类型标识，决定后续{@code render}{@code hint}采用的处理分支
+     * @return 处理后的{@code render}{@code hint}文本，供调用方比较或展示
+     */
     private String renderHint(EntityField.FieldType type) {
         if (type == null) {
             return "TEXT";
@@ -559,10 +641,23 @@ public class EntityVersionScopeFreezer {
         };
     }
 
+    /**
+     * 复制实体版本作用域{@code freezer}；结果供后续流程传递或持久化。
+     *
+     * @param source 待复制实体版本作用域{@code freezer}的原始输入，结果供调用方继续使用
+     * @return 复制后的实体版本作用域{@code freezer}结果，供调用方继续处理
+     */
     private EntityVersionConfiguration copy(EntityVersionConfiguration source) {
         return objectMapper.convertValue(source, EntityVersionConfiguration.class);
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param value 待处理哈希的原始输入，结果供调用方继续使用
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(Object value) {
         try {
             byte[] input = objectMapper.writer()
@@ -576,6 +671,12 @@ public class EntityVersionScopeFreezer {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -584,6 +685,12 @@ public class EntityVersionScopeFreezer {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -593,6 +700,12 @@ public class EntityVersionScopeFreezer {
         return null;
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体版本作用域{@code freezer}集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }

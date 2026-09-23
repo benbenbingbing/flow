@@ -23,10 +23,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -57,6 +57,11 @@ public class EntityListScopeService {
      */
     private com.workflow.admin.authorization.application.CurrentUserRoleService currentUserRoleService;
 
+    /**
+     * 设置当前用户角色服务；后续读取或执行将使用更新后的状态。
+     *
+     * @param currentUserRoleService 当前用户角色服务，供本方法设置当前用户角色服务时使用
+     */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     public void setCurrentUserRoleService(
             com.workflow.admin.authorization.application.CurrentUserRoleService currentUserRoleService) {
@@ -259,6 +264,11 @@ public class EntityListScopeService {
 
     /**
      * 按列表覆盖绑定集合。兼容既有服务调用，不改变该列表当前安全默认值。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requests {@code requests}，作为 {@code replaceListConfiguration} 的输入影响后续处理
+     * @return 实体列表作用域绑定集合，供调用方遍历或展示
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -281,6 +291,12 @@ public class EntityListScopeService {
     /**
      * 原子更新列表的数据范围绑定和未绑定默认策略，并立即发布同一份运行时快照。
      * EXPLICIT_ALL 必须由管理员提供确认标志与业务原因，避免空绑定静默扩大权限。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requests {@code requests}，供本方法处理替换列表配置时使用
+     * @param defaultRequest 默认请求，作为 {@code applyUnboundPolicy} 的输入影响后续处理
+     * @return 实体列表作用域绑定集合，供调用方遍历或展示
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -643,6 +659,16 @@ public class EntityListScopeService {
         publish(entityCode, "系统初始化数据范围");
     }
 
+    /**
+     * 处理目录策略，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param policyKey 策略键，后续用于授权校验、关联或幂等去重
+     * @param policyName 策略名称，后续用于处理目录策略时匹配或展示
+     * @param presetCode {@code preset}编码，后续用于处理目录策略时定位或关联目标
+     * @param filter 过滤，作为 {@code policyRequest.setFilterConfig} 的输入影响后续处理
+     * @return 处理后的目录策略结果，供调用方继续处理
+     */
     private EntityListScopePolicyDTO catalogPolicy(
             String entityCode,
             String policyKey,
@@ -660,6 +686,11 @@ public class EntityListScopeService {
         return policyRequest;
     }
 
+    /**
+     * 应用策略{@code audience}，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用策略{@code audience}
+     */
     private void applyPolicyAudience(EntityListScopeBindingDTO request) {
         EntityListScopePolicy policy = policyMapper.selectById(request.getPolicyId());
         if (policy == null) {
@@ -681,6 +712,12 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 处理同步绑定{@code audience}，并将结果传给后续步骤。
+     *
+     * @param policyId 策略ID，后续用于处理同步绑定{@code audience}时定位或关联目标
+     * @param filter 过滤，作为 {@code binding.setRuleEffect} 的输入影响后续处理
+     */
     private void syncBindingAudience(String policyId, FilterConfigDTO filter) {
         if (!StringUtils.hasText(policyId) || filter == null) {
             return;
@@ -701,6 +738,12 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 转换为策略DTO；输出作为后续校验或处理的输入。
+     *
+     * @param policy 策略内容，决定后续策略DTO的处理规则
+     * @return 转换为后的策略DTO结果，供调用方继续处理
+     */
     private EntityListScopePolicyDTO toPolicyDTO(EntityListScopePolicy policy) {
         EntityListScopePolicyDTO dto = new EntityListScopePolicyDTO();
         BeanUtils.copyProperties(policy, dto);
@@ -708,6 +751,12 @@ public class EntityListScopeService {
         return dto;
     }
 
+    /**
+     * 转换为绑定DTO；输出作为后续校验或处理的输入。
+     *
+     * @param binding 绑定，作为 {@code BeanUtils.copyProperties} 的输入影响后续处理
+     * @return 转换为后的绑定DTO结果，供调用方继续处理
+     */
     private EntityListScopeBindingDTO toBindingDTO(EntityListScopeBinding binding) {
         EntityListScopeBindingDTO dto = new EntityListScopeBindingDTO();
         BeanUtils.copyProperties(binding, dto);
@@ -732,6 +781,10 @@ public class EntityListScopeService {
 
     /**
      * 应用管理员提交的未绑定默认策略。为空表示只改规则绑定；安全策略一旦修改就退出观察期。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param config 配置内容，决定后续{@code unbound}策略的处理规则
+     * @param request 本次请求，后续经校验后用于应用{@code unbound}策略
      */
     private void applyUnboundPolicy(
             String entityCode,
@@ -794,7 +847,12 @@ public class EntityListScopeService {
                 detail);
     }
 
-    /** 将数据库中的列表安全字段规范化为 API/发布快照使用的稳定结构。 */
+    /**
+     * 将数据库中的列表安全字段规范化为 API/发布快照使用的稳定结构。
+     *
+     * @param config 配置内容，决定后续作用域默认DTO的处理规则
+     * @return 转换为后的作用域默认DTO结果，供调用方继续处理
+     */
     private EntityListScopeDefaultDTO toScopeDefaultDTO(EntityListConfig config) {
         EntityListScopeDefaultDTO dto = new EntityListScopeDefaultDTO();
         dto.setListKey(config.getListKey());
@@ -813,6 +871,12 @@ public class EntityListScopeService {
         return dto;
     }
 
+    /**
+     * 校验匹配配置；不满足约束时阻止后续处理。
+     *
+     * @param match 匹配，作为 {@code ruleMatcher.validate} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateMatchConfig(MatchConfigDTO match) {
         if (match == null) {
             throw new IllegalArgumentException("适用用户配置不能为空");
@@ -824,6 +888,11 @@ public class EntityListScopeService {
         ruleMatcher.validate(match);
     }
 
+    /**
+     * 处理默认{@code personal}过滤，并将结果传给后续步骤。
+     *
+     * @return 处理后的默认{@code personal}过滤结果，供调用方继续处理
+     */
     private FilterConfigDTO defaultPersonalFilter() {
         EntityActionRuleDTO.RuleNode root = new EntityActionRuleDTO.RuleNode();
         root.setType("GROUP");
@@ -843,6 +912,11 @@ public class EntityListScopeService {
         return filter;
     }
 
+    /**
+     * 处理默认团队过滤，并将结果传给后续步骤。
+     *
+     * @return 处理后的默认团队过滤结果，供调用方继续处理
+     */
     private FilterConfigDTO defaultTeamFilter() {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("TEAM");
@@ -851,6 +925,11 @@ public class EntityListScopeService {
         return filter;
     }
 
+    /**
+     * 处理默认{@code has}待办过滤，并将结果传给后续步骤。
+     *
+     * @return 处理后的默认{@code has}待办过滤结果，供调用方继续处理
+     */
     private FilterConfigDTO defaultHasTodoFilter() {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
@@ -859,6 +938,11 @@ public class EntityListScopeService {
         return filter;
     }
 
+    /**
+     * 处理全部用户集合匹配，并将结果传给后续步骤。
+     *
+     * @return 处理后的全部用户集合匹配结果，供调用方继续处理
+     */
     private MatchConfigDTO allUsersMatch() {
         MatchConfigDTO match = new MatchConfigDTO();
         MatchConfigDTO.MatchConditionDTO condition =
@@ -868,10 +952,22 @@ public class EntityListScopeService {
         return match;
     }
 
+    /**
+     * 校验并获取实体；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     */
     private void requireEntity(String entityCode) {
         entityAccessPolicy.requireDynamicByCode(entityCode);
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -880,6 +976,14 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 读取JSON；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param type 类型标识，决定后续JSON采用的处理分支
+     * @return 读取后的JSON结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private <T> T readJson(String json, Class<T> type) {
         try {
             return objectMapper.readValue(json, type);
@@ -888,6 +992,13 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
@@ -898,6 +1009,13 @@ public class EntityListScopeService {
         }
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)

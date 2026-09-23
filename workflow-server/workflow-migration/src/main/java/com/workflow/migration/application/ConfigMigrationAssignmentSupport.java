@@ -39,17 +39,33 @@ final class ConfigMigrationAssignmentSupport {
     static final Set<String> TARGET_TYPES = Set.of("USER", "GROUP", "ROLE", "DEPT",
             "PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD");
 
+    /**
+     * 初始化配置迁移分配支持，保存构造参数供后续方法使用。
+     */
     private ConfigMigrationAssignmentSupport() { }
 
     /** 返回稳定编码或目标编码；上下文用于记录具体节点、用途和配置参数。 */
     @FunctionalInterface
     interface ReferenceMapper {
+        /**
+         * 生成映射文本，供后续匹配或展示。
+         *
+         * @param type 类型标识，决定后续映射采用的处理分支
+         * @param key 键，后续用于授权校验、关联或幂等去重
+         * @param context 执行上下文，向后续映射步骤传递身份、配置或状态
+         * @return 处理后的映射文本，供调用方比较或展示
+         */
         String map(String type, String key, Map<String, Object> context);
     }
 
     /**
      * 定点转换 UserTask 的人员属性和已知扩展属性；其他文本、脚本和表达式原样保留。
      * XML 禁止外部实体；没有实际变更时返回原文，避免无意义改变发布内容。
+     *
+     * @param xml XML，作为 {@code parseXml} 的输入影响后续处理
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @return 处理后的重写BPMN文本，供调用方比较或展示
      */
     static String rewriteBpmn(String xml, String processKey, ReferenceMapper mapper) {
         if (!StringUtils.hasText(xml)) return xml;
@@ -109,7 +125,14 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
-    /** 转换节点配置中的完整人员规则；未知业务参数保持原样。 */
+    /**
+     * 转换节点配置中的完整人员规则；未知业务参数保持原样。
+     *
+     * @param json JSON，作为 {@code read} 的输入影响后续处理
+     * @param context 执行上下文，向后续重写节点配置步骤传递身份、配置或状态
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @return 处理后的重写节点配置文本，供调用方比较或展示
+     */
     static String rewriteNodeConfig(String json, Map<String, Object> context, ReferenceMapper mapper) {
         if (!StringUtils.hasText(json)) return json;
         Map<String, Object> config = read(json);
@@ -123,7 +146,13 @@ final class ConfigMigrationAssignmentSupport {
         return write(config);
     }
 
-    /** 新发布规则按原始指定类型提取，组成员、岗位任职人等动态结果不属于配置快照。 */
+    /**
+     * 新发布规则按原始指定类型提取，组成员、岗位任职人等动态结果不属于配置快照。
+     *
+     * @param config 配置内容，决定后续重写分配的处理规则
+     * @param context 执行上下文，向后续重写分配步骤传递身份、配置或状态
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     */
     private static void rewriteAssignment(Map<String, Object> config,
             Map<String, Object> context, ReferenceMapper mapper) {
         String type = text(config.get("assigneeType")).toLowerCase(Locale.ROOT);
@@ -166,7 +195,14 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
-    /** 内置解析器的参数是已知契约；自定义解析器参数不按字段名称猜测引用。 */
+    /**
+     * 内置解析器的参数是已知契约；自定义解析器参数不按字段名称猜测引用。
+     *
+     * @param config 配置内容，决定后续重写解析器的处理规则
+     * @param context 执行上下文，向后续重写解析器步骤传递身份、配置或状态
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @param selection 选择，作为 {@code resolverContext.put} 的输入影响后续处理
+     */
     private static void rewriteResolver(Map<String, Object> config,
             Map<String, Object> context, ReferenceMapper mapper, boolean selection) {
         String code = text(config.get("resolverCode"));
@@ -206,6 +242,15 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
+    /**
+     * 处理字段，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续字段的处理规则
+     * @param field 字段，作为 {@code config.get} 的输入影响后续处理
+     * @param type 类型标识，决定后续字段采用的处理分支
+     * @param context 执行上下文，向后续字段步骤传递身份、配置或状态
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     */
     private static void field(Map<String, Object> config, String field, String type,
             Map<String, Object> context, ReferenceMapper mapper) {
         Object value = config.get(field);
@@ -217,6 +262,15 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
+    /**
+     * 生成值集合文本，供后续匹配或展示。
+     *
+     * @param value 待处理值集合的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续值集合采用的处理分支
+     * @param context 执行上下文，向后续值集合步骤传递身份、配置或状态
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @return 处理后的值集合文本，供调用方比较或展示
+     */
     private static String values(String value, String type,
             Map<String, Object> context, ReferenceMapper mapper) {
         if (!StringUtils.hasText(value) || value.contains("${") || value.contains("#{")) return value;
@@ -240,6 +294,8 @@ final class ConfigMigrationAssignmentSupport {
     /**
      * 导入时检查同流程节点引用图及表达式语法，不读取任何运行时变量或执行表达式。
      * 固定编码的存在性由依赖清单校验；节点 ID 是包内坐标，不做跨环境映射。
+     *
+     * @param xml XML，作为 {@code parseXml} 的输入影响后续处理
      */
     static void validateBpmn(String xml) {
         if (!StringUtils.hasText(xml)) return;
@@ -287,6 +343,11 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
+    /**
+     * 校验表达式；不满足约束时阻止后续处理。
+     *
+     * @param expression 表达式，供本方法校验表达式时使用
+     */
     private static void validateExpression(String expression) {
         if (expression.contains("${") || expression.contains("#{")) {
             // 只建语法树，不绑定函数/Bean；运行期提供的函数不能因分析上下文为空而被误报。
@@ -294,7 +355,12 @@ final class ConfigMigrationAssignmentSupport {
         }
     }
 
-    /** 合并同编码的全部引用位置，避免同一解析器不同参数只校验最后一个节点。 */
+    /**
+     * 合并同编码的全部引用位置，避免同一解析器不同参数只校验最后一个节点。
+     *
+     * @param dependencies 依赖集合，供本方法合并依赖集合时使用
+     * @return 配置迁移分配支持集合，供调用方遍历或展示
+     */
     static List<Map<String, Object>> mergeDependencies(List<Map<String, Object>> dependencies) {
         Map<String, Map<String, Object>> result = new LinkedHashMap<>();
         for (Map<String, Object> dependency : dependencies) {
@@ -319,28 +385,61 @@ final class ConfigMigrationAssignmentSupport {
         return new ArrayList<>(result.values());
     }
 
+    /**
+     * 整理对象数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象的原始输入，结果供调用方继续使用
+     * @return 对象键值结果，供调用方继续处理
+     */
     static Map<String, Object> object(Object value) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (value instanceof Map<?, ?> map) map.forEach((key, child) -> result.put(String.valueOf(key), child));
         return result;
     }
 
+    /**
+     * 整理{@code maps}数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code maps}的原始输入，结果供调用方继续使用
+     * @return 配置迁移分配支持集合，供调用方遍历或展示
+     */
     static List<Map<String, Object>> maps(Object value) {
         if (!(value instanceof Collection<?> collection)) return List.of();
         return collection.stream().filter(Map.class::isInstance).map(ConfigMigrationAssignmentSupport::object).toList();
     }
 
+    /**
+     * 读取配置迁移分配支持；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code JSON.readValue} 的输入影响后续处理
+     * @return 配置迁移分配支持键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     static Map<String, Object> read(String json) {
         if (!StringUtils.hasText(json)) return new LinkedHashMap<>();
         try { return JSON.readValue(json, new TypeReference<>() { }); }
         catch (Exception exception) { throw new IllegalArgumentException("人员规则 JSON 无效", exception); }
     }
 
+    /**
+     * 写入配置迁移分配支持；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入配置迁移分配支持的原始输入，结果供调用方继续使用
+     * @return 写入后的配置迁移分配支持文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     static String write(Object value) {
         try { return JSON.writeValueAsString(value); }
         catch (Exception exception) { throw new IllegalArgumentException("人员规则 JSON 序列化失败", exception); }
     }
 
+    /**
+     * 整理时间数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续时间步骤传递身份、配置或状态
+     * @param field 字段，供本方法处理时间时使用
+     * @return 时间键值结果，供调用方继续处理
+     */
     private static Map<String, Object> at(Map<String, Object> context, String field) {
         Map<String, Object> result = new LinkedHashMap<>(context);
         String prefix = text(context.get("location"));
@@ -348,8 +447,21 @@ final class ConfigMigrationAssignmentSupport {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     static String text(Object value) { return value == null ? "" : String.valueOf(value).trim(); }
 
+    /**
+     * 解析XML；输出作为后续校验或处理的输入。
+     *
+     * @param xml XML，作为 {@code factory.setFeature} 的输入影响后续处理
+     * @return 解析后的XML结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private static Document parseXml(String xml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);

@@ -2,7 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
@@ -27,6 +27,12 @@ public class UiConfigInterfaceReferenceValidator {
     /** 发布快照和操作文档 JSON 编解码器。 */
     private final JsonDocumentCodec codec;
 
+    /**
+     * 校验界面配置接口引用；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code codec.write} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void validate(Map<String, Object> snapshot) {
         String document = codec.write(
                 snapshot,
@@ -88,6 +94,13 @@ public class UiConfigInterfaceReferenceValidator {
         }
     }
 
+    /**
+     * 校验值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验值的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code validateReference} 的输入影响后续处理
+     * @param owner 归属方，供本方法校验值时使用
+     */
     private void validateValue(
             Object value,
             String path,
@@ -154,6 +167,17 @@ public class UiConfigInterfaceReferenceValidator {
         }
     }
 
+    /**
+     * 校验引用；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验引用的原始输入，结果供调用方继续使用
+     * @param serviceKey 服务键，后续用于授权校验、关联或幂等去重
+     * @param operationKey 操作键，后续用于授权校验、关联或幂等去重
+     * @param bindingCode 绑定编码，后续用于校验引用时定位或关联目标
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param owner 归属方，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateReference(
             Map<?, ?> value,
             String serviceKey,
@@ -221,7 +245,13 @@ public class UiConfigInterfaceReferenceValidator {
         }
     }
 
-    /** 按新 extensionId 或历史 serviceId + operationCode 解析迁移后的定义。 */
+    /**
+     * 按新 extensionId 或历史 serviceId + operationCode 解析迁移后的定义。
+     *
+     * @param extensionOrServiceId 扩展或服务ID，后续用于解析定义时定位或关联目标
+     * @param operationCode 操作编码，后续用于解析定义时定位或关联目标
+     * @return 解析后的定义结果，供调用方继续处理
+     */
     private UiExtensionDefinition resolveDefinition(
             String extensionOrServiceId,
             String operationCode) {
@@ -241,6 +271,14 @@ public class UiConfigInterfaceReferenceValidator {
                         .eq(UiExtensionDefinition::getDeleted, 0));
     }
 
+    /**
+     * 校验绑定契约；不满足约束时阻止后续处理。
+     *
+     * @param bindingCode 绑定编码，后续用于校验绑定契约时定位或关联目标
+     * @param definition 定义，供本方法校验绑定契约时使用
+     * @param extensionId 扩展ID，后续用于校验绑定契约时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateBindingContract(
             String bindingCode,
             UiExtensionDefinition definition,
@@ -283,6 +321,14 @@ public class UiConfigInterfaceReferenceValidator {
         }
     }
 
+    /**
+     * 判断作用域匹配条件是否成立，供调用方选择后续分支。
+     *
+     * @param scopeType 作用域类型标识，决定后续作用域匹配采用的处理分支
+     * @param scopeId 作用域ID，后续用于处理作用域匹配时定位或关联目标
+     * @param owner 归属方，作为 {@code equals} 的输入影响后续处理
+     * @return 作用域匹配条件成立时为 true，否则为 false
+     */
     private boolean scopeMatches(
             String scopeType,
             String scopeId,
@@ -300,6 +346,12 @@ public class UiConfigInterfaceReferenceValidator {
         };
     }
 
+    /**
+     * 处理归属方，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，作为 {@code normalize} 的输入影响后续处理
+     * @return 处理后的归属方结果，供调用方继续处理
+     */
     private Owner owner(Map<String, Object> snapshot) {
         String type = normalize(text(snapshot.get("configType")));
         Map<String, Object> config = stringMap(
@@ -318,6 +370,12 @@ public class UiConfigInterfaceReferenceValidator {
                 : null;
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param value 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();
@@ -329,10 +387,22 @@ public class UiConfigInterfaceReferenceValidator {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面配置接口引用的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面配置接口引用文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)

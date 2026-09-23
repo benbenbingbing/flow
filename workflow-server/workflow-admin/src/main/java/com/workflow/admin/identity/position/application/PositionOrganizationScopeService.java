@@ -38,6 +38,8 @@ public class PositionOrganizationScopeService {
 
     /**
      * 返回当前用户可见组织 ID；超级管理员返回 null 表示不附加 SQL 范围。
+     *
+     * @return 位置组织作用域集合，供调用方遍历或展示
      */
     public List<String> visibleUnitIds() {
         if (currentUserRoleService.isSuperAdmin()) {
@@ -82,6 +84,8 @@ public class PositionOrganizationScopeService {
 
     /**
      * 服务端对象级校验；任何写操作和指定组织查询都必须重复执行。
+     *
+     * @param organizationUnitId 组织单元ID，后续用于校验并获取可见时定位或关联目标
      */
     public void requireVisible(String organizationUnitId) {
         if (!StringUtils.hasText(organizationUnitId)) {
@@ -93,11 +97,23 @@ public class PositionOrganizationScopeService {
         }
     }
 
+    /**
+     * 判断是否可见；判断结果决定调用方的后续分支。
+     *
+     * @param organizationUnitId 组织单元ID，后续用于判断是否可见时定位或关联目标
+     * @return 可见条件成立时为 true，否则为 false
+     */
     public boolean isVisible(String organizationUnitId) {
         List<String> visible = visibleUnitIds();
         return visible == null || visible.contains(organizationUnitId);
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private PositionManagementException forbidden(String message) {
         return new PositionManagementException(
                 403,
@@ -105,6 +121,12 @@ public class PositionOrganizationScopeService {
                 message);
     }
 
+    /**
+     * 封装作用域节点的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param depth 深度，保存在对象中供后续校验、查询或展示
+     */
     private record ScopeNode(String id, int depth) {
     }
 }

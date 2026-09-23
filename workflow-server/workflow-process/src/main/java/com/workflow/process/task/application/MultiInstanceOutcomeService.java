@@ -47,6 +47,9 @@ public class MultiInstanceOutcomeService {
     /**
      * 判断任务是否绑定了已部署 BPMN 上的多实例用户任务。
      * 不用 nrOfInstances 启发式，避免套在多实例子流程里的普通任务被误计数。
+     *
+     * @param task 任务，作为 {@code deployedUserTask} 的输入影响后续处理
+     * @return 多实例条件成立时为 true，否则为 false
      */
     public boolean isMultiInstance(Task task) {
         return deployedUserTask(task)
@@ -56,6 +59,9 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 规范化审批动作。自定义动作保持原值，不计入通过人数、不触发否决。
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @return 规范化后的动作文本，供调用方比较或展示
      */
     public String normalizeAction(String action) {
         if (!StringUtils.hasText(action)) {
@@ -71,6 +77,8 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 通过时给当前节点通过人数 +1。非多实例或非 approve 不处理。
+     *
+     * @param task 任务，作为 {@code incrementApprovedCount} 的输入影响后续处理
      */
     public void recordApprove(Task task) {
         if (task == null || !isMultiInstance(task)) {
@@ -83,6 +91,8 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 或签驳回才打一票否决标记。会签驳回只表示这张票不是通过，不加通过人数。
+     *
+     * @param task 任务，作为 {@code deployedUserTask} 的输入影响后续处理
      */
     public void recordReject(Task task) {
         if (task == null || !isMultiInstance(task)) {
@@ -104,6 +114,9 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 或签是否已被一票否决。会签不再使用该标记提前结束。
+     *
+     * @param task 任务，作为 {@code isTruthy} 的输入影响后续处理
+     * @return 已拒绝条件成立时为 true，否则为 false
      */
     public boolean isRejected(Task task) {
         if (task == null || !StringUtils.hasText(task.getTaskDefinitionKey())) {
@@ -118,6 +131,10 @@ public class MultiInstanceOutcomeService {
     /**
      * 写入流程变量 {@code approved} 的值。
      * 会签未决出结果时，中间驳回不得把网关结果写成 reject。
+     *
+     * @param task 任务，作为 {@code project} 的输入影响后续处理
+     * @param normalizedAction 规范化动作，作为 {@code normalizeAction} 的输入影响后续处理
+     * @return 解析后的{@code approved}结果文本，供调用方比较或展示
      */
     public String resolveApprovedOutcome(Task task, String normalizedAction) {
         String action = normalizeAction(normalizedAction);
@@ -148,6 +165,10 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 本次办理是否会使当前多实例节点汇聚结束，从而允许指定下一审批人。
+     *
+     * @param task 任务，作为 {@code project} 的输入影响后续处理
+     * @param action 动作标识，决定后续{@code will}{@code finish}当前节点采用的处理分支
+     * @return {@code will}{@code finish}当前节点条件成立时为 true，否则为 false
      */
     public boolean willFinishCurrentNode(Task task, String action) {
         return project(task, action) != MultiInstanceProjection.CONTINUE;
@@ -155,6 +176,10 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 按票数模型预估本次办理后的节点结果。
+     *
+     * @param task 任务，作为 {@code deployedUserTask} 的输入影响后续处理
+     * @param action 动作标识，决定后续项目采用的处理分支
+     * @return 处理后的项目结果，供调用方继续处理
      */
     public MultiInstanceProjection project(Task task, String action) {
         UserTask userTask = deployedUserTask(task).orElse(null);
@@ -207,6 +232,9 @@ public class MultiInstanceOutcomeService {
         return MultiInstanceProjection.CONTINUE;
     }
 
+    /**
+     * 定义多实例投影的可选值；调用方据此选择对应的处理分支。
+     */
     public enum MultiInstanceProjection {
         PASS,
         FAIL,
@@ -215,6 +243,9 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 从已部署节点的 assigneeConfig / multiInstanceConfig 读取办理模式与阈值。
+     *
+     * @param userTask 用户任务，作为 {@code parseObject} 的输入影响后续处理
+     * @return 读取后的{@code settings}结果，供调用方继续处理
      */
     public MultiInstanceNodeSettings readSettings(UserTask userTask) {
         Map<String, Object> assigneeConfig = parseObject(
@@ -236,6 +267,12 @@ public class MultiInstanceOutcomeService {
                 isTruthy(needAll));
     }
 
+    /**
+     * 处理{@code increment}{@code approved}数量，并将结果传给后续步骤。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param approvedCountVariableName {@code approved}数量变量名称，后续用于处理{@code increment}{@code approved}数量时匹配或展示
+     */
     private void incrementApprovedCount(
             String processInstanceId,
             String approvedCountVariableName) {
@@ -263,6 +300,12 @@ public class MultiInstanceOutcomeService {
         throw lastConflict;
     }
 
+    /**
+     * 处理{@code deployed}用户任务，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code repositoryService.getBpmnModel} 的输入影响后续处理
+     * @return 处理后的{@code deployed}用户任务结果，供调用方继续处理
+     */
     private java.util.Optional<UserTask> deployedUserTask(Task task) {
         if (task == null
                 || !StringUtils.hasText(task.getProcessDefinitionId())
@@ -281,6 +324,13 @@ public class MultiInstanceOutcomeService {
                 : java.util.Optional.empty();
     }
 
+    /**
+     * 处理本地或流程变量，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code taskService.getVariableLocal} 的输入影响后续处理
+     * @param name 名称，后续用于处理本地或流程变量时匹配或展示
+     * @return 处理后的本地或流程变量结果，供调用方继续处理
+     */
     private Object localOrProcessVariable(Task task, String name) {
         try {
             Object local = taskService.getVariableLocal(task.getId(), name);
@@ -297,6 +347,12 @@ public class MultiInstanceOutcomeService {
         return runtimeService.getVariable(task.getProcessInstanceId(), name);
     }
 
+    /**
+     * 解析对象；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 对象键值结果，供调用方继续处理
+     */
     private Map<String, Object> parseObject(String json) {
         if (!StringUtils.hasText(json)) {
             return Map.of();
@@ -312,6 +368,12 @@ public class MultiInstanceOutcomeService {
         }
     }
 
+    /**
+     * 规范化决策；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化决策的原始输入，结果供调用方继续使用
+     * @return 规范化后的决策文本，供调用方比较或展示
+     */
     public static String normalizeDecision(String value) {
         String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT)
                 .replace('-', '_')
@@ -325,6 +387,12 @@ public class MultiInstanceOutcomeService {
         return DECISION_COUNTERSIGN;
     }
 
+    /**
+     * 规范化{@code completion}频率；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化{@code completion}频率的原始输入，结果供调用方继续使用
+     * @return 规范化后的{@code completion}频率结果，供调用方继续处理
+     */
     public static int normalizeCompletionRate(Object value) {
         int parsed = asInt(value, DEFAULT_COMPLETION_RATE);
         if (parsed < MIN_COMPLETION_RATE) {
@@ -333,6 +401,13 @@ public class MultiInstanceOutcomeService {
         return Math.min(100, parsed);
     }
 
+    /**
+     * 转换为整数；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为整数的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 转换为后的整数结果，供调用方继续处理
+     */
     static int asInt(Object value, int defaultValue) {
         if (value == null) {
             return defaultValue;
@@ -347,6 +422,12 @@ public class MultiInstanceOutcomeService {
         }
     }
 
+    /**
+     * 判断是否{@code truthy}；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否{@code truthy}的原始输入，结果供调用方继续使用
+     * @return {@code truthy}条件成立时为 true，否则为 false
+     */
     private static boolean isTruthy(Object value) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -360,6 +441,12 @@ public class MultiInstanceOutcomeService {
                 || "yes".equalsIgnoreCase(text);
     }
 
+    /**
+     * 处理首个值，并将结果传给后续步骤。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个值结果，供调用方继续处理
+     */
     private static Object firstValue(Object... values) {
         for (Object value : values) {
             if (value != null) {
@@ -369,6 +456,12 @@ public class MultiInstanceOutcomeService {
         return null;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private static String firstText(Object... values) {
         for (Object value : values) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -380,6 +473,10 @@ public class MultiInstanceOutcomeService {
 
     /**
      * 已部署多实例节点的办理语义。
+     *
+     * @param decision 决策，保存在对象中供后续校验、查询或展示
+     * @param completionRate {@code completion}频率，保存在对象中供后续校验、查询或展示
+     * @param needAllApprovers {@code need}全部{@code approvers}，保存在对象中供后续校验、查询或展示
      */
     public record MultiInstanceNodeSettings(
             String decision,

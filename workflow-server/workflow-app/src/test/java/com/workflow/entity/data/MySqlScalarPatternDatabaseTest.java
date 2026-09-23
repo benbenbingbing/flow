@@ -10,9 +10,9 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.integration.database.api.SchemaType;
+import com.workflow.integration.database.api.schema.SchemaType;
 import org.apache.ibatis.type.JdbcType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -149,7 +149,7 @@ class MySqlScalarPatternDatabaseTest {
                     mock(com.workflow.entity.data.application.EntityRelationRuntimeService.class), multi,
                     mock(com.workflow.entity.permission.application.DataPermissionEngine.class),
                     mock(com.workflow.admin.identity.user.application.SysUserService.class), snapshots);
-            var plan = new com.workflow.contracts.entity.list.DataScopePlan(true, "1=1", Map.of(), List.of(), List.of(), "", 1);
+            var plan = new com.workflow.contracts.entity.list.model.DataScopePlan(true, "1=1", Map.of(), List.of(), List.of(), "", 1);
             var page = service.findPageWithDataScopePlan("asset", Map.of("l", "9223372036854775808"), 1, 1, plan);
             assertEquals(1, page.getTotal()); assertEquals(List.of("match"), page.getRecords().stream().map(row -> row.getId()).toList());
             assertTrue(service.findPageWithDataScopePlan("asset", Map.of("l", "9223372036854775808"), 2, 1, plan).getRecords().isEmpty());

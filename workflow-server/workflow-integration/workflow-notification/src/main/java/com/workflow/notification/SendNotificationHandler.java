@@ -1,6 +1,6 @@
 package com.workflow.notification;
 
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +24,11 @@ import java.util.Set;
 @Component("sendNotificationHandler")
 public class SendNotificationHandler implements FlowActionHandler {
 
+    /**
+     * 处理实现来源，并将结果传给后续步骤。
+     *
+     * @return 处理后的实现来源结果，供调用方继续处理
+     */
     @Override
     public ExtensionImplementationOrigin implementationOrigin() {
         return ExtensionImplementationOrigin.PLATFORM;

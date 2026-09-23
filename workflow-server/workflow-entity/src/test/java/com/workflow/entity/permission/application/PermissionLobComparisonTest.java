@@ -7,9 +7,9 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.integration.database.api.SchemaType;
+import com.workflow.integration.database.api.schema.SchemaType;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.type.ClobTypeHandler;

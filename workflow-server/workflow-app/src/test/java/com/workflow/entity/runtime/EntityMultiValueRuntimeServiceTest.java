@@ -51,7 +51,7 @@ class EntityMultiValueRuntimeServiceTest {
                 definitionMapper,
                 dynamicTableService,
                 tableResolver,
-                systemEntityFieldPolicy, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                systemEntityFieldPolicy, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("expense-id");
@@ -103,7 +103,7 @@ class EntityMultiValueRuntimeServiceTest {
                 definitionMapper,
                 dynamicTableService,
                 tableResolver,
-                systemEntityFieldPolicy, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                systemEntityFieldPolicy, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("expense-id");

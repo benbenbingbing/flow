@@ -16,6 +16,12 @@ import java.sql.SQLException;
 @Configuration(proxyBeanMethods = false)
 public class FreshInstallFlywayConfiguration {
 
+    /**
+     * 处理{@code forward}仅迁移{@code strategy}，并将结果传给后续步骤。
+     *
+     * @return 处理后的{@code forward}仅迁移{@code strategy}结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Bean
     FlywayMigrationStrategy forwardOnlyMigrationStrategy() {
         return flyway -> {

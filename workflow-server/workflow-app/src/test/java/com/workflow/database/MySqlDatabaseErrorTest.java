@@ -7,7 +7,7 @@ import com.workflow.integration.database.api.DatabaseVendor;
 import java.sql.SQLException;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.*;
-import static com.workflow.integration.database.api.DatabaseErrorKind.*;
+import static com.workflow.integration.database.api.error.DatabaseErrorKind.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** MySQL 错误分类的反例优先：文本不能覆盖驱动证据，混合或循环异常链不能变成幂等成功。 */
@@ -18,7 +18,7 @@ class MySqlDatabaseErrorTest {
 
     @Test void classifiesKnownCodesWithoutReadingEnglishOrChineseMessages() {
         int[] codes = {1062, 1048, 1364, 1406, 1451, 1452, 3819, 1264, 1213, 1205};
-        var kinds = new com.workflow.integration.database.api.DatabaseErrorKind[] {
+        var kinds = new com.workflow.integration.database.api.error.DatabaseErrorKind[] {
                 UNIQUE, NOT_NULL, MISSING_DEFAULT, VALUE_TOO_LONG, FOREIGN_KEY, FOREIGN_KEY,
                 CHECK, NUMERIC_RANGE, DEADLOCK, LOCK_TIMEOUT};
         for (int i = 0; i < codes.length; i++) {

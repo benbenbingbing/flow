@@ -29,6 +29,9 @@ public final class WorkflowReservedVariables {
     public static final String LEGACY_SKIP_NODE_ENABLED_VARIABLE =
             "skipNodeEnabled";
 
+    /**
+     * 初始化工作流保留流程变量，保存构造参数供后续方法使用。
+     */
     private WorkflowReservedVariables() {
     }
 
@@ -55,6 +58,9 @@ public final class WorkflowReservedVariables {
 
     /**
      * 复制调用方变量并移除平台保留键，避免修改请求对象自身。
+     *
+     * @param source 待清洗工作流保留流程变量的原始输入，结果供调用方继续使用
+     * @return 工作流保留流程变量键值结果，供调用方继续处理
      */
     public static Map<String, Object> sanitize(
             Map<String, Object> source) {
@@ -67,7 +73,12 @@ public final class WorkflowReservedVariables {
         return result;
     }
 
-    /** 删除不得通过任务、接收任务或表单提交改写的平台保留键。 */
+    /**
+     * 删除不得通过任务、接收任务或表单提交改写的平台保留键。
+     *
+     * @param source 待清洗运行时变更的原始输入，结果供调用方继续使用
+     * @return 运行时变更键值结果，供调用方继续处理
+     */
     public static Map<String, Object> sanitizeRuntimeMutation(
             Map<String, Object> source) {
         return sanitize(source);
@@ -92,7 +103,11 @@ public final class WorkflowReservedVariables {
         variables.put(LEGACY_SKIP_NODE_ENABLED_VARIABLE, true);
     }
 
-    /** 在对外 DTO 投影前原地移除内部安全上下文。 */
+    /**
+     * 在对外 DTO 投影前原地移除内部安全上下文。
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     */
     public static void removeInternalVariables(
             Map<String, Object> variables) {
         if (variables != null) {
@@ -101,7 +116,12 @@ public final class WorkflowReservedVariables {
         }
     }
 
-    /** 判断变量名是否属于平台内部命名空间。 */
+    /**
+     * 判断变量名是否属于平台内部命名空间。
+     *
+     * @param variableName 变量名称，后续用于判断是否内部变量时匹配或展示
+     * @return 内部变量条件成立时为 true，否则为 false
+     */
     public static boolean isInternalVariable(String variableName) {
         return variableName != null
                 && (variableName.startsWith(INTERNAL_PREFIX)
@@ -114,6 +134,9 @@ public final class WorkflowReservedVariables {
 
     /**
      * 判断流程模型是否不得把变量名复用为多实例 collection 等业务输出。
+     *
+     * @param variableName 变量名称，后续用于判断是否{@code protected}上下文变量时匹配或展示
+     * @return {@code protected}上下文变量条件成立时为 true，否则为 false
      */
     public static boolean isProtectedContextVariable(String variableName) {
         return variableName != null

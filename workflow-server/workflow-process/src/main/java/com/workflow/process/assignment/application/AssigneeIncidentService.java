@@ -1,15 +1,15 @@
 package com.workflow.process.assignment.application;
 
 import com.workflow.core.database.JdbcWriteAttempt;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.integration.database.api.DatabaseRuntimeDialect;
+import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import lombok.RequiredArgsConstructor;
@@ -48,7 +48,12 @@ public class AssigneeIncidentService {
     private final DatabaseQueryDialect queryDialect;
     private final JdbcWriteAttempt writeAttempt;
 
-    /** 查询事件和责任人、重试时间等管理字段。 */
+    /**
+     * 查询事件和责任人、重试时间等管理字段。
+     *
+     * @param status 状态标识，决定后续办理人异常事件采用的处理分支
+     * @return 办理人异常事件集合，供调用方遍历或展示
+     */
     public List<Map<String, Object>> list(String status) {
         String normalized = trimToNull(status);
         // CASE 保留原状态优先级；未知/NULL 状态仍排在 0，时间相同用主键稳定排序。
@@ -69,7 +74,12 @@ public class AssigneeIncidentService {
                 : jdbcTemplate.query(sql, (rs, rowNum) -> incidentView(rs), normalized);
     }
 
-    /** 查询事件详情及完整处置审计链。 */
+    /**
+     * 查询事件详情及完整处置审计链。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 详情键值结果，供调用方继续处理
+     */
     public Map<String, Object> detail(String id) {
         Incident incident = required(id);
         Map<String, Object> result = incidentMap(incident);
@@ -94,12 +104,20 @@ public class AssigneeIncidentService {
         return result;
     }
 
-    /** 日期偏移仍以数据库会话时间为准；方言只渲染一次占位符，JDBC 保持原绑定顺序。 */
+    /**
+     * 日期偏移仍以数据库会话时间为准；方言只渲染一次占位符，JDBC 保持原绑定顺序。
+     *
+     * @return 处理后的数据库时间结果，供调用方继续处理
+     */
     private DatabaseRuntimeDialect databaseTime() {
         return DatabaseDialects.runtime(queryDialect.vendor());
     }
 
-    /** 汇总开放事件、待重试、人工恢复和策略分布，供告警接入。 */
+    /**
+     * 汇总开放事件、待重试、人工恢复和策略分布，供告警接入。
+     *
+     * @return 指标集合键值结果，供调用方继续处理
+     */
     public Map<String, Object> metrics() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("statusCounts", jdbcTemplate.queryForList("""
@@ -120,7 +138,13 @@ public class AssigneeIncidentService {
         return result;
     }
 
-    /** 幂等处置事件。相同 incidentId/requestId 只执行一次外部流程引擎动作。 */
+    /**
+     * 幂等处置事件。相同 incidentId/requestId 只执行一次外部流程引擎动作。
+     *
+     * @param incidentId 异常事件ID，后续用于处理办理人异常事件时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理办理人异常事件
+     * @return 办理人异常事件键值结果，供调用方继续处理
+     */
     public Map<String, Object> handle(
             String incidentId,
             AssigneeIncidentHandleRequest request) {
@@ -191,6 +215,12 @@ public class AssigneeIncidentService {
         }
     }
 
+    /**
+     * 整理重试解析器数据，供调用方遍历或继续处理。
+     *
+     * @param incident 异常事件，作为 {@code retryMultiInstanceNodeEntry} 的输入影响后续处理
+     * @return 重试解析器键值结果，供调用方继续处理
+     */
     private Map<String, Object> retryResolver(Incident incident) {
         if (!StringUtils.hasText(incident.resolverCode())) {
             // 历史部署可能为固定人员选择了自动重试。必须退出定时扫描，
@@ -256,6 +286,9 @@ public class AssigneeIncidentService {
      * 多实例节点进入失败时目标 Task 尚未存在。管理端重试只执行权威人员
      * 重验；重验成功后转为 MANUAL_REQUIRED，由原办理人重新提交仍活跃的源任务。
      * 直接代替用户完成源任务会跳过表单校验和业务副作用，因此明确禁止。
+     *
+     * @param incident 异常事件，作为 {@code runtimeService.getVariables} 的输入影响后续处理
+     * @return 重试多实例节点入口键值结果，供调用方继续处理
      */
     private Map<String, Object> retryMultiInstanceNodeEntry(
             Incident incident) {
@@ -330,6 +363,14 @@ public class AssigneeIncidentService {
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }
 
+    /**
+     * 整理{@code assign}用户数据，供调用方遍历或继续处理。
+     *
+     * @param incident 异常事件，作为 {@code requiredTask} 的输入影响后续处理
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return {@code assign}用户键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> assignUser(Incident incident, String userId) {
         String user = requiredText(userId, "必须选择补充办理人");
         AssigneeResolutionResult result = resolutionService.resolvePrincipals(
@@ -343,6 +384,14 @@ public class AssigneeIncidentService {
         return Map.of("resolvedUsers", result.usernames());
     }
 
+    /**
+     * 整理{@code assign}分组数据，供调用方遍历或继续处理。
+     *
+     * @param incident 异常事件，作为 {@code requiredText} 的输入影响后续处理
+     * @param groupCode 分组编码，后续用于处理{@code assign}分组时定位或关联目标
+     * @return {@code assign}分组键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> assignGroup(Incident incident, String groupCode) {
         String group = requiredText(
                 firstText(groupCode, incident.fallbackGroup()), "必须选择兜底用户组");
@@ -358,6 +407,13 @@ public class AssigneeIncidentService {
         return Map.of("fallbackGroup", group, "resolvedUsers", result.usernames());
     }
 
+    /**
+     * 终止办理人异常事件；后续读取或执行将使用更新后的状态。
+     *
+     * @param incident 异常事件，作为 {@code runtimeService.deleteProcessInstance} 的输入影响后续处理
+     * @param reason 原因，供本方法终止办理人异常事件时使用
+     * @return 办理人异常事件键值结果，供调用方继续处理
+     */
     private Map<String, Object> terminate(Incident incident, String reason) {
         // 这是受管理员权限保护的故障恢复通道，不是办理人可用的“终止”操作；
         // 必须保留三开关豁免，否则关闭终止的空办理人流程将无法由管理员清理。
@@ -376,12 +432,25 @@ public class AssigneeIncidentService {
         return Map.of("terminated", true);
     }
 
+    /**
+     * 应用用户集合，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code taskService.setAssignee} 的输入影响后续处理
+     * @param users 用户集合，供本方法应用用户集合时使用
+     */
     private void applyUsers(Task task, List<String> users) {
         taskService.setAssignee(task.getId(), users.get(0));
         users.stream().skip(1).forEach(user -> taskService.addCandidateUser(task.getId(), user));
         taskService.setVariableLocal(task.getId(), "wfAssigneeIncidentStatus", "RESOLVED");
     }
 
+    /**
+     * 解析异常事件；输出作为后续校验或处理的输入。
+     *
+     * @param incidentId 异常事件ID，后续用于解析异常事件时定位或关联目标
+     * @param action 动作标识，决定后续异常事件采用的处理分支
+     * @param actor 操作人，供本方法解析异常事件时使用
+     */
     private void resolveIncident(String incidentId, String action, String actor) {
         jdbcTemplate.update("""
                 UPDATE process_assignee_incident
@@ -392,6 +461,13 @@ public class AssigneeIncidentService {
                 """, action, actor, incidentId);
     }
 
+    /**
+     * 处理必填任务，并将结果传给后续步骤。
+     *
+     * @param incident 异常事件，供本方法处理必填任务时使用
+     * @return 处理后的必填任务结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Task requiredTask(Incident incident) {
         Task task = StringUtils.hasText(incident.taskId())
                 ? taskService.createTaskQuery().taskId(incident.taskId()).singleResult()
@@ -408,6 +484,13 @@ public class AssigneeIncidentService {
         return task;
     }
 
+    /**
+     * 处理必填，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的必填结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Incident required(String id) {
         List<Incident> rows = jdbcTemplate.query("""
                 SELECT id, process_config_id, process_definition_id, process_instance_id,
@@ -439,6 +522,13 @@ public class AssigneeIncidentService {
         return rows.get(0);
     }
 
+    /**
+     * 整理异常事件视图数据，供调用方遍历或继续处理。
+     *
+     * @param rs {@code rs}，作为 {@code row.put} 的输入影响后续处理
+     * @return 异常事件视图键值结果，供调用方继续处理
+     * @throws java.sql.SQLException 数据库访问或结构检查失败时抛出
+     */
     private Map<String, Object> incidentView(java.sql.ResultSet rs) throws java.sql.SQLException {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", rs.getString("id"));
@@ -467,6 +557,12 @@ public class AssigneeIncidentService {
         return row;
     }
 
+    /**
+     * 整理异常事件映射数据，供调用方遍历或继续处理。
+     *
+     * @param incident 异常事件，作为 {@code row.put} 的输入影响后续处理
+     * @return 异常事件映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> incidentMap(Incident incident) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", incident.id());
@@ -495,6 +591,13 @@ public class AssigneeIncidentService {
         return row;
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -503,6 +606,12 @@ public class AssigneeIncidentService {
         }
     }
 
+    /**
+     * 读取JSON；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待读取JSON的原始输入，结果供调用方继续使用
+     * @return 读取后的JSON结果，供调用方继续处理
+     */
     private Object readJson(String value) {
         if (!StringUtils.hasText(value)) return null;
         try {
@@ -512,31 +621,68 @@ public class AssigneeIncidentService {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readMap(String value) {
         Object parsed = readJson(value);
         return parsed instanceof Map<?, ?> ? (Map<String, Object>) parsed : Map.of();
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of();
     }
 
+    /**
+     * 生成操作人文本，供后续匹配或展示。
+     *
+     * @return 处理后的操作人文本，供调用方比较或展示
+     */
     private String actor() {
         return firstText(UserContext.getUsername(), UserContext.getUserId(), "system");
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param message 消息，供本方法处理必填文本时使用
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requiredText(String value, String message) {
         String normalized = trimToNull(value);
         if (normalized == null) throw new IllegalArgumentException(message);
         return normalized;
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return !StringUtils.hasText(value) ? null : value.trim();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value);
@@ -545,19 +691,66 @@ public class AssigneeIncidentService {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 生成安全错误文本，供后续匹配或展示。
+     *
+     * @param error 错误，供本方法处理安全错误时使用
+     * @return 处理后的安全错误文本，供调用方比较或展示
+     */
     private String safeError(Throwable error) {
         String message = error.getMessage();
         return StringUtils.hasText(message) ? message : error.getClass().getSimpleName();
     }
 
+    /**
+     * 生成ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的ID文本，供调用方比较或展示
+     */
     private String id() {
         return UUID.randomUUID().toString().replace("-", "");
     }
 
+    /**
+     * 封装异常事件的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param processConfigId 流程配置 ID，后续定位已发布的节点配置
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param nodeId 节点ID，后续用于处理异常事件时定位或关联目标
+     * @param nodeName 节点名称，后续用于处理异常事件时匹配或展示
+     * @param policy 策略内容，决定后续异常事件的处理规则
+     * @param status 状态标识，决定后续异常事件采用的处理分支
+     * @param emptyReasonCode 空原因编码，后续用于处理异常事件时定位或关联目标
+     * @param emptyReasonMessage 空原因消息，保存在对象中供后续校验、查询或展示
+     * @param resolverCode 解析器编码，后续用于处理异常事件时定位或关联目标
+     * @param resolverExtraParamsJson 解析器附加参数JSON，保存在对象中供后续校验、查询或展示
+     * @param fallbackUser 兜底用户，主值不可用时供后续处理兜底
+     * @param fallbackGroup 兜底分组，主值不可用时供后续处理兜底
+     * @param responsibilityOwner {@code responsibility}归属方，保存在对象中供后续校验、查询或展示
+     * @param retryCount 重试数量，保存在对象中供后续校验、查询或展示
+     * @param maxRetries 最大{@code retries}，保存在对象中供后续校验、查询或展示
+     * @param initialDelaySeconds 初始{@code delay}秒数，保存在对象中供后续校验、查询或展示
+     * @param backoffMultiplier {@code backoff}{@code multiplier}，保存在对象中供后续校验、查询或展示
+     * @param nextRetryAt 下一步重试时间，后续用于判断有效期或展示该事件的发生时间
+     * @param resolutionAction 解析动作，保存在对象中供后续校验、查询或展示
+     * @param resolvedBy 已解析，保存在对象中供后续校验、查询或展示
+     * @param resolvedAt 已解析时间，后续用于判断有效期或展示该事件的发生时间
+     * @param createdAt 已创建时间，后续用于判断有效期或展示该事件的发生时间
+     * @param updatedAt {@code updated}时间，后续用于判断有效期或展示该事件的发生时间
+     */
     private record Incident(
             String id, String processConfigId, String processDefinitionId,
             String processInstanceId, String taskId, String nodeId, String nodeName,

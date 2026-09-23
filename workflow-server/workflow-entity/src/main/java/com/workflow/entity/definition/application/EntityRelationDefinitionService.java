@@ -73,6 +73,12 @@ public class EntityRelationDefinitionService {
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
 
+    /**
+     * 列出实体关系定义；查询结果供调用方展示或继续处理。
+     *
+     * @param parentEntityId 父级实体ID，后续用于列出实体关系定义时定位或关联目标
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<EntityRelationDTO> list(String parentEntityId) {
         requireParent(parentEntityId);
@@ -83,6 +89,13 @@ public class EntityRelationDefinitionService {
                 : relations.stream().map(this::toDto).toList();
     }
 
+    /**
+     * 读取实体关系；结果供调用方展示或继续处理。
+     *
+     * @param parentEntityId 父级实体ID，后续用于读取实体关系定义时定位或关联目标
+     * @param relationId 关系ID，后续用于读取实体关系定义时定位或关联目标
+     * @return 符合条件的实体关系结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityRelationDTO get(
             String parentEntityId,
@@ -90,7 +103,12 @@ public class EntityRelationDefinitionService {
         return toDto(requireOwned(parentEntityId, relationId));
     }
 
-    /** 返回当前实体可引用的正向和反向关系；只返回目录，运行时仍按发布快照鉴权。 */
+    /**
+     * 返回当前实体可引用的正向和反向关系；只返回目录，运行时仍按发布快照鉴权。
+     *
+     * @param entityId 实体ID，后续用于处理可用时定位或关联目标
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<EntityRelationDTO> available(String entityId) {
         var result = new java.util.ArrayList<>(list(entityId));
@@ -103,6 +121,13 @@ public class EntityRelationDefinitionService {
         return result;
     }
 
+    /**
+     * 创建实体关系定义；结果供后续流程传递或持久化。
+     *
+     * @param parentEntityId 父级实体ID，后续用于创建实体关系定义时定位或关联目标
+     * @param request 本次请求，后续经校验后用于创建实体关系定义
+     * @return 创建后的实体关系定义结果，供调用方继续处理
+     */
     @Transactional
     public EntityRelationDTO create(
             String parentEntityId,
@@ -116,6 +141,14 @@ public class EntityRelationDefinitionService {
         return toDto(relation);
     }
 
+    /**
+     * 更新实体关系定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param parentEntityId 父级实体ID，后续用于更新实体关系定义时定位或关联目标
+     * @param relationId 关系ID，后续用于更新实体关系定义时定位或关联目标
+     * @param request 本次请求，后续经校验后用于更新实体关系定义
+     * @return 更新后的实体关系定义结果，供调用方继续处理
+     */
     @Transactional
     public EntityRelationDTO update(
             String parentEntityId,
@@ -129,13 +162,23 @@ public class EntityRelationDefinitionService {
         return toDto(relation);
     }
 
+    /**
+     * 删除实体关系定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param parentEntityId 父级实体ID，后续用于删除实体关系定义时定位或关联目标
+     * @param relationId 关系ID，后续用于删除实体关系定义时定位或关联目标
+     */
     @Transactional
     public void delete(String parentEntityId, String relationId) {
         EntityRelation relation = requireOwned(parentEntityId, relationId);
         relationMapper.deleteById(relation.getId());
     }
 
-    /** 发布前校验全部启用关系，防止冻结不完整的数据图。 */
+    /**
+     * 发布前校验全部启用关系，防止冻结不完整的数据图。
+     *
+     * @param parentEntityId 父级实体ID，后续用于校验发布时定位或关联目标
+     */
     @Transactional(readOnly = true)
     public void validateForPublish(String parentEntityId) {
         EntityDefinition parent = requireParent(parentEntityId);
@@ -158,6 +201,16 @@ public class EntityRelationDefinitionService {
         }
     }
 
+    /**
+     * 校验实体关系定义；不满足约束时阻止后续处理。
+     *
+     * @param parent 父级，作为 {@code newRelationKey} 的输入影响后续处理
+     * @param existing 已有，供本方法校验实体关系定义时使用
+     * @param request 本次请求，后续经校验后用于校验实体关系定义
+     * @return 校验后的实体关系定义结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private Validated validate(
             EntityDefinition parent,
             EntityRelation existing,
@@ -284,6 +337,10 @@ public class EntityRelationDefinitionService {
      * <p>组成关系和普通关联在所有权、删除语义上不同，但二者都依赖子记录上的
      * 同一个权威父 ID 字段；普通字段的目标由关系定义声明，不需要再配置
      * 实体引用，但不能覆盖字段已经声明的其他引用目标。</p>
+     *
+     * @param parent 父级，作为 {@code EntityRelationFieldPolicy.violation} 的输入影响后续处理
+     * @param child 子级，供本方法校验子级引用时使用
+     * @param childRef 子级引用，作为 {@code EntityRelationFieldPolicy.violation} 的输入影响后续处理
      */
     private void validateChildReference(
             EntityDefinition parent,
@@ -298,6 +355,15 @@ public class EntityRelationDefinitionService {
         }
     }
 
+    /**
+     * 校验父级字段命名空间；不满足约束时阻止后续处理。
+     *
+     * @param parent 父级，作为 {@code fieldMapper.findByEntityIdAndFieldCode} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于校验父级字段命名空间
+     * @param dataKey 数据键，后续用于授权校验、关联或幂等去重
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateParentFieldNamespace(
             EntityDefinition parent,
             EntityRelationSaveRequest request,
@@ -323,6 +389,14 @@ public class EntityRelationDefinitionService {
         }
     }
 
+    /**
+     * 应用实体关系定义，并将结果传给后续步骤。
+     *
+     * @param relation 关系，供本方法应用实体关系定义时使用
+     * @param parent 父级，作为 {@code relation.setParentEntityId} 的输入影响后续处理
+     * @param validated 已校验，作为 {@code relation.setRelationCode} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于应用实体关系定义
+     */
     private void apply(
             EntityRelation relation,
             EntityDefinition parent,
@@ -353,6 +427,14 @@ public class EntityRelationDefinitionService {
                 blankToNull(request.getParentFieldCode()));
     }
 
+    /**
+     * 校验并获取父级；不满足约束时阻止后续处理。
+     *
+     * @param parentEntityId 父级实体ID，后续用于校验并获取父级时定位或关联目标
+     * @return 校验并获取后的父级结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityDefinition requireParent(String parentEntityId) {
         EntityDefinition parent = entityMapper.selectById(parentEntityId);
         if (parent == null) {
@@ -367,6 +449,14 @@ public class EntityRelationDefinitionService {
         return parent;
     }
 
+    /**
+     * 校验并获取{@code owned}；不满足约束时阻止后续处理。
+     *
+     * @param parentEntityId 父级实体ID，后续用于校验并获取{@code owned}时定位或关联目标
+     * @param relationId 关系ID，后续用于校验并获取{@code owned}时定位或关联目标
+     * @return 校验并获取后的{@code owned}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityRelation requireOwned(
             String parentEntityId,
             String relationId) {
@@ -380,6 +470,12 @@ public class EntityRelationDefinitionService {
         return relation;
     }
 
+    /**
+     * 转换为DTO；输出作为后续校验或处理的输入。
+     *
+     * @param relation 关系，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换为后的DTO结果，供调用方继续处理
+     */
     private EntityRelationDTO toDto(EntityRelation relation) {
         EntityRelationDTO dto = new EntityRelationDTO();
         dto.setId(relation.getId());
@@ -410,6 +506,12 @@ public class EntityRelationDefinitionService {
         return dto;
     }
 
+    /**
+     * 转换为请求；输出作为后续校验或处理的输入。
+     *
+     * @param relation 关系，作为 {@code request.setRelationCode} 的输入影响后续处理
+     * @return 转换为后的请求结果，供调用方继续处理
+     */
     private EntityRelationSaveRequest toRequest(EntityRelation relation) {
         EntityRelationSaveRequest request = new EntityRelationSaveRequest();
         request.setRelationCode(relation.getRelationCode());
@@ -428,6 +530,12 @@ public class EntityRelationDefinitionService {
         return request;
     }
 
+    /**
+     * 生成有效数据键文本，供后续匹配或展示。
+     *
+     * @param relation 关系，供本方法处理有效数据键时使用
+     * @return 处理后的有效数据键文本，供调用方比较或展示
+     */
     private String effectiveDataKey(EntityRelation relation) {
         if (StringUtils.hasText(relation.getDataKey())) {
             return relation.getDataKey();
@@ -441,6 +549,9 @@ public class EntityRelationDefinitionService {
     /**
      * 为新关系生成内部标识；不要求业务人员创建同名实体字段。
      * 查询包含退役关系，避免误用历史表单或快照仍引用的键。
+     *
+     * @param parentId 父级ID，后续用于处理新关系键时定位或关联目标
+     * @return 处理后的新关系键文本，供调用方比较或展示
      */
     private String newRelationKey(String parentId) {
         String key;
@@ -451,18 +562,40 @@ public class EntityRelationDefinitionService {
         return key;
     }
 
-    /** 自定义关系编码可以与业务字段同名，承载结果的数据键必须独立分配。 */
+    /**
+     * 自定义关系编码可以与业务字段同名，承载结果的数据键必须独立分配。
+     *
+     * @param parentId 父级ID，后续用于处理可用数据键时定位或关联目标
+     * @param relationCode 关系编码，后续用于处理可用数据键时定位或关联目标
+     * @return 处理后的可用数据键文本，供调用方比较或展示
+     */
     private String availableDataKey(String parentId, String relationCode) {
         return isDataKeyAvailable(parentId, relationCode)
                 ? relationCode : newRelationKey(parentId);
     }
 
+    /**
+     * 判断是否数据键可用；判断结果决定调用方的后续分支。
+     *
+     * @param parentId 父级ID，后续用于判断是否数据键可用时定位或关联目标
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 数据键可用条件成立时为 true，否则为 false
+     */
     private boolean isDataKeyAvailable(String parentId, String key) {
         return !RESERVED_DATA_KEYS.contains(key.toLowerCase(Locale.ROOT))
                 && fieldMapper.findByEntityIdAndFieldCode(parentId, key) == null
                 && relationMapper.selectByDataKey(parentId, key) == null;
     }
 
+    /**
+     * 生成稳定编码文本，供后续匹配或展示。
+     *
+     * @param value 待处理稳定编码的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理稳定编码时匹配或展示
+     * @param enforceNewDefinitionPattern {@code enforce}新定义{@code pattern}，供本方法处理稳定编码时使用
+     * @return 处理后的稳定编码文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String stableCode(
             String value,
             String label,
@@ -476,6 +609,15 @@ public class EntityRelationDefinitionService {
         return normalized;
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理必填文本时匹配或展示
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requiredText(
             String value, String label, int maxLength) {
         if (!StringUtils.hasText(value)) {
@@ -489,10 +631,27 @@ public class EntityRelationDefinitionService {
         return normalized;
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 封装已校验的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param relationCode 关系编码，后续用于处理已校验时定位或关联目标
+     * @param relationName 关系名称，后续用于处理已校验时匹配或展示
+     * @param dataKey 数据键，后续用于授权校验、关联或幂等去重
+     * @param child 子级，保存在对象中供后续校验、查询或展示
+     * @param childRefFieldCode 子级引用字段编码，后续用于处理已校验时定位或关联目标
+     * @param relationType 关系类型标识，决定后续已校验采用的处理分支
+     * @param ownershipType {@code ownership}类型标识，决定后续已校验采用的处理分支
+     */
     private record Validated(
             String relationCode,
             String relationName,

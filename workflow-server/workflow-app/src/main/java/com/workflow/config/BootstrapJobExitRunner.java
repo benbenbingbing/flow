@@ -21,6 +21,11 @@ public class BootstrapJobExitRunner implements ApplicationRunner {
 
     private final ConfigurableApplicationContext applicationContext;
 
+    /**
+     * 执行初始化{@code job}{@code exit}{@code runner}，并将结果传给后续步骤。
+     *
+     * @param args {@code args}，供本方法执行初始化{@code job}{@code exit}{@code runner}时使用
+     */
     @Override
     public void run(ApplicationArguments args) {
         applicationContext.close();

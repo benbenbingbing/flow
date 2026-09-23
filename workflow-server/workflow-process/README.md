@@ -22,4 +22,4 @@
 - 通过 `EntityRecordPort` 更新实体记录的流程运行态。
 - 通过 `EntityFormRuntimePort` 获取实体表单，不访问实体 Mapper。
 - 通过 `IdentityDirectoryPort` 解析用户和用户组，不访问系统模块内部服务。
-- 发布资产通过 `MigrationAssetHandler` 登记到迁移模块。
+- 发布资产通过 `MigrationAssetPort` 登记到迁移模块。

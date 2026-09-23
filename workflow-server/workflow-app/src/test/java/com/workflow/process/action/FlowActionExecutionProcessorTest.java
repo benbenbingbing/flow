@@ -1,7 +1,7 @@
 package com.workflow.process.action;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.process.action.application.FlowActionExecutionProcessor;
 import com.workflow.process.action.application.FlowActionExecutionService;
 import com.workflow.process.action.application.FlowActionExecutor;

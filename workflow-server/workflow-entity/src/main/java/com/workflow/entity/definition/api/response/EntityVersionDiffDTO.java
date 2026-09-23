@@ -146,6 +146,9 @@ public class EntityVersionDiffDTO {
          */
         private Object newValue;
 
+        /**
+         * 定义变更类型的可选值；调用方据此选择对应的处理分支。
+         */
         public enum ChangeType {
             ADD, MODIFY, REMOVE, UNCHANGED
         }

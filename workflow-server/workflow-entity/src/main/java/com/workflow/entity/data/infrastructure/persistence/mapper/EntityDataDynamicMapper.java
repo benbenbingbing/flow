@@ -30,6 +30,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 在调用方事务中锁定并读取记录。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return ID更新键值结果，供调用方继续处理
      */
     @ResultMap("entityDataRow")
     @SelectProvider(
@@ -49,6 +53,7 @@ public interface EntityDataDynamicMapper {
      * @param tableName      数据表名
      * @param id             数据 ID
      * @param permissionSql  数据权限 SQL 片段
+     * @param permissionParameters 权限参数集合，供本方法查询ID权限时使用
      * @return 数据 Map，无则返回 null
      */
     @ResultMap("entityDataRow")
@@ -60,6 +65,13 @@ public interface EntityDataDynamicMapper {
             @Param("permissionSql") String permissionSql,
             @Param("permissionParameters") Map<String, Object> permissionParameters);
 
+    /**
+     * 查询ID{@code including}已删除；查询结果供调用方展示或继续处理。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return ID{@code including}已删除键值结果，供调用方继续处理
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
@@ -69,6 +81,15 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName,
             @Param("id") String id);
 
+    /**
+     * 查询ID{@code including}已删除权限；查询结果供调用方展示或继续处理。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param permissionSql 权限SQL，供本方法查询ID{@code including}已删除权限时使用
+     * @param permissionParameters 权限参数集合，供本方法查询ID{@code including}已删除权限时使用
+     * @return ID{@code including}已删除权限键值结果，供调用方继续处理
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(
             type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
@@ -82,6 +103,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 根据流程实例ID查询
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 流程实例ID键值结果，供调用方继续处理
      */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByProcessInstanceId")
@@ -105,6 +130,9 @@ public interface EntityDataDynamicMapper {
      *
      * <p>仅供已持有唯一值 gate、尚未触碰业务行的权威写前终检使用；
      * 独立 statement 并禁用缓存，保证 REPEATABLE READ 下读取当前已提交版本。</p>
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 实体数据集合，供调用方遍历或展示
      */
     @ResultMap("entityDataRow")
     @SelectProvider(
@@ -120,6 +148,12 @@ public interface EntityDataDynamicMapper {
     /**
      * 按表单唯一值的文本规范化语义预筛普通字符列，允许多取候选但不得漏报。
      * 完整归一化比较及条件唯一的结构化条件仍由应用层求值；大字段、数值和日期使用全量读取。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param columnName 列名称，后续用于查询表单唯一候选集合时匹配或展示
+     * @param normalizedValue 规范化值，供本方法查询表单唯一候选集合时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询表单唯一候选集合时定位或关联目标
+     * @return 实体数据集合，供调用方遍历或展示
      */
     @ResultMap("entityDataRow")
     @SelectProvider(
@@ -135,6 +169,12 @@ public interface EntityDataDynamicMapper {
     /**
      * 以 MySQL exclusive locking read 按文本规范化语义查询唯一值候选。
      * 仅供 gate 后、业务写前的事务内权威终检使用。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param columnName 列名称，后续用于查询表单唯一候选集合更新时匹配或展示
+     * @param normalizedValue 规范化值，供本方法查询表单唯一候选集合更新时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询表单唯一候选集合更新时定位或关联目标
+     * @return 实体数据集合，供调用方遍历或展示
      */
     @ResultMap("entityDataRow")
     @SelectProvider(
@@ -152,6 +192,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 条件查询
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 实体数据集合，供调用方遍历或展示
      */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByCondition")
@@ -183,6 +227,13 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 更新当前任务信息，允许清空任务字段
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param currentTaskId 当前任务ID，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskName 当前任务名称，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskAssignee 当前任务办理人，写入当前任务信息供后续待办展示和状态同步
+     * @return 更新后的当前任务结果，供调用方继续处理
      */
     @UpdateProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "updateCurrentTask")
     @Options(statementType = StatementType.PREPARED)
@@ -194,6 +245,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 逻辑删除
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 删除后的ID结果，供调用方继续处理
      */
     @UpdateProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "deleteById")
     @Options(statementType = StatementType.PREPARED)
@@ -201,6 +256,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 物理删除
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的物理删除ID结果，供调用方继续处理
      */
     @DeleteProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "physicalDeleteById")
     @Options(statementType = StatementType.PREPARED)
@@ -214,6 +273,7 @@ public interface EntityDataDynamicMapper {
      *
      * @param tableName     数据表名
      * @param permissionSql 数据权限 SQL 片段
+     * @param permissionParameters 权限参数集合，供本方法查询列表权限时使用
      * @return 数据 Map 列表
      */
     @ResultMap("entityDataRow")
@@ -235,7 +295,13 @@ public interface EntityDataDynamicMapper {
         return selectPageRows(new OffsetPage<>(offset, limit), tableName);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPage")
     @Options(statementType = StatementType.PREPARED)
@@ -248,6 +314,7 @@ public interface EntityDataDynamicMapper {
      *
      * @param tableName     数据表名
      * @param permissionSql 数据权限 SQL 片段
+     * @param permissionParameters 权限参数集合，供本方法查询分页权限时使用
      * @param offset        偏移量
      * @param limit         每页数量
      * @return 数据 Map 列表
@@ -256,7 +323,15 @@ public interface EntityDataDynamicMapper {
         return selectPageWithPermissionRows(new OffsetPage<>(offset, limit), tableName, permissionSql, permissionParameters);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param permissionSql 权限SQL，供本方法查询分页权限行时使用
+     * @param permissionParameters 权限参数集合，供本方法查询分页权限行时使用
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageWithPermission")
     @Options(statementType = StatementType.PREPARED)
@@ -268,6 +343,12 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 条件查询（带数据权限过滤）
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param permissionSql 权限SQL，供本方法查询条件权限时使用
+     * @param permissionParameters 权限参数集合，供本方法查询条件权限时使用
+     * @return 实体数据集合，供调用方遍历或展示
      */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectByConditionWithPermission")
@@ -290,7 +371,14 @@ public interface EntityDataDynamicMapper {
         return selectPageByConditionRows(new OffsetPage<>(offset, limit), tableName, condition);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageByCondition")
     @Options(statementType = StatementType.PREPARED)
@@ -305,6 +393,7 @@ public interface EntityDataDynamicMapper {
      * @param tableName     数据表名
      * @param condition     查询条件
      * @param permissionSql 数据权限 SQL 片段
+     * @param permissionParameters 权限参数集合，供本方法查询分页条件权限时使用
      * @param offset        偏移量
      * @param limit         每页数量
      * @return 数据 Map 列表
@@ -313,7 +402,16 @@ public interface EntityDataDynamicMapper {
         return selectPageByConditionWithPermissionRows(new OffsetPage<>(offset, limit), tableName, condition, permissionSql, permissionParameters);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param permissionSql 权限SQL，供本方法查询分页条件权限行时使用
+     * @param permissionParameters 权限参数集合，供本方法查询分页条件权限行时使用
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     @ResultMap("entityDataRow")
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "selectPageByConditionWithPermission")
     @Options(statementType = StatementType.PREPARED)
@@ -326,6 +424,9 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 统计数量
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 符合条件的实体数据动态数量
      */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "count")
     @Options(statementType = StatementType.PREPARED)
@@ -333,6 +434,10 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 统计数量（根据条件）
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 符合条件的条件数量
      */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "countByCondition")
     @Options(statementType = StatementType.PREPARED)
@@ -341,6 +446,11 @@ public interface EntityDataDynamicMapper {
 
     /**
      * 统计数量（带数据权限过滤）
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param permissionSql 权限SQL，供本方法统计权限时使用
+     * @param permissionParameters 权限参数集合，供本方法统计权限时使用
+     * @return 符合条件的权限数量
      */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "countWithPermission")
     @Options(statementType = StatementType.PREPARED)
@@ -354,6 +464,7 @@ public interface EntityDataDynamicMapper {
      * @param tableName     数据表名
      * @param condition     查询条件
      * @param permissionSql 数据权限 SQL 片段
+     * @param permissionParameters 权限参数集合，供本方法统计条件权限时使用
      * @return 记录总数
      */
     @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class, method = "countByConditionWithPermission")

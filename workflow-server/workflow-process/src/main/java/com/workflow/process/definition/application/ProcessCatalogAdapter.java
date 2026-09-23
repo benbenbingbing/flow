@@ -1,8 +1,8 @@
 package com.workflow.process.definition.application;
 
 import com.workflow.contracts.process.port.ProcessCatalogPort;
-import com.workflow.contracts.process.ProcessCatalogItem;
-import com.workflow.contracts.process.ProcessBindingState;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessBindingState;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
@@ -80,6 +80,9 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
      *
      * <p>调用方已开启事务。这里仍会自行去重、排序，因此涉及旧、新两个流程的
      * 换绑始终保持一致锁序，避免并发换绑形成死锁。</p>
+     *
+     * @param processIds 流程ID 集合，供本方法锁定绑定{@code states}时使用
+     * @return 绑定{@code states}键值结果，供调用方继续处理
      */
     @Override
     public Map<String, ProcessBindingState> lockBindingStates(
@@ -117,7 +120,12 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
         return states;
     }
 
-    /** process_definition_config.id 是 BIGINT，只接受正整数并消除数字别名。 */
+    /**
+     * process_definition_config.id 是 BIGINT，只接受正整数并消除数字别名。
+     *
+     * @param processId 流程ID，后续用于处理规范流程ID时定位或关联目标
+     * @return 处理后的规范流程ID文本，供调用方比较或展示
+     */
     private String canonicalProcessId(String processId) {
         if (processId == null || processId.isBlank()) {
             return null;

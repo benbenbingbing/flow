@@ -106,7 +106,12 @@ public class ProcessNodeApprovalOptionService {
         optionMapper.deleteByApprovalConfigId(approvalConfigId);
     }
 
-    /** 将审批选项实体转换为前端可用的Map结构（合并文档与标准字段） */
+    /**
+     * 将审批选项实体转换为前端可用的Map结构（合并文档与标准字段）
+     *
+     * @param option 选项，作为 {@code result.put} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> toMap(ProcessNodeApprovalOption option) {
         Map<String, Object> result = StringUtils.hasText(option.getOptionDocument())
                 ? new LinkedHashMap<>(codec.readObject(
@@ -120,7 +125,12 @@ public class ProcessNodeApprovalOptionService {
         return result;
     }
 
-    /** 将对象安全转换为去除首尾空白的字符串，为 null 时返回 null */
+    /**
+     * 将对象安全转换为去除首尾空白的字符串，为 null 时返回 null
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }

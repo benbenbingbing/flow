@@ -30,12 +30,22 @@ public class DatabaseOutboxPublisher implements OutboxPublisher {
     private final JdbcWriteAttempt writeAttempt;
     private final JdbcLockedRow lockedRows;
 
+    /**
+     * 发布数据库待发送事件{@code publisher}；后续由接收方或异步任务继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于发布数据库待发送事件{@code publisher}
+     */
     @Override
     @Transactional
     public void publish(OutboxPublishRequest request) {
         publish(request, false);
     }
 
+    /**
+     * 发布或{@code requeue}失败；后续由接收方或异步任务继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于发布或{@code requeue}失败
+     */
     @Override
     @Transactional
     public void publishOrRequeueFailed(
@@ -43,6 +53,12 @@ public class DatabaseOutboxPublisher implements OutboxPublisher {
         publish(request, true);
     }
 
+    /**
+     * 发布数据库待发送事件{@code publisher}；后续由接收方或异步任务继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于发布数据库待发送事件{@code publisher}
+     * @param requeueFailed {@code requeue}失败，供本方法发布数据库待发送事件{@code publisher}时使用
+     */
     private void publish(
             OutboxPublishRequest request,
             boolean requeueFailed) {
@@ -86,6 +102,13 @@ public class DatabaseOutboxPublisher implements OutboxPublisher {
         }
     }
 
+    /**
+     * 写入载荷；后续读取或执行将使用更新后的状态。
+     *
+     * @param payload 载荷，后续用于写入载荷并传递处理结果
+     * @return 写入后的载荷文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writePayload(Object payload) {
         try {
             return objectMapper.writeValueAsString(payload);

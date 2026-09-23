@@ -1,9 +1,9 @@
 package com.workflow.contracts.entity.ui.spi;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.ui.UiInvocationContext;
-import com.workflow.contracts.ui.UiProviderArtifactIdentity;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
+import com.workflow.contracts.entity.ui.UiProviderArtifactIdentity;
 
 import java.util.Map;
 
@@ -17,18 +17,32 @@ public interface UiDataSourceProvider {
      * 返回扩展实现归属。
      *
      * <p>第三方 Provider 默认视为项目自定义；平台实现必须显式覆盖。</p>
+     *
+     * @return 处理后的实现来源结果，供调用方继续处理
      */
     default ExtensionImplementationOrigin implementationOrigin() {
         return ExtensionImplementationOrigin.CUSTOM;
     }
 
-    /** @return 数据源编码 */
+    /**
+     * @return 数据源编码
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     String getCode();
 
-    /** @return 数据源展示名称 */
+    /**
+     * @return 数据源展示名称
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     String getDisplayName();
 
-    /** @return 可并存的 Provider 版本；存量实现默认视为 v1 */
+    /**
+     * @return 可并存的 Provider 版本；存量实现默认视为 v1
+     *
+     * @return 符合条件的界面数据来源提供者结果，供调用方继续处理
+     */
     default int getVersion() {
         return 1;
     }
@@ -46,7 +60,11 @@ public interface UiDataSourceProvider {
                 getClass(), getVersion());
     }
 
-    /** @return 该数据源的配置项 Schema；默认空 */
+    /**
+     * @return 该数据源的配置项 Schema；默认空
+     *
+     * @return 配置结构键值结果，供调用方继续处理
+     */
     default Map<String, Object> configurationSchema() {
         return Map.of();
     }

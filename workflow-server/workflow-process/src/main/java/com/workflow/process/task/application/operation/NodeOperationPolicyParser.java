@@ -31,6 +31,9 @@ public class NodeOperationPolicyParser {
 
     /**
      * 从节点扩展属性读取策略。兼容直接属性及 assigneeConfig 内嵌属性两种设计器格式。
+     *
+     * @param element 元素，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @return 解析后的节点操作策略解析器结果，供调用方继续处理
      */
     public NodeOperationPolicy parse(BaseElement element) {
         // 新三开关一旦出现即成为权威配置，避免同一节点同时受两套规则约束。
@@ -58,6 +61,9 @@ public class NodeOperationPolicyParser {
 
     /**
      * 解析设计器提交的策略 JSON，并执行版本、变量、目标范围和操作特有约束校验。
+     *
+     * @param json JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 解析后的节点操作策略解析器结果，供调用方继续处理
      */
     public NodeOperationPolicy parse(String json) {
         if (!StringUtils.hasText(json)) {
@@ -102,6 +108,15 @@ public class NodeOperationPolicyParser {
         }
     }
 
+    /**
+     * 解析规则；输出作为后续校验或处理的输入。
+     *
+     * @param operation 操作标识，决定后续规则采用的处理分支
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @param allowedVariables 允许流程变量，作为 {@code conditionEvaluator.compile} 的输入影响后续处理
+     * @return 解析后的规则结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private NodeOperationPolicy.Rule parseRule(
             NodeOperationPolicy.Operation operation,
             JsonNode node,
@@ -159,6 +174,13 @@ public class NodeOperationPolicyParser {
                 withdrawWithinMinutes);
     }
 
+    /**
+     * 解析目标作用域；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析目标作用域的原始输入，结果供调用方继续使用
+     * @return 解析后的目标作用域结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private NodeOperationPolicy.TargetScope parseTargetScope(String value) {
         if (!StringUtils.hasText(value)) {
             return NodeOperationPolicy.TargetScope.ANY;
@@ -170,15 +192,34 @@ public class NodeOperationPolicyParser {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param node 节点，供本方法处理文本时使用
+     * @param field 字段，作为 {@code node.get} 的输入影响后续处理
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(JsonNode node, String field) {
         JsonNode value = node.get(field);
         return value == null || value.isNull() ? null : value.asText();
     }
 
+    /**
+     * 整理文本设置数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，作为 {@code Set.copyOf} 的输入影响后续处理
+     * @return 节点操作策略解析器集合，供调用方遍历或展示
+     */
     private Set<String> textSet(JsonNode node) {
         return Set.copyOf(new LinkedHashSet<>(textList(node)));
     }
 
+    /**
+     * 整理文本设置{@code uppercase}数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，供本方法处理文本设置{@code uppercase}时使用
+     * @return 节点操作策略解析器集合，供调用方遍历或展示
+     */
     private Set<String> textSetUppercase(JsonNode node) {
         LinkedHashSet<String> values = new LinkedHashSet<>();
         for (String value : textList(node)) {
@@ -187,6 +228,13 @@ public class NodeOperationPolicyParser {
         return Set.copyOf(values);
     }
 
+    /**
+     * 整理文本列表数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，供本方法处理文本列表时使用
+     * @return 节点操作策略解析器集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> textList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return List.of();

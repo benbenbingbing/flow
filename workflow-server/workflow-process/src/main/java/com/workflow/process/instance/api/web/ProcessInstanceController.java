@@ -1,7 +1,7 @@
 package com.workflow.process.instance.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;
@@ -36,8 +36,9 @@ public class ProcessInstanceController {
     
     /**
      * 获取流程实例的执行进度
-     * 
+     *
      * @param processInstanceId 流程实例ID
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
      * @return 流程进度信息，包含已完成节点、当前活动节点、BPMN XML等
      */
     @GetMapping("/{processInstanceId}/progress")
@@ -55,7 +56,12 @@ public class ProcessInstanceController {
                 processInstanceId));
     }
 
-    /** 兼容不经过 Spring MVC 的既有调用与轻量测试。 */
+    /**
+     * 兼容不经过 Spring MVC 的既有调用与轻量测试。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 符合条件的API{@code response<process}进度{@code dto>}结果，供调用方继续处理
+     */
     public ApiResponse<ProcessProgressDTO> getProcessProgress(
             String processInstanceId) {
         return ApiResponse.success(
@@ -64,7 +70,8 @@ public class ProcessInstanceController {
     
     /**
      * 获取流程实例详情
-     * 
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @param instanceId 流程实例ID
      * @return 流程详情信息
      */

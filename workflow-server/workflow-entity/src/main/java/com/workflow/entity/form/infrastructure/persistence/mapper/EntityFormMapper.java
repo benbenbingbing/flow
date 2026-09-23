@@ -19,6 +19,9 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
 
     /**
      * 查询实体的表单列表
+     *
+     * @param entityId 实体ID，后续用于查询实体ID时定位或关联目标
+     * @return 实体表单集合，供调用方遍历或展示
      */
     default List<EntityForm> selectByEntityId(String entityId) {
         return selectList(Wrappers.<EntityForm>lambdaQuery()
@@ -27,6 +30,11 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
 
     /**
      * 检查表单标识是否已存在
+     *
+     * @param entityId 实体ID，后续用于判断是否存在表单键时定位或关联目标
+     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
+     * @param excludeId 排除ID，后续用于判断是否存在表单键时定位或关联目标
+     * @return 表单键条件成立时为 true，否则为 false
      */
     default boolean existsFormKey(String entityId, String formKey, String excludeId) {
         return exists(Wrappers.<EntityForm>lambdaQuery()
@@ -37,6 +45,9 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
 
     /**
      * 根据表单Key查询
+     *
+     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
+     * @return 查询后的表单键结果，供调用方继续处理
      */
     default EntityForm selectByFormKey(String formKey) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()
@@ -46,6 +57,10 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
 
     /**
      * 根据实体ID和表单Key查询
+     *
+     * @param entityId 实体ID，后续用于查询实体ID与表单键时定位或关联目标
+     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
+     * @return 查询后的实体ID与表单键结果，供调用方继续处理
      */
     default EntityForm selectByEntityIdAndFormKey(String entityId, String formKey) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()
@@ -56,6 +71,9 @@ public interface EntityFormMapper extends BaseMapper<EntityForm> {
 
     /**
      * 查询实体的默认表单
+     *
+     * @param entityId 实体ID，后续用于查询默认实体ID时定位或关联目标
+     * @return 查询后的默认实体ID结果，供调用方继续处理
      */
     default EntityForm selectDefaultByEntityId(String entityId) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityForm>lambdaQuery()

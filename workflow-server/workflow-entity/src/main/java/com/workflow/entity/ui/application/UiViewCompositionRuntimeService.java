@@ -3,8 +3,8 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
-import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
@@ -242,6 +242,13 @@ public class UiViewCompositionRuntimeService {
                 .build();
     }
 
+    /**
+     * 校验请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验请求
+     * @return 校验后的请求结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ValidatedRequest validateRequest(
             UiViewCompositionResolveRequest request) {
         if (request == null) {
@@ -308,6 +315,16 @@ public class UiViewCompositionRuntimeService {
                 trim(request.getTraversalContextToken()));
     }
 
+    /**
+     * 校验并获取令牌上下文；不满足约束时阻止后续处理。
+     *
+     * @param claims 声明集合，供本方法校验并获取令牌上下文时使用
+     * @param ownerType 归属方类型标识，决定后续令牌上下文采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验并获取令牌上下文时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于校验并获取令牌上下文时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法校验并获取令牌上下文时使用
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     */
     private void requireTokenContext(
             UiViewCompositionTokenService.Claims claims,
             String ownerType,
@@ -327,6 +344,13 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 解析归属方发布版本；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析归属方发布版本
+     * @return 解析后的归属方发布版本结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private OwnerRelease resolveOwnerRelease(ValidatedRequest request) {
         if (FORM.equals(request.ownerType())
                 && StringUtils.hasText(
@@ -372,6 +396,13 @@ public class UiViewCompositionRuntimeService {
                 releaseService.verifiedReleaseSnapshot(release));
     }
 
+    /**
+     * 校验并获取发布版本记录；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取发布版本记录
+     * @return 校验并获取后的发布版本记录结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private UiConfigRelease requireReleaseRecord(
             ValidatedRequest request) {
         UiConfigRelease release = releaseMapper.selectById(
@@ -390,16 +421,35 @@ public class UiViewCompositionRuntimeService {
         return release;
     }
 
+    /**
+     * 生成活动表单发布版本文本，供后续匹配或展示。
+     *
+     * @param ownerId 归属方ID，后续用于处理活动表单发布版本时定位或关联目标
+     * @return 处理后的活动表单发布版本文本，供调用方比较或展示
+     */
     private String activeFormRelease(String ownerId) {
         EntityForm form = formMapper.selectById(ownerId);
         return form == null ? null : form.getActiveReleaseId();
     }
 
+    /**
+     * 生成活动列表发布版本文本，供后续匹配或展示。
+     *
+     * @param ownerId 归属方ID，后续用于处理活动列表发布版本时定位或关联目标
+     * @return 处理后的活动列表发布版本文本，供调用方比较或展示
+     */
     private String activeListRelease(String ownerId) {
         EntityListConfig list = listMapper.selectById(ownerId);
         return list == null ? null : list.getActiveReleaseId();
     }
 
+    /**
+     * 校验并获取组合；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code mapList} 的输入影响后续处理
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @return 组合键值结果，供调用方继续处理
+     */
     private Map<String, Object> requireComposition(
             Map<String, Object> snapshot,
             String compositionKey) {
@@ -416,6 +466,14 @@ public class UiViewCompositionRuntimeService {
                                 + compositionKey));
     }
 
+    /**
+     * 校验并获取归属方实体；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code map} 的输入影响后续处理
+     * @param ownerType 归属方类型标识，决定后续归属方实体采用的处理分支
+     * @return 校验并获取后的归属方实体结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityDefinition requireOwnerEntity(
             Map<String, Object> snapshot,
             String ownerType) {
@@ -439,6 +497,11 @@ public class UiViewCompositionRuntimeService {
      * <p>旧关联内容快照若没有钉定信息则明确失败，不会回退
      * {@code getLatestByEntityCode}；同时比对当前实体身份，以防实体
      * 删除后 ID 复用或编码更改导致权限语义偏移。</p>
+     *
+     * @param config 配置内容，决定后续固定实体{@code schemas}的处理规则
+     * @param sourceEntity 来源实体，供本方法校验并获取固定实体{@code schemas}时使用
+     * @param targetEntity 目标实体，供本方法校验并获取固定实体{@code schemas}时使用
+     * @return 校验并获取后的固定实体{@code schemas}结果，供调用方继续处理
      */
     private PinnedSchemas requirePinnedEntitySchemas(
             Map<String, Object> config,
@@ -462,6 +525,15 @@ public class UiViewCompositionRuntimeService {
         return new PinnedSchemas(source, target);
     }
 
+    /**
+     * 校验并获取固定实体结构；不满足约束时阻止后续处理。
+     *
+     * @param pin 固定，作为 {@code trim} 的输入影响后续处理
+     * @param currentEntity 当前实体，供本方法校验并获取固定实体结构时使用
+     * @param label 标签，后续用于校验并获取固定实体结构时匹配或展示
+     * @return 校验并获取后的固定实体结构结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityPublishedSnapshot requirePinnedEntitySchema(
             Map<String, Object> pin,
             EntityDefinition currentEntity,
@@ -511,6 +583,13 @@ public class UiViewCompositionRuntimeService {
         return snapshot;
     }
 
+    /**
+     * 校验并获取归属方运行时访问；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方运行时访问采用的处理分支
+     * @param snapshot 快照，作为 {@code map} 的输入影响后续处理
+     * @param entity 实体，作为 {@code systemEntityReadService.requirePermissions} 的输入影响后续处理
+     */
     private void requireOwnerRuntimeAccess(
             String ownerType,
             Map<String, Object> snapshot,
@@ -538,6 +617,13 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 读取可访问记录；查询结果供调用方展示或继续处理。
+     *
+     * @param entity 实体，作为 {@code systemEntityReadService.findById} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 读取后的可访问记录结果，供调用方继续处理
+     */
     private EntityDataDTO readAccessibleRecord(
             EntityDefinition entity,
             String recordId) {
@@ -549,6 +635,13 @@ public class UiViewCompositionRuntimeService {
                 entity.getEntityCode(), recordId, null);
     }
 
+    /**
+     * 校验并获取目标资产；不满足约束时阻止后续处理。
+     *
+     * @param targetConfig 目标配置内容，决定后续目标资产的处理规则
+     * @return 校验并获取后的目标资产结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private TargetAsset requireTargetAsset(
             Map<String, Object> targetConfig) {
         String entityId = trim(text(targetConfig.get("entityId")));
@@ -629,6 +722,11 @@ public class UiViewCompositionRuntimeService {
                 targetOwner);
     }
 
+    /**
+     * 校验并获取目标运行时访问；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，作为 {@code systemEntityReadService.requirePermissions} 的输入影响后续处理
+     */
     private void requireTargetRuntimeAccess(TargetAsset target) {
         if (target.entity().getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
@@ -654,6 +752,17 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 解析标准；输出作为后续校验或处理的输入。
+     *
+     * @param relation 关系，作为 {@code normalize} 的输入影响后续处理
+     * @param sourceSchema 来源结构，作为 {@code requireField} 的输入影响后续处理
+     * @param targetSchema 目标结构，作为 {@code requireField} 的输入影响后续处理
+     * @param sourceRecord 来源记录，作为 {@code putEqualFilter} 的输入影响后续处理
+     * @param target 目标，供本方法解析标准时使用
+     * @return 解析后的标准结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private Resolution resolveStandard(
             Map<String, Object> relation,
             EntityPublishedSnapshot sourceSchema,
@@ -794,6 +903,13 @@ public class UiViewCompositionRuntimeService {
                 matchNone);
     }
 
+    /**
+     * 判断使用接口服务条件是否成立，供调用方选择后续分支。
+     *
+     * @param relation 关系，供本方法处理使用接口服务时使用
+     * @param special {@code special}，作为 {@code map} 的输入影响后续处理
+     * @return 使用接口服务条件成立时为 true，否则为 false
+     */
     private boolean usesInterfaceService(
             Map<String, Object> relation,
             Map<String, Object> special) {
@@ -812,6 +928,8 @@ public class UiViewCompositionRuntimeService {
      * 运行时在把自定义组件配置交给前端之前重新校验固定定义。
      * 宿主发布哈希能防整体文档篡改，这里的独立哈希则确保组件标识
      * 与定义内容没有在解析链路中被重组或替换。
+     *
+     * @param special {@code special}，供本方法校验固定自定义组件时使用
      */
     private void validatePinnedCustomComponent(
             Map<String, Object> special) {
@@ -877,7 +995,12 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
-    /** 运行时只接受发布阶段固定的 64 位小写十六进制制品摘要。 */
+    /**
+     * 运行时只接受发布阶段固定的 64 位小写十六进制制品摘要。
+     *
+     * @param value 待校验并获取组件{@code artifact}摘要的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的组件{@code artifact}摘要文本，供调用方比较或展示
+     */
     private String requireComponentArtifactDigest(Object value) {
         String digest = normalizeHash(text(value));
         if (!digest.matches("[a-f0-9]{64}")) {
@@ -888,6 +1011,13 @@ public class UiViewCompositionRuntimeService {
         return digest;
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -900,6 +1030,20 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 解析接口服务；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析接口服务
+     * @param owner 归属方，作为 {@code executeRequest.setServerIdempotencyKey} 的输入影响后续处理
+     * @param composition 组合，作为 {@code executeRequest.setServerIdempotencyKey} 的输入影响后续处理
+     * @param special {@code special}，作为 {@code map} 的输入影响后续处理
+     * @param sourceEntity 来源实体，作为 {@code executeRequest.setEntityCode} 的输入影响后续处理
+     * @param sourceRecord 来源记录，作为 {@code mapInterfaceInput} 的输入影响后续处理
+     * @param target 目标，供本方法解析接口服务时使用
+     * @param targetSchema 目标结构，作为 {@code validateTargetFilters} 的输入影响后续处理
+     * @return 解析后的接口服务结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private Resolution resolveWithInterfaceService(
             ValidatedRequest request,
             OwnerRelease owner,
@@ -984,6 +1128,15 @@ public class UiViewCompositionRuntimeService {
                 matchNone);
     }
 
+    /**
+     * 校验并获取已发布读取操作；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续已发布读取操作采用的处理分支
+     * @param serviceBinding 服务绑定，作为 {@code integer} 的输入影响后续处理
+     * @param serviceId 服务ID，后续用于校验并获取已发布读取操作时定位或关联目标
+     * @param operationCode 操作编码，后续用于校验并获取已发布读取操作时定位或关联目标
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void requirePublishedReadOperation(
             String ownerType,
             Map<String, Object> serviceBinding,
@@ -1022,6 +1175,13 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 整理映射接口输入数据，供调用方遍历或继续处理。
+     *
+     * @param serviceBinding 服务绑定，作为 {@code mapList} 的输入影响后续处理
+     * @param sourceRecord 来源记录，作为 {@code input.put} 的输入影响后续处理
+     * @return 映射接口输入键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapInterfaceInput(
             Map<String, Object> serviceBinding,
             EntityDataDTO sourceRecord) {
@@ -1057,6 +1217,14 @@ public class UiViewCompositionRuntimeService {
         return input;
     }
 
+    /**
+     * 整理映射接口输出数据，供调用方遍历或继续处理。
+     *
+     * @param serviceBinding 服务绑定，作为 {@code mapList} 的输入影响后续处理
+     * @param raw 待处理映射接口输出的原始输入，结果供调用方继续使用
+     * @return 映射接口输出键值结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private Map<String, Object> mapInterfaceOutput(
             Map<String, Object> serviceBinding,
             Object raw) {
@@ -1089,6 +1257,15 @@ public class UiViewCompositionRuntimeService {
         return output;
     }
 
+    /**
+     * 解析{@code single}目标记录；输出作为后续校验或处理的输入。
+     *
+     * @param targetEntity 目标实体，作为 {@code readAccessibleRecord} 的输入影响后续处理
+     * @param directRecordId {@code direct}记录ID，后续用于解析{@code single}目标记录时定位或关联目标
+     * @param filters 过滤条件，供本方法解析{@code single}目标记录时使用
+     * @return 解析后的{@code single}目标记录文本，供调用方比较或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private String resolveSingleTargetRecord(
             EntityDefinition targetEntity,
             String directRecordId,
@@ -1114,6 +1291,12 @@ public class UiViewCompositionRuntimeService {
                 ? null : page.getRecords().get(0).getId();
     }
 
+    /**
+     * 校验目标过滤条件；不满足约束时阻止后续处理。
+     *
+     * @param targetSchema 目标结构，作为 {@code requireFieldOrId} 的输入影响后续处理
+     * @param filters 过滤条件，供本方法校验目标过滤条件时使用
+     */
     private void validateTargetFilters(
             EntityPublishedSnapshot targetSchema,
             Map<String, Object> filters) {
@@ -1142,6 +1325,9 @@ public class UiViewCompositionRuntimeService {
     /**
      * 接口扩展未显式声明操作符时按安全精确匹配补齐，避免字符串条件被底层
      * 列表默认解释为 LIKE；集合只允许转换成有界 IN，范围必须同时提供两端。
+     *
+     * @param source 待规范化接口过滤条件的原始输入，结果供调用方继续使用
+     * @return 接口过滤条件键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeInterfaceFilters(
             Map<String, Object> source) {
@@ -1197,6 +1383,12 @@ public class UiViewCompositionRuntimeService {
         return unmodifiable(result);
     }
 
+    /**
+     * 校验过滤值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验过滤值的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     */
     private void validateFilterValue(
             Object value,
             String key) {
@@ -1231,12 +1423,24 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 判断简要过滤值条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理简要过滤值的原始输入，结果供调用方继续使用
+     * @return 简要过滤值条件成立时为 true，否则为 false
+     */
     private boolean simpleFilterValue(Object value) {
         return value instanceof String
                 || value instanceof Number
                 || value instanceof Boolean;
     }
 
+    /**
+     * 生成过滤基础文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的过滤基础文本，供调用方比较或展示
+     */
     private String filterBase(String key) {
         if (!StringUtils.hasText(key)) {
             throw invalidMapping("接口扩展筛选字段不能为空");
@@ -1254,6 +1458,13 @@ public class UiViewCompositionRuntimeService {
         return key;
     }
 
+    /**
+     * 写入{@code equal}过滤；后续读取或执行将使用更新后的状态。
+     *
+     * @param filters 过滤条件，供本方法写入{@code equal}过滤时使用
+     * @param fieldCode 字段编码，后续用于写入{@code equal}过滤时定位或关联目标
+     * @param value 待写入{@code equal}过滤的原始输入，结果供调用方继续使用
+     */
     private void putEqualFilter(
             Map<String, Object> filters,
             String fieldCode,
@@ -1262,6 +1473,12 @@ public class UiViewCompositionRuntimeService {
         filters.put(fieldCode + "_op", "EQ");
     }
 
+    /**
+     * 整理关系映射集合数据，供调用方遍历或继续处理。
+     *
+     * @param relation 关系，作为 {@code mapList} 的输入影响后续处理
+     * @return 界面视图组合集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> relationMappings(
             Map<String, Object> relation) {
         List<Map<String, Object>> mappings = mapList(
@@ -1279,6 +1496,14 @@ public class UiViewCompositionRuntimeService {
         throw invalidRelation("字段匹配至少需要一组来源字段和目标字段");
     }
 
+    /**
+     * 校验并获取字段；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，供本方法校验并获取字段时使用
+     * @param fieldCode 字段编码，后续用于校验并获取字段时定位或关联目标
+     * @param side 侧，供本方法校验并获取字段时使用
+     * @return 校验并获取后的字段结果，供调用方继续处理
+     */
     private EntityField requireField(
             EntityPublishedSnapshot schema,
             String fieldCode,
@@ -1292,6 +1517,13 @@ public class UiViewCompositionRuntimeService {
                 .orElseGet(() -> missingField(side, fieldCode));
     }
 
+    /**
+     * 校验并获取字段或ID；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code requireField} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取字段或ID时定位或关联目标
+     * @param side 侧，作为 {@code requireField} 的输入影响后续处理
+     */
     private void requireFieldOrId(
             EntityPublishedSnapshot schema,
             String fieldCode,
@@ -1301,11 +1533,26 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 处理缺失字段，并将结果传给后续步骤。
+     *
+     * @param side 侧，作为 {@code invalidRelation} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理缺失字段时定位或关联目标
+     * @return 处理后的缺失字段结果，供调用方继续处理
+     */
     private EntityField missingField(String side, String fieldCode) {
         throw invalidRelation(
                 side + "实体发布快照不存在字段: " + fieldCode);
     }
 
+    /**
+     * 生成必填字段编码文本，供后续匹配或展示。
+     *
+     * @param source 待处理必填字段编码的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param message 消息，作为 {@code invalidRelation} 的输入影响后续处理
+     * @return 处理后的必填字段编码文本，供调用方比较或展示
+     */
     private String requiredFieldCode(
             Map<String, Object> source,
             String key,
@@ -1317,6 +1564,13 @@ public class UiViewCompositionRuntimeService {
         return value;
     }
 
+    /**
+     * 记录值；供后续追溯或审计使用。
+     *
+     * @param record 记录，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于记录值时定位或关联目标
+     * @return 记录后的值结果，供调用方继续处理
+     */
     private Object recordValue(
             EntityDataDTO record,
             String fieldCode) {
@@ -1333,6 +1587,13 @@ public class UiViewCompositionRuntimeService {
         return values.get(fieldCode);
     }
 
+    /**
+     * 处理接口来源值，并将结果传给后续步骤。
+     *
+     * @param record 记录，作为 {@code recordValue} 的输入影响后续处理
+     * @param path 路径，作为 {@code invalidMapping} 的输入影响后续处理
+     * @return 处理后的接口来源值结果，供调用方继续处理
+     */
     private Object interfaceSourceValue(
             EntityDataDTO record,
             String path) {
@@ -1359,6 +1620,13 @@ public class UiViewCompositionRuntimeService {
         return recordValue(record, normalized);
     }
 
+    /**
+     * 处理标量值，并将结果传给后续步骤。
+     *
+     * @param value 待处理标量值的原始输入，结果供调用方继续使用
+     * @param fieldCode 字段编码，后续用于处理标量值时定位或关联目标
+     * @return 处理后的标量值结果，供调用方继续处理
+     */
     private Object scalarValue(Object value, String fieldCode) {
         if (value == null) {
             return null;
@@ -1371,6 +1639,13 @@ public class UiViewCompositionRuntimeService {
         return value;
     }
 
+    /**
+     * 处理路径值，并将结果传给后续步骤。
+     *
+     * @param source 待处理路径值的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理路径值时使用
+     * @return 处理后的路径值结果，供调用方继续处理
+     */
     private Object pathValue(
             Map<String, Object> source,
             String path) {
@@ -1384,6 +1659,13 @@ public class UiViewCompositionRuntimeService {
         return current;
     }
 
+    /**
+     * 写入路径；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入路径时使用
+     * @param path 路径，作为 {@code invalidMapping} 的输入影响后续处理
+     * @param value 待写入路径的原始输入，结果供调用方继续使用
+     */
     @SuppressWarnings("unchecked")
     private void putPath(
             Map<String, Object> target,
@@ -1406,12 +1688,24 @@ public class UiViewCompositionRuntimeService {
         current.put(segments[segments.length - 1], value);
     }
 
+    /**
+     * 判断安全路径条件是否成立，供调用方选择后续分支。
+     *
+     * @param path 路径，供本方法处理安全路径时使用
+     * @return 安全路径条件成立时为 true，否则为 false
+     */
     private boolean safePath(String path) {
         return StringUtils.hasText(path)
                 && path.matches(
                 "[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*){0,3}");
     }
 
+    /**
+     * 判断安全输出路径条件是否成立，供调用方选择后续分支。
+     *
+     * @param path 路径，作为 {@code safePath} 的输入影响后续处理
+     * @return 安全输出路径条件成立时为 true，否则为 false
+     */
     private boolean safeOutputPath(String path) {
         return safePath(path)
                 && (Set.of(
@@ -1421,6 +1715,12 @@ public class UiViewCompositionRuntimeService {
                 || path.startsWith("fixedFilters."));
     }
 
+    /**
+     * 生成失败策略文本，供后续匹配或展示。
+     *
+     * @param special {@code special}，作为 {@code normalize} 的输入影响后续处理
+     * @return 处理后的失败策略文本，供调用方比较或展示
+     */
     private String failurePolicy(Map<String, Object> special) {
         String policy = normalize(text(
                 special.getOrDefault("failurePolicy", "ERROR")));
@@ -1430,6 +1730,13 @@ public class UiViewCompositionRuntimeService {
         return policy;
     }
 
+    /**
+     * 校验并获取权限；不满足约束时阻止后续处理。
+     *
+     * @param permission 数据访问权限，后续与查询条件合并以限制可见记录
+     * @param message 消息，作为 {@code ForbiddenException} 的输入影响后续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requirePermission(
             String permission,
             String message) {
@@ -1439,6 +1746,12 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 构造无效关系异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的无效关系结果，供调用方继续处理
+     */
     private BusinessConflictException invalidRelation(
             String message) {
         return new BusinessConflictException(
@@ -1446,6 +1759,12 @@ public class UiViewCompositionRuntimeService {
                 message);
     }
 
+    /**
+     * 构造无效映射异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的无效映射结果，供调用方继续处理
+     */
     private BusinessConflictException invalidMapping(
             String message) {
         return new BusinessConflictException(
@@ -1453,6 +1772,12 @@ public class UiViewCompositionRuntimeService {
                 message);
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> map(Object value) {
         if (!(value instanceof Map<?, ?> source)) {
             return Map.of();
@@ -1463,6 +1788,12 @@ public class UiViewCompositionRuntimeService {
         return result;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面视图组合集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1477,6 +1808,12 @@ public class UiViewCompositionRuntimeService {
         return List.copyOf(result);
     }
 
+    /**
+     * 整理字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串列表的原始输入，结果供调用方继续使用
+     * @return 界面视图组合集合，供调用方遍历或展示
+     */
     private List<String> stringList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1486,6 +1823,12 @@ public class UiViewCompositionRuntimeService {
                 .toList();
     }
 
+    /**
+     * 整理{@code unmodifiable}数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code unmodifiable}的原始输入，结果供调用方继续使用
+     * @return {@code unmodifiable}键值结果，供调用方继续处理
+     */
     private Map<String, Object> unmodifiable(
             Map<String, Object> value) {
         return value == null || value.isEmpty()
@@ -1494,26 +1837,56 @@ public class UiViewCompositionRuntimeService {
                 new LinkedHashMap<>(value));
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面视图组合运行时的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面视图组合运行时文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 规范化哈希；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化哈希的原始输入，结果供调用方继续使用
+     * @return 规范化后的哈希文本，供调用方比较或展示
+     */
     private String normalizeHash(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toLowerCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 清理界面视图组合运行时；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待清理界面视图组合运行时的原始输入，结果供调用方继续使用
+     * @return 清理后的界面视图组合运行时文本，供调用方比较或展示
+     */
     private String trim(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String candidate = trim(text(value));
@@ -1524,6 +1897,12 @@ public class UiViewCompositionRuntimeService {
         return null;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -1536,6 +1915,19 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
+    /**
+     * 封装已校验的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param ownerType 归属方类型标识，决定后续已校验请求采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理已校验请求时定位或关联目标
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param tokenAuthorized 令牌已授权，保存在对象中供后续校验、查询或展示
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param previousTraversalContextToken 上一项遍历上下文令牌，后续用于授权校验、关联或幂等去重
+     */
     private record ValidatedRequest(
             String ownerType,
             String ownerId,
@@ -1548,11 +1940,28 @@ public class UiViewCompositionRuntimeService {
             String previousTraversalContextToken) {
     }
 
+    /**
+     * 封装归属方发布版本的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param release 发布版本，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     */
     private record OwnerRelease(
             UiConfigRelease release,
             Map<String, Object> snapshot) {
     }
 
+    /**
+     * 封装目标资产的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entity 实体，保存在对象中供后续校验、查询或展示
+     * @param contentType 内容类型标识，决定后续目标资产采用的处理分支
+     * @param contentId 内容ID，后续用于处理目标资产时定位或关联目标
+     * @param contentKey 内容键，后续用于授权校验、关联或幂等去重
+     * @param release 发布版本，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param ownerSnapshot 归属方快照，保存在对象中供后续校验、查询或展示
+     */
     private record TargetAsset(
             EntityDefinition entity,
             String contentType,
@@ -1563,11 +1972,24 @@ public class UiViewCompositionRuntimeService {
             Map<String, Object> ownerSnapshot) {
     }
 
+    /**
+     * 封装固定{@code schemas}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param source 待处理固定{@code schemas}的原始输入，结果供调用方继续使用
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     */
     private record PinnedSchemas(
             EntityPublishedSnapshot source,
             EntityPublishedSnapshot target) {
     }
 
+    /**
+     * 封装解析的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param directRecordId {@code direct}记录ID，后续用于处理解析时定位或关联目标
+     * @param fixedFilters 固定过滤条件，保存在对象中供后续校验、查询或展示
+     * @param matchNone 匹配{@code none}，保存在对象中供后续校验、查询或展示
+     */
     private record Resolution(
             String directRecordId,
             Map<String, Object> fixedFilters,

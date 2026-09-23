@@ -2,10 +2,10 @@ package com.workflow.entity.version.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -49,6 +49,12 @@ public class EntityMutationTransactionExecutor {
     private final PublishedFormCrossFieldMutationValidator crossFieldValidator;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 执行实体变更事务执行器，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于执行实体变更事务执行器
+     * @return 执行后的实体变更事务执行器结果，供调用方继续处理
+     */
     @Transactional(
             rollbackFor = Exception.class,
             isolation = Isolation.READ_COMMITTED)
@@ -74,6 +80,10 @@ public class EntityMutationTransactionExecutor {
      * 故意不调用 writer 和版本服务，避免产生伪更新与多余业务版本。
      * 随后直接准备唯一性 gate/扫描并锁业务记录复读。候选若因
      * 并发修改漂移会 fail closed。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param context 执行上下文，向后续表单{@code uniqueness}步骤传递身份、配置或状态
      */
     @Transactional(
             rollbackFor = Exception.class,
@@ -112,6 +122,12 @@ public class EntityMutationTransactionExecutor {
         crossFieldValidator.validate(command, current);
     }
 
+    /**
+     * 执行实体变更事务执行器批次，并将结果传给后续步骤。
+     *
+     * @param commands {@code commands}，作为 {@code Collections.nCopies} 的输入影响后续处理
+     * @return 实体变更集合，供调用方遍历或展示
+     */
     @Transactional(
             rollbackFor = Exception.class,
             isolation = Isolation.READ_COMMITTED)
@@ -174,6 +190,14 @@ public class EntityMutationTransactionExecutor {
         return results;
     }
 
+    /**
+     * 执行内部，并将结果传给后续步骤。
+     *
+     * @param original 原始，作为 {@code load} 的输入影响后续处理
+     * @param batchLockedRoots 批次已锁定{@code roots}，供本方法执行内部时使用
+     * @param prepared 已准备，作为 {@code formUniqueClaimService.verifyPrepared} 的输入影响后续处理
+     * @return 执行后的内部结果，供调用方继续处理
+     */
     private EntityMutationResult executeInternal(
             EntityMutationCommand original,
             Set<RootKey> batchLockedRoots,
@@ -289,6 +313,12 @@ public class EntityMutationTransactionExecutor {
         return result;
     }
 
+    /**
+     * 锁定实体变更事务执行器批次；避免后续并发处理覆盖状态。
+     *
+     * @param pending 待处理，供本方法锁定实体变更事务执行器批次时使用
+     * @return 根键集合，供调用方遍历或展示
+     */
     private Set<RootKey> lockBatch(List<IndexedCommand> pending) {
         Set<RootKey> roots = new LinkedHashSet<>();
         Set<RootKey> records = new LinkedHashSet<>();
@@ -319,11 +349,24 @@ public class EntityMutationTransactionExecutor {
         return Set.copyOf(roots);
     }
 
+    /**
+     * 封装{@code indexed}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param index 索引，保存在对象中供后续校验、查询或展示
+     * @param command 本次命令，后续经校验后用于处理{@code indexed}命令
+     */
     private record IndexedCommand(
             int index,
             EntityMutationCommand command) {
     }
 
+    /**
+     * 处理准备，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于处理准备
+     * @param beforeRecord 之前记录，供本方法处理准备时使用
+     * @return 处理后的准备结果，供调用方继续处理
+     */
     private Preparation preparation(
             EntityMutationCommand command,
             Map<String, Object> beforeRecord) {
@@ -341,6 +384,13 @@ public class EntityMutationTransactionExecutor {
                                 command.context()));
     }
 
+    /**
+     * 加载{@code map<string,}{@code object>}；结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 实体变更事务执行器键值结果，供调用方继续处理
+     */
     private Map<String, Object> load(
             String entityCode,
             String recordId) {

@@ -12,11 +12,22 @@ import java.util.Map;
 public final class EntityDataRow extends LinkedHashMap<String, Object> {
     private static final long serialVersionUID = 1L;
 
-    /** MyBatis 自动映射通过 Map.put 写入各列；值及 NULL 行为保持框架原有约定。 */
+    /**
+     * MyBatis 自动映射通过 Map.put 写入各列；值及 NULL 行为保持框架原有约定。
+     *
+     * @param column 列，供本方法写入实体数据行时使用
+     * @param value 待写入实体数据行的原始输入，结果供调用方继续使用
+     * @return 写入后的实体数据行结果，供调用方继续处理
+     */
     @Override public Object put(String column, Object value) {
         return super.put(column == null ? null : column.toLowerCase(Locale.ROOT), value);
     }
 
+    /**
+     * 写入实体数据行全部；后续读取或执行将使用更新后的状态。
+     *
+     * @param columns 列集合，供本方法写入实体数据行全部时使用
+     */
     @Override public void putAll(Map<? extends String, ?> columns) {
         columns.forEach(this::put);
     }

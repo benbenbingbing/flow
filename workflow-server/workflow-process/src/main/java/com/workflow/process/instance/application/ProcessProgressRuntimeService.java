@@ -1,7 +1,7 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.entity.form.api.response.FormConfigDTO;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -99,6 +99,14 @@ public class ProcessProgressRuntimeService {
         return getProcessProgress(processInstanceId, null);
     }
 
+    /**
+     * 读取流程进度；查询结果供调用方展示或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param requestedTaskId 请求任务ID，后续用于读取流程进度时定位或关联目标
+     * @return 符合条件的流程进度结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public ProcessProgressDTO getProcessProgress(
             String processInstanceId,
             String requestedTaskId) {
@@ -525,6 +533,9 @@ public class ProcessProgressRuntimeService {
     /**
      * 构建节点处理人映射
      * 包含已完成节点的审批人信息和当前节点的处理人信息
+     *
+     * @param progress 进度，供本方法构建节点办理人映射时使用
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      */
     private void buildNodeAssigneeMap(ProcessProgressDTO progress, String processInstanceId) {
         Map<String, ProcessProgressDTO.AssigneeInfoDTO> assigneeMap = new HashMap<>();
@@ -647,6 +658,12 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 加载实体数据和表单配置
+     *
+     * @param progress 进度，作为 {@code putIfNotNull} 的输入影响后续处理
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param requestedTaskId 请求任务ID，后续用于加载实体数据与表单配置时定位或关联目标
+     * @return 符合条件的流程进度结果，供调用方继续处理
      */
     private void loadEntityDataAndFormConfig(
             ProcessProgressDTO progress,
@@ -765,6 +782,9 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 将实体数据 DTO 转为运行时表单模型，自定义字段与系统字段使用同一层级。
+     *
+     * @param entityData 实体数据，作为 {@code result.putAll} 的输入影响后续处理
+     * @return 运行时表单数据键值结果，供调用方继续处理
      */
     private Map<String, Object> toRuntimeFormData(EntityDataDTO entityData) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -807,6 +827,13 @@ public class ProcessProgressRuntimeService {
         return result;
     }
 
+    /**
+     * 写入条件非空值；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入条件非空值时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待写入条件非空值的原始输入，结果供调用方继续使用
+     */
     private void putIfNotNull(
             Map<String, Object> target,
             String key,
@@ -818,6 +845,17 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 加载表单配置
+     *
+     * @param progress 进度，作为 {@code getNodeFormsContextByProcessDefinitionId} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param currentNodeId 当前节点ID，后续用于加载表单配置时定位或关联目标
+     * @param formKeyFromVariable 表单键起始变量，供本方法加载表单配置时使用
+     * @param bpmnXml BPMNXML，作为 {@code resolveLastCompletedUserTaskId} 的输入影响后续处理
+     * @param fallbackBpmnXml 兜底BPMNXML，主值不可用时供后续处理兜底
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param requestedTaskId 请求任务ID，后续用于加载表单配置时定位或关联目标
+     * @return 符合条件的流程进度结果，供调用方继续处理
      */
     private void loadFormConfig(ProcessProgressDTO progress, String entityCode, String entityDataId,
             String currentNodeId, String formKeyFromVariable, String bpmnXml, String fallbackBpmnXml,
@@ -865,16 +903,14 @@ public class ProcessProgressRuntimeService {
                                     nodeForm,
                                     UiRuntimePurpose.ACTIVE_TASK.equals(purpose)
                                             && StringUtils.hasText(requestedTaskId)
-                                            ? com.workflow.contracts.ui.runtime
-                                                    .UiRuntimeResolutionContext.activeTask(
+                                            ? com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.activeTask(
                                                             published.history().getId(),
                                                             nodeForm.getNodeId(),
                                                             requestedTaskId,
                                                             progress.getProcessInstanceId(),
                                                             entityCode,
                                                             entityDataId)
-                                            : new com.workflow.contracts.ui.runtime
-                                                    .UiRuntimeResolutionContext(
+                                            : new com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext(
                                                             purpose,
                                                             published.history().getId(),
                                                             nodeForm.getNodeId()));
@@ -933,6 +969,14 @@ public class ProcessProgressRuntimeService {
         }
     }
 
+    /**
+     * 解析最后{@code completed}用户任务ID；输出作为后续校验或处理的输入。
+     *
+     * @param completedNodeIds {@code completed}节点ID 集合，作为 {@code completedNodeIds.get} 的输入影响后续处理
+     * @param bpmnXml BPMNXML，供本方法解析最后{@code completed}用户任务ID时使用
+     * @param fallbackBpmnXml 兜底BPMNXML，主值不可用时供后续处理兜底
+     * @return 解析后的最后{@code completed}用户任务ID文本，供调用方比较或展示
+     */
     private String resolveLastCompletedUserTaskId(
             List<String> completedNodeIds,
             String bpmnXml,
@@ -980,8 +1024,17 @@ public class ProcessProgressRuntimeService {
         return completedNodeIds.get(completedNodeIds.size() - 1);
     }
 
+    /**
+     * 负责表单配置解析的业务处理；协调校验、状态变化及后续结果传递。
+     */
     private static final class FormConfigResolutionException
             extends RuntimeException {
+        /**
+         * 初始化表单配置解析异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         * @param cause 原因，保存在对象中供后续校验、查询或展示
+         */
         private FormConfigResolutionException(
                 String message,
                 Throwable cause) {
@@ -1053,6 +1106,10 @@ public class ProcessProgressRuntimeService {
      * 1. extensionElements -> properties -> property name="entityFormId"
      * value="xxx"
      * 2. userTask 标签上的 flowable:formKey="xxx" 属性
+     *
+     * @param nodeId 节点ID，后续用于解析表单键起始BPMN时定位或关联目标
+     * @param bpmnXml BPMNXML，作为 {@code builder.parse} 的输入影响后续处理
+     * @return 解析后的表单键起始BPMN文本，供调用方比较或展示
      */
     private String resolveFormKeyFromBpmn(String nodeId, String bpmnXml) {
         if (bpmnXml == null || nodeId == null || nodeId.isEmpty()) {
@@ -1106,6 +1163,11 @@ public class ProcessProgressRuntimeService {
     /**
      * 加载审批配置。运行实例只使用其部署 BPMN 或对应发布历史快照；
      * 快照缺失时保持旧版默认，不得回退到当前映射表。
+     *
+     * @param progress 进度，作为 {@code loadApprovalConfigFromBpmn} 的输入影响后续处理
+     * @param currentNodeId 当前节点ID，后续用于加载审批配置时定位或关联目标
+     * @param bpmnXml BPMNXML，作为 {@code loadApprovalConfigFromBpmn} 的输入影响后续处理
+     * @return 符合条件的流程进度结果，供调用方继续处理
      */
     private void loadApprovalConfig(
             ProcessProgressDTO progress,
@@ -1130,6 +1192,11 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 从该实例绑定的部署/发布 BPMN XML 解析审批配置。
+     *
+     * @param progress 进度，供本方法加载审批配置起始BPMN时使用
+     * @param currentNodeId 当前节点ID，后续用于加载审批配置起始BPMN时定位或关联目标
+     * @param bpmnXml BPMNXML，作为 {@code pattern.matcher} 的输入影响后续处理
+     * @return 符合条件的流程进度结果，供调用方继续处理
      */
     private void loadApprovalConfigFromBpmn(ProcessProgressDTO progress, String currentNodeId, String bpmnXml) {
         if (bpmnXml == null || currentNodeId == null || currentNodeId.isEmpty()) {
@@ -1203,6 +1270,9 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 获取组成员显示名称列表（去重）
+     *
+     * @param groupCode 分组编码，后续用于读取分组成员名称集合时定位或关联目标
+     * @return 读取后的分组成员名称集合文本，供调用方比较或展示
      */
     private String getGroupMemberNames(String groupCode) {
         try {
@@ -1231,6 +1301,9 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 根据用户ID/用户名列表获取统一显示名称列表
+     *
+     * @param idsOrNames ID 集合或名称集合，作为 {@code sysUserService.getDisplayNames} 的输入影响后续处理
+     * @return 读取后的用户名称集合起始ID 集合文本，供调用方比较或展示
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
         return sysUserService.getDisplayNames(idsOrNames);
@@ -1238,6 +1311,9 @@ public class ProcessProgressRuntimeService {
 
     /**
      * 规范化任务 action 为显示状态码；自定义 action 保留原始值
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @return 规范化后的动作文本，供调用方比较或展示
      */
     private String normalizeAction(String action) {
         if (action == null || action.isBlank()) {

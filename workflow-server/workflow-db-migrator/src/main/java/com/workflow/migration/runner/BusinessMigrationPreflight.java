@@ -20,9 +20,18 @@ public final class BusinessMigrationPreflight {
 
     private static final int SAMPLE_LIMIT = 10;
 
+    /**
+     * 初始化业务迁移{@code preflight}，保存构造参数供后续方法使用。
+     */
     private BusinessMigrationPreflight() {
     }
 
+    /**
+     * 验证业务迁移{@code preflight}；不满足约束时阻止后续处理。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     public static void verify(Connection connection) throws SQLException {
         if (tableExists(connection, "entity_relation")) {
             requireNoConflicts(
@@ -102,7 +111,12 @@ public final class BusinessMigrationPreflight {
         }
     }
 
-    /** 在 V072 seed 前拒绝固定 ID 或 resolver_code 被其他语义占用。 */
+    /**
+     * 在 V072 seed 前拒绝固定 ID 或 resolver_code 被其他语义占用。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static void verifyEntityUserReferenceResolverPrerequisites(
             Connection connection) throws SQLException {
         requireNoConflicts(
@@ -120,7 +134,12 @@ public final class BusinessMigrationPreflight {
                 "请先核对解析器目录和 Flyway 历史，禁止覆盖现有解析器定义");
     }
 
-    /** 在 V073 建 canonical 普通索引前拒绝无法安全解释的历史绑定。 */
+    /**
+     * 在 V073 建 canonical 普通索引前拒绝无法安全解释的历史绑定。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static void verifyEntityWorkflowBindingIndexPrerequisites(
             Connection connection) throws SQLException {
         List<String> partialArtifacts = new ArrayList<>();
@@ -225,6 +244,9 @@ public final class BusinessMigrationPreflight {
      *
      * <p>MySQL DDL 不随整个迁移事务回滚，因此这些检查必须在
      * {@code Flyway.migrate()} 前完成，不能等外键创建或负责人回填时才失败。</p>
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyPositionMigrationPrerequisites(
             Connection connection) throws SQLException {
@@ -333,6 +355,9 @@ public final class BusinessMigrationPreflight {
     /**
      * V069 包含不可事务回滚的 ALTER/CREATE，任何目标对象已存在都表示
      * 人工建表或失败迁移残留；必须先清点恢复，不能让 Flyway 继续执行。
+     *
+     * @param connection 连接，供本方法验证无{@code partial}位置结构时使用
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyNoPartialPositionSchema(
             Connection connection) throws SQLException {
@@ -358,6 +383,9 @@ public final class BusinessMigrationPreflight {
     /**
      * 在 V069 的 DDL 以及 V070 的目录写入前一次性验证全部固定资源。
      * 正确的历史系统管理父目录可以复用，但迁移绝不覆盖其内容。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyPositionMenuMigrationPrerequisites(
             Connection connection) throws SQLException {
@@ -450,6 +478,9 @@ public final class BusinessMigrationPreflight {
     /**
      * 在 V075 重组导航前校验稳定父目录和菜单 ID，避免把页面挂到被其他
      * 业务占用或已停用的目录，并提前检查紧随其后的 V076 目标路由冲突。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyNavigationMenuMigrationPrerequisites(
             Connection connection) throws SQLException {
@@ -859,6 +890,9 @@ public final class BusinessMigrationPreflight {
     /**
      * 在已执行 V075 的数据库上校验稳定菜单语义和 V076 目标路径。
      * 路由迁移只允许把已完成层级重组的内置菜单从旧地址切换到模块化地址。
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyNavigationMenuRouteMigrationPrerequisites(
             Connection connection) throws SQLException {
@@ -993,6 +1027,9 @@ public final class BusinessMigrationPreflight {
      * <p>从较早版本一次升级到最新版本时，系统管理目录可能尚未由 V070
      * 创建，因此只校验已存在目录的语义；若 V070 已记录成功，则目录缺失
      * 同样属于损坏状态。</p>
+     *
+     * @param connection 连接，作为 {@code requireNoConflicts} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyExternalSystemManagementMigrationPrerequisites(
             Connection connection) throws SQLException {
@@ -1115,6 +1152,9 @@ public final class BusinessMigrationPreflight {
 
     /**
      * 使用 parent_id 而不是冗余 path 校验完整父链及用户 org/dept 不变量。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     private static void verifyOrganizationAndUserHierarchy(
             Connection connection) throws SQLException {
@@ -1173,6 +1213,13 @@ public final class BusinessMigrationPreflight {
                 "请先确保 org_id 指向启用组织、dept_id 指向其范围内的启用部门");
     }
 
+    /**
+     * 生成层级失败文本，供后续匹配或展示。
+     *
+     * @param startId 启动ID，后续用于处理层级失败时定位或关联目标
+     * @param organizations {@code organizations}，供本方法处理层级失败时使用
+     * @return 处理后的层级失败文本，供调用方比较或展示
+     */
     private static String hierarchyFailure(
             String startId,
             Map<String, OrganizationRow> organizations) {
@@ -1195,6 +1242,14 @@ public final class BusinessMigrationPreflight {
         return "depth>32";
     }
 
+    /**
+     * 生成{@code membership}失败文本，供后续匹配或展示。
+     *
+     * @param orgId 组织ID，后续用于处理{@code membership}失败时定位或关联目标
+     * @param deptId 部门ID，后续用于处理{@code membership}失败时定位或关联目标
+     * @param organizations {@code organizations}，供本方法处理{@code membership}失败时使用
+     * @return 处理后的{@code membership}失败文本，供调用方比较或展示
+     */
     private static String membershipFailure(
             String orgId,
             String deptId,
@@ -1240,6 +1295,14 @@ public final class BusinessMigrationPreflight {
         return "department-chain-depth>32";
     }
 
+    /**
+     * 处理失败条件{@code samples}，并将结果传给后续步骤。
+     *
+     * @param samples {@code samples}，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @param title {@code title}，后续用于处理失败条件{@code samples}时匹配或展示
+     * @param remediation {@code remediation}，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void failIfSamples(
             List<String> samples,
             String title,
@@ -1251,6 +1314,12 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private static String trimToNull(String value) {
         if (value == null || value.trim().isEmpty()) {
             return null;
@@ -1258,6 +1327,14 @@ public final class BusinessMigrationPreflight {
         return value.trim();
     }
 
+    /**
+     * 判断迁移{@code applied}条件是否成立，供调用方选择后续分支。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param version 版本，作为 {@code statement.setString} 的输入影响后续处理
+     * @return 迁移{@code applied}条件成立时为 true，否则为 false
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static boolean migrationApplied(
             Connection connection,
             String version) throws SQLException {
@@ -1279,6 +1356,14 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 判断表存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 表存在条件成立时为 true，否则为 false
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static boolean tableExists(
             Connection connection,
             String tableName) throws SQLException {
@@ -1292,6 +1377,15 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 判断列存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param columnName 列名称，后续用于处理列存在时匹配或展示
+     * @return 列存在条件成立时为 true，否则为 false
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static boolean columnExists(
             Connection connection,
             String tableName,
@@ -1306,6 +1400,15 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 判断索引存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param indexName 索引名称，后续用于处理索引存在时匹配或展示
+     * @return 索引存在条件成立时为 true，否则为 false
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static boolean indexExists(
             Connection connection,
             String tableName,
@@ -1327,6 +1430,17 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 校验并获取无{@code conflicts}；不满足约束时阻止后续处理。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param query 查询，作为 {@code statement.executeQuery} 的输入影响后续处理
+     * @param keyColumnCount 键列数量，作为 {@code key.add} 的输入影响后续处理
+     * @param title {@code title}，后续用于校验并获取无{@code conflicts}时匹配或展示
+     * @param remediation {@code remediation}，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private static void requireNoConflicts(
             Connection connection,
             String query,
@@ -1352,6 +1466,14 @@ public final class BusinessMigrationPreflight {
         }
     }
 
+    /**
+     * 封装组织行的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param parentId 父级ID，后续用于处理组织行时定位或关联目标
+     * @param type 类型标识，决定后续组织行采用的处理分支
+     * @param status 状态标识，决定后续组织行采用的处理分支
+     */
     private record OrganizationRow(
             String id,
             String parentId,

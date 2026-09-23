@@ -1,8 +1,8 @@
 package com.workflow.entity.version.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -22,6 +22,12 @@ public class EntityMutationIsolationExecutor {
     private final EntityMutationPort mutationPort;
     private final PlatformTransactionManager transactionManager;
 
+    /**
+     * 执行实体变更{@code isolation}执行器，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于执行实体变更{@code isolation}执行器
+     * @return 执行后的实体变更{@code isolation}执行器结果，供调用方继续处理
+     */
     public EntityMutationResult execute(
             EntityMutationCommand command) {
         TransactionTemplate template =

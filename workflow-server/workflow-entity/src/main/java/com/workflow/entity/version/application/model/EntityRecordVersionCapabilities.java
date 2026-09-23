@@ -12,7 +12,12 @@ public record EntityRecordVersionCapabilities(
         boolean manualCaptureEnabled,
         boolean historyReadable) {
 
-    /** 无当前配置时仅保留历史版本可读能力。 */
+    /**
+     * 无当前配置时仅保留历史版本可读能力。
+     *
+     * @param historyReadable 历史可读，作为 {@code EntityRecordVersionCapabilities} 的输入影响后续处理
+     * @return 处理后的{@code disabled}结果，供调用方继续处理
+     */
     public static EntityRecordVersionCapabilities disabled(
             boolean historyReadable) {
         return new EntityRecordVersionCapabilities(

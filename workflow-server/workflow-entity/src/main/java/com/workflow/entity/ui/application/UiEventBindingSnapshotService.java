@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.form.application.EntityFormFieldProjection;
@@ -115,8 +115,12 @@ public class UiEventBindingSnapshotService {
     private final JsonDocumentCodec codec;
 
     /**
+     *
+     * @param bindingMapper 绑定映射器依赖，保存到当前对象供后续业务方法调用
+     * @param dataSourceMapper 数据来源映射器依赖，保存到当前对象供后续业务方法调用
      * @param dataSourceService 延迟代理用于打断发布服务与执行授权服务之间的构造环；
      *                          只有真正构建发布快照时才解析该依赖
+     * @param codec 编解码器依赖，保存到当前对象供后续业务方法调用
      */
     public UiEventBindingSnapshotService(
             UiEventBindingMapper bindingMapper,
@@ -129,6 +133,14 @@ public class UiEventBindingSnapshotService {
         this.codec = codec;
     }
 
+    /**
+     * 整理快照数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续快照采用的处理分支
+     * @param configId 配置ID，后续用于处理快照时定位或关联目标
+     * @param entityId 实体ID，后续用于处理快照时定位或关联目标
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
+     */
     public List<Map<String, Object>> snapshot(
             String configType,
             String configId,
@@ -142,6 +154,12 @@ public class UiEventBindingSnapshotService {
      * <p>设计态快照保留可编辑引用；发布态仅把 {@code FORM_BUTTON_CLICK}
      * 的有效接口步骤转换为带独立哈希的完整可执行定义，使表单按钮的历史发布
      * 不再回读可变的接口服务表。其他事件继续沿用既有发布与执行契约。</p>
+     *
+     * @param configType 配置类型标识，决定后续快照采用的处理分支
+     * @param configId 配置ID，后续用于处理快照时定位或关联目标
+     * @param entityId 实体ID，后续用于处理快照时定位或关联目标
+     * @param pinOperationReferences 固定操作引用，供本方法处理快照时使用
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> snapshot(
             String configType,
@@ -156,8 +174,11 @@ public class UiEventBindingSnapshotService {
      * 必须在解析接口和固定版本之前过滤，否则已删除字段引用的失效接口仍会阻断发布。
      * 只排除本表单的字段目标，不影响公共默认链、按钮或不可变历史快照的激活。
      *
+     * @param formId 表单ID，后续用于处理快照表单时定位或关联目标
+     * @param entityId 实体ID，后续用于处理快照表单时定位或关联目标
      * @param nodes 与本次表单快照相同的节点树；空列表表示全部字段已移除
      * @param pinOperationReferences 是否固定发布接口版本
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> snapshotForm(
             String formId,
@@ -168,6 +189,16 @@ public class UiEventBindingSnapshotService {
                 new EntityFormFieldProjection(codec).fieldEventTargetKeys(nodes));
     }
 
+    /**
+     * 整理快照数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续快照采用的处理分支
+     * @param configId 配置ID，后续用于处理快照时定位或关联目标
+     * @param entityId 实体ID，后续用于处理快照时定位或关联目标
+     * @param pinOperationReferences 固定操作引用，供本方法处理快照时使用
+     * @param fieldTargetKeys 字段目标键集合，供本方法处理快照时使用
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> snapshot(
             String configType,
             String configId,
@@ -203,6 +234,10 @@ public class UiEventBindingSnapshotService {
      *
      * <p>与 {@link #snapshot(String, String, String)} 不同，本方法不会混入继承绑定，
      * 避免实体绑定被重复写入每个表单或列表。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续快照归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理快照归属方时定位或关联目标
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> snapshotOwner(
             String ownerType,
@@ -219,6 +254,9 @@ public class UiEventBindingSnapshotService {
      *
      * <p>FORM/LIST 的 revision 不会随事件绑定独立保存而变化，撤销草稿必须先
      * 获取此范围锁，再在同一事务内重算 canonical hash。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方绑定集合采用的处理分支
+     * @param ownerId 归属方ID，后续用于锁定归属方绑定集合时定位或关联目标
      */
     public void lockOwnerBindings(String ownerType, String ownerId) {
         if (!StringUtils.hasText(ownerId)) {
@@ -234,6 +272,10 @@ public class UiEventBindingSnapshotService {
      * <p>先物理清理 owner 范围内的草稿行，再使用发布快照中的稳定 ID 重建，
      * 避免逻辑删除后重新插入产生主键冲突或 ID 漂移。发布快照存储在独立表中，
      * 本操作不会修改任何历史发布记录。</p>
+     *
+     * @param configType 配置类型标识，决定后续本地绑定集合发布版本采用的处理分支
+     * @param configId 配置ID，后续用于恢复本地绑定集合发布版本时定位或关联目标
+     * @param snapshotBindings 快照绑定集合，供本方法恢复本地绑定集合发布版本时使用
      */
     public void restoreLocalBindingsForRelease(
             String configType,
@@ -284,6 +326,10 @@ public class UiEventBindingSnapshotService {
 
     /**
      * 用不可变发布快照恢复配置自身的事件绑定草稿；实体级继承绑定不受影响。
+     *
+     * @param configType 配置类型标识，决定后续本地绑定集合采用的处理分支
+     * @param configId 配置ID，后续用于恢复本地绑定集合时定位或关联目标
+     * @param snapshotBindings 快照绑定集合，供本方法恢复本地绑定集合时使用
      */
     public void restoreLocalBindings(
             String configType,
@@ -369,6 +415,14 @@ public class UiEventBindingSnapshotService {
         }
     }
 
+    /**
+     * 生成绑定键文本，供后续匹配或展示。
+     *
+     * @param targetType 目标类型标识，决定后续绑定键采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param eventCode 事件编码，后续用于处理绑定键时定位或关联目标
+     * @return 处理后的绑定键文本，供调用方比较或展示
+     */
     private String bindingKey(
             String targetType,
             String targetKey,
@@ -380,6 +434,12 @@ public class UiEventBindingSnapshotService {
                 + normalize(eventCode);
     }
 
+    /**
+     * 生成规范化目标键文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化目标键的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化目标键文本，供调用方比较或展示
+     */
     private String normalizedTargetKey(String value) {
         return StringUtils.hasText(value) ? value.trim() : "";
     }
@@ -388,6 +448,10 @@ public class UiEventBindingSnapshotService {
      * 实体级事件会被表单和列表共同查询，整条绑定先按事件消费域判断是否适用。
      * 接口步骤的 FORM/LIST 投影由 snapshotValue 逐步完成，纯映射步骤因此能在
      * 两类适用快照中保留；仍有目标的本地绑定必须继续校验，不能按接口上下文静默过滤。
+     *
+     * @param binding 绑定，供本方法处理{@code applies}截止快照时使用
+     * @param configType 配置类型标识，决定后续{@code applies}截止快照采用的处理分支
+     * @return {@code applies}截止快照条件成立时为 true，否则为 false
      */
     private boolean appliesToSnapshot(
             UiEventBinding binding,
@@ -402,6 +466,13 @@ public class UiEventBindingSnapshotService {
         return true;
     }
 
+    /**
+     * 生成操作上下文文本，供后续匹配或展示。
+     *
+     * @param definition 定义，作为 {@code equals} 的输入影响后续处理
+     * @param operationCode 操作编码，后续用于处理操作上下文时定位或关联目标
+     * @return 处理后的操作上下文文本，供调用方比较或展示
+     */
     private String operationContext(
             UiExtensionDefinition definition,
             String operationCode) {
@@ -418,6 +489,12 @@ public class UiEventBindingSnapshotService {
         return normalize(definition.getInterfaceContextType());
     }
 
+    /**
+     * 整理快照值数据，供调用方遍历或继续处理。
+     *
+     * @param binding 绑定，作为 {@code value.put} 的输入影响后续处理
+     * @return 快照值键值结果，供调用方继续处理
+     */
     private Map<String, Object> snapshotValue(UiEventBinding binding) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("id", binding.getId());
@@ -444,6 +521,12 @@ public class UiEventBindingSnapshotService {
      * 共享实体事件可以同时配置 FORM 与 LIST 操作；发布某一页面时只保留
      * 与该页面上下文一致的接口步骤，纯映射步骤两边保留。否则另一上下文
      * 的步骤会被发布引用校验器正确拒绝，导致共享默认事件无法发布。
+     *
+     * @param binding 绑定，作为 {@code pinOperation} 的输入影响后续处理
+     * @param configType 配置类型标识，决定后续快照值采用的处理分支
+     * @param sourceCache 来源缓存，供本方法处理快照值时使用
+     * @param pinOperationReferences 固定操作引用，供本方法处理快照值时使用
+     * @return 快照值键值结果，供调用方继续处理
      */
     private Map<String, Object> snapshotValue(
             UiEventBinding binding,
@@ -475,7 +558,13 @@ public class UiEventBindingSnapshotService {
         return value;
     }
 
-    /** 表单按钮发布快照只信任当前权威服务记录和 Provider 制品身份。 */
+    /**
+     * 表单按钮发布快照只信任当前权威服务记录和 Provider 制品身份。
+     *
+     * @param step 步骤，作为 {@code firstText} 的输入影响后续处理
+     * @param binding 绑定，作为 {@code step.put} 的输入影响后续处理
+     * @param configType 配置类型标识，决定后续固定操作采用的处理分支
+     */
     private void pinOperation(
             Map<String, Object> step,
             UiEventBinding binding,
@@ -516,6 +605,9 @@ public class UiEventBindingSnapshotService {
 
     /**
      * 校验不可变操作定义和来源绑定身份后，只在临时副本中移除当前服务引用。
+     *
+     * @param rawStep 原始步骤，供本方法校验与{@code detach}固定{@code activation}引用时使用
+     * @param binding 绑定，作为 {@code requirePinnedBindingIdentity} 的输入影响后续处理
      */
     @SuppressWarnings("unchecked")
     private void validateAndDetachPinnedActivationReference(
@@ -585,6 +677,13 @@ public class UiEventBindingSnapshotService {
         }
     }
 
+    /**
+     * 校验并获取固定绑定身份；不满足约束时阻止后续处理。
+     *
+     * @param step 步骤，作为 {@code equals} 的输入影响后续处理
+     * @param binding 绑定，供本方法校验并获取固定绑定身份时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requirePinnedBindingIdentity(
             Map<String, Object> step,
             Map<?, ?> binding) {
@@ -608,6 +707,14 @@ public class UiEventBindingSnapshotService {
         }
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requiredText(
             Map<String, Object> value,
             String key) {
@@ -619,6 +726,12 @@ public class UiEventBindingSnapshotService {
         return result;
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @return 处理后的正数整数结果，供调用方继续处理
+     */
     private Integer positiveInteger(Object value) {
         if (value instanceof Number number
                 && number.doubleValue() == number.intValue()
@@ -633,7 +746,13 @@ public class UiEventBindingSnapshotService {
         }
     }
 
-    /** 所有事件恢复为可编辑草稿时都只保留 extensionId 和业务映射/策略。 */
+    /**
+     * 所有事件恢复为可编辑草稿时都只保留 extensionId 和业务映射/策略。
+     *
+     * @param rawSteps 原始步骤集合，供本方法处理草稿步骤集合时使用
+     * @param eventCode 事件编码，后续用于处理草稿步骤集合时定位或关联目标
+     * @return 界面事件绑定快照集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> draftSteps(
             Object rawSteps,
             String eventCode) {
@@ -658,6 +777,14 @@ public class UiEventBindingSnapshotService {
         return List.copyOf(result);
     }
 
+    /**
+     * 判断{@code applies}截止配置条件是否成立，供调用方选择后续分支。
+     *
+     * @param step 步骤，作为 {@code firstText} 的输入影响后续处理
+     * @param configType 配置类型标识，决定后续{@code applies}截止配置采用的处理分支
+     * @param sourceCache 来源缓存，供本方法处理{@code applies}截止配置时使用
+     * @return {@code applies}截止配置条件成立时为 true，否则为 false
+     */
     private boolean appliesToConfig(
             Map<?, ?> step,
             String configType,
@@ -685,7 +812,11 @@ public class UiEventBindingSnapshotService {
                 || Objects.equals(configType, context);
     }
 
-    /** 恢复或导出为可编辑草稿时，历史 pair 也立即规范化为 extensionId。 */
+    /**
+     * 恢复或导出为可编辑草稿时，历史 pair 也立即规范化为 extensionId。
+     *
+     * @param step 步骤，作为 {@code firstText} 的输入影响后续处理
+     */
     private void normalizeDraftInterfaceReference(
             Map<String, Object> step) {
         String referenceId = firstText(
@@ -701,6 +832,12 @@ public class UiEventBindingSnapshotService {
         step.remove("operationCode");
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (StringUtils.hasText(text(value))) {
@@ -710,10 +847,22 @@ public class UiEventBindingSnapshotService {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面事件绑定快照的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面事件绑定快照文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)

@@ -2,7 +2,7 @@ package com.workflow.process.publish;
 
 import com.workflow.process.publish.application.ProcessUiReleaseBindingService;
 
-import com.workflow.contracts.ui.runtime.UiPublishedFormReference;
+import com.workflow.contracts.entity.ui.model.UiPublishedFormReference;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;

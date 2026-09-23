@@ -20,7 +20,13 @@ public class EntityActionCapabilityDTO {
      */
     private String actionableTaskId;
 
-    /** 保留原有三参数构造契约；非任务按钮没有可办理任务 ID。 */
+    /**
+     * 保留原有三参数构造契约；非任务按钮没有可办理任务 ID。
+     *
+     * @param visible 可见，保存在对象中供后续校验、查询或展示
+     * @param enabled 启用，保存在对象中供后续校验、查询或展示
+     * @param reason 原因，保存在对象中供后续校验、查询或展示
+     */
     public EntityActionCapabilityDTO(boolean visible, boolean enabled, String reason) {
         this(visible, enabled, reason, null);
     }

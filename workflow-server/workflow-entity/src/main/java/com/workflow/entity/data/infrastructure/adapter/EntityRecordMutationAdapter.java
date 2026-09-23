@@ -1,13 +1,13 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
 import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.data.application.EntityMutationSystemFields;
-import com.workflow.contracts.entity.mutation.EntityMutationTargetNotFoundException;
+import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.version.application.EntityMutationIsolationExecutor;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +30,15 @@ public class EntityRecordMutationAdapter
     private final EntityMutationIsolationExecutor isolationExecutor;
     private final EntityRecordTeamService teamService;
 
+    /**
+     * 更新当前任务；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityRecordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param currentTaskId 当前任务ID，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskName 当前任务名称，写入当前任务信息供后续待办展示和状态同步
+     * @param currentTaskAssignee 当前任务办理人，写入当前任务信息供后续待办展示和状态同步
+     */
     @Override
     public void updateCurrentTask(
             String entityCode,
@@ -76,6 +85,15 @@ public class EntityRecordMutationAdapter
                         .build()));
     }
 
+    /**
+     * 标记关联流程已结束，并同步实体状态供后续查询。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityRecordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param fallbackStatus 状态类别无法映射时写入实体的后备状态
+     */
     @Override
     public void markProcessEnded(
             String processInstanceId,
@@ -139,6 +157,13 @@ public class EntityRecordMutationAdapter
         }
     }
 
+    /**
+     * 更新状态；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityRecordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     */
     @Override
     public void updateStatus(
             String entityCode,
@@ -166,10 +191,26 @@ public class EntityRecordMutationAdapter
                         .build()));
     }
 
+    /**
+     * 生成空白截止{@code none}文本，供后续匹配或展示。
+     *
+     * @param value 待处理空白截止{@code none}的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止{@code none}文本，供调用方比较或展示
+     */
     private String blankToNone(String value) {
         return value == null || value.isBlank() ? "none" : value;
     }
 
+    /**
+     * 记录流程或实体活动，供后续历史展示与审计追溯。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityRecordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param action 动作，写入活动历史供后续审计或展示
+     * @param actionName 动作名称，写入活动历史供后续审计或展示
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     */
     @Override
     public void recordActivity(
             String entityCode,

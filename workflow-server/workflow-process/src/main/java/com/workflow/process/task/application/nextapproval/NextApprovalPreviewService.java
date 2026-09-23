@@ -21,6 +21,14 @@ public class NextApprovalPreviewService {
     private final NextApprovalRouteService routeService;
     private final NextApproverCandidateService candidateService;
 
+    /**
+     * 处理预览，并将结果传给后续步骤。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param request 本次请求，后续经校验后用于处理预览
+     * @return 处理后的预览结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public NextApprovalPreviewResponse preview(
             String taskId,
             NextApprovalPreviewRequest request) {

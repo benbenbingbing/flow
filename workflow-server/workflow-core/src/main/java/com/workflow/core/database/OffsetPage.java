@@ -10,6 +10,9 @@ public final class OffsetPage<T> extends Page<T> {
      * 创建不查询总数的分页参数，供已有独立计数或仅获取一批记录的 Mapper 使用。
      * offset 可以不是 limit 的整数倍；二者均需非负，limit=0 表示不返回记录。
      * 不将偏移换算成页码，避免任意偏移在整数除法中丢失。
+     *
+     * @param offset 偏移参数，用于限制后续查询范围和返回数量
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
      */
     public OffsetPage(long offset, long limit) {
         super(1, limit, false);
@@ -19,7 +22,11 @@ public final class OffsetPage<T> extends Page<T> {
         this.rowOffset = offset;
     }
 
-    /** 向框架方言提供调用方的精确偏移，其余分页行为复用 Page。 */
+    /**
+     * 向框架方言提供调用方的精确偏移，其余分页行为复用 Page。
+     *
+     * @return 处理后的偏移结果，供调用方继续处理
+     */
     @Override
     public long offset() {
         return rowOffset;

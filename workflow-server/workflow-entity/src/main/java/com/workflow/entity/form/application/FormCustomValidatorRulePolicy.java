@@ -16,11 +16,16 @@ public final class FormCustomValidatorRulePolicy {
     private static final Set<String> CONFIG_KEYS = Set.of("version", "rules");
     private static final Set<String> RULE_KEYS = Set.of("name", "version", "params", "triggers");
 
+    /**
+     * 初始化表单自定义校验器规则策略，保存构造参数供后续方法使用。
+     */
     private FormCustomValidatorRulePolicy() {}
 
     /**
      * 校验已存在的 customValidators 配置；未配置时调用方不调用本方法。
      * rules=[] 是合法的显式清空，不能被通用 JSON 裁剪删除。
+     *
+     * @param value 待校验表单自定义校验器规则策略的原始输入，结果供调用方继续使用
      * @throws IllegalArgumentException 结构、名称、版本、重复规则或触发时机不合法。
      */
     public static void validate(Object value) {
@@ -48,6 +53,12 @@ public final class FormCustomValidatorRulePolicy {
         }
     }
 
+    /**
+     * 判断是否版本；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否版本的原始输入，结果供调用方继续使用
+     * @return 版本条件成立时为 true，否则为 false
+     */
     private static boolean isVersion(Object value) {
         if (!(value instanceof Number)) return false;
         try {
@@ -59,7 +70,13 @@ public final class FormCustomValidatorRulePolicy {
         }
     }
 
-    /** 限制嵌套深度与大小，避免扩展参数使设计器、发布快照和浏览器校验消耗失控。 */
+    /**
+     * 限制嵌套深度与大小，避免扩展参数使设计器、发布快照和浏览器校验消耗失控。
+     *
+     * @param value 待校验JSON的原始输入，结果供调用方继续使用
+     * @param depth 深度，作为 {@code list.forEach} 的输入影响后续处理
+     * @param count 数量，作为 {@code list.forEach} 的输入影响后续处理
+     */
     private static void validateJson(Object value, int depth, int[] count) {
         if (depth > 12 || ++count[0] > 1000) throw new IllegalArgumentException("自定义校验参数过大或嵌套过深");
         if (value == null || value instanceof Boolean) return;

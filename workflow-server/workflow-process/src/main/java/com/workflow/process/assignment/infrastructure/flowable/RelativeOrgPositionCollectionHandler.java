@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.process.assignment.application.AssigneeIncidentRecorder;
 import com.workflow.process.assignment.application.AssigneeResolutionService;
 import com.workflow.process.assignment.application.EmptyAssigneePolicyResolver;
@@ -71,6 +71,19 @@ public class RelativeOrgPositionCollectionHandler
     private final AssigneeResolutionService assigneeResolutionService;
     private final AssigneeIncidentRecorder incidentRecorder;
 
+    /**
+     * 初始化相对组织位置集合处理器，保存构造参数供后续方法使用。
+     *
+     * @param repositoryService 仓储服务依赖，保存到当前对象供后续业务方法调用
+     * @param processVersionMapper 流程版本映射器依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param assignmentResolver 分配解析器依赖，保存到当前对象供后续业务方法调用
+     * @param referenceResolver 引用解析器依赖，保存到当前对象供后续业务方法调用
+     * @param overrideStore 覆盖{@code store}依赖，保存到当前对象供后续业务方法调用
+     * @param emptyPolicyResolver 空策略解析器依赖，保存到当前对象供后续业务方法调用
+     * @param assigneeResolutionService 办理人解析服务依赖，保存到当前对象供后续业务方法调用
+     * @param incidentRecorder 异常事件{@code recorder}依赖，保存到当前对象供后续业务方法调用
+     */
     public RelativeOrgPositionCollectionHandler(
             RepositoryService repositoryService,
             ProcessVersionHistoryMapper processVersionMapper,
@@ -94,6 +107,10 @@ public class RelativeOrgPositionCollectionHandler
 
     /**
      * 人工下一审批人覆盖优先于目录动态解析，且在当前 Flowable 事务内一次性消费。
+     *
+     * @param ignoredOriginalCollection {@code ignored}原始集合，作为 {@code resolveRequiredCollection} 的输入影响后续处理
+     * @param execution 执行，作为 {@code resolveRequiredCollection} 的输入影响后续处理
+     * @return {@code collection<?>}集合，供调用方遍历或展示
      */
     @Override
     public Collection<?> resolveCollection(
@@ -107,6 +124,13 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
+    /**
+     * 解析必填集合；输出作为后续校验或处理的输入。
+     *
+     * @param ignoredOriginalCollection {@code ignored}原始集合，供本方法解析必填集合时使用
+     * @param execution 执行，作为 {@code requireCurrentTask} 的输入影响后续处理
+     * @return {@code collection<?>}集合，供调用方遍历或展示
+     */
     private Collection<?> resolveRequiredCollection(
             Object ignoredOriginalCollection,
             DelegateExecution execution) {
@@ -174,6 +198,10 @@ public class RelativeOrgPositionCollectionHandler
      * 多实例尚未创建 Task，因此在节点进入边界直接执行可用的用户/组兜底；
      * 其余策略用 REQUIRES_NEW 记录 taskId 为空的节点级 incident，然后抛出原失败
      * 回滚源任务完成，严禁 Flowable 以 0 个实例继续。
+     *
+     * @param execution 执行，作为 {@code requireCurrentTask} 的输入影响后续处理
+     * @param failure 失败，供本方法应用节点入口空策略时使用
+     * @return {@code collection<?>}集合，供调用方遍历或展示
      */
     private Collection<?> applyNodeEntryEmptyPolicy(
             DelegateExecution execution,
@@ -248,6 +276,13 @@ public class RelativeOrgPositionCollectionHandler
         throw failure;
     }
 
+    /**
+     * 整理兜底用户集合数据，供调用方遍历或继续处理。
+     *
+     * @param principals {@code principals}，作为 {@code resolvePrincipals} 的输入影响后续处理
+     * @param reasonCode 原因编码，后续用于处理兜底用户集合时定位或关联目标
+     * @return 相对组织位置集合，供调用方遍历或展示
+     */
     private List<String> fallbackUsers(
             List<PersonPrincipal> principals,
             String reasonCode) {
@@ -257,6 +292,12 @@ public class RelativeOrgPositionCollectionHandler
                 ? stableUsers(result.usernames()) : List.of();
     }
 
+    /**
+     * 校验并获取当前任务；不满足约束时阻止后续处理。
+     *
+     * @param execution 执行，作为 {@code repositoryService.getBpmnModel} 的输入影响后续处理
+     * @return 校验并获取后的当前任务结果，供调用方继续处理
+     */
     private UserTask requireCurrentTask(DelegateExecution execution) {
         FlowElement current = execution.getCurrentFlowElement();
         if (current instanceof UserTask userTask) {
@@ -276,6 +317,12 @@ public class RelativeOrgPositionCollectionHandler
                 "多实例人员解析无法定位已部署 UserTask");
     }
 
+    /**
+     * 整理{@code deployed}分配配置数据，供调用方遍历或继续处理。
+     *
+     * @param userTask 用户任务，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @return {@code deployed}分配配置键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> deployedAssignmentConfig(
             UserTask userTask) {
@@ -305,7 +352,13 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
-    /** collection handler 只能运行发布器明确允许的节点进入期解析器。 */
+    /**
+     * collection handler 只能运行发布器明确允许的节点进入期解析器。
+     *
+     * @param config 配置内容，决定后续入口动态解析器的处理规则
+     * @param multiInstanceSource 多实例来源，作为 {@code configuredDynamicResolverCode} 的输入影响后续处理
+     * @return 校验并获取后的入口动态解析器文本，供调用方比较或展示
+     */
     private String requireEntryDynamicResolver(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -319,6 +372,13 @@ public class RelativeOrgPositionCollectionHandler
         return resolverCode;
     }
 
+    /**
+     * 生成已配置动态解析器编码文本，供后续匹配或展示。
+     *
+     * @param config 配置内容，决定后续已配置动态解析器编码的处理规则
+     * @param multiInstanceSource 多实例来源，作为 {@code supportedDynamicResolver} 的输入影响后续处理
+     * @return 处理后的已配置动态解析器编码文本，供调用方比较或展示
+     */
     private String configuredDynamicResolverCode(
             Map<String, Object> config,
             boolean multiInstanceSource) {
@@ -328,6 +388,12 @@ public class RelativeOrgPositionCollectionHandler
                         .resolverCode());
     }
 
+    /**
+     * 列出支持的动态解析器；结果供调用方的后续步骤使用。
+     *
+     * @param resolverCode 解析器编码，后续用于列出支持的动态解析器时定位或关联目标
+     * @return 列出支持的后的动态解析器文本，供调用方比较或展示
+     */
     private String supportedDynamicResolver(String resolverCode) {
         return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
                 || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
@@ -335,7 +401,14 @@ public class RelativeOrgPositionCollectionHandler
                 ? resolverCode : "";
     }
 
-    /** incident 也记录节点引用最终指向的解析器和参数。 */
+    /**
+     * incident 也记录节点引用最终指向的解析器和参数。
+     *
+     * @param model 模型，作为 {@code referenceResolver.resolve} 的输入影响后续处理
+     * @param task 任务，作为 {@code referenceResolver.resolve} 的输入影响后续处理
+     * @param config 配置内容，决定后续有效配置或{@code self}的处理规则
+     * @return 有效配置或{@code self}键值结果，供调用方继续处理
+     */
     private Map<String, Object> effectiveConfigOrSelf(
             BpmnModel model,
             UserTask task,
@@ -349,6 +422,14 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
+    /**
+     * 判断有效来源是否多实例条件是否成立，供调用方选择后续分支。
+     *
+     * @param model 模型，作为 {@code referenceResolver.resolve} 的输入影响后续处理
+     * @param task 任务，作为 {@code referenceResolver.resolve} 的输入影响后续处理
+     * @param config 配置内容，决定后续有效来源是否多实例的处理规则
+     * @return 有效来源是否多实例条件成立时为 true，否则为 false
+     */
     private boolean effectiveSourceIsMultiInstance(
             BpmnModel model,
             UserTask task,
@@ -362,6 +443,12 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
+    /**
+     * 构造无可用用户集合异常，供调用方区分失败原因。
+     *
+     * @param resolverCode 解析器编码，后续用于处理无可用用户集合时定位或关联目标
+     * @return 处理后的无可用用户集合结果，供调用方继续处理
+     */
     private PersonResolutionException noAvailableUsers(
             String resolverCode) {
         if (EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
@@ -375,6 +462,12 @@ public class RelativeOrgPositionCollectionHandler
                 "相对组织职务多实例没有可用参与人");
     }
 
+    /**
+     * 处理分配版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续分配版本的处理规则
+     * @return 处理后的分配版本结果，供调用方继续处理
+     */
     private int assignmentVersion(Map<String, Object> config) {
         Object value = config.get("assignmentConfigVersion");
         if (value instanceof Number number && number.intValue() == 2) {
@@ -390,6 +483,12 @@ public class RelativeOrgPositionCollectionHandler
                 "节点进入期动态解析器多实例缺少受支持的人员配置版本");
     }
 
+    /**
+     * 生成已发布流程配置ID文本，供后续匹配或展示。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 处理后的已发布流程配置ID文本，供调用方比较或展示
+     */
     private String publishedProcessConfigId(String processDefinitionId) {
         ProcessDefinition definition = repositoryService
                 .createProcessDefinitionQuery()
@@ -405,6 +504,14 @@ public class RelativeOrgPositionCollectionHandler
                 .orElse(null);
     }
 
+    /**
+     * 处理{@code store}已解析集合，并将结果传给后续步骤。
+     *
+     * @param execution 执行，供本方法处理{@code store}已解析集合时使用
+     * @param cycleRoot {@code cycle}根，作为 {@code cache.put} 的输入影响后续处理
+     * @param task 任务，作为 {@code cache.put} 的输入影响后续处理
+     * @param users 用户集合，作为 {@code cache.put} 的输入影响后续处理
+     */
     private void storeResolvedCollection(
             DelegateExecution execution,
             DelegateExecution cycleRoot,
@@ -432,6 +539,10 @@ public class RelativeOrgPositionCollectionHandler
     /**
      * 读取并验证当轮快照。本地变量若被损坏必须失败关闭，不能
      * 在已创建部分实例后重算出另一组人数。
+     *
+     * @param cycleRoot {@code cycle}根，供本方法读取{@code cycle}集合时使用
+     * @param task 任务，供本方法读取{@code cycle}集合时使用
+     * @return 相对组织位置集合，供调用方遍历或展示
      */
     private List<String> readCycleCollection(
             DelegateExecution cycleRoot,
@@ -470,7 +581,12 @@ public class RelativeOrgPositionCollectionHandler
         return users;
     }
 
-    /** 找到当轮 MI root；首次计算时传入执行本身就是 root。 */
+    /**
+     * 找到当轮 MI root；首次计算时传入执行本身就是 root。
+     *
+     * @param execution 执行，供本方法处理多实例根时使用
+     * @return 处理后的多实例根结果，供调用方继续处理
+     */
     private DelegateExecution multiInstanceRoot(
             DelegateExecution execution) {
         DelegateExecution current = execution;
@@ -483,6 +599,12 @@ public class RelativeOrgPositionCollectionHandler
         return execution;
     }
 
+    /**
+     * 处理整数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数值的原始输入，结果供调用方继续使用
+     * @return 处理后的整数值结果，供调用方继续处理
+     */
     private int intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -494,12 +616,25 @@ public class RelativeOrgPositionCollectionHandler
         }
     }
 
+    /**
+     * 判断相同文本条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理相同文本的原始输入，结果供调用方继续使用
+     * @param expected 预期，供本方法处理相同文本时使用
+     * @return 相同文本条件成立时为 true，否则为 false
+     */
     private boolean sameText(Object value, String expected) {
         return value != null
                 && expected != null
                 && expected.equals(String.valueOf(value));
     }
 
+    /**
+     * 标记节点入口{@code recovered}；后续读取或执行将使用更新后的状态。
+     *
+     * @param execution 执行，作为 {@code incidentRecorder.resolveOpenNodeEntry} 的输入影响后续处理
+     * @param task 任务，供本方法标记节点入口{@code recovered}时使用
+     */
     private void markNodeEntryRecovered(
             DelegateExecution execution,
             UserTask task) {
@@ -507,6 +642,12 @@ public class RelativeOrgPositionCollectionHandler
                 execution.getProcessInstanceId(), task.getId());
     }
 
+    /**
+     * 整理稳定用户集合数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 相对组织位置集合，供调用方遍历或展示
+     */
     private List<String> stableUsers(Collection<String> values) {
         LinkedHashSet<String> users = new LinkedHashSet<>();
         if (values != null) {
@@ -518,6 +659,12 @@ public class RelativeOrgPositionCollectionHandler
         return List.copyOf(users);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -527,6 +674,12 @@ public class RelativeOrgPositionCollectionHandler
         return null;
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();

@@ -34,7 +34,12 @@ public interface EntityListActionMapper extends BaseMapper<EntityListAction> {
                 .orderByAsc(EntityListAction::getCreatedAt));
     }
 
-    /** 锁定列表下全部按钮草稿，包含逻辑删除行。 */
+    /**
+     * 锁定列表下全部按钮草稿，包含逻辑删除行。
+     *
+     * @param listConfigId 列表配置ID，后续用于查询全部列表配置ID更新时定位或关联目标
+     * @return 实体列表动作集合，供调用方遍历或展示
+     */
     @Select("SELECT * FROM entity_list_action "
             + "WHERE list_config_id = #{listConfigId} ORDER BY id FOR UPDATE")
     List<EntityListAction> findAllByListConfigIdForUpdate(

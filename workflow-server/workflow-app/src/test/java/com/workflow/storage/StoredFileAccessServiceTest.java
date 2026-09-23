@@ -59,9 +59,9 @@ class StoredFileAccessServiceTest {
                 )
                 """);
         // 本类保留原有 H2 业务契约夹具；MySQL 保存点和读守卫另有实库测试。
-        var errors = mock(com.workflow.integration.database.api.DatabaseInsertDialect.class);
+        var errors = mock(com.workflow.integration.database.api.write.DatabaseInsertDialect.class);
         org.mockito.Mockito.when(errors.isUniqueViolation("23505", 23505)).thenReturn(true);
-        var queries = mock(com.workflow.integration.database.api.DatabaseQueryDialect.class);
+        var queries = mock(com.workflow.integration.database.api.query.DatabaseQueryDialect.class);
         org.mockito.Mockito.when(queries.readGuardClause()).thenReturn(" FOR UPDATE");
         service = new StoredFileAccessService(
                 jdbcTemplate,

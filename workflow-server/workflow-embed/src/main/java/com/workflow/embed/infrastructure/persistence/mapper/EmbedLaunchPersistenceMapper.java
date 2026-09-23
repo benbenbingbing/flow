@@ -66,18 +66,34 @@ public interface EmbedLaunchPersistenceMapper {
     /**
      * Non-locking preflight query. It must run before the independent quota transaction so the
      * outer Launch transaction cannot suspend while retaining Application or Grant row locks.
+     *
+     * @param applicationId 应用ID，后续用于查询配置时定位或关联目标
+     * @param viewKey 视图键，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的嵌入式启动记录配置行结果，供调用方继续处理
      */
     @Select(CONFIGURATION_SQL)
     EmbedLaunchConfigurationRow findConfiguration(
             @Param("applicationId") String applicationId,
             @Param("viewKey") String viewKey);
 
-    /** Reloads and locks the exact configuration used for snapshot materialization and issuance. */
+    /**
+     * Reloads and locks the exact configuration used for snapshot materialization and issuance.
+     *
+     * @param applicationId 应用ID，后续用于锁定配置时定位或关联目标
+     * @param viewKey 视图键，后续用于授权校验、关联或幂等去重
+     * @return 锁定后的配置结果，供调用方继续处理
+     */
     @Select(CONFIGURATION_SQL + "\n FOR UPDATE")
     EmbedLaunchConfigurationRow lockConfiguration(
             @Param("applicationId") String applicationId,
             @Param("viewKey") String viewKey);
 
+    /**
+     * 查询允许来源；查询结果供调用方展示或继续处理。
+     *
+     * @param grantId 授权ID，后续用于查询允许来源时定位或关联目标
+     * @return 嵌入式启动记录持久化集合，供调用方遍历或展示
+     */
     @Select("""
             SELECT origin
               FROM embed_allowed_origin
@@ -86,12 +102,29 @@ public interface EmbedLaunchPersistenceMapper {
             """)
     Set<String> findAllowedOrigins(@Param("grantId") String grantId);
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param applicationId 应用ID，后续用于查询绑定时定位或关联目标
+     * @param identityProviderId 身份提供者ID，后续用于查询绑定时定位或关联目标
+     * @param subjectDigest 主体摘要，供本方法查询绑定时使用
+     * @param subjectDigestKeyVersion 主体摘要键版本，供本方法查询绑定时使用
+     * @return 符合条件的嵌入式外部身份绑定行结果，供调用方继续处理
+     */
     default EmbedExternalIdentityBindingRow findBinding(String applicationId, String identityProviderId, String subjectDigest, String subjectDigestKeyVersion) {
         return findBindingPage(new OffsetPage<>(0, 1), applicationId, identityProviderId, subjectDigest, subjectDigestKeyVersion).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param applicationId 应用ID，后续用于查询绑定分页时定位或关联目标
+     * @param identityProviderId 身份提供者ID，后续用于查询绑定分页时定位或关联目标
+     * @param subjectDigest 主体摘要，供本方法查询绑定分页时使用
+     * @param subjectDigestKeyVersion 主体摘要键版本，供本方法查询绑定分页时使用
+     * @return 嵌入式外部身份绑定行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT id, application_id, identity_provider_id,
@@ -113,12 +146,23 @@ public interface EmbedLaunchPersistenceMapper {
             @Param("subjectDigest") String subjectDigest,
             @Param("subjectDigestKeyVersion") String subjectDigestKeyVersion);
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param flowUserId 流程用户ID，后续用于查询流程用户时定位或关联目标
+     * @return 符合条件的嵌入式流程用户行结果，供调用方继续处理
+     */
     default EmbedFlowUserRow findFlowUser(String flowUserId) {
         return findFlowUserPage(new OffsetPage<>(0, 1), flowUserId).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param flowUserId 流程用户ID，后续用于查询流程用户分页时定位或关联目标
+     * @return 嵌入式流程用户行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT id, username, status, deleted, password_reset_required
@@ -131,6 +175,15 @@ public interface EmbedLaunchPersistenceMapper {
             @Param("page") OffsetPage<EmbedFlowUserRow> page,
             @Param("flowUserId") String flowUserId);
 
+    /**
+     * 插入断言重放；后续读取或执行将使用更新后的状态。
+     *
+     * @param providerId 提供者ID，后续用于插入断言重放时定位或关联目标
+     * @param jtiDigest {@code jti}摘要，供本方法插入断言重放时使用
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param now 当前时间，供本方法插入断言重放时使用
+     * @return 插入后的断言重放结果，供调用方继续处理
+     */
     @Insert("""
             INSERT INTO embed_assertion_replay (
               provider_id, jti_digest, expires_at, create_time, update_time
@@ -144,6 +197,42 @@ public interface EmbedLaunchPersistenceMapper {
             @Param("expiresAt") LocalDateTime expiresAt,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 插入启动记录；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param applicationId 应用ID，后续用于插入启动记录时定位或关联目标
+     * @param grantId 授权ID，后续用于插入启动记录时定位或关联目标
+     * @param viewId 视图ID，后续用于插入启动记录时定位或关联目标
+     * @param viewReleaseId 视图发布版本ID，后续用于插入启动记录时定位或关联目标
+     * @param identityProviderId 身份提供者ID，后续用于插入启动记录时定位或关联目标
+     * @param providerSecurityVersion 提供者安全版本，供本方法插入启动记录时使用
+     * @param applicationVersion 应用版本，供本方法插入启动记录时使用
+     * @param grantSecurityVersion 授权安全版本，供本方法插入启动记录时使用
+     * @param viewSecurityVersion 视图安全版本，供本方法插入启动记录时使用
+     * @param flowUserId 流程用户ID，后续用于插入启动记录时定位或关联目标
+     * @param identityBindingId 身份绑定ID，后续用于插入启动记录时定位或关联目标
+     * @param bindingVersion 绑定版本，供本方法插入启动记录时使用
+     * @param subjectDigest 主体摘要，供本方法插入启动记录时使用
+     * @param subjectDigestKeyVersion 主体摘要键版本，供本方法插入启动记录时使用
+     * @param parentOrigin 父级来源，供本方法插入启动记录时使用
+     * @param channelId 通道ID，后续用于插入启动记录时定位或关联目标
+     * @param entryMode 入口模式标识，决定后续启动记录采用的处理分支
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param contextCiphertext 上下文{@code ciphertext}，供本方法插入启动记录时使用
+     * @param contextCipherKeyVersion 上下文{@code cipher}键版本，供本方法插入启动记录时使用
+     * @param contextDigest 上下文摘要，供本方法插入启动记录时使用
+     * @param contextDigestKeyVersion 上下文摘要键版本，供本方法插入启动记录时使用
+     * @param uiLocale 界面{@code locale}，供本方法插入启动记录时使用
+     * @param uiTheme 界面{@code theme}，供本方法插入启动记录时使用
+     * @param uiFormPresentation 界面表单展示，供本方法插入启动记录时使用
+     * @param launchCodeDigest 启动记录编码摘要，供本方法插入启动记录时使用
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param traceId 追踪ID，后续用于插入启动记录时定位或关联目标
+     * @param requestId 请求ID，后续用于插入启动记录时定位或关联目标
+     * @param createTime 创建时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 插入后的启动记录结果，供调用方继续处理
+     */
     @Insert("""
             INSERT INTO embed_launch (
               id, application_id, grant_id, view_id, view_release_id,

@@ -1,8 +1,8 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +20,9 @@ public class PublishedFormCrossFieldMutationValidator {
     /**
      * 调用方须持有记录锁（新增记录则在创建事务内），传入持久化后的完整记录。
      * 这样并发补丁、字段默认值和持久化转换均已体现在比较值中；失败由外层事务回滚。
+     *
+     * @param command 本次命令，后续经校验后用于校验已发布表单跨字段变更
+     * @param finalRecord {@code final}记录，供本方法校验已发布表单跨字段变更时使用
      */
     public void validate(EntityMutationCommand command, Map<String, Object> finalRecord) {
         if (command.operationType() == EntityMutationOperationType.DELETE) return;

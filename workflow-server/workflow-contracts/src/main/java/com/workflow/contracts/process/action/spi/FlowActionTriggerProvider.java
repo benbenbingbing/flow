@@ -1,6 +1,6 @@
 package com.workflow.contracts.process.action.spi;
 
-import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import java.util.Collection;
 
 /**

@@ -1,0 +1,112 @@
+# 数据库配置：业务连接、版本迁移、Mapper 和动态结构发布；业务账号与结构账号分别管理。
+
+# Spring Boot 基础设施配置，由对应自动配置或应用配置类读取。
+spring:
+  # 业务数据源，运行账号与执行 DDL 的结构账号分离。
+  datasource:
+    # 业务 JDBC 地址；默认拼接 MySQL 连接参数，也可用完整地址切换目标数据库。
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:workflow}?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true}
+    # 显式 JDBC 驱动类；留空时由数据库适配逻辑根据 JDBC 地址选择。
+    driver-class-name: ${DB_DRIVER_CLASS_NAME:}
+    # 业务读写账号，由部署环境提供，生产环境不应持有结构变更权限。
+    username: ${DB_USERNAME}
+    # 业务账号密码，必须由环境变量注入，不提供仓库内默认值。
+    password: ${DB_PASSWORD}
+    # 业务连接池设置，限制数据库并发和连接等待时间。
+    hikari:
+      # 连接默认事务隔离级别，保持 READ_COMMITTED 以匹配业务并发处理约定。
+      transaction-isolation: ${DB_TRANSACTION_ISOLATION:TRANSACTION_READ_COMMITTED}
+      # 连接池最大连接数，应结合实例副本数与数据库连接预算调整。
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      # 保留的最少空闲连接数，用于降低常规请求的建连延迟。
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      # 从连接池获取连接的最长等待时间，单位毫秒。
+      connection-timeout: ${DB_POOL_CONNECTION_TIMEOUT_MS:3000}
+      # 检测连接是否有效的超时，单位毫秒，应小于获取连接超时。
+      validation-timeout: ${DB_POOL_VALIDATION_TIMEOUT_MS:2000}
+      # 超过最少空闲连接数的空闲连接回收时间，单位毫秒。
+      idle-timeout: ${DB_POOL_IDLE_TIMEOUT_MS:600000}
+      # 单条连接的最长生命周期，单位毫秒，应短于数据库或代理的连接寿命限制。
+      max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}
+      # 连接借出超过此毫秒数时记录疑似泄漏，帮助定位未释放连接或长事务。
+      leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:60000}
+  # 版本迁移配置；生产运行进程由部署参数关闭迁移，结构升级交给独立迁移进程。
+  flyway:
+    # 是否在应用启动时执行 Flyway；生产服务进程必须覆盖为 false。
+    enabled: true
+    # 执行版本迁移的 JDBC 地址，使用独立结构数据源。
+    url: ${SCHEMA_DATASOURCE_URL}
+    # 执行迁移的结构账号，必须具备迁移所需 DDL 权限。
+    user: ${SCHEMA_DB_USERNAME}
+    # 结构账号密码，由迁移运行环境注入，不与业务账号共用。
+    password: ${SCHEMA_DB_PASSWORD}
+    # 版本迁移资源目录，从类路径中的 db/migration 按版本加载。
+    locations: classpath:db/migration
+    # 迁移脚本的读取编码，保证中文内容一致。
+    encoding: UTF-8
+    # 版本迁移文件名前缀，与 Vxxx__描述.sql 命名规范一致。
+    sql-migration-prefix: V
+    # 版本号与迁移描述之间的分隔符。
+    sql-migration-separator: __
+    # 参与 SQL 版本迁移扫描的文件后缀。
+    sql-migration-suffixes: .sql
+    # 禁止迁移时自动建立基线，避免非空数据库绕过历史迁移。
+    baseline-on-migrate: false
+    # 迁移前校验历史版本和校验和，及时发现已执行脚本被修改。
+    validate-on-migrate: true
+    # 禁止 Flyway clean 清空数据库，防止误删业务结构和数据。
+    clean-disabled: true
+    # 关闭脚本占位符替换，保留迁移 SQL 中的原始文本。
+    placeholder-replacement: false
+
+# 数据访问框架配置，统一 Mapper 扫描、字段映射和逻辑删除行为。
+mybatis-plus:
+  # 扫描全部依赖模块的 Mapper XML，确保模块拆分后仍可找到 SQL 映射。
+  mapper-locations: classpath*:/mapper/**/*.xml
+  # 实体类型别名扫描包，供 Mapper XML 简写 Java 类型名。
+  type-aliases-package: com.workflow.entity
+  # 自定义类型处理器扫描包，用于数据库值与 Java 类型转换。
+  type-handlers-package: com.workflow.config
+  # MyBatis 原生运行设置，控制字段映射与 SQL 日志。
+  configuration:
+    # 将数据库下划线列名映射为 Java 驼峰属性名。
+    map-underscore-to-camel-case: true
+    # 默认关闭 MyBatis SQL 参数日志，避免敏感字段随查询参数泄露。
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+  # MyBatis-Plus 全局约定，统一通用 CRUD 行为。
+  global-config:
+    # 数据库映射约定，指定主键生成与逻辑删除策略。
+    db-config:
+      # 默认使用数据库自增主键，供未单独声明策略的实体使用。
+      id-type: auto
+      # 标识逻辑删除的实体字段，通用 CRUD 据此过滤已删除数据。
+      logic-delete-field: deleted
+      # 逻辑删除时写入的标记值。
+      logic-delete-value: 1
+      # 代表未删除的标记值，普通查询据此筛选有效记录。
+      logic-not-delete-value: 0
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 数据库适配选择，影响 SQL 方言、元数据和结构操作实现。
+  database:
+    # 数据库厂商标识；auto 根据 JDBC 地址选择适配器。
+    vendor: ${WORKFLOW_DATABASE_VENDOR:auto}
+  # 动态实体结构发布策略，与应用启动时的 Flyway 版本迁移分开管理。
+  schema-publisher:
+    # direct 直接执行 DDL，queue 将结构变更交给独立工作进程处理。
+    mode: ${WORKFLOW_SCHEMA_PUBLISHER_MODE:direct}
+    # 调用方等待结构发布完成的最长时间，使用带单位的时长。
+    wait-timeout: ${SCHEMA_PUBLISHER_WAIT_TIMEOUT:120s}
+    # 等待队列发布结果时的轮询间隔，避免频繁查询数据库。
+    poll-interval: ${SCHEMA_PUBLISHER_POLL_INTERVAL:500ms}
+    # 结构发布专用连接；queue 运行进程不持有结构账号，direct 创建连接时才校验必填项。
+    datasource:
+      # 结构变更 JDBC 地址；允许 queue 运行进程留空，实际执行 DDL 时必须提供。
+      url: ${SCHEMA_DATASOURCE_URL:}
+      # 结构变更专用账号，与日常业务读写账号隔离。
+      username: ${SCHEMA_DB_USERNAME:}
+      # 结构账号密码；缺省为空以支持 queue，direct 执行时必须有效。
+      password: ${SCHEMA_DB_PASSWORD:}
+      # 结构连接使用的 JDBC 驱动；留空时按 JDBC 地址选择。
+      driver-class-name: ${SCHEMA_DB_DRIVER_CLASS_NAME:}

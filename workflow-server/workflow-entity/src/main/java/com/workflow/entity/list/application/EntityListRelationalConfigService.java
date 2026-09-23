@@ -101,6 +101,10 @@ public class EntityListRelationalConfigService {
 
     /**
      * 按发布快照全量替换按钮，并保留快照中的稳定按钮 ID。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理替换动作集合发布版本时定位或关联目标
+     * @param position 位置，作为 {@code replaceActionsInternal} 的输入影响后续处理
+     * @param buttons 按钮集合，供本方法处理替换动作集合发布版本时使用
      */
     @Transactional(rollbackFor = Exception.class)
     public void replaceActionsForRelease(
@@ -221,6 +225,15 @@ public class EntityListRelationalConfigService {
         return List.copyOf(normalized);
     }
 
+    /**
+     * 处理替换动作集合内部，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理替换动作集合内部时定位或关联目标
+     * @param position 位置，作为 {@code ListCellActionMappingPolicy.validateButtons} 的输入影响后续处理
+     * @param buttons 按钮集合，作为 {@code ListCellActionMappingPolicy.validateButtons} 的输入影响后续处理
+     * @param preservePublishedIds {@code preserve}已发布ID 集合，供本方法处理替换动作集合内部时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void replaceActionsInternal(
             String listConfigId,
             String position,
@@ -277,7 +290,11 @@ public class EntityListRelationalConfigService {
                 .forEach(actionMapper::deleteById);
     }
 
-    /** 锁定列表按钮草稿，供配置级撤销建立串行化边界。 */
+    /**
+     * 锁定列表按钮草稿，供配置级撤销建立串行化边界。
+     *
+     * @param listConfigId 列表配置ID，后续用于锁定草稿子节点发布版本时定位或关联目标
+     */
     public void lockDraftChildrenForRelease(String listConfigId) {
         actionMapper.findAllByListConfigIdForUpdate(listConfigId);
     }
@@ -457,6 +474,12 @@ public class EntityListRelationalConfigService {
         return codec.read(document, BUTTON_LIST_TYPE, label);
     }
 
+    /**
+     * 转换为按钮；输出作为后续校验或处理的输入。
+     *
+     * @param action 动作标识，决定后续按钮采用的处理分支
+     * @return 按钮键值结果，供调用方继续处理
+     */
     private Map<String, Object> toButton(EntityListAction action) {
         Map<String, Object> button = StringUtils.hasText(action.getActionParamsDocument())
                 ? new LinkedHashMap<>(codec.readObject(
@@ -491,6 +514,15 @@ public class EntityListRelationalConfigService {
         return button;
     }
 
+    /**
+     * 处理动作起始按钮，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理动作起始按钮时定位或关联目标
+     * @param position 位置，作为 {@code action.setPosition} 的输入影响后续处理
+     * @param button 按钮，作为 {@code action.setButtonKey} 的输入影响后续处理
+     * @param fallbackSort 兜底排序，主值不可用时供后续处理兜底
+     * @return 处理后的动作起始按钮结果，供调用方继续处理
+     */
     private EntityListAction actionFromButton(
             String listConfigId,
             String position,
@@ -541,6 +573,13 @@ public class EntityListRelationalConfigService {
         return action;
     }
 
+    /**
+     * 判断相同动作条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，作为 {@code sameActionParams} 的输入影响后续处理
+     * @param right 右侧，供本方法处理相同动作时使用
+     * @return 相同动作条件成立时为 true，否则为 false
+     */
     private boolean sameAction(
             EntityListAction left,
             EntityListAction right) {
@@ -572,6 +611,13 @@ public class EntityListRelationalConfigService {
                         right.getActionParamsDocument());
     }
 
+    /**
+     * 判断相同动作参数条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同动作参数时使用
+     * @param right 右侧，供本方法处理相同动作参数时使用
+     * @return 相同动作参数条件成立时为 true，否则为 false
+     */
     private boolean sameActionParams(String left, String right) {
         Map<String, Object> leftMap = StringUtils.hasText(left)
                 ? new LinkedHashMap<>(codec.readObject(left, "列表按钮配置"))
@@ -587,6 +633,13 @@ public class EntityListRelationalConfigService {
         return Objects.equals(leftMap, rightMap);
     }
 
+    /**
+     * 应用动作，并将结果传给后续步骤。
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @param request 本次请求，后续经校验后用于应用动作
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void applyAction(
             EntityListAction action,
             EntityListActionSaveRequest request) {
@@ -667,7 +720,12 @@ public class EntityListRelationalConfigService {
         if (action.getEnabled() == null) action.setEnabled(true);
     }
 
-    /** 独立规则列是唯一事实来源，扩展参数不得重复保存规则。 */
+    /**
+     * 独立规则列是唯一事实来源，扩展参数不得重复保存规则。
+     *
+     * @param source 待处理动作参数{@code without}{@code availability}规则的原始输入，结果供调用方继续使用
+     * @return 动作参数{@code without}{@code availability}规则键值结果，供调用方继续处理
+     */
     private Map<String, Object> actionParamsWithoutAvailabilityRule(
             Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>(
@@ -676,6 +734,13 @@ public class EntityListRelationalConfigService {
         return result;
     }
 
+    /**
+     * 校验与清洗目标表单；不满足约束时阻止后续处理。
+     *
+     * @param listConfig 列表配置内容，决定后续与清洗目标表单的处理规则
+     * @param action 动作标识，决定后续与清洗目标表单采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateAndSanitizeTargetForm(
             EntityListConfig listConfig,
             EntityListAction action) {
@@ -782,12 +847,27 @@ public class EntityListRelationalConfigService {
                 "列表按钮参数"));
     }
 
+    /**
+     * 校验并获取实体列表{@code relational}配置列表；不满足约束时阻止后续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于校验并获取实体列表{@code relational}配置列表时定位或关联目标
+     * @return 校验并获取后的实体列表{@code relational}配置列表结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig requireList(String listConfigId) {
         EntityListConfig config = configMapper.selectById(listConfigId);
         if (config == null) throw new IllegalArgumentException("列表配置不存在");
         return config;
     }
 
+    /**
+     * 校验并获取动作；不满足约束时阻止后续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于校验并获取动作时定位或关联目标
+     * @param actionId 动作ID，后续用于校验并获取动作时定位或关联目标
+     * @return 校验并获取后的动作结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListAction requireAction(String listConfigId, String actionId) {
         EntityListAction action = actionMapper.selectById(actionId);
         if (action == null || !listConfigId.equals(action.getListConfigId())
@@ -797,12 +877,25 @@ public class EntityListRelationalConfigService {
         return action;
     }
 
+    /**
+     * 校验并获取修订版本；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验并获取修订版本时使用
+     * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+     */
     private void requireRevision(Integer expected, EntityListAction current) {
         if (expected == null || !expected.equals(current.getRevision())) {
             throw new RevisionConflictException("列表按钮已被其他人修改", current);
         }
     }
 
+    /**
+     * 处理下一步动作顺序，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理下一步动作顺序时定位或关联目标
+     * @param position 位置，作为 {@code actionMapper.findByListAndPosition} 的输入影响后续处理
+     * @return 处理后的下一步动作顺序结果，供调用方继续处理
+     */
     private long nextActionOrder(String listConfigId, String position) {
         List<EntityListAction> actions =
                 actionMapper.findByListAndPosition(listConfigId, position);
@@ -812,6 +905,16 @@ public class EntityListRelationalConfigService {
                         + EntityFormNodeService.ORDER_STEP;
     }
 
+    /**
+     * 处理动作{@code boundary}，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理动作{@code boundary}时定位或关联目标
+     * @param position 位置，供本方法处理动作{@code boundary}时使用
+     * @param actionId 动作ID，后续用于处理动作{@code boundary}时定位或关联目标
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的动作{@code boundary}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private long actionBoundary(
             String listConfigId,
             String position,
@@ -825,6 +928,13 @@ public class EntityListRelationalConfigService {
         return action.getOrderKey();
     }
 
+    /**
+     * 生成规范化位置文本，供后续匹配或展示。
+     *
+     * @param position 位置，供本方法处理规范化位置时使用
+     * @return 处理后的规范化位置文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizedPosition(String position) {
         String value = StringUtils.hasText(position)
                 ? position.trim().toUpperCase()
@@ -835,6 +945,11 @@ public class EntityListRelationalConfigService {
         return value;
     }
 
+    /**
+     * 处理更新访问时间列表，并将结果传给后续步骤。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理更新访问时间列表时定位或关联目标
+     */
     private void touchList(String listConfigId) {
         UpdateWrapper<EntityListConfig> wrapper = new UpdateWrapper<>();
         wrapper.eq("id", listConfigId)
@@ -844,6 +959,12 @@ public class EntityListRelationalConfigService {
         configMapper.update(null, wrapper);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value, null);
@@ -854,12 +975,26 @@ public class EntityListRelationalConfigService {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value, String fallback) {
         return value == null || !StringUtils.hasText(String.valueOf(value))
                 ? fallback
                 : String.valueOf(value).trim();
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private int integer(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -871,6 +1006,13 @@ public class EntityListRelationalConfigService {
         }
     }
 
+    /**
+     * 处理可空整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理可空整数的原始输入，结果供调用方继续使用
+     * @return 处理后的可空整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer nullableInteger(Object value) {
         if (value == null) {
             return null;
@@ -885,6 +1027,13 @@ public class EntityListRelationalConfigService {
         }
     }
 
+    /**
+     * 处理{@code long}值，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code long}值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的{@code long}值结果，供调用方继续处理
+     */
     private long longValue(Object value, long fallback) {
         if (value instanceof Number number) {
             return number.longValue();
@@ -896,7 +1045,14 @@ public class EntityListRelationalConfigService {
         }
     }
 
-    /** 历史发布按钮缺少 ID 时，按逻辑身份生成可重复的物理主键。 */
+    /**
+     * 历史发布按钮缺少 ID 时，按逻辑身份生成可重复的物理主键。
+     *
+     * @param listConfigId 列表配置ID，后续用于处理{@code deterministic}发布版本动作ID时定位或关联目标
+     * @param position 位置，供本方法处理{@code deterministic}发布版本动作ID时使用
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code deterministic}发布版本动作ID文本，供调用方比较或展示
+     */
     private static String deterministicReleaseActionId(
             String listConfigId,
             String position,
@@ -911,18 +1067,39 @@ public class EntityListRelationalConfigService {
                 .replace("-", "");
     }
 
+    /**
+     * 生成兜底按钮键文本，供后续匹配或展示。
+     *
+     * @param position 位置，供本方法处理兜底按钮键时使用
+     * @param index 索引，供本方法处理兜底按钮键时使用
+     * @return 处理后的兜底按钮键文本，供调用方比较或展示
+     */
     private static String fallbackButtonKey(
             String position,
             int index) {
         return position.toLowerCase(Locale.ROOT) + "_" + index;
     }
 
+    /**
+     * 生成发布版本文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理发布版本文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的发布版本文本文本，供调用方比较或展示
+     */
     private static String releaseText(Object value, String fallback) {
         return value == null || !StringUtils.hasText(String.valueOf(value))
                 ? fallback
                 : String.valueOf(value).trim();
     }
 
+    /**
+     * 处理发布版本整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理发布版本整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的发布版本整数结果，供调用方继续处理
+     */
     private static int releaseInteger(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -936,6 +1113,13 @@ public class EntityListRelationalConfigService {
         }
     }
 
+    /**
+     * 处理发布版本{@code long}，并将结果传给后续步骤。
+     *
+     * @param value 待处理发布版本{@code long}的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的发布版本{@code long}结果，供调用方继续处理
+     */
     private static long releaseLong(Object value, long fallback) {
         if (value instanceof Number number) {
             return number.longValue();
@@ -949,6 +1133,13 @@ public class EntityListRelationalConfigService {
         }
     }
 
+    /**
+     * 生成JSON文档文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON文档的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理JSON文档时匹配或展示
+     * @return 处理后的JSON文档文本，供调用方比较或展示
+     */
     private String jsonDocument(Object value, String label) {
         if (value == null) {
             return null;
@@ -961,6 +1152,12 @@ public class EntityListRelationalConfigService {
         return codec.canonicalize(codec.write(value, label), label);
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

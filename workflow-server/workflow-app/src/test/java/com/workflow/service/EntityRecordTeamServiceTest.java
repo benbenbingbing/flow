@@ -1,6 +1,6 @@
 package com.workflow.service;
 
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;

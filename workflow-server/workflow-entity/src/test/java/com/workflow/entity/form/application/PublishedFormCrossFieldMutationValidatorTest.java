@@ -1,9 +1,9 @@
 package com.workflow.entity.form.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.FormCrossFieldValidationException;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.application.EntityDataDynamicService;

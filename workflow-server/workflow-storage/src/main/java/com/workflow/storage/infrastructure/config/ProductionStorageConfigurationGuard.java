@@ -10,6 +10,12 @@ import org.springframework.stereotype.Component;
 @Profile("production")
 public class ProductionStorageConfigurationGuard {
 
+    /**
+     * 初始化{@code production}存储配置保护，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public ProductionStorageConfigurationGuard(
             FileStorageProperties properties) {
         if (!"s3".equalsIgnoreCase(properties.getType())

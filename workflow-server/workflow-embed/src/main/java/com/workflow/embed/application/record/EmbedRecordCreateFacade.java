@@ -42,6 +42,16 @@ public class EmbedRecordCreateFacade {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    /**
+     * 初始化嵌入式记录创建{@code facade}，保存构造参数供后续方法使用。
+     *
+     * @param authorizationService 授权服务，保存在对象中供后续校验、查询或展示
+     * @param hasher {@code hasher}，保存在对象中供后续校验、查询或展示
+     * @param idempotencyPort 幂等端口，保存在对象中供后续校验、查询或展示
+     * @param receiptPort 回执端口，保存在对象中供后续校验、查询或展示
+     * @param transactionService 事务服务，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EmbedRecordCreateFacade(
             EmbedNativeRecordCreateAuthorizationService authorizationService,
@@ -55,6 +65,17 @@ public class EmbedRecordCreateFacade {
                 transactionService, objectMapper, Clock.systemUTC());
     }
 
+    /**
+     * 初始化嵌入式记录创建{@code facade}，保存构造参数供后续方法使用。
+     *
+     * @param authorizationService 授权服务依赖，保存到当前对象供后续业务方法调用
+     * @param hasher {@code hasher}依赖，保存到当前对象供后续业务方法调用
+     * @param idempotencyPort 幂等端口依赖，保存到当前对象供后续业务方法调用
+     * @param receiptPort 回执端口依赖，保存到当前对象供后续业务方法调用
+     * @param transactionService 事务服务依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     EmbedRecordCreateFacade(
             EmbedNativeRecordCreateAuthorizationService authorizationService,
             EmbedCanonicalRequestHasher hasher,
@@ -74,6 +95,11 @@ public class EmbedRecordCreateFacade {
 
     /**
      * 当前授权先于 Claim/Replay 校验；权限或 Release 已变化时不会返回历史业务字段。
+     *
+     * @param request 本次请求，后续经校验后用于创建嵌入式记录创建{@code facade}
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param traceId 追踪ID，后续用于创建嵌入式记录创建{@code facade}时定位或关联目标
+     * @return 创建后的嵌入式记录创建{@code facade}结果，供调用方继续处理
      */
     public CreateOutcome create(
             EmbedRecordCreateRequest request,
@@ -124,12 +150,25 @@ public class EmbedRecordCreateFacade {
                 replay);
     }
 
-    /** 创建结果固定为 ID-only；记录详情继续由 Flow 原生页面按当前 DataScope 读取。 */
+    /**
+     * 创建结果固定为 ID-only；记录详情继续由 Flow 原生页面按当前 DataScope 读取。
+     *
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的ID仅记录结果，供调用方继续处理
+     */
     private static EmbedRecordCreateViews.CreatedRecord idOnlyRecord(
             String recordId) {
         return new EmbedRecordCreateViews.CreatedRecord(recordId, null);
     }
 
+    /**
+     * 校验并获取重放回执；不满足约束时阻止后续处理。
+     *
+     * @param claim 认领，作为 {@code readObject} 的输入影响后续处理
+     * @param authorization 授权，供本方法校验并获取重放回执时使用
+     * @param actorScopeDigest 操作人作用域摘要，供本方法校验并获取重放回执时使用
+     * @return 校验并获取后的重放回执结果，供调用方继续处理
+     */
     private EmbedOperationReceipt requireReplayReceipt(
             EmbedIdempotencyClaim claim,
             Authorization authorization,
@@ -181,6 +220,13 @@ public class EmbedRecordCreateFacade {
         return receipt;
     }
 
+    /**
+     * 整理规范请求体数据，供调用方遍历或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于处理规范请求体
+     * @param authorization 授权，作为 {@code body.put} 的输入影响后续处理
+     * @return 规范请求体键值结果，供调用方继续处理
+     */
     private Map<String, Object> canonicalBody(
             EmbedRecordCreateRequest request,
             Authorization authorization) {
@@ -200,6 +246,9 @@ public class EmbedRecordCreateFacade {
 
     /**
      * 幂等目标只含稳定业务坐标；Release/Session 变化后仍可在当前授权下重放首次结果。
+     *
+     * @param authorization 授权，作为 {@code target.put} 的输入影响后续处理
+     * @return 规范目标键值结果，供调用方继续处理
      */
     private static Map<String, Object> canonicalTarget(
             Authorization authorization) {
@@ -209,6 +258,12 @@ public class EmbedRecordCreateFacade {
         return target;
     }
 
+    /**
+     * 标记可重试；后续读取或执行将使用更新后的状态。
+     *
+     * @param claim 认领，作为 {@code idempotencyPort.failRetryable} 的输入影响后续处理
+     * @param original 原始，供本方法标记可重试时使用
+     */
     private void markRetryable(
             EmbedIdempotencyClaim claim,
             RuntimeException original) {
@@ -219,6 +274,12 @@ public class EmbedRecordCreateFacade {
         }
     }
 
+    /**
+     * 构造外部失败异常，供调用方区分失败原因。
+     *
+     * @param error 错误，作为 {@code EmbedException} 的输入影响后续处理
+     * @return 处理后的外部失败结果，供调用方继续处理
+     */
     private static RuntimeException externalFailure(RuntimeException error) {
         if (error instanceof EmbedException embed) {
             return embed;
@@ -257,6 +318,12 @@ public class EmbedRecordCreateFacade {
                 "Embed runtime is temporarily unavailable", null, error);
     }
 
+    /**
+     * 读取对象；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待读取对象的原始输入，结果供调用方继续使用
+     * @return 读取后的对象结果，供调用方继续处理
+     */
     private JsonNode readObject(String value) {
         try {
             JsonNode result = objectMapper.readTree(value);
@@ -271,6 +338,12 @@ public class EmbedRecordCreateFacade {
         }
     }
 
+    /**
+     * 校验请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验请求
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     */
     private static void validateRequest(
             EmbedRecordCreateRequest request,
             String idempotencyKey) {
@@ -286,12 +359,23 @@ public class EmbedRecordCreateFacade {
         }
     }
 
+    /**
+     * 构造{@code corrupted}重放异常，供调用方区分失败原因。
+     *
+     * @return 处理后的{@code corrupted}重放结果，供调用方继续处理
+     */
     private static EmbedException corruptedReplay() {
         return new EmbedException(
                 503, EmbedErrorCode.EMBED_RUNTIME_UNAVAILABLE,
                 "Embed runtime is temporarily unavailable");
     }
 
+    /**
+     * 封装创建结果的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param result 结果，保存在对象中供后续校验、查询或展示
+     * @param replay 重放，保存在对象中供后续校验、查询或展示
+     */
     public record CreateOutcome(
             EmbedRecordCreateViews.CreateResult result,
             boolean replay) {

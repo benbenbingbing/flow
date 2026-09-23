@@ -1,6 +1,6 @@
 package com.workflow.admin.security.context;
 
-import com.workflow.contracts.identity.CurrentActor;
+import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.identity.port.CurrentActorPort;
 import org.springframework.stereotype.Component;
 
@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 @Component("userContextCurrentActorProvider")
 public class UserContextCurrentActorProvider implements CurrentActorPort {
 
+    /**
+     * 处理当前，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前结果，供调用方继续处理
+     */
     @Override
     public CurrentActor current() {
         return new CurrentActor(UserContext.getUserId(), UserContext.getUsername());

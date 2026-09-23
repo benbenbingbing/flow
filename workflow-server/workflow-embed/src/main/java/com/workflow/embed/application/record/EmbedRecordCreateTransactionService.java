@@ -34,6 +34,15 @@ public class EmbedRecordCreateTransactionService {
     private final ObjectMapper objectMapper;
     private final EmbedRuntimeAudit runtimeAudit;
 
+    /**
+     * 初始化嵌入式记录创建事务服务，保存构造参数供后续方法使用。
+     *
+     * @param recordCreatePort 记录创建端口依赖，保存到当前对象供后续业务方法调用
+     * @param receiptPort 回执端口依赖，保存到当前对象供后续业务方法调用
+     * @param idempotencyPort 幂等端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param runtimeAudit 运行时审计依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedRecordCreateTransactionService(
             EmbedRecordCreatePort recordCreatePort,
             EmbedOperationReceiptPort receiptPort,
@@ -49,6 +58,13 @@ public class EmbedRecordCreateTransactionService {
 
     /**
      * 任一步骤失败都会回滚实体数据、实体自身回执、Embed 回执和幂等成功状态。
+     *
+     * @param claim 认领，作为 {@code EmbedOperationReceipt} 的输入影响后续处理
+     * @param authorization 授权，作为 {@code runtimeAudit.recordCreatedRequired} 的输入影响后续处理
+     * @param actorScopeDigest 操作人作用域摘要，供本方法创建嵌入式记录创建事务时使用
+     * @param now 当前时间，作为 {@code idempotencyPort.completeInBusinessTransaction} 的输入影响后续处理
+     * @param traceId 追踪ID，后续用于创建嵌入式记录创建事务时定位或关联目标
+     * @return 创建后的嵌入式记录创建事务结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public BusinessResult create(
@@ -96,11 +112,25 @@ public class EmbedRecordCreateTransactionService {
         return new BusinessResult(receipt, created);
     }
 
+    /**
+     * 处理{@code elapsed}{@code millis}，并将结果传给后续步骤。
+     *
+     * @param startedNanos 已启动{@code nanos}，供本方法处理{@code elapsed}{@code millis}时使用
+     * @return 处理后的{@code elapsed}{@code millis}结果，供调用方继续处理
+     */
     private static long elapsedMillis(long startedNanos) {
         return Math.max(0L, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(
                 System.nanoTime() - startedNanos));
     }
 
+    /**
+     * 生成JSON文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String json(Object value) {
         try {
             String result = objectMapper.writeValueAsString(value);
@@ -115,6 +145,12 @@ public class EmbedRecordCreateTransactionService {
         }
     }
 
+    /**
+     * 封装业务的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param receipt 回执，保存在对象中供后续校验、查询或展示
+     * @param record 记录，保存在对象中供后续校验、查询或展示
+     */
     public record BusinessResult(
             EmbedOperationReceipt receipt,
             CreatedRecord record) {

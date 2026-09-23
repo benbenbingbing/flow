@@ -9,7 +9,7 @@ import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.Exter
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemParameterRecord;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

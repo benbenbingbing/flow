@@ -9,13 +9,13 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

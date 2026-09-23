@@ -33,6 +33,11 @@ import java.sql.SQLException;
 public class GlobalExceptionHandler {
     private final DatabaseExceptionClassifier databaseErrors;
 
+    /**
+     * 初始化全局异常处理器，保存构造参数供后续方法使用。
+     *
+     * @param databaseErrors 数据库{@code errors}依赖，保存到当前对象供后续业务方法调用
+     */
     public GlobalExceptionHandler(DatabaseExceptionClassifier databaseErrors) {
         this.databaseErrors = databaseErrors;
     }
@@ -54,6 +59,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(400, "请求体格式不正确"));
     }
 
+    /**
+     * 处理频率上限，并将结果传给后续步骤。
+     *
+     * @param exception 异常，供本方法处理频率上限时使用
+     * @return 处理后的频率上限结果，供调用方继续处理
+     */
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ApiResponse<Void>> handleRateLimit(
             RateLimitExceededException exception) {
@@ -81,7 +92,12 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(409, e.getErrorCode(), e.getMessage()));
     }
 
-    /** 跨字段错误保留字段与规则标识，前端可定位原表单并保留用户输入。 */
+    /**
+     * 跨字段错误保留字段与规则标识，前端可定位原表单并保留用户输入。
+     *
+     * @param e {@code e}，作为 {@code ApiResponse.error} 的输入影响后续处理
+     * @return 处理后的表单跨字段校验异常结果，供调用方继续处理
+     */
     @ExceptionHandler(FormCrossFieldValidationException.class)
     public ResponseEntity<ApiResponse<Object>> handleFormCrossFieldValidationException(FormCrossFieldValidationException e) {
         ApiResponse<Object> response = ApiResponse.error(409, e.getErrorCode(), e.getMessage());
@@ -168,13 +184,24 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(404, "资源不存在"));
     }
 
-    /** 所有数据库访问错误使用统一分类；不向客户端拼接 SQL、约束名或驱动原文。 */
+    /**
+     * 所有数据库访问错误使用统一分类；不向客户端拼接 SQL、约束名或驱动原文。
+     *
+     * @param error 错误，作为 {@code databaseFailure} 的输入影响后续处理
+     * @return 处理后的数据访问异常结果，供调用方继续处理
+     */
     @ExceptionHandler(DataAccessException.class)
     public ApiResponse<Void> handleDataAccessException(DataAccessException error) {
         log.error("数据库访问异常: ", error);
         return databaseFailure(error);
     }
 
+    /**
+     * 处理数据库失败，并将结果传给后续步骤。
+     *
+     * @param error 错误，供本方法处理数据库失败时使用
+     * @return 处理后的数据库失败结果，供调用方继续处理
+     */
     private ApiResponse<Void> databaseFailure(Throwable error) {
         String message = switch (databaseErrors.classify(error)) {
             case UNIQUE -> "数据重复，请检查唯一字段后重试";
@@ -192,6 +219,9 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理业务异常（RuntimeException）
+     *
+     * @param e {@code e}，作为 {@code ApiResponse.error} 的输入影响后续处理
+     * @return 处理后的运行时异常结果，供调用方继续处理
      */
     @ExceptionHandler(RuntimeException.class)
     public ApiResponse<Void> handleRuntimeException(RuntimeException e) {
@@ -201,6 +231,9 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理数据库异常
+     *
+     * @param e {@code e}，作为 {@code databaseFailure} 的输入影响后续处理
+     * @return 处理后的SQL异常结果，供调用方继续处理
      */
     @ExceptionHandler(SQLException.class)
     public ApiResponse<Void> handleSQLException(SQLException e) {
@@ -214,6 +247,9 @@ public class GlobalExceptionHandler {
      * <p>典型场景是 Prometheus 或浏览器在服务端写出响应时取消请求。
      * 这类异常不是服务端业务错误，若继续走通用异常处理会在已设置
      * OpenMetrics 等 Content-Type 的响应上写入 JSON，造成额外 ERROR 噪声。</p>
+     *
+     * @param e {@code e}，供本方法处理{@code async}请求非{@code usable}异常时使用
+     * @return 处理后的{@code async}请求非{@code usable}异常结果，供调用方继续处理
      */
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public ResponseEntity<Void> handleAsyncRequestNotUsableException(
@@ -224,6 +260,9 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理其他所有异常
+     *
+     * @param e {@code e}，供本方法处理异常时使用
+     * @return 处理后的异常结果，供调用方继续处理
      */
     @ExceptionHandler(Exception.class)
     public ApiResponse<Void> handleException(Exception e) {

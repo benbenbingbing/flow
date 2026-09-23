@@ -33,8 +33,8 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTa
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
-import com.workflow.contracts.ui.UiInvocationContext;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -1137,7 +1137,7 @@ class UiDataSourceExecutionAccessServiceTest {
                         form, "release-1", 3, true,
                         hotfix ? "hotfix-release-1" : "release-1", effectiveHash,
                         hotfix ? "hotfix-target-1" : null,
-                        com.workflow.contracts.ui.runtime.UiRuntimePurpose.NEW_INSTANCE));
+                        com.workflow.contracts.entity.ui.model.UiRuntimePurpose.NEW_INSTANCE));
 
         UiExtensionDefinition extension = definition("REGISTERED_PROVIDER", "GLOBAL", null);
         extension.setExtensionType("INTERFACE");

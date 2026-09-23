@@ -1,6 +1,6 @@
 package com.workflow.migration.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -9,14 +9,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
@@ -103,9 +103,12 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * 负责配置迁移资产的业务处理；协调校验、状态变化及后续结果传递。
+ */
 @Service
 @RequiredArgsConstructor
-public class ConfigMigrationAssetService implements MigrationAssetHandler {
+public class ConfigMigrationAssetService implements MigrationAssetPort {
     public static final String ENTITY = "ENTITY";
     public static final String PROCESS = "PROCESS";
     public static final String DICTIONARY = "DICTIONARY";
@@ -169,6 +172,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     private final DatabaseQueryDialect queryDialect;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
 
+    /**
+     * 查询配置迁移资产；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code eq} 的输入影响后续处理
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<ConfigMigrationAsset> query(ConfigMigrationAssetQuery query) {
         LambdaQueryWrapper<ConfigMigrationAsset> wrapper = new LambdaQueryWrapper<ConfigMigrationAsset>()
@@ -187,6 +196,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return assetMapper.selectList(wrapper);
     }
 
+    /**
+     * 读取必填；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的配置迁移资产结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset getRequired(String id) {
         ConfigMigrationAsset asset = assetMapper.selectById(id);
@@ -196,7 +212,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return asset;
     }
 
-    /** 读取未删除的最新发布资产；同版本按主键打破平局，由 MyBatis-Plus 限制首行且不查询总数。 */
+    /**
+     * 读取未删除的最新发布资产；同版本按主键打破平局，由 MyBatis-Plus 限制首行且不查询总数。
+     *
+     * @param assetType 资产类型标识，决定后续最新采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的配置迁移资产结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public ConfigMigrationAsset findLatest(String assetType, String businessKey) {
         return assetMapper.selectPage(new Page<ConfigMigrationAsset>(1, 1, false),
@@ -207,6 +229,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 .getRecords().stream().findFirst().orElse(null);
     }
 
+    /**
+     * 更新{@code mark}；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于更新{@code mark}
+     * @return 更新后的{@code mark}结果，供调用方继续处理
+     */
     @Transactional
     @SystemAudit(module = AuditModule.MIGRATION, action = AuditAction.CONFIGURE, operation = "标记配置迁移资产", risk = AuditRiskLevel.HIGH, targetType = "CONFIG_MIGRATION_ASSET", targetIdArg = 0, captureArguments = true, captureResult = true)
     public ConfigMigrationAsset updateMark(String id, ConfigMigrationMarkRequest request) {
@@ -222,6 +251,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return asset;
     }
 
+    /**
+     * 记录实体；供后续追溯或审计使用。
+     *
+     * @param entity 实体，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param history 历史，作为 {@code Math.max} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于记录实体
+     * @return 记录后的实体结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional
     public ConfigMigrationAsset recordEntity(EntityDefinition entity,
             EntityPublishHistory history,
@@ -251,6 +289,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 firstNonBlank(history.getPublishedByName(), history.getPublishedBy()));
     }
 
+    /**
+     * 记录实体；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录实体时定位或关联目标
+     * @param publishHistoryId 发布历史ID，后续用于记录实体时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录实体
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     @Transactional
     public void recordEntity(String entityId,
@@ -264,6 +310,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         recordEntity(entity, history, request);
     }
 
+    /**
+     * 记录实体界面；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录实体界面时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于记录实体界面时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录实体界面
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Override
     @Transactional
     public void recordEntityUi(
@@ -312,6 +367,9 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
      *
      * <p>字典没有独立发布动作，因此在实体依赖扩包时惰性登记；内容未变化时复用
      * 最新资产，避免每次导出产生无意义版本。</p>
+     *
+     * @param dictCode 字典编码，后续用于确保{@code dictionary}资产时定位或关联目标
+     * @return 确保后的{@code dictionary}资产结果，供调用方继续处理
      */
     @Transactional
     public ConfigMigrationAsset ensureDictionaryAsset(String dictCode) {
@@ -352,6 +410,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 null);
     }
 
+    /**
+     * 记录流程；供后续追溯或审计使用。
+     *
+     * @param config 配置内容，决定后续流程的处理规则
+     * @param history 历史，作为 {@code buildProcessSnapshot} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于记录流程
+     * @return 记录后的流程结果，供调用方继续处理
+     */
     @Transactional
     public ConfigMigrationAsset recordProcess(ProcessDefinitionConfig config,
             ProcessVersionHistory history,
@@ -373,6 +439,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 history.getPublishedBy());
     }
 
+    /**
+     * 记录流程；供后续追溯或审计使用。
+     *
+     * @param processId 流程ID，后续用于记录流程时定位或关联目标
+     * @param versionHistoryId 版本历史ID，后续用于记录流程时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录流程
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     @Transactional
     public void recordProcess(String processId,
@@ -386,6 +460,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         recordProcess(process, history, request);
     }
 
+    /**
+     * 记录系统实体界面；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录系统实体界面时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于记录系统实体界面时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录系统实体界面
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Override
     @Transactional
     public void recordSystemEntityUi(
@@ -432,6 +515,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 release.getPublishedBy());
     }
 
+    /**
+     * 记录工作日历；供后续追溯或审计使用。
+     *
+     * @param calendarId 日历ID，后续用于记录工作日历时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录工作日历
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     @Transactional
     public void recordWorkCalendar(
@@ -467,6 +557,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 calendar.getUpdatedBy());
     }
 
+    /**
+     * 记录任务SLA策略；供后续追溯或审计使用。
+     *
+     * @param policyId 策略ID，后续用于记录任务SLA策略时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录任务SLA策略
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     @Transactional
     public void recordTaskSlaPolicy(
@@ -505,6 +602,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 policy.getUpdatedBy());
     }
 
+    /**
+     * 构建工作日历配置；结果供后续流程传递或持久化。
+     *
+     * @param calendar 日历，作为 {@code findByCalendarId} 的输入影响后续处理
+     * @return 工作日历配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildWorkCalendarConfiguration(
             WorkCalendar calendar) {
         List<WorkCalendarSaveRequest.PeriodRequest> periods = workCalendarPeriodMapper
@@ -556,6 +659,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return portableMap(configuration);
     }
 
+    /**
+     * 构建任务SLA策略配置；结果供后续流程传递或持久化。
+     *
+     * @param policy 策略内容，决定后续任务SLA策略配置的处理规则
+     * @param dependencies 依赖集合，供本方法构建任务SLA策略配置时使用
+     * @return 任务SLA策略配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildTaskSlaPolicyConfiguration(
             TaskSlaPolicy policy,
             List<Map<String, Object>> dependencies) {
@@ -594,6 +704,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 steps));
     }
 
+    /**
+     * 生成可移植SLA用户引用文本，供后续匹配或展示。
+     *
+     * @param document 文档，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @param dependencies 依赖集合，作为 {@code addDependency} 的输入影响后续处理
+     * @param usage 使用场景，供本方法处理可移植SLA用户引用时使用
+     * @return 处理后的可移植SLA用户引用文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String portableSlaUserReferences(
             String document,
             List<Map<String, Object>> dependencies,
@@ -623,6 +742,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 生成可移植用户引用文本，供后续匹配或展示。
+     *
+     * @param value 待处理可移植用户引用的原始输入，结果供调用方继续使用
+     * @return 处理后的可移植用户引用文本，供调用方比较或展示
+     */
     private String portableUserReference(String value) {
         if (!StringUtils.hasText(value)
                 || value.startsWith("wf-user://")) {
@@ -632,6 +757,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return "wf-user://" + portableAssignmentKey("USER", value);
     }
 
+    /**
+     * 处理重写SLA用户引用，并将结果传给后续步骤。
+     *
+     * @param node 节点，供本方法处理重写SLA用户引用时使用
+     * @param converter {@code converter}，作为 {@code objectNode.put} 的输入影响后续处理
+     */
     private void rewriteSlaUserReferences(
             JsonNode node,
             java.util.function.UnaryOperator<String> converter) {
@@ -668,6 +799,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 生成可移植组织键文本，供后续匹配或展示。
+     *
+     * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的可移植组织键文本，供调用方比较或展示
+     */
     private String portableOrganizationKey(String scopeKey) {
         if (!StringUtils.hasText(scopeKey)) {
             return scopeKey;
@@ -679,6 +816,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         : scopeKey;
     }
 
+    /**
+     * 整理工作日历依赖集合数据，供调用方遍历或继续处理。
+     *
+     * @param configuration 配置内容，决定后续工作日历依赖集合的处理规则
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> workCalendarDependencies(
             Map<String, Object> configuration) {
         List<Map<String, Object>> dependencies = new ArrayList<>();
@@ -703,6 +846,9 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
      * 快照只包含目标系统实体标识、实际使用的字段编码、表单、列表、
      * 只读数据源及UI扩展，不包含系统表结构、系统数据、权限目录和菜单。
      * </p>
+     *
+     * @param entity 实体，作为 {@code baseSnapshot} 的输入影响后续处理
+     * @return 系统实体界面快照键值结果，供调用方继续处理
      */
     private Map<String, Object> buildSystemEntityUiSnapshot(
             EntityDefinition entity) {
@@ -908,6 +1054,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return snapshot;
     }
 
+    /**
+     * 判断是否系统字段可读；判断结果决定调用方的后续分支。
+     *
+     * @param entity 实体，作为 {@code systemEntityFieldPolicy.isRuntimeReadable} 的输入影响后续处理
+     * @param fieldsByCode 字段编码，后续用于判断是否系统字段可读时定位或关联目标
+     * @param fieldCode 字段编码，后续用于判断是否系统字段可读时定位或关联目标
+     * @return 系统字段可读条件成立时为 true，否则为 false
+     */
     private boolean isSystemFieldReadable(
             EntityDefinition entity,
             Map<String, EntityField> fieldsByCode,
@@ -918,6 +1072,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                         entity, field);
     }
 
+    /**
+     * 生成系统节点字段编码文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的系统节点字段编码文本，供调用方比较或展示
+     */
     private String systemNodeFieldCode(
             Map<String, Object> node) {
         if ("ENTITY_FIELD".equalsIgnoreCase(
@@ -931,6 +1091,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 : null;
     }
 
+    /**
+     * 构建实体快照；结果供后续流程传递或持久化。
+     *
+     * @param entity 实体，作为 {@code baseSnapshot} 的输入影响后续处理
+     * @return 实体快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildEntitySnapshot(EntityDefinition entity) {
         Map<String, Object> snapshot = baseSnapshot(ENTITY, entity.getEntityCode(), entity.getEntityName());
         Map<String, Object> definition = new LinkedHashMap<>();
@@ -1179,6 +1345,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return snapshot;
     }
 
+    /**
+     * 构建{@code dictionary}快照；结果供后续流程传递或持久化。
+     *
+     * @param dictionary {@code dictionary}，作为 {@code baseSnapshot} 的输入影响后续处理
+     * @return {@code dictionary}快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildDictionarySnapshot(
             SysDict dictionary) {
         Map<String, Object> snapshot = baseSnapshot(
@@ -1224,6 +1396,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return snapshot;
     }
 
+    /**
+     * 判断相同快照条件是否成立，供调用方选择后续分支。
+     *
+     * @param latest 最新，供本方法处理相同快照时使用
+     * @param snapshot 快照，供本方法处理相同快照时使用
+     * @return 相同快照条件成立时为 true，否则为 false
+     */
     private boolean sameSnapshot(
             ConfigMigrationAsset latest,
             Map<String, Object> snapshot) {
@@ -1240,6 +1419,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
      * <p>数据库 ID、releaseId 和修订号不会进入迁移包；目标内容改用
      * entityCode + contentType + contentKey，表单节点挂载点改用 nodeKey，
      * 接口扩展改用 extensionCode。导入端会根据这些业务编码重新解析目标环境 ID。</p>
+     *
+     * @param releaseSnapshot 发布版本快照，供本方法处理可移植视图{@code compositions}时使用
+     * @param nodeKeysById 节点键集合ID，后续用于处理可移植视图{@code compositions}时定位或关联目标
+     * @param sourceEntityCode 来源实体编码，后续用于处理可移植视图{@code compositions}时定位或关联目标
+     * @param extensionReferences 扩展引用，供本方法处理可移植视图{@code compositions}时使用
+     * @param dataSourceIds 数据来源ID 集合，供本方法处理可移植视图{@code compositions}时使用
+     * @return 配置迁移资产集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> portableViewCompositions(
             Map<String, Object> releaseSnapshot,
@@ -1400,6 +1586,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return List.copyOf(result);
     }
 
+    /**
+     * 整理可移植组合目标数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理可移植组合目标的原始输入，结果供调用方继续使用
+     * @return 可移植组合目标键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> portableCompositionTarget(
             Map<String, Object> source) {
         String contentType = text(source.get("contentType"));
@@ -1457,6 +1650,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return portable;
     }
 
+    /**
+     * 生成可移植锚点节点键文本，供后续匹配或展示。
+     *
+     * @param anchorKey 锚点键，后续用于授权校验、关联或幂等去重
+     * @param nodeKeysById 节点键集合ID，后续用于处理可移植锚点节点键时定位或关联目标
+     * @return 处理后的可移植锚点节点键文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     static String portableAnchorNodeKey(
             String anchorKey,
             Map<String, String> nodeKeysById) {
@@ -1479,6 +1680,11 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
 
     /**
      * 优先使用发布版本中的本地绑定；兼容旧快照时回退到当前绑定草稿。
+     *
+     * @param releaseSnapshot 发布版本快照，供本方法处理{@code released}归属方绑定集合时使用
+     * @param ownerType 归属方类型标识，决定后续{@code released}归属方绑定集合采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理{@code released}归属方绑定集合时定位或关联目标
+     * @return 配置迁移资产集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> releasedOwnerBindings(
             Map<String, Object> releaseSnapshot,
@@ -1499,6 +1705,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 .toList());
     }
 
+    /**
+     * 整理可移植事件绑定集合数据，供调用方遍历或继续处理。
+     *
+     * @param bindings 绑定集合，供本方法处理可移植事件绑定集合时使用
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> portableEventBindings(
             Collection<Map<String, Object>> bindings) {
         return bindings.stream()
@@ -1512,6 +1724,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 .toList();
     }
 
+    /**
+     * 整理扩展{@code snapshots}数据，供调用方遍历或继续处理。
+     *
+     * @param references 引用，供本方法处理扩展{@code snapshots}时使用
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<Map<String, Object>> extensionSnapshots(
             Set<String> references) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -1541,10 +1760,24 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 生成扩展引用文本，供后续匹配或展示。
+     *
+     * @param type 类型标识，决定后续扩展引用采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param version 版本，供本方法处理扩展引用时使用
+     * @return 处理后的扩展引用文本，供调用方比较或展示
+     */
     private String extensionReference(String type, String key, Integer version) {
         return type + "|" + key + "|" + version;
     }
 
+    /**
+     * 生成节点扩展类型文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
+     * @return 处理后的节点扩展类型文本，供调用方比较或展示
+     */
     private String nodeExtensionType(Map<String, Object> node) {
         Map<String, Object> props = mapValue(parseJson(
                 text(node.get("propsDocument")),
@@ -1554,6 +1787,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 props);
     }
 
+    /**
+     * 生成节点扩展类型文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
+     * @return 处理后的节点扩展类型文本，供调用方比较或展示
+     */
     private String nodeExtensionType(EntityFormNode node) {
         Map<String, Object> props = mapValue(parseJson(
                 node == null ? null : node.getPropsDocument(),
@@ -1563,6 +1802,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 props);
     }
 
+    /**
+     * 整理接口扩展编码集合ID数据，供调用方遍历或继续处理。
+     *
+     * @param ids ID 集合，供本方法处理接口扩展编码集合ID时使用
+     * @return 接口扩展编码集合ID键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, String> interfaceExtensionCodesById(Set<String> ids) {
         Map<String, String> result = new LinkedHashMap<>();
         for (String id : ids) {
@@ -1580,6 +1826,15 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 整理接口扩展{@code snapshots}数据，供调用方遍历或继续处理。
+     *
+     * @param ids ID 集合，供本方法处理接口扩展{@code snapshots}时使用
+     * @param entityId 实体ID，后续用于处理接口扩展{@code snapshots}时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<Map<String, Object>> interfaceExtensionSnapshots(
             Set<String> ids,
             String entityId,
@@ -1639,6 +1894,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 收集接口扩展ID 集合；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集接口扩展ID 集合的原始输入，结果供调用方继续使用
+     * @param result 结果，作为 {@code collection.forEach} 的输入影响后续处理
+     */
     private void collectInterfaceExtensionIds(
             Object value,
             Set<String> result) {
@@ -1663,6 +1924,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 处理重写接口引用，并将结果传给后续步骤。
+     *
+     * @param value 待处理重写接口引用的原始输入，结果供调用方继续使用
+     * @param codesById 编码集合ID，后续用于处理重写接口引用时定位或关联目标
+     * @return 处理后的重写接口引用结果，供调用方继续处理
+     */
     private Object rewriteInterfaceReferences(
             Object value,
             Map<String, String> codesById) {
@@ -1703,6 +1971,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return value;
     }
 
+    /**
+     * 判断是否接口扩展ID键；判断结果决定调用方的后续分支。
+     *
+     * @param name 名称，后续用于判断是否接口扩展ID键时匹配或展示
+     * @return 接口扩展ID键条件成立时为 true，否则为 false
+     */
     static boolean isInterfaceExtensionIdKey(String name) {
         return Set.of(
                 "extensionId",
@@ -1714,6 +1988,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
                 "queryDataSourceId").contains(name);
     }
 
+    /**
+     * 生成接口扩展编码键文本，供后续匹配或展示。
+     *
+     * @param idKey ID键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的接口扩展编码键文本，供调用方比较或展示
+     */
     static String interfaceExtensionCodeKey(String idKey) {
         return switch (idKey) {
             case "interfaceExtensionId" -> "interfaceExtensionCode";
@@ -1727,6 +2007,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         };
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> map))
             return new LinkedHashMap<>();
@@ -1735,6 +2021,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 查询{@code released}区段；查询结果供调用方展示或继续处理。
+     *
+     * @param releaseSnapshot 发布版本快照，供本方法查询{@code released}区段时使用
+     * @param section 区段，作为 {@code releaseSnapshot.get} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return {@code released}区段键值结果，供调用方继续处理
+     */
     static Map<String, Object> selectReleasedSection(
             Map<String, Object> releaseSnapshot,
             String section,
@@ -1752,10 +2046,22 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return fallback;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         return value == null || !StringUtils.hasText(String.valueOf(value))
                 ? null
@@ -1765,6 +2071,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     /**
      * 保存完整发布配置并从 BPMN 权威声明提取人员依赖。
      * 人员目录属于目标环境前置条件，发布快照只记录登录名/稳定编码与每个节点的引用位置。
+     *
+     * @param config 配置内容，决定后续流程快照的处理规则
+     * @param history 历史，作为 {@code replacePortableForms} 的输入影响后续处理
+     * @return 流程快照键值结果，供调用方继续处理
      */
     private Map<String, Object> buildProcessSnapshot(ProcessDefinitionConfig config, ProcessVersionHistory history) {
         Map<String, Object> snapshot = baseSnapshot(PROCESS, config.getProcessKey(), config.getProcessName());
@@ -1850,6 +2160,14 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return snapshot;
     }
 
+    /**
+     * 整理基础快照数据，供调用方遍历或继续处理。
+     *
+     * @param assetType 资产类型标识，决定后续基础快照采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param assetName 资产名称，后续用于处理基础快照时匹配或展示
+     * @return 基础快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> baseSnapshot(String assetType, String businessKey, String assetName) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("schemaVersion", SNAPSHOT_SCHEMA_VERSION);
@@ -1859,6 +2177,24 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return snapshot;
     }
 
+    /**
+     * 保存资产；后续读取或执行将使用更新后的状态。
+     *
+     * @param assetType 资产类型标识，决定后续资产采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param assetName 资产名称，后续用于保存资产时匹配或展示
+     * @param sourceHistoryId 来源历史ID，后续用于保存资产时定位或关联目标
+     * @param sourceVersion 来源版本，作为 {@code asset.setSourceVersion} 的输入影响后续处理
+     * @param versionDescription 版本描述，作为 {@code asset.setVersionDescription} 的输入影响后续处理
+     * @param migrationTag 迁移标签，作为 {@code asset.setMigrationTag} 的输入影响后续处理
+     * @param markForExport {@code mark}导出，作为 {@code asset.setMarkForExport} 的输入影响后续处理
+     * @param completeness {@code completeness}，作为 {@code asset.setSnapshotCompleteness} 的输入影响后续处理
+     * @param snapshot 快照，作为 {@code writeJson} 的输入影响后续处理
+     * @param dependencies 依赖集合，作为 {@code asset.setDependenciesJson} 的输入影响后续处理
+     * @param publishedAt 已发布时间，后续用于判断有效期或展示该事件的发生时间
+     * @param publishedBy 已发布，作为 {@code asset.setPublishedBy} 的输入影响后续处理
+     * @return 保存后的资产结果，供调用方继续处理
+     */
     private ConfigMigrationAsset saveAsset(String assetType,
             String businessKey,
             String assetName,
@@ -1905,17 +2241,36 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return asset;
     }
 
-    /** asset_type/source_history_id 有唯一约束，通用 Mapper 还会过滤逻辑删除，无需分页。 */
+    /**
+     * asset_type/source_history_id 有唯一约束，通用 Mapper 还会过滤逻辑删除，无需分页。
+     *
+     * @param assetType 资产类型标识，决定后续历史采用的处理分支
+     * @param sourceHistoryId 来源历史ID，后续用于查询历史时定位或关联目标
+     * @return 符合条件的配置迁移资产结果，供调用方继续处理
+     */
     private ConfigMigrationAsset findByHistory(String assetType, String sourceHistoryId) {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
                 .eq(ConfigMigrationAsset::getAssetType, assetType)
                 .eq(ConfigMigrationAsset::getSourceHistoryId, sourceHistoryId));
     }
 
+    /**
+     * 判断是否存在配置迁移资产；判断结果决定调用方的后续分支。
+     *
+     * @param assetType 资产类型标识，决定后续配置迁移资产采用的处理分支
+     * @param sourceHistoryId 来源历史ID，后续用于判断是否存在配置迁移资产时定位或关联目标
+     * @return 配置迁移资产条件成立时为 true，否则为 false
+     */
     private boolean exists(String assetType, String sourceHistoryId) {
         return findByHistory(assetType, sourceHistoryId) != null;
     }
 
+    /**
+     * 整理可移植映射数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理可移植映射的原始输入，结果供调用方继续使用
+     * @return 可移植映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> portableMap(Object source) {
         if (source == null) {
             return new LinkedHashMap<>();
@@ -1924,6 +2279,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return sanitizeMap(converted);
     }
 
+    /**
+     * 整理可移植列表数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> portableList(Collection<?> values) {
         if (values == null) {
             return List.of();
@@ -1931,6 +2292,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return values.stream().map(this::portableMap).toList();
     }
 
+    /**
+     * 清洗映射；结果供调用方的后续步骤使用。
+     *
+     * @param source 待清洗映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> sanitizeMap(Map<String, Object> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> {
@@ -1941,6 +2308,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 清洗值；结果供调用方的后续步骤使用。
+     *
+     * @param value 待清洗值的原始输入，结果供调用方继续使用
+     * @return 清洗后的值结果，供调用方继续处理
+     */
     private Object sanitizeValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> converted = new LinkedHashMap<>();
@@ -1953,6 +2326,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return value;
     }
 
+    /**
+     * 生成可移植表单引用文本，供后续匹配或展示。
+     *
+     * @param formId 表单ID，后续用于处理可移植表单引用时定位或关联目标
+     * @return 处理后的可移植表单引用文本，供调用方比较或展示
+     */
     private String portableFormReference(String formId) {
         if (!StringUtils.hasText(formId)) {
             return null;
@@ -1966,6 +2345,11 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return "wf-form://" + entityCode + "/" + form.getFormKey();
     }
 
+    /**
+     * 处理重写目标表单引用导出，并将结果传给后续步骤。
+     *
+     * @param listSnapshot 列表快照，供本方法处理重写目标表单引用导出时使用
+     */
     private void rewriteTargetFormReferencesForExport(
             Map<String, Object> listSnapshot) {
         for (String section : List.of(
@@ -1991,6 +2375,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 生成可移植办理人值文本，供后续匹配或展示。
+     *
+     * @param assignee 办理人，作为 {@code portableAssignmentKey} 的输入影响后续处理
+     * @return 处理后的可移植办理人值文本，供调用方比较或展示
+     */
     private String portableAssigneeValue(AssigneeConfig assignee) {
         if (!StringUtils.hasText(assignee.getAssigneeValue()) || assignee.getAssigneeType() == null) {
             return assignee.getAssigneeValue();
@@ -2012,6 +2402,10 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     /**
      * 将已有本地 ID 投影为跨环境编码。未知登录名/编码原样保留，不在源环境拒绝导出；
      * 目标分析只按登录名/编码解析，不能误用恰好相同的目标主键。
+     *
+     * @param type 类型标识，决定后续可移植分配键采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的可移植分配键文本，供调用方比较或展示
      */
     private String portableAssignmentKey(String type, String key) {
         if ("USER".equals(type)) {
@@ -2037,6 +2431,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return key;
     }
 
+    /**
+     * 生成{@code strip}可移植前缀文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code strip}可移植前缀的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code strip}可移植前缀文本，供调用方比较或展示
+     */
     private String stripPortablePrefix(String value) {
         if (value == null) {
             return null;
@@ -2050,6 +2450,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return value;
     }
 
+    /**
+     * 生成替换可移植表单集合文本，供后续匹配或展示。
+     *
+     * @param bpmnXml BPMNXML，供本方法处理替换可移植表单集合时使用
+     * @param formReferences 表单引用，供本方法处理替换可移植表单集合时使用
+     * @return 处理后的替换可移植表单集合文本，供调用方比较或展示
+     */
     private String replacePortableForms(String bpmnXml, Map<String, String> formReferences) {
         if (!StringUtils.hasText(bpmnXml)) {
             return bpmnXml;
@@ -2063,6 +2470,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 生成{@code redact}{@code sensitive}XML文本，供后续匹配或展示。
+     *
+     * @param xml XML，作为 {@code SENSITIVE_XML.matcher} 的输入影响后续处理
+     * @return 处理后的{@code redact}{@code sensitive}XML文本，供调用方比较或展示
+     */
     private String redactSensitiveXml(String xml) {
         if (!StringUtils.hasText(xml)) {
             return xml;
@@ -2079,6 +2492,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return buffer.toString();
     }
 
+    /**
+     * 收集{@code called}{@code processes}；结果供调用方的后续步骤使用。
+     *
+     * @param bpmnXml BPMNXML，供本方法收集{@code called}{@code processes}时使用
+     * @param dependencies 依赖集合，作为 {@code addDependency} 的输入影响后续处理
+     */
     private void collectCalledProcesses(String bpmnXml, List<Map<String, Object>> dependencies) {
         if (!StringUtils.hasText(bpmnXml)) {
             return;
@@ -2092,6 +2511,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 收集扩展依赖集合；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集扩展依赖集合的原始输入，结果供调用方继续使用
+     * @param dependencies 依赖集合，作为 {@code addDependency} 的输入影响后续处理
+     */
     private void collectExtensionDependencies(Object value, List<Map<String, Object>> dependencies) {
         if (value instanceof Map<?, ?> map) {
             map.forEach((key, child) -> {
@@ -2117,7 +2542,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
-    /** 收集关联内容显式依赖，供导出展开和导入预检展示。 */
+    /**
+     * 收集关联内容显式依赖，供导出展开和导入预检展示。
+     *
+     * @param snapshot 快照，供本方法收集视图组合依赖集合时使用
+     * @param dependencies 依赖集合，作为 {@code addDependency} 的输入影响后续处理
+     */
     private void collectViewCompositionDependencies(
             Map<String, Object> snapshot,
             List<Map<String, Object>> dependencies) {
@@ -2200,6 +2630,12 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
     /**
      * 登记稳定编码依赖；系统实体由目标环境提供，只保留存在性校验，
      * 避免引用字段或状态映射触发系统表结构导出。
+     *
+     * @param dependencies 依赖集合，供本方法添加依赖时使用
+     * @param type 类型标识，决定后续依赖采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param required 必填，作为 {@code dependency.put} 的输入影响后续处理
+     * @param source 待添加依赖的原始输入，结果供调用方继续使用
      */
     private void addDependency(List<Map<String, Object>> dependencies,
             String type,
@@ -2226,34 +2662,77 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         dependencies.add(dependency);
     }
 
+    /**
+     * 整理{@code deduplicate}依赖集合数据，供调用方遍历或继续处理。
+     *
+     * @param dependencies 依赖集合，作为 {@code ConfigMigrationAssignmentSupport.mergeDependencies} 的输入影响后续处理
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> deduplicateDependencies(List<Map<String, Object>> dependencies) {
         return ConfigMigrationAssignmentSupport.mergeDependencies(dependencies);
     }
 
+    /**
+     * 生成有效描述文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理有效描述
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的有效描述文本，供调用方比较或展示
+     */
     private String effectiveDescription(ConfigMigrationPublishRequest request, String fallback) {
         return request != null && StringUtils.hasText(request.getVersionDescription())
                 ? request.getVersionDescription().trim()
                 : fallback;
     }
 
+    /**
+     * 判断有效{@code mark}条件是否成立，供调用方选择后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于处理有效{@code mark}
+     * @return 有效{@code mark}条件成立时为 true，否则为 false
+     */
     private boolean effectiveMark(ConfigMigrationPublishRequest request) {
         return request == null || request.getMarkForExport() == null || request.getMarkForExport();
     }
 
+    /**
+     * 生成有效标签文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理有效标签
+     * @return 处理后的有效标签文本，供调用方比较或展示
+     */
     private String effectiveTag(ConfigMigrationPublishRequest request) {
         return request == null ? null : request.getMigrationTag();
     }
 
+    /**
+     * 生成迁移标签；结果供调用方的后续步骤使用。
+     *
+     * @return 生成后的迁移标签文本，供调用方比较或展示
+     */
     public String generateMigrationTag() {
         return "REL-" + LocalDateTime.now().format(TAG_FORMAT);
     }
 
+    /**
+     * 规范化标签；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化标签的原始输入，结果供调用方继续使用
+     * @return 规范化后的标签文本，供调用方比较或展示
+     */
     private String normalizeTag(String value) {
         String tag = StringUtils.hasText(value) ? value.trim() : generateMigrationTag();
         tag = tag.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9._-]", "-");
         return tag.length() > 100 ? tag.substring(0, 100) : tag;
     }
 
+    /**
+     * 解析JSON；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 解析后的JSON结果，供调用方继续处理
+     */
     private Object parseJson(String json, Object fallback) {
         if (!StringUtils.hasText(json)) {
             return fallback;
@@ -2265,6 +2744,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -2273,6 +2759,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(byte[] value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
@@ -2281,11 +2774,23 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         }
     }
 
+    /**
+     * 整理{@code cast}列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code cast}列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> castList(Object value) {
         return value instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
     }
 
+    /**
+     * 整理{@code cast}映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code cast}映射列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移资产集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> castMapList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return List.of();
@@ -2301,6 +2806,13 @@ public class ConfigMigrationAssetService implements MigrationAssetHandler {
         return result;
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param first 首个，供本方法处理首个非空白时使用
+     * @param second {@code second}，供本方法处理首个非空白时使用
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(String first, String second) {
         return StringUtils.hasText(first) ? first : second;
     }

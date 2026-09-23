@@ -21,9 +21,19 @@ final class SqlIdentifierPolicy {
             "rename", "schema", "select", "set", "table", "then", "true", "union",
             "unique", "update", "user", "using", "values", "when", "where", "with");
 
+    /**
+     * 初始化SQL标识符策略，保存构造参数供后续方法使用。
+     */
     private SqlIdentifierPolicy() {
     }
 
+    /**
+     * 校验SQL标识符策略；不满足约束时阻止后续处理。
+     *
+     * @param identifier 标识符，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 校验后的SQL标识符策略文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     static String validate(String identifier) {
         if (identifier == null || !IDENTIFIER.matcher(identifier).matches()) {
             throw new IllegalArgumentException("SQL 标识符不合法: " + identifier);

@@ -7,6 +7,9 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.LocalDateTime;
 import lombok.Data;
 
+/**
+ * 封装集成应用凭据记录的数据访问；应用服务通过它读取或持久化业务状态。
+ */
 @Data
 @TableName("integration_application_credential")
 public class IntegrationApplicationCredentialRecord {

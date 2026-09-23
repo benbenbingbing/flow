@@ -28,6 +28,10 @@ public class EntityListRuntimeController {
      * @param entityCode 实体编码
      * @param listKey    列表标识
      * @param scene      场景标识（可选）
+     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code Result.success} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param viewCompositionContextToken 视图组合上下文令牌，后续用于授权校验、关联或幂等去重
      * @return 列表 schema 结构
      */
     @GetMapping("/{entityCode}/{listKey}/schema")

@@ -18,6 +18,9 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
 
     /**
      * 根据列表配置ID查询字段列表
+     *
+     * @param listConfigId 列表配置ID，后续用于查询列表配置ID时定位或关联目标
+     * @return 实体列表字段集合，供调用方遍历或展示
      */
     default List<EntityListField> findByListConfigId(String listConfigId) {
         return selectList(Wrappers.<EntityListField>lambdaQuery()
@@ -26,7 +29,12 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
                 .orderByAsc(EntityListField::getSortOrder));
     }
 
-    /** 锁定列表下全部字段草稿，包含逻辑删除行。 */
+    /**
+     * 锁定列表下全部字段草稿，包含逻辑删除行。
+     *
+     * @param listConfigId 列表配置ID，后续用于查询全部列表配置ID更新时定位或关联目标
+     * @return 实体列表字段集合，供调用方遍历或展示
+     */
     @Select("SELECT * FROM entity_list_field "
             + "WHERE list_config_id = #{listConfigId} ORDER BY id FOR UPDATE")
     List<EntityListField> findAllByListConfigIdForUpdate(
@@ -34,6 +42,8 @@ public interface EntityListFieldMapper extends BaseMapper<EntityListField> {
 
     /**
      * 根据列表配置ID删除字段（物理删除）
+     *
+     * @param listConfigId 列表配置ID，后续用于删除列表配置ID时定位或关联目标
      */
     @Delete("DELETE FROM entity_list_field WHERE list_config_id = #{listConfigId}")
     void deleteByListConfigId(@Param("listConfigId") String listConfigId);

@@ -9,7 +9,7 @@ import com.workflow.entity.definition.application.SystemEntityService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -118,6 +118,13 @@ public class EntitySelectionRuntimeService {
         return authoritative;
     }
 
+    /**
+     * 处理引用配置，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，供本方法处理引用配置时使用
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的引用配置结果，供调用方继续处理
+     */
     private ReferenceConfig referenceConfig(
             Map<String, Object> snapshot,
             String targetKey) {
@@ -144,6 +151,12 @@ public class EntitySelectionRuntimeService {
         return null;
     }
 
+    /**
+     * 处理起始字段，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code objectMap} 的输入影响后续处理
+     * @return 处理后的起始字段结果，供调用方继续处理
+     */
     private ReferenceConfig fromField(
             Map<String, Object> field) {
         Map<String, Object> componentProps =
@@ -189,6 +202,12 @@ public class EntitySelectionRuntimeService {
                 multiple);
     }
 
+    /**
+     * 生成已选择ID文本，供后续匹配或展示。
+     *
+     * @param selection 选择，作为 {@code text} 的输入影响后续处理
+     * @return 处理后的已选择ID文本，供调用方比较或展示
+     */
     private String selectedId(Object selection) {
         if (selection instanceof Map<?, ?> map) {
             return firstText(
@@ -201,6 +220,12 @@ public class EntitySelectionRuntimeService {
         return text(selection);
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 实体选择集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -211,6 +236,12 @@ public class EntitySelectionRuntimeService {
                 .toList();
     }
 
+    /**
+     * 整理对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+     * @return 对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> objectMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return stringMap(map);
@@ -228,6 +259,12 @@ public class EntitySelectionRuntimeService {
         return Map.of();
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) ->
@@ -235,15 +272,33 @@ public class EntitySelectionRuntimeService {
         return result;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化实体选择运行时的原始输入，结果供调用方继续使用
+     * @return 规范化后的实体选择运行时文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null
@@ -254,6 +309,15 @@ public class EntitySelectionRuntimeService {
         return null;
     }
 
+    /**
+     * 封装引用配置的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityType 实体类型标识，决定后续引用配置采用的处理分支
+     * @param entityId 实体ID，后续用于处理引用配置时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param multiple {@code multiple}，保存在对象中供后续校验、查询或展示
+     */
     private record ReferenceConfig(
             String entityType,
             String entityId,

@@ -24,6 +24,14 @@ public class EntityVersionScopePreviewService {
     private final EntityDataDynamicService dataService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 处理预览，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param request 本次请求，后续经校验后用于处理预览
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的预览结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityVersionScopePreview preview(
             String entityCode,
@@ -51,6 +59,13 @@ public class EntityVersionScopePreviewService {
         return snapshotService.previewV2(resolved, aggregate);
     }
 
+    /**
+     * 处理有效关系上限，并将结果传给后续步骤。
+     *
+     * @param configuration 配置内容，决定后续有效关系上限的处理规则
+     * @param relation 关系，供本方法处理有效关系上限时使用
+     * @return 处理后的有效关系上限结果，供调用方继续处理
+     */
     private int effectiveRelationLimit(
             EntityVersionConfiguration configuration,
             EntityVersionConfiguration.RelationScope relation) {

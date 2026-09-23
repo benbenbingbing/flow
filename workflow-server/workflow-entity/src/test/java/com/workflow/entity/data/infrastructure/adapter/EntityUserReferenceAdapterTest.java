@@ -55,7 +55,7 @@ class EntityUserReferenceAdapterTest {
                 dataMapper,
                 tableResolver,
                 dynamicTableService,
-                jdbcTemplate, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                jdbcTemplate, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         when(definitionMapper.findByEntityCode(ENTITY_CODE))
                 .thenReturn(Optional.of(definition(

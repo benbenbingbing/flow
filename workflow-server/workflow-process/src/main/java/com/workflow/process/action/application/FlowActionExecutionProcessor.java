@@ -1,8 +1,8 @@
 package com.workflow.process.action.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.context.FlowActionContext;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
@@ -32,6 +32,14 @@ public class FlowActionExecutionProcessor {
     private final FlowActionExecutor flowActionExecutor;
     private final TaskScheduler heartbeatScheduler;
 
+    /**
+     * 初始化流程动作执行{@code processor}，保存构造参数供后续方法使用。
+     *
+     * @param executionService 执行服务依赖，保存到当前对象供后续业务方法调用
+     * @param flowActionMapper 流程动作映射器依赖，保存到当前对象供后续业务方法调用
+     * @param flowActionExecutor 流程动作执行器依赖，保存到当前对象供后续业务方法调用
+     * @param heartbeatScheduler 心跳{@code scheduler}依赖，保存到当前对象供后续业务方法调用
+     */
     public FlowActionExecutionProcessor(
             FlowActionExecutionService executionService,
             FlowActionMapper flowActionMapper,
@@ -113,6 +121,14 @@ public class FlowActionExecutionProcessor {
         }
     }
 
+    /**
+     * 处理心跳，并将结果传给后续步骤。
+     *
+     * @param executionId 执行ID，后续用于处理心跳时定位或关联目标
+     * @param ownerId 归属方ID，后续用于处理心跳时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     * @param leaseSeconds 租约秒数，供本方法处理心跳时使用
+     */
     private void heartbeat(
             String executionId,
             String ownerId,
@@ -130,6 +146,11 @@ public class FlowActionExecutionProcessor {
         }
     }
 
+    /**
+     * 恢复操作人上下文；结果供调用方的后续步骤使用。
+     *
+     * @param event 事件，作为 {@code UserContext.setCurrentUser} 的输入影响后续处理
+     */
     private void restoreOperatorContext(FlowActionTriggerEvent event) {
         UserContext.clear();
         if (event == null || !StringUtils.hasText(event.getOperatorId())) {
@@ -141,6 +162,12 @@ public class FlowActionExecutionProcessor {
         UserContext.setCurrentUser(event.getOperatorId(), username);
     }
 
+    /**
+     * 恢复上一项上下文；结果供调用方的后续步骤使用。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     */
     private void restorePreviousContext(String userId, String username) {
         UserContext.clear();
         if (StringUtils.hasText(userId)) {

@@ -2,6 +2,7 @@ package com.workflow.db;
 
 import com.workflow.admin.extension.action.api.web.FlowActionCatalogController;
 import com.workflow.entity.data.api.web.EntityFlowStatusController;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.process.action.api.web.FlowActionController;
 import com.workflow.process.action.api.web.FlowActionExecutionController;
 import org.junit.jupiter.api.Test;
@@ -148,7 +149,7 @@ class DatabaseNamingIsolationTest {
         var naming = new com.workflow.entity.data.application.EntityPhysicalTableNaming();
         String name = naming.generate("Orders");
         assertTrue(name.startsWith("biz_"));
-        var dialect = new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect();
+        var dialect = new MySqlSchemaDdlDialect();
         var main = com.workflow.entity.data.application.EntityTableDefinitionFactory.mainTable(name, List.of(), "订单");
         var team = com.workflow.entity.data.application.EntityTableDefinitionFactory.teamTable(name + "_team");
         // 验证实际生成结果，避免把“特定业务类必须内嵌 MySQL 语法”固化成架构规则。

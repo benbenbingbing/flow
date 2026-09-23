@@ -34,6 +34,13 @@ public class FlowActionExecutionWorker {
     @Value("${workflow.flow-action.lease-seconds:300}")
     private int leaseSeconds = 300;
 
+    /**
+     * 初始化流程动作执行{@code worker}，保存构造参数供后续方法使用。
+     *
+     * @param executionService 执行服务依赖，保存到当前对象供后续业务方法调用
+     * @param processor {@code processor}依赖，保存到当前对象供后续业务方法调用
+     * @param executor 执行器依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public FlowActionExecutionWorker(
             FlowActionExecutionService executionService,
@@ -44,6 +51,12 @@ public class FlowActionExecutionWorker {
         this.executor = executor;
     }
 
+    /**
+     * 初始化流程动作执行{@code worker}，保存构造参数供后续方法使用。
+     *
+     * @param executionService 执行服务，保存在对象中供后续校验、查询或展示
+     * @param processor {@code processor}，保存在对象中供后续校验、查询或展示
+     */
     FlowActionExecutionWorker(
             FlowActionExecutionService executionService,
             FlowActionExecutionProcessor processor) {

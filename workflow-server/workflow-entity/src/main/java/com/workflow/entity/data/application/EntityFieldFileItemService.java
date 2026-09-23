@@ -37,6 +37,9 @@ public class EntityFieldFileItemService {
 
     /**
      * 根据字段ID查询附件项列表
+     *
+     * @param fieldId 字段ID，后续用于查询字段ID时定位或关联目标
+     * @return 实体字段文件条目集合，供调用方遍历或展示
      */
     public List<EntityFieldFileItem> findByFieldId(String fieldId) {
         return fileItemMapper.findByFieldId(fieldId);
@@ -44,6 +47,9 @@ public class EntityFieldFileItemService {
 
     /**
      * 批量保存附件项（先删除旧数据，再插入新数据）
+     *
+     * @param fieldId 字段ID，后续用于保存文件条目时定位或关联目标
+     * @param items 条目，供本方法保存文件条目时使用
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveFileItems(String fieldId, List<EntityFieldFileItem> items) {
@@ -156,6 +162,15 @@ public class EntityFieldFileItemService {
         }
     }
 
+    /**
+     * 查询已有；查询结果供调用方展示或继续处理。
+     *
+     * @param item 条目，作为 {@code existingById.get} 的输入影响后续处理
+     * @param existingById 已有ID，后续用于查询已有时定位或关联目标
+     * @param existingByKey 已有键，后续用于授权校验、关联或幂等去重
+     * @param existingByName 已有名称，后续用于查询已有时匹配或展示
+     * @return 符合条件的实体字段文件条目结果，供调用方继续处理
+     */
     private EntityFieldFileItem findExisting(
             EntityFieldFileItem item,
             Map<String, EntityFieldFileItem> existingById,
@@ -174,6 +189,13 @@ public class EntityFieldFileItemService {
                 : null;
     }
 
+    /**
+     * 按名称查询实体字段文件条目；结果供后续展示或处理。
+     *
+     * @param item 条目，作为 {@code existingByName.get} 的输入影响后续处理
+     * @param existingByName 已有名称，后续用于查询已有名称时匹配或展示
+     * @return 符合条件的实体字段文件条目结果，供调用方继续处理
+     */
     private EntityFieldFileItem findExistingByName(
             EntityFieldFileItem item,
             Map<String, EntityFieldFileItem> existingByName) {
@@ -191,6 +213,14 @@ public class EntityFieldFileItemService {
         return null;
     }
 
+    /**
+     * 处理索引已有名称，并将结果传给后续步骤。
+     *
+     * @param existingByName 已有名称，后续用于处理索引已有名称时匹配或展示
+     * @param ambiguousNames {@code ambiguous}名称集合，供本方法处理索引已有名称时使用
+     * @param value 待处理索引已有名称的原始输入，结果供调用方继续使用
+     * @param item 条目，作为 {@code existingByName.putIfAbsent} 的输入影响后续处理
+     */
     private void indexExistingName(
             Map<String, EntityFieldFileItem> existingByName,
             Set<String> ambiguousNames,
@@ -209,6 +239,15 @@ public class EntityFieldFileItemService {
         }
     }
 
+    /**
+     * 校验唯一{@code identities}；不满足约束时阻止后续处理。
+     *
+     * @param itemName 条目名称，后续用于校验唯一{@code identities}时匹配或展示
+     * @param aliases {@code aliases}，作为 {@code identities.addAll} 的输入影响后续处理
+     * @param itemKey 条目键，后续用于授权校验、关联或幂等去重
+     * @param identityOwners 身份{@code owners}，供本方法校验唯一{@code identities}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateUniqueIdentities(
             String itemName,
             Set<String> aliases,
@@ -228,6 +267,12 @@ public class EntityFieldFileItemService {
         }
     }
 
+    /**
+     * 整理{@code aliases}数据，供调用方遍历或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 实体字段文件条目集合，供调用方遍历或展示
+     */
     private Set<String> aliases(String document) {
         if (!StringUtils.hasText(document)) {
             return new LinkedHashSet<>();
@@ -247,6 +292,13 @@ public class EntityFieldFileItemService {
         }
     }
 
+    /**
+     * 写入{@code aliases}；后续读取或执行将使用更新后的状态。
+     *
+     * @param aliases {@code aliases}，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的{@code aliases}文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writeAliases(Set<String> aliases) {
         if (aliases == null || aliases.isEmpty()) {
             return null;
@@ -260,12 +312,19 @@ public class EntityFieldFileItemService {
         }
     }
 
+    /**
+     * 生成新条目键文本，供后续匹配或展示。
+     *
+     * @return 处理后的新条目键文本，供调用方比较或展示
+     */
     private String newItemKey() {
         return "afi_" + UUID.randomUUID().toString().replace("-", "");
     }
 
     /**
      * 删除字段的所有附件项
+     *
+     * @param fieldId 字段ID，后续用于删除字段ID时定位或关联目标
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteByFieldId(String fieldId) {

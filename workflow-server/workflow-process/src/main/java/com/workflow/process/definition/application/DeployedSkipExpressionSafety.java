@@ -13,6 +13,9 @@ import org.springframework.util.StringUtils;
 /** 历史部署启用 skipExpression 前的只读安全检查。 */
 public final class DeployedSkipExpressionSafety {
 
+    /**
+     * 初始化{@code deployed}跳过表达式{@code safety}，保存构造参数供后续方法使用。
+     */
     private DeployedSkipExpressionSafety() {
     }
 
@@ -41,6 +44,12 @@ public final class DeployedSkipExpressionSafety {
         return null;
     }
 
+    /**
+     * 生成首个{@code unsafe}元素ID文本，供后续匹配或展示。
+     *
+     * @param elements {@code elements}，供本方法处理首个{@code unsafe}元素ID时使用
+     * @return 处理后的首个{@code unsafe}元素ID文本，供调用方比较或展示
+     */
     private static String firstUnsafeElementId(
             Collection<FlowElement> elements) {
         if (elements == null) {
@@ -65,6 +74,12 @@ public final class DeployedSkipExpressionSafety {
         return null;
     }
 
+    /**
+     * 生成跳过表达式文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理跳过表达式时使用
+     * @return 处理后的跳过表达式文本，供调用方比较或展示
+     */
     private static String skipExpression(FlowElement element) {
         if (element instanceof UserTask task) {
             return task.getSkipExpression();

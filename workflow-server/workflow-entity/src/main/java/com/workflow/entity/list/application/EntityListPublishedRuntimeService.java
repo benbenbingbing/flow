@@ -4,10 +4,10 @@ import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.FormCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListNode;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.FormCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListNode;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort.Reference;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
 
@@ -17,7 +17,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -63,6 +63,12 @@ public class EntityListPublishedRuntimeService {
 
     /**
      * 按当前 ACTIVE 或父表单签名上下文中的固定版本解析列表。
+     *
+     * @param draft 草稿，作为 {@code releaseService.resolveRuntimeListRelease} 的输入影响后续处理
+     * @param releaseId 发布版本ID，后续用于解析配置时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法解析配置时使用
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的配置结果，供调用方继续处理
      */
     public EntityListConfig resolveConfig(
             EntityListConfig draft,
@@ -93,6 +99,11 @@ public class EntityListPublishedRuntimeService {
      *
      * <p>公开列表 API 不能凭 releaseId 读取历史版本；调用方必须先校验
      * {@code UiViewCompositionTokenService} 签名，再进入本服务。</p>
+     *
+     * @param draft 草稿，供本方法解析视图组合配置时使用
+     * @param releaseId 发布版本ID，后续用于解析视图组合配置时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法解析视图组合配置时使用
+     * @return 解析后的视图组合配置结果，供调用方继续处理
      */
     public EntityListConfig resolveViewCompositionConfig(
             EntityListConfig draft,
@@ -140,6 +151,16 @@ public class EntityListPublishedRuntimeService {
         return config;
     }
 
+    /**
+     * 处理运行时配置，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，作为 {@code BeanUtils.copyProperties} 的输入影响后续处理
+     * @param releaseId 发布版本ID，后续用于处理运行时配置时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code config.setPublishedVersion} 的输入影响后续处理
+     * @param pinned 固定，作为 {@code config.setPinnedRelease} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 处理后的运行时配置结果，供调用方继续处理
+     */
     private EntityListConfig runtimeConfig(
             EntityListConfigDTO snapshot,
             String releaseId,
@@ -173,6 +194,9 @@ public class EntityListPublishedRuntimeService {
 
     /**
      * 关联内容只取自已完成哈希校验的发布快照，绝不从列表草稿补齐。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 实体列表已发布集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> viewCompositions(
             Map<String, Object> snapshot) {
@@ -250,10 +274,24 @@ public class EntityListPublishedRuntimeService {
                 config.getReleaseResolutionToken());
     }
 
+    /**
+     * 写入实体列表已发布运行时；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入实体列表已发布运行时的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于写入实体列表已发布运行时时匹配或展示
+     * @return 写入后的实体列表已发布运行时文本，供调用方比较或展示
+     */
     private String write(Object value, String label) {
         return value == null ? null : codec.write(value, label);
     }
 
+    /**
+     * 读取映射列表；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code codec.readArray} 的输入影响后续处理
+     * @param label 标签，后续用于读取映射列表时匹配或展示
+     * @return 实体列表已发布集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> readMapList(
             String document,
@@ -267,6 +305,15 @@ public class EntityListPublishedRuntimeService {
                 .toList();
     }
 
+    /**
+     * 整理授权固定目标表单集合数据，供调用方遍历或继续处理。
+     *
+     * @param listId 列表ID，后续用于处理授权固定目标表单集合时定位或关联目标
+     * @param buttonArea 按钮{@code area}，供本方法处理授权固定目标表单集合时使用
+     * @param buttons 按钮集合，供本方法处理授权固定目标表单集合时使用
+     * @param parentListResolutionToken 父级列表解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 实体列表已发布集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> authorizePinnedTargetForms(
             String listId,
             String buttonArea,
@@ -357,6 +404,10 @@ public class EntityListPublishedRuntimeService {
      * 为固定 List Release 中的 open-list 目标派生同一 Session
      * 的签名列表令牌。派生坐标全部来自已发布快照，浏览器
      * 只能消费，不能把任意 entity/list/release 组合签名。
+     *
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @param parentClaims 父级声明集合，作为 {@code requireDependencyClosure} 的输入影响后续处理
+     * @param sessionExpiresAt 会话过期时间，后续用于判断有效期或展示该事件的发生时间
      */
     private void authorizePinnedTargetList(
             Map<String, Object> button,
@@ -468,7 +519,12 @@ public class EntityListPublishedRuntimeService {
                 formToken);
     }
 
-    /** 按 elr1 的短引用从 immutable View Release 加载并校验闭包。 */
+    /**
+     * 按 elr1 的短引用从 immutable View Release 加载并校验闭包。
+     *
+     * @param claims 声明集合，作为 {@code listDependencySnapshotPort.read} 的输入影响后续处理
+     * @return 校验并获取后的依赖闭包结果，供调用方继续处理
+     */
     private EmbedNativeListDependencyClosure requireDependencyClosure(
             UiReleaseResolutionTokenService.EmbedListClaims claims) {
         if (listDependencySnapshotPort == null
@@ -496,6 +552,14 @@ public class EntityListPublishedRuntimeService {
         }
     }
 
+    /**
+     * 校验并获取列表节点；不满足约束时阻止后续处理。
+     *
+     * @param closure 闭包，供本方法校验并获取列表节点时使用
+     * @param coordinate 坐标，作为 {@code filter} 的输入影响后续处理
+     * @param requireExactListKey {@code require}精确列表键，后续用于授权校验、关联或幂等去重
+     * @return 校验并获取后的列表节点结果，供调用方继续处理
+     */
     private static ListNode requireListNode(
             EmbedNativeListDependencyClosure closure,
             ListCoordinate coordinate,
@@ -522,10 +586,22 @@ public class EntityListPublishedRuntimeService {
                         "当前列表不属于 Embed Session 固定依赖闭包"));
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();

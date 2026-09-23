@@ -20,6 +20,12 @@ public class FormUniquePrecheckResponse {
     /** 重复时的字段级提示；可用或跳过时为空。 */
     private String message;
 
+    /**
+     * 处理起始，并将结果传给后续步骤。
+     *
+     * @param result 结果，作为 {@code FormUniquePrecheckResponse} 的输入影响后续处理
+     * @return 处理后的起始结果，供调用方继续处理
+     */
     public static FormUniquePrecheckResponse from(
             FormUniqueCheck result) {
         return new FormUniquePrecheckResponse(

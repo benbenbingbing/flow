@@ -63,15 +63,16 @@ class SchemaRequiredTablesTest {
                     "migration version is missing or out of order: " + files);
         }
 
-        String applicationYaml = Files.readString(
-                Path.of("src/main/resources/application.yml"));
-        assertTrue(applicationYaml.contains("baseline-on-migrate: false"));
-        assertTrue(applicationYaml.contains("validate-on-migrate: true"));
-        assertTrue(applicationYaml.contains("clean-disabled: true"));
-        assertTrue(applicationYaml.contains(
+        // 数据库默认值已集中到分组文件；仍校验原始占位符，防止默认隔离级别或迁移保护被改变。
+        String databaseYaml = Files.readString(
+                Path.of("src/main/resources/config/database.yml"));
+        assertTrue(databaseYaml.contains("baseline-on-migrate: false"));
+        assertTrue(databaseYaml.contains("validate-on-migrate: true"));
+        assertTrue(databaseYaml.contains("clean-disabled: true"));
+        assertTrue(databaseYaml.contains(
                 "transaction-isolation: "
                         + "${DB_TRANSACTION_ISOLATION:TRANSACTION_READ_COMMITTED}"));
-        assertFalse(applicationYaml.contains("baseline-version:"));
+        assertFalse(databaseYaml.contains("baseline-version:"));
     }
 
     @Test

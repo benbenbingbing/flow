@@ -161,7 +161,12 @@ public class EntityActionCapabilityService {
         return capabilities;
     }
 
-    /** 需要选择的工具栏按钮按选中记录评估条件，不能用空记录提前隐藏入口。 */
+    /**
+     * 需要选择的工具栏按钮按选中记录评估条件，不能用空记录提前隐藏入口。
+     *
+     * @param button 按钮，作为 {@code ListButtonSelectionPolicy.requiresSelection} 的输入影响后续处理
+     * @return 选择{@code toolbar}按钮条件成立时为 true，否则为 false
+     */
     private boolean isSelectionToolbarButton(Map<String, Object> button) {
         return ListButtonSelectionPolicy.requiresSelection(button);
     }
@@ -189,6 +194,15 @@ public class EntityActionCapabilityService {
                 row);
     }
 
+    /**
+     * 求值行动作配置，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param config 配置内容，决定后续行动作配置的处理规则
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     * @param row 行，作为 {@code evaluateButton} 的输入影响后续处理
+     * @return 求值后的行动作配置结果，供调用方继续处理
+     */
     public EntityActionCapabilityDTO evaluateRowActionForConfig(
             String entityCode,
             EntityListConfig config,
@@ -229,6 +243,13 @@ public class EntityActionCapabilityService {
                 buttonKey);
     }
 
+    /**
+     * 校验并获取{@code toolbar}动作配置；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param config 配置内容，决定后续{@code toolbar}动作配置的处理规则
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     */
     public void requireToolbarActionForConfig(
             String entityCode,
             EntityListConfig config,
@@ -274,6 +295,14 @@ public class EntityActionCapabilityService {
                 row);
     }
 
+    /**
+     * 校验并获取行动作配置；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param config 配置内容，决定后续行动作配置的处理规则
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     * @param row 行，作为 {@code evaluateRowActionForConfig} 的输入影响后续处理
+     */
     public void requireRowActionForConfig(
             String entityCode,
             EntityListConfig config,
@@ -291,6 +320,12 @@ public class EntityActionCapabilityService {
 
     /**
      * 自定义后端动作统一鉴权入口。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @param permissionCode 权限编码，后续用于校验并获取自定义动作时定位或关联目标
+     * @param rule 规则，作为 {@code evaluateConfiguredAction} 的输入影响后续处理
+     * @param row 行，作为 {@code evaluateConfiguredAction} 的输入影响后续处理
      */
     public void requireCustomAction(
             String entityCode,
@@ -318,6 +353,11 @@ public class EntityActionCapabilityService {
      *
      * <p>自定义 key 不允许回退 UPDATE；它必须携带显式权限码。调用方负责从
      * 已验证快照按位置和 key 找到按钮，并为行/选择动作传入服务端重载的数据。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @param button 按钮，作为 {@code requirePublishedButtonIdentity} 的输入影响后续处理
+     * @param row 行，作为 {@code requirePublishedButtonIdentity} 的输入影响后续处理
      */
     public void requirePublishedListButton(
             String entityCode,
@@ -351,6 +391,11 @@ public class EntityActionCapabilityService {
      * <p>数据必须由调用方按当前列表数据范围重新加载。先遍历所有行的
      * visibleWhen，再遍历 enabledWhen，避免先遇到禁用行时泄露后续本应
      * 隐藏的记录状态。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @param button 按钮，作为 {@code requirePublishedButtonIdentity} 的输入影响后续处理
+     * @param rows 行，供本方法校验并获取已发布列表按钮时使用
      */
     public void requirePublishedListButton(
             String entityCode,
@@ -389,6 +434,14 @@ public class EntityActionCapabilityService {
         }
     }
 
+    /**
+     * 校验并获取已发布按钮身份；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
+     * @param button 按钮，作为 {@code actionConfigService.permissionFor} 的输入影响后续处理
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void requirePublishedButtonIdentity(
             String entityCode,
             String actionKey,
@@ -412,6 +465,13 @@ public class EntityActionCapabilityService {
         }
     }
 
+    /**
+     * 生成状态类别文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param row 行，作为 {@code statusMapper.findByEntityAndCode} 的输入影响后续处理
+     * @return 处理后的状态类别文本，供调用方比较或展示
+     */
     private String statusCategory(
             String entityCode,
             EntityDataDTO row) {
@@ -501,6 +561,10 @@ public class EntityActionCapabilityService {
     /**
      * 返回与当前认证用户、已鉴权记录及确切 taskId 全部匹配的活动待办上下文。
      * 调用方仍须先执行审批待办能力和规则判断；本方法只完成可信任务身份绑定。
+     *
+     * @param row 行，作为 {@code assigneeLookup.findActionableTaskContext} 的输入影响后续处理
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的可执行任务上下文结果，供调用方继续处理
      */
     public java.util.Optional<ActionableTaskContext>
             findActionableApprovalTaskContext(
@@ -510,6 +574,16 @@ public class EntityActionCapabilityService {
                 row, currentUser(), taskId);
     }
 
+    /**
+     * 求值按钮，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param button 按钮，作为 {@code actionConfigService.permissionFor} 的输入影响后续处理
+     * @param row 行，作为 {@code assigneeLookup.findActionableTaskId} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @return 求值后的按钮结果，供调用方继续处理
+     */
     private EntityActionCapabilityDTO evaluateButton(
             String entityCode,
             Map<String, Object> button,
@@ -551,6 +625,11 @@ public class EntityActionCapabilityService {
      * <p>列表级请求没有数据行，因此只校验权限和完全不依赖行的条件。
      * 依赖行的 visibleWhen/enabledWhen 由 {@link #enrichRows} 为每行计算，
      * 再由前端按当前选中集合聚合，避免用 {@code row=null} 将按钮永久隐藏。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param button 按钮，作为 {@code actionConfigService.permissionFor} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 求值后的选择{@code toolbar}按钮结果，供调用方继续处理
      */
     private EntityActionCapabilityDTO evaluateSelectionToolbarButton(
             String entityCode,
@@ -586,6 +665,13 @@ public class EntityActionCapabilityService {
      * <p>先完成所有 {@code visibleWhen} 判定，再执行任一
      * {@code enabledWhen}。这使审批的强制规则和表单覆盖规则遵循
      * 同一优先级，不会因为某条禁用条件先失败而暴露本应隐藏的按钮。</p>
+     *
+     * @param rules 规则集合，供本方法求值{@code conditions}时使用
+     * @param row 行，供本方法求值{@code conditions}时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param approval 审批，供本方法求值{@code conditions}时使用
+     * @return 求值后的{@code conditions}结果，供调用方继续处理
      */
     private EntityActionCapabilityDTO evaluateConditions(
             EntityActionRuleDTO[] rules,
@@ -612,7 +698,16 @@ public class EntityActionCapabilityService {
         return EntityActionCapabilityDTO.allowed();
     }
 
-    /** 审批入口允许真实候选人命中办理人关系，其他条件仍逐项计算。 */
+    /**
+     * 审批入口允许真实候选人命中办理人关系，其他条件仍逐项计算。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param row 行，作为 {@code ruleEvaluator.evaluateForApproval} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param approval 审批，供本方法求值条件时使用
+     * @return 条件条件成立时为 true，否则为 false
+     */
     private boolean evaluateCondition(
             EntityActionRuleDTO.RuleNode condition,
             EntityDataDTO row,
@@ -626,6 +721,11 @@ public class EntityActionCapabilityService {
                         condition, row, user, statusCategory);
     }
 
+    /**
+     * 处理当前用户，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前用户结果，供调用方继续处理
+     */
     private SysUser currentUser() {
         String userId = UserContext.getUserId();
         if (!StringUtils.hasText(userId)) {
@@ -634,6 +734,15 @@ public class EntityActionCapabilityService {
         return userService.getById(userId);
     }
 
+    /**
+     * 处理{@code deny}，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param action 动作标识，决定后续{@code deny}采用的处理分支
+     * @param dataId 数据ID，后续用于处理{@code deny}时定位或关联目标
+     * @param reason 原因，作为 {@code ForbiddenException} 的输入影响后续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void deny(String entityCode, String action, String dataId, String reason) {
         log.warn(
                 "实体操作被拒绝: userId={}, username={}, entityCode={}, action={}, dataId={}, reason={}",
@@ -646,6 +755,12 @@ public class EntityActionCapabilityService {
         throw new ForbiddenException(StringUtils.hasText(reason) ? reason : "没有权限执行该操作");
     }
 
+    /**
+     * 转换为字符串；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为字符串的原始输入，结果供调用方继续使用
+     * @return 转换为后的字符串文本，供调用方比较或展示
+     */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }

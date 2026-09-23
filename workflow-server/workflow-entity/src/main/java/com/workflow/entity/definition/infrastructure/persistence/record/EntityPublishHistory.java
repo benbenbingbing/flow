@@ -120,11 +120,17 @@ public class EntityPublishHistory {
     @TableField("status")
     private Status status;
 
+    /**
+     * 定义发布类型的可选值；调用方据此选择对应的处理分支。
+     */
     public enum PublishType {
         CREATE,  // 首次创建表
         ALTER    // 修改表结构
     }
 
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         ACTIVE,   // 有效版本
         ROLLBACK  // 已回滚

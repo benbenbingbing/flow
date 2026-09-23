@@ -20,7 +20,12 @@ public class ProcessInstanceOperationController {
     private final ProcessInstanceAccessService accessService;
     private final NodeOperationCapabilityService capabilityService;
 
-    /** 先校验实例可见性，再按与写接口相同的用户标识查询撤回权限。 */
+    /**
+     * 先校验实例可见性，再按与写接口相同的用户标识查询撤回权限。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 处理后的操作集合结果，供调用方继续处理
+     */
     @GetMapping("/api/process-instance/{processInstanceId}/operations")
     public Result<Map<String, Boolean>> operations(@PathVariable String processInstanceId) {
         accessService.requireReadAccess(processInstanceId);

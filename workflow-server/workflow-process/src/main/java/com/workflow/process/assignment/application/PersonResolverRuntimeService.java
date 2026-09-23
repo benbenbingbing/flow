@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
@@ -45,6 +45,13 @@ public class PersonResolverRuntimeService {
     @Autowired(required = false)
     private PersonResolverDefinitionMapper resolverDefinitionMapper;
 
+    /**
+     * 判断是否支持人员解析器运行时；判断结果决定调用方的后续分支。
+     *
+     * @param resolverCode 解析器编码，后续用于判断是否支持人员解析器运行时时定位或关联目标
+     * @param usage 使用场景，供本方法判断是否支持人员解析器运行时时使用
+     * @return 人员解析器运行时条件成立时为 true，否则为 false
+     */
     public boolean supports(String resolverCode, PersonResolveUsage usage) {
         PersonResolver resolver = find(resolverCode);
         return resolver != null
@@ -54,6 +61,10 @@ public class PersonResolverRuntimeService {
 
     /**
      * 校验解析器实现、用途以及受控目录启用状态。
+     *
+     * @param resolverCode 解析器编码，后续用于判断是否支持已配置时定位或关联目标
+     * @param usage 使用场景，供本方法判断是否支持已配置时使用
+     * @return 已配置条件成立时为 true，否则为 false
      */
     public boolean supportsConfigured(
             String resolverCode,
@@ -74,6 +85,13 @@ public class PersonResolverRuntimeService {
                 && Boolean.TRUE.equals(definition.getEnabled());
     }
 
+    /**
+     * 校验并获取已配置；不满足约束时阻止后续处理。
+     *
+     * @param resolverCode 解析器编码，后续用于校验并获取已配置时定位或关联目标
+     * @param usage 使用场景，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void requireConfigured(
             String resolverCode,
             PersonResolveUsage usage) {
@@ -86,6 +104,14 @@ public class PersonResolverRuntimeService {
         }
     }
 
+    /**
+     * 解析{@code usernames}；输出作为后续校验或处理的输入。
+     *
+     * @param resolverCode 解析器编码，后续用于解析{@code usernames}时定位或关联目标
+     * @param request 本次请求，后续经校验后用于解析{@code usernames}
+     * @return 人员解析器集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public List<String> resolveUsernames(
             String resolverCode,
             PersonResolveRequest request) {
@@ -112,6 +138,9 @@ public class PersonResolverRuntimeService {
      * 将用户、角色、用户组或组织主体统一展开为启用且未删除的本地用户名。
      * Flowable 任务监听器也使用该入口校验实际 identity link，避免静态配置
      * 绕过受控解析器已有的本地用户安全边界。
+     *
+     * @param principals {@code principals}，供本方法解析{@code principal}{@code usernames}时使用
+     * @return 人员解析器集合，供调用方遍历或展示
      */
     public List<String> resolvePrincipalUsernames(
             Collection<PersonPrincipal> principals) {
@@ -136,6 +165,12 @@ public class PersonResolverRuntimeService {
         return new ArrayList<>(users.keySet());
     }
 
+    /**
+     * 查询人员解析器；结果供调用方展示或继续处理。
+     *
+     * @param resolverCode 解析器编码，后续用于查询人员解析器运行时时定位或关联目标
+     * @return 符合条件的人员解析器结果，供调用方继续处理
+     */
     private PersonResolver find(String resolverCode) {
         if (!StringUtils.hasText(resolverCode)) {
             return null;
@@ -147,6 +182,12 @@ public class PersonResolverRuntimeService {
                 .orElse(null);
     }
 
+    /**
+     * 解析{@code direct}用户集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveDirectUsers(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         for (String value : values) {
@@ -164,6 +205,12 @@ public class PersonResolverRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /**
+     * 解析角色集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveRoles(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         for (String value : values) {
@@ -193,6 +240,12 @@ public class PersonResolverRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /**
+     * 解析分组集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveGroups(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         for (String value : values) {
@@ -222,6 +275,12 @@ public class PersonResolverRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /**
+     * 解析{@code organizations}；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveOrganizations(List<String> values) {
         List<String> ids = new ArrayList<>();
         for (String value : values) {

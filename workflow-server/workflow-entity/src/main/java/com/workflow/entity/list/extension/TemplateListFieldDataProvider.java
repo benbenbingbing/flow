@@ -29,26 +29,51 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * 读取数据来源类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的数据来源类型文本，供调用方比较或展示
+     */
     @Override
     public String getDataSourceType() {
         return "FIELD_TEMPLATE";
     }
 
+    /**
+     * 读取用户可见名称，供页面和操作日志展示。
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     @Override
     public String getDisplayName() {
         return "字段组合模板";
     }
 
+    /**
+     * 读取描述；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的描述文本，供调用方比较或展示
+     */
     @Override
     public String getDescription() {
         return "使用 ${fieldCode} 占位符组合当前行字段，不执行脚本。";
     }
 
+    /**
+     * 判断是否支持查询；判断结果决定调用方的后续分支。
+     *
+     * @return 查询条件成立时为 true，否则为 false
+     */
     @Override
     public boolean supportsQuery() {
         return true;
     }
 
+    /**
+     * 读取配置结构；查询结果供调用方展示或继续处理。
+     *
+     * @return 模板列表字段数据提供者集合，供调用方遍历或展示
+     */
     @Override
     public List<Map<String, Object>> getConfigSchema() {
         return List.of(
@@ -83,6 +108,9 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
 
     /**
      * 空值文本统一由单元格渲染配置维护，避免数据源和显示组件重复配置。
+     *
+     * @param field 字段，作为 {@code parse} 的输入影响后续处理
+     * @return 解析后的空文本文本，供调用方比较或展示
      */
     private String resolveEmptyText(EntityListField field) {
         Map<String, Object> renderConfig = parse(field.getRenderConfig());
@@ -94,6 +122,11 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
 
     /**
      * 渲染模板：将 ${fieldCode} 占位符替换为记录中对应字段值，空值用 emptyText 替代。
+     *
+     * @param template 模板，作为 {@code PLACEHOLDER.matcher} 的输入影响后续处理
+     * @param emptyText 空文本，供本方法处理{@code render}时使用
+     * @param record 记录，作为 {@code getValue} 的输入影响后续处理
+     * @return 处理后的{@code render}文本，供调用方比较或展示
      */
     private String render(String template, String emptyText, EntityDataDTO record) {
         Matcher matcher = PLACEHOLDER.matcher(template);
@@ -109,7 +142,13 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
         return result.toString();
     }
 
-    /** 按优先级从记录中取字段值：扩展数据 > 业务数据 > 系统基础字段 */
+    /**
+     * 按优先级从记录中取字段值：扩展数据 > 业务数据 > 系统基础字段
+     *
+     * @param record 记录，供本方法读取值时使用
+     * @param fieldCode 字段编码，后续用于读取值时定位或关联目标
+     * @return 符合条件的模板列表字段数据提供者结果，供调用方继续处理
+     */
     private Object getValue(EntityDataDTO record, String fieldCode) {
         if (record.getExtData() != null && record.getExtData().containsKey(fieldCode)) {
             return record.getExtData().get(fieldCode);
@@ -131,7 +170,12 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
         };
     }
 
-    /** 解析数据源配置 JSON，空白返回空 Map，格式错误抛出 IllegalArgumentException */
+    /**
+     * 解析数据源配置 JSON，空白返回空 Map，格式错误抛出 IllegalArgumentException
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 模板列表字段数据提供者键值结果，供调用方继续处理
+     */
     private Map<String, Object> parse(String json) {
         if (json == null || json.isBlank()) {
             return Map.of();
@@ -143,7 +187,16 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
         }
     }
 
-    /** 构造一个配置项 schema 描述对象 */
+    /**
+     * 构造一个配置项 schema 描述对象
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param label 标签，后续用于处理结构时匹配或展示
+     * @param type 类型标识，决定后续结构采用的处理分支
+     * @param required 必填，作为 {@code schema.put} 的输入影响后续处理
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 结构键值结果，供调用方继续处理
+     */
     private Map<String, Object> schema(
             String key,
             String label,

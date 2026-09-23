@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.user.bootstrap;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,11 +33,16 @@ public class BootstrapAdministratorRunner implements ApplicationRunner {
             "$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6";
 
     private final SysUserMapper userMapper;
-    private final BootstrapJobCoordinator bootstrapJobCoordinator;
+    private final BootstrapJobPort bootstrapJobCoordinator;
 
     @Value("${workflow.bootstrap.admin.password:}")
     private String bootstrapPassword;
 
+    /**
+     * 执行初始化管理员{@code runner}，并将结果传给后续步骤。
+     *
+     * @param args {@code args}，供本方法执行初始化管理员{@code runner}时使用
+     */
     @Override
     public void run(ApplicationArguments args) {
         bootstrapJobCoordinator.executeOnce(
@@ -49,6 +54,11 @@ public class BootstrapAdministratorRunner implements ApplicationRunner {
                 });
     }
 
+    /**
+     * 处理{@code initialize}管理员，并将结果传给后续步骤。
+     *
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void initializeAdministrator() {
         if (!StringUtils.hasText(bootstrapPassword)) {
             if (userMapper.isBootstrapAdministratorPending(LEGACY_BOOTSTRAP_HASH)) {
@@ -71,6 +81,12 @@ public class BootstrapAdministratorRunner implements ApplicationRunner {
         }
     }
 
+    /**
+     * 校验密码；不满足约束时阻止后续处理。
+     *
+     * @param password 密码，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void validatePassword(String password) {
         if (password.length() < 14 || password.length() > 72
                 || !password.chars().anyMatch(Character::isLowerCase)

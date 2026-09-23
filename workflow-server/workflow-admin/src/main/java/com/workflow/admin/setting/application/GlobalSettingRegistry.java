@@ -48,13 +48,34 @@ public class GlobalSettingRegistry {
     /** JSON 专用于对象/数组，前三种标量类型各自单独校验。 */
     public enum ValueType { BOOLEAN, NUMBER, STRING, JSON }
 
-    /** clientReadable 限制个人接口，sensitive 要求系统接口也不回显值且禁止删除恢复默认。 */
+    /**
+     * clientReadable 限制个人接口，sensitive 要求系统接口也不回显值且禁止删除恢复默认。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param name 展示名称，供界面或日志识别
+     * @param remark {@code remark}，保存在对象中供后续校验、查询或展示
+     * @param valueType 值类型标识，决定后续定义采用的处理分支
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @param scopes {@code scopes}，保存在对象中供后续校验、查询或展示
+     * @param clientReadable 客户端可读，保存在对象中供后续校验、查询或展示
+     * @param sensitive {@code sensitive}，保存在对象中供后续校验、查询或展示
+     */
     public record Definition(String key, String name, String remark, ValueType valueType,
                              JsonNode defaultValue, Set<String> scopes, boolean clientReadable, boolean sensitive) { }
 
+    /**
+     * 整理全部数据，供调用方遍历或继续处理。
+     *
+     * @return 定义集合，供调用方遍历或展示
+     */
     public List<Definition> all() { return definitions; }
 
-    /** 精确匹配注册键，拒绝大小写变体与未知键。 */
+    /**
+     * 精确匹配注册键，拒绝大小写变体与未知键。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 校验并获取后的全局设置{@code registry}结果，供调用方继续处理
+     */
     public Definition require(String key) {
         return definitions.stream().filter(item -> item.key().equals(key)).findFirst()
                 .orElseThrow(() -> GlobalSettingException.invalid("未知设置项"));
@@ -63,6 +84,10 @@ public class GlobalSettingRegistry {
     /**
      * 在应用层完整解析文本并验证业务类型；拒绝尾随内容、顶层 null 及超长值。
      * 返回保留原始业务类型的节点，不依赖任何数据库 JSON 能力。
+     *
+     * @param definition 定义，供本方法解析全局设置{@code registry}时使用
+     * @param text 待解析全局设置{@code registry}的原始输入，结果供调用方继续使用
+     * @return 解析后的全局设置{@code registry}结果，供调用方继续处理
      */
     public JsonNode parse(Definition definition, String text) {
         JsonNode value = parse(definition.valueType(), text);
@@ -80,7 +105,13 @@ public class GlobalSettingRegistry {
         return value;
     }
 
-    /** 按持久化类型解析文本；数字必须有限，JSON 必须是对象或数组。 */
+    /**
+     * 按持久化类型解析文本；数字必须有限，JSON 必须是对象或数组。
+     *
+     * @param type 类型标识，决定后续全局设置{@code registry}采用的处理分支
+     * @param text 待解析全局设置{@code registry}的原始输入，结果供调用方继续使用
+     * @return 解析后的全局设置{@code registry}结果，供调用方继续处理
+     */
     public JsonNode parse(ValueType type, String text) {
         if (text == null || text.isBlank() || text.getBytes(StandardCharsets.UTF_8).length > MAX_VALUE_BYTES) {
             throw GlobalSettingException.invalid("设置值不能为空且不能超过 16 KiB");

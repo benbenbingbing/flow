@@ -1,10 +1,12 @@
 package com.workflow.migration.schema;
 
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
+import com.workflow.integration.database.api.schema.SchemaIndexMetadata;
+import com.workflow.integration.database.api.schema.SchemaType;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
-import com.workflow.integration.database.schema.*;
 
-import com.workflow.integration.database.api.*;
-import com.workflow.integration.database.api.SchemaDdlDialect;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 import org.springframework.jdbc.core.JdbcTemplate;
 import java.math.BigDecimal;
 import java.util.*;
@@ -20,6 +22,12 @@ public final class SchemaDdlReplayVerifier {
     private final JdbcSchemaMetadata metadata;
     private final boolean mysql;
 
+    /**
+     * 初始化结构DDL重放验证器，保存构造参数供后续方法使用。
+     *
+     * @param jdbc JDBC依赖，保存到当前对象供后续业务方法调用
+     * @param dialect 方言依赖，保存到当前对象供后续业务方法调用
+     */
     public SchemaDdlReplayVerifier(JdbcTemplate jdbc, SchemaDdlDialect dialect) {
         this.jdbc = jdbc;
         this.dialect = dialect;
@@ -27,12 +35,22 @@ public final class SchemaDdlReplayVerifier {
         this.mysql = Set.of(DatabaseVendor.MYSQL, DatabaseVendor.OCEANBASE_MYSQL).contains(dialect.vendor());
     }
 
-    /** IF NOT EXISTS 可能无声跳过错误对象，因此建表和建索引成功返回后也需要验收。 */
+    /**
+     * IF NOT EXISTS 可能无声跳过错误对象，因此建表和建索引成功返回后也需要验收。
+     *
+     * @param ddl DDL，供本方法处理需要{@code creation}{@code verification}时使用
+     * @return 需要{@code creation}{@code verification}条件成立时为 true，否则为 false
+     */
     public boolean requiresCreationVerification(String ddl) {
         return ddl.trim().matches("(?is)^CREATE\\s+(?:TABLE|(?:UNIQUE\\s+)?INDEX)\\b.*");
     }
 
-    /** 不依赖错误文本或厂商错误码；查询失败应抛出，绝不能当作对象不存在。 */
+    /**
+     * 不依赖错误文本或厂商错误码；查询失败应抛出，绝不能当作对象不存在。
+     *
+     * @param ddl DDL，作为 {@code parse} 的输入影响后续处理
+     * @return {@code applied}条件成立时为 true，否则为 false
+     */
     public boolean isApplied(String ddl) {
         Target target;
         try { target = parse(ddl); }
@@ -69,6 +87,14 @@ public final class SchemaDdlReplayVerifier {
         return true;
     }
 
+    /**
+     * 判断列匹配条件是否成立，供调用方选择后续分支。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @param expected 预期，作为 {@code mySqlExpressionDefault} 的输入影响后续处理
+     * @param actual 实际，供本方法处理列匹配时使用
+     * @return 列匹配条件成立时为 true，否则为 false
+     */
     private boolean columnMatches(String table, Column expected, SchemaColumnMetadata actual) {
         if (!dialect.columnTypeMatches(expected.type, actual.typeName(), actual.length(), actual.precision(), actual.scale())
                 || expected.nullable != actual.nullable()) return false;
@@ -104,6 +130,11 @@ public final class SchemaDdlReplayVerifier {
     /**
      * MySQL 8 的 COLUMN_DEFAULT 可能将表达式的引号二次转义并错误呈现非 ASCII 字节。
      * SHOW CREATE 的 SQL 字面量保留正确字符；仅解析目标列的标量默认值，绝不执行该元数据表达式。
+     *
+     * @param table 服务端确定的目标表名，用于生成 SQL 语句
+     * @param column 列，作为 {@code token.value.equalsIgnoreCase} 的输入影响后续处理
+     * @param type 类型标识，决定后续我的SQL表达式默认采用的处理分支
+     * @return 处理后的我的SQL表达式默认文本，供调用方比较或展示
      */
     private String mySqlExpressionDefault(String table, String column, SchemaType type) {
         String create = jdbc.queryForObject("SHOW CREATE TABLE " + dialect.quoteIdentifier(table), (row, index) -> row.getString(2));
@@ -124,12 +155,33 @@ public final class SchemaDdlReplayVerifier {
         throw new IllegalArgumentException("Generated default was not found in SHOW CREATE TABLE");
     }
 
+    /**
+     * 判断是否文本；判断结果决定调用方的后续分支。
+     *
+     * @param type 类型标识，决定后续文本采用的处理分支
+     * @return 文本条件成立时为 true，否则为 false
+     */
     private static boolean isText(SchemaType type) {
         return Set.of(SchemaType.Kind.STRING, SchemaType.Kind.TEXT, SchemaType.Kind.LARGE_TEXT).contains(type.kind());
     }
 
+    /**
+     * 封装我的SQL列的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @param extra 附加，保存在对象中供后续校验、查询或展示
+     * @param timePrecision 时间{@code precision}，保存在对象中供后续校验、查询或展示
+     * @param collation {@code collation}，保存在对象中供后续校验、查询或展示
+     * @param tableCollation 表{@code collation}，保存在对象中供后续校验、查询或展示
+     */
     private record MySqlColumn(String defaultValue, String extra, Number timePrecision, String collation, String tableCollation) {}
 
+    /**
+     * 解析结构DDL重放验证器；输出作为后续校验或处理的输入。
+     *
+     * @param sql SQL，作为 {@code Tokens} 的输入影响后续处理
+     * @return 解析后的结构DDL重放验证器结果，供调用方继续处理
+     */
     private Target parse(String sql) {
         var input = new Tokens(sql, mysql);
         if (input.take("DROP")) {
@@ -199,6 +251,13 @@ public final class SchemaDdlReplayVerifier {
         return target;
     }
 
+    /**
+     * 处理列，并将结果传给后续步骤。
+     *
+     * @param input 待处理列的原始输入，结果供调用方继续使用
+     * @return 处理后的列结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Column column(Tokens input) {
         var column = new Column();
         column.name = input.identifier();
@@ -240,6 +299,13 @@ public final class SchemaDdlReplayVerifier {
         return column;
     }
 
+    /**
+     * 生成默认值文本，供后续匹配或展示。
+     *
+     * @param input 待处理默认值的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续默认值采用的处理分支
+     * @return 处理后的默认值文本，供调用方比较或展示
+     */
     private String defaultValue(Tokens input, SchemaType type) {
         boolean parenthesized = input.take("(");
         // Oracle 带类型的日期字面量、PostgreSQL E 字符串及 MySQL 元数据的字符集 introducer。
@@ -251,6 +317,12 @@ public final class SchemaDdlReplayVerifier {
         return result;
     }
 
+    /**
+     * 整理{@code identifiers}数据，供调用方遍历或继续处理。
+     *
+     * @param input 待处理{@code identifiers}的原始输入，结果供调用方继续使用
+     * @return 结构DDL重放验证器集合，供调用方遍历或展示
+     */
     private static List<String> identifiers(Tokens input) {
         input.require("(");
         List<String> result = new ArrayList<>();
@@ -259,6 +331,13 @@ public final class SchemaDdlReplayVerifier {
         return List.copyOf(result);
     }
 
+    /**
+     * 规范化结构DDL重放验证器默认；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化结构DDL重放验证器默认的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续结构DDL重放验证器默认采用的处理分支
+     * @return 规范化后的结构DDL重放验证器默认文本，供调用方比较或展示
+     */
     private String normalizeDefault(String raw, SchemaType type) {
         if (raw == null) return null;
         String value = raw.trim();
@@ -288,25 +367,58 @@ public final class SchemaDdlReplayVerifier {
         return value;
     }
 
+    /**
+     * 封装目标相关能力和状态；供同一业务流程的后续处理使用。
+     */
     private static final class Target {
         final String operation, table;
         final List<Column> columns = new ArrayList<>();
         final List<Index> indexes = new ArrayList<>();
         String removed, engine, collation, comment;
+        /**
+         * 初始化目标，保存构造参数供后续方法使用。
+         *
+         * @param operation 操作依赖，保存到当前对象供后续业务方法调用
+         * @param table 表依赖，保存到当前对象供后续业务方法调用
+         */
         Target(String operation, String table) { this.operation = operation; this.table = table; }
     }
+    /**
+     * 封装列相关能力和状态；供同一业务流程的后续处理使用。
+     */
     private static final class Column {
         String name, defaultValue, comment;
         SchemaType type;
         boolean nullable = true, onUpdate;
     }
+    /**
+     * 封装索引的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param name 展示名称，供界面或日志识别
+     * @param columns 列集合，保存在对象中供后续校验、查询或展示
+     * @param unique 唯一，保存在对象中供后续校验、查询或展示
+     * @param primary 主要，保存在对象中供后续校验、查询或展示
+     */
     private record Index(String name, List<String> columns, boolean unique, boolean primary) {}
+    /**
+     * 封装令牌的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param kind 类型，保存在对象中供后续校验、查询或展示
+     * @param value 待处理令牌的原始输入，结果供调用方继续使用
+     */
     private record Token(char kind, String value) {}
 
     /** 分词保留字面量与标识符的区别，括号/逗号/关键字出现在注释或默认值文本中不会改变语法。 */
     private static final class Tokens {
         private final List<Token> tokens = new ArrayList<>();
         private int position;
+        /**
+         * 初始化{@code tokens}，保存构造参数供后续方法使用。
+         *
+         * @param sql SQL，保存在对象中供后续校验、查询或展示
+         * @param mysql {@code mysql}，保存在对象中供后续校验、查询或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         Tokens(String sql, boolean mysql) {
             for (int i = 0; i < sql.length();) {
                 char c = sql.charAt(i);
@@ -343,14 +455,61 @@ public final class SchemaDdlReplayVerifier {
                 }
             }
         }
+        /**
+         * 处理下一步，并将结果传给后续步骤。
+         *
+         * @return 处理后的下一步结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         Token next() { if (position >= tokens.size()) throw new IllegalArgumentException("Incomplete DDL"); return tokens.get(position++); }
+        /**
+         * 判断{@code peek}条件是否成立，供调用方选择后续分支。
+         *
+         * @param value 待处理{@code peek}的原始输入，结果供调用方继续使用
+         * @return {@code peek}条件成立时为 true，否则为 false
+         */
         boolean peek(String value) { return position < tokens.size() && tokens.get(position).kind != 's'
                 && tokens.get(position).kind != 'i' && tokens.get(position).value.equalsIgnoreCase(value); }
+        /**
+         * 判断{@code take}条件是否成立，供调用方选择后续分支。
+         *
+         * @param value 待处理{@code take}的原始输入，结果供调用方继续使用
+         * @return {@code take}条件成立时为 true，否则为 false
+         */
         boolean take(String value) { if (!peek(value)) return false; position++; return true; }
+        /**
+         * 校验并获取{@code tokens}；不满足约束时阻止后续处理。
+         *
+         * @param value 待校验并获取{@code tokens}的原始输入，结果供调用方继续使用
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         void require(String value) { if (!take(value)) throw new IllegalArgumentException("Expected " + value); }
+        /**
+         * 生成{@code word}文本，供后续匹配或展示。
+         *
+         * @return 处理后的{@code word}文本，供调用方比较或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         String word() { Token token = next(); if (token.kind != 'w') throw new IllegalArgumentException("Expected keyword"); return token.value; }
+        /**
+         * 生成标识符文本，供后续匹配或展示。
+         *
+         * @return 处理后的标识符文本，供调用方比较或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         String identifier() { Token token = next(); if (token.kind != 'i' || !token.value.matches("[A-Za-z][A-Za-z0-9_]{0,62}")) throw new IllegalArgumentException("Expected quoted identifier"); return token.value.toLowerCase(Locale.ROOT); }
+        /**
+         * 生成字符串文本，供后续匹配或展示。
+         *
+         * @return 处理后的字符串文本，供调用方比较或展示
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         String string() { Token token = next(); if (token.kind != 's') throw new IllegalArgumentException("Expected literal"); return token.value; }
+        /**
+         * 处理结束，并将结果传给后续步骤。
+         *
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         void end() { take(";"); if (position != tokens.size()) throw new IllegalArgumentException("Unrecognized DDL suffix"); }
     }
 }

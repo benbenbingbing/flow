@@ -1,6 +1,6 @@
 package com.workflow.entity.data.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -345,12 +345,24 @@ public class EntityMultiValueRuntimeService {
                 recordId);
     }
 
+    /**
+     * 整理多实例值字段数据，供调用方遍历或继续处理。
+     *
+     * @param entityId 实体ID，后续用于处理多实例值字段时定位或关联目标
+     * @return 实体字段集合，供调用方遍历或展示
+     */
     private List<EntityField> multiValueFields(String entityId) {
         return fieldMapper.findByEntityId(entityId).stream()
                 .filter(this::isConfiguredMultiValue)
                 .toList();
     }
 
+    /**
+     * 判断是否已配置多实例值；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，作为 {@code hasText} 的输入影响后续处理
+     * @return 已配置多实例值条件成立时为 true，否则为 false
+     */
     private boolean isConfiguredMultiValue(EntityField field) {
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE) {
             return StringUtils.hasText(field.getRefEntityId());
@@ -360,6 +372,13 @@ public class EntityMultiValueRuntimeService {
                 && StringUtils.hasText(field.getDictType());
     }
 
+    /**
+     * 生成目标实体ID文本，供后续匹配或展示。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的目标实体ID文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String targetEntityId(EntityField field) {
         if (StringUtils.hasText(field.getDictType())) {
             return definitionMapper.findByEntityCode("sys_dict_item")
@@ -372,6 +391,14 @@ public class EntityMultiValueRuntimeService {
         return field.getRefEntityId();
     }
 
+    /**
+     * 解析目标记录ID 集合；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体多实例值集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> resolveTargetRecordIds(EntityField field, List<String> values) {
         if (!StringUtils.hasText(field.getDictType())) {
             return values;
@@ -397,6 +424,13 @@ public class EntityMultiValueRuntimeService {
         return targetIds;
     }
 
+    /**
+     * 解析API值；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，供本方法解析API值时使用
+     * @param targetRecordId 目标记录ID，后续用于解析API值时定位或关联目标
+     * @return 解析后的API值文本，供调用方比较或展示
+     */
     private String resolveApiValue(EntityField field, String targetRecordId) {
         if (StringUtils.hasText(field.getDictType())) {
             List<String> codes = jdbcTemplate.queryForList(
@@ -408,6 +442,12 @@ public class EntityMultiValueRuntimeService {
         return targetRecordId;
     }
 
+    /**
+     * 补充标量字典选项；结果供调用方的后续步骤使用。
+     *
+     * @param definition 定义，供本方法补充标量字典选项时使用
+     * @param record 记录，供本方法补充标量字典选项时使用
+     */
     private void enrichScalarDictOptions(
             EntityDefinition definition,
             com.workflow.entity.data.api.response.EntityDataDTO record) {
@@ -447,6 +487,13 @@ public class EntityMultiValueRuntimeService {
         }
     }
 
+    /**
+     * 解析选项；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @param targetRecordId 目标记录ID，后续用于解析选项时定位或关联目标
+     * @return 选项键值结果，供调用方继续处理
+     */
     private Map<String, Object> resolveOption(EntityField field, String targetRecordId) {
         Map<String, Object> option = new LinkedHashMap<>();
         option.put("id", targetRecordId);
@@ -485,6 +532,12 @@ public class EntityMultiValueRuntimeService {
         return option;
     }
 
+    /**
+     * 规范化值集合；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化值集合的原始输入，结果供调用方继续使用
+     * @return 实体多实例值集合，供调用方遍历或展示
+     */
     private List<String> normalizeValues(Object raw) {
         Set<String> values = new LinkedHashSet<>();
         if (raw instanceof Collection<?> collection) {
@@ -507,6 +560,12 @@ public class EntityMultiValueRuntimeService {
         return new ArrayList<>(values);
     }
 
+    /**
+     * 添加值；结果供后续流程传递或持久化。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param raw 待添加值的原始输入，结果供调用方继续使用
+     */
     private void addValue(Set<String> values, Object raw) {
         if (raw == null) {
             return;
@@ -517,10 +576,24 @@ public class EntityMultiValueRuntimeService {
         }
     }
 
+    /**
+     * 转换为{@code snake}分支；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为{@code snake}分支的原始输入，结果供调用方继续使用
+     * @return 转换为后的{@code snake}分支文本，供调用方比较或展示
+     */
     private String toSnakeCase(String value) {
         return value.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
     }
 
+    /**
+     * 解析展示列；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，供本方法解析展示列时使用
+     * @param target 目标，作为 {@code fieldMapper.findByEntityId} 的输入影响后续处理
+     * @return 解析后的展示列文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String resolveDisplayColumn(EntityField field, EntityDefinition target) {
         String column = target.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM
@@ -548,6 +621,9 @@ public class EntityMultiValueRuntimeService {
      * 系统实体不能走通用动态表解析器，但已登记的只读系统实体可以作为
      * MULTI_REFERENCE 目标。这里仅接受目录中严格匹配的 sys_* 物理表，
      * 避免为了用户多选关系放宽通用动态表安全边界。
+     *
+     * @param target 目标，作为 {@code tableResolver.resolve} 的输入影响后续处理
+     * @return 解析后的目标表文本，供调用方比较或展示
      */
     private String resolveTargetTable(EntityDefinition target) {
         if (target.getStorageMode()
@@ -567,6 +643,16 @@ public class EntityMultiValueRuntimeService {
         return tableName;
     }
 
+    /**
+     * 构建标签存在；结果供后续流程传递或持久化。
+     *
+     * @param field 字段，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @param multiTable 多实例表，作为 {@code EXISTS} 的输入影响后续处理
+     * @param base 基础，作为 {@code base.substring} 的输入影响后续处理
+     * @param labelParam 标签参数，供本方法构建标签存在时使用
+     * @param operation 操作标识，决定后续标签存在采用的处理分支
+     * @return 构建后的标签存在文本，供调用方比较或展示
+     */
     private String buildLabelExists(
             EntityField field,
             String multiTable,
@@ -593,6 +679,12 @@ public class EntityMultiValueRuntimeService {
                 + " AND target." + queryDialect.quoteIdentifier(displayColumn) + " " + operator + " " + valueExpression + ")";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }

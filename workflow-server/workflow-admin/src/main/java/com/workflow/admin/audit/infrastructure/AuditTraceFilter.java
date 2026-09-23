@@ -28,6 +28,15 @@ public class AuditTraceFilter extends OncePerRequestFilter {
     public static final String TRACE_ID_MDC_KEY =
             CorrelationContext.LEGACY_TRACE_MDC_KEY;
 
+    /**
+     * 处理{@code do}过滤内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code do}过滤内部
+     * @param response 响应，作为 {@code filterChain.doFilter} 的输入影响后续处理
+     * @param filterChain 过滤链，供本方法处理{@code do}过滤内部时使用
+     * @throws ServletException 过滤器或请求处理链执行失败时抛出
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,

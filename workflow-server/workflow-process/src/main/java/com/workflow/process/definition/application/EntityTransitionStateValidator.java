@@ -6,9 +6,23 @@ import java.util.*;
 /** 发布时检查并发写状态；互斥网关允许不同结果，汇合后的顺序状态也允许不同。 */
 final class EntityTransitionStateValidator {
     private static final String BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL";
+    /**
+     * 封装边的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     * @param status 状态标识，决定后续边采用的处理分支
+     */
     private record Edge(String target, String status) { }
+    /**
+     * 初始化实体{@code transition}状态校验器，保存构造参数供后续方法使用。
+     */
     private EntityTransitionStateValidator() { }
 
+    /**
+     * 校验实体{@code transition}状态；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，供本方法校验实体{@code transition}状态时使用
+     */
     static void validate(Document document) {
         Map<String, Element> nodes = new HashMap<>();
         Map<String, List<Edge>> outgoing = new HashMap<>();
@@ -70,7 +84,14 @@ final class EntityTransitionStateValidator {
         }
     }
 
-    /** 有环流程也只访问一次节点；终点和同步网关作为遍历边界。 */
+    /**
+     * 有环流程也只访问一次节点；终点和同步网关作为遍历边界。
+     *
+     * @param start 启动，作为 {@code queue.add} 的输入影响后续处理
+     * @param graph 图，供本方法处理{@code reachable}时使用
+     * @param stops {@code stops}，供本方法处理{@code reachable}时使用
+     * @return 实体{@code transition}状态校验器集合，供调用方遍历或展示
+     */
     private static Set<String> reachable(String start, Map<String, List<Edge>> graph, Set<String> stops) {
         Set<String> visited = new HashSet<>();
         Deque<String> queue = new ArrayDeque<>();
@@ -83,6 +104,12 @@ final class EntityTransitionStateValidator {
         return visited;
     }
 
+    /**
+     * 生成状态文本，供后续匹配或展示。
+     *
+     * @param flow 流程，供本方法处理状态时使用
+     * @return 处理后的状态文本，供调用方比较或展示
+     */
     private static String status(Element flow) {
         NodeList properties = flow.getElementsByTagNameNS("http://flowable.org/bpmn", "property");
         for (int i = 0; i < properties.getLength(); i++) {

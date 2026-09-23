@@ -5,7 +5,7 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
@@ -177,6 +177,11 @@ public class UiViewCompositionService {
 
     /**
      * 新增关联内容，并在同一事务内触碰宿主草稿修订号。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面视图组合采用的处理分支
+     * @param ownerId 归属方ID，后续用于创建界面视图组合时定位或关联目标
+     * @param request 本次请求，后续经校验后用于创建界面视图组合
+     * @return 创建后的界面视图组合结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiViewCompositionDTO create(
@@ -216,6 +221,12 @@ public class UiViewCompositionService {
 
     /**
      * 基于关联内容 revision 更新记录，并在同一事务内递增宿主 revision。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面视图组合采用的处理分支
+     * @param ownerId 归属方ID，后续用于更新界面视图组合时定位或关联目标
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于更新界面视图组合
+     * @return 更新后的界面视图组合结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiViewCompositionDTO update(
@@ -261,6 +272,13 @@ public class UiViewCompositionService {
 
     /**
      * 逻辑删除关联内容，并同步触碰宿主草稿状态。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面视图组合采用的处理分支
+     * @param ownerId 归属方ID，后续用于删除界面视图组合时定位或关联目标
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param expectedRevision 预期修订版本，作为 {@code requireRevision} 的输入影响后续处理
+     * @param expectedOwnerRevision 预期归属方修订版本，作为 {@code requireOwnerRevision} 的输入影响后续处理
+     * @return 删除后的界面视图组合结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiViewCompositionMutationResultDTO delete(
@@ -290,6 +308,11 @@ public class UiViewCompositionService {
 
     /**
      * 兼容只携带资源 ID 的删除请求；宿主身份始终从数据库读取，不能由前端伪造。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param expectedRevision 预期修订版本，供本方法删除界面视图组合时使用
+     * @param expectedOwnerRevision 预期归属方修订版本，供本方法删除界面视图组合时使用
+     * @return 删除后的界面视图组合结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiViewCompositionMutationResultDTO delete(
@@ -313,6 +336,11 @@ public class UiViewCompositionService {
 
     /**
      * 保存前执行结构、目标资产和扩展引用校验，不修改草稿。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面视图组合采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验界面视图组合时定位或关联目标
+     * @param config 配置内容，决定后续界面视图组合的处理规则
+     * @return 校验后的界面视图组合结果，供调用方继续处理
      */
     public UiViewCompositionValidationDTO validate(
             String ownerType,
@@ -338,6 +366,12 @@ public class UiViewCompositionService {
      * <p>来源和目标查询都经过实体数据权限引擎。任何必填关系值缺失都会返回
      * “无法形成查询条件”，不会退化为无条件查询；响应只暴露最小记录标识。
      * 接口扩展关联通过管理预览入口执行已注册的 READ 接口。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续测试采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理测试时定位或关联目标
+     * @param config 配置内容，决定后续测试的处理规则
+     * @param sourceRecordId 来源记录ID，后续用于处理测试时定位或关联目标
+     * @return 处理后的测试结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public UiViewCompositionTestDTO test(
@@ -423,6 +457,10 @@ public class UiViewCompositionService {
      * <p>返回文档只包含稳定 ID 和业务字段，不包含 revision、时间等易变值；
      * 同时以发布当下的权威记录覆盖目标 release、接口操作快照和组件定义，避免客户端
      * 传入钉定信息或宿主发布后的依赖漂移。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续快照采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理快照时定位或关联目标
+     * @return 界面视图组合集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> snapshot(
             String ownerType,
@@ -608,6 +646,10 @@ public class UiViewCompositionService {
      *
      * <p>调用方必须已经开启事务；该方法刻意不做权限校验，避免内部发布服务
      * 在完成自身鉴权后重复读取宿主。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于锁定归属方时定位或关联目标
+     * @return 界面视图组合集合，供调用方遍历或展示
      */
     public List<UiViewComposition> lockByOwner(
             String ownerType,
@@ -623,6 +665,10 @@ public class UiViewCompositionService {
      * <p>调用方负责锁定宿主并在完整恢复结束后只递增一次宿主 revision；本方法
      * 因此不会触碰宿主，也不会校验当前依赖是否仍然激活，只校验快照结构安全性。
      * 这样撤销仍可忠实恢复历史钉定内容，依赖漂移由发布预检单独报告。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续发布版本采用的处理分支
+     * @param ownerId 归属方ID，后续用于恢复发布版本时定位或关联目标
+     * @param snapshotItems 快照条目，供本方法恢复发布版本时使用
      */
     @Transactional(rollbackFor = Exception.class)
     public void restoreForRelease(
@@ -748,6 +794,14 @@ public class UiViewCompositionService {
         touchOwner(owner);
     }
 
+    /**
+     * 校验草稿；不满足约束时阻止后续处理。
+     *
+     * @param owner 归属方，作为 {@code validateAnchorPlacement} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于校验草稿
+     * @return 校验后的草稿结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ValidatedDraft validateDraft(
             OwnerState owner,
             UiViewCompositionSaveRequest request) {
@@ -777,6 +831,13 @@ public class UiViewCompositionService {
                 orderKey);
     }
 
+    /**
+     * 校验引用；不满足约束时阻止后续处理。
+     *
+     * @param owner 归属方，作为 {@code relationMapper.selectByRelationCode} 的输入影响后续处理
+     * @param config 配置内容，决定后续引用的处理规则
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateReferences(
             OwnerState owner,
             Map<String, Object> config) {
@@ -845,7 +906,12 @@ public class UiViewCompositionService {
                 config.get("specialHandling"), "特殊处理"));
     }
 
-    /** 关系基数决定展示方式，避免多条记录被单条表单截断或到运行时才报错。 */
+    /**
+     * 关系基数决定展示方式，避免多条记录被单条表单截断或到运行时才报错。
+     *
+     * @param relation 关系，供本方法校验关系内容类型时使用
+     * @param contentType 内容类型标识，决定后续关系内容类型采用的处理分支
+     */
     private void validateRelationContentType(EntityRelation relation, String contentType) {
         boolean single = relation.getRelationType() == EntityRelation.RelationType.ONE_TO_ONE;
         if (!(single ? "FORM" : "LIST").equals(contentType)) {
@@ -855,7 +921,12 @@ public class UiViewCompositionService {
         }
     }
 
-    /** 组成数据必须经主从聚合提交；展示入口不能另开独立写入通道。 */
+    /**
+     * 组成数据必须经主从聚合提交；展示入口不能另开独立写入通道。
+     *
+     * @param relation 关系，供本方法校验关系保存{@code boundary}时使用
+     * @param config 配置内容，决定后续关系保存{@code boundary}的处理规则
+     */
     private void validateRelationSaveBoundary(EntityRelation relation, Map<String, Object> config) {
         if (relation.getOwnershipType() == EntityRelation.OwnershipType.COMPOSITION
                 && config.get("actions") instanceof List<?> actions
@@ -870,17 +941,30 @@ public class UiViewCompositionService {
      * <p>旧 serviceId + operationCode 仅用来查找 V088 迁移产生的扩展记录；
      * 新增、修改、复制、撤销恢复与迁移导入落库前都经过该方法，
      * 因此可变配置不会再写回多操作服务形状。</p>
+     *
+     * @param config 配置内容，决定后续草稿接口引用的处理规则
      */
     private void normalizeDraftInterfaceReferences(
             Map<String, Object> config) {
         normalizeInterfaceReferences(config, true);
     }
 
+    /**
+     * 规范化可读接口引用；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续可读接口引用的处理规则
+     */
     private void normalizeReadableInterfaceReferences(
             Map<String, Object> config) {
         normalizeInterfaceReferences(config, false);
     }
 
+    /**
+     * 规范化接口引用；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续接口引用的处理规则
+     * @param executableRequired {@code executable}必填，供本方法规范化接口引用时使用
+     */
     private void normalizeInterfaceReferences(
             Map<String, Object> config,
             boolean executableRequired) {
@@ -904,6 +988,13 @@ public class UiViewCompositionService {
         config.put("specialHandling", special);
     }
 
+    /**
+     * 规范化草稿接口引用；输出作为后续校验或处理的输入。
+     *
+     * @param reference 引用，作为 {@code blankToNull} 的输入影响后续处理
+     * @param executableRequired {@code executable}必填，供本方法规范化草稿接口引用时使用
+     * @return 草稿接口引用键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeDraftInterfaceReference(
             Map<String, Object> reference,
             boolean executableRequired) {
@@ -937,6 +1028,13 @@ public class UiViewCompositionService {
         return normalized;
     }
 
+    /**
+     * 加载可访问来源{@code sample}；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param sourceRecordId 来源记录ID，后续用于加载可访问来源{@code sample}时定位或关联目标
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     private EntityDataDTO loadAccessibleSourceSample(
             String entityCode,
             String sourceRecordId) {
@@ -949,6 +1047,15 @@ public class UiViewCompositionService {
         return page.getRecords().isEmpty() ? null : page.getRecords().get(0);
     }
 
+    /**
+     * 处理测试接口服务，并将结果传给后续步骤。
+     *
+     * @param owner 归属方，作为 {@code request.setConfigType} 的输入影响后续处理
+     * @param config 配置内容，决定后续测试接口服务的处理规则
+     * @param source 待处理测试接口服务的原始输入，结果供调用方继续使用
+     * @param summary 摘要，供本方法处理测试接口服务时使用
+     * @return 处理后的测试接口服务结果，供调用方继续处理
+     */
     private UiViewCompositionTestDTO testInterfaceService(
             OwnerState owner,
             Map<String, Object> config,
@@ -986,6 +1093,13 @@ public class UiViewCompositionService {
                 .build();
     }
 
+    /**
+     * 判断使用接口服务条件是否成立，供调用方选择后续分支。
+     *
+     * @param relation 关系，供本方法处理使用接口服务时使用
+     * @param special {@code special}，供本方法处理使用接口服务时使用
+     * @return 使用接口服务条件成立时为 true，否则为 false
+     */
     private boolean usesInterfaceService(
             Map<String, Object> relation,
             Map<String, Object> special) {
@@ -1008,6 +1122,10 @@ public class UiViewCompositionService {
      *
      * <p>设计态已经读取了完整来源记录用于关系测试，但不能因此把整行业务字段
      * 暴露给扩展。每个映射只读取一个配置允许的字段，并写入有界安全路径。</p>
+     *
+     * @param service 业务服务，后续由接口方法调用以完成校验和状态处理
+     * @param source 待处理映射接口输入的原始输入，结果供调用方继续使用
+     * @return 映射接口输入键值结果，供调用方继续处理
      */
     private Map<String, Object> mapInterfaceInput(
             Map<String, Object> service,
@@ -1045,6 +1163,11 @@ public class UiViewCompositionService {
     /**
      * 将接口返回的记录或筛选条件再次交给目标实体数据权限查询。
      * 原始接口 total、records 和 ID 均不作为已授权结果直接返回。
+     *
+     * @param config 配置内容，决定后续接口测试目标的处理规则
+     * @param service 业务服务，后续由接口方法调用以完成校验和状态处理
+     * @param response 响应，作为 {@code mapInterfaceOutput} 的输入影响后续处理
+     * @return 解析后的接口测试目标结果，供调用方继续处理
      */
     private InterfaceTestResolution resolveInterfaceTestTarget(
             Map<String, Object> config,
@@ -1125,6 +1248,13 @@ public class UiViewCompositionService {
                         + page.getTotal() + " 条目标数据");
     }
 
+    /**
+     * 整理映射接口输出数据，供调用方遍历或继续处理。
+     *
+     * @param service 业务服务，后续由接口方法调用以完成校验和状态处理
+     * @param response 响应，供本方法处理映射接口输出时使用
+     * @return 映射接口输出键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapInterfaceOutput(
             Map<String, Object> service,
             Object response) {
@@ -1160,6 +1290,13 @@ public class UiViewCompositionService {
         return output;
     }
 
+    /**
+     * 处理接口来源值，并将结果传给后续步骤。
+     *
+     * @param source 待处理接口来源值的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code interfaceMappingFailure} 的输入影响后续处理
+     * @return 处理后的接口来源值结果，供调用方继续处理
+     */
     private Object interfaceSourceValue(
             EntityDataDTO source,
             String path) {
@@ -1186,6 +1323,13 @@ public class UiViewCompositionService {
         return sourceValue(source, normalized);
     }
 
+    /**
+     * 处理接口路径值，并将结果传给后续步骤。
+     *
+     * @param source 待处理接口路径值的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理接口路径值时使用
+     * @return 处理后的接口路径值结果，供调用方继续处理
+     */
     private Object interfacePathValue(
             Map<String, Object> source,
             String path) {
@@ -1199,6 +1343,13 @@ public class UiViewCompositionService {
         return current;
     }
 
+    /**
+     * 写入接口路径；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入接口路径时使用
+     * @param path 路径，作为 {@code interfaceMappingFailure} 的输入影响后续处理
+     * @param value 待写入接口路径的原始输入，结果供调用方继续使用
+     */
     @SuppressWarnings("unchecked")
     private void putInterfacePath(
             Map<String, Object> target,
@@ -1222,11 +1373,23 @@ public class UiViewCompositionService {
         current.put(segments[segments.length - 1], value);
     }
 
+    /**
+     * 判断安全接口路径条件是否成立，供调用方选择后续分支。
+     *
+     * @param path 路径，供本方法处理安全接口路径时使用
+     * @return 安全接口路径条件成立时为 true，否则为 false
+     */
     private boolean safeInterfacePath(String path) {
         return StringUtils.hasText(path)
                 && INTERFACE_MAPPING_PATH.matcher(path).matches();
     }
 
+    /**
+     * 判断安全接口输出路径条件是否成立，供调用方选择后续分支。
+     *
+     * @param path 路径，作为 {@code safeInterfacePath} 的输入影响后续处理
+     * @return 安全接口输出路径条件成立时为 true，否则为 false
+     */
     private boolean safeInterfaceOutputPath(String path) {
         return safeInterfacePath(path)
                 && (Set.of("targetRecordId", "recordId", "matchNone")
@@ -1238,6 +1401,10 @@ public class UiViewCompositionService {
     /**
      * 将接口筛选限制为目标实体发布字段和平台支持的有界操作符；
      * 未声明操作符时强制补为 EQ/IN/BETWEEN，避免底层默认模糊查询。
+     *
+     * @param targetEntityId 目标实体ID，后续用于规范化接口过滤条件时定位或关联目标
+     * @param source 待规范化接口过滤条件的原始输入，结果供调用方继续使用
+     * @return 接口过滤条件键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeInterfaceFilters(
             String targetEntityId,
@@ -1315,6 +1482,12 @@ public class UiViewCompositionService {
         return Map.copyOf(result);
     }
 
+    /**
+     * 校验接口过滤值；不满足约束时阻止后续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param value 待校验接口过滤值的原始输入，结果供调用方继续使用
+     */
     private void validateInterfaceFilterValue(
             String key,
             Object value) {
@@ -1344,12 +1517,24 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 判断简要接口过滤值条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理简要接口过滤值的原始输入，结果供调用方继续使用
+     * @return 简要接口过滤值条件成立时为 true，否则为 false
+     */
     private boolean simpleInterfaceFilterValue(Object value) {
         return value instanceof String
                 || value instanceof Number
                 || value instanceof Boolean;
     }
 
+    /**
+     * 生成接口过滤基础文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的接口过滤基础文本，供调用方比较或展示
+     */
     private String interfaceFilterBase(String key) {
         if (!StringUtils.hasText(key)) {
             throw interfaceMappingFailure("接口扩展筛选字段不能为空");
@@ -1366,18 +1551,39 @@ public class UiViewCompositionService {
         return key;
     }
 
+    /**
+     * 构造接口映射失败异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的接口映射失败结果，供调用方继续处理
+     */
     private BusinessConflictException interfaceMappingFailure(
             String message) {
         return new BusinessConflictException(
                 "UI_VIEW_COMPOSITION_MAPPING_INVALID", message);
     }
 
+    /**
+     * 构造接口输出失败异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的接口输出失败结果，供调用方继续处理
+     */
     private BusinessConflictException interfaceOutputFailure(
             String message) {
         return new BusinessConflictException(
                 "UI_VIEW_COMPOSITION_INTERFACE_OUTPUT_INVALID", message);
     }
 
+    /**
+     * 解析过滤条件；输出作为后续校验或处理的输入。
+     *
+     * @param owner 归属方，作为 {@code relationMapper.selectByRelationCode} 的输入影响后续处理
+     * @param relation 关系，作为 {@code filters.put} 的输入影响后续处理
+     * @param source 待解析过滤条件的原始输入，结果供调用方继续使用
+     * @param targetEntityId 目标实体ID，后续用于解析过滤条件时定位或关联目标
+     * @return 解析后的过滤条件结果，供调用方继续处理
+     */
     private FilterResolution resolveFilters(
             OwnerState owner,
             Map<String, Object> relation,
@@ -1459,6 +1665,13 @@ public class UiViewCompositionService {
         return new FilterResolution(Map.copyOf(filters), true, "");
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于校验并获取定义时定位或关联目标
+     * @return 校验并获取后的定义结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireDefinition(String entityId) {
         EntityDefinition definition = definitionMapper.selectById(entityId);
         if (definition == null || !StringUtils.hasText(definition.getEntityCode())) {
@@ -1467,6 +1680,13 @@ public class UiViewCompositionService {
         return definition;
     }
 
+    /**
+     * 处理来源值，并将结果传给后续步骤。
+     *
+     * @param source 待处理来源值的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理来源值时使用
+     * @return 处理后的来源值结果，供调用方继续处理
+     */
     private Object sourceValue(EntityDataDTO source, String path) {
         if (!StringUtils.hasText(path)) {
             return null;
@@ -1490,6 +1710,13 @@ public class UiViewCompositionService {
         };
     }
 
+    /**
+     * 处理{@code nested}值，并将结果传给后续步骤。
+     *
+     * @param data 数据，后续用于处理{@code nested}值并传递处理结果
+     * @param path 路径，供本方法处理{@code nested}值时使用
+     * @return 处理后的{@code nested}值结果，供调用方继续处理
+     */
     private Object nestedValue(Map<String, Object> data, String path) {
         if (data == null || !StringUtils.hasText(path)) {
             return null;
@@ -1504,6 +1731,13 @@ public class UiViewCompositionService {
         return current;
     }
 
+    /**
+     * 生成目标字段名称文本，供后续匹配或展示。
+     *
+     * @param raw 待处理目标字段名称的原始输入，结果供调用方继续使用
+     * @return 处理后的目标字段名称文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String targetFieldName(String raw) {
         String field = raw == null ? "" : raw.trim();
         for (String prefix : List.of("target.", "filters.", "data.")) {
@@ -1517,6 +1751,12 @@ public class UiViewCompositionService {
         return field;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面视图组合集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mappingList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1528,6 +1768,12 @@ public class UiViewCompositionService {
                 .toList();
     }
 
+    /**
+     * 判断是否缺失；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否缺失的原始输入，结果供调用方继续使用
+     * @return 缺失条件成立时为 true，否则为 false
+     */
     private boolean isMissing(Object value) {
         return value == null
                 || value instanceof String text && !StringUtils.hasText(text)
@@ -1535,6 +1781,12 @@ public class UiViewCompositionService {
                 && collection.isEmpty();
     }
 
+    /**
+     * 整理{@code minimal}记录数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code minimal}记录的原始输入，结果供调用方继续使用
+     * @return {@code minimal}记录键值结果，供调用方继续处理
+     */
     private Map<String, Object> minimalRecord(EntityDataDTO value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -1544,11 +1796,23 @@ public class UiViewCompositionService {
         return result;
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(Object value) {
         return value != null && StringUtils.hasText(String.valueOf(value))
                 ? String.valueOf(value).trim() : null;
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(Object... values) {
         for (Object value : values) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -1558,6 +1822,13 @@ public class UiViewCompositionService {
         return "";
     }
 
+    /**
+     * 校验{@code special}{@code handling}；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续{@code special}{@code handling}采用的处理分支
+     * @param special {@code special}，供本方法校验{@code special}{@code handling}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSpecialHandling(
             String ownerType,
             Map<String, Object> special) {
@@ -1617,6 +1888,12 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 判断是否视图组件；判断结果决定调用方的后续分支。
+     *
+     * @param item 条目，供本方法判断是否视图组件时使用
+     * @return 视图组件条件成立时为 true，否则为 false
+     */
     private boolean isViewComponent(UiExtensionDefinition item) {
         return item != null && Set.of("NODE", "FORM", "LIST").contains(
                 normalize(item.getExtensionType()));
@@ -1629,6 +1906,11 @@ public class UiViewCompositionService {
      * 经过默认行展开、行操作和工具栏容器。目前平台外层仅能稳定提供
      * 表单宿主入口和列表页面区块，因此未声明挂载能力时必须 fail-closed，
      * 避免配置发布成功却在运行时静默丢失。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续自定义主机锚点采用的处理分支
+     * @param anchorType 锚点类型标识，决定后续自定义主机锚点采用的处理分支
+     * @param owner 归属方，供本方法校验自定义主机锚点时使用
+     * @param label 标签，后续用于校验自定义主机锚点时匹配或展示
      */
     private void validateCustomHostAnchor(
             String ownerType,
@@ -1654,7 +1936,16 @@ public class UiViewCompositionService {
         }
     }
 
-    /** 校验 FORM_NODE 确实存在于同一份宿主快照，列表挂载点则由类型与呈现方式约束。 */
+    /**
+     * 校验 FORM_NODE 确实存在于同一份宿主快照，列表挂载点则由类型与呈现方式约束。
+     *
+     * @param ownerType 归属方类型标识，决定后续快照锚点采用的处理分支
+     * @param anchorType 锚点类型标识，决定后续快照锚点采用的处理分支
+     * @param anchorKey 锚点键，后续用于授权校验、关联或幂等去重
+     * @param ownerSnapshot 归属方快照，供本方法校验快照锚点时使用
+     * @param config 配置内容，决定后续快照锚点的处理规则
+     * @param label 标签，后续用于校验快照锚点时匹配或展示
+     */
     private void validateSnapshotAnchor(
             String ownerType,
             String anchorType,
@@ -1695,7 +1986,13 @@ public class UiViewCompositionService {
         }
     }
 
-    /** 校验发布快照内声明的来源实体仍属于当前宿主，避免跨实体快照拼接。 */
+    /**
+     * 校验发布快照内声明的来源实体仍属于当前宿主，避免跨实体快照拼接。
+     *
+     * @param ownerEntityId 归属方实体ID，后续用于校验快照来源时定位或关联目标
+     * @param config 配置内容，决定后续快照来源的处理规则
+     * @param label 标签，后续用于校验快照来源时匹配或展示
+     */
     private void validateSnapshotSource(
             String ownerEntityId,
             Map<String, Object> config,
@@ -1712,6 +2009,12 @@ public class UiViewCompositionService {
 
     /**
      * 校验不可变宿主快照内的所有固定依赖，不读取当前 ACTIVE 指针也不重新钉定。
+     *
+     * @param ownerType 归属方类型标识，决定后续固定引用采用的处理分支
+     * @param ownerEntityId 归属方实体ID，后续用于校验固定引用时定位或关联目标
+     * @param ownerSnapshot 归属方快照，作为 {@code validatePublishedActionMappings} 的输入影响后续处理
+     * @param config 配置内容，决定后续固定引用的处理规则
+     * @param label 标签，后续用于校验固定引用时匹配或展示
      */
     private void validatePinnedReferences(
             String ownerType,
@@ -1780,6 +2083,12 @@ public class UiViewCompositionService {
      * 校验宿主快照中的实体历史钉定，且始终按 historyId
      * 精确读取。缺失这个结构的旧关联内容快照会 fail-closed，
      * 避免为了兼容而无提示地跟随当前最新字段或关系。
+     *
+     * @param ownerEntityId 归属方实体ID，后续用于校验固定实体{@code snapshots}时定位或关联目标
+     * @param targetEntityId 目标实体ID，后续用于校验固定实体{@code snapshots}时定位或关联目标
+     * @param config 配置内容，决定后续固定实体{@code snapshots}的处理规则
+     * @param label 标签，后续用于校验固定实体{@code snapshots}时匹配或展示
+     * @return 校验后的固定实体{@code snapshots}结果，供调用方继续处理
      */
     private PinnedSchemas validatePinnedEntitySnapshots(
             String ownerEntityId,
@@ -1805,6 +2114,15 @@ public class UiViewCompositionService {
         return new PinnedSchemas(source, target);
     }
 
+    /**
+     * 校验固定实体快照；不满足约束时阻止后续处理。
+     *
+     * @param pin 固定，作为 {@code requireText} 的输入影响后续处理
+     * @param expectedEntityId 预期实体ID，后续用于校验固定实体快照时定位或关联目标
+     * @param label 标签，后续用于校验固定实体快照时匹配或展示
+     * @return 校验后的固定实体快照结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityPublishedSnapshot validatePinnedEntitySnapshot(
             Map<String, Object> pin,
             String expectedEntityId,
@@ -1841,7 +2159,14 @@ public class UiViewCompositionService {
         return snapshot;
     }
 
-    /** 用钉定实体定义预检关联语义，不查询当前字段或关系表。 */
+    /**
+     * 用钉定实体定义预检关联语义，不查询当前字段或关系表。
+     *
+     * @param config 配置内容，决定后续固定关系的处理规则
+     * @param source 待校验固定关系的原始输入，结果供调用方继续使用
+     * @param target 目标，作为 {@code pinnedField} 的输入影响后续处理
+     * @param label 标签，后续用于校验固定关系时匹配或展示
+     */
     private void validatePinnedRelation(
             Map<String, Object> config,
             EntityPublishedSnapshot source,
@@ -1931,6 +2256,17 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验固定实体关系；不满足约束时阻止后续处理。
+     *
+     * @param relation 关系，作为 {@code UiEntityRelationBinding.reverse} 的输入影响后续处理
+     * @param config 配置内容，决定后续固定实体关系的处理规则
+     * @param source 待校验固定实体关系的原始输入，结果供调用方继续使用
+     * @param target 目标，作为 {@code pinnedField} 的输入影响后续处理
+     * @param contentType 内容类型标识，决定后续固定实体关系采用的处理分支
+     * @param label 标签，后续用于校验固定实体关系时匹配或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void validatePinnedEntityRelation(
             Map<String, Object> relation,
             Map<String, Object> config,
@@ -1990,6 +2326,14 @@ public class UiViewCompositionService {
         validateRelationSaveBoundary(definition, config);
     }
 
+    /**
+     * 校验并获取固定字段或ID；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code pinnedField} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取固定字段或ID时定位或关联目标
+     * @param label 标签，后续用于校验并获取固定字段或ID时匹配或展示
+     * @param side 侧，作为 {@code pinnedField} 的输入影响后续处理
+     */
     private void requirePinnedFieldOrId(
             EntityPublishedSnapshot snapshot,
             String fieldCode,
@@ -2000,6 +2344,15 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 处理固定字段，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，供本方法处理固定字段时使用
+     * @param fieldCode 字段编码，后续用于处理固定字段时定位或关联目标
+     * @param label 标签，后续用于处理固定字段时匹配或展示
+     * @param side 侧，供本方法处理固定字段时使用
+     * @return 处理后的固定字段结果，供调用方继续处理
+     */
     private EntityField pinnedField(
             EntityPublishedSnapshot snapshot,
             String fieldCode,
@@ -2014,6 +2367,14 @@ public class UiViewCompositionService {
                         label, side, fieldCode));
     }
 
+    /**
+     * 处理空值字段，并将结果传给后续步骤。
+     *
+     * @param label 标签，后续用于处理空值字段时匹配或展示
+     * @param side 侧，作为 {@code pinnedRelationInvalid} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理空值字段时定位或关联目标
+     * @return 处理后的空值字段结果，供调用方继续处理
+     */
     private EntityField nullField(
             String label,
             String side,
@@ -2022,6 +2383,13 @@ public class UiViewCompositionService {
                 label, side + "实体钉定版本不存在字段: " + fieldCode);
     }
 
+    /**
+     * 构造固定关系无效异常，供调用方区分失败原因。
+     *
+     * @param label 标签，后续用于处理固定关系无效时匹配或展示
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的固定关系无效结果，供调用方继续处理
+     */
     private BusinessConflictException pinnedRelationInvalid(
             String label,
             String message) {
@@ -2030,6 +2398,15 @@ public class UiViewCompositionService {
                 label + message);
     }
 
+    /**
+     * 校验固定目标；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，作为 {@code requireText} 的输入影响后续处理
+     * @param label 标签，后续用于校验固定目标时匹配或展示
+     * @return 校验后的固定目标结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private UiConfigRelease validatePinnedTarget(
             Map<String, Object> target,
             String label) {
@@ -2092,6 +2469,14 @@ public class UiViewCompositionService {
      * <p>设计态字段目录可能在发布前发生变化；只校验实体当前字段会让配置
      * 发布成功后才在运行时变成不可用。这里同时验证钉定实体结构和 FORM/LIST
      * 发布可见、可编辑边界，使普通发布、历史激活与 HOTFIX 使用相同规则。</p>
+     *
+     * @param ownerType 归属方类型标识，决定后续已发布动作映射集合采用的处理分支
+     * @param ownerSnapshot 归属方快照，作为 {@code requirePublishedOwnerReadableField} 的输入影响后续处理
+     * @param targetSnapshot 目标快照，作为 {@code PageParameterPolicy.map} 的输入影响后续处理
+     * @param target 目标，作为 {@code PageParameterPolicy.map} 的输入影响后续处理
+     * @param config 配置内容，决定后续已发布动作映射集合的处理规则
+     * @param schemas {@code schemas}，作为 {@code requirePublishedOwnerReadableField} 的输入影响后续处理
+     * @param label 标签，后续用于校验已发布动作映射集合时匹配或展示
      */
     private void validatePublishedActionMappings(
             String ownerType,
@@ -2209,6 +2594,13 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 整理已验证目标快照数据，供调用方遍历或继续处理。
+     *
+     * @param release 发布版本，作为 {@code codec.readObject} 的输入影响后续处理
+     * @param label 标签，后续用于处理已验证目标快照时匹配或展示
+     * @return 已验证目标快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> verifiedTargetSnapshot(
             UiConfigRelease release,
             String label) {
@@ -2217,6 +2609,17 @@ public class UiViewCompositionService {
                 release.getSnapshotDocument(), label + "目标发布快照");
     }
 
+    /**
+     * 校验并获取已发布归属方可读字段；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续已发布归属方可读字段采用的处理分支
+     * @param ownerSnapshot 归属方快照，作为 {@code findFormField} 的输入影响后续处理
+     * @param schema 结构，作为 {@code publishedField} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取已发布归属方可读字段时定位或关联目标
+     * @param label 标签，后续用于校验并获取已发布归属方可读字段时匹配或展示
+     * @param mappingLabel 映射标签，后续用于校验并获取已发布归属方可读字段时匹配或展示
+     * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
+     */
     private void requirePublishedOwnerReadableField(
             String ownerType,
             Map<String, Object> ownerSnapshot,
@@ -2250,6 +2653,16 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验并获取已发布列表可读字段；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code findListField} 的输入影响后续处理
+     * @param schema 结构，作为 {@code publishedField} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取已发布列表可读字段时定位或关联目标
+     * @param label 标签，后续用于校验并获取已发布列表可读字段时匹配或展示
+     * @param mappingLabel 映射标签，后续用于校验并获取已发布列表可读字段时匹配或展示
+     * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
+     */
     private void requirePublishedListReadableField(
             Map<String, Object> snapshot,
             EntityPublishedSnapshot schema,
@@ -2281,6 +2694,18 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验并获取已发布表单可编辑字段；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code findFormField} 的输入影响后续处理
+     * @param schema 结构，作为 {@code publishedField} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于校验并获取已发布表单可编辑字段时定位或关联目标
+     * @param mode 模式标识，决定后续已发布表单可编辑字段采用的处理分支
+     * @param label 标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
+     * @param mappingLabel 映射标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
+     * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
+     * @param ownerField 归属方字段，作为 {@code publishedField} 的输入影响后续处理
+     */
     private void requirePublishedFormEditableField(
             Map<String, Object> snapshot,
             EntityPublishedSnapshot schema,
@@ -2317,6 +2742,17 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 处理已发布字段，并将结果传给后续步骤。
+     *
+     * @param schema 结构，供本方法处理已发布字段时使用
+     * @param fieldCode 字段编码，后续用于处理已发布字段时定位或关联目标
+     * @param label 标签，后续用于处理已发布字段时匹配或展示
+     * @param mappingLabel 映射标签，后续用于处理已发布字段时匹配或展示
+     * @param index 索引，作为 {@code mappingInvalid} 的输入影响后续处理
+     * @param side 侧，作为 {@code mappingInvalid} 的输入影响后续处理
+     * @return 处理后的已发布字段结果，供调用方继续处理
+     */
     private EntityField publishedField(
             EntityPublishedSnapshot schema,
             String fieldCode,
@@ -2343,6 +2779,13 @@ public class UiViewCompositionService {
         return field;
     }
 
+    /**
+     * 查询表单字段；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code mappingList} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于查询表单字段时定位或关联目标
+     * @return 表单字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> findFormField(
             Map<String, Object> snapshot,
             String fieldCode) {
@@ -2353,6 +2796,13 @@ public class UiViewCompositionService {
                 .orElse(null);
     }
 
+    /**
+     * 查询列表字段；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshot 快照，供本方法查询列表字段时使用
+     * @param fieldCode 字段编码，后续用于查询列表字段时定位或关联目标
+     * @return 列表字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> findListField(
             Map<String, Object> snapshot,
             String fieldCode) {
@@ -2367,6 +2817,13 @@ public class UiViewCompositionService {
                 .orElse(null);
     }
 
+    /**
+     * 判断可编辑已发布模式条件是否成立，供调用方选择后续分支。
+     *
+     * @param field 字段，供本方法处理可编辑已发布模式时使用
+     * @param mode 模式标识，决定后续可编辑已发布模式采用的处理分支
+     * @return 可编辑已发布模式条件成立时为 true，否则为 false
+     */
     private boolean editableInPublishedMode(
             Map<String, Object> field,
             String mode) {
@@ -2395,6 +2852,14 @@ public class UiViewCompositionService {
                 && !Boolean.FALSE.equals(normalized.get("editable"));
     }
 
+    /**
+     * 生成首个映射字段文本，供后续匹配或展示。
+     *
+     * @param mapping 映射，作为 {@code blankToNull} 的输入影响后续处理
+     * @param primary 主要，作为 {@code blankToNull} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的首个映射字段文本，供调用方比较或展示
+     */
     private String firstMappingField(
             Map<String, Object> mapping,
             String primary,
@@ -2403,6 +2868,12 @@ public class UiViewCompositionService {
         return value != null ? value : blankToNull(mapping.get(fallback));
     }
 
+    /**
+     * 标记界面视图组合；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待标记界面视图组合的原始输入，结果供调用方继续使用
+     * @return 界面视图组合条件成立时为 true，否则为 false
+     */
     private boolean flag(Object value) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -2414,6 +2885,15 @@ public class UiViewCompositionService {
                 .contains(String.valueOf(value).trim().toUpperCase(Locale.ROOT));
     }
 
+    /**
+     * 构造映射无效异常，供调用方区分失败原因。
+     *
+     * @param label 标签，后续用于处理映射无效时匹配或展示
+     * @param mappingLabel 映射标签，后续用于处理映射无效时匹配或展示
+     * @param index 索引，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的映射无效结果，供调用方继续处理
+     */
     private IllegalArgumentException mappingInvalid(
             String label,
             String mappingLabel,
@@ -2424,6 +2904,14 @@ public class UiViewCompositionService {
                         + "。请返回第三步“允许做什么”修改字段映射");
     }
 
+    /**
+     * 校验固定接口服务；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续固定接口服务采用的处理分支
+     * @param service 业务服务，后续由接口方法调用以完成校验和状态处理
+     * @param label 标签，后续用于校验固定接口服务时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validatePinnedInterfaceService(
             String ownerType,
             Map<String, Object> service,
@@ -2476,6 +2964,14 @@ public class UiViewCompositionService {
                 ownerType);
     }
 
+    /**
+     * 校验固定自定义组件；不满足约束时阻止后续处理。
+     *
+     * @param component 组件，作为 {@code requireText} 的输入影响后续处理
+     * @param label 标签，后续用于校验固定自定义组件时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void validatePinnedCustomComponent(
             Map<String, Object> component,
             String label) {
@@ -2551,6 +3047,12 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 处理整数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数值的原始输入，结果供调用方继续使用
+     * @return 处理后的整数值结果，供调用方继续处理
+     */
     private Integer integerValue(Object value) {
         if (value instanceof Number number
                 && number.doubleValue() == number.intValue()) {
@@ -2559,7 +3061,13 @@ public class UiViewCompositionService {
         return null;
     }
 
-    /** 组件制品摘要只接受固定长度十六进制，不能由运行时名称推导或降级。 */
+    /**
+     * 组件制品摘要只接受固定长度十六进制，不能由运行时名称推导或降级。
+     *
+     * @param value 待校验并获取{@code artifact}摘要的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取{@code artifact}摘要时匹配或展示
+     * @return 校验并获取后的{@code artifact}摘要文本，供调用方比较或展示
+     */
     private String requireArtifactDigest(Object value, String label) {
         String digest = requireText(value, 64, label)
                 .toLowerCase(Locale.ROOT);
@@ -2571,6 +3079,14 @@ public class UiViewCompositionService {
         return digest;
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理正数整数时匹配或展示
+     * @return 处理后的正数整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int positiveInteger(Object value, String label) {
         Integer number = integerValue(value);
         if (number == null || number < 1) {
@@ -2579,6 +3095,13 @@ public class UiViewCompositionService {
         return number;
     }
 
+    /**
+     * 验证发布版本文档哈希；不满足约束时阻止后续处理。
+     *
+     * @param release 发布版本，作为 {@code codec.canonicalize} 的输入影响后续处理
+     * @param label 标签，后续用于验证发布版本文档哈希时匹配或展示
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void verifyReleaseDocumentHash(
             UiConfigRelease release,
             String label) {
@@ -2598,11 +3121,24 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 规范化哈希；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化哈希的原始输入，结果供调用方继续使用
+     * @return 规范化后的哈希文本，供调用方比较或展示
+     */
     private String normalizeHash(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toLowerCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -2615,6 +3151,9 @@ public class UiViewCompositionService {
 
     /**
      * 发布快照中的依赖钉定只能来自数据库权威记录，不能信任草稿内的 ID 版本组合。
+     *
+     * @param config 配置内容，决定后续固定已发布依赖集合的处理规则
+     * @param ownerEntityId 归属方实体ID，后续用于处理固定已发布依赖集合时定位或关联目标
      */
     private void pinPublishedDependencies(
             Map<String, Object> config,
@@ -2698,6 +3237,14 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验固定动作服务；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续固定动作服务采用的处理分支
+     * @param service 业务服务，后续由接口方法调用以完成校验和状态处理
+     * @param label 标签，后续用于校验固定动作服务时匹配或展示
+     * @return 校验后的固定动作服务结果，供调用方继续处理
+     */
     private UiInterfaceExtensionService.ActionOperationDescriptor
             validatePinnedActionService(
             String ownerType,
@@ -2740,6 +3287,10 @@ public class UiViewCompositionService {
      * 发布时以宿主和目标实体的权威最新发布历史覆盖客户端
      * 传入值。快照同时保存 historyId 和内容指纹，运行时不再
      * 使用 latest 查询。
+     *
+     * @param config 配置内容，决定后续固定实体{@code snapshots}的处理规则
+     * @param target 目标，作为 {@code blankToNull} 的输入影响后续处理
+     * @param ownerEntityId 归属方实体ID，后续用于处理固定实体{@code snapshots}时定位或关联目标
      */
     private void pinEntitySnapshots(
             Map<String, Object> config,
@@ -2781,6 +3332,15 @@ public class UiViewCompositionService {
         config.put("entitySnapshots", snapshots);
     }
 
+    /**
+     * 处理最新固定实体，并将结果传给后续步骤。
+     *
+     * @param entityId 实体ID，后续用于处理最新固定实体时定位或关联目标
+     * @param label 标签，后续用于处理最新固定实体时匹配或展示
+     * @return 处理后的最新固定实体结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityPublishedSnapshotService.PinnedEntitySnapshot
             latestPinnedEntity(String entityId, String label) {
         try {
@@ -2799,6 +3359,12 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 整理实体快照身份数据，供调用方遍历或继续处理。
+     *
+     * @param pinned 固定，作为 {@code result.put} 的输入影响后续处理
+     * @return 实体快照身份键值结果，供调用方继续处理
+     */
     private Map<String, Object> entitySnapshotIdentity(
             EntityPublishedSnapshotService.PinnedEntitySnapshot pinned) {
         EntityPublishedSnapshot snapshot = pinned.snapshot();
@@ -2815,6 +3381,10 @@ public class UiViewCompositionService {
      * 组件定义作为发布依赖固定，而不只保存可重复修改的
      * name/version。文档不包含组件运行代码，但覆盖平台对该版本的
      * 适用范围、Schema 和能力声明。
+     *
+     * @param definition 定义，作为 {@code snapshot.put} 的输入影响后续处理
+     * @param artifactDigest {@code artifact}摘要，作为 {@code snapshot.put} 的输入影响后续处理
+     * @return 处理后的扩展定义快照文本，供调用方比较或展示
      */
     private String extensionDefinitionSnapshot(
             UiExtensionDefinition definition,
@@ -2851,6 +3421,13 @@ public class UiViewCompositionService {
                 "自定义组件发布快照");
     }
 
+    /**
+     * 生成规范或空对象文本，供后续匹配或展示。
+     *
+     * @param document 文档，供本方法处理规范或空对象时使用
+     * @param label 标签，后续用于处理规范或空对象时匹配或展示
+     * @return 处理后的规范或空对象文本，供调用方比较或展示
+     */
     private String canonicalOrEmptyObject(
             String document,
             String label) {
@@ -2858,6 +3435,13 @@ public class UiViewCompositionService {
                 ? codec.canonicalize(document, label) : "{}";
     }
 
+    /**
+     * 生成规范或空数组文本，供后续匹配或展示。
+     *
+     * @param document 文档，供本方法处理规范或空数组时使用
+     * @param label 标签，后续用于处理规范或空数组时匹配或展示
+     * @return 处理后的规范或空数组文本，供调用方比较或展示
+     */
     private String canonicalOrEmptyArray(
             String document,
             String label) {
@@ -2865,6 +3449,15 @@ public class UiViewCompositionService {
                 ? codec.canonicalize(document, label) : "[]";
     }
 
+    /**
+     * 处理活动目标发布版本，并将结果传给后续步骤。
+     *
+     * @param contentType 内容类型标识，决定后续活动目标发布版本采用的处理分支
+     * @param contentId 内容ID，后续用于处理活动目标发布版本时定位或关联目标
+     * @return 处理后的活动目标发布版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private UiConfigRelease activeTargetRelease(
             String contentType,
             String contentId) {
@@ -2892,6 +3485,13 @@ public class UiViewCompositionService {
         return release;
     }
 
+    /**
+     * 校验并获取已发布目标；不满足约束时阻止后续处理。
+     *
+     * @param activeReleaseId 活动发布版本ID，后续用于校验并获取已发布目标时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void requirePublishedTarget(String activeReleaseId, String message) {
         if (!StringUtils.hasText(activeReleaseId)) {
             throw new BusinessConflictException(
@@ -2899,6 +3499,15 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验并获取归属方；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验并获取归属方时定位或关联目标
+     * @param forUpdate 更新，后续用于判断有效期或展示该事件的发生时间
+     * @return 校验并获取后的归属方结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private OwnerState requireOwner(
             String ownerType,
             String ownerId,
@@ -2927,6 +3536,12 @@ public class UiViewCompositionService {
                 list.getRevision() == null ? 0 : list.getRevision());
     }
 
+    /**
+     * 处理更新访问时间归属方，并将结果传给后续步骤。
+     *
+     * @param owner 归属方，作为 {@code update.eq} 的输入影响后续处理
+     * @return 处理后的更新访问时间归属方结果，供调用方继续处理
+     */
     private int touchOwner(OwnerState owner) {
         int nextRevision = owner.revision() + 1;
         if ("FORM".equals(owner.type())) {
@@ -2953,6 +3568,12 @@ public class UiViewCompositionService {
         return nextRevision;
     }
 
+    /**
+     * 应用修订版本条件，并将结果传给后续步骤。
+     *
+     * @param update 更新，后续用于判断有效期或展示该事件的发生时间
+     * @param revision 修订版本，作为 {@code update.and} 的输入影响后续处理
+     */
     private <T> void applyRevisionCondition(
             UpdateWrapper<T> update,
             int revision) {
@@ -2964,6 +3585,12 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 构造归属方冲突异常，供调用方区分失败原因。
+     *
+     * @param owner 归属方，作为 {@code equals} 的输入影响后续处理
+     * @return 处理后的归属方冲突结果，供调用方继续处理
+     */
     private RevisionConflictException ownerConflict(OwnerState owner) {
         Object current = "FORM".equals(owner.type())
                 ? formMapper.selectById(owner.id())
@@ -2972,6 +3599,14 @@ public class UiViewCompositionService {
                 "当前表单或列表已被其他人修改，请刷新后重试", current);
     }
 
+    /**
+     * 校验并获取组合更新；不满足约束时阻止后续处理。
+     *
+     * @param owner 归属方，供本方法校验并获取组合更新时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的组合更新结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiViewComposition requireCompositionForUpdate(
             OwnerState owner,
             String id) {
@@ -2989,6 +3624,13 @@ public class UiViewCompositionService {
         return current;
     }
 
+    /**
+     * 校验并获取修订版本；不满足约束时阻止后续处理。
+     *
+     * @param expectedRevision 预期修订版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireRevision(
             Integer expectedRevision,
             UiViewComposition current) {
@@ -3006,6 +3648,9 @@ public class UiViewCompositionService {
      * 更新和删除同时校验宿主草稿 revision，防止发布恢复造成子项 revision
      * 重用时出现 ABA 覆盖。宿主已经在读取时加锁，校验与后续写入位于同一
      * 串行化边界。
+     *
+     * @param expectedOwnerRevision 预期归属方修订版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param owner 归属方，作为 {@code ownerConflict} 的输入影响后续处理
      */
     private void requireOwnerRevision(
             Integer expectedOwnerRevision,
@@ -3019,6 +3664,12 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 构造组合冲突异常，供调用方区分失败原因。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的组合冲突结果，供调用方继续处理
+     */
     private RevisionConflictException compositionConflict(String id) {
         UiViewComposition current = mapper.selectById(id);
         return new RevisionConflictException(
@@ -3026,6 +3677,14 @@ public class UiViewCompositionService {
                 current == null ? null : toDto(current, null));
     }
 
+    /**
+     * 转换为DTO；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为DTO的原始输入，结果供调用方继续使用
+     * @param ownerRevision 归属方修订版本，供本方法转换为DTO时使用
+     * @return 转换为后的DTO结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private UiViewCompositionDTO toDto(
             UiViewComposition value,
             Integer ownerRevision) {
@@ -3051,6 +3710,14 @@ public class UiViewCompositionService {
                 .build();
     }
 
+    /**
+     * 处理下一步顺序键，并将结果传给后续步骤。
+     *
+     * @param ownerType 归属方类型标识，决定后续下一步顺序键采用的处理分支
+     * @param ownerId 归属方ID，后续用于处理下一步顺序键时定位或关联目标
+     * @return 处理后的下一步顺序键结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private long nextOrderKey(String ownerType, String ownerId) {
         long max = mapper.findByOwner(ownerType, ownerId).stream()
                 .map(UiViewComposition::getOrderKey)
@@ -3064,10 +3731,23 @@ public class UiViewCompositionService {
         return max + ORDER_STEP;
     }
 
+    /**
+     * 处理修订版本，并将结果传给后续步骤。
+     *
+     * @param value 待处理修订版本的原始输入，结果供调用方继续使用
+     * @return 处理后的修订版本结果，供调用方继续处理
+     */
     private int revisionOf(UiViewComposition value) {
         return value.getRevision() == null ? 0 : value.getRevision();
     }
 
+    /**
+     * 规范化归属方类型；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化归属方类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的归属方类型文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeOwnerType(String value) {
         String normalized = normalize(value);
         if (!OWNER_TYPES.contains(normalized)) {
@@ -3076,10 +3756,23 @@ public class UiViewCompositionService {
         return normalized;
     }
 
+    /**
+     * 校验并获取归属方ID；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取归属方ID的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的归属方ID文本，供调用方比较或展示
+     */
     private String requireOwnerId(String value) {
         return requireText(value, 64, "宿主ID");
     }
 
+    /**
+     * 规范化组合键；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化组合键的原始输入，结果供调用方继续使用
+     * @return 规范化后的组合键文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeCompositionKey(Object value) {
         String key = requireText(value, 100, "关联内容编码");
         if (!COMPOSITION_KEY.matcher(key).matches()) {
@@ -3089,6 +3782,13 @@ public class UiViewCompositionService {
         return key;
     }
 
+    /**
+     * 规范化锚点类型；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化锚点类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的锚点类型文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeAnchorType(Object value) {
         String type = value == null || !StringUtils.hasText(String.valueOf(value))
                 ? "OWNER" : normalize(String.valueOf(value));
@@ -3102,6 +3802,14 @@ public class UiViewCompositionService {
         return type;
     }
 
+    /**
+     * 规范化锚点键；输出作为后续校验或处理的输入。
+     *
+     * @param anchorType 锚点类型标识，决定后续锚点键采用的处理分支
+     * @param value 待规范化锚点键的原始输入，结果供调用方继续使用
+     * @return 规范化后的锚点键文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeAnchorKey(String anchorType, Object value) {
         if ("OWNER".equals(anchorType)) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -3116,6 +3824,10 @@ public class UiViewCompositionService {
     /**
      * 校验宿主、挂载点和页面呈现方式属于同一语义域，避免配置保存成功后在
      * 另一个设计器中无法找到挂载位置。
+     *
+     * @param ownerType 归属方类型标识，决定后续锚点{@code placement}采用的处理分支
+     * @param anchorType 锚点类型标识，决定后续锚点{@code placement}采用的处理分支
+     * @param config 配置内容，决定后续锚点{@code placement}的处理规则
      */
     private void validateAnchorPlacement(
             String ownerType,
@@ -3162,6 +3874,9 @@ public class UiViewCompositionService {
     /**
      * 按钮只能引用同一列表快照中的弹出式关联内容。发布和历史激活共用此校验，
      * 防止删除、停用或改成内嵌后留下无法打开的入口；未绑定按钮的内容允许先保存发布。
+     *
+     * @param owner 归属方，供本方法校验列表按钮引用时使用
+     * @param rawItems 原始条目，供本方法校验列表按钮引用时使用
      */
     private void validateListButtonReferences(Map<String, Object> owner, Object rawItems) {
         List<?> items = rawItems instanceof List<?> values ? values : List.of();
@@ -3201,6 +3916,13 @@ public class UiViewCompositionService {
         }
     }
 
+    /**
+     * 校验并获取顺序键；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取顺序键的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的顺序键结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private long requireOrderKey(Object value) {
         if (!(value instanceof Number number)
                 || number.doubleValue() != number.longValue()
@@ -3210,6 +3932,15 @@ public class UiViewCompositionService {
         return number.longValue();
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param label 标签，后续用于校验并获取文本时匹配或展示
+     * @return 校验并获取后的文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requireText(Object value, int maxLength, String label) {
         if (!(value instanceof String text) || !StringUtils.hasText(text)) {
             throw new IllegalArgumentException(label + "不能为空");
@@ -3222,14 +3953,34 @@ public class UiViewCompositionService {
         return normalized;
     }
 
+    /**
+     * 读取配置；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code codec.readObject} 的输入影响后续处理
+     * @return 配置键值结果，供调用方继续处理
+     */
     private Map<String, Object> readConfig(String document) {
         return codec.readObject(document, "关联内容配置");
     }
 
+    /**
+     * 写入界面视图组合；后续读取或执行将使用更新后的状态。
+     *
+     * @param config 配置内容，决定后续界面视图组合的处理规则
+     * @return 写入后的界面视图组合文本，供调用方比较或展示
+     */
     private String write(Map<String, Object> config) {
         return codec.write(config, "关联内容配置");
     }
 
+    /**
+     * 校验并获取映射；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> requireMap(Object value, String label) {
         if (!(value instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException(label + "必须为对象");
@@ -3237,6 +3988,14 @@ public class UiViewCompositionService {
         return stringMap(map);
     }
 
+    /**
+     * 校验并获取可变映射；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取可变映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取可变映射时匹配或展示
+     * @return 可变映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> requireMutableMap(Object value, String label) {
         if (!(value instanceof Map<?, ?> map)) {
@@ -3248,17 +4007,37 @@ public class UiViewCompositionService {
         return stringMap(map);
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面视图组合的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面视图组合文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return value == null ? ""
                 : value.trim().toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 封装归属方状态的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param type 类型标识，决定后续归属方状态采用的处理分支
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param entityId 实体ID，后续用于处理归属方状态时定位或关联目标
+     * @param revision 修订版本，保存在对象中供后续校验、查询或展示
+     */
     private record OwnerState(
             String type,
             String id,
@@ -3266,6 +4045,15 @@ public class UiViewCompositionService {
             int revision) {
     }
 
+    /**
+     * 封装已校验草稿的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
+     * @param anchorType 锚点类型标识，决定后续已校验草稿采用的处理分支
+     * @param anchorKey 锚点键，后续用于授权校验、关联或幂等去重
+     * @param config 配置内容，决定后续已校验草稿的处理规则
+     * @param orderKey 顺序键，后续用于授权校验、关联或幂等去重
+     */
     private record ValidatedDraft(
             String compositionKey,
             String anchorType,
@@ -3274,11 +4062,25 @@ public class UiViewCompositionService {
             Long orderKey) {
     }
 
+    /**
+     * 封装固定{@code schemas}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param source 待处理固定{@code schemas}的原始输入，结果供调用方继续使用
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     */
     private record PinnedSchemas(
             EntityPublishedSnapshot source,
             EntityPublishedSnapshot target) {
     }
 
+    /**
+     * 封装接口测试解析的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param matchedCount {@code matched}数量，保存在对象中供后续校验、查询或展示
+     * @param targetRecordIds 目标记录ID 集合，保存在对象中供后续校验、查询或展示
+     * @param filters 过滤条件，保存在对象中供后续校验、查询或展示
+     * @param description 描述，保存在对象中供后续校验、查询或展示
+     */
     private record InterfaceTestResolution(
             long matchedCount,
             List<String> targetRecordIds,
@@ -3286,11 +4088,24 @@ public class UiViewCompositionService {
             String description) {
     }
 
+    /**
+     * 封装过滤解析的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param filters 过滤条件，保存在对象中供后续校验、查询或展示
+     * @param ready 就绪，保存在对象中供后续校验、查询或展示
+     * @param description 描述，保存在对象中供后续校验、查询或展示
+     */
     private record FilterResolution(
             Map<String, Object> filters,
             boolean ready,
             String description) {
 
+        /**
+         * 处理非就绪，并将结果传给后续步骤。
+         *
+         * @param description 描述，供本方法处理非就绪时使用
+         * @return 处理后的非就绪结果，供调用方继续处理
+         */
         private static FilterResolution notReady(String description) {
             return new FilterResolution(Map.of(), false, description);
         }

@@ -76,18 +76,38 @@ public interface ExternalSystemParameterMapper
         private String externalSystemId;
         private long parameterCount;
 
+        /**
+         * 读取外部系统ID；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的外部系统ID文本，供调用方比较或展示
+         */
         public String getExternalSystemId() {
             return externalSystemId;
         }
 
+        /**
+         * 设置外部系统ID；后续读取或执行将使用更新后的状态。
+         *
+         * @param externalSystemId 外部系统ID，后续用于设置外部系统ID时定位或关联目标
+         */
         public void setExternalSystemId(String externalSystemId) {
             this.externalSystemId = externalSystemId;
         }
 
+        /**
+         * 读取参数数量；查询结果供调用方展示或继续处理。
+         *
+         * @return 符合条件的外部系统参数数量结果，供调用方继续处理
+         */
         public long getParameterCount() {
             return parameterCount;
         }
 
+        /**
+         * 设置参数数量；后续读取或执行将使用更新后的状态。
+         *
+         * @param parameterCount 参数数量，供本方法设置参数数量时使用
+         */
         public void setParameterCount(long parameterCount) {
             this.parameterCount = parameterCount;
         }

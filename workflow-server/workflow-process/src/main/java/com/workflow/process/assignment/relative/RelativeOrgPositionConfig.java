@@ -13,6 +13,12 @@ import java.util.Set;
  *
  * <p>运行时、发布校验和设计试算必须共用本类，避免三条链路对默认值
  * 或层级语义作出不同解释。</p>
+ *
+ * @param schemaVersion 结构版本，保存在对象中供后续校验、查询或展示
+ * @param anchor 锚点，保存在对象中供后续校验、查询或展示
+ * @param positionCode 位置编码，后续用于处理相对组织位置配置时定位或关联目标
+ * @param hierarchy 层级，保存在对象中供后续校验、查询或展示
+ * @param multipleMatchPolicy {@code multiple}匹配策略，保存在对象中供后续校验、查询或展示
  */
 public record RelativeOrgPositionConfig(
         int schemaVersion,
@@ -32,7 +38,12 @@ public record RelativeOrgPositionConfig(
             "hierarchy",
             "multipleMatchPolicy");
 
-    /** 对外部 JSON 执行严格、失败关闭的 V1 解析。 */
+    /**
+     * 对外部 JSON 执行严格、失败关闭的 V1 解析。
+     *
+     * @param extraParams 附加参数，作为 {@code rejectUnknownFields} 的输入影响后续处理
+     * @return 解析后的相对组织位置配置结果，供调用方继续处理
+     */
     public static RelativeOrgPositionConfig parse(
             Map<String, Object> extraParams) {
         Map<String, Object> source = extraParams == null
@@ -112,6 +123,13 @@ public record RelativeOrgPositionConfig(
         throw invalid("assignmentMode 只支持 DIRECT 或 CANDIDATE");
     }
 
+    /**
+     * 解析层级；输出作为后续校验或处理的输入。
+     *
+     * @param source 待解析层级的原始输入，结果供调用方继续使用
+     * @param anchor 锚点，供本方法解析层级时使用
+     * @return 解析后的层级结果，供调用方继续处理
+     */
     private static Hierarchy parseHierarchy(
             Map<String, Object> source,
             Anchor anchor) {
@@ -173,6 +191,13 @@ public record RelativeOrgPositionConfig(
                 eligibleUnitTypes);
     }
 
+    /**
+     * 整理单元类型集合数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理单元类型集合的原始输入，结果供调用方继续使用
+     * @param anchor 锚点，供本方法处理单元类型集合时使用
+     * @return 相对组织位置配置集合，供调用方遍历或展示
+     */
     private static Set<String> unitTypes(Object raw, Anchor anchor) {
         if (raw == null) {
             return Set.of(anchor == Anchor.DEPARTMENT ? "dept" : "org");
@@ -192,6 +217,12 @@ public record RelativeOrgPositionConfig(
         return Set.copyOf(normalized);
     }
 
+    /**
+     * 整理字符串键映射数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理字符串键映射的原始输入，结果供调用方继续使用
+     * @return 字符串键映射键值结果，供调用方继续处理
+     */
     private static Map<String, Object> stringKeyMap(Map<?, ?> raw) {
         java.util.LinkedHashMap<String, Object> result =
                 new java.util.LinkedHashMap<>();
@@ -199,6 +230,13 @@ public record RelativeOrgPositionConfig(
         return result;
     }
 
+    /**
+     * 处理驳回{@code unknown}字段，并将结果传给后续步骤。
+     *
+     * @param source 待处理驳回{@code unknown}字段的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法处理驳回{@code unknown}字段时使用
+     * @param path 路径，作为 {@code invalid} 的输入影响后续处理
+     */
     private static void rejectUnknownFields(
             Map<String, Object> source,
             Set<String> allowed,
@@ -210,6 +248,14 @@ public record RelativeOrgPositionConfig(
         }
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param source 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code source.get} 的输入影响后续处理
+     * @param path 路径，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     */
     private static String requiredText(
             Map<String, Object> source,
             String field,
@@ -221,6 +267,14 @@ public record RelativeOrgPositionConfig(
         return String.valueOf(value).trim();
     }
 
+    /**
+     * 处理必填整数，并将结果传给后续步骤。
+     *
+     * @param source 待处理必填整数的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code source.get} 的输入影响后续处理
+     * @param path 路径，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的必填整数结果，供调用方继续处理
+     */
     private static int requiredInteger(
             Map<String, Object> source,
             String field,
@@ -237,6 +291,16 @@ public record RelativeOrgPositionConfig(
         return result;
     }
 
+    /**
+     * 处理{@code bounded}整数，并将结果传给后续步骤。
+     *
+     * @param source 待处理{@code bounded}整数的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code requiredInteger} 的输入影响后续处理
+     * @param min {@code min}，作为 {@code invalid} 的输入影响后续处理
+     * @param max 最大，作为 {@code invalid} 的输入影响后续处理
+     * @param path 路径，作为 {@code requiredInteger} 的输入影响后续处理
+     * @return 处理后的{@code bounded}整数结果，供调用方继续处理
+     */
     private static int boundedInteger(
             Map<String, Object> source,
             String field,
@@ -251,6 +315,14 @@ public record RelativeOrgPositionConfig(
         return value;
     }
 
+    /**
+     * 处理枚举值，并将结果传给后续步骤。
+     *
+     * @param enumType 枚举类型标识，决定后续枚举值采用的处理分支
+     * @param raw 待处理枚举值的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的枚举值结果，供调用方继续处理
+     */
     private static <T extends Enum<T>> T enumValue(
             Class<T> enumType,
             String raw,
@@ -264,16 +336,28 @@ public record RelativeOrgPositionConfig(
         }
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static IllegalArgumentException invalid(String message) {
         return new IllegalArgumentException(
                 "relativeOrgPosition 配置无效: " + message);
     }
 
+    /**
+     * 定义锚点的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Anchor {
         DEPARTMENT,
         ORGANIZATION
     }
 
+    /**
+     * 定义查找模式的可选值；调用方据此选择对应的处理分支。
+     */
     public enum LookupMode {
         SELF,
         FIXED_ANCESTOR,
@@ -281,12 +365,25 @@ public record RelativeOrgPositionConfig(
         BUSINESS_LEVEL
     }
 
+    /**
+     * 定义{@code multiple}匹配策略的可选值；调用方据此选择对应的处理分支。
+     */
     public enum MultipleMatchPolicy {
         ERROR,
         PRIMARY_OR_ERROR,
         ALL
     }
 
+    /**
+     * 封装层级的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param mode 模式标识，决定后续层级采用的处理分支
+     * @param ancestorHops {@code ancestor}{@code hops}，保存在对象中供后续校验、查询或展示
+     * @param startLevel 启动层级，保存在对象中供后续校验、查询或展示
+     * @param maxHops 最大{@code hops}，保存在对象中供后续校验、查询或展示
+     * @param businessLevelCode 业务层级编码，后续用于处理层级时定位或关联目标
+     * @param eligibleUnitTypes {@code eligible}单元类型集合，保存在对象中供后续校验、查询或展示
+     */
     public record Hierarchy(
             LookupMode mode,
             Integer ancestorHops,
@@ -295,6 +392,16 @@ public record RelativeOrgPositionConfig(
             String businessLevelCode,
             Set<String> eligibleUnitTypes) {
 
+        /**
+         * 初始化层级，保存构造参数供后续方法使用。
+         *
+         * @param mode 模式标识，决定后续层级采用的处理分支
+         * @param ancestorHops {@code ancestor}{@code hops}，保存在对象中供后续校验、查询或展示
+         * @param startLevel 启动层级，保存在对象中供后续校验、查询或展示
+         * @param maxHops 最大{@code hops}，保存在对象中供后续校验、查询或展示
+         * @param businessLevelCode 业务层级编码，后续用于初始化层级时定位或关联目标
+         * @param eligibleUnitTypes {@code eligible}单元类型集合，保存在对象中供后续校验、查询或展示
+         */
         public Hierarchy {
             eligibleUnitTypes = eligibleUnitTypes == null
                     ? Set.of() : Set.copyOf(eligibleUnitTypes);

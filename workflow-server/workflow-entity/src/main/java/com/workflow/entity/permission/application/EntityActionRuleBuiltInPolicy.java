@@ -42,6 +42,9 @@ public final class EntityActionRuleBuiltInPolicy {
     private static final Pattern FIELD_NAME =
             Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
 
+    /**
+     * 初始化实体动作规则{@code built}策略，保存构造参数供后续方法使用。
+     */
     private EntityActionRuleBuiltInPolicy() {
     }
 
@@ -58,6 +61,14 @@ public final class EntityActionRuleBuiltInPolicy {
         validateNode(node(rule.get("enabledWhen")), allowCustom);
     }
 
+    /**
+     * 校验节点；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code normalized} 的输入影响后续处理
+     * @param allowCustom 允许自定义，供本方法校验节点时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void validateNode(
             Map<String, Object> node,
             boolean allowCustom) {
@@ -122,6 +133,13 @@ public final class EntityActionRuleBuiltInPolicy {
         }
     }
 
+    /**
+     * 校验并获取操作人；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code normalized} 的输入影响后续处理
+     * @param allowed 允许，供本方法校验并获取操作人时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireOperator(
             Map<String, Object> node,
             Set<String> allowed) {
@@ -132,6 +150,12 @@ public final class EntityActionRuleBuiltInPolicy {
         }
     }
 
+    /**
+     * 校验并获取比较值；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code normalized} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireComparisonValue(
             Map<String, Object> node) {
         String operator = normalized(node.get("operator"));
@@ -155,6 +179,13 @@ public final class EntityActionRuleBuiltInPolicy {
         }
     }
 
+    /**
+     * 校验并获取允许比较值；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code requireComparisonValue} 的输入影响后续处理
+     * @param allowed 允许，作为 {@code values.forEach} 的输入影响后续处理
+     * @param messagePrefix 消息前缀，作为 {@code values.forEach} 的输入影响后续处理
+     */
     private static void requireAllowedComparisonValue(
             Map<String, Object> node,
             Set<String> allowed,
@@ -169,6 +200,14 @@ public final class EntityActionRuleBuiltInPolicy {
         requireAllowed(value, allowed, messagePrefix);
     }
 
+    /**
+     * 校验并获取允许；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取允许的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法校验并获取允许时使用
+     * @param messagePrefix 消息前缀，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static void requireAllowed(
             Object value,
             Set<String> allowed,
@@ -180,6 +219,12 @@ public final class EntityActionRuleBuiltInPolicy {
         }
     }
 
+    /**
+     * 判断是否具有标量值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有标量值的原始输入，结果供调用方继续使用
+     * @return 标量值条件成立时为 true，否则为 false
+     */
     private static boolean hasScalarValue(Object value) {
         return value != null
                 && !(value instanceof Collection<?>)
@@ -188,21 +233,45 @@ public final class EntityActionRuleBuiltInPolicy {
                 || StringUtils.hasText(text));
     }
 
+    /**
+     * 整理节点数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理节点的原始输入，结果供调用方继续使用
+     * @return 节点键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private static Map<String, Object> node(Object value) {
         return value == null ? null : (Map<String, Object>) value;
     }
 
+    /**
+     * 整理子节点数据，供调用方遍历或继续处理。
+     *
+     * @param node 节点，供本方法处理子节点时使用
+     * @return 实体动作规则{@code built}策略集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> children(
             Map<String, Object> node) {
         return (List<Map<String, Object>>) node.get("children");
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private static String normalized(Object value) {
         return text(value).toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

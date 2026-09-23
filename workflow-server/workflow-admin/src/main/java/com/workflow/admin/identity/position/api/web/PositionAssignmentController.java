@@ -29,6 +29,18 @@ public class PositionAssignmentController {
     private final PositionAssignmentQueryService queryService;
     private final PositionAssignmentService assignmentService;
 
+    /**
+     * 分页查询位置分配；查询结果供调用方展示或继续处理。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，作为 {@code Result.success} 的输入影响后续处理
+     * @param positionCode 位置编码，后续用于分页查询位置分配时定位或关联目标
+     * @param organizationUnitId 组织单元ID，后续用于分页查询位置分配时定位或关联目标
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param activeOnly 活动仅，作为 {@code Result.success} 的输入影响后续处理
+     * @return 符合条件的位置视图结果，供调用方继续处理
+     */
     @GetMapping("/page")
     public Result<PageResult<PositionViews.AssignmentView>> page(
             @RequestParam(defaultValue = "1") int pageNum,
@@ -43,6 +55,12 @@ public class PositionAssignmentController {
                 organizationUnitId, userId, activeOnly));
     }
 
+    /**
+     * 处理预检查，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理预检查
+     * @return 处理后的预检查结果，供调用方继续处理
+     */
     @PostMapping("/precheck")
     @RequiresPermission("system:position:assign")
     public Result<PositionViews.PrecheckResult> precheck(
@@ -50,6 +68,13 @@ public class PositionAssignmentController {
         return Result.success(assignmentService.precheck(request));
     }
 
+    /**
+     * 处理批次，并将结果传给后续步骤。
+     *
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param request 本次请求，后续经校验后用于处理批次
+     * @return 处理后的批次结果，供调用方继续处理
+     */
     @PostMapping("/batch")
     @RequiresPermission("system:position:assign")
     public Result<PositionViews.BatchAssignmentResult> batch(
@@ -59,6 +84,13 @@ public class PositionAssignmentController {
                 request, idempotencyKey));
     }
 
+    /**
+     * 撤销位置分配；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于撤销位置分配
+     * @return 撤销后的位置分配结果，供调用方继续处理
+     */
     @PostMapping("/{id}/revoke")
     @RequiresPermission("system:position:assign")
     public Result<Void> revoke(
@@ -68,6 +100,13 @@ public class PositionAssignmentController {
         return Result.success();
     }
 
+    /**
+     * 更新时段；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于更新时段
+     * @return 更新后的时段结果，供调用方继续处理
+     */
     @PostMapping("/{id}/update-period")
     @RequiresPermission("system:position:assign")
     public Result<Void> updatePeriod(

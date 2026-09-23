@@ -95,6 +95,9 @@ public class EntityCodeRule {
     
     /**
      * 获取默认编码规则
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体编码规则结果，供调用方继续处理
      */
     public static EntityCodeRule getDefault(String entityCode) {
         EntityCodeRule rule = new EntityCodeRule();

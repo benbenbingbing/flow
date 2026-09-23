@@ -10,6 +10,11 @@ package com.workflow.entity.form.application;
 public class FormSubmissionPreviewDeferredException
         extends RuntimeException {
 
+    /**
+     * 初始化表单提交预览{@code deferred}异常，保存构造参数供后续方法使用。
+     *
+     * @param message 消息，保存在对象中供后续校验、查询或展示
+     */
     public FormSubmissionPreviewDeferredException(String message) {
         super(message);
     }

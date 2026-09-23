@@ -24,11 +24,22 @@ public class ProjectCustomDataPermissionMatchProvider
     public static final String SCOPE_TYPE =
             "PROJECT:CUSTOM_MATCH";
 
+    /**
+     * 读取作用域类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的作用域类型文本，供调用方比较或展示
+     */
     @Override
     public String getScopeType() {
         return SCOPE_TYPE;
     }
 
+    /**
+     * 校验项目自定义数据权限匹配提供者；不满足约束时阻止后续处理。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Override
     public void validate(
             MatchConfigDTO.MatchConditionDTO condition) {
@@ -47,6 +58,13 @@ public class ProjectCustomDataPermissionMatchProvider
         }
     }
 
+    /**
+     * 判断是否匹配项目自定义数据权限匹配提供者；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 项目自定义数据权限匹配提供者条件成立时为 true，否则为 false
+     */
     @Override
     public boolean matches(
             MatchConfigDTO.MatchConditionDTO condition,
@@ -76,6 +94,12 @@ public class ProjectCustomDataPermissionMatchProvider
         return matched;
     }
 
+    /**
+     * 添加项目自定义数据权限匹配提供者；结果供后续流程传递或持久化。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param value 待添加项目自定义数据权限匹配提供者的原始输入，结果供调用方继续使用
+     */
     private void add(
             Set<String> values,
             String value) {

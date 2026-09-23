@@ -86,6 +86,9 @@ public class ConfigMigrationAssetDependencyService {
 
     /**
      * 将依赖实体转换为依赖描述 Map，合并存储文档与冗余字段。
+     *
+     * @param dependency 依赖，作为 {@code result.put} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
      */
     private Map<String, Object> toMap(ConfigMigrationAssetDependency dependency) {
         Map<String, Object> result = StringUtils.hasText(dependency.getDependencyDocument())
@@ -106,7 +109,12 @@ public class ConfigMigrationAssetDependencyService {
         return result;
     }
 
-    /** 查询依赖所属资产的稳定标识和版本，确保引用记录不会混淆不同历史版本。 */
+    /**
+     * 查询依赖所属资产的稳定标识和版本，确保引用记录不会混淆不同历史版本。
+     *
+     * @param assetId 资产ID，后续用于处理来源资产时定位或关联目标
+     * @return 来源资产键值结果，供调用方继续处理
+     */
     private Map<String, Object> sourceAsset(String assetId) {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
                 SELECT asset_type AS assetType, business_key AS businessKey,
@@ -120,14 +128,33 @@ public class ConfigMigrationAssetDependencyService {
         return rows.get(0);
     }
 
+    /**
+     * 处理数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理数值的原始输入，结果供调用方继续使用
+     * @return 处理后的数值结果，供调用方继续处理
+     */
     private Integer number(Object value) {
         return value instanceof Number number ? number.intValue() : null;
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return StringUtils.hasText(value) ? value.trim().toUpperCase() : fallback;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }

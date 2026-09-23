@@ -1,6 +1,6 @@
 package com.workflow.contracts.process.assignment.spi;
 
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 
 /**
  * 流程人员解析器的发布时静态配置校验 SPI。

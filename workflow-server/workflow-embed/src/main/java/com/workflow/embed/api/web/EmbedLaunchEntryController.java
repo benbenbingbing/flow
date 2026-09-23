@@ -35,6 +35,13 @@ public class EmbedLaunchEntryController {
     private final EmbedProperties properties;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式启动记录入口控制器，保存构造参数供后续方法使用。
+     *
+     * @param service 服务依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedLaunchEntryController(
             EmbedLaunchEntryService service,
             EmbedProperties properties,
@@ -44,6 +51,12 @@ public class EmbedLaunchEntryController {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 处理入口，并将结果传给后续步骤。
+     *
+     * @param launchId 启动记录ID，后续用于处理入口时定位或关联目标
+     * @return 处理后的入口结果，供调用方继续处理
+     */
     @GetMapping(
             value = "/embed/v1/launches/{launchId}",
             produces = MediaType.TEXT_HTML_VALUE)
@@ -53,6 +66,12 @@ public class EmbedLaunchEntryController {
                 .orElseGet(this::notFound);
     }
 
+    /**
+     * 处理成功，并将结果传给后续步骤。
+     *
+     * @param metadata 元数据，作为 {@code encode} 的输入影响后续处理
+     * @return 处理后的成功结果，供调用方继续处理
+     */
     private ResponseEntity<String> success(
             EmbedLaunchEntryService.EntryMetadata metadata) {
         String encoded = encode(Map.of(
@@ -84,6 +103,11 @@ public class EmbedLaunchEntryController {
                 .body(html);
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private ResponseEntity<String> notFound() {
         String html = """
                 <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8">
@@ -96,6 +120,13 @@ public class EmbedLaunchEntryController {
                 .body(html);
     }
 
+    /**
+     * 处理{@code headers}，并将结果传给后续步骤。
+     *
+     * @param builder 构建器，供本方法处理{@code headers}时使用
+     * @param csp {@code csp}，供本方法处理{@code headers}时使用
+     * @return 处理后的{@code headers}结果，供调用方继续处理
+     */
     private ResponseEntity.BodyBuilder headers(
             ResponseEntity.BodyBuilder builder,
             String csp) {
@@ -109,6 +140,13 @@ public class EmbedLaunchEntryController {
                 .header(HttpHeaders.PRAGMA, "no-cache");
     }
 
+    /**
+     * 编码嵌入式启动记录入口；输出作为后续校验或处理的输入。
+     *
+     * @param value 待编码嵌入式启动记录入口的原始输入，结果供调用方继续使用
+     * @return 编码后的嵌入式启动记录入口文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String encode(Object value) {
         try {
             return Base64.getUrlEncoder().withoutPadding().encodeToString(

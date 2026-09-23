@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -45,6 +45,16 @@ public class NextApproverOverrideService {
     private final SysUserService sysUserService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 校验与{@code stage}；不满足约束时阻止后续处理。
+     *
+     * @param task 任务，供本方法校验与{@code stage}时使用
+     * @param action 动作标识，决定后续与{@code stage}采用的处理分支
+     * @param actionLabel 动作标签，后续用于校验与{@code stage}时匹配或展示
+     * @param comment 注释，供本方法校验与{@code stage}时使用
+     * @param submittedScopeKey 已提交作用域键，后续用于授权校验、关联或幂等去重
+     * @param selections {@code selections}，供本方法校验与{@code stage}时使用
+     */
     public void validateAndStage(
             Task task,
             String action,
@@ -62,6 +72,17 @@ public class NextApproverOverrideService {
                 false);
     }
 
+    /**
+     * 校验与{@code stage}；不满足约束时阻止后续处理。
+     *
+     * @param task 任务，作为 {@code routeService.resolve} 的输入影响后续处理
+     * @param action 动作标识，决定后续与{@code stage}采用的处理分支
+     * @param actionLabel 动作标签，后续用于校验与{@code stage}时匹配或展示
+     * @param comment 注释，作为 {@code request.setComment} 的输入影响后续处理
+     * @param submittedScopeKey 已提交作用域键，后续用于授权校验、关联或幂等去重
+     * @param selections {@code selections}，供本方法校验与{@code stage}时使用
+     * @param previewWasDeferred 预览{@code was}{@code deferred}，供本方法校验与{@code stage}时使用
+     */
     public void validateAndStage(
             Task task,
             String action,
@@ -329,6 +350,13 @@ public class NextApproverOverrideService {
      *
      * <p>该结果只用于识别“提交前处理无法安全预执行”的场景；正式提交仍会在
      * 权威表单处理完成后重新推导路径，不能把此结果当作 scopeKey 使用。</p>
+     *
+     * @param task 任务，作为 {@code routeService.resolve} 的输入影响后续处理
+     * @param action 动作标识，决定后续预览是否{@code deferred}采用的处理分支
+     * @param actionLabel 动作标签，后续用于处理预览是否{@code deferred}时匹配或展示
+     * @param comment 注释，作为 {@code request.setComment} 的输入影响后续处理
+     * @param formData 表单数据，作为 {@code request.setFormData} 的输入影响后续处理
+     * @return 预览是否{@code deferred}条件成立时为 true，否则为 false
      */
     public boolean previewIsDeferred(
             Task task,
@@ -352,6 +380,13 @@ public class NextApproverOverrideService {
      * <p>加签收口没有下一审批人选择界面；若命中的可编辑节点没有默认审批人，
      * 后台继续完成会创建无人任务，因此必须把源任务恢复给原办理人。无法解析的
      * 只读默认办理人仍按 fail-closed 处理；DEFERRED 则交由 Flowable 原生分配。</p>
+     *
+     * @param task 任务，作为 {@code routeService.resolve} 的输入影响后续处理
+     * @param action 动作标识，决定后续需要人工选择{@code deferred}{@code completion}采用的处理分支
+     * @param actionLabel 动作标签，后续用于处理需要人工选择{@code deferred}{@code completion}时匹配或展示
+     * @param comment 注释，作为 {@code request.setComment} 的输入影响后续处理
+     * @param formData 表单数据，作为 {@code request.setFormData} 的输入影响后续处理
+     * @return 需要人工选择{@code deferred}{@code completion}条件成立时为 true，否则为 false
      */
     public boolean requiresManualSelectionForDeferredCompletion(
             Task task,
@@ -410,11 +445,23 @@ public class NextApproverOverrideService {
         return false;
     }
 
+    /**
+     * 生成多实例集合变量文本，供后续匹配或展示。
+     *
+     * @param activity 活动，作为 {@code MultiInstanceVariableNames.resolveCollectionVariable} 的输入影响后续处理
+     * @return 处理后的多实例集合变量文本，供调用方比较或展示
+     */
     private String multiInstanceCollectionVariable(Activity activity) {
         return MultiInstanceVariableNames.resolveCollectionVariable(
                 activity);
     }
 
+    /**
+     * 整理当前{@code overrides}数据，供调用方遍历或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 当前{@code overrides}键值结果，供调用方继续处理
+     */
     private Map<String, Object> currentOverrides(
             String processInstanceId) {
         Object raw = runtimeService.getVariable(
@@ -424,6 +471,12 @@ public class NextApproverOverrideService {
                 : new LinkedHashMap<>();
     }
 
+    /**
+     * 整理规范化键集合数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 下一步审批人覆盖集合，供调用方遍历或展示
+     */
     private List<String> normalizedKeys(Collection<?> values) {
         if (values == null) {
             return List.of();
@@ -437,18 +490,37 @@ public class NextApproverOverrideService {
                 .toList();
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Map<?, ?> value) {
         Map<String, Object> result = new LinkedHashMap<>();
         value.forEach((key, item) -> result.put(String.valueOf(key), item));
         return result;
     }
 
+    /**
+     * 生成安全消息文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理安全消息时使用
+     * @return 处理后的安全消息文本，供调用方比较或展示
+     */
     private String safeMessage(RuntimeException exception) {
         return StringUtils.hasText(exception.getMessage())
                 ? exception.getMessage()
                 : exception.getClass().getSimpleName();
     }
 
+    /**
+     * 构造{@code deferred}默认必填异常，供调用方区分失败原因。
+     *
+     * @param target 目标，供本方法处理{@code deferred}默认必填时使用
+     * @param reason 原因，供本方法处理{@code deferred}默认必填时使用
+     * @return 处理后的{@code deferred}默认必填结果，供调用方继续处理
+     */
     private BusinessConflictException deferredDefaultRequired(
             NextApprovalTarget target,
             String reason) {
@@ -465,12 +537,25 @@ public class NextApproverOverrideService {
                         + "。这是流程配置错误，请勿重复提交");
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private BusinessConflictException conflict(
             String code,
             String message) {
         return new BusinessConflictException(code, message);
     }
 
+    /**
+     * 记录审计；供后续追溯或审计使用。
+     *
+     * @param sourceTask 来源任务，作为 {@code log.setProcessInstanceId} 的输入影响后续处理
+     * @param entry 入口，作为 {@code log.setOperationComment} 的输入影响后续处理
+     */
     private void recordAudit(Task sourceTask, AuditEntry entry) {
         String operatorId = firstText(
                 UserContext.getUserId(), UserContext.getUsername());
@@ -498,6 +583,12 @@ public class NextApproverOverrideService {
         operationLogMapper.insert(log);
     }
 
+    /**
+     * 生成JSON文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON文本，供调用方比较或展示
+     */
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -508,6 +599,12 @@ public class NextApproverOverrideService {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -517,6 +614,14 @@ public class NextApproverOverrideService {
         return null;
     }
 
+    /**
+     * 封装审计入口的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param nodeId 节点ID，后续用于处理审计入口时定位或关联目标
+     * @param nodeName 节点名称，后续用于处理审计入口时匹配或展示
+     * @param defaultUsernames 默认{@code usernames}，保存在对象中供后续校验、查询或展示
+     * @param usernames {@code usernames}，保存在对象中供后续校验、查询或展示
+     */
     private record AuditEntry(
             String nodeId,
             String nodeName,

@@ -4,15 +4,15 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.process.task.application.ProcessTaskService;
 
 import com.workflow.core.result.Result;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -59,6 +59,7 @@ public class ProcessRollbackService {
      * @param userId    当前用户
      * @param comment   驳回原因
      * @param targetNodeId 目标节点ID（可选，默认是发起人节点）
+     * @return 处理后的驳回任务结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -149,6 +150,7 @@ public class ProcessRollbackService {
      * @param userId            当前用户（必须是发起人）
      * @param formData          更新的表单数据
      * @param comment           重新提交备注
+     * @return 处理后的{@code resubmit}流程结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -271,6 +273,9 @@ public class ProcessRollbackService {
 
     /**
      * 找到流程的发起节点
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 查询后的启动节点ID文本，供调用方比较或展示
      */
     private String findStartNodeId(String processDefinitionId) {
         try {
@@ -298,6 +303,10 @@ public class ProcessRollbackService {
 
     /**
      * 更新实体状态为"被驳回"
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
      */
     private void updateEntityStatusToRejected(
             String processInstanceId,
@@ -355,6 +364,9 @@ public class ProcessRollbackService {
     
     /**
      * 查找驳回状态编码
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 查询后的已拒绝状态编码文本，供调用方比较或展示
      */
     private String findRejectedStatusCode(String entityCode) {
         try {
@@ -368,6 +380,11 @@ public class ProcessRollbackService {
 
     /**
      * 更新实体数据
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param formData 表单数据，供本方法更新实体数据时使用
      */
     private void updateEntityData(
             String processInstanceId,
@@ -424,6 +441,12 @@ public class ProcessRollbackService {
         }
     }
 
+    /**
+     * 生成定义ID文本，供后续匹配或展示。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 处理后的定义ID文本，供调用方比较或展示
+     */
     private String processDefinitionId(
             String processInstanceId) {
         ProcessInstance instance = runtimeService

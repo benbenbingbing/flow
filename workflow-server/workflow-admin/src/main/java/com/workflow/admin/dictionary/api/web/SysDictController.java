@@ -2,7 +2,7 @@ package com.workflow.admin.dictionary.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.Result;

@@ -32,7 +32,11 @@ public interface ProcessTaskCandidateUserMapper
      *
      * @param taskInstanceId 任务实例ID
      */
-    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    /**
+     * 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。
+     *
+     * @param taskInstanceId 任务实例ID，后续用于删除任务实例ID时定位或关联目标
+     */
     default void deleteByTaskInstanceId(String taskInstanceId) {
         delete(Wrappers.<ProcessTaskCandidateUser>lambdaQuery()
                 .eq(ProcessTaskCandidateUser::getTaskInstanceId, taskInstanceId));

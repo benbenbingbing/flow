@@ -32,6 +32,13 @@ public class OutboxWorker {
     @Value("${workflow.outbox.lease-seconds:120}")
     private int leaseSeconds = 120;
 
+    /**
+     * 初始化待发送事件{@code worker}，保存构造参数供后续方法使用。
+     *
+     * @param mapper 映射器依赖，保存到当前对象供后续业务方法调用
+     * @param processor {@code processor}依赖，保存到当前对象供后续业务方法调用
+     * @param executor 执行器依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public OutboxWorker(
             OutboxRecordMapper mapper,
@@ -42,10 +49,19 @@ public class OutboxWorker {
         this.executor = executor;
     }
 
+    /**
+     * 初始化待发送事件{@code worker}，保存构造参数供后续方法使用。
+     *
+     * @param mapper 持久层映射器，后续用于读取或写入对应业务数据
+     * @param processor {@code processor}，保存在对象中供后续校验、查询或展示
+     */
     OutboxWorker(OutboxRecordMapper mapper, OutboxProcessor processor) {
         this(mapper, processor, Runnable::run);
     }
 
+    /**
+     * 分发就绪；后续由接收方或异步任务继续处理。
+     */
     @Scheduled(fixedDelayString = "${workflow.outbox.delay-ms:3000}")
     public void dispatchReady() {
         int recovered = mapper.recoverExpiredLeases();

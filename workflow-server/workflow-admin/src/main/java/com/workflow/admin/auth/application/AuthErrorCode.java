@@ -23,6 +23,9 @@ public final class AuthErrorCode {
     public static final String REFRESH_ABSOLUTE_EXPIRED =
             "AUTH_REFRESH_ABSOLUTE_EXPIRED";
 
+    /**
+     * 初始化认证错误编码，保存构造参数供后续方法使用。
+     */
     private AuthErrorCode() {
     }
 }

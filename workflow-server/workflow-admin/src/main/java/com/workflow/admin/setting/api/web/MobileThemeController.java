@@ -16,7 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class MobileThemeController {
     private final GlobalSettingService service;
 
-    /** 每次刷新均回源读取，保存后无需重新构建、重启或清理客户端缓存。 */
+    /**
+     * 每次刷新均回源读取，保存后无需重新构建、重启或清理客户端缓存。
+     *
+     * @return 读取后的{@code mobile}{@code theme}结果，供调用方继续处理
+     */
     @PublicApi
     @GetMapping("/api/system/mobile-theme")
     public ResponseEntity<Result<MobileThemeView>> read() {

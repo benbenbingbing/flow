@@ -1,11 +1,11 @@
 package com.workflow.process.form.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.EntityFormBinding;
-import com.workflow.contracts.entity.EntityFormRuntimeContext;
+import com.workflow.contracts.entity.form.model.EntityFormBinding;
+import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -58,6 +58,9 @@ public class EntityFormResolveService {
      *
      * <p>优先使用实体明确配置的默认表单；仅当实体没有默认表单时，
      * 才回退到最新流程发布快照中首个用户任务绑定的表单。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 表单新数据键值结果，供调用方继续处理
      */
     public Map<String, Object> resolveFormForNewData(String entityCode) {
         log.info(
@@ -131,6 +134,10 @@ public class EntityFormResolveService {
      * 解析查看实体数据时使用的表单。
      *
      * <p>运行中流程按当前活动任务解析；流程已结束时按最后一个历史任务及原流程发布快照解析。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 表单视图数据键值结果，供调用方继续处理
      */
     public Map<String, Object> resolveFormForViewData(
             String entityCode,
@@ -279,6 +286,9 @@ public class EntityFormResolveService {
 
     /**
      * 从开始事件出发按广度优先顺序解析首个可达用户任务。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析首个用户任务ID时使用
+     * @return 解析后的首个用户任务ID文本，供调用方比较或展示
      */
     String resolveFirstUserTaskId(String bpmnXml) {
         if (bpmnXml == null || bpmnXml.isBlank()) {
@@ -349,6 +359,12 @@ public class EntityFormResolveService {
         }
     }
 
+    /**
+     * 整理元素ID 集合数据，供调用方遍历或继续处理。
+     *
+     * @param elements {@code elements}，供本方法处理元素ID 集合时使用
+     * @return 实体表单{@code resolve}集合，供调用方遍历或展示
+     */
     private Set<String> elementIds(NodeList elements) {
         Set<String> ids = new java.util.LinkedHashSet<>();
         for (int index = 0; index < elements.getLength(); index++) {
@@ -361,6 +377,15 @@ public class EntityFormResolveService {
         return ids;
     }
 
+    /**
+     * 读取节点绑定实体表单；查询结果供调用方展示或继续处理。
+     *
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param nodeId 节点ID，后续用于读取节点绑定实体表单时定位或关联目标
+     * @param purpose 用途，供本方法读取节点绑定实体表单时使用
+     * @return 节点绑定实体表单键值结果，供调用方继续处理
+     */
     private Map<String, Object> getNodeBoundEntityForm(
             String processKey,
             String processDefinitionId,
@@ -374,6 +399,16 @@ public class EntityFormResolveService {
     /**
      * 活动任务解析额外携带服务端 Flowable task/instance/record 主体，签发的
      * 发布令牌因此不能移植到同节点的另一业务实例。
+     *
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param nodeId 节点ID，后续用于读取节点绑定实体表单时定位或关联目标
+     * @param purpose 用途，作为 {@code UiRuntimePurpose.ACTIVE_TASK.equals} 的输入影响后续处理
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 节点绑定实体表单键值结果，供调用方继续处理
      */
     private Map<String, Object> getNodeBoundEntityForm(
             String processKey,
@@ -454,6 +489,12 @@ public class EntityFormResolveService {
         return result;
     }
 
+    /**
+     * 转换为绑定；输出作为后续校验或处理的输入。
+     *
+     * @param binding 绑定，作为 {@code EntityFormBinding} 的输入影响后续处理
+     * @return 转换为后的绑定结果，供调用方继续处理
+     */
     private EntityFormBinding toBinding(ProcessNodeForm binding) {
         return new EntityFormBinding(
                 binding.getNodeId(),

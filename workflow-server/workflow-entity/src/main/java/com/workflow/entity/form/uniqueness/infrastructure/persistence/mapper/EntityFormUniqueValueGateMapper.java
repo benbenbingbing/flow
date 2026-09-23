@@ -11,6 +11,10 @@ public interface EntityFormUniqueValueGateMapper {
     /**
      * 在当前事务内锁定指定值门闩。调用前必须先通过 JdbcLockedRow 创建并锁定占位行，
      * 使首次出现的值也有可锁定的稳定行。
+     *
+     * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+     * @param valueHash 值哈希，供本方法锁定更新时使用
+     * @return 锁定后的更新文本，供调用方比较或展示
      */
     @Select("SELECT value_hash FROM entity_form_unique_value_gate "
             + "WHERE scope_key = #{scopeKey} AND value_hash = #{valueHash} "

@@ -2,7 +2,7 @@ package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
@@ -53,12 +53,22 @@ public class ProjectGovernanceService {
 
     /**
      * Validates project initiation against requirement, system, allocation and date data.
+     *
+     * @param project 项目，作为 {@code validateProjectInitiationInternal} 的输入影响后续处理
+     * @return 项目发起键值结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public Map<String, Object> validateProjectInitiation(EntityDataDTO project) {
         return validateProjectInitiationInternal(project);
     }
 
+    /**
+     * 校验项目发起；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，供本方法校验项目发起时使用
+     * @param context 执行上下文，向后续项目发起步骤传递身份、配置或状态
+     * @return 项目发起键值结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> validateProjectInitiation(
             EntityDataDTO project,
@@ -70,6 +80,12 @@ public class ProjectGovernanceService {
                 () -> validateProjectInitiationInternal(project));
     }
 
+    /**
+     * 校验项目发起内部；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，作为 {@code requireEntity} 的输入影响后续处理
+     * @return 项目发起内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> validateProjectInitiationInternal(
             EntityDataDTO project) {
         requireEntity(project, PROJECT);
@@ -110,6 +126,9 @@ public class ProjectGovernanceService {
 
     /**
      * Activates initial links and creates the three governed members and role assignments.
+     *
+     * @param project 项目，供本方法应用项目发起时使用
+     * @return 项目发起键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectInitiation(EntityDataDTO project) {
@@ -120,6 +139,13 @@ public class ProjectGovernanceService {
                 () -> applyProjectInitiationInternal(project));
     }
 
+    /**
+     * 应用项目发起，并将结果传给后续步骤。
+     *
+     * @param project 项目，供本方法应用项目发起时使用
+     * @param context 执行上下文，向后续项目发起步骤传递身份、配置或状态
+     * @return 项目发起键值结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectInitiation(
             EntityDataDTO project,
@@ -131,6 +157,12 @@ public class ProjectGovernanceService {
                 () -> applyProjectInitiationInternal(project));
     }
 
+    /**
+     * 应用项目发起内部，并将结果传给后续步骤。
+     *
+     * @param project 项目，作为 {@code requireEntity} 的输入影响后续处理
+     * @return 项目发起内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> applyProjectInitiationInternal(
             EntityDataDTO project) {
         requireEntity(project, PROJECT);
@@ -264,6 +296,9 @@ public class ProjectGovernanceService {
 
     /**
      * Validates ADD, UPDATE and REMOVE requests. Removal performs real cross-entity blocker checks.
+     *
+     * @param request 本次请求，后续经校验后用于校验项目系统变更
+     * @return 项目系统变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateProjectSystemChange(EntityDataDTO request) {
@@ -274,6 +309,13 @@ public class ProjectGovernanceService {
                 () -> validateProjectSystemChangeInternal(request));
     }
 
+    /**
+     * 校验项目系统变更；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验项目系统变更
+     * @param context 执行上下文，向后续项目系统变更步骤传递身份、配置或状态
+     * @return 项目系统变更键值结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateProjectSystemChange(
             EntityDataDTO request,
@@ -285,6 +327,12 @@ public class ProjectGovernanceService {
                 () -> validateProjectSystemChangeInternal(request));
     }
 
+    /**
+     * 校验项目系统变更内部；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验项目系统变更内部
+     * @return 项目系统变更内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> validateProjectSystemChangeInternal(
             EntityDataDTO request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
@@ -401,6 +449,9 @@ public class ProjectGovernanceService {
 
     /**
      * Applies the approved project-system relationship change idempotently.
+     *
+     * @param request 本次请求，后续经校验后用于应用项目系统变更
+     * @return 项目系统变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectSystemChange(EntityDataDTO request) {
@@ -411,6 +462,13 @@ public class ProjectGovernanceService {
                 () -> applyProjectSystemChangeInternal(request));
     }
 
+    /**
+     * 应用项目系统变更，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用项目系统变更
+     * @param context 执行上下文，向后续项目系统变更步骤传递身份、配置或状态
+     * @return 项目系统变更键值结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectSystemChange(
             EntityDataDTO request,
@@ -422,6 +480,12 @@ public class ProjectGovernanceService {
                 () -> applyProjectSystemChangeInternal(request));
     }
 
+    /**
+     * 应用项目系统变更内部，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于应用项目系统变更内部
+     * @return 项目系统变更内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> applyProjectSystemChangeInternal(
             EntityDataDTO request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
@@ -531,6 +595,13 @@ public class ProjectGovernanceService {
         return result;
     }
 
+    /**
+     * 校验{@code requirement}{@code links}；不满足约束时阻止后续处理。
+     *
+     * @param links {@code links}，供本方法校验{@code requirement}{@code links}时使用
+     * @param projectStart 项目启动，作为 {@code validateDateWithinProject} 的输入影响后续处理
+     * @param projectEnd 项目结束，作为 {@code validateDateWithinProject} 的输入影响后续处理
+     */
     private void validateRequirementLinks(
             List<Map<String, Object>> links,
             LocalDate projectStart,
@@ -564,6 +635,13 @@ public class ProjectGovernanceService {
         }
     }
 
+    /**
+     * 校验系统{@code links}；不满足约束时阻止后续处理。
+     *
+     * @param links {@code links}，供本方法校验系统{@code links}时使用
+     * @param projectStart 项目启动，作为 {@code validateDateWithinProject} 的输入影响后续处理
+     * @param projectEnd 项目结束，作为 {@code validateDateWithinProject} 的输入影响后续处理
+     */
     private void validateSystemLinks(
             List<Map<String, Object>> links,
             LocalDate projectStart,
@@ -582,6 +660,14 @@ public class ProjectGovernanceService {
         }
     }
 
+    /**
+     * 校验日期{@code within}项目；不满足约束时阻止后续处理。
+     *
+     * @param link 链接，作为 {@code date} 的输入影响后续处理
+     * @param projectStart 项目启动，供本方法校验日期{@code within}项目时使用
+     * @param projectEnd 项目结束，供本方法校验日期{@code within}项目时使用
+     * @param label 标签，后续用于校验日期{@code within}项目时匹配或展示
+     */
     private void validateDateWithinProject(
             Map<String, Object> link,
             LocalDate projectStart,
@@ -597,6 +683,17 @@ public class ProjectGovernanceService {
         }
     }
 
+    /**
+     * 确保成员；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，作为 {@code entityDataService.findByCondition} 的输入影响后续处理
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param sourceDeptId 来源部门ID，后续用于确保成员时定位或关联目标
+     * @param joinDate {@code join}日期，后续用于判断有效期或展示该事件的发生时间
+     * @param plannedLeaveDate {@code planned}{@code leave}日期，后续用于判断有效期或展示该事件的发生时间
+     * @param responsibility {@code responsibility}，作为 {@code conflict} 的输入影响后续处理
+     * @return 确保后的成员结果，供调用方继续处理
+     */
     private EntityDataDTO ensureMember(
             EntityDataDTO project,
             String userId,
@@ -643,6 +740,17 @@ public class ProjectGovernanceService {
         return member;
     }
 
+    /**
+     * 确保角色分配；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，作为 {@code ensureRoleCatalog} 的输入影响后续处理
+     * @param member 成员，作为 {@code assignmentData.put} 的输入影响后续处理
+     * @param roleCode 角色编码，后续用于确保角色分配时定位或关联目标
+     * @param roleName 角色名称，后续用于确保角色分配时匹配或展示
+     * @param primary 主要，作为 {@code ensureRoleCatalog} 的输入影响后续处理
+     * @param effectiveFrom 有效起始，作为 {@code assignmentData.put} 的输入影响后续处理
+     * @param effectiveTo 有效截止，作为 {@code assignmentData.put} 的输入影响后续处理
+     */
     private void ensureRoleAssignment(
             EntityDataDTO project,
             EntityDataDTO member,
@@ -685,6 +793,15 @@ public class ProjectGovernanceService {
                 update("ACTIVE", Map.of("source_process", "F03")));
     }
 
+    /**
+     * 确保角色目录；不满足约束时阻止后续处理。
+     *
+     * @param project 项目，作为 {@code saveStandalone} 的输入影响后续处理
+     * @param roleCode 角色编码，后续用于确保角色目录时定位或关联目标
+     * @param roleName 角色名称，后续用于确保角色目录时匹配或展示
+     * @param primaryUnique 主要唯一，作为 {@code catalogData.put} 的输入影响后续处理
+     * @return 确保后的角色目录结果，供调用方继续处理
+     */
     private EntityDataDTO ensureRoleCatalog(
             EntityDataDTO project,
             String roleCode,
@@ -710,6 +827,13 @@ public class ProjectGovernanceService {
                 catalogData);
     }
 
+    /**
+     * 校验成员；不满足约束时阻止后续处理。
+     *
+     * @param projectId 项目ID，后续用于校验成员时定位或关联目标
+     * @param memberId 成员ID，后续用于校验成员时定位或关联目标
+     * @param label 标签，后续用于校验成员时匹配或展示
+     */
     private void validateMember(String projectId, String memberId, String label) {
         EntityDataDTO member = entityDataService.findById(PROJECT_MEMBER, memberId);
         if (!Objects.equals(projectId, text(read(data(member), "project_id")))
@@ -718,6 +842,12 @@ public class ProjectGovernanceService {
         }
     }
 
+    /**
+     * 构建{@code proposed}链接数据；结果供后续流程传递或持久化。
+     *
+     * @param source 待构建{@code proposed}链接数据的原始输入，结果供调用方继续使用
+     * @return {@code proposed}链接数据键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildProposedLinkData(Map<String, Object> source) {
         Map<String, Object> target = new LinkedHashMap<>();
         copy(source, target, "construction_mode", "construction_mode");
@@ -735,6 +865,15 @@ public class ProjectGovernanceService {
         return target;
     }
 
+    /**
+     * 保存{@code standalone}；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param name 名称，后续用于保存{@code standalone}时匹配或展示
+     * @param source 待保存{@code standalone}的原始输入，结果供调用方继续使用
+     * @param customData 自定义数据，作为 {@code dto.setData} 的输入影响后续处理
+     * @return 保存后的{@code standalone}结果，供调用方继续处理
+     */
     private EntityDataDTO saveStandalone(
             String entityCode,
             String name,
@@ -749,6 +888,13 @@ public class ProjectGovernanceService {
         return mutationExecutor.save(dto);
     }
 
+    /**
+     * 生成JSON文本，供后续匹配或展示。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);

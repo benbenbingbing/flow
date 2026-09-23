@@ -1,7 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.Grant;

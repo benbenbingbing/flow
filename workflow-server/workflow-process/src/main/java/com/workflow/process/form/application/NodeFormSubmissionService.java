@@ -2,19 +2,18 @@ package com.workflow.process.form.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
-import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormCrossFieldRuntimeContext;
@@ -65,7 +64,11 @@ public class NodeFormSubmissionService {
     private final ObjectMapper objectMapper;
     private UiHotfixObservationPort hotfixObservationPort;
 
-    /** 可选观察端口不参与流程主事务成败判定。 */
+    /**
+     * 可选观察端口不参与流程主事务成败判定。
+     *
+     * @param hotfixObservationPort 热修复观察端口，供本方法设置热修复观察端口时使用
+     */
     @Autowired(required = false)
     void setHotfixObservationPort(
             UiHotfixObservationPort hotfixObservationPort) {
@@ -79,6 +82,10 @@ public class NodeFormSubmissionService {
      * 随后按正式提交的顺序执行明确声明无副作用的 BEFORE_SUBMIT。普通绑定
      * 会抛出预览延迟异常，由下一节点服务返回 DEFERRED。本方法不写实体或
      * 流程变量。</p>
+     *
+     * @param task 任务，作为 {@code projectSubmission} 的输入影响后续处理
+     * @param submittedFormData 已提交表单数据，作为 {@code projectSubmission} 的输入影响后续处理
+     * @return 项目可编辑数据键值结果，供调用方继续处理
      */
     public Map<String, Object> projectEditableData(
             Task task,
@@ -209,6 +216,7 @@ public class NodeFormSubmissionService {
      * <p>优先使用节点绑定的发布表单（跳过只读表单）；无节点表单时回落到实体默认表单。</p>
      *
      * @param nodeForms  节点绑定的表单列表
+     * @param processVersionHistoryId 流程版本历史ID，后续用于解析可编辑字段编码集合时定位或关联目标
      * @param entityCode 实体编码
      * @return 可编辑字段编码集合
      */
@@ -249,11 +257,13 @@ public class NodeFormSubmissionService {
      * <p>有节点表单时按表单发布版本去重后逐个应用；无节点表单时使用实体默认表单处理。</p>
      *
      * @param nodeForms        节点绑定的表单列表
+     * @param processVersionHistoryId 流程版本历史ID，后续用于应用之前{@code submit}时定位或关联目标
      * @param task             当前任务
      * @param entityCode       实体编码
      * @param entityDataId     实体数据ID
      * @param submittedValues  提交的扁平化数据
      * @param executionContext 表单提交上下文（用于追踪）
+     * @param sideEffectFreePreview 侧{@code effect}{@code free}预览，供本方法应用之前{@code submit}时使用
      * @return 处理后的字段值
      */
     private AppliedFormSubmission applyBeforeSubmit(
@@ -297,7 +307,12 @@ public class NodeFormSubmissionService {
         }
     }
 
-    /** 同一表单若存在可编辑绑定，仍需执行该表单的比较规则。 */
+    /**
+     * 同一表单若存在可编辑绑定，仍需执行该表单的比较规则。
+     *
+     * @param nodeForms 节点表单集合，供本方法处理{@code readonly}表单ID 集合时使用
+     * @return 节点表单提交集合，供调用方遍历或展示
+     */
     private List<String> readonlyFormIds(List<ProcessNodeForm> nodeForms) {
         Set<String> editable = nodeForms.stream()
                 .filter(form -> !Integer.valueOf(1).equals(form.getIsReadonly()))
@@ -307,6 +322,19 @@ public class NodeFormSubmissionService {
                 .filter(id -> !editable.contains(id)).distinct().sorted().toList();
     }
 
+    /**
+     * 应用之前{@code submit}内部，并将结果传给后续步骤。
+     *
+     * @param nodeForms 节点表单集合，作为 {@code FormCrossFieldRuntimeContext.withReadonlyForms} 的输入影响后续处理
+     * @param processVersionHistoryId 流程版本历史ID，后续用于应用之前{@code submit}内部时定位或关联目标
+     * @param task 任务，作为 {@code UiRuntimeResolutionContext} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param submittedValues 已提交值集合，供本方法应用之前{@code submit}内部时使用
+     * @param executionContext 执行上下文，向后续之前{@code submit}内部步骤传递身份、配置或状态
+     * @param sideEffectFreePreview 侧{@code effect}{@code free}预览，供本方法应用之前{@code submit}内部时使用
+     * @return 应用后的之前{@code submit}内部结果，供调用方继续处理
+     */
     private AppliedFormSubmission applyBeforeSubmitInternal(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
@@ -428,6 +456,13 @@ public class NodeFormSubmissionService {
                         applied.hotfixTargetId())));
     }
 
+    /**
+     * 处理{@code observe}任务，并将结果传给后续步骤。
+     *
+     * @param processVersionHistoryId 流程版本历史ID，后续用于处理{@code observe}任务时定位或关联目标
+     * @param successful 成功，作为 {@code hotfixObservationPort.recordProcessVersionMetric} 的输入影响后续处理
+     * @param errorMessage 错误消息，作为 {@code hotfixObservationPort.recordProcessVersionMetric} 的输入影响后续处理
+     */
     private void observeTask(
             String processVersionHistoryId,
             boolean successful,
@@ -448,6 +483,13 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 处理项目提交，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code getPublishedNodeForms} 的输入影响后续处理
+     * @param submittedFormData 已提交表单数据，作为 {@code flattenSubmittedValues} 的输入影响后续处理
+     * @return 处理后的项目提交结果，供调用方继续处理
+     */
     private SubmissionProjection projectSubmission(
             Task task,
             Map<String, Object> submittedFormData) {
@@ -497,6 +539,14 @@ public class NodeFormSubmissionService {
                 new LinkedHashMap<>(trustedValues));
     }
 
+    /**
+     * 解析{@code declared}字段编码集合；输出作为后续校验或处理的输入。
+     *
+     * @param nodeForms 节点表单集合，供本方法解析{@code declared}字段编码集合时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于解析{@code declared}字段编码集合时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 节点表单提交集合，供调用方遍历或展示
+     */
     private Set<String> resolveDeclaredFieldCodes(
             List<ProcessNodeForm> nodeForms,
             String processVersionHistoryId,
@@ -524,6 +574,12 @@ public class NodeFormSubmissionService {
         return result;
     }
 
+    /**
+     * 收集{@code declared}字段；结果供调用方的后续步骤使用。
+     *
+     * @param form 表单，供本方法收集{@code declared}字段时使用
+     * @param fieldCodes 字段编码集合，供本方法收集{@code declared}字段时使用
+     */
     private void collectDeclaredFields(
             EntityForm form,
             Set<String> fieldCodes) {
@@ -555,6 +611,13 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 整理当前实体数据数据，供调用方遍历或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param declaredFieldCodes {@code declared}字段编码集合，作为 {@code putDeclaredValues} 的输入影响后续处理
+     * @return 当前实体数据键值结果，供调用方继续处理
+     */
     private Map<String, Object> currentEntityData(
             String processInstanceId,
             Set<String> declaredFieldCodes) {
@@ -578,6 +641,13 @@ public class NodeFormSubmissionService {
         return result;
     }
 
+    /**
+     * 写入{@code declared}值集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入{@code declared}值集合时使用
+     * @param source 待写入{@code declared}值集合的原始输入，结果供调用方继续使用
+     * @param declaredFieldCodes {@code declared}字段编码集合，供本方法写入{@code declared}值集合时使用
+     */
     private void putDeclaredValues(
             Map<String, Object> target,
             Map<?, ?> source,
@@ -589,6 +659,13 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 整理已变更可编辑值集合数据，供调用方遍历或继续处理。
+     *
+     * @param projection 投影，供本方法处理已变更可编辑值集合时使用
+     * @param processedValues {@code processed}值集合，作为 {@code result.put} 的输入影响后续处理
+     * @return 已变更可编辑值集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> changedEditableValues(
             SubmissionProjection projection,
             Map<String, Object> processedValues) {
@@ -609,6 +686,13 @@ public class NodeFormSubmissionService {
         return result;
     }
 
+    /**
+     * 处理提交执行上下文，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code formSubmissionTraceService.current} 的输入影响后续处理
+     * @param projection 投影，供本方法处理提交执行上下文时使用
+     * @return 处理后的提交执行上下文结果，供调用方继续处理
+     */
     private FormSubmissionExecutionContext submissionExecutionContext(
             Task task,
             SubmissionProjection projection) {
@@ -621,6 +705,17 @@ public class NodeFormSubmissionService {
                         projection.entityDataId()));
     }
 
+    /**
+     * 封装提交投影的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param published 已发布，保存在对象中供后续校验、查询或展示
+     * @param editableFieldCodes 可编辑字段编码集合，保存在对象中供后续校验、查询或展示
+     * @param submittedEditableValues 已提交可编辑值集合，保存在对象中供后续校验、查询或展示
+     * @param trustedValues 可信值集合，保存在对象中供后续校验、查询或展示
+     */
     private record SubmissionProjection(
             String processInstanceId,
             String entityCode,
@@ -631,12 +726,25 @@ public class NodeFormSubmissionService {
             Map<String, Object> trustedValues) {
     }
 
-    /** 已应用表单处理后的数据，以及本次权威解析得到的发布身份。 */
+    /**
+     * 已应用表单处理后的数据，以及本次权威解析得到的发布身份。
+     *
+     * @param data 数据，后续用于处理{@code applied}表单提交并传递处理结果
+     * @param formReferences 表单引用，保存在对象中供后续校验、查询或展示
+     */
     private record AppliedFormSubmission(
             Map<String, Object> data,
             List<FormUniqueMutationContext.Reference> formReferences) {
     }
 
+    /**
+     * 整理提交{@code attributes}数据，供调用方遍历或继续处理。
+     *
+     * @param task 任务，作为 {@code attributes.put} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 提交{@code attributes}键值结果，供调用方继续处理
+     */
     private Map<String, Object> submissionAttributes(
             Task task,
             String entityCode,
@@ -658,6 +766,12 @@ public class NodeFormSubmissionService {
         return attributes;
     }
 
+    /**
+     * 读取已发布节点表单集合；查询结果供调用方展示或继续处理。
+     *
+     * @param task 任务，作为 {@code getNodeFormsContextByProcessDefinitionId} 的输入影响后续处理
+     * @return 符合条件的流程已发布快照{@code service.published}节点表单集合结果，供调用方继续处理
+     */
     private ProcessPublishedSnapshotService.PublishedNodeForms
             getPublishedNodeForms(Task task) {
         return processPublishedSnapshotService
@@ -666,6 +780,12 @@ public class NodeFormSubmissionService {
                         task.getTaskDefinitionKey());
     }
 
+    /**
+     * 生成发布版本键文本，供后续匹配或展示。
+     *
+     * @param nodeForm 节点表单，供本方法处理发布版本键时使用
+     * @return 处理后的发布版本键文本，供调用方比较或展示
+     */
     private String releaseKey(ProcessNodeForm nodeForm) {
         return String.join(
                 "|",
@@ -681,6 +801,9 @@ public class NodeFormSubmissionService {
      *
      * <p>递归节点存在时以节点配置为准；旧版表单没有 FIELD 节点时，
      * 回退到扁平字段配置。这样节点的审批显隐和可编辑权限与前端运行时保持一致。</p>
+     *
+     * @param form 表单，供本方法收集可编辑字段时使用
+     * @param editableFieldCodes 可编辑字段编码集合，作为 {@code collectEditableNodeField} 的输入影响后续处理
      */
     private void collectEditableFields(EntityForm form, Set<String> editableFieldCodes) {
         if (form == null) {
@@ -721,6 +844,13 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 收集可编辑节点字段；结果供调用方的后续步骤使用。
+     *
+     * @param node 节点，作为 {@code jsonObject} 的输入影响后续处理
+     * @param fieldsByCode 字段编码，后续用于收集可编辑节点字段时定位或关联目标
+     * @param editableFieldCodes 可编辑字段编码集合，供本方法收集可编辑节点字段时使用
+     */
     private void collectEditableNodeField(
             EntityFormNode node,
             Map<String, EntityFormField> fieldsByCode,
@@ -764,6 +894,12 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 判断是否旧版字段可编辑；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，作为 {@code modeAccess} 的输入影响后续处理
+     * @return 旧版字段可编辑条件成立时为 true，否则为 false
+     */
     private boolean isLegacyFieldEditable(
             EntityFormField field) {
         if (Integer.valueOf(1).equals(field.getIsReadonly())
@@ -782,6 +918,13 @@ public class NodeFormSubmissionService {
                                 approveAccess.get("editable")));
     }
 
+    /**
+     * 整理审批模式访问数据，供调用方遍历或继续处理。
+     *
+     * @param legacyField 旧版字段，作为 {@code result.putAll} 的输入影响后续处理
+     * @param nodeRules 节点规则集合，作为 {@code result.putAll} 的输入影响后续处理
+     * @return 审批模式访问键值结果，供调用方继续处理
+     */
     private Map<String, Object> approvalModeAccess(
             EntityFormField legacyField,
             Map<String, Object> nodeRules) {
@@ -801,6 +944,13 @@ public class NodeFormSubmissionService {
         return result;
     }
 
+    /**
+     * 整理模式访问数据，供调用方遍历或继续处理。
+     *
+     * @param extension 扩展，作为 {@code objectMap} 的输入影响后续处理
+     * @param mode 模式标识，决定后续模式访问采用的处理分支
+     * @return 模式访问键值结果，供调用方继续处理
+     */
     private Map<String, Object> modeAccess(
             Map<String, Object> extension,
             String mode) {
@@ -809,6 +959,12 @@ public class NodeFormSubmissionService {
                         .get(mode));
     }
 
+    /**
+     * 整理JSON对象数据，供调用方遍历或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return JSON对象键值结果，供调用方继续处理
+     */
     private Map<String, Object> jsonObject(
             String document) {
         if (!StringUtils.hasText(document)) {
@@ -826,6 +982,12 @@ public class NodeFormSubmissionService {
         }
     }
 
+    /**
+     * 整理对象映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理对象映射的原始输入，结果供调用方继续使用
+     * @return 对象映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> objectMap(
             Object value) {
         if (!(value instanceof Map<?, ?> source)) {
@@ -838,12 +1000,24 @@ public class NodeFormSubmissionService {
         return result;
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(
             Object value) {
         return Boolean.TRUE.equals(
                 booleanObject(value));
     }
 
+    /**
+     * 处理布尔值对象，并将结果传给后续步骤。
+     *
+     * @param value 待处理布尔值对象的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值对象结果，供调用方继续处理
+     */
     private Boolean booleanObject(
             Object value) {
         if (value == null) {
@@ -859,6 +1033,12 @@ public class NodeFormSubmissionService {
                 String.valueOf(value));
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(
             Object... values) {
         for (Object value : values) {
@@ -871,7 +1051,12 @@ public class NodeFormSubmissionService {
         return null;
     }
 
-    /** 将提交数据扁平化：把内嵌的 data 节点展开合并到顶层 */
+    /**
+     * 将提交数据扁平化：把内嵌的 data 节点展开合并到顶层
+     *
+     * @param submittedFormData 已提交表单数据，供本方法处理{@code flatten}已提交值集合时使用
+     * @return {@code flatten}已提交值集合键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> flattenSubmittedValues(Map<String, Object> submittedFormData) {
         Map<String, Object> values = new HashMap<>(submittedFormData);
@@ -882,10 +1067,22 @@ public class NodeFormSubmissionService {
         return values;
     }
 
+    /**
+     * 转换为字符串；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为字符串的原始输入，结果供调用方继续使用
+     * @return 转换为后的字符串文本，供调用方比较或展示
+     */
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @return 处理后的值文本，供调用方比较或展示
+     */
     private String value(String value) {
         return value == null ? "" : value;
     }

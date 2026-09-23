@@ -1,9 +1,9 @@
 package com.workflow.process.assignment.relative;
 
-import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

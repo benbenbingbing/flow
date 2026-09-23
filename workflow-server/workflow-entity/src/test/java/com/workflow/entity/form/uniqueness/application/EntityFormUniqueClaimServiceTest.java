@@ -1,9 +1,9 @@
 package com.workflow.entity.form.uniqueness.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.form.application.PublishedFormUniqueRuleService;
 import com.workflow.entity.form.application.model.FormUniqueCandidate;
 import com.workflow.entity.form.application.model.FormUniqueCheck;

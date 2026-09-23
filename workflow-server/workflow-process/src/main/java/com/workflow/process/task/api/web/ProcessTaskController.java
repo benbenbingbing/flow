@@ -1,7 +1,7 @@
 package com.workflow.process.task.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
@@ -72,6 +72,15 @@ public class ProcessTaskController {
 
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，供本方法读取待办列表时使用
+     * @param startUserName 启动用户名称，后续用于读取待办列表时匹配或展示
+     * @param priority 优先级，供本方法读取待办列表时使用
+     * @param startDate 启动日期，后续用于判断有效期或展示该事件的发生时间
+     * @param endDate 结束日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/todo")
     public Result<PageResult<TaskVO>> getTodoList(
@@ -95,6 +104,15 @@ public class ProcessTaskController {
 
     /**
      * 获取用户已办列表（分页，兼容前端TaskVO格式）
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，供本方法读取{@code done}列表时使用
+     * @param startUserName 启动用户名称，后续用于读取{@code done}列表时匹配或展示
+     * @param priority 优先级，供本方法读取{@code done}列表时使用
+     * @param startDate 启动日期，后续用于判断有效期或展示该事件的发生时间
+     * @param endDate 结束日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/done")
     public Result<PageResult<TaskVO>> getDoneList(
@@ -118,6 +136,8 @@ public class ProcessTaskController {
 
     /**
      * 统计待办数量
+     *
+     * @return 统计后的待办结果，供调用方继续处理
      */
     @GetMapping("/count/todo")
     public Result<Long> countTodo() {
@@ -128,6 +148,8 @@ public class ProcessTaskController {
 
     /**
      * 统计已办数量
+     *
+     * @return 统计后的{@code done}结果，供调用方继续处理
      */
     @GetMapping("/count/done")
     public Result<Long> countDone() {
@@ -138,6 +160,9 @@ public class ProcessTaskController {
 
     /**
      * 同步流程实例的任务
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 处理后的同步任务集合结果，供调用方继续处理
      */
     @PostMapping("/sync/{processInstanceId}")
     public Result<Void> syncTasks(@PathVariable String processInstanceId) {
@@ -148,6 +173,9 @@ public class ProcessTaskController {
 
     /**
      * 获取任务详情（包含表单和实体数据）
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的{@code result<task}详情{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/detail/{taskId}")
     public Result<TaskDetailDTO> getTaskDetail(@PathVariable String taskId) {
@@ -162,6 +190,9 @@ public class ProcessTaskController {
 
     /**
      * 候选用户认领任务。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 认领后的任务结果，供调用方继续处理
      */
     @PostMapping("/claim/{taskId}")
     public Result<Void> claimTask(@PathVariable String taskId) {
@@ -180,6 +211,8 @@ public class ProcessTaskController {
 
     /**
      * 获取任务统计信息
+     *
+     * @return 符合条件的{@code result<map<string,}{@code object>>}结果，供调用方继续处理
      */
     @GetMapping("/statistics")
     public Result<Map<String, Object>> getStatistics() {
@@ -198,6 +231,9 @@ public class ProcessTaskController {
 
     /**
      * 完成任务
+     *
+     * @param params 参数，作为 {@code requireSubmitApprovalAction} 的输入影响后续处理
+     * @return 处理后的完成任务结果，供调用方继续处理
      */
     @PostMapping("/complete")
     public Result<Void> completeTask(@RequestBody TaskCompleteRequest params) {
@@ -266,7 +302,11 @@ public class ProcessTaskController {
         }
     }
 
-    /** 普通审批提交必须重新校验活动任务所绑定发布表单的内置提交按钮。 */
+    /**
+     * 普通审批提交必须重新校验活动任务所绑定发布表单的内置提交按钮。
+     *
+     * @param params 参数，作为 {@code request.setFormId} 的输入影响后续处理
+     */
     private void requireSubmitApprovalAction(TaskCompleteRequest params) {
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId(params.getFormId());
@@ -285,6 +325,10 @@ public class ProcessTaskController {
 
     /**
      * 按当前审批动作和可编辑表单值预览下一人工审批节点。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param request 本次请求，后续经校验后用于处理预览下一步审批
+     * @return 处理后的预览下一步审批结果，供调用方继续处理
      */
     @PostMapping("/{taskId}/next-approval-preview")
     public Result<NextApprovalPreviewResponse> previewNextApproval(
@@ -325,6 +369,10 @@ public class ProcessTaskController {
 
     /**
      * 分页查询某个已命中的下一节点允许选择的审批人。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param request 本次请求，后续经校验后用于处理下一步审批人选项
+     * @return 处理后的下一步审批人选项结果，供调用方继续处理
      */
     @PostMapping("/{taskId}/next-approver-options")
     public Result<PageResult<NextApproverCandidateDTO>> nextApproverOptions(
@@ -337,6 +385,9 @@ public class ProcessTaskController {
 
     /**
      * 获取流程历史记录
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/history/{processInstanceId}")
     @EmbedDelegatedRuntimeApi(
@@ -351,6 +402,9 @@ public class ProcessTaskController {
     /**
      * 撤回流程
      * 发起人可以在流程未完成前撤回
+     *
+     * @param params 参数，供本方法处理{@code withdraw}流程时使用
+     * @return 处理后的{@code withdraw}流程结果，供调用方继续处理
      */
     @PostMapping("/withdraw")
     public Result<Void> withdrawProcess(@RequestBody Map<String, String> params) {
@@ -378,19 +432,30 @@ public class ProcessTaskController {
         }
     }
 
-    /** 并发提交或提前认领导致引擎版本冲突时，让界面保留输入并提示刷新任务状态。 */
+    /**
+     * 并发提交或提前认领导致引擎版本冲突时，让界面保留输入并提示刷新任务状态。
+     *
+     * @return 处理后的任务状态已变更结果，供调用方继续处理
+     */
     private BusinessConflictException taskStateChanged() {
         return new BusinessConflictException("TASK_STATE_CHANGED", "任务状态已变化，可能已被其他人认领或处理，请刷新待办列表");
     }
 
-    /** 引擎已删除被抢先完成的任务时，提示状态冲突并保留尚未提交的审批内容。 */
+    /**
+     * 引擎已删除被抢先完成的任务时，提示状态冲突并保留尚未提交的审批内容。
+     *
+     * @return 处理后的任务{@code already}{@code completed}结果，供调用方继续处理
+     */
     private BusinessConflictException taskAlreadyCompleted() {
         return new BusinessConflictException("TASK_ALREADY_COMPLETED", "任务不存在或已被处理，请刷新待办列表");
     }
 
     /**
      * 将任务转换为列表摘要，发起人取流程历史，业务状态取关联实体当前记录。
+     *
+     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
      * @param statusNames 单次列表请求内的实体状态名称缓存，避免相同实体重复查询配置
+     * @return 转换后的截止任务VO结果，供调用方继续处理
      */
     private TaskVO convertToTaskVO(ProcessTask task, Map<String, Map<String, String>> statusNames) {
         TaskVO vo = new TaskVO();
@@ -479,12 +544,26 @@ public class ProcessTaskController {
         return vo;
     }
 
+    /**
+     * 转换为UTC日期；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为UTC日期的原始输入，结果供调用方继续使用
+     * @return 转换为后的UTC日期结果，供调用方继续处理
+     */
     private Date toUtcDate(java.time.LocalDateTime value) {
         return value == null
                 ? null
                 : Date.from(value.toInstant(ZoneOffset.UTC));
     }
 
+    /**
+     * 分页查询流程任务；查询结果供调用方展示或继续处理。
+     *
+     * @param tasks 任务集合，供本方法分页查询流程任务时使用
+     * @param requestedPage 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedSize 请求页大小，后续限制单次查询和返回数量
+     * @return 符合条件的任务结果，供调用方继续处理
+     */
     private PageResult<TaskVO> page(List<TaskVO> tasks, Integer requestedPage, Integer requestedSize) {
         int pageNum = requestedPage == null ? 1 : Math.max(1, requestedPage);
         int pageSize = requestedSize == null ? 10 : Math.min(100, Math.max(1, requestedSize));
@@ -494,6 +573,13 @@ public class ProcessTaskController {
         return new PageResult<>(tasks.subList(start, end), total, pageNum, pageSize);
     }
 
+    /**
+     * 校验并获取当前用户；不满足约束时阻止后续处理。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return 校验并获取后的当前用户文本，供调用方比较或展示
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private String requireCurrentUser(String username) {
         if (username == null || username.isBlank()) {
             throw new ForbiddenException("用户未登录");

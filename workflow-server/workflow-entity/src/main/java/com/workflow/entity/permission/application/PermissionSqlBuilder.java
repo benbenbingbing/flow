@@ -1,8 +1,8 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
-import com.workflow.integration.database.api.SchemaType;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
+import com.workflow.integration.database.api.schema.SchemaType;
 import com.workflow.entity.data.application.EntityTableDefinitionFactory;
 import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
@@ -80,6 +80,15 @@ public class PermissionSqlBuilder {
     private final ProcessTaskAccessPort taskAccessPort;
     private final DatabaseQueryDialect queryDialect;
 
+    /**
+     * 初始化权限SQL构建器，保存构造参数供后续方法使用。
+     *
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param statusMapper 状态映射器，保存在对象中供后续校验、查询或展示
+     * @param filterProviders 过滤提供者集合，保存在对象中供后续校验、查询或展示
+     * @param queryDialect 查询方言，保存在对象中供后续校验、查询或展示
+     */
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
@@ -89,6 +98,16 @@ public class PermissionSqlBuilder {
         this(definitionMapper, fieldMapper, statusMapper, filterProviders, null, null, null, queryDialect);
     }
 
+    /**
+     * 初始化权限SQL构建器，保存构造参数供后续方法使用。
+     *
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param statusMapper 状态映射器，保存在对象中供后续校验、查询或展示
+     * @param filterProviders 过滤提供者集合，保存在对象中供后续校验、查询或展示
+     * @param teamService 团队服务，保存在对象中供后续校验、查询或展示
+     * @param queryDialect 查询方言，保存在对象中供后续校验、查询或展示
+     */
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
@@ -99,6 +118,17 @@ public class PermissionSqlBuilder {
         this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, null, null, queryDialect);
     }
 
+    /**
+     * 初始化权限SQL构建器，保存构造参数供后续方法使用。
+     *
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param statusMapper 状态映射器，保存在对象中供后续校验、查询或展示
+     * @param filterProviders 过滤提供者集合，保存在对象中供后续校验、查询或展示
+     * @param teamService 团队服务，保存在对象中供后续校验、查询或展示
+     * @param tableResolver 表解析器，保存在对象中供后续校验、查询或展示
+     * @param queryDialect 查询方言，保存在对象中供后续校验、查询或展示
+     */
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
@@ -110,6 +140,18 @@ public class PermissionSqlBuilder {
         this(definitionMapper, fieldMapper, statusMapper, filterProviders, teamService, tableResolver, null, queryDialect);
     }
 
+    /**
+     * 初始化权限SQL构建器，保存构造参数供后续方法使用。
+     *
+     * @param definitionMapper 定义映射器，保存在对象中供后续校验、查询或展示
+     * @param fieldMapper 字段映射器，保存在对象中供后续校验、查询或展示
+     * @param statusMapper 状态映射器，保存在对象中供后续校验、查询或展示
+     * @param filterProviders 过滤提供者集合，保存在对象中供后续校验、查询或展示
+     * @param teamService 团队服务，保存在对象中供后续校验、查询或展示
+     * @param tableResolver 表解析器，保存在对象中供后续校验、查询或展示
+     * @param sqlFragmentCompiler SQL{@code fragment}{@code compiler}，保存在对象中供后续校验、查询或展示
+     * @param queryDialect 查询方言，保存在对象中供后续校验、查询或展示
+     */
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
             EntityFieldMapper fieldMapper,
@@ -123,6 +165,19 @@ public class PermissionSqlBuilder {
                 teamService, tableResolver, sqlFragmentCompiler, null, queryDialect);
     }
 
+    /**
+     * 初始化权限SQL构建器，保存构造参数供后续方法使用。
+     *
+     * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
+     * @param fieldMapper 字段映射器依赖，保存到当前对象供后续业务方法调用
+     * @param statusMapper 状态映射器依赖，保存到当前对象供后续业务方法调用
+     * @param filterProviders 过滤提供者集合依赖，保存到当前对象供后续业务方法调用
+     * @param teamService 团队服务依赖，保存到当前对象供后续业务方法调用
+     * @param tableResolver 表解析器依赖，保存到当前对象供后续业务方法调用
+     * @param sqlFragmentCompiler SQL{@code fragment}{@code compiler}依赖，保存到当前对象供后续业务方法调用
+     * @param taskAccessPort 任务访问端口依赖，保存到当前对象供后续业务方法调用
+     * @param queryDialect 查询方言，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public PermissionSqlBuilder(
             EntityDefinitionMapper definitionMapper,
@@ -305,6 +360,19 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 构建规则SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param node 节点，作为 {@code normalized} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param fieldColumns 字段列集合，作为 {@code buildGroupSql} 的输入影响后续处理
+     * @param depth 深度，作为 {@code buildGroupSql} 的输入影响后续处理
+     * @param count 数量，供本方法构建规则SQL时使用
+     * @param parameters 参数集合，作为 {@code buildCustomSql} 的输入影响后续处理
+     * @param validityGuards {@code validity}{@code guards}，供本方法构建规则SQL时使用
+     * @return 构建后的规则SQL文本，供调用方比较或展示
+     */
     private String buildRuleSql(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
@@ -350,6 +418,19 @@ public class PermissionSqlBuilder {
         };
     }
 
+    /**
+     * 构建分组SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param node 节点，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param fieldColumns 字段列集合，供本方法构建分组SQL时使用
+     * @param depth 深度，供本方法构建分组SQL时使用
+     * @param count 数量，供本方法构建分组SQL时使用
+     * @param parameters 参数集合，供本方法构建分组SQL时使用
+     * @param validityGuards {@code validity}{@code guards}，供本方法构建分组SQL时使用
+     * @return 构建后的分组SQL文本，供调用方比较或展示
+     */
     private String buildGroupSql(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
@@ -376,6 +457,15 @@ public class PermissionSqlBuilder {
         return parts.isEmpty() ? "1=0" : String.join(joiner, parts);
     }
 
+    /**
+     * 构建关系SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param relation 关系，供本方法构建关系SQL时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，作为 {@code matchesUserSql} 的输入影响后续处理
+     * @return 构建后的关系SQL文本，供调用方比较或展示
+     */
     private String buildRelationSql(String entityCode, String relation, SysUser user, Map<String, Object> parameters) {
         if (!StringUtils.hasText(relation)) {
             return "1=0";
@@ -389,6 +479,15 @@ public class PermissionSqlBuilder {
         };
     }
 
+    /**
+     * 构建流程状态比较；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param value 待构建流程状态比较的原始输入，结果供调用方继续使用
+     * @param parameters 参数集合，供本方法构建流程状态比较时使用
+     * @return 构建后的流程状态比较文本，供调用方比较或展示
+     */
     private String buildProcessStateComparison(
             String entityCode,
             String operator,
@@ -413,7 +512,14 @@ public class PermissionSqlBuilder {
         };
     }
 
-    /** 流程实例号为字符列；空串先归为 NULL，使状态判断不依赖厂商对空串的存储方式。 */
+    /**
+     * 流程实例号为字符列；空串先归为 NULL，使状态判断不依赖厂商对空串的存储方式。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param state 状态标识，决定后续状态SQL采用的处理分支
+     * @param parameters 参数集合，作为 {@code buildStatusCategorySql} 的输入影响后续处理
+     * @return 处理后的状态SQL文本，供调用方比较或展示
+     */
     private String processStateSql(String entityCode, String state, Map<String, Object> parameters) {
         return switch (normalized(state, "")) {
             case "NOT_STARTED" ->
@@ -436,6 +542,15 @@ public class PermissionSqlBuilder {
         };
     }
 
+    /**
+     * 构建状态类别SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param value 待构建状态类别SQL的原始输入，结果供调用方继续使用
+     * @param parameters 参数集合，供本方法构建状态类别SQL时使用
+     * @return 构建后的状态类别SQL文本，供调用方比较或展示
+     */
     private String buildStatusCategorySql(
             String entityCode,
             String operator,
@@ -466,11 +581,29 @@ public class PermissionSqlBuilder {
                 new ArrayList<>(statusCodes), parameters);
     }
 
+    /**
+     * 构建比较SQL；结果供后续流程传递或持久化。
+     *
+     * @param column 列，供本方法构建比较SQL时使用
+     * @param operator 操作人，供本方法构建比较SQL时使用
+     * @param value 待构建比较SQL的原始输入，结果供调用方继续使用
+     * @param parameters 参数集合，供本方法构建比较SQL时使用
+     * @return 构建后的比较SQL文本，供调用方比较或展示
+     */
     private String buildComparisonSql(String column, String operator, Object value, Map<String, Object> parameters) {
         return buildComparisonSql(column, operator, value, SchemaType.string(4096), parameters);
     }
 
-    /** 标量走物理列比较，多值走侧表；组件或不完整存储描述必须抛错，不能让 DENY 被误当作未命中。 */
+    /**
+     * 标量走物理列比较，多值走侧表；组件或不完整存储描述必须抛错，不能让 DENY 被误当作未命中。
+     *
+     * @param field 字段，作为 {@code PermissionMultiValueSql.compare} 的输入影响后续处理
+     * @param operator 操作人，供本方法构建字段比较时使用
+     * @param value 待构建字段比较的原始输入，结果供调用方继续使用
+     * @param parameters 参数集合，供本方法构建字段比较时使用
+     * @param validityGuards {@code validity}{@code guards}，供本方法构建字段比较时使用
+     * @return 构建后的字段比较文本，供调用方比较或展示
+     */
     private String buildFieldComparison(RuleFieldColumn field, String operator, Object value, Map<String, Object> parameters,
                                        List<String> validityGuards) {
         field.requireSupported();
@@ -480,7 +613,16 @@ public class PermissionSqlBuilder {
         return buildComparisonSql(field.column(), operator, value, field.type(), parameters);
     }
 
-    /** 字段名按目标库引用；比较值按存储类型绑定，避免依赖 MySQL 的隐式转换与字面量转义。 */
+    /**
+     * 字段名按目标库引用；比较值按存储类型绑定，避免依赖 MySQL 的隐式转换与字面量转义。
+     *
+     * @param column 列，作为 {@code queryDialect.emptyValuePredicate} 的输入影响后续处理
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param value 待构建比较SQL的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续比较SQL采用的处理分支
+     * @param parameters 参数集合，作为 {@code equalitySql} 的输入影响后续处理
+     * @return 构建后的比较SQL文本，供调用方比较或展示
+     */
     private String buildComparisonSql(String column, String operator, Object value, SchemaType type,
                                       Map<String, Object> parameters) {
         String op = normalized(operator, "EQ");
@@ -503,6 +645,16 @@ public class PermissionSqlBuilder {
         };
     }
 
+    /**
+     * 生成{@code equality}SQL文本，供后续匹配或展示。
+     *
+     * @param column 列，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param value 待处理{@code equality}SQL的原始输入，结果供调用方继续使用
+     * @param negate {@code negate}，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param kind 类型，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param parameters 参数集合，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @return 处理后的{@code equality}SQL文本，供调用方比较或展示
+     */
     private String equalitySql(String column, Object value, boolean negate, SchemaType.Kind kind,
                                Map<String, Object> parameters) {
         if (value == null) return queryDialect.quoteIdentifier(column) + (negate ? " IS NOT NULL" : " IS NULL");
@@ -510,6 +662,16 @@ public class PermissionSqlBuilder {
                 PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect));
     }
 
+    /**
+     * 生成SQL文本，供后续匹配或展示。
+     *
+     * @param column 列，作为 {@code queryDialect.quoteIdentifier} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param negate {@code negate}，作为 {@code collect} 的输入影响后续处理
+     * @param kind 类型，供本方法处理SQL时使用
+     * @param parameters 参数集合，供本方法处理SQL时使用
+     * @return 处理后的SQL文本，供调用方比较或展示
+     */
     private String inSql(String column, List<Object> values, boolean negate, SchemaType.Kind kind,
                          Map<String, Object> parameters) {
         if (values.isEmpty()) return negate ? "1=1" : "1=0";
@@ -525,6 +687,15 @@ public class PermissionSqlBuilder {
         return queryDialect.quoteIdentifier(column) + (negate ? " NOT IN (" : " IN (") + joined + ")";
     }
 
+    /**
+     * 生成{@code like}SQL文本，供后续匹配或展示。
+     *
+     * @param quoted {@code quoted}，供本方法处理{@code like}SQL时使用
+     * @param value 待处理{@code like}SQL的原始输入，结果供调用方继续使用
+     * @param negate {@code negate}，供本方法处理{@code like}SQL时使用
+     * @param parameters 参数集合，作为 {@code PermissionSqlParameters.bindText} 的输入影响后续处理
+     * @return 处理后的{@code like}SQL文本，供调用方比较或展示
+     */
     private String likeSql(String quoted, Object value, boolean negate, Map<String, Object> parameters) {
         if (value == null) return negate ? "1=1" : "1=0";
         return quoted + (negate ? " NOT LIKE " : " LIKE ")
@@ -532,17 +703,39 @@ public class PermissionSqlBuilder {
                 + " ESCAPE '!'";
     }
 
-    /** 使用固定的普通字符作 LIKE 转义符，绑定模式不随 MySQL NO_BACKSLASH_ESCAPES 改变含义。 */
+    /**
+     * 使用固定的普通字符作 LIKE 转义符，绑定模式不随 MySQL NO_BACKSLASH_ESCAPES 改变含义。
+     *
+     * @param value 待处理{@code escape}{@code like}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code escape}{@code like}文本，供调用方比较或展示
+     */
     private String escapeLike(String value) {
         return value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
     }
 
+    /**
+     * 生成{@code ordered}SQL文本，供后续匹配或展示。
+     *
+     * @param column 列，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param operator 操作人，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param value 待处理{@code ordered}SQL的原始输入，结果供调用方继续使用
+     * @param kind 类型，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @param parameters 参数集合，作为 {@code queryDialect.comparisonPredicate} 的输入影响后续处理
+     * @return 处理后的{@code ordered}SQL文本，供调用方比较或展示
+     */
     private String orderedSql(String column, String operator, Object value, SchemaType.Kind kind,
                               Map<String, Object> parameters) {
         return value == null ? "1=0" : queryDialect.comparisonPredicate(column, kind, operator,
                 PermissionSqlParameters.bindScalar(parameters, value, kind, queryDialect));
     }
 
+    /**
+     * 求值用户字段，并将结果传给后续步骤。
+     *
+     * @param node 节点，作为 {@code compare} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 用户字段条件成立时为 true，否则为 false
+     */
     private boolean evaluateUserField(EntityActionRuleDTO.RuleNode node, SysUser user) {
         if (user == null || !StringUtils.hasText(node.getField())) {
             return false;
@@ -558,6 +751,14 @@ public class PermissionSqlBuilder {
         return compare(actual, node.getOperator(), node.getValue());
     }
 
+    /**
+     * 比较权限SQL构建器；结果供调用方的后续步骤使用。
+     *
+     * @param actual 实际，作为 {@code isEmpty} 的输入影响后续处理
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
+     * @return 权限SQL构建器条件成立时为 true，否则为 false
+     */
     private boolean compare(Object actual, String operator, Object expected) {
         String op = normalized(operator, "EQ");
         return switch (op) {
@@ -577,6 +778,15 @@ public class PermissionSqlBuilder {
         };
     }
 
+    /**
+     * 构建自定义SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param node 节点，作为 {@code toSql} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，作为 {@code toSql} 的输入影响后续处理
+     * @return 构建后的自定义SQL文本，供调用方比较或展示
+     */
     private String buildCustomSql(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
@@ -589,6 +799,16 @@ public class PermissionSqlBuilder {
                 .orElse("1=0");
     }
 
+    /**
+     * 校验规则节点；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param node 节点，作为 {@code normalized} 的输入影响后续处理
+     * @param fieldColumns 字段列集合，作为 {@code resolveFieldColumn} 的输入影响后续处理
+     * @param depth 深度，供本方法校验规则节点时使用
+     * @param count 数量，供本方法校验规则节点时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateRuleNode(
             String entityCode,
             EntityActionRuleDTO.RuleNode node,
@@ -673,7 +893,12 @@ public class PermissionSqlBuilder {
         }
     }
 
-    /** 同时解析字段白名单与存储类型，避免 SQL 判空依赖数据库的隐式文本转换。 */
+    /**
+     * 同时解析字段白名单与存储类型，避免 SQL 判空依赖数据库的隐式文本转换。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 字段列集合键值结果，供调用方继续处理
+     */
     private Map<String, RuleFieldColumn> resolveFieldColumns(String entityCode) {
         Map<String, RuleFieldColumn> columns = new LinkedHashMap<>();
         Set<String> timestamps = Set.of("process_start_time", "process_end_time", "submit_time", "create_time", "update_time");
@@ -717,6 +942,13 @@ public class PermissionSqlBuilder {
         return columns;
     }
 
+    /**
+     * 解析字段列；输出作为后续校验或处理的输入。
+     *
+     * @param columns 列集合，供本方法解析字段列时使用
+     * @param field 字段，作为 {@code columns.get} 的输入影响后续处理
+     * @return 解析后的字段列结果，供调用方继续处理
+     */
     private RuleFieldColumn resolveFieldColumn(Map<String, RuleFieldColumn> columns, String field) {
         if (!StringUtils.hasText(field)) {
             return null;
@@ -733,7 +965,16 @@ public class PermissionSqlBuilder {
         return column != null && SQL_IDENTIFIER.matcher(column.column()).matches() ? column : null;
     }
 
-    /** 复用建表的存储分类；多值侧表只允许使用登记主表派生名称，不能根据实体编码猜测。 */
+    /**
+     * 复用建表的存储分类；多值侧表只允许使用登记主表派生名称，不能根据实体编码猜测。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param definition 定义，供本方法处理{@code describe}字段时使用
+     * @param field 字段，作为 {@code RuleFieldColumn} 的输入影响后续处理
+     * @param column 列，作为 {@code RuleFieldColumn} 的输入影响后续处理
+     * @param type 类型标识，决定后续{@code describe}字段采用的处理分支
+     * @return 处理后的{@code describe}字段结果，供调用方继续处理
+     */
     private RuleFieldColumn describeField(String entityCode, EntityDefinition definition, EntityField field, String column, SchemaType type) {
         if (EntityTableDefinitionFactory.isSubFormField(field)) {
             return new RuleFieldColumn(column, type, null, "页面组件没有可查询的数据存储: " + field.getFieldCode());
@@ -759,6 +1000,14 @@ public class PermissionSqlBuilder {
         return new RuleFieldColumn(column, type);
     }
 
+    /**
+     * 写入字段{@code alias}；后续读取或执行将使用更新后的状态。
+     *
+     * @param columns 列集合，供本方法写入字段{@code alias}时使用
+     * @param alias {@code alias}，作为 {@code columns.putIfAbsent} 的输入影响后续处理
+     * @param field 字段，作为 {@code columns.putIfAbsent} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void putFieldAlias(Map<String, RuleFieldColumn> columns, String alias, RuleFieldColumn field) {
         RuleFieldColumn previous = columns.putIfAbsent(alias, field);
         if (previous != null && !previous.equals(field)) {
@@ -766,6 +1015,14 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 校验并获取{@code mapped}字段；不满足约束时阻止后续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param alias {@code alias}，作为 {@code resolveFieldColumn} 的输入影响后续处理
+     * @return 校验并获取后的{@code mapped}字段结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private RuleFieldColumn requireMappedField(Map<String, RuleFieldColumn> fields, String alias) {
         RuleFieldColumn field = resolveFieldColumn(fields, alias);
         if (field == null || field.kind() == null) throw new IllegalArgumentException("权限映射字段不存在或缺少存储类型: " + alias);
@@ -773,18 +1030,59 @@ public class PermissionSqlBuilder {
         return field;
     }
 
-    /** 保留精度和存储位置；只保留字段类型会把独立关系表错误降为主表字符串列。 */
+    /**
+     * 保留精度和存储位置；只保留字段类型会把独立关系表错误降为主表字符串列。
+     *
+     * @param column 列，保存在对象中供后续校验、查询或展示
+     * @param type 类型标识，决定后续规则字段列采用的处理分支
+     * @param multiValue 多实例值，保存在对象中供后续校验、查询或展示
+     * @param failure 失败，保存在对象中供后续校验、查询或展示
+     */
     private record RuleFieldColumn(String column, SchemaType type, PermissionMultiValueSql.Field multiValue, String failure) {
+        /**
+         * 初始化规则字段列，保存构造参数供后续方法使用。
+         *
+         * @param column 列，保存在对象中供后续校验、查询或展示
+         * @param type 类型标识，决定后续规则字段列采用的处理分支
+         */
         RuleFieldColumn(String column, SchemaType type) { this(column, type, null, null); }
+        /**
+         * 处理类型，并将结果传给后续步骤。
+         *
+         * @return 处理后的类型结果，供调用方继续处理
+         */
         SchemaType.Kind kind() { return type == null ? null : type.kind(); }
+        /**
+         * 校验并获取{@code supported}；不满足约束时阻止后续处理。
+         *
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         void requireSupported() { if (failure != null) throw new IllegalArgumentException(failure); }
     }
 
+    /**
+     * 判断是否匹配{@code mapped}用户SQL；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否匹配{@code mapped}用户SQL时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，供本方法判断是否匹配{@code mapped}用户SQL时使用
+     * @param validityGuards {@code validity}{@code guards}，供本方法判断是否匹配{@code mapped}用户SQL时使用
+     * @return 判断是否匹配后的{@code mapped}用户SQL文本，供调用方比较或展示
+     */
     private String matchesMappedUserSql(RuleFieldColumn field, SysUser user, Map<String, Object> parameters, List<String> validityGuards) {
         List<Object> identities = new ArrayList<>(userIdentities(user));
         return identities.isEmpty() ? "1=0" : buildFieldComparison(field, "IN", identities, parameters, validityGuards);
     }
 
+    /**
+     * 构建部门树SQL；结果供后续流程传递或持久化。
+     *
+     * @param deptField 部门字段，作为 {@code PermissionMultiValueSql.departments} 的输入影响后续处理
+     * @param deptId 部门ID，后续用于构建部门树SQL时定位或关联目标
+     * @param parameters 参数集合，供本方法构建部门树SQL时使用
+     * @return 构建后的部门树SQL文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String buildDeptTreeSql(RuleFieldColumn deptField, String deptId, Map<String, Object> parameters) {
         if (!StringUtils.hasText(deptId)) return "1=0";
         if (deptField.multiValue() != null) {
@@ -795,6 +1093,15 @@ public class PermissionSqlBuilder {
                 + PermissionMultiValueSql.departmentIds(deptId, queryDialect, parameters) + ")";
     }
 
+    /**
+     * 构建状态SQL；结果供后续流程传递或持久化。
+     *
+     * @param statusLimit 状态上限，作为 {@code buildFieldComparison} 的输入影响后续处理
+     * @param statusField 状态字段，作为 {@code buildFieldComparison} 的输入影响后续处理
+     * @param parameters 参数集合，供本方法构建状态SQL时使用
+     * @param validityGuards {@code validity}{@code guards}，供本方法构建状态SQL时使用
+     * @return 构建后的状态SQL文本，供调用方比较或展示
+     */
     private String buildStatusSql(
             FilterConfigDTO.StatusLimitDTO statusLimit,
             RuleFieldColumn statusField, Map<String, Object> parameters, List<String> validityGuards) {
@@ -811,6 +1118,15 @@ public class PermissionSqlBuilder {
                 new ArrayList<>(values), parameters, validityGuards);
     }
 
+    /**
+     * 构建已配置SQL；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param filter 过滤，作为 {@code sqlFragmentCompiler.compileRecordSql} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，供本方法构建已配置SQL时使用
+     * @return 构建后的已配置SQL文本，供调用方比较或展示
+     */
     private String buildConfiguredSql(
             String entityCode,
             FilterConfigDTO filter,
@@ -821,6 +1137,12 @@ public class PermissionSqlBuilder {
         return sqlFragmentCompiler.compileRecordSql(entityCode, firstSql(filter), user, parameters);
     }
 
+    /**
+     * 生成首个SQL文本，供后续匹配或展示。
+     *
+     * @param filter 过滤，供本方法处理首个SQL时使用
+     * @return 处理后的首个SQL文本，供调用方比较或展示
+     */
     private String firstSql(FilterConfigDTO filter) {
         if (filter == null) {
             return null;
@@ -833,6 +1155,11 @@ public class PermissionSqlBuilder {
     /**
      * 相关人只认 _team 已发生的参与事件，不含当前待办。
      * 待办可见性由独立的 HAS_TODO 规则绑定，列表自行选择。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，供本方法构建团队SQL时使用
+     * @return 构建后的团队SQL文本，供调用方比较或展示
      */
     private String buildTeamSql(String entityCode, SysUser user, Map<String, Object> parameters) {
         if (teamService == null || user == null) {
@@ -845,6 +1172,11 @@ public class PermissionSqlBuilder {
     /**
      * 当前用户存在真实可审批任务，包括未认领候选任务。
      * 通过流程契约查询当前实体记录 ID，限定外层业务表，不能把任务投影当作权限来源。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，供本方法处理当前流程任务SQL时使用
+     * @return 处理后的当前流程任务SQL文本，供调用方比较或展示
      */
     private String currentProcessTaskSql(
             String entityCode, SysUser user, Map<String, Object> parameters) {
@@ -869,6 +1201,10 @@ public class PermissionSqlBuilder {
     /**
      * 将记录 ID 交给 MyBatis/JDBC 绑定，避免手动转义和数据库专有字符转换。
      * 参数名在当前查询中唯一，防止多个权限规则或不同委托人的记录 ID 相互覆盖。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param parameters 参数集合，供本方法处理绑定任务记录ID时使用
+     * @return 处理后的绑定任务记录ID文本，供调用方比较或展示
      */
     private String bindTaskRecordId(String id, Map<String, Object> parameters) {
         int index = parameters.size();
@@ -880,6 +1216,12 @@ public class PermissionSqlBuilder {
         return "#{permissionParameters." + key + ",jdbcType=VARCHAR}";
     }
 
+    /**
+     * 解析物理表；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 解析后的物理表文本，供调用方比较或展示
+     */
     private String resolvePhysicalTable(String entityCode) {
         if (tableResolver == null || !StringUtils.hasText(entityCode)) {
             return null;
@@ -892,6 +1234,12 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 处理用户{@code identities}，并将结果传给后续步骤。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的用户{@code identities}结果，供调用方继续处理
+     */
     private LinkedHashSet<String> userIdentities(SysUser user) {
         LinkedHashSet<String> identities = new LinkedHashSet<>();
         if (user == null) {
@@ -906,6 +1254,13 @@ public class PermissionSqlBuilder {
         return identities;
     }
 
+    /**
+     * 生成或SQL文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理或SQL时使用
+     * @param right 右侧，作为 {@code OR} 的输入影响后续处理
+     * @return 处理后的或SQL文本，供调用方比较或展示
+     */
     private String orSql(String left, String right) {
         if (!StringUtils.hasText(left) || "1=0".equals(left)) {
             return StringUtils.hasText(right) ? right : "1=0";
@@ -919,6 +1274,14 @@ public class PermissionSqlBuilder {
         return "(" + left + ") OR (" + right + ")";
     }
 
+    /**
+     * 判断是否匹配用户SQL；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否匹配用户SQL时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，供本方法判断是否匹配用户SQL时使用
+     * @return 判断是否匹配后的用户SQL文本，供调用方比较或展示
+     */
     private String matchesUserSql(String field, SysUser user, Map<String, Object> parameters) {
         LinkedHashSet<String> identities = userIdentities(user);
         return identities.isEmpty()
@@ -926,22 +1289,51 @@ public class PermissionSqlBuilder {
                 : inSql(field, new ArrayList<>(identities), false, SchemaType.Kind.STRING, parameters);
     }
 
+    /**
+     * 生成相等SQL文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理相等SQL时使用
+     * @param value 待处理相等SQL的原始输入，结果供调用方继续使用
+     * @param parameters 参数集合，供本方法处理相等SQL时使用
+     * @return 处理后的相等SQL文本，供调用方比较或展示
+     */
     private String equalsSql(String field, String value, Map<String, Object> parameters) {
         return StringUtils.hasText(value) ? queryDialect.quoteIdentifier(field) + " = "
                 + PermissionSqlParameters.bindText(parameters, value) : "1=0";
     }
 
+    /**
+     * 生成安全字段文本，供后续匹配或展示。
+     *
+     * @param fieldName 字段名称，后续用于处理安全字段时匹配或展示
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的安全字段文本，供调用方比较或展示
+     */
     private String safeField(String fieldName, String fallback) {
         String value = StringUtils.hasText(fieldName) ? fieldName : fallback;
         return SQL_IDENTIFIER.matcher(value).matches() ? value : null;
     }
 
+    /**
+     * 校验并获取安全字段；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param label 标签，后续用于校验并获取安全字段时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireSafeField(String field, String label) {
         if (StringUtils.hasText(field) && !SQL_IDENTIFIER.matcher(field).matches()) {
             throw new IllegalArgumentException(label + "包含非法字段名: " + field);
         }
     }
 
+    /**
+     * 校验并获取操作人；不满足约束时阻止后续处理。
+     *
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param allowed 允许，供本方法校验并获取操作人时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireOperator(String operator, Set<String> allowed) {
         String normalized = normalized(operator, "EQ");
         if (!allowed.contains(normalized)) {
@@ -949,6 +1341,14 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 校验并获取值集合；不满足约束时阻止后续处理。
+     *
+     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
+     * @param value 待校验并获取值集合的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取值集合时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireValues(String operator, Object value, String label) {
         String normalizedOperator = normalized(operator, "EQ");
         if (Set.of("EMPTY", "NOT_EMPTY").contains(normalizedOperator)) {
@@ -972,6 +1372,14 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 校验并获取允许值集合；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取允许值集合的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法校验并获取允许值集合时使用
+     * @param label 标签，后续用于校验并获取允许值集合时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireAllowedValues(
             Object value,
             Set<String> allowed,
@@ -987,6 +1395,13 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 校验并获取已有状态编码集合；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param value 待校验并获取已有状态编码集合的原始输入，结果供调用方继续使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireExistingStatusCodes(String entityCode, Object value) {
         if (statusMapper == null || !StringUtils.hasText(entityCode)) {
             return;
@@ -1002,6 +1417,12 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 转换为值集合；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为值集合的原始输入，结果供调用方继续使用
+     * @return 权限SQL构建器集合，供调用方遍历或展示
+     */
     private List<Object> toValues(Object value) {
         if (value == null) {
             return List.of();
@@ -1022,6 +1443,13 @@ public class PermissionSqlBuilder {
         return List.of(value);
     }
 
+    /**
+     * 判断相等值条件是否成立，供调用方选择后续分支。
+     *
+     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
+     * @param expected 预期，供本方法处理相等值时使用
+     * @return 相等值条件成立时为 true，否则为 false
+     */
     private boolean equalsValue(Object actual, Object expected) {
         if (actual == null || expected == null) {
             return actual == expected;
@@ -1036,6 +1464,13 @@ public class PermissionSqlBuilder {
         return String.valueOf(actual).equals(String.valueOf(expected));
     }
 
+    /**
+     * 判断是否包含权限SQL构建器；判断结果决定调用方的后续分支。
+     *
+     * @param actual 实际，供本方法判断是否包含权限SQL构建器时使用
+     * @param expected 预期，供本方法判断是否包含权限SQL构建器时使用
+     * @return 权限SQL构建器条件成立时为 true，否则为 false
+     */
     private boolean contains(Object actual, Object expected) {
         if (actual instanceof Collection<?> collection) {
             return collection.stream().anyMatch(value -> equalsValue(value, expected));
@@ -1044,6 +1479,13 @@ public class PermissionSqlBuilder {
                 && String.valueOf(actual).contains(String.valueOf(expected));
     }
 
+    /**
+     * 比较{@code ordered}；结果供调用方的后续步骤使用。
+     *
+     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
+     * @param expected 预期，供本方法比较{@code ordered}时使用
+     * @return 比较后的{@code ordered}结果，供调用方继续处理
+     */
     private int compareOrdered(Object actual, Object expected) {
         if (actual == null || expected == null) {
             return -1;
@@ -1056,6 +1498,12 @@ public class PermissionSqlBuilder {
         }
     }
 
+    /**
+     * 判断是否空；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private boolean isEmpty(Object value) {
         if (value == null) {
             return true;
@@ -1072,6 +1520,12 @@ public class PermissionSqlBuilder {
         return false;
     }
 
+    /**
+     * 转换为列名称；输出作为后续校验或处理的输入。
+     *
+     * @param fieldName 字段名称，后续用于转换为列名称时匹配或展示
+     * @return 转换为后的列名称文本，供调用方比较或展示
+     */
     private String toColumnName(String fieldName) {
         if (!StringUtils.hasText(fieldName)) {
             return fieldName;
@@ -1088,12 +1542,24 @@ public class PermissionSqlBuilder {
         return result.toString();
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return StringUtils.hasText(value)
                 ? value.toUpperCase(Locale.ROOT)
                 : fallback;
     }
 
+    /**
+     * 整理系统字段列集合数据，供调用方遍历或继续处理。
+     *
+     * @return 系统字段列集合键值结果，供调用方继续处理
+     */
     private static Map<String, String> systemFieldColumns() {
         Map<String, String> columns = new LinkedHashMap<>();
         columns.put("id", "id");

@@ -10,11 +10,11 @@ import com.workflow.core.error.RevisionConflictException;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
-import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.contracts.ui.UiInvocationContext;
-import com.workflow.contracts.ui.UiActionCommandPlan;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
+import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.spi.UiActionCommandPlanProvider;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiBoundExtensionExecuteRequest;
@@ -180,6 +180,8 @@ public class UiInterfaceExtensionService {
         /**
          * 注入线上发布引用删除保护。使用 setter 保持既有构造 API 兼容，
          * Spring 运行态仍将该保护作为必需依赖注入。
+         *
+         * @param value 待设置已发布引用保护的原始输入，结果供调用方继续使用
          */
         @Autowired
         public void setPublishedReferenceGuard(
@@ -187,7 +189,11 @@ public class UiInterfaceExtensionService {
                 this.publishedReferenceGuard = value;
         }
 
-        /** 可选注入本地受控写计划 Provider，不影响只读接口扩展部署。 */
+        /**
+         * 可选注入本地受控写计划 Provider，不影响只读接口扩展部署。
+         *
+         * @param value 待设置动作命令方案提供者集合的原始输入，结果供调用方继续使用
+         */
         @Autowired(required = false)
         public void setActionCommandPlanProviders(
                         List<UiActionCommandPlanProvider> value) {
@@ -223,6 +229,11 @@ public class UiInterfaceExtensionService {
                 return mapper.selectList(query);
         }
 
+        /**
+         * 整理目录数据，供调用方遍历或继续处理。
+         *
+         * @return 目录键值结果，供调用方继续处理
+         */
         public Map<String, Object> catalog() {
                 List<Map<String, Object>> providerOptions = providers.stream()
                                 .map(provider -> Map.<String, Object>of(
@@ -246,6 +257,13 @@ public class UiInterfaceExtensionService {
                 return catalog;
         }
 
+        /**
+         * 保存界面接口扩展；后续读取或执行将使用更新后的状态。
+         *
+         * @param request 本次请求，后续经校验后用于保存界面接口扩展
+         * @return 保存后的界面接口扩展结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         @Transactional(rollbackFor = Exception.class)
         public UiExtensionDefinition save(
                         UiExtensionDefinitionSaveRequest request) {
@@ -342,6 +360,9 @@ public class UiInterfaceExtensionService {
         /**
          * 更新只能落在既有 INTERFACE 记录上，且稳定 key 不允许修改。该服务可能
          * 被内部代码直接调用，因此不能只依赖统一目录入口的身份校验。
+         *
+         * @param current 当前，供本方法校验并获取稳定身份时使用
+         * @param request 本次请求，后续经校验后用于校验并获取稳定身份
          */
         private void requireStableIdentity(
                         UiExtensionDefinition current,
@@ -362,6 +383,14 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 删除界面接口扩展；后续读取或执行将使用更新后的状态。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param expectedRevision 预期修订版本，作为 {@code requireRevision} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+         */
         @Transactional(rollbackFor = Exception.class)
         public void delete(String id, Integer expectedRevision) {
                 UiExtensionDefinition current = mapper.selectById(id);
@@ -393,6 +422,13 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 处理预览，并将结果传给后续步骤。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param request 本次请求，后续经校验后用于处理预览
+         * @return 处理后的预览结果，供调用方继续处理
+         */
         public Object preview(String id, UiExtensionExecuteRequest request) {
                 requireOperationRequest(request);
                 UiExtensionDefinition definition =
@@ -408,6 +444,13 @@ public class UiInterfaceExtensionService {
                 return executeAuthorized(definition, request, authorization);
         }
 
+        /**
+         * 执行界面接口扩展，并将结果传给后续步骤。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param request 本次请求，后续经校验后用于执行界面接口扩展
+         * @return 执行后的界面接口扩展结果，供调用方继续处理
+         */
         public Object execute(String id, UiExtensionExecuteRequest request) {
                 requireOperationRequest(request);
                 UiExtensionDefinition definition =
@@ -417,6 +460,12 @@ public class UiInterfaceExtensionService {
                 return executeResolved(definition, request);
         }
 
+        /**
+         * 执行绑定操作，并将结果传给后续步骤。
+         *
+         * @param request 本次请求，后续经校验后用于执行绑定操作
+         * @return 执行后的绑定操作结果，供调用方继续处理
+         */
         public Object executeBoundOperation(
                         UiBoundExtensionExecuteRequest request) {
                 return executeBoundOperation(request, null, null, false);
@@ -427,6 +476,11 @@ public class UiInterfaceExtensionService {
          *
          * <p>该入口只供已经通过 Embed MVC 授权的控制器调用；发布坐标来自
          * 服务端请求属性而不是公开 DTO，避免会话打开后 ACTIVE 切换导致行为漂移。</p>
+         *
+         * @param request 本次请求，后续经校验后用于执行绑定操作时间发布版本
+         * @param releaseId 发布版本ID，后续用于执行绑定操作时间发布版本时定位或关联目标
+         * @param releaseVersion 发布版本，作为 {@code executeBoundOperation} 的输入影响后续处理
+         * @return 执行后的绑定操作时间发布版本结果，供调用方继续处理
          */
         public Object executeBoundOperationAtRelease(
                         UiBoundExtensionExecuteRequest request,
@@ -443,6 +497,16 @@ public class UiInterfaceExtensionService {
                                 request, releaseId, releaseVersion, true);
         }
 
+        /**
+         * 执行绑定操作，并将结果传给后续步骤。
+         *
+         * @param request 本次请求，后续经校验后用于执行绑定操作
+         * @param releaseId 发布版本ID，后续用于执行绑定操作时定位或关联目标
+         * @param releaseVersion 发布版本，作为 {@code internal.setReleaseVersion} 的输入影响后续处理
+         * @param pinned 固定，供本方法执行绑定操作时使用
+         * @return 执行后的绑定操作结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private Object executeBoundOperation(
                         UiBoundExtensionExecuteRequest request,
                         String releaseId,
@@ -504,6 +568,13 @@ public class UiInterfaceExtensionService {
                 return executeResolved(definition, internal);
         }
 
+        /**
+         * 执行已解析，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code executionAccessService.authorizePublished} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于执行已解析
+         * @return 执行后的已解析结果，供调用方继续处理
+         */
         private Object executeResolved(
                         UiExtensionDefinition definition,
                         UiExtensionExecuteRequest request) {
@@ -523,6 +594,11 @@ public class UiInterfaceExtensionService {
 
         /**
          * 执行指定接口扩展；operationCode 仅供历史快照内部兼容。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param operationCode 操作编码，后续用于执行操作时定位或关联目标
+         * @param request 本次请求，后续经校验后用于执行操作
+         * @return 执行后的操作结果，供调用方继续处理
          */
         public Object executeOperation(
                         String id,
@@ -576,6 +652,11 @@ public class UiInterfaceExtensionService {
 
         /**
          * 在管理端调试指定接口扩展，不要求该接口已经绑定到发布页面。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param operationCode 操作编码，后续用于处理预览操作时定位或关联目标
+         * @param request 本次请求，后续经校验后用于处理预览操作
+         * @return 处理后的预览操作结果，供调用方继续处理
          */
         public Object previewOperation(
                         String id,
@@ -606,6 +687,11 @@ public class UiInterfaceExtensionService {
          * <p>操作解析、READ/失败即终止策略校验和执行使用同一个内存定义，
          * 避免先通过操作目录校验、随后定义被改为 WRITE 或回退策略的竞态。
          * 此入口仍走管理预览鉴权，且只接受关联内容专用 usage。</p>
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param operationCode 操作编码，后续用于处理预览关联内容读取操作时定位或关联目标
+         * @param request 本次请求，后续经校验后用于处理预览关联内容读取操作
+         * @return 处理后的预览关联内容读取操作结果，供调用方继续处理
          */
         public Object previewRelatedContentReadOperation(
                         String id,
@@ -659,6 +745,7 @@ public class UiInterfaceExtensionService {
          * @param id 当前 extensionId 或迁移前 serviceId
          * @param operationCode 迁移前操作编码；当前调用应使用
          * {@link #freezeExtension(String)}
+         * @return 处理后的{@code freeze}操作结果，供调用方继续处理
          */
         public PublishedOperationSnapshot freezeOperation(
                         String id,
@@ -669,6 +756,12 @@ public class UiInterfaceExtensionService {
                 return freezeDefinition(resolved);
         }
 
+        /**
+         * 处理{@code freeze}定义，并将结果传给后续步骤。
+         *
+         * @param resolved 已解析，作为 {@code snapshot.put} 的输入影响后续处理
+         * @return 处理后的{@code freeze}定义结果，供调用方继续处理
+         */
         private PublishedOperationSnapshot freezeDefinition(
                         UiExtensionDefinition resolved) {
                 Map<String, Object> snapshot = new LinkedHashMap<>();
@@ -724,6 +817,11 @@ public class UiInterfaceExtensionService {
         /**
          * 从宿主快照执行固定接口。当前接口扩展被修改或重新发布时，
          * 旧宿主仍使用这份定义；快照或哈希不完整则直接 fail-closed。
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于执行固定操作
+         * @return 执行后的固定操作结果，供调用方继续处理
          */
         public Object executePinnedOperation(
                         String snapshotDocument,
@@ -800,6 +898,14 @@ public class UiInterfaceExtensionService {
 
         /**
          * 校验关联内容宿主快照中的钉版读操作，不回读当前接口定义。
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param serviceId 服务ID，后续用于校验固定读取操作时定位或关联目标
+         * @param sourceCode 来源编码，后续用于校验固定读取操作时定位或关联目标
+         * @param serviceRevision 服务修订版本，供本方法校验固定读取操作时使用
+         * @param operationCode 操作编码，后续用于校验固定读取操作时定位或关联目标
+         * @param ownerType 归属方类型标识，决定后续固定读取操作采用的处理分支
          */
         public void validatePinnedReadOperation(
                         String snapshotDocument,
@@ -842,6 +948,13 @@ public class UiInterfaceExtensionService {
          *
          * <p>Provider 路由已包含在独立验哈希的可执行快照中，不再要求
          * 宿主配置重复保存 operationCode，从而保持“一条扩展=一个接口”。</p>
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param extensionId 扩展ID，后续用于校验固定读取扩展时定位或关联目标
+         * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+         * @param extensionRevision 扩展修订版本，供本方法校验固定读取扩展时使用
+         * @param ownerType 归属方类型标识，决定后续固定读取扩展采用的处理分支
          */
         public void validatePinnedReadExtension(
                         String snapshotDocument,
@@ -874,7 +987,13 @@ public class UiInterfaceExtensionService {
                 }
         }
 
-        /** 校验 extensionId 引用的关联动作接口是否可安全发布。 */
+        /**
+         * 校验 extensionId 引用的关联动作接口是否可安全发布。
+         *
+         * @param extensionId 扩展ID，后续用于校验动作扩展时定位或关联目标
+         * @param ownerType 归属方类型标识，决定后续动作扩展采用的处理分支
+         * @return 校验后的动作扩展结果，供调用方继续处理
+         */
         public ActionOperationDescriptor validateActionExtension(
                         String extensionId,
                         String ownerType) {
@@ -889,6 +1008,11 @@ public class UiInterfaceExtensionService {
          *
          * <p>仅用于读取 {@code serviceId + operationCode} 的旧配置；新草稿应调用
          * {@link #validateActionExtension(String, String)}。</p>
+         *
+         * @param serviceId 服务ID，后续用于校验动作操作时定位或关联目标
+         * @param operationCode 操作编码，后续用于校验动作操作时定位或关联目标
+         * @param ownerType 归属方类型标识，决定后续动作操作采用的处理分支
+         * @return 校验后的动作操作结果，供调用方继续处理
          */
         public ActionOperationDescriptor validateActionOperation(
                         String serviceId,
@@ -902,7 +1026,12 @@ public class UiInterfaceExtensionService {
                 return descriptor(definition);
         }
 
-        /** 固定 extensionId 引用且已通过动作治理校验的接口。 */
+        /**
+         * 固定 extensionId 引用且已通过动作治理校验的接口。
+         *
+         * @param extensionId 扩展ID，后续用于处理{@code freeze}动作扩展时定位或关联目标
+         * @return 处理后的{@code freeze}动作扩展结果，供调用方继续处理
+         */
         public PublishedOperationSnapshot freezeActionExtension(
                         String extensionId) {
                 UiExtensionDefinition definition = requireExecutableDefinition(
@@ -914,6 +1043,10 @@ public class UiInterfaceExtensionService {
         /**
          * 固定历史动作接口引用；新草稿应调用
          * {@link #freezeActionExtension(String)}。
+         *
+         * @param serviceId 服务ID，后续用于处理{@code freeze}动作操作时定位或关联目标
+         * @param operationCode 操作编码，后续用于处理{@code freeze}动作操作时定位或关联目标
+         * @return 处理后的{@code freeze}动作操作结果，供调用方继续处理
          */
         public PublishedOperationSnapshot freezeActionOperation(
                         String serviceId,
@@ -928,6 +1061,15 @@ public class UiInterfaceExtensionService {
 
         /**
          * 校验宿主发布快照内动作绑定的身份、上下文和执行类型。
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param serviceId 服务ID，后续用于校验固定动作操作时定位或关联目标
+         * @param sourceCode 来源编码，后续用于校验固定动作操作时定位或关联目标
+         * @param serviceRevision 服务修订版本，供本方法校验固定动作操作时使用
+         * @param operationCode 操作编码，后续用于校验固定动作操作时定位或关联目标
+         * @param ownerType 归属方类型标识，决定后续固定动作操作采用的处理分支
+         * @return 校验后的固定动作操作结果，供调用方继续处理
          */
         public ActionOperationDescriptor validatePinnedActionOperation(
                         String snapshotDocument,
@@ -950,7 +1092,17 @@ public class UiInterfaceExtensionService {
                 return descriptor(definition);
         }
 
-        /** 校验只保存 extensionId 的新版关联动作钉版引用。 */
+        /**
+         * 校验只保存 extensionId 的新版关联动作钉版引用。
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param extensionId 扩展ID，后续用于校验固定动作扩展时定位或关联目标
+         * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+         * @param extensionRevision 扩展修订版本，供本方法校验固定动作扩展时使用
+         * @param ownerType 归属方类型标识，决定后续固定动作扩展采用的处理分支
+         * @return 校验后的固定动作扩展结果，供调用方继续处理
+         */
         public ActionOperationDescriptor validatePinnedActionExtension(
                         String snapshotDocument,
                         String expectedHash,
@@ -981,6 +1133,11 @@ public class UiInterfaceExtensionService {
          *
          * <p>此方法只负责验证钉版绑定、Schema 和调用上下文并调用计划 Provider；
          * 不执行实体写入。调用方必须再通过平台权限和 EntityMutationPort。</p>
+         *
+         * @param snapshotDocument 快照文档，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param expectedHash 预期哈希，作为 {@code readPinnedOperation} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于处理方案固定动作操作
+         * @return 处理后的方案固定动作操作结果，供调用方继续处理
          */
         public UiActionCommandPlan planPinnedActionOperation(
                         String snapshotDocument,
@@ -1047,6 +1204,16 @@ public class UiInterfaceExtensionService {
                 return plan;
         }
 
+        /**
+         * 校验并获取固定身份；不满足约束时阻止后续处理。
+         *
+         * @param definition 定义，供本方法校验并获取固定身份时使用
+         * @param serviceId 服务ID，后续用于校验并获取固定身份时定位或关联目标
+         * @param sourceCode 来源编码，后续用于校验并获取固定身份时定位或关联目标
+         * @param serviceRevision 服务修订版本，供本方法校验并获取固定身份时使用
+         * @param operationCode 操作编码，后续用于校验并获取固定身份时定位或关联目标
+         * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+         */
         private void requirePinnedIdentity(
                         UiExtensionDefinition definition,
                         String serviceId,
@@ -1067,6 +1234,9 @@ public class UiInterfaceExtensionService {
         /**
          * 发布时选择当前最高版本 Provider，并把版本与制品摘要写入宿主快照。
          * 同一编码和版本若出现不同摘要会直接失败，避免依赖注入顺序决定行为。
+         *
+         * @param definition 定义，作为 {@code actionPlanProvider} 的输入影响后续处理
+         * @return 处理后的当前提供者身份结果，供调用方继续处理
          */
         private ProviderIdentity currentProviderIdentity(
                         UiExtensionDefinition definition) {
@@ -1085,7 +1255,11 @@ public class UiInterfaceExtensionService {
                                 providerDigest(provider));
         }
 
-        /** 已钉版定义必须命中精确 Provider；schema v1 仅保留兼容选择最新版。 */
+        /**
+         * 已钉版定义必须命中精确 Provider；schema v1 仅保留兼容选择最新版。
+         *
+         * @param definition 定义，作为 {@code actionPlanProvider} 的输入影响后续处理
+         */
         private void requirePinnedProviderAvailable(
                         UiExtensionDefinition definition) {
                 if (!"REGISTERED_PROVIDER".equals(normalize(
@@ -1101,6 +1275,13 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 处理数据来源提供者，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code equals} 的输入影响后续处理
+         * @param requirePinnedIdentity {@code require}固定身份，作为 {@code pinnedProviderMissing} 的输入影响后续处理
+         * @return 处理后的数据来源提供者结果，供调用方继续处理
+         */
         private UiDataSourceProvider dataSourceProvider(
                         UiExtensionDefinition definition,
                         boolean requirePinnedIdentity) {
@@ -1137,6 +1318,13 @@ public class UiInterfaceExtensionService {
                                 "数据源 Provider");
         }
 
+        /**
+         * 处理动作方案提供者，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code equals} 的输入影响后续处理
+         * @param requirePinnedIdentity {@code require}固定身份，作为 {@code pinnedProviderMissing} 的输入影响后续处理
+         * @return 处理后的动作方案提供者结果，供调用方继续处理
+         */
         private UiActionCommandPlanProvider actionPlanProvider(
                         UiExtensionDefinition definition,
                         boolean requirePinnedIdentity) {
@@ -1174,6 +1362,14 @@ public class UiInterfaceExtensionService {
                                 "本地受控写入 Provider");
         }
 
+        /**
+         * 优先选择最新；结果供调用方的后续步骤使用。
+         *
+         * @param code 编码，后续用于优先选择最新时定位或关联目标
+         * @param current 当前，作为 {@code providerDigest} 的输入影响后续处理
+         * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+         * @return 优先选择后的最新结果，供调用方继续处理
+         */
         private UiDataSourceProvider preferLatest(
                         String code,
                         UiDataSourceProvider current,
@@ -1192,6 +1388,14 @@ public class UiInterfaceExtensionService {
                 return current;
         }
 
+        /**
+         * 优先选择最新动作；结果供调用方的后续步骤使用。
+         *
+         * @param code 编码，后续用于优先选择最新动作时定位或关联目标
+         * @param current 当前，作为 {@code providerDigest} 的输入影响后续处理
+         * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+         * @return 优先选择后的最新动作结果，供调用方继续处理
+         */
         private UiActionCommandPlanProvider preferLatestAction(
                         String code,
                         UiActionCommandPlanProvider current,
@@ -1210,6 +1414,12 @@ public class UiInterfaceExtensionService {
                 return current;
         }
 
+        /**
+         * 处理提供者版本，并将结果传给后续步骤。
+         *
+         * @param provider 提供者，作为 {@code invalidProviderIdentity} 的输入影响后续处理
+         * @return 处理后的提供者版本结果，供调用方继续处理
+         */
         private int providerVersion(UiDataSourceProvider provider) {
                 int version = provider.getVersion();
                 if (version < 1) {
@@ -1218,6 +1428,12 @@ public class UiInterfaceExtensionService {
                 return version;
         }
 
+        /**
+         * 处理提供者版本，并将结果传给后续步骤。
+         *
+         * @param provider 提供者，作为 {@code invalidProviderIdentity} 的输入影响后续处理
+         * @return 处理后的提供者版本结果，供调用方继续处理
+         */
         private int providerVersion(UiActionCommandPlanProvider provider) {
                 int version = provider.getVersion();
                 if (version < 1) {
@@ -1226,6 +1442,12 @@ public class UiInterfaceExtensionService {
                 return version;
         }
 
+        /**
+         * 生成提供者摘要文本，供后续匹配或展示。
+         *
+         * @param provider 提供者，作为 {@code normalizeDigest} 的输入影响后续处理
+         * @return 处理后的提供者摘要文本，供调用方比较或展示
+         */
         private String providerDigest(UiDataSourceProvider provider) {
                 String digest = normalizeDigest(provider.getArtifactDigest());
                 if (digest == null) {
@@ -1234,6 +1456,12 @@ public class UiInterfaceExtensionService {
                 return digest;
         }
 
+        /**
+         * 生成提供者摘要文本，供后续匹配或展示。
+         *
+         * @param provider 提供者，作为 {@code normalizeDigest} 的输入影响后续处理
+         * @return 处理后的提供者摘要文本，供调用方比较或展示
+         */
         private String providerDigest(UiActionCommandPlanProvider provider) {
                 String digest = normalizeDigest(provider.getArtifactDigest());
                 if (digest == null) {
@@ -1242,12 +1470,27 @@ public class UiInterfaceExtensionService {
                 return digest;
         }
 
+        /**
+         * 判断相同提供者编码条件是否成立，供调用方选择后续分支。
+         *
+         * @param left 左侧，供本方法处理相同提供者编码时使用
+         * @param right 右侧，供本方法处理相同提供者编码时使用
+         * @return 相同提供者编码条件成立时为 true，否则为 false
+         */
         private boolean sameProviderCode(String left, String right) {
                 return StringUtils.hasText(left)
                                 && StringUtils.hasText(right)
                                 && left.trim().equalsIgnoreCase(right.trim());
         }
 
+        /**
+         * 构造固定提供者缺失异常，供调用方区分失败原因。
+         *
+         * @param definition 定义，供本方法处理固定提供者缺失时使用
+         * @param pinned 固定，供本方法处理固定提供者缺失时使用
+         * @param label 标签，后续用于处理固定提供者缺失时匹配或展示
+         * @return 处理后的固定提供者缺失结果，供调用方继续处理
+         */
         private BusinessConflictException pinnedProviderMissing(
                         UiExtensionDefinition definition,
                         boolean pinned,
@@ -1263,6 +1506,13 @@ public class UiInterfaceExtensionService {
                                                 + identity);
         }
 
+        /**
+         * 构造{@code ambiguous}提供者异常，供调用方区分失败原因。
+         *
+         * @param code 编码，后续用于处理{@code ambiguous}提供者时定位或关联目标
+         * @param version 版本，供本方法处理{@code ambiguous}提供者时使用
+         * @return 处理后的{@code ambiguous}提供者结果，供调用方继续处理
+         */
         private BusinessConflictException ambiguousProvider(
                         String code,
                         int version) {
@@ -1272,6 +1522,12 @@ public class UiInterfaceExtensionService {
                                                 + code + " v" + version);
         }
 
+        /**
+         * 构造无效提供者身份异常，供调用方区分失败原因。
+         *
+         * @param code 编码，后续用于处理无效提供者身份时定位或关联目标
+         * @return 处理后的无效提供者身份结果，供调用方继续处理
+         */
         private BusinessConflictException invalidProviderIdentity(
                         String code) {
                 return new BusinessConflictException(
@@ -1280,6 +1536,12 @@ public class UiInterfaceExtensionService {
                                                 + code);
         }
 
+        /**
+         * 校验并获取动作操作；不满足约束时阻止后续处理。
+         *
+         * @param definition 定义，作为 {@code requirePinnedReadFailurePolicyValue} 的输入影响后续处理
+         * @param ownerType 归属方类型标识，决定后续动作操作采用的处理分支
+         */
         private void requireActionOperation(
                         UiExtensionDefinition definition,
                         String ownerType) {
@@ -1311,6 +1573,11 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 校验并获取固定读取失败策略值；不满足约束时阻止后续处理。
+         *
+         * @param definition 定义，作为 {@code read} 的输入影响后续处理
+         */
         private void requirePinnedReadFailurePolicyValue(
                         UiExtensionDefinition definition) {
                 Map<String, Object> policy = read(
@@ -1324,6 +1591,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 处理描述，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code ActionOperationDescriptor} 的输入影响后续处理
+         * @return 处理后的描述结果，供调用方继续处理
+         */
         private ActionOperationDescriptor descriptor(
                         UiExtensionDefinition definition) {
                 return new ActionOperationDescriptor(
@@ -1337,6 +1610,11 @@ public class UiInterfaceExtensionService {
                                 normalize(definition.getOperationContextType()));
         }
 
+        /**
+         * 校验并获取固定读取失败策略；不满足约束时阻止后续处理。
+         *
+         * @param definition 定义，作为 {@code requirePinnedReadFailurePolicyValue} 的输入影响后续处理
+         */
         private void requirePinnedReadFailurePolicy(
                         UiExtensionDefinition definition) {
                 if (!"READ".equals(normalize(
@@ -1348,6 +1626,14 @@ public class UiInterfaceExtensionService {
                 requirePinnedReadFailurePolicyValue(definition);
         }
 
+        /**
+         * 读取固定操作；查询结果供调用方展示或继续处理。
+         *
+         * @param snapshotDocument 快照文档，作为 {@code codec.canonicalize} 的输入影响后续处理
+         * @param expectedHash 预期哈希，供本方法读取固定操作时使用
+         * @return 读取后的固定操作结果，供调用方继续处理
+         * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+         */
         private UiExtensionDefinition readPinnedOperation(
                         String snapshotDocument,
                         String expectedHash) {
@@ -1498,6 +1784,14 @@ public class UiInterfaceExtensionService {
                 return definition;
         }
 
+        /**
+         * 生成必填快照文本文本，供后续匹配或展示。
+         *
+         * @param value 待处理必填快照文本的原始输入，结果供调用方继续使用
+         * @param key 键，后续用于授权校验、关联或幂等去重
+         * @return 处理后的必填快照文本文本，供调用方比较或展示
+         * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+         */
         private String requiredSnapshotText(
                         Map<String, Object> value,
                         String key) {
@@ -1510,6 +1804,13 @@ public class UiInterfaceExtensionService {
                 return result;
         }
 
+        /**
+         * 生成必填JSON文档文本，供后续匹配或展示。
+         *
+         * @param value 待处理必填JSON文档的原始输入，结果供调用方继续使用
+         * @param key 键，后续用于授权校验、关联或幂等去重
+         * @return 处理后的必填JSON文档文本，供调用方比较或展示
+         */
         private String requiredJsonDocument(
                         Map<String, Object> value,
                         String key) {
@@ -1525,11 +1826,24 @@ public class UiInterfaceExtensionService {
                                 "已发布接口 " + key);
         }
 
+        /**
+         * 生成规范文档文本，供后续匹配或展示。
+         *
+         * @param document 文档，供本方法处理规范文档时使用
+         * @param label 标签，后续用于处理规范文档时匹配或展示
+         * @return 处理后的规范文档文本，供调用方比较或展示
+         */
         private String canonicalDocument(String document, String label) {
                 return StringUtils.hasText(document)
                                 ? codec.canonicalize(document, label) : "{}";
         }
 
+        /**
+         * 校验并获取{@code executable}定义；不满足约束时阻止后续处理。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @return 校验并获取后的{@code executable}定义结果，供调用方继续处理
+         */
         private UiExtensionDefinition requireExecutableDefinition(String id) {
                 return requireExecutableDefinition(id, null);
         }
@@ -1537,6 +1851,10 @@ public class UiInterfaceExtensionService {
         /**
          * 解析当前扩展 ID，或为不可变历史快照解析迁移前的 serviceId +
          * operationCode。新配置永远直接传 extensionId，不进入兼容查询。
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param legacyOperationCode 旧版操作编码，后续用于校验并获取{@code executable}定义时定位或关联目标
+         * @return 校验并获取后的{@code executable}定义结果，供调用方继续处理
          */
         UiExtensionDefinition requireExecutableDefinition(
                         String id,
@@ -1556,6 +1874,10 @@ public class UiInterfaceExtensionService {
          *
          * <p>仅供草稿回显和保存前规范化使用；真正执行必须继续调用
          * {@link #requireExecutableDefinition(String, String)} 检查 ACTIVE 状态。</p>
+         *
+         * @param id 目标记录 ID，后续用于定位具体数据或配置
+         * @param legacyOperationCode 旧版操作编码，后续用于解析定义引用时定位或关联目标
+         * @return 解析后的定义引用结果，供调用方继续处理
          */
         UiExtensionDefinition resolveDefinitionReference(
                         String id,
@@ -1588,6 +1910,14 @@ public class UiInterfaceExtensionService {
                 return definition;
         }
 
+        /**
+         * 执行已授权，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code read} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于执行已授权
+         * @param authorization 授权，作为 {@code cacheKey} 的输入影响后续处理
+         * @return 执行后的已授权结果，供调用方继续处理
+         */
         private Object executeAuthorized(
                         UiExtensionDefinition definition,
                         UiExtensionExecuteRequest request,
@@ -1670,6 +2000,17 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 执行内部，并将结果传给后续步骤。
+         *
+         * @param definition 定义，作为 {@code normalize} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于执行内部
+         * @param config 配置内容，决定后续内部的处理规则
+         * @param input 待执行内部的原始输入，结果供调用方继续使用
+         * @param authorization 授权，作为 {@code invocationContextFactory.create} 的输入影响后续处理
+         * @return 执行后的内部结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private Object executeInternal(
                         UiExtensionDefinition definition,
                         UiExtensionExecuteRequest request,
@@ -1712,6 +2053,14 @@ public class UiInterfaceExtensionService {
                 throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
         }
 
+        /**
+         * 计算界面接口扩展；结果供后续判断或展示使用。
+         *
+         * @param config 配置内容，决定后续界面接口扩展的处理规则
+         * @param input 待计算界面接口扩展的原始输入，结果供调用方继续使用
+         * @return 计算后的界面接口扩展结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private Object compute(
                         Map<String, Object> config,
                         Map<String, Object> input) {
@@ -1742,6 +2091,8 @@ public class UiInterfaceExtensionService {
         /**
          * 校验一条完整接口扩展。接口上下文、读写类型和 Schema 均直接位于
          * 扩展本身，不再校验或展开操作数组。
+         *
+         * @param request 本次请求，后续经校验后用于校验请求
          */
         private void validateRequest(
                         UiExtensionDefinitionSaveRequest request) {
@@ -1818,6 +2169,13 @@ public class UiInterfaceExtensionService {
                 requireScopeAccess(scopeType, request.getScopeId());
         }
 
+        /**
+         * 校验接口作用域；不满足约束时阻止后续处理。
+         *
+         * @param contextType 上下文类型标识，决定后续接口作用域采用的处理分支
+         * @param scopeType 作用域类型标识，决定后续接口作用域采用的处理分支
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void validateInterfaceScope(
                         String contextType,
                         String scopeType) {
@@ -1836,6 +2194,14 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 解析操作定义；输出作为后续校验或处理的输入。
+         *
+         * @param definition 定义，供本方法解析操作定义时使用
+         * @param operationCode 操作编码，后续用于解析操作定义时定位或关联目标
+         * @return 解析后的操作定义结果，供调用方继续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private UiExtensionDefinition resolveOperationDefinition(
                         UiExtensionDefinition definition,
                         String operationCode) {
@@ -1852,6 +2218,12 @@ public class UiInterfaceExtensionService {
                 return definition;
         }
 
+        /**
+         * 复制定义；结果供后续流程传递或持久化。
+         *
+         * @param source 待复制定义的原始输入，结果供调用方继续使用
+         * @return 复制后的定义结果，供调用方继续处理
+         */
         private UiExtensionDefinition copyDefinition(
                         UiExtensionDefinition source) {
                 UiExtensionDefinition target = new UiExtensionDefinition();
@@ -1886,6 +2258,13 @@ public class UiInterfaceExtensionService {
                 return target;
         }
 
+        /**
+         * 处理失败，并将结果传给后续步骤。
+         *
+         * @param policy 策略内容，决定后续失败的处理规则
+         * @param exception 异常，供本方法处理失败时使用
+         * @return 处理后的失败结果，供调用方继续处理
+         */
         private Object handleFailure(
                         Map<String, Object> policy,
                         RuntimeException exception) {
@@ -1900,6 +2279,15 @@ public class UiInterfaceExtensionService {
                 throw exception;
         }
 
+        /**
+         * 生成缓存键文本，供后续匹配或展示。
+         *
+         * @param definition 定义，作为 {@code key.put} 的输入影响后续处理
+         * @param input 待处理缓存键的原始输入，结果供调用方继续使用
+         * @param authorization 授权，作为 {@code key.put} 的输入影响后续处理
+         * @param request 本次请求，后续经校验后用于处理缓存键
+         * @return 处理后的缓存键文本，供调用方比较或展示
+         */
         private String cacheKey(
                         UiExtensionDefinition definition,
                         Map<String, Object> input,
@@ -1951,6 +2339,12 @@ public class UiInterfaceExtensionService {
                                 "数据源缓存键");
         }
 
+        /**
+         * 生成操作定义指纹文本，供后续匹配或展示。
+         *
+         * @param definition 定义，作为 {@code value.put} 的输入影响后续处理
+         * @return 处理后的操作定义指纹文本，供调用方比较或展示
+         */
         private String operationDefinitionFingerprint(
                         UiExtensionDefinition definition) {
                 Map<String, Object> value = new LinkedHashMap<>();
@@ -1980,6 +2374,12 @@ public class UiInterfaceExtensionService {
                                 "数据源操作定义缓存指纹"));
         }
 
+        /**
+         * 整理数据作用域指纹数据，供调用方遍历或继续处理。
+         *
+         * @param plan 执行方案，后续决定操作步骤和校验约束
+         * @return 数据作用域指纹键值结果，供调用方继续处理
+         */
         private Map<String, Object> dataScopeFingerprint(
                         DataScopePlan plan) {
                 Map<String, Object> value = new LinkedHashMap<>();
@@ -1992,6 +2392,12 @@ public class UiInterfaceExtensionService {
                 return value;
         }
 
+        /**
+         * 构造执行失败异常，供调用方区分失败原因。
+         *
+         * @param exception 异常，作为 {@code IllegalStateException} 的输入影响后续处理
+         * @return 处理后的执行失败结果，供调用方继续处理
+         */
         private RuntimeException executionFailure(
                         Exception exception) {
                 if (exception instanceof java.util.concurrent.TimeoutException) {
@@ -2018,6 +2424,12 @@ public class UiInterfaceExtensionService {
                                                 current);
         }
 
+        /**
+         * 判断是否非{@code recoverable}；判断结果决定调用方的后续分支。
+         *
+         * @param exception 异常，供本方法判断是否非{@code recoverable}时使用
+         * @return 非{@code recoverable}条件成立时为 true，否则为 false
+         */
         private boolean isNonRecoverable(
                         RuntimeException exception) {
                 return exception instanceof UiExtensionDefinitionValidator.ValidationException
@@ -2026,6 +2438,13 @@ public class UiInterfaceExtensionService {
                                 || exception instanceof SecurityException;
         }
 
+        /**
+         * 校验并获取作用域访问；不满足约束时阻止后续处理。
+         *
+         * @param scopeType 作用域类型标识，决定后续作用域访问采用的处理分支
+         * @param scopeId 作用域ID，后续用于校验并获取作用域访问时定位或关联目标
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void requireScopeAccess(String scopeType, String scopeId) {
                 if ("GLOBAL".equals(scopeType)) {
                         return;
@@ -2053,6 +2472,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 校验并获取使用场景；不满足约束时阻止后续处理。
+         *
+         * @param usage 使用场景，作为 {@code normalize} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void requireUsage(String usage) {
                 String normalized = normalize(usage);
                 if (!USAGES.contains(normalized)) {
@@ -2060,6 +2485,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 校验并获取操作请求；不满足约束时阻止后续处理。
+         *
+         * @param request 本次请求，后续经校验后用于校验并获取操作请求
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private void requireOperationRequest(
                         UiExtensionExecuteRequest request) {
                 if (request == null) {
@@ -2068,6 +2499,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 校验并获取操作上下文；不满足约束时阻止后续处理。
+         *
+         * @param definition 定义，作为 {@code normalize} 的输入影响后续处理
+         * @param ownerType 归属方类型标识，决定后续操作上下文采用的处理分支
+         */
         private void requireOperationContext(
                         UiExtensionDefinition definition,
                         String ownerType) {
@@ -2080,6 +2517,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 校验并获取修订版本；不满足约束时阻止后续处理。
+         *
+         * @param expected 预期，供本方法校验并获取修订版本时使用
+         * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+         */
         private void requireRevision(
                         Integer expected,
                         UiExtensionDefinition current) {
@@ -2088,6 +2531,12 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 整理{@code flatten}{@code dictionary}数据，供调用方遍历或继续处理。
+         *
+         * @param items 条目，供本方法处理{@code flatten}{@code dictionary}时使用
+         * @return 界面接口扩展集合，供调用方遍历或展示
+         */
         private List<Map<String, Object>> flattenDictionary(List<SysDictItem> items) {
                 List<Map<String, Object>> result = new ArrayList<>();
                 for (SysDictItem item : items == null ? List.<SysDictItem>of() : items) {
@@ -2101,12 +2550,25 @@ public class UiInterfaceExtensionService {
                 return result;
         }
 
+        /**
+         * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+         *
+         * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+         * @return 字符串映射键值结果，供调用方继续处理
+         */
         private Map<String, Object> stringMap(Map<?, ?> source) {
                 Map<String, Object> result = new LinkedHashMap<>();
                 source.forEach((key, value) -> result.put(String.valueOf(key), value));
                 return result;
         }
 
+        /**
+         * 解析路径；输出作为后续校验或处理的输入。
+         *
+         * @param source 待解析路径的原始输入，结果供调用方继续使用
+         * @param path 路径，供本方法解析路径时使用
+         * @return 解析后的路径结果，供调用方继续处理
+         */
         private Object resolvePath(Map<String, Object> source, String path) {
                 Object current = source;
                 for (String part : path.split("\\.")) {
@@ -2118,10 +2580,24 @@ public class UiInterfaceExtensionService {
                 return current;
         }
 
+        /**
+         * 写入界面接口扩展；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待写入界面接口扩展的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于写入界面接口扩展时匹配或展示
+         * @return 写入后的界面接口扩展文本，供调用方比较或展示
+         */
         private String write(Map<String, Object> value, String label) {
                 return value == null || value.isEmpty() ? null : codec.write(value, label);
         }
 
+        /**
+         * 写入界面接口扩展列表；后续读取或执行将使用更新后的状态。
+         *
+         * @param value 待写入界面接口扩展列表的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于写入界面接口扩展列表时匹配或展示
+         * @return 写入后的界面接口扩展列表文本，供调用方比较或展示
+         */
         private String writeList(
                         List<Map<String, Object>> value,
                         String label) {
@@ -2130,12 +2606,26 @@ public class UiInterfaceExtensionService {
                                 : codec.write(value, label);
         }
 
+        /**
+         * 读取界面接口扩展；查询结果供调用方展示或继续处理。
+         *
+         * @param value 待读取界面接口扩展的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于读取界面接口扩展时匹配或展示
+         * @return 界面接口扩展键值结果，供调用方继续处理
+         */
         private Map<String, Object> read(String value, String label) {
                 return StringUtils.hasText(value)
                                 ? codec.readObject(value, label)
                                 : new LinkedHashMap<>();
         }
 
+        /**
+         * 读取界面接口扩展列表；查询结果供调用方展示或继续处理。
+         *
+         * @param value 待读取界面接口扩展列表的原始输入，结果供调用方继续使用
+         * @param label 标签，后续用于读取界面接口扩展列表时匹配或展示
+         * @return 界面接口扩展集合，供调用方遍历或展示
+         */
         private List<Map<String, Object>> readList(
                         String value,
                         String label) {
@@ -2148,12 +2638,24 @@ public class UiInterfaceExtensionService {
                                 .toList();
         }
 
+        /**
+         * 规范化输入值，确保后续比较和持久化使用一致格式。
+         *
+         * @param value 待规范化界面接口扩展的原始输入，结果供调用方继续使用
+         * @return 规范化后的界面接口扩展文本，供调用方比较或展示
+         */
         private String normalize(String value) {
                 return StringUtils.hasText(value)
                                 ? value.trim().toUpperCase(Locale.ROOT)
                                 : "";
         }
 
+        /**
+         * 规范化摘要；输出作为后续校验或处理的输入。
+         *
+         * @param value 待规范化摘要的原始输入，结果供调用方继续使用
+         * @return 规范化后的摘要文本，供调用方比较或展示
+         */
         private String normalizeDigest(String value) {
                 if (!StringUtils.hasText(value)) {
                         return null;
@@ -2163,14 +2665,33 @@ public class UiInterfaceExtensionService {
                                 ? normalized : null;
         }
 
+        /**
+         * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+         *
+         * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+         * @return 处理后的空白截止空值文本，供调用方比较或展示
+         */
         private String blankToNull(String value) {
                 return StringUtils.hasText(value) ? value.trim() : null;
         }
 
+        /**
+         * 将输入转换为文本，供后续校验、映射或展示使用。
+         *
+         * @param value 待处理文本的原始输入，结果供调用方继续使用
+         * @return 处理后的文本文本，供调用方比较或展示
+         */
         private String text(Object value) {
                 return value == null ? null : String.valueOf(value);
         }
 
+        /**
+         * 将输入解析为整数，供后续范围校验或计算使用。
+         *
+         * @param value 待处理整数的原始输入，结果供调用方继续使用
+         * @param fallback 兜底，主值不可用时供后续处理兜底
+         * @return 处理后的整数结果，供调用方继续处理
+         */
         private int integer(Object value, int fallback) {
                 if (value instanceof Number number) {
                         return number.intValue();
@@ -2182,6 +2703,13 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+         *
+         * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+         * @return 处理后的{@code sha256}文本，供调用方比较或展示
+         * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+         */
         private String sha256(String value) {
                 try {
                         return HexFormat.of().formatHex(
@@ -2195,6 +2723,13 @@ public class UiInterfaceExtensionService {
                 }
         }
 
+        /**
+         * 判断{@code constant}时间相等条件是否成立，供调用方选择后续分支。
+         *
+         * @param expected 预期，作为 {@code MessageDigest.isEqual} 的输入影响后续处理
+         * @param actual 实际，供本方法处理{@code constant}时间相等时使用
+         * @return {@code constant}时间相等条件成立时为 true，否则为 false
+         */
         private boolean constantTimeEquals(
                         String expected,
                         String actual) {
@@ -2203,7 +2738,16 @@ public class UiInterfaceExtensionService {
                                 actual.getBytes(StandardCharsets.UTF_8));
         }
 
-        /** 可存入宿主发布快照的接口扩展钉版结果。 */
+        /**
+         * 可存入宿主发布快照的接口扩展钉版结果。
+         *
+         * @param extensionId 扩展ID，后续用于处理已发布操作快照时定位或关联目标
+         * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+         * @param extensionRevision 扩展修订版本，保存在对象中供后续校验、查询或展示
+         * @param providerOperationCode 提供者操作编码，后续用于处理已发布操作快照时定位或关联目标
+         * @param document 文档，保存在对象中供后续校验、查询或展示
+         * @param hash 哈希，保存在对象中供后续校验、查询或展示
+         */
         public record PublishedOperationSnapshot(
                         String extensionId,
                         String extensionKey,
@@ -2213,7 +2757,18 @@ public class UiInterfaceExtensionService {
                         String hash) {
         }
 
-        /** 设计态和发布态均可使用的受控动作接口描述。 */
+        /**
+         * 设计态和发布态均可使用的受控动作接口描述。
+         *
+         * @param extensionId 扩展ID，后续用于处理动作操作描述时定位或关联目标
+         * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+         * @param extensionRevision 扩展修订版本，保存在对象中供后续校验、查询或展示
+         * @param providerOperationCode 提供者操作编码，后续用于处理动作操作描述时定位或关联目标
+         * @param interfaceKind 接口类型，保存在对象中供后续校验、查询或展示
+         * @param implementationType 实现类型标识，决定后续动作操作描述采用的处理分支
+         * @param providerCode 提供者编码，后续用于处理动作操作描述时定位或关联目标
+         * @param interfaceContextType 接口上下文类型标识，决定后续动作操作描述采用的处理分支
+         */
         public record ActionOperationDescriptor(
                         String extensionId,
                         String extensionKey,
@@ -2225,9 +2780,21 @@ public class UiInterfaceExtensionService {
                         String interfaceContextType) {
         }
 
+        /**
+         * 封装缓存入口的不可变数据；各分量供后续校验、传递或结果展示使用。
+         *
+         * @param value 待处理缓存入口的原始输入，结果供调用方继续使用
+         * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+         */
         private record CacheEntry(Object value, long expiresAt) {
         }
 
+        /**
+         * 封装提供者身份的不可变数据；各分量供后续校验、传递或结果展示使用。
+         *
+         * @param version 版本，保存在对象中供后续校验、查询或展示
+         * @param artifactDigest {@code artifact}摘要，保存在对象中供后续校验、查询或展示
+         */
         private record ProviderIdentity(
                         int version,
                         String artifactDigest) {

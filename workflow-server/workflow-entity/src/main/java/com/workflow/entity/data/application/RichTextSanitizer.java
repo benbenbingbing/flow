@@ -31,6 +31,12 @@ public class RichTextSanitizer {
             .addProtocols("a", "href", "http", "https", "mailto")
             .addProtocols("img", "src", "http", "https");
 
+    /**
+     * 清洗{@code rich}文本{@code sanitizer}；结果供调用方的后续步骤使用。
+     *
+     * @param html {@code html}，作为 {@code Jsoup.clean} 的输入影响后续处理
+     * @return 清洗后的{@code rich}文本{@code sanitizer}文本，供调用方比较或展示
+     */
     public String sanitize(String html) {
         if (!StringUtils.hasText(html)) {
             return html;
@@ -53,6 +59,12 @@ public class RichTextSanitizer {
         return document.body().html();
     }
 
+    /**
+     * 清洗{@code style}；结果供调用方的后续步骤使用。
+     *
+     * @param style {@code style}，供本方法清洗{@code style}时使用
+     * @return 清洗后的{@code style}文本，供调用方比较或展示
+     */
     private String sanitizeStyle(String style) {
         List<String> safe = new ArrayList<>();
         for (String declaration : style.split(";")) {
@@ -72,6 +84,13 @@ public class RichTextSanitizer {
         return String.join("; ", safe);
     }
 
+    /**
+     * 判断是否安全{@code style}值；判断结果决定调用方的后续分支。
+     *
+     * @param property 属性，供本方法判断是否安全{@code style}值时使用
+     * @param value 待判断是否安全{@code style}值的原始输入，结果供调用方继续使用
+     * @return 安全{@code style}值条件成立时为 true，否则为 false
+     */
     private boolean isSafeStyleValue(String property, String value) {
         if (value.length() > 40
                 || value.contains("\\")

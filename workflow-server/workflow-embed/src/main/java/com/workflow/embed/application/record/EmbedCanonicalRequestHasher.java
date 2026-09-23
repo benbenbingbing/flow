@@ -24,12 +24,20 @@ public class EmbedCanonicalRequestHasher {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式规范请求{@code hasher}，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedCanonicalRequestHasher(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
     /**
      * Actor 摘要跨 Session/Launch 稳定，同时绑定 Application、Provider、Binding 和 Flow 用户。
+     *
+     * @param session 会话，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的操作人作用域摘要文本，供调用方比较或展示
      */
     public String actorScopeDigest(AuthenticatedEmbedSession session) {
         if (session == null
@@ -50,6 +58,15 @@ public class EmbedCanonicalRequestHasher {
 
     /**
      * 计算写请求摘要。Session/Launch/Release/Trace/Locale 均不进入材料，允许安全跨启动重放。
+     *
+     * @param applicationId 应用ID，后续用于处理请求哈希时定位或关联目标
+     * @param actorScopeDigest 操作人作用域摘要，作为 {@code material.put} 的输入影响后续处理
+     * @param viewKey 视图键，后续用于授权校验、关联或幂等去重
+     * @param operation 操作标识，决定后续请求哈希采用的处理分支
+     * @param targetType 目标类型标识，决定后续请求哈希采用的处理分支
+     * @param target 目标，作为 {@code material.put} 的输入影响后续处理
+     * @param requestBody 请求请求体，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的请求哈希文本，供调用方比较或展示
      */
     public String requestHash(
             String applicationId,
@@ -71,6 +88,13 @@ public class EmbedCanonicalRequestHasher {
         return digest(material);
     }
 
+    /**
+     * 生成摘要文本，供后续匹配或展示。
+     *
+     * @param value 待处理摘要的原始输入，结果供调用方继续使用
+     * @return 处理后的摘要文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String digest(Object value) {
         try {
             JsonNode canonical = canonicalize(objectMapper.valueToTree(value));
@@ -82,6 +106,12 @@ public class EmbedCanonicalRequestHasher {
         }
     }
 
+    /**
+     * 规范化嵌入式规范请求{@code hasher}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化嵌入式规范请求{@code hasher}的原始输入，结果供调用方继续使用
+     * @return 规范化后的嵌入式规范请求{@code hasher}结果，供调用方继续处理
+     */
     private JsonNode canonicalize(JsonNode value) {
         if (value.isObject()) {
             ObjectNode result = objectMapper.createObjectNode();

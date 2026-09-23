@@ -29,6 +29,11 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
     private final String currentVersion;
     private final Map<String, byte[]> keys;
 
+    /**
+     * 初始化已配置嵌入式主体{@code digester}，保存构造参数供后续方法使用。
+     *
+     * @param environment 环境，保存在对象中供后续校验、查询或展示
+     */
     public ConfiguredEmbedSubjectDigester(Environment environment) {
         String configuredVersion = environment.getProperty(
                 "workflow.embed.crypto.hmac-key-version", "embed-hmac-v1");
@@ -36,6 +41,15 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         this.keys = loadKeys(environment);
     }
 
+    /**
+     * 处理当前，并将结果传给后续步骤。
+     *
+     * @param applicationId 应用ID，后续用于处理当前时定位或关联目标
+     * @param providerId 提供者ID，后续用于处理当前时定位或关联目标
+     * @param subjectNamespace 主体命名空间，作为 {@code Digest} 的输入影响后续处理
+     * @param externalSubject 外部主体，作为 {@code Digest} 的输入影响后续处理
+     * @return 处理后的当前结果，供调用方继续处理
+     */
     @Override
     public Digest current(
             String applicationId,
@@ -51,6 +65,15 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
                 subjectNamespace, externalSubject), currentVersion);
     }
 
+    /**
+     * 整理{@code accepted}数据，供调用方遍历或继续处理。
+     *
+     * @param applicationId 应用ID，后续用于处理{@code accepted}时定位或关联目标
+     * @param providerId 提供者ID，后续用于处理{@code accepted}时定位或关联目标
+     * @param subjectNamespace 主体命名空间，供本方法处理{@code accepted}时使用
+     * @param externalSubject 外部主体，供本方法处理{@code accepted}时使用
+     * @return 摘要集合，供调用方遍历或展示
+     */
     @Override
     public List<Digest> accepted(
             String applicationId,
@@ -65,12 +88,21 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验并获取已配置；不满足约束时阻止后续处理。
+     */
     private void requireConfigured() {
         if (!StringUtils.hasText(currentVersion) || keys.isEmpty()) {
             throw unavailable();
         }
     }
 
+    /**
+     * 加载键集合；查询结果供调用方展示或继续处理。
+     *
+     * @param environment 环境，作为 {@code addKey} 的输入影响后续处理
+     * @return 键集合键值结果，供调用方继续处理
+     */
     private static Map<String, byte[]> loadKeys(Environment environment) {
         Map<String, byte[]> result = new LinkedHashMap<>();
         String versions = environment.getProperty(
@@ -91,6 +123,13 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         return Map.copyOf(result);
     }
 
+    /**
+     * 添加键；结果供后续流程传递或持久化。
+     *
+     * @param environment 环境，供本方法添加键时使用
+     * @param target 目标，作为 {@code addEncodedKey} 的输入影响后续处理
+     * @param version 版本，作为 {@code environment.getProperty} 的输入影响后续处理
+     */
     private static void addKey(Environment environment, Map<String, byte[]> target,
                                String version) {
         String encoded = environment.getProperty(
@@ -98,6 +137,14 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         addEncodedKey(target, version, encoded);
     }
 
+    /**
+     * 添加已编码键；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加已编码键时使用
+     * @param version 版本，作为 {@code target.put} 的输入影响后续处理
+     * @param encoded 已编码，供本方法添加已编码键时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void addEncodedKey(
             Map<String, byte[]> target, String version, String encoded) {
         if (!StringUtils.hasText(encoded)) {
@@ -115,6 +162,17 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         target.put(version, key);
     }
 
+    /**
+     * 生成摘要文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param applicationId 应用ID，后续用于处理摘要时定位或关联目标
+     * @param providerId 提供者ID，后续用于处理摘要时定位或关联目标
+     * @param subjectNamespace 主体命名空间，供本方法处理摘要时使用
+     * @param externalSubject 外部主体，供本方法处理摘要时使用
+     * @return 处理后的摘要文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static String digest(
             byte[] key,
             String applicationId,
@@ -133,6 +191,11 @@ public class ConfiguredEmbedSubjectDigester implements EmbedSubjectDigester {
         }
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static BusinessConflictException unavailable() {
         return new BusinessConflictException(
                 "EMBED_SUBJECT_DIGEST_KEY_UNAVAILABLE",

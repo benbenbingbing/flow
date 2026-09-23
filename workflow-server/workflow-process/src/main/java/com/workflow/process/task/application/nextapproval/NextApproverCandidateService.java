@@ -12,8 +12,8 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
@@ -67,6 +67,14 @@ public class NextApproverCandidateService {
     @Autowired(required = false)
     private ProcessVersionHistoryMapper processVersionMapper;
 
+    /**
+     * 处理选项，并将结果传给后续步骤。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param request 本次请求，后续经校验后用于处理选项
+     * @return 处理后的选项结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public PageResult<NextApproverCandidateDTO> options(
             String taskId,
             NextApproverOptionsRequest request) {
@@ -124,6 +132,13 @@ public class NextApproverCandidateService {
                 pageSize);
     }
 
+    /**
+     * 整理默认{@code assignees}数据，供调用方遍历或继续处理。
+     *
+     * @param resolution 解析，作为 {@code resolveNodeAssignmentUsers} 的输入影响后续处理
+     * @param target 目标，作为 {@code resolveNodeAssignmentUsers} 的输入影响后续处理
+     * @return 下一步审批人候选人集合，供调用方遍历或展示
+     */
     public List<NextApproverCandidateDTO> defaultAssignees(
             NextApprovalResolution resolution,
             NextApprovalTarget target) {
@@ -150,6 +165,11 @@ public class NextApproverCandidateService {
      *
      * <p>对 RESOLVER 来源使用与 options/重验一致的用途，避免解析器用途
      * 漂移导致默认显示与提交校验范围不一致。</p>
+     *
+     * @param resolution 解析，作为 {@code resolveAllowed} 的输入影响后续处理
+     * @param target 目标，作为 {@code equals} 的输入影响后续处理
+     * @param defaults {@code defaults}，供本方法处理过滤允许{@code defaults}时使用
+     * @return 下一步审批人候选人集合，供调用方遍历或展示
      */
     private List<NextApproverCandidateDTO> filterAllowedDefaults(
             NextApprovalResolution resolution,
@@ -189,6 +209,11 @@ public class NextApproverCandidateService {
      *
      * <p>DIRECT 的“只取第一人”由调用方在默认值投影时处理；本方法始终返回
      * 完整集合，NODE_ASSIGNMENT 的候选范围和提交重验才能使用同一边界。</p>
+     *
+     * @param resolution 解析，作为 {@code preparedMultiInstanceUsers} 的输入影响后续处理
+     * @param target 目标，作为 {@code preparedMultiInstanceUsers} 的输入影响后续处理
+     * @param preferPreparedMultiInstanceSnapshot 优先已准备多实例快照，供本方法解析节点分配用户集合时使用
+     * @return 系统用户集合，供调用方遍历或展示
      */
     private List<SysUser> resolveNodeAssignmentUsers(
             NextApprovalResolution resolution,
@@ -227,6 +252,9 @@ public class NextApproverCandidateService {
      * 上一轮循环遗留的 collection 变量短路。相对职务读取当前任职，
      * 实体用户字段读取任一表单最新保存的实体记录；实际进入节点时
      * 仍由 collection handler 生成当轮稳定集合。
+     *
+     * @param target 目标，供本方法处理使用入口时间动态解析器时使用
+     * @return 使用入口时间动态解析器条件成立时为 true，否则为 false
      */
     private boolean usesEntryTimeDynamicResolver(
             NextApprovalTarget target) {
@@ -240,6 +268,12 @@ public class NextApproverCandidateService {
                         .resolverCode());
     }
 
+    /**
+     * 判断是否入口时间动态解析器；判断结果决定调用方的后续分支。
+     *
+     * @param resolverCode 解析器编码，后续用于判断是否入口时间动态解析器时定位或关联目标
+     * @return 入口时间动态解析器条件成立时为 true，否则为 false
+     */
     private boolean isEntryTimeDynamicResolver(String resolverCode) {
         return RelativeOrgPositionConfig.RESOLVER_CODE.equals(resolverCode)
                 || EntityUserReferenceFieldConfig.RESOLVER_CODE.equals(
@@ -249,6 +283,10 @@ public class NextApproverCandidateService {
     /**
      * 已在流程启动时准备的多实例集合是该实例的人员快照，优先于重新展开
      * 可变的组、角色或解析器结果；返回 null 表示变量尚未准备。
+     *
+     * @param resolution 解析，供本方法处理已准备多实例用户集合时使用
+     * @param target 目标，作为 {@code multiInstanceCollectionVariable} 的输入影响后续处理
+     * @return 系统用户集合，供调用方遍历或展示
      */
     private List<SysUser> preparedMultiInstanceUsers(
             NextApprovalResolution resolution,
@@ -282,6 +320,11 @@ public class NextApproverCandidateService {
      * 历史多实例部署以独立 multiInstance 与 collection 来源字段为准。
      * 解析器来源即使返回空集合也不能回退到可能陈旧的基础配置；静态旧字段
      * 全为空时保留历史行为，继续尝试基础 user 配置。
+     *
+     * @param resolution 解析，作为 {@code resolveWithResolver} 的输入影响后续处理
+     * @param target 目标，作为 {@code equals} 的输入影响后续处理
+     * @param legacy 旧版，作为 {@code resolveWithResolver} 的输入影响后续处理
+     * @return 系统用户集合，供调用方遍历或展示
      */
     private List<SysUser> resolveLegacyMultiInstanceUsers(
             NextApprovalResolution resolution,
@@ -308,6 +351,11 @@ public class NextApproverCandidateService {
 
     /**
      * v2 普通任务和多实例共同使用的基础办理人解析。
+     *
+     * @param resolution 解析，作为 {@code resolveWithResolver} 的输入影响后续处理
+     * @param target 目标，作为 {@code equals} 的输入影响后续处理
+     * @param config 配置内容，决定后续基础分配用户集合的处理规则
+     * @return 系统用户集合，供调用方遍历或展示
      */
     private List<SysUser> resolveBaseAssignmentUsers(
             NextApprovalResolution resolution,
@@ -372,6 +420,16 @@ public class NextApproverCandidateService {
         return dedupeEnabled(result);
     }
 
+    /**
+     * 解析解析器；输出作为后续校验或处理的输入。
+     *
+     * @param resolution 解析，作为 {@code resolveUsers} 的输入影响后续处理
+     * @param target 目标，供本方法解析解析器时使用
+     * @param resolverCode 解析器编码，后续用于解析解析器时定位或关联目标
+     * @param usage 使用场景，作为 {@code resolverRuntimeService.requireConfigured} 的输入影响后续处理
+     * @param extraParams 附加参数，供本方法解析解析器时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveWithResolver(
             NextApprovalResolution resolution,
             NextApprovalTarget target,
@@ -388,6 +446,12 @@ public class NextApproverCandidateService {
                         extraParams)));
     }
 
+    /**
+     * 添加字面值候选人用户集合；结果供后续流程传递或持久化。
+     *
+     * @param task 任务，供本方法添加字面值候选人用户集合时使用
+     * @param users 用户集合，供本方法添加字面值候选人用户集合时使用
+     */
     private void addLiteralCandidateUsers(
             UserTask task,
             Set<String> users) {
@@ -399,6 +463,13 @@ public class NextApproverCandidateService {
         }
     }
 
+    /**
+     * 添加字面值候选人分组集合；结果供后续流程传递或持久化。
+     *
+     * @param task 任务，供本方法添加字面值候选人分组集合时使用
+     * @param groups 分组集合，供本方法添加字面值候选人分组集合时使用
+     * @param roles 角色集合，供本方法添加字面值候选人分组集合时使用
+     */
     private void addLiteralCandidateGroups(
             UserTask task,
             Set<String> groups,
@@ -419,6 +490,13 @@ public class NextApproverCandidateService {
         }
     }
 
+    /**
+     * 处理分配配置版本，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续分配配置版本的处理规则
+     * @return 处理后的分配配置版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int assignmentConfigVersion(Map<String, Object> config) {
         Object raw = config.get("assignmentConfigVersion");
         if (raw == null) {
@@ -432,6 +510,12 @@ public class NextApproverCandidateService {
         }
     }
 
+    /**
+     * 规范化分配类型；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化分配类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的分配类型文本，供调用方比较或展示
+     */
     private String normalizeAssignmentType(Object value) {
         String type = text(value);
         if (!StringUtils.hasText(type)) {
@@ -442,6 +526,12 @@ public class NextApproverCandidateService {
                 ? "resolver" : normalized;
     }
 
+    /**
+     * 生成多实例集合变量文本，供后续匹配或展示。
+     *
+     * @param userTask 用户任务，作为 {@code MultiInstanceVariableNames.resolveCollectionVariable} 的输入影响后续处理
+     * @return 处理后的多实例集合变量文本，供调用方比较或展示
+     */
     private String multiInstanceCollectionVariable(UserTask userTask) {
         return MultiInstanceVariableNames.resolveCollectionVariable(
                 userTask);
@@ -449,6 +539,11 @@ public class NextApproverCandidateService {
 
     /**
      * 返回完整允许集合，供分页接口与完成任务前的权威重验复用。
+     *
+     * @param resolution 解析，作为 {@code resolveNodeAssignmentUsers} 的输入影响后续处理
+     * @param target 目标，作为 {@code resolveNodeAssignmentUsers} 的输入影响后续处理
+     * @param usage 使用场景，供本方法解析允许时使用
+     * @return 系统用户集合，供调用方遍历或展示
      */
     public List<SysUser> resolveAllowed(
             NextApprovalResolution resolution,
@@ -495,6 +590,15 @@ public class NextApproverCandidateService {
         return dedupeEnabled(result);
     }
 
+    /**
+     * 处理解析器请求，并将结果传给后续步骤。
+     *
+     * @param resolution 解析，供本方法处理解析器请求时使用
+     * @param target 目标，供本方法处理解析器请求时使用
+     * @param usage 使用场景，供本方法处理解析器请求时使用
+     * @param extraParams 附加参数，供本方法处理解析器请求时使用
+     * @return 处理后的解析器请求结果，供调用方继续处理
+     */
     private PersonResolveRequest resolverRequest(
             NextApprovalResolution resolution,
             NextApprovalTarget target,
@@ -533,6 +637,12 @@ public class NextApproverCandidateService {
                 extraParams);
     }
 
+    /**
+     * 生成已发布流程配置ID文本，供后续匹配或展示。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 处理后的已发布流程配置ID文本，供调用方比较或展示
+     */
     private String publishedProcessConfigId(String processDefinitionId) {
         if (repositoryService == null
                 || processVersionMapper == null
@@ -553,12 +663,23 @@ public class NextApproverCandidateService {
                 .orElse(null);
     }
 
+    /**
+     * 整理全部启用用户集合数据，供调用方遍历或继续处理。
+     *
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> allEnabledUsers() {
         return userMapper.selectList(new LambdaQueryWrapper<SysUser>()
                 .eq(SysUser::getStatus, SysUser.Status.ENABLED.getValue())
                 .eq(SysUser::getDeleted, 0));
     }
 
+    /**
+     * 解析用户集合；输出作为后续校验或处理的输入。
+     *
+     * @param keys 键集合，供本方法解析用户集合时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveUsers(Collection<String> keys) {
         List<SysUser> result = new ArrayList<>();
         for (String key : keys) {
@@ -576,6 +697,12 @@ public class NextApproverCandidateService {
         return dedupeEnabled(result);
     }
 
+    /**
+     * 解析角色集合；输出作为后续校验或处理的输入。
+     *
+     * @param keys 键集合，供本方法解析角色集合时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveRoles(Collection<String> keys) {
         List<SysUser> result = new ArrayList<>();
         for (String raw : keys) {
@@ -607,6 +734,12 @@ public class NextApproverCandidateService {
         return dedupeEnabled(result);
     }
 
+    /**
+     * 解析分组集合；输出作为后续校验或处理的输入。
+     *
+     * @param keys 键集合，供本方法解析分组集合时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveGroups(Collection<String> keys) {
         List<SysUser> result = new ArrayList<>();
         for (String key : keys) {
@@ -636,6 +769,13 @@ public class NextApproverCandidateService {
         return dedupeEnabled(result);
     }
 
+    /**
+     * 解析{@code organizations}；输出作为后续校验或处理的输入。
+     *
+     * @param keys 键集合，供本方法解析{@code organizations}时使用
+     * @param includeChildren {@code include}子节点，供本方法解析{@code organizations}时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveOrganizations(
             Collection<String> keys,
             boolean includeChildren) {
@@ -673,6 +813,12 @@ public class NextApproverCandidateService {
                                 .in(SysUser::getDeptId, organizationIds))));
     }
 
+    /**
+     * 整理{@code dedupe}启用数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理{@code dedupe}启用的原始输入，结果供调用方继续使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> dedupeEnabled(Collection<SysUser> source) {
         LinkedHashMap<String, SysUser> result = new LinkedHashMap<>();
         if (source != null) {
@@ -684,6 +830,12 @@ public class NextApproverCandidateService {
         return new ArrayList<>(result.values());
     }
 
+    /**
+     * 判断启用条件是否成立，供调用方选择后续分支。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 启用条件成立时为 true，否则为 false
+     */
     private boolean enabled(SysUser user) {
         return user != null
                 && StringUtils.hasText(user.getUsername())
@@ -691,6 +843,12 @@ public class NextApproverCandidateService {
                 && !Integer.valueOf(1).equals(user.getDeleted());
     }
 
+    /**
+     * 转换为DTO；输出作为后续校验或处理的输入。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 转换为后的DTO结果，供调用方继续处理
+     */
     private NextApproverCandidateDTO toDto(SysUser user) {
         return new NextApproverCandidateDTO(
                 user.getId(),
@@ -700,6 +858,13 @@ public class NextApproverCandidateService {
                         : user.getUsername());
     }
 
+    /**
+     * 判断是否匹配下一步审批人候选人；判断结果决定调用方的后续分支。
+     *
+     * @param item 条目，作为 {@code normalizeKeyword} 的输入影响后续处理
+     * @param keyword 关键字，供本方法判断是否匹配下一步审批人候选人时使用
+     * @return 下一步审批人候选人条件成立时为 true，否则为 false
+     */
     private boolean matches(
             NextApproverCandidateDTO item,
             String keyword) {
@@ -710,18 +875,36 @@ public class NextApproverCandidateService {
                 || normalizeKeyword(item.getDisplayName()).contains(keyword);
     }
 
+    /**
+     * 规范化关键字；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化关键字的原始输入，结果供调用方继续使用
+     * @return 规范化后的关键字文本，供调用方比较或展示
+     */
     private String normalizeKeyword(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toLowerCase(Locale.ROOT)
                 : "";
     }
 
+    /**
+     * 判断字面值条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理字面值的原始输入，结果供调用方继续使用
+     * @return 字面值条件成立时为 true，否则为 false
+     */
     private boolean literal(String value) {
         return StringUtils.hasText(value)
                 && !value.contains("${")
                 && !value.contains("#{");
     }
 
+    /**
+     * 添加CSV；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加CSV时使用
+     * @param value 待添加CSV的原始输入，结果供调用方继续使用
+     */
     private void addCsv(Set<String> target, Object value) {
         if (value instanceof Collection<?> collection) {
             collection.stream()
@@ -741,6 +924,12 @@ public class NextApproverCandidateService {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> raw)) {
@@ -751,6 +940,12 @@ public class NextApproverCandidateService {
         return result;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String result = text(value);
@@ -761,10 +956,23 @@ public class NextApproverCandidateService {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireText(String value, String message) {
         if (!StringUtils.hasText(value)) {
             throw new IllegalArgumentException(message);

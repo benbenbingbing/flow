@@ -214,11 +214,15 @@ const currentProcessStatus = ref('')
 const currentProcessName = ref('')
 const processDetailsLoadedFor = ref('')
 let processDetailsPendingFor = ''
+// 打开表单后的基线供“重置”和未保存修改判断使用，提交成功前不随输入变化。
 const resetSnapshot = ref<any>(null)
+// 列表/关联内容入口传入的运行时上下文，后续事件、数据源和提交复用其中的参数与令牌；服务端仍需校验令牌。
 const launchRuntimeContext = ref<Record<string, any>>({})
 const activeForm = ref<any>(null)
+// 每次打开生成不同初始化键，避免再次新增时复用上次 FORM_INIT 的去重状态。
 let launchSequence = 0
 const runtimeForm = computed(() => activeForm.value || props.defaultForm)
+// 列表发布身份用于校验入口权限；表单发布身份用于提交字段及绑定，不能相互代替。
 const listReleaseContext = computed(() => ({
   releaseId: props.listReleaseId || undefined,
   releaseVersion: props.listReleaseVersion ?? undefined,
@@ -436,6 +440,7 @@ const resetForm = () => {
   applyRuntimeFieldDefaults(formData.data, runtimeForm.value, fields)
 }
 
+/** 保存打开事件与初始值处理后的基线，供重置恢复同一发布表单的初始状态。 */
 function captureResetSnapshot() {
   resetSnapshot.value = JSON.parse(JSON.stringify({
     id: formData.id,
@@ -472,6 +477,10 @@ async function loadFormActions() {
   })
 }
 
+/**
+ * 在当前表单发布版本上执行表单级事件；eventCode 标识打开等时机，
+ * 请求携带尚未提交的 formData 与页面参数供服务端脚本映射使用。
+ */
 async function executeFormEvent(eventCode: string) {
   if (!runtimeForm.value?.id) return
   const result = await uiEventBindingApi.execute(eventCode, {
@@ -517,6 +526,7 @@ async function executeFormEvent(eventCode: string) {
   }
 }
 
+/** 按服务端效果顺序回填或导航；FIELD_MAPPING 的覆盖策略决定是否保留用户现有值。 */
 async function applyFormEventResult(result: any) {
   const effects = Array.isArray(result?.effects) ? result.effects : []
   for (const effect of effects) {
@@ -593,6 +603,7 @@ async function confirmAction(action: any) {
   }
 }
 
+/** 统一分发保存、重置及自定义按钮；actionPendingKey 覆盖确认弹窗等待期以阻止双击。 */
 async function handleFormAction(action: any) {
   // 确认框本身也是异步窗口，必须先加锁再等待用户选择，避免快速双击进入
   // 两条执行链并分别生成 requestId。
@@ -695,7 +706,10 @@ function initializeParameterFields() {
     launchRuntimeContext.value.params, pageParameterFields([...(runtimeForm.value?.fields || []), ...(runtimeForm.value?.nodes || [])]), [], isEdit.value ? 'edit' : 'create')
 }
 
-// 新增
+/**
+ * 打开新增表单。options.form 固定本次运行的表单，initialData 是入口提供的
+ * 初值；打开事件可能回填字段，因此事件后再次应用初值以保留入口优先级。
+ */
 const openCreate = async (options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
   resetProcessDetail()
@@ -728,6 +742,7 @@ const openCreate = async (options: any = {}) => {
     ? `新增数据 - ${runtimeForm.value.formName}${runtimeForm.value.formKey ? `（${runtimeForm.value.formKey}）` : ''}`
     : '新增数据'
 
+  // 关联入口初值优先于默认值，且须在 FORM_OPEN 回填后继续保持优先级。
   applyCreateInitialData(initialData)
   initializeParameterFields()
 
@@ -760,7 +775,10 @@ watch([activeTab, processInstanceId, dialogVisible], async ([tab, instanceId, vi
   }
 })
 
-// 编辑
+/**
+ * 打开现有记录。row.id 仅作为详情查询坐标，字段值必须由带列表与表单发布
+ * 上下文的详情接口返回，之后才执行打开事件并记录重置基线。
+ */
 const openEdit = async (row: any, options: any = {}) => {
   runtimeDiagnosticsRef.value?.reset()
   resetProcessDetail()
@@ -852,6 +870,7 @@ function runtimeValidationTargets() {
   return formRefs
 }
 
+/** 校验所有已挂载页签并执行无副作用预校验；服务端在最终提交时仍会权威重验。 */
 async function validateRuntimeForms() {
   for (const formRef of runtimeValidationTargets()) {
     if ((await formRef.instance.validate()) === false) {
@@ -869,7 +888,10 @@ async function validateRuntimeForms() {
   return true
 }
 
-// 提交
+/**
+ * 提交当前表单。startProcess 控制保存后是否发起流程；提交体只包含发布表单
+ * 允许的字段，并带上发布解析令牌供服务端定位、校验本次使用的表单快照。
+ */
 const handleSubmit = async (startProcess = false) => {
   try {
     const valid = await validateRuntimeForms()

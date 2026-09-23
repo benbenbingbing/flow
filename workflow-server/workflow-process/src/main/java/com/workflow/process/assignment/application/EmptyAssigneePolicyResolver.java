@@ -22,7 +22,13 @@ public class EmptyAssigneePolicyResolver {
 
     private final ObjectMapper objectMapper;
 
-    /** 从已部署 BPMN 和节点 assigneeConfig 解析不可变的有效策略。 */
+    /**
+     * 从已部署 BPMN 和节点 assigneeConfig 解析不可变的有效策略。
+     *
+     * @param bpmnModel BPMN模型，供本方法解析空办理人策略解析器时使用
+     * @param assigneeConfig 办理人配置内容，决定后续空办理人策略解析器的处理规则
+     * @return 解析后的空办理人策略解析器结果，供调用方继续处理
+     */
     public EmptyAssigneePolicy resolve(
             BpmnModel bpmnModel,
             Map<String, Object> assigneeConfig) {
@@ -33,7 +39,13 @@ public class EmptyAssigneePolicyResolver {
         return resolve(processDocument, assigneeConfig);
     }
 
-    /** 从序列化流程默认值和节点配置解析策略，供预检与测试中心复用。 */
+    /**
+     * 从序列化流程默认值和节点配置解析策略，供预检与测试中心复用。
+     *
+     * @param processDefaultDocument 流程默认文档，作为 {@code readMap} 的输入影响后续处理
+     * @param assigneeConfig 办理人配置内容，决定后续空办理人策略解析器的处理规则
+     * @return 解析后的空办理人策略解析器结果，供调用方继续处理
+     */
     public EmptyAssigneePolicy resolve(
             String processDefaultDocument,
             Map<String, Object> assigneeConfig) {
@@ -74,7 +86,11 @@ public class EmptyAssigneePolicyResolver {
         return result;
     }
 
-    /** 校验五类策略的必需参数和退避边界。 */
+    /**
+     * 校验五类策略的必需参数和退避边界。
+     *
+     * @param policy 策略内容，决定后续空办理人策略解析器的处理规则
+     */
     public void validate(EmptyAssigneePolicy policy) {
         if (policy.strategy() == EmptyAssigneePolicy.Strategy.FALLBACK_USER
                 && !StringUtils.hasText(policy.fallbackUser())) {
@@ -103,11 +119,25 @@ public class EmptyAssigneePolicyResolver {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of();
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于读取映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readMap(String value, String label) {
         if (!StringUtils.hasText(value)) {
@@ -120,11 +150,25 @@ public class EmptyAssigneePolicyResolver {
         }
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(Object value) {
         String text = text(value);
         return text == null ? null : text.toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 处理后的整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int integer(Object value, int defaultValue) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return defaultValue;
@@ -136,6 +180,14 @@ public class EmptyAssigneePolicyResolver {
         }
     }
 
+    /**
+     * 处理{@code decimal}，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code decimal}的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 处理后的{@code decimal}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private double decimal(Object value, double defaultValue) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return defaultValue;
@@ -147,11 +199,24 @@ public class EmptyAssigneePolicyResolver {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param first 首个，作为 {@code text} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object first, String fallback) {
         String value = text(first);
         return StringUtils.hasText(value) ? value : fallback;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         String result = value == null ? null : String.valueOf(value).trim();
         return StringUtils.hasText(result) ? result : null;

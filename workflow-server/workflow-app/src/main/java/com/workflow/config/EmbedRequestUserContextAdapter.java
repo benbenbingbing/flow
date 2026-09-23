@@ -16,6 +16,15 @@ import org.springframework.util.StringUtils;
 public class EmbedRequestUserContextAdapter
         implements EmbedRequestUserContextPort {
 
+    /**
+     * 处理打开，并将结果传给后续步骤。
+     *
+     * @param flowUserId 流程用户ID，后续用于处理打开时定位或关联目标
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param embedSessionId 嵌入式会话ID，后续用于处理打开时定位或关联目标
+     * @return 处理后的打开结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Override
     public Scope open(
             String flowUserId,

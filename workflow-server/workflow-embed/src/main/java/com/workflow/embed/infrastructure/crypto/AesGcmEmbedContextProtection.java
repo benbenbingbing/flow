@@ -37,6 +37,16 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
     private final ObjectMapper canonicalMapper;
     private final SecureRandom random;
 
+    /**
+     * 初始化{@code aes}{@code gcm}嵌入式上下文{@code protection}，保存构造参数供后续方法使用。
+     *
+     * @param encryptionKey {@code encryption}键，后续用于授权校验、关联或幂等去重
+     * @param encryptionKeyVersion {@code encryption}键版本，保存在对象中供后续校验、查询或展示
+     * @param hmacKey HMAC键，后续用于授权校验、关联或幂等去重
+     * @param hmacKeyVersion HMAC键版本，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param random {@code random}，保存在对象中供后续校验、查询或展示
+     */
     public AesGcmEmbedContextProtection(
             byte[] encryptionKey,
             String encryptionKeyVersion,
@@ -50,6 +60,13 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
 
     /**
      * 构造带解密轮换窗口的 AES-GCM 适配器；只有 current key 用于新写入，其余 key 仅解密存量数据。
+     *
+     * @param encryptionKeys {@code encryption}键集合，保存在对象中供后续校验、查询或展示
+     * @param currentEncryptionKeyVersion 当前{@code encryption}键版本，保存在对象中供后续校验、查询或展示
+     * @param hmacKey HMAC键，后续用于授权校验、关联或幂等去重
+     * @param hmacKeyVersion HMAC键版本，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param random {@code random}依赖，保存到当前对象供后续业务方法调用
      */
     public AesGcmEmbedContextProtection(
             Map<String, byte[]> encryptionKeys,
@@ -83,6 +100,14 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         this.random = random;
     }
 
+    /**
+     * 处理保护启动记录，并将结果传给后续步骤。
+     *
+     * @param applicationId 应用ID，后续用于处理保护启动记录时定位或关联目标
+     * @param launchId 启动记录ID，后续用于处理保护启动记录时定位或关联目标
+     * @param context 执行上下文，向后续保护启动记录步骤传递身份、配置或状态
+     * @return 处理后的保护启动记录结果，供调用方继续处理
+     */
     @Override
     public ProtectedContext protectLaunch(
             String applicationId,
@@ -91,6 +116,14 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         return protect("embed-launch-v1|" + applicationId + "|" + launchId, context);
     }
 
+    /**
+     * 整理解除保护启动记录数据，供调用方遍历或继续处理。
+     *
+     * @param applicationId 应用ID，后续用于处理解除保护启动记录时定位或关联目标
+     * @param launchId 启动记录ID，后续用于处理解除保护启动记录时定位或关联目标
+     * @param context 执行上下文，向后续解除保护启动记录步骤传递身份、配置或状态
+     * @return 解除保护启动记录键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> unprotectLaunch(
             String applicationId,
@@ -102,6 +135,14 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
                 context.cipherKeyVersion());
     }
 
+    /**
+     * 处理保护会话，并将结果传给后续步骤。
+     *
+     * @param applicationId 应用ID，后续用于处理保护会话时定位或关联目标
+     * @param sessionId 会话ID，后续用于处理保护会话时定位或关联目标
+     * @param context 执行上下文，向后续保护会话步骤传递身份、配置或状态
+     * @return 处理后的保护会话结果，供调用方继续处理
+     */
     @Override
     public ProtectedContext protectSession(
             String applicationId,
@@ -110,6 +151,15 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         return protect("embed-session-v1|" + applicationId + "|" + sessionId, context);
     }
 
+    /**
+     * 整理解除保护会话数据，供调用方遍历或继续处理。
+     *
+     * @param applicationId 应用ID，后续用于处理解除保护会话时定位或关联目标
+     * @param sessionId 会话ID，后续用于处理解除保护会话时定位或关联目标
+     * @param ciphertext {@code ciphertext}，作为 {@code unprotect} 的输入影响后续处理
+     * @param keyVersion 键版本，作为 {@code unprotect} 的输入影响后续处理
+     * @return 解除保护会话键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> unprotectSession(
             String applicationId,
@@ -122,6 +172,13 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
                 keyVersion);
     }
 
+    /**
+     * 处理保护，并将结果传给后续步骤。
+     *
+     * @param aad {@code aad}，作为 {@code cipher.updateAAD} 的输入影响后续处理
+     * @param context 执行上下文，向后续保护步骤传递身份、配置或状态
+     * @return 处理后的保护结果，供调用方继续处理
+     */
     private ProtectedContext protect(String aad, Map<String, Object> context) {
         try {
             byte[] plaintext = canonicalMapper.writeValueAsBytes(context == null ? Map.of() : context);
@@ -153,6 +210,14 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         }
     }
 
+    /**
+     * 整理解除保护数据，供调用方遍历或继续处理。
+     *
+     * @param aad {@code aad}，作为 {@code cipher.updateAAD} 的输入影响后续处理
+     * @param envelopeJson {@code envelope}JSON，作为 {@code canonicalMapper.readValue} 的输入影响后续处理
+     * @param keyVersion 键版本，作为 {@code encryptionKeys.get} 的输入影响后续处理
+     * @return 解除保护键值结果，供调用方继续处理
+     */
     private Map<String, Object> unprotect(String aad, String envelopeJson, String keyVersion) {
         byte[] decryptionKey = encryptionKeys.get(keyVersion);
         if (decryptionKey == null) {
@@ -189,6 +254,14 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         }
     }
 
+    /**
+     * 生成HMAC文本，供后续匹配或展示。
+     *
+     * @param domain {@code domain}，作为 {@code mac.update} 的输入影响后续处理
+     * @param plaintext {@code plaintext}，供本方法处理HMAC时使用
+     * @return 处理后的HMAC文本，供调用方比较或展示
+     * @throws GeneralSecurityException 操作失败时向调用方传递
+     */
     private String hmac(String domain, byte[] plaintext) throws GeneralSecurityException {
         Mac mac = Mac.getInstance("HmacSHA256");
         mac.init(new SecretKeySpec(hmacKey, "HmacSHA256"));
@@ -197,10 +270,23 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         return java.util.HexFormat.of().formatHex(mac.doFinal(plaintext));
     }
 
+    /**
+     * 编码{@code aes}{@code gcm}嵌入式上下文{@code protection}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待编码{@code aes}{@code gcm}嵌入式上下文{@code protection}的原始输入，结果供调用方继续使用
+     * @return 编码后的{@code aes}{@code gcm}嵌入式上下文{@code protection}文本，供调用方比较或展示
+     */
     private static String encode(byte[] value) {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
+    /**
+     * 解码{@code aes}{@code gcm}嵌入式上下文{@code protection}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码{@code aes}{@code gcm}嵌入式上下文{@code protection}的原始输入，结果供调用方继续使用
+     * @return 解码后的{@code aes}{@code gcm}嵌入式上下文{@code protection}结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static byte[] decode(String value) {
         if (value == null) {
             throw new IllegalArgumentException("missing envelope value");
@@ -208,6 +294,13 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         return Base64.getUrlDecoder().decode(value);
     }
 
+    /**
+     * 校验并获取版本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取版本的原始输入，结果供调用方继续使用
+     * @return 校验并获取后的版本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static String requireVersion(String value) {
         if (value == null || value.isBlank() || value.trim().length() > 64) {
             throw new IllegalArgumentException("key version is required");
@@ -215,12 +308,25 @@ public final class AesGcmEmbedContextProtection implements EmbedContextProtectio
         return value.trim();
     }
 
+    /**
+     * 整理{@code single}键{@code ring}数据，供调用方遍历或继续处理。
+     *
+     * @param version 版本，作为 {@code result.put} 的输入影响后续处理
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return {@code single}键{@code ring}键值结果，供调用方继续处理
+     */
     private static Map<String, byte[]> singleKeyRing(String version, byte[] key) {
         LinkedHashMap<String, byte[]> result = new LinkedHashMap<>();
         result.put(requireVersion(version), key);
         return result;
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @param cause 原因，供本方法处理不可用时使用
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static EmbedException unavailable(Throwable cause) {
         return new EmbedException(
                 503,

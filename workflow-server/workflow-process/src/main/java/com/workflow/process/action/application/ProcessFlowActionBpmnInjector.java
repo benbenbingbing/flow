@@ -74,6 +74,12 @@ public class ProcessFlowActionBpmnInjector {
         }
     }
 
+    /**
+     * 移除旧版{@code listeners}；后续读取或执行将使用更新后的状态。
+     *
+     * @param sequenceFlow 序列流程，作为 {@code findChildElement} 的输入影响后续处理
+     * @return 旧版{@code listeners}条件成立时为 true，否则为 false
+     */
     private boolean removeLegacyListeners(Element sequenceFlow) {
         String nsUri = sequenceFlow.getNamespaceURI();
         Element extensionElements = findChildElement(sequenceFlow, nsUri, "extensionElements");
@@ -100,6 +106,14 @@ public class ProcessFlowActionBpmnInjector {
         return changed;
     }
 
+    /**
+     * 查询子级元素；查询结果供调用方展示或继续处理。
+     *
+     * @param parent 父级，供本方法查询子级元素时使用
+     * @param namespaceUri 命名空间{@code uri}，供本方法查询子级元素时使用
+     * @param localName 本地名称，后续用于查询子级元素时匹配或展示
+     * @return 符合条件的元素结果，供调用方继续处理
+     */
     private Element findChildElement(Element parent, String namespaceUri, String localName) {
         NodeList children = parent.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
@@ -113,6 +127,13 @@ public class ProcessFlowActionBpmnInjector {
         return null;
     }
 
+    /**
+     * 转换为XML字符串；输出作为后续校验或处理的输入。
+     *
+     * @param doc {@code doc}，作为 {@code transformer.transform} 的输入影响后续处理
+     * @return 转换为后的XML字符串文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private String toXmlString(Document doc) throws Exception {
         TransformerFactory transformerFactory = TransformerFactory.newInstance();
         Transformer transformer = transformerFactory.newTransformer();

@@ -7,7 +7,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.workflow.core.database.port.SchemaMetadataPort;
-import com.workflow.integration.database.api.SchemaColumnMetadata;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
 import java.sql.Types;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -95,6 +95,9 @@ public class SystemEntityCatalogService {
 
     /**
      * 读取系统表列信息并同步为实体字段（标记为系统字段、不可编辑）。
+     *
+     * @param definition 定义，作为 {@code fieldMapper.findByEntityIdAndFieldCode} 的输入影响后续处理
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
      */
     private void synchronizeFields(EntityDefinition definition, String tableName) {
         var columns = metadata.columns(tableName);
@@ -128,7 +131,12 @@ public class SystemEntityCatalogService {
         }
     }
 
-    /** JDBC 标准类型避免把 Oracle NUMBER、CLOB 等误识别为普通字符串。 */
+    /**
+     * JDBC 标准类型避免把 Oracle NUMBER、CLOB 等误识别为普通字符串。
+     *
+     * @param column 列，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @return 解析后的字段类型结果，供调用方继续处理
+     */
     private EntityField.FieldType resolveFieldType(SchemaColumnMetadata column) {
         return switch (column.jdbcType()) {
             case Types.BOOLEAN, Types.BIT, Types.TINYINT -> EntityField.FieldType.BOOLEAN;
@@ -144,6 +152,13 @@ public class SystemEntityCatalogService {
         };
     }
 
+    /**
+     * 生成稳定ID文本，供后续匹配或展示。
+     *
+     * @param source 待处理稳定ID的原始输入，结果供调用方继续使用
+     * @return 处理后的稳定ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String stableId(String source) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
@@ -154,10 +169,24 @@ public class SystemEntityCatalogService {
         }
     }
 
+    /**
+     * 解析表名称；输出作为后续校验或处理的输入。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @param tableComment 表注释，作为 {@code SYSTEM_TABLE_NAMES.getOrDefault} 的输入影响后续处理
+     * @return 解析后的表名称文本，供调用方比较或展示
+     */
     private String resolveTableName(String tableName, String tableComment) {
         return SYSTEM_TABLE_NAMES.getOrDefault(tableName, resolveComment(tableComment, tableName));
     }
 
+    /**
+     * 解析注释；输出作为后续校验或处理的输入。
+     *
+     * @param comment 注释，作为 {@code text} 的输入影响后续处理
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 解析后的注释文本，供调用方比较或展示
+     */
     private String resolveComment(String comment, String fallback) {
         String normalized = text(comment);
         if (normalized == null) {
@@ -170,10 +199,22 @@ public class SystemEntityCatalogService {
         return repaired == null ? fallback : repaired;
     }
 
+    /**
+     * 判断是否包含{@code mojibake}{@code marker}；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否包含{@code mojibake}{@code marker}的原始输入，结果供调用方继续使用
+     * @return {@code mojibake}{@code marker}条件成立时为 true，否则为 false
+     */
     private boolean containsMojibakeMarker(String value) {
         return value.chars().anyMatch(character -> "çèæåéäïð".indexOf(character) >= 0);
     }
 
+    /**
+     * 生成{@code repair}{@code mojibake}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code repair}{@code mojibake}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code repair}{@code mojibake}文本，供调用方比较或展示
+     */
     private String repairMojibake(String value) {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream(value.length());
         for (int index = 0; index < value.length(); index++) {
@@ -187,6 +228,12 @@ public class SystemEntityCatalogService {
         return repaired.indexOf('\uFFFD') >= 0 ? null : repaired;
     }
 
+    /**
+     * 处理旧版{@code byte}，并将结果传给后续步骤。
+     *
+     * @param character {@code character}，供本方法处理旧版{@code byte}时使用
+     * @return 处理后的旧版{@code byte}结果，供调用方继续处理
+     */
     private Integer legacyByte(char character) {
         if (character <= 0xFF) {
             return (int) character;
@@ -223,6 +270,12 @@ public class SystemEntityCatalogService {
         };
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -231,6 +284,12 @@ public class SystemEntityCatalogService {
         return text.isEmpty() ? null : text;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         if (value == null) {
             return null;

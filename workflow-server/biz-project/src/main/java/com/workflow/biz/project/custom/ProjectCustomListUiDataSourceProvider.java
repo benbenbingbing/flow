@@ -1,8 +1,8 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.ui.ListInvocationContext;
-import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.entity.ui.context.ListInvocationContext;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -65,16 +65,31 @@ public class ProjectCustomListUiDataSourceProvider
                     UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
                     UiDataSourceUsages.ROW_BUTTON_CLICK);
 
+    /**
+     * 读取编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     @Override
     public String getCode() {
         return CODE;
     }
 
+    /**
+     * 读取用户可见名称，供页面和操作日志展示。
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     @Override
     public String getDisplayName() {
         return "项目自定义统一数据源 [LIST]";
     }
 
+    /**
+     * 整理配置结构数据，供调用方遍历或继续处理。
+     *
+     * @return 配置结构键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> configurationSchema() {
         return Map.of(
@@ -98,23 +113,48 @@ public class ProjectCustomListUiDataSourceProvider
                                 "default", 20)));
     }
 
+    /**
+     * 生成推荐作用域文本，供后续匹配或展示。
+     *
+     * @return 处理后的推荐作用域文本，供调用方比较或展示
+     */
     @Override
     protected String recommendedScope() {
         return RECOMMENDED_SCOPE;
     }
 
+    /**
+     * 判断{@code accepts}上下文条件是否成立，供调用方选择后续分支。
+     *
+     * @param context 执行上下文，向后续{@code accepts}上下文步骤传递身份、配置或状态
+     * @return {@code accepts}上下文条件成立时为 true，否则为 false
+     */
     @Override
     protected boolean acceptsContext(
             UiInvocationContext context) {
         return context instanceof ListInvocationContext;
     }
 
+    /**
+     * 生成上下文{@code mismatch}原因文本，供后续匹配或展示。
+     *
+     * @param context 执行上下文，向后续上下文{@code mismatch}原因步骤传递身份、配置或状态
+     * @return 处理后的上下文{@code mismatch}原因文本，供调用方比较或展示
+     */
     @Override
     protected String contextMismatchReason(
             UiInvocationContext context) {
         return "LIST_CONFIG_REQUIRED";
     }
 
+    /**
+     * 执行使用场景，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续使用场景步骤传递身份、配置或状态
+     * @param configuration 配置内容，决定后续使用场景的处理规则
+     * @param input 待执行使用场景的原始输入，结果供调用方继续使用
+     * @return 执行后的使用场景结果，供调用方继续处理
+     */
     @Override
     protected Object executeUsage(
             UiInvocationContext context,
@@ -192,6 +232,12 @@ public class ProjectCustomListUiDataSourceProvider
                 input);
     }
 
+    /**
+     * 查询{@code sample}；查询结果供调用方展示或继续处理。
+     *
+     * @param context 执行上下文，向后续{@code sample}步骤传递身份、配置或状态
+     * @return 查询后的{@code sample}结果，供调用方继续处理
+     */
     private EntityDataDTO querySample(
             UiInvocationContext context) {
         EntityDataDTO result = new EntityDataDTO();

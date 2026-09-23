@@ -1,14 +1,14 @@
 package com.workflow.migration.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
@@ -482,6 +482,9 @@ public class ConfigMigrationPackageService {
      *
      * <p>可打包的配置硬依赖缺失会抛异常；人员目录、解析器和系统实体依赖留到目标环境校验，
      * validateOnlyDependencies 中的依赖仅校验存在性而不打包。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code expand}依赖集合
+     * @return 处理后的{@code expand}依赖集合结果，供调用方继续处理
      */
     private ExpandedExport expandDependencies(ConfigExportRequest request) {
         Map<String, ConfigMigrationAsset> selected = new LinkedHashMap<>();
@@ -554,6 +557,15 @@ public class ConfigMigrationPackageService {
         return new ExpandedExport(assets, selections);
     }
 
+    /**
+     * 添加或{@code merge}导出资产；结果供后续流程传递或持久化。
+     *
+     * @param selected 已选择，供本方法添加或{@code merge}导出资产时使用
+     * @param selections {@code selections}，作为 {@code packageCodec.normalizeSelection} 的输入影响后续处理
+     * @param queue 队列，供本方法添加或{@code merge}导出资产时使用
+     * @param asset 资产，作为 {@code selected.putIfAbsent} 的输入影响后续处理
+     * @param selection 选择，作为 {@code packageCodec.normalizeSelection} 的输入影响后续处理
+     */
     private void addOrMergeExportAsset(
             Map<String, ConfigMigrationAsset> selected,
             Map<String, Object> selections,
@@ -615,11 +627,24 @@ public class ConfigMigrationPackageService {
         }
         return null;
     }
+    /**
+     * 校验{@code exportable}；不满足约束时阻止后续处理。
+     *
+     * @param asset 资产，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateExportable(ConfigMigrationAsset asset) {
         if (!ConfigMigrationAssetService.COMPLETE.equals(asset.getSnapshotCompleteness())) {
             throw new IllegalArgumentException("历史资产 " + asset.getBusinessKey() + " 不是完整发布快照，请重新发布");
         }
     }
+    /**
+     * 确保依赖存在；不满足约束时阻止后续处理。
+     *
+     * @param type 类型标识，决定后续依赖存在采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void ensureDependencyExists(String type, String key) {
         if (!isDependencyResolved(
                 Map.of("type", type, "key", key, "required", true),
@@ -629,6 +654,13 @@ public class ConfigMigrationPackageService {
             throw new IllegalArgumentException("依赖仅校验失败: " + type + ":" + key);
         }
     }
+    /**
+     * 解析包标签；输出作为后续校验或处理的输入。
+     *
+     * @param requested 请求，作为 {@code normalizeTag} 的输入影响后续处理
+     * @param assets {@code assets}，供本方法解析包标签时使用
+     * @return 解析后的包标签文本，供调用方比较或展示
+     */
     private String resolvePackageTag(String requested, List<ConfigMigrationAsset> assets) {
         if (StringUtils.hasText(requested)) {
             return normalizeTag(requested);
@@ -638,6 +670,12 @@ public class ConfigMigrationPackageService {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         return tags.size() == 1 ? tags.iterator().next() : assetService.generateMigrationTag();
     }
+    /**
+     * 规范化标签；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化标签的原始输入，结果供调用方继续使用
+     * @return 规范化后的标签文本，供调用方比较或展示
+     */
     private String normalizeTag(String value) {
         return value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9._-]", "-");
     }
@@ -696,6 +734,12 @@ public class ConfigMigrationPackageService {
         return sourceChanged ? "SOURCE_NEWER" : "CONSISTENT";
     }
 
+    /**
+     * 判断是否{@code fine}{@code grained}快照；判断结果决定调用方的后续分支。
+     *
+     * @param snapshot 快照，供本方法判断是否{@code fine}{@code grained}快照时使用
+     * @return {@code fine}{@code grained}快照条件成立时为 true，否则为 false
+     */
     private boolean isFineGrainedSnapshot(Map<String, Object> snapshot) {
         if (!(snapshot.get(ConfigMigrationPackageCodec.SELECTION_METADATA)
                 instanceof Map<?, ?> selection)) {
@@ -704,6 +748,13 @@ public class ConfigMigrationPackageService {
         return !Boolean.parseBoolean(String.valueOf(selection.get("full")));
     }
 
+    /**
+     * 判断{@code live}资产存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param assetType 资产类型标识，决定后续{@code live}资产存在采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @return {@code live}资产存在条件成立时为 true，否则为 false
+     */
     private boolean liveAssetExists(String assetType, String businessKey) {
         if (ConfigMigrationAssetService.ENTITY.equals(assetType)) {
             return entityMapper.findByEntityCode(businessKey).isPresent();
@@ -717,6 +768,14 @@ public class ConfigMigrationPackageService {
         return false;
     }
 
+    /**
+     * 处理{@code derive}{@code baseline}{@code hashes}，并将结果传给后续步骤。
+     *
+     * @param item 条目，作为 {@code eq} 的输入影响后续处理
+     * @param selection 选择，供本方法处理{@code derive}{@code baseline}{@code hashes}时使用
+     * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code derive}{@code baseline}{@code hashes}结果，供调用方继续处理
+     */
     private BaselineHashes deriveBaselineHashes(
             ConfigImportItem item,
             Map<String, Object> selection,
@@ -759,6 +818,14 @@ public class ConfigMigrationPackageService {
                         baselineTarget.getSnapshotJson(), selection));
     }
 
+    /**
+     * 查询{@code baseline}目标；查询结果供调用方展示或继续处理。
+     *
+     * @param assetType 资产类型标识，决定后续{@code baseline}目标采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param baseline {@code baseline}，供本方法查询{@code baseline}目标时使用
+     * @return 符合条件的配置迁移资产结果，供调用方继续处理
+     */
     private ConfigMigrationAsset findBaselineTarget(
             String assetType,
             String businessKey,
@@ -781,7 +848,13 @@ public class ConfigMigrationPackageService {
                 .getRecords().stream().findFirst().orElse(null);
     }
 
-    /** 同版本或同内容可能有多次发布历史，按版本及主键稳定选取，保留原业务筛选范围。 */
+    /**
+     * 同版本或同内容可能有多次发布历史，按版本及主键稳定选取，保留原业务筛选范围。
+     *
+     * @param assetType 资产类型标识，决定后续{@code baseline}目标查询采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code baseline}目标查询结果，供调用方继续处理
+     */
     private LambdaQueryWrapper<ConfigMigrationAsset> baselineTargetQuery(
             String assetType,
             String businessKey) {
@@ -813,7 +886,7 @@ public class ConfigMigrationPackageService {
             String reason = null;
             try {
                 resolved = isDependencyResolved(dependency, type, targetKey, packageAssets);
-            } catch (IllegalArgumentException | com.workflow.contracts.identity.position.OrganizationPositionDirectoryException exception) {
+            } catch (IllegalArgumentException | com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException exception) {
                 resolved = false;
                 reason = exception.getMessage();
             }
@@ -827,7 +900,11 @@ public class ConfigMigrationPackageService {
         return new DependencyResolution(missing.isEmpty(), missing);
     }
 
-    /** 发布前重查目标依赖，防止分析通过后账号、目录或映射已被删除或修改。 */
+    /**
+     * 发布前重查目标依赖，防止分析通过后账号、目录或映射已被删除或修改。
+     *
+     * @param items 条目，供本方法校验并获取已解析依赖集合时使用
+     */
     @Transactional(readOnly = true)
     public void requireResolvedDependencies(List<ConfigImportItem> items) {
         Map<String, PackageAsset> assets = items.stream().collect(java.util.stream.Collectors.toMap(
@@ -854,6 +931,7 @@ public class ConfigMigrationPackageService {
      * <p>支持 ENTITY/PROCESS/FORM/DICTIONARY/USER/ROLE/DEPT/GROUP/
      * FLOW_ACTION_HANDLER/CUSTOM_COMPONENT/DATA_PROVIDER 等类型。</p>
      *
+     * @param dependency 依赖，作为 {@code Boolean.parseBoolean} 的输入影响后续处理
      * @param type         依赖类型
      * @param key          依赖编码(经 mappedKey 转换后的目标键)
      * @param packageAssets 包内已含资产集合
@@ -956,7 +1034,13 @@ public class ConfigMigrationPackageService {
         return true;
     }
 
-    /** 同包字段优先于目标旧字段；只接受用户单选/多选关系，不把普通字符串字段当成人员。 */
+    /**
+     * 同包字段优先于目标旧字段；只接受用户单选/多选关系，不把普通字符串字段当成人员。
+     *
+     * @param coordinate 坐标，供本方法查询目标用户字段时使用
+     * @param packageAssets 包{@code assets}，供本方法查询目标用户字段时使用
+     * @return 目标用户字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> findTargetUserField(String coordinate, Map<String, PackageAsset> packageAssets) {
         String[] parts = coordinate.split("/", 2);
         if (parts.length != 2) return Map.of();
@@ -986,13 +1070,27 @@ public class ConfigMigrationPackageService {
         return isUserReferenceField(value) ? value : Map.of();
     }
 
+    /**
+     * 判断是否用户引用字段；判断结果决定调用方的后续分支。
+     *
+     * @param field 字段，供本方法判断是否用户引用字段时使用
+     * @return 用户引用字段条件成立时为 true，否则为 false
+     */
     private boolean isUserReferenceField(Map<String, Object> field) {
         String type = String.valueOf(field.get("fieldType"));
         return "USER".equals(type) || (Set.of("REFERENCE", "MULTI_REFERENCE").contains(type)
                 && "sys_user".equals(field.get("refEntityCode")));
     }
 
-    /** 判断接口扩展或组件是否已作为所属实体快照的内嵌定义随包迁移。 */
+    /**
+     * 判断接口扩展或组件是否已作为所属实体快照的内嵌定义随包迁移。
+     *
+     * @param snapshot 快照，作为 {@code documents.readMapList} 的输入影响后续处理
+     * @param dependency 依赖，作为 {@code componentVersion} 的输入影响后续处理
+     * @param type 类型标识，决定后续依赖{@code provided}快照采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 依赖{@code provided}快照条件成立时为 true，否则为 false
+     */
     private boolean dependencyProvidedBySnapshot(
             Map<String, Object> snapshot,
             Map<String, Object> dependency,
@@ -1024,6 +1122,12 @@ public class ConfigMigrationPackageService {
         return false;
     }
 
+    /**
+     * 生成组件名称文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的组件名称文本，供调用方比较或展示
+     */
     private String componentName(String key) {
         if (!StringUtils.hasText(key)) {
             return key;
@@ -1032,6 +1136,13 @@ public class ConfigMigrationPackageService {
         return separator > 0 ? key.substring(0, separator) : key;
     }
 
+    /**
+     * 处理组件版本，并将结果传给后续步骤。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的组件版本结果，供调用方继续处理
+     */
     private Integer componentVersion(String key, Integer fallback) {
         if (fallback != null || !StringUtils.hasText(key)) {
             return fallback;
@@ -1040,6 +1151,12 @@ public class ConfigMigrationPackageService {
         return separator > 0 ? integer(key.substring(separator + 1)) : null;
     }
 
+    /**
+     * 判断包{@code provides}实体条件是否成立，供调用方选择后续分支。
+     *
+     * @param snapshot 快照，作为 {@code packageCodec.selectionOf} 的输入影响后续处理
+     * @return 包{@code provides}实体条件成立时为 true，否则为 false
+     */
     private boolean packageProvidesEntity(Map<String, Object> snapshot) {
         Map<String, Object> selection = packageCodec.selectionOf(snapshot);
         Set<String> sections = stringSet(selection.get("sections"));
@@ -1047,6 +1164,12 @@ public class ConfigMigrationPackageService {
                 || (sections.contains("definition") && sections.contains("fields"));
     }
 
+    /**
+     * 判断包{@code provides}流程条件是否成立，供调用方选择后续分支。
+     *
+     * @param snapshot 快照，作为 {@code packageCodec.selectionOf} 的输入影响后续处理
+     * @return 包{@code provides}流程条件成立时为 true，否则为 false
+     */
     private boolean packageProvidesProcess(Map<String, Object> snapshot) {
         Map<String, Object> selection = packageCodec.selectionOf(snapshot);
         Set<String> sections = stringSet(selection.get("sections"));
@@ -1054,11 +1177,25 @@ public class ConfigMigrationPackageService {
                 || (sections.contains("definition") && sections.contains("bpmnXml"));
     }
 
+    /**
+     * 判断包包含表单条件是否成立，供调用方选择后续分支。
+     *
+     * @param snapshot 快照，作为 {@code documents.readMapList} 的输入影响后续处理
+     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
+     * @return 包包含表单条件成立时为 true，否则为 false
+     */
     private boolean packageContainsForm(Map<String, Object> snapshot, String formKey) {
         return documents.readMapList(snapshot.get("forms")).stream()
                 .anyMatch(form -> Objects.equals(
                         formKey, String.valueOf(form.get("formKey"))));
     }
+    /**
+     * 生成{@code mapped}键文本，供后续匹配或展示。
+     *
+     * @param type 类型标识，决定后续{@code mapped}键采用的处理分支
+     * @param sourceKey 来源键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code mapped}键文本，供调用方比较或展示
+     */
     private String mappedKey(String type, String sourceKey) {
         ConfigEnvironmentMapping mapping = environmentMappingMapper.selectOne(
                 new LambdaQueryWrapper<ConfigEnvironmentMapping>()
@@ -1067,6 +1204,13 @@ public class ConfigMigrationPackageService {
                         .eq(ConfigEnvironmentMapping::getEnabled, true));
         return mapping == null ? sourceKey : mapping.getTargetKey();
     }
+    /**
+     * 判断是否具有映射；判断结果决定调用方的后续分支。
+     *
+     * @param type 类型标识，决定后续映射采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 映射条件成立时为 true，否则为 false
+     */
     private boolean hasMapping(String type, String key) {
         return environmentMappingMapper.selectCount(new LambdaQueryWrapper<ConfigEnvironmentMapping>()
                 .eq(ConfigEnvironmentMapping::getSourceType, type)
@@ -1146,6 +1290,12 @@ public class ConfigMigrationPackageService {
         }
         return risks;
     }
+    /**
+     * 整理{@code analyze}系统实体界面{@code risks}数据，供调用方遍历或继续处理。
+     *
+     * @param item 条目，作为 {@code documents.readMap} 的输入影响后续处理
+     * @return 配置迁移包集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> analyzeSystemEntityUiRisks(
             ConfigImportItem item) {
         List<Map<String, Object>> risks = new ArrayList<>();
@@ -1231,6 +1381,12 @@ public class ConfigMigrationPackageService {
         }
         return risks;
     }
+    /**
+     * 收集已引用字段编码集合；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集已引用字段编码集合的原始输入，结果供调用方继续使用
+     * @param result 结果，作为 {@code collection.forEach} 的输入影响后续处理
+     */
     private void collectReferencedFieldCodes(
             Object value,
             Set<String> result) {
@@ -1258,6 +1414,15 @@ public class ConfigMigrationPackageService {
             }
         }
     }
+    /**
+     * 整理风险数据，供调用方遍历或继续处理。
+     *
+     * @param level 层级，作为 {@code value.put} 的输入影响后续处理
+     * @param code 编码，后续用于处理风险时定位或关联目标
+     * @param fieldCode 字段编码，后续用于处理风险时定位或关联目标
+     * @param message 消息，作为 {@code value.put} 的输入影响后续处理
+     * @return 风险键值结果，供调用方继续处理
+     */
     private Map<String, Object> risk(String level, String code, String fieldCode, String message) {
         Map<String, Object> value = new LinkedHashMap<>();
         value.put("level", level);
@@ -1266,6 +1431,14 @@ public class ConfigMigrationPackageService {
         value.put("message", message);
         return value;
     }
+    /**
+     * 生成{@code summarize}失败文本，供后续匹配或展示。
+     *
+     * @param missing 缺失，作为 {@code reasons.add} 的输入影响后续处理
+     * @param risks {@code risks}，供本方法处理{@code summarize}失败时使用
+     * @param comparisonStatus 比较状态标识，决定后续{@code summarize}失败采用的处理分支
+     * @return 处理后的{@code summarize}失败文本，供调用方比较或展示
+     */
     private String summarizeFailure(List<Map<String, Object>> missing,
                                     List<Map<String, Object>> risks,
                                     String comparisonStatus) {
@@ -1282,6 +1455,13 @@ public class ConfigMigrationPackageService {
         }
         return String.join("；", reasons);
     }
+    /**
+     * 处理必填导入，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的必填导入结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ConfigImportPackage requiredImport(String id) {
         ConfigImportPackage importPackage = importPackageMapper.selectById(id);
         if (importPackage == null) {
@@ -1289,6 +1469,12 @@ public class ConfigMigrationPackageService {
         }
         return importPackage;
     }
+    /**
+     * 整理导出摘要数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理导出摘要的原始输入，结果供调用方继续使用
+     * @return 导出摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> exportSummary(ConfigExportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -1304,6 +1490,12 @@ public class ConfigMigrationPackageService {
         result.put("lastDownloadAt", value.getLastDownloadAt());
         return result;
     }
+    /**
+     * 整理导入摘要数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理导入摘要的原始输入，结果供调用方继续使用
+     * @return 导入摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> importSummary(ConfigImportPackage value) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", value.getId());
@@ -1323,6 +1515,12 @@ public class ConfigMigrationPackageService {
         result.put("errorMessage", value.getErrorMessage());
         return result;
     }
+    /**
+     * 整理字符串设置数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串设置的原始输入，结果供调用方继续使用
+     * @return 配置迁移包集合，供调用方遍历或展示
+     */
     private Set<String> stringSet(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return Set.of();
@@ -1333,6 +1531,12 @@ public class ConfigMigrationPackageService {
                 .collect(java.util.stream.Collectors.toCollection(
                         LinkedHashSet::new));
     }
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return null;
@@ -1343,21 +1547,52 @@ public class ConfigMigrationPackageService {
             return null;
         }
     }
+    /**
+     * 封装{@code expanded}导出的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param assets {@code assets}，保存在对象中供后续校验、查询或展示
+     * @param selections {@code selections}，保存在对象中供后续校验、查询或展示
+     */
     private record ExpandedExport(
             List<ConfigMigrationAsset> assets,
             Map<String, Object> selections) {
     }
+    /**
+     * 封装依赖资产的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param asset 资产，保存在对象中供后续校验、查询或展示
+     * @param selection 选择，保存在对象中供后续校验、查询或展示
+     */
     private record DependencyAsset(
             ConfigMigrationAsset asset,
             Map<String, Object> selection) {
     }
+    /**
+     * 封装包资产的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param assetType 资产类型标识，决定后续包资产采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     */
     private record PackageAsset(
             String assetType,
             String businessKey,
             Map<String, Object> snapshot) {
     }
+    /**
+     * 封装{@code baseline}{@code hashes}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sourceHash 来源哈希，保存在对象中供后续校验、查询或展示
+     * @param targetHash 目标哈希，保存在对象中供后续校验、查询或展示
+     */
     private record BaselineHashes(String sourceHash, String targetHash) {
     }
+    /**
+     * 封装依赖解析的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param resolved 已解析，保存在对象中供后续校验、查询或展示
+     * @param missing 缺失，保存在对象中供后续校验、查询或展示
+     */
     private record DependencyResolution(boolean resolved, List<Map<String, Object>> missing) {
     }
 }

@@ -1,23 +1,23 @@
 package com.workflow.process.assignment.relative;
 
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.PositionDefinitionView;
-import com.workflow.contracts.identity.position.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.PositionHolderResolution;
-import com.workflow.contracts.identity.position.PositionHolderView;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolutionException;
+import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
+import com.workflow.contracts.identity.position.model.PositionDefinitionView;
+import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.contracts.identity.position.model.PositionHolderResolution;
+import com.workflow.contracts.identity.position.model.PositionHolderView;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.error.PersonResolutionException;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
-import com.workflow.contracts.identity.resolver.PersonResolverDescriptor;
+import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig.Anchor;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig.LookupMode;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig.MultipleMatchPolicy;
@@ -57,6 +57,12 @@ public class RelativeOrgPositionPersonResolver
     private final OrganizationPositionDirectoryPort directoryPort;
     private final InitiatorOrganizationSnapshotService snapshotService;
 
+    /**
+     * 初始化相对组织位置人员解析器，保存构造参数供后续方法使用。
+     *
+     * @param directoryPort 目录端口依赖，保存到当前对象供后续业务方法调用
+     * @param snapshotService 快照服务依赖，保存到当前对象供后续业务方法调用
+     */
     public RelativeOrgPositionPersonResolver(
             OrganizationPositionDirectoryPort directoryPort,
             InitiatorOrganizationSnapshotService snapshotService) {
@@ -64,16 +70,31 @@ public class RelativeOrgPositionPersonResolver
         this.snapshotService = snapshotService;
     }
 
+    /**
+     * 处理实现来源，并将结果传给后续步骤。
+     *
+     * @return 处理后的实现来源结果，供调用方继续处理
+     */
     @Override
     public ExtensionImplementationOrigin implementationOrigin() {
         return ExtensionImplementationOrigin.PLATFORM;
     }
 
+    /**
+     * 处理描述，并将结果传给后续步骤。
+     *
+     * @return 处理后的描述结果，供调用方继续处理
+     */
     @Override
     public PersonResolverDescriptor descriptor() {
         return DESCRIPTOR;
     }
 
+    /**
+     * 生成解析器编码文本，供后续匹配或展示。
+     *
+     * @return 处理后的解析器编码文本，供调用方比较或展示
+     */
     @Override
     public String resolverCode() {
         return RelativeOrgPositionConfig.RESOLVER_CODE;
@@ -81,6 +102,8 @@ public class RelativeOrgPositionPersonResolver
 
     /**
      * 发布阶段只验证静态职务与层级配置，不会尝试证明未来每个组织节点都有任职人。
+     *
+     * @param request 本次请求，后续经校验后用于校验相对组织位置人员解析器
      */
     @Override
     public void validate(
@@ -110,6 +133,9 @@ public class RelativeOrgPositionPersonResolver
 
     /**
      * 运行时解析始终以部署 BPMN 中的配置和实例内快照为权威输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析相对组织位置人员解析器
+     * @return 解析后的相对组织位置人员解析器结果，供调用方继续处理
      */
     @Override
     public PersonResolveResult resolve(PersonResolveRequest request) {
@@ -122,13 +148,17 @@ public class RelativeOrgPositionPersonResolver
         return new PersonResolveResult(
                 resolved.holders().stream()
                         .map(PositionHolderView::username)
-                        .map(com.workflow.contracts.identity.resolver.PersonPrincipal::user)
+                        .map(com.workflow.contracts.process.assignment.model.PersonPrincipal::user)
                         .toList(),
                 resolved.trace().warnings());
     }
 
     /**
      * 使用样例用户捕获当前组织快照，并调用与运行时完全相同的层级和多人策略。
+     *
+     * @param sampleUserIdOrUsername {@code sample}用户ID或用户名，后续用于处理预览时匹配或展示
+     * @param extraParams 附加参数，作为 {@code RelativeOrgPositionConfig.parse} 的输入影响后续处理
+     * @return 处理后的预览结果，供调用方继续处理
      */
     public RelativeOrgPositionPreview preview(
             String sampleUserIdOrUsername,
@@ -168,6 +198,13 @@ public class RelativeOrgPositionPersonResolver
                 trace.directoryRevision);
     }
 
+    /**
+     * 解析位置；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续位置的处理规则
+     * @param snapshot 快照，作为 {@code chainFromAnchor} 的输入影响后续处理
+     * @return 解析后的位置结果，供调用方继续处理
+     */
     private ResolvedPosition resolvePosition(
             RelativeOrgPositionConfig config,
             InitiatorOrganizationSnapshot snapshot) {
@@ -196,6 +233,12 @@ public class RelativeOrgPositionPersonResolver
         return new ResolvedPosition(selected, trace);
     }
 
+    /**
+     * 校验{@code initiator}；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验{@code initiator}
+     * @param snapshot 快照，供本方法校验{@code initiator}时使用
+     */
     private void validateInitiator(
             PersonResolveRequest request,
             InitiatorOrganizationSnapshot snapshot) {
@@ -215,6 +258,11 @@ public class RelativeOrgPositionPersonResolver
         }
     }
 
+    /**
+     * 校验并获取启用位置；不满足约束时阻止后续处理。
+     *
+     * @param positionCode 位置编码，后续用于校验并获取启用位置时定位或关联目标
+     */
     private void requireEnabledPosition(String positionCode) {
         try {
             directoryPort.requireEnabledPosition(positionCode);
@@ -227,6 +275,13 @@ public class RelativeOrgPositionPersonResolver
         }
     }
 
+    /**
+     * 整理链起始锚点数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code List.copyOf} 的输入影响后续处理
+     * @param anchor 锚点，供本方法处理链起始锚点时使用
+     * @return 组织单元快照集合，供调用方遍历或展示
+     */
     private List<OrganizationUnitSnapshot> chainFromAnchor(
             InitiatorOrganizationSnapshot snapshot,
             Anchor anchor) {
@@ -259,6 +314,16 @@ public class RelativeOrgPositionPersonResolver
                 Map.of("anchorUnitId", anchorId));
     }
 
+    /**
+     * 解析精确；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续精确的处理规则
+     * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
+     * @param depth 深度，作为 {@code chain.get} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code requireHolders} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
+     * @return 位置持有者视图集合，供调用方遍历或展示
+     */
     private List<PositionHolderView> resolveExact(
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
@@ -282,6 +347,15 @@ public class RelativeOrgPositionPersonResolver
         return requireHolders(config, unit, asOf, depth, trace);
     }
 
+    /**
+     * 解析{@code nearest}；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续{@code nearest}的处理规则
+     * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code query} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code requireActiveUnit} 的输入影响后续处理
+     * @return 位置持有者视图集合，供调用方遍历或展示
+     */
     private List<PositionHolderView> resolveNearest(
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
@@ -323,6 +397,15 @@ public class RelativeOrgPositionPersonResolver
                 trace.details(config, null));
     }
 
+    /**
+     * 解析业务层级；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续业务层级的处理规则
+     * @param chain 链，作为 {@code requireActiveUnit} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code requireHolders} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code requireEligibleUnit} 的输入影响后续处理
+     * @return 位置持有者视图集合，供调用方遍历或展示
+     */
     private List<PositionHolderView> resolveBusinessLevel(
             RelativeOrgPositionConfig config,
             List<OrganizationUnitSnapshot> chain,
@@ -363,6 +446,16 @@ public class RelativeOrgPositionPersonResolver
         return requireHolders(config, unit, asOf, depth, trace);
     }
 
+    /**
+     * 校验并获取持有者集合；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续持有者集合的处理规则
+     * @param unit 单元，作为 {@code query} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code query} 的输入影响后续处理
+     * @param depth 深度，作为 {@code query} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code query} 的输入影响后续处理
+     * @return 位置持有者视图集合，供调用方遍历或展示
+     */
     private List<PositionHolderView> requireHolders(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit,
@@ -385,6 +478,16 @@ public class RelativeOrgPositionPersonResolver
         throw directoryFailure(config, resolution, trace);
     }
 
+    /**
+     * 查询相对组织位置人员解析器；查询结果供调用方展示或继续处理。
+     *
+     * @param config 配置内容，决定后续相对组织位置人员解析器的处理规则
+     * @param unit 单元，作为 {@code failure} 的输入影响后续处理
+     * @param asOf {@code as}，供本方法查询相对组织位置人员解析器时使用
+     * @param depth 深度，作为 {@code trace.scanned} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
+     * @return 查询后的相对组织位置人员解析器结果，供调用方继续处理
+     */
     private PositionHolderResolution query(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit,
@@ -405,6 +508,14 @@ public class RelativeOrgPositionPersonResolver
         return resolution;
     }
 
+    /**
+     * 构造目录失败异常，供调用方区分失败原因。
+     *
+     * @param config 配置内容，决定后续目录失败的处理规则
+     * @param resolution 解析，作为 {@code failure} 的输入影响后续处理
+     * @param trace 追踪，供本方法处理目录失败时使用
+     * @return 处理后的目录失败结果，供调用方继续处理
+     */
     private PersonResolutionException directoryFailure(
             RelativeOrgPositionConfig config,
             PositionHolderResolution resolution,
@@ -423,6 +534,14 @@ public class RelativeOrgPositionPersonResolver
                 trace.details(config, resolution.organizationUnitId()));
     }
 
+    /**
+     * 应用{@code multiple}策略，并将结果传给后续步骤。
+     *
+     * @param config 配置内容，决定后续{@code multiple}策略的处理规则
+     * @param rawHolders 原始持有者集合，供本方法应用{@code multiple}策略时使用
+     * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
+     * @return 位置持有者视图集合，供调用方遍历或展示
+     */
     private List<PositionHolderView> applyMultiplePolicy(
             RelativeOrgPositionConfig config,
             List<PositionHolderView> rawHolders,
@@ -462,6 +581,13 @@ public class RelativeOrgPositionPersonResolver
                 trace.details(config, trace.matchedUnitId));
     }
 
+    /**
+     * 判断{@code eligible}条件是否成立，供调用方选择后续分支。
+     *
+     * @param config 配置内容，决定后续{@code eligible}的处理规则
+     * @param unit 单元，供本方法处理{@code eligible}时使用
+     * @return {@code eligible}条件成立时为 true，否则为 false
+     */
     private boolean eligible(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit) {
@@ -470,6 +596,14 @@ public class RelativeOrgPositionPersonResolver
                 unit.type().trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * 校验并获取{@code eligible}单元；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续{@code eligible}单元的处理规则
+     * @param unit 单元，作为 {@code trace.scanned} 的输入影响后续处理
+     * @param depth 深度，作为 {@code trace.scanned} 的输入影响后续处理
+     * @param trace 追踪，作为 {@code failure} 的输入影响后续处理
+     */
     private void requireEligibleUnit(
             RelativeOrgPositionConfig config,
             OrganizationUnitSnapshot unit,
@@ -487,6 +621,10 @@ public class RelativeOrgPositionPersonResolver
     /**
      * 冻结链只冻结路由 ID，不冻结节点存活状态；每次跨越前都必须向目录确认
      * 该 ID 仍活跃，否则 Fail Closed 而不是沿冻结的上一层 ID 继续路由。
+     *
+     * @param frozenUnit {@code frozen}单元，作为 {@code directoryPort.requireActiveOrganizationUnit} 的输入影响后续处理
+     * @param depth 深度，作为 {@code trace.scanned} 的输入影响后续处理
+     * @param trace 追踪，供本方法校验并获取活动单元时使用
      */
     private void requireActiveUnit(
             OrganizationUnitSnapshot frozenUnit,
@@ -517,6 +655,13 @@ public class RelativeOrgPositionPersonResolver
         trace.scanned(frozenUnit, depth, "UNIT_ACTIVE");
     }
 
+    /**
+     * 校验适用单元类型集合；不满足约束时阻止后续处理。
+     *
+     * @param position 位置，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param config 配置内容，决定后续适用单元类型集合的处理规则
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateApplicableUnitTypes(
             PositionDefinitionView position,
             RelativeOrgPositionConfig config) {
@@ -540,6 +685,14 @@ public class RelativeOrgPositionPersonResolver
         }
     }
 
+    /**
+     * 构造失败异常，供调用方区分失败原因。
+     *
+     * @param code 编码，后续用于处理失败时定位或关联目标
+     * @param message 消息，作为 {@code PersonResolutionException} 的输入影响后续处理
+     * @param details 详情，作为 {@code PersonResolutionException} 的输入影响后续处理
+     * @return 处理后的失败结果，供调用方继续处理
+     */
     private PersonResolutionException failure(
             String code,
             String message,
@@ -547,6 +700,15 @@ public class RelativeOrgPositionPersonResolver
         return new PersonResolutionException(code, message, details);
     }
 
+    /**
+     * 构造失败异常，供调用方区分失败原因。
+     *
+     * @param code 编码，后续用于处理失败时定位或关联目标
+     * @param message 消息，作为 {@code PersonResolutionException} 的输入影响后续处理
+     * @param details 详情，作为 {@code PersonResolutionException} 的输入影响后续处理
+     * @param cause 原因，作为 {@code PersonResolutionException} 的输入影响后续处理
+     * @return 处理后的失败结果，供调用方继续处理
+     */
     private PersonResolutionException failure(
             String code,
             String message,
@@ -555,6 +717,11 @@ public class RelativeOrgPositionPersonResolver
         return new PersonResolutionException(code, message, details, cause);
     }
 
+    /**
+     * 整理描述结构数据，供调用方遍历或继续处理。
+     *
+     * @return 描述结构键值结果，供调用方继续处理
+     */
     private static Map<String, Object> descriptorSchema() {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -579,6 +746,13 @@ public class RelativeOrgPositionPersonResolver
         private String matchedUnitId;
         private String directoryRevision;
 
+        /**
+         * 处理{@code scanned}，并将结果传给后续步骤。
+         *
+         * @param unit 单元，作为 {@code RelativeOrgPositionPreview.ScannedUnit} 的输入影响后续处理
+         * @param depth 深度，供本方法处理{@code scanned}时使用
+         * @param result 结果，供本方法处理{@code scanned}时使用
+         */
         private void scanned(
                 OrganizationUnitSnapshot unit,
                 int depth,
@@ -599,14 +773,31 @@ public class RelativeOrgPositionPersonResolver
             scannedUnits.add(value);
         }
 
+        /**
+         * 整理{@code scanned}{@code units}数据，供调用方遍历或继续处理。
+         *
+         * @return 相对组织位置预览集合，供调用方遍历或展示
+         */
         private List<RelativeOrgPositionPreview.ScannedUnit> scannedUnits() {
             return List.copyOf(scannedUnits);
         }
 
+        /**
+         * 整理{@code warnings}数据，供调用方遍历或继续处理。
+         *
+         * @return 解析追踪集合，供调用方遍历或展示
+         */
         private List<String> warnings() {
             return List.copyOf(warnings);
         }
 
+        /**
+         * 整理详情数据，供调用方遍历或继续处理。
+         *
+         * @param config 配置内容，决定后续详情的处理规则
+         * @param unitId 单元ID，后续用于处理详情时定位或关联目标
+         * @return 详情键值结果，供调用方继续处理
+         */
         private Map<String, Object> details(
                 RelativeOrgPositionConfig config,
                 String unitId) {
@@ -626,6 +817,12 @@ public class RelativeOrgPositionPersonResolver
         }
     }
 
+    /**
+     * 封装已解析位置的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param holders 持有者集合，保存在对象中供后续校验、查询或展示
+     * @param trace 追踪，保存在对象中供后续校验、查询或展示
+     */
     private record ResolvedPosition(
             List<PositionHolderView> holders,
             ResolutionTrace trace) {

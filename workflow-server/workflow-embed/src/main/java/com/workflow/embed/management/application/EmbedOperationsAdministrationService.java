@@ -1,6 +1,6 @@
 package com.workflow.embed.management.application;
 
-import com.workflow.contracts.identity.CurrentActor;
+import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
@@ -59,6 +59,15 @@ public class EmbedOperationsAdministrationService {
     private final EmbedLifecycleAudit lifecycleAudit;
     private final Clock clock;
 
+    /**
+     * 初始化嵌入式操作集合管理服务，保存构造参数供后续方法使用。
+     *
+     * @param repository 仓储依赖，保存到当前对象供后续业务方法调用
+     * @param terminationService 终止服务依赖，保存到当前对象供后续业务方法调用
+     * @param actorProvider 操作人提供者依赖，保存到当前对象供后续业务方法调用
+     * @param lifecycleAudit 生命周期审计依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedOperationsAdministrationService(
             EmbedOperationsRepository repository,
             EmbedSessionTerminationService terminationService,
@@ -72,6 +81,12 @@ public class EmbedOperationsAdministrationService {
         this.clock = clock;
     }
 
+    /**
+     * 查询启动记录；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code normalizeQuery} 的输入影响后续处理
+     * @return 符合条件的{@code page<launch}{@code summary>}结果，供调用方继续处理
+     */
     public Page<LaunchSummary> findLaunches(LaunchQuery query) {
         QueryWindow window = normalizeQuery(
                 query.applicationId(), query.viewId(), query.status(), LAUNCH_STATUSES,
@@ -90,6 +105,12 @@ public class EmbedOperationsAdministrationService {
         return new Page<>(items, next);
     }
 
+    /**
+     * 查询会话；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code normalizeQuery} 的输入影响后续处理
+     * @return 符合条件的{@code page<session}{@code summary>}结果，供调用方继续处理
+     */
     public Page<SessionSummary> findSessions(SessionQuery query) {
         QueryWindow window = normalizeQuery(
                 query.applicationId(), query.viewId(), query.status(), SESSION_STATUSES,
@@ -108,7 +129,13 @@ public class EmbedOperationsAdministrationService {
         return new Page<>(items, next);
     }
 
-    /** Launch 撤销与 required 审计共享当前事务，审计入队失败会回滚状态变更。 */
+    /**
+     * Launch 撤销与 required 审计共享当前事务，审计入队失败会回滚状态变更。
+     *
+     * @param launchId 启动记录ID，后续用于撤销启动记录时定位或关联目标
+     * @param correlation 关联，供本方法撤销启动记录时使用
+     * @return 撤销后的启动记录结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public LaunchRevocation revokeLaunch(
             String launchId,
@@ -135,6 +162,14 @@ public class EmbedOperationsAdministrationService {
                 outcome == LaunchRevokeOutcome.ALREADY_REVOKED);
     }
 
+    /**
+     * 撤销会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param sessionId 会话ID，后续用于撤销会话时定位或关联目标
+     * @param reason 原因，作为 {@code terminationService.terminateById} 的输入影响后续处理
+     * @param correlation 关联，供本方法撤销会话时使用
+     * @return 撤销后的会话结果，供调用方继续处理
+     */
     public SessionRevocation revokeSession(
             String sessionId,
             String reason,
@@ -151,6 +186,16 @@ public class EmbedOperationsAdministrationService {
         return sessionRevocation(result);
     }
 
+    /**
+     * 撤销视图会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param viewId 视图ID，后续用于撤销视图会话时定位或关联目标
+     * @param reason 原因，作为 {@code revokeSessions} 的输入影响后续处理
+     * @param cursor 游标，作为 {@code revokeSessions} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param correlation 关联，作为 {@code revokeSessions} 的输入影响后续处理
+     * @return 撤销后的视图会话结果，供调用方继续处理
+     */
     public BulkSessionRevocation revokeViewSessions(
             String viewId,
             String reason,
@@ -160,6 +205,16 @@ public class EmbedOperationsAdministrationService {
         return revokeSessions(Scope.VIEW, viewId, reason, cursor, limit, correlation);
     }
 
+    /**
+     * 撤销应用会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param applicationId 应用ID，后续用于撤销应用会话时定位或关联目标
+     * @param reason 原因，作为 {@code revokeSessions} 的输入影响后续处理
+     * @param cursor 游标，作为 {@code revokeSessions} 的输入影响后续处理
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @param correlation 关联，作为 {@code revokeSessions} 的输入影响后续处理
+     * @return 撤销后的应用会话结果，供调用方继续处理
+     */
     public BulkSessionRevocation revokeApplicationSessions(
             String applicationId,
             String reason,
@@ -170,6 +225,17 @@ public class EmbedOperationsAdministrationService {
                 Scope.APPLICATION, applicationId, reason, cursor, limit, correlation);
     }
 
+    /**
+     * 撤销会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param scope 作用域，作为 {@code validateId} 的输入影响后续处理
+     * @param scopeId 作用域ID，后续用于撤销会话时定位或关联目标
+     * @param reason 原因，作为 {@code normalizeReason} 的输入影响后续处理
+     * @param cursor 游标，作为 {@code decodeBulkCursor} 的输入影响后续处理
+     * @param requestedLimit 请求上限，作为 {@code normalizeLimit} 的输入影响后续处理
+     * @param correlation 关联，供本方法撤销会话时使用
+     * @return 撤销后的会话结果，供调用方继续处理
+     */
     private BulkSessionRevocation revokeSessions(
             Scope scope,
             String scopeId,
@@ -207,6 +273,19 @@ public class EmbedOperationsAdministrationService {
                 batch.size(), revoked, alreadyTerminal, nextCursor);
     }
 
+    /**
+     * 规范化查询；输出作为后续校验或处理的输入。
+     *
+     * @param rawApplicationId 原始应用ID，后续用于规范化查询时定位或关联目标
+     * @param rawViewId 原始视图ID，后续用于规范化查询时定位或关联目标
+     * @param rawStatus 原始状态标识，决定后续查询采用的处理分支
+     * @param allowedStatuses 允许{@code statuses}，作为 {@code optionalStatus} 的输入影响后续处理
+     * @param rawFrom 原始起始，供本方法规范化查询时使用
+     * @param rawTo 原始截止，供本方法规范化查询时使用
+     * @param rawCursor 原始游标，作为 {@code decodeListCursor} 的输入影响后续处理
+     * @param rawLimit 原始上限，供本方法规范化查询时使用
+     * @return 规范化后的查询结果，供调用方继续处理
+     */
     private QueryWindow normalizeQuery(
             String rawApplicationId,
             String rawViewId,
@@ -240,6 +319,13 @@ public class EmbedOperationsAdministrationService {
                 normalizeLimit(rawLimit, DEFAULT_PAGE_SIZE));
     }
 
+    /**
+     * 生成可选ID文本，供后续匹配或展示。
+     *
+     * @param value 待处理可选ID的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code validateId} 的输入影响后续处理
+     * @return 处理后的可选ID文本，供调用方比较或展示
+     */
     private static String optionalId(String value, String field) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -248,6 +334,13 @@ public class EmbedOperationsAdministrationService {
         return value;
     }
 
+    /**
+     * 生成可选状态文本，供后续匹配或展示。
+     *
+     * @param value 待处理可选状态的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法处理可选状态时使用
+     * @return 处理后的可选状态文本，供调用方比较或展示
+     */
     private static String optionalStatus(String value, Set<String> allowed) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -259,6 +352,13 @@ public class EmbedOperationsAdministrationService {
         return normalized;
     }
 
+    /**
+     * 规范化上限；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化上限的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @return 规范化后的上限结果，供调用方继续处理
+     */
     private static int normalizeLimit(Integer value, int defaultValue) {
         int normalized = value == null ? defaultValue : value;
         if (normalized < 1 || normalized > MAX_PAGE_SIZE) {
@@ -267,6 +367,12 @@ public class EmbedOperationsAdministrationService {
         return normalized;
     }
 
+    /**
+     * 规范化原因；输出作为后续校验或处理的输入。
+     *
+     * @param reason 原因，作为 {@code invalid} 的输入影响后续处理
+     * @return 规范化后的原因文本，供调用方比较或展示
+     */
     private static String normalizeReason(String reason) {
         if (!StringUtils.hasText(reason)) {
             return "ADMINISTRATIVE_REVOKE";
@@ -278,16 +384,35 @@ public class EmbedOperationsAdministrationService {
         return value;
     }
 
+    /**
+     * 校验ID；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验ID的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     */
     private static void validateId(String value, String field) {
         if (value == null || !SAFE_ID.matcher(value).matches()) {
             throw invalid(field + " 格式不合法");
         }
     }
 
+    /**
+     * 编码列表游标；输出作为后续校验或处理的输入。
+     *
+     * @param time 时间，后续用于判断有效期或展示该事件的发生时间
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 编码后的列表游标文本，供调用方比较或展示
+     */
     private static String encodeListCursor(Instant time, String id) {
         return encode("v1\n" + time + "\n" + id);
     }
 
+    /**
+     * 解码列表游标；输出作为后续校验或处理的输入。
+     *
+     * @param cursor 游标，作为 {@code decode} 的输入影响后续处理
+     * @return 解码后的列表游标结果，供调用方继续处理
+     */
     private static ListCursor decodeListCursor(String cursor) {
         if (!StringUtils.hasText(cursor)) {
             return null;
@@ -308,10 +433,22 @@ public class EmbedOperationsAdministrationService {
         }
     }
 
+    /**
+     * 编码批量操作游标；输出作为后续校验或处理的输入。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 编码后的批量操作游标文本，供调用方比较或展示
+     */
     private static String encodeBulkCursor(String id) {
         return encode("v1\n" + id);
     }
 
+    /**
+     * 解码批量操作游标；输出作为后续校验或处理的输入。
+     *
+     * @param cursor 游标，作为 {@code decode} 的输入影响后续处理
+     * @return 解码后的批量操作游标文本，供调用方比较或展示
+     */
     private static String decodeBulkCursor(String cursor) {
         if (!StringUtils.hasText(cursor)) {
             return null;
@@ -325,11 +462,23 @@ public class EmbedOperationsAdministrationService {
         return parts[1];
     }
 
+    /**
+     * 编码嵌入式操作集合管理；输出作为后续校验或处理的输入。
+     *
+     * @param value 待编码嵌入式操作集合管理的原始输入，结果供调用方继续使用
+     * @return 编码后的嵌入式操作集合管理文本，供调用方比较或展示
+     */
     private static String encode(String value) {
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * 解码嵌入式操作集合管理；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码嵌入式操作集合管理的原始输入，结果供调用方继续使用
+     * @return 解码后的嵌入式操作集合管理文本，供调用方比较或展示
+     */
     private static String decode(String value) {
         if (!SAFE_CURSOR.matcher(value).matches()) {
             throw invalid("cursor 格式不合法");
@@ -345,6 +494,12 @@ public class EmbedOperationsAdministrationService {
         }
     }
 
+    /**
+     * 处理会话撤销，并将结果传给后续步骤。
+     *
+     * @param result 结果，作为 {@code SessionRevocation} 的输入影响后续处理
+     * @return 处理后的会话撤销结果，供调用方继续处理
+     */
     private static SessionRevocation sessionRevocation(EmbedSessionTerminationResult result) {
         boolean revoked = result.transitioned() && "REVOKED".equals(result.status());
         return new SessionRevocation(
@@ -352,17 +507,47 @@ public class EmbedOperationsAdministrationService {
                 !result.transitioned());
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedManagementException invalid(String message) {
         return new EmbedManagementException(400, "EMBED_MANAGEMENT_REQUEST_INVALID", message);
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @param message 消息，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private static EmbedManagementException notFound(String message) {
         return new EmbedManagementException(404, "EMBED_MANAGEMENT_RESOURCE_NOT_FOUND", message);
     }
 
+    /**
+     * 封装列表游标的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param time 时间，后续用于判断有效期或展示该事件的发生时间
+     * @param id 对象标识，供后续引用、更新或关联
+     */
     private record ListCursor(Instant time, String id) {
     }
 
+    /**
+     * 封装查询{@code window}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param applicationId 应用ID，后续用于处理查询{@code window}时定位或关联目标
+     * @param viewId 视图ID，后续用于处理查询{@code window}时定位或关联目标
+     * @param status 状态标识，决定后续查询{@code window}采用的处理分支
+     * @param from 起始，保存在对象中供后续校验、查询或展示
+     * @param to 截止，保存在对象中供后续校验、查询或展示
+     * @param cursorTime 游标时间，后续用于判断有效期或展示该事件的发生时间
+     * @param cursorId 游标ID，后续用于处理查询{@code window}时定位或关联目标
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     */
     private record QueryWindow(
             String applicationId,
             String viewId,

@@ -21,26 +21,26 @@ import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
-import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
+import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.AuditEventIds;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.AuditSourcePointer;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.AuditSourcePointer;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
 import com.workflow.contracts.entity.ui.port.UiHotfixProcessImpactPort;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
-import com.workflow.contracts.ui.UiDataSourceUsages;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
-import com.workflow.contracts.ui.runtime.UiPublishedFormReference;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiPublishedFormReference;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -169,7 +169,7 @@ public class UiConfigReleaseService {
     private final FormSubmissionTraceService traceService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
-    private final MigrationAssetHandler migrationAssetHandler;
+    private final MigrationAssetPort migrationAssetHandler;
     private EntityListActionConfigService listActionConfigService;
     private UiHotfixGovernanceService hotfixGovernanceService;
     private UiViewCompositionService viewCompositionService;
@@ -178,6 +178,8 @@ public class UiConfigReleaseService {
     /**
      * 治理服务采用 setter 注入，避免改变大量纯单元测试的显式构造签名；
      * 生产 Spring 容器中该依赖为必需，HOTFIX 发布缺失时会 fail-closed。
+     *
+     * @param hotfixGovernanceService 热修复治理服务，供本方法设置热修复治理服务时使用
      */
     @Autowired
     void setHotfixGovernanceService(
@@ -185,7 +187,11 @@ public class UiConfigReleaseService {
         this.hotfixGovernanceService = hotfixGovernanceService;
     }
 
-    /** 注入列表按钮规则校验与发布规范化服务。 */
+    /**
+     * 注入列表按钮规则校验与发布规范化服务。
+     *
+     * @param listActionConfigService 列表动作配置服务，供本方法设置列表动作配置服务时使用
+     */
     @Autowired
     void setListActionConfigService(
             EntityListActionConfigService listActionConfigService) {
@@ -195,6 +201,8 @@ public class UiConfigReleaseService {
     /**
      * 关联内容是宿主草稿的一部分，但使用独立表保存。采用 setter 注入以兼容
      * 现有显式构造的单元测试；生产环境由 Spring 注入后参与完整发布生命周期。
+     *
+     * @param viewCompositionService 视图组合服务，供本方法设置视图组合服务时使用
      */
     @Autowired
     void setViewCompositionService(
@@ -205,6 +213,8 @@ public class UiConfigReleaseService {
     /**
      * 统一审计通过 setter 注入以保持已有纯单元测试的显式构造签名稳定。
      * 生产容器中该端口由 workflow-admin 提供。
+     *
+     * @param auditPort 审计端口，供本方法设置审计端口时使用
      */
     @Autowired
     void setAuditPort(SystemAuditPort auditPort) {
@@ -242,6 +252,10 @@ public class UiConfigReleaseService {
      * {@code executableSnapshot}，并不返回可能携带同一配置的语义补丁。这样也覆盖
      * 历史扩展把 Provider 快照嵌入 viewCompositions 等位置的情况；数据库实体和
      * LIST 既有响应保持不变。</p>
+     *
+     * @param configType 配置类型标识，决定后续管理发布版本采用的处理分支
+     * @param release 发布版本，供本方法处理管理发布版本时使用
+     * @return 处理后的管理发布版本结果，供调用方继续处理
      */
     private UiConfigRelease managementRelease(
             String configType,
@@ -250,6 +264,12 @@ public class UiConfigReleaseService {
                 ? release : formManagementRelease(release);
     }
 
+    /**
+     * 处理表单管理发布版本，并将结果传给后续步骤。
+     *
+     * @param release 发布版本，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 处理后的表单管理发布版本结果，供调用方继续处理
+     */
     private UiConfigRelease formManagementRelease(UiConfigRelease release) {
         UiConfigRelease result = objectMapper.convertValue(
                 release, UiConfigRelease.class);
@@ -275,6 +295,11 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 移除{@code executable}快照；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待移除{@code executable}快照的原始输入，结果供调用方继续使用
+     */
     @SuppressWarnings("unchecked")
     private void removeExecutableSnapshot(Object value) {
         if (value instanceof Map<?, ?> raw) {
@@ -291,6 +316,12 @@ public class UiConfigReleaseService {
 
     /**
      * 分页查询发布历史摘要，避免历史页一次传输全部快照文档。
+     *
+     * @param configType 配置类型标识，决定后续发布版本{@code summaries}采用的处理分支
+     * @param configId 配置ID，后续用于处理发布版本{@code summaries}时定位或关联目标
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的发布版本{@code summaries}结果，供调用方继续处理
      */
     public PageResult<UiConfigReleaseSummaryDTO> releaseSummaries(
             String configType,
@@ -313,12 +344,25 @@ public class UiConfigReleaseService {
                 safePageSize);
     }
 
+    /**
+     * 解析灰度发布状态；输出作为后续校验或处理的输入。
+     *
+     * @param release 发布版本，供本方法解析灰度发布状态时使用
+     * @return 解析后的灰度发布状态文本，供调用方比较或展示
+     */
     private String resolveRolloutStatus(UiConfigRelease release) {
         return resolveRolloutStatus(
                 release.getId(),
                 release.getStatus());
     }
 
+    /**
+     * 解析灰度发布状态；输出作为后续校验或处理的输入。
+     *
+     * @param releaseId 发布版本ID，后续用于解析灰度发布状态时定位或关联目标
+     * @param status 状态标识，决定后续灰度发布状态采用的处理分支
+     * @return 解析后的灰度发布状态文本，供调用方比较或展示
+     */
     private String resolveRolloutStatus(
             String releaseId,
             String status) {
@@ -342,6 +386,12 @@ public class UiConfigReleaseService {
                 ? "ACTIVE" : "SUPERSEDED";
     }
 
+    /**
+     * 判断是否具有回滚审计；判断结果决定调用方的后续分支。
+     *
+     * @param releaseId 发布版本ID，后续用于判断是否具有回滚审计时定位或关联目标
+     * @return 回滚审计条件成立时为 true，否则为 false
+     */
     private boolean hasRollbackAudit(String releaseId) {
         Long count = releaseAuditMapper.selectCount(
                 new LambdaQueryWrapper<UiConfigReleaseAudit>()
@@ -402,6 +452,12 @@ public class UiConfigReleaseService {
 
     /**
      * 使用签名上下文令牌解析嵌套表单的有效发布快照。
+     *
+     * @param formId 表单ID，后续用于处理运行时表单发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理运行时表单发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，作为 {@code runtimeFormReleaseInternal} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 运行时表单发布版本键值结果，供调用方继续处理
      */
     public Map<String, Object> runtimeFormRelease(
             String formId,
@@ -434,6 +490,15 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 整理运行时表单发布版本内部数据，供调用方遍历或继续处理。
+     *
+     * @param formId 表单ID，后续用于处理运行时表单发布版本内部时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理运行时表单发布版本内部时定位或关联目标
+     * @param expectedVersion 预期版本，作为 {@code resolveRuntimeFormRelease} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 运行时表单发布版本内部键值结果，供调用方继续处理
+     */
     private Map<String, Object> runtimeFormReleaseInternal(
             String formId,
             String releaseId,
@@ -596,6 +661,12 @@ public class UiConfigReleaseService {
     /**
      * 解析客户端运行时表单提交使用的版本。签名令牌可读取精确固定版本，
      * 无令牌时只能使用当前 ACTIVE 版本。
+     *
+     * @param formId 表单ID，后续用于解析已授权运行时表单发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于解析已授权运行时表单发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法解析已授权运行时表单发布版本时使用
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的已授权运行时表单发布版本结果，供调用方继续处理
      */
     public ResolvedEntityFormRelease resolveAuthorizedRuntimeFormRelease(
             String formId,
@@ -636,6 +707,15 @@ public class UiConfigReleaseService {
         return active;
     }
 
+    /**
+     * 判断是否匹配已授权表单发布版本；判断结果决定调用方的后续分支。
+     *
+     * @param claims 声明集合，供本方法判断是否匹配已授权表单发布版本时使用
+     * @param formId 表单ID，后续用于判断是否匹配已授权表单发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于判断是否匹配已授权表单发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法判断是否匹配已授权表单发布版本时使用
+     * @return 已授权表单发布版本条件成立时为 true，否则为 false
+     */
     private boolean matchesAuthorizedFormRelease(
             UiReleaseResolutionTokenService.Claims claims,
             String formId,
@@ -659,6 +739,17 @@ public class UiConfigReleaseService {
      * <p>普通表单解析令牌只负责固定发布版本；审批执行额外要求 ACTIVE_TASK、
      * 精确流程历史与节点均和当前待办一致。这样 NEW_INSTANCE 令牌或历史任务
      * 携带当前 ACTIVE 表单坐标都不能执行审批按钮。</p>
+     *
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param formId 表单ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法校验并获取活动任务发布版本令牌时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
+     * @param nodeId 节点ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void requireActiveTaskReleaseToken(
             String releaseResolutionToken,
@@ -715,6 +806,10 @@ public class UiConfigReleaseService {
      * <p>没有流程历史/节点绑定的普通表单仍走实体权限。返回上下文仅证明表单来源，
      * 调用方必须继续校验当前用户的实例读取权限及记录绑定，不能将发布令牌视为数据权限。</p>
      *
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param formId 表单ID，后续用于查询流程读取上下文时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于查询流程读取上下文时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法查询流程读取上下文时使用
      * @return 流程表单上下文；无令牌或普通独立/新建表单返回空
      * @throws BusinessForbiddenException 令牌无效或发布坐标不匹配
      */
@@ -744,6 +839,12 @@ public class UiConfigReleaseService {
      *
      * <p>流程表单携带服务端签名令牌时，事件绑定与字段定义必须从流程当前
      * 有效快照读取，不能退回全局 ACTIVE 版本。</p>
+     *
+     * @param formId 表单ID，后续用于解析运行时事件快照时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于解析运行时事件快照时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法解析运行时事件快照时使用
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的运行时事件快照结果，供调用方继续处理
      */
     public ResolvedUiEventSnapshot resolveRuntimeEventSnapshot(
             String formId,
@@ -880,6 +981,13 @@ public class UiConfigReleaseService {
                 release.getContentHash());
     }
 
+    /**
+     * 整理运行时发布版本结果数据，供调用方遍历或继续处理。
+     *
+     * @param resolved 已解析，作为 {@code result.put} 的输入影响后续处理
+     * @param snapshot 快照，作为 {@code result.put} 的输入影响后续处理
+     * @return 运行时发布版本结果键值结果，供调用方继续处理
+     */
     private Map<String, Object> runtimeReleaseResult(
             ResolvedEntityFormRelease resolved,
             Map<String, Object> snapshot) {
@@ -896,6 +1004,12 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 整理运行时快照数据，供调用方遍历或继续处理。
+     *
+     * @param form 表单，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 运行时快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> runtimeSnapshot(EntityForm form) {
         Map<String, Object> formDocument = objectMapper.convertValue(
                 form,
@@ -933,6 +1047,15 @@ public class UiConfigReleaseService {
         return outbound;
     }
 
+    /**
+     * 判断引用子级发布版本条件是否成立，供调用方选择后续分支。
+     *
+     * @param parent 父级，供本方法处理引用子级发布版本时使用
+     * @param childFormId 子级表单ID，后续用于处理引用子级发布版本时定位或关联目标
+     * @param childReleaseId 子级发布版本ID，后续用于处理引用子级发布版本时定位或关联目标
+     * @param childReleaseVersion 子级发布版本，供本方法处理引用子级发布版本时使用
+     * @return 引用子级发布版本条件成立时为 true，否则为 false
+     */
     private boolean referencesChildRelease(
             EntityForm parent,
             String childFormId,
@@ -971,6 +1094,11 @@ public class UiConfigReleaseService {
 
     /**
      * 读取指定不可变表单发布中固定的直接子表单引用。
+     *
+     * @param formId 表单ID，后续用于处理子级表单引用时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理子级表单引用时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code resolveRuntimeFormRelease} 的输入影响后续处理
+     * @return 界面已发布表单引用集合，供调用方遍历或展示
      */
     public List<UiPublishedFormReference> childFormReferences(
             String formId,
@@ -1002,6 +1130,12 @@ public class UiConfigReleaseService {
         return List.copyOf(references);
     }
 
+    /**
+     * 收集子级引用；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集子级引用的原始输入，结果供调用方继续使用
+     * @param references 引用，作为 {@code list.forEach} 的输入影响后续处理
+     */
     private void collectChildReferences(
             Object value,
             Set<UiPublishedFormReference> references) {
@@ -1039,6 +1173,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理文档值，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code codec.read} 的输入影响后续处理
+     * @return 处理后的文档值结果，供调用方继续处理
+     */
     private Object documentValue(String document) {
         if (!StringUtils.hasText(document)) {
             return Map.of();
@@ -1052,6 +1192,15 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 判断是否匹配子级引用；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否匹配子级引用的原始输入，结果供调用方继续使用
+     * @param childFormId 子级表单ID，后续用于判断是否匹配子级引用时定位或关联目标
+     * @param childReleaseId 子级发布版本ID，后续用于判断是否匹配子级引用时定位或关联目标
+     * @param childReleaseVersion 子级发布版本，供本方法判断是否匹配子级引用时使用
+     * @return 子级引用条件成立时为 true，否则为 false
+     */
     private boolean matchesChildReference(
             Object value,
             String childFormId,
@@ -1100,6 +1249,12 @@ public class UiConfigReleaseService {
         return false;
     }
 
+    /**
+     * 生成首个可选文本文本，供后续匹配或展示。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个可选文本文本，供调用方比较或展示
+     */
     private String firstOptionalText(Object... values) {
         for (Object value : values) {
             String candidate = text(value);
@@ -1110,6 +1265,12 @@ public class UiConfigReleaseService {
         return null;
     }
 
+    /**
+     * 处理首个可选整数，并将结果传给后续步骤。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个可选整数结果，供调用方继续处理
+     */
     private Integer firstOptionalInteger(Object... values) {
         for (Object value : values) {
             if (value != null) {
@@ -1220,6 +1381,11 @@ public class UiConfigReleaseService {
 
     /**
      * 预览当前 ACTIVE 与待激活历史版本之间的差异。
+     *
+     * @param configType 配置类型标识，决定后续{@code activation}预览采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code activation}预览时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理{@code activation}预览时定位或关联目标
+     * @return 处理后的{@code activation}预览结果，供调用方继续处理
      */
     public UiConfigActivationPreviewDTO activationPreview(
             String configType,
@@ -1288,6 +1454,15 @@ public class UiConfigReleaseService {
                 .build();
     }
 
+    /**
+     * 整理{@code detailed}变更集合数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续{@code detailed}变更集合采用的处理分支
+     * @param draft 草稿，作为 {@code appendObjectChange} 的输入影响后续处理
+     * @param active 活动，作为 {@code mapValue} 的输入影响后续处理
+     * @param changedSections 已变更区段集合，作为 {@code appendFallbackChange} 的输入影响后续处理
+     * @return 界面配置差异条目集合，供调用方遍历或展示
+     */
     private List<UiConfigDiffItemDTO> detailedChanges(
             String configType,
             Map<String, Object> draft,
@@ -1375,6 +1550,13 @@ public class UiConfigReleaseService {
         return changes;
     }
 
+    /**
+     * 追加事件绑定变更集合；结果供后续流程传递或持久化。
+     *
+     * @param changes 变更集合，作为 {@code appendCollectionChanges} 的输入影响后续处理
+     * @param draft 草稿，作为 {@code appendCollectionChanges} 的输入影响后续处理
+     * @param active 活动，供本方法追加事件绑定变更集合时使用
+     */
     private void appendEventBindingChanges(
             List<UiConfigDiffItemDTO> changes,
             Map<String, Object> draft,
@@ -1390,6 +1572,13 @@ public class UiConfigReleaseService {
                 false);
     }
 
+    /**
+     * 追加视图组合变更集合；结果供后续流程传递或持久化。
+     *
+     * @param changes 变更集合，作为 {@code appendCollectionChanges} 的输入影响后续处理
+     * @param draft 草稿，作为 {@code appendCollectionChanges} 的输入影响后续处理
+     * @param active 活动，供本方法追加视图组合变更集合时使用
+     */
     private void appendViewCompositionChanges(
             List<UiConfigDiffItemDTO> changes,
             Map<String, Object> draft,
@@ -1405,6 +1594,14 @@ public class UiConfigReleaseService {
                 false);
     }
 
+    /**
+     * 追加兜底变更；结果供后续流程传递或持久化。
+     *
+     * @param changes 变更集合，供本方法追加兜底变更时使用
+     * @param changedSections 已变更区段集合，作为 {@code changedFields} 的输入影响后续处理
+     * @param section 区段，供本方法追加兜底变更时使用
+     * @param label 标签，后续用于追加兜底变更时匹配或展示
+     */
     private void appendFallbackChange(
             List<UiConfigDiffItemDTO> changes,
             List<String> changedSections,
@@ -1421,6 +1618,16 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 追加对象变更；结果供后续流程传递或持久化。
+     *
+     * @param changes 变更集合，供本方法追加对象变更时使用
+     * @param section 区段，供本方法追加对象变更时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param label 标签，后续用于追加对象变更时匹配或展示
+     * @param draft 草稿，作为 {@code changedFields} 的输入影响后续处理
+     * @param active 活动，作为 {@code changedFields} 的输入影响后续处理
+     */
     private void appendObjectChange(
             List<UiConfigDiffItemDTO> changes,
             String section,
@@ -1440,6 +1647,18 @@ public class UiConfigReleaseService {
                 .build());
     }
 
+    /**
+     * 追加集合变更集合；结果供后续流程传递或持久化。
+     *
+     * @param changes 变更集合，供本方法追加集合变更集合时使用
+     * @param section 区段，作为 {@code changes.add} 的输入影响后续处理
+     * @param defaultLabel 默认标签，后续用于追加集合变更集合时匹配或展示
+     * @param draftItems 草稿条目，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param activeItems 活动条目，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param idKeys ID键集合，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param labelKeys 标签键集合，作为 {@code changes.add} 的输入影响后续处理
+     * @param supportsMove {@code supports}{@code move}，供本方法追加集合变更集合时使用
+     */
     private void appendCollectionChanges(
             List<UiConfigDiffItemDTO> changes,
             String section,
@@ -1486,6 +1705,16 @@ public class UiConfigReleaseService {
                 List.of())));
     }
 
+    /**
+     * 处理条目变更，并将结果传给后续步骤。
+     *
+     * @param section 区段，供本方法处理条目变更时使用
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param label 标签，后续用于处理条目变更时匹配或展示
+     * @param changeType 变更类型标识，决定后续条目变更采用的处理分支
+     * @param changedFields 已变更字段，供本方法处理条目变更时使用
+     * @return 处理后的条目变更结果，供调用方继续处理
+     */
     private UiConfigDiffItemDTO itemChange(
             String section,
             String id,
@@ -1501,6 +1730,13 @@ public class UiConfigReleaseService {
                 .build();
     }
 
+    /**
+     * 整理索引稳定ID数据，供调用方遍历或继续处理。
+     *
+     * @param items 条目，供本方法处理索引稳定ID时使用
+     * @param idKeys ID键集合，作为 {@code firstText} 的输入影响后续处理
+     * @return 索引稳定ID键值结果，供调用方继续处理
+     */
     private Map<String, Map<String, Object>> indexByStableId(
             List<Map<String, Object>> items,
             List<String> idKeys) {
@@ -1517,6 +1753,14 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 生成条目标签文本，供后续匹配或展示。
+     *
+     * @param item 条目，供本方法处理条目标签时使用
+     * @param labelKeys 标签键集合，供本方法处理条目标签时使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的条目标签文本，供调用方比较或展示
+     */
     private String itemLabel(
             Map<String, Object> item,
             List<String> labelKeys,
@@ -1529,6 +1773,13 @@ public class UiConfigReleaseService {
         return firstText(labels.toArray(String[]::new));
     }
 
+    /**
+     * 整理已变更键集合数据，供调用方遍历或继续处理。
+     *
+     * @param draft 草稿，作为 {@code keys.addAll} 的输入影响后续处理
+     * @param active 活动，作为 {@code keys.addAll} 的输入影响后续处理
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<String> changedKeys(
             Map<String, Object> draft,
             Map<String, Object> active) {
@@ -1543,6 +1794,13 @@ public class UiConfigReleaseService {
                 .toList();
     }
 
+    /**
+     * 整理{@code without}键集合数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理{@code without}键集合的原始输入，结果供调用方继续使用
+     * @param ignoredKeys {@code ignored}键集合，供本方法处理{@code without}键集合时使用
+     * @return {@code without}键集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> withoutKeys(
             Map<String, Object> source,
             Set<String> ignoredKeys) {
@@ -1551,6 +1809,12 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param source 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object source) {
         if (!(source instanceof Map<?, ?> map)) {
             return Map.of();
@@ -1560,6 +1824,12 @@ public class UiConfigReleaseService {
         return result;
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object source) {
         if (!(source instanceof List<?> list)) {
             return List.of();
@@ -1580,6 +1850,9 @@ public class UiConfigReleaseService {
      * <p>该清单只用于发布前的人类确认，不参与权限或运行时解析；运行时仍以
      * 不可变快照中的 ID、版本和哈希为权威。按稳定引用去重，避免同一目标被
      * 多个关联内容使用时在发布窗口重复展示。</p>
+     *
+     * @param snapshot 快照，供本方法发布依赖集合时使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> publishDependencies(
             Map<String, Object> snapshot) {
@@ -1672,6 +1945,11 @@ public class UiConfigReleaseService {
 
     /**
      * 汇总单接口扩展依赖；历史 serviceId + operationCode 仅用于旧快照兼容。
+     *
+     * @param result 结果，作为 {@code addPublishDependency} 的输入影响后续处理
+     * @param seen 已见，作为 {@code addPublishDependency} 的输入影响后续处理
+     * @param reference 引用，作为 {@code text} 的输入影响后续处理
+     * @param compositionName 组合名称，后续用于添加接口依赖时匹配或展示
      */
     private void addInterfaceDependency(
             List<Map<String, Object>> result,
@@ -1725,6 +2003,15 @@ public class UiConfigReleaseService {
                 dependency);
     }
 
+    /**
+     * 添加实体结构依赖；结果供后续流程传递或持久化。
+     *
+     * @param result 结果，作为 {@code addPublishDependency} 的输入影响后续处理
+     * @param seen 已见，作为 {@code addPublishDependency} 的输入影响后续处理
+     * @param pinned 固定，作为 {@code text} 的输入影响后续处理
+     * @param entity 实体，作为 {@code dependency.put} 的输入影响后续处理
+     * @param compositionName 组合名称，后续用于添加实体结构依赖时匹配或展示
+     */
     private void addEntitySchemaDependency(
             List<Map<String, Object>> result,
             Set<String> seen,
@@ -1752,6 +2039,14 @@ public class UiConfigReleaseService {
                 dependency);
     }
 
+    /**
+     * 添加发布依赖；结果供后续流程传递或持久化。
+     *
+     * @param result 结果，供本方法添加发布依赖时使用
+     * @param seen 已见，供本方法添加发布依赖时使用
+     * @param identity 身份，供本方法添加发布依赖时使用
+     * @param dependency 依赖，作为 {@code result.add} 的输入影响后续处理
+     */
     private void addPublishDependency(
             List<Map<String, Object>> result,
             Set<String> seen,
@@ -1762,6 +2057,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(Object... values) {
         for (Object value : values) {
             String candidate = text(value);
@@ -1774,6 +2075,11 @@ public class UiConfigReleaseService {
 
     /**
      * 发布预检。普通发布返回草稿差异；热修复同时执行风险分级、流程影响分析和逐版本试算。
+     *
+     * @param configType 配置类型标识，决定后续预览采用的处理分支
+     * @param configId 配置ID，后续用于发布预览时定位或关联目标
+     * @param request 本次请求，后续经校验后用于发布预览
+     * @return 发布后的预览结果，供调用方继续处理
      */
     public UiConfigPublishPreviewDTO publishPreview(
             String configType,
@@ -1835,6 +2141,11 @@ public class UiConfigReleaseService {
 
     /**
      * 兼容旧调用方的普通发布入口。
+     *
+     * @param configType 配置类型标识，决定后续界面配置发布版本采用的处理分支
+     * @param configId 配置ID，后续用于发布界面配置发布版本时定位或关联目标
+     * @param description 描述，作为 {@code request.setDescription} 的输入影响后续处理
+     * @return 发布后的界面配置发布版本结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease publish(
@@ -1849,6 +2160,11 @@ public class UiConfigReleaseService {
 
     /**
      * 按发布请求执行普通发布；仅表单支持兼容热修复。
+     *
+     * @param configType 配置类型标识，决定后续界面配置发布版本采用的处理分支
+     * @param configId 配置ID，后续用于发布界面配置发布版本时定位或关联目标
+     * @param request 本次请求，后续经校验后用于发布界面配置发布版本
+     * @return 发布后的界面配置发布版本结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease publish(
@@ -1883,6 +2199,14 @@ public class UiConfigReleaseService {
                 publishStandard(configType, configId, request));
     }
 
+    /**
+     * 发布标准；后续由接收方或异步任务继续处理。
+     *
+     * @param configType 配置类型标识，决定后续标准采用的处理分支
+     * @param configId 配置ID，后续用于发布标准时定位或关联目标
+     * @param request 本次请求，后续经校验后用于发布标准
+     * @return 发布后的标准结果，供调用方继续处理
+     */
     private UiConfigRelease publishStandard(
             String configType,
             String configId,
@@ -1975,6 +2299,15 @@ public class UiConfigReleaseService {
         return release;
     }
 
+    /**
+     * 发布热修复；后续由接收方或异步任务继续处理。
+     *
+     * @param configType 配置类型标识，决定后续热修复采用的处理分支
+     * @param configId 配置ID，后续用于发布热修复时定位或关联目标
+     * @param request 本次请求，后续经校验后用于发布热修复
+     * @return 发布后的热修复结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private UiConfigRelease publishHotfix(
             String configType,
             String configId,
@@ -2108,6 +2441,14 @@ public class UiConfigReleaseService {
         return release;
     }
 
+    /**
+     * 准备热修复；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续热修复采用的处理分支
+     * @param configId 配置ID，后续用于准备热修复时定位或关联目标
+     * @param request 本次请求，后续经校验后用于准备热修复
+     * @return 准备后的热修复结果，供调用方继续处理
+     */
     private HotfixPreparation prepareHotfix(
             String configType,
             String configId,
@@ -2346,6 +2687,16 @@ public class UiConfigReleaseService {
                 preview);
     }
 
+    /**
+     * 准备{@code full}快照兜底；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续{@code full}快照兜底采用的处理分支
+     * @param configId 配置ID，后续用于准备{@code full}快照兜底时定位或关联目标
+     * @param draft 草稿，作为 {@code validatedEffectiveSnapshot} 的输入影响后续处理
+     * @param reviewNotes {@code review}{@code notes}，供本方法准备{@code full}快照兜底时使用
+     * @param blockers 阻断项，供本方法准备{@code full}快照兜底时使用
+     * @return 准备后的{@code full}快照兜底结果，供调用方继续处理
+     */
     private EffectiveHotfixSnapshot prepareFullSnapshotFallback(
             String configType,
             String configId,
@@ -2370,6 +2721,14 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理已校验有效快照，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续已校验有效快照采用的处理分支
+     * @param configId 配置ID，后续用于处理已校验有效快照时定位或关联目标
+     * @param snapshot 快照，作为 {@code validateSnapshotForActivation} 的输入影响后续处理
+     * @return 处理后的已校验有效快照结果，供调用方继续处理
+     */
     private EffectiveHotfixSnapshot validatedEffectiveSnapshot(
             String configType,
             String configId,
@@ -2384,6 +2743,13 @@ public class UiConfigReleaseService {
                 snapshotSupport.hash(document));
     }
 
+    /**
+     * 处理{@code enforce}扩展热修复能力集合，并将结果传给后续步骤。
+     *
+     * @param draft 草稿，作为 {@code indexByStableId} 的输入影响后续处理
+     * @param patch 补丁，供本方法处理{@code enforce}扩展热修复能力集合时使用
+     * @return 处理后的{@code enforce}扩展热修复能力集合结果，供调用方继续处理
+     */
     private UiConfigSemanticPatchService.PatchAnalysis
             enforceExtensionHotfixCapabilities(
                     Map<String, Object> draft,
@@ -2461,6 +2827,14 @@ public class UiConfigReleaseService {
                 risks);
     }
 
+    /**
+     * 判断扩展{@code supports}热修复条件是否成立，供调用方选择后续分支。
+     *
+     * @param extensionType 扩展类型标识，决定后续扩展{@code supports}热修复采用的处理分支
+     * @param componentName 组件名称，后续用于处理扩展{@code supports}热修复时匹配或展示
+     * @param componentVersion 组件版本，供本方法处理扩展{@code supports}热修复时使用
+     * @return 扩展{@code supports}热修复条件成立时为 true，否则为 false
+     */
     private boolean extensionSupportsHotfix(
             String extensionType,
             String componentName,
@@ -2479,6 +2853,16 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 整理固定快照数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续固定快照采用的处理分支
+     * @param configId 配置ID，后续用于处理固定快照时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理固定快照时定位或关联目标
+     * @param version 版本，供本方法处理固定快照时使用
+     * @param blockers 阻断项，供本方法处理固定快照时使用
+     * @return 固定快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> pinnedSnapshot(
             String configType,
             String configId,
@@ -2501,6 +2885,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 整理已验证目标快照数据，供调用方遍历或继续处理。
+     *
+     * @param target 目标，作为 {@code codec.readObject} 的输入影响后续处理
+     * @param blockers 阻断项，供本方法处理已验证目标快照时使用
+     * @return 已验证目标快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> verifiedTargetSnapshot(
             UiConfigHotfixTarget target,
             List<String> blockers) {
@@ -2523,6 +2914,16 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 验证预期状态；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于验证预期状态
+     * @param actualDraftHash 实际草稿哈希，供本方法验证预期状态时使用
+     * @param actualActiveReleaseId 实际活动发布版本ID，后续用于验证预期状态时定位或关联目标
+     * @param requireImpactToken {@code require}影响令牌，后续用于授权校验、关联或幂等去重
+     * @param actualImpactToken 实际影响令牌，后续用于授权校验、关联或幂等去重
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void verifyExpectedState(
             UiConfigPublishRequest request,
             String actualDraftHash,
@@ -2564,6 +2965,18 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 生成影响令牌文本，供后续匹配或展示。
+     *
+     * @param configType 配置类型标识，决定后续影响令牌采用的处理分支
+     * @param configId 配置ID，后续用于处理影响令牌时定位或关联目标
+     * @param releaseMode 发布版本模式标识，决定后续影响令牌采用的处理分支
+     * @param draftHash 草稿哈希，作为 {@code nullToEmpty} 的输入影响后续处理
+     * @param activeReleaseId 活动发布版本ID，后续用于处理影响令牌时定位或关联目标
+     * @param targetHash 目标哈希，供本方法处理影响令牌时使用
+     * @param riskLevel 风险层级，供本方法处理影响令牌时使用
+     * @return 处理后的影响令牌文本，供调用方比较或展示
+     */
     private String impactToken(
             String configType,
             String configId,
@@ -2583,6 +2996,13 @@ public class UiConfigReleaseService {
                 nullToEmpty(riskLevel)));
     }
 
+    /**
+     * 生成发布版本模式文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理发布版本模式
+     * @return 处理后的发布版本模式文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String releaseMode(UiConfigPublishRequest request) {
         String value = request == null
                 ? STANDARD : normalize(request.getReleaseMode());
@@ -2602,6 +3022,12 @@ public class UiConfigReleaseService {
         return value;
     }
 
+    /**
+     * 校验并获取热修复{@code supported}；不满足约束时阻止后续处理。
+     *
+     * @param configType 配置类型标识，决定后续热修复{@code supported}采用的处理分支
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void requireHotfixSupported(String configType) {
         if (LIST.equals(configType)) {
             throw new BusinessConflictException(
@@ -2610,10 +3036,22 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 生成空值截止空文本，供后续匹配或展示。
+     *
+     * @param value 待处理空值截止空的原始输入，结果供调用方继续使用
+     * @return 处理后的空值截止空文本，供调用方比较或展示
+     */
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * 校验并获取热修复治理；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的热修复治理结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private UiHotfixGovernanceService requireHotfixGovernance() {
         if (hotfixGovernanceService == null) {
             throw new IllegalStateException(
@@ -2622,6 +3060,14 @@ public class UiConfigReleaseService {
         return hotfixGovernanceService;
     }
 
+    /**
+     * 记录热修复指标{@code safely}；供后续追溯或审计使用。
+     *
+     * @param releaseId 发布版本ID，后续用于记录热修复指标{@code safely}时定位或关联目标
+     * @param metricCode 指标编码，后续用于记录热修复指标{@code safely}时定位或关联目标
+     * @param successful 成功，作为 {@code hotfixGovernanceService.recordReleaseMetric} 的输入影响后续处理
+     * @param errorMessage 错误消息，作为 {@code hotfixGovernanceService.recordReleaseMetric} 的输入影响后续处理
+     */
     private void recordHotfixMetricSafely(
             String releaseId,
             String metricCode,
@@ -2645,6 +3091,15 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 记录热修复配置指标{@code safely}；供后续追溯或审计使用。
+     *
+     * @param configType 配置类型标识，决定后续热修复配置指标{@code safely}采用的处理分支
+     * @param configId 配置ID，后续用于记录热修复配置指标{@code safely}时定位或关联目标
+     * @param metricCode 指标编码，后续用于记录热修复配置指标{@code safely}时定位或关联目标
+     * @param successful 成功，作为 {@code hotfixGovernanceService.recordConfigMetric} 的输入影响后续处理
+     * @param errorMessage 错误消息，作为 {@code hotfixGovernanceService.recordConfigMetric} 的输入影响后续处理
+     */
     private void recordHotfixConfigMetricSafely(
             String configType,
             String configId,
@@ -2671,6 +3126,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 生成最大风险文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理最大风险时使用
+     * @param right 右侧，作为 {@code contains} 的输入影响后续处理
+     * @return 处理后的最大风险文本，供调用方比较或展示
+     */
     private String maxRisk(String left, String right) {
         if (Set.of(
                 UiConfigSemanticPatchService.REVIEW,
@@ -2685,6 +3147,12 @@ public class UiConfigReleaseService {
 
     /**
      * 按最后发布顺序撤回热修复，不修改不可变发布记录。
+     *
+     * @param configType 配置类型标识，决定后续回滚热修复采用的处理分支
+     * @param configId 配置ID，后续用于处理回滚热修复时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理回滚热修复时定位或关联目标
+     * @param reason 原因，供本方法处理回滚热修复时使用
+     * @return 处理后的回滚热修复结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease rollbackHotfix(
@@ -2836,6 +3304,15 @@ public class UiConfigReleaseService {
                         null));
     }
 
+    /**
+     * 激活界面配置发布版本；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续界面配置发布版本采用的处理分支
+     * @param configId 配置ID，后续用于激活界面配置发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于激活界面配置发布版本时定位或关联目标
+     * @param reason 原因，供本方法激活界面配置发布版本时使用
+     * @return 激活后的界面配置发布版本结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease activate(
             String configType,
@@ -2850,6 +3327,16 @@ public class UiConfigReleaseService {
                 null);
     }
 
+    /**
+     * 激活界面配置发布版本；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续界面配置发布版本采用的处理分支
+     * @param configId 配置ID，后续用于激活界面配置发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于激活界面配置发布版本时定位或关联目标
+     * @param reason 原因，作为 {@code requireOperationReason} 的输入影响后续处理
+     * @param expectedActiveReleaseId 预期活动发布版本ID，后续用于激活界面配置发布版本时定位或关联目标
+     * @return 激活后的界面配置发布版本结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiConfigRelease activate(
             String configType,
@@ -2868,6 +3355,18 @@ public class UiConfigReleaseService {
                         expectedActiveReleaseId));
     }
 
+    /**
+     * 激活内部；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续内部采用的处理分支
+     * @param configId 配置ID，后续用于激活内部时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于激活内部时定位或关联目标
+     * @param reason 原因，供本方法激活内部时使用
+     * @param expectedActiveReleaseId 预期活动发布版本ID，后续用于激活内部时定位或关联目标
+     * @return 激活后的内部结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiConfigRelease activateInternal(
             String configType,
             String configId,
@@ -2959,6 +3458,11 @@ public class UiConfigReleaseService {
 
     /**
      * 将列表历史发布快照恢复为可编辑草稿，不改变当前 ACTIVE 版本。
+     *
+     * @param configId 配置ID，后续用于恢复列表草稿时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于恢复列表草稿时定位或关联目标
+     * @param reason 原因，作为 {@code requireOperationReason} 的输入影响后续处理
+     * @return 恢复后的列表草稿结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityListConfigDTO restoreListDraft(
@@ -3229,6 +3733,14 @@ public class UiConfigReleaseService {
                 .build();
     }
 
+    /**
+     * 整理{@code restored}列表草稿快照数据，供调用方遍历或继续处理。
+     *
+     * @param configId 配置ID，后续用于处理{@code restored}列表草稿快照时定位或关联目标
+     * @param currentDraft 当前草稿，作为 {@code mapList} 的输入影响后续处理
+     * @param sourceRelease 来源发布版本，作为 {@code restored.put} 的输入影响后续处理
+     * @return {@code restored}列表草稿快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> restoredListDraftSnapshot(
             String configId,
             Map<String, Object> currentDraft,
@@ -3261,6 +3773,12 @@ public class UiConfigReleaseService {
      * <p>快照完整性始终针对原始不可变文档校验；这里只在校验后构造稳定副本，
      * 同时供 diff、projected hash 和物理恢复使用。当前草稿只参与缺失按钮 ID 的
      * 回填，且调用方已通过 draft hash/revision 建立并发边界。</p>
+     *
+     * @param configType 配置类型标识，决定后续发布版本比较快照采用的处理分支
+     * @param configId 配置ID，后续用于规范化发布版本比较快照时定位或关联目标
+     * @param currentDraft 当前草稿，作为 {@code runtimeList} 的输入影响后续处理
+     * @param activeSnapshot 活动快照，作为 {@code restorableForm} 的输入影响后续处理
+     * @return 发布版本比较快照键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeReleaseComparisonSnapshot(
             String configType,
@@ -3297,7 +3815,11 @@ public class UiConfigReleaseService {
         return normalized;
     }
 
-    /** 发布、激活和恢复统一要求列表按钮规则服务已完成容器装配。 */
+    /**
+     * 发布、激活和恢复统一要求列表按钮规则服务已完成容器装配。
+     *
+     * @return 校验并获取后的列表动作配置服务结果，供调用方继续处理
+     */
     private EntityListActionConfigService requireListActionConfigService() {
         if (listActionConfigService == null) {
             throw new IllegalStateException(
@@ -3306,6 +3828,16 @@ public class UiConfigReleaseService {
         return listActionConfigService;
     }
 
+    /**
+     * 处理{@code assess}草稿丢弃，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code assess}草稿丢弃采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code assess}草稿丢弃时定位或关联目标
+     * @param currentDraft 当前草稿，作为 {@code projectedDraftAfterDiscard} 的输入影响后续处理
+     * @param activeSnapshot 活动快照，作为 {@code projectedDraftAfterDiscard} 的输入影响后续处理
+     * @param activeHash 活动哈希，供本方法处理{@code assess}草稿丢弃时使用
+     * @return 处理后的{@code assess}草稿丢弃结果，供调用方继续处理
+     */
     private DraftDiscardAssessment assessDraftDiscard(
             String configType,
             String configId,
@@ -3325,6 +3857,16 @@ public class UiConfigReleaseService {
                 activeHash);
     }
 
+    /**
+     * 处理{@code assess}草稿丢弃，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code assess}草稿丢弃采用的处理分支
+     * @param currentDraft 当前草稿，作为 {@code semanticPatchService.build} 的输入影响后续处理
+     * @param activeSnapshot 活动快照，供本方法处理{@code assess}草稿丢弃时使用
+     * @param projected {@code projected}，作为 {@code semanticPatchService.build} 的输入影响后续处理
+     * @param activeHash 活动哈希，供本方法处理{@code assess}草稿丢弃时使用
+     * @return 处理后的{@code assess}草稿丢弃结果，供调用方继续处理
+     */
     private DraftDiscardAssessment assessDraftDiscard(
             String configType,
             Map<String, Object> currentDraft,
@@ -3365,6 +3907,12 @@ public class UiConfigReleaseService {
      *
      * <p>实体继承事件继续使用当前值，子列表和目标表单引用按当前 ACTIVE 重新钉定，
      * 因而纯外部漂移不会被错误标记为本地可撤销修改。</p>
+     *
+     * @param configType 配置类型标识，决定后续{@code projected}草稿之后丢弃采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code projected}草稿之后丢弃时定位或关联目标
+     * @param currentDraft 当前草稿，供本方法处理{@code projected}草稿之后丢弃时使用
+     * @param activeSnapshot 活动快照，作为 {@code restorableForm} 的输入影响后续处理
+     * @return {@code projected}草稿之后丢弃键值结果，供调用方继续处理
      */
     private Map<String, Object> projectedDraftAfterDiscard(
             String configType,
@@ -3409,6 +3957,15 @@ public class UiConfigReleaseService {
         return projected;
     }
 
+    /**
+     * 整理{@code projected}事件绑定集合数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续{@code projected}事件绑定集合采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code projected}事件绑定集合时定位或关联目标
+     * @param currentDraft 当前草稿，作为 {@code mapList} 的输入影响后续处理
+     * @param activeSnapshot 活动快照，作为 {@code mapList} 的输入影响后续处理
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> projectedEventBindings(
             String configType,
             String configId,
@@ -3430,6 +3987,14 @@ public class UiConfigReleaseService {
         return bindings;
     }
 
+    /**
+     * 判断是否本地绑定；判断结果决定调用方的后续分支。
+     *
+     * @param binding 绑定，作为 {@code configType.equals} 的输入影响后续处理
+     * @param configType 配置类型标识，决定后续本地绑定采用的处理分支
+     * @param configId 配置ID，后续用于判断是否本地绑定时定位或关联目标
+     * @return 本地绑定条件成立时为 true，否则为 false
+     */
     private boolean isLocalBinding(
             Map<String, Object> binding,
             String configType,
@@ -3441,12 +4006,28 @@ public class UiConfigReleaseService {
                         text(binding.get("ownerId")));
     }
 
+    /**
+     * 判断是否本地列表绑定；判断结果决定调用方的后续分支。
+     *
+     * @param binding 绑定，作为 {@code isLocalBinding} 的输入影响后续处理
+     * @param configId 配置ID，后续用于判断是否本地列表绑定时定位或关联目标
+     * @return 本地列表绑定条件成立时为 true，否则为 false
+     */
     private boolean isLocalListBinding(
             Map<String, Object> binding,
             String configId) {
         return isLocalBinding(binding, LIST, configId);
     }
 
+    /**
+     * 封装草稿丢弃{@code assessment}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param discardableChanged {@code discardable}已变更，保存在对象中供后续校验、查询或展示
+     * @param canDiscardDraft {@code can}丢弃草稿，保存在对象中供后续校验、查询或展示
+     * @param dependencyChanged 依赖已变更，保存在对象中供后续校验、查询或展示
+     * @param blockedReason {@code blocked}原因，保存在对象中供后续校验、查询或展示
+     * @param projectedHash {@code projected}哈希，保存在对象中供后续校验、查询或展示
+     */
     private record DraftDiscardAssessment(
             boolean discardableChanged,
             boolean canDiscardDraft,
@@ -3454,6 +4035,12 @@ public class UiConfigReleaseService {
             String blockedReason,
             String projectedHash) {
 
+        /**
+         * 构造服务不可用异常，供调用方区分失败原因。
+         *
+         * @param reason 原因，作为 {@code DraftDiscardAssessment} 的输入影响后续处理
+         * @return 处理后的不可用结果，供调用方继续处理
+         */
         private static DraftDiscardAssessment unavailable(
                 String reason) {
             return new DraftDiscardAssessment(
@@ -3465,6 +4052,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验并获取操作原因；不满足约束时阻止后续处理。
+     *
+     * @param reason 原因，供本方法校验并获取操作原因时使用
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireOperationReason(
             String reason,
             String message) {
@@ -3473,6 +4067,14 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 记录实体界面资产；供后续追溯或审计使用。
+     *
+     * @param configType 配置类型标识，决定后续实体界面资产采用的处理分支
+     * @param configId 配置ID，后续用于记录实体界面资产时定位或关联目标
+     * @param release 发布版本，作为 {@code migrationRequest.setVersionDescription} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于记录实体界面资产
+     */
     private void recordEntityUiAsset(
             String configType,
             String configId,
@@ -3505,6 +4107,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验并获取草稿丢弃请求；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取草稿丢弃请求
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireDraftDiscardRequest(
             UiConfigDraftDiscardRequest request) {
         if (request == null) {
@@ -3529,6 +4137,13 @@ public class UiConfigReleaseService {
                 request.getExpectedActiveReleaseId().trim());
     }
 
+    /**
+     * 锁定草稿{@code components}；避免后续并发处理覆盖状态。
+     *
+     * @param configType 配置类型标识，决定后续草稿{@code components}采用的处理分支
+     * @param configId 配置ID，后续用于锁定草稿{@code components}时定位或关联目标
+     * @param owner 归属方，作为 {@code eventBindingSnapshotService.lockOwnerBindings} 的输入影响后续处理
+     */
     private void lockDraftComponents(
             String configType,
             String configId,
@@ -3547,6 +4162,13 @@ public class UiConfigReleaseService {
         requireViewCompositionService().lockByOwner(configType, configId);
     }
 
+    /**
+     * 处理归属方修订版本，并将结果传给后续步骤。
+     *
+     * @param owner 归属方，供本方法处理归属方修订版本时使用
+     * @return 处理后的归属方修订版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int ownerRevision(Object owner) {
         Integer revision;
         if (owner instanceof EntityForm form) {
@@ -3559,6 +4181,13 @@ public class UiConfigReleaseService {
         return revision == null ? 0 : revision;
     }
 
+    /**
+     * 生成归属方活动发布版本ID文本，供后续匹配或展示。
+     *
+     * @param owner 归属方，供本方法处理归属方活动发布版本ID时使用
+     * @return 处理后的归属方活动发布版本ID文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String ownerActiveReleaseId(Object owner) {
         if (owner instanceof EntityForm form) {
             return form.getActiveReleaseId();
@@ -3569,6 +4198,13 @@ public class UiConfigReleaseService {
         throw new IllegalArgumentException("不支持的UI配置所有者");
     }
 
+    /**
+     * 生成归属方实体ID文本，供后续匹配或展示。
+     *
+     * @param owner 归属方，供本方法处理归属方实体ID时使用
+     * @return 处理后的归属方实体ID文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String ownerEntityId(Object owner) {
         if (owner instanceof EntityForm form) {
             return form.getEntityId();
@@ -3579,6 +4215,15 @@ public class UiConfigReleaseService {
         throw new IllegalArgumentException("不支持的UI配置所有者");
     }
 
+    /**
+     * 处理{@code align}归属方草稿哈希，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code align}归属方草稿哈希采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code align}归属方草稿哈希时定位或关联目标
+     * @param active 活动，供本方法处理{@code align}归属方草稿哈希时使用
+     * @param revision 修订版本，供本方法处理{@code align}归属方草稿哈希时使用
+     * @param publishedHash 已发布哈希，作为 {@code set} 的输入影响后续处理
+     */
     private void alignOwnerDraftHash(
             String configType,
             String configId,
@@ -3614,6 +4259,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理归属方实体，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续归属方实体采用的处理分支
+     * @param configId 配置ID，后续用于处理归属方实体时定位或关联目标
+     * @return 处理后的归属方实体结果，供调用方继续处理
+     */
     private EntityDefinition ownerEntity(
             String configType,
             String configId) {
@@ -3631,6 +4283,14 @@ public class UiConfigReleaseService {
                 : null;
     }
 
+    /**
+     * 锁定归属方；避免后续并发处理覆盖状态。
+     *
+     * @param configType 配置类型标识，决定后续归属方采用的处理分支
+     * @param configId 配置ID，后续用于锁定归属方时定位或关联目标
+     * @return 锁定后的归属方结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Object lockOwner(String configType, String configId) {
         requireType(configType);
         if (FORM.equals(configType)) {
@@ -3651,6 +4311,8 @@ public class UiConfigReleaseService {
     /**
      * 流程发布读取表单 ACTIVE 版本前锁定同一配置行，
      * 与热修复发布形成共同的串行化边界。
+     *
+     * @param formId 表单ID，后续用于锁定表单流程发布时定位或关联目标
      */
     public void lockFormForProcessPublish(String formId) {
         if (!StringUtils.hasText(formId)
@@ -3745,6 +4407,12 @@ public class UiConfigReleaseService {
 
     /**
      * 按服务端可信流程上下文解析原始钉定或有效热修复表单。
+     *
+     * @param formId 表单ID，后续用于解析运行时表单发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于解析运行时表单发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法解析运行时表单发布版本时使用
+     * @param context 执行上下文，向后续运行时表单发布版本步骤传递身份、配置或状态
+     * @return 解析后的运行时表单发布版本结果，供调用方继续处理
      */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId,
@@ -4018,7 +4686,15 @@ public class UiConfigReleaseService {
                 UiRuntimePurpose.HISTORICAL);
     }
 
-    /** 校验发布记录确实属于指定表单和基础版本。 */
+    /**
+     * 校验发布记录确实属于指定表单和基础版本。
+     *
+     * @param formId 表单ID，后续用于校验并获取表单发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于校验并获取表单发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法校验并获取表单发布版本时使用
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 校验并获取后的表单发布版本结果，供调用方继续处理
+     */
     private UiConfigRelease requireFormRelease(
             String formId,
             String releaseId,
@@ -4037,6 +4713,13 @@ public class UiConfigReleaseService {
         return release;
     }
 
+    /**
+     * 处理已解析运行时表单，并将结果传给后续步骤。
+     *
+     * @param release 发布版本，作为 {@code ResolvedEntityFormRelease} 的输入影响后续处理
+     * @param pinned 固定，供本方法处理已解析运行时表单时使用
+     * @return 处理后的已解析运行时表单结果，供调用方继续处理
+     */
     private ResolvedEntityFormRelease resolvedRuntimeForm(
             UiConfigRelease release,
             boolean pinned) {
@@ -4055,6 +4738,13 @@ public class UiConfigReleaseService {
 
     /**
      * 判断当前全局激活发布是否为该流程版本已批准的热修复。
+     *
+     * @param formId 表单ID，后续用于判断是否{@code approved}热修复时定位或关联目标
+     * @param pinnedReleaseId 固定发布版本ID，后续用于判断是否{@code approved}热修复时定位或关联目标
+     * @param pinnedReleaseVersion 固定发布版本，供本方法判断是否{@code approved}热修复时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于判断是否{@code approved}热修复时定位或关联目标
+     * @param activeReleaseId 活动发布版本ID，后续用于判断是否{@code approved}热修复时定位或关联目标
+     * @return {@code approved}热修复条件成立时为 true，否则为 false
      */
     public boolean isApprovedHotfix(
             String formId,
@@ -4083,6 +4773,13 @@ public class UiConfigReleaseService {
                         target.getHotfixReleaseId());
     }
 
+    /**
+     * 整理已验证有效目标快照数据，供调用方遍历或继续处理。
+     *
+     * @param target 目标，作为 {@code codec.readObject} 的输入影响后续处理
+     * @return 已验证有效目标快照键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> verifiedEffectiveTargetSnapshot(
             UiConfigHotfixTarget target) {
         Map<String, Object> snapshot = codec.readObject(
@@ -4100,6 +4797,13 @@ public class UiConfigReleaseService {
         return snapshot;
     }
 
+    /**
+     * 整理已验证快照数据，供调用方遍历或继续处理。
+     *
+     * @param release 发布版本，作为 {@code codec.readObject} 的输入影响后续处理
+     * @return 已验证快照键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> verifiedSnapshot(UiConfigRelease release) {
         Map<String, Object> snapshot = codec.readObject(
                 release.getSnapshotDocument(), "UI发布快照");
@@ -4156,6 +4860,16 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 封装已解析界面事件快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param effectiveReleaseId 有效发布版本ID，后续用于处理已解析界面事件快照时定位或关联目标
+     * @param hotfixApplied 热修复{@code applied}，保存在对象中供后续校验、查询或展示
+     * @param effectiveContentHash 有效内容哈希，保存在对象中供后续校验、查询或展示
+     */
     public record ResolvedUiEventSnapshot(
             Map<String, Object> snapshot,
             String releaseId,
@@ -4164,7 +4878,15 @@ public class UiConfigReleaseService {
             boolean hotfixApplied,
             String effectiveContentHash) {
 
-        /** 保留旧调用方构造兼容；运行时生产解析始终提供有效内容哈希。 */
+        /**
+         * 保留旧调用方构造兼容；运行时生产解析始终提供有效内容哈希。
+         *
+         * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+         * @param releaseId 发布版本 ID，后续用于解析固定配置
+         * @param releaseVersion 发布版本号，后续用于校验快照一致性
+         * @param effectiveReleaseId 有效发布版本ID，后续用于初始化已解析界面事件快照时定位或关联目标
+         * @param hotfixApplied 热修复{@code applied}，保存在对象中供后续校验、查询或展示
+         */
         public ResolvedUiEventSnapshot(
                 Map<String, Object> snapshot,
                 String releaseId,
@@ -4181,7 +4903,12 @@ public class UiConfigReleaseService {
         }
     }
 
-    /** 撤销草稿时补齐旧发布的节点配置，运行时读取仍保持原快照结构。 */
+    /**
+     * 撤销草稿时补齐旧发布的节点配置，运行时读取仍保持原快照结构。
+     *
+     * @param snapshot 快照，作为 {@code runtimeForm} 的输入影响后续处理
+     * @return 处理后的{@code restorable}表单结果，供调用方继续处理
+     */
     private EntityForm restorableForm(Map<String, Object> snapshot) {
         EntityForm form = runtimeForm(snapshot);
         form.setNodes(new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
@@ -4189,6 +4916,12 @@ public class UiConfigReleaseService {
         return form;
     }
 
+    /**
+     * 处理运行时表单，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 处理后的运行时表单结果，供调用方继续处理
+     */
     private EntityForm runtimeForm(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
@@ -4222,6 +4955,12 @@ public class UiConfigReleaseService {
     /**
      * 解析列表运行时发布版本。无签名上下文时只能读取当前 ACTIVE；
      * 携带父表单签名上下文时，允许读取父表单快照中精确固定的列表版本。
+     *
+     * @param listConfigId 列表配置ID，后续用于解析运行时列表发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于解析运行时列表发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，作为 {@code requireListRelease} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的运行时列表发布版本结果，供调用方继续处理
      */
     public ResolvedEntityListRelease resolveRuntimeListRelease(
             String listConfigId,
@@ -4378,6 +5117,11 @@ public class UiConfigReleaseService {
      *
      * <p>只供 Embed 等内部适配器在签发浏览器令牌前使用；公开 Controller
      * 不得把该方法映射为任意历史版本读取接口。</p>
+     *
+     * @param listConfigId 列表配置ID，后续用于解析{@code server}固定运行时列表发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于解析{@code server}固定运行时列表发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，作为 {@code requireListRelease} 的输入影响后续处理
+     * @return 解析后的{@code server}固定运行时列表发布版本结果，供调用方继续处理
      */
     public ResolvedEntityListRelease resolveServerPinnedRuntimeListRelease(
             String listConfigId,
@@ -4400,6 +5144,15 @@ public class UiConfigReleaseService {
                 snapshot);
     }
 
+    /**
+     * 校验并获取列表发布版本；不满足约束时阻止后续处理。
+     *
+     * @param listConfigId 列表配置ID，后续用于校验并获取列表发布版本时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于校验并获取列表发布版本时定位或关联目标
+     * @param expectedVersion 预期版本，供本方法校验并获取列表发布版本时使用
+     * @return 校验并获取后的列表发布版本结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private UiConfigRelease requireListRelease(
             String listConfigId,
             String releaseId,
@@ -4421,6 +5174,14 @@ public class UiConfigReleaseService {
         return release;
     }
 
+    /**
+     * 处理运行时列表，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，供本方法处理运行时列表时使用
+     * @param expectedListId 预期列表ID，后续用于处理运行时列表时定位或关联目标
+     * @return 处理后的运行时列表结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfigDTO runtimeList(
             Map<String, Object> snapshot,
             String expectedListId) {
@@ -4443,6 +5204,15 @@ public class UiConfigReleaseService {
         return list;
     }
 
+    /**
+     * 判断引用列表发布版本条件是否成立，供调用方选择后续分支。
+     *
+     * @param parent 父级，供本方法处理引用列表发布版本时使用
+     * @param listConfigId 列表配置ID，后续用于处理引用列表发布版本时定位或关联目标
+     * @param listReleaseId 列表发布版本ID，后续用于处理引用列表发布版本时定位或关联目标
+     * @param listReleaseVersion 列表发布版本，供本方法处理引用列表发布版本时使用
+     * @return 引用列表发布版本条件成立时为 true，否则为 false
+     */
     private boolean referencesListRelease(
             EntityForm parent,
             String listConfigId,
@@ -4476,6 +5246,15 @@ public class UiConfigReleaseService {
         return false;
     }
 
+    /**
+     * 判断是否匹配列表引用；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否匹配列表引用的原始输入，结果供调用方继续使用
+     * @param listConfigId 列表配置ID，后续用于判断是否匹配列表引用时定位或关联目标
+     * @param listReleaseId 列表发布版本ID，后续用于判断是否匹配列表引用时定位或关联目标
+     * @param listReleaseVersion 列表发布版本，作为 {@code firstOptionalInteger} 的输入影响后续处理
+     * @return 列表引用条件成立时为 true，否则为 false
+     */
     private boolean matchesListReference(
             Object value,
             String listConfigId,
@@ -4524,6 +5303,15 @@ public class UiConfigReleaseService {
         return false;
     }
 
+    /**
+     * 封装已解析实体列表发布版本的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param list 列表，保存在对象中供后续校验、查询或展示
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param pinned 固定，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     */
     public record ResolvedEntityListRelease(
             EntityListConfigDTO list,
             String releaseId,
@@ -4532,12 +5320,28 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot) {
     }
 
+    /**
+     * 构建草稿快照；结果供后续流程传递或持久化。
+     *
+     * @param configType 配置类型标识，决定后续草稿快照采用的处理分支
+     * @param configId 配置ID，后续用于构建草稿快照时定位或关联目标
+     * @return 草稿快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId) {
         return buildDraftSnapshot(configType, configId, true);
     }
 
+    /**
+     * 构建草稿快照；结果供后续流程传递或持久化。
+     *
+     * @param configType 配置类型标识，决定后续草稿快照采用的处理分支
+     * @param configId 配置ID，后续用于构建草稿快照时定位或关联目标
+     * @param pinRuntimeReferences 固定运行时引用，供本方法构建草稿快照时使用
+     * @return 草稿快照键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId,
@@ -4604,12 +5408,25 @@ public class UiConfigReleaseService {
         return snapshot;
     }
 
+    /**
+     * 整理快照视图{@code compositions}数据，供调用方遍历或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续快照视图{@code compositions}采用的处理分支
+     * @param configId 配置ID，后续用于处理快照视图{@code compositions}时定位或关联目标
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> snapshotViewCompositions(
             String configType,
             String configId) {
         return requireViewCompositionService().snapshot(configType, configId);
     }
 
+    /**
+     * 规范化视图{@code compositions}当前依赖集合；输出作为后续校验或处理的输入。
+     *
+     * @param items 条目，供本方法规范化视图{@code compositions}当前依赖集合时使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>>
             normalizeViewCompositionsForCurrentDependencies(
                     List<Map<String, Object>> items) {
@@ -4617,6 +5434,13 @@ public class UiConfigReleaseService {
                 .normalizeSnapshotForCurrentDependencies(items);
     }
 
+    /**
+     * 恢复视图{@code compositions}；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续视图{@code compositions}采用的处理分支
+     * @param configId 配置ID，后续用于恢复视图{@code compositions}时定位或关联目标
+     * @param items 条目，供本方法恢复视图{@code compositions}时使用
+     */
     private void restoreViewCompositions(
             String configType,
             String configId,
@@ -4631,6 +5455,8 @@ public class UiConfigReleaseService {
      * 关联内容属于发布快照和恢复事务的强制组成部分。服务未装配时静默返回
      * 空集合会永久丢失配置，跳过恢复也会造成草稿与发布哈希伪对齐，因此所有
      * 发布生命周期入口都必须 fail-closed。
+     *
+     * @return 校验并获取后的视图组合服务结果，供调用方继续处理
      */
     private UiViewCompositionService requireViewCompositionService() {
         if (viewCompositionService == null) {
@@ -4640,6 +5466,12 @@ public class UiConfigReleaseService {
         return viewCompositionService;
     }
 
+    /**
+     * 整理表单元数据数据，供调用方遍历或继续处理。
+     *
+     * @param form 表单，作为 {@code metadata.put} 的输入影响后续处理
+     * @return 表单元数据键值结果，供调用方继续处理
+     */
     private Map<String, Object> formMetadata(EntityForm form) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("id", form.getId());
@@ -4664,12 +5496,25 @@ public class UiConfigReleaseService {
         return metadata;
     }
 
+    /**
+     * 整理{@code derive}运行时字段数据，供调用方遍历或继续处理。
+     *
+     * @param form 表单，供本方法处理{@code derive}运行时字段时使用
+     * @param publishedNodes 已发布节点集合，供本方法处理{@code derive}运行时字段时使用
+     * @return 实体表单字段集合，供调用方遍历或展示
+     */
     private List<EntityFormField> deriveRuntimeFields(
             EntityForm form, List<EntityFormNode> publishedNodes) {
         return new com.workflow.entity.form.application.EntityFormFieldProjection(codec)
                 .derive(form, publishedNodes);
     }
 
+    /**
+     * 整理固定子级列表{@code releases}数据，供调用方遍历或继续处理。
+     *
+     * @param nodes 节点集合，供本方法处理固定子级列表{@code releases}时使用
+     * @return 实体表单节点集合，供调用方遍历或展示
+     */
     private List<EntityFormNode> pinSubListReleases(
             List<EntityFormNode> nodes) {
         if (nodes == null || nodes.isEmpty()) {
@@ -4725,7 +5570,11 @@ public class UiConfigReleaseService {
         return List.copyOf(result);
     }
 
-    /** 新发布统一使用关系组件；历史展示字段不能再形成第二套关联规则。 */
+    /**
+     * 新发布统一使用关系组件；历史展示字段不能再形成第二套关联规则。
+     *
+     * @param snapshot 快照，供本方法校验统一关系{@code components}时使用
+     */
     private void validateUnifiedRelationComponents(Map<String, Object> snapshot) {
         for (EntityFormNode node : snapshotNodes(snapshot)) {
             Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
@@ -4740,6 +5589,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验发布；不满足约束时阻止后续处理。
+     *
+     * @param configType 配置类型标识，决定后续发布采用的处理分支
+     * @param configId 配置ID，后续用于校验发布时定位或关联目标
+     * @param snapshot 快照，作为 {@code validateUnifiedRelationComponents} 的输入影响后续处理
+     */
     private void validateForPublish(
             String configType,
             String configId,
@@ -4774,6 +5630,11 @@ public class UiConfigReleaseService {
                 configType, configId, snapshot);
     }
 
+    /**
+     * 处理固定列表目标表单{@code releases}，并将结果传给后续步骤。
+     *
+     * @param list 列表，作为 {@code list.setToolbarConfig} 的输入影响后续处理
+     */
     private void pinListTargetFormReleases(EntityListConfigDTO list) {
         list.setToolbarConfig(pinListTargetFormReleases(
                 list,
@@ -4785,6 +5646,15 @@ public class UiConfigReleaseService {
                 list.getRowActionConfig()));
     }
 
+    /**
+     * 整理固定列表目标表单{@code releases}数据，供调用方遍历或继续处理。
+     *
+     * @param list 列表，作为 {@code requireTargetListForm} 的输入影响后续处理
+     * @param position 位置，作为 {@code validateTargetFormButtonSemantics} 的输入影响后续处理
+     * @param buttons 按钮集合，供本方法处理固定列表目标表单{@code releases}时使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> pinListTargetFormReleases(
             EntityListConfigDTO list,
             String position,
@@ -4828,6 +5698,9 @@ public class UiConfigReleaseService {
      * 把 open-list 按钮当时指向的 ACTIVE List Release 写入宿主
      * 列表快照。列表标识仍用于导航展示，运行时不得再用它
      * 重新查 ACTIVE。
+     *
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @param position 位置，作为 {@code IllegalArgumentException} 的输入影响后续处理
      */
     private void pinOpenListTargetRelease(
             Map<String, Object> button,
@@ -4876,6 +5749,11 @@ public class UiConfigReleaseService {
         button.put("targetListReleaseVersion", release.getVersion());
     }
 
+    /**
+     * 校验固定列表目标表单集合；不满足约束时阻止后续处理。
+     *
+     * @param list 列表，供本方法校验固定列表目标表单集合时使用
+     */
     private void validatePinnedListTargetForms(EntityListConfigDTO list) {
         validatePinnedListTargetForms(
                 list,
@@ -4887,6 +5765,14 @@ public class UiConfigReleaseService {
                 list.getRowActionConfig());
     }
 
+    /**
+     * 校验固定列表目标表单集合；不满足约束时阻止后续处理。
+     *
+     * @param list 列表，作为 {@code requireTargetListForm} 的输入影响后续处理
+     * @param position 位置，作为 {@code validateTargetFormButtonSemantics} 的输入影响后续处理
+     * @param buttons 按钮集合，供本方法校验固定列表目标表单集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validatePinnedListTargetForms(
             EntityListConfigDTO list,
             String position,
@@ -4922,7 +5808,12 @@ public class UiConfigReleaseService {
         }
     }
 
-    /** 验证 open-list 快照中的目标列表精确坐标与归属。 */
+    /**
+     * 验证 open-list 快照中的目标列表精确坐标与归属。
+     *
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @param position 位置，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     */
     private void validatePinnedOpenListTarget(
             Map<String, Object> button,
             String position) {
@@ -4967,6 +5858,14 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验并获取目标列表表单；不满足约束时阻止后续处理。
+     *
+     * @param list 列表，供本方法校验并获取目标列表表单时使用
+     * @param targetFormId 目标表单ID，后续用于校验并获取目标列表表单时定位或关联目标
+     * @return 校验并获取后的目标列表表单结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityForm requireTargetListForm(
             EntityListConfigDTO list,
             String targetFormId) {
@@ -4987,6 +5886,13 @@ public class UiConfigReleaseService {
         return form;
     }
 
+    /**
+     * 校验目标表单按钮{@code semantics}；不满足约束时阻止后续处理。
+     *
+     * @param button 按钮，作为 {@code text} 的输入影响后续处理
+     * @param position 位置，供本方法校验目标表单按钮{@code semantics}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateTargetFormButtonSemantics(
             Map<String, Object> button,
             String position) {
@@ -5026,6 +5932,13 @@ public class UiConfigReleaseService {
         button.put("targetFormMode", mode);
     }
 
+    /**
+     * 校验快照{@code activation}；不满足约束时阻止后续处理。
+     *
+     * @param configType 配置类型标识，决定后续快照{@code activation}采用的处理分支
+     * @param configId 配置ID，后续用于校验快照{@code activation}时定位或关联目标
+     * @param snapshot 快照，作为 {@code validateFormSnapshotTree} 的输入影响后续处理
+     */
     private void validateSnapshotForActivation(
             String configType,
             String configId,
@@ -5063,6 +5976,12 @@ public class UiConfigReleaseService {
                 configType, configId, snapshot);
     }
 
+    /**
+     * 校验扩展引用；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateExtensionReferences(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"), EntityForm.class);
@@ -5107,6 +6026,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 生成节点扩展类型文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code UiExtensionReferencePolicy.resolveNodeExtensionType} 的输入影响后续处理
+     * @return 处理后的节点扩展类型文本，供调用方比较或展示
+     */
     private String nodeExtensionType(EntityFormNode node) {
         Map<String, Object> props =
                 node != null
@@ -5120,6 +6045,12 @@ public class UiConfigReleaseService {
                 props);
     }
 
+    /**
+     * 生成节点扩展类型文本，供后续匹配或展示。
+     *
+     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
+     * @return 处理后的节点扩展类型文本，供调用方比较或展示
+     */
     private String nodeExtensionType(Map<String, Object> node) {
         if (node == null) {
             return UiExtensionReferencePolicy.NODE;
@@ -5142,6 +6073,8 @@ public class UiConfigReleaseService {
      *
      * <p>运行时按实体编码和 listKey 解析列表，不能信任客户端提交的任意标识，
      * 因此在发布和激活时再次校验目标实体、实体编码以及列表发布状态。</p>
+     *
+     * @param snapshot 快照，供本方法校验子级列表引用时使用
      */
     private void validateSubListReferences(Map<String, Object> snapshot) {
         for (EntityFormNode node : snapshotNodes(snapshot)) {
@@ -5204,6 +6137,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 判断是否子级列表节点；判断结果决定调用方的后续分支。
+     *
+     * @param props 属性，作为 {@code normalize} 的输入影响后续处理
+     * @return 子级列表节点条件成立时为 true，否则为 false
+     */
     private boolean isSubListNode(Map<String, Object> props) {
         String fieldType = normalize(text(props.get("fieldType")));
         String componentType = text(props.get("componentType"));
@@ -5211,6 +6150,16 @@ public class UiConfigReleaseService {
                 || "sub_list".equalsIgnoreCase(componentType);
     }
 
+    /**
+     * 校验并获取子级列表归属方；不满足约束时阻止后续处理。
+     *
+     * @param targetEntityId 目标实体ID，后续用于校验并获取子级列表归属方时定位或关联目标
+     * @param targetEntityCode 目标实体编码，后续用于校验并获取子级列表归属方时定位或关联目标
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param label 标签，后续用于校验并获取子级列表归属方时匹配或展示
+     * @return 校验并获取后的子级列表归属方结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig requireSubListOwner(
             String targetEntityId,
             String targetEntityCode,
@@ -5244,6 +6193,12 @@ public class UiConfigReleaseService {
         return list;
     }
 
+    /**
+     * 校验表单动作集合；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateFormActions(Map<String, Object> snapshot) {
         EntityForm form = objectMapper.convertValue(
                 snapshot.get("form"),
@@ -5341,6 +6296,11 @@ public class UiConfigReleaseService {
     /**
      * 按运行时 ENTITY OWNER → FORM OWNER → BUTTON 的继承顺序解析有效步骤。
      * 空 INHERIT 可以复用默认链；DISABLE/REPLACE 与运行时保持完全一致。
+     *
+     * @param bindings 绑定集合，作为 {@code applyFormButtonLevel} 的输入影响后续处理
+     * @param form 表单，作为 {@code applyFormButtonLevel} 的输入影响后续处理
+     * @param buttonKey 按钮键，后续用于授权校验、关联或幂等去重
+     * @return 界面配置发布版本集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> effectiveFormButtonMainSteps(
             List<Map<String, Object>> bindings,
@@ -5379,13 +6339,28 @@ public class UiConfigReleaseService {
                 .toList();
     }
 
-    /** 空条件对象等同于未配置；非空条件会让主处理存在被跳过的路径。 */
+    /**
+     * 空条件对象等同于未配置；非空条件会让主处理存在被跳过的路径。
+     *
+     * @param step 步骤，供本方法判断是否具有执行条件时使用
+     * @return 执行条件条件成立时为 true，否则为 false
+     */
     private boolean hasExecutionCondition(Map<String, Object> step) {
         return step != null
                 && step.get("condition") instanceof Map<?, ?> condition
                 && !condition.isEmpty();
     }
 
+    /**
+     * 查询表单按钮绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param bindings 绑定集合，供本方法查询表单按钮绑定时使用
+     * @param ownerType 归属方类型标识，决定后续表单按钮绑定采用的处理分支
+     * @param ownerId 归属方ID，后续用于查询表单按钮绑定时定位或关联目标
+     * @param targetType 目标类型标识，决定后续表单按钮绑定采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @return 表单按钮绑定键值结果，供调用方继续处理
+     */
     private Map<String, Object> findFormButtonBinding(
             List<Map<String, Object>> bindings,
             String ownerType,
@@ -5410,6 +6385,12 @@ public class UiConfigReleaseService {
                 .orElse(null);
     }
 
+    /**
+     * 应用表单按钮层级，并将结果传给后续步骤。
+     *
+     * @param effective 有效，供本方法应用表单按钮层级时使用
+     * @param binding 绑定，作为 {@code normalize} 的输入影响后续处理
+     */
     private void applyFormButtonLevel(
             List<Map<String, Object>> effective,
             Map<String, Object> binding) {
@@ -5428,6 +6409,12 @@ public class UiConfigReleaseService {
         effective.addAll(mapList(binding.get("steps")));
     }
 
+    /**
+     * 校验模板引用；不满足约束时阻止后续处理。
+     *
+     * @param snapshot 快照，作为 {@code snapshotNodes} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateTemplateReferences(Map<String, Object> snapshot) {
         List<EntityFormNode> nodes = snapshotNodes(snapshot);
         for (EntityFormNode node : nodes) {
@@ -5480,6 +6467,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验列表模板引用；不满足约束时阻止后续处理。
+     *
+     * @param list 列表，作为 {@code validateListActionTemplateReferences} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateListTemplateReferences(EntityListConfigDTO list) {
         if (list == null) {
             throw new IllegalArgumentException("列表发布快照不能为空");
@@ -5501,6 +6494,12 @@ public class UiConfigReleaseService {
                 "行按钮");
     }
 
+    /**
+     * 校验列表动作模板引用；不满足约束时阻止后续处理。
+     *
+     * @param actions 动作集合，供本方法校验列表动作模板引用时使用
+     * @param positionLabel 位置标签，后续用于校验列表动作模板引用时匹配或展示
+     */
     private void validateListActionTemplateReferences(
             List<Map<String, Object>> actions,
             String positionLabel) {
@@ -5519,6 +6518,15 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验模板绑定；不满足约束时阻止后续处理。
+     *
+     * @param templateId 模板ID，后续用于校验模板绑定时定位或关联目标
+     * @param templateVersion 模板版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param requiredType 必填类型标识，决定后续模板绑定采用的处理分支
+     * @param referenceLabel 引用标签，后续用于校验模板绑定时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateTemplateBinding(
             String templateId,
             Integer templateVersion,
@@ -5566,6 +6574,13 @@ public class UiConfigReleaseService {
         verifyTemplateVersionIntegrity(version, referenceLabel);
     }
 
+    /**
+     * 验证模板版本{@code integrity}；不满足约束时阻止后续处理。
+     *
+     * @param version 版本，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param referenceLabel 引用标签，后续用于验证模板版本{@code integrity}时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void verifyTemplateVersionIntegrity(
             UiComponentTemplateVersion version,
             String referenceLabel) {
@@ -5587,6 +6602,13 @@ public class UiConfigReleaseService {
                 "组件模板版本快照");
     }
 
+    /**
+     * 校验表单快照树；不满足约束时阻止后续处理。
+     *
+     * @param formId 表单ID，后续用于校验表单快照树时定位或关联目标
+     * @param snapshot 快照，作为 {@code snapshotNodes} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateFormSnapshotTree(
             String formId,
             Map<String, Object> snapshot) {
@@ -5655,6 +6677,13 @@ public class UiConfigReleaseService {
                 formId, 1, new LinkedHashSet<>(), referenceCache);
     }
 
+    /**
+     * 校验快照父级子级；不满足约束时阻止后续处理。
+     *
+     * @param child 子级，供本方法校验快照父级子级时使用
+     * @param parent 父级，作为 {@code ALLOWED_CHILD_TYPES.get} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSnapshotParentChild(
             EntityFormNode child,
             EntityFormNode parent) {
@@ -5680,6 +6709,15 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验已发布表单图；不满足约束时阻止后续处理。
+     *
+     * @param formId 表单ID，后续用于校验已发布表单图时定位或关联目标
+     * @param depth 深度，供本方法校验已发布表单图时使用
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param referenceCache 引用缓存，供本方法校验已发布表单图时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validatePublishedFormGraph(
             String formId,
             int depth,
@@ -5714,6 +6752,13 @@ public class UiConfigReleaseService {
         path.remove(formId);
     }
 
+    /**
+     * 整理活动已发布表单引用数据，供调用方遍历或继续处理。
+     *
+     * @param formId 表单ID，后续用于处理活动已发布表单引用时定位或关联目标
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> activePublishedFormReferences(String formId) {
         UiConfigRelease release = releaseMapper.findActive(FORM, formId);
         if (release == null || !StringUtils.hasText(release.getSnapshotDocument())) {
@@ -5724,6 +6769,12 @@ public class UiConfigReleaseService {
         return referencedFormIds(snapshotNodes(snapshot));
     }
 
+    /**
+     * 整理已引用表单ID 集合数据，供调用方遍历或继续处理。
+     *
+     * @param nodes 节点集合，供本方法处理已引用表单ID 集合时使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
+     */
     private List<String> referencedFormIds(List<EntityFormNode> nodes) {
         List<String> references = new ArrayList<>();
         for (EntityFormNode node : nodes) {
@@ -5745,12 +6796,24 @@ public class UiConfigReleaseService {
         return references;
     }
 
+    /**
+     * 整理快照节点集合数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 实体表单节点集合，供调用方遍历或展示
+     */
     private List<EntityFormNode> snapshotNodes(Map<String, Object> snapshot) {
         return objectMapper.convertValue(
                 snapshot.getOrDefault("nodes", List.of()),
                 new TypeReference<List<EntityFormNode>>() {});
     }
 
+    /**
+     * 生成节点标签文本，供后续匹配或展示。
+     *
+     * @param node 节点，供本方法处理节点标签时使用
+     * @return 处理后的节点标签文本，供调用方比较或展示
+     */
     private String nodeLabel(EntityFormNode node) {
         return StringUtils.hasText(node.getNodeKey())
                 ? node.getNodeKey()
@@ -5762,6 +6825,11 @@ public class UiConfigReleaseService {
      *
      * <p>优先展示用户可见的节点标签，同时保留字段/节点编码、节点 ID、
      * 模板名称与类型，避免仅返回内部 nodeKey 导致用户无法定位配置项。</p>
+     *
+     * @param node 节点，供本方法处理{@code incompatible}模板消息时使用
+     * @param template 模板，作为 {@code firstNonBlank} 的输入影响后续处理
+     * @param templateType 模板类型标识，决定后续{@code incompatible}模板消息采用的处理分支
+     * @return 处理后的{@code incompatible}模板消息文本，供调用方比较或展示
      */
     private String incompatibleTemplateMessage(
             EntityFormNode node,
@@ -5804,12 +6872,24 @@ public class UiConfigReleaseService {
                 + "）。请在表单设计器中定位该节点，并在“锁定模板”中清除或更换兼容模板。";
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面配置发布版本的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面配置发布版本文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : null;
     }
 
+    /**
+     * 审计详情；供后续追溯或审计使用。
+     *
+     * @param preview 预览，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 详情键值结果，供调用方继续处理
+     */
     private Map<String, Object> auditDetail(
             UiConfigPublishPreviewDTO preview) {
         return objectMapper.convertValue(
@@ -5817,6 +6897,17 @@ public class UiConfigReleaseService {
                 new TypeReference<Map<String, Object>>() {});
     }
 
+    /**
+     * 记录审计；供后续追溯或审计使用。
+     *
+     * @param configType 配置类型标识，决定后续审计采用的处理分支
+     * @param configId 配置ID，后续用于记录审计时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于记录审计时定位或关联目标
+     * @param operation 操作标识，决定后续审计采用的处理分支
+     * @param riskLevel 风险层级，作为 {@code audit.setRiskLevel} 的输入影响后续处理
+     * @param reason 原因，作为 {@code audit.setReason} 的输入影响后续处理
+     * @param detail 详情，作为 {@code audit.setDetailDocument} 的输入影响后续处理
+     */
     private void recordAudit(
             String configType,
             String configId,
@@ -5854,6 +6945,8 @@ public class UiConfigReleaseService {
     /**
      * 将既有 UI 发布审计行投影到统一时间线。投影只保存审计行指针，发布快照、
      * 风险明细和原因仍由 UI 发布模块自己的接口鉴权读取。
+     *
+     * @param audit 审计，作为 {@code AuditEventIds.stable} 的输入影响后续处理
      */
     private void recordUnifiedReleaseAudit(
             UiConfigReleaseAudit audit) {
@@ -5915,6 +7008,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理发布版本审计动作，并将结果传给后续步骤。
+     *
+     * @param operation 操作标识，决定后续发布版本审计动作采用的处理分支
+     * @return 处理后的发布版本审计动作结果，供调用方继续处理
+     */
     private AuditAction releaseAuditAction(String operation) {
         String normalized = normalize(operation);
         if (normalized != null
@@ -5932,6 +7031,12 @@ public class UiConfigReleaseService {
         return AuditAction.CONFIGURE;
     }
 
+    /**
+     * 处理发布版本审计风险，并将结果传给后续步骤。
+     *
+     * @param value 待处理发布版本审计风险的原始输入，结果供调用方继续使用
+     * @return 处理后的发布版本审计风险结果，供调用方继续处理
+     */
     private AuditRiskLevel releaseAuditRisk(String value) {
         String normalized = normalize(value);
         if (UiConfigSemanticPatchService.SAFE.equals(normalized)) {
@@ -5950,6 +7055,12 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理{@code deactivate}，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code deactivate}采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code deactivate}时定位或关联目标
+     */
     private void deactivate(String configType, String configId) {
         UpdateWrapper<UiConfigRelease> update = new UpdateWrapper<>();
         update.eq("config_type", configType)
@@ -5959,6 +7070,14 @@ public class UiConfigReleaseService {
         releaseMapper.update(null, update);
     }
 
+    /**
+     * 激活归属方；结果供调用方的后续步骤使用。
+     *
+     * @param configType 配置类型标识，决定后续归属方采用的处理分支
+     * @param configId 配置ID，后续用于激活归属方时定位或关联目标
+     * @param release 发布版本，作为 {@code switchActiveReleaseOnOwner} 的输入影响后续处理
+     * @param contentHash 内容哈希，作为 {@code switchActiveReleaseOnOwner} 的输入影响后续处理
+     */
     private void activateOnOwner(
             String configType,
             String configId,
@@ -5971,6 +7090,13 @@ public class UiConfigReleaseService {
                 contentHash);
     }
 
+    /**
+     * 处理{@code switch}活动发布版本归属方，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code switch}活动发布版本归属方采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code switch}活动发布版本归属方时定位或关联目标
+     * @param release 发布版本，供本方法处理{@code switch}活动发布版本归属方时使用
+     */
     private void switchActiveReleaseOnOwner(
             String configType,
             String configId,
@@ -5982,6 +7108,15 @@ public class UiConfigReleaseService {
                 null);
     }
 
+    /**
+     * 处理{@code switch}活动发布版本归属方，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续{@code switch}活动发布版本归属方采用的处理分支
+     * @param configId 配置ID，后续用于处理{@code switch}活动发布版本归属方时定位或关联目标
+     * @param release 发布版本，供本方法处理{@code switch}活动发布版本归属方时使用
+     * @param draftHash 草稿哈希，作为 {@code update.set} 的输入影响后续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void switchActiveReleaseOnOwner(
             String configType,
             String configId,
@@ -6017,24 +7152,54 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 校验并获取类型；不满足约束时阻止后续处理。
+     *
+     * @param configType 配置类型标识，决定后续类型采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireType(String configType) {
         if (!FORM.equals(configType) && !LIST.equals(configType)) {
             throw new IllegalArgumentException("配置类型只能是 FORM 或 LIST");
         }
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 生成规范化目标键文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化目标键的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化目标键文本，供调用方比较或展示
+     */
     private String normalizedTargetKey(String value) {
         return StringUtils.hasText(value) ? value.trim() : "";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -6044,6 +7209,13 @@ public class UiConfigReleaseService {
         return "未命名项";
     }
 
+    /**
+     * 处理可空整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理可空整数的原始输入，结果供调用方继续使用
+     * @return 处理后的可空整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer nullableInteger(Object value) {
         if (value == null) {
             return null;
@@ -6058,6 +7230,13 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private Integer integer(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -6069,10 +7248,25 @@ public class UiConfigReleaseService {
         }
     }
 
+    /**
+     * 处理布尔值{@code flag}，并将结果传给后续步骤。
+     *
+     * @param value 待处理布尔值{@code flag}的原始输入，结果供调用方继续使用
+     * @return 处理后的布尔值{@code flag}结果，供调用方继续处理
+     */
     private Integer booleanFlag(Object value) {
         return Boolean.TRUE.equals(value) ? 1 : 0;
     }
 
+    /**
+     * 封装已准备热修复目标的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param target 目标，保存在对象中供后续校验、查询或展示
+     * @param previous 上一项，保存在对象中供后续校验、查询或展示
+     * @param restorablePreviousTargetId {@code restorable}上一项目标ID，后续用于处理已准备热修复目标时定位或关联目标
+     * @param effectiveDocument 有效文档，保存在对象中供后续校验、查询或展示
+     * @param effectiveHash 有效哈希，保存在对象中供后续校验、查询或展示
+     */
     private record PreparedHotfixTarget(
             UiHotfixProcessTarget target,
             UiConfigHotfixTarget previous,
@@ -6081,11 +7275,26 @@ public class UiConfigReleaseService {
             String effectiveHash) {
     }
 
+    /**
+     * 封装有效热修复快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param document 文档，保存在对象中供后续校验、查询或展示
+     * @param hash 哈希，保存在对象中供后续校验、查询或展示
+     */
     private record EffectiveHotfixSnapshot(
             String document,
             String hash) {
     }
 
+    /**
+     * 封装热修复准备的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param active 活动，保存在对象中供后续校验、查询或展示
+     * @param draftDocument 草稿文档，保存在对象中供后续校验、查询或展示
+     * @param patch 补丁，保存在对象中供后续校验、查询或展示
+     * @param targets 目标集合，保存在对象中供后续校验、查询或展示
+     * @param preview 预览，保存在对象中供后续校验、查询或展示
+     */
     private record HotfixPreparation(
             UiConfigRelease active,
             String draftDocument,

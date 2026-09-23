@@ -18,6 +18,12 @@ public class UserPositionAssignmentController {
 
     private final PositionAssignmentQueryService queryService;
 
+    /**
+     * 处理分配集合，并将结果传给后续步骤。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 处理后的分配集合结果，供调用方继续处理
+     */
     @GetMapping("/{userId}/position-assignments")
     @RequiresPermission("system:position:view")
     public Result<PositionViews.UserAssignments> assignments(

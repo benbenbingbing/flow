@@ -18,9 +18,20 @@ import java.util.Set;
  */
 final class AttachmentItemMigrationSupport {
 
+    /**
+     * 初始化附件条目迁移支持，保存构造参数供后续方法使用。
+     */
     private AttachmentItemMigrationSupport() {
     }
 
+    /**
+     * 处理重写{@code scoped}配置，并将结果传给后续步骤。
+     *
+     * @param source 待处理重写{@code scoped}配置的原始输入，结果供调用方继续使用
+     * @param targetItems 目标条目，作为 {@code resolveTargetKeys} 的输入影响后续处理
+     * @param objectMapper 对象映射器，作为 {@code collectFileItems} 的输入影响后续处理
+     * @return 处理后的重写{@code scoped}配置结果，供调用方继续处理
+     */
     static Object rewriteScopedConfiguration(
             Object source,
             List<EntityFieldFileItem> targetItems,
@@ -37,6 +48,15 @@ final class AttachmentItemMigrationSupport {
         return rewriteItemKeys(source, targetKeys, objectMapper);
     }
 
+    /**
+     * 解析目标键集合；输出作为后续校验或处理的输入。
+     *
+     * @param sourceItems 来源条目，供本方法解析目标键集合时使用
+     * @param targetItems 目标条目，供本方法解析目标键集合时使用
+     * @param objectMapper 对象映射器，供本方法解析目标键集合时使用
+     * @return 目标键集合键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     static Map<String, String> resolveTargetKeys(
             List<Map<String, Object>> sourceItems,
             List<EntityFieldFileItem> targetItems,
@@ -88,6 +108,14 @@ final class AttachmentItemMigrationSupport {
         return result;
     }
 
+    /**
+     * 写入已解析键；后续读取或执行将使用更新后的状态。
+     *
+     * @param result 结果，供本方法写入已解析键时使用
+     * @param sourceKey 来源键，后续用于授权校验、关联或幂等去重
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void putResolvedKey(
             Map<String, String> result,
             String sourceKey,
@@ -99,6 +127,13 @@ final class AttachmentItemMigrationSupport {
         }
     }
 
+    /**
+     * 收集文件条目；结果供调用方的后续步骤使用。
+     *
+     * @param source 待收集文件条目的原始输入，结果供调用方继续使用
+     * @param result 结果，作为 {@code collection.forEach} 的输入影响后续处理
+     * @param objectMapper 对象映射器，作为 {@code collection.forEach} 的输入影响后续处理
+     */
     private static void collectFileItems(
             Object source,
             List<Map<String, Object>> result,
@@ -129,6 +164,15 @@ final class AttachmentItemMigrationSupport {
         }
     }
 
+    /**
+     * 处理重写条目键集合，并将结果传给后续步骤。
+     *
+     * @param source 待处理重写条目键集合的原始输入，结果供调用方继续使用
+     * @param targetKeys 目标键集合，作为 {@code rewritten.put} 的输入影响后续处理
+     * @param objectMapper 对象映射器，作为 {@code rewritten.put} 的输入影响后续处理
+     * @return 处理后的重写条目键集合结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static Object rewriteItemKeys(
             Object source,
             Map<String, String> targetKeys,
@@ -172,6 +216,14 @@ final class AttachmentItemMigrationSupport {
         return source;
     }
 
+    /**
+     * 整理名称集合数据，供调用方遍历或继续处理。
+     *
+     * @param currentName 当前名称，后续用于处理名称集合时匹配或展示
+     * @param aliases {@code aliases}，作为 {@code decodeJson} 的输入影响后续处理
+     * @param objectMapper 对象映射器，作为 {@code decodeJson} 的输入影响后续处理
+     * @return 附件条目迁移支持集合，供调用方遍历或展示
+     */
     private static Set<String> names(
             String currentName,
             Object aliases,
@@ -190,12 +242,26 @@ final class AttachmentItemMigrationSupport {
         return result;
     }
 
+    /**
+     * 判断{@code intersects}条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理{@code intersects}时使用
+     * @param right 右侧，供本方法处理{@code intersects}时使用
+     * @return {@code intersects}条件成立时为 true，否则为 false
+     */
     private static boolean intersects(
             Set<String> left,
             Set<String> right) {
         return left.stream().anyMatch(right::contains);
     }
 
+    /**
+     * 解码JSON；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码JSON的原始输入，结果供调用方继续使用
+     * @param objectMapper 对象映射器，供本方法解码JSON时使用
+     * @return 解码后的JSON结果，供调用方继续处理
+     */
     private static Object decodeJson(
             Object value,
             ObjectMapper objectMapper) {
@@ -213,6 +279,12 @@ final class AttachmentItemMigrationSupport {
         }
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private static Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(
@@ -220,6 +292,12 @@ final class AttachmentItemMigrationSupport {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

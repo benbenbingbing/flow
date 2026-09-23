@@ -84,13 +84,21 @@ public class UiExtensionExecuteRequest {
     @JsonIgnore
     private String serverProcessInstanceId;
 
-    /** 历史运行代码别名；公开请求不能提交 operationCode。 */
+    /**
+     * 历史运行代码别名；公开请求不能提交 operationCode。
+     *
+     * @return 读取后的操作编码文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationCode() {
         return providerOperationCode;
     }
 
-    /** 历史运行代码别名；仅供服务端内部适配。 */
+    /**
+     * 历史运行代码别名；仅供服务端内部适配。
+     *
+     * @param value 待设置操作编码的原始输入，结果供调用方继续使用
+     */
     public void setOperationCode(String value) {
         providerOperationCode = value;
     }

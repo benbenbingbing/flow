@@ -13,13 +13,13 @@ import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
@@ -121,6 +121,9 @@ public class UiEventRuntimeService {
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
+     *
+     * @param request 本次请求，后续经校验后用于执行界面事件运行时
+     * @return 执行后的界面事件运行时结果，供调用方继续处理
      */
     public UiEventExecutionResult execute(
             UiEventExecuteRequest request) {
@@ -129,6 +132,10 @@ public class UiEventRuntimeService {
 
     /**
      * 执行事件链，并在没有 REPLACE 步骤时调用平台默认处理。
+     *
+     * @param request 本次请求，后续经校验后用于执行界面事件运行时
+     * @param defaultHandler 默认处理器，作为 {@code executeChain} 的输入影响后续处理
+     * @return 执行后的界面事件运行时结果，供调用方继续处理
      */
     public UiEventExecutionResult execute(
             UiEventExecuteRequest request,
@@ -207,6 +214,14 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 执行链，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于执行链
+     * @param defaultHandler 默认处理器，供本方法执行链时使用
+     * @param chain 链，作为 {@code selectionRuntimeService.resolve} 的输入影响后续处理
+     * @return 执行后的链结果，供调用方继续处理
+     */
     private UiEventExecutionResult executeChain(
             UiEventExecuteRequest request,
             Function<Map<String, Object>, Object> defaultHandler,
@@ -265,6 +280,13 @@ public class UiEventRuntimeService {
         return result;
     }
 
+    /**
+     * 处理日志{@code completed}，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理日志{@code completed}
+     * @param result 结果，供本方法处理日志{@code completed}时使用
+     * @param startedAt 已启动时间，后续用于判断有效期或展示该事件的发生时间
+     */
     private void logCompleted(
             UiEventExecuteRequest request,
             UiEventExecutionResult result,
@@ -295,6 +317,13 @@ public class UiEventRuntimeService {
                 (System.nanoTime() - startedAt) / 1_000_000);
     }
 
+    /**
+     * 校验并获取执行权限；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取执行权限
+     * @param chain 链，作为 {@code formActionService.requireCustomButton} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireExecutionPermission(
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain) {
@@ -353,6 +382,10 @@ public class UiEventRuntimeService {
      * <p>自定义按钮不能回退 UPDATE 权限；行与选择集都按当前列表数据范围重新
      * 加载，发布按钮配置和权威记录在任何 condition/inputMapping 运行前替换
      * 客户端同名值。</p>
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取已发布列表按钮
+     * @param chain 链，作为 {@code publishedListButton} 的输入影响后续处理
+     * @param eventCode 事件编码，后续用于校验并获取已发布列表按钮时定位或关联目标
      */
     private void requirePublishedListButton(
             UiEventExecuteRequest request,
@@ -440,6 +473,14 @@ public class UiEventRuntimeService {
                 request, button, null, trustedRows);
     }
 
+    /**
+     * 整理已发布列表按钮数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，供本方法处理已发布列表按钮时使用
+     * @param eventCode 事件编码，后续用于处理已发布列表按钮时定位或关联目标
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @return 已发布列表按钮键值结果，供调用方继续处理
+     */
     private Map<String, Object> publishedListButton(
             Map<String, Object> snapshot,
             String eventCode,
@@ -463,6 +504,12 @@ public class UiEventRuntimeService {
                 .orElse(null);
     }
 
+    /**
+     * 整理行映射数据，供调用方遍历或继续处理。
+     *
+     * @param row 行，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 行映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> rowMap(EntityDataDTO row) {
         return objectMapper.convertValue(
                 row, new TypeReference<Map<String, Object>>() {});
@@ -474,6 +521,10 @@ public class UiEventRuntimeService {
      * <p>历史发布通过 releaseResolutionToken 固定后，Provider 访问层要求内部
      * 调用携带可信种子。客户端 requestId 只参与服务端绑定后的摘要；无合法
      * requestId 时使用随机 nonce，避免任何客户端字段被直接当作可信标识。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理绑定可信列表执行
+     * @param chain 链，供本方法处理绑定可信列表执行时使用
+     * @param eventCode 事件编码，后续用于处理绑定可信列表执行时定位或关联目标
      */
     private void bindTrustedListExecution(
             UiEventExecuteRequest request,
@@ -510,6 +561,9 @@ public class UiEventRuntimeService {
      * 必须在 resolvePublished 和权限检查之后调用；不能
      * 仅凭客户端带了令牌就授予钉版执行权。按钮回执和内部提交已有的种子保持原值，
      * 无稳定 requestId 的交互使用随机 nonce，避免不同次字段选择共享执行标识。</p>
+     *
+     * @param request 本次请求，后续经校验后用于处理绑定可信固定执行
+     * @param chain 链，作为 {@code text} 的输入影响后续处理
      */
     private void bindTrustedPinnedExecution(
             UiEventExecuteRequest request,
@@ -538,7 +592,14 @@ public class UiEventRuntimeService {
                 material.getBytes(StandardCharsets.UTF_8)).toString().replace("-", ""));
     }
 
-    /** 用发布按钮和服务端记录覆盖所有列表按钮保留输入。 */
+    /**
+     * 用发布按钮和服务端记录覆盖所有列表按钮保留输入。
+     *
+     * @param request 本次请求，后续经校验后用于规范化列表按钮输入
+     * @param button 按钮，作为 {@code input.put} 的输入影响后续处理
+     * @param row 行，作为 {@code input.put} 的输入影响后续处理
+     * @param selectedRows 已选择行，作为 {@code input.put} 的输入影响后续处理
+     */
     private void canonicalizeListButtonInput(
             UiEventExecuteRequest request,
             Map<String, Object> button,
@@ -586,6 +647,12 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 判断保留列表按钮输入键条件是否成立，供调用方选择后续分支。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 保留列表按钮输入键条件成立时为 true，否则为 false
+     */
     private boolean reservedListButtonInputKey(String key) {
         String normalized = key == null ? ""
                 : key.replace("_", "")
@@ -607,6 +674,8 @@ public class UiEventRuntimeService {
      * {@code input.form} 业务树，并注入已发布按钮、已鉴权模式和记录。客户端
      * button/task/process/record/mode 均不能参与事件语义。FORM_BUTTON 的原始
      * context 不属于业务输入，全部丢弃后只注入服务端已验证的路由坐标。</p>
+     *
+     * @param request 本次请求，后续经校验后用于规范化表单按钮请求
      */
     private void canonicalizeFormButtonRequest(
             UiEventExecuteRequest request) {
@@ -657,6 +726,12 @@ public class UiEventRuntimeService {
         request.setSelection(null);
     }
 
+    /**
+     * 处理不可变业务副本，并将结果传给后续步骤。
+     *
+     * @param value 待处理不可变业务副本的原始输入，结果供调用方继续使用
+     * @return 处理后的不可变业务副本结果，供调用方继续处理
+     */
     private Object immutableBusinessCopy(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
@@ -679,6 +754,9 @@ public class UiEventRuntimeService {
      * <p>FORM_BUTTON_CLICK 没有平台默认业务动作，REPLACE 在该事件中表示自定义
      * 按钮的主处理，而不是跳过平台逻辑；BEFORE/AFTER 仍可作为主处理前后的
      * 辅助步骤存在。</p>
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取{@code executable}表单按钮链
+     * @param chain 链，供本方法校验并获取{@code executable}表单按钮链时使用
      */
     private void requireExecutableFormButtonChain(
             UiEventExecuteRequest request,
@@ -710,14 +788,23 @@ public class UiEventRuntimeService {
         }
     }
 
-    /** 与条件执行器保持一致：空对象不会参与判断，视为未配置条件。 */
+    /**
+     * 与条件执行器保持一致：空对象不会参与判断，视为未配置条件。
+     *
+     * @param step 步骤，供本方法判断是否具有执行条件时使用
+     * @return 执行条件条件成立时为 true，否则为 false
+     */
     private boolean hasExecutionCondition(Map<String, Object> step) {
         return step != null
                 && step.get("condition") instanceof Map<?, ?> condition
                 && !condition.isEmpty();
     }
 
-    /** 表单按钮公开请求只能选择精确 BUTTON 目标，不能借 OWNER 链绕过覆盖。 */
+    /**
+     * 表单按钮公开请求只能选择精确 BUTTON 目标，不能借 OWNER 链绕过覆盖。
+     *
+     * @param request 本次请求，后续经校验后用于校验并获取表单按钮请求{@code shape}
+     */
     private void requireFormButtonRequestShape(
             UiEventExecuteRequest request) {
         if (request == null
@@ -734,6 +821,14 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 记录执行；供后续追溯或审计使用。
+     *
+     * @param request 本次请求，后续经校验后用于记录执行
+     * @param result 结果，作为 {@code after.put} 的输入影响后续处理
+     * @param exception 异常，作为 {@code result} 的输入影响后续处理
+     * @param startedAt 已启动时间，后续用于判断有效期或展示该事件的发生时间
+     */
     private void recordExecution(
             UiEventExecuteRequest request,
             UiEventExecutionResult result,
@@ -833,6 +928,12 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 生成事件目标文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理事件目标
+     * @return 处理后的事件目标文本，供调用方比较或展示
+     */
     private String eventTarget(UiEventExecuteRequest request) {
         if (request == null) {
             return null;
@@ -851,6 +952,14 @@ public class UiEventRuntimeService {
                 .collect(java.util.stream.Collectors.joining(":"));
     }
 
+    /**
+     * 生成执行摘要文本，供后续匹配或展示。
+     *
+     * @param eventCode 事件编码，后续用于处理执行摘要时定位或关联目标
+     * @param result 结果，供本方法处理执行摘要时使用
+     * @param exception 异常，作为 {@code firstText} 的输入影响后续处理
+     * @return 处理后的执行摘要文本，供调用方比较或展示
+     */
     private String executionSummary(
             String eventCode,
             UiEventExecutionResult result,
@@ -876,6 +985,12 @@ public class UiEventRuntimeService {
                 + "，步骤数 " + stepCount;
     }
 
+    /**
+     * 整理{@code effect}类型集合数据，供调用方遍历或继续处理。
+     *
+     * @param result 结果，供本方法处理{@code effect}类型集合时使用
+     * @return 界面事件集合，供调用方遍历或展示
+     */
     private List<String> effectTypes(UiEventExecutionResult result) {
         if (result.getEffects() == null) {
             return List.of();
@@ -889,7 +1004,12 @@ public class UiEventRuntimeService {
                 .toList();
     }
 
-    /** 审计只记录步骤身份和状态，不复制 Provider 错误或字段映射数据。 */
+    /**
+     * 审计只记录步骤身份和状态，不复制 Provider 错误或字段映射数据。
+     *
+     * @param result 结果，供本方法审计追踪时使用
+     * @return 界面事件集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> auditTrace(
             UiEventExecutionResult result) {
         if (result.getTrace() == null) {
@@ -906,6 +1026,17 @@ public class UiEventRuntimeService {
                 .toList();
     }
 
+    /**
+     * 执行步骤，并将结果传给后续步骤。
+     *
+     * @param step 步骤，作为 {@code trace} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于执行步骤
+     * @param chain 链，作为 {@code execute.setReleaseId} 的输入影响后续处理
+     * @param state 状态标识，决定后续步骤采用的处理分支
+     * @param result 结果，作为 {@code trace} 的输入影响后续处理
+     * @return 执行后的步骤结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Object executeStep(
             Map<String, Object> step,
             UiEventExecuteRequest request,
@@ -1088,7 +1219,12 @@ public class UiEventRuntimeService {
         }
     }
 
-    /** 即使通过通用事件入口执行，也从已验证发布快照恢复固定条件，客户端无法伪造或清空。 */
+    /**
+     * 即使通过通用事件入口执行，也从已验证发布快照恢复固定条件，客户端无法伪造或清空。
+     *
+     * @param request 本次请求，后续经校验后用于处理绑定列表固定过滤条件
+     * @param chain 链，作为 {@code stringMap} 的输入影响后续处理
+     */
     private void bindListFixedFilters(
             UiEventExecuteRequest request, UiEventBindingService.ResolvedEventChain chain) {
         if (!"LIST".equals(normalize(request.getConfigType()))
@@ -1100,7 +1236,12 @@ public class UiEventRuntimeService {
         request.setServerListFilters(Collections.unmodifiableMap(required));
     }
 
-    /** BEFORE 输出、输入映射都可能替换 filters，每次执行前恢复可信条件。 */
+    /**
+     * BEFORE 输出、输入映射都可能替换 filters，每次执行前恢复可信条件。
+     *
+     * @param request 本次请求，后续经校验后用于恢复列表过滤条件
+     * @param state 状态标识，决定后续列表过滤条件采用的处理分支
+     */
     private void restoreListFilters(UiEventExecuteRequest request, Map<String, Object> state) {
         if (request.getServerListFilters() == null || request.getServerListFilters().isEmpty()) return;
         Map<String, Object> input = mutableInput(state);
@@ -1112,6 +1253,10 @@ public class UiEventRuntimeService {
      * 覆盖映射结果中可能由客户端伪造的顶层表单身份。
      * 业务字段容器（例如 input.form）不改写；Provider 需要 recordId/mode 时只能
      * 收到此前已通过按钮鉴权的值，强类型上下文同样读取独立服务端字段。
+     *
+     * @param mappedInput {@code mapped}输入，供本方法处理可信表单按钮输入时使用
+     * @param request 本次请求，后续经校验后用于处理可信表单按钮输入
+     * @return 可信表单按钮输入键值结果，供调用方继续处理
      */
     private Map<String, Object> trustedFormButtonInput(
             Map<String, Object> mappedInput,
@@ -1139,6 +1284,10 @@ public class UiEventRuntimeService {
      * <p>inputMapping 本身属于发布配置，但映射源仍含客户端业务字段；因此映射
      * 后也必须删除大小写及分隔符变体，再从执行前鉴权得到的 canonical input
      * 注入发布按钮、权威行和选择集，防止已鉴权 A 行被映射成 B 行。</p>
+     *
+     * @param mappedInput {@code mapped}输入，供本方法处理可信列表按钮输入时使用
+     * @param request 本次请求，后续经校验后用于处理可信列表按钮输入
+     * @return 可信列表按钮输入键值结果，供调用方继续处理
      */
     private Map<String, Object> trustedListButtonInput(
             Map<String, Object> mappedInput,
@@ -1163,6 +1312,12 @@ public class UiEventRuntimeService {
         return result;
     }
 
+    /**
+     * 判断是否列表按钮事件；判断结果决定调用方的后续分支。
+     *
+     * @param request 本次请求，后续经校验后用于判断是否列表按钮事件
+     * @return 列表按钮事件条件成立时为 true，否则为 false
+     */
     private boolean isListButtonEvent(UiEventExecuteRequest request) {
         String eventCode = normalize(request == null
                 ? null : request.getEventCode());
@@ -1174,6 +1329,13 @@ public class UiEventRuntimeService {
                 .contains(eventCode);
     }
 
+    /**
+     * 整理初始状态数据，供调用方遍历或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于处理初始状态
+     * @param selection 选择，作为 {@code state.put} 的输入影响后续处理
+     * @return 初始状态键值结果，供调用方继续处理
+     */
     private Map<String, Object> initialState(
             UiEventExecuteRequest request,
             Object selection) {
@@ -1191,12 +1353,25 @@ public class UiEventRuntimeService {
         return state;
     }
 
+    /**
+     * 整理可变输入数据，供调用方遍历或继续处理。
+     *
+     * @param state 状态标识，决定后续可变输入采用的处理分支
+     * @return 可变输入键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mutableInput(
             Map<String, Object> state) {
         return (Map<String, Object>) state.get("input");
     }
 
+    /**
+     * 整理运行时上下文数据，供调用方遍历或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于处理运行时上下文
+     * @param state 状态标识，决定后续运行时上下文采用的处理分支
+     * @return 运行时上下文键值结果，供调用方继续处理
+     */
     private Map<String, Object> runtimeContext(
             UiEventExecuteRequest request,
             Map<String, Object> state) {
@@ -1223,6 +1398,9 @@ public class UiEventRuntimeService {
      * Provider 已通过独立 input 接收映射后的业务值；可信 context 不再重复嵌套
      * 原始 input/context/result，以免动态字段名被误认为身份元数据或被实现方错用。
      * 所有事件统一使用此摘要；完整 state 仍留在事件引擎内供条件与回填映射使用。
+     *
+     * @param state 状态标识，决定后续提供者事件状态采用的处理分支
+     * @return 提供者事件状态键值结果，供调用方继续处理
      */
     private Map<String, Object> providerEventState(
             Map<String, Object> state) {
@@ -1239,6 +1417,9 @@ public class UiEventRuntimeService {
      * 为事件内部映射状态保留客户端业务 hint，兼容旧客户端的展示坐标。
      * 根层服务端身份声明会被丢弃；业务 hint 只供条件和 inputMapping 使用，
      * 不再复制到 Provider context。Provider 身份和权限始终来自独立授权参数。
+     *
+     * @param request 本次请求，后续经校验后用于处理事件客户端上下文
+     * @return 事件客户端上下文键值结果，供调用方继续处理
      */
     private Map<String, Object> eventClientContext(
             UiEventExecuteRequest request) {
@@ -1260,6 +1441,12 @@ public class UiEventRuntimeService {
         return context;
     }
 
+    /**
+     * 收集{@code envelope}；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集{@code envelope}的原始输入，结果供调用方继续使用
+     * @param result 结果，供本方法收集{@code envelope}时使用
+     */
     private void collectEnvelope(
             Object value,
             UiEventExecutionResult result) {
@@ -1278,6 +1465,13 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 整理步骤集合数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理步骤集合的原始输入，结果供调用方继续使用
+     * @param strategy {@code strategy}，供本方法处理步骤集合时使用
+     * @return 界面事件集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> steps(
             List<Map<String, Object>> source,
             String strategy) {
@@ -1291,6 +1485,14 @@ public class UiEventRuntimeService {
         return result;
     }
 
+    /**
+     * 处理追踪，并将结果传给后续步骤。
+     *
+     * @param result 结果，供本方法处理追踪时使用
+     * @param step 步骤，作为 {@code trace.put} 的输入影响后续处理
+     * @param status 状态标识，决定后续追踪采用的处理分支
+     * @param message 消息，作为 {@code trace.put} 的输入影响后续处理
+     */
     private void trace(
             UiEventExecutionResult result,
             String step,
@@ -1305,6 +1507,12 @@ public class UiEventRuntimeService {
         result.getTrace().add(trace);
     }
 
+    /**
+     * 生成步骤标签文本，供后续匹配或展示。
+     *
+     * @param step 步骤，作为 {@code firstText} 的输入影响后续处理
+     * @return 处理后的步骤标签文本，供调用方比较或展示
+     */
     private String stepLabel(Map<String, Object> step) {
         return firstText(
                 step.get("name"),
@@ -1314,6 +1522,12 @@ public class UiEventRuntimeService {
                 "MAPPING");
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param sourceValue 来源值，供本方法处理字符串映射时使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Object sourceValue) {
         if (!(sourceValue instanceof Map<?, ?> source)) return Map.of();
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1322,15 +1536,33 @@ public class UiEventRuntimeService {
         return result;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面事件运行时的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面事件运行时文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null
@@ -1341,6 +1573,12 @@ public class UiEventRuntimeService {
         return null;
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @return 处理后的正数整数结果，供调用方继续处理
+     */
     private Integer positiveInteger(Object value) {
         if (value == null) {
             return null;
@@ -1357,6 +1595,12 @@ public class UiEventRuntimeService {
         }
     }
 
+    /**
+     * 处理{@code strict}正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code strict}正数整数的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code strict}正数整数结果，供调用方继续处理
+     */
     private Integer strictPositiveInteger(Object value) {
         Integer result;
         if (value instanceof Number number
@@ -1377,6 +1621,13 @@ public class UiEventRuntimeService {
      * 执行表单按钮发布步骤中的 READ 接口操作。新发布必须使用完整的固定定义；
      * 完全没有固定标记的历史发布仅在本次请求内冻结当前定义，并仍强制
      * READ 校验。部分固定或未知版本均视为制品损坏，不得降级。
+     *
+     * @param step 步骤，作为 {@code UiInterfaceExtensionService.PublishedOperationSnapshot} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于执行提供者步骤
+     * @param chain 链，供本方法执行提供者步骤时使用
+     * @param extensionId 扩展ID，后续用于执行提供者步骤时定位或关联目标
+     * @param execute {@code execute}，作为 {@code dataSourceService.freezeOperation} 的输入影响后续处理
+     * @return 执行后的提供者步骤结果，供调用方继续处理
      */
     private Object executeProviderStep(
             Map<String, Object> step,
@@ -1463,7 +1714,13 @@ public class UiEventRuntimeService {
                 chain.effectiveContentHash());
     }
 
-    /** 固定制品、可信来源和授权错误不能被事件步骤的降级策略吞掉。 */
+    /**
+     * 固定制品、可信来源和授权错误不能被事件步骤的降级策略吞掉。
+     *
+     * @param request 本次请求，后续经校验后用于处理安全失败{@code closed}表单按钮错误
+     * @param exception 异常，供本方法处理安全失败{@code closed}表单按钮错误时使用
+     * @return 处理后的安全失败{@code closed}表单按钮错误结果，供调用方继续处理
+     */
     private RuntimeException safeFailClosedFormButtonError(
             UiEventExecuteRequest request,
             RuntimeException exception) {
@@ -1506,7 +1763,12 @@ public class UiEventRuntimeService {
                 : null;
     }
 
-    /** 非法或超长客户端 requestId 不进入审计与日志。 */
+    /**
+     * 非法或超长客户端 requestId 不进入审计与日志。
+     *
+     * @param request 本次请求，后续经校验后用于审计请求ID
+     * @return 审计后的请求ID文本，供调用方比较或展示
+     */
     private String auditRequestId(UiEventExecuteRequest request) {
         return request == null
                 ? null
@@ -1514,6 +1776,12 @@ public class UiEventRuntimeService {
                         request.getRequestId());
     }
 
+    /**
+     * 构造无效固定操作异常，供调用方区分失败原因。
+     *
+     * @param message 消息，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @return 处理后的无效固定操作结果，供调用方继续处理
+     */
     private BusinessConflictException invalidPinnedOperation(
             String message) {
         return new BusinessConflictException(

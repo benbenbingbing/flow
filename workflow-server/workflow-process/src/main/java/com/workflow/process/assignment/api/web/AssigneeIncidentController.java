@@ -28,6 +28,12 @@ public class AssigneeIncidentController {
 
     private final AssigneeIncidentService incidentService;
 
+    /**
+     * 列出办理人异常事件；查询结果供调用方展示或继续处理。
+     *
+     * @param status 状态标识，决定后续办理人异常事件采用的处理分支
+     * @return 符合条件的办理人异常事件结果，供调用方继续处理
+     */
     @GetMapping
     public ApiResponse<List<Map<String, Object>>> list(
             @RequestParam(required = false) String status) {
@@ -35,18 +41,36 @@ public class AssigneeIncidentController {
         return ApiResponse.success(incidentService.list(status));
     }
 
+    /**
+     * 处理指标集合，并将结果传给后续步骤。
+     *
+     * @return 处理后的指标集合结果，供调用方继续处理
+     */
     @GetMapping("/metrics")
     public ApiResponse<Map<String, Object>> metrics() {
         require("process:assignee-incident:list");
         return ApiResponse.success(incidentService.metrics());
     }
 
+    /**
+     * 处理详情，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的详情结果，供调用方继续处理
+     */
     @GetMapping("/{id}")
     public ApiResponse<Map<String, Object>> detail(@PathVariable String id) {
         require("process:assignee-incident:list");
         return ApiResponse.success(incidentService.detail(id));
     }
 
+    /**
+     * 处理办理人异常事件，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理办理人异常事件
+     * @return 处理后的办理人异常事件结果，供调用方继续处理
+     */
     @PostMapping("/{id}/handle")
     public ApiResponse<Map<String, Object>> handle(
             @PathVariable String id,
@@ -55,6 +79,12 @@ public class AssigneeIncidentController {
         return ApiResponse.success(incidentService.handle(id, request));
     }
 
+    /**
+     * 校验并获取办理人异常事件；不满足约束时阻止后续处理。
+     *
+     * @param permission 数据访问权限，后续与查询条件合并以限制可见记录
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void require(String permission) {
         if (!PermissionUtil.hasPermission(permission)) {
             throw new ForbiddenException("没有权限处置空办理人事件：" + permission);

@@ -210,6 +210,10 @@ public class EntityVersionDiffService {
 
     /**
      * 比较单个字段的变化
+     *
+     * @param oldField 旧字段，作为 {@code changes.add} 的输入影响后续处理
+     * @param newField 新字段，作为 {@code diff.setFieldId} 的输入影响后续处理
+     * @return 比较后的字段结果，供调用方继续处理
      */
     private EntityVersionDiffDTO.FieldDiff compareField(EntityFieldDTO oldField, EntityField newField) {
         EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
@@ -263,6 +267,13 @@ public class EntityVersionDiffService {
         return diff;
     }
 
+    /**
+     * 比较字段；结果供调用方的后续步骤使用。
+     *
+     * @param oldField 旧字段，作为 {@code changes.add} 的输入影响后续处理
+     * @param newField 新字段，作为 {@code diff.setFieldId} 的输入影响后续处理
+     * @return 比较后的字段结果，供调用方继续处理
+     */
     private EntityVersionDiffDTO.FieldDiff compareField(EntityFieldDTO oldField, EntityFieldDTO newField) {
         EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
         diff.setFieldId(newField.getId());
@@ -315,6 +326,13 @@ public class EntityVersionDiffService {
         return diff;
     }
 
+    /**
+     * 转换截止字段差异；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code diff.setFieldId} 的输入影响后续处理
+     * @param changeType 变更类型标识，决定后续截止字段差异采用的处理分支
+     * @return 转换后的截止字段差异结果，供调用方继续处理
+     */
     private EntityVersionDiffDTO.FieldDiff convertToFieldDiff(EntityField field, EntityVersionDiffDTO.FieldDiff.ChangeType changeType) {
         EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
         diff.setFieldId(field.getId());
@@ -342,6 +360,13 @@ public class EntityVersionDiffService {
         return diff;
     }
 
+    /**
+     * 转换截止字段差异；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code diff.setFieldId} 的输入影响后续处理
+     * @param changeType 变更类型标识，决定后续截止字段差异采用的处理分支
+     * @return 转换后的截止字段差异结果，供调用方继续处理
+     */
     private EntityVersionDiffDTO.FieldDiff convertToFieldDiff(EntityFieldDTO field, EntityVersionDiffDTO.FieldDiff.ChangeType changeType) {
         EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
         diff.setFieldId(field.getId());
@@ -369,6 +394,12 @@ public class EntityVersionDiffService {
         return diff;
     }
 
+    /**
+     * 转换差异截止字段；输出作为后续校验或处理的输入。
+     *
+     * @param diff 差异，作为 {@code field.setId} 的输入影响后续处理
+     * @return 转换后的差异截止字段结果，供调用方继续处理
+     */
     private EntityField convertDiffToField(EntityVersionDiffDTO.FieldDiff diff) {
         EntityField field = new EntityField();
         field.setId(diff.getFieldId());
@@ -384,6 +415,12 @@ public class EntityVersionDiffService {
         return field;
     }
 
+    /**
+     * 构建变更摘要；结果供后续流程传递或持久化。
+     *
+     * @param diff 差异，供本方法构建变更摘要时使用
+     * @return 构建后的变更摘要文本，供调用方比较或展示
+     */
     private String buildChangeSummary(EntityVersionDiffDTO diff) {
         StringBuilder summary = new StringBuilder();
 

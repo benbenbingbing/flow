@@ -83,6 +83,9 @@ public class ListFieldDataProviderRegistry {
 
     /**
      * 按实体编码过滤数据源下拉。空编码不过滤；已声明范围的提供者只对命中实体出现。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 列表字段数据来源选项集合，供调用方遍历或展示
      */
     public List<ListFieldDataSourceOptionDTO> getOptions(String entityCode) {
         List<ListFieldDataSourceOptionDTO> options = new ArrayList<>();
@@ -139,6 +142,9 @@ public class ListFieldDataProviderRegistry {
 
     /**
      * 按 schema 校验配置必填项，schema 为空时跳过。
+     *
+     * @param schema 结构，供本方法校验结构时使用
+     * @param config 配置内容，决定后续结构的处理规则
      */
     private void validateSchema(List<Map<String, Object>> schema, Map<String, Object> config) {
         if (schema == null) {
@@ -154,6 +160,10 @@ public class ListFieldDataProviderRegistry {
 
     /**
      * 将 JSON 字符串解析为对象，空白返回空 Map，非对象或格式错误抛出 IllegalArgumentException。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param label 标签，后续用于解析对象时匹配或展示
+     * @return 对象键值结果，供调用方继续处理
      */
     private Map<String, Object> parseObject(String json, String label) {
         if (!StringUtils.hasText(json)) {
@@ -170,18 +180,32 @@ public class ListFieldDataProviderRegistry {
         }
     }
 
-    /** 判断值是否非空（字符串去除空白后判断） */
+    /**
+     * 判断值是否非空（字符串去除空白后判断）
+     *
+     * @param value 待判断是否具有值的原始输入，结果供调用方继续使用
+     * @return 值条件成立时为 true，否则为 false
+     */
     private boolean hasValue(Object value) {
         return value != null && (!(value instanceof String text) || !text.isBlank());
     }
 
-    /** 归一化数据源类型：去除空白并转大写，null 返回空串 */
+    /**
+     * 归一化数据源类型：去除空白并转大写，null 返回空串
+     *
+     * @param value 待规范化列表字段数据提供者{@code registry}的原始输入，结果供调用方继续使用
+     * @return 规范化后的列表字段数据提供者{@code registry}文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
     /**
      * 空范围或包含 * 表示全部实体。当前实体为空时也不过滤。
+     *
+     * @param supportedEntityCodes {@code supported}实体编码集合，作为 {@code normalizeSupportedEntityCodes} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 实体条件成立时为 true，否则为 false
      */
     boolean matchesEntity(List<String> supportedEntityCodes, String entityCode) {
         List<String> codes = normalizeSupportedEntityCodes(supportedEntityCodes);
@@ -192,6 +216,12 @@ public class ListFieldDataProviderRegistry {
         return codes.stream().anyMatch(code -> code.equalsIgnoreCase(current));
     }
 
+    /**
+     * 规范化{@code supported}实体编码集合；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化{@code supported}实体编码集合的原始输入，结果供调用方继续使用
+     * @return 列表字段数据提供者{@code registry}集合，供调用方遍历或展示
+     */
     private List<String> normalizeSupportedEntityCodes(List<String> value) {
         if (value == null || value.isEmpty()) {
             return List.of();

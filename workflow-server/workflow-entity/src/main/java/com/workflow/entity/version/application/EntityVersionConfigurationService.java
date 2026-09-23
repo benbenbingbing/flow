@@ -98,7 +98,13 @@ public class EntityVersionConfigurationService {
                 page.pageSize());
     }
 
-    /** 两种列表契约共用批量读取和筛选逻辑，实体定义查询统一保证稳定顺序。 */
+    /**
+     * 两种列表契约共用批量读取和筛选逻辑，实体定义查询统一保证稳定顺序。
+     *
+     * @param keyword 关键字，作为 {@code text} 的输入影响后续处理
+     * @param enabled 启用，供本方法处理{@code summaries}时使用
+     * @return 实体版本配置摘要集合，供调用方遍历或展示
+     */
     private List<EntityVersionConfigSummary> summaries(
             String keyword,
             Boolean enabled) {
@@ -164,6 +170,12 @@ public class EntityVersionConfigurationService {
         return result;
     }
 
+    /**
+     * 读取实体版本配置；结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体版本配置结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityVersionConfiguration get(
             String entityCode) {
@@ -191,6 +203,9 @@ public class EntityVersionConfigurationService {
 
     /**
      * 读取当前生效配置。每次调用只解析当前行一次，调用方应把返回对象贯穿本次捕获。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 匹配的实体版本配置当前；未找到时为空
      */
     @Transactional(readOnly = true)
     public Optional<EntityVersionConfiguration> getCurrent(
@@ -242,7 +257,12 @@ public class EntityVersionConfigurationService {
                 true, manualCaptureEnabled, historyReadable);
     }
 
-    /** 查找把指定子实体纳入 RELATED_MUTATION 触发范围的当前 V2 配置。 */
+    /**
+     * 查找把指定子实体纳入 RELATED_MUTATION 触发范围的当前 V2 配置。
+     *
+     * @param childEntityCode 子级实体编码，后续用于查询当前关联{@code configurations}时定位或关联目标
+     * @return 实体版本配置集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<EntityVersionConfiguration> findCurrentRelatedConfigurations(
             String childEntityCode) {
@@ -257,6 +277,9 @@ public class EntityVersionConfigurationService {
 
     /**
      * 查找把 B 纳入快照的根配置；即使不传播生成根版本，也用于 ROOT→…→B 锁序。
+     *
+     * @param childEntityCode 子级实体编码，后续用于查询当前{@code scoped}{@code configurations}时定位或关联目标
+     * @return 实体版本配置集合，供调用方遍历或展示
      */
     @Transactional(readOnly = true)
     public List<EntityVersionConfiguration> findCurrentScopedConfigurations(
@@ -291,6 +314,9 @@ public class EntityVersionConfigurationService {
 
     /**
      * 实体重新发布前校验：活动 V2 范围引用的组成关系不能从发布快照中消失。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param publishingRelationCodes {@code publishing}关系编码集合，供本方法校验并获取关系作用域兼容时使用
      */
     @Transactional(readOnly = true)
     public void requireRelationScopeCompatible(
@@ -320,7 +346,12 @@ public class EntityVersionConfigurationService {
         }
     }
 
-    /** 实体发布候选关系必须与活动范围冻结的选择器语义一致。 */
+    /**
+     * 实体发布候选关系必须与活动范围冻结的选择器语义一致。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param publishingRelations {@code publishing}关系集合，供本方法校验并获取关系作用域{@code definitions}兼容时使用
+     */
     @Transactional(readOnly = true)
     public void requireRelationScopeDefinitionsCompatible(
             String entityCode,
@@ -378,6 +409,9 @@ public class EntityVersionConfigurationService {
      * <p>多层版本策略的根配置属于另一个实体，因此不能只读
      * {@code getCurrent(entityCode)}。旧一层配置没有 parentEntityCode 时，仍用
      * ROOT + 配置根实体编码兼容识别。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 实体版本配置集合，供调用方遍历或展示
      */
     private List<EntityVersionConfiguration.RelationScope>
             currentScopesUsingParent(String entityCode) {
@@ -516,6 +550,7 @@ public class EntityVersionConfigurationService {
     /**
      * 读取旧页面正在编辑的 legacy 草稿，而不是当前 {@code config_document}。
      *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @return 带旧 status/active release 信封的兼容 JSON；这些字段不进入新模型
      */
     @Transactional(readOnly = true)
@@ -552,6 +587,11 @@ public class EntityVersionConfigurationService {
 
     /**
      * 兼容旧 POST draft/save：只 CAS 保存 legacy 草稿，绝不提前改变当前运行配置。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param request 本次请求，后续经校验后用于保存旧版草稿
+     * @param expectedRevision 预期修订版本，作为 {@code revisionConflict} 的输入影响后续处理
+     * @return 旧版草稿键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> saveLegacyDraft(
@@ -608,6 +648,10 @@ public class EntityVersionConfigurationService {
     /**
      * 兼容旧 publish/releases：有待发布草稿时按新流程校验、冻结并接管；已经由
      * 新保存桥同步的状态则只做 revision 校验并幂等返回。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param expectedRevision 预期修订版本，供本方法发布旧版草稿时使用
+     * @return 发布后的旧版草稿结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EntityVersionConfiguration publishLegacyDraft(
@@ -641,6 +685,11 @@ public class EntityVersionConfigurationService {
 
     /**
      * 给旧页面提供单条“当前配置”兼容分页，避免继续暴露已废弃的真实发布历史。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @return 处理后的旧版发布版本分页结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PageResult<Map<String, Object>> legacyReleasePage(
@@ -674,6 +723,13 @@ public class EntityVersionConfigurationService {
                 1, pageNum, pageSize);
     }
 
+    /**
+     * 校验实体版本配置；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param request 本次请求，后续经校验后用于校验实体版本配置
+     * @return 校验后的实体版本配置结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityVersionValidationResult validate(
             String entityCode,
@@ -692,7 +748,13 @@ public class EntityVersionConfigurationService {
         return EntityVersionValidationResult.valid(warnings);
     }
 
-    /** 供范围预览使用；只解析和冻结，不保存。 */
+    /**
+     * 供范围预览使用；只解析和冻结，不保存。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param request 本次请求，后续经校验后用于解析候选人
+     * @return 解析后的候选人结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityVersionConfiguration resolveCandidate(
             String entityCode,
@@ -704,6 +766,14 @@ public class EntityVersionConfigurationService {
                 ? scopeFreezer.freeze(normalized) : normalized;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param definition 定义，作为 {@code source.setEntityId} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于规范化实体版本配置
+     * @return 规范化后的实体版本配置结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityVersionConfiguration normalize(
             EntityDefinition definition,
             EntityVersionConfiguration request) {
@@ -793,6 +863,12 @@ public class EntityVersionConfigurationService {
         return source;
     }
 
+    /**
+     * 处理默认配置，并将结果传给后续步骤。
+     *
+     * @param definition 定义，作为 {@code result.setEntityId} 的输入影响后续处理
+     * @return 处理后的默认配置结果，供调用方继续处理
+     */
     private EntityVersionConfiguration defaultConfiguration(
             EntityDefinition definition) {
         EntityVersionConfiguration result =
@@ -843,6 +919,9 @@ public class EntityVersionConfigurationService {
      *
      * <p>整个方法运行在 {@link #save(String, EntityVersionConfiguration, Integer)}
      * 的事务内；任一步失败都会回滚主配置 CAS，避免新旧运行时看到不同版本。</p>
+     *
+     * @param config 配置内容，决定后续同步灰度发布{@code bridge}的处理规则
+     * @param effective 有效，作为 {@code value} 的输入影响后续处理
      */
     private void syncRolloutBridge(
             EntityVersionConfig config,
@@ -889,7 +968,17 @@ public class EntityVersionConfigurationService {
         }
     }
 
-    /** 新实体默认提供两类根记录采集触发器，与独立变更规则分开维护。 */
+    /**
+     * 新实体默认提供两类根记录采集触发器，与独立变更规则分开维护。
+     *
+     * @param code 编码，后续用于处理触发条件时定位或关联目标
+     * @param name 名称，后续用于处理触发条件时匹配或展示
+     * @param sources {@code sources}，作为 {@code value.setSourceTypes} 的输入影响后续处理
+     * @param operations 操作集合，作为 {@code value.setOperationTypes} 的输入影响后续处理
+     * @param intents {@code intents}，作为 {@code value.setBusinessIntents} 的输入影响后续处理
+     * @param priority 优先级，作为 {@code value.setPriority} 的输入影响后续处理
+     * @return 处理后的触发条件结果，供调用方继续处理
+     */
     private EntityVersionConfiguration.CaptureTrigger trigger(
             String code,
             String name,
@@ -911,6 +1000,13 @@ public class EntityVersionConfigurationService {
         return value;
     }
 
+    /**
+     * 处理{@code hydrate}当前{@code envelope}，并将结果传给后续步骤。
+     *
+     * @param document 文档，作为 {@code document.setEntityId} 的输入影响后续处理
+     * @param definition 定义，作为 {@code document.setEntityId} 的输入影响后续处理
+     * @param config 配置内容，决定后续{@code hydrate}当前{@code envelope}的处理规则
+     */
     private void hydrateCurrentEnvelope(
             EntityVersionConfiguration document,
             EntityDefinition definition,
@@ -932,7 +1028,13 @@ public class EntityVersionConfigurationService {
         document.setUpdateTime(config.getUpdateTime());
     }
 
-    /** 旧草稿信封使用旧行 revision，但不把这些管理字段重新放回新模型。 */
+    /**
+     * 旧草稿信封使用旧行 revision，但不把这些管理字段重新放回新模型。
+     *
+     * @param document 文档，作为 {@code document.setSchemaVersion} 的输入影响后续处理
+     * @param definition 定义，作为 {@code document.setEntityId} 的输入影响后续处理
+     * @param state 状态标识，决定后续{@code hydrate}旧版草稿{@code envelope}采用的处理分支
+     */
     private void hydrateLegacyDraftEnvelope(
             EntityVersionConfiguration document,
             EntityDefinition definition,
@@ -947,7 +1049,15 @@ public class EntityVersionConfigurationService {
         document.setUpdateTime(state.getUpdateTime());
     }
 
-    /** 把废弃信封字段限制在兼容响应中，避免污染新 GET/PUT 契约。 */
+    /**
+     * 把废弃信封字段限制在兼容响应中，避免污染新 GET/PUT 契约。
+     *
+     * @param draft 草稿，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param status 状态标识，决定后续旧版草稿响应采用的处理分支
+     * @param activeReleaseId 活动发布版本ID，后续用于处理旧版草稿响应时定位或关联目标
+     * @param activeReleaseVersion 活动发布版本，作为 {@code result.put} 的输入影响后续处理
+     * @return 旧版草稿响应键值结果，供调用方继续处理
+     */
     private Map<String, Object> legacyDraftResponse(
             EntityVersionConfiguration draft,
             String status,
@@ -963,7 +1073,12 @@ public class EntityVersionConfigurationService {
         return result;
     }
 
-    /** 去掉仅供管理端选择的派生选项后持久化当前生效文档。 */
+    /**
+     * 去掉仅供管理端选择的派生选项后持久化当前生效文档。
+     *
+     * @param source 待处理已存储文档的原始输入，结果供调用方继续使用
+     * @return 处理后的已存储文档结果，供调用方继续处理
+     */
     private EntityVersionConfiguration storedDocument(
             EntityVersionConfiguration source) {
         EntityVersionConfiguration result = objectMapper.convertValue(
@@ -976,6 +1091,11 @@ public class EntityVersionConfigurationService {
         return result;
     }
 
+    /**
+     * 规范化节点；输出作为后续校验或处理的输入。
+     *
+     * @param node 节点，作为 {@code node.setFieldMode} 的输入影响后续处理
+     */
     private void normalizeNode(
             EntityVersionConfiguration.ScopeNode node) {
         node.setFieldMode(upper(node.getFieldMode()));
@@ -992,12 +1112,26 @@ public class EntityVersionConfigurationService {
         node.setFields(new ArrayList<>());
     }
 
-    /** 写入已经输掉竞争，冲突提示必须来自当前读取；不再解析旧 release 文档。 */
+    /**
+     * 写入已经输掉竞争，冲突提示必须来自当前读取；不再解析旧 release 文档。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param expectedRevision 预期修订版本，供本方法处理{@code concurrent}修订版本冲突时使用
+     * @return 处理后的{@code concurrent}修订版本冲突结果，供调用方继续处理
+     */
     private BusinessConflictException concurrentRevisionConflict(String entityCode, Integer expectedRevision) {
         return revisionConflict(entityCode,
                 configMapper.findCurrentRevisionForConflict(entityCode), expectedRevision);
     }
 
+    /**
+     * 构造修订版本冲突异常，供调用方区分失败原因。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param currentRevision 当前修订版本，作为 {@code BusinessConflictException} 的输入影响后续处理
+     * @param expectedRevision 预期修订版本，供本方法处理修订版本冲突时使用
+     * @return 处理后的修订版本冲突结果，供调用方继续处理
+     */
     private BusinessConflictException revisionConflict(
             String entityCode,
             Integer currentRevision,
@@ -1009,6 +1143,13 @@ public class EntityVersionConfigurationService {
                         + ", expectedRevision=" + expectedRevision);
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的定义结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireDefinition(
             String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
@@ -1022,6 +1163,13 @@ public class EntityVersionConfigurationService {
                                 "实体不存在: " + entityCode));
     }
 
+    /**
+     * 读取配置；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 读取后的配置结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private EntityVersionConfiguration readConfiguration(
             String document) {
         try {
@@ -1035,6 +1183,13 @@ public class EntityVersionConfigurationService {
         }
     }
 
+    /**
+     * 写入实体版本配置；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入实体版本配置的原始输入，结果供调用方继续使用
+     * @return 写入后的实体版本配置文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String write(Object value) {
         try {
             return objectMapper.writeValueAsString(
@@ -1046,6 +1201,12 @@ public class EntityVersionConfigurationService {
         }
     }
 
+    /**
+     * 规范化实体版本配置列表；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体版本配置集合，供调用方遍历或展示
+     */
     private List<String> normalizeList(
             List<String> values) {
         if (values == null) {
@@ -1058,6 +1219,12 @@ public class EntityVersionConfigurationService {
                 .toList();
     }
 
+    /**
+     * 生成{@code upper}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code upper}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code upper}文本，供调用方比较或展示
+     */
     private String upper(String value) {
         String normalized = text(value);
         return normalized == null
@@ -1065,6 +1232,12 @@ public class EntityVersionConfigurationService {
                 : normalized.toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 生成实体编码键文本，供后续匹配或展示。
+     *
+     * @param value 待处理实体编码键的原始输入，结果供调用方继续使用
+     * @return 处理后的实体编码键文本，供调用方比较或展示
+     */
     private String entityCodeKey(String value) {
         String normalized = text(value);
         return normalized == null
@@ -1072,6 +1245,12 @@ public class EntityVersionConfigurationService {
                 : normalized.toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -1080,6 +1259,12 @@ public class EntityVersionConfigurationService {
         return normalized.isEmpty() ? null : normalized;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -1089,10 +1274,24 @@ public class EntityVersionConfigurationService {
         return null;
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private int value(Integer value, int fallback) {
         return value == null ? fallback : value;
     }
 
+    /**
+     * 判断是否包含{@code ignore}分支；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否包含{@code ignore}分支的原始输入，结果供调用方继续使用
+     * @param keyword 关键字，供本方法判断是否包含{@code ignore}分支时使用
+     * @return {@code ignore}分支条件成立时为 true，否则为 false
+     */
     private boolean containsIgnoreCase(
             String value,
             String keyword) {
@@ -1101,11 +1300,22 @@ public class EntityVersionConfigurationService {
                 .contains(keyword.toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * 生成ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的ID文本，供调用方比较或展示
+     */
     private String id() {
         return UUID.randomUUID().toString()
                 .replace("-", "");
     }
 
+    /**
+     * 整理安全数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体版本配置集合，供调用方遍历或展示
+     */
     private <T> List<T> safe(List<T> values) {
         return values == null ? List.of() : values;
     }

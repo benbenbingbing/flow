@@ -1,12 +1,12 @@
 package com.workflow.admin.extension.action.application;
 
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
-import com.workflow.contracts.action.FlowActionDefinitionDescriptor;
+import com.workflow.contracts.process.action.model.FlowActionDefinitionDescriptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
@@ -187,6 +187,9 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
 
     /**
      * 判断处理器是否满足流程发布所需的动作目录前置条件。
+     *
+     * @param handlerName 处理器名称，后续用于判断是否已配置与可用时匹配或展示
+     * @return 已配置与可用条件成立时为 true，否则为 false
      */
     @Override
     public boolean isConfiguredAndAvailable(String handlerName) {
@@ -294,12 +297,20 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
 
     /**
      * 供统一扩展目录聚合动作定义。权限由聚合入口统一校验。
+     *
+     * @return 流程动作处理器选项集合，供调用方遍历或展示
      */
     public List<FlowActionHandlerOption> listCatalog() {
         return buildOptions(true);
     }
 
-    /** 判断处理器选项对指定实体是否可见：全局可见直接通过，实体可见需实体编码匹配 */
+    /**
+     * 判断处理器选项对指定实体是否可见：全局可见直接通过，实体可见需实体编码匹配
+     *
+     * @param option 选项，供本方法判断是否可见时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 可见条件成立时为 true，否则为 false
+     */
     private boolean isVisible(FlowActionHandlerOption option, String entityCode) {
         if (FlowActionVisibilityScope.GLOBAL.name().equals(option.getVisibilityScope())) {
             return true;
@@ -310,7 +321,12 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         return option.getEntityCodes().stream().anyMatch(code -> code.equalsIgnoreCase(entityCode));
     }
 
-    /** 解析可见范围字符串为枚举，非法值抛出异常 */
+    /**
+     * 解析可见范围字符串为枚举，非法值抛出异常
+     *
+     * @param value 待解析作用域的原始输入，结果供调用方继续使用
+     * @return 解析后的作用域结果，供调用方继续处理
+     */
     private FlowActionVisibilityScope parseScope(String value) {
         try {
             return FlowActionVisibilityScope.valueOf(value.trim().toUpperCase(Locale.ROOT));
@@ -319,7 +335,12 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         }
     }
 
-    /** 归一化实体编码列表：去空白、转小写、去重 */
+    /**
+     * 归一化实体编码列表：去空白、转小写、去重
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 流程动作目录集合，供调用方遍历或展示
+     */
     private List<String> normalizeEntityCodes(List<String> values) {
         if (values == null) {
             return List.of();
@@ -332,7 +353,11 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
                 .toList();
     }
 
-    /** 校验实体编码是否全部存在于实体目录中，存在未知编码时抛出异常 */
+    /**
+     * 校验实体编码是否全部存在于实体目录中，存在未知编码时抛出异常
+     *
+     * @param entityCodes 实体编码集合，供本方法校验实体编码集合时使用
+     */
     private void validateEntityCodes(List<String> entityCodes) {
         Set<String> available = entityCodeCatalogPort.findAllEntityCodes().stream()
                 .map(code -> code.toLowerCase(Locale.ROOT))
@@ -345,7 +370,12 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         }
     }
 
-    /** 重置定义的可见实体绑定：先删除旧关系，再逐条插入新关系 */
+    /**
+     * 重置定义的可见实体绑定：先删除旧关系，再逐条插入新关系
+     *
+     * @param definitionId 定义ID，后续用于处理替换可见{@code entities}时定位或关联目标
+     * @param entityCodes 实体编码集合，供本方法处理替换可见{@code entities}时使用
+     */
     private void replaceVisibleEntities(String definitionId, List<String> entityCodes) {
         definitionEntityMapper.deleteByDefinitionId(definitionId);
         for (String entityCode : entityCodes) {
@@ -357,6 +387,12 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         }
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

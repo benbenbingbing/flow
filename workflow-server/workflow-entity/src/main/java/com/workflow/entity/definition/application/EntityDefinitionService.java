@@ -9,18 +9,18 @@ import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.contracts.process.ProcessCatalogItem;
-import com.workflow.contracts.process.ProcessBindingState;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessBindingState;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
 import com.workflow.entity.definition.api.response.EntityDefinitionQueryDTO;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
@@ -72,12 +72,14 @@ public class EntityDefinitionService {
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final com.workflow.entity.permission.application.EntityPermissionCatalogService entityPermissionCatalogService;
     private final com.workflow.entity.permission.application.EntityListScopeService entityListScopeService;
-    private final MigrationAssetHandler migrationAssetHandler;
+    private final MigrationAssetPort migrationAssetHandler;
     @Autowired(required = false)
     private EntitySchemaOperationService schemaOperationService;
 
     /**
      * 查询所有实体定义
+     *
+     * @return 实体定义集合，供调用方遍历或展示
      */
     @Transactional(readOnly = true)
     public List<EntityDefinitionDTO> findAll() {
@@ -87,6 +89,9 @@ public class EntityDefinitionService {
 
     /**
      * 分页查询实体定义
+     *
+     * @param query 查询，供本方法查询实体定义分页时使用
+     * @return 符合条件的实体定义结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PageResult<EntityDefinitionDTO> findPage(EntityDefinitionQueryDTO query) {
@@ -102,6 +107,12 @@ public class EntityDefinitionService {
         return new PageResult<>(records, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
+    /**
+     * 整理{@code fill}流程名称集合数据，供调用方遍历或继续处理。
+     *
+     * @param list 列表，供本方法处理{@code fill}流程名称集合时使用
+     * @return 实体定义集合，供调用方遍历或展示
+     */
     private List<EntityDefinitionDTO> fillProcessNames(List<EntityDefinition> list) {
         // 批量查询流程信息，避免N+1问题
         List<String> processIds = list.stream()
@@ -127,6 +138,9 @@ public class EntityDefinitionService {
 
     /**
      * 根据ID查询
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的实体定义结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityDefinitionDTO findById(String id) {
@@ -148,6 +162,9 @@ public class EntityDefinitionService {
 
     /**
      * 根据编码查询
+     *
+     * @param code 编码，后续用于查询编码时定位或关联目标
+     * @return 符合条件的实体定义结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityDefinitionDTO findByCode(String code) {
@@ -167,6 +184,9 @@ public class EntityDefinitionService {
 
     /**
      * 驼峰命名转下划线命名
+     *
+     * @param camelCase {@code camel}分支，供本方法转换为{@code snake}分支时使用
+     * @return 转换为后的{@code snake}分支文本，供调用方比较或展示
      */
     private String toSnakeCase(String camelCase) {
         if (camelCase == null || camelCase.isEmpty()) {
@@ -175,6 +195,12 @@ public class EntityDefinitionService {
         return camelCase.replaceAll("([a-z])([A-Z]+)", "$1_$2").toLowerCase();
     }
 
+    /**
+     * 读取流程名称；查询结果供调用方展示或继续处理。
+     *
+     * @param processId 流程ID，后续用于读取流程名称时定位或关联目标
+     * @return 读取后的流程名称文本，供调用方比较或展示
+     */
     private String getProcessName(String processId) {
         if (processId == null || processId.isEmpty()) {
             return null;
@@ -182,6 +208,12 @@ public class EntityDefinitionService {
         return processCatalogPort.findNamesByIds(List.of(processId)).get(processId);
     }
 
+    /**
+     * 读取流程条目；查询结果供调用方展示或继续处理。
+     *
+     * @param processId 流程ID，后续用于读取流程条目时定位或关联目标
+     * @return 符合条件的流程目录条目结果，供调用方继续处理
+     */
     private ProcessCatalogItem getProcessItem(String processId) {
         if (!StringUtils.isNotBlank(processId)) {
             return null;
@@ -191,6 +223,9 @@ public class EntityDefinitionService {
 
     /**
      * 保存实体定义
+     *
+     * @param dto DTO，作为 {@code validateEntityCodeUnique} 的输入影响后续处理
+     * @return 保存后的实体定义结果，供调用方继续处理
      */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CREATE, operation = "创建实体定义", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_DEFINITION", captureArguments = true, captureResult = true)
@@ -249,6 +284,8 @@ public class EntityDefinitionService {
      * - code: 数据编码（可编辑字段大小）
      * - deptId: 所属部门（可编辑）
      * - ID、审计、状态与流程字段：系统自动维护，不可编辑
+     *
+     * @param entityId 实体ID，后续用于添加系统字段时定位或关联目标
      */
     private void addSystemFields(String entityId) {
         int sortOrder = 0;
@@ -343,6 +380,16 @@ public class EntityDefinitionService {
 
     /**
      * 创建系统字段
+     *
+     * @param entityId 实体ID，后续用于创建系统字段时定位或关联目标
+     * @param fieldCode 字段编码，后续用于创建系统字段时定位或关联目标
+     * @param fieldName 字段名称，后续用于创建系统字段时匹配或展示
+     * @param fieldType 字段类型标识，决定后续系统字段采用的处理分支
+     * @param dbType {@code db}类型标识，决定后续系统字段采用的处理分支
+     * @param fieldLength 字段长度，作为 {@code field.setFieldLength} 的输入影响后续处理
+     * @param editable 可编辑，作为 {@code field.setEditable} 的输入影响后续处理
+     * @param sortOrder 排序顺序，作为 {@code field.setSortOrder} 的输入影响后续处理
+     * @return 创建后的系统字段结果，供调用方继续处理
      */
     private EntityField createSystemField(String entityId, String fieldCode, String fieldName,
             EntityField.FieldType fieldType, String dbType, Integer fieldLength,
@@ -363,6 +410,11 @@ public class EntityDefinitionService {
         return field;
     }
 
+    /**
+     * 确保工作流系统字段；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于确保工作流系统字段时定位或关联目标
+     */
     private void ensureWorkflowSystemFields(String entityId) {
         int sortOrder = fieldMapper.findByEntityId(entityId).stream()
                 .map(EntityField::getSortOrder)
@@ -391,6 +443,18 @@ public class EntityDefinitionService {
                 EntityField.FieldType.STRING, "varchar(64)", 64, sortOrder);
     }
 
+    /**
+     * 确保系统字段；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于确保系统字段时定位或关联目标
+     * @param fieldCode 字段编码，后续用于确保系统字段时定位或关联目标
+     * @param fieldName 字段名称，后续用于确保系统字段时匹配或展示
+     * @param fieldType 字段类型标识，决定后续系统字段采用的处理分支
+     * @param dbType {@code db}类型标识，决定后续系统字段采用的处理分支
+     * @param length 长度，供本方法确保系统字段时使用
+     * @param sortOrder 排序顺序，供本方法确保系统字段时使用
+     * @return 确保后的系统字段结果，供调用方继续处理
+     */
     private int ensureSystemField(
             String entityId,
             String fieldCode,
@@ -416,6 +480,8 @@ public class EntityDefinitionService {
 
     /**
      * 校验实体编码唯一性（不区分大小写）
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      */
     private void validateEntityCodeUnique(String entityCode) {
         if (entityCode == null || entityCode.trim().isEmpty()) {
@@ -434,6 +500,8 @@ public class EntityDefinitionService {
 
     /**
      * 校验字段编码唯一性（同一实体内字段编码不能重复）
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
      */
     private void validateFieldCodeUnique(List<EntityFieldDTO> fields) {
         if (fields == null || fields.isEmpty()) {
@@ -455,6 +523,10 @@ public class EntityDefinitionService {
     /**
      * 更新实体定义
      * 注意：实体发布后，已保存的字段不能再删除，只能添加新字段
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param dto DTO，作为 {@code validateFieldCodeUnique} 的输入影响后续处理
+     * @return 更新后的实体定义结果，供调用方继续处理
      */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.UPDATE, operation = "更新实体定义", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
@@ -577,6 +649,8 @@ public class EntityDefinitionService {
 
     /**
      * 删除实体定义
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
      */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.DELETE, operation = "删除实体定义", risk = AuditRiskLevel.CRITICAL, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0)
@@ -616,12 +690,27 @@ public class EntityDefinitionService {
     /**
      * 发布实体
      * 发布时自动创建数据表，并记录版本历史
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param userName 用户名称，后续用于身份匹配或操作展示
+     * @return 发布后的实体定义结果，供调用方继续处理
      */
     @Transactional
     public EntityDefinitionDTO publish(String id, String userId, String userName) {
         return publish(id, userId, userName, new ConfigMigrationPublishRequest());
     }
 
+    /**
+     * 发布实体定义；后续由接收方或异步任务继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param userName 用户名称，后续用于身份匹配或操作展示
+     * @param request 本次请求，后续经校验后用于发布实体定义
+     * @return 发布后的实体定义结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.PUBLISH, operation = "发布实体定义", risk = AuditRiskLevel.CRITICAL, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO publish(String id,
@@ -640,6 +729,16 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 发布结构锁定；后续由接收方或异步任务继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param userName 用户名称，后续用于身份匹配或操作展示
+     * @param request 本次请求，后续经校验后用于发布结构锁定
+     * @return 发布后的结构锁定结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityDefinitionDTO publishWithSchemaLock(
             String id,
             String userId,
@@ -746,6 +845,11 @@ public class EntityDefinitionService {
 
     /**
      * 构建变更描述
+     *
+     * @param isFirstPublish 是否首个发布，供本方法构建变更集合描述时使用
+     * @param executedDdls {@code executed}{@code ddls}，供本方法构建变更集合描述时使用
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 构建后的变更集合描述文本，供调用方比较或展示
      */
     private String buildChangesDescription(boolean isFirstPublish, List<String> executedDdls,
             List<EntityField> fields) {
@@ -882,6 +986,13 @@ public class EntityDefinitionService {
         return convertToDTO(entity, process.processName(), process);
     }
 
+    /**
+     * 处理{@code unbind}工作流，并将结果传给后续步骤。
+     *
+     * @param entityId 实体ID，后续用于处理{@code unbind}工作流时定位或关联目标
+     * @return 处理后的{@code unbind}工作流结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "解除实体流程绑定", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureResult = true)
     public EntityDefinitionDTO unbindWorkflow(String entityId) {
@@ -922,6 +1033,9 @@ public class EntityDefinitionService {
      *
      * <p>换绑同时涉及旧、新两个流程。稳定锁序既关闭发布校验后的竞态窗口，
      * 也避免两个反向换绑事务互相等待。</p>
+     *
+     * @param processIds 流程ID 集合，作为 {@code Arrays.stream} 的输入影响后续处理
+     * @return 流程绑定{@code states}键值结果，供调用方继续处理
      */
     private Map<String, ProcessBindingState> lockProcessBindingStates(
             String... processIds) {
@@ -940,6 +1054,9 @@ public class EntityDefinitionService {
     /**
      * 将 BIGINT 流程主键规范为十进制字符串；非数字仅保留给隔离测试或
      * 历史损坏状态，生产目录会拒绝它而不是发起模糊数值查询。
+     *
+     * @param processId 流程ID，后续用于处理规范流程ID时定位或关联目标
+     * @return 处理后的规范流程ID文本，供调用方比较或展示
      */
     private String canonicalProcessId(String processId) {
         if (!StringUtils.isNotBlank(processId)) {
@@ -954,7 +1071,13 @@ public class EntityDefinitionService {
         }
     }
 
-    /** 锁定实体并拒绝基于过期绑定快照继续写入。 */
+    /**
+     * 锁定实体并拒绝基于过期绑定快照继续写入。
+     *
+     * @param entityId 实体ID，后续用于锁定实体预期绑定时定位或关联目标
+     * @param expectedProcessId 预期流程ID，后续用于锁定实体预期绑定时定位或关联目标
+     * @return 锁定后的实体预期绑定结果，供调用方继续处理
+     */
     private EntityDefinition lockEntityWithExpectedBinding(
             String entityId,
             String expectedProcessId) {
@@ -970,7 +1093,13 @@ public class EntityDefinitionService {
         return locked;
     }
 
-    /** 已发布流程版本引用的实体关联必须保持不变。 */
+    /**
+     * 已发布流程版本引用的实体关联必须保持不变。
+     *
+     * @param processId 流程ID，后续用于校验并获取绑定可变时定位或关联目标
+     * @param processStates 流程{@code states}，供本方法校验并获取绑定可变时使用
+     * @param operation 操作标识，决定后续绑定可变采用的处理分支
+     */
     private void requireBindingMutable(
             String processId,
             Map<String, ProcessBindingState> processStates,
@@ -989,6 +1118,12 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 构造已发布绑定冲突异常，供调用方区分失败原因。
+     *
+     * @param operation 操作标识，决定后续已发布绑定冲突采用的处理分支
+     * @return 处理后的已发布绑定冲突结果，供调用方继续处理
+     */
     private BusinessConflictException publishedBindingConflict(
             String operation) {
         return new BusinessConflictException(
@@ -996,7 +1131,11 @@ public class EntityDefinitionService {
                 operation + "失败：流程已发布，实体关联已成为版本运行契约");
     }
 
-    /** 将数据库唯一约束竞态统一映射为稳定的业务冲突。 */
+    /**
+     * 将数据库唯一约束竞态统一映射为稳定的业务冲突。
+     *
+     * @param entity 实体，作为 {@code entityMapper.updateById} 的输入影响后续处理
+     */
     private void updateBindingWithUniqueConflictMapping(
             EntityDefinition entity) {
         try {
@@ -1008,6 +1147,15 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 更新生命周期模式；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于更新生命周期模式时定位或关联目标
+     * @param requestedMode 请求模式标识，决定后续生命周期模式采用的处理分支
+     * @return 更新后的生命周期模式结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Transactional
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.CONFIGURE, operation = "更新实体生命周期模式", risk = AuditRiskLevel.HIGH, required = true, targetType = "ENTITY_DEFINITION", targetIdArg = 0, captureArguments = true, captureResult = true)
     public EntityDefinitionDTO updateLifecycleMode(
@@ -1042,6 +1190,9 @@ public class EntityDefinitionService {
 
     /**
      * 根据流程定义ID查询绑定的实体
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 符合条件的实体定义结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityDefinitionDTO findByProcessDefinitionId(String processDefinitionId) {
@@ -1064,7 +1215,12 @@ public class EntityDefinitionService {
         return convertToDTO(entity, processName, process);
     }
 
-    /** 历史重复绑定必须明确报错，不能按数据库返回顺序选择审批实体。 */
+    /**
+     * 历史重复绑定必须明确报错，不能按数据库返回顺序选择审批实体。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param bindings 绑定集合，供本方法校验并获取{@code unambiguous}绑定时使用
+     */
     private void requireUnambiguousBinding(
             String processDefinitionId,
             List<EntityDefinition> bindings) {
@@ -1076,11 +1232,24 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 判断是否关系字段；判断结果决定调用方的后续分支。
+     *
+     * @param fieldDTO 字段DTO，供本方法判断是否关系字段时使用
+     * @return 关系字段条件成立时为 true，否则为 false
+     */
     private boolean isRelationField(EntityFieldDTO fieldDTO) {
         return fieldDTO != null
                 && fieldDTO.getFieldType() == EntityField.FieldType.SUB_FORM;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param first 首个，供本方法处理首个文本时使用
+     * @param second {@code second}，供本方法处理首个文本时使用
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String first, String second) {
         if (first != null && !first.trim().isEmpty()) {
             return first.trim();
@@ -1091,6 +1260,11 @@ public class EntityDefinitionService {
         return null;
     }
 
+    /**
+     * 补充关系字段；结果供调用方的后续步骤使用。
+     *
+     * @param dto DTO，作为 {@code relationMapper.selectByParentEntityId} 的输入影响后续处理
+     */
     private void enrichRelationFields(EntityDefinitionDTO dto) {
         if (dto == null || dto.getId() == null || dto.getFields() == null || dto.getFields().isEmpty()) {
             return;
@@ -1112,6 +1286,12 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 应用关系元数据，并将结果传给后续步骤。
+     *
+     * @param field 字段，供本方法应用关系元数据时使用
+     * @param relation 关系，作为 {@code field.setRelationCode} 的输入影响后续处理
+     */
     private void applyRelationMetadata(
             EntityFieldDTO field,
             EntityRelation relation) {
@@ -1131,6 +1311,12 @@ public class EntityDefinitionService {
     }
 
     // 转换方法
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，作为 {@code getProcessItem} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity) {
         ProcessCatalogItem process = getProcessItem(entity.getProcessDefinitionId());
         String processName = process == null
@@ -1139,10 +1325,25 @@ public class EntityDefinitionService {
         return convertToDTO(entity, processName, process);
     }
 
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，供本方法转换截止DTO时使用
+     * @param processName 流程名称，后续用于转换截止DTO时匹配或展示
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityDefinitionDTO convertToDTO(EntityDefinition entity, String processName) {
         return convertToDTO(entity, processName, getProcessItem(entity.getProcessDefinitionId()));
     }
 
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，作为 {@code dto.setId} 的输入影响后续处理
+     * @param processName 流程名称，后续用于转换截止DTO时匹配或展示
+     * @param process 流程，作为 {@code dto.setProcessKey} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityDefinitionDTO convertToDTO(
             EntityDefinition entity,
             String processName,
@@ -1185,6 +1386,13 @@ public class EntityDefinitionService {
         return dto;
     }
 
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，作为 {@code dto.setUiConfigurable} 的输入影响后续处理
+     * @param field 字段，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityFieldDTO convertToDTO(
             EntityDefinition entity,
             EntityField field) {
@@ -1249,6 +1457,12 @@ public class EntityDefinitionService {
         return dto;
     }
 
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code entity.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private EntityDefinition convertToEntity(EntityDefinitionDTO dto) {
         EntityDefinition entity = new EntityDefinition();
         entity.setId(dto.getId());
@@ -1267,6 +1481,12 @@ public class EntityDefinitionService {
         return entity;
     }
 
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code field.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private EntityField convertToEntity(EntityFieldDTO dto) {
         EntityField field = new EntityField();
         field.setId(dto.getId());
@@ -1305,6 +1525,12 @@ public class EntityDefinitionService {
         return field;
     }
 
+    /**
+     * 解析值存储；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code StringUtils.isNotBlank} 的输入影响后续处理
+     * @return 解析后的值存储文本，供调用方比较或展示
+     */
     private String resolveValueStorage(EntityFieldDTO field) {
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
                 || ((field.getFieldType() == EntityField.FieldType.MULTI_SELECT
@@ -1317,6 +1543,12 @@ public class EntityDefinitionService {
                 : "SCALAR";
     }
 
+    /**
+     * 处理生命周期模式，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code StringUtils.isNotBlank} 的输入影响后续处理
+     * @return 处理后的生命周期模式结果，供调用方继续处理
+     */
     private EntityDefinition.LifecycleMode lifecycleMode(EntityDefinition entity) {
         if (entity.getLifecycleMode() != null) {
             return entity.getLifecycleMode();
@@ -1326,12 +1558,25 @@ public class EntityDefinitionService {
                 : EntityDefinition.LifecycleMode.STANDALONE;
     }
 
+    /**
+     * 处理存储模式，并将结果传给后续步骤。
+     *
+     * @param entity 实体，供本方法处理存储模式时使用
+     * @return 处理后的存储模式结果，供调用方继续处理
+     */
     private EntityDefinition.StorageMode storageMode(EntityDefinition entity) {
         return entity.getStorageMode() == null
                 ? EntityDefinition.StorageMode.DYNAMIC
                 : entity.getStorageMode();
     }
 
+    /**
+     * 解析绑定状态；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，供本方法解析绑定状态时使用
+     * @param process 流程，供本方法解析绑定状态时使用
+     * @return 解析后的绑定状态结果，供调用方继续处理
+     */
     private EntityDefinitionDTO.WorkflowBindingStatus resolveBindingStatus(
             EntityDefinition entity,
             ProcessCatalogItem process) {
@@ -1352,6 +1597,13 @@ public class EntityDefinitionService {
         };
     }
 
+    /**
+     * 校验系统实体更新；不满足约束时阻止后续处理。
+     *
+     * @param existing 已有，供本方法校验系统实体更新时使用
+     * @param dto DTO，供本方法校验系统实体更新时使用
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void validateSystemEntityUpdate(EntityDefinition existing, EntityDefinitionDTO dto) {
         if (dto.getStorageMode() != null
                 && dto.getStorageMode() != EntityDefinition.StorageMode.SYSTEM) {
@@ -1372,6 +1624,12 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 处理{@code assert}动态实体，并将结果传给后续步骤。
+     *
+     * @param entity 实体，供本方法处理{@code assert}动态实体时使用
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void assertDynamicEntity(EntityDefinition entity) {
         if (storageMode(entity) == EntityDefinition.StorageMode.SYSTEM) {
             throw new BusinessConflictException(
@@ -1380,6 +1638,12 @@ public class EntityDefinitionService {
         }
     }
 
+    /**
+     * 统计流程{@code instances}；结果供后续判断或展示使用。
+     *
+     * @param entity 实体，供本方法统计流程{@code instances}时使用
+     * @return 符合条件的流程{@code instances}数量
+     */
     private long countProcessInstances(EntityDefinition entity) {
         if (!dynamicTableService.tableExists(entity.getEntityCode())) {
             return 0L;
@@ -1388,6 +1652,12 @@ public class EntityDefinitionService {
                 dynamicTableService.getTableName(entity.getEntityCode()));
     }
 
+    /**
+     * 更新最新已发布绑定；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于更新最新已发布绑定时定位或关联目标
+     * @param processId 流程ID，后续用于更新最新已发布绑定时定位或关联目标
+     */
     private void updateLatestPublishedBinding(String entityId, String processId) {
         EntityPublishHistory latestHistory = publishHistoryMapper.findLatestByEntityId(entityId);
         if (latestHistory == null) {
@@ -1397,6 +1667,11 @@ public class EntityDefinitionService {
         publishHistoryMapper.updateById(latestHistory);
     }
 
+    /**
+     * 处理{@code attach}文件条目，并将结果传给后续步骤。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     */
     private void attachFileItems(List<EntityField> fields) {
         if (fields == null || fields.isEmpty()) {
             return;
@@ -1409,6 +1684,12 @@ public class EntityDefinitionService {
                         fileItemService.findByFieldId(field.getId())));
     }
 
+    /**
+     * 整理安全关系集合数据，供调用方遍历或继续处理。
+     *
+     * @param relations 关系集合，供本方法处理安全关系集合时使用
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     private List<EntityRelation> safeRelations(
             List<EntityRelation> relations) {
         return relations == null ? List.of() : relations;

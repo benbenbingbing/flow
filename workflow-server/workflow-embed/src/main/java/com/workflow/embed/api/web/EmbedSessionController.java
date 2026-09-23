@@ -42,6 +42,12 @@ public class EmbedSessionController {
     private final EmbedSessionExchangeService exchangeService;
     private final EmbedSessionAuthenticationService authenticationService;
 
+    /**
+     * 初始化嵌入式会话控制器，保存构造参数供后续方法使用。
+     *
+     * @param exchangeService 交换服务依赖，保存到当前对象供后续业务方法调用
+     * @param authenticationService 认证服务依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedSessionController(
             EmbedSessionExchangeService exchangeService,
             EmbedSessionAuthenticationService authenticationService) {
@@ -49,6 +55,15 @@ public class EmbedSessionController {
         this.authenticationService = authenticationService;
     }
 
+    /**
+     * 处理交换，并将结果传给后续步骤。
+     *
+     * @param launchId 启动记录ID，后续用于处理交换时定位或关联目标
+     * @param protocol {@code protocol}，供本方法处理交换时使用
+     * @param servletRequest Servlet请求，作为 {@code CorrelationContext.businessTraceId} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理交换
+     * @return 处理后的交换结果，供调用方继续处理
+     */
     @PostMapping("/launches/{launchId}/exchange")
     public ResponseEntity<EmbedApiEnvelope<ExchangeResponse>> exchange(
             @PathVariable String launchId,
@@ -72,6 +87,12 @@ public class EmbedSessionController {
                         CorrelationContext.businessTraceId(servletRequest)));
     }
 
+    /**
+     * 处理会话，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理会话
+     * @return 处理后的会话结果，供调用方继续处理
+     */
     @GetMapping("/session")
     public ResponseEntity<EmbedApiEnvelope<EmbedSessionState>> session(
             HttpServletRequest request) {
@@ -83,6 +104,13 @@ public class EmbedSessionController {
                         CorrelationContext.businessTraceId(request)));
     }
 
+    /**
+     * 处理心跳，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理心跳
+     * @param diagnostics {@code diagnostics}，供本方法处理心跳时使用
+     * @return 处理后的心跳结果，供调用方继续处理
+     */
     @PostMapping("/session/heartbeat")
     public ResponseEntity<EmbedApiEnvelope<EmbedSessionState>> heartbeat(
             HttpServletRequest request,
@@ -95,6 +123,13 @@ public class EmbedSessionController {
                         CorrelationContext.businessTraceId(request)));
     }
 
+    /**
+     * 处理{@code logout}，并将结果传给后续步骤。
+     *
+     * @param authorization 授权，作为 {@code authenticationService.logoutAuthorization} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理{@code logout}
+     * @return 处理后的{@code logout}结果，供调用方继续处理
+     */
     @DeleteMapping("/session")
     public ResponseEntity<Void> logout(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
@@ -106,6 +141,12 @@ public class EmbedSessionController {
                 .build();
     }
 
+    /**
+     * 处理已认证，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理已认证
+     * @return 处理后的已认证结果，供调用方继续处理
+     */
     private static AuthenticatedEmbedSession authenticated(HttpServletRequest request) {
         Object value = request.getAttribute(
                 EmbedSessionAuthenticationFilter.AUTHENTICATED_SESSION_ATTRIBUTE);
@@ -116,7 +157,12 @@ public class EmbedSessionController {
                 "Embed session is invalid");
     }
 
-    /** HTTP 适配器只传递 Guard 已规范化的关联 ID，不把 Launch/Session ID 当作请求 ID。 */
+    /**
+     * HTTP 适配器只传递 Guard 已规范化的关联 ID，不把 Launch/Session ID 当作请求 ID。
+     *
+     * @param request 本次请求，后续经校验后用于处理关联
+     * @return 处理后的关联结果，供调用方继续处理
+     */
     private static EmbedAuditCorrelation correlation(HttpServletRequest request) {
         return EmbedAuditCorrelation.of(
                 CorrelationContext.businessTraceId(request),
@@ -128,6 +174,9 @@ public class EmbedSessionController {
      * 
      * <p>生产网关未提供可验证的代理链时，多个用户会共享代理对端 bucket，
      * 这是安全保守的降级；不得为了精细限流直接信任请求头。</p>
+     *
+     * @param value 待规范化{@code peer}地址的原始输入，结果供调用方继续使用
+     * @return 规范化后的{@code peer}地址文本，供调用方比较或展示
      */
     static String normalizePeerAddress(String value) {
         if (value == null
@@ -143,6 +192,16 @@ public class EmbedSessionController {
         }
     }
 
+    /**
+     * 封装交换的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param launchCode 启动记录编码，后续用于处理交换请求时定位或关联目标
+     * @param channelId 通道ID，后续用于处理交换请求时定位或关联目标
+     * @param parentOrigin 父级来源，保存在对象中供后续校验、查询或展示
+     * @param parentNonce 父级{@code nonce}，保存在对象中供后续校验、查询或展示
+     * @param childNonce 子级{@code nonce}，保存在对象中供后续校验、查询或展示
+     * @param sdkVersion {@code sdk}版本，保存在对象中供后续校验、查询或展示
+     */
     public record ExchangeRequest(
             @NotBlank String launchCode,
             @NotBlank String channelId,
@@ -151,12 +210,22 @@ public class EmbedSessionController {
             @NotBlank String childNonce,
             String sdkVersion) {
 
-        /** 兑换请求不接受任何额外授权坐标或服务端状态字段。 */
+        /**
+         * 兑换请求不接受任何额外授权坐标或服务端状态字段。
+         *
+         * @param name 名称，后续用于处理驳回{@code unknown}字段时匹配或展示
+         * @param value 待处理驳回{@code unknown}字段的原始输入，结果供调用方继续使用
+         */
         @JsonAnySetter
         public void rejectUnknownField(String name, Object value) {
             throw new IllegalArgumentException("Exchange request contains unsupported fields");
         }
 
+        /**
+         * 生成当前对象的文本表示，供日志和排障使用。
+         *
+         * @return 转换为后的字符串文本，供调用方比较或展示
+         */
         @Override
         public String toString() {
             return "ExchangeRequest[launchCode=<redacted>, channelId=" + channelId
@@ -166,6 +235,18 @@ public class EmbedSessionController {
         }
     }
 
+    /**
+     * 封装交换的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param sessionId 会话ID，后续用于处理交换响应时定位或关联目标
+     * @param accessToken 访问令牌，后续用于授权校验、关联或幂等去重
+     * @param tokenType 令牌类型标识，决定后续交换响应采用的处理分支
+     * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param idleExpiresAt 空闲过期时间，后续用于判断有效期或展示该事件的发生时间
+     * @param heartbeatAfterSeconds 心跳之后秒数，保存在对象中供后续校验、查询或展示
+     * @param bootstrapUrl 初始化URL，保存在对象中供后续校验、查询或展示
+     * @param protocolVersion {@code protocol}版本，保存在对象中供后续校验、查询或展示
+     */
     public record ExchangeResponse(
             String sessionId,
             String accessToken,
@@ -176,6 +257,12 @@ public class EmbedSessionController {
             String bootstrapUrl,
             String protocolVersion) {
 
+        /**
+         * 处理起始，并将结果传给后续步骤。
+         *
+         * @param issued 已签发，作为 {@code ExchangeResponse} 的输入影响后续处理
+         * @return 处理后的起始结果，供调用方继续处理
+         */
         static ExchangeResponse from(EmbedSessionIssued issued) {
             return new ExchangeResponse(
                     issued.sessionId(), issued.accessToken(), "Bearer", issued.expiresAt(),
@@ -184,9 +271,21 @@ public class EmbedSessionController {
         }
     }
 
-    /** Diagnostics only; server time remains authoritative. */
+    /**
+     * Diagnostics only; server time remains authoritative.
+     *
+     * @param visible 可见，保存在对象中供后续校验、查询或展示
+     * @param clientTime 客户端时间，后续用于判断有效期或展示该事件的发生时间
+     */
     public record HeartbeatRequest(Boolean visible, Instant clientTime) {
 
+        /**
+         * 处理驳回{@code unknown}字段，并将结果传给后续步骤。
+         *
+         * @param name 名称，后续用于处理驳回{@code unknown}字段时匹配或展示
+         * @param value 待处理驳回{@code unknown}字段的原始输入，结果供调用方继续使用
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         @JsonAnySetter
         public void rejectUnknownField(String name, Object value) {
             throw new IllegalArgumentException("Heartbeat request contains unsupported fields");

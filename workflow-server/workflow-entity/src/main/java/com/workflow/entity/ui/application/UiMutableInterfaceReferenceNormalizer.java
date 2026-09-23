@@ -54,6 +54,12 @@ public class UiMutableInterfaceReferenceNormalizer {
         return result;
     }
 
+    /**
+     * 规范化已配置；输出作为后续校验或处理的输入。
+     *
+     * @param configured 已配置，供本方法规范化已配置时使用
+     * @return 规范化后的已配置结果，供调用方继续处理
+     */
     private Object normalizeConfigured(Object configured) {
         if (configured instanceof Map<?, ?> raw) {
             return normalizeReference(stringMap(raw));
@@ -70,6 +76,13 @@ public class UiMutableInterfaceReferenceNormalizer {
         return configured;
     }
 
+    /**
+     * 规范化引用；输出作为后续校验或处理的输入。
+     *
+     * @param configured 已配置，作为 {@code text} 的输入影响后续处理
+     * @return 引用键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeReference(
             Map<String, Object> configured) {
         Map<String, Object> result = new LinkedHashMap<>(configured);
@@ -96,7 +109,13 @@ public class UiMutableInterfaceReferenceNormalizer {
         return result;
     }
 
-    /** 历史兼容查找不检查 enabled，避免读取旧草稿时因停用而无法修复或保存。 */
+    /**
+     * 历史兼容查找不检查 enabled，避免读取旧草稿时因停用而无法修复或保存。
+     *
+     * @param referenceId 引用ID，后续用于解析定义时定位或关联目标
+     * @param operationCode 操作编码，后续用于解析定义时定位或关联目标
+     * @return 解析后的定义结果，供调用方继续处理
+     */
     private UiExtensionDefinition resolveDefinition(
             String referenceId,
             String operationCode) {
@@ -123,11 +142,23 @@ public class UiMutableInterfaceReferenceNormalizer {
         return definition;
     }
 
+    /**
+     * 判断是否引用；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否引用的原始输入，结果供调用方继续使用
+     * @return 引用条件成立时为 true，否则为 false
+     */
     private boolean isReference(Map<String, Object> value) {
         return value.containsKey("extensionId")
                 || value.containsKey("serviceId");
     }
 
+    /**
+     * 判断是否接口；判断结果决定调用方的后续分支。
+     *
+     * @param definition 定义，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @return 接口条件成立时为 true，否则为 false
+     */
     private boolean isInterface(UiExtensionDefinition definition) {
         return definition != null
                 && "INTERFACE".equalsIgnoreCase(
@@ -135,16 +166,34 @@ public class UiMutableInterfaceReferenceNormalizer {
                 && !Integer.valueOf(1).equals(definition.getDeleted());
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param raw 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> raw) {
         Map<String, Object> result = new LinkedHashMap<>();
         raw.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

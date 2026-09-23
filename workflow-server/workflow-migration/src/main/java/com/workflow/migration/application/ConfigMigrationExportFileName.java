@@ -10,6 +10,9 @@ import java.util.stream.Collectors;
 final class ConfigMigrationExportFileName {
     private static final int MAX_FILE_NAME_BYTES = 255;
 
+    /**
+     * 初始化配置迁移导出文件名称，保存构造参数供后续方法使用。
+     */
     private ConfigMigrationExportFileName() {
     }
 
@@ -38,6 +41,13 @@ final class ConfigMigrationExportFileName {
         return prefix + description + count + suffix;
     }
 
+    /**
+     * 生成{@code describe}文本，供后续匹配或展示。
+     *
+     * @param asset 资产，作为 {@code sanitize} 的输入影响后续处理
+     * @param budget {@code budget}，作为 {@code truncate} 的输入影响后续处理
+     * @return 处理后的{@code describe}文本，供调用方比较或展示
+     */
     private static String describe(ConfigMigrationAsset asset, int budget) {
         String type = switch (asset.getAssetType()) {
             case "ENTITY" -> "实体";
@@ -61,6 +71,12 @@ final class ConfigMigrationExportFileName {
                 + truncate(code, textBudget - nameBudget) + version;
     }
 
+    /**
+     * 清洗配置迁移导出文件名称；结果供调用方的后续步骤使用。
+     *
+     * @param value 待清洗配置迁移导出文件名称的原始输入，结果供调用方继续使用
+     * @return 清洗后的配置迁移导出文件名称文本，供调用方比较或展示
+     */
     private static String sanitize(String value) {
         if (value == null) {
             return "";
@@ -69,7 +85,13 @@ final class ConfigMigrationExportFileName {
                 .replaceAll("\\s+", " ").trim().replaceAll("^[. ]+|[. ]+$", "");
     }
 
-    /** 按 UTF-8 字节截断且保留完整字符，兼容中文文件名在常见文件系统中的长度限制。 */
+    /**
+     * 按 UTF-8 字节截断且保留完整字符，兼容中文文件名在常见文件系统中的长度限制。
+     *
+     * @param value 待处理{@code truncate}的原始输入，结果供调用方继续使用
+     * @param budget {@code budget}，供本方法处理{@code truncate}时使用
+     * @return 处理后的{@code truncate}文本，供调用方比较或展示
+     */
     private static String truncate(String value, int budget) {
         int end = 0;
         int used = 0;
@@ -85,6 +107,12 @@ final class ConfigMigrationExportFileName {
         return value.substring(0, end);
     }
 
+    /**
+     * 处理字节，并将结果传给后续步骤。
+     *
+     * @param value 待处理字节的原始输入，结果供调用方继续使用
+     * @return 处理后的字节结果，供调用方继续处理
+     */
     private static int bytes(String value) {
         return value.getBytes(StandardCharsets.UTF_8).length;
     }

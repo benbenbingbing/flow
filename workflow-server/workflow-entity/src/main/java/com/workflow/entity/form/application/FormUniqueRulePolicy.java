@@ -84,12 +84,22 @@ public class FormUniqueRulePolicy {
     private final ObjectMapper objectMapper;
     private final PublishedFormConditionEvaluator conditionEvaluator;
 
-    /** 解析表单发布快照中的全部已启用唯一规则。 */
+    /**
+     * 解析表单发布快照中的全部已启用唯一规则。
+     *
+     * @param form 表单，供本方法解析规则集合时使用
+     * @return 表单唯一规则集合，供调用方遍历或展示
+     */
     public List<FormUniqueRule> resolveRules(EntityForm form) {
         return form == null ? List.of() : resolveRules(form.getFields());
     }
 
-    /** 解析字段列表中的全部已启用唯一规则。 */
+    /**
+     * 解析字段列表中的全部已启用唯一规则。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 表单唯一规则集合，供调用方遍历或展示
+     */
     public List<FormUniqueRule> resolveRules(
             List<EntityFormField> fields) {
         if (fields == null || fields.isEmpty()) {
@@ -126,6 +136,9 @@ public class FormUniqueRulePolicy {
      * <p>结构化保存阶段可能尚未加载实体元数据，因此 {@link #validate(List, Set)}
      * 保留只做结构校验的能力；发布时必须调用本方法，防止虚拟或已失效字段在
      * 运行时被拼成不存在的动态表列。</p>
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param persistentProperties {@code persistent}属性集合，作为 {@code validateInternal} 的输入影响后续处理
      */
     public void validatePublished(
             List<EntityFormField> fields,
@@ -133,6 +146,14 @@ public class FormUniqueRulePolicy {
         validateInternal(fields, persistentProperties, true);
     }
 
+    /**
+     * 校验内部；不满足约束时阻止后续处理。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param validProperties 有效属性集合，作为 {@code parseRule} 的输入影响后续处理
+     * @param requirePersistentBinding {@code require}{@code persistent}绑定，供本方法校验内部时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateInternal(
             List<EntityFormField> fields,
             Set<String> validProperties,
@@ -156,7 +177,14 @@ public class FormUniqueRulePolicy {
         }
     }
 
-    /** 按稳定规则标识或字段编码选择当前表单自己的规则。 */
+    /**
+     * 按稳定规则标识或字段编码选择当前表单自己的规则。
+     *
+     * @param form 表单，作为 {@code resolveRules} 的输入影响后续处理
+     * @param ruleId 规则ID，后续用于查询规则时定位或关联目标
+     * @param fieldCode 字段编码，后续用于查询规则时定位或关联目标
+     * @return 匹配的规则；未找到时为空
+     */
     public Optional<FormUniqueRule> findRule(
             EntityForm form,
             String ruleId,
@@ -171,6 +199,11 @@ public class FormUniqueRulePolicy {
 
     /**
      * 使用字段级补丁语义合并记录，并计算规则是否适用及比较值。
+     *
+     * @param rule 规则，作为 {@code record.get} 的输入影响后续处理
+     * @param existingRecord 已有记录，作为 {@code record.putAll} 的输入影响后续处理
+     * @param submittedData 已提交数据，作为 {@code record.putAll} 的输入影响后续处理
+     * @return 准备后的表单唯一规则策略结果，供调用方继续处理
      */
     public FormUniqueCandidate prepare(
             FormUniqueRule rule,
@@ -195,7 +228,14 @@ public class FormUniqueRulePolicy {
                         new LinkedHashMap<>(record)));
     }
 
-    /** 判断一条现存记录是否与候选值冲突。 */
+    /**
+     * 判断一条现存记录是否与候选值冲突。
+     *
+     * @param rule 规则，作为 {@code existingRecord.get} 的输入影响后续处理
+     * @param normalizedValue 规范化值，供本方法处理{@code conflicts}时使用
+     * @param existingRecord 已有记录，供本方法处理{@code conflicts}时使用
+     * @return {@code conflicts}条件成立时为 true，否则为 false
+     */
     public boolean conflicts(
             FormUniqueRule rule,
             String normalizedValue,
@@ -218,6 +258,9 @@ public class FormUniqueRulePolicy {
     /**
      * 将唯一比较值按确定性规则规范化。
      * 数字去除无意义尾零，其他值去除首尾空白并忽略大小写。
+     *
+     * @param value 待规范化表单唯一规则策略的原始输入，结果供调用方继续使用
+     * @return 规范化后的表单唯一规则策略文本，供调用方比较或展示
      */
     public String normalize(Object value) {
         if (value == null) {
@@ -261,7 +304,13 @@ public class FormUniqueRulePolicy {
                 .toLowerCase(Locale.ROOT);
     }
 
-    /** 按实体字段类型规范化前端字符串与 JDBC 运行时值。 */
+    /**
+     * 按实体字段类型规范化前端字符串与 JDBC 运行时值。
+     *
+     * @param rule 规则，作为 {@code text} 的输入影响后续处理
+     * @param value 待规范化表单唯一规则策略的原始输入，结果供调用方继续使用
+     * @return 规范化后的表单唯一规则策略文本，供调用方比较或展示
+     */
     private String normalize(
             FormUniqueRule rule,
             Object value) {
@@ -299,7 +348,12 @@ public class FormUniqueRulePolicy {
         return normalize(value);
     }
 
-    /** 将 DATE 的表单字符串和 JDBC 类型统一为 ISO 日期。 */
+    /**
+     * 将 DATE 的表单字符串和 JDBC 类型统一为 ISO 日期。
+     *
+     * @param value 待规范化日期的原始输入，结果供调用方继续使用
+     * @return 规范化后的日期文本，供调用方比较或展示
+     */
     private String normalizeDate(Object value) {
         if (value instanceof java.sql.Date date) {
             return date.toLocalDate().toString();
@@ -326,6 +380,9 @@ public class FormUniqueRulePolicy {
     /**
      * 将 DATETIME 的空格格式、ISO T 格式、OffsetDateTime 与 JDBC 类型
      * 统一为动态表使用的秒级本地时间形状。
+     *
+     * @param value 待规范化日期时间的原始输入，结果供调用方继续使用
+     * @return 规范化后的日期时间文本，供调用方比较或展示
      */
     private String normalizeDateTime(Object value) {
         LocalDateTime dateTime = null;
@@ -358,6 +415,14 @@ public class FormUniqueRulePolicy {
         return DATE_TIME_VALUE.format(dateTime);
     }
 
+    /**
+     * 解析规则；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code readObject} 的输入影响后续处理
+     * @param validProperties 有效属性集合，作为 {@code conditionEvaluator.validateStructured} 的输入影响后续处理
+     * @param requirePersistentBinding {@code require}{@code persistent}绑定，供本方法解析规则时使用
+     * @return 解析后的规则结果，供调用方继续处理
+     */
     private FormUniqueRule parseRule(
             EntityFormField field,
             Set<String> validProperties,
@@ -484,6 +549,13 @@ public class FormUniqueRulePolicy {
                 precheck);
     }
 
+    /**
+     * 解析预检查；输出作为后续校验或处理的输入。
+     *
+     * @param configured 已配置，供本方法解析预检查时使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @return 解析后的预检查结果，供调用方继续处理
+     */
     private FormUniqueRule.Precheck parsePrecheck(
             Object configured,
             EntityFormField field) {
@@ -539,6 +611,9 @@ public class FormUniqueRulePolicy {
      *
      * <p>这是唯一性业务规则的持久化契约，不是 Embed 组件或渲染兼容清单；
      * 条件值域、字段引用和完整性仍由通用条件求值器统一校验。</p>
+     *
+     * @param configured 已配置，供本方法校验唯一条件{@code structure}时使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
      */
     private void validateUniqueConditionStructure(
             Object configured,
@@ -558,7 +633,13 @@ public class FormUniqueRulePolicy {
         validateUniqueConditionNode(rootNode, field, 0);
     }
 
-    /** 递归校验唯一性条件节点的封闭键集合，防止未知配置被运行时静默忽略。 */
+    /**
+     * 递归校验唯一性条件节点的封闭键集合，防止未知配置被运行时静默忽略。
+     *
+     * @param node 节点，作为 {@code text} 的输入影响后续处理
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @param depth 深度，供本方法校验唯一条件节点时使用
+     */
     private void validateUniqueConditionNode(
             Map<?, ?> node,
             EntityFormField field,
@@ -596,6 +677,15 @@ public class FormUniqueRulePolicy {
         // 未知 type 的语义错误由 PublishedFormConditionEvaluator 返回统一错误。
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(
             Object value,
             boolean defaultValue,
@@ -610,6 +700,12 @@ public class FormUniqueRulePolicy {
         return bool;
     }
 
+    /**
+     * 整理{@code flatten}数据，供调用方遍历或继续处理。
+     *
+     * @param source 待处理{@code flatten}的原始输入，结果供调用方继续使用
+     * @return {@code flatten}键值结果，供调用方继续处理
+     */
     private Map<String, Object> flatten(Map<String, Object> source) {
         if (source == null || source.isEmpty()) {
             return Map.of();
@@ -622,6 +718,12 @@ public class FormUniqueRulePolicy {
         return result;
     }
 
+    /**
+     * 判断是否空白；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空白的原始输入，结果供调用方继续使用
+     * @return 空白条件成立时为 true，否则为 false
+     */
     private boolean isBlank(Object value) {
         if (value == null) {
             return true;
@@ -639,6 +741,14 @@ public class FormUniqueRulePolicy {
                 && Array.getLength(value) == 0;
     }
 
+    /**
+     * 读取对象；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param label 标签，后续用于读取对象时匹配或展示
+     * @return 对象键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> readObject(
             String json,
             String label) {
@@ -654,11 +764,23 @@ public class FormUniqueRulePolicy {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> map
                 ? Map.copyOf(stringMap(map)) : Map.of();
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(
@@ -666,6 +788,14 @@ public class FormUniqueRulePolicy {
         return result;
     }
 
+    /**
+     * 校验并获取仅键集合；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验并获取仅键集合的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法校验并获取仅键集合时使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @param label 标签，后续用于校验并获取仅键集合时匹配或展示
+     */
     private void requireOnlyKeys(
             Map<?, ?> source,
             Set<String> allowed,
@@ -678,6 +808,12 @@ public class FormUniqueRulePolicy {
         }
     }
 
+    /**
+     * 判断{@code meaningful}条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理{@code meaningful}的原始输入，结果供调用方继续使用
+     * @return {@code meaningful}条件成立时为 true，否则为 false
+     */
     private boolean meaningful(Object value) {
         if (value == null) {
             return false;
@@ -694,6 +830,12 @@ public class FormUniqueRulePolicy {
         return true;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private int integer(Object value) {
         try {
             return Integer.parseInt(String.valueOf(value));
@@ -702,6 +844,12 @@ public class FormUniqueRulePolicy {
         }
     }
 
+    /**
+     * 生成展示标签文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理展示标签时使用
+     * @return 处理后的展示标签文本，供调用方比较或展示
+     */
     private String displayLabel(EntityFormField field) {
         if (StringUtils.hasText(field.getFieldLabel())) {
             return field.getFieldLabel().trim();
@@ -712,14 +860,33 @@ public class FormUniqueRulePolicy {
         return field.getFieldCode();
     }
 
+    /**
+     * 生成字段标签文本，供后续匹配或展示。
+     *
+     * @param field 字段，作为 {@code displayLabel} 的输入影响后续处理
+     * @return 处理后的字段标签文本，供调用方比较或展示
+     */
     private String fieldLabel(EntityFormField field) {
         return "字段“" + displayLabel(field) + "”";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param message 消息，供本方法处理无效时使用
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private IllegalArgumentException invalid(
             EntityFormField field,
             String message) {

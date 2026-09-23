@@ -1,8 +1,8 @@
 package com.workflow.admin.audit.application;
 
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.core.logging.LogValue;
 import com.workflow.outbox.api.OutboxPublisher;
@@ -31,6 +31,11 @@ public class SystemAuditApplicationService implements SystemAuditPort {
     @Value("${workflow.audit.enqueue-retries:3}")
     private int enqueueRetries = 3;
 
+    /**
+     * 记录系统审计应用；供后续追溯或审计使用。
+     *
+     * @param event 事件，作为 {@code payloadFactory.create} 的输入影响后续处理
+     */
     @Override
     public void record(SystemAuditEvent event) {
         AuditLogPayload payload;
@@ -52,6 +57,11 @@ public class SystemAuditApplicationService implements SystemAuditPort {
         enqueueAfterCommit(payload);
     }
 
+    /**
+     * 入队之后{@code commit}；后续由接收方或异步任务继续处理。
+     *
+     * @param payload 载荷，后续用于入队之后{@code commit}并传递处理结果
+     */
     private void enqueueAfterCommit(AuditLogPayload payload) {
         if (TransactionSynchronizationManager.isActualTransactionActive()
                 && TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -67,6 +77,11 @@ public class SystemAuditApplicationService implements SystemAuditPort {
         enqueueBestEffort(payload);
     }
 
+    /**
+     * 入队{@code best}{@code effort}；后续由接收方或异步任务继续处理。
+     *
+     * @param payload 载荷，后续用于入队{@code best}{@code effort}并传递处理结果
+     */
     private void enqueueBestEffort(AuditLogPayload payload) {
         int attempts = Math.max(1, enqueueRetries);
         RuntimeException lastFailure = null;
@@ -87,6 +102,11 @@ public class SystemAuditApplicationService implements SystemAuditPort {
         notifyTechnicalFailure(payload, "ENQUEUE", lastFailure);
     }
 
+    /**
+     * 记录失败；供后续追溯或审计使用。
+     *
+     * @param payload 载荷，后续用于记录失败并传递处理结果
+     */
     private void recordFailure(AuditLogPayload payload) {
         try {
             failureWriter.persist(payload);
@@ -98,6 +118,12 @@ public class SystemAuditApplicationService implements SystemAuditPort {
         }
     }
 
+    /**
+     * 处理准备失败，并将结果传给后续步骤。
+     *
+     * @param event 事件，供本方法处理准备失败时使用
+     * @param exception 异常，作为 {@code notifyTechnicalFailure} 的输入影响后续处理
+     */
     private void handlePreparationFailure(
             SystemAuditEvent event,
             RuntimeException exception) {
@@ -117,6 +143,13 @@ public class SystemAuditApplicationService implements SystemAuditPort {
                 exception);
     }
 
+    /**
+     * 通知{@code technical}失败；后续由接收方或异步任务继续处理。
+     *
+     * @param payload 载荷，后续用于通知{@code technical}失败并传递处理结果
+     * @param phase {@code phase}，供本方法通知{@code technical}失败时使用
+     * @param exception 异常，供本方法通知{@code technical}失败时使用
+     */
     private void notifyTechnicalFailure(
             AuditLogPayload payload,
             String phase,
@@ -128,6 +161,14 @@ public class SystemAuditApplicationService implements SystemAuditPort {
                 exception);
     }
 
+    /**
+     * 通知{@code technical}失败；后续由接收方或异步任务继续处理。
+     *
+     * @param eventId 事件ID，后续用于通知{@code technical}失败时定位或关联目标
+     * @param operationName 操作名称，后续用于通知{@code technical}失败时匹配或展示
+     * @param phase {@code phase}，供本方法通知{@code technical}失败时使用
+     * @param exception 异常，供本方法通知{@code technical}失败时使用
+     */
     private void notifyTechnicalFailure(
             String eventId,
             String operationName,

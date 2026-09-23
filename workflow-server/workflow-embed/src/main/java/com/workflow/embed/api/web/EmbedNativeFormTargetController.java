@@ -27,6 +27,12 @@ public class EmbedNativeFormTargetController {
     private final EmbedNativeFormTargetResolver targetResolver;
     private final EmbedNativeFormRuntimePort nativeRuntimePort;
 
+    /**
+     * 初始化嵌入式原生表单目标控制器，保存构造参数供后续方法使用。
+     *
+     * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
+     * @param nativeRuntimePort 原生运行时端口依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedNativeFormTargetController(
             EmbedNativeFormTargetResolver targetResolver,
             EmbedNativeFormRuntimePort nativeRuntimePort) {
@@ -36,6 +42,11 @@ public class EmbedNativeFormTargetController {
 
     /**
      * 解析一次原生表单导航目标；不接受 formId/entityCode/releaseId。
+     *
+     * @param mode 模式标识，决定后续目标采用的处理分支
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param request 本次请求，后续经校验后用于处理目标
+     * @return 处理后的目标结果，供调用方继续处理
      */
     @GetMapping("/native-form-target")
     public ResponseEntity<EmbedApiEnvelope<EmbedRuntimeViews.Target>> target(

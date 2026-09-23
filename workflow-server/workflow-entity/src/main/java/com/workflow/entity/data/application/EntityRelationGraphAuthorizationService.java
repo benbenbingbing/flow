@@ -3,7 +3,7 @@ package com.workflow.entity.data.application;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.Grant;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.AccessMode;
@@ -81,6 +81,17 @@ public class EntityRelationGraphAuthorizationService {
                 user.getId(), purpose, source, hops);
     }
 
+    /**
+     * 处理授权，并将结果传给后续步骤。
+     *
+     * @param hopIndex 跳索引，作为 {@code Grant} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param historyId 历史ID，后续用于处理授权时定位或关联目标
+     * @param schemaHash 结构哈希，作为 {@code Grant} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的授权结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Grant grant(
             int hopIndex,
             String entityCode,
@@ -140,6 +151,12 @@ public class EntityRelationGraphAuthorizationService {
                 scope);
     }
 
+    /**
+     * 处理当前用户，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前用户结果，供调用方继续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private SysUser currentUser() {
         String userId = UserContext.getUserId();
         if (!StringUtils.hasText(userId)) {

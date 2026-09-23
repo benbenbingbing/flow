@@ -65,6 +65,15 @@ public class EntityRecordVersionController {
                 configurationService.recordCapabilities(entityCode));
     }
 
+    /**
+     * 列出实体记录版本；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的实体记录版本摘要结果，供调用方继续处理
+     */
     @GetMapping("/{entityCode}/{recordId}")
     public ApiResponse<PageResult<EntityRecordVersionSummary>> list(
             @PathVariable String entityCode,
@@ -76,6 +85,14 @@ public class EntityRecordVersionController {
                 service.listPage(entityCode, recordId, pageNum, pageSize));
     }
 
+    /**
+     * 处理详情，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 处理后的详情结果，供调用方继续处理
+     */
     @GetMapping("/{entityCode}/{recordId}/{versionNo}")
     public ApiResponse<Map<String, Object>> detail(
             @PathVariable String entityCode,
@@ -88,6 +105,11 @@ public class EntityRecordVersionController {
 
     /**
      * 生成历史版本恢复的只读预演。当前没有执行端点，返回计划也始终不可执行。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 恢复后的方案结果，供调用方继续处理
      */
     @GetMapping("/{entityCode}/{recordId}/{versionNo}/restore-plan")
     public ApiResponse<EntityVersionRestorePlan> restorePlan(
@@ -99,6 +121,15 @@ public class EntityRecordVersionController {
                 entityCode, recordId, versionNo));
     }
 
+    /**
+     * 比较实体记录版本；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fromVersion 起始版本，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @param toVersion 截止版本，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 比较后的实体记录版本结果，供调用方继续处理
+     */
     @GetMapping("/{entityCode}/{recordId}/compare")
     public ApiResponse<RecordVersionComparisonV2> compare(
             @PathVariable String entityCode,
@@ -113,6 +144,15 @@ public class EntityRecordVersionController {
                 toVersion));
     }
 
+    /**
+     * 捕获实体记录版本；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param request 本次请求，后续经校验后用于捕获实体记录版本
+     * @return 捕获后的实体记录版本结果，供调用方继续处理
+     */
     @PostMapping("/{entityCode}/{recordId}/captures")
     @RequiresPermission({
             "entity:version:record:view",
@@ -127,6 +167,19 @@ public class EntityRecordVersionController {
                 entityCode, recordId, request, idempotencyKey));
     }
 
+    /**
+     * 处理比较行，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param nodeCode 节点编码，后续用于处理比较行时定位或关联目标
+     * @param fromVersion 起始版本，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @param toVersion 截止版本，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param changedOnly 已变更仅，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @return 处理后的比较行结果，供调用方继续处理
+     */
     @GetMapping("/{entityCode}/{recordId}/compare/datasets/{nodeCode}/rows")
     public ApiResponse<RecordVersionComparisonV2.RowComparisonPage>
             comparisonRows(
@@ -144,6 +197,17 @@ public class EntityRecordVersionController {
                 nodeCode, pageNum, pageSize, changedOnly));
     }
 
+    /**
+     * 处理快照行，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code ApiResponse.success} 的输入影响后续处理
+     * @param nodeCode 节点编码，后续用于处理快照行时定位或关联目标
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的快照行结果，供调用方继续处理
+     */
     @GetMapping("/{entityCode}/{recordId}/{versionNo}/datasets/{nodeCode}/rows")
     public ApiResponse<RecordVersionComparisonV2.SnapshotRowPage>
             snapshotRows(
@@ -159,6 +223,12 @@ public class EntityRecordVersionController {
                 pageNum, pageSize));
     }
 
+    /**
+     * 校验并获取{@code historical}视图；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void requireHistoricalView(String entityCode, String recordId) {
         actionCapabilityService.requireStandardPermission(
                 entityCode,
@@ -167,6 +237,12 @@ public class EntityRecordVersionController {
                 entityCode, recordId, null);
     }
 
+    /**
+     * 校验并获取当前视图；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void requireCurrentView(String entityCode, String recordId) {
         actionCapabilityService.requireStandardPermission(
                 entityCode,

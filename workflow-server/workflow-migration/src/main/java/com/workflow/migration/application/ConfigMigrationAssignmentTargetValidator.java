@@ -1,8 +1,8 @@
 package com.workflow.migration.application;
 
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
-import com.workflow.contracts.identity.resolver.PersonResolverConfigurationValidationRequest;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
@@ -27,6 +27,13 @@ class ConfigMigrationAssignmentTargetValidator {
     /**
      * 检查岗位、层级、人员字段及解析器。字段查询由调用方提供，允许引用同包即将发布的实体。
      * 配置非法时抛出可展示的原因；目录缺失返回 false。
+     *
+     * @param dependency 依赖，作为 {@code key.equals} 的输入影响后续处理
+     * @param type 类型标识，决定后续已解析采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param mapping 映射，供本方法处理已解析时使用
+     * @param fieldLookup 字段查找，供本方法处理已解析时使用
+     * @return 已解析条件成立时为 true，否则为 false
      */
     boolean resolved(Map<String, Object> dependency, String type, String key,
             BiFunction<String, String, String> mapping,

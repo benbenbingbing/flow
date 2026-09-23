@@ -1,6 +1,6 @@
 package com.workflow.entity.form.application;
 
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 
 /**
@@ -28,6 +28,14 @@ public record ResolvedEntityFormRelease(
         String hotfixTargetId,
         UiRuntimePurpose purpose) {
 
+    /**
+     * 初始化已解析实体表单发布版本，保存构造参数供后续方法使用。
+     *
+     * @param form 表单，保存在对象中供后续校验、查询或展示
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param pinned 固定，保存在对象中供后续校验、查询或展示
+     */
     public ResolvedEntityFormRelease(
             EntityForm form,
             String releaseId,
@@ -60,6 +68,11 @@ public record ResolvedEntityFormRelease(
         this(form, releaseId, releaseVersion, false);
     }
 
+    /**
+     * 判断热修复{@code applied}条件是否成立，供调用方选择后续分支。
+     *
+     * @return 热修复{@code applied}条件成立时为 true，否则为 false
+     */
     public boolean hotfixApplied() {
         return hotfixTargetId != null;
     }

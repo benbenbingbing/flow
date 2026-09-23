@@ -1,12 +1,12 @@
 package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.audit.AuditEventIds;
-import com.workflow.contracts.audit.AuditSourcePointer;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
+import com.workflow.contracts.audit.model.AuditSourcePointer;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
@@ -105,6 +105,12 @@ public class FlowActionExecutor {
     /**
      * 从持久化触发事件恢复业务操作上下文。旧执行记录缺少 operationId 时，
      * 以动作和幂等键生成独立操作，绝不使用 traceId 猜测归并。
+     *
+     * @param action 动作标识，决定后续操作上下文采用的处理分支
+     * @param event 事件，作为 {@code firstNonBlank} 的输入影响后续处理
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param execution 执行，供本方法处理操作上下文时使用
+     * @return 处理后的操作上下文结果，供调用方继续处理
      */
     private OperationContext operationContext(
             FlowAction action,
@@ -232,10 +238,23 @@ public class FlowActionExecutor {
         return params;
     }
 
+    /**
+     * 生成默认字符串文本，供后续匹配或展示。
+     *
+     * @param value 待处理默认字符串的原始输入，结果供调用方继续使用
+     * @return 处理后的默认字符串文本，供调用方比较或展示
+     */
     private String defaultString(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param first 首个，供本方法处理首个非空白时使用
+     * @param second {@code second}，供本方法处理首个非空白时使用
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(String first, String second) {
         return StringUtils.hasText(first) ? first : second;
     }
@@ -251,10 +270,22 @@ public class FlowActionExecutor {
         resolveHandler(action).execute(ctx);
     }
 
+    /**
+     * 判断可重试条件是否成立，供调用方选择后续分支。
+     *
+     * @param action 动作标识，决定后续可重试采用的处理分支
+     * @return 可重试条件成立时为 true，否则为 false
+     */
     public boolean retryable(FlowAction action) {
         return resolveHandler(action).retryable();
     }
 
+    /**
+     * 解析处理器；输出作为后续校验或处理的输入。
+     *
+     * @param action 动作标识，决定后续处理器采用的处理分支
+     * @return 解析后的处理器结果，供调用方继续处理
+     */
     private FlowActionHandler resolveHandler(FlowAction action) {
         String beanName = action.getInterfaceName();
         if (!StringUtils.hasText(beanName)) {

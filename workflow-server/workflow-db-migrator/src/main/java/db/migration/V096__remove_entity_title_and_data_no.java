@@ -28,6 +28,9 @@ public class V096__remove_entity_title_and_data_no extends BaseJavaMigration {
     /**
      * 先完成全量表名校验，再按表删除已存在的列，最后清理字段元数据。
      * SQL 异常直接交给 Flyway，中途失败时不得把不完整的清理标记为成功。
+     *
+     * @param context 执行上下文，向后续迁移步骤传递身份、配置或状态
+     * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     @Override
     public void migrate(Context context) throws SQLException {
@@ -45,13 +48,23 @@ public class V096__remove_entity_title_and_data_no extends BaseJavaMigration {
         removeFieldDefinitions(connection);
     }
 
-    /** MySQL DDL 隐式提交，不向调用方承诺跨表删除可整体回滚。 */
+    /**
+     * MySQL DDL 隐式提交，不向调用方承诺跨表删除可整体回滚。
+     *
+     * @return {@code execute}事务条件成立时为 true，否则为 false
+     */
     @Override
     public boolean canExecuteInTransaction() {
         return false;
     }
 
-    /** 从当前库实际存在的列生成计划，空库、尚未发布的实体和已删除的列自然跳过。 */
+    /**
+     * 从当前库实际存在的列生成计划，空库、尚未发布的实体和已删除的列自然跳过。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @return 列{@code removal}方案键值结果，供调用方继续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private Map<String, List<String>> columnRemovalPlan(Connection connection) throws SQLException {
         Map<String, List<String>> plan = new LinkedHashMap<>();
         try (var statement = connection.prepareStatement("""
@@ -80,7 +93,12 @@ public class V096__remove_entity_title_and_data_no extends BaseJavaMigration {
         return plan;
     }
 
-    /** 删除字段及其专属配置，避免设计器继续显示已不存在的系统字段。 */
+    /**
+     * 删除字段及其专属配置，避免设计器继续显示已不存在的系统字段。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private void removeFieldDefinitions(Connection connection) throws SQLException {
         for (String table : List.of("entity_field_option", "entity_field_file_item", "entity_list_field")) {
             try (var statement = connection.createStatement()) {

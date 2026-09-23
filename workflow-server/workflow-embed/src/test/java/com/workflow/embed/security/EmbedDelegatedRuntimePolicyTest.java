@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort;

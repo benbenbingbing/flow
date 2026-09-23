@@ -15,12 +15,22 @@ import org.springframework.stereotype.Component;
 public class EntityVersionCreatedOutboxHandler
         implements OutboxEventHandler {
 
+    /**
+     * 生成{@code topic}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code topic}文本，供调用方比较或展示
+     */
     @Override
     public String topic() {
         return EntityRecordVersionService
                 .VERSION_CREATED_TOPIC;
     }
 
+    /**
+     * 处理实体版本已创建待发送事件，并将结果传给后续步骤。
+     *
+     * @param event 事件，供本方法处理实体版本已创建待发送事件时使用
+     */
     @Override
     public void handle(OutboxEvent event) {
         log.info(

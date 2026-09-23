@@ -5,8 +5,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityMutationReceipt;
@@ -37,6 +37,9 @@ public class EntityMutationReceiptService {
 
     /**
      * 首次执行插入 PENDING 回执；已成功执行时返回原结果。
+     *
+     * @param command 本次命令，后续经校验后用于处理获取
+     * @return 处理后的获取结果，供调用方继续处理
      */
     public EntityMutationResult acquire(
             EntityMutationCommand command) {
@@ -75,6 +78,13 @@ public class EntityMutationReceiptService {
         }
     }
 
+    /**
+     * 处理完成，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于处理完成
+     * @param result 结果，供本方法处理完成时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public void complete(
             EntityMutationCommand command,
             EntityMutationResult result) {
@@ -93,6 +103,14 @@ public class EntityMutationReceiptService {
         }
     }
 
+    /**
+     * 处理重放，并将结果传给后续步骤。
+     *
+     * @param receipt 回执，作为 {@code EntityMutationResult} 的输入影响后续处理
+     * @param command 本次命令，后续经校验后用于处理重放
+     * @return 处理后的重放结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityMutationResult replay(
             EntityMutationReceipt receipt,
             EntityMutationCommand command) {
@@ -123,6 +141,13 @@ public class EntityMutationReceiptService {
                 true);
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param command 本次命令，后续经校验后用于处理哈希
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(EntityMutationCommand command) {
         Map<String, Object> material =
                 new LinkedHashMap<>();
@@ -173,6 +198,13 @@ public class EntityMutationReceiptService {
         }
     }
 
+    /**
+     * 写入实体变更回执；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入实体变更回执的原始输入，结果供调用方继续使用
+     * @return 写入后的实体变更回执文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String write(Map<String, Object> value) {
         try {
             return objectMapper.writeValueAsString(
@@ -184,6 +216,13 @@ public class EntityMutationReceiptService {
         }
     }
 
+    /**
+     * 读取实体变更回执；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待读取实体变更回执的原始输入，结果供调用方继续使用
+     * @return 实体变更回执键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> read(String value) {
         if (!StringUtils.hasText(value)) {
             return Map.of();
@@ -200,6 +239,11 @@ public class EntityMutationReceiptService {
         }
     }
 
+    /**
+     * 生成ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的ID文本，供调用方比较或展示
+     */
     private String id() {
         return UUID.randomUUID().toString()
                 .replace("-", "");

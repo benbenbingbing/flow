@@ -65,6 +65,9 @@ public class EntityListConfigController {
 
     /**
      * 根据ID查询配置（含字段）
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的{@code result<entity}列表配置{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/{id}")
     public Result<EntityListConfigDTO> getById(@PathVariable String id) {
@@ -74,6 +77,9 @@ public class EntityListConfigController {
 
     /**
      * 保存/更新列表配置
+     *
+     * @param dto DTO，作为 {@code accessService.requireNewListAccess} 的输入影响后续处理
+     * @return 保存后的请求结果，供调用方继续处理
      */
     @PostMapping("/save")
     public Result<EntityListConfigDTO> saveRequest(
@@ -87,6 +93,9 @@ public class EntityListConfigController {
 
     /**
      * 保留给既有直接调用测试的兼容入口；HTTP API 使用 saveRequest。
+     *
+     * @param dto DTO，作为 {@code accessService.requireNewListAccess} 的输入影响后续处理
+     * @return 保存后的实体列表配置结果，供调用方继续处理
      */
     @Deprecated
     public Result<EntityListConfigDTO> save(EntityListConfigDTO dto) {
@@ -209,6 +218,9 @@ public class EntityListConfigController {
 
     /**
      * 删除列表配置
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 删除后的实体列表配置结果，供调用方继续处理
      */
     @PostMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable String id) {

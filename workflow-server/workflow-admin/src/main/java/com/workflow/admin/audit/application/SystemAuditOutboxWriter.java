@@ -19,11 +19,22 @@ public class SystemAuditOutboxWriter {
 
     private final OutboxPublisher outboxPublisher;
 
+    /**
+     * 入队系统审计待发送事件写入器；后续由接收方或异步任务继续处理。
+     *
+     * @param payload 载荷，后续用于入队系统审计待发送事件写入器并传递处理结果
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void enqueue(AuditLogPayload payload) {
         outboxPublisher.publish(request(payload));
     }
 
+    /**
+     * 处理请求，并将结果传给后续步骤。
+     *
+     * @param payload 载荷，后续用于处理请求并传递处理结果
+     * @return 处理后的请求结果，供调用方继续处理
+     */
     static OutboxPublishRequest request(AuditLogPayload payload) {
         return new OutboxPublishRequest(
                 TOPIC,

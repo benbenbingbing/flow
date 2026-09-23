@@ -1,8 +1,8 @@
 package com.workflow.biz.project.action;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.process.action.port.FlowActionRuntimeAccess;
+import com.workflow.contracts.process.action.context.FlowActionContext;
+import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.junit.jupiter.api.Test;
@@ -32,8 +32,8 @@ class RecordProjectMemberDecisionHandlerTest {
         context.setExtraParams(Map.of(
                 "decision", "APPROVE",
                 "legacyField", "ignored"));
-        FlowActionRuntimeAccess runtimeAccess =
-                mock(FlowActionRuntimeAccess.class);
+        FlowActionRuntimePort runtimeAccess =
+                mock(FlowActionRuntimePort.class);
         when(runtimeAccess.convertParams(
                 anyMap(),
                 eq(RecordProjectMemberDecisionHandler

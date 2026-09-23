@@ -20,6 +20,9 @@ import java.util.regex.Pattern;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 
+/**
+ * 封装打开集成键材料相关能力和状态；供同一业务流程的后续处理使用。
+ */
 public final class OpenIntegrationKeyMaterial {
 
     private static final int MINIMUM_RSA_BITS = 2048;
@@ -34,6 +37,13 @@ public final class OpenIntegrationKeyMaterial {
     private final RSAPublicKey publicKey;
     private final Map<String, RSAPublicKey> verificationKeys;
 
+    /**
+     * 初始化打开集成键材料，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     * @param resourceLoader 资源{@code loader}，保存在对象中供后续校验、查询或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public OpenIntegrationKeyMaterial(
             OpenIntegrationProperties properties,
             ResourceLoader resourceLoader) {
@@ -56,18 +66,41 @@ public final class OpenIntegrationKeyMaterial {
                 resourceLoader);
     }
 
+    /**
+     * 处理{@code private}键，并将结果传给后续步骤。
+     *
+     * @return 处理后的{@code private}键结果，供调用方继续处理
+     */
     public RSAPrivateCrtKey privateKey() {
         return privateKey;
     }
 
+    /**
+     * 处理公开键，并将结果传给后续步骤。
+     *
+     * @return 处理后的公开键结果，供调用方继续处理
+     */
     public RSAPublicKey publicKey() {
         return publicKey;
     }
 
+    /**
+     * 整理{@code verification}键集合数据，供调用方遍历或继续处理。
+     *
+     * @return {@code verification}键集合键值结果，供调用方继续处理
+     */
     public Map<String, RSAPublicKey> verificationKeys() {
         return verificationKeys;
     }
 
+    /**
+     * 加载{@code verification}键集合；查询结果供调用方展示或继续处理。
+     *
+     * @param properties 属性集合，作为 {@code keys.put} 的输入影响后续处理
+     * @param resourceLoader 资源{@code loader}，作为 {@code parseKey} 的输入影响后续处理
+     * @return {@code verification}键集合键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, RSAPublicKey> loadVerificationKeys(
             OpenIntegrationProperties properties,
             ResourceLoader resourceLoader) {
@@ -106,6 +139,12 @@ public final class OpenIntegrationKeyMaterial {
         return Map.copyOf(keys);
     }
 
+    /**
+     * 校验公开键；不满足约束时阻止后续处理。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     static void validatePublicKey(RSAPublicKey key) {
         if (key.getModulus().bitLength() < MINIMUM_RSA_BITS) {
             throw new IllegalStateException(
@@ -113,6 +152,12 @@ public final class OpenIntegrationKeyMaterial {
         }
     }
 
+    /**
+     * 校验属性集合；不满足约束时阻止后续处理。
+     *
+     * @param properties 属性集合，供本方法校验属性集合时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void validateProperties(OpenIntegrationProperties properties) {
         if (!isValidIssuer(properties.getIssuer())) {
             throw new IllegalStateException(
@@ -145,6 +190,12 @@ public final class OpenIntegrationKeyMaterial {
         }
     }
 
+    /**
+     * 判断是否有效签发方；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否有效签发方的原始输入，结果供调用方继续使用
+     * @return 有效签发方条件成立时为 true，否则为 false
+     */
     private boolean isValidIssuer(String value) {
         if (value == null || value.isBlank()) {
             return false;
@@ -163,6 +214,14 @@ public final class OpenIntegrationKeyMaterial {
         }
     }
 
+    /**
+     * 读取打开集成键材料；查询结果供调用方展示或继续处理。
+     *
+     * @param location {@code location}，作为 {@code resourceLoader.getResource} 的输入影响后续处理
+     * @param resourceLoader 资源{@code loader}，供本方法读取打开集成键材料时使用
+     * @return 读取后的打开集成键材料文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String read(String location, ResourceLoader resourceLoader) {
         if (location == null
                 || !(location.startsWith("classpath:")
@@ -187,6 +246,15 @@ public final class OpenIntegrationKeyMaterial {
         }
     }
 
+    /**
+     * 解析键；输出作为后续校验或处理的输入。
+     *
+     * @param pem {@code pem}，供本方法解析键时使用
+     * @param type 类型标识，决定后续键采用的处理分支
+     * @param privateValue {@code private}值，供本方法解析键时使用
+     * @return 解析后的键结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private java.security.Key parseKey(
             String pem,
             String type,

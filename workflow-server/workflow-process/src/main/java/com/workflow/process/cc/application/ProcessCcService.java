@@ -52,6 +52,9 @@ public class ProcessCcService {
      * 按非空 uniqueKey 幂等创建；true 表示本次新增，调用方才可发布通知。
      * 重复键必须在本事务代理内部恢复和捕获，避免 REQUIRED 将外层标记为 rollback-only。
      * 只吞掉已存在目标业务键的冲突，其他约束失败继续回滚整笔业务。
+     *
+     * @param record 记录，作为 {@code prepareRecord} 的输入影响后续处理
+     * @return 抄送记录条件{@code absent}条件成立时为 true，否则为 false
      */
     @Transactional(rollbackFor = Exception.class)
     public boolean createCcRecordIfAbsent(ProcessCcRecord record) {
@@ -70,6 +73,11 @@ public class ProcessCcService {
         }
     }
 
+    /**
+     * 准备记录；结果供调用方的后续步骤使用。
+     *
+     * @param record 记录，作为 {@code snapshotService.captureNames} 的输入影响后续处理
+     */
     private void prepareRecord(ProcessCcRecord record) {
         // 自动、人工和显式知会共用写入口，名称只在创建时补齐；读列表不回查业务表。
         snapshotService.captureNames(record);
@@ -106,6 +114,18 @@ public class ProcessCcService {
         return ccRecordMapper.findByCcUserId(userId, offset, pageSize);
     }
 
+    /**
+     * 按筛选条件分页查询流程抄送；结果供列表展示。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param requestedPage 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedSize 请求页大小，后续限制单次查询和返回数量
+     * @param keyword 关键字，作为 {@code ccRecordMapper.findByCcUserIdFiltered} 的输入影响后续处理
+     * @param operatorName 用户名称，后续用于身份匹配或操作展示
+     * @param startTime 启动时间，后续用于判断有效期或展示该事件的发生时间
+     * @param endTime 结束时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 符合条件的流程抄送结果，供调用方继续处理
+     */
     public PageResult<ProcessCcRecord> getUserCcPage(
             String userId,
             int requestedPage,

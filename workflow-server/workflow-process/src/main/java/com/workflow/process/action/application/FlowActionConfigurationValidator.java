@@ -1,11 +1,11 @@
 package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
+import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
@@ -212,6 +212,12 @@ public class FlowActionConfigurationValidator {
         }
     }
 
+    /**
+     * 解析作用域；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析作用域的原始输入，结果供调用方继续使用
+     * @return 解析后的作用域结果，供调用方继续处理
+     */
     private FlowActionScopeType parseScope(String value) {
         try {
             return FlowActionScopeType.valueOf(value.toUpperCase(Locale.ROOT));
@@ -220,6 +226,12 @@ public class FlowActionConfigurationValidator {
         }
     }
 
+    /**
+     * 解析执行模式；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析执行模式的原始输入，结果供调用方继续使用
+     * @return 解析后的执行模式结果，供调用方继续处理
+     */
     private FlowActionExecutionMode parseExecutionMode(String value) {
         try {
             return FlowActionExecutionMode.valueOf(value.toUpperCase(Locale.ROOT));
@@ -228,6 +240,12 @@ public class FlowActionConfigurationValidator {
         }
     }
 
+    /**
+     * 解析失败策略；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析失败策略的原始输入，结果供调用方继续使用
+     * @return 解析后的失败策略结果，供调用方继续处理
+     */
     private FlowActionFailurePolicy parseFailurePolicy(String value) {
         try {
             return FlowActionFailurePolicy.valueOf(value.toUpperCase(Locale.ROOT));

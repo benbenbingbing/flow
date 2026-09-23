@@ -13,12 +13,18 @@ public final class EmbedOriginNormalizer {
 
     private static final String HTTPS_PREFIX = "https://";
 
+    /**
+     * 初始化嵌入式来源{@code normalizer}，保存构造参数供后续方法使用。
+     */
     private EmbedOriginNormalizer() {
     }
 
     /**
      * Produces {@code https://host[:non-default-port]} and rejects every URL component that is
      * not part of an Origin. Unicode DNS names are converted with IDNA STD3 rules.
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 规范化后的嵌入式来源{@code normalizer}文本，供调用方比较或展示
      */
     public static String normalize(String candidate) {
         if (candidate == null || candidate.isBlank() || candidate.length() > 2048) {
@@ -47,6 +53,12 @@ public final class EmbedOriginNormalizer {
         return normalized;
     }
 
+    /**
+     * 处理首个组件索引，并将结果传给后续步骤。
+     *
+     * @param value 待处理首个组件索引的原始输入，结果供调用方继续使用
+     * @return 处理后的首个组件索引结果，供调用方继续处理
+     */
     private static int firstComponentIndex(String value) {
         int result = -1;
         for (char marker : new char[]{'/', '?', '#'}) {
@@ -58,6 +70,12 @@ public final class EmbedOriginNormalizer {
         return result;
     }
 
+    /**
+     * 处理{@code split}主机端口，并将结果传给后续步骤。
+     *
+     * @param authority {@code authority}，作为 {@code HostPort} 的输入影响后续处理
+     * @return 处理后的{@code split}主机端口结果，供调用方继续处理
+     */
     private static HostPort splitHostPort(String authority) {
         if (authority == null || authority.isBlank()) {
             throw invalidOrigin();
@@ -85,6 +103,12 @@ public final class EmbedOriginNormalizer {
                 parsePort(authority.substring(lastColon + 1)));
     }
 
+    /**
+     * 解析端口后缀；输出作为后续校验或处理的输入。
+     *
+     * @param suffix 后缀，作为 {@code parsePort} 的输入影响后续处理
+     * @return 解析后的端口后缀结果，供调用方继续处理
+     */
     private static int parsePortSuffix(String suffix) {
         if (suffix.isEmpty()) {
             return -1;
@@ -95,6 +119,12 @@ public final class EmbedOriginNormalizer {
         return parsePort(suffix.substring(1));
     }
 
+    /**
+     * 解析端口；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析端口的原始输入，结果供调用方继续使用
+     * @return 解析后的端口结果，供调用方继续处理
+     */
     private static int parsePort(String value) {
         if (value == null || !value.matches("[0-9]{1,5}")) {
             throw invalidOrigin();
@@ -110,6 +140,12 @@ public final class EmbedOriginNormalizer {
         }
     }
 
+    /**
+     * 规范化主机；输出作为后续校验或处理的输入。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 规范化后的主机文本，供调用方比较或展示
+     */
     private static String normalizeHost(String candidate) {
         if (candidate == null || candidate.isBlank()
                 || candidate.indexOf('*') >= 0 || candidate.indexOf('%') >= 0) {
@@ -146,6 +182,11 @@ public final class EmbedOriginNormalizer {
         }
     }
 
+    /**
+     * 构造无效来源异常，供调用方区分失败原因。
+     *
+     * @return 处理后的无效来源结果，供调用方继续处理
+     */
     private static EmbedException invalidOrigin() {
         return new EmbedException(
                 400,
@@ -153,6 +194,12 @@ public final class EmbedOriginNormalizer {
                 "parentOrigin must be an exact HTTPS origin");
     }
 
+    /**
+     * 封装主机的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param host 主机，保存在对象中供后续校验、查询或展示
+     * @param port 端口，保存在对象中供后续校验、查询或展示
+     */
     private record HostPort(String host, int port) {
     }
 }

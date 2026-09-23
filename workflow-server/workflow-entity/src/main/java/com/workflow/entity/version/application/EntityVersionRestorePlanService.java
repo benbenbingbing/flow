@@ -57,6 +57,9 @@ public class EntityVersionRestorePlanService {
     /**
      * 预演把当前聚合恢复为指定历史版本。
      *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param targetVersionNo 要恢复到的历史版本号，用于读取对应快照及关系数据集
      * @return 只读计划；{@code executable} 固定为 false
      */
     @Transactional(readOnly = true)
@@ -72,6 +75,7 @@ public class EntityVersionRestorePlanService {
                             + recordId + "/V" + targetVersionNo);
         }
         if (value(version.getSchemaVersion(), 1) < 2) {
+            // V1 未冻结完整关系路径；继续生成计划会遗漏子记录，因此直接拒绝预演。
             throw new IllegalArgumentException(
                     "旧V1版本缺少可靠关系数据集，不能生成整体恢复预演");
         }
@@ -88,6 +92,7 @@ public class EntityVersionRestorePlanService {
         Set<String> permissionChecks = new LinkedHashSet<>();
         Set<String> releaseChecks = new LinkedHashSet<>();
 
+        // 根记录与关系节点分别检查发布版本和活跃流程，阻断项保留在只读计划中供调用方展示。
         checkRelease(
                 "ROOT", entityCode, recordId,
                 version.getEntityReleaseId(), blockers, releaseChecks);
@@ -119,6 +124,7 @@ public class EntityVersionRestorePlanService {
                 recordId, null, currentRoot)));
         List<EntityRecordVersionDataset> datasets =
                 new ArrayList<>(datasetMapper.findByVersionId(version.getId()));
+        // 按路径深度从父到子处理，子节点查询必须使用已解析的当前父记录集合。
         datasets.sort(Comparator
                 .comparingInt(this::datasetDepth)
                 .thenComparing(EntityRecordVersionDataset::getNodeCode));
@@ -148,6 +154,7 @@ public class EntityVersionRestorePlanService {
                     dataset.getNodeCode(), dataset.getEntityCode(), null,
                     dataset.getEntityReleaseId(), blockers, releaseChecks);
 
+            // 对当前记录与历史快照取并集，分别生成重建、删除或字段与父关系恢复动作。
             for (String childId : union(
                     currentRows.keySet(), targetRows.keySet())) {
                 CurrentNode current = currentRows.get(childId);
@@ -233,6 +240,7 @@ public class EntityVersionRestorePlanService {
             }
         }
 
+        // 跨层事务、流程补偿和并发冲突尚无执行保障，预演始终不可直接执行。
         blockers.add(new Blocker(
                 "ENTITY_VERSION_RESTORE_EXECUTION_DISABLED",
                 "ROOT", entityCode, recordId,
@@ -243,6 +251,16 @@ public class EntityVersionRestorePlanService {
                 false, summary, actions, blockers);
     }
 
+    /**
+     * 整理当前行数据，供调用方遍历或继续处理。
+     *
+     * @param parents {@code parents}，供本方法处理当前行时使用
+     * @param dataKey 数据键，后续用于授权校验、关联或幂等去重
+     * @param relationType 关系类型标识，决定后续当前行采用的处理分支
+     * @param dataset 数据集，作为 {@code blockers.add} 的输入影响后续处理
+     * @param blockers 阻断项，供本方法处理当前行时使用
+     * @return 当前行键值结果，供调用方继续处理
+     */
     private Map<String, CurrentNode> currentRows(
             List<CurrentNode> parents,
             String dataKey,
@@ -274,6 +292,12 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 整理目标行数据，供调用方遍历或继续处理。
+     *
+     * @param dataset 数据集，供本方法处理目标行时使用
+     * @return 目标行键值结果，供调用方继续处理
+     */
     private Map<String, TargetRow> targetRows(
             EntityRecordVersionDataset dataset) {
         Map<String, TargetRow> result = new LinkedHashMap<>();
@@ -289,6 +313,13 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 整理已变更字段数据，供调用方遍历或继续处理。
+     *
+     * @param target 目标，供本方法处理已变更字段时使用
+     * @param current 当前，作为 {@code rowValue} 的输入影响后续处理
+     * @return 实体版本恢复方案集合，供调用方遍历或展示
+     */
     private List<String> changedFields(
             Map<String, FrozenValue> target,
             Map<String, Object> current) {
@@ -305,6 +336,16 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 检查权限；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param action 动作标识，决定后续权限采用的处理分支
+     * @param nodeCode 节点编码，后续用于检查权限时定位或关联目标
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param blockers 阻断项，供本方法检查权限时使用
+     * @param checked {@code checked}，供本方法检查权限时使用
+     */
     private void checkPermission(
             String entityCode,
             EntityPermissionAction action,
@@ -326,6 +367,16 @@ public class EntityVersionRestorePlanService {
         }
     }
 
+    /**
+     * 检查发布版本；不满足约束时阻止后续处理。
+     *
+     * @param nodeCode 节点编码，后续用于检查发布版本时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param expectedReleaseId 预期发布版本ID，后续用于检查发布版本时定位或关联目标
+     * @param blockers 阻断项，供本方法检查发布版本时使用
+     * @param checked {@code checked}，供本方法检查发布版本时使用
+     */
     private void checkRelease(
             String nodeCode,
             String entityCode,
@@ -348,6 +399,15 @@ public class EntityVersionRestorePlanService {
         }
     }
 
+    /**
+     * 检查活动流程；不满足约束时阻止后续处理。
+     *
+     * @param nodeCode 节点编码，后续用于检查活动流程时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param record 记录，供本方法检查活动流程时使用
+     * @param blockers 阻断项，供本方法检查活动流程时使用
+     */
     private void checkActiveProcess(
             String nodeCode,
             String entityCode,
@@ -364,11 +424,25 @@ public class EntityVersionRestorePlanService {
         }
     }
 
+    /**
+     * 处理数据集深度，并将结果传给后续步骤。
+     *
+     * @param dataset 数据集，作为 {@code readMap} 的输入影响后续处理
+     * @return 处理后的数据集深度结果，供调用方继续处理
+     */
     private int datasetDepth(EntityRecordVersionDataset dataset) {
         Object depth = readMap(dataset.getSelectorDocument()).get("depth");
         return depth instanceof Number number ? number.intValue() : 1;
     }
 
+    /**
+     * 生成父级实体编码文本，供后续匹配或展示。
+     *
+     * @param parentNodeCode 父级节点编码，后续用于处理父级实体编码时定位或关联目标
+     * @param rootEntityCode 根实体编码，后续用于处理父级实体编码时定位或关联目标
+     * @param datasets {@code datasets}，供本方法处理父级实体编码时使用
+     * @return 处理后的父级实体编码文本，供调用方比较或展示
+     */
     private String parentEntityCode(
             String parentNodeCode,
             String rootEntityCode,
@@ -383,6 +457,13 @@ public class EntityVersionRestorePlanService {
                 .findFirst().orElse(null);
     }
 
+    /**
+     * 处理摘要，并将结果传给后续步骤。
+     *
+     * @param actions 动作集合，作为 {@code EntityVersionRestorePlan.Summary} 的输入影响后续处理
+     * @param blockers 阻断项，供本方法处理摘要时使用
+     * @return 处理后的摘要结果，供调用方继续处理
+     */
     private EntityVersionRestorePlan.Summary summary(
             List<Action> actions,
             List<Blocker> blockers) {
@@ -395,15 +476,34 @@ public class EntityVersionRestorePlanService {
                 blockers.size());
     }
 
+    /**
+     * 统计实体版本恢复方案；结果供后续判断或展示使用。
+     *
+     * @param actions 动作集合，供本方法统计实体版本恢复方案时使用
+     * @param operation 操作标识，决定后续实体版本恢复方案采用的处理分支
+     * @return 符合条件的实体版本恢复方案数量
+     */
     private int count(List<Action> actions, String operation) {
         return (int) actions.stream()
                 .filter(item -> operation.equals(item.operation())).count();
     }
 
+    /**
+     * 添加动作；结果供后续流程传递或持久化。
+     *
+     * @param actions 动作集合，供本方法添加动作时使用
+     * @param action 动作标识，决定后续动作采用的处理分支
+     */
     private void addAction(List<Action> actions, Action action) {
         actions.add(action);
     }
 
+    /**
+     * 整理公开字段编码集合数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体版本恢复方案集合，供调用方遍历或展示
+     */
     private List<String> publicFieldCodes(
             Map<String, FrozenValue> values) {
         return values.keySet().stream()
@@ -411,6 +511,13 @@ public class EntityVersionRestorePlanService {
                 .toList();
     }
 
+    /**
+     * 整理{@code union}数据，供调用方遍历或继续处理。
+     *
+     * @param left 左侧，供本方法处理{@code union}时使用
+     * @param right 右侧，作为 {@code result.addAll} 的输入影响后续处理
+     * @return 实体版本恢复方案集合，供调用方遍历或展示
+     */
     private Set<String> union(
             Collection<String> left,
             Collection<String> right) {
@@ -419,6 +526,14 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 整理关系行数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理关系行的原始输入，结果供调用方继续使用
+     * @param relationType 关系类型标识，决定后续关系行采用的处理分支
+     * @return 实体版本恢复方案集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<Map<String, Object>> relationRows(
             Object value,
             String relationType) {
@@ -439,6 +554,13 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 处理行值，并将结果传给后续步骤。
+     *
+     * @param record 记录，作为 {@code path} 的输入影响后续处理
+     * @param fieldCode 字段编码，后续用于处理行值时定位或关联目标
+     * @return 处理后的行值结果，供调用方继续处理
+     */
     private Object rowValue(Map<String, Object> record, String fieldCode) {
         if (record == null || !StringUtils.hasText(fieldCode)) {
             return null;
@@ -450,6 +572,13 @@ public class EntityVersionRestorePlanService {
         return path(map(record.get("data")), fieldCode);
     }
 
+    /**
+     * 处理路径，并将结果传给后续步骤。
+     *
+     * @param source 待处理路径的原始输入，结果供调用方继续使用
+     * @param fieldCode 字段编码，后续用于处理路径时定位或关联目标
+     * @return 处理后的路径结果，供调用方继续处理
+     */
     private Object path(Map<String, Object> source, String fieldCode) {
         Object current = source;
         for (String part : fieldCode.split("\\.")) {
@@ -461,6 +590,12 @@ public class EntityVersionRestorePlanService {
         return current;
     }
 
+    /**
+     * 读取值集合；查询结果供调用方展示或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 值集合键值结果，供调用方继续处理
+     */
     private Map<String, FrozenValue> readValues(
             Map<String, Object> values) {
         Map<String, FrozenValue> result = new LinkedHashMap<>();
@@ -469,6 +604,13 @@ public class EntityVersionRestorePlanService {
         return result;
     }
 
+    /**
+     * 读取值集合文档；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 值集合文档键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, FrozenValue> readValuesDocument(String document) {
         try {
             return objectMapper.readValue(document, new TypeReference<>() { });
@@ -477,6 +619,13 @@ public class EntityVersionRestorePlanService {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> readMap(String document) {
         if (!StringUtils.hasText(document)) {
             return Map.of();
@@ -488,22 +637,46 @@ public class EntityVersionRestorePlanService {
         }
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         return value instanceof Map<?, ?> map
                 ? (Map<String, Object>) map : Map.of();
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(String.valueOf(key), value));
         return result;
     }
 
+    /**
+     * 处理原始，并将结果传给后续步骤。
+     *
+     * @param value 待处理原始的原始输入，结果供调用方继续使用
+     * @return 处理后的原始结果，供调用方继续处理
+     */
     private Object raw(FrozenValue value) {
         return value == null ? null : value.rawValue();
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         if (value == null) {
             return null;
@@ -512,6 +685,12 @@ public class EntityVersionRestorePlanService {
         return result.isEmpty() ? null : result;
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -521,16 +700,37 @@ public class EntityVersionRestorePlanService {
         return null;
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private int value(Integer value, int fallback) {
         return value == null ? fallback : value;
     }
 
+    /**
+     * 封装当前节点的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param parentRecordId 父级记录ID，后续用于处理当前节点时定位或关联目标
+     * @param record 记录，保存在对象中供后续校验、查询或展示
+     */
     private record CurrentNode(
             String recordId,
             String parentRecordId,
             Map<String, Object> record) {
     }
 
+    /**
+     * 封装目标行的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param parentRecordId 父级记录ID，后续用于处理目标行时定位或关联目标
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private record TargetRow(
             String recordId,
             String parentRecordId,

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencyRuntimePort;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure.ListCoordinate;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure.ListCoordinate;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort;
 import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResource;

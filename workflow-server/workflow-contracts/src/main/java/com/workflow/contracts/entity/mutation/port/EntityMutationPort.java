@@ -1,20 +1,33 @@
 package com.workflow.contracts.entity.mutation.port;
 
-import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchResult;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 
 /**
  * 跨模块实体写入的稳定调用端口。
  *
- * <p>由实体模块实现；命令、结果和上下文在兼容期内继续使用原有 mutation model FQCN。</p>
+ * <p>由实体模块实现；命令、结果和写入上下文统一放在 {@code entity.mutation.model}，
+ * 调用方通过本端口进入受控的实体写入流程。</p>
  */
 public interface EntityMutationPort {
 
+    /**
+     * 执行实体变更，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于执行实体变更
+     * @return 执行后的实体变更结果，供调用方继续处理
+     */
     EntityMutationResult execute(EntityMutationCommand command);
 
+    /**
+     * 执行实体变更批次，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于执行实体变更批次
+     * @return 执行后的实体变更批次结果，供调用方继续处理
+     */
     EntityMutationBatchResult executeBatch(EntityMutationBatchCommand command);
 
     /**

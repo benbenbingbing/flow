@@ -7,9 +7,9 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.position.OrganizationPositionErrorCode;
+import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.contracts.identity.position.error.OrganizationPositionErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;

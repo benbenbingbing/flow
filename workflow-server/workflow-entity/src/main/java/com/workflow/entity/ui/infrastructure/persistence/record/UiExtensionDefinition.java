@@ -100,7 +100,11 @@ public class UiExtensionDefinition {
     @TableLogic
     private Integer deleted;
 
-    /** @return 接口扩展当前是否可执行 */
+    /**
+     * @return 接口扩展当前是否可执行
+     *
+     * @return 接口活动条件成立时为 true，否则为 false
+     */
     public boolean isInterfaceActive() {
         return "INTERFACE".equalsIgnoreCase(extensionType)
                 && "ACTIVE".equalsIgnoreCase(status)
@@ -112,92 +116,192 @@ public class UiExtensionDefinition {
      * extension/implementation/interface 命名，避免旧的“服务 + 操作”模型重新
      * 泄漏到设计器。
      */
+    /**
+     * 读取来源编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的来源编码文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getSourceCode() {
         return extensionKey;
     }
 
+    /**
+     * 设置来源编码；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置来源编码的原始输入，结果供调用方继续使用
+     */
     public void setSourceCode(String value) {
         extensionKey = value;
     }
 
+    /**
+     * 读取来源名称；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的来源名称文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getSourceName() {
         return displayName;
     }
 
+    /**
+     * 设置来源名称；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置来源名称的原始输入，结果供调用方继续使用
+     */
     public void setSourceName(String value) {
         displayName = value;
     }
 
+    /**
+     * 读取来源类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的来源类型文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getSourceType() {
         return implementationType;
     }
 
+    /**
+     * 设置来源类型；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置来源类型的原始输入，结果供调用方继续使用
+     */
     public void setSourceType(String value) {
         implementationType = value;
     }
 
+    /**
+     * 读取配置文档；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的配置文档文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getConfigDocument() {
         return implementationConfigDocument;
     }
 
+    /**
+     * 设置配置文档；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置配置文档的原始输入，结果供调用方继续使用
+     */
     public void setConfigDocument(String value) {
         implementationConfigDocument = value;
     }
 
+    /**
+     * 读取操作输入结构文档；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的操作输入结构文档文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationInputSchemaDocument() {
         return inputSchemaDocument;
     }
 
+    /**
+     * 设置操作输入结构文档；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置操作输入结构文档的原始输入，结果供调用方继续使用
+     */
     public void setOperationInputSchemaDocument(String value) {
         inputSchemaDocument = value;
     }
 
+    /**
+     * 读取操作输出结构文档；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的操作输出结构文档文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationOutputSchemaDocument() {
         return outputSchemaDocument;
     }
 
+    /**
+     * 设置操作输出结构文档；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置操作输出结构文档的原始输入，结果供调用方继续使用
+     */
     public void setOperationOutputSchemaDocument(String value) {
         outputSchemaDocument = value;
     }
 
+    /**
+     * 读取操作编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的操作编码文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationCode() {
         return providerOperationCode;
     }
 
+    /**
+     * 设置操作编码；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置操作编码的原始输入，结果供调用方继续使用
+     */
     public void setOperationCode(String value) {
         providerOperationCode = value;
     }
 
+    /**
+     * 读取操作上下文类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的操作上下文类型文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationContextType() {
         return interfaceContextType;
     }
 
+    /**
+     * 设置操作上下文类型；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置操作上下文类型的原始输入，结果供调用方继续使用
+     */
     public void setOperationContextType(String value) {
         interfaceContextType = value;
     }
 
+    /**
+     * 读取操作类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的操作类型文本，供调用方比较或展示
+     */
     @JsonIgnore
     public String getOperationKind() {
         return interfaceKind;
     }
 
+    /**
+     * 设置操作类型；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置操作类型的原始输入，结果供调用方继续使用
+     */
     public void setOperationKind(String value) {
         interfaceKind = value;
     }
 
+    /**
+     * 读取启用；查询结果供调用方展示或继续处理。
+     *
+     * @return 符合条件的界面扩展定义结果，供调用方继续处理
+     */
     @JsonIgnore
     public Boolean getEnabled() {
         return "ACTIVE".equalsIgnoreCase(status);
     }
 
+    /**
+     * 设置启用；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置启用的原始输入，结果供调用方继续使用
+     */
     public void setEnabled(Boolean value) {
         status = Boolean.FALSE.equals(value) ? "DISABLED" : "ACTIVE";
     }

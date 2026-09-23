@@ -1,7 +1,7 @@
 package com.workflow.entity.form.uniqueness.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

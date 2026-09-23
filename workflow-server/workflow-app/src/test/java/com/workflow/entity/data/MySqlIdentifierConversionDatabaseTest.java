@@ -2,7 +2,7 @@ package com.workflow.entity.data;
 
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.integration.database.api.DatabaseQuerySql;
+import com.workflow.integration.database.api.query.DatabaseQuerySql;
 import com.workflow.entity.data.MySqlRuntimePaginationDatabaseTest.Fixture;
 import com.workflow.entity.data.MySqlWriteAttemptDatabaseTest.Harness;
 import java.nio.file.Files;

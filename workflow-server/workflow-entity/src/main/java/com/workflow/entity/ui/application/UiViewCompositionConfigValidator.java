@@ -171,6 +171,12 @@ public class UiViewCompositionConfigValidator {
                 buildWarnings(actions));
     }
 
+    /**
+     * 规范化来源；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化来源的原始输入，结果供调用方继续使用
+     * @return 来源键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeSource(Map<String, Object> value) {
         if (value.isEmpty()) {
             return Map.of();
@@ -183,6 +189,13 @@ public class UiViewCompositionConfigValidator {
         return source;
     }
 
+    /**
+     * 规范化目标；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化目标的原始输入，结果供调用方继续使用
+     * @return 目标键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeTarget(Map<String, Object> value) {
         requireAllowedKeys(value, TARGET_KEYS, "显示内容");
         Map<String, Object> target = new LinkedHashMap<>();
@@ -224,6 +237,12 @@ public class UiViewCompositionConfigValidator {
         return target;
     }
 
+    /**
+     * 规范化展示；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化展示的原始输入，结果供调用方继续使用
+     * @return 展示键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizePresentation(
             Map<String, Object> value) {
         requireAllowedKeys(value, PRESENTATION_KEYS, "显示方式");
@@ -239,6 +258,13 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
+    /**
+     * 规范化关系；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化关系的原始输入，结果供调用方继续使用
+     * @return 关系键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeRelation(Map<String, Object> value) {
         requireAllowedKeys(value, RELATION_KEYS, "数据关联");
         Map<String, Object> result = new LinkedHashMap<>();
@@ -281,7 +307,11 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
-    /** 新草稿和新发布只接受统一关系；扩展页面显式使用注册接口，不能覆盖实体关系取数。 */
+    /**
+     * 新草稿和新发布只接受统一关系；扩展页面显式使用注册接口，不能覆盖实体关系取数。
+     *
+     * @param config 配置内容，决定后续统一关系的处理规则
+     */
     public static void requireUnifiedRelation(Map<String, Object> config) {
         Map<?, ?> relation = (Map<?, ?>) config.get("relation");
         if (!Set.of("ENTITY_RELATION", "INTERFACE_SERVICE", "SAME_RECORD").contains(relation.get("type"))) {
@@ -305,6 +335,13 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 规范化动作集合；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化动作集合的原始输入，结果供调用方继续使用
+     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> normalizeActions(Object raw) {
         if (!(raw instanceof Collection<?> values) || values.isEmpty()) {
             throw new IllegalArgumentException("至少选择一个允许操作");
@@ -319,6 +356,9 @@ public class UiViewCompositionConfigValidator {
     /**
      * 规范化第三步的业务动作设置。这里保留选择结果与新增初值映射，运行时
      * 只能据此生成受控字段补丁，不能接受客户端临时指定任意字段路径。
+     *
+     * @param value 待规范化动作{@code settings}的原始输入，结果供调用方继续使用
+     * @return 动作{@code settings}键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeActionSettings(
             Map<String, Object> value) {
@@ -356,6 +396,13 @@ public class UiViewCompositionConfigValidator {
                 "create", normalizedCreate);
     }
 
+    /**
+     * 规范化{@code special}{@code handling}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化{@code special}{@code handling}的原始输入，结果供调用方继续使用
+     * @return {@code special}{@code handling}键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeSpecialHandling(
             Map<String, Object> value) {
         if (value.isEmpty()) {
@@ -425,7 +472,12 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
-    /** 规范化按 actionKey 显式绑定的数据或动作接口扩展。 */
+    /**
+     * 规范化按 actionKey 显式绑定的数据或动作接口扩展。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> normalizeActionServices(
             List<Map<String, Object>> values) {
         if (values.size() > MAX_ACTION_SERVICES) {
@@ -464,6 +516,12 @@ public class UiViewCompositionConfigValidator {
         return List.copyOf(result);
     }
 
+    /**
+     * 规范化接口服务；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化接口服务的原始输入，结果供调用方继续使用
+     * @return 接口服务键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeInterfaceService(
             Map<String, Object> value) {
         requireAllowedKeys(value, INTERFACE_SERVICE_KEYS, "接口扩展");
@@ -502,6 +560,13 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
+    /**
+     * 规范化自定义组件；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化自定义组件的原始输入，结果供调用方继续使用
+     * @return 自定义组件键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeCustomComponent(
             Map<String, Object> value) {
         requireAllowedKeys(value, CUSTOM_COMPONENT_KEYS, "自定义组件");
@@ -552,6 +617,9 @@ public class UiViewCompositionConfigValidator {
      * 实体快照是平台在宿主发布时写入的内部钉定信息。
      * 它不向配置人员暴露，但历史发布在激活、热修复和运行时
      * 必须通过同一白名单校验，因此需完整保留两端身份与指纹。
+     *
+     * @param value 待规范化实体{@code snapshots}的原始输入，结果供调用方继续使用
+     * @return 实体{@code snapshots}键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeEntitySnapshots(
             Map<String, Object> value) {
@@ -570,6 +638,14 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
+    /**
+     * 规范化实体快照；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化实体快照的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于规范化实体快照时匹配或展示
+     * @return 实体快照键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> normalizeEntitySnapshot(
             Map<String, Object> value,
             String label) {
@@ -599,6 +675,9 @@ public class UiViewCompositionConfigValidator {
     /**
      * 发布态依赖快照会经过同一白名单校验器用于激活和热修复。
      * 设计态即使伪造这两个字段，发布时也会被服务端权威记录覆盖。
+     *
+     * @param source 待复制固定快照字段的原始输入，结果供调用方继续使用
+     * @param target 目标，供本方法复制固定快照字段时使用
      */
     private void copyPinnedSnapshotFields(
             Map<String, Object> source,
@@ -628,6 +707,15 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 规范化映射集合；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化映射集合的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于规范化映射集合时匹配或展示
+     * @param optional 可选，供本方法规范化映射集合时使用
+     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> normalizeMappings(
             Object raw,
             String label,
@@ -679,6 +767,17 @@ public class UiViewCompositionConfigValidator {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验跨字段；不满足约束时阻止后续处理。
+     *
+     * @param target 目标，供本方法校验跨字段时使用
+     * @param presentation 展示，供本方法校验跨字段时使用
+     * @param relation 关系，供本方法校验跨字段时使用
+     * @param actions 动作集合，供本方法校验跨字段时使用
+     * @param actionSettings 动作{@code settings}，作为 {@code optionalMap} 的输入影响后续处理
+     * @param special {@code special}，供本方法校验跨字段时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateCrossFields(
             Map<String, Object> target,
             Map<String, Object> presentation,
@@ -747,6 +846,13 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 构建摘要；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，作为 {@code firstNonBlank} 的输入影响后续处理
+     * @param presentation 展示，作为 {@code positionNames.get} 的输入影响后续处理
+     * @return 构建后的摘要文本，供调用方比较或展示
+     */
     private String buildSummary(
             Map<String, Object> target,
             Map<String, Object> presentation) {
@@ -767,6 +873,12 @@ public class UiViewCompositionConfigValidator {
                 + "方式显示“" + targetName + "”" + contentName;
     }
 
+    /**
+     * 构建{@code warnings}；结果供后续流程传递或持久化。
+     *
+     * @param actions 动作集合，供本方法构建{@code warnings}时使用
+     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
+     */
     private List<String> buildWarnings(List<String> actions) {
         if (actions.contains("SAVE_WITH_FORM")) {
             return List.of("关联内容不能随宿主统一提交，请使用已有组成型子表单或重复器。");
@@ -778,6 +890,14 @@ public class UiViewCompositionConfigValidator {
         return List.of();
     }
 
+    /**
+     * 校验无禁止内容；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验无禁止内容的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param depth 深度，供本方法校验无禁止内容时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateNoForbiddenContent(
             Object value,
             String path,
@@ -818,6 +938,14 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 校验组件{@code prop}值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验组件{@code prop}值的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param depth 深度，供本方法校验组件{@code prop}值时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateComponentPropValue(Object value, String key, int depth) {
         if (depth > 6) {
             throw new IllegalArgumentException(
@@ -846,6 +974,13 @@ public class UiViewCompositionConfigValidator {
                 "自定义组件参数 " + key + " 仅支持简单值或简单值数组");
     }
 
+    /**
+     * 校验字面值；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验字面值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验字面值时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateLiteral(Object value, String label) {
         if (value != null && !(value instanceof String)
                 && !(value instanceof Number) && !(value instanceof Boolean)) {
@@ -853,6 +988,14 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 校验并获取映射；不满足约束时阻止后续处理。
+     *
+     * @param raw 待校验并获取映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> requireMap(Object raw, String label) {
         if (!(raw instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException(label + "必须为对象");
@@ -862,10 +1005,25 @@ public class UiViewCompositionConfigValidator {
         return result;
     }
 
+    /**
+     * 整理可选映射数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理可选映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理可选映射时匹配或展示
+     * @return 可选映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> optionalMap(Object raw, String label) {
         return raw == null ? Map.of() : requireMap(raw, label);
     }
 
+    /**
+     * 整理映射列表值数据，供调用方遍历或继续处理。
+     *
+     * @param raw 待处理映射列表值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理映射列表值时匹配或展示
+     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> mapListValue(
             Object raw,
             String label) {
@@ -884,6 +1042,14 @@ public class UiViewCompositionConfigValidator {
         return List.copyOf(result);
     }
 
+    /**
+     * 校验并获取允许键集合；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取允许键集合的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法校验并获取允许键集合时使用
+     * @param label 标签，后续用于校验并获取允许键集合时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireAllowedKeys(
             Map<String, Object> value,
             Set<String> allowed,
@@ -896,6 +1062,15 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 校验并获取枚举；不满足约束时阻止后续处理。
+     *
+     * @param raw 待校验并获取枚举的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法校验并获取枚举时使用
+     * @param label 标签，后续用于校验并获取枚举时匹配或展示
+     * @return 校验并获取后的枚举文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requireEnum(
             Object raw,
             Set<String> allowed,
@@ -908,6 +1083,14 @@ public class UiViewCompositionConfigValidator {
         return value;
     }
 
+    /**
+     * 校验并获取正数整数；不满足约束时阻止后续处理。
+     *
+     * @param raw 待校验并获取正数整数的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取正数整数时匹配或展示
+     * @return 校验并获取后的正数整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int requirePositiveInteger(Object raw, String label) {
         if (!(raw instanceof Number number)
                 || number.doubleValue() != number.intValue()
@@ -917,6 +1100,14 @@ public class UiViewCompositionConfigValidator {
         return number.intValue();
     }
 
+    /**
+     * 校验并获取布尔值；不满足约束时阻止后续处理。
+     *
+     * @param raw 待校验并获取布尔值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取布尔值时匹配或展示
+     * @return 布尔值条件成立时为 true，否则为 false
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private boolean requireBoolean(Object raw, String label) {
         if (!(raw instanceof Boolean value)) {
             throw new IllegalArgumentException(label + "必须为布尔值");
@@ -924,6 +1115,15 @@ public class UiViewCompositionConfigValidator {
         return value;
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param raw 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param label 标签，后续用于校验并获取文本时匹配或展示
+     * @return 校验并获取后的文本文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requireText(Object raw, int maxLength, String label) {
         if (!(raw instanceof String text) || !StringUtils.hasText(text)) {
             throw new IllegalArgumentException(label + "不能为空");
@@ -936,6 +1136,15 @@ public class UiViewCompositionConfigValidator {
         return value;
     }
 
+    /**
+     * 写入必填文本；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入必填文本时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param raw 待写入必填文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code target.put} 的输入影响后续处理
+     * @param label 标签，后续用于写入必填文本时匹配或展示
+     */
     private void putRequiredText(
             Map<String, Object> target,
             String key,
@@ -945,6 +1154,14 @@ public class UiViewCompositionConfigValidator {
         target.put(key, requireText(raw, maxLength, label));
     }
 
+    /**
+     * 写入可选文本；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入可选文本时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param raw 待写入可选文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code target.put} 的输入影响后续处理
+     */
     private void putOptionalText(
             Map<String, Object> target,
             String key,
@@ -957,6 +1174,14 @@ public class UiViewCompositionConfigValidator {
         target.put(key, requireText(raw, maxLength, key));
     }
 
+    /**
+     * 写入必填业务键；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入必填业务键时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param raw 待写入必填业务键的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于写入必填业务键时匹配或展示
+     */
     private void putRequiredBusinessKey(
             Map<String, Object> target,
             String key,
@@ -967,6 +1192,13 @@ public class UiViewCompositionConfigValidator {
         target.put(key, value);
     }
 
+    /**
+     * 写入可选业务键；后续读取或执行将使用更新后的状态。
+     *
+     * @param target 目标，供本方法写入可选业务键时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param raw 待写入可选业务键的原始输入，结果供调用方继续使用
+     */
     private void putOptionalBusinessKey(
             Map<String, Object> target,
             String key,
@@ -980,6 +1212,13 @@ public class UiViewCompositionConfigValidator {
         target.put(key, value);
     }
 
+    /**
+     * 校验并获取业务键；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取业务键的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取业务键时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireBusinessKey(String value, String label) {
         if (!BUSINESS_KEY.matcher(value).matches()) {
             throw new IllegalArgumentException(
@@ -987,6 +1226,14 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 复制可选映射文本；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法复制可选映射文本时使用
+     * @param source 待复制可选映射文本的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void copyOptionalMappingText(
             Map<String, Object> target,
             Map<String, Object> source,
@@ -1001,6 +1248,14 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 校验并获取存在；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取存在的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requirePresent(
             Map<String, Object> value,
             String key,
@@ -1010,6 +1265,12 @@ public class UiViewCompositionConfigValidator {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空白值，供后续处理使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个非空白文本，供调用方比较或展示
+     */
     private String firstNonBlank(Object... values) {
         for (Object value : values) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -1019,10 +1280,24 @@ public class UiViewCompositionConfigValidator {
         return "目标内容";
     }
 
+    /**
+     * 判断是否具有文本值；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有文本值的原始输入，结果供调用方继续使用
+     * @return 文本值条件成立时为 true，否则为 false
+     */
     private boolean hasTextValue(Object value) {
         return value != null && StringUtils.hasText(String.valueOf(value));
     }
 
+    /**
+     * 生成可选文本文本，供后续匹配或展示。
+     *
+     * @param raw 待处理可选文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，作为 {@code requireText} 的输入影响后续处理
+     * @param label 标签，后续用于处理可选文本时匹配或展示
+     * @return 处理后的可选文本文本，供调用方比较或展示
+     */
     private String optionalText(Object raw, int maxLength, String label) {
         if (raw == null || raw instanceof String text
                 && !StringUtils.hasText(text)) {
@@ -1031,7 +1306,13 @@ public class UiViewCompositionConfigValidator {
         return requireText(raw, maxLength, label);
     }
 
-    /** 规范化后的校验结果。 */
+    /**
+     * 规范化后的校验结果。
+     *
+     * @param normalizedConfig 规范化配置内容，决定后续校验结果的处理规则
+     * @param summary 摘要，保存在对象中供后续校验、查询或展示
+     * @param warnings {@code warnings}，保存在对象中供后续校验、查询或展示
+     */
     public record ValidationResult(
             Map<String, Object> normalizedConfig,
             String summary,

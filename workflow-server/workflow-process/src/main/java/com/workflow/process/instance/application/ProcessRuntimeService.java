@@ -6,13 +6,13 @@ import com.workflow.core.database.port.DatabaseClockPort;
 import com.workflow.process.task.application.TaskService;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.process.port.ProcessRuntimePort;
-import com.workflow.contracts.process.ProcessStartRequest;
-import com.workflow.contracts.process.ProcessStartResult;
+import com.workflow.contracts.process.model.ProcessStartRequest;
+import com.workflow.contracts.process.model.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
 import com.workflow.process.assignment.relative.InitiatorOrganizationSnapshotService;
@@ -76,6 +76,14 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     @Autowired
     private RelativeOrgPositionProcessInspector relativePositionProcessInspector;
 
+    /**
+     * 启动流程运行时；结果供调用方的后续步骤使用。
+     *
+     * @param request 本次请求，后续经校验后用于启动流程运行时
+     * @return 启动后的流程运行时结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.START, operation = "发起实体流程", risk = AuditRiskLevel.MEDIUM, targetType = "PROCESS_INSTANCE", captureArguments = true, captureResult = true)
@@ -156,6 +164,10 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     /**
      * 当前实体写事务内占用本代流程链接；调用方已写入/锁定实体根记录。
      * 同一代次由唯一约束和事务行锁保护，只有创建该行的请求允许首次启动引擎。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code reserve}链接
+     * @param processConfig 流程配置内容，决定后续{@code reserve}链接的处理规则
+     * @return 处理后的{@code reserve}链接结果，供调用方继续处理
      */
     private EntityProcessLink reserveLink(
             ProcessStartRequest request,
@@ -216,7 +228,12 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         return locked;
     }
 
-    /** 启动重试复用原实例；结束通知尚未消费时不能把已完成实例重新标为运行中。 */
+    /**
+     * 启动重试复用原实例；结束通知尚未消费时不能把已完成实例重新标为运行中。
+     *
+     * @param link 链接，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @return 处理后的已有结果，供调用方继续处理
+     */
     private ProcessStartResult existingResult(EntityProcessLink link) {
         ProcessInstance running = runtimeService.createProcessInstanceQuery()
                 .processInstanceId(link.getProcessInstanceId()).singleResult();
@@ -240,6 +257,15 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                 currentTask == null ? null : currentTask.getAssignee());
     }
 
+    /**
+     * 生成稳定请求ID文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityRecordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param generation {@code generation}，供本方法处理稳定请求ID时使用
+     * @return 处理后的稳定请求ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String stableRequestId(
             String entityCode,
             String entityRecordId,
@@ -254,6 +280,14 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         }
     }
 
+    /**
+     * 构建流程变量；结果供后续流程传递或持久化。
+     *
+     * @param request 本次请求，后续经校验后用于构建流程变量
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 流程变量键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> buildVariables(
             ProcessStartRequest request,
             String processDefinitionId) {

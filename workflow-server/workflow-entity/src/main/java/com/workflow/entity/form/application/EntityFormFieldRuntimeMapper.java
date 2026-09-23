@@ -15,6 +15,9 @@ import java.util.Map;
  */
 public final class EntityFormFieldRuntimeMapper {
 
+    /**
+     * 初始化实体表单字段运行时映射器，保存构造参数供后续方法使用。
+     */
     private EntityFormFieldRuntimeMapper() {
     }
 
@@ -99,7 +102,12 @@ public final class EntityFormFieldRuntimeMapper {
         return result;
     }
 
-    /** 解析组件类型：优先 componentType，回退到 fieldType 的小写形式 */
+    /**
+     * 解析组件类型：优先 componentType，回退到 fieldType 的小写形式
+     *
+     * @param field 字段，供本方法解析组件类型时使用
+     * @return 解析后的组件类型文本，供调用方比较或展示
+     */
     private static String resolveComponentType(EntityFormField field) {
         if (field.getComponentType() != null && !field.getComponentType().isEmpty()) {
             return field.getComponentType();
@@ -110,7 +118,12 @@ public final class EntityFormFieldRuntimeMapper {
         return null;
     }
 
-    /** 当存在子实体配置时，组装关联关系对象并放入 result.relation */
+    /**
+     * 当存在子实体配置时，组装关联关系对象并放入 result.relation
+     *
+     * @param result 结果，供本方法写入关系对象时使用
+     * @param field 字段，作为 {@code relation.put} 的输入影响后续处理
+     */
     private static void putRelationObject(Map<String, Object> result, EntityFormField field) {
         if (field.getChildEntityId() == null && field.getChildEntityCode() == null && field.getChildRefFieldCode() == null) {
             return;
@@ -127,12 +140,24 @@ public final class EntityFormFieldRuntimeMapper {
         result.put("relation", relation);
     }
 
-    /** 解析组件属性 JSON */
+    /**
+     * 解析组件属性 JSON
+     *
+     * @param componentProps 组件属性，作为 {@code parseJsonObject} 的输入影响后续处理
+     * @param objectMapper 对象映射器，作为 {@code parseJsonObject} 的输入影响后续处理
+     * @return 解析后的组件属性结果，供调用方继续处理
+     */
     private static Object parseComponentProps(String componentProps, ObjectMapper objectMapper) {
         return parseJsonObject(componentProps, objectMapper);
     }
 
-    /** 解析 JSON 字符串为 Map，解析失败返回空 Map */
+    /**
+     * 解析 JSON 字符串为 Map，解析失败返回空 Map
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param objectMapper 对象映射器，供本方法解析JSON对象时使用
+     * @return 解析后的JSON对象结果，供调用方继续处理
+     */
     private static Object parseJsonObject(String json, ObjectMapper objectMapper) {
         try {
             return objectMapper.readValue(json, Map.class);

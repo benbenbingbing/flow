@@ -1,6 +1,6 @@
 package com.workflow.entity.data.infrastructure.adapter;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.contracts.entity.port.EntityUserReferencePort;
 import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
@@ -47,6 +47,10 @@ public class EntityUserReferenceAdapter
     /**
      * 只接受已发布的用户选择、用户单选关系或用户多选关系字段。
      * 目标实体既兼容历史 refEntityType=USER，也支持当前指向 sys_user 的实体引用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于校验并获取用户引用字段时定位或关联目标
+     * @return 校验并获取后的用户引用字段结果，供调用方继续处理
      */
     @Override
     @Transactional(readOnly = true)
@@ -85,6 +89,11 @@ public class EntityUserReferenceAdapter
     /**
      * 单值字段读取实体主表列；多值字段读取该实体专属多值表。
      * 因此解析不依赖字段属于哪个流程表单，也不会使用可能过期的流程变量副本。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fieldCode 字段编码，后续用于读取用户键集合时定位或关联目标
+     * @return 实体用户引用集合，供调用方遍历或展示
      */
     @Override
     @Transactional(readOnly = true)
@@ -143,6 +152,10 @@ public class EntityUserReferenceAdapter
      * 现代实体关系保存的是 sys_user 主键，必须按 ID 精确转换成 username。
      * 不能交给下游做“username 优先、ID 兜底”的模糊解释，否则当某用户名
      * 恰好等于另一用户 ID 时会把审批误派给错误用户。
+     *
+     * @param field 字段，供本方法解析用户键集合时使用
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体用户引用集合，供调用方遍历或展示
      */
     private List<String> resolveUserKeys(
             EntityField field,
@@ -232,7 +245,12 @@ public class EntityUserReferenceAdapter
         return List.copyOf(result);
     }
 
-    /** 兼容 JDBC 驱动将 TINYINT 返回为布尔、数字或字符串的差异。 */
+    /**
+     * 兼容 JDBC 驱动将 TINYINT 返回为布尔、数字或字符串的差异。
+     *
+     * @param deleted 已删除，作为 {@code equals} 的输入影响后续处理
+     * @return 非已删除条件成立时为 true，否则为 false
+     */
     private boolean isNotDeleted(Object deleted) {
         if (deleted instanceof Boolean booleanValue) {
             return !booleanValue;
@@ -244,6 +262,12 @@ public class EntityUserReferenceAdapter
                 && "0".equals(String.valueOf(deleted).trim());
     }
 
+    /**
+     * 校验并获取定义；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的定义结果，供调用方继续处理
+     */
     private EntityDefinition requireDefinition(String entityCode) {
         String normalized = requireText(entityCode, "实体编码");
         return definitionMapper.findByEntityCode(normalized)
@@ -252,6 +276,12 @@ public class EntityUserReferenceAdapter
                         "实体不存在: " + normalized));
     }
 
+    /**
+     * 判断目标集合系统用户条件是否成立，供调用方选择后续分支。
+     *
+     * @param field 字段，作为 {@code definitionMapper.selectById} 的输入影响后续处理
+     * @return 目标集合系统用户条件成立时为 true，否则为 false
+     */
     private boolean targetsSystemUser(EntityField field) {
         if (field.getFieldType() == EntityField.FieldType.USER) {
             return true;
@@ -267,12 +297,24 @@ public class EntityUserReferenceAdapter
                 == EntityField.RefEntityType.USER;
     }
 
+    /**
+     * 生成列名称文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理列名称时使用
+     * @return 处理后的列名称文本，供调用方比较或展示
+     */
     private String columnName(EntityField field) {
         return StringUtils.hasText(field.getDbColumnName())
                 ? field.getDbColumnName()
                 : toSnakeCase(field.getFieldCode());
     }
 
+    /**
+     * 规范化值集合；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化值集合的原始输入，结果供调用方继续使用
+     * @return 实体用户引用集合，供调用方遍历或展示
+     */
     private List<String> normalizeValues(Object raw) {
         LinkedHashSet<String> values = new LinkedHashSet<>();
         if (raw == null) {
@@ -296,6 +338,12 @@ public class EntityUserReferenceAdapter
         return List.copyOf(values);
     }
 
+    /**
+     * 整理{@code distinct}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体用户引用集合，供调用方遍历或展示
+     */
     private List<String> distinct(Collection<String> values) {
         LinkedHashSet<String> result = new LinkedHashSet<>();
         if (values != null) {
@@ -304,6 +352,12 @@ public class EntityUserReferenceAdapter
         return List.copyOf(result);
     }
 
+    /**
+     * 添加值；结果供后续流程传递或持久化。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param raw 待添加值的原始输入，结果供调用方继续使用
+     */
     private void addValue(LinkedHashSet<String> values, Object raw) {
         if (raw == null) {
             return;
@@ -319,6 +373,12 @@ public class EntityUserReferenceAdapter
         }
     }
 
+    /**
+     * 校验并获取{@code within}上限；不满足约束时阻止后续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 实体用户引用集合，供调用方遍历或展示
+     */
     private List<String> requireWithinLimit(List<String> values) {
         if (values.size() > MAX_RESOLVED_USERS) {
             throw failure(
@@ -328,6 +388,13 @@ public class EntityUserReferenceAdapter
         return values;
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取文本时匹配或展示
+     * @return 校验并获取后的文本文本，供调用方比较或展示
+     */
     private String requireText(String value, String label) {
         if (!StringUtils.hasText(value)) {
             throw failure(
@@ -337,12 +404,25 @@ public class EntityUserReferenceAdapter
         return value.trim();
     }
 
+    /**
+     * 构造失败异常，供调用方区分失败原因。
+     *
+     * @param reasonCode 原因编码，后续用于处理失败时定位或关联目标
+     * @param message 消息，作为 {@code EntityUserReferenceException} 的输入影响后续处理
+     * @return 处理后的失败结果，供调用方继续处理
+     */
     private EntityUserReferenceException failure(
             String reasonCode,
             String message) {
         return new EntityUserReferenceException(reasonCode, message);
     }
 
+    /**
+     * 转换为{@code snake}分支；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为{@code snake}分支的原始输入，结果供调用方继续使用
+     * @return 转换为后的{@code snake}分支文本，供调用方比较或展示
+     */
     private String toSnakeCase(String value) {
         return value.replaceAll("([a-z])([A-Z]+)", "$1_$2")
                 .toLowerCase(java.util.Locale.ROOT);

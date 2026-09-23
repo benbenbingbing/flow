@@ -77,6 +77,8 @@ public class EntityFormConfigurationValidator {
     /**
      * 可变表单草稿保存前统一清理历史服务身份和发布钉版字段。
      * setter 形式保持现有纯单元测试构造方式兼容。
+     *
+     * @param value 待设置接口引用{@code normalizer}的原始输入，结果供调用方继续使用
      */
     @Autowired(required = false)
     public void setInterfaceReferenceNormalizer(
@@ -155,7 +157,12 @@ public class EntityFormConfigurationValidator {
         validateCrossFieldRules(form, entityFields == null ? List.of() : entityFields);
     }
 
-    /** 跨字段引用必须同时属于当前表单和真实实体，类型以实体元数据为准。 */
+    /**
+     * 跨字段引用必须同时属于当前表单和真实实体，类型以实体元数据为准。
+     *
+     * @param form 表单，作为 {@code FormCrossFieldRulePolicy.boundFields} 的输入影响后续处理
+     * @param entityFields 实体字段，供本方法校验跨字段规则集合时使用
+     */
     private void validateCrossFieldRules(EntityForm form, List<EntityField> entityFields) {
         Map<String, String> entityTypes = new LinkedHashMap<>();
         entityFields.forEach(field -> {
@@ -180,6 +187,8 @@ public class EntityFormConfigurationValidator {
      *
      * <p>运行时会按步骤顺序合并输出，重复目标会被后一步静默覆盖；服务端必须在保存与发布共用的
      * 表单校验入口阻断该配置，避免绕过前端校验后产生顺序相关的数据丢失。
+     *
+     * @param dataSourceBindings 数据来源绑定集合，供本方法校验唯一数据来源输出目标集合时使用
      */
     private void validateUniqueDataSourceOutputTargets(
             Map<String, Object> dataSourceBindings) {
@@ -231,6 +240,9 @@ public class EntityFormConfigurationValidator {
      *
      * <p>例如 {@code owner..name}、{@code owner. .name} 与 {@code owner.name} 实际都会写到
      * 同一字段；保存时必须将其视为同一路径，避免通过空路径段绕过重复写入校验。
+     *
+     * @param targetValue 目标值，供本方法规范化数据来源输出目标时使用
+     * @return 规范化后的数据来源输出目标文本，供调用方比较或展示
      */
     private String normalizeDataSourceOutputTarget(Object targetValue) {
         if (targetValue == null) {
@@ -252,6 +264,8 @@ public class EntityFormConfigurationValidator {
 
     /**
      * 校验表单名称和稳定标识，供创建、更新与复制入口复用。
+     *
+     * @param form 表单，供本方法校验表单身份时使用
      */
     public void validateFormIdentity(EntityForm form) {
         if (form == null || !StringUtils.hasText(form.getEntityId())) {
@@ -265,7 +279,11 @@ public class EntityFormConfigurationValidator {
         }
     }
 
-    /** 校验表单作为子表单使用时声明的输入参数 Schema。 */
+    /**
+     * 校验表单作为子表单使用时声明的输入参数 Schema。
+     *
+     * @param viewConfig 视图配置内容，决定后续输入参数结构的处理规则
+     */
     private void validateInputParameterSchema(
             Map<String, Object> viewConfig) {
         Object configured = viewConfig.get("inputParameterSchema");
@@ -362,7 +380,12 @@ public class EntityFormConfigurationValidator {
         validateConditionalRules(fields, Set.of(), null);
     }
 
-    /** 校验单个字段：编码格式、唯一性、组件标识、各类配置 JSON 合法性及栅格宽度 */
+    /**
+     * 校验单个字段：编码格式、唯一性、组件标识、各类配置 JSON 合法性及栅格宽度
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param fieldCodes 字段编码集合，供本方法校验字段时使用
+     */
     private void validateField(EntityFormField field, Set<String> fieldCodes) {
         if (field == null || !StringUtils.hasText(field.getFieldCode())
                 || !FIELD_CODE.matcher(field.getFieldCode()).matches()) {
@@ -394,6 +417,10 @@ public class EntityFormConfigurationValidator {
      *
      * <p>浏览器会在结构化条件不完整时回退历史表达式，但新保存/发布的快照必须固定一份
      * 完整结构化契约，避免服务端鉴权、提交校验与页面联动依赖不同分支。</p>
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param validProperties 有效属性集合，作为 {@code conditionEvaluator.validateStructured} 的输入影响后续处理
+     * @param currentEntityFields 当前实体字段，供本方法校验{@code conditional}规则集合时使用
      */
     private void validateConditionalRules(
             List<EntityFormField> fields,
@@ -438,6 +465,16 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /**
+     * 校验附件条目必填规则集合；不满足约束时阻止后续处理。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param componentProps 组件属性，供本方法校验附件条目必填规则集合时使用
+     * @param configured 已配置，作为 {@code mapValue} 的输入影响后续处理
+     * @param validProperties 有效属性集合，供本方法校验附件条目必填规则集合时使用
+     * @param currentEntityFields 当前实体字段，供本方法校验附件条目必填规则集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateAttachmentItemRequiredRules(
             EntityFormField field,
             Map<String, Object> componentProps,
@@ -532,6 +569,13 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /**
+     * 整理当前附件条目数据，供调用方遍历或继续处理。
+     *
+     * @param formField 表单字段，供本方法处理当前附件条目时使用
+     * @param entityFields 实体字段，供本方法处理当前附件条目时使用
+     * @return 当前附件条目键值结果，供调用方继续处理
+     */
     private Map<String, EntityFieldFileItem> currentAttachmentItems(
             EntityFormField formField,
             List<EntityField> entityFields) {
@@ -558,6 +602,13 @@ public class EntityFormConfigurationValidator {
         return result;
     }
 
+    /**
+     * 整理有效实体属性集合数据，供调用方遍历或继续处理。
+     *
+     * @param form 表单，供本方法处理有效实体属性集合时使用
+     * @param entityFields 实体字段，供本方法处理有效实体属性集合时使用
+     * @return 实体表单配置校验器集合，供调用方遍历或展示
+     */
     private Set<String> validEntityProperties(
             EntityForm form,
             List<EntityField> entityFields) {
@@ -585,6 +636,9 @@ public class EntityFormConfigurationValidator {
      * <p>不能复用 {@link #validEntityProperties(EntityForm, List)}：后者为
      * 条件必填兼容表单级字段，而唯一终检需要查询动态实体表，虚拟表单字段
      * 不具备可靠存储列。</p>
+     *
+     * @param entityFields 实体字段，供本方法处理{@code persistent}实体属性集合时使用
+     * @return 实体表单配置校验器集合，供调用方遍历或展示
      */
     private Set<String> persistentEntityProperties(
             List<EntityField> entityFields) {
@@ -598,17 +652,35 @@ public class EntityFormConfigurationValidator {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * 将输入解析为布尔值，供后续条件判断使用。
+     *
+     * @param value 待处理布尔值值的原始输入，结果供调用方继续使用
+     * @return 布尔值值条件成立时为 true，否则为 false
+     */
     private boolean booleanValue(Object value) {
         return Boolean.TRUE.equals(value)
                 || Integer.valueOf(1).equals(value)
                 || "1".equals(String.valueOf(value));
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?> map
                 ? stringMap(map) : Map.of();
     }
 
+    /**
+     * 处理整数值，并将结果传给后续步骤。
+     *
+     * @param value 待处理整数值的原始输入，结果供调用方继续使用
+     * @return 处理后的整数值结果，供调用方继续处理
+     */
     private int integerValue(Object value) {
         try {
             return Integer.parseInt(String.valueOf(value));
@@ -617,6 +689,12 @@ public class EntityFormConfigurationValidator {
         }
     }
 
+    /**
+     * 生成字段标签文本，供后续匹配或展示。
+     *
+     * @param field 字段，供本方法处理字段标签时使用
+     * @return 处理后的字段标签文本，供调用方比较或展示
+     */
     private String fieldLabel(EntityFormField field) {
         if (StringUtils.hasText(field.getFieldLabel())) {
             return "字段“" + field.getFieldLabel() + "”";
@@ -627,11 +705,21 @@ public class EntityFormConfigurationValidator {
         return "字段“" + field.getFieldCode() + "”";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
-    /** 校验字段校验规则：区间、长度、格式与正则表达式 */
+    /**
+     * 校验字段校验规则：区间、长度、格式与正则表达式
+     *
+     * @param validation 校验，作为 {@code FormCustomValidatorRulePolicy.validate} 的输入影响后续处理
+     */
     private void validateValidationRules(Map<String, Object> validation) {
         if (validation.containsKey("customValidators")) {
             FormCustomValidatorRulePolicy.validate(validation.get("customValidators"));
@@ -674,7 +762,11 @@ public class EntityFormConfigurationValidator {
         }
     }
 
-    /** 校验扩展配置中各运行模式的可见/可编辑权限项是否合法 */
+    /**
+     * 校验扩展配置中各运行模式的可见/可编辑权限项是否合法
+     *
+     * @param extension 扩展，供本方法校验模式访问时使用
+     */
     private void validateModeAccess(Map<String, Object> extension) {
         Object modesValue = extension.get("modes");
         if (!(modesValue instanceof Map<?, ?> modes)) {
@@ -693,14 +785,24 @@ public class EntityFormConfigurationValidator {
         }
     }
 
-    /** 校验权限配置项值必须为布尔或 null */
+    /**
+     * 校验权限配置项值必须为布尔或 null
+     *
+     * @param value 待校验布尔值的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     */
     private void validateBoolean(Object value, String key) {
         if (value != null && !(value instanceof Boolean)) {
             throw new IllegalArgumentException("字段模式配置 " + key + " 必须为布尔值");
         }
     }
 
-    /** 将值解析为 BigDecimal，空或格式不合法时抛出 IllegalArgumentException */
+    /**
+     * 将值解析为 BigDecimal，空或格式不合法时抛出 IllegalArgumentException
+     *
+     * @param value 待处理数值的原始输入，结果供调用方继续使用
+     * @return 处理后的数值结果，供调用方继续处理
+     */
     private BigDecimal number(Object value) {
         if (value == null || String.valueOf(value).isBlank()) {
             return null;
@@ -712,18 +814,34 @@ public class EntityFormConfigurationValidator {
         }
     }
 
-    /** 校验扩展组件标识格式 */
+    /**
+     * 校验扩展组件标识格式
+     *
+     * @param name 名称，后续用于校验扩展名称时匹配或展示
+     * @param label 标签，后续用于校验扩展名称时匹配或展示
+     */
     private void validateExtensionName(String name, String label) {
         if (StringUtils.hasText(name) && !EXTENSION_NAME.matcher(name).matches()) {
             throw new IllegalArgumentException(label + "标识不合法");
         }
     }
 
-    /** 空白字符串转 null */
+    /**
+     * 空白字符串转 null
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param source 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) ->

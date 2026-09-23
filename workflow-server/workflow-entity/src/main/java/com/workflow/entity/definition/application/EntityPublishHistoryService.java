@@ -103,8 +103,17 @@ public class EntityPublishHistoryService {
     /**
      * 创建发布版本记录，同时冻结与字段定义解耦的实体关系。
      *
+     * @param entity 实体，作为 {@code historyMapper.getLatestVersion} 的输入影响后续处理
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param tableDdl 表DDL，作为 {@code history.setTableDdl} 的输入影响后续处理
+     * @param publishType 发布类型标识，决定后续版本采用的处理分支
+     * @param changesDesc 变更集合{@code desc}，作为 {@code history.setChangesDescription} 的输入影响后续处理
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param userName 用户名称，后续用于身份匹配或操作展示
+     * @param versionDescription 版本描述，作为 {@code history.setVersionDescription} 的输入影响后续处理
      * @param relations 当前实体已启用的关系草稿；空列表表示明确发布空关系，
      *                  null 仅供旧调用兼容使用
+     * @return 创建后的版本结果，供调用方继续处理
      */
     @Transactional
     public EntityPublishHistory createVersion(
@@ -174,6 +183,9 @@ public class EntityPublishHistoryService {
 
     /**
      * 获取实体的版本历史列表
+     *
+     * @param entityId 实体ID，后续用于读取版本历史时定位或关联目标
+     * @return 实体发布历史集合，供调用方遍历或展示
      */
     public List<EntityPublishHistoryDTO> getVersionHistory(String entityId) {
         List<EntityPublishHistory> list = historyMapper.findByEntityId(entityId);
@@ -228,6 +240,9 @@ public class EntityPublishHistoryService {
 
     /**
      * 获取实体的最新版本
+     *
+     * @param entityId 实体ID，后续用于读取最新版本时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     public EntityPublishHistoryDTO getLatestVersion(String entityId) {
         EntityPublishHistory history = historyMapper.findLatestByEntityId(entityId);
@@ -236,6 +251,9 @@ public class EntityPublishHistoryService {
 
     /**
      * 获取指定版本的详情
+     *
+     * @param historyId 历史ID，后续用于读取版本详情时定位或关联目标
+     * @return 符合条件的实体发布历史结果，供调用方继续处理
      */
     public EntityPublishHistoryDTO getVersionDetail(String historyId) {
         EntityPublishHistory history = historyMapper.selectById(historyId);
@@ -244,6 +262,10 @@ public class EntityPublishHistoryService {
 
     /**
      * 比较两个版本的差异
+     *
+     * @param historyId1 历史{@code id1}，作为 {@code historyMapper.selectById} 的输入影响后续处理
+     * @param historyId2 历史{@code id2}，作为 {@code historyMapper.selectById} 的输入影响后续处理
+     * @return 比较后的{@code versions}文本，供调用方比较或展示
      */
     public String compareVersions(String historyId1, String historyId2) {
         EntityPublishHistory v1 = historyMapper.selectById(historyId1);
@@ -264,6 +286,12 @@ public class EntityPublishHistoryService {
         return diff.toString();
     }
 
+    /**
+     * 转换截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param history 历史，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private EntityPublishHistoryDTO convertToDTO(EntityPublishHistory history) {
         EntityPublishHistoryDTO dto = new EntityPublishHistoryDTO();
         dto.setId(history.getId());
@@ -314,6 +342,12 @@ public class EntityPublishHistoryService {
         return dto;
     }
 
+    /**
+     * 转换字段截止DTO；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的字段截止DTO结果，供调用方继续处理
+     */
     private EntityFieldDTO convertFieldToDTO(EntityField field) {
         EntityFieldDTO dto = new EntityFieldDTO();
         dto.setId(field.getId());

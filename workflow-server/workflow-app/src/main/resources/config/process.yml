@@ -1,0 +1,67 @@
+# 流程与后台执行配置：流程引擎、事务消息、流程动作和状态补偿；各执行器独立限制并发。
+
+# 流程引擎配置，控制引擎表结构、历史记录和异步任务执行。
+flowable:
+  # 是否自动更新引擎表；本地默认允许，生产服务进程必须覆盖为 false。
+  database-schema-update: ${FLOWABLE_SCHEMA_UPDATE:true}
+  # 启用引擎异步执行器，用于执行异步流程作业。
+  async-executor-activate: true
+  # 保存完整流程历史，供流程追踪、审计和历史查询使用。
+  history-level: full
+  # 将流程历史写入数据库，支撑持久化历史查询。
+  db-history-used: true
+  # 引擎任务调用线程池，限制任务调用并发与等待队列。
+  task-invoker:
+    # 任务调用常驻线程数，用于处理正常引擎负载。
+    core-pool-size: ${FLOWABLE_TASK_INVOKER_CORE_SIZE:4}
+    # 任务调用最大线程数，限制高峰期并发。
+    max-pool-size: ${FLOWABLE_TASK_INVOKER_MAX_SIZE:8}
+    # 任务调用等待队列容量，限制内存中的积压任务数。
+    queue-size: ${FLOWABLE_TASK_INVOKER_QUEUE_SIZE:200}
+    # 停机时等待任务调用结束的最长时间，使用带单位的时长。
+    await-termination-period: ${SHUTDOWN_TIMEOUT:30s}
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 事务消息出站队列，负责提交后投递、失败重试和历史清理。
+  outbox:
+    # 出站队列扫描的固定延迟，单位毫秒，控制投递延迟和数据库轮询压力。
+    delay-ms: ${OUTBOX_DELAY_MS:3000}
+    # 每批领取的事件数量上限，避免单次扫描形成过大负载。
+    batch-size: ${OUTBOX_BATCH_SIZE:100}
+    # 事件领取租约时长，单位秒，工作进程故障后允许过期任务重新领取。
+    lease-seconds: ${OUTBOX_LEASE_SECONDS:120}
+    # 出站事件专用执行器，隔离投递任务与其他后台任务。
+    executor:
+      # 并行投递的工作线程数，限制下游处理压力。
+      concurrency: ${OUTBOX_EXECUTOR_CONCURRENCY:4}
+      # 已领取待投递事件的队列容量，限制本地任务积压。
+      queue-capacity: ${OUTBOX_EXECUTOR_QUEUE_CAPACITY:200}
+    # 失败事件首次重试的退避间隔，单位秒。
+    retry-initial-seconds: ${OUTBOX_RETRY_INITIAL_SECONDS:30}
+    # 失败重试退避间隔的上限，单位秒，避免重试过于频繁。
+    retry-max-seconds: ${OUTBOX_RETRY_MAX_SECONDS:3600}
+    # 已完成出站事件的保留天数，供排查投递历史后定期清理。
+    retention-days: ${OUTBOX_RETENTION_DAYS:7}
+  # 流程动作后台执行设置，控制异步动作领取和执行容量。
+  flow-action:
+    # 扫描待执行流程动作的固定延迟，单位毫秒。
+    execution-delay-ms: ${FLOW_ACTION_EXECUTION_DELAY_MS:5000}
+    # 每批领取流程动作数量上限，控制一次调度的执行负载。
+    batch-size: ${FLOW_ACTION_BATCH_SIZE:50}
+    # 流程动作执行租约时长，单位秒，支持故障后的过期任务回收。
+    lease-seconds: ${FLOW_ACTION_LEASE_SECONDS:300}
+    # 流程动作专用线程池，隔离动作执行与其他后台工作。
+    executor:
+      # 同时执行流程动作的线程数，限制对业务系统的并发调用。
+      concurrency: ${FLOW_ACTION_EXECUTOR_CONCURRENCY:4}
+      # 流程动作等待执行的队列容量，防止大量动作占满内存。
+      queue-capacity: ${FLOW_ACTION_EXECUTOR_QUEUE_CAPACITY:100}
+  # 流程状态与业务记录状态的补偿同步设置。
+  status-sync:
+    # 启动后首次状态对账的等待时间，单位毫秒，避开启动高峰。
+    reconciliation-initial-delay-ms: ${STATUS_SYNC_RECONCILIATION_INITIAL_DELAY_MS:60000}
+    # 后续状态对账的固定延迟，单位毫秒，用于修复遗漏同步。
+    reconciliation-delay-ms: ${STATUS_SYNC_RECONCILIATION_DELAY_MS:60000}
+    # 每批状态对账的记录数上限，控制数据库扫描与更新负载。
+    reconciliation-batch-size: ${STATUS_SYNC_RECONCILIATION_BATCH_SIZE:100}

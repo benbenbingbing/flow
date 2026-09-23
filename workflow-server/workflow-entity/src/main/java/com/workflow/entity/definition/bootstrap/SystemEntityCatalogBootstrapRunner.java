@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.bootstrap;
 
-import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
+import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
 import com.workflow.entity.definition.application.SystemEntityCatalogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ public class SystemEntityCatalogBootstrapRunner implements ApplicationRunner {
 
     /** 系统实体目录同步服务 */
     private final SystemEntityCatalogService catalogService;
-    private final BootstrapJobCoordinator bootstrapJobCoordinator;
+    private final BootstrapJobPort bootstrapJobCoordinator;
 
     /**
      * 应用启动入口：执行系统实体目录同步，并记录本次同步覆盖的表数量。

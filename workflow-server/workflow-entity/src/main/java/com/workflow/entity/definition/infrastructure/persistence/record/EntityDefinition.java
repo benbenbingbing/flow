@@ -97,6 +97,9 @@ public class EntityDefinition {
     @TableField(exist = false)
     private List<EntityField> fields;
     
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         /** 草稿 */
         DRAFT,
@@ -106,6 +109,9 @@ public class EntityDefinition {
         DISABLED
     }
 
+    /**
+     * 定义生命周期模式的可选值；调用方据此选择对应的处理分支。
+     */
     public enum LifecycleMode {
         /** 独立模式，不绑定流程 */
         STANDALONE,
@@ -113,6 +119,9 @@ public class EntityDefinition {
         WORKFLOW
     }
 
+    /**
+     * 定义存储模式的可选值；调用方据此选择对应的处理分支。
+     */
     public enum StorageMode {
         /** 动态表存储（运行时按实体生成业务表） */
         DYNAMIC,
@@ -120,6 +129,9 @@ public class EntityDefinition {
         SYSTEM
     }
 
+    /**
+     * 定义团队{@code visibility}层级的可选值；调用方据此选择对应的处理分支。
+     */
     public enum TeamVisibilityLevel {
         /** 叠加：团队范围与其它范围结果取并集 */
         ADDITIVE,

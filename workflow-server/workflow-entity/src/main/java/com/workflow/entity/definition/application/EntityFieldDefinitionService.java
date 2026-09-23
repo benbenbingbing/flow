@@ -2,10 +2,10 @@ package com.workflow.entity.definition.application;
 
 import com.baomidou.mybatisplus.core.toolkit.StringUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.EntityFieldFileItemService;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
@@ -39,6 +39,13 @@ public class EntityFieldDefinitionService {
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 创建字段；结果供后续流程传递或持久化。
+     *
+     * @param entityId 实体ID，后续用于创建字段时定位或关联目标
+     * @param dto DTO，作为 {@code requireDataFieldType} 的输入影响后续处理
+     * @return 创建后的字段结果，供调用方继续处理
+     */
     @Transactional
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -60,6 +67,14 @@ public class EntityFieldDefinitionService {
         return convertToDTOWithRelation(entity, saved);
     }
 
+    /**
+     * 更新字段；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityId 实体ID，后续用于更新字段时定位或关联目标
+     * @param fieldId 字段ID，后续用于更新字段时定位或关联目标
+     * @param dto DTO，作为 {@code validateSingleField} 的输入影响后续处理
+     * @return 更新后的字段结果，供调用方继续处理
+     */
     @Transactional
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -86,6 +101,13 @@ public class EntityFieldDefinitionService {
         return convertToDTOWithRelation(entity, current);
     }
 
+    /**
+     * 创建定义；结果供后续流程传递或持久化。
+     *
+     * @param entityId 实体ID，后续用于创建定义时定位或关联目标
+     * @param dto DTO，作为 {@code requireDataFieldType} 的输入影响后续处理
+     * @return 创建后的定义结果，供调用方继续处理
+     */
     public EntityField createDefinition(
             String entityId,
             EntityFieldDTO dto) {
@@ -102,6 +124,12 @@ public class EntityFieldDefinitionService {
         return field;
     }
 
+    /**
+     * 更新定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param existingField 已有字段，作为 {@code assertPublishedStructureUnchanged} 的输入影响后续处理
+     * @param fieldDTO 字段DTO，作为 {@code assertPublishedStructureUnchanged} 的输入影响后续处理
+     */
     public void updateDefinition(
             EntityField existingField,
             EntityFieldDTO fieldDTO) {
@@ -155,6 +183,10 @@ public class EntityFieldDefinitionService {
     }
 
     /**
+     *
+     * @param parent 父级，供本方法处理同步关系集合时使用
+     * @param fieldDtos 字段{@code dtos}，供本方法处理同步关系集合时使用
+     * @param savedFields {@code saved}字段，供本方法处理同步关系集合时使用
      * @deprecated 实体关系已独立管理。字段批量保存不再创建、更新或删除关系。
      */
     @Deprecated(forRemoval = false)
@@ -167,6 +199,13 @@ public class EntityFieldDefinitionService {
         // one request.
     }
 
+    /**
+     * 校验并获取动态实体；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于校验并获取动态实体时定位或关联目标
+     * @return 校验并获取后的动态实体结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityDefinition requireDynamicEntity(String entityId) {
         // 字段增删改与实体发布统一持有实体独占锁，防止发布快照与字段写入交错。
         EntityDefinition entity = entityMapper.findByIdForUpdate(entityId)
@@ -184,6 +223,14 @@ public class EntityFieldDefinitionService {
         return entity;
     }
 
+    /**
+     * 校验{@code single}字段；不满足约束时阻止后续处理。
+     *
+     * @param entityId 实体ID，后续用于校验{@code single}字段时定位或关联目标
+     * @param current 当前，供本方法校验{@code single}字段时使用
+     * @param dto DTO，作为 {@code dto.setFieldName} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSingleField(
             String entityId,
             EntityField current,
@@ -231,6 +278,9 @@ public class EntityFieldDefinitionService {
      *
      * <p>必须放在 {@link #updateDefinition(EntityField, EntityFieldDTO)}
      * 内部，避免实体批量保存绕过单字段接口的校验。</p>
+     *
+     * @param current 当前，作为 {@code Boolean.TRUE.equals} 的输入影响后续处理
+     * @param dto DTO，供本方法处理{@code assert}已发布{@code structure}{@code unchanged}时使用
      */
     private void assertPublishedStructureUnchanged(
             EntityField current,
@@ -268,6 +318,12 @@ public class EntityFieldDefinitionService {
         }
     }
 
+    /**
+     * 判断是否引用目标字段；判断结果决定调用方的后续分支。
+     *
+     * @param fieldType 字段类型标识，决定后续引用目标字段采用的处理分支
+     * @return 引用目标字段条件成立时为 true，否则为 false
+     */
     private boolean isReferenceTargetField(
             EntityField.FieldType fieldType) {
         return fieldType == EntityField.FieldType.USER
@@ -275,10 +331,22 @@ public class EntityFieldDefinitionService {
                 || fieldType == EntityField.FieldType.MULTI_REFERENCE;
     }
 
+    /**
+     * 生成请求引用实体ID文本，供后续匹配或展示。
+     *
+     * @param dto DTO，作为 {@code firstText} 的输入影响后续处理
+     * @return 处理后的请求引用实体ID文本，供调用方比较或展示
+     */
     private String requestedRefEntityId(EntityFieldDTO dto) {
         return firstText(dto.getChildEntityId(), dto.getRefEntityId());
     }
 
+    /**
+     * 处理请求引用实体类型，并将结果传给后续步骤。
+     *
+     * @param dto DTO，作为 {@code EntityField.RefEntityType.valueOf} 的输入影响后续处理
+     * @return 处理后的请求引用实体类型结果，供调用方继续处理
+     */
     private EntityField.RefEntityType requestedRefEntityType(
             EntityFieldDTO dto) {
         if (StringUtils.isNotBlank(dto.getRefEntityType())) {
@@ -289,11 +357,24 @@ public class EntityFieldDefinitionService {
                 ? EntityField.RefEntityType.CUSTOM : null;
     }
 
+    /**
+     * 生成请求引用字段编码文本，供后续匹配或展示。
+     *
+     * @param dto DTO，作为 {@code firstText} 的输入影响后续处理
+     * @return 处理后的请求引用字段编码文本，供调用方比较或展示
+     */
     private String requestedRefFieldCode(EntityFieldDTO dto) {
         return firstText(
                 dto.getChildRefFieldCode(), dto.getRefFieldCode());
     }
 
+    /**
+     * 转换截止DTO关系；输出作为后续校验或处理的输入。
+     *
+     * @param entity 实体，作为 {@code dto.setUiConfigurable} 的输入影响后续处理
+     * @param field 字段，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的截止DTO关系结果，供调用方继续处理
+     */
     private EntityFieldDTO convertToDTOWithRelation(
             EntityDefinition entity,
             EntityField field) {
@@ -351,6 +432,12 @@ public class EntityFieldDefinitionService {
         return dto;
     }
 
+    /**
+     * 应用关系元数据，并将结果传给后续步骤。
+     *
+     * @param field 字段，供本方法应用关系元数据时使用
+     * @param relation 关系，作为 {@code field.setRelationCode} 的输入影响后续处理
+     */
     private void applyRelationMetadata(
             EntityFieldDTO field,
             EntityRelation relation) {
@@ -369,6 +456,12 @@ public class EntityFieldDefinitionService {
         field.setRefFieldCode(relation.getChildRefFieldCode());
     }
 
+    /**
+     * 处理{@code synchronize}字段选项，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code fieldOptionService.replace} 的输入影响后续处理
+     * @param dto DTO，作为 {@code fieldOptionService.parseDocument} 的输入影响后续处理
+     */
     private void synchronizeFieldOptions(
             EntityField field,
             EntityFieldDTO dto) {
@@ -388,6 +481,12 @@ public class EntityFieldDefinitionService {
         fieldMapper.updateById(field);
     }
 
+    /**
+     * 转换截止实体；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code field.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private EntityField convertToEntity(EntityFieldDTO dto) {
         EntityField field = new EntityField();
         field.setId(dto.getId());
@@ -429,12 +528,22 @@ public class EntityFieldDefinitionService {
         return field;
     }
 
+    /**
+     * 判断是否关系字段；判断结果决定调用方的后续分支。
+     *
+     * @param dto DTO，供本方法判断是否关系字段时使用
+     * @return 关系字段条件成立时为 true，否则为 false
+     */
     private boolean isRelationField(EntityFieldDTO dto) {
         return dto != null
                 && dto.getFieldType() == EntityField.FieldType.SUB_FORM;
     }
 
-    /** 子表单、关联列表属于页面组件，不能再通过实体字段写入创建展示或关系配置。 */
+    /**
+     * 子表单、关联列表属于页面组件，不能再通过实体字段写入创建展示或关系配置。
+     *
+     * @param dto DTO，供本方法校验并获取数据字段类型时使用
+     */
     static void requireDataFieldType(EntityFieldDTO dto) {
         if (dto != null && (dto.getFieldType() == EntityField.FieldType.SUB_FORM
                 || dto.getFieldType() == EntityField.FieldType.SUB_LIST)) {
@@ -442,6 +551,12 @@ public class EntityFieldDefinitionService {
         }
     }
 
+    /**
+     * 解析值存储；输出作为后续校验或处理的输入。
+     *
+     * @param field 字段，作为 {@code StringUtils.isNotBlank} 的输入影响后续处理
+     * @return 解析后的值存储文本，供调用方比较或展示
+     */
     private String resolveValueStorage(EntityFieldDTO field) {
         if (field.getFieldType() == EntityField.FieldType.MULTI_REFERENCE
                 || ((field.getFieldType()
@@ -456,6 +571,13 @@ public class EntityFieldDefinitionService {
                 : "SCALAR";
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param first 首个，供本方法处理首个文本时使用
+     * @param second {@code second}，供本方法处理首个文本时使用
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String first, String second) {
         if (StringUtils.isNotBlank(first)) {
             return first.trim();
@@ -466,6 +588,12 @@ public class EntityFieldDefinitionService {
         return null;
     }
 
+    /**
+     * 转换为{@code snake}分支；输出作为后续校验或处理的输入。
+     *
+     * @param camelCase {@code camel}分支，供本方法转换为{@code snake}分支时使用
+     * @return 转换为后的{@code snake}分支文本，供调用方比较或展示
+     */
     private String toSnakeCase(String camelCase) {
         if (camelCase == null) {
             return null;

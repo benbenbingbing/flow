@@ -8,7 +8,7 @@ import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
@@ -66,6 +66,15 @@ public class EntityDataListConfigService {
                 condition);
     }
 
+    /**
+     * 查询列表已解析配置；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param config 配置内容，决定后续列表已解析配置的处理规则
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 实体数据集合，供调用方遍历或展示
+     */
     public List<EntityDataDTO> findListWithResolvedConfig(
             String entityCode,
             String listKey,
@@ -104,6 +113,16 @@ public class EntityDataListConfigService {
                 conditionPartition.extensionCondition());
     }
 
+    /**
+     * 按筛选条件分页查询实体数据；结果供列表展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityDataDTO> findPageWithConfig(
             String entityCode,
@@ -122,6 +141,17 @@ public class EntityDataListConfigService {
                 pageSize);
     }
 
+    /**
+     * 按筛选条件分页查询实体数据；结果供列表展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param config 配置内容，决定后续分页已解析配置的处理规则
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     public PageResult<EntityDataDTO> findPageWithResolvedConfig(
             String entityCode,
             String listKey,
@@ -179,6 +209,18 @@ public class EntityDataListConfigService {
                 page.getPageSize());
     }
 
+    /**
+     * 补充记录集合；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param config 配置内容，决定后续记录集合的处理规则
+     * @param allFields 全部字段，作为 {@code enrichUnifiedDataSources} 的输入影响后续处理
+     * @param records 记录集合，作为 {@code enrichUnifiedDataSources} 的输入影响后续处理
+     * @param extensionCondition 扩展条件，作为 {@code conditionEvaluator.filter} 的输入影响后续处理
+     * @return 实体数据集合，供调用方遍历或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private List<EntityDataDTO> enrichRecords(
             String entityCode,
             String listKey,
@@ -251,6 +293,15 @@ public class EntityDataListConfigService {
         return records;
     }
 
+    /**
+     * 补充统一数据{@code sources}；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param config 配置内容，决定后续统一数据{@code sources}的处理规则
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param records 记录集合，作为 {@code request.setInput} 的输入影响后续处理
+     */
     private void enrichUnifiedDataSources(
             String entityCode,
             String listKey,
@@ -314,6 +365,13 @@ public class EntityDataListConfigService {
         }
     }
 
+    /**
+     * 应用统一列结果，并将结果传给后续步骤。
+     *
+     * @param field 字段，作为 {@code putExtensionValue} 的输入影响后续处理
+     * @param records 记录集合，供本方法应用统一列结果时使用
+     * @param result 结果，供本方法应用统一列结果时使用
+     */
     private void applyUnifiedColumnResult(
             EntityListField field,
             List<EntityDataDTO> records,
@@ -352,6 +410,13 @@ public class EntityDataListConfigService {
         }
     }
 
+    /**
+     * 写入扩展值；后续读取或执行将使用更新后的状态。
+     *
+     * @param record 记录，供本方法写入扩展值时使用
+     * @param fieldCode 字段编码，后续用于写入扩展值时定位或关联目标
+     * @param value 待写入扩展值的原始输入，结果供调用方继续使用
+     */
     private void putExtensionValue(
             EntityDataDTO record,
             String fieldCode,
@@ -362,6 +427,13 @@ public class EntityDataListConfigService {
         record.getExtData().put(fieldCode, value);
     }
 
+    /**
+     * 处理{@code partition}条件，并将结果传给后续步骤。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @return 处理后的{@code partition}条件结果，供调用方继续处理
+     */
     private ConditionPartition partitionCondition(
             List<EntityListField> fields,
             Map<String, Object> condition) {
@@ -391,6 +463,12 @@ public class EntityDataListConfigService {
         return new ConditionPartition(baseCondition, extensionCondition);
     }
 
+    /**
+     * 生成{@code strip}条件后缀文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code strip}条件后缀文本，供调用方比较或展示
+     */
     private String stripConditionSuffix(String key) {
         if (key.endsWith("_start")) {
             return key.substring(0, key.length() - 6);
@@ -404,12 +482,26 @@ public class EntityDataListConfigService {
         return key;
     }
 
+    /**
+     * 判断是否具有扩展条件；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param fieldCode 字段编码，后续用于判断是否具有扩展条件时定位或关联目标
+     * @return 扩展条件条件成立时为 true，否则为 false
+     */
     private boolean hasExtensionCondition(Map<String, Object> condition, String fieldCode) {
         return condition.keySet().stream()
                 .map(this::stripConditionSuffix)
                 .anyMatch(fieldCode::equals);
     }
 
+    /**
+     * 校验并获取请求列表；不满足约束时阻止后续处理。
+     *
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param config 配置内容，决定后续请求列表的处理规则
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireRequestedList(
             String listKey,
             EntityListConfig config) {
@@ -419,6 +511,12 @@ public class EntityDataListConfigService {
         }
     }
 
+    /**
+     * 封装条件{@code partition}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param baseCondition 基础条件，保存在对象中供后续校验、查询或展示
+     * @param extensionCondition 扩展条件，保存在对象中供后续校验、查询或展示
+     */
     private record ConditionPartition(
             Map<String, Object> baseCondition,
             Map<String, Object> extensionCondition) {
@@ -426,6 +524,10 @@ public class EntityDataListConfigService {
 
     /**
      * 查找列表配置
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @return 符合条件的实体列表配置结果，供调用方继续处理
      */
     public EntityListConfig findListConfig(String entityCode, String listKey) {
         return findListConfig(
@@ -436,6 +538,16 @@ public class EntityDataListConfigService {
                 null);
     }
 
+    /**
+     * 查询列表配置；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于查询列表配置时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code publishedRuntimeService.resolveConfig} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的实体列表配置结果，供调用方继续处理
+     */
     public EntityListConfig findListConfig(
             String entityCode,
             String listKey,

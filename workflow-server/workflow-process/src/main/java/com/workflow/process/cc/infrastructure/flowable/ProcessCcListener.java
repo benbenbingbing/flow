@@ -65,6 +65,9 @@ public class ProcessCcListener implements ExecutionListener {
     
     /**
      * 将事件名称映射为抄送时机
+     *
+     * @param eventName 事件名称，后续用于处理映射事件截止时机时匹配或展示
+     * @return 处理后的映射事件截止时机文本，供调用方比较或展示
      */
     private String mapEventToTiming(String eventName) {
         switch (eventName) {
@@ -77,6 +80,9 @@ public class ProcessCcListener implements ExecutionListener {
     
     /**
      * 从流程定义ID提取processKey
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 提取后的流程键文本，供调用方比较或展示
      */
     private String extractProcessKey(String processDefinitionId) {
         // 流程定义ID格式: processKey:version:deploymentId
@@ -88,6 +94,9 @@ public class ProcessCcListener implements ExecutionListener {
     
     /**
      * 获取节点名称
+     *
+     * @param execution 执行，供本方法读取节点名称时使用
+     * @return 读取后的节点名称文本，供调用方比较或展示
      */
     private String getNodeName(DelegateExecution execution) {
         // 尝试从变量中获取，或通过当前活动ID获取

@@ -21,6 +21,9 @@ public class EntityNewDataFormRuntimeAdapter
     /**
      * 复用 {@link EntityFormResolveService} 的默认表单与流程首节点回退规则，
      * 只裁剪出 Embed Launch 物化所需的不可变发布坐标。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 匹配的新数据；未找到时为空
      */
     @Override
     public Optional<ResolvedForm> resolveForNewData(String entityCode) {
@@ -43,6 +46,12 @@ public class EntityNewDataFormRuntimeAdapter
                 formId, releaseId, releaseVersion));
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private static String text(Object value) {
         if (value == null) {
             return null;
@@ -51,6 +60,12 @@ public class EntityNewDataFormRuntimeAdapter
         return text.isEmpty() ? null : text;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private static Integer integer(Object value) {
         if (value instanceof Number number) {
             return number.intValue();

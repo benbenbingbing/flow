@@ -13,7 +13,7 @@ import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.S
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.security.RequiresPermission;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;

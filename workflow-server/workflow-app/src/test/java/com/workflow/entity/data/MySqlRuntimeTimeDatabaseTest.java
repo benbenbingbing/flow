@@ -1,12 +1,15 @@
 package com.workflow.entity.data;
 
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
-import com.workflow.integration.database.api.*;
 import com.workflow.process.assignment.application.*;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;

@@ -31,6 +31,7 @@ function bindingsFor(owner, usage) {
     .filter(binding => binding?.extensionId)
 }
 
+/** 仅声明无副作用且允许预校验的绑定可在浏览器执行；其他 BEFORE_SUBMIT 留给服务端事务处理。 */
 export function isClientPrevalidationBinding(binding) {
   return Boolean(
     binding
@@ -40,6 +41,7 @@ export function isClientPrevalidationBinding(binding) {
   )
 }
 
+/** 提取浏览器可预校验步骤；返回结果用于提交前提示，不能代替服务端权威执行。 */
 export function getClientBeforeSubmitBindings(owner) {
   return bindingsFor(owner, 'BEFORE_SUBMIT')
     .filter(isClientPrevalidationBinding)
@@ -234,6 +236,12 @@ export function buildFormDataSourceExecutionRequest({
   return request
 }
 
+/**
+ * 创建表单数据源执行器。options 提供当前记录、表单、目标实体和实际请求函数，
+ * 后续 FORM_INIT、AFTER_LOAD 及受限的 BEFORE_SUBMIT 共享同一发布目标和映射语义。
+ * @param {object} options 运行时宿主的取值及接口调用能力；嵌套表单可传自己的 form/ownerId。
+ * @returns {object} 按绑定和生命周期执行并合并结果的方法集合。
+ */
 export function createFormDataSourceRuntime(options) {
   const initialized = new Set()
 
@@ -342,6 +350,10 @@ export function createFormDataSourceRuntime(options) {
     return results
   }
 
+  /**
+   * 同一表单、记录和模式只初始化一次；initializationKey 由宿主在重新加载时显式更换。
+   * record 是后续渲染/提交使用的可变模型，按页面参数、生命周期绑定、字段默认值顺序写入。
+   */
   async function initialize({
     form,
     fields = [],
@@ -369,6 +381,7 @@ export function createFormDataSourceRuntime(options) {
       recordId,
       params: resolvePageParameters(form?.viewConfig, initialRuntimeContext.params || initialRuntimeContext.parameters || {})
     })
+    // 先占用键可防止并发挂载重复请求；执行失败再释放，允许用户重试初始化。
     initialized.add(initializationKey)
     try {
       // 目标页面声明用途，子表单也复用同一规则；查看/审批不通过参数改变显示记录。
@@ -451,6 +464,10 @@ export function createFormDataSourceRuntime(options) {
     return Array.isArray(value?.rows) ? value.rows : []
   }
 
+  /**
+   * 仅执行声明无副作用的提交前预校验，供 UI 提前显示错误；正式提交仍由服务端
+   * 在事务中重新执行全部 BEFORE_SUBMIT，不能把此结果当成最终写入数据。
+   */
   async function prevalidateBeforeSubmit({
     form,
     fields = [],
@@ -476,6 +493,7 @@ export function createFormDataSourceRuntime(options) {
     return prevalidateBeforeSubmit(configuration)
   }
 
+  /** 为子表单等运行时预置上下文，调用时再合并最新记录，避免复用旧参数或父表单目标。 */
   function withContext(baseRuntimeContext = {}) {
     const resolveBase = () => (
       typeof baseRuntimeContext === 'function'

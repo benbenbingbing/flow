@@ -32,6 +32,18 @@ public class PositionAssignmentQueryService {
     private final SysUserMapper userMapper;
     private final PositionOrganizationScopeService scopeService;
 
+    /**
+     * 分页查询位置分配查询；查询结果供调用方展示或继续处理。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，供本方法分页查询位置分配查询时使用
+     * @param positionCode 位置编码，后续用于分页查询位置分配查询时定位或关联目标
+     * @param organizationUnitId 组织单元ID，后续用于分页查询位置分配查询时定位或关联目标
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param activeOnly 活动仅，供本方法分页查询位置分配查询时使用
+     * @return 符合条件的位置视图结果，供调用方继续处理
+     */
     public PageResult<PositionViews.AssignmentView> page(
             int pageNum,
             int pageSize,
@@ -62,6 +74,12 @@ public class PositionAssignmentQueryService {
                 result.getTotal(), result.getCurrent(), result.getSize());
     }
 
+    /**
+     * 处理组织，并将结果传给后续步骤。
+     *
+     * @param organizationUnitId 组织单元ID，后续用于处理组织时定位或关联目标
+     * @return 处理后的组织结果，供调用方继续处理
+     */
     public PositionViews.OrganizationAssignmentMatrix byOrganization(
             String organizationUnitId) {
         scopeService.requireVisible(organizationUnitId);
@@ -80,6 +98,12 @@ public class PositionAssignmentQueryService {
                         .map(row -> toView(row, now)).toList());
     }
 
+    /**
+     * 处理用户，并将结果传给后续步骤。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 处理后的用户结果，供调用方继续处理
+     */
     public PositionViews.UserAssignments byUser(String userId) {
         List<String> visibleUnitIds = scopeService.visibleUnitIds();
         SysUser user = userMapper.selectById(userId);
@@ -108,6 +132,10 @@ public class PositionAssignmentQueryService {
 
     /**
      * 为用户分页回填当前任职摘要；返回值已按当前管理者组织范围过滤。
+     *
+     * @param userIds 用户ID 集合，作为 {@code assignmentMapper.selectCurrentRowsByUsers} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code assignmentMapper.selectCurrentRowsByUsers} 的输入影响后续处理
+     * @return 位置分配视图行集合，供调用方遍历或展示
      */
     public List<PositionAssignmentViewRow> currentRowsByUsers(
             List<String> userIds,
@@ -119,6 +147,13 @@ public class PositionAssignmentQueryService {
                 userIds, asOf, scopeService.visibleUnitIds());
     }
 
+    /**
+     * 转换为视图；输出作为后续校验或处理的输入。
+     *
+     * @param row 行，作为 {@code PositionViews.AssignmentView} 的输入影响后续处理
+     * @param asOf {@code as}，作为 {@code isAfter} 的输入影响后续处理
+     * @return 转换为后的视图结果，供调用方继续处理
+     */
     public PositionViews.AssignmentView toView(
             PositionAssignmentViewRow row,
             LocalDateTime asOf) {
@@ -143,20 +178,44 @@ public class PositionAssignmentQueryService {
                 toInstant(row.getCreateTime()), toInstant(row.getUpdateTime()));
     }
 
+    /**
+     * 生成展示名称文本，供后续匹配或展示。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的展示名称文本，供调用方比较或展示
+     */
     private String displayName(SysUser user) {
         return StringUtils.hasText(user.getNickname())
                 ? user.getNickname() : user.getUsername();
     }
 
+    /**
+     * 规范化编码；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化编码的原始输入，结果供调用方继续使用
+     * @return 规范化后的编码文本，供调用方比较或展示
+     */
     private String normalizeCode(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(java.util.Locale.ROOT) : null;
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 转换为绝对时间；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为绝对时间的原始输入，结果供调用方继续使用
+     * @return 转换为后的绝对时间结果，供调用方继续处理
+     */
     private Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }

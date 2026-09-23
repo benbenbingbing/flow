@@ -19,6 +19,8 @@ import java.lang.reflect.Proxy;
 import java.sql.*;
 import java.util.*;
 import javax.sql.DataSource;
+
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import lombok.Data;
 import org.apache.ibatis.annotations.Update;
 import org.apache.ibatis.session.ExecutorType;
@@ -153,7 +155,7 @@ class MySqlNumericBooleanDatabaseTest {
             com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils.getGlobalConfig(configuration)
                     .getDbConfig().setLogicDeleteField("deleted");
             configuration.addInterceptor(new DatabaseMybatisConfiguration()
-                    .mybatisPlusInterceptor(new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect()));
+                    .mybatisPlusInterceptor(new MySqlSchemaDdlDialect()));
             new DatabaseMybatisConfiguration().numericBooleanBindings().customize(configuration);
             new DatabaseMybatisConfiguration().nullParameterBindings().customize(configuration);
             for (var mapper : mappers) configuration.addMapper(mapper);

@@ -130,6 +130,12 @@ public class EntityFieldOptionService {
         optionMapper.deleteByFieldId(fieldId);
     }
 
+    /**
+     * 转换为映射；输出作为后续校验或处理的输入。
+     *
+     * @param option 选项，作为 {@code result.put} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> toMap(EntityFieldOption option) {
         Map<String, Object> result = StringUtils.hasText(option.getOptionDocument())
                 ? new LinkedHashMap<>(codec.readObject(
@@ -146,6 +152,12 @@ public class EntityFieldOptionService {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value).trim();
     }

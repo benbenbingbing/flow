@@ -1,7 +1,7 @@
 package com.workflow.process.action.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.process.action.port.FlowActionRuntimeAccess;
+import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import java.util.LinkedHashMap;
  */
 @Component
 @RequiredArgsConstructor
-public class FlowActionRuntimeAdapter implements FlowActionRuntimeAccess {
+public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
 
     private final RuntimeService runtimeService;
     private final TaskService taskService;
@@ -68,6 +68,13 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimeAccess {
         return variables.get(name);
     }
 
+    /**
+     * 设置变量；后续读取或执行将使用更新后的状态。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param name 名称，后续用于设置变量时匹配或展示
+     * @param value 待设置变量的原始输入，结果供调用方继续使用
+     */
     @Override
     public void setVariable(
             String processInstanceId,
@@ -77,6 +84,12 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimeAccess {
                 processInstanceId, name, value);
     }
 
+    /**
+     * 设置流程变量；后续读取或执行将使用更新后的状态。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     */
     @Override
     public void setVariables(
             String processInstanceId,

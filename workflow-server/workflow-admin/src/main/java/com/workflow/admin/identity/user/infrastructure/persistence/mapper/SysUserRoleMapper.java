@@ -45,7 +45,12 @@ public interface SysUserRoleMapper extends BaseMapper<SysUserRole> {
         delete(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getUserId, userId));
     }
 
-    /** 统计角色关联人数，包含禁用用户的既有关系，与角色管理页原口径保持一致。 */
+    /**
+     * 统计角色关联人数，包含禁用用户的既有关系，与角色管理页原口径保持一致。
+     *
+     * @param roleId 角色ID，后续用于统计用户集合角色ID时定位或关联目标
+     * @return 符合条件的用户集合角色ID数量
+     */
     default long countUsersByRoleId(String roleId) {
         return selectCount(Wrappers.<SysUserRole>lambdaQuery().eq(SysUserRole::getRoleId, roleId));
     }

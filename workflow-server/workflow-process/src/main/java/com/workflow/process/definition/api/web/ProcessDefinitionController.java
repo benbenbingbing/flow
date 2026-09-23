@@ -10,7 +10,7 @@ import com.workflow.process.definition.api.request.ProcessPublishRequest;
 import com.workflow.process.definition.api.response.ProcessDefinitionDiffDTO;
 import com.workflow.process.definition.api.response.ProcessPublishPreviewDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.process.definition.application.ProcessDefinitionService;
 import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import lombok.RequiredArgsConstructor;
@@ -160,21 +160,36 @@ public class ProcessDefinitionController {
         return ApiResponse.success(processService.publish(id, request));
     }
 
-    /** 校验当前流程草稿并返回可定位的问题清单。 */
+    /**
+     * 校验当前流程草稿并返回可定位的问题清单。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验后的流程定义结果，供调用方继续处理
+     */
     @PostMapping("/{id}/validate")
     @RequiresPermission("process:definition:manage")
     public ApiResponse<ProcessPublishPreviewDTO> validate(@PathVariable String id) {
         return ApiResponse.success(preflightService.preview(id));
     }
 
-    /** 生成正式发布所需的影响预览和内容绑定令牌。 */
+    /**
+     * 生成正式发布所需的影响预览和内容绑定令牌。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 发布后的预览结果，供调用方继续处理
+     */
     @PostMapping("/{id}/publish-preview")
     @RequiresPermission("process:definition:publish")
     public ApiResponse<ProcessPublishPreviewDTO> publishPreview(@PathVariable String id) {
         return ApiResponse.success(preflightService.preview(id));
     }
 
-    /** 查询当前流程草稿与最近发布版本的结构化差异。 */
+    /**
+     * 查询当前流程草稿与最近发布版本的结构化差异。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 处理后的差异结果，供调用方继续处理
+     */
     @GetMapping("/{id}/diff")
     public ApiResponse<ProcessDefinitionDiffDTO> diff(@PathVariable String id) {
         return ApiResponse.success(preflightService.diff(id));
@@ -251,6 +266,9 @@ public class ProcessDefinitionController {
     
     /**
      * 测试节点解析（开发测试用）
+     *
+     * @param processId 流程ID，后续用于处理测试{@code parse}节点集合时定位或关联目标
+     * @return 处理后的测试{@code parse}节点集合结果，供调用方继续处理
      */
     @PostMapping("/{processId}/test-parse")
     @RequiresPermission("process:definition:manage")

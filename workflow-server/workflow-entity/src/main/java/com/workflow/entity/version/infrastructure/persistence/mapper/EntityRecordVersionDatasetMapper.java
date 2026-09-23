@@ -14,13 +14,25 @@ import java.util.List;
 public interface EntityRecordVersionDatasetMapper
         extends BaseMapper<EntityRecordVersionDataset> {
 
-    /** 读取指定记录版本包含的数据集，按节点编码返回。 */
+    /**
+     * 读取指定记录版本包含的数据集，按节点编码返回。
+     *
+     * @param versionId 版本ID，后续用于查询版本ID时定位或关联目标
+     * @return 实体记录版本数据集集合，供调用方遍历或展示
+     */
     default List<EntityRecordVersionDataset> findByVersionId(String versionId) {
         return selectList(Wrappers.<EntityRecordVersionDataset>lambdaQuery()
                 .eq(EntityRecordVersionDataset::getVersionId, versionId)
                 .orderByAsc(EntityRecordVersionDataset::getNodeCode));
     }
 
+    /**
+     * 按节点编码查询实体记录版本数据集；结果供后续展示或处理。
+     *
+     * @param versionId 版本ID，后续用于查询节点编码时定位或关联目标
+     * @param nodeCode 节点编码，后续用于查询节点编码时定位或关联目标
+     * @return 符合条件的实体记录版本数据集结果，供调用方继续处理
+     */
     default EntityRecordVersionDataset findByNodeCode(String versionId, String nodeCode) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<EntityRecordVersionDataset>lambdaQuery()
                 .eq(EntityRecordVersionDataset::getVersionId, versionId)

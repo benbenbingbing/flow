@@ -7,6 +7,9 @@ import java.util.List;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+/**
+ * 封装打开集成客户端地址解析器相关能力和状态；供同一业务流程的后续处理使用。
+ */
 @Component
 @ConditionalOnProperty(
         name = "workflow.open-api.enabled",
@@ -19,6 +22,12 @@ public class OpenIntegrationClientAddressResolver {
     private final OpenIntegrationProperties properties;
     private final List<IpNetwork> trustedProxies;
 
+    /**
+     * 初始化打开集成客户端地址解析器，保存构造参数供后续方法使用。
+     *
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public OpenIntegrationClientAddressResolver(
             OpenIntegrationProperties properties) {
         this.properties = properties;
@@ -42,6 +51,12 @@ public class OpenIntegrationClientAddressResolver {
         }
     }
 
+    /**
+     * 解析打开集成客户端地址解析器；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析打开集成客户端地址解析器
+     * @return 解析后的打开集成客户端地址解析器文本，供调用方比较或展示
+     */
     public String resolve(HttpServletRequest request) {
         String remoteAddress = normalize(request.getRemoteAddr());
         if (!properties.isTrustForwardedHeaders()
@@ -77,6 +92,12 @@ public class OpenIntegrationClientAddressResolver {
         return addresses.get(0);
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化打开集成客户端地址解析器的原始输入，结果供调用方继续使用
+     * @return 规范化后的打开集成客户端地址解析器文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         try {
             return IpNetwork.parseAddress(value).getHostAddress();
@@ -85,6 +106,12 @@ public class OpenIntegrationClientAddressResolver {
         }
     }
 
+    /**
+     * 判断是否可信{@code proxy}；判断结果决定调用方的后续分支。
+     *
+     * @param address 地址，供本方法判断是否可信{@code proxy}时使用
+     * @return 可信{@code proxy}条件成立时为 true，否则为 false
+     */
     private boolean isTrustedProxy(String address) {
         return trustedProxies.stream()
                 .anyMatch(network -> network.contains(address));

@@ -53,7 +53,7 @@ class SystemEntityReadServiceTest {
                 definitionMapper,
                 fieldMapper,
                 new SystemEntityFieldPolicy(),
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
 
         SysMenuMapper menuMapper = mock(SysMenuMapper.class);

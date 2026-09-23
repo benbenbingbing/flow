@@ -1,7 +1,13 @@
 package com.workflow.integration.database;
 
-import com.workflow.integration.database.api.*;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.schema.SchemaColumn;
+import com.workflow.integration.database.api.schema.SchemaDefault;
+import com.workflow.integration.database.api.schema.SchemaIndex;
+import com.workflow.integration.database.api.schema.SchemaTable;
+import com.workflow.integration.database.api.schema.SchemaType;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;

@@ -1,16 +1,14 @@
 package com.workflow.migration.schema;
 
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 import com.workflow.core.database.DatabaseExceptionClassifier;
 import com.workflow.core.database.DatabaseSQLExceptionTranslator;
 import com.workflow.integration.database.api.DatabaseDialects;
-
-import com.workflow.integration.database.api.*;
 import com.workflow.core.database.port.*;
 import com.workflow.core.database.JdbcDatabaseClock;
 import com.workflow.core.database.lock.JdbcDatabaseLock;
-import com.workflow.integration.database.schema.SchemaStatementScope;
-import com.workflow.migration.schema.SchemaDdlReplayVerifier;
-import com.workflow.integration.database.schema.AuditTimestampDdl;
+import com.workflow.integration.database.schema.validation.SchemaStatementScope;
+import com.workflow.integration.database.schema.template.AuditTimestampDdl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -36,12 +34,25 @@ public final class JdbcSchemaChangeWorker {
     private final String owner;
     private final String table;
 
-    /** source 必须是关闭即结束物理会话的独立数据源；不得传入业务连接池。 */
+    /**
+     * source 必须是关闭即结束物理会话的独立数据源；不得传入业务连接池。
+     *
+     * @param source 待初始化JDBC结构变更{@code worker}的原始输入，结果供调用方继续使用
+     * @param dialect 方言，保存在对象中供后续校验、查询或展示
+     * @param owner 归属方，保存在对象中供后续校验、查询或展示
+     */
     public JdbcSchemaChangeWorker(DataSource source, SchemaDdlDialect dialect, String owner) {
         this(source, dialect, owner, "workflow_schema_change");
     }
 
-    /** tableName 用于隔离队列，不改变任务 DDL 仅可操作 biz_ 表的边界。 */
+    /**
+     * tableName 用于隔离队列，不改变任务 DDL 仅可操作 biz_ 表的边界。
+     *
+     * @param source 待初始化JDBC结构变更{@code worker}的原始输入，结果供调用方继续使用
+     * @param dialect 方言依赖，保存到当前对象供后续业务方法调用
+     * @param owner 归属方依赖，保存到当前对象供后续业务方法调用
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     */
     public JdbcSchemaChangeWorker(DataSource source, SchemaDdlDialect dialect, String owner, String tableName) {
         if (owner == null || owner.isBlank() || owner.length() > 128) throw new IllegalArgumentException("Invalid schema worker ID");
         this.jdbc = new JdbcTemplate(source);
@@ -55,7 +66,11 @@ public final class JdbcSchemaChangeWorker {
         this.table = dialect.quoteIdentifier(tableName);
     }
 
-    /** 尝试处理一个到期请求；无任务或候选正在被其他会话处理时返回 false，调用方负责轮询。 */
+    /**
+     * 尝试处理一个到期请求；无任务或候选正在被其他会话处理时返回 false，调用方负责轮询。
+     *
+     * @return 下一步条件成立时为 true，否则为 false
+     */
     public boolean processNext() {
         var now = clock.utcNow();
         Candidate cursor = null;
@@ -82,6 +97,11 @@ public final class JdbcSchemaChangeWorker {
         }
     }
 
+    /**
+     * 处理{@code finish}{@code exhausted}，并将结果传给后续步骤。
+     *
+     * @param claim 认领，作为 {@code SchemaStatementScope.requireBusinessStatement} 的输入影响后续处理
+     */
     private void finishExhausted(Claim claim) {
         try {
             SchemaStatementScope.requireBusinessStatement(claim.ddl(), dialect);
@@ -92,6 +112,13 @@ public final class JdbcSchemaChangeWorker {
         }
     }
 
+    /**
+     * 整理候选集合数据，供调用方遍历或继续处理。
+     *
+     * @param now 当前时间，作为 {@code select.setObject} 的输入影响后续处理
+     * @param cursor 游标，作为 {@code select.setObject} 的输入影响后续处理
+     * @return 候选人集合，供调用方遍历或展示
+     */
     private List<Candidate> candidates(LocalDateTime now, Candidate cursor) {
         return jdbc.query(connection -> {
             var select = connection.prepareStatement("SELECT id, ddl_statement, lease_token, attempt, create_time FROM " + table
@@ -113,7 +140,12 @@ public final class JdbcSchemaChangeWorker {
                 row.getObject(5, LocalDateTime.class)));
     }
 
-    /** SELECT 不是领取凭据；只有匹配旧 token、状态和到期条件的 UPDATE 成功才拥有租约。 */
+    /**
+     * SELECT 不是领取凭据；只有匹配旧 token、状态和到期条件的 UPDATE 成功才拥有租约。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 认领后的JDBC结构变更{@code worker}结果，供调用方继续处理
+     */
     private Claim claim(Candidate candidate) {
         var now = clock.utcNow();
         int attempt = Math.min(MAX_ATTEMPTS, candidate.attempt() + 1);
@@ -126,6 +158,12 @@ public final class JdbcSchemaChangeWorker {
         return updated == 1 ? new Claim(candidate.id(), candidate.ddl(), token, attempt) : null;
     }
 
+    /**
+     * 应用JDBC结构变更{@code worker}，并将结果传给后续步骤。
+     *
+     * @param claim 认领，作为 {@code try} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void apply(Claim claim) {
         try (var heartbeat = new LeaseHeartbeat(claim)) {
             SchemaStatementScope.requireBusinessStatement(claim.ddl(), dialect);
@@ -150,6 +188,11 @@ public final class JdbcSchemaChangeWorker {
         }
     }
 
+    /**
+     * 处理完成，并将结果传给后续步骤。
+     *
+     * @param claim 认领，供本方法处理完成时使用
+     */
     private void complete(Claim claim) {
         var now = clock.utcNow();
         acknowledge(jdbc.update("UPDATE " + table + " SET status='APPLIED', active_hash=NULL, lease_until=NULL,"
@@ -157,6 +200,13 @@ public final class JdbcSchemaChangeWorker {
                 now, now, claim.id(), owner, claim.token(), now), claim);
     }
 
+    /**
+     * 处理失败，并将结果传给后续步骤。
+     *
+     * @param claim 认领，作为 {@code Math.min} 的输入影响后续处理
+     * @param message 消息，供本方法处理失败时使用
+     * @param terminal 终态，供本方法处理失败时使用
+     */
     private void fail(Claim claim, String message, boolean terminal) {
         var now = clock.utcNow();
         String status = terminal ? "FAILED" : "PENDING";
@@ -167,14 +217,28 @@ public final class JdbcSchemaChangeWorker {
                 claim.id(), owner, claim.token(), now), claim);
     }
 
+    /**
+     * 生成{@code fence}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code fence}文本，供调用方比较或展示
+     */
     private String fence() {
         return " WHERE id=? AND owner_id=? AND lease_token=? AND status='RUNNING' AND lease_until>?";
     }
 
+    /**
+     * 处理{@code acknowledge}，并将结果传给后续步骤。
+     *
+     * @param count 数量，供本方法处理{@code acknowledge}时使用
+     * @param claim 认领，供本方法处理{@code acknowledge}时使用
+     */
     private void acknowledge(int count, Claim claim) {
         if (count != 1) LOG.warn("Schema worker lost lease before ACK: id={}", claim.id());
     }
 
+    /**
+     * 封装租约心跳相关能力和状态；供同一业务流程的后续处理使用。
+     */
     private final class LeaseHeartbeat implements AutoCloseable {
         private final Claim claim;
         private final AtomicBoolean lost = new AtomicBoolean();
@@ -184,11 +248,21 @@ public final class JdbcSchemaChangeWorker {
             return thread;
         });
 
+        /**
+         * 初始化租约心跳，保存构造参数供后续方法使用。
+         *
+         * @param claim 认领依赖，保存到当前对象供后续业务方法调用
+         */
         private LeaseHeartbeat(Claim claim) {
             this.claim = claim;
             scheduler.scheduleAtFixedRate(this::renew, 30, 30, TimeUnit.SECONDS);
         }
 
+        /**
+         * 判断{@code renew}条件是否成立，供调用方选择后续分支。
+         *
+         * @return {@code renew}条件成立时为 true，否则为 false
+         */
         private boolean renew() {
             if (lost.get()) return false;
             try {
@@ -204,14 +278,40 @@ public final class JdbcSchemaChangeWorker {
             }
         }
 
+        /**
+         * 处理关闭，并将结果传给后续步骤。
+         */
         @Override public void close() { scheduler.shutdownNow(); }
     }
 
+    /**
+     * 生成安全消息文本，供后续匹配或展示。
+     *
+     * @param failure 失败，供本方法处理安全消息时使用
+     * @return 处理后的安全消息文本，供调用方比较或展示
+     */
     private static String safeMessage(Throwable failure) {
         String message = failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
         return message.substring(0, Math.min(message.length(), 1000));
     }
 
+    /**
+     * 封装候选人的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param ddl DDL，保存在对象中供后续校验、查询或展示
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @param attempt {@code attempt}，保存在对象中供后续校验、查询或展示
+     * @param created 已创建，保存在对象中供后续校验、查询或展示
+     */
     private record Candidate(String id, String ddl, long token, int attempt, LocalDateTime created) {}
+    /**
+     * 封装认领的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param id 对象标识，供后续引用、更新或关联
+     * @param ddl DDL，保存在对象中供后续校验、查询或展示
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @param attempt {@code attempt}，保存在对象中供后续校验、查询或展示
+     */
     private record Claim(String id, String ddl, long token, int attempt) {}
 }

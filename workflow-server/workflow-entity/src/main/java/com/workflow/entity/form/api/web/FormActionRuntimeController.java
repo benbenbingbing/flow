@@ -2,7 +2,7 @@ package com.workflow.entity.form.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.api.response.FormActionRuntimeDTO;
 import com.workflow.entity.form.application.EntityFormActionService;
@@ -29,6 +29,12 @@ public class FormActionRuntimeController {
 
     private final EntityFormActionService actionService;
 
+    /**
+     * 解析表单动作运行时；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析表单动作运行时
+     * @return 解析后的表单动作运行时结果，供调用方继续处理
+     */
     @PostMapping("/resolve")
     public Result<List<FormActionRuntimeDTO>> resolve(
             @RequestBody FormActionResolveRequest request) {

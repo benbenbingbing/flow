@@ -27,6 +27,12 @@ public class RelativeOrgPositionProcessInspector {
     private final RepositoryService repositoryService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化相对组织位置流程{@code inspector}，保存构造参数供后续方法使用。
+     *
+     * @param repositoryService 仓储服务依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public RelativeOrgPositionProcessInspector(
             RepositoryService repositoryService,
             ObjectMapper objectMapper) {
@@ -34,7 +40,12 @@ public class RelativeOrgPositionProcessInspector {
         this.objectMapper = objectMapper;
     }
 
-    /** 只读取指定部署的 BPMN 快照，不回查可变草稿。 */
+    /**
+     * 只读取指定部署的 BPMN 快照，不回查可变草稿。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 需要{@code initiator}组织快照条件成立时为 true，否则为 false
+     */
     public boolean requiresInitiatorOrganizationSnapshot(
             String processDefinitionId) {
         if (!StringUtils.hasText(processDefinitionId)) {
@@ -48,6 +59,12 @@ public class RelativeOrgPositionProcessInspector {
                 model.getMainProcess().getFlowElements());
     }
 
+    /**
+     * 判断是否包含相对解析器；判断结果决定调用方的后续分支。
+     *
+     * @param elements {@code elements}，供本方法判断是否包含相对解析器时使用
+     * @return 相对解析器条件成立时为 true，否则为 false
+     */
     private boolean containsRelativeResolver(
             Collection<FlowElement> elements) {
         if (elements == null) {
@@ -67,6 +84,12 @@ public class RelativeOrgPositionProcessInspector {
         return false;
     }
 
+    /**
+     * 判断使用相对解析器条件是否成立，供调用方选择后续分支。
+     *
+     * @param task 任务，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @return 使用相对解析器条件成立时为 true，否则为 false
+     */
     @SuppressWarnings("unchecked")
     private boolean usesRelativeResolver(UserTask task) {
         String assigneeDocument = ConfiguredTaskPropertyReader.read(
@@ -102,6 +125,12 @@ public class RelativeOrgPositionProcessInspector {
         }
     }
 
+    /**
+     * 判断是否包含解析器编码；判断结果决定调用方的后续分支。
+     *
+     * @param document 文档，供本方法判断是否包含解析器编码时使用
+     * @return 解析器编码条件成立时为 true，否则为 false
+     */
     private boolean containsResolverCode(String document) {
         return StringUtils.hasText(document)
                 && document.contains(

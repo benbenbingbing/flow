@@ -8,9 +8,18 @@ import org.apache.ibatis.annotations.Mapper;
 
 import java.util.List;
 
+/**
+ * 定义任务SLA策略的调用契约；实现层按此提供能力，调用方无需依赖具体实现。
+ */
 @Mapper
 public interface TaskSlaPolicyMapper extends BaseMapper<TaskSlaPolicy> {
 
+    /**
+     * 查询最新已发布；查询结果供调用方展示或继续处理。
+     *
+     * @param policyCode 策略编码，后续用于查询最新已发布时定位或关联目标
+     * @return 符合条件的任务SLA策略结果，供调用方继续处理
+     */
     default TaskSlaPolicy findLatestPublished(String policyCode) {
         // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
         return selectList(new Page<TaskSlaPolicy>(1, 1, false), Wrappers.<TaskSlaPolicy>lambdaQuery()
@@ -19,7 +28,11 @@ public interface TaskSlaPolicyMapper extends BaseMapper<TaskSlaPolicy> {
                 .orderByDesc(TaskSlaPolicy::getVersion)).stream().findFirst().orElse(null);
     }
 
-    /** 读取已发布的有效 SLA 策略，按编码及版本倒序排列。 */
+    /**
+     * 读取已发布的有效 SLA 策略，按编码及版本倒序排列。
+     *
+     * @return 任务SLA策略集合，供调用方遍历或展示
+     */
     default List<TaskSlaPolicy> findPublished() {
         return selectList(Wrappers.<TaskSlaPolicy>lambdaQuery()
                 .eq(TaskSlaPolicy::getStatus, "PUBLISHED")
@@ -27,7 +40,12 @@ public interface TaskSlaPolicyMapper extends BaseMapper<TaskSlaPolicy> {
                 .orderByDesc(TaskSlaPolicy::getVersion));
     }
 
-    /** 按业务编码读取最大版本；聚合使用标准 SQL，过滤及逻辑删除交给 Wrapper。 */
+    /**
+     * 按业务编码读取最大版本；聚合使用标准 SQL，过滤及逻辑删除交给 Wrapper。
+     *
+     * @param policyCode 策略编码，后续用于查询最大版本时定位或关联目标
+     * @return 符合条件的任务SLA策略结果，供调用方继续处理
+     */
     default int findMaxVersion(String policyCode) {
         List<Object> values = selectObjs(Wrappers.<TaskSlaPolicy>query()
                 .select("COALESCE(MAX(version), 0)").eq("policy_code", policyCode));

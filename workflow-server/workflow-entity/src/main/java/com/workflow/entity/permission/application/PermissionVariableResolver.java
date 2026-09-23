@@ -50,6 +50,9 @@ public class PermissionVariableResolver {
 
     /**
      * 构建变量上下文。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 上下文键值结果，供调用方继续处理
      */
     private Map<String, Object> buildContext(SysUser user) {
         Map<String, Object> userMap = new HashMap<>();
@@ -66,6 +69,10 @@ public class PermissionVariableResolver {
 
     /**
      * 根据表达式路径取值，例如 user.id、user.roleIds。
+     *
+     * @param expression 表达式，供本方法求值权限变量解析器时使用
+     * @param ctx {@code ctx}，供本方法求值权限变量解析器时使用
+     * @return 求值后的权限变量解析器文本，供调用方比较或展示
      */
     @SuppressWarnings("unchecked")
     private String evaluate(String expression, Map<String, Object> ctx) {
@@ -83,6 +90,9 @@ public class PermissionVariableResolver {
 
     /**
      * 格式化变量值：集合展开为 IN 列表，字符串做转义，null 返回空字符串。
+     *
+     * @param value 待格式化值的原始输入，结果供调用方继续使用
+     * @return 格式化后的值文本，供调用方比较或展示
      */
     @SuppressWarnings("unchecked")
     private String formatValue(Object value) {
@@ -104,6 +114,9 @@ public class PermissionVariableResolver {
 
     /**
      * SQL 字符串字面量转义。
+     *
+     * @param input 待处理{@code escape}字面值的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code escape}字面值文本，供调用方比较或展示
      */
     private String escapeLiteral(String input) {
         if (input == null) {
@@ -114,6 +127,8 @@ public class PermissionVariableResolver {
 
     /**
      * 简单安全校验：禁止危险关键字与多语句。
+     *
+     * @param sql SQL，供本方法校验SQL时使用
      */
     private void validateSql(String sql) {
         String upper = sql.toUpperCase(Locale.ROOT);

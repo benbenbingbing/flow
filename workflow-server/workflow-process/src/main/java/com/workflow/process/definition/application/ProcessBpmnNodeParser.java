@@ -29,6 +29,13 @@ public class ProcessBpmnNodeParser {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * 解析文档；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析文档时使用
+     * @return 解析后的文档结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     Document parseDocument(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory =
                 DocumentBuilderFactory.newInstance();
@@ -51,6 +58,12 @@ public class ProcessBpmnNodeParser {
                         bpmnXml.getBytes(StandardCharsets.UTF_8)));
     }
 
+    /**
+     * 读取扩展属性集合；查询结果供调用方展示或继续处理。
+     *
+     * @param userTask 用户任务，供本方法读取扩展属性集合时使用
+     * @return 扩展属性集合键值结果，供调用方继续处理
+     */
     Map<String, String> readExtensionProperties(
             Element userTask) {
         Map<String, String> values = new HashMap<>();
@@ -84,6 +97,12 @@ public class ProcessBpmnNodeParser {
         return values;
     }
 
+    /**
+     * 解析实体表单ID 集合；输出作为后续校验或处理的输入。
+     *
+     * @param properties 属性集合，作为 {@code parseFormIdList} 的输入影响后续处理
+     * @return 流程BPMN节点解析器集合，供调用方遍历或展示
+     */
     List<String> resolveEntityFormIds(
             Map<String, String> properties) {
         List<String> formIds =
@@ -93,6 +112,12 @@ public class ProcessBpmnNodeParser {
                 : formIds;
     }
 
+    /**
+     * 解析表单键；输出作为后续校验或处理的输入。
+     *
+     * @param userTask 用户任务，供本方法解析表单键时使用
+     * @return 解析后的表单键文本，供调用方比较或展示
+     */
     String resolveFormKey(Element userTask) {
         String formKey = userTask.getAttributeNS(
                 "http://flowable.org/bpmn",
@@ -106,6 +131,14 @@ public class ProcessBpmnNodeParser {
         return decodeXmlAttributeValue(formKey);
     }
 
+    /**
+     * 处理已有{@code readonly}，并将结果传给后续步骤。
+     *
+     * @param bindings 绑定集合，供本方法处理已有{@code readonly}时使用
+     * @param formId 表单ID，后续用于处理已有{@code readonly}时定位或关联目标
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的已有{@code readonly}结果，供调用方继续处理
+     */
     Integer existingReadonly(
             List<ProcessNodeForm> bindings,
             String formId,
@@ -122,6 +155,12 @@ public class ProcessBpmnNodeParser {
                 .orElse(fallback);
     }
 
+    /**
+     * 解析表单ID列表；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析表单ID列表的原始输入，结果供调用方继续使用
+     * @return 流程BPMN节点解析器集合，供调用方遍历或展示
+     */
     List<String> parseFormIdList(String value) {
         LinkedHashSet<String> formIds = new LinkedHashSet<>();
         String normalized = decodeXmlAttributeValue(value);
@@ -157,6 +196,12 @@ public class ProcessBpmnNodeParser {
         return new ArrayList<>(formIds);
     }
 
+    /**
+     * 判断是否{@code truthy}；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否{@code truthy}的原始输入，结果供调用方继续使用
+     * @return {@code truthy}条件成立时为 true，否则为 false
+     */
     boolean isTruthy(String value) {
         if (value == null) {
             return false;
@@ -166,6 +211,12 @@ public class ProcessBpmnNodeParser {
                 || "1".equals(normalized);
     }
 
+    /**
+     * 解码XML属性值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解码XML属性值的原始输入，结果供调用方继续使用
+     * @return 解码后的XML属性值文本，供调用方比较或展示
+     */
     String decodeXmlAttributeValue(String value) {
         if (value == null) {
             return null;
@@ -181,6 +232,13 @@ public class ProcessBpmnNodeParser {
                 .replace("&#39;", "'");
     }
 
+    /**
+     * 提取节点名称；输出作为后续校验或处理的输入。
+     *
+     * @param document 文档，供本方法提取节点名称时使用
+     * @param nodeId 节点ID，后续用于提取节点名称时定位或关联目标
+     * @return 提取后的节点名称文本，供调用方比较或展示
+     */
     String extractNodeName(
             Document document,
             String nodeId) {

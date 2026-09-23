@@ -227,6 +227,13 @@ public class EntityPermissionCatalogService {
         }
     }
 
+    /**
+     * 处理{@code synchronize}实体，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code ensureEntityContainer} 的输入影响后续处理
+     * @param root 根，作为 {@code ensureEntityContainer} 的输入影响后续处理
+     * @param administratorRoles 管理员角色集合，供本方法处理{@code synchronize}实体时使用
+     */
     private void synchronizeEntity(
             EntityDefinition entity,
             SysMenu root,
@@ -248,6 +255,13 @@ public class EntityPermissionCatalogService {
         }
     }
 
+    /**
+     * 确保作用域{@code bypass}权限菜单；不满足约束时阻止后续处理。
+     *
+     * @param container {@code container}，作为 {@code menu.setParentId} 的输入影响后续处理
+     * @param entity 实体，作为 {@code scopeBypassPermission} 的输入影响后续处理
+     * @return 确保后的作用域{@code bypass}权限菜单结果，供调用方继续处理
+     */
     private SysMenu ensureScopeBypassPermissionMenu(
             SysMenu container,
             EntityDefinition entity) {
@@ -278,6 +292,12 @@ public class EntityPermissionCatalogService {
         return menu;
     }
 
+    /**
+     * 处理授权截止{@code super}{@code administrators}，并将结果传给后续步骤。
+     *
+     * @param menuId 菜单ID，后续用于处理授权截止{@code super}{@code administrators}时定位或关联目标
+     * @param administratorRoles 管理员角色集合，供本方法处理授权截止{@code super}{@code administrators}时使用
+     */
     private void grantToSuperAdministrators(
             String menuId,
             List<SysRole> administratorRoles) {
@@ -294,11 +314,22 @@ public class EntityPermissionCatalogService {
                 });
     }
 
+    /**
+     * 生成作用域{@code bypass}权限文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 处理后的作用域{@code bypass}权限文本，供调用方比较或展示
+     */
     private String scopeBypassPermission(String entityCode) {
         return "entity:" + EntityPermissionAction.normalizeEntityCode(entityCode)
                 + ":scope:bypass";
     }
 
+    /**
+     * 确保根菜单；不满足约束时阻止后续处理。
+     *
+     * @return 确保后的根菜单结果，供调用方继续处理
+     */
     private SysMenu ensureRootMenu() {
         SysMenu root = menuMapper.selectByPathAndType(ROOT_PATH, "M");
         if (root != null) {
@@ -321,6 +352,13 @@ public class EntityPermissionCatalogService {
         return root;
     }
 
+    /**
+     * 确保实体{@code container}；不满足约束时阻止后续处理。
+     *
+     * @param root 根，作为 {@code container.setParentId} 的输入影响后续处理
+     * @param entity 实体，作为 {@code EntityPermissionAction.normalizeEntityCode} 的输入影响后续处理
+     * @return 确保后的实体{@code container}结果，供调用方继续处理
+     */
     private SysMenu ensureEntityContainer(SysMenu root, EntityDefinition entity) {
         String path = ROOT_PATH + "/" + EntityPermissionAction.normalizeEntityCode(entity.getEntityCode());
         SysMenu container = menuMapper.selectByPathAndType(path, "C");
@@ -348,6 +386,14 @@ public class EntityPermissionCatalogService {
         return container;
     }
 
+    /**
+     * 确保权限菜单；不满足约束时阻止后续处理。
+     *
+     * @param container {@code container}，作为 {@code menu.setParentId} 的输入影响后续处理
+     * @param entity 实体，作为 {@code action.permissionCode} 的输入影响后续处理
+     * @param action 动作标识，决定后续权限菜单采用的处理分支
+     * @return 确保后的权限菜单结果，供调用方继续处理
+     */
     private SysMenu ensurePermissionMenu(
             SysMenu container,
             EntityDefinition entity,
@@ -379,6 +425,15 @@ public class EntityPermissionCatalogService {
         return menu;
     }
 
+    /**
+     * 确保自定义权限菜单；不满足约束时阻止后续处理。
+     *
+     * @param container {@code container}，作为 {@code menu.setParentId} 的输入影响后续处理
+     * @param entity 实体，作为 {@code menu.setEntityCode} 的输入影响后续处理
+     * @param permissionCode 权限编码，后续用于确保自定义权限菜单时定位或关联目标
+     * @param label 标签，后续用于确保自定义权限菜单时匹配或展示
+     * @return 确保后的自定义权限菜单结果，供调用方继续处理
+     */
     private SysMenu ensureCustomPermissionMenu(
             SysMenu container,
             EntityDefinition entity,
@@ -410,6 +465,12 @@ public class EntityPermissionCatalogService {
         return menu;
     }
 
+    /**
+     * 处理授权截止{@code administrators}，并将结果传给后续步骤。
+     *
+     * @param menuId 菜单ID，后续用于处理授权截止{@code administrators}时定位或关联目标
+     * @param roles 角色集合，供本方法处理授权截止{@code administrators}时使用
+     */
     private void grantToAdministrators(String menuId, List<SysRole> roles) {
         roles.stream()
                 .sorted(Comparator.comparing(SysRole::getRoleCode))
@@ -424,6 +485,13 @@ public class EntityPermissionCatalogService {
                 });
     }
 
+    /**
+     * 判断是否支持动作；判断结果决定调用方的后续分支。
+     *
+     * @param entity 实体，供本方法判断是否支持动作时使用
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @return 动作条件成立时为 true，否则为 false
+     */
     private boolean supportsAction(EntityDefinition entity, EntityPermissionAction action) {
         if (entity != null && entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
             return false;
@@ -433,6 +501,12 @@ public class EntityPermissionCatalogService {
                 || entity.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW;
     }
 
+    /**
+     * 停用权限；结果供调用方的后续步骤使用。
+     *
+     * @param entity 实体，作为 {@code menuMapper.selectByPerm} 的输入影响后续处理
+     * @param action 动作标识，决定后续权限采用的处理分支
+     */
     private void disablePermission(EntityDefinition entity, EntityPermissionAction action) {
         SysMenu menu = menuMapper.selectByPerm(action.permissionCode(entity.getEntityCode()));
         if (menu == null) {
@@ -443,10 +517,20 @@ public class EntityPermissionCatalogService {
         menuMapper.updateById(menu);
     }
 
+    /**
+     * 确保初始状态；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code ensureStatus} 的输入影响后续处理
+     */
     private void ensureInitialStatus(EntityDefinition entity) {
         ensureStatus(entity, "NEW", "DRAFT", "草稿", 10, "新建或尚未处理的数据", "info");
     }
 
+    /**
+     * 确保工作流{@code statuses}；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code ensureStatus} 的输入影响后续处理
+     */
     private void ensureWorkflowStatuses(EntityDefinition entity) {
         ensureStatus(entity, "PROCESSING", "PENDING", "处理中", 20, "流程处理中", "warning");
         ensureStatus(entity, "COMPLETED", "APPROVED", "已完成", 30, "流程已正常完成", "success");
@@ -454,6 +538,17 @@ public class EntityPermissionCatalogService {
         ensureStatus(entity, "WITHDRAWN", "WITHDRAWN", "已撤回", 50, "流程由发起人撤回", "info");
     }
 
+    /**
+     * 确保状态；不满足约束时阻止后续处理。
+     *
+     * @param entity 实体，作为 {@code statusMapper.findByCategory} 的输入影响后续处理
+     * @param category 类别，决定后续状态或结果的归类
+     * @param code 编码，后续用于确保状态时定位或关联目标
+     * @param name 名称，后续用于确保状态时匹配或展示
+     * @param sort 排序，作为 {@code status.setSortOrder} 的输入影响后续处理
+     * @param description 描述，作为 {@code status.setDescription} 的输入影响后续处理
+     * @param color {@code color}，作为 {@code status.setColor} 的输入影响后续处理
+     */
     private void ensureStatus(
             EntityDefinition entity,
             String category,

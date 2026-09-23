@@ -1,7 +1,7 @@
 package com.workflow.contracts.process.port;
 
-import com.workflow.contracts.process.ProcessStartRequest;
-import com.workflow.contracts.process.ProcessStartResult;
+import com.workflow.contracts.process.model.ProcessStartRequest;
+import com.workflow.contracts.process.model.ProcessStartResult;
 
 /**
  * 流程运行时跨模块端口。

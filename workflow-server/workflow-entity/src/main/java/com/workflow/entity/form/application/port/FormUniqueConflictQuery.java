@@ -11,7 +11,13 @@ import java.util.Map;
  */
 public interface FormUniqueConflictQuery {
 
-    /** 查询单条未删除记录；记录不存在时返回空 Map。 */
+    /**
+     * 查询单条未删除记录；记录不存在时返回空 Map。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 记录键值结果，供调用方继续处理
+     */
     Map<String, Object> findRecord(
             String entityCode,
             String recordId);
@@ -21,6 +27,12 @@ public interface FormUniqueConflictQuery {
      *
      * <p>基础设施应尽量先按唯一字段和值缩小结果集；条件表达式仍由应用层统一
      * 求值，避免把版本化表单规则拼接成动态 SQL。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于查询候选集合时定位或关联目标
+     * @param normalizedValue 规范化值，供本方法查询候选集合时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询候选集合时定位或关联目标
+     * @return 表单唯一冲突查询集合，供调用方遍历或展示
      */
     List<Map<String, Object>> findCandidates(
             String entityCode,
@@ -35,6 +47,12 @@ public interface FormUniqueConflictQuery {
      * MySQL current/locking read，不能复用普通一致性读，否则外层事务为
      * REPEATABLE READ 时可能看不到刚在 gate 前提交的并发记录。调用方必须
      * 在任何业务行锁/写入前完成本查询，防止业务表锁序反转。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于查询候选集合{@code authoritative}检查时定位或关联目标
+     * @param normalizedValue 规范化值，供本方法查询候选集合{@code authoritative}检查时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询候选集合{@code authoritative}检查时定位或关联目标
+     * @return 表单唯一冲突查询集合，供调用方遍历或展示
      */
     List<Map<String, Object>> findCandidatesForAuthoritativeCheck(
             String entityCode,

@@ -1,6 +1,6 @@
 package com.workflow.entity.data.application;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 
 import java.util.List;
 
@@ -14,16 +14,32 @@ import java.util.List;
 public sealed interface EntityRelationGraphAuthorizationPlan
         permits IssuedEntityRelationGraphAuthorizationPlan {
 
-    /** 当前授权绑定的登录用户。 */
+    /**
+     * 当前授权绑定的登录用户。
+     *
+     * @return 处理后的主体用户ID文本，供调用方比较或展示
+     */
     String subjectUserId();
 
-    /** 显式声明的平台内部使用目的，禁止把空 listKey 当隐式默认。 */
+    /**
+     * 显式声明的平台内部使用目的，禁止把空 listKey 当隐式默认。
+     *
+     * @return 处理后的用途结果，供调用方继续处理
+     */
     InternalPurpose purpose();
 
-    /** 来源实体授权。 */
+    /**
+     * 来源实体授权。
+     *
+     * @return 处理后的来源结果，供调用方继续处理
+     */
     Grant source();
 
-    /** 与发布路径 hop 严格一一对应的目标实体授权。 */
+    /**
+     * 与发布路径 hop 严格一一对应的目标实体授权。
+     *
+     * @return 授权集合，供调用方遍历或展示
+     */
     List<Grant> hops();
 
     /**
@@ -77,6 +93,14 @@ final class IssuedEntityRelationGraphAuthorizationPlan
     private final Grant source;
     private final List<Grant> hops;
 
+    /**
+     * 初始化已签发实体关系图授权方案，保存构造参数供后续方法使用。
+     *
+     * @param subjectUserId 主体用户ID依赖，保存到当前对象供后续业务方法调用
+     * @param purpose 用途依赖，保存到当前对象供后续业务方法调用
+     * @param source 来源依赖，保存到当前对象供后续业务方法调用
+     * @param hops {@code hops}依赖，保存到当前对象供后续业务方法调用
+     */
     IssuedEntityRelationGraphAuthorizationPlan(
             String subjectUserId,
             InternalPurpose purpose,
@@ -88,21 +112,41 @@ final class IssuedEntityRelationGraphAuthorizationPlan
         this.hops = hops == null ? List.of() : List.copyOf(hops);
     }
 
+    /**
+     * 生成主体用户ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的主体用户ID文本，供调用方比较或展示
+     */
     @Override
     public String subjectUserId() {
         return subjectUserId;
     }
 
+    /**
+     * 处理用途，并将结果传给后续步骤。
+     *
+     * @return 处理后的用途结果，供调用方继续处理
+     */
     @Override
     public InternalPurpose purpose() {
         return purpose;
     }
 
+    /**
+     * 处理来源，并将结果传给后续步骤。
+     *
+     * @return 处理后的来源结果，供调用方继续处理
+     */
     @Override
     public Grant source() {
         return source;
     }
 
+    /**
+     * 整理{@code hops}数据，供调用方遍历或继续处理。
+     *
+     * @return 授权集合，供调用方遍历或展示
+     */
     @Override
     public List<Grant> hops() {
         return hops;

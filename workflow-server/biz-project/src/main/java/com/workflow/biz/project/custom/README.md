@@ -106,8 +106,8 @@ Spring Bean，方便后续补入口时直接验证：
 
 | 类 | 接口 | 用途 |
 | --- | --- | --- |
-| `ProjectCustomMigrationAssetHandler` | `MigrationAssetHandler` | 发布时登记配置迁移资产 |
-| `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobCoordinator` | 多实例启动任务互斥 |
+| `ProjectCustomMigrationAssetHandler` | `MigrationAssetPort` | 发布时登记配置迁移资产 |
+| `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobPort` | 多实例启动任务互斥 |
 | `ProjectCustomUiExtensionCatalogAdapter` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |
 
 ## 范围说明

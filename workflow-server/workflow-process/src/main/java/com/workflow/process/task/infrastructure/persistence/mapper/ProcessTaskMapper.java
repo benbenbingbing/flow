@@ -105,16 +105,34 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
               )
             """;
 
-    /** 查询当前用户的待办，同时接受用户 ID 和用户名。 */
+    /**
+     * 查询当前用户的待办，同时接受用户 ID 和用户名。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 流程任务集合，供调用方遍历或展示
+     */
     @Select("SELECT pt.* " + TODO_USER_SCOPE + " ORDER BY pt.create_time DESC")
     List<ProcessTask> selectTodoByUser(@Param("userId") String userId);
 
-    /** 按确切任务 ID 查询当前用户可办理的本地加签子任务，供详情与进度入口安全复用。 */
+    /**
+     * 按确切任务 ID 查询当前用户可办理的本地加签子任务，供详情与进度入口安全复用。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 查询后的可执行添加签名任务任务ID结果，供调用方继续处理
+     */
     default ProcessTask selectActionableAddSignTaskByTaskId(String userId, String taskId) {
         return selectActionableAddSignTaskByTaskIdRows(new OffsetPage<>(0, 1), userId, taskId).stream().findFirst().orElse(null);
     }
 
-    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    /**
+     * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 流程任务集合，供调用方遍历或展示
+     */
     @Select("<script> SELECT pt.* " + TODO_USER_SCOPE
             + " AND pt.node_type = 'ADD_SIGN' AND pt.task_id = #{taskId}  </script>")
     List<ProcessTask> selectActionableAddSignTaskByTaskIdRows(
@@ -122,7 +140,13 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
             @Param("userId") String userId,
             @Param("taskId") String taskId);
 
-    /** 实例只读入口使用的本地加签参与判定，保留普通任务自身的访问语义。 */
+    /**
+     * 实例只读入口使用的本地加签参与判定，保留普通任务自身的访问语义。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 符合条件的可执行添加签名任务集合流程数量
+     */
     @Select("SELECT COUNT(*) " + TODO_USER_SCOPE
             + " AND pt.node_type = 'ADD_SIGN' AND pt.process_instance_id = #{processInstanceId}")
     long countActionableAddSignTasksInProcess(
@@ -132,6 +156,10 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     /**
      * 返回指定实体的可审批记录 ID，与待办列表及审批入口共用实际候选身份范围。
      * 显式约束 entity_code，不能让其他实体恰好相同的记录 ID 获得 HAS_TODO 可见性。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 流程任务集合，供调用方遍历或展示
      */
     @Select("SELECT DISTINCT pt.entity_data_id " + TODO_USER_SCOPE + """
             AND pt.entity_code = #{entityCode}
@@ -146,12 +174,29 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      * 绑定业务记录上当前用户可审批的任务，与待办列表复用引擎身份范围。
      * 实体/流程坐标同时存在时联合匹配，不能把摘要中的兄弟任务绑定给当前用户。
      * assignedOnly 为 true 时只接受实际办理人，供非审批的 CURRENT_ASSIGNEE 权限使用。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param assignedOnly {@code assigned}仅，供本方法查询可执行任务ID时使用
+     * @return 查询后的可执行任务ID文本，供调用方比较或展示
      */
     default String selectActionableTaskId(String userId, String entityCode, String entityDataId, String processInstanceId, boolean assignedOnly) {
         return selectActionableTaskIdRows(new OffsetPage<>(0, 1), userId, entityCode, entityDataId, processInstanceId, assignedOnly).stream().findFirst().orElse(null);
     }
 
-    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    /**
+     * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param assignedOnly {@code assigned}仅，供本方法查询可执行任务ID行时使用
+     * @return 流程任务集合，供调用方遍历或展示
+     */
     @Select("<script>SELECT pt.task_id " + TODO_USER_SCOPE + """
             <choose>
               <when test="entityCode != null and entityDataId != null">
@@ -180,12 +225,29 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
 
     /**
      * 精确查询当前用户可办理的任务，并联合约束已鉴权记录与流程实例坐标。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 查询后的可执行任务上下文结果，供调用方继续处理
      */
     default ProcessTask selectActionableTaskContext(String userId, String taskId, String entityCode, String entityDataId, String processInstanceId) {
         return selectActionableTaskContextRows(new OffsetPage<>(0, 1), userId, taskId, entityCode, entityDataId, processInstanceId).stream().findFirst().orElse(null);
     }
 
-    /** 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。 */
+    /**
+     * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param entityDataId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 流程任务集合，供调用方遍历或展示
+     */
     @Select("<script>SELECT pt.* " + TODO_USER_SCOPE + """
             AND pt.task_id = #{taskId}
             AND pt.entity_code = #{entityCode}
@@ -203,16 +265,22 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
 
     /**
      * 查询已办列表（根据用户ID查询用户已完成的）
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 流程任务集合，供调用方遍历或展示
      */
     @Select("<script> SELECT * FROM process_task pt WHERE (" +
             "pt.assignee_id = #{userId} " +
-            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
-            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
+            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
+            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
             ") AND pt.status = 'done' AND pt.deleted = 0 ORDER BY pt.end_time DESC </script>")
     List<ProcessTask> selectDoneByUser(@Param("userId") String userId);
     
     /**
      * 根据流程实例ID查询待办
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 流程任务集合，供调用方遍历或展示
      */
     default List<ProcessTask> selectByProcessInstance(String processInstanceId) {
         return selectList(Wrappers.<ProcessTask>lambdaQuery()
@@ -222,6 +290,9 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     
     /**
      * 根据流程实例ID查询当前待办任务（status=0）
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 查询后的待办任务流程实例结果，供调用方继续处理
      */
     default ProcessTask selectTodoTaskByProcessInstance(String processInstanceId) {
         // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
@@ -232,6 +303,9 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     
     /**
      * 根据Flowable任务ID查询
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 查询后的任务ID结果，供调用方继续处理
      */
     default ProcessTask selectByTaskId(String taskId) {
         // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
@@ -249,13 +323,22 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     @Select("SELECT * FROM process_task WHERE task_id = #{taskId} AND deleted = 0 FOR UPDATE")
     ProcessTask selectByTaskIdForUpdate(@Param("taskId") String taskId);
 
+    /**
+     * 更新SLA摘要；后续读取或执行将使用更新后的状态。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param responseDueTime 响应{@code due}时间，后续用于判断有效期或展示该事件的发生时间
+     * @param dueTime {@code due}时间，后续用于判断有效期或展示该事件的发生时间
+     * @param slaStatus SLA状态标识，决定后续SLA摘要采用的处理分支
+     * @return 更新后的SLA摘要结果，供调用方继续处理
+     */
     @Update("""
             <script>
             UPDATE process_task
             SET due_time = #{dueTime},
                 response_due_time = #{responseDueTime},
                 sla_status = #{slaStatus},
-                update_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@utcNow(_databaseId)}
+                update_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)}
             WHERE task_id = #{taskId}
               AND deleted = 0
             </script>
@@ -268,10 +351,17 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     
     /**
      * 完成任务
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param status 状态标识，决定后续完成任务采用的处理分支
+     * @param action 动作标识，决定后续完成任务采用的处理分支
+     * @param comment 注释，供本方法处理完成任务时使用
+     * @param duration 时长，供本方法处理完成任务时使用
+     * @return 处理后的完成任务结果，供调用方继续处理
      */
     @Update("""
             <script>
-            UPDATE process_task SET status = #{status}, action = #{action}, comment = #{comment}, end_time = ${@com.workflow.integration.database.api.DatabaseRuntimeSql@currentNow(_databaseId)}, duration = #{duration}
+            UPDATE process_task SET status = #{status}, action = #{action}, comment = #{comment}, end_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}, duration = #{duration}
              WHERE id = #{id}
             </script>
             """)
@@ -279,17 +369,25 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
                      @Param("action") String action, @Param("comment") String comment,
                      @Param("duration") Long duration);
     
-    /** 统计当前用户待办数，授权条件与列表查询保持一致。 */
+    /**
+     * 统计当前用户待办数，授权条件与列表查询保持一致。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 符合条件的待办用户数量
+     */
     @Select("SELECT COUNT(*) " + TODO_USER_SCOPE)
     Long countTodoByUser(@Param("userId") String userId);
 
     /**
      * 统计用户已办数
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 符合条件的{@code done}用户数量
      */
     @Select("<script> SELECT COUNT(*) FROM process_task pt WHERE (" +
             "pt.assignee_id = #{userId} " +
-            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
-            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
+            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
+            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
             ") AND pt.status = 'done' AND pt.deleted = 0 </script>")
     Long countDoneByUser(@Param("userId") String userId);
 }

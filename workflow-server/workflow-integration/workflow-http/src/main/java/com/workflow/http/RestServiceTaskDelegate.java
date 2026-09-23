@@ -45,6 +45,13 @@ public class RestServiceTaskDelegate implements JavaDelegate {
     private final WorkflowHttpProperties properties;
     private final PinnedHttpTransport transport;
 
+    /**
+     * 初始化{@code rest}服务任务委托，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param endpointPolicy 接口端点策略，保存在对象中供后续校验、查询或展示
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     */
     public RestServiceTaskDelegate(
             ObjectMapper objectMapper,
             RestEndpointPolicy endpointPolicy,
@@ -58,6 +65,14 @@ public class RestServiceTaskDelegate implements JavaDelegate {
                         properties));
     }
 
+    /**
+     * 初始化{@code rest}服务任务委托，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param endpointPolicy 接口端点策略，保存在对象中供后续校验、查询或展示
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param transport 传输依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     RestServiceTaskDelegate(
             ObjectMapper objectMapper,
@@ -344,6 +359,13 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         return result.toString();
     }
 
+    /**
+     * 校验{@code static}{@code authority}；不满足约束时阻止后续处理。
+     *
+     * @param configuredUrl 已配置URL，供本方法校验{@code static}{@code authority}时使用
+     * @param resolvedUri 已解析{@code uri}，供本方法校验{@code static}{@code authority}时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateStaticAuthority(
             String configuredUrl,
             URI resolvedUri) {
@@ -380,6 +402,12 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         }
     }
 
+    /**
+     * 校验旧版{@code header}；不满足约束时阻止后续处理。
+     *
+     * @param name 名称，后续用于校验旧版{@code header}时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateLegacyHeader(String name) {
         String normalized = name == null
                 ? ""
@@ -402,6 +430,13 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         }
     }
 
+    /**
+     * 生成安全{@code header}值文本，供后续匹配或展示。
+     *
+     * @param value 待处理安全{@code header}值的原始输入，结果供调用方继续使用
+     * @return 处理后的安全{@code header}值文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String safeHeaderValue(String value) {
         if (value == null
                 || value.length() > 8192
@@ -476,6 +511,14 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         return null;
     }
 
+    /**
+     * 处理{@code bounded}，并将结果传给后续步骤。
+     *
+     * @param value 待处理{@code bounded}的原始输入，结果供调用方继续使用
+     * @param minimum {@code minimum}，作为 {@code Math.max} 的输入影响后续处理
+     * @param maximum {@code maximum}，作为 {@code Math.max} 的输入影响后续处理
+     * @return 处理后的{@code bounded}结果，供调用方继续处理
+     */
     private static int bounded(
             int value,
             int minimum,
@@ -483,6 +526,12 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         return Math.max(minimum, Math.min(maximum, value));
     }
 
+    /**
+     * 判断是否可重试；判断结果决定调用方的后续分支。
+     *
+     * @param exception 异常，供本方法判断是否可重试时使用
+     * @return 可重试条件成立时为 true，否则为 false
+     */
     private boolean isRetryable(Exception exception) {
         if (exception instanceof IllegalArgumentException
                 || exception instanceof InterruptedException) {
@@ -496,14 +545,28 @@ public class RestServiceTaskDelegate implements JavaDelegate {
                 || status.statusCode >= 500;
     }
 
+    /**
+     * 封装HTTP{@code call}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param statusCode 状态编码，后续用于处理HTTP{@code call}结果时定位或关联目标
+     * @param body 请求体，后续用于处理HTTP{@code call}结果并传递处理结果
+     */
     private record HttpCallResult(int statusCode, String body) {
     }
 
+    /**
+     * 表示HTTP状态处理失败；调用方可据此区分错误并终止后续操作。
+     */
     private static final class HttpStatusException
             extends IllegalStateException {
 
         private final int statusCode;
 
+        /**
+         * 初始化HTTP状态异常，保存构造参数供后续方法使用。
+         *
+         * @param statusCode 状态编码依赖，保存到当前对象供后续业务方法调用
+         */
         private HttpStatusException(int statusCode) {
             super("HTTP " + statusCode);
             this.statusCode = statusCode;

@@ -14,6 +14,11 @@ public class AuthSessionMetrics {
     /** 可选的 Micrometer 注册器。 */
     private final MeterRegistry registry;
 
+    /**
+     * 初始化认证会话指标集合，保存构造参数供后续方法使用。
+     *
+     * @param registryProvider {@code registry}提供者，保存在对象中供后续校验、查询或展示
+     */
     public AuthSessionMetrics(
             ObjectProvider<MeterRegistry> registryProvider) {
         this.registry = registryProvider.getIfAvailable();

@@ -62,6 +62,9 @@ public class ProcessInstanceService {
     
     /**
      * 格式化日期为字符串
+     *
+     * @param date 日期，后续用于判断有效期或展示该事件的发生时间
+     * @return 格式化后的日期文本，供调用方比较或展示
      */
     private String formatDate(java.util.Date date) {
         if (date == null) return null;
@@ -78,6 +81,13 @@ public class ProcessInstanceService {
         return getProcessProgress(processInstanceId, null);
     }
 
+    /**
+     * 读取流程进度；查询结果供调用方展示或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的流程进度结果，供调用方继续处理
+     */
     public ProcessProgressDTO getProcessProgress(
             String processInstanceId,
             String taskId) {
@@ -243,6 +253,10 @@ public class ProcessInstanceService {
     
     /**
      * 获取活动节点名称
+     *
+     * @param activityId 活动ID，后续用于读取活动名称时定位或关联目标
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 读取后的活动名称文本，供调用方比较或展示
      */
     private String getActivityName(String activityId, String processDefinitionId) {
         try {
@@ -261,6 +275,9 @@ public class ProcessInstanceService {
     
     /**
      * 根据流程实例ID获取BPMN XML
+     *
+     * @param instanceId 实例ID，后续用于读取BPMNXML实例ID时定位或关联目标
+     * @return 读取后的BPMNXML实例ID文本，供调用方比较或展示
      */
     private String getBpmnXmlByInstanceId(String instanceId) {
         HistoricProcessInstance historicInstance = historyService.createHistoricProcessInstanceQuery()
@@ -277,6 +294,9 @@ public class ProcessInstanceService {
     
     /**
      * 根据流程定义ID获取BPMN XML
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 读取后的BPMNXML流程定义ID文本，供调用方比较或展示
      */
     private String getBpmnXmlByProcessDefinitionId(String processDefinitionId) {
         if (processDefinitionId == null) {
@@ -507,7 +527,12 @@ public class ProcessInstanceService {
                 safePageSize);
     }
     
-    /** 实例列表的名称回退只解析一次定义，筛选与显示共用同一规则。 */
+    /**
+     * 实例列表的名称回退只解析一次定义，筛选与显示共用同一规则。
+     *
+     * @param definition 定义，作为 {@code processConfigMapper.findByProcessKey} 的输入影响后续处理
+     * @return 处理后的展示名称文本，供调用方比较或展示
+     */
     private String processDisplayName(ProcessDefinition definition) {
         if (definition.getName() != null && !definition.getName().isEmpty()) return definition.getName();
         return processConfigMapper.findByProcessKey(definition.getKey())

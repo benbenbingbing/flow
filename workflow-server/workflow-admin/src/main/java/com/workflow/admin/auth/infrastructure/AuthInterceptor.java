@@ -5,7 +5,7 @@ import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.AuthenticatedAccess;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
-import com.workflow.contracts.embed.EmbedDelegatedRequestContext;
+import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,6 +34,8 @@ public class AuthInterceptor implements HandlerInterceptor {
     /**
      * MVC 切片测试不会加载系统服务，使用 Provider 可让认证拦截器正常创建；
      * 完整应用中仍必须存在 AuthSessionService，否则受保护请求按不可用处理。
+     *
+     * @param authSessionServiceProvider 认证会话服务提供者，保存在对象中供后续校验、查询或展示
      */
     @Autowired
     public AuthInterceptor(
@@ -43,6 +45,11 @@ public class AuthInterceptor implements HandlerInterceptor {
                 authSessionServiceProvider.getIfAvailable();
     }
 
+    /**
+     * 初始化认证{@code interceptor}，保存构造参数供后续方法使用。
+     *
+     * @param authSessionService 认证会话服务依赖，保存到当前对象供后续业务方法调用
+     */
     public AuthInterceptor(
             AuthSessionService authSessionService) {
         this.authSessionService = authSessionService;
@@ -162,6 +169,15 @@ public class AuthInterceptor implements HandlerInterceptor {
         writeErrorResponse(response, code, null, message);
     }
 
+    /**
+     * 写入错误响应；后续读取或执行将使用更新后的状态。
+     *
+     * @param response 响应，供本方法写入错误响应时使用
+     * @param code 编码，后续用于写入错误响应时定位或关联目标
+     * @param errorCode 错误编码，后续用于写入错误响应时定位或关联目标
+     * @param message 消息，作为 {@code Result.error} 的输入影响后续处理
+     * @throws IOException 读取或写入外部资源失败时抛出
+     */
     private void writeErrorResponse(
             HttpServletResponse response,
             int code,

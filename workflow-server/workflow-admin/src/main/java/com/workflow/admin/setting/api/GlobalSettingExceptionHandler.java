@@ -11,6 +11,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 @RestControllerAdvice
 public class GlobalSettingExceptionHandler {
+    /**
+     * 处理全局设置异常，并将结果传给后续步骤。
+     *
+     * @param exception 异常，作为 {@code ResponseEntity.status} 的输入影响后续处理
+     * @return 处理后的全局设置异常结果，供调用方继续处理
+     */
     @ExceptionHandler(GlobalSettingException.class)
     public ResponseEntity<Result<Void>> handle(GlobalSettingException exception) {
         return ResponseEntity.status(exception.status()).body(

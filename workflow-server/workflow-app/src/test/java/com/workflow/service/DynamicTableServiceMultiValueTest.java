@@ -1,6 +1,6 @@
 package com.workflow.service;
 
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 
 import com.workflow.entity.data.application.DynamicTableService;
@@ -38,7 +38,7 @@ class DynamicTableServiceMultiValueTest {
                 jdbcTemplate,
                 fieldMapper,
                 tableResolver,
-                schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         service.ensureEntityMultiValueTable("expense");
 

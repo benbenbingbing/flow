@@ -2,11 +2,11 @@ package com.workflow.admin.audit.infrastructure;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.result.Result;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;

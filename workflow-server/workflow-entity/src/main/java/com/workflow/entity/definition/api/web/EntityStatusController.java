@@ -28,6 +28,9 @@ public class EntityStatusController {
      * 查询实体的状态列表。
      * 运行态列表/表单按编码读取状态选项，不能要求 entity:definition:view。
      * 登录用户需具备该实体的设计查看权，或任一标准数据动作权限。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体状态结果，供调用方继续处理
      */
     @GetMapping("/list/{entityCode}")
     @AuthenticatedApi(objectAuthorization = true)
@@ -40,6 +43,10 @@ public class EntityStatusController {
     /**
      * 按分类查询实体状态。
      * 与按编码列表相同，属于运行态元数据读取。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param category 类别，决定后续状态或结果的归类
+     * @return 符合条件的实体状态结果，供调用方继续处理
      */
     @GetMapping("/list/{entityCode}/{category}")
     @AuthenticatedApi(objectAuthorization = true)
@@ -51,6 +58,9 @@ public class EntityStatusController {
     
     /**
      * 保存实体状态
+     *
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     * @return 保存后的实体状态结果，供调用方继续处理
      */
     @PostMapping("/save")
     @RequiresPermission("entity:definition:manage")
@@ -61,6 +71,10 @@ public class EntityStatusController {
     
     /**
      * 批量保存实体状态
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param statuses {@code statuses}，作为 {@code entityStatusService.saveStatusList} 的输入影响后续处理
+     * @return 保存后的实体状态列表结果，供调用方继续处理
      */
     @PostMapping("/save-list/{entityCode}")
     @RequiresPermission("entity:definition:manage")
@@ -71,6 +85,9 @@ public class EntityStatusController {
     
     /**
      * 删除实体状态
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 删除后的实体状态结果，供调用方继续处理
      */
     @PostMapping("/delete/{id}")
     @RequiresPermission("entity:definition:manage")

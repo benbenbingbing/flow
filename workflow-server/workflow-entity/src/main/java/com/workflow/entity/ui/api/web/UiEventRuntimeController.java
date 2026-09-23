@@ -1,7 +1,7 @@
 package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.core.result.Result;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
@@ -27,6 +27,13 @@ public class UiEventRuntimeController {
 
     private final UiEventRuntimeService runtimeService;
 
+    /**
+     * 执行界面事件运行时，并将结果传给后续步骤。
+     *
+     * @param eventCode 事件编码，后续用于执行界面事件运行时时定位或关联目标
+     * @param request 本次请求，后续经校验后用于执行界面事件运行时
+     * @return 执行后的界面事件运行时结果，供调用方继续处理
+     */
     @PostMapping("/{eventCode}/execute")
     public Result<UiEventExecutionResult> execute(
             @PathVariable String eventCode,

@@ -4,10 +4,10 @@ import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -83,6 +83,19 @@ public class SysUserService {
         return users;
     }
 
+    /**
+     * 按筛选条件分页查询系统用户；结果供列表展示。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，供本方法读取用户分页时使用
+     * @param status 状态标识，决定后续用户分页采用的处理分支
+     * @param orgId 组织ID，后续用于读取用户分页时定位或关联目标
+     * @param deptId 部门ID，后续用于读取用户分页时定位或关联目标
+     * @param roleId 角色ID，后续用于读取用户分页时定位或关联目标
+     * @param positionCode 位置编码，后续用于读取用户分页时定位或关联目标
+     * @return 符合条件的系统用户结果，供调用方继续处理
+     */
     public PageResult<SysUser> getUserPage(
             int pageNum,
             int pageSize,
@@ -209,6 +222,9 @@ public class SysUserService {
     
     /**
      * 根据用户ID/用户名获取统一显示名称：nickname(username)
+     *
+     * @param idOrUsername ID或用户名，后续用于读取展示名称时匹配或展示
+     * @return 读取后的展示名称文本，供调用方比较或展示
      */
     public String getDisplayName(String idOrUsername) {
         if (!StringUtils.hasText(idOrUsername)) {
@@ -230,6 +246,9 @@ public class SysUserService {
     
     /**
      * 根据用户ID/用户名列表获取统一显示名称，逗号分隔
+     *
+     * @param idsOrUsernames ID 集合或{@code usernames}，供本方法读取展示名称集合时使用
+     * @return 读取后的展示名称集合文本，供调用方比较或展示
      */
     public String getDisplayNames(List<String> idsOrUsernames) {
         if (idsOrUsernames == null || idsOrUsernames.isEmpty()) {
@@ -319,6 +338,9 @@ public class SysUserService {
     /**
      * 校验用户单一 org/dept 归属；父链只读取 parent_id，最多遍历 32 层，
      * 不信任可能滞后的 path/level 冗余字段。
+     *
+     * @param requested 请求，供本方法校验组织{@code membership}时使用
+     * @param existing 已有，供本方法校验组织{@code membership}时使用
      */
     private void validateOrganizationMembership(
             SysUser requested,
@@ -377,7 +399,12 @@ public class SysUserService {
         throw new IllegalArgumentException("deptId 不在 orgId 的组织范围内");
     }
 
-    /** 为用户分页批量回填范围安全的当前任职摘要。 */
+    /**
+     * 为用户分页批量回填范围安全的当前任职摘要。
+     *
+     * @param users 用户集合，作为 {@code positionAssignmentQueryService.currentRowsByUsers} 的输入影响后续处理
+     * @param asOf {@code as}，供本方法处理{@code fill}当前位置分配集合时使用
+     */
     private void fillCurrentPositionAssignments(
             List<SysUser> users,
             LocalDateTime asOf) {
@@ -404,6 +431,12 @@ public class SysUserService {
                 List.copyOf(byUser.getOrDefault(user.getId(), List.of()))));
     }
 
+    /**
+     * 规范化位置编码；输出作为后续校验或处理的输入。
+     *
+     * @param positionCode 位置编码，后续用于规范化位置编码时定位或关联目标
+     * @return 规范化后的位置编码文本，供调用方比较或展示
+     */
     private String normalizePositionCode(String positionCode) {
         return StringUtils.hasText(positionCode)
                 ? positionCode.trim().toUpperCase(java.util.Locale.ROOT) : null;
@@ -482,6 +515,13 @@ public class SysUserService {
         }
     }
 
+    /**
+     * 处理批次更新状态，并将结果传给后续步骤。
+     *
+     * @param userIds 用户ID 集合，供本方法处理批次更新状态时使用
+     * @param status 状态标识，决定后续批次更新状态采用的处理分支
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -504,6 +544,13 @@ public class SysUserService {
         }
     }
 
+    /**
+     * 处理批次{@code assign}角色集合，并将结果传给后续步骤。
+     *
+     * @param userIds 用户ID 集合，供本方法处理批次{@code assign}角色集合时使用
+     * @param roleIds 角色ID 集合，供本方法处理批次{@code assign}角色集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -530,6 +577,7 @@ public class SysUserService {
      * 重置为管理员通过安全输入提交的新密码。
      *
      * @param id 用户ID
+     * @param newPassword 新密码，作为 {@code validateNewPassword} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -600,6 +648,9 @@ public class SysUserService {
 
     /**
      * 登录成功后迁移历史明文密码，避免继续保留明文。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param rawPassword 原始密码，作为 {@code update.setPassword} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -619,6 +670,12 @@ public class SysUserService {
         revokeSessions(id);
     }
 
+    /**
+     * 撤销会话；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void revokeSessions(String id) {
         if (userMapper.incrementTokenVersion(id) != 1) {
             throw new IllegalArgumentException("用户不存在");
@@ -629,6 +686,13 @@ public class SysUserService {
                 "TOKEN_VERSION_CHANGED");
     }
 
+    /**
+     * 判断密码匹配条件是否成立，供调用方选择后续分支。
+     *
+     * @param rawPassword 原始密码，作为 {@code passwordEncoder.matches} 的输入影响后续处理
+     * @param storedPassword 已存储密码，作为 {@code passwordEncoder.matches} 的输入影响后续处理
+     * @return 密码匹配条件成立时为 true，否则为 false
+     */
     public boolean passwordMatches(String rawPassword, String storedPassword) {
         if (!StringUtils.hasText(rawPassword) || !StringUtils.hasText(storedPassword)) {
             return false;
@@ -641,6 +705,12 @@ public class SysUserService {
                 storedPassword.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
+    /**
+     * 判断是否{@code bcrypt}密码；判断结果决定调用方的后续分支。
+     *
+     * @param password 密码，供本方法判断是否{@code bcrypt}密码时使用
+     * @return {@code bcrypt}密码条件成立时为 true，否则为 false
+     */
     private boolean isBcryptPassword(String password) {
         return password != null
                 && (password.startsWith("$2a$")
@@ -648,6 +718,12 @@ public class SysUserService {
                 || password.startsWith("$2y$"));
     }
 
+    /**
+     * 判断需要密码重置条件是否成立，供调用方选择后续分支。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 需要密码重置条件成立时为 true，否则为 false
+     */
     public boolean requiresPasswordReset(String id) {
         SysUser user = userMapper.selectById(id);
         return user != null && Boolean.TRUE.equals(user.getPasswordResetRequired());
@@ -716,10 +792,22 @@ public class SysUserService {
         }
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 校验新密码；不满足约束时阻止后续处理。
+     *
+     * @param password 密码，供本方法校验新密码时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateNewPassword(String password) {
         if (password == null || password.length() < 10 || password.length() > 72) {
             throw new IllegalArgumentException("新密码长度必须为10到72位");

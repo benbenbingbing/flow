@@ -1,6 +1,6 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -26,6 +26,12 @@ public class SystemAuditQueryService {
     // 保留现有构造器依赖；普通查询的分页统一交由 MyBatis-Plus 处理。
     private final DatabaseQueryDialect queryDialect;
 
+    /**
+     * 分页查询系统审计查询；查询结果供调用方展示或继续处理。
+     *
+     * @param query 查询，作为 {@code Math.max} 的输入影响后续处理
+     * @return 符合条件的系统操作日志结果，供调用方继续处理
+     */
     public PageResult<SystemOperationLog> page(SystemAuditQuery query) {
         int pageNum = Math.max(1, query.getPageNum());
         int pageSize = Math.min(200, Math.max(1, query.getPageSize()));
@@ -34,6 +40,13 @@ public class SystemAuditQueryService {
         return new PageResult<>(page.getRecords(), page.getTotal(), page.getCurrent(), page.getSize());
     }
 
+    /**
+     * 读取必填；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的系统操作日志结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public SystemOperationLog getRequired(String id) {
         SystemOperationLog value = operationLogMapper.selectById(id);
         if (value == null) {
@@ -42,7 +55,12 @@ public class SystemAuditQueryService {
         return value;
     }
 
-    /** 导出仍最多读取一万条，使用数据库分页避免把全部日志载入内存。 */
+    /**
+     * 导出仍最多读取一万条，使用数据库分页避免把全部日志载入内存。
+     *
+     * @param query 查询，供本方法处理导出时使用
+     * @return 系统操作日志集合，供调用方遍历或展示
+     */
     public List<SystemOperationLog> export(SystemAuditQuery query) {
         return operationLogMapper.selectPage(
                 new Page<SystemOperationLog>(1, 10000, false), wrapper(query)).getRecords();
@@ -51,6 +69,9 @@ public class SystemAuditQueryService {
     /**
      * 查询统一审计投影。返回前固定转换为敏感字段收敛视图，禁止直接把持久化
      * 对象交给统一时间线接口。
+     *
+     * @param query 查询，作为 {@code Math.max} 的输入影响后续处理
+     * @return 处理后的统一分页结果，供调用方继续处理
      */
     public PageResult<UnifiedAuditEventView> unifiedPage(
             UnifiedAuditQuery query) {
@@ -70,6 +91,9 @@ public class SystemAuditQueryService {
     /**
      * 按 operationId 读取同一业务操作的时间线。历史记录未可靠携带 operationId
      * 时迁移会以 eventId 单独成组，不会根据 traceId 猜测合并。
+     *
+     * @param operationId 操作ID，后续用于处理操作{@code timeline}时定位或关联目标
+     * @return 统一审计事件视图集合，供调用方遍历或展示
      */
     public List<UnifiedAuditEventView> operationTimeline(
             String operationId) {
@@ -86,6 +110,12 @@ public class SystemAuditQueryService {
                 .toList();
     }
 
+    /**
+     * 处理{@code wrapper}，并将结果传给后续步骤。
+     *
+     * @param query 查询，作为 {@code wrapper.ge} 的输入影响后续处理
+     * @return 处理后的{@code wrapper}结果，供调用方继续处理
+     */
     private LambdaQueryWrapper<SystemOperationLog> wrapper(SystemAuditQuery query) {
         LambdaQueryWrapper<SystemOperationLog> wrapper = new LambdaQueryWrapper<>();
         wrapper.ge(query.getStartTime() != null, SystemOperationLog::getCreateTime, query.getStartTime());
@@ -111,6 +141,12 @@ public class SystemAuditQueryService {
         return wrapper.orderByDesc(SystemOperationLog::getCreateTime).orderByDesc(SystemOperationLog::getId);
     }
 
+    /**
+     * 处理统一{@code wrapper}，并将结果传给后续步骤。
+     *
+     * @param query 查询，作为 {@code wrapper.ge} 的输入影响后续处理
+     * @return 处理后的统一{@code wrapper}结果，供调用方继续处理
+     */
     private LambdaQueryWrapper<SystemOperationLog> unifiedWrapper(
             UnifiedAuditQuery query) {
         LambdaQueryWrapper<SystemOperationLog> wrapper =
@@ -150,6 +186,12 @@ public class SystemAuditQueryService {
                 .orderByDesc(SystemOperationLog::getId);
     }
 
+    /**
+     * 转换为统一视图；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为统一视图的原始输入，结果供调用方继续使用
+     * @return 转换为后的统一视图结果，供调用方继续处理
+     */
     private UnifiedAuditEventView toUnifiedView(
             SystemOperationLog value) {
         UnifiedAuditEventView.SourcePointer source =
@@ -194,6 +236,9 @@ public class SystemAuditQueryService {
     /**
      * 精确匹配 operationId，同时兼容滚动升级期间旧 Pod 写入的空值。空值记录
      * 只允许通过自身 eventId 命中，避免把相同 traceId 的独立操作错误串联。
+     *
+     * @param wrapper {@code wrapper}，供本方法应用操作ID过滤时使用
+     * @param operationId 操作ID，后续用于应用操作ID过滤时定位或关联目标
      */
     private void applyOperationIdFilter(
             LambdaQueryWrapper<SystemOperationLog> wrapper,
@@ -208,6 +253,14 @@ public class SystemAuditQueryService {
                         .eq(SystemOperationLog::getEventId, operationId)));
     }
 
+    /**
+     * 生成可选标识符文本，供后续匹配或展示。
+     *
+     * @param value 待处理可选标识符的原始输入，结果供调用方继续使用
+     * @param name 名称，后续用于处理可选标识符时匹配或展示
+     * @param maxLength 最大长度，作为 {@code requiredIdentifier} 的输入影响后续处理
+     * @return 处理后的可选标识符文本，供调用方比较或展示
+     */
     private String optionalIdentifier(
             String value,
             String name,
@@ -218,6 +271,15 @@ public class SystemAuditQueryService {
         return requiredIdentifier(value, name, maxLength);
     }
 
+    /**
+     * 生成必填标识符文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填标识符的原始输入，结果供调用方继续使用
+     * @param name 名称，后续用于处理必填标识符时匹配或展示
+     * @param maxLength 最大长度，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的必填标识符文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String requiredIdentifier(
             String value,
             String name,
@@ -233,6 +295,12 @@ public class SystemAuditQueryService {
         return normalized;
     }
 
+    /**
+     * 生成{@code upper}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code upper}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code upper}文本，供调用方比较或展示
+     */
     private String upper(String value) {
         return value == null ? null : value.trim().toUpperCase(java.util.Locale.ROOT);
     }

@@ -16,5 +16,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface AuthenticatedApi {
 
+    /**
+     * 判断对象授权条件是否成立，供调用方选择后续分支。
+     *
+     * @return 对象授权条件成立时为 true，否则为 false
+     */
     boolean objectAuthorization() default false;
 }

@@ -222,10 +222,25 @@ public class ConfigMigrationPackageCodec {
                 assets);
     }
 
+    /**
+     * 查询快照；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshot 快照，供本方法查询快照时使用
+     * @param rawSelection 原始选择，供本方法查询快照时使用
+     * @return 快照键值结果，供调用方继续处理
+     */
     Map<String, Object> selectSnapshot(Map<String, Object> snapshot, Object rawSelection) {
         return selectSnapshot(snapshot, rawSelection, true);
     }
 
+    /**
+     * 查询快照；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code copyIfPresent} 的输入影响后续处理
+     * @param rawSelection 原始选择，作为 {@code normalizeSelection} 的输入影响后续处理
+     * @param requireSelectedKeys {@code require}已选择键集合，供本方法查询快照时使用
+     * @return 快照键值结果，供调用方继续处理
+     */
     private Map<String, Object> selectSnapshot(Map<String, Object> snapshot,
                                                Object rawSelection,
                                                boolean requireSelectedKeys) {
@@ -262,16 +277,37 @@ public class ConfigMigrationPackageCodec {
         return selected;
     }
 
+    /**
+     * 查询快照；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshotJson 快照JSON，供本方法查询快照时使用
+     * @param rawSelection 原始选择，供本方法查询快照时使用
+     * @return 快照键值结果，供调用方继续处理
+     */
     Map<String, Object> selectSnapshot(String snapshotJson, Object rawSelection) {
         return selectSnapshot(readMap(snapshotJson), rawSelection);
     }
 
+    /**
+     * 查询快照{@code allowing}缺失键集合；查询结果供调用方展示或继续处理。
+     *
+     * @param snapshotJson 快照JSON，作为 {@code selectSnapshot} 的输入影响后续处理
+     * @param rawSelection 原始选择，供本方法查询快照{@code allowing}缺失键集合时使用
+     * @return 快照{@code allowing}缺失键集合键值结果，供调用方继续处理
+     */
     Map<String, Object> selectSnapshotAllowingMissingKeys(
             String snapshotJson,
             Object rawSelection) {
         return selectSnapshot(readMap(snapshotJson), rawSelection, false);
     }
 
+    /**
+     * 规范化选择；输出作为后续校验或处理的输入。
+     *
+     * @param rawSelection 原始选择，供本方法规范化选择时使用
+     * @return 选择键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     Map<String, Object> normalizeSelection(Object rawSelection) {
         if (!(rawSelection instanceof Map<?, ?> rawMap)) {
             return Map.of("full", true);
@@ -306,6 +342,13 @@ public class ConfigMigrationPackageCodec {
         return selection;
     }
 
+    /**
+     * 合并{@code selections}；结果供后续流程传递或持久化。
+     *
+     * @param leftValue 左侧值，作为 {@code normalizeSelection} 的输入影响后续处理
+     * @param rightValue 右侧值，作为 {@code normalizeSelection} 的输入影响后续处理
+     * @return {@code selections}键值结果，供调用方继续处理
+     */
     Map<String, Object> mergeSelections(Object leftValue, Object rightValue) {
         Map<String, Object> left = normalizeSelection(leftValue);
         Map<String, Object> right = normalizeSelection(rightValue);
@@ -323,10 +366,22 @@ public class ConfigMigrationPackageCodec {
         return merged;
     }
 
+    /**
+     * 整理选择数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code normalizeSelection} 的输入影响后续处理
+     * @return 选择键值结果，供调用方继续处理
+     */
     Map<String, Object> selectionOf(Map<String, Object> snapshot) {
         return normalizeSelection(snapshot.get(SELECTION_METADATA));
     }
 
+    /**
+     * 生成选择作用域键文本，供后续匹配或展示。
+     *
+     * @param snapshot 快照，作为 {@code selectionOf} 的输入影响后续处理
+     * @return 处理后的选择作用域键文本，供调用方比较或展示
+     */
     String selectionScopeKey(Map<String, Object> snapshot) {
         Map<String, Object> selection = selectionOf(snapshot);
         if (Boolean.TRUE.equals(selection.get("full"))) {
@@ -335,17 +390,39 @@ public class ConfigMigrationPackageCodec {
         return "PARTIAL:" + sha256(writeBytes(selection)).substring(0, 32);
     }
 
+    /**
+     * 生成哈希已选择快照文本，供后续匹配或展示。
+     *
+     * @param snapshotJson 快照JSON，作为 {@code hashSnapshot} 的输入影响后续处理
+     * @param selection 选择，作为 {@code hashSnapshot} 的输入影响后续处理
+     * @return 处理后的哈希已选择快照文本，供调用方比较或展示
+     */
     String hashSelectedSnapshot(String snapshotJson, Object selection) {
         return hashSnapshot(selectSnapshotAllowingMissingKeys(
                 snapshotJson, selection));
     }
 
+    /**
+     * 生成哈希快照文本，供后续匹配或展示。
+     *
+     * @param snapshot 快照，供本方法处理哈希快照时使用
+     * @return 处理后的哈希快照文本，供调用方比较或展示
+     */
     String hashSnapshot(Map<String, Object> snapshot) {
         Map<String, Object> content = new LinkedHashMap<>(snapshot);
         content.remove(SELECTION_METADATA);
         return sha256(writeBytes(content));
     }
 
+    /**
+     * 合并已选择键集合；结果供后续流程传递或持久化。
+     *
+     * @param merged {@code merged}，供本方法合并已选择键集合时使用
+     * @param keyName 键名称，后续用于合并已选择键集合时匹配或展示
+     * @param section 区段，作为 {@code leftSections.contains} 的输入影响后续处理
+     * @param left 左侧，作为 {@code stringSet} 的输入影响后续处理
+     * @param right 右侧，作为 {@code stringSet} 的输入影响后续处理
+     */
     private void mergeSelectedKeys(Map<String, Object> merged,
                                    String keyName,
                                    String section,
@@ -370,6 +447,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 整理已选择定义数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code mapValue} 的输入影响后续处理
+     * @param sections 区段集合，供本方法处理已选择定义时使用
+     * @return 已选择定义键值结果，供调用方继续处理
+     */
     private Map<String, Object> selectedDefinition(Map<String, Object> snapshot,
                                                    Set<String> sections) {
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
@@ -386,6 +470,13 @@ public class ConfigMigrationPackageCodec {
         return identity;
     }
 
+    /**
+     * 整理{@code expanded}区段集合数据，供调用方遍历或继续处理。
+     *
+     * @param assetType 资产类型标识，决定后续{@code expanded}区段集合采用的处理分支
+     * @param sections 区段集合，供本方法处理{@code expanded}区段集合时使用
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     private Set<String> expandedSections(String assetType, Set<String> sections) {
         Set<String> expanded = new LinkedHashSet<>();
         for (String section : sections) {
@@ -423,6 +514,13 @@ public class ConfigMigrationPackageCodec {
         return expanded;
     }
 
+    /**
+     * 添加已选择支持区段集合；结果供后续流程传递或持久化。
+     *
+     * @param source 待添加已选择支持区段集合的原始输入，结果供调用方继续使用
+     * @param selected 已选择，作为 {@code collectValuesForKeys} 的输入影响后续处理
+     * @param sections 区段集合，作为 {@code addSelectedInterfaceExtensions} 的输入影响后续处理
+     */
     private void addSelectedSupportSections(Map<String, Object> source,
                                             Map<String, Object> selected,
                                             Set<String> sections) {
@@ -472,6 +570,11 @@ public class ConfigMigrationPackageCodec {
      *
      * <p>dataSources 只在读取不含新分区的历史快照时保留；旧的
      * dataSources 选择项也视为接口分区别名，不能让当前格式退回旧结构。</p>
+     *
+     * @param source 待添加已选择接口{@code extensions}的原始输入，结果供调用方继续使用
+     * @param selected 已选择，作为 {@code copyIfPresent} 的输入影响后续处理
+     * @param sections 区段集合，供本方法添加已选择接口{@code extensions}时使用
+     * @param referencedCodes 已引用编码集合，作为 {@code filter} 的输入影响后续处理
      */
     private void addSelectedInterfaceExtensions(
             Map<String, Object> source,
@@ -510,6 +613,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 收集值集合键集合；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集值集合键集合的原始输入，结果供调用方继续使用
+     * @param names 名称集合，作为 {@code collection.forEach} 的输入影响后续处理
+     * @param result 结果，作为 {@code collection.forEach} 的输入影响后续处理
+     */
     private void collectValuesForKeys(Object value,
                                       Set<String> names,
                                       Set<String> result) {
@@ -534,7 +644,12 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
-    /** 收集关联内容 specialHandling.customComponent.name 形式的组件引用。 */
+    /**
+     * 收集关联内容 specialHandling.customComponent.name 形式的组件引用。
+     *
+     * @param value 待收集视图组件键集合的原始输入，结果供调用方继续使用
+     * @param result 结果，作为 {@code collection.forEach} 的输入影响后续处理
+     */
     private void collectViewComponentKeys(
             Object value,
             Set<String> result) {
@@ -555,6 +670,14 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 查询依赖集合；查询结果供调用方展示或继续处理。
+     *
+     * @param source 待查询依赖集合的原始输入，结果供调用方继续使用
+     * @param selected 已选择，供本方法查询依赖集合时使用
+     * @param sections 区段集合，供本方法查询依赖集合时使用
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> selectDependencies(Map<String, Object> source,
                                                           Map<String, Object> selected,
                                                           Set<String> sections) {
@@ -593,6 +716,14 @@ public class ConfigMigrationPackageCodec {
         return deduplicateDependencies(result);
     }
 
+    /**
+     * 整理目标仅依赖数据，供调用方遍历或继续处理。
+     *
+     * @param type 类型标识，决定后续目标仅依赖采用的处理分支
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param source 待处理目标仅依赖的原始输入，结果供调用方继续使用
+     * @return 目标仅依赖键值结果，供调用方继续处理
+     */
     private Map<String, Object> targetOnlyDependency(String type,
                                                      String key,
                                                      String source) {
@@ -605,6 +736,13 @@ public class ConfigMigrationPackageCodec {
         return dependency;
     }
 
+    /**
+     * 判断是否包含引用；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否包含引用的原始输入，结果供调用方继续使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 引用条件成立时为 true，否则为 false
+     */
     private boolean containsReference(Object value, String key) {
         if (!StringUtils.hasText(key)) {
             return false;
@@ -628,6 +766,15 @@ public class ConfigMigrationPackageCodec {
         return value instanceof String text && text.contains(key);
     }
 
+    /**
+     * 校验已选择键集合；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验已选择键集合的原始输入，结果供调用方继续使用
+     * @param selected 已选择，供本方法校验已选择键集合时使用
+     * @param sections 区段集合，供本方法校验已选择键集合时使用
+     * @param formKeys 表单键集合，供本方法校验已选择键集合时使用
+     * @param listKeys 列表键集合，供本方法校验已选择键集合时使用
+     */
     private void validateSelectedKeys(Map<String, Object> source,
                                       Map<String, Object> selected,
                                       Set<String> sections,
@@ -637,6 +784,17 @@ public class ConfigMigrationPackageCodec {
         validateSelectedKeys(source, selected, sections, "lists", "listKey", listKeys);
     }
 
+    /**
+     * 校验已选择键集合；不满足约束时阻止后续处理。
+     *
+     * @param source 待校验已选择键集合的原始输入，结果供调用方继续使用
+     * @param selected 已选择，供本方法校验已选择键集合时使用
+     * @param sections 区段集合，供本方法校验已选择键集合时使用
+     * @param section 区段，作为 {@code castMapList} 的输入影响后续处理
+     * @param keyName 键名称，后续用于校验已选择键集合时匹配或展示
+     * @param requestedKeys 请求键集合，供本方法校验已选择键集合时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSelectedKeys(Map<String, Object> source,
                                       Map<String, Object> selected,
                                       Set<String> sections,
@@ -660,6 +818,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 添加实体详情{@code entries}；结果供后续流程传递或持久化。
+     *
+     * @param asset 资产，作为 {@code entries.put} 的输入影响后续处理
+     * @param snapshot 快照，供本方法添加实体详情{@code entries}时使用
+     * @param entries {@code entries}，供本方法添加实体详情{@code entries}时使用
+     */
     private void addEntityDetailEntries(ConfigMigrationAsset asset,
                                         Map<String, Object> snapshot,
                                         Map<String, byte[]> entries) {
@@ -675,6 +840,14 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 处理过滤键，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，作为 {@code castMapList} 的输入影响后续处理
+     * @param section 区段，作为 {@code castMapList} 的输入影响后续处理
+     * @param keyName 键名称，后续用于处理过滤键时匹配或展示
+     * @param keys 键集合，供本方法处理过滤键时使用
+     */
     private void filterByKey(Map<String, Object> snapshot, String section, String keyName, Set<String> keys) {
         if (keys.isEmpty() || !snapshot.containsKey(section)) {
             return;
@@ -685,6 +858,12 @@ public class ConfigMigrationPackageCodec {
         snapshot.put(section, filtered);
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return new LinkedHashMap<>();
@@ -694,6 +873,12 @@ public class ConfigMigrationPackageCodec {
         return converted;
     }
 
+    /**
+     * 整理{@code cast}字符串列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code cast}字符串列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     private List<String> castStringList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return List.of();
@@ -701,6 +886,13 @@ public class ConfigMigrationPackageCodec {
         return collection.stream().map(String::valueOf).toList();
     }
 
+    /**
+     * 复制条件存在；结果供后续流程传递或持久化。
+     *
+     * @param source 待复制条件存在的原始输入，结果供调用方继续使用
+     * @param target 目标，供本方法复制条件存在时使用
+     * @param keys 键集合，供本方法复制条件存在时使用
+     */
     private void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String... keys) {
         for (String key : keys) {
             if (source.containsKey(key)) {
@@ -709,10 +901,23 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 整理{@code deduplicate}依赖集合数据，供调用方遍历或继续处理。
+     *
+     * @param dependencies 依赖集合，作为 {@code ConfigMigrationAssignmentSupport.mergeDependencies} 的输入影响后续处理
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> deduplicateDependencies(List<Map<String, Object>> dependencies) {
         return ConfigMigrationAssignmentSupport.mergeDependencies(dependencies);
     }
 
+    /**
+     * 生成资产路径文本，供后续匹配或展示。
+     *
+     * @param asset 资产，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 处理后的资产路径文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String assetPath(ConfigMigrationAsset asset) {
         String directory = switch (asset.getAssetType()) {
             case ConfigMigrationAssetService.ENTITY ->
@@ -734,12 +939,25 @@ public class ConfigMigrationPackageCodec {
         return directory + safe(asset.getBusinessKey()) + "-v" + asset.getSourceVersion() + ".json";
     }
 
+    /**
+     * 生成安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理安全的原始输入，结果供调用方继续使用
+     * @return 处理后的安全文本，供调用方比较或展示
+     */
     private String safe(String value) {
         String normalized = value == null ? "unnamed" : value.trim().toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9._-]", "-");
         return normalized.isBlank() ? "unnamed" : normalized;
     }
 
+    /**
+     * 处理{@code zip}，并将结果传给后续步骤。
+     *
+     * @param entries {@code entries}，供本方法处理{@code zip}时使用
+     * @return 处理后的{@code zip}结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private byte[] zip(Map<String, byte[]> entries) {
         try {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -758,6 +976,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 整理{@code unzip}数据，供调用方遍历或继续处理。
+     *
+     * @param data 数据，后续用于处理{@code unzip}并传递处理结果
+     * @return {@code unzip}键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, byte[]> unzip(byte[] data) {
         Map<String, byte[]> entries = new LinkedHashMap<>();
         int totalSize = 0;
@@ -797,6 +1022,12 @@ public class ConfigMigrationPackageCodec {
         return entries;
     }
 
+    /**
+     * 校验入口路径；不满足约束时阻止后续处理。
+     *
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateEntryPath(String path) {
         if (!StringUtils.hasText(path) || path.startsWith("/") || path.contains("../")
                 || path.contains("..\\") || path.contains(":")) {
@@ -804,6 +1035,14 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 处理必填入口，并将结果传给后续步骤。
+     *
+     * @param entries {@code entries}，供本方法处理必填入口时使用
+     * @param path 路径，作为 {@code entries.get} 的输入影响后续处理
+     * @return 处理后的必填入口结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private byte[] requiredEntry(Map<String, byte[]> entries, String path) {
         byte[] value = entries.get(path);
         if (value == null) {
@@ -812,7 +1051,12 @@ public class ConfigMigrationPackageCodec {
         return value;
     }
 
-    /** 每次签名或验签读取最新系统密钥，避免修改设置后仍使用旧的进程级缓存。 */
+    /**
+     * 每次签名或验签读取最新系统密钥，避免修改设置后仍使用旧的进程级缓存。
+     *
+     * @param value 待处理HMAC的原始输入，结果供调用方继续使用
+     * @return 处理后的HMAC文本，供调用方比较或展示
+     */
     private String hmac(byte[] value) {
         String signingKey = globalSettings.readSystemValue(MIGRATION_SIGNING_KEY).textValue();
         try {
@@ -824,6 +1068,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String sha256(byte[] value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
@@ -832,6 +1083,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 写入字节；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入字节的原始输入，结果供调用方继续使用
+     * @return 写入后的字节结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private byte[] writeBytes(Object value) {
         try {
             return objectMapper.writeValueAsBytes(value);
@@ -840,6 +1098,13 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> readMap(String value) {
         try {
             return objectMapper.readValue(value, new TypeReference<>() {});
@@ -848,6 +1113,14 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param value 待读取映射的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续映射采用的处理分支
+     * @return 读取后的映射结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private <T> T readMap(byte[] value, TypeReference<T> type) {
         try {
             return objectMapper.readValue(value, type);
@@ -856,6 +1129,12 @@ public class ConfigMigrationPackageCodec {
         }
     }
 
+    /**
+     * 整理{@code cast}映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理{@code cast}映射列表的原始输入，结果供调用方继续使用
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> castMapList(Object value) {
         if (!(value instanceof Collection<?> collection)) {
@@ -872,6 +1151,12 @@ public class ConfigMigrationPackageCodec {
         return result;
     }
 
+    /**
+     * 整理字符串设置数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理字符串设置的原始输入，结果供调用方继续使用
+     * @return 配置迁移包编解码器集合，供调用方遍历或展示
+     */
     private Set<String> stringSet(Object value) {
         if (!(value instanceof Collection<?> collection)) {
             return Set.of();
@@ -882,7 +1167,15 @@ public class ConfigMigrationPackageCodec {
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
     }
 
-    /** 编码后的发布包数据(二进制内容、校验和、签名、文件名、清单)。 */
+    /**
+     * 编码后的发布包数据(二进制内容、校验和、签名、文件名、清单)。
+     *
+     * @param data 数据，后续用于处理已编码包并传递处理结果
+     * @param checksum {@code checksum}，保存在对象中供后续校验、查询或展示
+     * @param signature {@code signature}，保存在对象中供后续校验、查询或展示
+     * @param fileName 文件名称，后续用于处理已编码包时匹配或展示
+     * @param manifest {@code manifest}，保存在对象中供后续校验、查询或展示
+     */
     public record EncodedPackage(byte[] data,
                                  String checksum,
                                  String signature,
@@ -890,7 +1183,18 @@ public class ConfigMigrationPackageCodec {
                                  Map<String, Object> manifest) {
     }
 
-    /** 解码后的完整包及来源验签状态；signatureVerified=false 的包必须经人工确认才能入库。 */
+    /**
+     * 解码后的完整包及来源验签状态；signatureVerified=false 的包必须经人工确认才能入库。
+     *
+     * @param packageNo 包无，保存在对象中供后续校验、查询或展示
+     * @param migrationTag 迁移标签，保存在对象中供后续校验、查询或展示
+     * @param sourceEnvironment 来源环境，保存在对象中供后续校验、查询或展示
+     * @param checksum {@code checksum}，保存在对象中供后续校验、查询或展示
+     * @param signature {@code signature}，保存在对象中供后续校验、查询或展示
+     * @param signatureVerified {@code signature}已验证，保存在对象中供后续校验、查询或展示
+     * @param manifest {@code manifest}，保存在对象中供后续校验、查询或展示
+     * @param assets {@code assets}，保存在对象中供后续校验、查询或展示
+     */
     public record DecodedPackage(String packageNo,
                                  String migrationTag,
                                  String sourceEnvironment,
@@ -901,7 +1205,17 @@ public class ConfigMigrationPackageCodec {
                                  List<DecodedAsset> assets) {
     }
 
-    /** 解码后的单个迁移资产(类型、键、名称、源版本、源哈希、快照、依赖列表)。 */
+    /**
+     * 解码后的单个迁移资产(类型、键、名称、源版本、源哈希、快照、依赖列表)。
+     *
+     * @param assetType 资产类型标识，决定后续{@code decoded}资产采用的处理分支
+     * @param businessKey 业务键，后续用于授权校验、关联或幂等去重
+     * @param assetName 资产名称，后续用于处理{@code decoded}资产时匹配或展示
+     * @param sourceVersion 来源版本，保存在对象中供后续校验、查询或展示
+     * @param sourceHash 来源哈希，保存在对象中供后续校验、查询或展示
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param dependencies 依赖集合，保存在对象中供后续校验、查询或展示
+     */
     public record DecodedAsset(String assetType,
                                String businessKey,
                                String assetName,

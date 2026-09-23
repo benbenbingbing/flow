@@ -30,7 +30,7 @@ class AssigneeIncidentIdempotencyTest {
         ExistingIncidentJdbcTemplate jdbcTemplate =
                 new ExistingIncidentJdbcTemplate();
         AssigneeIncidentRecorder recorder = new AssigneeIncidentRecorder(
-                jdbcTemplate, new ObjectMapper(), com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                jdbcTemplate, new ObjectMapper(), com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
 
         String id = recorder.create(new AssigneeIncidentRecorder.CreateCommand(
                 "config-1", "definition-1", "instance-1", "task-1",
@@ -54,7 +54,7 @@ class AssigneeIncidentIdempotencyTest {
                 mock(AssigneeResolutionService.class);
         AssigneeIncidentService service = new AssigneeIncidentService(
                 jdbcTemplate, new ObjectMapper(), taskService,
-                runtimeService, resolutionService, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+                runtimeService, resolutionService, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbcTemplate, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
         AssigneeIncidentHandleRequest request =
                 new AssigneeIncidentHandleRequest();
         request.setRequestId("AUTO:incident-1:1");

@@ -4,8 +4,8 @@ import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonPrincipalType;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.process.assignment.application.*;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import com.workflow.process.assignment.infrastructure.flowable.PersonResolverTaskAssignmentListener;
@@ -75,12 +75,12 @@ class EmptyAssigneePolicyFlowableIntegrationTest {
         directory = mock(PersonResolverRuntimeService.class);
         var resolution = new AssigneeResolutionService(directory);
         var policyService = new EmptyAssigneePolicyService(new EmptyAssigneePolicyResolver(json), resolution,
-                new AssigneeIncidentRecorder(jdbc, json, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))), engine.getTaskService());
+                new AssigneeIncidentRecorder(jdbc, json, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))), engine.getTaskService());
         var listener = new PersonResolverTaskAssignmentListener(mock(ProcessVersionHistoryMapper.class),
                 engine.getRepositoryService(), engine.getRuntimeService(), engine.getTaskService(), directory, json);
         ReflectionTestUtils.setField(listener, "emptyAssigneePolicyService", policyService);
         engine.getRuntimeService().addEventListener(listener, FlowableEngineEventType.TASK_CREATED);
-        incidents = new AssigneeIncidentService(jdbc, json, engine.getTaskService(), engine.getRuntimeService(), resolution, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+        incidents = new AssigneeIncidentService(jdbc, json, engine.getTaskService(), engine.getRuntimeService(), resolution, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
     }
 
     @BeforeEach

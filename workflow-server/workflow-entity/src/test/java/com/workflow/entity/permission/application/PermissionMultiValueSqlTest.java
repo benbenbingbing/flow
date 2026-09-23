@@ -9,7 +9,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.permission.api.response.*;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import org.apache.ibatis.scripting.xmltags.XMLLanguageDriver;
 import org.apache.ibatis.session.Configuration;

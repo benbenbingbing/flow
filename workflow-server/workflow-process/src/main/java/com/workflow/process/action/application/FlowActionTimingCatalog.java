@@ -1,9 +1,9 @@
 package com.workflow.process.action.application;
 
-import com.workflow.contracts.action.FlowActionScopeType;
-import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
+import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
-import com.workflow.contracts.action.FlowActionTriggerTiming;
+import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -24,6 +24,11 @@ public class FlowActionTimingCatalog {
     /** 扩展触发时机提供器集合 */
     private final List<FlowActionTriggerProvider> providers;
 
+    /**
+     * 初始化流程动作时机目录，保存构造参数供后续方法使用。
+     *
+     * @param providers 提供者集合依赖，保存到当前对象供后续业务方法调用
+     */
     public FlowActionTimingCatalog(List<FlowActionTriggerProvider> providers) {
         this.providers = providers == null ? List.of() : providers;
     }
@@ -114,6 +119,12 @@ public class FlowActionTimingCatalog {
                 .findFirst();
     }
 
+    /**
+     * 解析作用域；输出作为后续校验或处理的输入。
+     *
+     * @param scopeType 作用域类型标识，决定后续作用域采用的处理分支
+     * @return 解析后的作用域结果，供调用方继续处理
+     */
     private FlowActionScopeType parseScope(String scopeType) {
         if (!StringUtils.hasText(scopeType)) {
             return null;
@@ -121,6 +132,12 @@ public class FlowActionTimingCatalog {
         return FlowActionScopeType.valueOf(scopeType.trim().toUpperCase(Locale.ROOT));
     }
 
+    /**
+     * 判断是否用户任务；判断结果决定调用方的后续分支。
+     *
+     * @param bpmnType BPMN类型标识，决定后续用户任务采用的处理分支
+     * @return 用户任务条件成立时为 true，否则为 false
+     */
     private boolean isUserTask(String bpmnType) {
         return StringUtils.hasText(bpmnType)
                 && bpmnType.toLowerCase(Locale.ROOT).contains("usertask");
@@ -130,6 +147,12 @@ public class FlowActionTimingCatalog {
      * 集合工具：将可迭代元素安全地追加到目标集合（忽略 null）。
      */
     private static class CollectionSupport {
+        /**
+         * 添加集合支持全部；结果供后续流程传递或持久化。
+         *
+         * @param target 目标，作为 {@code values.forEach} 的输入影响后续处理
+         * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+         */
         private static <T> void addAll(List<T> target, Iterable<T> values) {
             if (values == null) {
                 return;

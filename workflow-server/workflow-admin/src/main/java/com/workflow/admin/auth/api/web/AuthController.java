@@ -12,11 +12,11 @@ import com.workflow.admin.auth.application.LoginThrottleService;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.result.Result;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.admin.auth.api.request.ChangePasswordDTO;
 import com.workflow.admin.auth.api.request.LoginDTO;
@@ -71,6 +71,11 @@ public class AuthController {
 
     /**
      * 用户登录。
+     *
+     * @param loginDTO {@code login}DTO，作为 {@code loginThrottleService.assertAllowed} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理{@code login}
+     * @param response 响应，作为 {@code writeRefreshCookie} 的输入影响后续处理
+     * @return 处理后的{@code login}结果，供调用方继续处理
      */
     @PublicApi
     @PostMapping("/login")
@@ -147,6 +152,8 @@ public class AuthController {
 
     /**
      * 获取当前登录用户信息。
+     *
+     * @return 符合条件的{@code result<login}用户{@code vo>}结果，供调用方继续处理
      */
     @GetMapping("/current")
     public Result<LoginUserVO> getCurrentUser() {
@@ -188,6 +195,10 @@ public class AuthController {
 
     /**
      * 退出登录。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code logout}
+     * @param response 响应，作为 {@code clearRefreshCookie} 的输入影响后续处理
+     * @return 处理后的{@code logout}结果，供调用方继续处理
      */
     @PublicApi
     @PostMapping("/logout")
@@ -217,6 +228,10 @@ public class AuthController {
 
     /**
      * 使用 HttpOnly Refresh Token 恢复或延续当前浏览器会话。
+     *
+     * @param request 本次请求，后续经校验后用于处理刷新
+     * @param response 响应，作为 {@code writeRefreshCookie} 的输入影响后续处理
+     * @return 处理后的刷新结果，供调用方继续处理
      */
     @PublicApi
     @PostMapping("/refresh")
@@ -242,6 +257,8 @@ public class AuthController {
 
     /**
      * 获取当前登录用户的权限码集合。
+     *
+     * @return 符合条件的认证结果，供调用方继续处理
      */
     @GetMapping("/permissions")
     public Result<Set<String>> getPermissions() {
@@ -253,6 +270,12 @@ public class AuthController {
                 PermissionUtil.getUserPermissions(userId));
     }
 
+    /**
+     * 转换为{@code login}用户；输出作为后续校验或处理的输入。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 转换为后的{@code login}用户结果，供调用方继续处理
+     */
     private LoginUserVO toLoginUser(SysUser user) {
         LoginUserVO loginUser = new LoginUserVO();
         loginUser.setId(user.getId());
@@ -271,6 +294,12 @@ public class AuthController {
         return loginUser;
     }
 
+    /**
+     * 转换为{@code login}用户；输出作为后续校验或处理的输入。
+     *
+     * @param tokens {@code tokens}，作为 {@code loginUser.setToken} 的输入影响后续处理
+     * @return 转换为后的{@code login}用户结果，供调用方继续处理
+     */
     private LoginUserVO toLoginUser(
             AuthTokenBundle tokens) {
         LoginUserVO loginUser =
@@ -281,6 +310,12 @@ public class AuthController {
         return loginUser;
     }
 
+    /**
+     * 写入刷新{@code cookie}；后续读取或执行将使用更新后的状态。
+     *
+     * @param response 响应，供本方法写入刷新{@code cookie}时使用
+     * @param tokens {@code tokens}，供本方法写入刷新{@code cookie}时使用
+     */
     private void writeRefreshCookie(
             HttpServletResponse response,
             AuthTokenBundle tokens) {
@@ -306,6 +341,11 @@ public class AuthController {
                 cookie.toString());
     }
 
+    /**
+     * 清理刷新{@code cookie}；后续读取或执行将使用更新后的状态。
+     *
+     * @param response 响应，供本方法清理刷新{@code cookie}时使用
+     */
     private void clearRefreshCookie(
             HttpServletResponse response) {
         ResponseCookie cookie = ResponseCookie
@@ -324,6 +364,12 @@ public class AuthController {
                 cookie.toString());
     }
 
+    /**
+     * 读取刷新令牌；查询结果供调用方展示或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于读取刷新令牌
+     * @return 读取后的刷新令牌文本，供调用方比较或展示
+     */
     private String readRefreshToken(
             HttpServletRequest request) {
         if (request.getCookies() == null) {
@@ -339,6 +385,14 @@ public class AuthController {
                 .orElse(null);
     }
 
+    /**
+     * 记录{@code login}；供后续追溯或审计使用。
+     *
+     * @param attemptedUsername {@code attempted}用户名，后续用于记录{@code login}时匹配或展示
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param result 结果，作为 {@code riskLevel} 的输入影响后续处理
+     * @param errorMessage 错误消息，供本方法记录{@code login}时使用
+     */
     private void recordLogin(
             String attemptedUsername,
             SysUser user,
@@ -371,6 +425,12 @@ public class AuthController {
                 .build());
     }
 
+    /**
+     * 生成{@code mask}用户名文本，供后续匹配或展示。
+     *
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @return 处理后的{@code mask}用户名文本，供调用方比较或展示
+     */
     private String maskUsername(String username) {
         if (username == null || username.length() <= 2) {
             return "***";

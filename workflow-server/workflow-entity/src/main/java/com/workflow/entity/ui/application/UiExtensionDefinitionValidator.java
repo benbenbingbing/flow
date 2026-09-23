@@ -30,6 +30,12 @@ public class UiExtensionDefinitionValidator {
 
     private final JsonDocumentCodec codec;
 
+    /**
+     * 校验执行策略；不满足约束时阻止后续处理。
+     *
+     * @param policy 策略内容，决定后续执行策略的处理规则
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void validateExecutionPolicy(
             Map<String, Object> policy) {
         if (policy == null) {
@@ -62,6 +68,12 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 校验结构定义；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code validateSchemaNode} 的输入影响后续处理
+     * @param label 标签，后续用于校验结构定义时匹配或展示
+     */
     public void validateSchemaDefinition(
             Map<String, Object> schema,
             String label) {
@@ -70,6 +82,13 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 校验结构值；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code validateSchemaValueNode} 的输入影响后续处理
+     * @param value 待校验结构值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验结构值时匹配或展示
+     */
     public void validateSchemaValue(
             Map<String, Object> schema,
             Object value,
@@ -84,6 +103,13 @@ public class UiExtensionDefinitionValidator {
                 "$");
     }
 
+    /**
+     * 校验无禁止键集合；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验无禁止键集合的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public void validateNoForbiddenKeys(
             Object value,
             String path) {
@@ -110,6 +136,13 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 校验结构节点；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code schemaType} 的输入影响后续处理
+     * @param label 标签，后续用于校验结构节点时匹配或展示
+     * @param path 路径，作为 {@code schemaType} 的输入影响后续处理
+     */
     private void validateSchemaNode(
             Map<?, ?> schema,
             String label,
@@ -200,6 +233,14 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 生成结构类型文本，供后续匹配或展示。
+     *
+     * @param schema 结构，供本方法处理结构类型时使用
+     * @param label 标签，后续用于处理结构类型时匹配或展示
+     * @param path 路径，作为 {@code schemaError} 的输入影响后续处理
+     * @return 处理后的结构类型文本，供调用方比较或展示
+     */
     private String schemaType(
             Map<?, ?> schema,
             String label,
@@ -224,6 +265,13 @@ public class UiExtensionDefinitionValidator {
         return type;
     }
 
+    /**
+     * 处理JSON兼容值，并将结果传给后续步骤。
+     *
+     * @param value 待处理JSON兼容值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理JSON兼容值时匹配或展示
+     * @return 处理后的JSON兼容值结果，供调用方继续处理
+     */
     private Object jsonCompatibleValue(
             Object value,
             String label) {
@@ -242,6 +290,14 @@ public class UiExtensionDefinitionValidator {
                 label + " JSON转换");
     }
 
+    /**
+     * 校验结构值节点；不满足约束时阻止后续处理。
+     *
+     * @param schema 结构，作为 {@code schemaType} 的输入影响后续处理
+     * @param value 待校验结构值节点的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验结构值节点时匹配或展示
+     * @param path 路径，作为 {@code schemaType} 的输入影响后续处理
+     */
     private void validateSchemaValueNode(
             Map<?, ?> schema,
             Object value,
@@ -310,6 +366,13 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 判断是否匹配结构类型；判断结果决定调用方的后续分支。
+     *
+     * @param type 类型标识，决定后续结构类型采用的处理分支
+     * @param value 待判断是否匹配结构类型的原始输入，结果供调用方继续使用
+     * @return 结构类型条件成立时为 true，否则为 false
+     */
     private boolean matchesSchemaType(
             String type,
             Object value) {
@@ -326,6 +389,12 @@ public class UiExtensionDefinitionValidator {
         };
     }
 
+    /**
+     * 判断是否{@code finite}数值；判断结果决定调用方的后续分支。
+     *
+     * @param number 数值，供本方法判断是否{@code finite}数值时使用
+     * @return {@code finite}数值条件成立时为 true，否则为 false
+     */
     private boolean isFiniteNumber(Number number) {
         if (number instanceof Double value) {
             return Double.isFinite(value);
@@ -336,6 +405,12 @@ public class UiExtensionDefinitionValidator {
         return true;
     }
 
+    /**
+     * 判断是否整数；判断结果决定调用方的后续分支。
+     *
+     * @param number 数值，作为 {@code BigDecimal} 的输入影响后续处理
+     * @return 整数条件成立时为 true，否则为 false
+     */
     private boolean isInteger(Number number) {
         if (!isFiniteNumber(number)) {
             return false;
@@ -366,6 +441,12 @@ public class UiExtensionDefinitionValidator {
         }
     }
 
+    /**
+     * 生成实际类型文本，供后续匹配或展示。
+     *
+     * @param value 待处理实际类型的原始输入，结果供调用方继续使用
+     * @return 处理后的实际类型文本，供调用方比较或展示
+     */
     private String actualType(Object value) {
         if (value == null) {
             return "null";
@@ -388,6 +469,13 @@ public class UiExtensionDefinitionValidator {
         return value.getClass().getSimpleName();
     }
 
+    /**
+     * 构造结构错误异常，供调用方区分失败原因。
+     *
+     * @param label 标签，后续用于处理结构错误时匹配或展示
+     * @param detail 详情，作为 {@code ValidationException} 的输入影响后续处理
+     * @return 处理后的结构错误结果，供调用方继续处理
+     */
     private ValidationException schemaError(
             String label,
             String detail) {
@@ -395,9 +483,17 @@ public class UiExtensionDefinitionValidator {
                 label + " 校验失败: " + detail);
     }
 
+    /**
+     * 负责校验的业务处理；协调校验、状态变化及后续结果传递。
+     */
     public static final class ValidationException
             extends IllegalArgumentException {
 
+        /**
+         * 初始化校验异常，保存构造参数供后续方法使用。
+         *
+         * @param message 消息，保存在对象中供后续校验、查询或展示
+         */
         private ValidationException(String message) {
             super(message);
         }

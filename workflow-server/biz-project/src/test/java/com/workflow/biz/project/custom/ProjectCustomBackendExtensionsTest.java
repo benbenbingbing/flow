@@ -2,30 +2,30 @@ package com.workflow.biz.project.custom;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
-import com.workflow.contracts.bootstrap.port.BootstrapJobCoordinator;
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.list.spi.DataScopePredicateProvider;
 import com.workflow.contracts.entity.list.spi.EntityListActionProvider;
 import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
-import com.workflow.contracts.entity.list.EntityListRuntimeContext;
+import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.IdentityUser;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveResult;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.identity.model.IdentityUser;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveResult;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.contracts.ui.CommonInvocationContext;
-import com.workflow.contracts.ui.EntityDescriptor;
-import com.workflow.contracts.ui.FormInvocationContext;
-import com.workflow.contracts.ui.ListInvocationContext;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.contracts.entity.ui.context.CommonInvocationContext;
+import com.workflow.contracts.entity.ui.model.EntityDescriptor;
+import com.workflow.contracts.entity.ui.context.FormInvocationContext;
+import com.workflow.contracts.entity.ui.context.ListInvocationContext;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.result.PageResult;
@@ -222,10 +222,10 @@ class ProjectCustomBackendExtensionsTest {
         try (AnnotationConfigApplicationContext context =
                      customExtensionContext()) {
             assertTrue(context.getBeansOfType(
-                            MigrationAssetHandler.class)
+                            MigrationAssetPort.class)
                     .isEmpty());
             assertTrue(context.getBeansOfType(
-                            BootstrapJobCoordinator.class)
+                            BootstrapJobPort.class)
                     .isEmpty());
             assertTrue(context.getBeansOfType(
                             UiExtensionCatalogPort.class)

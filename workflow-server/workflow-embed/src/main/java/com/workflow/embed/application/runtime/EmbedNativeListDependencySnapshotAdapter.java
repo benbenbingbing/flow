@@ -1,7 +1,7 @@
 package com.workflow.embed.application.runtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedNativeListDependencyClosure;
+import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosure;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListDependencySnapshotPort;
 import com.workflow.embed.application.port.EmbedRuntimeReleasePort;
 import com.workflow.embed.domain.EmbedRuntimeReleaseSnapshot;
@@ -17,6 +17,12 @@ public class EmbedNativeListDependencySnapshotAdapter
     private final EmbedRuntimeReleasePort releasePort;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式原生列表依赖快照适配器，保存构造参数供后续方法使用。
+     *
+     * @param releasePort 发布版本端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedNativeListDependencySnapshotAdapter(
             EmbedRuntimeReleasePort releasePort,
             ObjectMapper objectMapper) {
@@ -26,6 +32,9 @@ public class EmbedNativeListDependencySnapshotAdapter
 
     /**
      * 同时校验 sessionId、viewId、viewReleaseId、闭包版本和摘要；任一不符即拒绝。
+     *
+     * @param reference 引用，作为 {@code releasePort.find} 的输入影响后续处理
+     * @return 读取后的嵌入式原生列表依赖快照结果，供调用方继续处理
      */
     @Override
     public EmbedNativeListDependencyClosure read(Reference reference) {

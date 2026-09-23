@@ -1,14 +1,15 @@
 package com.workflow.entity.data;
 
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionDatasetRowMapper;
 import com.workflow.embed.management.infrastructure.persistence.EmbedOperationsMapper;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.process.instance.infrastructure.persistence.mapper.StartedProcessPageMapper;
-import com.workflow.integration.database.api.*;
 import com.workflow.core.database.*;
 import com.workflow.config.database.*;
 import org.apache.ibatis.mapping.Environment;
@@ -240,7 +241,7 @@ class MySqlRuntimePaginationDatabaseTest {
             com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils.getGlobalConfig(config)
                     .getDbConfig().setLogicDeleteField("deleted");
             config.addInterceptor(new DatabaseMybatisConfiguration()
-                    .mybatisPlusInterceptor(new com.workflow.integration.database.dialect.MySqlSchemaDdlDialect()));
+                    .mybatisPlusInterceptor(new MySqlSchemaDdlDialect()));
             for (var mapper : mappers) config.addMapper(mapper);
             return new SqlSessionFactoryBuilder().build(config).openSession(autoCommit);
         }

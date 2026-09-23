@@ -121,6 +121,11 @@ public class DataPermissionEngine {
      * 核心权限计算逻辑：只认当前列表上的绑定；
      * listKey 为空的旧实体默认绑定不参与；无 ALLOW 时执行列表的安全默认策略，再扣除本列表 DENY。
      * 实体级 team 开关不再叠加，相关人只走 TEAM 规则绑定。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 计算后的数据权限{@code engine}结果，供调用方继续处理
      */
     private CalculationResult calculate(
             String entityCode,
@@ -280,6 +285,13 @@ public class DataPermissionEngine {
     /**
      * 解析未绑定 ALLOW 规则时的安全策略。旧快照仅在观察期兼容放行并写审计；
      * 新快照缺少列表配置一律拒绝，防止未知入口退化为全量访问。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param snapshot 快照，作为 {@code detail.put} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param sqlParameters SQL参数集合，作为 {@code UnboundDecision} 的输入影响后续处理
+     * @return 解析后的{@code unbound}决策结果，供调用方继续处理
      */
     private UnboundDecision resolveUnboundDecision(
             String entityCode,
@@ -333,6 +345,16 @@ public class DataPermissionEngine {
                 "未绑定允许规则，安全默认策略拒绝全部数据");
     }
 
+    /**
+     * 构建委托允许；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param snapshot 快照，供本方法构建委托允许时使用
+     * @param policyMap 策略映射，作为 {@code compileDelegatedPolicy} 的输入影响后续处理
+     * @param recipient {@code recipient}，作为 {@code delegationMapper.findActiveByToUserId} 的输入影响后续处理
+     * @param sqlParameters SQL参数集合，作为 {@code personalFilter} 的输入影响后续处理
+     * @return 构建后的委托允许文本，供调用方比较或展示
+     */
     private String buildDelegatedAllow(
             String entityCode,
             EntityListScopeSnapshotDTO snapshot,
@@ -374,6 +396,15 @@ public class DataPermissionEngine {
         return or(parts);
     }
 
+    /**
+     * 编译委托策略；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param policy 策略内容，决定后续委托策略的处理规则
+     * @param delegator {@code delegator}，供本方法编译委托策略时使用
+     * @param sqlParameters SQL参数集合，供本方法编译委托策略时使用
+     * @return 编译后的委托策略文本，供调用方比较或展示
+     */
     private String compileDelegatedPolicy(
             String entityCode,
             EntityListScopePolicyDTO policy,
@@ -386,6 +417,16 @@ public class DataPermissionEngine {
         return sqlBuilder.buildFilterSql(entityCode, policy.getFilterConfig(), delegator, sqlParameters);
     }
 
+    /**
+     * 编译委托条件；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param config 配置内容，决定后续委托条件的处理规则
+     * @param delegator {@code delegator}，作为 {@code sqlBuilder.buildFilterSql} 的输入影响后续处理
+     * @param sqlParameters SQL参数集合，作为 {@code sqlBuilder.buildFilterSql} 的输入影响后续处理
+     * @return 编译后的委托条件文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String compileDelegatedCondition(
             String entityCode,
             String config,
@@ -403,13 +444,27 @@ public class DataPermissionEngine {
         }
     }
 
-    /** 本人兜底与委托范围复用标准编译器，与显式允许/拒绝规则共享绑定参数。 */
+    /**
+     * 本人兜底与委托范围复用标准编译器，与显式允许/拒绝规则共享绑定参数。
+     *
+     * @param type 类型标识，决定后续{@code personal}过滤采用的处理分支
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param parameters 参数集合，作为 {@code sqlBuilder.buildFilterSql} 的输入影响后续处理
+     * @return 处理后的{@code personal}过滤文本，供调用方比较或展示
+     */
     private String personalFilter(String type, SysUser user, Map<String, Object> parameters) {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType(type);
         return sqlBuilder.buildFilterSql(null, filter, user, parameters);
     }
 
+    /**
+     * 判断是否有效；判断结果决定调用方的后续分支。
+     *
+     * @param binding 绑定，供本方法判断是否有效时使用
+     * @param now 当前时间，供本方法判断是否有效时使用
+     * @return 有效条件成立时为 true，否则为 false
+     */
     private boolean isEffective(
             EntityListScopeBindingDTO binding,
             LocalDateTime now) {
@@ -419,6 +474,14 @@ public class DataPermissionEngine {
                 || !binding.getEffectiveEndTime().isBefore(now));
     }
 
+    /**
+     * 处理详情，并将结果传给后续步骤。
+     *
+     * @param policy 策略内容，决定后续详情的处理规则
+     * @param binding 绑定，作为 {@code detail.setRuleEffect} 的输入影响后续处理
+     * @param sql SQL，作为 {@code detail.setSql} 的输入影响后续处理
+     * @return 处理后的详情结果，供调用方继续处理
+     */
     private PermissionPreviewDTO.MatchedRuleDTO detail(
             EntityListScopePolicyDTO policy,
             EntityListScopeBindingDTO binding,
@@ -432,6 +495,14 @@ public class DataPermissionEngine {
         return detail;
     }
 
+    /**
+     * 处理已拒绝，并将结果传给后续步骤。
+     *
+     * @param reason 原因，供本方法处理已拒绝时使用
+     * @param releaseVersion 发布版本，供本方法处理已拒绝时使用
+     * @param matched {@code matched}，供本方法处理已拒绝时使用
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private CalculationResult denied(
             String reason,
             Integer releaseVersion,
@@ -439,6 +510,15 @@ public class DataPermissionEngine {
         return denied(reason, releaseVersion, matched, "INHERIT");
     }
 
+    /**
+     * 处理已拒绝，并将结果传给后续步骤。
+     *
+     * @param reason 原因，作为 {@code result.setExplanation} 的输入影响后续处理
+     * @param releaseVersion 发布版本，作为 {@code result.setReleaseVersion} 的输入影响后续处理
+     * @param matched {@code matched}，作为 {@code result.setMatchedRuleNames} 的输入影响后续处理
+     * @param mode 模式标识，决定后续已拒绝采用的处理分支
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private CalculationResult denied(
             String reason,
             Integer releaseVersion,
@@ -454,6 +534,14 @@ public class DataPermissionEngine {
         return new CalculationResult(result, matched);
     }
 
+    /**
+     * 生成{@code explanation}文本，供后续匹配或展示。
+     *
+     * @param unboundAllow {@code unbound}允许，供本方法处理{@code explanation}时使用
+     * @param denies {@code denies}，供本方法处理{@code explanation}时使用
+     * @param unboundExplanation {@code unbound}{@code explanation}，供本方法处理{@code explanation}时使用
+     * @return 处理后的{@code explanation}文本，供调用方比较或展示
+     */
     private String explanation(
             boolean unboundAllow,
             List<String> denies,
@@ -467,6 +555,12 @@ public class DataPermissionEngine {
                 + (denies.isEmpty() ? "" : "，最后扣除拒绝范围");
     }
 
+    /**
+     * 生成或文本，供后续匹配或展示。
+     *
+     * @param parts {@code parts}，供本方法处理或时使用
+     * @return 处理后的或文本，供调用方比较或展示
+     */
     private String or(List<String> parts) {
         List<String> valid = parts == null ? List.of() : parts.stream()
                 .filter(StringUtils::hasText)
@@ -484,6 +578,13 @@ public class DataPermissionEngine {
                 .collect(java.util.stream.Collectors.joining(" OR "));
     }
 
+    /**
+     * 生成与文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理与时使用
+     * @param right 右侧，作为 {@code AND} 的输入影响后续处理
+     * @return 处理后的与文本，供调用方比较或展示
+     */
     private String and(String left, String right) {
         if (!StringUtils.hasText(left) || !StringUtils.hasText(right)) {
             return null;
@@ -500,6 +601,13 @@ public class DataPermissionEngine {
         return "(" + left + ") AND (" + right + ")";
     }
 
+    /**
+     * 生成或非空值文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理或非空值时使用
+     * @param right 右侧，作为 {@code OR} 的输入影响后续处理
+     * @return 处理后的或非空值文本，供调用方比较或展示
+     */
     private String orNonNull(String left, String right) {
         if (!StringUtils.hasText(left)) {
             return right;
@@ -513,12 +621,26 @@ public class DataPermissionEngine {
         return "(" + left + ") OR (" + right + ")";
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : fallback;
     }
 
+    /**
+     * 判断是否具有{@code bypass}；判断结果决定调用方的后续分支。
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param permission 数据访问权限，后续与查询条件合并以限制可见记录
+     * @return {@code bypass}条件成立时为 true，否则为 false
+     */
     private boolean hasBypass(String userId, String permission) {
         try {
             return PermissionUtil.getUserPermissions(userId).contains(permission);
@@ -528,18 +650,34 @@ public class DataPermissionEngine {
         }
     }
 
+    /**
+     * 封装{@code calculation}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param result 结果，保存在对象中供后续校验、查询或展示
+     * @param matchedRules {@code matched}规则集合，保存在对象中供后续校验、查询或展示
+     */
     private record CalculationResult(
             DataPermissionResult result,
             List<PermissionPreviewDTO.MatchedRuleDTO> matchedRules) {
     }
 
-    /** 高风险只读入口使用的结构化列表权限证据。 */
+    /**
+     * 高风险只读入口使用的结构化列表权限证据。
+     *
+     * @param permission 数据访问权限，后续与查询条件合并以限制可见记录
+     * @param explicitAllowMatched {@code explicit}允许{@code matched}，保存在对象中供后续校验、查询或展示
+     */
     public record ExplicitListPermission(
             DataPermissionResult permission,
             boolean explicitAllowMatched) {
     }
 
-    /** 未绑定规则决策结果；sql 为空表示拒绝全部。 */
+    /**
+     * 未绑定规则决策结果；sql 为空表示拒绝全部。
+     *
+     * @param sql SQL，保存在对象中供后续校验、查询或展示
+     * @param explanation {@code explanation}，保存在对象中供后续校验、查询或展示
+     */
     private record UnboundDecision(String sql, String explanation) {
     }
 }

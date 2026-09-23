@@ -47,12 +47,24 @@ public final class NimbusEmbedSignedAssertionVerifier
     private final ObjectMapper objectMapper;
     private final EmbedRemoteJwkSetPort remoteJwkSetPort;
 
+    /**
+     * 初始化{@code nimbus}嵌入式已签名断言验证器，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     public NimbusEmbedSignedAssertionVerifier(ObjectMapper objectMapper) {
         this(objectMapper, (provider, forceRefresh) -> {
             throw new IllegalStateException("Remote JWK Set loader is unavailable");
         });
     }
 
+    /**
+     * 初始化{@code nimbus}嵌入式已签名断言验证器，保存构造参数供后续方法使用。
+     *
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param remoteJwkSetPort {@code remote}{@code jwk}设置端口依赖，保存到当前对象供后续业务方法调用
+     */
     public NimbusEmbedSignedAssertionVerifier(
             ObjectMapper objectMapper,
             EmbedRemoteJwkSetPort remoteJwkSetPort) {
@@ -63,6 +75,11 @@ public final class NimbusEmbedSignedAssertionVerifier
     /**
      * 完整验证签名、算法、kid、issuer、audience、时间窗、subject 和 jti 后才返回主体。
      * 任一失败均折叠为同一个 403，调用方和日志都不会拿到未经验证的 Claims。
+     *
+     * @param provider 提供者，作为 {@code validateProvider} 的输入影响后续处理
+     * @param assertion 断言，作为 {@code SignedJWT.parse} 的输入影响后续处理
+     * @param now 当前时间，供本方法验证{@code nimbus}嵌入式已签名断言验证器时使用
+     * @return 验证后的{@code nimbus}嵌入式已签名断言验证器结果，供调用方继续处理
      */
     @Override
     public VerifiedExternalSubject verify(
@@ -103,6 +120,11 @@ public final class NimbusEmbedSignedAssertionVerifier
         }
     }
 
+    /**
+     * 校验提供者；不满足约束时阻止后续处理。
+     *
+     * @param provider 提供者，作为 {@code equals} 的输入影响后续处理
+     */
     private static void validateProvider(EmbedIdentityProviderSnapshot provider) {
         if (provider == null
                 || !provider.isActive()
@@ -128,6 +150,11 @@ public final class NimbusEmbedSignedAssertionVerifier
         }
     }
 
+    /**
+     * 校验类型；不满足约束时阻止后续处理。
+     *
+     * @param jwt {@code jwt}，供本方法校验类型时使用
+     */
     private static void validateType(SignedJWT jwt) {
         JOSEObjectType type = jwt.getHeader().getType();
         if (type != null && !JOSEObjectType.JWT.equals(type)) {
@@ -135,6 +162,15 @@ public final class NimbusEmbedSignedAssertionVerifier
         }
     }
 
+    /**
+     * 查询{@code verification}键；查询结果供调用方展示或继续处理。
+     *
+     * @param provider 提供者，作为 {@code jwksJson} 的输入影响后续处理
+     * @param jwt {@code jwt}，供本方法查询{@code verification}键时使用
+     * @param algorithm {@code algorithm}，供本方法查询{@code verification}键时使用
+     * @return 查询后的{@code verification}键结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private JWK selectVerificationKey(
             EmbedIdentityProviderSnapshot provider,
             SignedJWT jwt,
@@ -167,6 +203,13 @@ public final class NimbusEmbedSignedAssertionVerifier
         return candidates.get(0);
     }
 
+    /**
+     * 生成JWKSJSON文本，供后续匹配或展示。
+     *
+     * @param provider 提供者，作为 {@code equals} 的输入影响后续处理
+     * @param forceRefresh {@code force}刷新，供本方法处理JWKSJSON时使用
+     * @return 处理后的JWKSJSON文本，供调用方比较或展示
+     */
     private String jwksJson(
             EmbedIdentityProviderSnapshot provider,
             boolean forceRefresh) {
@@ -175,6 +218,13 @@ public final class NimbusEmbedSignedAssertionVerifier
                 : provider.jwksJson();
     }
 
+    /**
+     * 解析公开键集合；输出作为后续校验或处理的输入。
+     *
+     * @param jwksJson JWKSJSON，作为 {@code rejectPrivateJwkMaterial} 的输入影响后续处理
+     * @return {@code jwk}集合，供调用方遍历或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private List<JWK> parsePublicKeys(String jwksJson) throws Exception {
         rejectPrivateJwkMaterial(jwksJson);
         List<JWK> keys = JWKSet.parse(jwksJson).getKeys();
@@ -188,6 +238,12 @@ public final class NimbusEmbedSignedAssertionVerifier
         return keys;
     }
 
+    /**
+     * 处理驳回{@code private}{@code jwk}材料，并将结果传给后续步骤。
+     *
+     * @param jwksJson JWKSJSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private void rejectPrivateJwkMaterial(String jwksJson) throws Exception {
         JsonNode root = objectMapper.readTree(jwksJson);
         JsonNode keys = root == null ? null : root.get("keys");
@@ -211,6 +267,14 @@ public final class NimbusEmbedSignedAssertionVerifier
         }
     }
 
+    /**
+     * 处理验证器，并将结果传给后续步骤。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param algorithm {@code algorithm}，供本方法处理验证器时使用
+     * @return 处理后的验证器结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private static JWSVerifier verifier(JWK key, JWSAlgorithm algorithm)
             throws Exception {
         if (algorithm.getName().startsWith("RS")
@@ -232,6 +296,12 @@ public final class NimbusEmbedSignedAssertionVerifier
         throw invalid();
     }
 
+    /**
+     * 处理预期{@code curve}，并将结果传给后续步骤。
+     *
+     * @param algorithm {@code algorithm}，供本方法处理预期{@code curve}时使用
+     * @return 处理后的预期{@code curve}结果，供调用方继续处理
+     */
     private static Curve expectedCurve(JWSAlgorithm algorithm) {
         return switch (algorithm.getName()) {
             case "ES256" -> Curve.P_256;
@@ -241,6 +311,16 @@ public final class NimbusEmbedSignedAssertionVerifier
         };
     }
 
+    /**
+     * 处理已验证声明集合，并将结果传给后续步骤。
+     *
+     * @param provider 提供者，作为 {@code Duration.ofSeconds} 的输入影响后续处理
+     * @param claims 声明集合，作为 {@code instant} 的输入影响后续处理
+     * @param expectedAudiences 预期{@code audiences}，供本方法处理已验证声明集合时使用
+     * @param now 当前时间，作为 {@code notBefore.isAfter} 的输入影响后续处理
+     * @return 处理后的已验证声明集合结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private VerifiedExternalSubject verifiedClaims(
             EmbedIdentityProviderSnapshot provider,
             JWTClaimsSet claims,
@@ -284,6 +364,14 @@ public final class NimbusEmbedSignedAssertionVerifier
                 expiresAt);
     }
 
+    /**
+     * 解析必填设置；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @param maxValueLength 最大值长度，供本方法解析必填设置时使用
+     * @return {@code nimbus}嵌入式已签名断言验证器集合，供调用方遍历或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private Set<String> parseRequiredSet(String json, int maxValueLength) throws Exception {
         List<String> values = objectMapper.readValue(json, STRING_LIST);
         if (values == null || values.isEmpty() || values.size() > 32) {
@@ -299,6 +387,13 @@ public final class NimbusEmbedSignedAssertionVerifier
         return Set.copyOf(result);
     }
 
+    /**
+     * 生成必填认领文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填认领的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，供本方法处理必填认领时使用
+     * @return 处理后的必填认领文本，供调用方比较或展示
+     */
     private static String requiredClaim(String value, int maxLength) {
         if (value == null || value.isBlank() || value.length() > maxLength) {
             throw invalid();
@@ -306,14 +401,31 @@ public final class NimbusEmbedSignedAssertionVerifier
         return value;
     }
 
+    /**
+     * 判断是否具有文本；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否具有文本的原始输入，结果供调用方继续使用
+     * @return 文本条件成立时为 true，否则为 false
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * 处理绝对时间，并将结果传给后续步骤。
+     *
+     * @param value 待处理绝对时间的原始输入，结果供调用方继续使用
+     * @return 处理后的绝对时间结果，供调用方继续处理
+     */
     private static Instant instant(Date value) {
         return value == null ? null : value.toInstant();
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedException invalid() {
         return new EmbedException(
                 403,

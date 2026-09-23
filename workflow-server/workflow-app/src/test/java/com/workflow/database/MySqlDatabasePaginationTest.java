@@ -1,12 +1,12 @@
 package com.workflow.database;
 
-import com.workflow.integration.database.api.DatabaseJdbcProfiles;
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
 import com.workflow.core.database.InitializedDriverDataSource;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.mapping.Environment;

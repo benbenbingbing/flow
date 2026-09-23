@@ -312,6 +312,12 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 转换为节点配置；输出作为后续校验或处理的输入。
+     *
+     * @param dto DTO，作为 {@code node.setId} 的输入影响后续处理
+     * @return 转换为后的节点配置结果，供调用方继续处理
+     */
     private NodeConfig toNodeConfig(NodeConfigDTO dto) {
         NodeConfig node = new NodeConfig();
         node.setId(dto.getId());
@@ -323,6 +329,13 @@ public class ProcessDefinitionNodeSyncService {
         return node;
     }
 
+    /**
+     * 按流程ID查询流程定义节点同步；结果供后续展示或处理。
+     *
+     * @param processConfigId 流程配置ID，后续用于读取实体编码流程ID时定位或关联目标
+     * @return 读取后的实体编码流程ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String getEntityCodeByProcessId(String processConfigId) {
         List<EntityDefinition> bindings = entityDefinitionMapper
                 .findAllByProcessDefinitionId(processConfigId);
@@ -335,6 +348,15 @@ public class ProcessDefinitionNodeSyncService {
                 ? null : bindings.get(0).getEntityCode();
     }
 
+    /**
+     * 解析节点集合类型；输出作为后续校验或处理的输入。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析节点集合类型时定位或关联目标
+     * @param bpmnXml BPMNXML，作为 {@code pattern.matcher} 的输入影响后续处理
+     * @param tagName 标签名称，后续用于解析节点集合类型时匹配或展示
+     * @param nodeType 节点类型标识，决定后续节点集合类型采用的处理分支
+     * @return 解析后的节点集合类型结果，供调用方继续处理
+     */
     private int parseNodesByType(String processConfigId, String bpmnXml, String tagName, NodeConfig.NodeType nodeType) {
         int count = 0;
         Pattern pattern = Pattern.compile(
@@ -362,6 +384,13 @@ public class ProcessDefinitionNodeSyncService {
         return count;
     }
 
+    /**
+     * 解析用户任务集合；输出作为后续校验或处理的输入。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析用户任务集合时定位或关联目标
+     * @param bpmnXml BPMNXML，作为 {@code pattern.matcher} 的输入影响后续处理
+     * @return 解析后的用户任务集合结果，供调用方继续处理
+     */
     private int parseUserTasks(String processConfigId, String bpmnXml) {
         int count = 0;
         Pattern pattern = Pattern.compile(
@@ -387,6 +416,17 @@ public class ProcessDefinitionNodeSyncService {
         return count;
     }
 
+    /**
+     * 保存节点与{@code get}ID；后续读取或执行将使用更新后的状态。
+     *
+     * @param processConfigId 流程配置ID，后续用于保存节点与{@code get}ID时定位或关联目标
+     * @param nodeId 节点ID，后续用于保存节点与{@code get}ID时定位或关联目标
+     * @param nodeName 节点名称，后续用于保存节点与{@code get}ID时匹配或展示
+     * @param nodeType 节点类型标识，决定后续节点与{@code get}ID采用的处理分支
+     * @param content 内容，后续用于保存节点与{@code get}ID并传递处理结果
+     * @return 保存后的节点与{@code get}ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String saveNodeAndGetId(String processConfigId,
                                     String nodeId,
                                     String nodeName,
@@ -420,6 +460,10 @@ public class ProcessDefinitionNodeSyncService {
      * <p>{@code skipNode=true} 直接表示始终跳过；false 只表示没有设计态强制标记，
      * 不能遮蔽部署 XML 中实际恒真的原生表达式。任意其他条件表达式仍不得被当作
      * 无需办理人的节点。</p>
+     *
+     * @param nodeType 节点类型标识，决定后续跳过节点采用的处理分支
+     * @param content 内容，后续用于解析跳过节点并传递处理结果
+     * @return 跳过节点条件成立时为 true，否则为 false
      */
     private boolean resolveSkipNode(NodeConfig.NodeType nodeType, String content) {
         if (nodeType != NodeConfig.NodeType.USER_TASK) {
@@ -448,12 +492,25 @@ public class ProcessDefinitionNodeSyncService {
                                 "(?is)<!\\[CDATA\\[(.*?)]]>", "$1").trim());
     }
 
+    /**
+     * 判断是否旧版{@code always}跳过表达式；判断结果决定调用方的后续分支。
+     *
+     * @param expression 表达式，供本方法判断是否旧版{@code always}跳过表达式时使用
+     * @return 旧版{@code always}跳过表达式条件成立时为 true，否则为 false
+     */
     private boolean isLegacyAlwaysSkipExpression(String expression) {
         return expression != null
                 && expression.trim().matches(
                         "(?i)^[#$]\\{\\s*(?:true|skipNodeEnabled)\\s*}$");
     }
 
+    /**
+     * 解析节点配置ID；输出作为后续校验或处理的输入。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析节点配置ID时定位或关联目标
+     * @param nodeId 节点ID，后续用于解析节点配置ID时定位或关联目标
+     * @return 解析后的节点配置ID文本，供调用方比较或展示
+     */
     private String resolveNodeConfigId(String processConfigId, String nodeId) {
         List<NodeConfig> nodes = nodeMapper.findByProcessConfigId(processConfigId);
         for (NodeConfig node : nodes) {
@@ -464,6 +521,12 @@ public class ProcessDefinitionNodeSyncService {
         return null;
     }
 
+    /**
+     * 解析与保存办理人{@code configs}；输出作为后续校验或处理的输入。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于解析与保存办理人{@code configs}时定位或关联目标
+     * @param content 内容，后续用于解析与保存办理人{@code configs}并传递处理结果
+     */
     private void parseAndSaveAssigneeConfigs(String nodeConfigId, String content) {
         try {
             int priority = 0;
@@ -600,6 +663,10 @@ public class ProcessDefinitionNodeSyncService {
      *
      * <p>固定人员模式按 assigneeValue、candidateUsers 顺序去重；解析器
      * 只保存在 config_json 中，不能在同步期调用外部人员源固化动态结果。</p>
+     *
+     * @param nodeConfigId 节点配置ID，后续用于保存版本{@code two}{@code assignees}时定位或关联目标
+     * @param config 配置内容，决定后续版本{@code two}{@code assignees}的处理规则
+     * @param initialPriority 初始优先级，供本方法保存版本{@code two}{@code assignees}时使用
      */
     private void saveVersionTwoAssignees(
             String nodeConfigId,
@@ -651,6 +718,12 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 添加CSV；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加CSV时使用
+     * @param raw 待添加CSV的原始输入，结果供调用方继续使用
+     */
     private void addCsv(
             java.util.Set<String> target,
             String raw) {
@@ -664,6 +737,13 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 读取扩展属性值；查询结果供调用方展示或继续处理。
+     *
+     * @param content 内容，后续用于读取扩展属性值并传递处理结果
+     * @param propertyName 属性名称，后续用于读取扩展属性值时匹配或展示
+     * @return 读取后的扩展属性值文本，供调用方比较或展示
+     */
     private String readExtensionPropertyValue(String content, String propertyName) {
         Matcher propsMatcher = Pattern.compile(
                 "<(?:flowable|camunda):properties[^>]*>(.*?)</(?:flowable|camunda):properties>",
@@ -688,6 +768,14 @@ public class ProcessDefinitionNodeSyncService {
         return null;
     }
 
+    /**
+     * 保存用户办理人；后续读取或执行将使用更新后的状态。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于保存用户办理人时定位或关联目标
+     * @param value 待保存用户办理人的原始输入，结果供调用方继续使用
+     * @param priority 优先级，作为 {@code assignee.setPriority} 的输入影响后续处理
+     * @return 保存后的用户办理人结果，供调用方继续处理
+     */
     private int saveUserAssignee(String nodeConfigId, String value, int priority) {
         AssigneeConfig assignee = new AssigneeConfig();
         assignee.setNodeConfigId(nodeConfigId);
@@ -698,6 +786,14 @@ public class ProcessDefinitionNodeSyncService {
         return priority + 1;
     }
 
+    /**
+     * 保存角色办理人；后续读取或执行将使用更新后的状态。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于保存角色办理人时定位或关联目标
+     * @param value 待保存角色办理人的原始输入，结果供调用方继续使用
+     * @param priority 优先级，作为 {@code assignee.setPriority} 的输入影响后续处理
+     * @return 保存后的角色办理人结果，供调用方继续处理
+     */
     private int saveRoleAssignee(String nodeConfigId, String value, int priority) {
         AssigneeConfig assignee = new AssigneeConfig();
         assignee.setNodeConfigId(nodeConfigId);
@@ -708,6 +804,14 @@ public class ProcessDefinitionNodeSyncService {
         return priority + 1;
     }
 
+    /**
+     * 保存办理人；后续读取或执行将使用更新后的状态。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于保存办理人时定位或关联目标
+     * @param assigneeValue 办理人值，作为 {@code assignee.setAssigneeValue} 的输入影响后续处理
+     * @param priority 优先级，作为 {@code assignee.setPriority} 的输入影响后续处理
+     * @return 保存后的办理人结果，供调用方继续处理
+     */
     private int saveAssignee(String nodeConfigId, String assigneeValue, int priority) {
         AssigneeConfig assignee = new AssigneeConfig();
         assignee.setNodeConfigId(nodeConfigId);
@@ -722,6 +826,13 @@ public class ProcessDefinitionNodeSyncService {
         return priority + 1;
     }
 
+    /**
+     * 解析与保存表单配置；输出作为后续校验或处理的输入。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于解析与保存表单配置时定位或关联目标
+     * @param content 内容，后续用于解析与保存表单配置并传递处理结果
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void parseAndSaveFormConfig(String nodeConfigId, String content) {
         try {
             Matcher formIdMatcher = Pattern.compile("<flowable:entityFormId>([^<]+)</flowable:entityFormId>")
@@ -755,6 +866,13 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 解析与保存多实例配置；输出作为后续校验或处理的输入。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于解析与保存多实例配置时定位或关联目标
+     * @param content 内容，后续用于解析与保存多实例配置并传递处理结果
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void parseAndSaveMultiInstanceConfig(String nodeConfigId, String content) {
         try {
             Matcher miMatcher = Pattern.compile(
@@ -797,6 +915,13 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 解析与保存审批配置；输出作为后续校验或处理的输入。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于解析与保存审批配置时定位或关联目标
+     * @param content 内容，后续用于解析与保存审批配置并传递处理结果
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void parseAndSaveApprovalConfig(String nodeConfigId, String content) {
         try {
             String approvalConfigJson = findApprovalConfigJson(content);
@@ -814,6 +939,12 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 查询审批配置JSON；查询结果供调用方展示或继续处理。
+     *
+     * @param content 内容，后续用于查询审批配置JSON并传递处理结果
+     * @return 查询后的审批配置JSON文本，供调用方比较或展示
+     */
     private String findApprovalConfigJson(String content) {
         Pattern propPattern = Pattern.compile(
                 "<(?:flowable:|camunda:)?property[^>]*name=\"approvalConfig\"[^>]*value=\"([^\"]*)\"",
@@ -837,6 +968,13 @@ public class ProcessDefinitionNodeSyncService {
         return elemMatcher.find() ? elemMatcher.group(1).trim() : null;
     }
 
+    /**
+     * 合并配置JSON；结果供后续流程传递或持久化。
+     *
+     * @param nodeConfigId 节点配置ID，后续用于合并配置JSON时定位或关联目标
+     * @param newConfig 新配置内容，决定后续配置JSON的处理规则
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void mergeConfigJson(String nodeConfigId, Map<String, Object> newConfig) {
         try {
             String existingJson = jdbcTemplate.queryForObject(
@@ -872,6 +1010,17 @@ public class ProcessDefinitionNodeSyncService {
         }
     }
 
+    /**
+     * 保存节点默认；后续读取或执行将使用更新后的状态。
+     *
+     * @param processConfigId 流程配置ID，后续用于保存节点默认时定位或关联目标
+     * @param nodeId 节点ID，后续用于保存节点默认时定位或关联目标
+     * @param nodeName 节点名称，后续用于保存节点默认时匹配或展示
+     * @param nodeType 节点类型标识，决定后续节点默认采用的处理分支
+     * @param defaultFlow 默认流程，作为 {@code config.put} 的输入影响后续处理
+     * @return 节点默认条件成立时为 true，否则为 false
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private boolean saveNodeWithDefault(String processConfigId,
                                         String nodeId,
                                         String nodeName,

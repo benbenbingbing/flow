@@ -63,8 +63,8 @@ class ConfigMigrationPublishRollbackTest {
     @Mock private DictCacheService dictCacheService;
     @Spy private ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     @Spy private ConfigMigrationPackageCodec packageCodec = new ConfigMigrationPackageCodec(objectMapper, null);
-    @Spy private com.workflow.integration.database.api.DatabaseQueryDialect queryDialect =
-            com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL");
+    @Spy private com.workflow.integration.database.api.query.DatabaseQueryDialect queryDialect =
+            com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL");
     @InjectMocks private ConfigMigrationImportApplyService service;
 
     private ConfigImportPackage batch;

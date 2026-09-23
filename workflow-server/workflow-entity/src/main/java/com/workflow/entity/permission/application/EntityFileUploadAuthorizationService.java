@@ -80,6 +80,12 @@ public class EntityFileUploadAuthorizationService
         }
     }
 
+    /**
+     * 规范化实体编码；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 规范化后的实体编码文本，供调用方比较或展示
+     */
     private String normalizeEntityCode(String entityCode) {
         try {
             return EntityPermissionAction.normalizeEntityCode(entityCode);
@@ -88,6 +94,11 @@ public class EntityFileUploadAuthorizationService
         }
     }
 
+    /**
+     * 构造无效上下文异常，供调用方区分失败原因。
+     *
+     * @return 处理后的无效上下文结果，供调用方继续处理
+     */
     private static ForbiddenException invalidContext() {
         return new ForbiddenException("实体文件上传上下文无效");
     }

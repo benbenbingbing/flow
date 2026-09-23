@@ -1,10 +1,10 @@
 package com.workflow.embed.application.maintenance;
 
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.embed.application.port.EmbedMaintenancePort;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterCursor;
@@ -47,6 +47,14 @@ public class EmbedMaintenanceService {
     private CounterCursor storedCounterCursor;
     private CounterCursor activePairCursor;
 
+    /**
+     * 初始化嵌入式维护服务，保存构造参数供后续方法使用。
+     *
+     * @param maintenancePort 维护端口依赖，保存到当前对象供后续业务方法调用
+     * @param auditPort 审计端口依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedMaintenanceService(
             EmbedMaintenancePort maintenancePort,
             SystemAuditPort auditPort,
@@ -63,6 +71,8 @@ public class EmbedMaintenanceService {
      *
      * <p>{@code synchronized} 只防止同一 Pod 重叠调度；跨 Pod 安全由 SQL 的状态条件、
      * FK/NOT EXISTS 条件和小事务保证，不依赖本地锁。</p>
+     *
+     * @return 处理后的{@code maintain}批次结果，供调用方继续处理
      */
     @Scheduled(fixedDelayString = "${workflow.embed.maintenance-scan-ms:60000}")
     public synchronized BatchResult maintainBatch() {
@@ -98,6 +108,13 @@ public class EmbedMaintenanceService {
                 receipts, sessions, launches, reconciliation);
     }
 
+    /**
+     * 处理{@code mutate}，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code maintenanceFailure} 的输入影响后续处理
+     * @param operation 操作标识，决定后续{@code mutate}采用的处理分支
+     * @return 处理后的{@code mutate}结果，供调用方继续处理
+     */
     private int mutate(MaintenanceTask task, IntSupplier operation) {
         try {
             return operation.getAsInt();
@@ -107,6 +124,12 @@ public class EmbedMaintenanceService {
         }
     }
 
+    /**
+     * 对账{@code counters}；结果供调用方的后续步骤使用。
+     *
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 对账后的{@code counters}结果，供调用方继续处理
+     */
     private ReconciliationSummary reconcileCounters(int limit) {
         try {
             List<CounterObservation> stored = maintenancePort.inspectStoredCounterPage(
@@ -135,6 +158,11 @@ public class EmbedMaintenanceService {
         }
     }
 
+    /**
+     * 处理计数器{@code drift}，并将结果传给后续步骤。
+     *
+     * @param summary 摘要，供本方法处理计数器{@code drift}时使用
+     */
     private void counterDrift(ReconciliationSummary summary) {
         log.warn("Embed session counter drift detected: mismatches={}, counterAbove={}, "
                         + "sessionAbove={}, missingCounters={}, maxDelta={}, scanContinues={}",
@@ -163,6 +191,12 @@ public class EmbedMaintenanceService {
                 .build());
     }
 
+    /**
+     * 处理维护失败，并将结果传给后续步骤。
+     *
+     * @param task 任务，供本方法处理维护失败时使用
+     * @param error 错误，供本方法处理维护失败时使用
+     */
     private void maintenanceFailure(MaintenanceTask task, RuntimeException error) {
         String exceptionType = error.getClass().getSimpleName();
         log.error("Embed maintenance step failed: task={}, exceptionType={}",
@@ -185,7 +219,11 @@ public class EmbedMaintenanceService {
                 .build());
     }
 
-    /** 审计基础设施故障不能阻断后续清理；这里也只记录异常类型，不输出异常消息。 */
+    /**
+     * 审计基础设施故障不能阻断后续清理；这里也只记录异常类型，不输出异常消息。
+     *
+     * @param event 事件，作为 {@code auditPort.record} 的输入影响后续处理
+     */
     private void safeAudit(SystemAuditEvent event) {
         try {
             auditPort.record(event);
@@ -195,10 +233,22 @@ public class EmbedMaintenanceService {
         }
     }
 
+    /**
+     * 处理UTC当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的UTC当前时间结果，供调用方继续处理
+     */
     private LocalDateTime utcNow() {
         return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 处理{@code stronger}{@code drift}，并将结果传给后续步骤。
+     *
+     * @param left 左侧，供本方法处理{@code stronger}{@code drift}时使用
+     * @param right 右侧，作为 {@code absoluteDelta} 的输入影响后续处理
+     * @return 处理后的{@code stronger}{@code drift}结果，供调用方继续处理
+     */
     private static CounterObservation strongerDrift(
             CounterObservation left,
             CounterObservation right) {
@@ -211,10 +261,24 @@ public class EmbedMaintenanceService {
         return absoluteDelta(right) > absoluteDelta(left) ? right : left;
     }
 
+    /**
+     * 处理下一步游标，并将结果传给后续步骤。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 处理后的下一步游标结果，供调用方继续处理
+     */
     private static CounterCursor nextCursor(List<CounterObservation> page, int limit) {
         return page.size() < limit ? null : page.get(page.size() - 1).cursor();
     }
 
+    /**
+     * 处理{@code summarize}，并将结果传给后续步骤。
+     *
+     * @param observations {@code observations}，供本方法处理{@code summarize}时使用
+     * @param scanContinues {@code scan}{@code continues}，作为 {@code ReconciliationSummary} 的输入影响后续处理
+     * @return 处理后的{@code summarize}结果，供调用方继续处理
+     */
     private static ReconciliationSummary summarize(
             java.util.Collection<CounterObservation> observations,
             boolean scanContinues) {
@@ -243,10 +307,19 @@ public class EmbedMaintenanceService {
                 mismatches, counterGreater, sessionGreater, missing, maxDelta, scanContinues);
     }
 
+    /**
+     * 处理绝对{@code delta}，并将结果传给后续步骤。
+     *
+     * @param observation 观察，作为 {@code Math.abs} 的输入影响后续处理
+     * @return 处理后的绝对{@code delta}结果，供调用方继续处理
+     */
     private static long absoluteDelta(CounterObservation observation) {
         return Math.abs(observation.effectiveStoredCount() - observation.actualCount());
     }
 
+    /**
+     * 定义维护任务的可选值；调用方据此选择对应的处理分支。
+     */
     enum MaintenanceTask {
         ASSERTION_REPLAY_CLEANUP("assertion_replay_cleanup"),
         LAUNCH_EXPIRY("launch_expiry"),
@@ -258,17 +331,44 @@ public class EmbedMaintenanceService {
 
         private final String tag;
 
+        /**
+         * 初始化维护任务，保存构造参数供后续方法使用。
+         *
+         * @param tag 标签依赖，保存到当前对象供后续业务方法调用
+         */
         MaintenanceTask(String tag) {
             this.tag = tag;
         }
     }
 
+    /**
+     * 封装计数器键的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param grantId 授权ID，后续用于处理计数器键时定位或关联目标
+     * @param flowUserId 流程用户ID，后续用于处理计数器键时定位或关联目标
+     */
     private record CounterKey(String grantId, String flowUserId) {
+        /**
+         * 处理of，并将结果传给后续步骤。
+         *
+         * @param observation 观察，作为 {@code CounterKey} 的输入影响后续处理
+         * @return 处理后的of结果，供调用方继续处理
+         */
         private static CounterKey of(CounterObservation observation) {
             return new CounterKey(observation.grantId(), observation.flowUserId());
         }
     }
 
+    /**
+     * 封装{@code reconciliation}摘要的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param mismatchCount {@code mismatch}数量，保存在对象中供后续校验、查询或展示
+     * @param counterGreaterCount 计数器{@code greater}数量，保存在对象中供后续校验、查询或展示
+     * @param sessionGreaterCount 会话{@code greater}数量，保存在对象中供后续校验、查询或展示
+     * @param missingCounterCount 缺失计数器数量，保存在对象中供后续校验、查询或展示
+     * @param maxAbsoluteDelta 最大绝对{@code delta}，保存在对象中供后续校验、查询或展示
+     * @param scanContinues {@code scan}{@code continues}，保存在对象中供后续校验、查询或展示
+     */
     public record ReconciliationSummary(
             int mismatchCount,
             int counterGreaterCount,
@@ -277,11 +377,27 @@ public class EmbedMaintenanceService {
             long maxAbsoluteDelta,
             boolean scanContinues) {
 
+        /**
+         * 处理空，并将结果传给后续步骤。
+         *
+         * @return 处理后的空结果，供调用方继续处理
+         */
         private static ReconciliationSummary empty() {
             return new ReconciliationSummary(0, 0, 0, 0, 0, false);
         }
     }
 
+    /**
+     * 封装批次的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param deletedAssertionReplays 已删除断言{@code replays}，保存在对象中供后续校验、查询或展示
+     * @param expiredLaunches 过期启动记录，保存在对象中供后续校验、查询或展示
+     * @param erasedSessionContexts {@code erased}会话{@code contexts}，保存在对象中供后续校验、查询或展示
+     * @param deletedOperationReceipts 已删除操作{@code receipts}，保存在对象中供后续校验、查询或展示
+     * @param deletedTerminalSessions 已删除终态会话，保存在对象中供后续校验、查询或展示
+     * @param deletedTerminalLaunches 已删除终态启动记录，保存在对象中供后续校验、查询或展示
+     * @param reconciliation {@code reconciliation}，保存在对象中供后续校验、查询或展示
+     */
     public record BatchResult(
             int deletedAssertionReplays,
             int expiredLaunches,

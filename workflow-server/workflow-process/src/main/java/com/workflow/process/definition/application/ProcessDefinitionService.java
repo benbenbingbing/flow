@@ -13,18 +13,14 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.process.definition.application.port.FlowActionDesignPort;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
-import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
-import com.workflow.process.definition.application.ProcessFlowableDeploymentService;
-import com.workflow.process.definition.application.ProcessPublishHistoryService;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.repository.Deployment;
@@ -60,7 +56,7 @@ public class ProcessDefinitionService {
     private final ProcessDefinitionNodeSyncService nodeSyncService;
     private final ProcessBpmnPublishSanitizer bpmnPublishSanitizer;
     private final FlowActionDesignPort flowActionDesignPort;
-    private final MigrationAssetHandler migrationAssetHandler;
+    private final MigrationAssetPort migrationAssetHandler;
     private final ProcessDefinitionPreflightService preflightService;
     /** 绑定实体目录，用于让流程删除与实体绑定共用同一行锁门闩。 */
     private final EntityCodeCatalogPort entityCodeCatalogPort;
@@ -130,6 +126,8 @@ public class ProcessDefinitionService {
     /**
      * 查询所有未被实体绑定的流程
      * 用于实体绑定流程时选择
+     *
+     * @return 流程定义集合，供调用方遍历或展示
      */
     @Transactional(readOnly = true)
     public List<ProcessDefinitionDTO> findAllUnbound() {
@@ -208,6 +206,9 @@ public class ProcessDefinitionService {
     
     /**
      * 查询流程的所有历史版本
+     *
+     * @param processId 流程ID，后续用于查询{@code versions}流程ID时定位或关联目标
+     * @return 流程版本历史集合，供调用方遍历或展示
      */
     @Transactional(readOnly = true)
     public List<ProcessVersionHistoryDTO> findVersionsByProcessId(String processId) {
@@ -219,6 +220,9 @@ public class ProcessDefinitionService {
     
     /**
      * 查询指定版本的流程历史记录
+     *
+     * @param versionId 版本ID，后续用于查询版本ID时定位或关联目标
+     * @return 符合条件的流程版本历史结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public ProcessVersionHistoryDTO findVersionById(String versionId) {
@@ -389,6 +393,10 @@ public class ProcessDefinitionService {
     
     /**
      * 发布流程 - 每次发布创建一个新版本
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param versionDescription 版本描述，作为 {@code request.setVersionDescription} 的输入影响后续处理
+     * @return 发布后的流程定义结果，供调用方继续处理
      */
     @Transactional
     public ProcessDefinitionDTO publish(String id, String versionDescription) {
@@ -433,6 +441,10 @@ public class ProcessDefinitionService {
      *
      * <p>在流程配置行锁内重新执行预检，并同时验证 revision、draftHash 和 previewToken，
      * 确保正式部署的内容就是管理员预览确认的内容。</p>
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于发布流程定义
+     * @return 发布后的流程定义结果，供调用方继续处理
      */
     @Transactional
     @SystemAudit(
@@ -483,7 +495,13 @@ public class ProcessDefinitionService {
         return publishLocked(config, migrationRequest);
     }
 
-    /** 在调用方已经锁定流程配置后执行实际部署。 */
+    /**
+     * 在调用方已经锁定流程配置后执行实际部署。
+     *
+     * @param config 配置内容，决定后续已锁定的处理规则
+     * @param request 本次请求，后续经校验后用于发布已锁定
+     * @return 发布后的已锁定结果，供调用方继续处理
+     */
     private ProcessDefinitionDTO publishLocked(
             ProcessDefinitionConfig config,
             ConfigMigrationPublishRequest request) {
@@ -550,6 +568,11 @@ public class ProcessDefinitionService {
     
     /**
      * 回滚到指定版本 - 创建新版本而不是直接覆盖
+     *
+     * @param processId 流程ID，后续用于处理回滚截止版本时定位或关联目标
+     * @param versionId 版本ID，后续用于处理回滚截止版本时定位或关联目标
+     * @param reason 原因，供本方法处理回滚截止版本时使用
+     * @return 处理后的回滚截止版本结果，供调用方继续处理
      */
     @Transactional
     @SystemAudit(
@@ -646,7 +669,12 @@ public class ProcessDefinitionService {
     }
     
     // Convert methods
-    /** 将流程定义配置实体转换为DTO */
+    /**
+     * 将流程定义配置实体转换为DTO
+     *
+     * @param config 配置内容，决定后续截止DTO的处理规则
+     * @return 转换后的截止DTO结果，供调用方继续处理
+     */
     private ProcessDefinitionDTO convertToDTO(ProcessDefinitionConfig config) {
         ProcessDefinitionDTO dto = new ProcessDefinitionDTO();
         dto.setId(config.getId());
@@ -670,7 +698,12 @@ public class ProcessDefinitionService {
         return dto;
     }
     
-    /** 将版本历史实体转换为DTO */
+    /**
+     * 将版本历史实体转换为DTO
+     *
+     * @param version 版本，作为 {@code dto.setId} 的输入影响后续处理
+     * @return 转换后的版本截止DTO结果，供调用方继续处理
+     */
     private ProcessVersionHistoryDTO convertVersionToDTO(ProcessVersionHistory version) {
         ProcessVersionHistoryDTO dto = new ProcessVersionHistoryDTO();
         dto.setId(version.getId());
@@ -687,7 +720,12 @@ public class ProcessDefinitionService {
         return dto;
     }
     
-    /** 将流程定义DTO转换为配置实体 */
+    /**
+     * 将流程定义DTO转换为配置实体
+     *
+     * @param dto DTO，作为 {@code config.setId} 的输入影响后续处理
+     * @return 转换后的截止实体结果，供调用方继续处理
+     */
     private ProcessDefinitionConfig convertToEntity(ProcessDefinitionDTO dto) {
         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
         config.setId(dto.getId());
@@ -702,13 +740,23 @@ public class ProcessDefinitionService {
         return config;
     }
 
-    /** 返回兼容存量数据的当前草稿修订号。 */
+    /**
+     * 返回兼容存量数据的当前草稿修订号。
+     *
+     * @param config 配置内容，决定后续修订版本的处理规则
+     * @return 处理后的修订版本结果，供调用方继续处理
+     */
     private long revisionOf(ProcessDefinitionConfig config) {
         return config.getDraftRevision() == null || config.getDraftRevision() < 1
                 ? 1L : config.getDraftRevision();
     }
 
-    /** 返回兼容存量数据的最近发布修订号。 */
+    /**
+     * 返回兼容存量数据的最近发布修订号。
+     *
+     * @param config 配置内容，决定后续已发布修订版本的处理规则
+     * @return 处理后的已发布修订版本结果，供调用方继续处理
+     */
     private long publishedRevisionOf(ProcessDefinitionConfig config) {
         if (config.getPublishedRevision() != null) {
             return Math.max(config.getPublishedRevision(), 0L);
@@ -717,14 +765,24 @@ public class ProcessDefinitionService {
                 ? revisionOf(config) : 0L;
     }
 
-    /** 返回当前草稿哈希；存量空值在读取时按同一算法计算。 */
+    /**
+     * 返回当前草稿哈希；存量空值在读取时按同一算法计算。
+     *
+     * @param config 配置内容，决定后续草稿哈希的处理规则
+     * @return 处理后的草稿哈希文本，供调用方比较或展示
+     */
     private String draftHashOf(ProcessDefinitionConfig config) {
         return config.getDraftHash() == null || config.getDraftHash().isBlank()
                 ? ProcessDraftHashSupport.hash(config)
                 : config.getDraftHash();
     }
 
-    /** 返回当前草稿所基于的发布版本。 */
+    /**
+     * 返回当前草稿所基于的发布版本。
+     *
+     * @param config 配置内容，决定后续基础已发布版本的处理规则
+     * @return 处理后的基础已发布版本结果，供调用方继续处理
+     */
     private int basePublishedVersionOf(ProcessDefinitionConfig config) {
         if (config.getBasePublishedVersion() != null) {
             return Math.max(config.getBasePublishedVersion(), 0);
@@ -732,7 +790,12 @@ public class ProcessDefinitionService {
         return config.getVersion() == null ? 0 : Math.max(config.getVersion(), 0);
     }
 
-    /** 构造包含服务端最新草稿的统一 409 冲突。 */
+    /**
+     * 构造包含服务端最新草稿的统一 409 冲突。
+     *
+     * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+     * @return 处理后的草稿冲突结果，供调用方继续处理
+     */
     private RevisionConflictException draftConflict(ProcessDefinitionConfig current) {
         return new RevisionConflictException(
                 "流程草稿已被其他人或其他标签页修改，请先比较最新版本",
@@ -741,6 +804,8 @@ public class ProcessDefinitionService {
     
     /**
      * 测试节点解析（开发测试用）
+     *
+     * @param processConfigId 流程配置ID，后续用于处理测试{@code parse}节点集合时定位或关联目标
      */
     public void testParseNodes(String processConfigId) {
         ProcessDefinitionConfig config = processMapper.selectById(processConfigId);

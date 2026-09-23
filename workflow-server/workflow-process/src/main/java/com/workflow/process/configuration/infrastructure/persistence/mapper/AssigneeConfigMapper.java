@@ -15,6 +15,9 @@ public interface AssigneeConfigMapper extends BaseMapper<AssigneeConfig> {
 
     /**
      * 根据节点配置ID查询审批人列表
+     *
+     * @param nodeConfigId 节点配置ID，后续用于查询节点配置ID时定位或关联目标
+     * @return 办理人配置集合，供调用方遍历或展示
      */
     default List<AssigneeConfig> findByNodeConfigId(String nodeConfigId) {
         return selectList(Wrappers.<AssigneeConfig>lambdaQuery()

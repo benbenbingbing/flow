@@ -2,10 +2,10 @@ package com.workflow.entity.definition.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +32,9 @@ public class EntityCodeGeneratorService {
     /**
      * 生成数据编码
      * 使用数据库乐观锁保证并发安全
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 生成后的编码文本，供调用方比较或展示
      */
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
     public String generateCode(String entityCode) {
@@ -132,6 +135,9 @@ public class EntityCodeGeneratorService {
     
     /**
      * 获取或创建编码规则
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体编码规则结果，供调用方继续处理
      */
     private EntityCodeRule getOrCreateRule(String entityCode) {
         Optional<EntityCodeRule> optional = codeRuleMapper.findByEntityCode(entityCode);
@@ -145,6 +151,9 @@ public class EntityCodeGeneratorService {
     
     /**
      * 创建默认编码规则
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 创建后的默认规则结果，供调用方继续处理
      */
     private EntityCodeRule createDefaultRule(String entityCode) {
         EntityCodeRule rule = EntityCodeRule.getDefault(entityCode);
@@ -155,6 +164,9 @@ public class EntityCodeGeneratorService {
     
     /**
      * 根据日期格式获取当前日期字符串
+     *
+     * @param dateFormat 日期{@code format}，后续用于判断有效期或展示该事件的发生时间
+     * @return 读取后的当前日期{@code str}文本，供调用方比较或展示
      */
     private String getCurrentDateStr(String dateFormat) {
         if (dateFormat == null || dateFormat.isEmpty()) {
@@ -174,6 +186,11 @@ public class EntityCodeGeneratorService {
     
     /**
      * 构建最终编码
+     *
+     * @param rule 规则，作为 {@code code.append} 的输入影响后续处理
+     * @param dateStr 日期{@code str}，作为 {@code code.append} 的输入影响后续处理
+     * @param seq {@code seq}，供本方法构建编码时使用
+     * @return 构建后的编码文本，供调用方比较或展示
      */
     private String buildCode(EntityCodeRule rule, String dateStr, int seq) {
         StringBuilder code = new StringBuilder();
@@ -196,6 +213,9 @@ public class EntityCodeGeneratorService {
     
     /**
      * 预览编码（不实际生成）
+     *
+     * @param rule 规则，作为 {@code getCurrentDateStr} 的输入影响后续处理
+     * @return 处理后的预览编码文本，供调用方比较或展示
      */
     public String previewCode(EntityCodeRule rule) {
         String dateStr = getCurrentDateStr(rule.getDateFormat());
@@ -204,6 +224,8 @@ public class EntityCodeGeneratorService {
     
     /**
      * 保存或更新编码规则
+     *
+     * @param rule 规则，作为 {@code rule.setExample} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -252,6 +274,9 @@ public class EntityCodeGeneratorService {
     
     /**
      * 获取实体的编码规则
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体编码规则结果，供调用方继续处理
      */
     public EntityCodeRule getRule(String entityCode) {
         if (entityCode == null || entityCode.isBlank()) {

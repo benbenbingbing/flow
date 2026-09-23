@@ -3,7 +3,7 @@ package com.workflow.entity.data.application;
 import com.workflow.entity.permission.application.PermissionSqlParameters;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.integration.database.api.SchemaDdlDialect;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -38,6 +38,16 @@ public class EntityRecordTeamService {
     private final SchemaDdlDialect dialect;
     private final SchemaMetadataPort metadata;
 
+    /**
+     * 初始化实体记录团队服务，保存构造参数供后续方法使用。
+     *
+     * @param jdbcTemplate JDBC模板依赖，保存到当前对象供后续业务方法调用
+     * @param tableResolver 表解析器依赖，保存到当前对象供后续业务方法调用
+     * @param snapshotService 快照服务依赖，保存到当前对象供后续业务方法调用
+     * @param schemaDdlExecutor 结构DDL执行器依赖，保存到当前对象供后续业务方法调用
+     * @param dialect 方言依赖，保存到当前对象供后续业务方法调用
+     * @param metadata 元数据依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public EntityRecordTeamService(
             JdbcTemplate jdbcTemplate,
@@ -158,7 +168,15 @@ public class EntityRecordTeamService {
         return relatedPeopleSql(entityCode, userId, username, new java.util.LinkedHashMap<>());
     }
 
-    /** 执行入口必须保留共享参数容器；用户 ID/用户名都按文本绑定，不依赖 SQL 转义模式。 */
+    /**
+     * 执行入口必须保留共享参数容器；用户 ID/用户名都按文本绑定，不依赖 SQL 转义模式。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param parameters 参数集合，作为 {@code identityInSql} 的输入影响后续处理
+     * @return 处理后的关联{@code people}SQL文本，供调用方比较或展示
+     */
     public String relatedPeopleSql(String entityCode, String userId, String username, Map<String, Object> parameters) {
         String identitySql = identityInSql("team.user_id", userId, username, parameters);
         if (!StringUtils.hasText(entityCode) || identitySql == null) {
@@ -210,15 +228,34 @@ public class EntityRecordTeamService {
                 Map.of("teamUserId", userId));
     }
 
+    /**
+     * 生成{@code checked}标识符文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code checked}标识符的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code checked}标识符文本，供调用方比较或展示
+     */
     private String checkedIdentifier(String value) {
         return SqlIdentifierPolicy.validate(value);
     }
 
+    /**
+     * 生成规范化动作文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化动作的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化动作文本，供调用方比较或展示
+     */
     private String normalizedAction(String value) {
         String normalized = StringUtils.hasText(value) ? value.trim().toUpperCase() : "OPERATE";
         return normalized.length() > 50 ? normalized.substring(0, 50) : normalized;
     }
 
+    /**
+     * 清理实体记录团队；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待清理实体记录团队的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，供本方法清理实体记录团队时使用
+     * @return 清理后的实体记录团队文本，供调用方比较或展示
+     */
     private String trim(String value, int maxLength) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -227,16 +264,34 @@ public class EntityRecordTeamService {
         return trimmed.length() > maxLength ? trimmed.substring(0, maxLength) : trimmed;
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value : null;
     }
 
+    /**
+     * 判断团队表存在条件是否成立，供调用方选择后续分支。
+     *
+     * @param tableName 目标物理表名，后续用于构造查询或表结构操作
+     * @return 团队表存在条件成立时为 true，否则为 false
+     */
     private boolean teamTableExists(String tableName) {
         return metadata.tableExists(tableName);
     }
 
     /**
      * 把用户 ID、用户名编成 IN 条件。流程任务常用用户名，实体写入常用用户 ID。
+     *
+     * @param column 列，供本方法处理身份SQL时使用
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param username 用户名称，后续用于身份匹配或操作展示
+     * @param parameters 参数集合，供本方法处理身份SQL时使用
+     * @return 处理后的身份SQL文本，供调用方比较或展示
      */
     private String identityInSql(String column, String userId, String username, Map<String, Object> parameters) {
         LinkedHashSet<String> identities = new LinkedHashSet<>();
@@ -260,12 +315,18 @@ public class EntityRecordTeamService {
      * @param enabled       是否启用团队可见性
      * @param level          可见性级别
      * @param sqlCondition  叠加到数据范围的 SQL 条件，未启用时为 null
+     * @param sqlParameters SQL参数集合，保存在对象中供后续校验、查询或展示
      */
     public record TeamPermission(
             boolean enabled,
             EntityDefinition.TeamVisibilityLevel level,
             String sqlCondition,
             Map<String, Object> sqlParameters) {
+        /**
+         * 处理{@code disabled}，并将结果传给后续步骤。
+         *
+         * @return 处理后的{@code disabled}结果，供调用方继续处理
+         */
         public static TeamPermission disabled() {
             return new TeamPermission(
                     false,

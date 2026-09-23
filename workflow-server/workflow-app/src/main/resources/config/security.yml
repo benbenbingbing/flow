@@ -1,0 +1,64 @@
+# 认证与审计配置：登录令牌、跨域、会话、登录限流和审计保留；真实凭据由部署环境注入。
+
+# 浏览器跨域访问规则，控制哪些前端来源可调用接口。
+cors:
+  # 允许的前端 origin 列表，以逗号分隔；空值不开放跨域来源。
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+  # 允许跨域调用的 HTTP 方法列表，覆盖查询、写入和预检请求。
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,PATCH,DELETE,OPTIONS}
+  # 允许前端跨域发送的请求头，包含认证、幂等和业务追踪信息。
+  allowed-headers: ${CORS_ALLOWED_HEADERS:Authorization,Content-Type,Idempotency-Key,X-Flow-Embed-Protocol,X-Trace-Id,X-Business-Trace-Key}
+  # 是否允许跨域携带 Cookie 等凭据，需配合明确的允许来源。
+  allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+  # 浏览器缓存预检结果的时长，减少重复 OPTIONS 请求。
+  max-age: ${CORS_MAX_AGE:1h}
+
+# 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
+workflow:
+  # 登录会话及客户端来源识别策略，供认证和限流逻辑使用。
+  security:
+    # 是否信任代理转发的客户端地址；仅在入口代理受控时开启。
+    trust-forwarded-headers: ${TRUST_FORWARDED_HEADERS:false}
+    # 浏览器登录会话生命周期及 Refresh Token Cookie 设置。
+    session:
+      # 持续无刷新操作时允许会话保留的最长时间，超过后需要重新登录。
+      idle-timeout: ${AUTH_SESSION_IDLE_TIMEOUT:2h}
+      # 从登录开始计算的会话最长寿命，不因持续刷新而延长。
+      absolute-timeout: ${AUTH_SESSION_ABSOLUTE_TIMEOUT:12h}
+      # 已过期或撤销会话记录的保留时长，供追踪后定期清理。
+      retention: ${AUTH_SESSION_RETENTION:7d}
+      # Refresh Token 的 Cookie 名称，用于浏览器续期登录会话。
+      cookie-name: ${AUTH_SESSION_COOKIE_NAME:flow_refresh_token}
+      # 限制 Refresh Token Cookie 的发送路径，减少无关接口收到凭据。
+      cookie-path: ${AUTH_SESSION_COOKIE_PATH:/api/auth}
+      # 跨站发送 Cookie 的策略；跨站部署时需结合 HTTPS 和浏览器限制配置。
+      cookie-same-site: ${AUTH_SESSION_COOKIE_SAME_SITE:Lax}
+      # 是否仅通过 HTTPS 发送 Refresh Token Cookie，生产 HTTPS 环境应开启。
+      cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:false}
+      # 清理失效会话的 Spring 六段 cron 表达式，按应用时区调度。
+      cleanup-cron: ${AUTH_SESSION_CLEANUP_CRON:0 15 4 * * *}
+    # 登录失败限流策略，分别限制账号和客户端来源。
+    login-throttle:
+      # 统计窗口内单个账号允许的失败次数阈值。
+      account-max-failures: ${LOGIN_ACCOUNT_MAX_FAILURES:5}
+      # 统计窗口内同一客户端允许的失败次数阈值。
+      client-max-failures: ${LOGIN_CLIENT_MAX_FAILURES:30}
+      # 累计登录失败次数的统计窗口，单位秒。
+      window-seconds: ${LOGIN_THROTTLE_WINDOW_SECONDS:900}
+      # 触发失败阈值后的阻断时长，单位秒。
+      block-seconds: ${LOGIN_THROTTLE_BLOCK_SECONDS:900}
+  # 操作审计的入队、载荷裁剪和记录清理设置。
+  audit:
+    # 普通审计尽力入队的最大尝试次数，包含首次尝试且至少执行一次。
+    enqueue-retries: ${AUDIT_ENQUEUE_RETRIES:3}
+    # 脱敏后审计 JSON 的最大字符数，超过后截断，避免大载荷占用日志存储。
+    payload-max-length: ${AUDIT_PAYLOAD_MAX_LENGTH:32768}
+    # 审计记录保留天数，清理任务据此删除过期记录。
+    retention-days: ${AUDIT_RETENTION_DAYS:365}
+
+# 平台登录访问令牌配置，与开放接口的 RSA 令牌密钥分别管理。
+jwt:
+  # 登录 JWT 签名密钥，必须通过环境提供，不设置默认值。
+  secret: ${JWT_SECRET}
+  # 登录访问令牌有效期，单位毫秒，过期后通过登录会话刷新。
+  expiration: ${JWT_ACCESS_TTL_MS:900000}

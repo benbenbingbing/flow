@@ -1,9 +1,9 @@
 package com.workflow.process.coordination.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.context.FlowActionContext;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.model.EntityRelationGraph.RecordRef;
 import com.workflow.entity.definition.application.model.PublishedRelationPath;

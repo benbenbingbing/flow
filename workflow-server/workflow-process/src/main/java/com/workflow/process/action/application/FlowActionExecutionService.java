@@ -4,24 +4,24 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.action.api.response.FlowActionExecutionDetail;
-import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.AuditEventIds;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditResult;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.AuditSourcePointer;
-import com.workflow.contracts.audit.OperationContext;
-import com.workflow.contracts.audit.OperationContextHolder;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.audit.SystemAuditEvent;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditResult;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.model.AuditSourcePointer;
+import com.workflow.contracts.audit.context.OperationContext;
+import com.workflow.contracts.audit.context.OperationContextHolder;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
-import com.workflow.contracts.action.FlowActionTraceFields;
+import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper;
 import com.workflow.process.action.infrastructure.persistence.mapper.FlowActionExecutionMapper;
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -151,6 +151,9 @@ public class FlowActionExecutionService {
     /**
      * 在流程动作进入持久化队列前固化操作上下文。异步消费者只信任该服务端
      * 写入的 payload，不从处理器参数或浏览器输入重新推导 operationId。
+     *
+     * @param event 事件，供本方法补充操作上下文时使用
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
      */
     private void enrichOperationContext(
             FlowActionTriggerEvent event,
@@ -178,6 +181,9 @@ public class FlowActionExecutionService {
     /**
      * 记录流程动作执行记录的创建事件。统一投影只保存执行记录指针和状态，
      * 参数、结果、异常堆栈继续留在流程动作模块并走原有详情权限。
+     *
+     * @param execution 执行，作为 {@code AuditSourcePointer} 的输入影响后续处理
+     * @param event 事件，供本方法记录已创建审计时使用
      */
     private void recordCreatedAudit(
             FlowActionExecution execution,
@@ -418,6 +424,8 @@ public class FlowActionExecutionService {
      * 抢占执行记录并返回带 fencing token 的租约快照。
      *
      * @param id 执行记录 ID
+     * @param ownerId 归属方ID，后续用于认领流程动作执行时定位或关联目标
+     * @param leaseSeconds 租约秒数，供本方法认领流程动作执行时使用
      * @return 抢占成功返回租约快照，已被其他线程抢占返回 null
      */
     public FlowActionExecution claim(
@@ -430,10 +438,26 @@ public class FlowActionExecutionService {
         return executionMapper.selectClaimed(id, ownerId);
     }
 
+    /**
+     * 读取{@code claimed}；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param ownerId 归属方ID，后续用于读取{@code claimed}时定位或关联目标
+     * @return 符合条件的流程动作执行结果，供调用方继续处理
+     */
     public FlowActionExecution getClaimed(String id, String ownerId) {
         return executionMapper.selectClaimed(id, ownerId);
     }
 
+    /**
+     * 判断心跳条件是否成立，供调用方选择后续分支。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param ownerId 归属方ID，后续用于处理心跳时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     * @param leaseSeconds 租约秒数，供本方法处理心跳时使用
+     * @return 心跳条件成立时为 true，否则为 false
+     */
     public boolean heartbeat(
             String id,
             String ownerId,
@@ -443,6 +467,13 @@ public class FlowActionExecutionService {
                 id, ownerId, leaseToken, leaseSeconds) == 1;
     }
 
+    /**
+     * 处理发布版本认领，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param ownerId 归属方ID，后续用于处理发布版本认领时定位或关联目标
+     * @param leaseToken 租约令牌，后续用于授权校验、关联或幂等去重
+     */
     public void releaseClaim(
             String id,
             String ownerId,
@@ -515,7 +546,12 @@ public class FlowActionExecutionService {
         }
     }
 
-    /** 序列化触发事件为 payload JSON */
+    /**
+     * 序列化触发事件为 payload JSON
+     *
+     * @param event 事件，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的载荷文本，供调用方比较或展示
+     */
     private String writePayload(FlowActionTriggerEvent event) {
         try {
             return objectMapper.writeValueAsString(event);
@@ -556,7 +592,14 @@ public class FlowActionExecutionService {
         return detail;
     }
 
-    /** 追加一条执行轨迹（含时间、阶段、消息、详情）并回写到记录 */
+    /**
+     * 追加一条执行轨迹（含时间、阶段、消息、详情）并回写到记录
+     *
+     * @param execution 执行，作为 {@code readTrace} 的输入影响后续处理
+     * @param stage {@code stage}，作为 {@code item.put} 的输入影响后续处理
+     * @param message 消息，作为 {@code item.put} 的输入影响后续处理
+     * @param details 详情，作为 {@code item.put} 的输入影响后续处理
+     */
     private void appendTrace(
             FlowActionExecution execution,
             String stage,
@@ -574,7 +617,12 @@ public class FlowActionExecutionService {
         execution.setExecutionTraceJson(writeJson(trace));
     }
 
-    /** 读取执行轨迹 JSON 为可变列表；解析失败返回空列表 */
+    /**
+     * 读取执行轨迹 JSON 为可变列表；解析失败返回空列表
+     *
+     * @param value 待读取追踪的原始输入，结果供调用方继续使用
+     * @return 流程动作执行集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> readTrace(String value) {
         if (!StringUtils.hasText(value)) {
             return new ArrayList<>();
@@ -586,7 +634,12 @@ public class FlowActionExecutionService {
         }
     }
 
-    /** 读取并脱敏 JSON 为 map；非对象或解析失败返回空 map */
+    /**
+     * 读取并脱敏 JSON 为 map；非对象或解析失败返回空 map
+     *
+     * @param value 待读取{@code sanitized}映射的原始输入，结果供调用方继续使用
+     * @return {@code sanitized}映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> readSanitizedMap(String value) {
         Object parsed = readSanitizedObject(value);
         if (parsed instanceof Map<?, ?> map) {
@@ -597,7 +650,12 @@ public class FlowActionExecutionService {
         return Map.of();
     }
 
-    /** 读取并脱敏 JSON 为对象；解析失败返回原始字符串 */
+    /**
+     * 读取并脱敏 JSON 为对象；解析失败返回原始字符串
+     *
+     * @param value 待读取{@code sanitized}对象的原始输入，结果供调用方继续使用
+     * @return 读取后的{@code sanitized}对象结果，供调用方继续处理
+     */
     private Object readSanitizedObject(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -609,7 +667,12 @@ public class FlowActionExecutionService {
         }
     }
 
-    /** 将对象序列化为 JSON；失败返回 null */
+    /**
+     * 将对象序列化为 JSON；失败返回 null
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -618,7 +681,12 @@ public class FlowActionExecutionService {
         }
     }
 
-    /** 递归脱敏：对 map 中敏感键替换为 ******，对集合/数组递归处理 */
+    /**
+     * 递归脱敏：对 map 中敏感键替换为 ******，对集合/数组递归处理
+     *
+     * @param value 待清洗流程动作执行的原始输入，结果供调用方继续使用
+     * @return 清洗后的流程动作执行结果，供调用方继续处理
+     */
     private Object sanitize(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -639,7 +707,12 @@ public class FlowActionExecutionService {
         return value;
     }
 
-    /** 判断字段名是否为敏感键（password/secret/token/authorization/cookie/credential） */
+    /**
+     * 判断字段名是否为敏感键（password/secret/token/authorization/cookie/credential）
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return {@code sensitive}键条件成立时为 true，否则为 false
+     */
     private boolean isSensitiveKey(String key) {
         String normalized = key.toLowerCase(Locale.ROOT);
         return normalized.contains("password")
@@ -650,7 +723,12 @@ public class FlowActionExecutionService {
                 || normalized.contains("credential");
     }
 
-    /** 计算执行耗时（毫秒），起始时间为 startedAt 或 createdAt */
+    /**
+     * 计算执行耗时（毫秒），起始时间为 startedAt 或 createdAt
+     *
+     * @param execution 执行，供本方法处理时长时使用
+     * @return 处理后的时长结果，供调用方继续处理
+     */
     private long duration(FlowActionExecution execution) {
         LocalDateTime start = execution.getStartedAt() == null
                 ? execution.getCreatedAt()
@@ -661,7 +739,12 @@ public class FlowActionExecutionService {
         return Math.max(0, Duration.between(start, finish).toMillis());
     }
 
-    /** 从重试配置 JSON 解析最大重试次数，限制在 0~20，缺省或异常返回 5 */
+    /**
+     * 从重试配置 JSON 解析最大重试次数，限制在 0~20，缺省或异常返回 5
+     *
+     * @param retryConfig 重试配置内容，决定后续最大{@code retries}的处理规则
+     * @return 解析后的最大{@code retries}结果，供调用方继续处理
+     */
     private int resolveMaxRetries(String retryConfig) {
         if (!StringUtils.hasText(retryConfig)) {
             return 5;
@@ -674,12 +757,23 @@ public class FlowActionExecutionService {
         }
     }
 
-    /** 计算第 retryCount 次重试的延迟秒数，按 60 * 3^(n-1) 指数退避，上限 6 小时 */
+    /**
+     * 计算第 retryCount 次重试的延迟秒数，按 60 * 3^(n-1) 指数退避，上限 6 小时
+     *
+     * @param retryCount 重试数量，作为 {@code Math.pow} 的输入影响后续处理
+     * @return 处理后的重试{@code delay}秒数结果，供调用方继续处理
+     */
     private long retryDelaySeconds(int retryCount) {
         long delay = 60L * (long) Math.pow(3, Math.max(0, retryCount - 1));
         return Math.min(delay, 21600L);
     }
 
+    /**
+     * 处理{@code persist}{@code running}进度，并将结果传给后续步骤。
+     *
+     * @param execution 执行，作为 {@code executionMapper.updateById} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void persistRunningProgress(FlowActionExecution execution) {
         if (!hasLease(execution)) {
             executionMapper.updateById(execution);
@@ -691,6 +785,12 @@ public class FlowActionExecutionService {
         }
     }
 
+    /**
+     * 处理{@code persist}失败，并将结果传给后续步骤。
+     *
+     * @param execution 执行，作为 {@code executionMapper.updateById} 的输入影响后续处理
+     * @param retryDelaySeconds 重试{@code delay}秒数，供本方法处理{@code persist}失败时使用
+     */
     private void persistFailure(
             FlowActionExecution execution,
             long retryDelaySeconds) {
@@ -705,12 +805,23 @@ public class FlowActionExecutionService {
         }
     }
 
+    /**
+     * 判断是否具有租约；判断结果决定调用方的后续分支。
+     *
+     * @param execution 执行，供本方法判断是否具有租约时使用
+     * @return 租约条件成立时为 true，否则为 false
+     */
     private boolean hasLease(FlowActionExecution execution) {
         return StringUtils.hasText(execution.getOwnerId())
                 && execution.getLeaseToken() != null;
     }
 
-    /** 提取异常消息，截断到 4000 字符 */
+    /**
+     * 提取异常消息，截断到 4000 字符
+     *
+     * @param error 错误，供本方法处理错误消息时使用
+     * @return 处理后的错误消息文本，供调用方比较或展示
+     */
     private String errorMessage(Throwable error) {
         String message = error == null ? "未知错误" : error.getMessage();
         if (!StringUtils.hasText(message) && error != null) {
@@ -719,7 +830,12 @@ public class FlowActionExecutionService {
         return message == null ? "未知错误" : message.substring(0, Math.min(message.length(), 4000));
     }
 
-    /** 提取异常堆栈字符串，截断到 16000 字符 */
+    /**
+     * 提取异常堆栈字符串，截断到 16000 字符
+     *
+     * @param error 错误，供本方法处理错误{@code stack}时使用
+     * @return 处理后的错误{@code stack}文本，供调用方比较或展示
+     */
     private String errorStack(Throwable error) {
         if (error == null) {
             return null;
@@ -730,6 +846,12 @@ public class FlowActionExecutionService {
         return stack.substring(0, Math.min(stack.length(), 16000));
     }
 
+    /**
+     * 生成值或空文本，供后续匹配或展示。
+     *
+     * @param value 待处理值或空的原始输入，结果供调用方继续使用
+     * @return 处理后的值或空文本，供调用方比较或展示
+     */
     private String valueOrEmpty(String value) {
         return value == null ? "" : value;
     }

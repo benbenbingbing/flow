@@ -14,9 +14,9 @@ import com.workflow.entity.definition.application.EntitySchemaPublishLock;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.version.application.EntityVersionConfigurationService;
 
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
-import com.workflow.contracts.process.ProcessCatalogItem;
-import com.workflow.contracts.process.ProcessBindingState;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
+import com.workflow.contracts.process.model.ProcessCatalogItem;
+import com.workflow.contracts.process.model.ProcessBindingState;
 import com.workflow.contracts.process.port.ProcessCatalogPort;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.api.response.EntityDefinitionDTO;
@@ -78,7 +78,7 @@ public class EntityDefinitionServiceTest {
     private ProcessCatalogPort processCatalogPort;
 
     @Mock
-    private MigrationAssetHandler migrationAssetHandler;
+    private MigrationAssetPort migrationAssetHandler;
 
     @Mock
     private EntityDataDynamicMapper entityDataDynamicMapper;

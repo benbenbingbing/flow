@@ -15,6 +15,13 @@ import org.springframework.stereotype.Component;
 @Component("receiveTaskTimeoutDelegate")
 public class ReceiveTaskTimeoutDelegate implements JavaDelegate {
 
+    /**
+     * 执行接收任务{@code timeout}委托，并将结果传给后续步骤。
+     *
+     * @param execution 执行，作为 {@code ConfiguredTaskPropertyReader.read} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public void execute(DelegateExecution execution) {
         String receiveTaskId = ConfiguredTaskPropertyReader.read(

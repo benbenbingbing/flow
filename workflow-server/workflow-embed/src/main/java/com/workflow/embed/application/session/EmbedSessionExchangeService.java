@@ -59,6 +59,21 @@ public class EmbedSessionExchangeService {
     private final EmbedLifecycleAudit lifecycleAudit;
     private final EmbedTrafficControlPort trafficControlPort;
 
+    /**
+     * 初始化嵌入式会话交换服务，保存构造参数供后续方法使用。
+     *
+     * @param lookupPort 查找端口依赖，保存到当前对象供后续业务方法调用
+     * @param transactionPort 事务端口依赖，保存到当前对象供后续业务方法调用
+     * @param contextProtectionPort 上下文{@code protection}端口依赖，保存到当前对象供后续业务方法调用
+     * @param secretGenerator 密钥生成器依赖，保存到当前对象供后续业务方法调用
+     * @param digestPort 摘要端口依赖，保存到当前对象供后续业务方法调用
+     * @param idGenerator ID生成器依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     * @param lifecycleAudit 生命周期审计依赖，保存到当前对象供后续业务方法调用
+     * @param trafficControlPort {@code traffic}{@code control}端口依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedSessionExchangeService(
             EmbedLaunchExchangeLookupPort lookupPort,
             EmbedSessionExchangeTransactionPort transactionPort,
@@ -88,6 +103,10 @@ public class EmbedSessionExchangeService {
      * 在事务外只准备不可变的加密材料；真正消费 Launch 前，由事务端口重新校验所有可变安全状态。
      *
      * <p>这样既缩短了持锁时间，也避免首次查询与加锁之间的配置变更造成 TOCTOU 越权。
+     *
+     * @param command 本次命令，后续经校验后用于处理交换
+     * @param correlation 关联，供本方法处理交换时使用
+     * @return 处理后的交换结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public EmbedSessionIssued exchange(
@@ -108,6 +127,12 @@ public class EmbedSessionExchangeService {
         }
     }
 
+    /**
+     * 处理交换内部，并将结果传给后续步骤。
+     *
+     * @param command 本次命令，后续经校验后用于处理交换内部
+     * @return 处理后的交换内部结果，供调用方继续处理
+     */
     private EmbedSessionIssued exchangeInternal(EmbedSessionExchangeCommand command) {
         validate(command);
         // 必须在 code 摘要索引查询之前扣减，否则随机 code 可放大数据库读压力。
@@ -181,6 +206,11 @@ public class EmbedSessionExchangeService {
                 PROTOCOL_VERSION);
     }
 
+    /**
+     * 校验嵌入式会话交换；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验嵌入式会话交换
+     */
     private void validate(EmbedSessionExchangeCommand command) {
         if (command == null
                 || command.launchId() == null || command.launchId().isBlank()
@@ -200,6 +230,11 @@ public class EmbedSessionExchangeService {
         validateNonce(command.childNonce());
     }
 
+    /**
+     * 校验{@code nonce}；不满足约束时阻止后续处理。
+     *
+     * @param nonce {@code nonce}，作为 {@code EmbedException} 的输入影响后续处理
+     */
     private void validateNonce(String nonce) {
         if (nonce == null || !BASE64_URL.matcher(nonce).matches()) {
             throw new EmbedException(400, EmbedErrorCode.INVALID_REQUEST,
@@ -216,10 +251,22 @@ public class EmbedSessionExchangeService {
         }
     }
 
+    /**
+     * 生成摘要{@code nonce}文本，供后续匹配或展示。
+     *
+     * @param nonce {@code nonce}，作为 {@code digestPort.sha256} 的输入影响后续处理
+     * @return 处理后的摘要{@code nonce}文本，供调用方比较或展示
+     */
     private String digestNonce(String nonce) {
         return digestPort.sha256(nonce);
     }
 
+    /**
+     * 生成{@code intersect}能力集合文本，供后续匹配或展示。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的{@code intersect}能力集合文本，供调用方比较或展示
+     */
     private String intersectCapabilities(EmbedLaunchExchangeCandidate candidate) {
         Set<String> release = parseSet(candidate.releaseCapabilitiesJson());
         Set<String> ceiling = parseSet(candidate.grantCapabilitiesJson());
@@ -237,6 +284,12 @@ public class EmbedSessionExchangeService {
         }
     }
 
+    /**
+     * 解析设置；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 嵌入式会话交换集合，供调用方遍历或展示
+     */
     private Set<String> parseSet(String json) {
         try {
             Set<String> values = objectMapper.readValue(json, STRING_SET);
@@ -246,16 +299,35 @@ public class EmbedSessionExchangeService {
         }
     }
 
+    /**
+     * 处理{@code min}，并将结果传给后续步骤。
+     *
+     * @param left 左侧，供本方法处理{@code min}时使用
+     * @param right 右侧，作为 {@code left.isBefore} 的输入影响后续处理
+     * @return 处理后的{@code min}结果，供调用方继续处理
+     */
     private static Instant min(Instant left, Instant right) {
         return left.isBefore(right) ? left : right;
     }
 
+    /**
+     * 判断{@code constant}时间相等条件是否成立，供调用方选择后续分支。
+     *
+     * @param expected 预期，作为 {@code MessageDigest.isEqual} 的输入影响后续处理
+     * @param actual 实际，供本方法处理{@code constant}时间相等时使用
+     * @return {@code constant}时间相等条件成立时为 true，否则为 false
+     */
     private static boolean constantTimeEquals(String expected, String actual) {
         return expected != null && actual != null && MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.US_ASCII),
                 actual.getBytes(StandardCharsets.US_ASCII));
     }
 
+    /**
+     * 构造启动记录无效异常，供调用方区分失败原因。
+     *
+     * @return 处理后的启动记录无效结果，供调用方继续处理
+     */
     private static EmbedException launchInvalid() {
         return new EmbedException(
                 401,
@@ -263,6 +335,12 @@ public class EmbedSessionExchangeService {
                 "Embed launch is invalid");
     }
 
+    /**
+     * 构造服务不可用异常，供调用方区分失败原因。
+     *
+     * @param error 错误，供本方法处理不可用时使用
+     * @return 处理后的不可用结果，供调用方继续处理
+     */
     private static EmbedException unavailable(Throwable error) {
         return new EmbedException(
                 503,

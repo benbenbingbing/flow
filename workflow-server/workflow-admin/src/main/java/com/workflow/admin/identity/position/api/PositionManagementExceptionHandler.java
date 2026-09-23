@@ -14,6 +14,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class PositionManagementExceptionHandler {
 
+    /**
+     * 处理位置管理异常，并将结果传给后续步骤。
+     *
+     * @param exception 异常，作为 {@code ResponseEntity.status} 的输入影响后续处理
+     * @return 处理后的位置管理异常结果，供调用方继续处理
+     */
     @ExceptionHandler(PositionManagementException.class)
     public ResponseEntity<Result<Void>> handle(
             PositionManagementException exception) {

@@ -1,7 +1,7 @@
 package com.workflow.entity.form.uniqueness.application;
 
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.form.application.PublishedFormUniqueRuleService;
 import com.workflow.entity.form.application.model.FormUniqueCandidate;
@@ -51,7 +51,13 @@ public class EntityFormUniqueClaimService {
     private final EntityFormUniqueClaimRepository repository;
     private final EntityFormUniqueValueGateRepository gateRepository;
 
-    /** 在任何业务行锁/写入前解析单条变更并锁定全部候选 gate。 */
+    /**
+     * 在任何业务行锁/写入前解析单条变更并锁定全部候选 gate。
+     *
+     * @param command 本次命令，后续经校验后用于准备实体表单唯一认领
+     * @param beforeRecord 之前记录，供本方法准备实体表单唯一认领时使用
+     * @return 准备后的实体表单唯一认领结果，供调用方继续处理
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public PreparedUniqueClaims prepare(
             EntityMutationCommand command,
@@ -81,6 +87,9 @@ public class EntityFormUniqueClaimService {
     /**
      * 在任何业务行锁/写入前，按全局稳定顺序一次性锁定一批写入的字段
      * sentinel 与候选 value gate。无可信且实际适用的规则时不会访问 gate 仓储。
+     *
+     * @param preparations {@code preparations}，作为 {@code expanded.add} 的输入影响后续处理
+     * @return 已准备唯一声明集合，供调用方遍历或展示
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public List<PreparedUniqueClaims> prepareAll(
@@ -153,6 +162,10 @@ public class EntityFormUniqueClaimService {
      *
      * <p>命令转换、并发更新或默认值若使候选值漂移，不能在持有业务行锁后补锁，
      * 必须 fail closed 并由调用方重试整个事务。</p>
+     *
+     * @param command 本次命令，后续经校验后用于验证已准备
+     * @param beforeRecord 之前记录，供本方法验证已准备时使用
+     * @param prepared 已准备，供本方法验证已准备时使用
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void verifyPrepared(
@@ -174,7 +187,15 @@ public class EntityFormUniqueClaimService {
                 prepared);
     }
 
-    /** 在子业务行锁/写入前验证服务端补全字段后候选仍与父事务计划一致。 */
+    /**
+     * 在子业务行锁/写入前验证服务端补全字段后候选仍与父事务计划一致。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param finalProjectedRecord {@code final}{@code projected}记录，供本方法验证子级已准备时使用
+     * @param references 引用，供本方法验证子级已准备时使用
+     * @param prepared 已准备，供本方法验证子级已准备时使用
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void verifyChildPrepared(
             String entityCode,
@@ -199,6 +220,9 @@ public class EntityFormUniqueClaimService {
      * 路径整体少一个固定的 {@code /data} 前缀；实体、发布引用、prepared token
      * 身份和每个子候选仍必须完全一致。缺少父 token 或任一 Marker 均 fail
      * closed，且调用必须发生在任何子业务行锁/写入前。</p>
+     *
+     * @param relationData 关系数据，作为 {@code verifyChildPlans} 的输入影响后续处理
+     * @param prepared 已准备，作为 {@code verifyChildPlans} 的输入影响后续处理
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void verifyRelationPrepared(
@@ -215,18 +239,34 @@ public class EntityFormUniqueClaimService {
         verifyChildPlans(relationData, prepared, true);
     }
 
-    /** 关系递归层用于判断定义/深度短路是否会丢弃已准备的可信子写。 */
+    /**
+     * 关系递归层用于判断定义/深度短路是否会丢弃已准备的可信子写。
+     *
+     * @param prepared 已准备，供本方法处理需要关系{@code writes}时使用
+     * @return 需要关系{@code writes}条件成立时为 true，否则为 false
+     */
     public boolean requiresRelationWrites(
             PreparedUniqueClaims prepared) {
         return prepared != null && !prepared.childPlans.isEmpty();
     }
 
-    /** 仅用于在关系定义漂移或循环短路处识别不能静默跳过的可信子树。 */
+    /**
+     * 仅用于在关系定义漂移或循环短路处识别不能静默跳过的可信子树。
+     *
+     * @param value 待判断是否包含可信子节点的原始输入，结果供调用方继续使用
+     * @return 可信子节点条件成立时为 true，否则为 false
+     */
     public boolean containsTrustedChildren(Object value) {
         return !TrustedSubFormUniqueReference.pending(value).isEmpty();
     }
 
-    /** 根据写入后的最终记录验证候选未漂移并协调主记录 claim。 */
+    /**
+     * 根据写入后的最终记录验证候选未漂移并协调主记录 claim。
+     *
+     * @param command 本次命令，后续经校验后用于对账实体表单唯一认领
+     * @param afterRecord 之后记录，供本方法对账实体表单唯一认领时使用
+     * @param prepared 已准备，供本方法对账实体表单唯一认领时使用
+     */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reconcile(
             EntityMutationCommand command,
@@ -258,6 +298,12 @@ public class EntityFormUniqueClaimService {
     /**
      * 写后验证并协调由已发布子表单处理器直接写入的子记录。
      * references 只接受服务端 JVM 私有 Marker 解出的可信引用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param finalRecord {@code final}记录，作为 {@code reconcilePrepared} 的输入影响后续处理
+     * @param references 引用，作为 {@code reconcilePrepared} 的输入影响后续处理
+     * @param prepared 已准备，作为 {@code reconcilePrepared} 的输入影响后续处理
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void reconcileChildRecord(
@@ -276,6 +322,9 @@ public class EntityFormUniqueClaimService {
 
     /**
      * 释放被删除、未经表单处理或表单已不含唯一规则的记录旧占位。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseRecord(
@@ -293,6 +342,12 @@ public class EntityFormUniqueClaimService {
      * 与有效快照仍不共享 claim。条件不适用、忽略值、无规则和非表单入口不在
      * 这个串行域内。热修复有效快照以 target ID 隔离，不能仅用热修复 release
      * ID，因为同一语义补丁可应用到不同 pinned base。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param afterRecord 之后记录，作为 {@code flattenRecord} 的输入影响后续处理
+     * @param references 引用，作为 {@code requirePrepared} 的输入影响后续处理
+     * @param prepared 已准备，作为 {@code requirePrepared} 的输入影响后续处理
      */
     private void reconcilePrepared(
             String entityCode,
@@ -341,6 +396,13 @@ public class EntityFormUniqueClaimService {
                 desired);
     }
 
+    /**
+     * 处理方案，并将结果传给后续步骤。
+     *
+     * @param preparation 准备，作为 {@code trustedReferences} 的输入影响后续处理
+     * @return 处理后的方案结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private PreparedUniqueClaims plan(
             Preparation preparation) {
         if (preparation == null) {
@@ -423,6 +485,12 @@ public class EntityFormUniqueClaimService {
                 List.of());
     }
 
+    /**
+     * 验证已准备；不满足约束时阻止后续处理。
+     *
+     * @param preparation 准备，作为 {@code requirePrepared} 的输入影响后续处理
+     * @param prepared 已准备，供本方法验证已准备时使用
+     */
     private void verifyPrepared(
             Preparation preparation,
             PreparedUniqueClaims prepared) {
@@ -456,7 +524,14 @@ public class EntityFormUniqueClaimService {
                 checked);
     }
 
-    /** 构建脱离 payload Marker 的不可变递归子写计划，并自底向上绑定 token。 */
+    /**
+     * 构建脱离 payload Marker 的不可变递归子写计划，并自底向上绑定 token。
+     *
+     * @param expanded {@code expanded}，供本方法处理{@code attach}子级{@code plans}时使用
+     * @param locked 已锁定，供本方法处理{@code attach}子级{@code plans}时使用
+     * @param rootCount 根数量，供本方法处理{@code attach}子级{@code plans}时使用
+     * @return 已准备唯一声明集合，供调用方遍历或展示
+     */
     private List<PreparedUniqueClaims> attachChildPlans(
             List<ExpandedPreparation> expanded,
             List<PreparedUniqueClaims> locked,
@@ -494,6 +569,15 @@ public class EntityFormUniqueClaimService {
         return List.copyOf(result);
     }
 
+    /**
+     * 整理子级{@code plans}数据，供调用方遍历或继续处理。
+     *
+     * @param ownerIndex 归属方索引，作为 {@code expanded.get} 的输入影响后续处理
+     * @param expanded {@code expanded}，供本方法处理子级{@code plans}时使用
+     * @param prepared 已准备，供本方法处理子级{@code plans}时使用
+     * @param rootCount 根数量，供本方法处理子级{@code plans}时使用
+     * @return 子级写入方案集合，供调用方遍历或展示
+     */
     private List<ChildWritePlan> childPlansFor(
             int ownerIndex,
             List<ExpandedPreparation> expanded,
@@ -528,13 +612,26 @@ public class EntityFormUniqueClaimService {
         return List.copyOf(result);
     }
 
-    /** Marker 仅是传输载体；真正的可信子写集合以 prepared token 内计划为准。 */
+    /**
+     * Marker 仅是传输载体；真正的可信子写集合以 prepared token 内计划为准。
+     *
+     * @param submittedData 已提交数据，供本方法验证子级{@code plans}时使用
+     * @param prepared 已准备，供本方法验证子级{@code plans}时使用
+     */
     private void verifyChildPlans(
             Object submittedData,
             PreparedUniqueClaims prepared) {
         verifyChildPlans(submittedData, prepared, false);
     }
 
+    /**
+     * 验证子级{@code plans}；不满足约束时阻止后续处理。
+     *
+     * @param submittedData 已提交数据，作为 {@code TrustedSubFormUniqueReference.pending} 的输入影响后续处理
+     * @param prepared 已准备，供本方法验证子级{@code plans}时使用
+     * @param relationProjection 关系投影，供本方法验证子级{@code plans}时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void verifyChildPlans(
             Object submittedData,
             PreparedUniqueClaims prepared,
@@ -576,6 +673,14 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 判断是否匹配子级路径；判断结果决定调用方的后续分支。
+     *
+     * @param expected 预期，供本方法判断是否匹配子级路径时使用
+     * @param actual 实际，供本方法判断是否匹配子级路径时使用
+     * @param relationProjection 关系投影，供本方法判断是否匹配子级路径时使用
+     * @return 子级路径条件成立时为 true，否则为 false
+     */
     private boolean matchesChildPath(
             String expected,
             String actual,
@@ -589,6 +694,8 @@ public class EntityFormUniqueClaimService {
      * gate 全部持有后执行唯一一次业务表 current/locking read。
      * 扫描也按 gate/record/rule 稳定排序，避免多实体、多字段事务以不同顺序
      * 获取 FOR UPDATE 范围锁。
+     *
+     * @param preparedValues 已准备值集合，供本方法检查{@code authoritative}{@code conflicts}时使用
      */
     private void checkAuthoritativeConflicts(
             List<PreparedUniqueClaims> preparedValues) {
@@ -648,6 +755,8 @@ public class EntityFormUniqueClaimService {
     /**
      * 批量/同层子表尚未写入业务表，current read 无法发现批内互相冲突；
      * 因此在持有全部 gate 后，用各自可信规则交叉求值其他待写记录。
+     *
+     * @param preparedValues 已准备值集合，供本方法检查{@code planned}{@code conflicts}时使用
      */
     private void checkPlannedConflicts(
             List<PreparedUniqueClaims> preparedValues) {
@@ -691,6 +800,13 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 判断相同已有记录条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同已有记录时使用
+     * @param right 右侧，供本方法处理相同已有记录时使用
+     * @return 相同已有记录条件成立时为 true，否则为 false
+     */
     private boolean sameExistingRecord(
             PreparedUniqueClaims left,
             PreparedUniqueClaims right) {
@@ -698,6 +814,13 @@ public class EntityFormUniqueClaimService {
                 && Objects.equals(left.recordId, right.recordId);
     }
 
+    /**
+     * 校验并获取相同候选人；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验并获取相同候选人时使用
+     * @param actual 实际，供本方法校验并获取相同候选人时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requireSameCandidate(
             FormUniqueCandidate expected,
             FormUniqueCandidate actual) {
@@ -712,6 +835,16 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 校验并获取已准备；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param references 引用，供本方法校验并获取已准备时使用
+     * @param prepared 已准备，供本方法校验并获取已准备时使用
+     * @return 校验并获取后的已准备结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private PreparedUniqueClaims requirePrepared(
             String entityCode,
             String recordId,
@@ -730,6 +863,13 @@ public class EntityFormUniqueClaimService {
         return prepared;
     }
 
+    /**
+     * 校验并获取已锁定{@code gate}；不满足约束时阻止后续处理。
+     *
+     * @param prepared 已准备，供本方法校验并获取已锁定{@code gate}时使用
+     * @param gate {@code gate}，作为 {@code IllegalStateException} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requireLockedGate(
             PreparedUniqueClaims prepared,
             GateKey gate) {
@@ -739,6 +879,13 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 校验并获取{@code evaluation}{@code gates}；不满足约束时阻止后续处理。
+     *
+     * @param prepared 已准备，作为 {@code requireLockedGate} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param evaluation {@code evaluation}，作为 {@code requireLockedGate} 的输入影响后续处理
+     */
     private void requireEvaluationGates(
             PreparedUniqueClaims prepared,
             String entityCode,
@@ -755,6 +902,14 @@ public class EntityFormUniqueClaimService {
                         evaluation.candidate()));
     }
 
+    /**
+     * 处理{@code gate}，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param rule 规则，作为 {@code GateKey} 的输入影响后续处理
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的{@code gate}结果，供调用方继续处理
+     */
     private GateKey gate(
             String entityCode,
             FormUniqueRule rule,
@@ -764,6 +919,13 @@ public class EntityFormUniqueClaimService {
                 sha256(candidate.normalizedValue()));
     }
 
+    /**
+     * 处理字段{@code sentinel}{@code gate}，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于处理字段{@code sentinel}{@code gate}时定位或关联目标
+     * @return 处理后的字段{@code sentinel}{@code gate}结果，供调用方继续处理
+     */
     static GateKey fieldSentinelGate(
             String entityCode,
             String fieldCode) {
@@ -772,12 +934,24 @@ public class EntityFormUniqueClaimService {
                 FIELD_SENTINEL_VALUE_HASH);
     }
 
+    /**
+     * 记录ID；供后续追溯或审计使用。
+     *
+     * @param row 行，供本方法记录ID时使用
+     * @return 记录后的ID文本，供调用方比较或展示
+     */
     private String recordId(Map<String, Object> row) {
         Object value = row == null ? null : row.get("id");
         return value == null || value.toString().isBlank()
                 ? null : value.toString();
     }
 
+    /**
+     * 整理可信引用数据，供调用方遍历或继续处理。
+     *
+     * @param references 引用，供本方法处理可信引用时使用
+     * @return 表单唯一变更上下文集合，供调用方遍历或展示
+     */
     private List<FormUniqueMutationContext.Reference> trustedReferences(
             List<FormUniqueMutationContext.Reference> references) {
         if (references == null || references.isEmpty()) {
@@ -790,6 +964,13 @@ public class EntityFormUniqueClaimService {
                 .toList();
     }
 
+    /**
+     * 合并实体表单唯一认领；结果供后续流程传递或持久化。
+     *
+     * @param existing 已有，供本方法合并实体表单唯一认领时使用
+     * @param submitted 已提交，作为 {@code result.putAll} 的输入影响后续处理
+     * @return 实体表单唯一认领键值结果，供调用方继续处理
+     */
     private Map<String, Object> merge(
             Map<String, Object> existing,
             Map<String, Object> submitted) {
@@ -798,6 +979,18 @@ public class EntityFormUniqueClaimService {
         return Collections.unmodifiableMap(result);
     }
 
+    /**
+     * 认领实体表单唯一认领；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param reference 引用，作为 {@code claim.setConstraintKey} 的输入影响后续处理
+     * @param effectiveReleaseId 有效发布版本ID，后续用于认领实体表单唯一认领时定位或关联目标
+     * @param snapshotIdentity 快照身份，供本方法认领实体表单唯一认领时使用
+     * @param rule 规则，作为 {@code claim.setRuleId} 的输入影响后续处理
+     * @param normalizedValue 规范化值，作为 {@code claim.setValueHash} 的输入影响后续处理
+     * @return 认领后的实体表单唯一认领结果，供调用方继续处理
+     */
     private EntityFormUniqueClaim claim(
             String entityCode,
             String recordId,
@@ -828,6 +1021,14 @@ public class EntityFormUniqueClaimService {
         return claim;
     }
 
+    /**
+     * 生成命名空间文本，供后续匹配或展示。
+     *
+     * @param formId 表单ID，后续用于处理命名空间时定位或关联目标
+     * @param snapshotIdentity 快照身份，供本方法处理命名空间时使用
+     * @param ruleId 规则ID，后续用于处理命名空间时定位或关联目标
+     * @return 处理后的命名空间文本，供调用方比较或展示
+     */
     static String namespace(
             String formId,
             String snapshotIdentity,
@@ -840,6 +1041,13 @@ public class EntityFormUniqueClaimService {
                 + ruleId;
     }
 
+    /**
+     * 生成稳定作用域文本，供后续匹配或展示。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于处理稳定作用域时定位或关联目标
+     * @return 处理后的稳定作用域文本，供调用方比较或展示
+     */
     static String stableScope(
             String entityCode,
             String fieldCode) {
@@ -849,6 +1057,12 @@ public class EntityFormUniqueClaimService {
                 + fieldCode;
     }
 
+    /**
+     * 生成有效发布版本ID文本，供后续匹配或展示。
+     *
+     * @param reference 引用，供本方法处理有效发布版本ID时使用
+     * @return 处理后的有效发布版本ID文本，供调用方比较或展示
+     */
     private String effectiveReleaseId(
             FormUniqueMutationContext.Reference reference) {
         if (reference.effectiveReleaseId() != null
@@ -860,7 +1074,13 @@ public class EntityFormUniqueClaimService {
                 ? null : reference.releaseId();
     }
 
-    /** 热修复按 target effective snapshot 隔离，普通发布按实际发布ID隔离。 */
+    /**
+     * 热修复按 target effective snapshot 隔离，普通发布按实际发布ID隔离。
+     *
+     * @param reference 引用，供本方法处理快照身份时使用
+     * @param effectiveReleaseId 有效发布版本ID，后续用于处理快照身份时定位或关联目标
+     * @return 处理后的快照身份文本，供调用方比较或展示
+     */
     private String snapshotIdentity(
             FormUniqueMutationContext.Reference reference,
             String effectiveReleaseId) {
@@ -871,6 +1091,13 @@ public class EntityFormUniqueClaimService {
         return effectiveReleaseId;
     }
 
+    /**
+     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     *
+     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code sha256}文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     static String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -883,11 +1110,24 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 截断实体表单唯一认领；结果供调用方的后续步骤使用。
+     *
+     * @param value 待截断实体表单唯一认领的原始输入，结果供调用方继续使用
+     * @return 截断后的实体表单唯一认领文本，供调用方比较或展示
+     */
     private static String abbreviate(String value) {
         return value.length() <= 1000
                 ? value : value.substring(0, 1000);
     }
 
+    /**
+     * 校验并获取身份；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireIdentity(
             String entityCode,
             String recordId) {
@@ -907,6 +1147,9 @@ public class EntityFormUniqueClaimService {
      * <p>根记录会以 {@code data:{...}} 承载自定义字段，而子表直写
      * 终检传入的已是展平 Map。嵌套 data 字段优先，再补充 id/status
      * 等系统字段；避免 DTO 上的 null 同名属性覆盖真实表单值。</p>
+     *
+     * @param source 待处理{@code flatten}记录的原始输入，结果供调用方继续使用
+     * @return {@code flatten}记录键值结果，供调用方继续处理
      */
     private Map<String, Object> flattenRecord(
             Map<String, Object> source) {
@@ -929,7 +1172,15 @@ public class EntityFormUniqueClaimService {
         return result;
     }
 
-    /** 写前唯一性准备输入；调用方须在触碰对应业务行前批量提交。 */
+    /**
+     * 写前唯一性准备输入；调用方须在触碰对应业务行前批量提交。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param existingRecord 已有记录，保存在对象中供后续校验、查询或展示
+     * @param submittedData 已提交数据，保存在对象中供后续校验、查询或展示
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     */
     public record Preparation(
             String entityCode,
             String recordId,
@@ -937,6 +1188,15 @@ public class EntityFormUniqueClaimService {
             Map<String, Object> submittedData,
             List<FormUniqueMutationContext.Reference> references) {
 
+        /**
+         * 初始化准备，保存构造参数供后续方法使用。
+         *
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+         * @param existingRecord 已有记录，保存在对象中供后续校验、查询或展示
+         * @param submittedData 已提交数据，保存在对象中供后续校验、查询或展示
+         * @param references 引用，保存在对象中供后续校验、查询或展示
+         */
         public Preparation {
             existingRecord = immutableMap(existingRecord);
             submittedData = immutableMap(submittedData);
@@ -944,6 +1204,16 @@ public class EntityFormUniqueClaimService {
                     ? List.of() : List.copyOf(references);
         }
 
+        /**
+         * 处理of，并将结果传给后续步骤。
+         *
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+         * @param existingRecord 已有记录，作为 {@code Preparation} 的输入影响后续处理
+         * @param submittedData 已提交数据，作为 {@code Preparation} 的输入影响后续处理
+         * @param references 引用，供本方法处理of时使用
+         * @return 处理后的of结果，供调用方继续处理
+         */
         public static Preparation of(
                 String entityCode,
                 String recordId,
@@ -958,6 +1228,12 @@ public class EntityFormUniqueClaimService {
                     references);
         }
 
+        /**
+         * 整理不可变映射数据，供调用方遍历或继续处理。
+         *
+         * @param value 待处理不可变映射的原始输入，结果供调用方继续使用
+         * @return 不可变映射键值结果，供调用方继续处理
+         */
         private static Map<String, Object> immutableMap(
                 Map<String, Object> value) {
             return value == null || value.isEmpty()
@@ -979,6 +1255,18 @@ public class EntityFormUniqueClaimService {
         private final Set<GateKey> lockedGates;
         private final List<ChildWritePlan> childPlans;
 
+        /**
+         * 初始化已准备唯一声明集合，保存构造参数供后续方法使用。
+         *
+         * @param entityCode 实体编码依赖，保存到当前对象供后续业务方法调用
+         * @param recordId 记录ID依赖，保存到当前对象供后续业务方法调用
+         * @param references 引用依赖，保存到当前对象供后续业务方法调用
+         * @param configured 已配置依赖，保存到当前对象供后续业务方法调用
+         * @param evaluations {@code evaluations}依赖，保存到当前对象供后续业务方法调用
+         * @param candidateGates 候选人{@code gates}依赖，保存到当前对象供后续业务方法调用
+         * @param lockedGates 已锁定{@code gates}依赖，保存到当前对象供后续业务方法调用
+         * @param childPlans 子级{@code plans}，保存在对象中供后续校验、查询或展示
+         */
         private PreparedUniqueClaims(
                 String entityCode,
                 String recordId,
@@ -998,6 +1286,12 @@ public class EntityFormUniqueClaimService {
             this.childPlans = List.copyOf(childPlans);
         }
 
+        /**
+         * 处理已锁定{@code gates}，并将结果传给后续步骤。
+         *
+         * @param value 待处理已锁定{@code gates}的原始输入，结果供调用方继续使用
+         * @return 处理后的已锁定{@code gates}结果，供调用方继续处理
+         */
         private PreparedUniqueClaims withLockedGates(
                 Set<GateKey> value) {
             return new PreparedUniqueClaims(
@@ -1011,6 +1305,12 @@ public class EntityFormUniqueClaimService {
                     childPlans);
         }
 
+        /**
+         * 处理子级{@code plans}，并将结果传给后续步骤。
+         *
+         * @param value 待处理子级{@code plans}的原始输入，结果供调用方继续使用
+         * @return 处理后的子级{@code plans}结果，供调用方继续处理
+         */
         private PreparedUniqueClaims withChildPlans(
                 List<ChildWritePlan> value) {
             return new PreparedUniqueClaims(
@@ -1025,6 +1325,15 @@ public class EntityFormUniqueClaimService {
         }
     }
 
+    /**
+     * 封装规则{@code evaluation}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param reference 引用，保存在对象中供后续校验、查询或展示
+     * @param effectiveReleaseId 有效发布版本ID，后续用于处理规则{@code evaluation}时定位或关联目标
+     * @param snapshotIdentity 快照身份，保存在对象中供后续校验、查询或展示
+     * @param rule 规则，保存在对象中供后续校验、查询或展示
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     */
     private record RuleEvaluation(
             FormUniqueMutationContext.Reference reference,
             String effectiveReleaseId,
@@ -1033,23 +1342,52 @@ public class EntityFormUniqueClaimService {
             FormUniqueCandidate candidate) {
     }
 
+    /**
+     * 封装{@code expanded}准备的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param preparation 准备，保存在对象中供后续校验、查询或展示
+     * @param pending 待处理，保存在对象中供后续校验、查询或展示
+     * @param rootIndex 根索引，保存在对象中供后续校验、查询或展示
+     */
     private record ExpandedPreparation(
             Preparation preparation,
             TrustedSubFormUniqueReference.Pending pending,
             int rootIndex) {
     }
 
+    /**
+     * 封装子级写入方案的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param path 路径，保存在对象中供后续校验、查询或展示
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     */
     private record ChildWritePlan(
             String path,
             String entityCode,
             List<FormUniqueMutationContext.Reference> references,
             PreparedUniqueClaims prepared) {
 
+        /**
+         * 初始化子级写入方案，保存构造参数供后续方法使用。
+         *
+         * @param path 路径，保存在对象中供后续校验、查询或展示
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param references 引用，保存在对象中供后续校验、查询或展示
+         * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+         */
         private ChildWritePlan {
             references = List.copyOf(references);
         }
     }
 
+    /**
+     * 封装{@code authoritative}{@code evaluation}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     * @param evaluation {@code evaluation}，保存在对象中供后续校验、查询或展示
+     */
     private record AuthoritativeEvaluation(
             PreparedUniqueClaims prepared,
             RuleEvaluation evaluation) {

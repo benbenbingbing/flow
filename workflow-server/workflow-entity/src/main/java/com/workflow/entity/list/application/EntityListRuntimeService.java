@@ -29,13 +29,13 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.entity.list.EntityListQueryFields;
-import com.workflow.contracts.entity.list.EntityListRuntimeContext;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
+import com.workflow.contracts.entity.list.model.EntityListQueryFields;
+import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
@@ -82,6 +82,14 @@ public class EntityListRuntimeService {
     private final List<EntityListDataProvider> dataProviders;
     private final List<EntityListSchemaProvider> schemaProviders;
 
+    /**
+     * 处理结构，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requestedScene 请求{@code scene}，供本方法处理结构时使用
+     * @return 处理后的结构结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schema(
             String entityCode,
@@ -96,6 +104,17 @@ public class EntityListRuntimeService {
                 null);
     }
 
+    /**
+     * 处理结构，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requestedScene 请求{@code scene}，供本方法处理结构时使用
+     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理结构时使用
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 处理后的结构结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schema(
             String entityCode,
@@ -114,6 +133,18 @@ public class EntityListRuntimeService {
                 null);
     }
 
+    /**
+     * 处理结构，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requestedScene 请求{@code scene}，作为 {@code schemaResolved} 的输入影响后续处理
+     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code requireList} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param viewCompositionContextToken 视图组合上下文令牌，后续用于授权校验、关联或幂等去重
+     * @return 处理后的结构结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schema(
             String entityCode,
@@ -142,6 +173,12 @@ public class EntityListRuntimeService {
      * <p>该入口仅供 Embed 等可信适配器使用，不能映射为允许浏览器提交 releaseId 的接口。
      * 它绕过的是“历史版本必须带浏览器解析令牌”的传输约束，不绕过列表访问权限、发布快照
      * 完整性或系统实体权限。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于处理结构固定时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法处理结构固定时使用
+     * @return 处理后的结构固定结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schemaPinned(
@@ -156,6 +193,15 @@ public class EntityListRuntimeService {
                 requirePinnedList(entityCode, listKey, releaseId, releaseVersion));
     }
 
+    /**
+     * 处理结构已解析，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param requestedScene 请求{@code scene}，作为 {@code normalized} 的输入影响后续处理
+     * @param config 配置内容，决定后续结构已解析的处理规则
+     * @return 处理后的结构已解析结果，供调用方继续处理
+     */
     private EntityListSchemaDTO schemaResolved(
             String entityCode,
             String listKey,
@@ -253,6 +299,14 @@ public class EntityListRuntimeService {
         return schema;
     }
 
+    /**
+     * 查询实体列表运行时；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param request 本次请求，后续经校验后用于查询实体列表运行时
+     * @return 查询后的实体列表运行时结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Object query(
             String entityCode,
@@ -285,6 +339,16 @@ public class EntityListRuntimeService {
      *
      * <p>客户端条件先按发布列表校验；列表固定条件、Embed Context 条件和 Flow 数据范围均由
      * 服务端追加，客户端不能覆盖。默认排序仍由已发布列表决定。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于查询固定时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法查询固定时使用
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param clientFilters 客户端过滤条件，作为 {@code request.setFilters} 的输入影响后续处理
+     * @param trustedContextFilters 可信上下文过滤条件，供本方法查询固定时使用
+     * @return 查询后的固定结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public Object queryPinned(
@@ -311,6 +375,18 @@ public class EntityListRuntimeService {
                 true);
     }
 
+    /**
+     * 查询已解析；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param safeRequest 安全请求，作为 {@code normalized} 的输入影响后续处理
+     * @param compositionContext 执行上下文，向后续已解析步骤传递身份、配置或状态
+     * @param config 配置内容，决定后续已解析的处理规则
+     * @param trustedContextFilters 可信上下文过滤条件，供本方法查询已解析时使用
+     * @param serverPinnedEntry {@code server}固定入口，供本方法查询已解析时使用
+     * @return 查询后的已解析结果，供调用方继续处理
+     */
     private Object queryResolved(
             String entityCode,
             String listKey,
@@ -415,7 +491,13 @@ public class EntityListRuntimeService {
                 : normalizedResult;
     }
 
-    /** 默认查询前再次应用可信条件，不能依赖事件前置步骤自觉保留 filters。 */
+    /**
+     * 默认查询前再次应用可信条件，不能依赖事件前置步骤自觉保留 filters。
+     *
+     * @param input 待处理必填过滤条件的原始输入，结果供调用方继续使用
+     * @param requiredFilters 必填过滤条件，作为 {@code result.put} 的输入影响后续处理
+     * @return 必填过滤条件键值结果，供调用方继续处理
+     */
     private Map<String, Object> withRequiredFilters(
             Map<String, Object> input, Map<String, Object> requiredFilters) {
         Map<String, Object> result = new LinkedHashMap<>(input);
@@ -425,7 +507,12 @@ public class EntityListRuntimeService {
         return result;
     }
 
-    /** 系统实体列表只公开 view 能力，避免缺省能力被前端解释为可执行其它动作。 */
+    /**
+     * 系统实体列表只公开 view 能力，避免缺省能力被前端解释为可执行其它动作。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 添加后的系统读取仅能力集合结果，供调用方继续处理
+     */
     private PageResult<?> addSystemReadOnlyCapabilities(
             PageResult<?> page) {
         List<?> records = page.getRecords() == null
@@ -463,6 +550,12 @@ public class EntityListRuntimeService {
      * <p>Provider 只能决定本页候选数据及展示字段，不能声明
      * actionCapabilities。每个候选 ID 都必须重新通过当前列表数据范围，随后
      * 用已发布列表规则计算能力，再覆盖 Provider 的同名字段。</p>
+     *
+     * @param config 配置内容，决定后续{@code secure}列表事件{@code replacement}的处理规则
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param candidatePage 候选人分页，供本方法处理{@code secure}列表事件{@code replacement}时使用
+     * @return 处理后的{@code secure}列表事件{@code replacement}结果，供调用方继续处理
      */
     private PageResult<?> secureListEventReplacement(
             EntityListConfig config,
@@ -528,6 +621,15 @@ public class EntityListRuntimeService {
      * 透传。这里使用“请求窗口 + 下一页哨兵”的导航总数：短页表示当前窗口
      * 已结束，满页只额外暴露一个可继续翻页的位置；它不是统计总数，也不会
      * 泄露未校验记录数量。</p>
+     *
+     * @param config 配置内容，决定后续{@code secure}组合自定义查询分页的处理规则
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param trustedFilters 可信过滤条件，供本方法处理{@code secure}组合自定义查询分页时使用
+     * @param candidatePage 候选人分页，供本方法处理{@code secure}组合自定义查询分页时使用
+     * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @return 处理后的{@code secure}组合自定义查询分页结果，供调用方继续处理
      */
     private PageResult<?> secureCompositionCustomQueryPage(
             EntityListConfig config,
@@ -602,6 +704,12 @@ public class EntityListRuntimeService {
                 pageSize);
     }
 
+    /**
+     * 判断使用自定义记录查询条件是否成立，供调用方选择后续分支。
+     *
+     * @param config 配置内容，决定后续使用自定义记录查询的处理规则
+     * @return 使用自定义记录查询条件成立时为 true，否则为 false
+     */
     private boolean usesCustomRecordQuery(
             EntityListConfig config) {
         return StringUtils.hasText(config.getQueryInterfaceExtensionId())
@@ -609,6 +717,13 @@ public class EntityListRuntimeService {
                 config.getQueryProviderCode());
     }
 
+    /**
+     * 校验并获取候选人记录ID；不满足约束时阻止后续处理。
+     *
+     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
+     * @return 校验并获取后的候选人记录ID文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String requireCandidateRecordId(Object candidate) {
         Object value;
         if (candidate instanceof EntityDataDTO record) {
@@ -631,6 +746,13 @@ public class EntityListRuntimeService {
         return id;
     }
 
+    /**
+     * 整理索引{@code authoritative}记录集合数据，供调用方遍历或继续处理。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @return 索引{@code authoritative}记录集合键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, EntityDataDTO> indexAuthoritativeRecords(
             PageResult<EntityDataDTO> page) {
         if (page == null || page.getRecords() == null) {
@@ -650,6 +772,12 @@ public class EntityListRuntimeService {
         return result;
     }
 
+    /**
+     * 整理已发布可见字段编码集合数据，供调用方遍历或继续处理。
+     *
+     * @param config 配置内容，决定后续已发布可见字段编码集合的处理规则
+     * @return 实体列表集合，供调用方遍历或展示
+     */
     private Set<String> publishedVisibleFieldCodes(
             EntityListConfig config) {
         List<EntityListField> fallback =
@@ -674,6 +802,13 @@ public class EntityListRuntimeService {
         return Collections.unmodifiableSet(result);
     }
 
+    /**
+     * 整理项目已发布列表字段数据，供调用方遍历或继续处理。
+     *
+     * @param record 记录，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @param visibleFieldCodes 可见字段编码集合，供本方法处理项目已发布列表字段时使用
+     * @return 项目已发布列表字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> projectPublishedListFields(
             EntityDataDTO record,
             Set<String> visibleFieldCodes) {
@@ -726,6 +861,9 @@ public class EntityListRuntimeService {
     /**
      * ID 条件由平台在候选 ID 集合上先行验证，再替换为内部 IN 条件，避免
      * 自定义数据源忽略 SAME_RECORD/引用字段产生的 ID 约束。
+     *
+     * @param filters 过滤条件，供本方法校验并获取候选人ID 集合匹配ID过滤时使用
+     * @param candidateIds 候选人ID 集合，供本方法校验并获取候选人ID 集合匹配ID过滤时使用
      */
     private void requireCandidateIdsMatchIdFilter(
             Map<String, Object> filters,
@@ -744,6 +882,13 @@ public class EntityListRuntimeService {
         }
     }
 
+    /**
+     * 判断是否匹配ID过滤；判断结果决定调用方的后续分支。
+     *
+     * @param filters 过滤条件，作为 {@code normalized} 的输入影响后续处理
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return ID过滤条件成立时为 true，否则为 false
+     */
     private boolean matchesIdFilter(
             Map<String, Object> filters,
             String id) {
@@ -789,6 +934,12 @@ public class EntityListRuntimeService {
         };
     }
 
+    /**
+     * 规范化ID值集合；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化ID值集合的原始输入，结果供调用方继续使用
+     * @return 实体列表集合，供调用方遍历或展示
+     */
     private Set<String> normalizeIdValues(Object value) {
         LinkedHashSet<String> result = new LinkedHashSet<>();
         if (value instanceof Collection<?> collection) {
@@ -810,6 +961,12 @@ public class EntityListRuntimeService {
         return result;
     }
 
+    /**
+     * 添加ID值；结果供后续流程传递或持久化。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param value 待添加ID值的原始输入，结果供调用方继续使用
+     */
     private void addIdValue(
             Set<String> values,
             Object value) {
@@ -820,12 +977,25 @@ public class EntityListRuntimeService {
         }
     }
 
+    /**
+     * 移除ID过滤条件；后续读取或执行将使用更新后的状态。
+     *
+     * @param filters 过滤条件，供本方法移除ID过滤条件时使用
+     */
     private void removeIdFilters(
             Map<String, Object> filters) {
         filters.keySet().removeIf(key -> "id".equals(
                 stripSuffix(key)));
     }
 
+    /**
+     * 处理已验证{@code window}总数，并将结果传给后续步骤。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param verifiedRows 已验证行，作为 {@code Math.addExact} 的输入影响后续处理
+     * @return 处理后的已验证{@code window}总数结果，供调用方继续处理
+     */
     private long verifiedWindowTotal(
             long pageNum,
             long pageSize,
@@ -851,6 +1021,18 @@ public class EntityListRuntimeService {
         return total;
     }
 
+    /**
+     * 查询实体列表运行时默认；查询结果供调用方展示或继续处理。
+     *
+     * @param config 配置内容，决定后续实体列表运行时默认的处理规则
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param scene {@code scene}，作为 {@code provider.query} 的输入影响后续处理
+     * @param safeRequest 安全请求，作为 {@code Math.max} 的输入影响后续处理
+     * @param eventInput 事件输入，作为 {@code positiveInt} 的输入影响后续处理
+     * @return 查询后的实体列表运行时默认结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Object queryDefault(
             EntityListConfig config,
             String entityCode,
@@ -950,6 +1132,13 @@ public class EntityListRuntimeService {
                 pageSize);
     }
 
+    /**
+     * 处理正数整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的正数整数结果，供调用方继续处理
+     */
     private int positiveInt(
             Object value,
             int fallback) {
@@ -965,6 +1154,16 @@ public class EntityListRuntimeService {
         }
     }
 
+    /**
+     * 处理{@code simulate}，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param request 本次请求，后续经校验后用于处理{@code simulate}
+     * @return 处理后的{@code simulate}结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(readOnly = true)
     public EntityListScopeSimulationDTO simulate(
             String entityCode,
@@ -1010,6 +1209,13 @@ public class EntityListRuntimeService {
         return result;
     }
 
+    /**
+     * 校验并获取实体列表运行时列表；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
+     */
     private EntityListConfig requireList(String entityCode, String listKey) {
         return requireList(
                 entityCode,
@@ -1019,6 +1225,16 @@ public class EntityListRuntimeService {
                 null);
     }
 
+    /**
+     * 校验并获取实体列表运行时列表；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于校验并获取实体列表运行时列表时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法校验并获取实体列表运行时列表时使用
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
+     */
     private EntityListConfig requireList(
             String entityCode,
             String listKey,
@@ -1034,6 +1250,20 @@ public class EntityListRuntimeService {
                 null);
     }
 
+    /**
+     * 校验并获取实体列表运行时列表；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于校验并获取实体列表运行时列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code dataListService.findListConfig} 的输入影响后续处理
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param compositionContext 执行上下文，向后续实体列表运行时列表步骤传递身份、配置或状态
+     * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private EntityListConfig requireList(
             String entityCode,
             String listKey,
@@ -1092,6 +1322,16 @@ public class EntityListRuntimeService {
         return config;
     }
 
+    /**
+     * 校验并获取固定列表；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseId 发布版本ID，后续用于校验并获取固定列表时定位或关联目标
+     * @param releaseVersion 发布版本，作为 {@code publishedRuntimeService.resolveViewCompositionConfig} 的输入影响后续处理
+     * @return 校验并获取后的固定列表结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig requirePinnedList(
             String entityCode,
             String listKey,
@@ -1127,6 +1367,12 @@ public class EntityListRuntimeService {
         return config;
     }
 
+    /**
+     * 验证视图组合上下文；不满足约束时阻止后续处理。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 验证后的视图组合上下文结果，供调用方继续处理
+     */
     private UiViewCompositionTokenService.Claims
             verifyViewCompositionContext(String token) {
         return StringUtils.hasText(token)
@@ -1134,6 +1380,15 @@ public class EntityListRuntimeService {
                 : null;
     }
 
+    /**
+     * 校验并获取组合目标；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续组合目标步骤传递身份、配置或状态
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param requestedReleaseId 请求发布版本ID，后续用于校验并获取组合目标时定位或关联目标
+     * @param requestedReleaseVersion 请求发布版本，作为 {@code equals} 的输入影响后续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireCompositionTarget(
             UiViewCompositionTokenService.Claims context,
             String entityCode,
@@ -1154,6 +1409,12 @@ public class EntityListRuntimeService {
         }
     }
 
+    /**
+     * 校验并获取列表访问；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续列表访问的处理规则
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireListAccess(EntityListConfig config) {
         String permission = resolveAccessPermission(config);
         Set<String> permissions =
@@ -1164,6 +1425,12 @@ public class EntityListRuntimeService {
         }
     }
 
+    /**
+     * 解析访问权限；输出作为后续校验或处理的输入。
+     *
+     * @param config 配置内容，决定后续访问权限的处理规则
+     * @return 解析后的访问权限文本，供调用方比较或展示
+     */
     private String resolveAccessPermission(EntityListConfig config) {
         if (StringUtils.hasText(config.getAccessPermissionCode())) {
             return config.getAccessPermissionCode();
@@ -1186,6 +1453,11 @@ public class EntityListRuntimeService {
                 + ":list";
     }
 
+    /**
+     * 读取仅视图动作；查询结果供调用方展示或继续处理。
+     *
+     * @return 仅视图动作键值结果，供调用方继续处理
+     */
     private Map<String, Object> readOnlyViewAction() {
         Map<String, Object> action = new LinkedHashMap<>();
         action.put("key", "view");
@@ -1199,6 +1471,14 @@ public class EntityListRuntimeService {
         return action;
     }
 
+    /**
+     * 校验用户过滤条件；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续用户过滤条件的处理规则
+     * @param requestFilters 请求过滤条件，供本方法校验用户过滤条件时使用
+     * @return 用户过滤条件键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> validateUserFilters(
             EntityListConfig config,
             Map<String, Object> requestFilters) {
@@ -1224,6 +1504,15 @@ public class EntityListRuntimeService {
         return result;
     }
 
+    /**
+     * 解析上下文过滤条件；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param scene {@code scene}，作为 {@code resolver.resolve} 的输入影响后续处理
+     * @param context 执行上下文，向后续上下文过滤条件步骤传递身份、配置或状态
+     * @return 上下文过滤条件键值结果，供调用方继续处理
+     */
     private Map<String, Object> resolveContextFilters(
             String entityCode,
             String listKey,
@@ -1242,6 +1531,15 @@ public class EntityListRuntimeService {
         return resolved == null ? Map.of() : resolved;
     }
 
+    /**
+     * 处理运行时上下文，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param scene {@code scene}，作为 {@code EntityListRuntimeContext} 的输入影响后续处理
+     * @param context 执行上下文，向后续运行时上下文步骤传递身份、配置或状态
+     * @return 处理后的运行时上下文结果，供调用方继续处理
+     */
     private EntityListRuntimeContext runtimeContext(
             String entityCode,
             String listKey,
@@ -1262,6 +1560,10 @@ public class EntityListRuntimeService {
      * 同一字段上的 View 固定条件、Launch Context 和客户端条件按 AND 语义组合。
      * 当前列表过滤模型无法表达同字段的两个不同等值条件，因此冲突时必须返回空集，不能让后
      * 合并条件覆盖先前的租户/范围约束。
+     *
+     * @param current 当前，供本方法判断是否具有可信过滤冲突时使用
+     * @param trusted 可信，供本方法判断是否具有可信过滤冲突时使用
+     * @return 可信过滤冲突条件成立时为 true，否则为 false
      */
     private boolean hasTrustedFilterConflict(
             Map<String, Object> current,
@@ -1278,6 +1580,12 @@ public class EntityListRuntimeService {
         return false;
     }
 
+    /**
+     * 处理空分页，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理空分页
+     * @return 处理后的空分页结果，供调用方继续处理
+     */
     private PageResult<?> emptyPage(EntityListQueryRequest request) {
         return new PageResult<>(
                 List.of(),
@@ -1286,6 +1594,13 @@ public class EntityListRuntimeService {
                 Math.max(1, Math.min(200, request.getPageSize())));
     }
 
+    /**
+     * 读取对象；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，供本方法读取对象时使用
+     * @param label 标签，后续用于读取对象时匹配或展示
+     * @return 对象键值结果，供调用方继续处理
+     */
     private Map<String, Object> readObject(String json, String label) {
         if (!StringUtils.hasText(json)) {
             return Map.of();
@@ -1293,6 +1608,12 @@ public class EntityListRuntimeService {
         return jsonDocumentCodec.readObject(json, label);
     }
 
+    /**
+     * 生成{@code strip}后缀文本，供后续匹配或展示。
+     *
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code strip}后缀文本，供调用方比较或展示
+     */
     private String stripSuffix(String key) {
         for (String suffix : List.of("_start", "_end", "_op")) {
             if (key.endsWith(suffix)) {
@@ -1302,6 +1623,12 @@ public class EntityListRuntimeService {
         return key;
     }
 
+    /**
+     * 处理当前用户，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前用户结果，供调用方继续处理
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private SysUser currentUser() {
         SysUser user = sysUserService.getById(UserContext.getUserId());
         if (user == null) {
@@ -1310,12 +1637,25 @@ public class EntityListRuntimeService {
         return user;
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT)
                 : fallback;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }

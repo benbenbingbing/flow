@@ -9,6 +9,7 @@ function claims(token) {
   } catch { return null }
 }
 
+/** 比较基础与有效发布坐标；续期仅可更新令牌，不能切到另一份热修复快照。 */
 function coordinates(form = {}) {
   return [form.id || form.formId || form.entityFormId, form.runtimeReleaseId || form.formReleaseId, form.runtimeReleaseVersion ?? form.formReleaseVersion,
     form.effectiveReleaseId || form.effectiveFormReleaseId || form.runtimeReleaseId || form.formReleaseId].map(value => String(value ?? ''))
@@ -22,13 +23,17 @@ function contextChanged() {
  * 在流程详情的请求发出前更新根表单解析令牌，兼容子表行持有的根令牌副本。
  * loadForm 必须重新经过服务端流程/任务鉴权；只接收相同任务、相同发布快照的令牌。
  * 不替换表单定义或记录，不重放已经发送的写请求；并发字段操作共用一次续期。
+ * @param {object} options getForm 读取当前表单，loadForm 重获授权，now 提供过期判断时间。
+ * @returns {object} prepare 在请求发出前更新顶层令牌，reset 在切换任务或表单时清除旧续期状态。
  */
 export function createFormReleaseSession({ getForm, loadForm, now = Date.now }) {
   const knownTokens = new Set()
+  // generation 使切换页面前的在途续期失效；pending 让同一页面的并发请求共用一次鉴权查询。
   let generation = 0, pending = null
 
   function reset() { generation++; pending = null; knownTokens.clear() }
 
+  /** 仅续已由当前表单持有的令牌；未知令牌原样返回，最终由服务端拒绝。 */
   async function renew(token) {
     const form = getForm(), current = form?.releaseResolutionToken
     if (current) knownTokens.add(current)

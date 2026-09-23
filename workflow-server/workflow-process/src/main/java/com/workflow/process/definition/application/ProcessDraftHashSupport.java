@@ -16,6 +16,9 @@ import java.util.HexFormat;
  */
 final class ProcessDraftHashSupport {
 
+    /**
+     * 初始化流程草稿哈希支持，保存构造参数供后续方法使用。
+     */
     private ProcessDraftHashSupport() {
     }
 
@@ -63,6 +66,12 @@ final class ProcessDraftHashSupport {
         }
     }
 
+    /**
+     * 更新流程草稿哈希支持；后续读取或执行将使用更新后的状态。
+     *
+     * @param digest 摘要，供本方法更新流程草稿哈希支持时使用
+     * @param value 待更新流程草稿哈希支持的原始输入，结果供调用方继续使用
+     */
     private static void update(MessageDigest digest, String value) {
         byte[] bytes = value == null
                 ? new byte[0]
@@ -71,6 +80,12 @@ final class ProcessDraftHashSupport {
         digest.update(bytes);
     }
 
+    /**
+     * 规范化XML；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化XML的原始输入，结果供调用方继续使用
+     * @return 规范化后的XML文本，供调用方比较或展示
+     */
     private static String normalizeXml(String value) {
         return value == null ? null : value.replace("\r\n", "\n").replace('\r', '\n');
     }

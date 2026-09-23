@@ -50,17 +50,34 @@ public class EntityFormUniqueValueGateRepository {
         }
     }
 
-    /** 稳定字段作用域与 sentinel 或规范化值的事务锁键。 */
+    /**
+     * 稳定字段作用域与 sentinel 或规范化值的事务锁键。
+     *
+     * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+     * @param valueHash 值哈希，保存在对象中供后续校验、查询或展示
+     */
     public record GateKey(
             String scopeKey,
             String valueHash)
             implements Comparable<GateKey> {
 
+        /**
+         * 初始化{@code gate}键，保存构造参数供后续方法使用。
+         *
+         * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+         * @param valueHash 值哈希，保存在对象中供后续校验、查询或展示
+         */
         public GateKey {
             require(scopeKey, "唯一值门闩作用域不能为空");
             require(valueHash, "唯一值门闩哈希不能为空");
         }
 
+        /**
+         * 比较截止；结果供调用方的后续步骤使用。
+         *
+         * @param other {@code other}，供本方法比较截止时使用
+         * @return 比较后的截止结果，供调用方继续处理
+         */
         @Override
         public int compareTo(GateKey other) {
             int scopeOrder = scopeKey.compareTo(
@@ -70,6 +87,13 @@ public class EntityFormUniqueValueGateRepository {
                     : valueHash.compareTo(other.valueHash);
         }
 
+        /**
+         * 校验并获取{@code gate}键；不满足约束时阻止后续处理。
+         *
+         * @param value 待校验并获取{@code gate}键的原始输入，结果供调用方继续使用
+         * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private static void require(
                 String value,
                 String message) {

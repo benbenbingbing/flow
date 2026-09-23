@@ -1,7 +1,7 @@
 package com.workflow.entity.data;
 
 import com.workflow.entity.data.infrastructure.JdbcSchemaDdlExecutor;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.port.DatabaseConnections;
 import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;

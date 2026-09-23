@@ -9,6 +9,9 @@ import lombok.Data;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+/**
+ * 封装工作日历的数据访问；应用服务通过它读取或持久化业务状态。
+ */
 @Data
 @TableName("work_calendar")
 public class WorkCalendar {

@@ -14,6 +14,9 @@ import java.util.LinkedHashMap;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 负责流程状态同步待发送事件的业务处理；协调校验、状态变化及后续结果传递。
+ */
 @Component
 @RequiredArgsConstructor
 public class ProcessStatusSyncOutboxHandler
@@ -26,11 +29,21 @@ public class ProcessStatusSyncOutboxHandler
     private final JdbcIdempotentInsert inserts;
     private final DatabaseClockPort clock;
 
+    /**
+     * 生成{@code topic}文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code topic}文本，供调用方比较或展示
+     */
     @Override
     public String topic() {
         return ProcessStatusSyncPublisher.TOPIC;
     }
 
+    /**
+     * 判断可重试条件是否成立，供调用方选择后续分支。
+     *
+     * @return 可重试条件成立时为 true，否则为 false
+     */
     @Override
     public boolean retryable() {
         return true;
@@ -39,7 +52,9 @@ public class ProcessStatusSyncOutboxHandler
     /**
      * 在同一事务内占用事件、更新实体状态并确认审计；重复事件不再次执行业务副作用。
      * 解析/业务更新/审计确认任一步失败均抛出异常回滚，以允许 outbox 安全重投。
+     *
      * @param event 包含状态同步载荷及投递 ID 的 outbox 事件
+     * @throws Exception 下游操作失败时向调用方传递
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -84,7 +99,12 @@ public class ProcessStatusSyncOutboxHandler
         }
     }
 
-    /** 占用审计记录与实体状态更新处于同一事务，失败回滚后重投仍能再次取得执行权。 */
+    /**
+     * 占用审计记录与实体状态更新处于同一事务，失败回滚后重投仍能再次取得执行权。
+     *
+     * @param record 记录，作为 {@code values.put} 的输入影响后续处理
+     * @return {@code applying}条件成立时为 true，否则为 false
+     */
     private boolean insertApplying(ProcessStatusSyncRecord record) {
         var now = clock.utcNow();
         var values = new LinkedHashMap<String, Object>();
@@ -102,6 +122,13 @@ public class ProcessStatusSyncOutboxHandler
         return inserts.insertIfAbsent("process_status_sync_event", values);
     }
 
+    /**
+     * 转换为记录；输出作为后续校验或处理的输入。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param payload 载荷，后续用于转换为记录并传递处理结果
+     * @return 转换为后的记录结果，供调用方继续处理
+     */
     private ProcessStatusSyncRecord toRecord(
             String id,
             ProcessStatusSyncPayload payload) {

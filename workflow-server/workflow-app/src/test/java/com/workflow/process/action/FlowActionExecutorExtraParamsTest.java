@@ -1,6 +1,6 @@
 package com.workflow.process.action;
 
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.process.action.application.FlowActionExecutor;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;

@@ -10,10 +10,10 @@ import com.workflow.admin.identity.position.infrastructure.persistence.mapper.Sy
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.SysPosition;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,6 +37,17 @@ public class PositionDefinitionService {
     private final SysPositionAssignmentMapper assignmentMapper;
     private final PositionOrganizationScopeService scopeService;
 
+    /**
+     * 分页查询位置定义；查询结果供调用方展示或继续处理。
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param keyword 关键字，作为 {@code and} 的输入影响后续处理
+     * @param applicableUnitType 适用单元类型标识，决定后续位置定义采用的处理分支
+     * @param holderMode 持有者模式标识，决定后续位置定义采用的处理分支
+     * @param status 状态标识，决定后续位置定义采用的处理分支
+     * @return 符合条件的位置视图结果，供调用方继续处理
+     */
     public PageResult<PositionViews.PositionView> page(
             int pageNum,
             int pageSize,
@@ -81,7 +92,12 @@ public class PositionDefinitionService {
                 result.getCurrent(), result.getSize());
     }
 
-    /** 返回任职表单与流程设计器可选择的启用职务。 */
+    /**
+     * 返回任职表单与流程设计器可选择的启用职务。
+     *
+     * @param applicableUnitType 适用单元类型标识，决定后续启用采用的处理分支
+     * @return 位置视图集合，供调用方遍历或展示
+     */
     public List<PositionViews.PositionView> enabled(String applicableUnitType) {
         String unitType = optionalEnum(
                 applicableUnitType,
@@ -97,6 +113,12 @@ public class PositionDefinitionService {
                 .toList();
     }
 
+    /**
+     * 读取位置{@code views.position}视图；结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的位置{@code views.position}视图结果，供调用方继续处理
+     */
     public PositionViews.PositionView get(String id) {
         SysPosition position = positionMapper.selectById(id);
         if (position == null) {
@@ -108,6 +130,12 @@ public class PositionDefinitionService {
                 LocalDateTime.now(ZoneOffset.UTC));
     }
 
+    /**
+     * 创建位置定义；结果供后续流程传递或持久化。
+     *
+     * @param request 本次请求，后续经校验后用于创建位置定义
+     * @return 创建后的位置定义结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -155,6 +183,13 @@ public class PositionDefinitionService {
         return basicView(position, 0, 0, now);
     }
 
+    /**
+     * 更新位置定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于更新位置定义
+     * @return 更新后的位置定义结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -220,6 +255,12 @@ public class PositionDefinitionService {
         return getWithoutLock(id);
     }
 
+    /**
+     * 处理变更状态，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理变更状态
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -251,6 +292,12 @@ public class PositionDefinitionService {
                 id, status, requireActor(), expectedRevision));
     }
 
+    /**
+     * 删除位置定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于删除位置定义
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.SYSTEM,
@@ -285,6 +332,14 @@ public class PositionDefinitionService {
                 id, requireActor(), expectedRevision));
     }
 
+    /**
+     * 转换为视图；输出作为后续校验或处理的输入。
+     *
+     * @param position 位置，作为 {@code basicView} 的输入影响后续处理
+     * @param visibleUnitIds 可见单元ID 集合，供本方法转换为视图时使用
+     * @param now 当前时间，供本方法转换为视图时使用
+     * @return 转换为后的视图结果，供调用方继续处理
+     */
     private PositionViews.PositionView toView(
             SysPosition position,
             List<String> visibleUnitIds,
@@ -297,6 +352,15 @@ public class PositionDefinitionService {
                 now);
     }
 
+    /**
+     * 处理{@code basic}视图，并将结果传给后续步骤。
+     *
+     * @param position 位置，作为 {@code PositionViews.PositionView} 的输入影响后续处理
+     * @param currentAssignments 当前分配集合，供本方法处理{@code basic}视图时使用
+     * @param processReferences 流程引用，供本方法处理{@code basic}视图时使用
+     * @param now 当前时间，供本方法处理{@code basic}视图时使用
+     * @return 处理后的{@code basic}视图结果，供调用方继续处理
+     */
     private PositionViews.PositionView basicView(
             SysPosition position,
             long currentAssignments,
@@ -321,6 +385,12 @@ public class PositionDefinitionService {
                 toInstant(position.getUpdateTime()));
     }
 
+    /**
+     * 读取{@code without}锁定；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 符合条件的位置{@code views.position}视图结果，供调用方继续处理
+     */
     private PositionViews.PositionView getWithoutLock(String id) {
         SysPosition value = positionMapper.selectById(id);
         if (value == null) {
@@ -329,6 +399,12 @@ public class PositionDefinitionService {
         return basicView(value, 0, 0, LocalDateTime.now(ZoneOffset.UTC));
     }
 
+    /**
+     * 校验并获取已锁定；不满足约束时阻止后续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的已锁定结果，供调用方继续处理
+     */
     private SysPosition requireLocked(String id) {
         SysPosition position = StringUtils.hasText(id)
                 ? positionMapper.selectForUpdate(id) : null;
@@ -338,6 +414,13 @@ public class PositionDefinitionService {
         return position;
     }
 
+    /**
+     * 校验并获取修订版本；不满足约束时阻止后续处理。
+     *
+     * @param requested 请求，供本方法校验并获取修订版本时使用
+     * @param current 当前，供本方法校验并获取修订版本时使用
+     * @return 校验并获取后的修订版本结果，供调用方继续处理
+     */
     private int requireRevision(Integer requested, SysPosition current) {
         if (requested == null || !requested.equals(current.getRevision())) {
             throw new PositionManagementException(
@@ -348,6 +431,11 @@ public class PositionDefinitionService {
         return requested;
     }
 
+    /**
+     * 校验并获取已变更；不满足约束时阻止后续处理。
+     *
+     * @param changed 已变更，供本方法校验并获取已变更时使用
+     */
     private void requireChanged(int changed) {
         if (changed != 1) {
             throw new PositionManagementException(
@@ -357,16 +445,32 @@ public class PositionDefinitionService {
         }
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private PositionManagementException notFound() {
         return new PositionManagementException(
                 404, PositionErrorCode.POSITION_NOT_FOUND, "职务不存在");
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code PositionManagementException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private PositionManagementException invalid(String message) {
         return new PositionManagementException(
                 400, PositionErrorCode.BATCH_ASSIGNMENT_INVALID, message);
     }
 
+    /**
+     * 校验并获取操作人；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的操作人文本，供调用方比较或展示
+     */
     private String requireActor() {
         String actor = UserContext.getUserId();
         if (!StringUtils.hasText(actor)) {
@@ -378,6 +482,12 @@ public class PositionDefinitionService {
         return actor;
     }
 
+    /**
+     * 规范化编码；输出作为后续校验或处理的输入。
+     *
+     * @param code 编码，后续用于规范化编码时定位或关联目标
+     * @return 规范化后的编码文本，供调用方比较或展示
+     */
     private String normalizeCode(String code) {
         String normalized = requiredText(code, "职务编码")
                 .toUpperCase(Locale.ROOT);
@@ -387,6 +497,14 @@ public class PositionDefinitionService {
         return normalized;
     }
 
+    /**
+     * 生成必填枚举文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填枚举的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续必填枚举采用的处理分支
+     * @param label 标签，后续用于处理必填枚举时匹配或展示
+     * @return 处理后的必填枚举文本，供调用方比较或展示
+     */
     private <E extends Enum<E>> String requiredEnum(
             String value, Class<E> type, String label) {
         String normalized = requiredText(value, label).toUpperCase(Locale.ROOT);
@@ -397,12 +515,27 @@ public class PositionDefinitionService {
         }
     }
 
+    /**
+     * 生成可选枚举文本，供后续匹配或展示。
+     *
+     * @param value 待处理可选枚举的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续可选枚举采用的处理分支
+     * @param label 标签，后续用于处理可选枚举时匹配或展示
+     * @return 处理后的可选枚举文本，供调用方比较或展示
+     */
     private <E extends Enum<E>> String optionalEnum(
             String value, Class<E> type, String label) {
         return StringUtils.hasText(value)
                 ? requiredEnum(value, type, label) : null;
     }
 
+    /**
+     * 生成必填文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填文本的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理必填文本时匹配或展示
+     * @return 处理后的必填文本文本，供调用方比较或展示
+     */
     private String requiredText(String value, String label) {
         if (!StringUtils.hasText(value)) {
             throw invalid(label + "不能为空");
@@ -410,10 +543,24 @@ public class PositionDefinitionService {
         return value.trim();
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 处理非{@code negative}，并将结果传给后续步骤。
+     *
+     * @param value 待处理非{@code negative}的原始输入，结果供调用方继续使用
+     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
+     * @param label 标签，后续用于处理非{@code negative}时匹配或展示
+     * @return 处理后的非{@code negative}结果，供调用方继续处理
+     */
     private int nonNegative(Integer value, int defaultValue, String label) {
         int result = value == null ? defaultValue : value;
         if (result < 0) {
@@ -422,6 +569,12 @@ public class PositionDefinitionService {
         return result;
     }
 
+    /**
+     * 转换为绝对时间；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为绝对时间的原始输入，结果供调用方继续使用
+     * @return 转换为后的绝对时间结果，供调用方继续处理
+     */
     private java.time.Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }

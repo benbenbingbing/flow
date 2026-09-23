@@ -1,6 +1,6 @@
 package com.workflow.contracts.process.action.spi;
 
-import com.workflow.contracts.action.FlowActionContext;
+import com.workflow.contracts.process.action.context.FlowActionContext;
 
 /**
  * 带类型化业务参数的流程动作处理器扩展点。
@@ -26,6 +26,11 @@ public interface TypedFlowActionHandler<T> extends FlowActionHandler {
      */
     void execute(FlowActionContext ctx, T params);
 
+    /**
+     * 执行{@code typed}流程动作，并将结果传给后续步骤。
+     *
+     * @param ctx {@code ctx}，供本方法执行{@code typed}流程动作时使用
+     */
     @Override
     default void execute(FlowActionContext ctx) {
         T params = ctx.convertExtraParams(getParamType());

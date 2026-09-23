@@ -31,6 +31,13 @@ class ConfigMigrationMenuImporter {
     private final SysRoleMenuMapper roleMenuMapper;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 应用配置迁移菜单{@code importer}，并将结果传给后续步骤。
+     *
+     * @param entity 实体，作为 {@code ConfigMigrationImportApplyService.normalizeImportedMenu} 的输入影响后续处理
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     void apply(
             EntityDefinition entity,
             List<Map<String, Object>> values) {
@@ -86,6 +93,12 @@ class ConfigMigrationMenuImporter {
         }
     }
 
+    /**
+     * 处理绑定{@code administrators}，并将结果传给后续步骤。
+     *
+     * @param administrators {@code administrators}，供本方法处理绑定{@code administrators}时使用
+     * @param menuId 菜单ID，后续用于处理绑定{@code administrators}时定位或关联目标
+     */
     private void bindAdministrators(
             List<SysRole> administrators,
             String menuId) {
@@ -103,6 +116,12 @@ class ConfigMigrationMenuImporter {
         }
     }
 
+    /**
+     * 查询实体列表菜单集合；查询结果供调用方展示或继续处理。
+     *
+     * @param menu 菜单，作为 {@code eq} 的输入影响后续处理
+     * @return 系统菜单集合，供调用方遍历或展示
+     */
     private List<SysMenu> findEntityListMenus(SysMenu menu) {
         if (!StringUtils.hasText(
                 ConfigMigrationImportApplyService
@@ -125,6 +144,12 @@ class ConfigMigrationMenuImporter {
                         .orderByAsc(SysMenu::getId));
     }
 
+    /**
+     * 移除{@code duplicate}菜单集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param matches 匹配，供本方法移除{@code duplicate}菜单集合时使用
+     * @param retainedMenuId {@code retained}菜单ID，后续用于移除{@code duplicate}菜单集合时定位或关联目标
+     */
     private void removeDuplicateMenus(
             List<SysMenu> matches,
             String retainedMenuId) {
@@ -143,6 +168,12 @@ class ConfigMigrationMenuImporter {
         }
     }
 
+    /**
+     * 查询父级菜单；查询结果供调用方展示或继续处理。
+     *
+     * @param parentPath 父级路径，作为 {@code menuMapper.selectByPathAndType} 的输入影响后续处理
+     * @return 符合条件的系统菜单结果，供调用方继续处理
+     */
     private SysMenu findParentMenu(String parentPath) {
         for (String menuType :
                 ConfigMigrationImportApplyService.parentMenuTypes(
@@ -157,6 +188,11 @@ class ConfigMigrationMenuImporter {
         return null;
     }
 
+    /**
+     * 清理可空菜单列集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param menu 菜单，作为 {@code eq} 的输入影响后续处理
+     */
     private void clearNullableMenuColumns(SysMenu menu) {
         LambdaUpdateWrapper<SysMenu> update =
                 new LambdaUpdateWrapper<SysMenu>()
@@ -176,6 +212,13 @@ class ConfigMigrationMenuImporter {
         }
     }
 
+    /**
+     * 转换配置迁移菜单{@code importer}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换配置迁移菜单{@code importer}的原始输入，结果供调用方继续使用
+     * @param type 类型标识，决定后续配置迁移菜单{@code importer}采用的处理分支
+     * @return 转换后的配置迁移菜单{@code importer}结果，供调用方继续处理
+     */
     private <T> T convert(
             Map<String, Object> value,
             Class<T> type) {
@@ -187,6 +230,12 @@ class ConfigMigrationMenuImporter {
         return tolerant.convertValue(value, type);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null
                 ? null

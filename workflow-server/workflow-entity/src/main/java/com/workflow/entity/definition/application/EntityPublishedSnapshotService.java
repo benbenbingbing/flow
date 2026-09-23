@@ -112,6 +112,9 @@ public class EntityPublishedSnapshotService {
 
     /**
      * 按实体编码查找最新发布快照，不存在时返回 null。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体已发布快照结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityPublishedSnapshot findLatestByEntityCode(
@@ -149,6 +152,12 @@ public class EntityPublishedSnapshotService {
         return snapshot;
     }
 
+    /**
+     * 处理固定，并将结果传给后续步骤。
+     *
+     * @param history 历史，作为 {@code PinnedEntitySnapshot} 的输入影响后续处理
+     * @return 处理后的固定结果，供调用方继续处理
+     */
     private PinnedEntitySnapshot pinned(
             EntityPublishHistory history) {
         return new PinnedEntitySnapshot(
@@ -159,6 +168,9 @@ public class EntityPublishedSnapshotService {
      * 对影响字段/关系解析的原始历史内容做长度分隔编码。
      * 使用原始文档而非当前 POJO 再序列化，可避免后续代码属性
      * 顺序调整导致旧宿主版本指纹无意失效。
+     *
+     * @param history 历史，作为 {@code appendFingerprintPart} 的输入影响后续处理
+     * @return 处理后的结构哈希文本，供调用方比较或展示
      */
     private String schemaHash(EntityPublishHistory history) {
         StringBuilder material = new StringBuilder();
@@ -180,6 +192,12 @@ public class EntityPublishedSnapshotService {
         }
     }
 
+    /**
+     * 追加指纹{@code part}；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法追加指纹{@code part}时使用
+     * @param value 待追加指纹{@code part}的原始输入，结果供调用方继续使用
+     */
     private void appendFingerprintPart(
             StringBuilder target,
             Object value) {
@@ -191,6 +209,12 @@ public class EntityPublishedSnapshotService {
         target.append(text.length()).append(':').append(text);
     }
 
+    /**
+     * 解析关系集合；输出作为后续校验或处理的输入。
+     *
+     * @param history 历史，作为 {@code RuntimeException} 的输入影响后续处理
+     * @return 实体关系集合，供调用方遍历或展示
+     */
     private List<EntityRelation> parseRelations(
             EntityPublishHistory history) {
         String relationsSnapshot = history.getRelationsSnapshot();
@@ -211,6 +235,12 @@ public class EntityPublishedSnapshotService {
         }
     }
 
+    /**
+     * 解析字段；输出作为后续校验或处理的输入。
+     *
+     * @param history 历史，作为 {@code RuntimeException} 的输入影响后续处理
+     * @return 实体字段集合，供调用方遍历或展示
+     */
     private List<EntityField> parseFields(EntityPublishHistory history) {
         String fieldsSnapshot = history.getFieldsSnapshot();
         if (fieldsSnapshot == null || fieldsSnapshot.isBlank()) {
@@ -237,6 +267,12 @@ public class EntityPublishedSnapshotService {
         }
     }
 
+    /**
+     * 规范化旧版字段；输出作为后续校验或处理的输入。
+     *
+     * @param source 待规范化旧版字段的原始输入，结果供调用方继续使用
+     * @return 旧版字段键值结果，供调用方继续处理
+     */
     private Map<String, Object> normalizeLegacyField(
             Map<String, Object> source) {
         Map<String, Object> field = new LinkedHashMap<>(source);
@@ -255,7 +291,12 @@ public class EntityPublishedSnapshotService {
         return field;
     }
 
-    /** 实体发布历史与其不可变完整性指纹。 */
+    /**
+     * 实体发布历史与其不可变完整性指纹。
+     *
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param schemaHash 结构哈希，保存在对象中供后续校验、查询或展示
+     */
     public record PinnedEntitySnapshot(
             EntityPublishedSnapshot snapshot,
             String schemaHash) {

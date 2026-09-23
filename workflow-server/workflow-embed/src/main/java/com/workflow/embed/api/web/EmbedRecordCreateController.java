@@ -20,6 +20,11 @@ public class EmbedRecordCreateController {
 
     private final EmbedRecordCreateFacade createFacade;
 
+    /**
+     * 初始化嵌入式记录创建控制器，保存构造参数供后续方法使用。
+     *
+     * @param createFacade 创建{@code facade}依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedRecordCreateController(
             EmbedRecordCreateFacade createFacade) {
         this.createFacade = createFacade;
@@ -27,6 +32,11 @@ public class EmbedRecordCreateController {
 
     /**
      * 幂等创建 Session 固定实体记录；浏览器不能提供实体、表单、Release、用户或流程坐标。
+     *
+     * @param request 本次请求，后续经校验后用于创建嵌入式记录创建
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @param servletRequest Servlet请求，作为 {@code CorrelationContext.businessTraceId} 的输入影响后续处理
+     * @return 创建后的嵌入式记录创建结果，供调用方继续处理
      */
     @PostMapping("/records")
     public ResponseEntity<EmbedApiEnvelope<EmbedRecordCreateViews.CreateResult>>

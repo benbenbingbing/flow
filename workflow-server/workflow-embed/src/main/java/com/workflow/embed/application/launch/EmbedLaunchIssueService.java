@@ -4,14 +4,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedApplicationActor;
-import com.workflow.contracts.embed.EmbedLaunchCommand;
-import com.workflow.contracts.embed.EmbedLaunchEntry;
+import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchCommand;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchEntry;
 import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.contracts.embed.EmbedLaunchIssued;
-import com.workflow.contracts.embed.EmbedLaunchSubject;
-import com.workflow.contracts.embed.EmbedLaunchUi;
-import com.workflow.contracts.embed.EmbedLaunchView;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchSubject;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchUi;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
 import com.workflow.embed.application.port.EmbedAssertionReplayPort;
 import com.workflow.embed.application.port.EmbedContextProtectionPort;
 import com.workflow.embed.application.port.EmbedDigestPort;
@@ -93,6 +93,28 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
     private final Clock clock;
     private final EmbedLifecycleAudit lifecycleAudit;
 
+    /**
+     * 初始化嵌入式启动记录签发服务，保存构造参数供后续方法使用。
+     *
+     * @param configurationPort 配置端口依赖，保存到当前对象供后续业务方法调用
+     * @param bindingPort 绑定端口依赖，保存到当前对象供后续业务方法调用
+     * @param flowUserPort 流程用户端口依赖，保存到当前对象供后续业务方法调用
+     * @param signedAssertionVerifier 已签名断言验证器依赖，保存到当前对象供后续业务方法调用
+     * @param assertionReplayPort 断言重放端口依赖，保存到当前对象供后续业务方法调用
+     * @param subjectDigestPort 主体摘要端口依赖，保存到当前对象供后续业务方法调用
+     * @param contextProtectionPort 上下文{@code protection}端口依赖，保存到当前对象供后续业务方法调用
+     * @param secretGenerator 密钥生成器依赖，保存到当前对象供后续业务方法调用
+     * @param digestPort 摘要端口依赖，保存到当前对象供后续业务方法调用
+     * @param idGenerator ID生成器依赖，保存到当前对象供后续业务方法调用
+     * @param launchStore 启动记录{@code store}依赖，保存到当前对象供后续业务方法调用
+     * @param snapshotMaterializationPort 快照{@code materialization}端口依赖，保存到当前对象供后续业务方法调用
+     * @param trafficControlPort {@code traffic}{@code control}端口依赖，保存到当前对象供后续业务方法调用
+     * @param contextValidator 上下文校验器依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     * @param lifecycleAudit 生命周期审计依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedLaunchIssueService(
             EmbedLaunchConfigurationPort configurationPort,
             EmbedExternalIdentityBindingPort bindingPort,
@@ -137,6 +159,10 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
      *
      * <p>外部 subject、上下文、身份断言及明文 launch code 均不会落库；任何配置缺失、版本失效或
      * 映射不唯一的情况都会拒绝请求。
+     *
+     * @param actor 操作人，作为 {@code issueInternal} 的输入影响后续处理
+     * @param command 本次命令，后续经校验后用于处理签发
+     * @return 处理后的签发结果，供调用方继续处理
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -159,6 +185,14 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         }
     }
 
+    /**
+     * 处理签发内部，并将结果传给后续步骤。
+     *
+     * @param actor 操作人，作为 {@code configurationPort.find} 的输入影响后续处理
+     * @param command 本次命令，后续经校验后用于处理签发内部
+     * @param correlation 关联，供本方法处理签发内部时使用
+     * @return 处理后的签发内部结果，供调用方继续处理
+     */
     private EmbedLaunchIssued issueInternal(
             EmbedApplicationActor actor,
             EmbedLaunchCommand command,
@@ -296,6 +330,11 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 PROTOCOL_VERSION);
     }
 
+    /**
+     * 校验{@code top}层级；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验{@code top}层级
+     */
     private void validateTopLevel(EmbedLaunchCommand command) {
         if (!SAFE_VIEW_KEY.matcher(command.viewKey()).matches()) {
             throw invalid("viewKey is invalid");
@@ -308,6 +347,14 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         }
     }
 
+    /**
+     * 校验配置；不满足约束时阻止后续处理。
+     *
+     * @param configuration 配置内容，决定后续配置的处理规则
+     * @param actor 操作人，供本方法校验配置时使用
+     * @param parentOrigin 父级来源，供本方法校验配置时使用
+     * @param now 当前时间，供本方法校验配置时使用
+     */
     private void validateConfiguration(
             EmbedLaunchConfiguration configuration,
             EmbedApplicationActor actor,
@@ -335,7 +382,12 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         }
     }
 
-    /** 复验内部物化器输出，防止异常适配器把未开放能力带入 Session。 */
+    /**
+     * 复验内部物化器输出，防止异常适配器把未开放能力带入 Session。
+     *
+     * @param configuration 配置内容，决定后续运行时快照的处理规则
+     * @param runtimeSnapshot 运行时快照，作为 {@code parseStringSet} 的输入影响后续处理
+     */
     private void validateRuntimeSnapshot(
             EmbedLaunchConfiguration configuration,
             EmbedReleaseSnapshot runtimeSnapshot) {
@@ -356,6 +408,14 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         }
     }
 
+    /**
+     * 解析主体；输出作为后续校验或处理的输入。
+     *
+     * @param configuration 配置内容，决定后续主体的处理规则
+     * @param request 本次请求，后续经校验后用于解析主体
+     * @param now 当前时间，作为 {@code signedAssertionVerifier.verify} 的输入影响后续处理
+     * @return 解析后的主体结果，供调用方继续处理
+     */
     private ResolvedSubject resolveSubject(
             EmbedLaunchConfiguration configuration,
             EmbedLaunchSubject request,
@@ -411,6 +471,13 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
                 normalizedExternalSubject(verified.externalSubject(), "verified subject"));
     }
 
+    /**
+     * 校验入口；不满足约束时阻止后续处理。
+     *
+     * @param runtimeSnapshot 运行时快照，供本方法校验入口时使用
+     * @param requested 请求，作为 {@code EmbedEntryMode.valueOf} 的输入影响后续处理
+     * @return 校验后的入口结果，供调用方继续处理
+     */
     private EntrySelection validateEntry(
             EmbedReleaseSnapshot runtimeSnapshot,
             EmbedLaunchEntry requested) {
@@ -438,6 +505,13 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         return new EntrySelection(mode, recordId == null || recordId.isBlank() ? null : recordId);
     }
 
+    /**
+     * 校验界面；不满足约束时阻止后续处理。
+     *
+     * @param uiConfigJson 界面配置JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @param requested 请求，供本方法校验界面时使用
+     * @return 校验后的界面结果，供调用方继续处理
+     */
     private UiSelection validateUi(String uiConfigJson, EmbedLaunchUi requested) {
         String locale = requested == null || requested.locale() == null
                 || requested.locale().isBlank() ? "zh-CN" : requested.locale().trim();
@@ -467,6 +541,12 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         return new UiSelection(locale, theme, formPresentation);
     }
 
+    /**
+     * 解析字符串设置；输出作为后续校验或处理的输入。
+     *
+     * @param json JSON，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 嵌入式启动记录签发集合，供调用方遍历或展示
+     */
     private Set<String> parseStringSet(String json) {
         try {
             Set<String> parsed = objectMapper.readValue(json, STRING_SET);
@@ -477,6 +557,13 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         }
     }
 
+    /**
+     * 判断是否包含文本；判断结果决定调用方的后续分支。
+     *
+     * @param array 数组，供本方法判断是否包含文本时使用
+     * @param expected 预期，供本方法判断是否包含文本时使用
+     * @return 文本条件成立时为 true，否则为 false
+     */
     private static boolean containsText(JsonNode array, String expected) {
         for (JsonNode item : array) {
             if (expected.equals(item.asText())) {
@@ -486,12 +573,23 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         return false;
     }
 
+    /**
+     * 整理不可变上下文数据，供调用方遍历或继续处理。
+     *
+     * @param context 执行上下文，向后续不可变上下文步骤传递身份、配置或状态
+     * @return 不可变上下文键值结果，供调用方继续处理
+     */
     private static Map<String, Object> immutableContext(Map<String, Object> context) {
         return context == null
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(context));
     }
 
+    /**
+     * 生成公开基础URL文本，供后续匹配或展示。
+     *
+     * @return 处理后的公开基础URL文本，供调用方比较或展示
+     */
     private String publicBaseUrl() {
         String value = properties.getPublicBaseUrl().trim();
         while (value.endsWith("/")) {
@@ -500,6 +598,14 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         return value;
     }
 
+    /**
+     * 生成必填{@code trimmed}文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填{@code trimmed}的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，供本方法处理必填{@code trimmed}时使用
+     * @param field 字段，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的必填{@code trimmed}文本，供调用方比较或展示
+     */
     private static String requiredTrimmed(String value, int maxLength, String field) {
         if (value == null || value.isBlank() || value.length() > maxLength) {
             throw invalid(field + " is invalid");
@@ -507,31 +613,74 @@ public class EmbedLaunchIssueService implements EmbedLaunchIssuePort {
         return value.trim();
     }
 
+    /**
+     * 生成规范化外部主体文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化外部主体的原始输入，结果供调用方继续使用
+     * @param field 字段，作为 {@code requiredTrimmed} 的输入影响后续处理
+     * @return 处理后的规范化外部主体文本，供调用方比较或展示
+     */
     private static String normalizedExternalSubject(String value, String field) {
         String trimmed = requiredTrimmed(value, 128, field);
         return Normalizer.normalize(trimmed, Normalizer.Form.NFC);
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code EmbedException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private static EmbedException invalid(String message) {
         return new EmbedException(400, EmbedErrorCode.INVALID_REQUEST, message);
     }
 
+    /**
+     * 构造断言无效异常，供调用方区分失败原因。
+     *
+     * @return 处理后的断言无效结果，供调用方继续处理
+     */
     private static EmbedException assertionInvalid() {
         return new EmbedException(403, EmbedErrorCode.EMBED_IDENTITY_ASSERTION_INVALID,
                 "Identity assertion is invalid");
     }
 
+    /**
+     * 封装已解析主体的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param namespace 命名空间，保存在对象中供后续校验、查询或展示
+     * @param externalSubject 外部主体，保存在对象中供后续校验、查询或展示
+     */
     private record ResolvedSubject(String namespace, String externalSubject) {
     }
 
+    /**
+     * 封装已解析绑定的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param binding 绑定，保存在对象中供后续校验、查询或展示
+     * @param digest 摘要，保存在对象中供后续校验、查询或展示
+     */
     private record ResolvedBinding(
             EmbedExternalIdentityBinding binding,
             SubjectDigest digest) {
     }
 
+    /**
+     * 封装入口选择的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param mode 模式标识，决定后续入口选择采用的处理分支
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private record EntrySelection(EmbedEntryMode mode, String recordId) {
     }
 
+    /**
+     * 封装界面选择的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param locale {@code locale}，保存在对象中供后续校验、查询或展示
+     * @param theme {@code theme}，保存在对象中供后续校验、查询或展示
+     * @param formPresentation 表单展示，保存在对象中供后续校验、查询或展示
+     */
     private record UiSelection(String locale, String theme, String formPresentation) {
     }
 }

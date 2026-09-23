@@ -1,10 +1,10 @@
 package com.workflow.entity.definition.application;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +28,9 @@ public class EntityStatusService {
     
     /**
      * 查询实体的状态列表
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 实体状态集合，供调用方遍历或展示
      */
     public List<EntityStatus> findByEntityCode(String entityCode) {
         return entityStatusMapper.findByEntityCode(entityCode);
@@ -36,6 +39,9 @@ public class EntityStatusService {
     /**
      * 返回实体自定义状态的显示名称；列表调用方可在单次请求内按实体缓存，避免逐行查询配置。
      * 未配置名称的状态不加入映射，由客户端按内置状态或原始编码回退。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 状态名称映射键值结果，供调用方继续处理
      */
     public Map<String, String> getStatusNameMap(String entityCode) {
         Map<String, String> names = new LinkedHashMap<>();
@@ -50,6 +56,8 @@ public class EntityStatusService {
     
     /**
      * 保存实体状态
+     *
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -70,6 +78,9 @@ public class EntityStatusService {
     
     /**
      * 批量保存实体状态
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param statuses {@code statuses}，供本方法保存状态列表时使用
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -104,6 +115,8 @@ public class EntityStatusService {
     
     /**
      * 删除实体状态
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -123,6 +136,10 @@ public class EntityStatusService {
     
     /**
      * 根据分类查询
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param category 类别，决定后续状态或结果的归类
+     * @return 实体状态集合，供调用方遍历或展示
      */
     public List<EntityStatus> findByCategory(String entityCode, String category) {
         return entityStatusMapper.findByCategory(entityCode, category);

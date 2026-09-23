@@ -18,6 +18,9 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     
     /**
      * 查询流程配置下所有草稿状态的动作（排除已删除）
+     *
+     * @param processConfigId 流程配置ID，后续用于查询草稿动作集合流程配置ID时定位或关联目标
+     * @return 流程动作集合，供调用方遍历或展示
      */
     default List<FlowAction> findDraftActionsByProcessConfigId(String processConfigId) {
         return selectList(Wrappers.<FlowAction>lambdaQuery()
@@ -49,6 +52,9 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     
     /**
      * 查询版本下所有已发布的动作（排除已删除）
+     *
+     * @param versionId 版本ID，后续用于查询已发布动作集合版本ID时定位或关联目标
+     * @return 流程动作集合，供调用方遍历或展示
      */
     default List<FlowAction> findPublishedActionsByVersionId(String versionId) {
         return selectList(Wrappers.<FlowAction>lambdaQuery()
@@ -80,7 +86,12 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .orderByAsc(FlowAction::getSortOrder));
     }
 
-    /** 流程级动作绑定 NULL；空串保留数据库自身的 NULL 归一语义，避免改变既有 Oracle 查询。 */
+    /**
+     * 流程级动作绑定 NULL；空串保留数据库自身的 NULL 归一语义，避免改变既有 Oracle 查询。
+     *
+     * @param elementId 元素ID，后续用于处理元素绑定时定位或关联目标
+     * @return 处理后的元素绑定结果，供调用方继续处理
+     */
     private static LambdaQueryWrapper<FlowAction> elementBinding(String elementId) {
         var wrapper = Wrappers.<FlowAction>lambdaQuery();
         if (elementId == null) {
@@ -96,6 +107,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     
     /**
      * 逻辑删除动作
+     *
+     * @param actionId 动作ID，后续用于处理{@code logic}删除ID时定位或关联目标
      */
     default void logicDeleteById(String actionId) {
         delete(Wrappers.<FlowAction>lambdaQuery().eq(FlowAction::getId, actionId));
@@ -103,6 +116,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
     
     /**
      * 逻辑删除版本下的所有动作
+     *
+     * @param versionId 版本ID，后续用于处理{@code logic}删除版本ID时定位或关联目标
      */
     default void logicDeleteByVersionId(String versionId) {
         delete(Wrappers.<FlowAction>lambdaQuery().eq(FlowAction::getVersionId, versionId));

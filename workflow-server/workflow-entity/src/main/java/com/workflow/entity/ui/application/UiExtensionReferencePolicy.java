@@ -20,6 +20,9 @@ public final class UiExtensionReferencePolicy {
     public static final String COMPONENT_EXTENSION_TYPE =
             "componentExtensionType";
 
+    /**
+     * 初始化界面扩展引用策略，保存构造参数供后续方法使用。
+     */
     private UiExtensionReferencePolicy() {
     }
 
@@ -43,6 +46,12 @@ public final class UiExtensionReferencePolicy {
         return NODE;
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面扩展引用策略的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面扩展引用策略文本，供调用方比较或展示
+     */
     private static String normalize(Object value) {
         return value == null
                 ? ""

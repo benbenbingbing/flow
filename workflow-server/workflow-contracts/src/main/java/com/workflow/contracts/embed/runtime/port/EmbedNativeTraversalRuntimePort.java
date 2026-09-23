@@ -13,7 +13,21 @@ public interface EmbedNativeTraversalRuntimePort {
      */
     TraversalTarget resolve(String token);
 
-    /** 签名遍历令牌固定的根宿主、当前目标和实体坐标。 */
+    /**
+     * 签名遍历令牌固定的根宿主、当前目标和实体坐标。
+     *
+     * @param rootOwnerType 根归属方类型标识，决定后续遍历目标采用的处理分支
+     * @param rootOwnerId 根归属方ID，后续用于处理遍历目标时定位或关联目标
+     * @param rootReleaseId 根发布版本ID，后续用于处理遍历目标时定位或关联目标
+     * @param rootReleaseVersion 根发布版本，保存在对象中供后续校验、查询或展示
+     * @param rootRecordId 根记录ID，后续用于处理遍历目标时定位或关联目标
+     * @param targetOwnerType 目标归属方类型标识，决定后续遍历目标采用的处理分支
+     * @param targetOwnerId 目标归属方ID，后续用于处理遍历目标时定位或关联目标
+     * @param targetReleaseId 目标发布版本ID，后续用于处理遍历目标时定位或关联目标
+     * @param targetReleaseVersion 目标发布版本，保存在对象中供后续校验、查询或展示
+     * @param targetRecordId 目标记录ID，后续用于处理遍历目标时定位或关联目标
+     * @param targetEntityCode 目标实体编码，后续用于处理遍历目标时定位或关联目标
+     */
     record TraversalTarget(
             String rootOwnerType,
             String rootOwnerId,

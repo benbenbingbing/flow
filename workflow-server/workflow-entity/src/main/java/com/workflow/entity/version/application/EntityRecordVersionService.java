@@ -4,10 +4,10 @@ import com.workflow.core.database.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.admin.security.context.UserContext;
@@ -75,6 +75,16 @@ public class EntityRecordVersionService {
     private final JdbcLockedRow lockedRows;
     private final JdbcWriteAttempt writeAttempt;
 
+    /**
+     * 创建条件{@code matched}；结果供后续流程传递或持久化。
+     *
+     * @param command 本次命令，后续经校验后用于创建条件{@code matched}
+     * @param scenario {@code scenario}，作为 {@code requestHash} 的输入影响后续处理
+     * @param aggregateRecord 聚合对象记录，供本方法创建条件{@code matched}时使用
+     * @param deletedSnapshot 已删除快照，作为 {@code requestHash} 的输入影响后续处理
+     * @return 创建后的条件{@code matched}结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public EntityRecordVersion createIfMatched(
             EntityMutationCommand command,
@@ -213,6 +223,16 @@ public class EntityRecordVersionService {
         return version;
     }
 
+    /**
+     * 捕获人工；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param request 本次请求，后续经校验后用于捕获人工
+     * @param idempotencyKey 幂等键，后续用于授权校验、关联或幂等去重
+     * @return 捕获后的人工结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(
             rollbackFor = Exception.class,
             isolation = Isolation.READ_COMMITTED)
@@ -270,6 +290,13 @@ public class EntityRecordVersionService {
                 command, scenario, aggregate, false);
     }
 
+    /**
+     * 处理当前版本号，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的当前版本号结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Integer currentVersionNo(
             String entityCode,
@@ -278,6 +305,13 @@ public class EntityRecordVersionService {
                 entityCode, recordId));
     }
 
+    /**
+     * 列出实体记录版本；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 实体记录版本摘要集合，供调用方遍历或展示
+     */
     @Transactional(readOnly = true)
     public List<EntityRecordVersionSummary> list(
             String entityCode,
@@ -285,6 +319,15 @@ public class EntityRecordVersionService {
         return listPage(entityCode, recordId, 1, 200).getRecords();
     }
 
+    /**
+     * 列出实体记录版本分页；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param requestedPageNum 请求页码，后续归一化并换算为数据库查询偏移
+     * @param requestedPageSize 请求页大小，后续限制单次查询和返回数量
+     * @return 符合条件的实体记录版本摘要结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public PageResult<EntityRecordVersionSummary> listPage(
             String entityCode,
@@ -307,6 +350,13 @@ public class EntityRecordVersionService {
         return new PageResult<>(records, total, pageNum, pageSize);
     }
 
+    /**
+     * 转换为摘要；输出作为后续校验或处理的输入。
+     *
+     * @param item 条目，作为 {@code EntityRecordVersionSummary} 的输入影响后续处理
+     * @param previousHash 上一项哈希，供本方法转换为摘要时使用
+     * @return 转换为后的摘要结果，供调用方继续处理
+     */
     private EntityRecordVersionSummary toSummary(
             EntityRecordVersion item,
             String previousHash) {
@@ -332,6 +382,14 @@ public class EntityRecordVersionService {
                     item.getCreateTime());
     }
 
+    /**
+     * 整理详情数据，供调用方遍历或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @return 详情键值结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> detail(
             String entityCode,
@@ -358,6 +416,15 @@ public class EntityRecordVersionService {
         return result;
     }
 
+    /**
+     * 比较实体记录版本；结果供调用方的后续步骤使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param fromVersionNo 起始版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @param toVersionNo 截止版本号，作为 {@code requireVersion} 的输入影响后续处理
+     * @return 实体记录版本键值结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> compare(
             String entityCode,
@@ -444,6 +511,12 @@ public class EntityRecordVersionService {
         return result;
     }
 
+    /**
+     * 整理摘要数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理摘要的原始输入，结果供调用方继续使用
+     * @return 摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> summary(
             EntityRecordVersion value) {
         return Map.of(
@@ -454,6 +527,12 @@ public class EntityRecordVersionService {
                 "createTime", value.getCreateTime());
     }
 
+    /**
+     * 整理索引字段数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，供本方法处理索引字段时使用
+     * @return 索引字段键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Map<String, Object>> indexFields(
             Map<String, Object> snapshot) {
@@ -477,6 +556,13 @@ public class EntityRecordVersionService {
         return result;
     }
 
+    /**
+     * 生成变更类型文本，供后续匹配或展示。
+     *
+     * @param left 左侧，供本方法处理变更类型时使用
+     * @param right 右侧，供本方法处理变更类型时使用
+     * @return 处理后的变更类型文本，供调用方比较或展示
+     */
     private String changeType(
             Map<String, Object> left,
             Map<String, Object> right) {
@@ -491,6 +577,14 @@ public class EntityRecordVersionService {
                 ? "UNCHANGED" : "MODIFIED";
     }
 
+    /**
+     * 校验并获取幂等匹配；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验并获取幂等匹配
+     * @param scenario {@code scenario}，供本方法校验并获取幂等匹配时使用
+     * @param requestHash 请求哈希，供本方法校验并获取幂等匹配时使用
+     * @return 校验并获取后的幂等匹配结果，供调用方继续处理
+     */
     private EntityRecordVersion requireIdempotentMatch(
             EntityMutationCommand command,
             MatchedScenario scenario,
@@ -499,6 +593,16 @@ public class EntityRecordVersionService {
                 command, scenario, requestHash, false);
     }
 
+    /**
+     * 校验并获取幂等匹配；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验并获取幂等匹配
+     * @param scenario {@code scenario}，供本方法校验并获取幂等匹配时使用
+     * @param requestHash 请求哈希，供本方法校验并获取幂等匹配时使用
+     * @param lock 锁定，作为 {@code findIdempotent} 的输入影响后续处理
+     * @return 校验并获取后的幂等匹配结果，供调用方继续处理
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private EntityRecordVersion requireIdempotentMatch(
             EntityMutationCommand command,
             MatchedScenario scenario,
@@ -515,6 +619,13 @@ public class EntityRecordVersionService {
         return existing;
     }
 
+    /**
+     * 查询幂等；查询结果供调用方展示或继续处理。
+     *
+     * @param command 本次命令，后续经校验后用于查询幂等
+     * @param lock 锁定，供本方法查询幂等时使用
+     * @return 符合条件的实体记录版本结果，供调用方继续处理
+     */
     private EntityRecordVersion findIdempotent(
             EntityMutationCommand command,
             boolean lock) {
@@ -530,7 +641,12 @@ public class EntityRecordVersionService {
                 command.context().idempotencyKey());
     }
 
-    /** 先锁住稳定计数器，再按历史最大版本追平；旧节点补写不能让计数器倒退。 */
+    /**
+     * 先锁住稳定计数器，再按历史最大版本追平；旧节点补写不能让计数器倒退。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     */
     private void lockCounter(String entityCode, String recordId) {
         int initial = value(versionMapper.findMaxVersionNo(
                 entityCode, recordId));
@@ -546,6 +662,14 @@ public class EntityRecordVersionService {
         }
     }
 
+    /**
+     * 处理{@code increment}计数器，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的{@code increment}计数器结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private int incrementCounter(String entityCode, String recordId) {
         EntityRecordVersionCounter counter = counterMapper.lock(
                 entityCode, recordId);
@@ -559,6 +683,12 @@ public class EntityRecordVersionService {
         return next;
     }
 
+    /**
+     * 处理{@code populate}{@code v1}，并将结果传给后续步骤。
+     *
+     * @param version 版本，供本方法处理{@code populate}{@code v1}时使用
+     * @param capture 捕获，作为 {@code version.setEntityReleaseId} 的输入影响后续处理
+     */
     private void populateV1(
             EntityRecordVersion version,
             SnapshotCapture capture) {
@@ -575,6 +705,12 @@ public class EntityRecordVersionService {
         version.setCompleteness("COMPLETE");
     }
 
+    /**
+     * 处理{@code populate}{@code v2}，并将结果传给后续步骤。
+     *
+     * @param version 版本，供本方法处理{@code populate}{@code v2}时使用
+     * @param capture 捕获，作为 {@code version.setEntityReleaseId} 的输入影响后续处理
+     */
     private void populateV2(
             EntityRecordVersion version,
             SnapshotCaptureV2 capture) {
@@ -592,6 +728,12 @@ public class EntityRecordVersionService {
         version.setSnapshotDocument(write(capture.rootDocument()));
     }
 
+    /**
+     * 处理{@code persist}{@code datasets}，并将结果传给后续步骤。
+     *
+     * @param version 版本，作为 {@code dataset.setVersionId} 的输入影响后续处理
+     * @param capture 捕获，供本方法处理{@code persist}{@code datasets}时使用
+     */
     private void persistDatasets(
             EntityRecordVersion version,
             SnapshotCaptureV2 capture) {
@@ -634,6 +776,12 @@ public class EntityRecordVersionService {
         }
     }
 
+    /**
+     * 整理数据集摘要数据，供调用方遍历或继续处理。
+     *
+     * @param dataset 数据集，作为 {@code result.put} 的输入影响后续处理
+     * @return 数据集摘要键值结果，供调用方继续处理
+     */
     private Map<String, Object> datasetSummary(
             EntityRecordVersionDataset dataset) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -649,6 +797,14 @@ public class EntityRecordVersionService {
         return result;
     }
 
+    /**
+     * 生成请求哈希文本，供后续匹配或展示。
+     *
+     * @param command 本次命令，后续经校验后用于处理请求哈希
+     * @param scenario {@code scenario}，作为 {@code material.put} 的输入影响后续处理
+     * @param deletedSnapshot 已删除快照，作为 {@code material.put} 的输入影响后续处理
+     * @return 处理后的请求哈希文本，供调用方比较或展示
+     */
     private String requestHash(
             EntityMutationCommand command,
             MatchedScenario scenario,
@@ -679,6 +835,13 @@ public class EntityRecordVersionService {
         return digest(material);
     }
 
+    /**
+     * 生成摘要文本，供后续匹配或展示。
+     *
+     * @param value 待处理摘要的原始输入，结果供调用方继续使用
+     * @return 处理后的摘要文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String digest(Object value) {
         try {
             byte[] bytes = objectMapper.writeValueAsBytes(value);
@@ -689,6 +852,15 @@ public class EntityRecordVersionService {
         }
     }
 
+    /**
+     * 校验并获取版本；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param versionNo 版本号，作为 {@code versionMapper.findVersion} 的输入影响后续处理
+     * @return 校验并获取后的版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityRecordVersion requireVersion(
             String entityCode,
             String recordId,
@@ -708,6 +880,14 @@ public class EntityRecordVersionService {
         return version;
     }
 
+    /**
+     * 生成{@code title}文本，供后续匹配或展示。
+     *
+     * @param scenario {@code scenario}，作为 {@code defaultText} 的输入影响后续处理
+     * @param versionNo 版本号，供本方法处理{@code title}时使用
+     * @param command 本次命令，后续经校验后用于处理{@code title}
+     * @return 处理后的{@code title}文本，供调用方比较或展示
+     */
     private String title(
             MatchedScenario scenario,
             int versionNo,
@@ -732,6 +912,13 @@ public class EntityRecordVersionService {
                                 .businessIntentName(), ""));
     }
 
+    /**
+     * 读取实体记录版本；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code objectMapper.readValue} 的输入影响后续处理
+     * @return 实体记录版本键值结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private Map<String, Object> read(String document) {
         try {
             return objectMapper.readValue(
@@ -745,6 +932,13 @@ public class EntityRecordVersionService {
         }
     }
 
+    /**
+     * 写入实体记录版本；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入实体记录版本的原始输入，结果供调用方继续使用
+     * @return 写入后的实体记录版本文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String write(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -755,15 +949,33 @@ public class EntityRecordVersionService {
         }
     }
 
+    /**
+     * 读取或规范化输入值，供后续计算与比较使用。
+     *
+     * @param value 待处理值的原始输入，结果供调用方继续使用
+     * @return 处理后的值结果，供调用方继续处理
+     */
     private int value(Integer value) {
         return value == null ? 0 : value;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null
                 ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -773,10 +985,22 @@ public class EntityRecordVersionService {
         return null;
     }
 
+    /**
+     * 生成默认文本文本，供后续匹配或展示。
+     *
+     * @param value 待处理默认文本的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的默认文本文本，供调用方比较或展示
+     */
     private String defaultText(String value, String fallback) {
         return StringUtils.hasText(value) ? value.trim() : fallback;
     }
 
+    /**
+     * 生成ID文本，供后续匹配或展示。
+     *
+     * @return 处理后的ID文本，供调用方比较或展示
+     */
     private String id() {
         return UUID.randomUUID().toString()
                 .replace("-", "");

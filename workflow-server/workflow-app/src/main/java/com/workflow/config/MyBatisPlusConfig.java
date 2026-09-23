@@ -17,6 +17,8 @@ public class MyBatisPlusConfig {
     /**
      * 自动填充处理器
      * 自动填充创建时间、更新时间、创建人、更新人
+     *
+     * @return 处理后的{@code meta}对象处理器结果，供调用方继续处理
      */
     @Bean
     public MetaObjectHandler metaObjectHandler() {

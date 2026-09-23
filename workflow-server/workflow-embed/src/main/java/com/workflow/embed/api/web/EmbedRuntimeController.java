@@ -22,11 +22,22 @@ public class EmbedRuntimeController {
 
     private final EmbedRuntimeReadFacade facade;
 
+    /**
+     * 初始化嵌入式运行时控制器，保存构造参数供后续方法使用。
+     *
+     * @param facade {@code facade}依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedRuntimeController(EmbedRuntimeReadFacade facade) {
         this.facade = facade;
     }
 
-    /** Returns the minimum actor, immutable target, capabilities, UI policy and limits. */
+    /**
+     * Returns the minimum actor, immutable target, capabilities, UI policy and limits.
+     *
+     * @param protocol {@code protocol}，作为 {@code EmbedException} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于处理初始化
+     * @return 处理后的初始化结果，供调用方继续处理
+     */
     @GetMapping("/bootstrap")
     public ResponseEntity<EmbedApiEnvelope<EmbedRuntimeViews.Bootstrap>> bootstrap(
             @RequestHeader("X-Flow-Embed-Protocol") String protocol,
@@ -39,14 +50,25 @@ public class EmbedRuntimeController {
         return ok(facade.bootstrap(), CorrelationContext.businessTraceId(request));
     }
 
-    /** Returns a strict External Projection, never the internal Entity list schema DTO. */
+    /**
+     * Returns a strict External Projection, never the internal Entity list schema DTO.
+     *
+     * @param request 本次请求，后续经校验后用于处理结构
+     * @return 处理后的结构结果，供调用方继续处理
+     */
     @GetMapping("/schema")
     public ResponseEntity<EmbedApiEnvelope<EmbedRuntimeViews.Schema>> schema(
             HttpServletRequest request) {
         return ok(facade.schema(), CorrelationContext.businessTraceId(request));
     }
 
-    /** Executes a list query whose target release, context and defaults all come from the Session. */
+    /**
+     * Executes a list query whose target release, context and defaults all come from the Session.
+     *
+     * @param request 本次请求，后续经校验后用于查询嵌入式运行时
+     * @param servletRequest Servlet请求，供本方法查询嵌入式运行时时使用
+     * @return 查询后的嵌入式运行时结果，供调用方继续处理
+     */
     @PostMapping("/list/query")
     public ResponseEntity<EmbedApiEnvelope<EmbedRuntimeViews.ListResult>> query(
             @Valid @RequestBody(required = false) EmbedRuntimeListQueryRequest request,
@@ -56,6 +78,13 @@ public class EmbedRuntimeController {
                 CorrelationContext.businessTraceId(servletRequest));
     }
 
+    /**
+     * 处理{@code ok}，并将结果传给后续步骤。
+     *
+     * @param data 数据，后续用于处理{@code ok}并传递处理结果
+     * @param traceId 追踪ID，后续用于处理{@code ok}时定位或关联目标
+     * @return 处理后的{@code ok}结果，供调用方继续处理
+     */
     private static <T> ResponseEntity<EmbedApiEnvelope<T>> ok(T data, String traceId) {
         return ResponseEntity.ok()
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")

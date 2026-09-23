@@ -34,13 +34,23 @@ public interface EntityFormNodeMapper extends BaseMapper<EntityFormNode> {
                 .orderByAsc("COALESCE(parent_id, '')", "order_key", "create_time"));
     }
 
-    /** 锁定表单下全部草稿节点，包含逻辑删除节点。 */
+    /**
+     * 锁定表单下全部草稿节点，包含逻辑删除节点。
+     *
+     * @param formId 表单ID，后续用于查询全部表单ID更新时定位或关联目标
+     * @return 实体表单节点集合，供调用方遍历或展示
+     */
     @Select("SELECT * FROM entity_form_node "
             + "WHERE form_id = #{formId} ORDER BY id FOR UPDATE")
     List<EntityFormNode> findAllByFormIdForUpdate(
             @Param("formId") String formId);
 
-    /** 物理清理表单草稿节点，供发布快照精确恢复稳定 ID。 */
+    /**
+     * 物理清理表单草稿节点，供发布快照精确恢复稳定 ID。
+     *
+     * @param formId 表单ID，后续用于删除全部表单ID发布版本恢复时定位或关联目标
+     * @return 删除后的全部表单ID发布版本恢复结果，供调用方继续处理
+     */
     @Delete("DELETE FROM entity_form_node WHERE form_id = #{formId}")
     int deleteAllByFormIdForReleaseRestore(
             @Param("formId") String formId);
@@ -65,10 +75,14 @@ public interface EntityFormNodeMapper extends BaseMapper<EntityFormNode> {
     /**
      * 冲突后的当前读：活动节点的 (form_id, node_key) 唯一，不需要分页。
      * 绕过 MyBatis 缓存及旧事务快照；共享读避免 MySQL 重复插入后的锁升级死锁。
+     *
+     * @param formId 表单ID，后续用于查询活动表单ID与节点键冲突时定位或关联目标
+     * @param nodeKey 节点键，后续用于授权校验、关联或幂等去重
+     * @return 符合条件的实体表单节点结果，供调用方继续处理
      */
     @Select("<script> SELECT * FROM entity_form_node "
             + "WHERE form_id = #{formId} AND node_key = #{nodeKey} AND deleted = 0 "
-            + "${@com.workflow.integration.database.api.DatabaseQuerySql@readGuard(_databaseId)} </script>")
+            + "${@com.workflow.integration.database.api.query.DatabaseQuerySql@readGuard(_databaseId)} </script>")
     @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
     EntityFormNode findActiveByFormIdAndNodeKeyForConflict(
             @Param("formId") String formId,

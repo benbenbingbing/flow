@@ -46,7 +46,12 @@ public class NodeOperationDecisionService {
     private final NodeOperationPolicyParser policyParser;
     private final NodeOperationConditionEvaluator conditionEvaluator;
 
-    /** 返回当前用户在任务上的全部标准操作决策。 */
+    /**
+     * 返回当前用户在任务上的全部标准操作决策。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 可用动作集合键值结果，供调用方继续处理
+     */
     public Map<String, ActionDecision> availableActions(String taskId) {
         TaskSnapshot snapshot = snapshot(taskId);
         LinkedHashMap<String, ActionDecision> decisions = new LinkedHashMap<>();
@@ -58,6 +63,10 @@ public class NodeOperationDecisionService {
 
     /**
      * 强制校验单个任务操作。拒绝原因统一抛出 ForbiddenException，供全局异常处理返回 403。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param operation 操作标识，决定后续允许采用的处理分支
+     * @param context 执行上下文，向后续允许步骤传递身份、配置或状态
      */
     public void requireAllowed(
             String taskId,
@@ -72,6 +81,10 @@ public class NodeOperationDecisionService {
 
     /**
      * 对流程级动作采用“所有活动节点均允许”的收敛策略，避免并行节点中任一受限分支被绕过。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param operation 操作标识，决定后续允许流程采用的处理分支
+     * @param context 执行上下文，向后续允许流程步骤传递身份、配置或状态
      */
     public void requireAllowedForProcess(
             String processInstanceId,
@@ -95,6 +108,11 @@ public class NodeOperationDecisionService {
 
     /**
      * 设计器模拟身份预览，不访问运行时任务，也不会产生任何流程副作用。
+     *
+     * @param policyJson 策略JSON，作为 {@code policyParser.parse} 的输入影响后续处理
+     * @param operation 操作标识，决定后续{@code simulate}采用的处理分支
+     * @param context 执行上下文，向后续{@code simulate}步骤传递身份、配置或状态
+     * @return 处理后的{@code simulate}结果，供调用方继续处理
      */
     public ActionDecision simulate(
             String policyJson,
@@ -125,6 +143,9 @@ public class NodeOperationDecisionService {
 
     /**
      * 根据矩阵自动生成测试中心可执行的正反向覆盖模板。
+     *
+     * @param policyJson 策略JSON，作为 {@code policyParser.parse} 的输入影响后续处理
+     * @return {@code coverage}分支集合，供调用方遍历或展示
      */
     public List<CoverageCase> generateCoverage(String policyJson) {
         NodeOperationPolicy policy = policyParser.parse(policyJson);
@@ -158,6 +179,14 @@ public class NodeOperationDecisionService {
         return List.copyOf(cases);
     }
 
+    /**
+     * 处理{@code decide}，并将结果传给后续步骤。
+     *
+     * @param snapshot 快照，作为 {@code conditionVariables} 的输入影响后续处理
+     * @param operation 操作标识，决定后续{@code decide}采用的处理分支
+     * @param context 执行上下文，向后续{@code decide}步骤传递身份、配置或状态
+     * @return 处理后的{@code decide}结果，供调用方继续处理
+     */
     private ActionDecision decide(
             TaskSnapshot snapshot,
             NodeOperationPolicy.Operation operation,
@@ -205,6 +234,14 @@ public class NodeOperationDecisionService {
         return new ActionDecision(operation.apiCode(), true, "ALLOWED", "允许操作", rule);
     }
 
+    /**
+     * 校验请求详情；不满足约束时阻止后续处理。
+     *
+     * @param operation 操作标识，决定后续请求详情采用的处理分支
+     * @param rule 规则，作为 {@code denied} 的输入影响后续处理
+     * @param context 执行上下文，向后续请求详情步骤传递身份、配置或状态
+     * @return 校验后的请求详情结果，供调用方继续处理
+     */
     private ActionDecision validateRequestDetails(
             NodeOperationPolicy.Operation operation,
             NodeOperationPolicy.Rule rule,
@@ -244,6 +281,13 @@ public class NodeOperationDecisionService {
         return null;
     }
 
+    /**
+     * 处理快照，并将结果传给后续步骤。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 处理后的快照结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private TaskSnapshot snapshot(String taskId) {
         Task task = taskService.createTaskQuery().taskId(taskId).singleResult();
         if (task == null) {
@@ -252,6 +296,13 @@ public class NodeOperationDecisionService {
         return snapshot(task);
     }
 
+    /**
+     * 处理快照，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code repositoryService.getBpmnModel} 的输入影响后续处理
+     * @return 处理后的快照结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private TaskSnapshot snapshot(Task task) {
         BpmnModel model = repositoryService.getBpmnModel(task.getProcessDefinitionId());
         FlowElement element = findElement(model, task.getTaskDefinitionKey());
@@ -265,6 +316,13 @@ public class NodeOperationDecisionService {
         return new TaskSnapshot(task, policy, variables, processStart(task.getProcessInstanceId()));
     }
 
+    /**
+     * 查询元素；查询结果供调用方展示或继续处理。
+     *
+     * @param model 模型，供本方法查询元素时使用
+     * @param elementId 元素ID，后续用于查询元素时定位或关联目标
+     * @return 符合条件的流程元素结果，供调用方继续处理
+     */
     private FlowElement findElement(BpmnModel model, String elementId) {
         if (model == null || !StringUtils.hasText(elementId)) {
             return null;
@@ -278,6 +336,12 @@ public class NodeOperationDecisionService {
         return null;
     }
 
+    /**
+     * 整理安全流程变量数据，供调用方遍历或继续处理。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 安全流程变量键值结果，供调用方继续处理
+     */
     private Map<String, Object> safeVariables(String processInstanceId) {
         try {
             Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
@@ -287,6 +351,12 @@ public class NodeOperationDecisionService {
         }
     }
 
+    /**
+     * 处理启动，并将结果传给后续步骤。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 处理后的启动结果，供调用方继续处理
+     */
     private Instant processStart(String processInstanceId) {
         if (!StringUtils.hasText(processInstanceId)) {
             return null;
@@ -298,6 +368,13 @@ public class NodeOperationDecisionService {
         return startTime == null ? null : startTime.toInstant();
     }
 
+    /**
+     * 整理条件流程变量数据，供调用方遍历或继续处理。
+     *
+     * @param snapshot 快照，作为 {@code result.put} 的输入影响后续处理
+     * @param context 执行上下文，向后续条件流程变量步骤传递身份、配置或状态
+     * @return 条件流程变量键值结果，供调用方继续处理
+     */
     private Map<String, Object> conditionVariables(TaskSnapshot snapshot, CheckContext context) {
         LinkedHashMap<String, Object> result = new LinkedHashMap<>(snapshot.processVariables());
         result.put("process", snapshot.processVariables());
@@ -322,6 +399,9 @@ public class NodeOperationDecisionService {
      *
      * <p>{@link Map#copyOf(Map)} 会拒绝 null 值，但空的一对一子表等合法业务数据会以 null 表示；
      * 这里仍拒绝空变量名，并保持与原实现一致的防御性浅拷贝语义。</p>
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 不可变请求流程变量键值结果，供调用方继续处理
      */
     private static Map<String, Object> immutableRequestVariables(Map<String, Object> variables) {
         if (variables == null || variables.isEmpty()) {
@@ -333,6 +413,13 @@ public class NodeOperationDecisionService {
         return Collections.unmodifiableMap(snapshot);
     }
 
+    /**
+     * 判断是否具有权限；判断结果决定调用方的后续分支。
+     *
+     * @param permissionCode 权限编码，后续用于判断是否具有权限时定位或关联目标
+     * @param override 覆盖，供本方法判断是否具有权限时使用
+     * @return 权限条件成立时为 true，否则为 false
+     */
     private boolean hasPermission(String permissionCode, Set<String> override) {
         if (override == null) {
             return PermissionUtil.hasPermission(permissionCode);
@@ -340,12 +427,24 @@ public class NodeOperationDecisionService {
         return override.contains("*") || override.contains(permissionCode);
     }
 
+    /**
+     * 判断{@code needs}用户目标条件是否成立，供调用方选择后续分支。
+     *
+     * @param operation 操作标识，决定后续{@code needs}用户目标采用的处理分支
+     * @return {@code needs}用户目标条件成立时为 true，否则为 false
+     */
     private boolean needsUserTarget(NodeOperationPolicy.Operation operation) {
         return operation == NodeOperationPolicy.Operation.TRANSFER
                 || operation.isAddSign()
                 || operation == NodeOperationPolicy.Operation.MANUAL_CC;
     }
 
+    /**
+     * 添加签名类型；结果供后续流程传递或持久化。
+     *
+     * @param operation 操作标识，决定后续签名类型采用的处理分支
+     * @return 添加后的签名类型文本，供调用方比较或展示
+     */
     private String addSignTypeOf(NodeOperationPolicy.Operation operation) {
         return switch (operation) {
             case ADD_SIGN_BEFORE -> "BEFORE";
@@ -355,6 +454,15 @@ public class NodeOperationDecisionService {
         };
     }
 
+    /**
+     * 处理已拒绝，并将结果传给后续步骤。
+     *
+     * @param operation 操作标识，决定后续已拒绝采用的处理分支
+     * @param reasonCode 原因编码，后续用于处理已拒绝时定位或关联目标
+     * @param message 消息，供本方法处理已拒绝时使用
+     * @param rule 规则，供本方法处理已拒绝时使用
+     * @return 处理后的已拒绝结果，供调用方继续处理
+     */
     private ActionDecision denied(
             NodeOperationPolicy.Operation operation,
             String reasonCode,
@@ -363,10 +471,24 @@ public class NodeOperationDecisionService {
         return new ActionDecision(operation.apiCode(), false, reasonCode, message, rule);
     }
 
+    /**
+     * 生成安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理安全的原始输入，结果供调用方继续使用
+     * @return 处理后的安全文本，供调用方比较或展示
+     */
     private String safe(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * 封装任务快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param task 任务，保存在对象中供后续校验、查询或展示
+     * @param policy 策略内容，决定后续任务快照的处理规则
+     * @param processVariables 流程流程变量，保存在对象中供后续校验、查询或展示
+     * @param processStartedAt 流程已启动时间，后续用于判断有效期或展示该事件的发生时间
+     */
     private record TaskSnapshot(
             Task task,
             NodeOperationPolicy policy,
@@ -374,7 +496,15 @@ public class NodeOperationDecisionService {
             Instant processStartedAt) {
     }
 
-    /** 操作判定结果，同时携带前端渲染理由模板和目标约束所需的只读规则。 */
+    /**
+     * 操作判定结果，同时携带前端渲染理由模板和目标约束所需的只读规则。
+     *
+     * @param operation 操作标识，决定后续动作决策采用的处理分支
+     * @param allowed 允许，保存在对象中供后续校验、查询或展示
+     * @param reasonCode 原因编码，后续用于处理动作决策时定位或关联目标
+     * @param message 消息，保存在对象中供后续校验、查询或展示
+     * @param rule 规则，保存在对象中供后续校验、查询或展示
+     */
     public record ActionDecision(
             String operation,
             boolean allowed,
@@ -385,6 +515,16 @@ public class NodeOperationDecisionService {
 
     /**
      * 实际操作的输入上下文。permissions 为 null 时使用当前登录用户权限；模拟时传显式集合。
+     *
+     * @param reason 原因，保存在对象中供后续校验、查询或展示
+     * @param targetUserIds 目标用户ID 集合，保存在对象中供后续校验、查询或展示
+     * @param targetNodeId 目标节点ID，后续用于处理检查上下文时定位或关联目标
+     * @param addSignType 添加签名类型标识，决定后续检查上下文采用的处理分支
+     * @param requestVariables 请求流程变量，保存在对象中供后续校验、查询或展示
+     * @param permissions {@code permissions}，保存在对象中供后续校验、查询或展示
+     * @param currentUserId 当前用户ID，后续用于处理检查上下文时定位或关联目标
+     * @param now 当前时间，保存在对象中供后续校验、查询或展示
+     * @param enforceRequestDetails {@code enforce}请求详情，保存在对象中供后续校验、查询或展示
      */
     public record CheckContext(
             String reason,
@@ -397,27 +537,66 @@ public class NodeOperationDecisionService {
             Instant now,
             boolean enforceRequestDetails) {
 
+        /**
+         * 初始化检查上下文，保存构造参数供后续方法使用。
+         *
+         * @param reason 原因，保存在对象中供后续校验、查询或展示
+         * @param targetUserIds 目标用户ID 集合，保存在对象中供后续校验、查询或展示
+         * @param targetNodeId 目标节点ID，后续用于初始化检查上下文时定位或关联目标
+         * @param addSignType 添加签名类型标识，决定后续检查上下文采用的处理分支
+         * @param requestVariables 请求流程变量，保存在对象中供后续校验、查询或展示
+         * @param permissions {@code permissions}，保存在对象中供后续校验、查询或展示
+         * @param currentUserId 当前用户ID，后续用于初始化检查上下文时定位或关联目标
+         * @param now 当前时间，保存在对象中供后续校验、查询或展示
+         * @param enforceRequestDetails {@code enforce}请求详情，保存在对象中供后续校验、查询或展示
+         */
         public CheckContext {
             targetUserIds = targetUserIds == null ? Set.of() : Set.copyOf(targetUserIds);
             requestVariables = immutableRequestVariables(requestVariables);
             permissions = permissions == null ? null : Set.copyOf(permissions);
         }
 
+        /**
+         * 处理{@code availability}，并将结果传给后续步骤。
+         *
+         * @return 处理后的{@code availability}结果，供调用方继续处理
+         */
         public static CheckContext availability() {
             return new CheckContext(null, Set.of(), null, null, Map.of(),
                     null, null, Instant.now(), false);
         }
 
+        /**
+         * 处理请求，并将结果传给后续步骤。
+         *
+         * @return 处理后的请求结果，供调用方继续处理
+         */
         public static CheckContext request() {
             return new CheckContext(null, Set.of(), null, null, Map.of(),
                     null, null, Instant.now(), true);
         }
 
+        /**
+         * 处理原因，并将结果传给后续步骤。
+         *
+         * @param reason 原因，作为 {@code CheckContext} 的输入影响后续处理
+         * @return 处理后的原因结果，供调用方继续处理
+         */
         public static CheckContext ofReason(String reason) {
             return new CheckContext(reason, Set.of(), null, null, Map.of(),
                     null, null, Instant.now(), true);
         }
 
+        /**
+         * 处理目标，并将结果传给后续步骤。
+         *
+         * @param reason 原因，作为 {@code CheckContext} 的输入影响后续处理
+         * @param targetUserIds 目标用户ID 集合，作为 {@code CheckContext} 的输入影响后续处理
+         * @param targetNodeId 目标节点ID，后续用于处理目标时定位或关联目标
+         * @param addSignType 添加签名类型标识，决定后续目标采用的处理分支
+         * @param requestVariables 请求流程变量，作为 {@code CheckContext} 的输入影响后续处理
+         * @return 处理后的目标结果，供调用方继续处理
+         */
         public static CheckContext ofTarget(
                 String reason,
                 Set<String> targetUserIds,
@@ -428,13 +607,32 @@ public class NodeOperationDecisionService {
                     requestVariables, null, null, Instant.now(), true);
         }
 
+        /**
+         * 处理请求详情，并将结果传给后续步骤。
+         *
+         * @param value 待处理请求详情的原始输入，结果供调用方继续使用
+         * @return 处理后的请求详情结果，供调用方继续处理
+         */
         private CheckContext withRequestDetails(boolean value) {
             return new CheckContext(reason, targetUserIds, targetNodeId, addSignType,
                     requestVariables, permissions, currentUserId, now, value);
         }
     }
 
-    /** 设计器模拟请求上下文。 */
+    /**
+     * 设计器模拟请求上下文。
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param permissions {@code permissions}，保存在对象中供后续校验、查询或展示
+     * @param currentUserId 当前用户ID，后续用于处理{@code simulation}上下文时定位或关联目标
+     * @param reason 原因，保存在对象中供后续校验、查询或展示
+     * @param targetUserIds 目标用户ID 集合，保存在对象中供后续校验、查询或展示
+     * @param targetNodeId 目标节点ID，后续用于处理{@code simulation}上下文时定位或关联目标
+     * @param addSignType 添加签名类型标识，决定后续{@code simulation}上下文采用的处理分支
+     * @param requestVariables 请求流程变量，保存在对象中供后续校验、查询或展示
+     * @param processStartedAt 流程已启动时间，后续用于判断有效期或展示该事件的发生时间
+     * @param now 当前时间，保存在对象中供后续校验、查询或展示
+     */
     public record SimulationContext(
             Map<String, Object> variables,
             Set<String> permissions,
@@ -447,6 +645,20 @@ public class NodeOperationDecisionService {
             Instant processStartedAt,
             Instant now) {
 
+        /**
+         * 初始化{@code simulation}上下文，保存构造参数供后续方法使用。
+         *
+         * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+         * @param permissions {@code permissions}，保存在对象中供后续校验、查询或展示
+         * @param currentUserId 当前用户ID，后续用于初始化{@code simulation}上下文时定位或关联目标
+         * @param reason 原因，保存在对象中供后续校验、查询或展示
+         * @param targetUserIds 目标用户ID 集合，保存在对象中供后续校验、查询或展示
+         * @param targetNodeId 目标节点ID，后续用于初始化{@code simulation}上下文时定位或关联目标
+         * @param addSignType 添加签名类型标识，决定后续{@code simulation}上下文采用的处理分支
+         * @param requestVariables 请求流程变量，保存在对象中供后续校验、查询或展示
+         * @param processStartedAt 流程已启动时间，后续用于判断有效期或展示该事件的发生时间
+         * @param now 当前时间，保存在对象中供后续校验、查询或展示
+         */
         public SimulationContext {
             variables = variables == null ? Map.of() : Map.copyOf(variables);
             permissions = permissions == null ? Set.of() : Set.copyOf(permissions);
@@ -455,13 +667,25 @@ public class NodeOperationDecisionService {
             now = now == null ? Instant.now() : now;
         }
 
+        /**
+         * 处理空，并将结果传给后续步骤。
+         *
+         * @return 处理后的空结果，供调用方继续处理
+         */
         public static SimulationContext empty() {
             return new SimulationContext(Map.of(), Set.of(), null, null, Set.of(),
                     null, null, Map.of(), Instant.now(), Instant.now());
         }
     }
 
-    /** 自动生成的矩阵测试覆盖项。 */
+    /**
+     * 自动生成的矩阵测试覆盖项。
+     *
+     * @param operation 操作标识，决定后续{@code coverage}分支采用的处理分支
+     * @param scenarioType {@code scenario}类型标识，决定后续{@code coverage}分支采用的处理分支
+     * @param expected 预期，保存在对象中供后续校验、查询或展示
+     * @param instruction {@code instruction}，保存在对象中供后续校验、查询或展示
+     */
     public record CoverageCase(
             String operation,
             String scenarioType,

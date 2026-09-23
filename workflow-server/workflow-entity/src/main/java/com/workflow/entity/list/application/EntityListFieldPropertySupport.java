@@ -9,6 +9,13 @@ import org.springframework.stereotype.Component;
 /** Applies and compares mutable list-field properties in one place. */
 @Component
 final class EntityListFieldPropertySupport {
+    /**
+     * 复制可变；结果供后续流程传递或持久化。
+     *
+     * @param source 待复制可变的原始输入，结果供调用方继续使用
+     * @param target 目标，供本方法复制可变时使用
+     * @param clearFields {@code clear}字段，供本方法复制可变时使用
+     */
     void copyMutable(EntityListField source, EntityListField target, Set<String> clearFields) {
         if (source.getFieldId() != null) target.setFieldId(source.getFieldId());
         if (source.getFieldCode() != null) target.setFieldCode(source.getFieldCode());
@@ -34,6 +41,12 @@ final class EntityListFieldPropertySupport {
         setOrClear(source.getLocalOverridesDocument(), clearFields, "localOverridesDocument",
                 target::setLocalOverridesDocument);
     }
+    /**
+     * 设置列集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param wrapper {@code wrapper}，供本方法设置列集合时使用
+     * @param field 字段，作为 {@code wrapper.set} 的输入影响后续处理
+     */
     void setColumns(UpdateWrapper<EntityListField> wrapper, EntityListField field) {
         wrapper.set("field_id", field.getFieldId()).set("field_code", field.getFieldCode())
                 .set("field_name", field.getFieldName()).set("sort_order", field.getSortOrder())
@@ -50,6 +63,13 @@ final class EntityListFieldPropertySupport {
                 .set("local_overrides_document", field.getLocalOverridesDocument())
                 .set("revision", field.getRevision()).set("update_time", field.getUpdatedAt());
     }
+    /**
+     * 判断相同条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同时使用
+     * @param right 右侧，供本方法处理相同时使用
+     * @return 相同条件成立时为 true，否则为 false
+     */
     boolean same(EntityListField left, EntityListField right) {
         return Objects.equals(left.getFieldId(), right.getFieldId())
                 && Objects.equals(left.getFieldCode(), right.getFieldCode())
@@ -73,6 +93,14 @@ final class EntityListFieldPropertySupport {
                 && Objects.equals(left.getTemplateVersion(), right.getTemplateVersion())
                 && Objects.equals(left.getLocalOverridesDocument(), right.getLocalOverridesDocument());
     }
+    /**
+     * 设置或{@code clear}；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待设置或{@code clear}的原始输入，结果供调用方继续使用
+     * @param clearFields {@code clear}字段，供本方法设置或{@code clear}时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param setter {@code setter}，供本方法设置或{@code clear}时使用
+     */
     private <T> void setOrClear(T value, Set<String> clearFields, String key,
                                 java.util.function.Consumer<T> setter) {
         if (clearFields.contains(key)) setter.accept(null);

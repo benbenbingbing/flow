@@ -17,6 +17,10 @@ import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.Map;
 
+/**
+ * 为任务 SLA 从已发布的日历解析快照选择实际工作日历。
+ * 选择顺序可依业务部门、发起人部门/组织回退到默认日历，运行时不读取可变配置。
+ */
 @Component
 @RequiredArgsConstructor
 public class TaskSlaCalendarResolver {
@@ -25,6 +29,17 @@ public class TaskSlaCalendarResolver {
     private final HistoryService historyService;
     private final SysUserMapper userMapper;
 
+    /**
+     * 根据发布策略和流程上下文解析本次任务的日历，供截止时间计算器使用。
+     *
+     * @param config 发布 SLA 配置，包含固定日历或可解析的作用域快照
+     * @param processInstanceId 用于查找发起人部门及组织的流程实例 ID
+     * @param entityCode 业务实体编码，业务部门字段不在变量中时用于查询记录
+     * @param entityDataId 业务记录 ID，与 entityCode 一起定位业务部门
+     * @param variables 当前流程变量，优先提供业务部门字段值
+     * @return 本次任务使用的工作日历快照；缺少默认快照时抛错
+     * @throws IllegalStateException 发布配置缺少解析快照或默认日历时抛出
+     */
     public WorkCalendarSnapshot resolve(
             PublishedTaskSlaConfig config,
             String processInstanceId,
@@ -39,6 +54,7 @@ public class TaskSlaCalendarResolver {
         if (resolution == null) {
             throw new IllegalStateException("SLA工作日历快照缺失");
         }
+        // 用统一 UTC 日期筛选绑定生效区间，避免应用节点时区不同导致同一任务选到不同日历。
         LocalDate effectiveDate = LocalDate.now(ZoneOffset.UTC);
         String source = normalize(config.calendarSource());
         if ("BUSINESS_DEPT".equals(source)) {
@@ -71,6 +87,15 @@ public class TaskSlaCalendarResolver {
         return defaultCalendar(resolution);
     }
 
+    /**
+     * 优先从流程变量取部门，缺失时查询业务记录；读取失败交给上层回退规则。
+     *
+     * @param fieldCode 发布配置指定的业务部门字段编码
+     * @param entityCode 查询业务记录所需的实体编码
+     * @param entityDataId 查询业务记录所需的记录 ID
+     * @param variables 流程变量，避免已有部门值时额外访问实体表
+     * @return 可用于作用域匹配的部门 ID；无法取得时返回 null
+     */
     private String businessDepartment(
             String fieldCode,
             String entityCode,
@@ -99,6 +124,14 @@ public class TaskSlaCalendarResolver {
         return identifier(value);
     }
 
+    /**
+     * 发起人部门优先于组织；历史流程保存的发起人 ID 兼容用户 ID 与用户名。
+     *
+     * @param resolution 发布时固定的日历及作用域绑定
+     * @param processInstanceId 查询历史发起人的流程实例 ID
+     * @param effectiveDate 用于筛选绑定生效区间的 UTC 日期
+     * @return 发起人部门或组织日历；无法匹配时返回 null 供默认回退
+     */
     private WorkCalendarSnapshot resolveStarter(
             WorkCalendarResolutionSnapshot resolution,
             String processInstanceId,
@@ -132,6 +165,15 @@ public class TaskSlaCalendarResolver {
                 effectiveDate);
     }
 
+    /**
+     * 仅选择当天生效的同作用域绑定，按优先级从高到低取首个存在于快照的日历。
+     *
+     * @param resolution 只包含已发布日历的解析快照
+     * @param scopeType 部门或组织类型，限定候选绑定
+     * @param scopeKey 当前部门或组织 ID
+     * @param effectiveDate 筛选绑定生效起止日期
+     * @return 命中的日历；无有效绑定时返回 null
+     */
     private WorkCalendarSnapshot resolveScope(
             WorkCalendarResolutionSnapshot resolution,
             String scopeType,
@@ -158,6 +200,13 @@ public class TaskSlaCalendarResolver {
                 .orElse(null);
     }
 
+    /**
+     * 回退到发布快照指定的默认日历；缺失视为发布数据损坏。
+     *
+     * @param resolution 含默认日历编码及日历映射的发布快照
+     * @return 默认日历，供任务 SLA 截止时间计算
+     * @throws IllegalStateException 默认编码未映射到日历时抛出
+     */
     private WorkCalendarSnapshot defaultCalendar(
             WorkCalendarResolutionSnapshot resolution) {
         WorkCalendarSnapshot calendar =
@@ -168,6 +217,12 @@ public class TaskSlaCalendarResolver {
         return calendar;
     }
 
+    /**
+     * 兼容选择器对象与纯 ID 字符串，统一得到部门作用域键。
+     *
+     * @param value 流程变量或业务记录中的部门字段值
+     * @return 用于绑定匹配的 ID；空值返回 null
+     */
     private String identifier(Object value) {
         if (value instanceof Map<?, ?> map) {
             Object id = map.get("id");
@@ -179,6 +234,12 @@ public class TaskSlaCalendarResolver {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 空来源按系统默认日历处理，供 resolve 的分支选择使用。
+     *
+     * @param value 发布配置中的来源类型
+     * @return 标准大写来源码
+     */
     private String normalize(String value) {
         return value == null
                 ? "SYSTEM_DEFAULT"

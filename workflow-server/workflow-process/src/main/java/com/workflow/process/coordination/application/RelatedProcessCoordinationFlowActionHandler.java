@@ -1,8 +1,8 @@
 package com.workflow.process.coordination.application;
 
-import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.context.FlowActionContext;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
@@ -30,16 +30,32 @@ public class RelatedProcessCoordinationFlowActionHandler
     private final RelatedProcessCoordinationPlanService planService;
     private final RelatedProcessCoordinationPublisher publisher;
 
+    /**
+     * 处理实现来源，并将结果传给后续步骤。
+     *
+     * @return 处理后的实现来源结果，供调用方继续处理
+     */
     @Override
     public ExtensionImplementationOrigin implementationOrigin() {
         return ExtensionImplementationOrigin.PLATFORM;
     }
 
+    /**
+     * 读取参数类型；查询结果供调用方展示或继续处理。
+     *
+     * @return 符合条件的{@code class<command>}结果，供调用方继续处理
+     */
     @Override
     public Class<Command> getParamType() {
         return Command.class;
     }
 
+    /**
+     * 执行关联流程协同流程动作，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续关联流程协同流程动作步骤传递身份、配置或状态
+     * @param command 本次命令，后续经校验后用于执行关联流程协同流程动作
+     */
     @Override
     public void execute(FlowActionContext context, Command command) {
         requireBlockingPolicy(context, command);
@@ -64,12 +80,24 @@ public class RelatedProcessCoordinationFlowActionHandler
         context.setExecutionResult(preview);
     }
 
+    /**
+     * 判断可重试条件是否成立，供调用方选择后续分支。
+     *
+     * @return 可重试条件成立时为 true，否则为 false
+     */
     @Override
     public boolean retryable() {
         // 只读操作无副作用；写操作仅发布幂等 Outbox 事件。
         return true;
     }
 
+    /**
+     * 校验并获取{@code blocking}策略；不满足约束时阻止后续处理。
+     *
+     * @param context 执行上下文，向后续{@code blocking}策略步骤传递身份、配置或状态
+     * @param command 本次命令，后续经校验后用于校验并获取{@code blocking}策略
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireBlockingPolicy(
             FlowActionContext context,
             Command command) {
@@ -90,6 +118,12 @@ public class RelatedProcessCoordinationFlowActionHandler
         }
     }
 
+    /**
+     * 整理预览数据，供调用方遍历或继续处理。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @return 预览键值结果，供调用方继续处理
+     */
     private Map<String, Object> preview(
             RelatedProcessCoordinationPlan plan) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -105,6 +139,12 @@ public class RelatedProcessCoordinationFlowActionHandler
         return result;
     }
 
+    /**
+     * 整理目标预览数据，供调用方遍历或继续处理。
+     *
+     * @param target 目标，作为 {@code item.put} 的输入影响后续处理
+     * @return 目标预览键值结果，供调用方继续处理
+     */
     private Map<String, Object> targetPreview(TargetImpact target) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("entityCode", target.record().entityCode());

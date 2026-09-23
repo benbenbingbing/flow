@@ -29,11 +29,23 @@ public class UiEventBindingController {
 
     private final UiEventBindingService bindingService;
 
+    /**
+     * 处理目录，并将结果传给后续步骤。
+     *
+     * @return 处理后的目录结果，供调用方继续处理
+     */
     @GetMapping("/catalog")
     public Result<Map<String, Object>> catalog() {
         return Result.success(bindingService.catalog());
     }
 
+    /**
+     * 列出界面事件绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面事件绑定采用的处理分支
+     * @param ownerId 归属方ID，后续用于列出界面事件绑定时定位或关联目标
+     * @return 符合条件的界面事件绑定结果，供调用方继续处理
+     */
     @GetMapping
     public Result<List<UiEventBinding>> list(
             @RequestParam String ownerType,
@@ -41,6 +53,14 @@ public class UiEventBindingController {
         return Result.success(bindingService.list(ownerType, ownerId));
     }
 
+    /**
+     * 解析草稿；输出作为后续校验或处理的输入。
+     *
+     * @param ownerType 归属方类型标识，决定后续草稿采用的处理分支
+     * @param ownerId 归属方ID，后续用于解析草稿时定位或关联目标
+     * @param eventCode 事件编码，后续用于解析草稿时定位或关联目标
+     * @return 解析后的草稿结果，供调用方继续处理
+     */
     @GetMapping("/resolved-draft")
     public Result<Map<String, Object>> resolveDraft(
             @RequestParam String ownerType,
@@ -52,6 +72,12 @@ public class UiEventBindingController {
                 eventCode));
     }
 
+    /**
+     * 创建界面事件绑定；结果供后续流程传递或持久化。
+     *
+     * @param request 本次请求，后续经校验后用于创建界面事件绑定
+     * @return 创建后的界面事件绑定结果，供调用方继续处理
+     */
     @PostMapping
     public Result<UiEventBinding> create(
             @RequestBody UiEventBindingSaveRequest request) {
@@ -59,6 +85,13 @@ public class UiEventBindingController {
         return Result.success(bindingService.save(request));
     }
 
+    /**
+     * 更新界面事件绑定；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于更新界面事件绑定
+     * @return 更新后的界面事件绑定结果，供调用方继续处理
+     */
     @PostMapping("/{id}/update")
     public Result<UiEventBinding> update(
             @PathVariable String id,
@@ -67,6 +100,13 @@ public class UiEventBindingController {
         return Result.success(bindingService.save(request));
     }
 
+    /**
+     * 删除界面事件绑定；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于删除界面事件绑定
+     * @return 删除后的界面事件绑定结果，供调用方继续处理
+     */
     @PostMapping("/{id}/delete")
     public Result<Void> delete(
             @PathVariable String id,

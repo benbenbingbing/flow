@@ -20,6 +20,8 @@ public class PositionDirectoryRevisionRow {
      * 保持既有目录版本协议：职务版本、组织时间、任职数、最大任职版本、最后任职时间。
      * 数据库时间为无时区的本地时间，保留六位小数，不转换时区；缺少任职时间以 0 表示。
      * 缺少职务版本或组织时间时保留原 SQL CONCAT 的空值结果，不能伪造有效版本。
+     *
+     * @return 转换为后的修订版本令牌文本，供调用方比较或展示
      */
     public String toRevisionToken() {
         if (positionRevision == null || organizationUpdatedAt == null) return null;

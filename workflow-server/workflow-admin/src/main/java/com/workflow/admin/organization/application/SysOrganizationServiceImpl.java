@@ -3,17 +3,16 @@ package com.workflow.admin.organization.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.identity.position.api.PositionErrorCode;
 import com.workflow.admin.identity.position.api.PositionManagementException;
-import com.workflow.admin.organization.application.SysOrganizationService;
-import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
+import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -70,6 +69,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
     /**
      * 组织维护只暴露专用的启用业务层级投影，避免为了编辑组织而放宽
      * 任意系统字典的读取权限。
+     *
+     * @return 组织业务层级视图集合，供调用方遍历或展示
      */
     @Override
     public List<OrganizationBusinessLevelView> getBusinessLevelOptions() {
@@ -170,6 +171,9 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      * <p>组织保存不得把请求中的负责人重新当作权威来源。新组织必须先保存
      * 获得 ID，再调用 {@code /api/system/org/{id}/leader}；更新时保留数据库
      * 当前投影并忽略同值回显，发现试图直接换人时明确拒绝。</p>
+     *
+     * @param requested 请求，供本方法处理保护{@code leader}投影时使用
+     * @param existing 已有，供本方法处理保护{@code leader}投影时使用
      */
     private void protectLeaderProjection(
             SysOrganization requested,
@@ -195,6 +199,9 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
 
     /**
      * 将业务层级归一为字典中的大写稳定码；空白表示显式清空。
+     *
+     * @param businessLevelCode 业务层级编码，后续用于规范化与校验业务层级时定位或关联目标
+     * @return 规范化后的与校验业务层级文本，供调用方比较或展示
      */
     private String normalizeAndValidateBusinessLevel(String businessLevelCode) {
         if (!StringUtils.hasText(businessLevelCode)) {
@@ -346,6 +353,12 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         }
     }
 
+    /**
+     * 校验层级；不满足约束时阻止后续处理。
+     *
+     * @param org 组织，作为 {@code equals} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateHierarchy(SysOrganization org) {
         if (!List.of(
                 SysOrganization.Type.ORG.getValue(),

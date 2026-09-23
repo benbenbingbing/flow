@@ -1,5 +1,6 @@
 package com.workflow.entity.data;
 
+import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
@@ -15,10 +16,9 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelation
 import com.workflow.entity.data.infrastructure.persistence.provider.EntityRelationProjectionSqlProvider.ColumnProjection;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
-import com.workflow.integration.database.api.*;
 import com.workflow.core.database.*;
 import com.workflow.config.database.*;
-import com.workflow.integration.database.dialect.MySqlSchemaDdlDialect;
+import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.*;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
@@ -120,7 +120,7 @@ class MySqlEntityQueryDatabaseTest {
             var tasks = mock(ProcessTaskAccessPort.class);
             when(tasks.findActionableEntityDataIds("reader", "expense")).thenReturn(List.of("r01", special, "r06"));
             var builder = new PermissionSqlBuilder(null, null, null, List.of(), null, resolver, null, tasks,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
             var filter = new FilterConfigDTO(); filter.setType("HAS_TODO");
             var user = new SysUser(); user.setId("reader"); user.setUsername("lisi");
@@ -222,7 +222,7 @@ class MySqlEntityQueryDatabaseTest {
                                 var field = new EntityField(); field.setFieldCode(column); field.setDbColumnName(column); return field;
                             }).toList());
             var service = new SystemEntityReadService(f.systemReadJdbc(), definitions, fields, new SystemEntityFieldPolicy(),
-                    com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
+                    com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
             var page = service.findPage("sys_user", Map.of("username", List.of("user1", "user3", "user4", "user5")),
                     2, 2, "nickname", "DESC");
             assertEquals(4, page.getTotal());

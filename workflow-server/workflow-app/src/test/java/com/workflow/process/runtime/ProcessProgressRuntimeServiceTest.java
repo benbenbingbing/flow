@@ -592,8 +592,7 @@ class ProcessProgressRuntimeServiceTest {
             when(entityFormRuntimeService.getByBinding(
                     org.mockito.ArgumentMatchers.same(nodeForm),
                     org.mockito.ArgumentMatchers.any(
-                            com.workflow.contracts.ui.runtime
-                                    .UiRuntimeResolutionContext.class)))
+                            com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
                     .thenReturn(form);
         }
 

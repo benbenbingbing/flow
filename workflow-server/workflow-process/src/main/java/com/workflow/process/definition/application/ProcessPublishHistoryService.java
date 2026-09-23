@@ -81,6 +81,14 @@ public class ProcessPublishHistoryService {
 
     /**
      * 使用部署前已锁定、已校验的节点表单快照记录流程发布历史。
+     *
+     * @param config 配置内容，决定后续发布的处理规则
+     * @param bpmnXml BPMNXML，作为 {@code versionHistory.setBpmnXml} 的输入影响后续处理
+     * @param deploymentId {@code deployment}ID，后续用于记录发布时定位或关联目标
+     * @param version 版本，作为 {@code versionHistory.setVersion} 的输入影响后续处理
+     * @param versionDescription 版本描述，作为 {@code versionHistory.setVersionDescription} 的输入影响后续处理
+     * @param publishedNodeForms 已发布节点表单集合，作为 {@code versionHistory.setNodeFormsSnapshot} 的输入影响后续处理
+     * @return 记录后的发布结果，供调用方继续处理
      */
     public ProcessVersionHistory recordPublish(
             ProcessDefinitionConfig config,
@@ -181,6 +189,8 @@ public class ProcessPublishHistoryService {
     /**
      * 将单个节点表单绑定转换为快照记录，关联当前生效的表单发布版本。
      *
+     * @param nodeForm 节点表单，作为 {@code uiConfigReleaseService.active} 的输入影响后续处理
+     * @return 转换为后的快照结果，供调用方继续处理
      * @throws IllegalStateException 当表单尚未发布时抛出
      */
     private NodeFormSnapshot toSnapshot(ProcessNodeForm nodeForm) {
@@ -205,6 +215,12 @@ public class ProcessPublishHistoryService {
                 nodeForm.getSortOrder());
     }
 
+    /**
+     * 转换为绑定；输出作为后续校验或处理的输入。
+     *
+     * @param snapshot 快照，作为 {@code binding.setNodeId} 的输入影响后续处理
+     * @return 转换为后的绑定结果，供调用方继续处理
+     */
     private ProcessNodeForm toBinding(NodeFormSnapshot snapshot) {
         ProcessNodeForm binding = new ProcessNodeForm();
         binding.setNodeId(snapshot.nodeId());
@@ -217,11 +233,28 @@ public class ProcessPublishHistoryService {
         return binding;
     }
 
+    /**
+     * 封装已发布节点表单集合的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param document 文档，保存在对象中供后续校验、查询或展示
+     * @param bindings 绑定集合，保存在对象中供后续校验、查询或展示
+     */
     public record PublishedNodeForms(
             String document,
             List<ProcessNodeForm> bindings) {
     }
 
+    /**
+     * 封装节点表单快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param nodeId 节点ID，后续用于处理节点表单快照时定位或关联目标
+     * @param nodeName 节点名称，后续用于处理节点表单快照时匹配或展示
+     * @param formId 表单 ID，后续用于定位已发布表单
+     * @param formReleaseId 表单发布版本ID，后续用于处理节点表单快照时定位或关联目标
+     * @param formReleaseVersion 表单发布版本，保存在对象中供后续校验、查询或展示
+     * @param isReadonly 是否{@code readonly}，保存在对象中供后续校验、查询或展示
+     * @param sortOrder 排序权重，后续用于稳定展示顺序
+     */
     private record NodeFormSnapshot(String nodeId,
                                     String nodeName,
                                     String formId,

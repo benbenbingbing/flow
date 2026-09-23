@@ -35,6 +35,13 @@ public class DynamicFormUniqueConflictQuery
     private final DynamicTableService dynamicTableService;
     private final EntityRuntimeRecordMapper recordMapper;
 
+    /**
+     * 查询记录；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 记录键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> findRecord(
             String entityCode,
@@ -51,6 +58,15 @@ public class DynamicFormUniqueConflictQuery
                 : toFieldRecord(row, runtime.fields());
     }
 
+    /**
+     * 查询候选集合；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于查询候选集合时定位或关联目标
+     * @param normalizedValue 规范化值，供本方法查询候选集合时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询候选集合时定位或关联目标
+     * @return 动态表单唯一冲突查询集合，供调用方遍历或展示
+     */
     @Override
     public List<Map<String, Object>> findCandidates(
             String entityCode,
@@ -65,6 +81,15 @@ public class DynamicFormUniqueConflictQuery
                 false);
     }
 
+    /**
+     * 查询候选集合{@code authoritative}检查；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于查询候选集合{@code authoritative}检查时定位或关联目标
+     * @param normalizedValue 规范化值，作为 {@code findCandidates} 的输入影响后续处理
+     * @param excludeRecordId 排除记录ID，后续用于查询候选集合{@code authoritative}检查时定位或关联目标
+     * @return 动态表单唯一冲突查询集合，供调用方遍历或展示
+     */
     @Override
     public List<Map<String, Object>>
             findCandidatesForAuthoritativeCheck(
@@ -80,6 +105,17 @@ public class DynamicFormUniqueConflictQuery
                 true);
     }
 
+    /**
+     * 查询候选集合；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param fieldCode 字段编码，后续用于查询候选集合时定位或关联目标
+     * @param normalizedValue 规范化值，供本方法查询候选集合时使用
+     * @param excludeRecordId 排除记录ID，后续用于查询候选集合时定位或关联目标
+     * @param authoritativeCheck {@code authoritative}检查，供本方法查询候选集合时使用
+     * @return 动态表单唯一冲突查询集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> findCandidates(
             String entityCode,
             String fieldCode,
@@ -146,7 +182,12 @@ public class DynamicFormUniqueConflictQuery
         return List.copyOf(result);
     }
 
-    /** 历史元数据也必须具有可验证的物理类型，不能把虚拟、多值或未知类型送入字符 SQL。 */
+    /**
+     * 历史元数据也必须具有可验证的物理类型，不能把虚拟、多值或未知类型送入字符 SQL。
+     *
+     * @param field 字段，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @return 需要{@code full}{@code scan}条件成立时为 true，否则为 false
+     */
     private boolean requiresFullScan(EntityField field) {
         if (field.getFieldType() == null) {
             throw new IllegalArgumentException("表单唯一规则字段缺少存储类型: " + field.getFieldCode());
@@ -158,6 +199,12 @@ public class DynamicFormUniqueConflictQuery
         };
     }
 
+    /**
+     * 校验并获取运行时实体；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的运行时实体结果，供调用方继续处理
+     */
     private RuntimeEntity requireRuntimeEntity(String entityCode) {
         EntityDefinition definition = definitionMapper
                 .findByEntityCode(entityCode)
@@ -170,6 +217,13 @@ public class DynamicFormUniqueConflictQuery
                 fields == null ? List.of() : fields);
     }
 
+    /**
+     * 转换为字段记录；输出作为后续校验或处理的输入。
+     *
+     * @param row 行，供本方法转换为字段记录时使用
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     * @return 字段记录键值结果，供调用方继续处理
+     */
     private Map<String, Object> toFieldRecord(
             Map<String, Object> row,
             List<EntityField> fields) {
@@ -195,6 +249,12 @@ public class DynamicFormUniqueConflictQuery
         return result;
     }
 
+    /**
+     * 生成{@code underscore}截止{@code camel}文本，供后续匹配或展示。
+     *
+     * @param source 待处理{@code underscore}截止{@code camel}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code underscore}截止{@code camel}文本，供调用方比较或展示
+     */
     private String underscoreToCamel(String source) {
         if (!StringUtils.hasText(source)
                 || !source.contains("_")) {
@@ -215,6 +275,12 @@ public class DynamicFormUniqueConflictQuery
         return result.toString();
     }
 
+    /**
+     * 封装运行时实体的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param definition 定义，保存在对象中供后续校验、查询或展示
+     * @param fields 字段集合，后续逐项校验、转换或持久化
+     */
     private record RuntimeEntity(
             EntityDefinition definition,
             List<EntityField> fields) {

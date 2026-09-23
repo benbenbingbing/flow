@@ -1,6 +1,6 @@
 package com.workflow.process.definition.api.request;
 
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

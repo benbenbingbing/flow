@@ -3,7 +3,7 @@ package com.workflow.entity.ui.application;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.workflow.contracts.ui.catalog.UiExtensionCatalogItem;
+import com.workflow.contracts.entity.ui.model.UiExtensionCatalogItem;
 import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.error.RevisionConflictException;
 import com.workflow.core.serialization.JsonDocumentCodec;
@@ -73,6 +73,14 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
 
     /**
      * 查询统一扩展目录；作用域和实现类型过滤仅对 INTERFACE 条目生效。
+     *
+     * @param extensionType 扩展类型标识，决定后续界面扩展定义采用的处理分支
+     * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
+     * @param status 状态标识，决定后续界面扩展定义采用的处理分支
+     * @param scopeType 作用域类型标识，决定后续界面扩展定义采用的处理分支
+     * @param scopeId 作用域ID，后续用于列出界面扩展定义时定位或关联目标
+     * @param implementationType 实现类型标识，决定后续界面扩展定义采用的处理分支
+     * @return 界面扩展定义集合，供调用方遍历或展示
      */
     public List<UiExtensionDefinition> list(
             String extensionType,
@@ -118,6 +126,8 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
 
     /**
      * 向管理模块提供结构化的 UI 扩展目录，不暴露实体持久化对象。
+     *
+     * @return 界面扩展目录条目集合，供调用方遍历或展示
      */
     @Override
     public List<UiExtensionCatalogItem> listCatalogItems() {
@@ -261,6 +271,9 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     /**
      * 按请求路径 ID 读取更新目标。带 ID 的保存只能更新既有记录，不能因记录
      * 不存在而退化为新增，避免客户端使用陈旧 ID 意外创建第二条扩展。
+     *
+     * @param request 本次请求，后续经校验后用于处理已有更新
+     * @return 处理后的已有更新结果，供调用方继续处理
      */
     private UiExtensionDefinition existingForUpdate(
             UiExtensionDefinitionSaveRequest request) {
@@ -279,6 +292,10 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     /**
      * 扩展类型和 key 是持久化身份的一部分。更新时只允许修改展示、配置和状态，
      * 禁止借保存接口把 UI 组件转换为接口扩展，或把稳定 key 重命名。
+     *
+     * @param current 当前，供本方法校验并获取稳定身份时使用
+     * @param requestedType 请求类型标识，决定后续稳定身份采用的处理分支
+     * @param requestedKey 请求键，后续用于授权校验、关联或幂等去重
      */
     private void requireStableIdentity(
             UiExtensionDefinition current,
@@ -364,6 +381,9 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
      * 判断扩展是否显式声明兼容热修复。
      *
      * <p>未声明、无法解析或声明为 false 时一律按不兼容处理。</p>
+     *
+     * @param definition 定义，作为 {@code codec.readObject} 的输入影响后续处理
+     * @return 热修复条件成立时为 true，否则为 false
      */
     public boolean supportsHotfix(UiExtensionDefinition definition) {
         if (definition == null
@@ -387,6 +407,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 校验界面扩展定义；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验界面扩展定义
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validate(UiExtensionDefinitionSaveRequest request) {
         if (request == null
                 || !UI_TYPES.contains(normalize(request.getExtensionType()))) {
@@ -428,6 +454,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 生成{@code visibility}作用域文本，供后续匹配或展示。
+     *
+     * @param request 本次请求，后续经校验后用于处理{@code visibility}作用域
+     * @return 处理后的{@code visibility}作用域文本，供调用方比较或展示
+     */
     private String visibilityScope(
             UiExtensionDefinitionSaveRequest request) {
         if (!"FORM".equals(normalize(request.getExtensionType()))) {
@@ -438,6 +470,14 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 : "GLOBAL";
     }
 
+    /**
+     * 解析实体编码集合；输出作为后续校验或处理的输入。
+     *
+     * @param request 本次请求，后续经校验后用于解析实体编码集合
+     * @param visibilityScope {@code visibility}作用域，供本方法解析实体编码集合时使用
+     * @return 界面扩展定义集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<String> resolveEntityCodes(
             UiExtensionDefinitionSaveRequest request,
             String visibilityScope) {
@@ -471,6 +511,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 .toList();
     }
 
+    /**
+     * 规范化实体编码集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 界面扩展定义集合，供调用方遍历或展示
+     */
     private List<String> normalizeEntityCodes(List<String> values) {
         if (values == null) {
             return List.of();
@@ -484,6 +530,14 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         return List.copyOf(unique.values());
     }
 
+    /**
+     * 校验并获取{@code supported}；不满足约束时阻止后续处理。
+     *
+     * @param document 文档，作为 {@code codec.read} 的输入影响后续处理
+     * @param configured 已配置，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param label 标签，后续用于校验并获取{@code supported}时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireSupported(
             String document,
             String configured,
@@ -503,6 +557,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 规范化界面扩展定义列表；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 界面扩展定义集合，供调用方遍历或展示
+     */
     private List<String> normalizeList(List<String> values) {
         return values == null
                 ? List.of()
@@ -513,6 +573,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                         .toList();
     }
 
+    /**
+     * 写入界面扩展定义；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入界面扩展定义的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于写入界面扩展定义时匹配或展示
+     * @return 写入后的界面扩展定义文本，供调用方比较或展示
+     */
     private String write(Object value, String label) {
         if (value == null
                 || value instanceof Map<?, ?> map && map.isEmpty()
@@ -522,6 +589,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         return codec.write(value, label);
     }
 
+    /**
+     * 转换为目录条目；输出作为后续校验或处理的输入。
+     *
+     * @param definition 定义，作为 {@code UiExtensionCatalogItem} 的输入影响后续处理
+     * @return 转换为后的目录条目结果，供调用方继续处理
+     */
     private UiExtensionCatalogItem toCatalogItem(
             UiExtensionDefinition definition) {
         return new UiExtensionCatalogItem(
@@ -574,6 +647,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 definition.getRevision());
     }
 
+    /**
+     * 读取字符串设置；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code codec.read} 的输入影响后续处理
+     * @param label 标签，后续用于读取字符串设置时匹配或展示
+     * @return 界面扩展定义集合，供调用方遍历或展示
+     */
     private Set<String> readStringSet(String document, String label) {
         if (!StringUtils.hasText(document)) {
             return Set.of();
@@ -588,6 +668,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 读取文档；查询结果供调用方展示或继续处理。
+     *
+     * @param document 文档，作为 {@code codec.read} 的输入影响后续处理
+     * @param label 标签，后续用于读取文档时匹配或展示
+     * @return 读取后的文档结果，供调用方继续处理
+     */
     private Object readDocument(String document, String label) {
         if (!StringUtils.hasText(document)) {
             return Map.of();
@@ -599,6 +686,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 读取键值配置，供后续规则或接口处理使用。
+     *
+     * @param document 文档，作为 {@code codec.readObject} 的输入影响后续处理
+     * @param label 标签，后续用于读取映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> readMap(String document, String label) {
         if (!StringUtils.hasText(document)) {
             return Map.of();
@@ -610,6 +704,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
         }
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面扩展定义的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面扩展定义文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return value == null
                 ? "" : value.trim().toUpperCase(Locale.ROOT);

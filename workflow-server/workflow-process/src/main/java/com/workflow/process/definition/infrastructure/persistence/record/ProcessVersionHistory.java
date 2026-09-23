@@ -88,6 +88,9 @@ public class ProcessVersionHistory {
     @TableField("deleted")
     private Integer deleted;
 
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         ACTIVE,   // 有效版本
         ARCHIVED  // 已归档

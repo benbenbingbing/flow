@@ -30,6 +30,9 @@ public class PageResult<T> {
      */
     private long pageSize;
     
+    /**
+     * 初始化分页结果，保存构造参数供后续方法使用。
+     */
     public PageResult() {
     }
 

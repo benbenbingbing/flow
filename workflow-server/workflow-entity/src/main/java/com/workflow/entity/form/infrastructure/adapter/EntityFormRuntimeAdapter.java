@@ -4,11 +4,11 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.entity.EntityFormBinding;
-import com.workflow.contracts.entity.EntityFormRuntimeContext;
+import com.workflow.contracts.entity.form.model.EntityFormBinding;
+import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -43,6 +43,12 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
     private final UiReleaseResolutionTokenService resolutionTokenService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 查询上下文；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 匹配的上下文；未找到时为空
+     */
     @Override
     public Optional<EntityFormRuntimeContext> findContext(String entityCode) {
         return definitionMapper.findByEntityCode(entityCode)
@@ -54,11 +60,25 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
                         toMap(getDefaultForm(definition.getId()))));
     }
 
+    /**
+     * 按ID查询{@code map<string,}{@code object>}；结果供后续展示或处理。
+     *
+     * @param formId 表单ID，后续用于查询表单ID时定位或关联目标
+     * @return 表单ID键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> findFormById(String formId) {
         return toMap(resolveStandaloneForm(formId));
     }
 
+    /**
+     * 按绑定查询{@code map<string,}{@code object>}；结果供后续展示或处理。
+     *
+     * @param binding 绑定，供本方法查询表单绑定时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于查询表单绑定时定位或关联目标
+     * @param purpose 用途，供本方法查询表单绑定时使用
+     * @return 表单绑定键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> findFormByBinding(
             EntityFormBinding binding,
@@ -72,6 +92,13 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
                         binding == null ? null : binding.nodeId()));
     }
 
+    /**
+     * 按绑定查询{@code map<string,}{@code object>}；结果供后续展示或处理。
+     *
+     * @param binding 绑定，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @param context 执行上下文，向后续表单绑定步骤传递身份、配置或状态
+     * @return 表单绑定键值结果，供调用方继续处理
+     */
     @Override
     public Map<String, Object> findFormByBinding(
             EntityFormBinding binding,
@@ -140,6 +167,13 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         return toMap(form);
     }
 
+    /**
+     * 校验并获取当前绑定新数据；不满足约束时阻止后续处理。
+     *
+     * @param binding 绑定，作为 {@code releaseService.active} 的输入影响后续处理
+     * @param processVersionHistoryId 流程版本历史ID，后续用于校验并获取当前绑定新数据时定位或关联目标
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     @Override
     public void requireCurrentBindingForNewData(
             EntityFormBinding binding,
@@ -196,6 +230,12 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
                 LogValue.safe(processVersionHistoryId));
     }
 
+    /**
+     * 读取默认表单；查询结果供调用方展示或继续处理。
+     *
+     * @param entityId 实体ID，后续用于读取默认表单时定位或关联目标
+     * @return 符合条件的实体表单结果，供调用方继续处理
+     */
     private EntityForm getDefaultForm(String entityId) {
         EntityForm form = formMapper.selectDefaultByEntityId(entityId);
         return form == null
@@ -203,6 +243,12 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
                 : resolveStandaloneForm(form.getId());
     }
 
+    /**
+     * 解析{@code standalone}表单；输出作为后续校验或处理的输入。
+     *
+     * @param formId 表单ID，后续用于解析{@code standalone}表单时定位或关联目标
+     * @return 解析后的{@code standalone}表单结果，供调用方继续处理
+     */
     private EntityForm resolveStandaloneForm(String formId) {
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveRuntimeFormRelease(formId);
@@ -235,6 +281,12 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         return form;
     }
 
+    /**
+     * 转换为映射；输出作为后续校验或处理的输入。
+     *
+     * @param form 表单，作为 {@code objectMapper.convertValue} 的输入影响后续处理
+     * @return 映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> toMap(EntityForm form) {
         return form == null ? null : objectMapper.convertValue(form, MAP_TYPE);
     }

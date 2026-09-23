@@ -118,7 +118,7 @@ class CurrentProcessTaskAssigneeLookupTest {
         when(tableResolver.resolve("EXPENSE")).thenReturn("wf_expense");
         permissionSqlBuilder = new PermissionSqlBuilder(
                 null, null, null, List.of(), null, tableResolver, null, taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         alice = new SysUser();
         alice.setId("user-1");

@@ -33,6 +33,9 @@ public class EntityFormUniqueClaimRepository {
      *
      * <p>即使本次变更来自未配置规则的表单也必须执行清理，否则记录值或状态
      * 已改变后，旧表单留下的占位会继续误报冲突。清理本身不执行唯一校验。</p>
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void releaseRecord(
             String entityCode,
@@ -78,6 +81,13 @@ public class EntityFormUniqueClaimRepository {
         }
     }
 
+    /**
+     * 转换为映射；输出作为后续校验或处理的输入。
+     *
+     * @param claims 声明集合，供本方法转换为映射时使用
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<ClaimKey, EntityFormUniqueClaim> toMap(
             List<EntityFormUniqueClaim> claims) {
         Map<ClaimKey, EntityFormUniqueClaim> result =
@@ -103,6 +113,14 @@ public class EntityFormUniqueClaimRepository {
         return result;
     }
 
+    /**
+     * 校验{@code ownership}；不满足约束时阻止后续处理。
+     *
+     * @param claim 认领，供本方法校验{@code ownership}时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateOwnership(
             EntityFormUniqueClaim claim,
             String entityCode,
@@ -128,6 +146,12 @@ public class EntityFormUniqueClaimRepository {
         }
     }
 
+    /**
+     * 生成冲突消息文本，供后续匹配或展示。
+     *
+     * @param claim 认领，供本方法处理冲突消息时使用
+     * @return 处理后的冲突消息文本，供调用方比较或展示
+     */
     private String conflictMessage(EntityFormUniqueClaim claim) {
         if (claim.getConflictMessage() != null
                 && !claim.getConflictMessage().isBlank()) {
@@ -140,22 +164,47 @@ public class EntityFormUniqueClaimRepository {
                         + claim.getFieldCode();
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireText(String value, String message) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(message);
         }
     }
 
+    /**
+     * 封装认领键的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param constraintKey {@code constraint}键，后续用于授权校验、关联或幂等去重
+     * @param valueHash 值哈希，保存在对象中供后续校验、查询或展示
+     */
     private record ClaimKey(
             String constraintKey,
             String valueHash)
             implements Comparable<ClaimKey> {
 
+        /**
+         * 初始化认领键，保存构造参数供后续方法使用。
+         *
+         * @param constraintKey {@code constraint}键，后续用于授权校验、关联或幂等去重
+         * @param valueHash 值哈希，保存在对象中供后续校验、查询或展示
+         */
         private ClaimKey {
             require(constraintKey, "唯一约束命名空间不能为空");
             require(valueHash, "唯一值哈希不能为空");
         }
 
+        /**
+         * 比较截止；结果供调用方的后续步骤使用。
+         *
+         * @param other {@code other}，供本方法比较截止时使用
+         * @return 比较后的截止结果，供调用方继续处理
+         */
         @Override
         public int compareTo(ClaimKey other) {
             int namespaceOrder = constraintKey.compareTo(
@@ -165,6 +214,13 @@ public class EntityFormUniqueClaimRepository {
                     : valueHash.compareTo(other.valueHash);
         }
 
+        /**
+         * 校验并获取认领键；不满足约束时阻止后续处理。
+         *
+         * @param value 待校验并获取认领键的原始输入，结果供调用方继续使用
+         * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+         */
         private static void require(
                 String value,
                 String message) {

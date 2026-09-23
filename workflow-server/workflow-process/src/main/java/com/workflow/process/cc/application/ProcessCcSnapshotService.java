@@ -56,7 +56,12 @@ public class ProcessCcSnapshotService {
         }
     }
 
-    /** BPMN 可以没有 name；按部署定位发布快照，避免旧实例误取新发布版本的名称。 */
+    /**
+     * BPMN 可以没有 name；按部署定位发布快照，避免旧实例误取新发布版本的名称。
+     *
+     * @param record 记录，供本方法解析流程名称时使用
+     * @return 解析后的流程名称文本，供调用方比较或展示
+     */
     private String resolveProcessName(ProcessCcRecord record) {
         ProcessDefinition definition = StringUtils.hasText(record.getProcessDefinitionId())
                 ? repositoryService.createProcessDefinitionQuery()
@@ -81,7 +86,12 @@ public class ProcessCcSnapshotService {
                 ? definition.getName() : processKey;
     }
 
-    /** 最后一个任务完成后运行实例已删除，仍需从历史变量取得原实体定位信息。 */
+    /**
+     * 最后一个任务完成后运行实例已删除，仍需从历史变量取得原实体定位信息。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 流程变量键值结果，供调用方继续处理
+     */
     private Map<String, Object> variables(String processInstanceId) {
         try {
             return runtimeService.getVariables(processInstanceId);
@@ -93,6 +103,12 @@ public class ProcessCcSnapshotService {
         }
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : value.toString();
     }

@@ -2,10 +2,10 @@ package com.workflow.process.instance.application;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.Result;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -45,6 +45,11 @@ public class ProcessTerminationService {
 
     /**
      * 终止流程实例。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param reason 原因，作为 {@code nodeOperationCapabilityService.requireTerminateAllowed} 的输入影响后续处理
+     * @return 终止后的流程结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -153,6 +158,13 @@ public class ProcessTerminationService {
         }
     }
 
+    /**
+     * 写入终止日志；后续读取或执行将使用更新后的状态。
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @param deleteReason 删除原因，作为 {@code operationLog.setOperationComment} 的输入影响后续处理
+     */
     private void writeTerminateLog(
             String processInstanceId,
             String userId,

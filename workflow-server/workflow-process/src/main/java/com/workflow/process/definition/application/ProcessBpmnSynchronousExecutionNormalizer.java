@@ -82,6 +82,9 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
                     + "exclusive|asyncLeaveExclusive|"
                     + "noWaitStatesAsyncLeave)\\s*=");
 
+    /**
+     * 初始化流程BPMN{@code synchronous}执行{@code normalizer}，保存构造参数供后续方法使用。
+     */
     private ProcessBpmnSynchronousExecutionNormalizer() {
     }
 
@@ -113,7 +116,12 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
         }
     }
 
-    /** 逆序删除属性，避免修改 NamedNodeMap 后跳过相邻项。 */
+    /**
+     * 逆序删除属性，避免修改 NamedNodeMap 后跳过相邻项。
+     *
+     * @param document 文档，供本方法移除{@code unsupported}{@code attributes}时使用
+     * @return {@code unsupported}{@code attributes}条件成立时为 true，否则为 false
+     */
     private static boolean removeUnsupportedAttributes(Document document) {
         boolean changed = false;
         NodeList elements = document.getElementsByTagName("*");
@@ -135,6 +143,13 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
         return changed;
     }
 
+    /**
+     * 判断是否{@code unsupported}执行属性；判断结果决定调用方的后续分支。
+     *
+     * @param element 元素，供本方法判断是否{@code unsupported}执行属性时使用
+     * @param attribute 属性，作为 {@code localName} 的输入影响后续处理
+     * @return {@code unsupported}执行属性条件成立时为 true，否则为 false
+     */
     private static boolean isUnsupportedExecutionAttribute(
             Element element,
             Node attribute) {
@@ -164,6 +179,12 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
                 && isAsyncCapableBpmnElement(element);
     }
 
+    /**
+     * 判断是否{@code async}{@code capable}BPMN元素；判断结果决定调用方的后续分支。
+     *
+     * @param element 元素，作为 {@code contains} 的输入影响后续处理
+     * @return {@code async}{@code capable}BPMN元素条件成立时为 true，否则为 false
+     */
     private static boolean isAsyncCapableBpmnElement(Element element) {
         String elementNamespace = element.getNamespaceURI();
         return (elementNamespace == null
@@ -173,6 +194,12 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
                 localName(element).toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * 生成本地名称文本，供后续匹配或展示。
+     *
+     * @param node 节点，供本方法处理本地名称时使用
+     * @return 处理后的本地名称文本，供调用方比较或展示
+     */
     private static String localName(Node node) {
         if (node.getLocalName() != null) {
             return node.getLocalName();
@@ -182,6 +209,13 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
         return separator < 0 ? nodeName : nodeName.substring(separator + 1);
     }
 
+    /**
+     * 解析流程BPMN{@code synchronous}执行{@code normalizer}；输出作为后续校验或处理的输入。
+     *
+     * @param bpmnXml BPMNXML，供本方法解析流程BPMN{@code synchronous}执行{@code normalizer}时使用
+     * @return 解析后的流程BPMN{@code synchronous}执行{@code normalizer}结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private static Document parse(String bpmnXml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
@@ -215,6 +249,13 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
         return builder.parse(new InputSource(new StringReader(bpmnXml)));
     }
 
+    /**
+     * 写入流程BPMN{@code synchronous}执行{@code normalizer}；后续读取或执行将使用更新后的状态。
+     *
+     * @param document 文档，作为 {@code transformer.transform} 的输入影响后续处理
+     * @return 写入后的流程BPMN{@code synchronous}执行{@code normalizer}文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     private static String write(Document document) throws Exception {
         TransformerFactory factory = TransformerFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);

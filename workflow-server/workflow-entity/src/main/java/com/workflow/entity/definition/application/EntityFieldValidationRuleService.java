@@ -49,6 +49,8 @@ public class EntityFieldValidationRuleService {
 
     /**
      * 校验并标准化一组字段定义中的验证规则。
+     *
+     * @param fields 字段集合，后续逐项校验、转换或持久化
      */
     public void validateAndNormalizeAll(List<EntityFieldDTO> fields) {
         if (fields == null) {
@@ -64,6 +66,11 @@ public class EntityFieldValidationRuleService {
 
     /**
      * 校验字段类型支持的规则并返回标准 JSON；空对象标准化为空值。
+     *
+     * @param fieldType 字段类型标识，决定后续与规范化采用的处理分支
+     * @param rawRules 原始规则集合，作为 {@code parseRules} 的输入影响后续处理
+     * @param fieldName 字段名称，后续用于校验与规范化时匹配或展示
+     * @return 校验后的与规范化文本，供调用方比较或展示
      */
     public String validateAndNormalize(
             EntityField.FieldType fieldType,
@@ -88,6 +95,9 @@ public class EntityFieldValidationRuleService {
 
     /**
      * 按发布快照中的实体字段规则校验一次实际写入值。
+     *
+     * @param field 字段，作为 {@code parseRules} 的输入影响后续处理
+     * @param value 待校验值的原始输入，结果供调用方继续使用
      */
     public void validateValue(EntityField field, Object value) {
         if (field == null
@@ -106,6 +116,14 @@ public class EntityFieldValidationRuleService {
         }
     }
 
+    /**
+     * 解析规则集合；输出作为后续校验或处理的输入。
+     *
+     * @param fieldType 字段类型标识，决定后续规则集合采用的处理分支
+     * @param rawRules 原始规则集合，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @param fieldName 字段名称，后续用于解析规则集合时匹配或展示
+     * @return 规则集合键值结果，供调用方继续处理
+     */
     private Map<String, Object> parseRules(
             EntityField.FieldType fieldType,
             String rawRules,
@@ -168,6 +186,14 @@ public class EntityFieldValidationRuleService {
         return normalized;
     }
 
+    /**
+     * 写入长度；后续读取或执行将使用更新后的状态。
+     *
+     * @param root 根，供本方法写入长度时使用
+     * @param normalized 规范化，供本方法写入长度时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param fieldName 字段名称，后续用于写入长度时匹配或展示
+     */
     private void putLength(
             JsonNode root,
             Map<String, Object> normalized,
@@ -189,6 +215,14 @@ public class EntityFieldValidationRuleService {
         normalized.put(key, value.intValue());
     }
 
+    /**
+     * 写入数值；后续读取或执行将使用更新后的状态。
+     *
+     * @param root 根，供本方法写入数值时使用
+     * @param normalized 规范化，供本方法写入数值时使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param fieldName 字段名称，后续用于写入数值时匹配或展示
+     */
     private void putNumber(
             JsonNode root,
             Map<String, Object> normalized,
@@ -204,6 +238,13 @@ public class EntityFieldValidationRuleService {
         normalized.put(key, value.decimalValue());
     }
 
+    /**
+     * 写入{@code format}；后续读取或执行将使用更新后的状态。
+     *
+     * @param root 根，供本方法写入{@code format}时使用
+     * @param normalized 规范化，供本方法写入{@code format}时使用
+     * @param fieldName 字段名称，后续用于写入{@code format}时匹配或展示
+     */
     private void putFormat(
             JsonNode root,
             Map<String, Object> normalized,
@@ -225,6 +266,13 @@ public class EntityFieldValidationRuleService {
         normalized.put("format", format);
     }
 
+    /**
+     * 校验文本；不满足约束时阻止后续处理。
+     *
+     * @param fieldName 字段名称，后续用于校验文本时匹配或展示
+     * @param value 待校验文本的原始输入，结果供调用方继续使用
+     * @param rules 规则集合，供本方法校验文本时使用
+     */
     private void validateText(
             String fieldName,
             String value,
@@ -264,6 +312,13 @@ public class EntityFieldValidationRuleService {
         }
     }
 
+    /**
+     * 校验数值；不满足约束时阻止后续处理。
+     *
+     * @param fieldName 字段名称，后续用于校验数值时匹配或展示
+     * @param value 待校验数值的原始输入，结果供调用方继续使用
+     * @param rules 规则集合，供本方法校验数值时使用
+     */
     private void validateNumber(
             String fieldName,
             Object value,
@@ -288,6 +343,14 @@ public class EntityFieldValidationRuleService {
         }
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param fieldName 字段名称，后续用于处理无效时匹配或展示
+     * @param detail 详情，供本方法处理无效时使用
+     * @param cause 原因，供本方法处理无效时使用
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private RuntimeException invalid(
             String fieldName,
             String detail,
@@ -299,6 +362,13 @@ public class EntityFieldValidationRuleService {
                 : new IllegalArgumentException(message, cause);
     }
 
+    /**
+     * 构造值无效异常，供调用方区分失败原因。
+     *
+     * @param fieldName 字段名称，后续用于处理值无效时匹配或展示
+     * @param detail 详情，供本方法处理值无效时使用
+     * @return 处理后的值无效结果，供调用方继续处理
+     */
     private RuntimeException valueInvalid(
             String fieldName,
             String detail) {
@@ -306,16 +376,34 @@ public class EntityFieldValidationRuleService {
                 displayName(fieldName) + detail);
     }
 
+    /**
+     * 生成展示名称文本，供后续匹配或展示。
+     *
+     * @param fieldName 字段名称，后续用于处理展示名称时匹配或展示
+     * @return 处理后的展示名称文本，供调用方比较或展示
+     */
     private String displayName(String fieldName) {
         return StringUtils.hasText(fieldName)
                 ? fieldName
                 : "未命名字段";
     }
 
+    /**
+     * 生成展示文本，供后续匹配或展示。
+     *
+     * @param value 待处理展示的原始输入，结果供调用方继续使用
+     * @return 处理后的展示文本，供调用方比较或展示
+     */
     private String display(BigDecimal value) {
         return value.stripTrailingZeros().toPlainString();
     }
 
+    /**
+     * 判断是否空白；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空白的原始输入，结果供调用方继续使用
+     * @return 空白条件成立时为 true，否则为 false
+     */
     private boolean isBlank(Object value) {
         return value == null
                 || value instanceof String text && text.isBlank();

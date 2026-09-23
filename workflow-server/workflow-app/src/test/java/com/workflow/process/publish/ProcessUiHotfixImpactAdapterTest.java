@@ -2,8 +2,8 @@ package com.workflow.process.publish;
 
 import com.workflow.process.publish.application.ProcessUiHotfixImpactAdapter;
 
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;

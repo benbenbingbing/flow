@@ -4,8 +4,8 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.IdentityGroup;
-import com.workflow.contracts.identity.IdentityUser;
+import com.workflow.contracts.identity.model.IdentityGroup;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +44,21 @@ public class ProcessTaskService {
     private final com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
             taskSlaRuntimeService;
     
+    /**
+     * 初始化流程任务服务，保存构造参数供后续方法使用。
+     *
+     * @param taskMapper 任务映射器依赖，保存到当前对象供后续业务方法调用
+     * @param flowableTaskService Flowable任务服务依赖，保存到当前对象供后续业务方法调用
+     * @param runtimeService 运行时服务依赖，保存到当前对象供后续业务方法调用
+     * @param repositoryService 仓储服务依赖，保存到当前对象供后续业务方法调用
+     * @param nodeConfigMapper 节点配置映射器依赖，保存到当前对象供后续业务方法调用
+     * @param entityFormRuntimePort 实体表单运行时端口依赖，保存到当前对象供后续业务方法调用
+     * @param processDefinitionConfigMapper 流程定义配置映射器依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param entityRecordPort 实体记录端口依赖，保存到当前对象供后续业务方法调用
+     * @param identityDirectoryPort 身份目录端口依赖，保存到当前对象供后续业务方法调用
+     * @param taskSlaRuntimeService 任务SLA运行时服务依赖，保存到当前对象供后续业务方法调用
+     */
     @Autowired
     public ProcessTaskService(ProcessTaskMapper taskMapper,
                               TaskService flowableTaskService,
@@ -70,6 +85,20 @@ public class ProcessTaskService {
         this.taskSlaRuntimeService = taskSlaRuntimeService;
     }
 
+    /**
+     * 初始化流程任务服务，保存构造参数供后续方法使用。
+     *
+     * @param taskMapper 任务映射器，保存在对象中供后续校验、查询或展示
+     * @param flowableTaskService Flowable任务服务，保存在对象中供后续校验、查询或展示
+     * @param runtimeService 运行时服务，保存在对象中供后续校验、查询或展示
+     * @param repositoryService 仓储服务，保存在对象中供后续校验、查询或展示
+     * @param nodeConfigMapper 节点配置映射器，保存在对象中供后续校验、查询或展示
+     * @param entityFormRuntimePort 实体表单运行时端口，保存在对象中供后续校验、查询或展示
+     * @param processDefinitionConfigMapper 流程定义配置映射器，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     * @param entityRecordPort 实体记录端口，保存在对象中供后续校验、查询或展示
+     * @param identityDirectoryPort 身份目录端口，保存在对象中供后续校验、查询或展示
+     */
     public ProcessTaskService(ProcessTaskMapper taskMapper,
                        TaskService flowableTaskService,
                        RuntimeService runtimeService,
@@ -97,6 +126,10 @@ public class ProcessTaskService {
     /**
      * 创建流程待办（用于监听器）
      * 当流程启动或流转到新节点时调用
+     *
+     * @param delegateTask 委托任务，作为 {@code task.setProcessInstanceId} 的输入影响后续处理
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 创建后的任务结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessTask createTask(org.flowable.task.service.delegate.DelegateTask delegateTask, Map<String, Object> variables) {
@@ -231,6 +264,10 @@ public class ProcessTaskService {
     /**
      * 创建流程待办
      * 当流程启动或流转到新节点时调用
+     *
+     * @param flowableTask Flowable任务，作为 {@code task.setProcessInstanceId} 的输入影响后续处理
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 创建后的任务结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessTask createTask(Task flowableTask, Map<String, Object> variables) {
@@ -373,6 +410,11 @@ public class ProcessTaskService {
     /**
      * 完成流程待办
      * 当任务办理完成时调用
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param action 动作标识，决定后续完成任务采用的处理分支
+     * @param comment 注释，作为 {@code task.setComment} 的输入影响后续处理
+     * @param actionLabel 动作标签，后续用于处理完成任务时匹配或展示
      */
     @Transactional(rollbackFor = Exception.class)
     public void completeTask(String taskId, String action, String comment, String actionLabel) {
@@ -418,6 +460,10 @@ public class ProcessTaskService {
 
     /**
      * 完成流程待办（兼容旧调用，不保存操作显示文本）
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param action 动作标识，决定后续完成任务采用的处理分支
+     * @param comment 注释，供本方法处理完成任务时使用
      */
     @Transactional(rollbackFor = Exception.class)
     public void completeTask(String taskId, String action, String comment) {
@@ -427,6 +473,10 @@ public class ProcessTaskService {
     /**
      * 转办任务
      * 更新本地待办的执行人为转办人
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param transferTo 转办截止，作为 {@code task.setAssigneeId} 的输入影响后续处理
+     * @param comment 注释，作为 {@code task.setComment} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public void transferTask(String taskId, String transferTo, String comment) {
@@ -454,6 +504,10 @@ public class ProcessTaskService {
 
     /**
      * 将 Flowable 已认领任务同步到本地待办和实体运行时字段。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param assignee 办理人，作为 {@code task.setAssigneeId} 的输入影响后续处理
      */
     @Transactional(rollbackFor = Exception.class)
     public void synchronizeClaimedTask(String taskId, String processInstanceId, String assignee) {
@@ -479,6 +533,8 @@ public class ProcessTaskService {
     /**
      * 同步Flowable任务到本地待办
      * 用于流程启动时同步初始任务
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      */
     @Transactional(rollbackFor = Exception.class)
     public void syncTasksFromFlowable(String processInstanceId) {
@@ -529,6 +585,8 @@ public class ProcessTaskService {
     
     /**
      * 更新实体数据表的当前任务ID和名称
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      */
     private void updateEntityCurrentTask(String processInstanceId) {
         Map<String, Object> variables = Map.of();
@@ -636,6 +694,9 @@ public class ProcessTaskService {
     
     /**
      * 获取用户已办列表
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 流程任务集合，供调用方遍历或展示
      */
     public List<ProcessTask> getDoneList(String userId) {
         return taskMapper.selectDoneByUser(userId);
@@ -643,6 +704,9 @@ public class ProcessTaskService {
     
     /**
      * 统计用户待办数
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 符合条件的待办数量
      */
     public Long countTodo(String userId) {
         return taskMapper.countTodoByUser(userId);
@@ -650,6 +714,9 @@ public class ProcessTaskService {
     
     /**
      * 统计用户已办数
+     *
+     * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
+     * @return 符合条件的{@code done}数量
      */
     public Long countDone(String userId) {
         return taskMapper.countDoneByUser(userId);
@@ -658,6 +725,8 @@ public class ProcessTaskService {
     /**
      * 删除流程实例的所有待办
      * 用于流程撤回时清理待办
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      */
     @Transactional(rollbackFor = Exception.class)
     public void deleteTasksByProcessInstance(String processInstanceId) {
@@ -678,6 +747,9 @@ public class ProcessTaskService {
     
     /**
      * 根据流程实例ID查询所有待办（包括已完成的）
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 流程任务集合，供调用方遍历或展示
      */
     public List<ProcessTask> getTasksByProcessInstance(String processInstanceId) {
         return taskMapper.selectByProcessInstance(processInstanceId);
@@ -685,6 +757,9 @@ public class ProcessTaskService {
     
     /**
      * 根据流程实例ID查询当前待办任务（status=0）
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 符合条件的流程任务结果，供调用方继续处理
      */
     public ProcessTask getTodoTaskByProcessInstance(String processInstanceId) {
         return taskMapper.selectTodoTaskByProcessInstance(processInstanceId);
@@ -692,6 +767,9 @@ public class ProcessTaskService {
     
     /**
      * 根据任务ID查询本地待办
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的流程任务结果，供调用方继续处理
      */
     public ProcessTask getTaskByTaskId(String taskId) {
         return taskMapper.selectByTaskId(taskId);
@@ -699,6 +777,9 @@ public class ProcessTaskService {
 
     /**
      * 获取组成员显示名称列表（去重）
+     *
+     * @param groupCode 分组编码，后续用于读取分组成员名称集合时定位或关联目标
+     * @return 读取后的分组成员名称集合文本，供调用方比较或展示
      */
     private String getGroupMemberNames(String groupCode) {
         try {
@@ -726,6 +807,9 @@ public class ProcessTaskService {
 
     /**
      * 根据用户ID/用户名列表获取统一显示名称列表
+     *
+     * @param idsOrNames ID 集合或名称集合，作为 {@code identityDirectoryPort.getDisplayNames} 的输入影响后续处理
+     * @return 读取后的用户名称集合起始ID 集合文本，供调用方比较或展示
      */
     private String getUserNamesFromIds(List<String> idsOrNames) {
         return identityDirectoryPort.getDisplayNames(idsOrNames);

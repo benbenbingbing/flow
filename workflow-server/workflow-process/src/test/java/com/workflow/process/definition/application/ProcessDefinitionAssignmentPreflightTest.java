@@ -1,7 +1,7 @@
 package com.workflow.process.definition.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
 import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;

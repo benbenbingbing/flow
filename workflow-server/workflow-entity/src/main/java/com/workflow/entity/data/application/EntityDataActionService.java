@@ -15,18 +15,18 @@ import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.entity.mutation.EntityMutationBatchCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationCommand;
-import com.workflow.contracts.entity.mutation.EntityMutationContext;
-import com.workflow.contracts.entity.mutation.EntityMutationOperationType;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.entity.mutation.model.EntityMutationBatchCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
+import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
+import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
-import com.workflow.contracts.entity.mutation.EntityMutationResult;
-import com.workflow.contracts.entity.mutation.EntityMutationSourceType;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
+import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
 import com.workflow.entity.list.application.EntityListReleaseContext;
@@ -116,6 +116,11 @@ public class EntityDataActionService {
 
     /**
      * 只读取实体详情，不执行可能调用外部接口的 UI 事件链。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetailReadOnly(
@@ -125,6 +130,15 @@ public class EntityDataActionService {
         return getDetailReadOnly(entityCode, id, listKey, null);
     }
 
+    /**
+     * 读取详情读取仅；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseContext 执行上下文，向后续详情读取仅步骤传递身份、配置或状态
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetailReadOnly(
             String entityCode,
@@ -143,6 +157,12 @@ public class EntityDataActionService {
 
     /**
      * 查询详情并允许指定表单覆盖 DETAIL_LOAD 事件。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param formId 表单ID，后续用于读取详情时定位或关联目标
+     * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(
@@ -158,6 +178,16 @@ public class EntityDataActionService {
                 null);
     }
 
+    /**
+     * 读取详情；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param formId 表单ID，后续用于读取详情时定位或关联目标
+     * @param releaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(
             String entityCode,
@@ -174,6 +204,17 @@ public class EntityDataActionService {
                 null);
     }
 
+    /**
+     * 读取详情；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param formId 表单ID，后续用于读取详情时定位或关联目标
+     * @param releaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
+     * @param formReleaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetail(
             String entityCode,
@@ -224,6 +265,14 @@ public class EntityDataActionService {
         return entityData(value, entityCode, id);
     }
 
+    /**
+     * 查询已授权详情；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param config 配置内容，决定后续已授权详情的处理规则
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     private EntityDataDTO findAuthorizedDetail(
             String entityCode,
             String id,
@@ -254,6 +303,15 @@ public class EntityDataActionService {
                 null);
     }
 
+    /**
+     * 按流程实例查询实体数据；结果供后续展示或处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseContext 执行上下文，向后续详情流程实例步骤传递身份、配置或状态
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public EntityDataDTO getDetailByProcessInstance(
             String entityCode,
@@ -291,6 +349,14 @@ public class EntityDataActionService {
         return create(dto, null);
     }
 
+    /**
+     * 创建实体数据动作；结果供后续流程传递或持久化。
+     *
+     * @param dto DTO，作为 {@code requireDynamicRuntime} 的输入影响后续处理
+     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     * @return 创建后的实体数据动作结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -447,6 +513,16 @@ public class EntityDataActionService {
                 null);
     }
 
+    /**
+     * 更新实体数据动作；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param formData 表单数据，作为 {@code text} 的输入影响后续处理
+     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     * @return 更新后的实体数据动作结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -570,6 +646,16 @@ public class EntityDataActionService {
         return entityData(value, entityCode, id);
     }
 
+    /**
+     * 更新实体数据动作默认；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param config 配置内容，决定后续实体数据动作默认的处理规则
+     * @param formData 表单数据，作为 {@code updateRequest.put} 的输入影响后续处理
+     * @param executionContext 执行上下文，向后续实体数据动作默认步骤传递身份、配置或状态
+     * @return 更新后的实体数据动作默认结果，供调用方继续处理
+     */
     private EntityDataDTO updateDefault(
             String entityCode,
             String id,
@@ -609,6 +695,14 @@ public class EntityDataActionService {
      *
      * <p>表单来源在 {@link #eventOrigin(String, String, String)} 中完成实体归属校验；
      * 没有表单来源时才回退实体默认表单，兼容未显式选择表单的调用方。</p>
+     *
+     * @param origin 来源，作为 {@code formSubmissionService.applyAuthorizedFormWithRelease} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param mode 模式标识，决定后续提交表单采用的处理分支
+     * @param submittedData 已提交数据，作为 {@code formSubmissionService.applyDefaultFormWithRelease} 的输入影响后续处理
+     * @param executionContext 执行上下文，向后续提交表单步骤传递身份、配置或状态
+     * @return 应用后的提交表单结果，供调用方继续处理
      */
     private AppliedSubmissionForm applySubmissionForm(
             EventOrigin origin,
@@ -687,6 +781,14 @@ public class EntityDataActionService {
         delete(entityCode, id, listKey, null);
     }
 
+    /**
+     * 删除实体数据动作；后续读取或执行将使用更新后的状态。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -761,6 +863,16 @@ public class EntityDataActionService {
         batchDelete(entityCode, ids, listKey, null);
     }
 
+    /**
+     * 处理批次删除，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param ids ID 集合，供本方法处理批次删除时使用
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseContext 执行上下文，向后续批次删除步骤传递身份、配置或状态
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
             module = AuditModule.ENTITY,
@@ -843,6 +955,14 @@ public class EntityDataActionService {
                 });
     }
 
+    /**
+     * 处理{@code mutate}创建，并将结果传给后续步骤。
+     *
+     * @param dto DTO，作为 {@code mutationContext} 的输入影响后续处理
+     * @param origin 来源，作为 {@code mutationContext} 的输入影响后续处理
+     * @param traceKey 追踪键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code mutate}创建结果，供调用方继续处理
+     */
     private EntityDataDTO mutateCreate(
             EntityDataDTO dto,
             EventOrigin origin,
@@ -876,6 +996,16 @@ public class EntityDataActionService {
                 result.recordId());
     }
 
+    /**
+     * 处理{@code mutate}更新，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param updateRequest 更新请求，作为 {@code mutationPort.execute} 的输入影响后续处理
+     * @param origin 来源，作为 {@code mutationContext} 的输入影响后续处理
+     * @param traceKey 追踪键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的{@code mutate}更新结果，供调用方继续处理
+     */
     private EntityDataDTO mutateUpdate(
             String entityCode,
             String id,
@@ -900,6 +1030,13 @@ public class EntityDataActionService {
                 id);
     }
 
+    /**
+     * 处理{@code mutate}删除，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param origin 来源，供本方法处理{@code mutate}删除时使用
+     */
     private void mutateDelete(
             String entityCode,
             String id,
@@ -917,6 +1054,13 @@ public class EntityDataActionService {
                                 id)));
     }
 
+    /**
+     * 处理{@code mutate}批次删除，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param rows 行，供本方法处理{@code mutate}批次删除时使用
+     * @param origin 来源，供本方法处理{@code mutate}批次删除时使用
+     */
     private void mutateBatchDelete(
             String entityCode,
             List<EntityDataDTO> rows,
@@ -947,6 +1091,17 @@ public class EntityDataActionService {
                         true));
     }
 
+    /**
+     * 处理变更上下文，并将结果传给后续步骤。
+     *
+     * @param origin 来源，作为 {@code equals} 的输入影响后续处理
+     * @param intentCode {@code intent}编码，后续用于处理变更上下文时定位或关联目标
+     * @param intentName {@code intent}名称，后续用于处理变更上下文时匹配或展示
+     * @param traceKey 追踪键，后续用于授权校验、关联或幂等去重
+     * @param sourceEntityCode 来源实体编码，后续用于处理变更上下文时定位或关联目标
+     * @param sourceRecordId 来源记录ID，后续用于处理变更上下文时定位或关联目标
+     * @return 处理后的变更上下文结果，供调用方继续处理
+     */
     private EntityMutationContext mutationContext(
             EventOrigin origin,
             String intentCode,
@@ -1017,6 +1172,14 @@ public class EntityDataActionService {
         return builder.build();
     }
 
+    /**
+     * 查询可访问；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param config 配置内容，决定后续可访问的处理规则
+     * @return 符合条件的实体数据结果，供调用方继续处理
+     */
     private EntityDataDTO findAccessible(
             String entityCode,
             String id,
@@ -1040,6 +1203,15 @@ public class EntityDataActionService {
         }
     }
 
+    /**
+     * 解析列表配置；输出作为后续校验或处理的输入。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param releaseContext 执行上下文，向后续列表配置步骤传递身份、配置或状态
+     * @return 解析后的列表配置结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityListConfig resolveListConfig(
             String entityCode,
             String listKey,
@@ -1070,6 +1242,13 @@ public class EntityDataActionService {
                 effectiveContext.releaseResolutionToken());
     }
 
+    /**
+     * 校验并获取实体；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 校验并获取后的实体结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDefinition requireEntity(String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
             throw new IllegalArgumentException("实体编码不能为空");
@@ -1079,6 +1258,12 @@ public class EntityDataActionService {
                         "实体不存在: " + entityCode));
     }
 
+    /**
+     * 校验并获取动态运行时；不满足约束时阻止后续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void requireDynamicRuntime(String entityCode) {
         EntityDefinition definition = requireEntity(entityCode);
         if (definition.getStorageMode()
@@ -1090,6 +1275,12 @@ public class EntityDataActionService {
         }
     }
 
+    /**
+     * 校验并获取已配置列表权限；不满足约束时阻止后续处理。
+     *
+     * @param config 配置内容，决定后续已配置列表权限的处理规则
+     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     */
     private void requireConfiguredListPermission(
             EntityListConfig config) {
         if (config == null
@@ -1108,6 +1299,12 @@ public class EntityDataActionService {
         }
     }
 
+    /**
+     * 提取已提交数据；输出作为后续校验或处理的输入。
+     *
+     * @param formData 表单数据，供本方法提取已提交数据时使用
+     * @return 已提交数据键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> extractSubmittedData(Map<String, Object> formData) {
         if (formData == null || formData.isEmpty()) {
@@ -1122,6 +1319,16 @@ public class EntityDataActionService {
         return submittedData;
     }
 
+    /**
+     * 处理事件来源，并将结果传给后续步骤。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param list 列表，作为 {@code listEventOrigin} 的输入影响后续处理
+     * @param requestedFormId 请求表单ID，后续用于处理事件来源时定位或关联目标
+     * @param releaseContext 执行上下文，向后续事件来源步骤传递身份、配置或状态
+     * @return 处理后的事件来源结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EventOrigin eventOrigin(
             String entityCode,
             EntityListConfig list,
@@ -1184,6 +1391,13 @@ public class EntityDataActionService {
     /**
      * 表单保存类动作必须与后续提交处理使用同一固定发布坐标，并在写入前
      * 重新执行对应内置按钮的显示、启用和权限判断。
+     *
+     * @param origin 来源，作为 {@code request.setFormId} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param mode 模式标识，决定后续表单变更动作采用的处理分支
+     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
      */
     private void requireFormMutationAction(
             EventOrigin origin,
@@ -1209,11 +1423,23 @@ public class EntityDataActionService {
                 request, actionKey);
     }
 
+    /**
+     * 生成动作键文本，供后续匹配或展示。
+     *
+     * @param startProcess 启动流程，作为 {@code Boolean.parseBoolean} 的输入影响后续处理
+     * @return 处理后的动作键文本，供调用方比较或展示
+     */
     private String actionKey(Object startProcess) {
         return Boolean.parseBoolean(String.valueOf(startProcess))
                 ? "saveAndStart" : "save";
     }
 
+    /**
+     * 列出事件来源；查询结果供调用方展示或继续处理。
+     *
+     * @param list 列表，作为 {@code EventOrigin} 的输入影响后续处理
+     * @return 符合条件的事件来源结果，供调用方继续处理
+     */
     private EventOrigin listEventOrigin(EntityListConfig list) {
         return list == null
                 ? null : new EventOrigin(
@@ -1227,6 +1453,17 @@ public class EntityDataActionService {
                         list.getReleaseResolutionToken());
     }
 
+    /**
+     * 处理事件，并将结果传给后续步骤。
+     *
+     * @param eventCode 事件编码，后续用于处理事件时定位或关联目标
+     * @param origin 来源，作为 {@code event.setConfigType} 的输入影响后续处理
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @param input 待处理事件的原始输入，结果供调用方继续使用
+     * @return 处理后的事件结果，供调用方继续处理
+     */
     private UiEventExecuteRequest event(
             String eventCode,
             EventOrigin origin,
@@ -1257,6 +1494,12 @@ public class EntityDataActionService {
         return event;
     }
 
+    /**
+     * 创建输入；结果供后续流程传递或持久化。
+     *
+     * @param dto DTO，作为 {@code input.put} 的输入影响后续处理
+     * @return 输入键值结果，供调用方继续处理
+     */
     private Map<String, Object> createInput(EntityDataDTO dto) {
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("data", dto.getData() == null
@@ -1269,6 +1512,12 @@ public class EntityDataActionService {
         return input;
     }
 
+    /**
+     * 更新输入；后续读取或执行将使用更新后的状态。
+     *
+     * @param formData 表单数据，作为 {@code input.put} 的输入影响后续处理
+     * @return 输入键值结果，供调用方继续处理
+     */
     private Map<String, Object> updateInput(
             Map<String, Object> formData) {
         Map<String, Object> input = new LinkedHashMap<>();
@@ -1281,6 +1530,15 @@ public class EntityDataActionService {
         return input;
     }
 
+    /**
+     * 处理实体数据，并将结果传给后续步骤。
+     *
+     * @param value 待处理实体数据的原始输入，结果供调用方继续使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
+     * @return 处理后的实体数据结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private EntityDataDTO entityData(
             Object value,
             String entityCode,
@@ -1306,6 +1564,12 @@ public class EntityDataActionService {
         return dto;
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @return 映射键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value) {
         if (value instanceof Map<?, ?> map) {
@@ -1317,10 +1581,22 @@ public class EntityDataActionService {
         return new LinkedHashMap<>();
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 处理表单发布版本上下文，并将结果传给后续步骤。
+     *
+     * @param formData 表单数据，作为 {@code EntityFormReleaseContext} 的输入影响后续处理
+     * @return 处理后的表单发布版本上下文结果，供调用方继续处理
+     */
     private EntityFormReleaseContext formReleaseContext(
             Map<String, Object> formData) {
         return new EntityFormReleaseContext(
@@ -1334,6 +1610,13 @@ public class EntityDataActionService {
                                 "formReleaseResolutionToken")));
     }
 
+    /**
+     * 处理可空整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理可空整数的原始输入，结果供调用方继续使用
+     * @return 处理后的可空整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer nullableInteger(Object value) {
         if (value == null || !StringUtils.hasText(String.valueOf(value))) {
             return null;
@@ -1345,6 +1628,18 @@ public class EntityDataActionService {
         }
     }
 
+    /**
+     * 封装事件来源的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param configType 配置类型标识，决定后续事件来源采用的处理分支
+     * @param configId 配置ID，后续用于处理事件来源时定位或关联目标
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param effectiveReleaseId 有效发布版本ID，后续用于处理事件来源时定位或关联目标
+     * @param effectiveContentHash 有效内容哈希，保存在对象中供后续校验、查询或展示
+     * @param hotfixTargetId 热修复目标ID，后续用于处理事件来源时定位或关联目标
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     */
     private record EventOrigin(
             String configType,
             String configId,
@@ -1356,7 +1651,12 @@ public class EntityDataActionService {
             String releaseResolutionToken) {
     }
 
-    /** 应用表单后的安全数据及本次服务端实际采用的发布身份。 */
+    /**
+     * 应用表单后的安全数据及本次服务端实际采用的发布身份。
+     *
+     * @param data 数据，后续用于处理{@code applied}提交表单并传递处理结果
+     * @param origin 来源，保存在对象中供后续校验、查询或展示
+     */
     private record AppliedSubmissionForm(
             Map<String, Object> data,
             EventOrigin origin) {

@@ -24,6 +24,9 @@ public final class TrustedSubFormUniqueReference {
     private static final String TRANSPORT_KEY =
             "$__trusted_subform_unique_release";
 
+    /**
+     * 初始化可信子级表单唯一引用，保存构造参数供后续方法使用。
+     */
     private TrustedSubFormUniqueReference() {
     }
 
@@ -33,6 +36,10 @@ public final class TrustedSubFormUniqueReference {
      * <p>同一子行可能依次经过多个父表单的 SUB_FORM 节点。只有已有值也是
      * 本进程创建的私有 Marker 时才合并，并按完整发布身份稳定去重；客户端
      * 同名 Map/字符串仍会被直接覆盖，不能借此激活额外规则。</p>
+     *
+     * @param row 行，供本方法处理{@code attach}时使用
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param reference 引用，作为 {@code references.add} 的输入影响后续处理
      */
     public static void attach(
             Map<String, Object> row,
@@ -71,13 +78,21 @@ public final class TrustedSubFormUniqueReference {
 
     /**
      * 写库前移除内部字段，并仅在值是本进程构造的私有类型时返回引用。
+     *
+     * @param row 行，作为 {@code removePrepared} 的输入影响后续处理
+     * @return 表单唯一变更上下文集合，供调用方遍历或展示
      */
     public static List<FormUniqueMutationContext.Reference>
             remove(Map<String, Object> row) {
         return removePrepared(row).references();
     }
 
-    /** 写库前原子移除可信引用及其写前 gate 凭据。 */
+    /**
+     * 写库前原子移除可信引用及其写前 gate 凭据。
+     *
+     * @param row 行，供本方法移除已准备时使用
+     * @return 移除后的已准备结果，供调用方继续处理
+     */
     public static Resolved removePrepared(
             Map<String, Object> row) {
         if (row == null) {
@@ -92,7 +107,12 @@ public final class TrustedSubFormUniqueReference {
                 : Resolved.empty();
     }
 
-    /** 在可能修改 payload 的阶段前，捕获可信 Marker 的路径与对象身份。 */
+    /**
+     * 在可能修改 payload 的阶段前，捕获可信 Marker 的路径与对象身份。
+     *
+     * @param root 根，作为 {@code PayloadSnapshot} 的输入影响后续处理
+     * @return 处理后的快照结果，供调用方继续处理
+     */
     public static PayloadSnapshot snapshot(Object root) {
         return new PayloadSnapshot(pending(root).stream()
                 .sorted(java.util.Comparator.comparing(Pending::path))
@@ -107,6 +127,9 @@ public final class TrustedSubFormUniqueReference {
     /**
      * 确认 payload 变换没有剥离、替换或移动可信 Marker。
      * 普通字段值可以改变；唯一候选会在全部变换完成后重新准备。
+     *
+     * @param expected 预期，供本方法校验并获取{@code unchanged}时使用
+     * @param actualRoot 实际根，作为 {@code pending} 的输入影响后续处理
      */
     public static void requireUnchanged(
             PayloadSnapshot expected,
@@ -136,13 +159,25 @@ public final class TrustedSubFormUniqueReference {
         }
     }
 
-    /** 仅由唯一性准备服务递归读取并绑定不可伪造的 prepared token。 */
+    /**
+     * 仅由唯一性准备服务递归读取并绑定不可伪造的 prepared token。
+     *
+     * @param root 根，作为 {@code collect} 的输入影响后续处理
+     * @return 待处理集合，供调用方遍历或展示
+     */
     static List<Pending> pending(Object root) {
         List<Pending> result = new ArrayList<>();
         collect(root, "", result);
         return List.copyOf(result);
     }
 
+    /**
+     * 收集可信子级表单唯一引用；结果供调用方的后续步骤使用。
+     *
+     * @param value 待收集可信子级表单唯一引用的原始输入，结果供调用方继续使用
+     * @param path 路径，作为 {@code result.add} 的输入影响后续处理
+     * @param result 结果，供本方法收集可信子级表单唯一引用时使用
+     */
     private static void collect(
             Object value,
             String path,
@@ -179,11 +214,24 @@ public final class TrustedSubFormUniqueReference {
         }
     }
 
+    /**
+     * 生成{@code escape}文本，供后续匹配或展示。
+     *
+     * @param value 待处理{@code escape}的原始输入，结果供调用方继续使用
+     * @return 处理后的{@code escape}文本，供调用方比较或展示
+     */
     private static String escape(String value) {
         return value.replace("~", "~0")
                 .replace("/", "~1");
     }
 
+    /**
+     * 处理绑定，并将结果传给后续步骤。
+     *
+     * @param pending 待处理，供本方法处理绑定时使用
+     * @param prepared 已准备，供本方法处理绑定时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     static void bind(
             Pending pending,
             PreparedUniqueClaims prepared) {
@@ -203,21 +251,47 @@ public final class TrustedSubFormUniqueReference {
                         prepared));
     }
 
-    /** 仅供同包测试验证普通 JSON 值不能伪造私有标记。 */
+    /**
+     * 仅供同包测试验证普通 JSON 值不能伪造私有标记。
+     *
+     * @return 处理后的传输键文本，供调用方比较或展示
+     */
     static String transportKey() {
         return TRANSPORT_KEY;
     }
 
+    /**
+     * 封装已解析的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     */
     public record Resolved(
             String entityCode,
             List<FormUniqueMutationContext.Reference> references,
             PreparedUniqueClaims prepared) {
 
+        /**
+         * 处理空，并将结果传给后续步骤。
+         *
+         * @return 处理后的空结果，供调用方继续处理
+         */
         private static Resolved empty() {
             return new Resolved(null, List.of(), null);
         }
     }
 
+    /**
+     * 封装待处理的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param path 路径，保存在对象中供后续校验、查询或展示
+     * @param row 行，保存在对象中供后续校验、查询或展示
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     * @param markerIdentity {@code marker}身份，保存在对象中供后续校验、查询或展示
+     */
     record Pending(
             String path,
             Map<String, Object> row,
@@ -232,11 +306,24 @@ public final class TrustedSubFormUniqueReference {
 
         private final List<MarkerSnapshot> markers;
 
+        /**
+         * 初始化载荷快照，保存构造参数供后续方法使用。
+         *
+         * @param markers {@code markers}，保存在对象中供后续校验、查询或展示
+         */
         private PayloadSnapshot(List<MarkerSnapshot> markers) {
             this.markers = List.copyOf(markers);
         }
     }
 
+    /**
+     * 封装{@code marker}快照的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param path 路径，保存在对象中供后续校验、查询或展示
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     * @param markerIdentity {@code marker}身份，保存在对象中供后续校验、查询或展示
+     */
     private record MarkerSnapshot(
             String path,
             String entityCode,
@@ -244,16 +331,34 @@ public final class TrustedSubFormUniqueReference {
             Object markerIdentity) {
     }
 
+    /**
+     * 封装{@code marker}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param references 引用，保存在对象中供后续校验、查询或展示
+     * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+     */
     private record Marker(
             String entityCode,
             List<FormUniqueMutationContext.Reference> references,
             PreparedUniqueClaims prepared) {
 
+        /**
+         * 初始化{@code marker}，保存构造参数供后续方法使用。
+         *
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param references 引用，保存在对象中供后续校验、查询或展示
+         * @param prepared 已准备，保存在对象中供后续校验、查询或展示
+         */
         private Marker {
             references = List.copyOf(references);
         }
 
-        /** 内部命令摘要不应包含发布身份对象的序列化结构。 */
+        /**
+         * 内部命令摘要不应包含发布身份对象的序列化结构。
+         *
+         * @return 处理后的{@code serialized}{@code placeholder}文本，供调用方比较或展示
+         */
         @JsonValue
         public String serializedPlaceholder() {
             return "SERVER_TRUSTED_SUBFORM_RELEASE";

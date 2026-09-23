@@ -48,6 +48,10 @@ public class ProcessPublishedSnapshotService {
 
     /**
      * 根据流程Key获取节点表单及其发布历史上下文。
+     *
+     * @param processKey 流程键，后续用于授权校验、关联或幂等去重
+     * @param nodeId 节点ID，后续用于读取节点表单集合上下文时定位或关联目标
+     * @return 符合条件的已发布节点表单集合结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PublishedNodeForms getNodeFormsContext(
@@ -84,6 +88,10 @@ public class ProcessPublishedSnapshotService {
 
     /**
      * 根据 Flowable 流程定义ID获取节点表单及其发布历史上下文。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param nodeId 节点ID，后续用于读取节点表单集合上下文流程定义ID时定位或关联目标
+     * @return 符合条件的已发布节点表单集合结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public PublishedNodeForms getNodeFormsContextByProcessDefinitionId(
@@ -98,6 +106,9 @@ public class ProcessPublishedSnapshotService {
 
     /**
      * 根据 Flowable 流程定义 ID 获取其部署 ID 对应的不可变发布版本。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 符合条件的流程版本历史结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public ProcessVersionHistory getVersionByProcessDefinitionId(
@@ -120,6 +131,13 @@ public class ProcessPublishedSnapshotService {
         return history;
     }
 
+    /**
+     * 整理节点表单集合数据，供调用方遍历或继续处理。
+     *
+     * @param history 历史，作为 {@code parseNodeForms} 的输入影响后续处理
+     * @param nodeId 节点ID，后续用于处理节点表单集合时定位或关联目标
+     * @return 流程节点表单集合，供调用方遍历或展示
+     */
     private List<ProcessNodeForm> nodeForms(
             ProcessVersionHistory history,
             String nodeId) {
@@ -131,6 +149,12 @@ public class ProcessPublishedSnapshotService {
                 .toList();
     }
 
+    /**
+     * 解析节点表单集合；输出作为后续校验或处理的输入。
+     *
+     * @param history 历史，作为 {@code RuntimeException} 的输入影响后续处理
+     * @return 流程节点表单集合，供调用方遍历或展示
+     */
     private List<ProcessNodeForm> parseNodeForms(ProcessVersionHistory history) {
         String snapshot = history.getNodeFormsSnapshot();
         if (snapshot == null || snapshot.isBlank()) {
@@ -147,6 +171,9 @@ public class ProcessPublishedSnapshotService {
 
     /**
      * 节点表单快照及其服务端可信流程发布上下文。
+     *
+     * @param history 历史，保存在对象中供后续校验、查询或展示
+     * @param nodeForms 节点表单集合，保存在对象中供后续校验、查询或展示
      */
     public record PublishedNodeForms(
             ProcessVersionHistory history,

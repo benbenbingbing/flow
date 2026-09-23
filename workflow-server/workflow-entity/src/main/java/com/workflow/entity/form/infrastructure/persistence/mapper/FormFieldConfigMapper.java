@@ -15,6 +15,9 @@ public interface FormFieldConfigMapper extends BaseMapper<FormFieldConfig> {
 
     /**
      * 根据表单配置ID查询字段列表
+     *
+     * @param formConfigId 表单配置ID，后续用于查询表单配置ID时定位或关联目标
+     * @return 表单字段配置集合，供调用方遍历或展示
      */
     default List<FormFieldConfig> findByFormConfigId(String formConfigId) {
         return selectList(Wrappers.<FormFieldConfig>lambdaQuery()

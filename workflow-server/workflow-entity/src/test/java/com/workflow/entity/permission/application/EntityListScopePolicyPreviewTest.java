@@ -52,7 +52,7 @@ class EntityListScopePolicyPreviewTest {
         when(fieldMapper.findByEntityId("entity-1")).thenReturn(List.of());
         PermissionSqlBuilder builder = new PermissionSqlBuilder(
                 definitionMapper, fieldMapper, mock(EntityStatusMapper.class), List.of(), teamService,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         service = new EntityListScopeService(
                 policyMapper, bindingMapper, releaseMapper, listMapper, definitionMapper,

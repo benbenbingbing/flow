@@ -69,7 +69,7 @@ class PermissionSqlBuilderTest {
                 fieldMapper,
                 statusMapper,
                 List.of(),
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -96,7 +96,7 @@ class PermissionSqlBuilderTest {
                 statusMapper,
                 List.of(),
                 teamService,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("TEAM");
@@ -126,7 +126,7 @@ class PermissionSqlBuilderTest {
                 tableResolver,
                 null,
                 taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
@@ -151,7 +151,7 @@ class PermissionSqlBuilderTest {
         when(resolver.resolve("expense")).thenReturn("wf_expense");
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
                 definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
@@ -173,7 +173,7 @@ class PermissionSqlBuilderTest {
         when(taskAccess.findActionableEntityDataIds("u1", "expense")).thenReturn(List.of(unusualId));
         PermissionSqlBuilder todoBuilder = new PermissionSqlBuilder(
                 definitionMapper, fieldMapper, statusMapper, List.of(), null, resolver, null, taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("HAS_TODO");
@@ -348,7 +348,7 @@ class PermissionSqlBuilderTest {
                 fieldMapper,
                 statusMapper,
                 List.of(provider),
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("RULE");
@@ -381,7 +381,7 @@ class PermissionSqlBuilderTest {
     void compilesControlledSqlAndRewritesMainAlias() {
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
-        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(null, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(null, tableResolver, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -390,7 +390,7 @@ class PermissionSqlBuilderTest {
                 null,
                 tableResolver,
                 compiler,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("SQL");
@@ -411,7 +411,7 @@ class PermissionSqlBuilderTest {
     void rejectsUnsafeControlledSql() {
         PermissionSqlFragmentCompiler compiler = new PermissionSqlFragmentCompiler(
                 null,
-                mock(EntityPhysicalTableResolver.class), com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                mock(EntityPhysicalTableResolver.class), com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -420,7 +420,7 @@ class PermissionSqlBuilderTest {
                 null,
                 null,
                 compiler,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("SQL");

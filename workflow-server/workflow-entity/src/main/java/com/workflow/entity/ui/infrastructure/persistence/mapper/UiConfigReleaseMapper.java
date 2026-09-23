@@ -27,6 +27,10 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
      * <p>LIKE 只缩小候选集，调用方必须在完整性校验后解析快照并精确匹配
      * serviceId。该查询使已从草稿删除、但仍在线上的 PUBLISHED_ONLY 引用
      * 可以被管理端发现。</p>
+     *
+     * @param compactNeedle {@code compact}{@code needle}，作为 {@code query.like} 的输入影响后续处理
+     * @param spacedNeedle {@code spaced}{@code needle}，供本方法查询活动引用候选集合时使用
+     * @return 界面配置发布版本集合，供调用方遍历或展示
      */
     default List<UiConfigRelease> findActiveReferenceCandidates(String compactNeedle, String spacedNeedle) {
         // 原 SQL 的 LIKE NULL 不匹配任何行，不能让 Wrapper 将 null 拼成字符串 "null"。
@@ -53,6 +57,9 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
      * 查询可能引用接口服务的全部 FORM/LIST 发布版本，供删除保护使用。
      * 历史版本仍可能被签名运行上下文或 Embed 固定；LIKE 只按原始 ID 缩小
      * 候选，以覆盖嵌套 JSON 字符串中的转义键，调用方仍须递归精确解析。
+     *
+     * @param serviceId 服务ID，后续用于查询{@code executable}数据来源引用候选集合时定位或关联目标
+     * @return 界面配置发布版本集合，供调用方遍历或展示
      */
     default List<UiConfigRelease> findExecutableDataSourceReferenceCandidates(String serviceId) {
         if (serviceId == null) {
@@ -83,12 +90,25 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
     /**
      * 分页查询发布历史摘要，并关联人员目录回显发布人的姓名与登录名。
      * 发布记录仅保存人员 ID，历史页不能将该内部 ID 直接暴露为发布人名称。
+     *
+     * @param configType 配置类型标识，决定后续发布版本{@code summaries}采用的处理分支
+     * @param configId 配置ID，后续用于查询发布版本{@code summaries}时定位或关联目标
+     * @param offset 偏移参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 界面配置发布版本摘要集合，供调用方遍历或展示
      */
     default List<UiConfigReleaseSummaryDTO> findReleaseSummaries(String configType, String configId, long offset, int pageSize) {
         return findReleaseSummariesRows(new OffsetPage<>(offset, pageSize), configType, configId);
     }
 
-    /** 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。 */
+    /**
+     * 复杂查询保留业务 SQL，行范围由 MyBatis-Plus 分页插件生成。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param configType 配置类型标识，决定后续发布版本{@code summaries}行采用的处理分支
+     * @param configId 配置ID，后续用于查询发布版本{@code summaries}行时定位或关联目标
+     * @return 界面配置发布版本摘要集合，供调用方遍历或展示
+     */
     @Select("<script> SELECT r.id, r.config_type, r.config_id, r.version, r.content_hash, "
             + "r.status, r.description, r.release_mode, r.base_release_id, "
             + "r.risk_level, r.rollout_scope, r.published_by, "
@@ -118,13 +138,26 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
             @Param("configType") String configType,
             @Param("configId") String configId);
 
-    /** 统计指定配置的发布记录数，供发布历史分页使用。 */
+    /**
+     * 统计指定配置的发布记录数，供发布历史分页使用。
+     *
+     * @param configType 配置类型标识，决定后续{@code releases}采用的处理分支
+     * @param configId 配置ID，后续用于统计{@code releases}时定位或关联目标
+     * @return 符合条件的{@code releases}数量
+     */
     default long countReleases(String configType, String configId) {
         return selectCount(Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, configType)
                 .eq(UiConfigRelease::getConfigId, configId));
     }
 
+    /**
+     * 查询最大版本；查询结果供调用方展示或继续处理。
+     *
+     * @param configType 配置类型标识，决定后续最大版本采用的处理分支
+     * @param configId 配置ID，后续用于查询最大版本时定位或关联目标
+     * @return 符合条件的界面配置发布版本结果，供调用方继续处理
+     */
     default int findMaxVersion(String configType, String configId) {
         List<Object> values = selectObjs(Wrappers.<UiConfigRelease>query()
                 .select("MAX(version)")
@@ -133,6 +166,14 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
         return values.isEmpty() || values.get(0) == null ? 0 : ((Number) values.get(0)).intValue();
     }
 
+    /**
+     * 按版本查询界面配置发布版本；结果供后续展示或处理。
+     *
+     * @param configType 配置类型标识，决定后续版本采用的处理分支
+     * @param configId 配置ID，后续用于查询版本时定位或关联目标
+     * @param version 版本，作为 {@code eq} 的输入影响后续处理
+     * @return 符合条件的界面配置发布版本结果，供调用方继续处理
+     */
     default UiConfigRelease findByVersion(String configType, String configId, Integer version) {
         return selectList(new OffsetPage<>(0, 1), Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, configType)

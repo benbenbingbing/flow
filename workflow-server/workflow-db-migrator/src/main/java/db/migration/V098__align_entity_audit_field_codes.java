@@ -16,6 +16,12 @@ public class V098__align_entity_audit_field_codes extends BaseJavaMigration {
             new AuditField("createdBy", "create_by", "STRING", "varchar(64)", 64),
             new AuditField("updatedBy", "update_by", "STRING", "varchar(64)", 64));
 
+    /**
+     * 处理迁移，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续迁移步骤传递身份、配置或状态
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     @Override
     public void migrate(Context context) throws SQLException {
         Connection connection = context.getConnection();
@@ -54,7 +60,13 @@ public class V098__align_entity_audit_field_codes extends BaseJavaMigration {
         }
     }
 
-    /** 仅处理固定的字段关系表；字符串字段 ID 显式比较，避免把虚拟列表字段误转为数值。 */
+    /**
+     * 仅处理固定的字段关系表；字符串字段 ID 显式比较，避免把虚拟列表字段误转为数值。
+     *
+     * @param connection 连接，作为 {@code try} 的输入影响后续处理
+     * @param field 字段，作为 {@code statement.setString} 的输入影响后续处理
+     * @throws SQLException 数据库访问或结构检查失败时抛出
+     */
     private void mergeDuplicateReferences(Connection connection, AuditField field) throws SQLException {
         for (String table : List.of("entity_field_option", "entity_field_file_item", "entity_list_field")) {
             String sql = """
@@ -74,5 +86,14 @@ public class V098__align_entity_audit_field_codes extends BaseJavaMigration {
         }
     }
 
+    /**
+     * 封装审计字段的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param oldCode 旧编码，后续用于处理审计字段时定位或关联目标
+     * @param column 列，保存在对象中供后续校验、查询或展示
+     * @param type 类型标识，决定后续审计字段采用的处理分支
+     * @param dbType {@code db}类型标识，决定后续审计字段采用的处理分支
+     * @param length 长度，保存在对象中供后续校验、查询或展示
+     */
     private record AuditField(String oldCode, String column, String type, String dbType, Integer length) {}
 }

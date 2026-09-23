@@ -3,9 +3,9 @@ package com.workflow.config.database;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
-import com.workflow.integration.database.api.SchemaDdlDialect;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
-import com.workflow.integration.database.api.DatabaseQueryDialect;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import org.apache.ibatis.mapping.DatabaseIdProvider;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.MyBatisExceptionTranslator;
@@ -30,6 +30,8 @@ public class DatabaseMybatisConfiguration {
      * 未声明类型的空参数使用标准 SQL NULL，避免 MyBatis 默认 OTHER 被 Oracle 等驱动拒绝。
      * 已声明的 JDBC 类型及数字布尔处理器仍优先；独立的 Flowable 工厂不受此配置影响。
      * 单独出现的“参数 IS NULL”等无法由 SQL 上下文推断类型的位置，仍须在 Mapper 声明类型。
+     *
+     * @return 处理后的空值参数绑定集合结果，供调用方继续处理
      */
     @Bean
     public ConfigurationCustomizer nullParameterBindings() {
@@ -40,6 +42,8 @@ public class DatabaseMybatisConfiguration {
      * 动态 Map 的属性类型是 Object，不能只注册 String 的 CLOB 处理器：驱动暴露厂商
      * Clob 类时 MyBatis 可能退回 getObject。为大文本的 Object 属性复用框架内置的
      * String 处理器，业务层始终取得字符串；普通 Object、JSON 和二进制列不受影响。
+     *
+     * @return 处理后的{@code large}文本绑定集合结果，供调用方继续处理
      */
     @Bean
     public ConfigurationCustomizer largeTextBindings() {
@@ -60,6 +64,8 @@ public class DatabaseMybatisConfiguration {
     /**
      * 在解析业务 Mapper 之前注册数字布尔绑定，覆盖默认及显式 BOOLEAN/BIT 映射。
      * 不改写连接或 Flowable 的独立配置，避免把第三方原生布尔列误当成本系统的数值列。
+     *
+     * @return 处理后的{@code numeric}布尔值绑定集合结果，供调用方继续处理
      */
     @Bean
     public ConfigurationCustomizer numericBooleanBindings() {
@@ -74,7 +80,14 @@ public class DatabaseMybatisConfiguration {
         };
     }
 
-    /** Mapper 与共享 JdbcTemplate 使用同一产品规则，避免厂商产品名或默认错误表漏掉国产库。 */
+    /**
+     * Mapper 与共享 JdbcTemplate 使用同一产品规则，避免厂商产品名或默认错误表漏掉国产库。
+     *
+     * @param factory 工厂，作为 {@code SqlSessionTemplate} 的输入影响后续处理
+     * @param properties 属性集合，供本方法处理SQL会话模板时使用
+     * @param translator {@code translator}，供本方法处理SQL会话模板时使用
+     * @return 处理后的SQL会话模板结果，供调用方继续处理
+     */
     @Bean
     @ConditionalOnMissingBean(SqlSessionTemplate.class)
     public SqlSessionTemplate sqlSessionTemplate(SqlSessionFactory factory, MybatisPlusProperties properties,
@@ -84,21 +97,36 @@ public class DatabaseMybatisConfiguration {
         return new SqlSessionTemplate(factory, executor, new MyBatisExceptionTranslator(() -> translator, false));
     }
 
-    /** 向普通 JDBC 业务服务暴露同一产品的纯查询方言，执行仍留在调用方。 */
+    /**
+     * 向普通 JDBC 业务服务暴露同一产品的纯查询方言，执行仍留在调用方。
+     *
+     * @param dialect 方言，作为 {@code DatabaseQueryDialects.forVendor} 的输入影响后续处理
+     * @return 处理后的数据库查询方言结果，供调用方继续处理
+     */
     @Bean
     @ConditionalOnMissingBean(DatabaseQueryDialect.class)
     public DatabaseQueryDialect databaseQueryDialect(SchemaDdlDialect dialect) {
         return DatabaseQueryDialects.forVendor(dialect.vendor());
     }
 
-    /** databaseId 跟随显式产品配置，不能仅凭驱动产品名混淆 OceanBase 的租户模式。 */
+    /**
+     * databaseId 跟随显式产品配置，不能仅凭驱动产品名混淆 OceanBase 的租户模式。
+     *
+     * @param dialect 方言，供本方法处理数据库ID提供者时使用
+     * @return 处理后的数据库ID提供者结果，供调用方继续处理
+     */
     @Bean
     @ConditionalOnMissingBean(DatabaseIdProvider.class)
     public DatabaseIdProvider databaseIdProvider(SchemaDdlDialect dialect) {
         return dataSource -> dialect.vendor().name();
     }
 
-    /** 使用与 DDL 相同的产品配置，尤其不能仅按 JDBC 驱动把 OB Oracle 当作 MySQL。 */
+    /**
+     * 使用与 DDL 相同的产品配置，尤其不能仅按 JDBC 驱动把 OB Oracle 当作 MySQL。
+     *
+     * @param dialect 方言，供本方法处理{@code mybatis}{@code plus}{@code interceptor}时使用
+     * @return 处理后的{@code mybatis}{@code plus}{@code interceptor}结果，供调用方继续处理
+     */
     @Bean
     @ConditionalOnMissingBean(MybatisPlusInterceptor.class)
     public MybatisPlusInterceptor mybatisPlusInterceptor(SchemaDdlDialect dialect) {

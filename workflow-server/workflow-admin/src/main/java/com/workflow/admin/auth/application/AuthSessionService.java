@@ -46,6 +46,14 @@ public class AuthSessionService {
     /** 可替换时钟，便于测试过期边界。 */
     private final Clock clock;
 
+    /**
+     * 初始化认证会话服务，保存构造参数供后续方法使用。
+     *
+     * @param sessionMapper 会话映射器，保存在对象中供后续校验、查询或展示
+     * @param userService 用户服务，保存在对象中供后续校验、查询或展示
+     * @param properties 属性集合，保存在对象中供后续校验、查询或展示
+     * @param metrics 指标集合，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public AuthSessionService(
             AuthRefreshSessionMapper sessionMapper,
@@ -60,6 +68,15 @@ public class AuthSessionService {
                 Clock.systemUTC());
     }
 
+    /**
+     * 初始化认证会话服务，保存构造参数供后续方法使用。
+     *
+     * @param sessionMapper 会话映射器依赖，保存到当前对象供后续业务方法调用
+     * @param userService 用户服务依赖，保存到当前对象供后续业务方法调用
+     * @param properties 属性集合依赖，保存到当前对象供后续业务方法调用
+     * @param metrics 指标集合依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     AuthSessionService(
             AuthRefreshSessionMapper sessionMapper,
             SysUserService userService,
@@ -255,6 +272,16 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 处理集合，并将结果传给后续步骤。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param refreshToken 刷新令牌，后续用于授权校验、关联或幂等去重
+     * @param sessionId 会话ID，后续用于处理集合时定位或关联目标
+     * @param absoluteExpiry 绝对{@code expiry}，供本方法处理集合时使用
+     * @param tokenVersion 令牌版本，供本方法处理集合时使用
+     * @return 处理后的集合结果，供调用方继续处理
+     */
     private AuthTokenBundle bundle(
             SysUser user,
             String refreshToken,
@@ -277,6 +304,12 @@ public class AuthSessionService {
                 absoluteExpiry);
     }
 
+    /**
+     * 校验刷新会话；不满足约束时阻止后续处理。
+     *
+     * @param session 会话，作为 {@code revokeExpired} 的输入影响后续处理
+     * @param now 当前时间，供本方法校验刷新会话时使用
+     */
     private void validateRefreshSession(
             AuthRefreshSessionRecord session,
             Instant now) {
@@ -303,6 +336,13 @@ public class AuthSessionService {
         validateSessionUser(session);
     }
 
+    /**
+     * 校验访问会话；不满足约束时阻止后续处理。
+     *
+     * @param session 会话，作为 {@code equals} 的输入影响后续处理
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @param now 当前时间，供本方法校验访问会话时使用
+     */
     private void validateAccessSession(
             AuthRefreshSessionRecord session,
             JwtTokenInspection token,
@@ -327,6 +367,11 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 校验会话用户；不满足约束时阻止后续处理。
+     *
+     * @param session 会话，作为 {@code revokeExpired} 的输入影响后续处理
+     */
     private void validateSessionUser(
             AuthRefreshSessionRecord session) {
         if (!isEnabledUser(session)) {
@@ -347,6 +392,12 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 判断是否启用用户；判断结果决定调用方的后续分支。
+     *
+     * @param session 会话，供本方法判断是否启用用户时使用
+     * @return 启用用户条件成立时为 true，否则为 false
+     */
     private boolean isEnabledUser(
             AuthRefreshSessionRecord session) {
         return session.username() != null
@@ -354,6 +405,12 @@ public class AuthSessionService {
                 && Integer.valueOf(0).equals(session.userDeleted());
     }
 
+    /**
+     * 撤销过期；后续读取或执行将使用更新后的状态。
+     *
+     * @param session 会话，作为 {@code sessionMapper.revokeById} 的输入影响后续处理
+     * @param reason 原因，供本方法撤销过期时使用
+     */
     private void revokeExpired(
             AuthRefreshSessionRecord session,
             String reason) {
@@ -363,6 +420,11 @@ public class AuthSessionService {
                 reason);
     }
 
+    /**
+     * 校验并获取启用用户；不满足约束时阻止后续处理。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     */
     private void requireEnabledUser(SysUser user) {
         if (user == null
                 || !SysUser.Status.ENABLED.getValue()
@@ -374,6 +436,14 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 构造失败异常，供调用方区分失败原因。
+     *
+     * @param action 动作标识，决定后续失败采用的处理分支
+     * @param errorCode 错误编码，后续用于处理失败时定位或关联目标
+     * @param message 消息，作为 {@code AuthSessionException} 的输入影响后续处理
+     * @return 处理后的失败结果，供调用方继续处理
+     */
     private AuthSessionException failure(
             String action,
             String errorCode,
@@ -393,12 +463,23 @@ public class AuthSessionService {
         return new AuthSessionException(errorCode, message);
     }
 
+    /**
+     * 处理令牌版本，并将结果传给后续步骤。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 处理后的令牌版本结果，供调用方继续处理
+     */
     private long tokenVersion(SysUser user) {
         return user.getTokenVersion() == null
                 ? 0L
                 : user.getTokenVersion();
     }
 
+    /**
+     * 生成{@code random}刷新令牌文本，供后续匹配或展示。
+     *
+     * @return 处理后的{@code random}刷新令牌文本，供调用方比较或展示
+     */
     private String randomRefreshToken() {
         byte[] bytes = new byte[32];
         SECURE_RANDOM.nextBytes(bytes);
@@ -407,6 +488,13 @@ public class AuthSessionService {
                 .encodeToString(bytes);
     }
 
+    /**
+     * 生成哈希令牌文本，供后续匹配或展示。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 处理后的哈希令牌文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hashToken(String token) {
         try {
             return HexFormat.of().formatHex(
@@ -420,18 +508,42 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 处理本地，并将结果传给后续步骤。
+     *
+     * @param value 待处理本地的原始输入，结果供调用方继续使用
+     * @return 处理后的本地结果，供调用方继续处理
+     */
     private LocalDateTime local(Instant value) {
         return LocalDateTime.ofInstant(value, ZoneOffset.UTC);
     }
 
+    /**
+     * 处理绝对时间，并将结果传给后续步骤。
+     *
+     * @param value 待处理绝对时间的原始输入，结果供调用方继续使用
+     * @return 处理后的绝对时间结果，供调用方继续处理
+     */
     private Instant instant(LocalDateTime value) {
         return value.toInstant(ZoneOffset.UTC);
     }
 
+    /**
+     * 处理{@code minimum}，并将结果传给后续步骤。
+     *
+     * @param left 左侧，供本方法处理{@code minimum}时使用
+     * @param right 右侧，作为 {@code left.isBefore} 的输入影响后续处理
+     * @return 处理后的{@code minimum}结果，供调用方继续处理
+     */
     private Instant minimum(Instant left, Instant right) {
         return left.isBefore(right) ? left : right;
     }
 
+    /**
+     * 校验属性集合；不满足约束时阻止后续处理。
+     *
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void validateProperties() {
         requireDuration(
                 properties.getIdleTimeout(),
@@ -449,6 +561,13 @@ public class AuthSessionService {
         }
     }
 
+    /**
+     * 校验并获取时长；不满足约束时阻止后续处理。
+     *
+     * @param duration 时长，供本方法校验并获取时长时使用
+     * @param name 名称，后续用于校验并获取时长时匹配或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private void requireDuration(
             Duration duration,
             String name) {

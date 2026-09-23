@@ -1,8 +1,8 @@
 package com.workflow.process.assignment.application;
 
-import com.workflow.contracts.identity.resolver.PersonPrincipal;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonPrincipal;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.domain.AssigneeResolutionResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,7 +18,13 @@ public class AssigneeResolutionService {
 
     private final PersonResolverRuntimeService resolverRuntimeService;
 
-    /** 调用受控人员解析器，并显式区分成功、空结果和错误。 */
+    /**
+     * 调用受控人员解析器，并显式区分成功、空结果和错误。
+     *
+     * @param resolverCode 解析器编码，后续用于解析已配置时定位或关联目标
+     * @param request 本次请求，后续经校验后用于解析已配置
+     * @return 解析后的已配置结果，供调用方继续处理
+     */
     public AssigneeResolutionResult resolveConfigured(
             String resolverCode,
             PersonResolveRequest request) {
@@ -47,7 +53,13 @@ public class AssigneeResolutionService {
         }
     }
 
-    /** 解析固定用户、组或角色，并验证最终至少存在一个有效用户。 */
+    /**
+     * 解析固定用户、组或角色，并验证最终至少存在一个有效用户。
+     *
+     * @param principals {@code principals}，作为 {@code distinct} 的输入影响后续处理
+     * @param reasonCode 原因编码，后续用于解析{@code principals}时定位或关联目标
+     * @return 解析后的{@code principals}结果，供调用方继续处理
+     */
     public AssigneeResolutionResult resolvePrincipals(
             List<PersonPrincipal> principals,
             String reasonCode) {
@@ -64,6 +76,12 @@ public class AssigneeResolutionService {
         }
     }
 
+    /**
+     * 整理{@code distinct}数据，供调用方遍历或继续处理。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 办理人解析集合，供调用方遍历或展示
+     */
     private List<String> distinct(List<String> values) {
         LinkedHashSet<String> result = new LinkedHashSet<>();
         if (values != null) {
@@ -73,6 +91,12 @@ public class AssigneeResolutionService {
         return List.copyOf(result);
     }
 
+    /**
+     * 生成安全消息文本，供后续匹配或展示。
+     *
+     * @param error 错误，供本方法处理安全消息时使用
+     * @return 处理后的安全消息文本，供调用方比较或展示
+     */
     private String safeMessage(Throwable error) {
         return StringUtils.hasText(error.getMessage())
                 ? error.getMessage() : error.getClass().getSimpleName();

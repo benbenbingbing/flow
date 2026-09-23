@@ -2,7 +2,7 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
 import com.workflow.entity.ui.application.UiViewCompositionRuntimeService;
@@ -26,6 +26,9 @@ public class UiViewCompositionRuntimeController {
 
     /**
      * 按宿主发布版本和来源记录解析目标表单记录或目标列表固定条件。
+     *
+     * @param request 本次请求，后续经校验后用于解析界面视图组合运行时
+     * @return 解析后的界面视图组合运行时结果，供调用方继续处理
      */
     @PostMapping("/resolve")
     public Result<UiViewCompositionResolveResponse> resolve(

@@ -14,12 +14,23 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface EmbedSessionPersistenceMapper {
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param tokenDigest 令牌摘要，供本方法查询令牌摘要时使用
+     * @return 符合条件的嵌入式会话安全行结果，供调用方继续处理
+     */
     default EmbedSessionSecurityRow findByTokenDigest(String tokenDigest) {
         return findByTokenDigestPage(new OffsetPage<>(0, 1), tokenDigest).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tokenDigest 令牌摘要，供本方法查询令牌摘要分页时使用
+     * @return 嵌入式会话安全行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT s.id, s.session_token_digest,
@@ -68,12 +79,23 @@ public interface EmbedSessionPersistenceMapper {
             @Param("page") OffsetPage<EmbedSessionSecurityRow> page,
             @Param("tokenDigest") String tokenDigest);
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param sessionId 会话ID，后续用于查询ID时定位或关联目标
+     * @return 符合条件的嵌入式会话安全行结果，供调用方继续处理
+     */
     default EmbedSessionSecurityRow findById(String sessionId) {
         return findByIdPage(new OffsetPage<>(0, 1), sessionId).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param sessionId 会话ID，后续用于查询ID分页时定位或关联目标
+     * @return 嵌入式会话安全行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT s.id, s.session_token_digest,
@@ -122,6 +144,14 @@ public interface EmbedSessionPersistenceMapper {
             @Param("page") OffsetPage<EmbedSessionSecurityRow> page,
             @Param("sessionId") String sessionId);
 
+    /**
+     * 处理更新访问时间最后已见，并将结果传给后续步骤。
+     *
+     * @param sessionId 会话ID，后续用于处理更新访问时间最后已见时定位或关联目标
+     * @param expectedLastSeen 预期最后已见，供本方法处理更新访问时间最后已见时使用
+     * @param now 当前时间，供本方法处理更新访问时间最后已见时使用
+     * @return 处理后的更新访问时间最后已见结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_session
                SET last_seen_at = #{now},
@@ -137,6 +167,14 @@ public interface EmbedSessionPersistenceMapper {
             @Param("expectedLastSeen") LocalDateTime expectedLastSeen,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 处理心跳，并将结果传给后续步骤。
+     *
+     * @param sessionId 会话ID，后续用于处理心跳时定位或关联目标
+     * @param now 当前时间，供本方法处理心跳时使用
+     * @param requestedIdleExpiry 请求空闲{@code expiry}，供本方法处理心跳时使用
+     * @return 处理后的心跳结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_session
                SET last_seen_at = #{now},
@@ -152,12 +190,25 @@ public interface EmbedSessionPersistenceMapper {
             @Param("now") LocalDateTime now,
             @Param("requestedIdleExpiry") LocalDateTime requestedIdleExpiry);
 
-    /** 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。 */
+    /**
+     * 保留调用方的批次与游标条件，分页语法交给 MyBatis-Plus 插件。
+     *
+     * @param now 当前时间，供本方法查询过期令牌摘要集合时使用
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 嵌入式会话持久化集合，供调用方遍历或展示
+     */
     default List<String> findExpiredTokenDigests(LocalDateTime now, int limit) {
         return findExpiredTokenDigestsPage(new OffsetPage<>(0, limit), now, limit);
     }
 
-    /** 原查询投影和条件保持不变，page 仅用于框架生成外层分页。 */
+    /**
+     * 原查询投影和条件保持不变，page 仅用于框架生成外层分页。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param now 当前时间，供本方法查询过期令牌摘要集合分页时使用
+     * @param limit 上限参数，用于限制后续查询范围和返回数量
+     * @return 嵌入式会话持久化集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT session_token_digest
@@ -175,12 +226,23 @@ public interface EmbedSessionPersistenceMapper {
             @Param("now") LocalDateTime now,
             @Param("limit") int limit);
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param tokenDigest 令牌摘要，供本方法查询终止候选人时使用
+     * @return 符合条件的嵌入式会话终止行结果，供调用方继续处理
+     */
     default EmbedSessionTerminationRow findTerminationCandidate(String tokenDigest) {
         return findTerminationCandidatePage(new OffsetPage<>(0, 1), tokenDigest).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param tokenDigest 令牌摘要，供本方法查询终止候选人分页时使用
+     * @return 嵌入式会话终止行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT id, application_id, grant_id, view_id, flow_user_id, status, slot_released,
@@ -194,12 +256,23 @@ public interface EmbedSessionPersistenceMapper {
             @Param("page") OffsetPage<EmbedSessionTerminationRow> page,
             @Param("tokenDigest") String tokenDigest);
 
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param sessionId 会话ID，后续用于查询终止候选人ID时定位或关联目标
+     * @return 符合条件的嵌入式会话终止行结果，供调用方继续处理
+     */
     default EmbedSessionTerminationRow findTerminationCandidateById(String sessionId) {
         return findTerminationCandidateByIdPage(new OffsetPage<>(0, 1), sessionId).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param sessionId 会话ID，后续用于查询终止候选人ID分页时定位或关联目标
+     * @return 嵌入式会话终止行集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT id, application_id, grant_id, view_id, flow_user_id, status, slot_released,
@@ -213,6 +286,12 @@ public interface EmbedSessionPersistenceMapper {
             @Param("page") OffsetPage<EmbedSessionTerminationRow> page,
             @Param("sessionId") String sessionId);
 
+    /**
+     * 锁定会话终止；避免后续并发处理覆盖状态。
+     *
+     * @param sessionId 会话ID，后续用于锁定会话终止时定位或关联目标
+     * @return 锁定后的会话终止结果，供调用方继续处理
+     */
     @Select("""
             SELECT id, application_id, grant_id, view_id, flow_user_id, status, slot_released,
                    idle_expires_at, absolute_expires_at
@@ -223,6 +302,15 @@ public interface EmbedSessionPersistenceMapper {
     EmbedSessionTerminationRow lockSessionForTermination(
             @Param("sessionId") String sessionId);
 
+    /**
+     * 终止活动；后续读取或执行将使用更新后的状态。
+     *
+     * @param sessionId 会话ID，后续用于终止活动时定位或关联目标
+     * @param terminalStatus 终态状态标识，决定后续活动采用的处理分支
+     * @param reason 原因，供本方法终止活动时使用
+     * @param now 当前时间，供本方法终止活动时使用
+     * @return 终止后的活动结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_session
                SET status = #{terminalStatus},
@@ -241,6 +329,14 @@ public interface EmbedSessionPersistenceMapper {
             @Param("reason") String reason,
             @Param("now") LocalDateTime now);
 
+    /**
+     * 处理{@code decrement}计数器，并将结果传给后续步骤。
+     *
+     * @param grantId 授权ID，后续用于处理{@code decrement}计数器时定位或关联目标
+     * @param flowUserId 流程用户ID，后续用于处理{@code decrement}计数器时定位或关联目标
+     * @param now 当前时间，供本方法处理{@code decrement}计数器时使用
+     * @return 处理后的{@code decrement}计数器结果，供调用方继续处理
+     */
     @Update("""
             UPDATE embed_session_counter
                SET active_count = CASE WHEN active_count > 0 THEN active_count - 1 ELSE 0 END,

@@ -63,6 +63,9 @@ public class EntityRelation {
     @TableField(value = "update_time", fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 
+    /**
+     * 定义关系类型的可选值；调用方据此选择对应的处理分支。
+     */
     public enum RelationType {
         /** 一对一：一条父记录对应至多一条子记录 */
         ONE_TO_ONE,
@@ -70,6 +73,9 @@ public class EntityRelation {
         ONE_TO_MANY
     }
 
+    /**
+     * 定义{@code ownership}类型的可选值；调用方据此选择对应的处理分支。
+     */
     public enum OwnershipType {
         /** 子记录属于父聚合，可配置级联删除 */
         COMPOSITION,

@@ -91,6 +91,9 @@ public class SysDictItem {
     @TableField(exist = false)
     private List<SysDictItem> children;
 
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         /** 启用 */
         ENABLED("0"),
@@ -99,10 +102,20 @@ public class SysDictItem {
 
         private final String value;
 
+        /**
+         * 初始化状态，保存构造参数供后续方法使用。
+         *
+         * @param value 值依赖，保存到当前对象供后续业务方法调用
+         */
         Status(String value) {
             this.value = value;
         }
 
+        /**
+         * 读取值；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的值文本，供调用方比较或展示
+         */
         public String getValue() {
             return value;
         }

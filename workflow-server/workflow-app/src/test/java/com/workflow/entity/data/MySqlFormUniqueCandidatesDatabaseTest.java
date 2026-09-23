@@ -16,7 +16,7 @@ import com.workflow.entity.form.uniqueness.infrastructure.persistence.EntityForm
 import com.workflow.entity.form.uniqueness.infrastructure.persistence.EntityFormUniqueValueGateRepository.GateKey;
 import com.workflow.entity.form.uniqueness.infrastructure.persistence.mapper.EntityFormUniqueValueGateMapper;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.entity.data.MySqlRuntimePaginationDatabaseTest.Fixture;
 import com.workflow.entity.data.MySqlWriteAttemptDatabaseTest.Harness;

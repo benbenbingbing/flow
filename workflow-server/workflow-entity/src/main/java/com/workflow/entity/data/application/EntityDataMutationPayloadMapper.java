@@ -31,6 +31,15 @@ public class EntityDataMutationPayloadMapper {
     private final EntityPublishedSnapshotService snapshotService;
     private final EntityDataMutationValidator validator;
 
+    /**
+     * 构建更新数据；结果供后续流程传递或持久化。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于构建更新数据
+     * @param existingData 已有数据，供本方法构建更新数据时使用
+     * @return 更新数据键值结果，供调用方继续处理
+     */
     public Map<String, Object> buildUpdateData(
             String entityCode,
             String id,
@@ -79,6 +88,12 @@ public class EntityDataMutationPayloadMapper {
         return updateData;
     }
 
+    /**
+     * 复制标准字段；结果供后续流程传递或持久化。
+     *
+     * @param request 本次请求，后续经校验后用于复制标准字段
+     * @param updateData 更新数据，供本方法复制标准字段时使用
+     */
     @SuppressWarnings("unchecked")
     private void copyStandardFields(
             Map<String, Object> request,
@@ -110,6 +125,11 @@ public class EntityDataMutationPayloadMapper {
                 });
     }
 
+    /**
+     * 整理标准字段映射数据，供调用方遍历或继续处理。
+     *
+     * @return 标准字段映射键值结果，供调用方继续处理
+     */
     private Map<String, String> standardFieldMap() {
         Map<String, String> values =
                 new HashMap<>();
@@ -143,6 +163,12 @@ public class EntityDataMutationPayloadMapper {
         return values;
     }
 
+    /**
+     * 整理请求自定义数据数据，供调用方遍历或继续处理。
+     *
+     * @param request 本次请求，后续经校验后用于处理请求自定义数据
+     * @return 请求自定义数据键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     public Map<String, Object> requestCustomData(
             Map<String, Object> request) {
@@ -157,6 +183,12 @@ public class EntityDataMutationPayloadMapper {
         return new HashMap<>(request);
     }
 
+    /**
+     * 移除字段；后续读取或执行将使用更新后的状态。
+     *
+     * @param request 本次请求，后续经校验后用于移除字段
+     * @param fieldCodes 字段编码集合，供本方法移除字段时使用
+     */
     @SuppressWarnings("unchecked")
     public void removeFields(
             Map<String, Object> request,
@@ -175,6 +207,13 @@ public class EntityDataMutationPayloadMapper {
         }
     }
 
+    /**
+     * 转换为运行时DTO；输出作为后续校验或处理的输入。
+     *
+     * @param data 数据，后续用于转换为运行时DTO并传递处理结果
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 转换为后的运行时DTO结果，供调用方继续处理
+     */
     public EntityDataDTO toRuntimeDto(
             Map<String, Object> data,
             String entityCode) {
@@ -184,6 +223,12 @@ public class EntityDataMutationPayloadMapper {
                 runtimeFields(entityCode));
     }
 
+    /**
+     * 整理运行时字段数据，供调用方遍历或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 实体字段集合，供调用方遍历或展示
+     */
     private List<EntityField> runtimeFields(
             String entityCode) {
         try {

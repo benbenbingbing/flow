@@ -30,7 +30,7 @@ class PermissionSqlFragmentCompilerTest {
 
     @BeforeEach
     void setUp() {
-        compiler = new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        compiler = new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
     }
 

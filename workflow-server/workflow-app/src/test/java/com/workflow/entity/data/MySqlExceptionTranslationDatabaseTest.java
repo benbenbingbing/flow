@@ -1,5 +1,10 @@
 package com.workflow.entity.data;
 
+import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.error.DatabaseErrorKind;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
+
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
 import com.workflow.config.GlobalExceptionHandler;
 import com.workflow.config.database.DatabaseConfiguration;
@@ -9,7 +14,6 @@ import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.core.database.port.DatabaseConnections;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.EntityUniqueValueService;
-import com.workflow.integration.database.api.*;
 import com.workflow.entity.data.MySqlRuntimePaginationDatabaseTest.Fixture;
 import java.sql.SQLException;
 import java.util.List;
@@ -36,7 +40,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import static com.workflow.entity.data.MySqlIdempotentInsertDatabaseTest.concurrent;
-import static com.workflow.integration.database.api.DatabaseErrorKind.*;
+import static com.workflow.integration.database.api.error.DatabaseErrorKind.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;

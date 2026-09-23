@@ -89,7 +89,7 @@ class TaskDetailServiceLocalAddSignTest {
         when(formRuntimeService.getByBinding(
                 org.mockito.ArgumentMatchers.same(binding),
                 org.mockito.ArgumentMatchers.any(
-                        com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext.class)))
+                        com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
                 .thenReturn(form);
 
         var detail = service.getTaskDetail("addsign-1");

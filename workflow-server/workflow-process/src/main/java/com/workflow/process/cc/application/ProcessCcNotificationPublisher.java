@@ -23,6 +23,12 @@ public class ProcessCcNotificationPublisher {
 
     private final OutboxPublisher outboxPublisher;
 
+    /**
+     * 入队流程抄送通知{@code publisher}；后续由接收方或异步任务继续处理。
+     *
+     * @param record 记录，作为 {@code outboxPublisher.publish} 的输入影响后续处理
+     * @param requestedChannels 请求{@code channels}，作为 {@code normalizeChannels} 的输入影响后续处理
+     */
     @Transactional
     public void enqueue(
             ProcessCcRecord record,
@@ -42,6 +48,12 @@ public class ProcessCcNotificationPublisher {
         }
     }
 
+    /**
+     * 规范化{@code channels}；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 流程抄送通知{@code publisher}集合，供调用方遍历或展示
+     */
     private List<String> normalizeChannels(List<String> values) {
         if (values == null || values.isEmpty()) {
             return List.of("IN_APP");
@@ -53,6 +65,12 @@ public class ProcessCcNotificationPublisher {
                 .toList();
     }
 
+    /**
+     * 整理消息数据，供调用方遍历或继续处理。
+     *
+     * @param record 记录，作为 {@code payload.put} 的输入影响后续处理
+     * @return 消息键值结果，供调用方继续处理
+     */
     private Map<String, Object> message(ProcessCcRecord record) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(

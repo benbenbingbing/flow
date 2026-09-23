@@ -36,6 +36,8 @@ public class TaskController {
 
     /**
      * 获取待办任务统计
+     *
+     * @return 符合条件的{@code result<task}{@code statistics}{@code vo>}结果，供调用方继续处理
      */
     @GetMapping("/statistics")
     public Result<TaskStatisticsVO> getStatistics() {
@@ -44,6 +46,13 @@ public class TaskController {
 
     /**
      * 获取待办任务列表
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param processName 流程名称，后续用于读取待办列表时匹配或展示
+     * @param taskName 任务名称，后续用于读取待办列表时匹配或展示
+     * @param timeRange 时间范围，作为 {@code Result.success} 的输入影响后续处理
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/todo")
     public Result<PageResult<TaskVO>> getTodoList(
@@ -57,6 +66,13 @@ public class TaskController {
 
     /**
      * 获取已办任务列表
+     *
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @param processName 流程名称，后续用于读取{@code done}列表时匹配或展示
+     * @param taskName 任务名称，后续用于读取{@code done}列表时匹配或展示
+     * @param timeRange 时间范围，作为 {@code Result.success} 的输入影响后续处理
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/done")
     public Result<PageResult<TaskVO>> getDoneList(
@@ -70,6 +86,9 @@ public class TaskController {
 
     /**
      * 完成任务审批
+     *
+     * @param params 参数，作为 {@code requireSubmitApprovalAction} 的输入影响后续处理
+     * @return 处理后的完成任务结果，供调用方继续处理
      */
     @PostMapping("/complete")
     public Result<Void> completeTask(@RequestBody Map<String, Object> params) {
@@ -94,7 +113,12 @@ public class TaskController {
         return Result.success();
     }
 
-    /** 旧任务入口同样必须携带并校验活动任务表单发布上下文。 */
+    /**
+     * 旧任务入口同样必须携带并校验活动任务表单发布上下文。
+     *
+     * @param params 参数，作为 {@code approvalRequest} 的输入影响后续处理
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     */
     private void requireSubmitApprovalAction(
             Map<String, Object> params,
             String taskId) {
@@ -103,6 +127,13 @@ public class TaskController {
                 request, "submitApproval");
     }
 
+    /**
+     * 处理审批请求，并将结果传给后续步骤。
+     *
+     * @param params 参数，作为 {@code request.setFormId} 的输入影响后续处理
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 处理后的审批请求结果，供调用方继续处理
+     */
     private FormActionResolveRequest approvalRequest(
             Map<String, Object> params,
             String taskId) {
@@ -121,10 +152,23 @@ public class TaskController {
         return request;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @return 处理后的整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Integer integer(Object value) {
         if (value == null) {
             return null;
@@ -139,6 +183,9 @@ public class TaskController {
 
     /**
      * 获取任务详情
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @return 符合条件的{@code result<task}{@code vo>}结果，供调用方继续处理
      */
     @GetMapping("/{taskId}")
     public Result<TaskVO> getTaskDetail(@PathVariable String taskId) {
@@ -149,6 +196,9 @@ public class TaskController {
     /**
      * 撤回流程
      * 发起人可在流程发起后、第一个审批人审批前撤回
+     *
+     * @param params 参数，供本方法处理{@code withdraw}流程时使用
+     * @return 处理后的{@code withdraw}流程结果，供调用方继续处理
      */
     @PostMapping("/withdraw")
     public Result<Void> withdrawProcess(@RequestBody Map<String, String> params) {
@@ -165,6 +215,9 @@ public class TaskController {
 
     /**
      * 获取流程审批历史
+     *
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @return 符合条件的任务结果，供调用方继续处理
      */
     @GetMapping("/history/{processInstanceId}")
     public Result<List<TaskVO>> getProcessHistory(@PathVariable String processInstanceId) {
@@ -174,6 +227,9 @@ public class TaskController {
 
     /**
      * 驳回到指定节点后重新提交
+     *
+     * @param params 参数，供本方法处理{@code resubmit}任务时使用
+     * @return 处理后的{@code resubmit}任务结果，供调用方继续处理
      */
     @PostMapping("/resubmit")
     public Result<Void> resubmitTask(@RequestBody Map<String, Object> params) {

@@ -15,6 +15,9 @@ import java.util.List;
  * 有效 active release 优先；无效或不存在时原样保留当前文档，legacy draft 永不参与回退。
  */
 final class CurrentVersionDocumentProjection {
+    /**
+     * 初始化当前版本文档投影，保存构造参数供后续方法使用。
+     */
     private CurrentVersionDocumentProjection() {}
     private static final ObjectReader JSON = new ObjectMapper(JsonFactory.builder().streamReadConstraints(
             StreamReadConstraints.builder().maxNestingDepth(100).build()).build())
@@ -23,7 +26,12 @@ final class CurrentVersionDocumentProjection {
             .enable(DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
             .reader();
 
-    /** 返回独立当前行，避免附带的 release 原始数据流入业务返回值或被误写回配置表。 */
+    /**
+     * 返回独立当前行，避免附带的 release 原始数据流入业务返回值或被误写回配置表。
+     *
+     * @param row 行，作为 {@code current.setId} 的输入影响后续处理
+     * @return 解析后的当前版本文档投影结果，供调用方继续处理
+     */
     static EntityVersionConfig resolve(EntityVersionConfigReadRow row) {
         if (row == null) return null;
         var current = new EntityVersionConfig();
@@ -41,6 +49,13 @@ final class CurrentVersionDocumentProjection {
         return current;
     }
 
+    /**
+     * 生成有效文档文本，供后续匹配或展示。
+     *
+     * @param row 行，作为 {@code JSON.readTree} 的输入影响后续处理
+     * @return 处理后的有效文档文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static String effectiveDocument(EntityVersionConfigReadRow row) {
         if (row.getSourceReleaseId() == null || row.getSourceReleaseDocument() == null) return row.getConfigDocument();
         try {
@@ -61,7 +76,12 @@ final class CurrentVersionDocumentProjection {
         }
     }
 
-    /** 延续历史 JSON_VALID 的数值范围；1e999 等文本不能成为有效发布并覆盖当前配置。 */
+    /**
+     * 延续历史 JSON_VALID 的数值范围；1e999 等文本不能成为有效发布并覆盖当前配置。
+     *
+     * @param node 节点，供本方法判断是否具有{@code out}范围数值时使用
+     * @return {@code out}范围数值条件成立时为 true，否则为 false
+     */
     private static boolean hasOutOfRangeNumber(JsonNode node) {
         if (node.isNumber() && !Double.isFinite(node.doubleValue())) return true;
         for (JsonNode child : node) if (hasOutOfRangeNumber(child)) return true;

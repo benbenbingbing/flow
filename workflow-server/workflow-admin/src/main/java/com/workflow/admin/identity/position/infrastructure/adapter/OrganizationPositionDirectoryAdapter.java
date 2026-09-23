@@ -10,17 +10,17 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.contracts.identity.position.InitiatorOrganizationSnapshot;
-import com.workflow.contracts.identity.position.OrganizationBusinessLevelView;
-import com.workflow.contracts.identity.position.OrganizationPositionDirectoryException;
-import com.workflow.contracts.identity.port.OrganizationPositionDirectoryPort;
-import com.workflow.contracts.identity.position.OrganizationPositionErrorCode;
-import com.workflow.contracts.identity.position.OrganizationUnitSnapshot;
-import com.workflow.contracts.identity.position.OrganizationUnitStateView;
-import com.workflow.contracts.identity.position.PositionDefinitionView;
-import com.workflow.contracts.identity.position.PositionDirectoryResultCode;
-import com.workflow.contracts.identity.position.PositionHolderResolution;
-import com.workflow.contracts.identity.position.PositionHolderView;
+import com.workflow.contracts.identity.position.model.InitiatorOrganizationSnapshot;
+import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.contracts.identity.position.error.OrganizationPositionDirectoryException;
+import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
+import com.workflow.contracts.identity.position.error.OrganizationPositionErrorCode;
+import com.workflow.contracts.identity.position.model.OrganizationUnitSnapshot;
+import com.workflow.contracts.identity.position.model.OrganizationUnitStateView;
+import com.workflow.contracts.identity.position.model.PositionDefinitionView;
+import com.workflow.contracts.identity.position.model.PositionDirectoryResultCode;
+import com.workflow.contracts.identity.position.model.PositionHolderResolution;
+import com.workflow.contracts.identity.position.model.PositionHolderView;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -55,6 +55,12 @@ public class OrganizationPositionDirectoryAdapter
     private final SysPositionAssignmentMapper assignmentMapper;
     private final SysDictItemMapper dictItemMapper;
 
+    /**
+     * 捕获{@code initiator}快照；结果供调用方的后续步骤使用。
+     *
+     * @param idOrUsername ID或用户名，后续用于捕获{@code initiator}快照时匹配或展示
+     * @return 捕获后的{@code initiator}快照结果，供调用方继续处理
+     */
     @Override
     public InitiatorOrganizationSnapshot captureInitiatorSnapshot(
             String idOrUsername) {
@@ -140,6 +146,12 @@ public class OrganizationPositionDirectoryAdapter
                 "组织父链超过最大 32 层");
     }
 
+    /**
+     * 校验并获取活动组织单元；不满足约束时阻止后续处理。
+     *
+     * @param organizationUnitId 组织单元ID，后续用于校验并获取活动组织单元时定位或关联目标
+     * @return 校验并获取后的活动组织单元结果，供调用方继续处理
+     */
     @Override
     public OrganizationUnitStateView requireActiveOrganizationUnit(
             String organizationUnitId) {
@@ -161,6 +173,12 @@ public class OrganizationPositionDirectoryAdapter
                         ? "0" : unit.getUpdateTime().toString());
     }
 
+    /**
+     * 校验并获取启用位置；不满足约束时阻止后续处理。
+     *
+     * @param positionCode 位置编码，后续用于校验并获取启用位置时定位或关联目标
+     * @return 校验并获取后的启用位置结果，供调用方继续处理
+     */
     @Override
     public PositionDefinitionView requireEnabledPosition(String positionCode) {
         SysPosition position = findPosition(positionCode);
@@ -172,6 +190,12 @@ public class OrganizationPositionDirectoryAdapter
         return definition(position);
     }
 
+    /**
+     * 列出启用{@code positions}；查询结果供调用方展示或继续处理。
+     *
+     * @param applicableUnitType 适用单元类型标识，决定后续启用{@code positions}采用的处理分支
+     * @return 位置定义视图集合，供调用方遍历或展示
+     */
     @Override
     public List<PositionDefinitionView> listEnabledPositions(
             String applicableUnitType) {
@@ -181,6 +205,14 @@ public class OrganizationPositionDirectoryAdapter
                 .toList();
     }
 
+    /**
+     * 查询有效持有者集合；查询结果供调用方展示或继续处理。
+     *
+     * @param positionCode 位置编码，后续用于查询有效持有者集合时定位或关联目标
+     * @param organizationUnitId 组织单元ID，后续用于查询有效持有者集合时定位或关联目标
+     * @param asOf {@code as}，供本方法查询有效持有者集合时使用
+     * @return 符合条件的位置持有者解析结果，供调用方继续处理
+     */
     @Override
     public PositionHolderResolution findEffectiveHolders(
             String positionCode,
@@ -236,6 +268,12 @@ public class OrganizationPositionDirectoryAdapter
                 revision);
     }
 
+    /**
+     * 判断是否组织业务层级启用；判断结果决定调用方的后续分支。
+     *
+     * @param businessLevelCode 业务层级编码，后续用于判断是否组织业务层级启用时定位或关联目标
+     * @return 组织业务层级启用条件成立时为 true，否则为 false
+     */
     @Override
     public boolean isOrganizationBusinessLevelEnabled(
             String businessLevelCode) {
@@ -245,6 +283,11 @@ public class OrganizationPositionDirectoryAdapter
                         businessLevelCode.trim().toUpperCase(Locale.ROOT)) != null;
     }
 
+    /**
+     * 列出启用组织业务{@code levels}；查询结果供调用方展示或继续处理。
+     *
+     * @return 组织业务层级视图集合，供调用方遍历或展示
+     */
     @Override
     public List<OrganizationBusinessLevelView>
             listEnabledOrganizationBusinessLevels() {
@@ -256,6 +299,12 @@ public class OrganizationPositionDirectoryAdapter
                 .toList();
     }
 
+    /**
+     * 处理定义，并将结果传给后续步骤。
+     *
+     * @param position 位置，作为 {@code PositionDefinitionView} 的输入影响后续处理
+     * @return 处理后的定义结果，供调用方继续处理
+     */
     private PositionDefinitionView definition(SysPosition position) {
         return new PositionDefinitionView(
                 position.getPositionCode(), position.getPositionName(),
@@ -263,6 +312,12 @@ public class OrganizationPositionDirectoryAdapter
                 position.getRevision() == null ? 1 : position.getRevision());
     }
 
+    /**
+     * 处理持有者，并将结果传给后续步骤。
+     *
+     * @param row 行，作为 {@code PositionHolderView} 的输入影响后续处理
+     * @return 处理后的持有者结果，供调用方继续处理
+     */
     private PositionHolderView holder(PositionAssignmentViewRow row) {
         String displayName = StringUtils.hasText(row.getNickname())
                 ? row.getNickname() : row.getUsername();
@@ -273,6 +328,15 @@ public class OrganizationPositionDirectoryAdapter
                 row.getEffectiveFrom().toInstant(ZoneOffset.UTC));
     }
 
+    /**
+     * 处理空，并将结果传给后续步骤。
+     *
+     * @param code 编码，后续用于处理空时定位或关联目标
+     * @param positionCode 位置编码，后续用于处理空时定位或关联目标
+     * @param unitId 单元ID，后续用于处理空时定位或关联目标
+     * @param revision 修订版本，供本方法处理空时使用
+     * @return 处理后的空结果，供调用方继续处理
+     */
     private PositionHolderResolution empty(
             PositionDirectoryResultCode code,
             String positionCode,
@@ -283,6 +347,12 @@ public class OrganizationPositionDirectoryAdapter
                 revision == null ? "0" : revision);
     }
 
+    /**
+     * 查询位置；查询结果供调用方展示或继续处理。
+     *
+     * @param code 编码，后续用于查询位置时定位或关联目标
+     * @return 符合条件的系统位置结果，供调用方继续处理
+     */
     private SysPosition findPosition(String code) {
         String normalizedCode = normalizePositionCode(code);
         SysPosition position = positionMapper.selectByCode(normalizedCode);
@@ -294,11 +364,24 @@ public class OrganizationPositionDirectoryAdapter
         return position;
     }
 
+    /**
+     * 规范化位置编码；输出作为后续校验或处理的输入。
+     *
+     * @param code 编码，后续用于规范化位置编码时定位或关联目标
+     * @return 规范化后的位置编码文本，供调用方比较或展示
+     */
     private String normalizePositionCode(String code) {
         return StringUtils.hasText(code)
                 ? code.trim().toUpperCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 规范化单元类型；输出作为后续校验或处理的输入。
+     *
+     * @param unitType 单元类型标识，决定后续单元类型采用的处理分支
+     * @return 规范化后的单元类型文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String normalizeUnitType(String unitType) {
         if (!StringUtils.hasText(unitType)
                 || SysPosition.ApplicableUnitType.ANY.name()
@@ -313,6 +396,14 @@ public class OrganizationPositionDirectoryAdapter
         return normalized;
     }
 
+    /**
+     * 校验并获取快照锚点；不满足约束时阻止后续处理。
+     *
+     * @param unit 单元，供本方法校验并获取快照锚点时使用
+     * @param expectedType 预期类型标识，决定后续快照锚点采用的处理分支
+     * @param errorCode 错误编码，后续用于校验并获取快照锚点时定位或关联目标
+     * @param message 消息，作为 {@code directoryFailure} 的输入影响后续处理
+     */
     private void requireSnapshotAnchor(
             SysOrganization unit,
             String expectedType,
@@ -326,6 +417,13 @@ public class OrganizationPositionDirectoryAdapter
         }
     }
 
+    /**
+     * 构造目录失败异常，供调用方区分失败原因。
+     *
+     * @param code 编码，后续用于处理目录失败时定位或关联目标
+     * @param message 消息，作为 {@code OrganizationPositionDirectoryException} 的输入影响后续处理
+     * @return 处理后的目录失败结果，供调用方继续处理
+     */
     private OrganizationPositionDirectoryException directoryFailure(
             OrganizationPositionErrorCode code,
             String message) {

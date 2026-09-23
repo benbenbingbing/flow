@@ -5,9 +5,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.contracts.audit.AuditAction;
+import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.identity.CurrentActor;
+import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.identity.port.CurrentActorPort;
 import com.workflow.embed.management.api.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
@@ -46,6 +46,15 @@ public class EmbedViewAdministrationService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
+    /**
+     * 初始化嵌入式视图管理服务，保存构造参数供后续方法使用。
+     *
+     * @param repository 仓储，保存在对象中供后续校验、查询或展示
+     * @param validator 校验器，保存在对象中供后续校验、查询或展示
+     * @param actorProvider 操作人提供者，保存在对象中供后续校验、查询或展示
+     * @param auditPort 审计端口，保存在对象中供后续校验、查询或展示
+     * @param objectMapper 对象映射器，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EmbedViewAdministrationService(
             EmbedManagementRepository repository,
@@ -57,6 +66,16 @@ public class EmbedViewAdministrationService {
                 Clock.systemUTC());
     }
 
+    /**
+     * 初始化嵌入式视图管理服务，保存构造参数供后续方法使用。
+     *
+     * @param repository 仓储依赖，保存到当前对象供后续业务方法调用
+     * @param validator 校验器依赖，保存到当前对象供后续业务方法调用
+     * @param actorProvider 操作人提供者依赖，保存到当前对象供后续业务方法调用
+     * @param auditPort 审计端口依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     * @param clock 时钟依赖，保存到当前对象供后续业务方法调用
+     */
     EmbedViewAdministrationService(
             EmbedManagementRepository repository,
             EmbedViewConfigurationValidator validator,
@@ -72,11 +91,23 @@ public class EmbedViewAdministrationService {
         this.clock = clock;
     }
 
+    /**
+     * 分页查询嵌入式视图管理；查询结果供调用方展示或继续处理。
+     *
+     * @param filter 过滤，作为 {@code repository.findViews} 的输入影响后续处理
+     * @return 符合条件的{@code page<view}{@code state>}结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public Page<ViewState> page(ViewFilter filter) {
         return repository.findViews(filter);
     }
 
+    /**
+     * 读取视图状态；结果供调用方展示或继续处理。
+     *
+     * @param viewId 视图ID，后续用于读取嵌入式视图管理时定位或关联目标
+     * @return 符合条件的视图状态结果，供调用方继续处理
+     */
     @Transactional(readOnly = true)
     public ViewState get(String viewId) {
         return requireView(viewId);
@@ -86,6 +117,9 @@ public class EmbedViewAdministrationService {
      * 用与保存、Launch 相同的规则重新校验当前配置和最新 ACTIVE 资源。
      *
      * <p>该检查只读取当前状态，不生成 Release，也不修改 View 版本。</p>
+     *
+     * @param viewId 视图ID，后续用于校验当前活动时定位或关联目标
+     * @return 校验后的当前活动结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
     public CurrentValidation validateCurrentActive(String viewId) {
@@ -95,6 +129,12 @@ public class EmbedViewAdministrationService {
         return new CurrentValidation(view.status(), validation);
     }
 
+    /**
+     * 创建嵌入式视图管理；结果供后续流程传递或持久化。
+     *
+     * @param command 本次命令，后续经校验后用于创建嵌入式视图管理
+     * @return 创建后的嵌入式视图管理结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public ViewState create(CreateViewCommand command) {
         CurrentActor actor = EmbedManagementSupport.requireActor(actorProvider);
@@ -132,6 +172,14 @@ public class EmbedViewAdministrationService {
         return view;
     }
 
+    /**
+     * 更新草稿；后续读取或执行将使用更新后的状态。
+     *
+     * @param viewId 视图ID，后续用于更新草稿时定位或关联目标
+     * @param command 本次命令，后续经校验后用于更新草稿
+     * @return 更新后的草稿结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public ViewState updateDraft(String viewId, UpdateDraftCommand command) {
         CurrentActor actor = EmbedManagementSupport.requireActor(actorProvider);
@@ -171,6 +219,13 @@ public class EmbedViewAdministrationService {
         return result;
     }
 
+    /**
+     * 处理变更状态，并将结果传给后续步骤。
+     *
+     * @param viewId 视图ID，后续用于处理变更状态时定位或关联目标
+     * @param command 本次命令，后续经校验后用于处理变更状态
+     * @return 处理后的变更状态结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public StatusChangeResult changeStatus(String viewId, ChangeStatusCommand command) {
         CurrentActor actor = EmbedManagementSupport.requireActor(actorProvider);
@@ -198,6 +253,12 @@ public class EmbedViewAdministrationService {
         return new StatusChangeResult(result, affected);
     }
 
+    /**
+     * 校验创建；不满足约束时阻止后续处理。
+     *
+     * @param command 本次命令，后续经校验后用于校验创建
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateCreate(CreateViewCommand command) {
         if (command == null || !StringUtils.hasText(command.viewKey())
                 || !VIEW_KEY.matcher(command.viewKey().trim()).matches()) {
@@ -215,6 +276,12 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    /**
+     * 校验并获取{@code transition}；不满足约束时阻止后续处理。
+     *
+     * @param current 当前，供本方法校验并获取{@code transition}时使用
+     * @param target 目标，供本方法校验并获取{@code transition}时使用
+     */
     private void requireTransition(ViewState current, ViewStatus target) {
         if (current.status() == ViewStatus.RETIRED && target != ViewStatus.RETIRED) {
             throw conflict("EMBED_VIEW_RETIRED", "已退役 View 不能恢复");
@@ -229,6 +296,12 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    /**
+     * 校验并获取可变视图；不满足约束时阻止后续处理。
+     *
+     * @param view 视图，作为 {@code requireViewState} 的输入影响后续处理
+     * @return 校验并获取后的可变视图结果，供调用方继续处理
+     */
     private ViewState requireMutableView(ViewState view) {
         view = requireViewState(view);
         if (view.status() == ViewStatus.RETIRED) {
@@ -237,10 +310,22 @@ public class EmbedViewAdministrationService {
         return view;
     }
 
+    /**
+     * 校验并获取视图；不满足约束时阻止后续处理。
+     *
+     * @param viewId 视图ID，后续用于校验并获取视图时定位或关联目标
+     * @return 校验并获取后的视图结果，供调用方继续处理
+     */
     private ViewState requireView(String viewId) {
         return requireViewState(repository.findView(viewId));
     }
 
+    /**
+     * 校验并获取视图状态；不满足约束时阻止后续处理。
+     *
+     * @param view 视图，供本方法校验并获取视图状态时使用
+     * @return 校验并获取后的视图状态结果，供调用方继续处理
+     */
     private static ViewState requireViewState(ViewState view) {
         if (view == null) {
             throw notFound("Embed View 不存在");
@@ -248,12 +333,25 @@ public class EmbedViewAdministrationService {
         return view;
     }
 
+    /**
+     * 校验并获取版本；不满足约束时阻止后续处理。
+     *
+     * @param view 视图，作为 {@code versionConflict} 的输入影响后续处理
+     * @param expectedVersion 预期版本，供本方法校验并获取版本时使用
+     */
     private static void requireVersion(ViewState view, long expectedVersion) {
         if (view.lockVersion() != expectedVersion) {
             throw versionConflict(view);
         }
     }
 
+    /**
+     * 解析状态；输出作为后续校验或处理的输入。
+     *
+     * @param value 待解析状态的原始输入，结果供调用方继续使用
+     * @return 解析后的状态结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private static ViewStatus parseStatus(String value) {
         try {
             return ViewStatus.valueOf(value == null ? "" : value.trim().toUpperCase());
@@ -262,6 +360,12 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    /**
+     * 生成初始草稿文本，供后续匹配或展示。
+     *
+     * @param type 类型标识，决定后续初始草稿采用的处理分支
+     * @return 处理后的初始草稿文本，供调用方比较或展示
+     */
     private String initialDraft(com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType type) {
         ObjectNode draft = objectMapper.createObjectNode();
         draft.set("target", objectMapper.createObjectNode());
@@ -280,6 +384,13 @@ public class EmbedViewAdministrationService {
         return write(draft);
     }
 
+    /**
+     * 写入嵌入式视图管理；后续读取或执行将使用更新后的状态。
+     *
+     * @param node 节点，作为 {@code objectMapper.writeValueAsString} 的输入影响后续处理
+     * @return 写入后的嵌入式视图管理文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String write(JsonNode node) {
         try {
             return objectMapper.writeValueAsString(node);
@@ -288,6 +399,13 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    /**
+     * 读取嵌入式视图管理；查询结果供调用方展示或继续处理。
+     *
+     * @param json JSON，作为 {@code objectMapper.readTree} 的输入影响后续处理
+     * @return 读取后的嵌入式视图管理结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private JsonNode read(String json) {
         try {
             return objectMapper.readTree(json);
@@ -296,18 +414,41 @@ public class EmbedViewAdministrationService {
         }
     }
 
+    /**
+     * 处理当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前时间结果，供调用方继续处理
+     */
     private LocalDateTime now() {
         return LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private static String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 生成空值截止空文本，供后续匹配或展示。
+     *
+     * @param value 待处理空值截止空的原始输入，结果供调用方继续使用
+     * @return 处理后的空值截止空文本，供调用方比较或展示
+     */
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * 构造版本冲突异常，供调用方区分失败原因。
+     *
+     * @param current 当前，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的版本冲突结果，供调用方继续处理
+     */
     private static EmbedManagementException versionConflict(ViewState current) {
         return new EmbedManagementException(
                 409,
@@ -316,18 +457,42 @@ public class EmbedViewAdministrationService {
                 Map.of("currentVersion", current.lockVersion()));
     }
 
+    /**
+     * 构造业务冲突异常，供调用方刷新或重试。
+     *
+     * @param code 编码，后续用于处理冲突时定位或关联目标
+     * @param message 消息，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的冲突结果，供调用方继续处理
+     */
     private static EmbedManagementException conflict(String code, String message) {
         return new EmbedManagementException(409, code, message);
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @param message 消息，作为 {@code EmbedManagementException} 的输入影响后续处理
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private static EmbedManagementException notFound(String message) {
         return new EmbedManagementException(404, "EMBED_RESOURCE_NOT_FOUND", message);
     }
 
+    /**
+     * 封装状态变更的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param view 视图，保存在对象中供后续校验、查询或展示
+     * @param affectedActiveSessions {@code affected}活动会话，保存在对象中供后续校验、查询或展示
+     */
     public record StatusChangeResult(ViewState view, long affectedActiveSessions) {
     }
 
-    /** 同一只读事务中读取的 View 状态与当前 ACTIVE 资源校验结果。 */
+    /**
+     * 同一只读事务中读取的 View 状态与当前 ACTIVE 资源校验结果。
+     *
+     * @param viewStatus 视图状态标识，决定后续当前校验采用的处理分支
+     * @param validation 校验，保存在对象中供后续校验、查询或展示
+     */
     public record CurrentValidation(ViewStatus viewStatus, ValidationResult validation) {
     }
 }

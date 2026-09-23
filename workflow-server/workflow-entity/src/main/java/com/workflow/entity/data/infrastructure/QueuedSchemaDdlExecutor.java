@@ -16,6 +16,13 @@ public class QueuedSchemaDdlExecutor implements SchemaDdlExecutor {
     private final Duration timeout;
     private final Duration pollInterval;
 
+    /**
+     * 初始化{@code queued}结构DDL执行器，保存构造参数供后续方法使用。
+     *
+     * @param queue 队列依赖，保存到当前对象供后续业务方法调用
+     * @param timeout {@code timeout}依赖，保存到当前对象供后续业务方法调用
+     * @param pollInterval {@code poll}{@code interval}依赖，保存到当前对象供后续业务方法调用
+     */
     public QueuedSchemaDdlExecutor(SchemaChangeQueuePort queue,
             @Value("${workflow.schema-publisher.wait-timeout:120s}") Duration timeout,
             @Value("${workflow.schema-publisher.poll-interval:500ms}") Duration pollInterval) {
@@ -26,6 +33,12 @@ public class QueuedSchemaDdlExecutor implements SchemaDdlExecutor {
         this.pollInterval = pollInterval;
     }
 
+    /**
+     * 执行{@code queued}结构DDL执行器，并将结果传给后续步骤。
+     *
+     * @param ddl DDL，作为 {@code queue.enqueue} 的输入影响后续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public void execute(String ddl) {
         String requestId = queue.enqueue(ddl);
@@ -48,6 +61,13 @@ public class QueuedSchemaDdlExecutor implements SchemaDdlExecutor {
         throw new IllegalStateException("Timed out waiting for schema worker");
     }
 
+    /**
+     * 校验并获取正数；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取正数的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验并获取正数时匹配或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private static void requirePositive(Duration value, String label) {
         if (value == null || value.isZero() || value.isNegative()) {
             throw new IllegalStateException(label + " must be positive");

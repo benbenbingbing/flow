@@ -121,6 +121,9 @@ public class FlowAction {
      */
     private Integer deleted;
     
+    /**
+     * 定义状态的可选值；调用方据此选择对应的处理分支。
+     */
     public enum Status {
         DRAFT("草稿"),
         PUBLISHED("已发布"),
@@ -128,10 +131,20 @@ public class FlowAction {
         
         private final String label;
         
+        /**
+         * 初始化状态，保存构造参数供后续方法使用。
+         *
+         * @param label 标签依赖，保存到当前对象供后续业务方法调用
+         */
         Status(String label) {
             this.label = label;
         }
         
+        /**
+         * 读取标签；查询结果供调用方展示或继续处理。
+         *
+         * @return 读取后的标签文本，供调用方比较或展示
+         */
         public String getLabel() {
             return label;
         }

@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 
@@ -13,8 +13,15 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class ProjectCustomMigrationAssetHandler
-        implements MigrationAssetHandler {
+        implements MigrationAssetPort {
 
+    /**
+     * 记录实体；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录实体时定位或关联目标
+     * @param publishHistoryId 发布历史ID，后续用于记录实体时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录实体
+     */
     @Override
     public void recordEntity(
             String entityId,
@@ -27,6 +34,13 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 记录实体界面；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录实体界面时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于记录实体界面时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录实体界面
+     */
     @Override
     public void recordEntityUi(
             String entityId,
@@ -39,6 +53,13 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 记录流程；供后续追溯或审计使用。
+     *
+     * @param processId 流程ID，后续用于记录流程时定位或关联目标
+     * @param versionHistoryId 版本历史ID，后续用于记录流程时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录流程
+     */
     @Override
     public void recordProcess(
             String processId,
@@ -51,6 +72,13 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 记录系统实体界面；供后续追溯或审计使用。
+     *
+     * @param entityId 实体ID，后续用于记录系统实体界面时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于记录系统实体界面时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录系统实体界面
+     */
     @Override
     public void recordSystemEntityUi(
             String entityId,
@@ -63,6 +91,12 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 记录工作日历；供后续追溯或审计使用。
+     *
+     * @param calendarId 日历ID，后续用于记录工作日历时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录工作日历
+     */
     @Override
     public void recordWorkCalendar(
             String calendarId,
@@ -74,6 +108,12 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 记录任务SLA策略；供后续追溯或审计使用。
+     *
+     * @param policyId 策略ID，后续用于记录任务SLA策略时定位或关联目标
+     * @param request 本次请求，后续经校验后用于记录任务SLA策略
+     */
     @Override
     public void recordTaskSlaPolicy(
             String policyId,
@@ -85,6 +125,14 @@ public class ProjectCustomMigrationAssetHandler
                 request);
     }
 
+    /**
+     * 处理日志记录，并将结果传给后续步骤。
+     *
+     * @param assetType 资产类型标识，决定后续日志记录采用的处理分支
+     * @param assetId 资产ID，后续用于处理日志记录时定位或关联目标
+     * @param releaseId 发布版本ID，后续用于处理日志记录时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理日志记录
+     */
     private void logRecord(
             String assetType,
             String assetId,

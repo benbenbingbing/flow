@@ -22,7 +22,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMa
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
-import com.workflow.contracts.ui.UiDataSourceUsages;
+import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -176,6 +176,13 @@ public class UiEventBindingService {
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 列出界面事件绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续界面事件绑定采用的处理分支
+     * @param ownerId 归属方ID，后续用于列出界面事件绑定时定位或关联目标
+     * @return 界面事件绑定集合，供调用方遍历或展示
+     */
     public List<UiEventBinding> list(
             String ownerType,
             String ownerId) {
@@ -185,6 +192,11 @@ public class UiEventBindingService {
         return mapper.findByOwner(normalizedOwner, ownerId);
     }
 
+    /**
+     * 整理目录数据，供调用方遍历或继续处理。
+     *
+     * @return 目录键值结果，供调用方继续处理
+     */
     public Map<String, Object> catalog() {
         Map<String, Object> catalog = new LinkedHashMap<>();
         catalog.put("ownerTypes", OWNER_TYPES);
@@ -197,6 +209,15 @@ public class UiEventBindingService {
         return catalog;
     }
 
+    /**
+     * 解析草稿；输出作为后续校验或处理的输入。
+     *
+     * @param ownerType 归属方类型标识，决定后续草稿采用的处理分支
+     * @param ownerId 归属方ID，后续用于解析草稿时定位或关联目标
+     * @param eventCode 事件编码，后续用于解析草稿时定位或关联目标
+     * @return 草稿键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public Map<String, Object> resolveDraft(
             String ownerType,
             String ownerId,
@@ -268,6 +289,12 @@ public class UiEventBindingService {
         return result;
     }
 
+    /**
+     * 保存界面事件绑定；后续读取或执行将使用更新后的状态。
+     *
+     * @param request 本次请求，后续经校验后用于保存界面事件绑定
+     * @return 保存后的界面事件绑定结果，供调用方继续处理
+     */
     @Transactional(rollbackFor = Exception.class)
     public UiEventBinding save(UiEventBindingSaveRequest request) {
         validate(request);
@@ -337,6 +364,13 @@ public class UiEventBindingService {
         return mapper.selectById(value.getId());
     }
 
+    /**
+     * 删除界面事件绑定；后续读取或执行将使用更新后的状态。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param expectedRevision 预期修订版本，作为 {@code requireRevision} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void delete(
             String id,
@@ -363,6 +397,11 @@ public class UiEventBindingService {
 
     /**
      * 构建表单或列表发布快照中的事件绑定部分。
+     *
+     * @param configType 配置类型标识，决定后续快照绑定集合采用的处理分支
+     * @param configId 配置ID，后续用于处理快照绑定集合时定位或关联目标
+     * @param entityId 实体ID，后续用于处理快照绑定集合时定位或关联目标
+     * @return 界面事件绑定集合，供调用方遍历或展示
      */
     public List<Map<String, Object>> snapshotBindings(
             String configType,
@@ -374,6 +413,9 @@ public class UiEventBindingService {
 
     /**
      * 从激活发布快照解析最终事件链。
+     *
+     * @param request 本次请求，后续经校验后用于解析已发布
+     * @return 解析后的已发布结果，供调用方继续处理
      */
     public ResolvedEventChain resolvePublished(
             UiEventExecuteRequest request) {
@@ -470,6 +512,13 @@ public class UiEventBindingService {
         return chain;
     }
 
+    /**
+     * 处理日志已解析链，并将结果传给后续步骤。
+     *
+     * @param request 本次请求，后续经校验后用于处理日志已解析链
+     * @param chain 链，作为 {@code safe} 的输入影响后续处理
+     * @param source 待处理日志已解析链的原始输入，结果供调用方继续使用
+     */
     private void logResolvedChain(
             UiEventExecuteRequest request,
             ResolvedEventChain chain,
@@ -504,6 +553,13 @@ public class UiEventBindingService {
                 LogValue.safe(source));
     }
 
+    /**
+     * 处理空链，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续空链采用的处理分支
+     * @param request 本次请求，后续经校验后用于处理空链
+     * @return 处理后的空链结果，供调用方继续处理
+     */
     private ResolvedEventChain emptyChain(
             String configType,
             UiEventExecuteRequest request) {
@@ -520,6 +576,20 @@ public class UiEventBindingService {
                 Map.of());
     }
 
+    /**
+     * 解析界面事件绑定；输出作为后续校验或处理的输入。
+     *
+     * @param bindings 绑定集合，作为 {@code applyLevel} 的输入影响后续处理
+     * @param identity 身份，作为 {@code applyLevel} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于解析界面事件绑定
+     * @param releaseId 发布版本ID，后续用于解析界面事件绑定时定位或关联目标
+     * @param releaseVersion 发布版本，供本方法解析界面事件绑定时使用
+     * @param snapshot 快照，供本方法解析界面事件绑定时使用
+     * @param effectiveReleaseId 有效发布版本ID，后续用于解析界面事件绑定时定位或关联目标
+     * @param effectiveContentHash 有效内容哈希，供本方法解析界面事件绑定时使用
+     * @return 解析后的界面事件绑定结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ResolvedEventChain resolve(
             List<Map<String, Object>> bindings,
             ConfigIdentity identity,
@@ -626,6 +696,12 @@ public class UiEventBindingService {
                 effectiveContentHash);
     }
 
+    /**
+     * 应用层级，并将结果传给后续步骤。
+     *
+     * @param effective 有效，供本方法应用层级时使用
+     * @param binding 绑定，作为 {@code normalize} 的输入影响后续处理
+     */
     private void applyLevel(
             List<Map<String, Object>> effective,
             Map<String, Object> binding) {
@@ -656,6 +732,9 @@ public class UiEventBindingService {
      * 把步骤来源绑定保留到可信运行链，保证 OWNER 默认链仍按原绑定授权。
      * 新版钉版步骤必须携带且匹配发布时身份；无版本标记的历史步骤在已验证
      * 发布快照解析后补齐身份，以兼容旧发布。
+     *
+     * @param step 步骤，作为 {@code identity.forEach} 的输入影响后续处理
+     * @param binding 绑定，作为 {@code identity.put} 的输入影响后续处理
      */
     private void attachTrustedBindingIdentity(
             Map<String, Object> step,
@@ -694,6 +773,17 @@ public class UiEventBindingService {
         identity.forEach(step::put);
     }
 
+    /**
+     * 查询绑定；查询结果供调用方展示或继续处理。
+     *
+     * @param bindings 绑定集合，供本方法查询绑定时使用
+     * @param ownerType 归属方类型标识，决定后续绑定采用的处理分支
+     * @param ownerId 归属方ID，后续用于查询绑定时定位或关联目标
+     * @param targetType 目标类型标识，决定后续绑定采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param eventCode 事件编码，后续用于查询绑定时定位或关联目标
+     * @return 绑定键值结果，供调用方继续处理
+     */
     private Map<String, Object> findBinding(
             List<Map<String, Object>> bindings,
             String ownerType,
@@ -717,6 +807,13 @@ public class UiEventBindingService {
                 .orElse(null);
     }
 
+    /**
+     * 校验界面事件绑定；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验界面事件绑定
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
+     */
     private void validate(UiEventBindingSaveRequest request) {
         if (request == null) {
             throw new IllegalArgumentException("事件绑定不能为空");
@@ -871,7 +968,12 @@ public class UiEventBindingService {
         });
     }
 
-    /** 空条件对象等同于未配置；只有会参与运行时判断的非空对象才算执行条件。 */
+    /**
+     * 空条件对象等同于未配置；只有会参与运行时判断的非空对象才算执行条件。
+     *
+     * @param step 步骤，供本方法判断是否具有执行条件时使用
+     * @return 执行条件条件成立时为 true，否则为 false
+     */
     private boolean hasExecutionCondition(Map<String, Object> step) {
         return step != null
                 && step.get("condition") instanceof Map<?, ?> condition
@@ -881,6 +983,10 @@ public class UiEventBindingService {
     /**
      * 校验事件是否属于当前配置来源及目标，避免把列表、表单、字段或按钮
      * 事件保存到不会触发的作用域，也阻止运行时伪造跨作用域事件请求。
+     *
+     * @param ownerType 归属方类型标识，决定后续事件作用域采用的处理分支
+     * @param targetType 目标类型标识，决定后续事件作用域采用的处理分支
+     * @param eventCode 事件编码，后续用于校验事件作用域时定位或关联目标
      */
     private void validateEventScope(
             String ownerType,
@@ -902,6 +1008,13 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 校验并获取归属方；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验并获取归属方时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireOwner(
             String ownerType,
             String ownerId) {
@@ -914,6 +1027,13 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 校验并获取归属方访问；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续归属方访问采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验并获取归属方访问时定位或关联目标
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireOwnerAccess(
             String ownerType,
             String ownerId) {
@@ -929,6 +1049,15 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 校验系统读取仅事件；不满足约束时阻止后续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续系统读取仅事件采用的处理分支
+     * @param ownerId 归属方ID，后续用于校验系统读取仅事件时定位或关联目标
+     * @param eventCode 事件编码，后续用于校验系统读取仅事件时定位或关联目标
+     * @param steps 步骤集合，供本方法校验系统读取仅事件时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSystemReadOnlyEvent(
             String ownerType,
             String ownerId,
@@ -978,6 +1107,14 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 处理身份，并将结果传给后续步骤。
+     *
+     * @param configType 配置类型标识，决定后续身份采用的处理分支
+     * @param configId 配置ID，后续用于处理身份时定位或关联目标
+     * @return 处理后的身份结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private ConfigIdentity identity(
             String configType,
             String configId) {
@@ -1004,6 +1141,16 @@ public class UiEventBindingService {
                 list.getListKey());
     }
 
+    /**
+     * 查询已有；查询结果供调用方展示或继续处理。
+     *
+     * @param ownerType 归属方类型标识，决定后续已有采用的处理分支
+     * @param ownerId 归属方ID，后续用于查询已有时定位或关联目标
+     * @param targetType 目标类型标识，决定后续已有采用的处理分支
+     * @param targetKey 目标键，后续用于授权校验、关联或幂等去重
+     * @param eventCode 事件编码，后续用于查询已有时定位或关联目标
+     * @return 符合条件的界面事件绑定结果，供调用方继续处理
+     */
     private UiEventBinding findExisting(
             String ownerType,
             String ownerId,
@@ -1022,6 +1169,12 @@ public class UiEventBindingService {
         return mapper.selectOne(query);
     }
 
+    /**
+     * 校验并获取修订版本；不满足约束时阻止后续处理。
+     *
+     * @param expected 预期，供本方法校验并获取修订版本时使用
+     * @param current 当前，作为 {@code RevisionConflictException} 的输入影响后续处理
+     */
     private void requireRevision(
             Integer expected,
             UiEventBinding current) {
@@ -1033,6 +1186,12 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 写入步骤集合；后续读取或执行将使用更新后的状态。
+     *
+     * @param steps 步骤集合，供本方法写入步骤集合时使用
+     * @return 写入后的步骤集合文本，供调用方比较或展示
+     */
     private String writeSteps(List<Map<String, Object>> steps) {
         return steps == null || steps.isEmpty()
                 ? null : codec.write(
@@ -1046,6 +1205,9 @@ public class UiEventBindingService {
      * <p>迁移前的编辑器可能仍提交 {@code serviceId + operationCode}；
      * 该组合只在读入时用于解析迁移后的扩展记录，落库后立即移除，
      * 防止新发布快照继续扩散多操作服务模型。</p>
+     *
+     * @param steps 步骤集合，供本方法规范化接口引用时使用
+     * @return 界面事件绑定集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> normalizeInterfaceReferences(
             List<Map<String, Object>> steps) {
@@ -1069,6 +1231,12 @@ public class UiEventBindingService {
         return List.copyOf(normalized);
     }
 
+    /**
+     * 整理映射列表数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射列表的原始输入，结果供调用方继续使用
+     * @return 界面事件绑定集合，供调用方遍历或展示
+     */
     private List<Map<String, Object>> mapList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1081,23 +1249,53 @@ public class UiEventBindingService {
                 .toList();
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化界面事件绑定的原始输入，结果供调用方继续使用
+     * @return 规范化后的界面事件绑定文本，供调用方比较或展示
+     */
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : "";
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 生成规范化目标键文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化目标键的原始输入，结果供调用方继续使用
+     * @return 处理后的规范化目标键文本，供调用方比较或展示
+     */
     private String normalizedTargetKey(String value) {
         return StringUtils.hasText(value) ? value.trim() : "";
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null
@@ -1108,6 +1306,13 @@ public class UiEventBindingService {
         return null;
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的整数结果，供调用方继续处理
+     */
     private int integer(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -1120,12 +1325,32 @@ public class UiEventBindingService {
         }
     }
 
+    /**
+     * 封装配置身份的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param entityId 实体ID，后续用于处理配置身份时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     */
     private record ConfigIdentity(
             String entityId,
             String entityCode,
             String listKey) {
     }
 
+    /**
+     * 封装已解析事件链的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param steps 步骤集合，保存在对象中供后续校验、查询或展示
+     * @param releaseId 发布版本 ID，后续用于解析固定配置
+     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param entityId 实体ID，后续用于处理已解析事件链时定位或关联目标
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+     * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+     * @param effectiveReleaseId 有效发布版本ID，后续用于处理已解析事件链时定位或关联目标
+     * @param effectiveContentHash 有效内容哈希，保存在对象中供后续校验、查询或展示
+     */
     public record ResolvedEventChain(
             List<Map<String, Object>> steps,
             String releaseId,
@@ -1137,7 +1362,17 @@ public class UiEventBindingService {
             String effectiveReleaseId,
             String effectiveContentHash) {
 
-        /** 保留非表单按钮与现有测试构造兼容。 */
+        /**
+         * 保留非表单按钮与现有测试构造兼容。
+         *
+         * @param steps 步骤集合，保存在对象中供后续校验、查询或展示
+         * @param releaseId 发布版本 ID，后续用于解析固定配置
+         * @param releaseVersion 发布版本号，后续用于校验快照一致性
+         * @param entityId 实体ID，后续用于初始化已解析事件链时定位或关联目标
+         * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+         * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
+         * @param snapshot 快照，保存在对象中供后续校验、查询或展示
+         */
         public ResolvedEventChain(
                 List<Map<String, Object>> steps,
                 String releaseId,

@@ -1,6 +1,6 @@
 package com.workflow.contracts.entity.ui.port;
 
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
 
 /**
  * UI 热修复查询流程影响范围的端口。

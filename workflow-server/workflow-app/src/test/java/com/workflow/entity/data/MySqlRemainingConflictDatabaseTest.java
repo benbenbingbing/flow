@@ -9,7 +9,7 @@ import com.workflow.embed.infrastructure.persistence.adapter.MyBatisEmbedLaunchP
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedLaunchPersistenceMapper;
 import com.workflow.embed.management.domain.EmbedManagementModel.*;
 import com.workflow.embed.management.infrastructure.persistence.MyBatisEmbedManagementRepository;
-import com.workflow.integration.database.api.DatabaseQueryDialects;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import com.workflow.process.assignment.application.*;
 import com.workflow.process.cc.application.*;

@@ -23,17 +23,13 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.cc.api.request.TaskCcRequest;
-import com.workflow.process.cc.application.CcRecipientResolver;
-import com.workflow.process.cc.application.CcRuntimeContext;
-import com.workflow.process.cc.application.ProcessCcConfigService;
-import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
@@ -203,7 +199,13 @@ public class ProcessCcRuntimeService {
         }
     }
 
-    /** 按规则类型解析知会收件人（USER/ROLE/GROUP/DEPARTMENT/STARTER/HISTORY_APPROVERS 等） */
+    /**
+     * 按规则类型解析知会收件人（USER/ROLE/GROUP/DEPARTMENT/STARTER/HISTORY_APPROVERS 等）
+     *
+     * @param rule 规则，作为 {@code stringList} 的输入影响后续处理
+     * @param context 执行上下文，向后续规则步骤传递身份、配置或状态
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveRule(JsonNode rule, CcRuntimeContext context) {
         String type = rule.path("type").asText("").toUpperCase(Locale.ROOT);
         List<String> values = stringList(rule.path("values"));
@@ -231,7 +233,12 @@ public class ProcessCcRuntimeService {
         };
     }
 
-    /** 判断当前任务节点是否允许人工知会（读取节点知会配置 allowManualCc） */
+    /**
+     * 判断当前任务节点是否允许人工知会（读取节点知会配置 allowManualCc）
+     *
+     * @param task 任务，作为 {@code configService.findConfig} 的输入影响后续处理
+     * @return 人工抄送允许条件成立时为 true，否则为 false
+     */
     private boolean isManualCcAllowed(Task task) {
         String configJson = configService.findConfig(task.getProcessDefinitionId(), task.getTaskDefinitionKey());
         if (!StringUtils.hasText(configJson)) {
@@ -244,6 +251,12 @@ public class ProcessCcRuntimeService {
         }
     }
 
+    /**
+     * 解析角色集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveRoles(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         for (String value : values) {
@@ -258,6 +271,12 @@ public class ProcessCcRuntimeService {
         return new ArrayList<>(users.values());
     }
 
+    /**
+     * 解析分组集合；输出作为后续校验或处理的输入。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveGroups(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         for (String value : values) {
@@ -279,7 +298,13 @@ public class ProcessCcRuntimeService {
         return new ArrayList<>(users.values());
     }
 
-    /** 解析组织/部门收件人，可选包含子组织，仅取启用状态用户 */
+    /**
+     * 解析组织/部门收件人，可选包含子组织，仅取启用状态用户
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @param includeChildren {@code include}子节点，供本方法解析{@code organizations}时使用
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveOrganizations(List<String> values, boolean includeChildren) {
         LinkedHashSet<String> organizationIds = new LinkedHashSet<>();
         for (String value : values) {
@@ -307,7 +332,13 @@ public class ProcessCcRuntimeService {
                         .or().in(SysUser::getOrgId, organizationIds)));
     }
 
-    /** 调用自定义解析器（按 resolverCode 匹配）解析知会人员 */
+    /**
+     * 调用自定义解析器（按 resolverCode 匹配）解析知会人员
+     *
+     * @param rule 规则，作为 {@code readResolverExtraParams} 的输入影响后续处理
+     * @param context 执行上下文，向后续自定义步骤传递身份、配置或状态
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveCustom(JsonNode rule, CcRuntimeContext context) {
         String resolverCode = rule.path("resolverCode").asText();
         if (personResolverRuntimeService.supports(
@@ -355,6 +386,12 @@ public class ProcessCcRuntimeService {
         return resolveDirectUsers(resolver.resolve(context, parameters));
     }
 
+    /**
+     * 读取解析器附加参数；查询结果供调用方展示或继续处理。
+     *
+     * @param rule 规则，供本方法读取解析器附加参数时使用
+     * @return 解析器附加参数键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> readResolverExtraParams(JsonNode rule) {
         JsonNode extraParams = rule.path("extraParams");
@@ -367,6 +404,12 @@ public class ProcessCcRuntimeService {
         return objectMapper.convertValue(extraParams, Map.class);
     }
 
+    /**
+     * 整理映射变量数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射变量的原始输入，结果供调用方继续使用
+     * @return 映射变量键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapVariable(Object value) {
         return value instanceof Map<?, ?> map
@@ -374,6 +417,13 @@ public class ProcessCcRuntimeService {
                 : Map.of();
     }
 
+    /**
+     * 生成文本变量文本，供后续匹配或展示。
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @return 处理后的文本变量文本，供调用方比较或展示
+     */
     private String textVariable(Map<String, Object> variables, String key) {
         return firstText(variables.get(key));
     }
@@ -435,7 +485,12 @@ public class ProcessCcRuntimeService {
         return created;
     }
 
-    /** 按用户名/ID解析启用状态的用户列表（去重） */
+    /**
+     * 按用户名/ID解析启用状态的用户列表（去重）
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 系统用户集合，供调用方遍历或展示
+     */
     private List<SysUser> resolveDirectUsers(List<String> values) {
         LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
         if (values == null) {
@@ -451,7 +506,12 @@ public class ProcessCcRuntimeService {
         return new ArrayList<>(users.values());
     }
 
-    /** 优先按用户名查询，查不到再按ID查询 */
+    /**
+     * 优先按用户名查询，查不到再按ID查询
+     *
+     * @param value 待查询用户的原始输入，结果供调用方继续使用
+     * @return 符合条件的系统用户结果，供调用方继续处理
+     */
     private SysUser findUser(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
@@ -460,12 +520,23 @@ public class ProcessCcRuntimeService {
         return user != null ? user : userMapper.selectById(value);
     }
 
-    /** 判断当前时机是否在配置的时机列表中（大小写不敏感） */
+    /**
+     * 判断当前时机是否在配置的时机列表中（大小写不敏感）
+     *
+     * @param timings 时机集合，作为 {@code stringList} 的输入影响后续处理
+     * @param timing 时机，供本方法处理时机匹配时使用
+     * @return 时机匹配条件成立时为 true，否则为 false
+     */
     private boolean timingMatches(JsonNode timings, String timing) {
         return stringList(timings).stream().anyMatch(value -> value.equalsIgnoreCase(timing));
     }
 
-    /** 将JSON节点转为字符串列表；字符串值会作为流程变量名解析 */
+    /**
+     * 将JSON节点转为字符串列表；字符串值会作为流程变量名解析
+     *
+     * @param node 节点，作为 {@code valuesFromVariable} 的输入影响后续处理
+     * @return 流程抄送集合，供调用方遍历或展示
+     */
     private List<String> stringList(JsonNode node) {
         if (node == null || node.isMissingNode() || node.isNull()) {
             return List.of();
@@ -482,6 +553,13 @@ public class ProcessCcRuntimeService {
         return valuesFromVariable(node.asText());
     }
 
+    /**
+     * 写入JSON；后续读取或执行将使用更新后的状态。
+     *
+     * @param value 待写入JSON的原始输入，结果供调用方继续使用
+     * @return 写入后的JSON文本，供调用方比较或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private String writeJson(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -490,7 +568,12 @@ public class ProcessCcRuntimeService {
         }
     }
 
-    /** 从流程变量值解析出字符串列表（支持集合与逗号分隔字符串） */
+    /**
+     * 从流程变量值解析出字符串列表（支持集合与逗号分隔字符串）
+     *
+     * @param value 待处理值集合起始变量的原始输入，结果供调用方继续使用
+     * @return 流程抄送集合，供调用方遍历或展示
+     */
     private List<String> valuesFromVariable(Object value) {
         if (value == null) {
             return List.of();
@@ -504,6 +587,12 @@ public class ProcessCcRuntimeService {
                 .toList();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             if (value != null && StringUtils.hasText(String.valueOf(value))) {
@@ -513,11 +602,22 @@ public class ProcessCcRuntimeService {
         return "";
     }
 
+    /**
+     * 生成空值安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理空值安全的原始输入，结果供调用方继续使用
+     * @return 处理后的空值安全文本，供调用方比较或展示
+     */
     private String nullSafe(String value) {
         return value == null ? "" : value;
     }
 
-    /** 校验并返回当前操作人：需为任务办理人或候选办理人，否则抛出禁止异常 */
+    /**
+     * 校验并返回当前操作人：需为任务办理人或候选办理人，否则抛出禁止异常
+     *
+     * @param task 任务，作为 {@code taskIdentityAccessService.requireCurrentUserAccess} 的输入影响后续处理
+     * @return 校验并获取后的操作人文本，供调用方比较或展示
+     */
     private String requireOperator(Task task) {
         taskIdentityAccessService.requireCurrentUserAccess(task);
         String username = UserContext.getUsername();

@@ -1,39 +1,82 @@
 package com.workflow.integration.database.api;
 
-import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.integration.database.api.SchemaDdlDialect;
-import com.workflow.integration.database.dialect.*;
+import com.workflow.integration.database.api.error.DatabaseErrorDialect;
+import com.workflow.integration.database.api.query.DatabaseQueryDialects;
+import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;
+import com.workflow.integration.database.api.write.DatabaseInsertDialect;
+import com.workflow.integration.database.api.write.DatabaseMutationDialect;
+import com.workflow.integration.database.api.schema.SchemaDdlDialect;
+import com.workflow.integration.database.dialect.StandardDatabaseErrorDialect;
+import com.workflow.integration.database.dialect.StandardDatabaseInsertDialect;
+import com.workflow.integration.database.dialect.StandardDatabaseMutationDialect;
+import com.workflow.integration.database.dialect.StandardDatabaseRuntimeDialect;
+import com.workflow.integration.database.schema.dialect.*;
+
 import java.util.Locale;
 
 /** 方言选择的单一入口；不能识别的产品或兼容模式在启动时失败，禁止退回 MySQL。 */
 public final class DatabaseDialects {
+    /**
+     * 初始化数据库{@code dialects}，保存构造参数供后续方法使用。
+     */
     private DatabaseDialects() {}
 
-    /** 批量写入方言只描述单条 SQL；执行、绑定与事务边界由调用方负责。 */
+    /**
+     * 批量写入方言只描述单条 SQL；执行、绑定与事务边界由调用方负责。
+     *
+     * @param vendor 供应商，作为 {@code StandardDatabaseMutationDialect} 的输入影响后续处理
+     * @return 处理后的{@code mutations}结果，供调用方继续处理
+     */
     public static DatabaseMutationDialect mutations(DatabaseVendor vendor) {
         return new StandardDatabaseMutationDialect(DatabaseQueryDialects.forVendor(vendor));
     }
 
-    /** MyBatis Provider 使用当前工厂的产品标识，缺失或未知配置直接失败。 */
+    /**
+     * MyBatis Provider 使用当前工厂的产品标识，缺失或未知配置直接失败。
+     *
+     * @param databaseId 数据库ID，后续用于处理{@code mutations}数据库ID时定位或关联目标
+     * @return 处理后的{@code mutations}数据库ID结果，供调用方继续处理
+     */
     public static DatabaseMutationDialect mutationsForDatabaseId(String databaseId) {
         return mutations(DatabaseQueryDialects.forDatabaseId(databaseId).vendor());
     }
 
-    /** 厂商错误码分类不解析异常文本；JDBC 异常遍历及应用异常翻译由外层负责。 */
+    /**
+     * 厂商错误码分类不解析异常文本；JDBC 异常遍历及应用异常翻译由外层负责。
+     *
+     * @param vendor 供应商，作为 {@code StandardDatabaseErrorDialect} 的输入影响后续处理
+     * @return 处理后的{@code errors}结果，供调用方继续处理
+     */
     public static DatabaseErrorDialect errors(DatabaseVendor vendor) {
         return new StandardDatabaseErrorDialect(vendor);
     }
 
-    /** 获取只描述 SQL/调用约定的运行时方言，不会建立数据库连接。 */
+    /**
+     * 获取只描述 SQL/调用约定的运行时方言，不会建立数据库连接。
+     *
+     * @param vendor 供应商，作为 {@code StandardDatabaseRuntimeDialect} 的输入影响后续处理
+     * @return 处理后的运行时结果，供调用方继续处理
+     */
     public static DatabaseRuntimeDialect runtime(DatabaseVendor vendor) {
         return new StandardDatabaseRuntimeDialect(vendor);
     }
 
-    /** 单行插入及错误分类同样只返回语法/规则；事务恢复由执行方负责。 */
+    /**
+     * 单行插入及错误分类同样只返回语法/规则；事务恢复由执行方负责。
+     *
+     * @param vendor 供应商，作为 {@code StandardDatabaseInsertDialect} 的输入影响后续处理
+     * @return 插入后的数据库{@code dialects}结果，供调用方继续处理
+     */
     public static DatabaseInsertDialect insert(DatabaseVendor vendor) {
         return new StandardDatabaseInsertDialect(forVendor(vendor));
     }
 
+    /**
+     * 处理供应商，并将结果传给后续步骤。
+     *
+     * @param vendor 供应商，供本方法处理供应商时使用
+     * @return 处理后的供应商结果，供调用方继续处理
+     */
     public static SchemaDdlDialect forVendor(DatabaseVendor vendor) {
         return switch (vendor) {
             case MYSQL -> new MySqlSchemaDdlDialect();
@@ -46,7 +89,13 @@ public final class DatabaseDialects {
         };
     }
 
-    /** OceanBase URL 不包含租户模式，必须配置 oceanbase-mysql 或 oceanbase-oracle。 */
+    /**
+     * OceanBase URL 不包含租户模式，必须配置 oceanbase-mysql 或 oceanbase-oracle。
+     *
+     * @param configured 已配置，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param jdbcUrl JDBCURL，供本方法解析数据库{@code dialects}时使用
+     * @return 解析后的数据库{@code dialects}结果，供调用方继续处理
+     */
     public static DatabaseVendor resolve(String configured, String jdbcUrl) {
         if (configured != null && !configured.isBlank() && !"auto".equalsIgnoreCase(configured)) {
             return switch (configured.trim().toLowerCase(Locale.ROOT).replace('_', '-')) {

@@ -10,12 +10,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.contracts.embed.EmbedApplicationActor;
-import com.workflow.contracts.embed.EmbedLaunchCommand;
-import com.workflow.contracts.embed.EmbedLaunchEntry;
-import com.workflow.contracts.embed.EmbedLaunchIssued;
-import com.workflow.contracts.embed.EmbedLaunchSubject;
-import com.workflow.contracts.embed.EmbedLaunchUi;
+import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchCommand;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchEntry;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchSubject;
+import com.workflow.contracts.embed.launch.model.EmbedLaunchUi;
 import com.workflow.embed.application.port.EmbedAssertionReplayPort;
 import com.workflow.embed.application.port.EmbedExternalIdentityBindingPort;
 import com.workflow.embed.application.port.EmbedFlowUserPort;

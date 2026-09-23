@@ -20,6 +20,11 @@ import java.util.Map;
 public class ProcessCcConfigService {
     private final RepositoryService repositoryService;
 
+    /**
+     * 初始化流程抄送配置服务，保存构造参数供后续方法使用。
+     *
+     * @param repositoryService 仓储服务依赖，保存到当前对象供后续业务方法调用
+     */
     public ProcessCcConfigService(RepositoryService repositoryService) {
         this.repositoryService = repositoryService;
     }
@@ -43,7 +48,13 @@ public class ProcessCcConfigService {
         return findProperty(element, "ccConfig");
     }
 
-    /** 递归在扩展元素中查找指定名称的 property 属性值 */
+    /**
+     * 递归在扩展元素中查找指定名称的 property 属性值
+     *
+     * @param element 元素，供本方法查询属性时使用
+     * @param propertyName 属性名称，后续用于查询属性时匹配或展示
+     * @return 查询后的属性文本，供调用方比较或展示
+     */
     private String findProperty(BaseElement element, String propertyName) {
         if (element == null || element.getExtensionElements() == null) {
             return null;
@@ -59,7 +70,13 @@ public class ProcessCcConfigService {
         return null;
     }
 
-    /** 递归在扩展元素及其子元素中查找指定名称的 property 属性值 */
+    /**
+     * 递归在扩展元素及其子元素中查找指定名称的 property 属性值
+     *
+     * @param element 元素，作为 {@code attribute} 的输入影响后续处理
+     * @param propertyName 属性名称，后续用于查询属性时匹配或展示
+     * @return 查询后的属性文本，供调用方比较或展示
+     */
     private String findProperty(ExtensionElement element, String propertyName) {
         if ("property".equals(element.getName())) {
             String name = attribute(element, "name");
@@ -80,7 +97,13 @@ public class ProcessCcConfigService {
         return null;
     }
 
-    /** 从扩展元素的属性集合中按名称取值 */
+    /**
+     * 从扩展元素的属性集合中按名称取值
+     *
+     * @param element 元素，供本方法处理属性时使用
+     * @param name 名称，后续用于处理属性时匹配或展示
+     * @return 处理后的属性文本，供调用方比较或展示
+     */
     private String attribute(ExtensionElement element, String name) {
         for (Map.Entry<String, List<ExtensionAttribute>> entry : element.getAttributes().entrySet()) {
             for (ExtensionAttribute attribute : entry.getValue()) {

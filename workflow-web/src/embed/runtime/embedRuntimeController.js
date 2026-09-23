@@ -103,6 +103,7 @@ function clampInteger(value, fallback, min, max) {
     : fallback
 }
 
+/** 将底层错误收敛成可向宿主发送的类别；relaunchRequired 决定是否重新签发一次性 Launch。 */
 function normalizeError(error, { phase = '', recoverable = false } = {}) {
   const errorCode = String(error?.errorCode || 'EMBED_RUNTIME_FAILED')
   let category = 'UNKNOWN'
@@ -163,8 +164,11 @@ function validateEntryConfig(config) {
 }
 
 /**
- * 协调握手、兑换、Bootstrap、Schema、首屏查询和会话心跳。
+ * 协调握手、兑换、Bootstrap、原生页面导航和会话心跳。
  * 控制器不依赖 Vue/router/store，可用假 API 和假 Bridge 做确定性单元测试。
+ * entryConfig 固定 Launch/Origin 坐标；session 保存兑换后的短期凭证，
+ * onRuntimeIdentityReady 在挂载原生页面前注入服务端映射的用户身份。
+ * 返回的方法供宿主驱动导航和提交，内部状态只通过 subscribe/getSnapshot 对外发布。
  */
 export function createEmbedRuntimeController({
   entryConfig,
@@ -224,11 +228,14 @@ export function createEmbedRuntimeController({
   let bridge = null
   let heartbeatTimer
   let heartbeatSeconds = 60
+  // 每次查询或导航递增；异步响应只在序号仍匹配时写入，避免旧页面覆盖新页面。
   let querySequence = 0
   let lastListRequest = null
   let retryAction = null
   let startCalled = false
+  // 保存同一次创建的请求指纹、幂等键与结果；网络不确定时原样重试同一内容。
   let createAttempt = null
+  // destroy 必须等待在途 Exchange，才能判断服务端是否已签发需注销的 Session。
   let exchangePromise = null
   let exchangeAttempted = false
   let exchangeFailure = null
@@ -355,6 +362,7 @@ export function createEmbedRuntimeController({
     }
   }
 
+  /** 查询发布列表并投影结果；initial 失败交给启动状态机处理，后续失败留在列表内展示。 */
   async function executeListQuery({ queryValues, pageNum, pageSize, initial = false }) {
     const sequence = ++querySequence
     lastListRequest = {
@@ -392,6 +400,7 @@ export function createEmbedRuntimeController({
     }
   }
 
+  /** 用已兑换会话加载服务端固定的 View 目标；READY 后原生组件才可读取目标和身份。 */
   async function loadRuntime() {
     retryAction = loadRuntime
     try {
@@ -484,6 +493,7 @@ export function createEmbedRuntimeController({
     }
   }
 
+  /** 处理经 Bridge 校验的 INIT，并把一次性 Launch 换成代理会话；失败后由宿主重新启动。 */
   async function handleInit(init) {
     if (current.state !== EMBED_RUNTIME_STATES.WAITING_HANDSHAKE) return
     update({ state: EMBED_RUNTIME_STATES.EXCHANGING, phase: 'exchange', error: null })
@@ -541,6 +551,7 @@ export function createEmbedRuntimeController({
     }
   }
 
+  /** 将宿主命令映射为运行时动作；ACK 只在动作成功后回传给对应 requestId。 */
   function handleBridgeMessage(message) {
     if (message.type === EMBED_BRIDGE_MESSAGE_TYPES.REFRESH) {
       refreshCurrent().then(() => {
@@ -614,6 +625,7 @@ export function createEmbedRuntimeController({
     }
   }
 
+  /** 启动一次握手监听并返回 Bridge 启动结果；重复启动会拒绝，以免兑换同一 Launch。 */
   function start() {
     if (startCalled) throw new Error('Embed runtime 已启动')
     startCalled = true
@@ -676,6 +688,7 @@ export function createEmbedRuntimeController({
     return action
   }
 
+  /** 从列表进入服务端固定的原生表单目标；recordId 仅用于 VIEW 且必须来自当前页。 */
   async function openListForm(mode, recordId = null) {
     createAttempt = null
     const sequence = ++querySequence
@@ -901,6 +914,7 @@ export function createEmbedRuntimeController({
       throw operationNotAllowed('原生表单提交参数无效')
     }
     const data = Object.freeze({ ...values })
+    // 指纹包含按钮动作：相同内容的在途重试复用原键，另一份内容不可借旧键创建。
     const fingerprint = JSON.stringify({ data, actionKey: key })
     if (createAttempt?.fingerprint === fingerprint) {
       if (createAttempt.promise) return createAttempt.promise
@@ -972,6 +986,7 @@ export function createEmbedRuntimeController({
     return attempt.promise
   }
 
+  /** 按当前列表页和授权上限投影选中项，跨 origin 回传时不暴露原生行数据。 */
   function emitSelection(records) {
     if (current.state !== EMBED_RUNTIME_STATES.READY
       || current.navigation.surfaceType !== EMBED_RUNTIME_SURFACES.LIST
@@ -1025,6 +1040,7 @@ export function createEmbedRuntimeController({
     })
   }
 
+  /** 会话失效后清除目标与凭证，通知宿主重新签发 Launch，旧请求也随序号失效。 */
   function expire(error) {
     if (current.state === EMBED_RUNTIME_STATES.DESTROYING
       || current.state === EMBED_RUNTIME_STATES.DESTROYED) return
@@ -1049,6 +1065,7 @@ export function createEmbedRuntimeController({
     })
   }
 
+  /** 将不可继续的运行时错误公开给宿主；Session 类错误统一走失效流程。 */
   function fail(error, phase = current.phase) {
     if (current.state === EMBED_RUNTIME_STATES.DESTROYING
       || current.state === EMBED_RUNTIME_STATES.DESTROYED) return
@@ -1071,6 +1088,7 @@ export function createEmbedRuntimeController({
     send(EMBED_BRIDGE_MESSAGE_TYPES.ERROR, normalized)
   }
 
+  /** 仅重试已标记可恢复的启动步骤；一次性 Launch 兑换失败不会在此重放。 */
   async function retry() {
     if (current.state !== EMBED_RUNTIME_STATES.FATAL_ERROR
       || current.error?.recoverable !== true || typeof retryAction !== 'function') {

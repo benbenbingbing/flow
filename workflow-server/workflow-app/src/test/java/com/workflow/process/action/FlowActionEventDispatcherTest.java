@@ -1,6 +1,6 @@
 package com.workflow.process.action;
 
-import com.workflow.contracts.action.FlowActionTimingOption;
+import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import com.workflow.process.action.application.FlowActionEventDispatcher;
 import com.workflow.process.action.application.FlowActionExecutor;
 import com.workflow.process.action.application.FlowActionTimingCatalog;

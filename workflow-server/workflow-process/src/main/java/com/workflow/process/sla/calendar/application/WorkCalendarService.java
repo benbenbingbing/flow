@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
-import com.workflow.contracts.migration.port.MigrationAssetHandler;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.port.MigrationAssetPort;
 import com.workflow.process.sla.calendar.api.request.WorkCalendarSaveRequest;
 import com.workflow.process.sla.calendar.api.response.WorkCalendarDTO;
 import com.workflow.process.sla.calendar.infrastructure.persistence.mapper.WorkCalendarBindingMapper;
@@ -34,6 +34,10 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * 管理工作日历草稿、发布版本和适用范围绑定。
+ * 发布时生成供 SLA 策略使用的日历快照；运行中任务应使用快照而非重新读取草稿。
+ */
 @Service
 @RequiredArgsConstructor
 public class WorkCalendarService {
@@ -45,8 +49,13 @@ public class WorkCalendarService {
     private final WorkCalendarBindingMapper bindingMapper;
     private final WorkCalendarCalculator calculator;
     private final ObjectMapper objectMapper;
-    private final MigrationAssetHandler migrationAssetHandler;
+    private final MigrationAssetPort migrationAssetHandler;
 
+    /**
+     * 列出未删除的所有日历版本，供管理端优先展示默认日历。
+     *
+     * @return 按默认标记及名称排序的日历版本
+     */
     @Transactional(readOnly = true)
     public List<WorkCalendar> list() {
         return calendarMapper.selectList(
@@ -56,6 +65,13 @@ public class WorkCalendarService {
                         .orderByAsc(WorkCalendar::getCalendarName));
     }
 
+    /**
+     * 根据版本 ID 返回日历、时段与绑定，供编辑页回显。
+     *
+     * @param id 要读取的日历版本 ID
+     * @return 包含日历快照和作用域绑定的详情
+     * @throws IllegalArgumentException 版本不存在或已删除时抛出
+     */
     @Transactional(readOnly = true)
     public WorkCalendarDTO get(String id) {
         WorkCalendar calendar = requireCalendar(id);
@@ -65,6 +81,15 @@ public class WorkCalendarService {
                 bindingMapper.findByCalendarId(id));
     }
 
+    /**
+     * 保存日历草稿；编辑非草稿版本时创建更高版本，保留已发布版本供在途任务追溯。
+     * id 为空时新增编码，request 的时段、特殊日期和绑定会共同写入同一事务。
+     *
+     * @param id 待编辑版本 ID；为空时创建新日历
+     * @param request 完整草稿内容，用于重建时段、特殊日期与绑定
+     * @return 保存后的草稿和快照，供管理端继续预览或发布
+     * @throws IllegalArgumentException 编码重复或配置非法时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public WorkCalendarDTO save(
             String id,
@@ -82,6 +107,7 @@ public class WorkCalendarService {
                 && !code.equals(existing.getCalendarCode())) {
             throw new IllegalArgumentException("工作日历编码不可修改");
         }
+        // 已发布版本不可原地修改；后续 SLA 快照可能仍引用它，必须另起草稿版本。
         boolean createVersion = existing == null
                 || !"DRAFT".equals(existing.getStatus());
         WorkCalendar calendar = createVersion
@@ -121,17 +147,33 @@ public class WorkCalendarService {
                 bindingMapper.findByCalendarId(calendar.getId()));
     }
 
+    /**
+     * 使用默认迁移说明发布指定日历版本。
+     *
+     * @param id 要发布的日历版本 ID
+     * @return 发布后的详情
+     */
     @Transactional(rollbackFor = Exception.class)
     public WorkCalendarDTO publish(String id) {
         return publish(id, new ConfigMigrationPublishRequest());
     }
 
+    /**
+     * 发布指定日历版本并记录迁移资产；同编码旧发布版转为 SUPERSEDED，
+     * 默认标记在所有未删除日历中保持唯一，供后续 SLA 解析兜底。
+     *
+     * @param id 要发布的日历版本 ID
+     * @param migrationRequest 迁移资产的版本说明；为空时自动生成
+     * @return 发布后的日历详情
+     * @throws IllegalArgumentException 日历或时段配置非法时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public WorkCalendarDTO publish(
             String id,
             ConfigMigrationPublishRequest migrationRequest) {
         WorkCalendar calendar = requireCalendar(id);
         calculator.validate(snapshot(calendar));
+        // 默认日历是未匹配部门/组织绑定时的最后兜底，切换时先清理旧标记。
         if (Boolean.TRUE.equals(calendar.getDefaultFlag())) {
             calendarMapper.update(
                     null,
@@ -174,6 +216,12 @@ public class WorkCalendarService {
         return get(id);
     }
 
+    /**
+     * 停用指定版本；当前默认日历不可停用，以免后续任务无法选择日历。
+     *
+     * @param id 要停用的日历版本 ID
+     * @throws IllegalStateException 目标仍是系统默认日历时抛出
+     */
     @Transactional(rollbackFor = Exception.class)
     public void disable(String id) {
         WorkCalendar calendar = requireCalendar(id);
@@ -186,6 +234,11 @@ public class WorkCalendarService {
         calendarMapper.updateById(calendar);
     }
 
+    /**
+     * 配置迁移下线时停用该编码的最新发布版；不存在时按幂等操作返回。
+     *
+     * @param calendarCode 迁移资产所指向的日历编码
+     */
     @Transactional(rollbackFor = Exception.class)
     public void disableForMigration(String calendarCode) {
         WorkCalendar calendar =
@@ -200,6 +253,13 @@ public class WorkCalendarService {
         calendarMapper.updateById(calendar);
     }
 
+    /**
+     * 按编码读取最新发布日历快照，供流程发布时固定日历定义。
+     *
+     * @param calendarCode 已发布日历编码
+     * @return 最新发布版的工作时段与时区快照
+     * @throws IllegalArgumentException 该编码尚未发布时抛出
+     */
     @Transactional(readOnly = true)
     public WorkCalendarSnapshot findPublishedSnapshotByCode(
             String calendarCode) {
@@ -212,6 +272,12 @@ public class WorkCalendarService {
         return snapshot(calendar);
     }
 
+    /**
+     * 返回唯一已发布默认日历；数量异常时拒绝发布依赖它的 SLA 配置。
+     *
+     * @return 默认日历快照
+     * @throws IllegalStateException 已发布默认日历不恰好为一个时抛出
+     */
     @Transactional(readOnly = true)
     public WorkCalendarSnapshot findDefaultSnapshot() {
         List<WorkCalendar> defaults =
@@ -223,6 +289,12 @@ public class WorkCalendarService {
         return snapshot(defaults.get(0));
     }
 
+    /**
+     * 固定当前所有已发布日历和有效绑定，供任务运行时按部门或组织解析；
+     * 只保留指向已发布日历的绑定，避免未来草稿改变在途任务的日历选择。
+     *
+     * @return 含默认编码、发布日历映射与适用范围绑定的解析快照
+     */
     @Transactional(readOnly = true)
     public WorkCalendarResolutionSnapshot resolutionSnapshot() {
         List<WorkCalendar> published = calendarMapper.findPublished();
@@ -241,6 +313,7 @@ public class WorkCalendarService {
         }
         WorkCalendarSnapshot defaultCalendar =
                 findDefaultSnapshot();
+        // 绑定表可能仍含旧版本的范围配置，快照只能引用本次收录的发布版本。
         List<WorkCalendarResolutionSnapshot.Binding> bindings =
                 bindingMapper.findAllEnabled().stream()
                         .filter(binding ->
@@ -266,6 +339,14 @@ public class WorkCalendarService {
                 bindings);
     }
 
+    /**
+     * 按作用域及生效日期查找第一条有效绑定，仅发布中的日历可返回给调用方。
+     *
+     * @param scopeType 部门或组织等范围类型
+     * @param scopeKey 具体范围 ID，用于定位候选绑定
+     * @param date 生效日期；为空时按服务器当前日期查询
+     * @return 命中的发布日历快照；无匹配项时返回 null
+     */
     @Transactional(readOnly = true)
     public WorkCalendarSnapshot resolveBinding(
             String scopeType,
@@ -291,6 +372,12 @@ public class WorkCalendarService {
                 : snapshot(calendar);
     }
 
+    /**
+     * 将日历版本及子表整理成可序列化快照，后续截止时间计算不再访问子表。
+     *
+     * @param calendar 已读取的日历版本，提供时区和版本坐标
+     * @return 包含每周时段与特殊日期的快照
+     */
     @Transactional(readOnly = true)
     public WorkCalendarSnapshot snapshot(WorkCalendar calendar) {
         Map<Integer, List<WorkCalendarSnapshot.Period>> weekly =
@@ -333,6 +420,13 @@ public class WorkCalendarService {
                 exceptions);
     }
 
+    /**
+     * 序列化日历快照，供发布配置和迁移包持久化。
+     *
+     * @param snapshot 待保存的日历发布内容
+     * @return 可持久化的 JSON 文档
+     * @throws IllegalStateException 序列化失败时抛出
+     */
     public String writeSnapshot(WorkCalendarSnapshot snapshot) {
         try {
             return objectMapper.writeValueAsString(snapshot);
@@ -341,6 +435,13 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 从发布文档恢复日历快照；解析失败时阻止运行时使用残缺配置。
+     *
+     * @param document 持久化的日历 JSON 文档
+     * @return 供运行时计时的日历快照
+     * @throws IllegalStateException 文档无法解析时抛出
+     */
     public WorkCalendarSnapshot readSnapshot(String document) {
         try {
             return objectMapper.readValue(
@@ -351,6 +452,14 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 按指定版本预演工作时间截止时刻，不写入 SLA 任务状态。
+     *
+     * @param calendarId 用于预演的日历版本 ID
+     * @param start 累计工作分钟的起点
+     * @param minutes 要累计的工作分钟数
+     * @return 预演得到的绝对截止时刻
+     */
     public Instant simulate(
             String calendarId,
             Instant start,
@@ -362,6 +471,12 @@ public class WorkCalendarService {
                 snapshot(requireCalendar(calendarId)));
     }
 
+    /**
+     * 保存前验证必填坐标及有效期，时段细则交给计算器统一校验。
+     *
+     * @param request 待保存的日历草稿请求
+     * @throws IllegalArgumentException 编码、名称、时区或生效区间非法时抛出
+     */
     private void validateRequest(WorkCalendarSaveRequest request) {
         if (request == null
                 || !StringUtils.hasText(request.calendarCode())
@@ -379,6 +494,13 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 按输入顺序写入每周时段，sortOrder 供管理端稳定回显。
+     *
+     * @param calendarId 所属日历版本 ID
+     * @param values 每周时段请求，允许为空
+     * @param now 本次保存统一采用的 UTC 创建时间
+     */
     private void savePeriods(
             String calendarId,
             List<WorkCalendarSaveRequest.PeriodRequest> values,
@@ -397,6 +519,13 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 先保存特殊日期再保存其时段，运行时将以该日期覆盖每周规则。
+     *
+     * @param calendarId 所属日历版本 ID
+     * @param values 特殊日期及其工作时段请求
+     * @param now 本次保存统一采用的 UTC 创建时间
+     */
     private void saveExceptions(
             String calendarId,
             List<WorkCalendarSaveRequest.ExceptionRequest> values,
@@ -432,6 +561,14 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 保存部门/组织等作用域绑定，优先级和生效区间供运行时解析日历。
+     *
+     * @param calendarId 绑定指向的日历版本 ID
+     * @param values 范围、优先级和生效区间配置
+     * @param now 本次保存统一采用的 UTC 审计时间
+     * @throws IllegalArgumentException 范围类型或 ID 为空时抛出
+     */
     private void saveBindings(
             String calendarId,
             List<WorkCalendarSaveRequest.BindingRequest> values,
@@ -462,6 +599,11 @@ public class WorkCalendarService {
         }
     }
 
+    /**
+     * 更新草稿前删除原有子表，避免旧时段或绑定残留到本次发布快照。
+     *
+     * @param calendarId 将被重建子配置的草稿版本 ID
+     */
     private void clearChildren(String calendarId) {
         for (WorkCalendarException exception :
                 exceptionMapper.findByCalendarId(calendarId)) {
@@ -473,6 +615,13 @@ public class WorkCalendarService {
         bindingMapper.deleteByCalendarId(calendarId);
     }
 
+    /**
+     * 统一拒绝不存在或软删除的版本，避免编辑及发布路径绕过状态检查。
+     *
+     * @param id 待读取的日历版本 ID
+     * @return 可参与后续操作的日历记录
+     * @throws IllegalArgumentException 版本不存在或已删除时抛出
+     */
     private WorkCalendar requireCalendar(String id) {
         WorkCalendar calendar = calendarMapper.selectById(id);
         if (calendar == null
@@ -482,6 +631,11 @@ public class WorkCalendarService {
         return calendar;
     }
 
+    /**
+     * 无交互身份的迁移任务以 system 记录修改人，供配置审计追溯。
+     *
+     * @return 当前用户名或 system
+     */
     private String currentUser() {
         String username = UserContext.getUsername();
         return StringUtils.hasText(username) ? username : "system";

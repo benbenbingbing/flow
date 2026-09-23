@@ -77,7 +77,7 @@ class DataPermissionEngineTest {
                 fieldMapper,
                 statusMapper,
                 List.of(),
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         engine = new DataPermissionEngine(
                 scopeService,
@@ -209,7 +209,7 @@ class DataPermissionEngineTest {
                 tableResolver,
                 null,
                 taskAccess,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine todoEngine = new DataPermissionEngine(
                 scopeService,
@@ -254,7 +254,7 @@ class DataPermissionEngineTest {
                 statusMapper,
                 List.of(),
                 teamService,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine teamEngine = new DataPermissionEngine(
                 scopeService,
@@ -287,7 +287,7 @@ class DataPermissionEngineTest {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionSqlBuilder sqlBuilder = new PermissionSqlBuilder(
                 definitionMapper,
                 fieldMapper,
@@ -296,7 +296,7 @@ class DataPermissionEngineTest {
                 null,
                 tableResolver,
                 compiler,
-                com.workflow.integration.database.api.DatabaseQueryDialects.forVendor(
+                com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         DataPermissionEngine sqlEngine = new DataPermissionEngine(
                 scopeService,

@@ -50,10 +50,20 @@ import org.springframework.security.web.authentication.www.BasicAuthenticationFi
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
+/**
+ * 封装打开集成安全配置相关能力和状态；供同一业务流程的后续处理使用。
+ */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(OpenIntegrationProperties.class)
 public class OpenIntegrationSecurityConfiguration {
 
+    /**
+     * 处理已有应用安全，并将结果传给后续步骤。
+     *
+     * @param http HTTP，供本方法处理已有应用安全时使用
+     * @return 处理后的已有应用安全结果，供调用方继续处理
+     * @throws Exception 下游操作失败时向调用方传递
+     */
     @Bean
     @Order(1000)
     @ConditionalOnWebApplication(
@@ -70,6 +80,9 @@ public class OpenIntegrationSecurityConfiguration {
         return http.build();
     }
 
+    /**
+     * 封装启用打开集成安全相关能力和状态；供同一业务流程的后续处理使用。
+     */
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnWebApplication(
             type = ConditionalOnWebApplication.Type.SERVLET)
@@ -78,6 +91,13 @@ public class OpenIntegrationSecurityConfiguration {
             havingValue = "true")
     static class EnabledOpenIntegrationSecurity {
 
+        /**
+         * 处理打开集成键材料，并将结果传给后续步骤。
+         *
+         * @param properties 属性集合，作为 {@code OpenIntegrationKeyMaterial} 的输入影响后续处理
+         * @param resourceLoader 资源{@code loader}，作为 {@code OpenIntegrationKeyMaterial} 的输入影响后续处理
+         * @return 处理后的打开集成键材料结果，供调用方继续处理
+         */
         @Bean
         OpenIntegrationKeyMaterial openIntegrationKeyMaterial(
                 OpenIntegrationProperties properties,
@@ -87,6 +107,13 @@ public class OpenIntegrationSecurityConfiguration {
                     resourceLoader);
         }
 
+        /**
+         * 处理打开集成{@code jwk}来源，并将结果传给后续步骤。
+         *
+         * @param properties 属性集合，供本方法处理打开集成{@code jwk}来源时使用
+         * @param keys 键集合，作为 {@code RSAKey.Builder} 的输入影响后续处理
+         * @return 处理后的打开集成{@code jwk}来源结果，供调用方继续处理
+         */
         @Bean
         JWKSource<SecurityContext> openIntegrationJwkSource(
                 OpenIntegrationProperties properties,
@@ -108,6 +135,12 @@ public class OpenIntegrationSecurityConfiguration {
             return (selector, context) -> selector.select(jwkSet);
         }
 
+        /**
+         * 处理授权{@code server}{@code settings}，并将结果传给后续步骤。
+         *
+         * @param properties 属性集合，供本方法处理授权{@code server}{@code settings}时使用
+         * @return 处理后的授权{@code server}{@code settings}结果，供调用方继续处理
+         */
         @Bean
         AuthorizationServerSettings authorizationServerSettings(
                 OpenIntegrationProperties properties) {
@@ -117,11 +150,22 @@ public class OpenIntegrationSecurityConfiguration {
                     .build();
         }
 
+        /**
+         * 处理{@code oauth2}授权服务，并将结果传给后续步骤。
+         *
+         * @return 处理后的{@code oauth2}授权服务结果，供调用方继续处理
+         */
         @Bean
         OAuth2AuthorizationService oauth2AuthorizationService() {
             return new StatelessClientCredentialsAuthorizationService();
         }
 
+        /**
+         * 处理{@code machine}令牌声明集合，并将结果传给后续步骤。
+         *
+         * @param properties 属性集合，供本方法处理{@code machine}令牌声明集合时使用
+         * @return 处理后的{@code machine}令牌声明集合结果，供调用方继续处理
+         */
         @Bean
         OAuth2TokenCustomizer<JwtEncodingContext> machineTokenClaims(
                 OpenIntegrationProperties properties) {
@@ -141,6 +185,13 @@ public class OpenIntegrationSecurityConfiguration {
             };
         }
 
+        /**
+         * 处理{@code machine}{@code jwt}{@code decoder}，并将结果传给后续步骤。
+         *
+         * @param properties 属性集合，作为 {@code JwtValidators.createDefaultWithIssuer} 的输入影响后续处理
+         * @param openIntegrationJwkSource 打开集成{@code jwk}来源，作为 {@code processor.setJWSKeySelector} 的输入影响后续处理
+         * @return 处理后的{@code machine}{@code jwt}{@code decoder}结果，供调用方继续处理
+         */
         @Bean("machineJwtDecoder")
         JwtDecoder machineJwtDecoder(
                 OpenIntegrationProperties properties,
@@ -173,6 +224,21 @@ public class OpenIntegrationSecurityConfiguration {
             return decoder;
         }
 
+        /**
+         * 处理授权{@code server}安全，并将结果传给后续步骤。
+         *
+         * @param http HTTP，供本方法处理授权{@code server}安全时使用
+         * @param rateLimitService 频率上限服务，供本方法处理授权{@code server}安全时使用
+         * @param properties 属性集合，供本方法处理授权{@code server}安全时使用
+         * @param objectMapper 对象映射器，供本方法处理授权{@code server}安全时使用
+         * @param secretHasher 密钥{@code hasher}，作为 {@code setPasswordEncoder} 的输入影响后续处理
+         * @param networkPolicy {@code network}策略，供本方法处理授权{@code server}安全时使用
+         * @param addressResolver 地址解析器，供本方法处理授权{@code server}安全时使用
+         * @param auditPort 审计端口，供本方法处理授权{@code server}安全时使用
+         * @param credentialUsageService 凭据使用场景服务，供本方法处理授权{@code server}安全时使用
+         * @return 处理后的授权{@code server}安全结果，供调用方继续处理
+         * @throws Exception 下游操作失败时向调用方传递
+         */
         @Bean
         @Order(1)
         SecurityFilterChain authorizationServerSecurity(
@@ -254,6 +320,21 @@ public class OpenIntegrationSecurityConfiguration {
             return http.build();
         }
 
+        /**
+         * 处理打开API资源安全，并将结果传给后续步骤。
+         *
+         * @param http HTTP，供本方法处理打开API资源安全时使用
+         * @param machineJwtDecoder {@code machine}{@code jwt}{@code decoder}，作为 {@code decoder} 的输入影响后续处理
+         * @param objectMapper 对象映射器，作为 {@code OpenApiSecurityResponseWriter} 的输入影响后续处理
+         * @param applicationMapper 应用映射器，作为 {@code addFilterAfter} 的输入影响后续处理
+         * @param networkPolicy {@code network}策略，供本方法处理打开API资源安全时使用
+         * @param addressResolver 地址解析器，供本方法处理打开API资源安全时使用
+         * @param rateLimitService 频率上限服务，供本方法处理打开API资源安全时使用
+         * @param concurrencyService {@code concurrency}服务，供本方法处理打开API资源安全时使用
+         * @param auditPort 审计端口，供本方法处理打开API资源安全时使用
+         * @return 处理后的打开API资源安全结果，供调用方继续处理
+         * @throws Exception 下游操作失败时向调用方传递
+         */
         @Bean
         @Order(2)
         SecurityFilterChain openApiResourceSecurity(

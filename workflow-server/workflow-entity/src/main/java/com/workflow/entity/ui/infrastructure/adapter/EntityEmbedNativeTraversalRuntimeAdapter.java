@@ -33,6 +33,12 @@ public class EntityEmbedNativeTraversalRuntimeAdapter
     private final EntityListConfigMapper listMapper;
     private final EntityDefinitionMapper definitionMapper;
 
+    /**
+     * 解析实体嵌入式原生遍历运行时；输出作为后续校验或处理的输入。
+     *
+     * @param token 令牌，后续用于授权校验、关联或幂等去重
+     * @return 解析后的实体嵌入式原生遍历运行时结果，供调用方继续处理
+     */
     @Override
     public TraversalTarget resolve(String token) {
         UiViewCompositionTokenService.Claims claims =
@@ -53,6 +59,13 @@ public class EntityEmbedNativeTraversalRuntimeAdapter
                 claims.nextRecordId(), entityCode);
     }
 
+    /**
+     * 解析实体编码；输出作为后续校验或处理的输入。
+     *
+     * @param ownerType 归属方类型标识，决定后续实体编码采用的处理分支
+     * @param ownerId 归属方ID，后续用于解析实体编码时定位或关联目标
+     * @return 解析后的实体编码文本，供调用方比较或展示
+     */
     private String resolveEntityCode(String ownerType, String ownerId) {
         if (FORM.equals(ownerType)) {
             EntityForm form = formMapper.selectById(ownerId);
@@ -70,6 +83,12 @@ public class EntityEmbedNativeTraversalRuntimeAdapter
         throw forbidden("关联内容遍历目标不存在或类型不受支持");
     }
 
+    /**
+     * 构造权限不足异常，供调用方停止当前操作。
+     *
+     * @param message 消息，作为 {@code BusinessForbiddenException} 的输入影响后续处理
+     * @return 处理后的禁止结果，供调用方继续处理
+     */
     private static BusinessForbiddenException forbidden(String message) {
         return new BusinessForbiddenException(
                 "INVALID_VIEW_COMPOSITION_TOKEN", message);

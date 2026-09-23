@@ -14,6 +14,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class SequenceFlowExecutionListener implements ExecutionListener {
 
+    /**
+     * 通知序列流程执行监听器；后续由接收方或异步任务继续处理。
+     *
+     * @param execution 执行，供本方法通知序列流程执行监听器时使用
+     */
     @Override
     public void notify(DelegateExecution execution) {
         log.debug("忽略历史 BPMN 注入的 sequenceFlowExecutionListener，统一事件监听器已接管: processInstanceId={}, sequenceFlowId={}",

@@ -32,18 +32,38 @@ public class EmbedGrantManagementController {
     private final EmbedGrantAdministrationService service;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 初始化嵌入式授权管理控制器，保存构造参数供后续方法使用。
+     *
+     * @param service 服务依赖，保存到当前对象供后续业务方法调用
+     * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
+     */
     public EmbedGrantManagementController(
             EmbedGrantAdministrationService service, ObjectMapper objectMapper) {
         this.service = service;
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 列出嵌入式授权管理；查询结果供调用方展示或继续处理。
+     *
+     * @param viewId 视图ID，后续用于列出嵌入式授权管理时定位或关联目标
+     * @return 符合条件的嵌入式管理视图结果，供调用方继续处理
+     */
     @GetMapping
     public ApiResponse<List<EmbedManagementViews.GrantView>> list(
             @PathVariable String viewId) {
         return ApiResponse.success(service.list(viewId).stream().map(this::view).toList());
     }
 
+    /**
+     * 处理新增或更新，并将结果传给后续步骤。
+     *
+     * @param viewId 视图ID，后续用于处理新增或更新时定位或关联目标
+     * @param applicationId 应用ID，后续用于处理新增或更新时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理新增或更新
+     * @return 处理后的新增或更新结果，供调用方继续处理
+     */
     @PutMapping("/{applicationId}")
     @RequiresPermission("system:embed:manage")
     public ApiResponse<EmbedManagementViews.GrantView> upsert(
@@ -71,6 +91,14 @@ public class EmbedGrantManagementController {
         return ApiResponse.success(view(grant));
     }
 
+    /**
+     * 处理变更状态，并将结果传给后续步骤。
+     *
+     * @param viewId 视图ID，后续用于处理变更状态时定位或关联目标
+     * @param applicationId 应用ID，后续用于处理变更状态时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理变更状态
+     * @return 处理后的变更状态结果，供调用方继续处理
+     */
     @PostMapping("/{applicationId}/status")
     @RequiresPermission("system:embed:manage")
     public ApiResponse<EmbedManagementViews.GrantView> changeStatus(
@@ -84,6 +112,14 @@ public class EmbedGrantManagementController {
                 false)));
     }
 
+    /**
+     * 撤销嵌入式授权管理；后续读取或执行将使用更新后的状态。
+     *
+     * @param viewId 视图ID，后续用于撤销嵌入式授权管理时定位或关联目标
+     * @param applicationId 应用ID，后续用于撤销嵌入式授权管理时定位或关联目标
+     * @param request 本次请求，后续经校验后用于撤销嵌入式授权管理
+     * @return 撤销后的嵌入式授权管理结果，供调用方继续处理
+     */
     @PostMapping("/{applicationId}/revoke")
     @RequiresPermission("system:embed:manage")
     public ApiResponse<EmbedManagementViews.GrantView> revoke(
@@ -97,6 +133,12 @@ public class EmbedGrantManagementController {
                 true)));
     }
 
+    /**
+     * 处理视图，并将结果传给后续步骤。
+     *
+     * @param value 待处理视图的原始输入，结果供调用方继续使用
+     * @return 处理后的视图结果，供调用方继续处理
+     */
     private EmbedManagementViews.GrantView view(GrantState value) {
         return new EmbedManagementViews.GrantView(
                 value.id(), value.applicationId(), value.viewId(),
@@ -109,6 +151,13 @@ public class EmbedGrantManagementController {
                 value.createTime(), value.updateTime());
     }
 
+    /**
+     * 处理JSON，并将结果传给后续步骤。
+     *
+     * @param value 待处理JSON的原始输入，结果供调用方继续使用
+     * @return 处理后的JSON结果，供调用方继续处理
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private JsonNode json(String value) {
         try {
             return objectMapper.readTree(value);
@@ -117,6 +166,12 @@ public class EmbedGrantManagementController {
         }
     }
 
+    /**
+     * 转换为本地；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为本地的原始输入，结果供调用方继续使用
+     * @return 转换为后的本地结果，供调用方继续处理
+     */
     private static LocalDateTime toLocal(java.time.Instant value) {
         return value == null ? null : LocalDateTime.ofInstant(value, ZoneOffset.UTC);
     }

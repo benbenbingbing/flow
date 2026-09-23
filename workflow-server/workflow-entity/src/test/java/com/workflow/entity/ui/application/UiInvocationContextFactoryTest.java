@@ -1,10 +1,10 @@
 package com.workflow.entity.ui.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.entity.list.DataScopePlan;
-import com.workflow.contracts.ui.EntityInvocationContext;
-import com.workflow.contracts.ui.FormInvocationContext;
-import com.workflow.contracts.ui.UiInvocationContext;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
+import com.workflow.contracts.entity.ui.context.EntityInvocationContext;
+import com.workflow.contracts.entity.ui.context.FormInvocationContext;
+import com.workflow.contracts.entity.ui.context.UiInvocationContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;

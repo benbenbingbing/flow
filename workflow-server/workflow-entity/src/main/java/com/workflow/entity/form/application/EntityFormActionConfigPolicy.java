@@ -44,6 +44,13 @@ public class EntityFormActionConfigPolicy {
 
     /**
      * 校验 viewConfig 中的动作栏配置。
+     *
+     * @param viewConfig 视图配置内容，决定后续实体表单动作配置策略的处理规则
+     * @param systemEntity 系统实体，作为 {@code normalizeAndValidate} 的输入影响后续处理
+     * @param actionSlotKeys 动作{@code slot}键集合，作为 {@code normalizeAndValidate} 的输入影响后续处理
+     * @param requireExistingSlots {@code require}已有{@code slots}，作为 {@code normalizeAndValidate} 的输入影响后续处理
+     * @param boundButtonKeys 绑定按钮键集合，作为 {@code normalizeAndValidate} 的输入影响后续处理
+     * @param requireBindings {@code require}绑定集合，供本方法校验实体表单动作配置策略时使用
      */
     public void validate(
             Map<String, Object> viewConfig,
@@ -64,6 +71,14 @@ public class EntityFormActionConfigPolicy {
     /**
      * 校验动作栏并返回包含 canonical v2 按钮规则的独立配置副本。
      * 调用方在持久化时应写回返回值；只读校验不会修改传入对象。
+     *
+     * @param viewConfig 视图配置内容，决定后续与校验的处理规则
+     * @param systemEntity 系统实体，供本方法规范化与校验时使用
+     * @param actionSlotKeys 动作{@code slot}键集合，供本方法规范化与校验时使用
+     * @param requireExistingSlots {@code require}已有{@code slots}，供本方法规范化与校验时使用
+     * @param boundButtonKeys 绑定按钮键集合，供本方法规范化与校验时使用
+     * @param requireBindings {@code require}绑定集合，供本方法规范化与校验时使用
+     * @return 与校验键值结果，供调用方继续处理
      */
     public Map<String, Object> normalizeAndValidate(
             Map<String, Object> viewConfig,
@@ -108,6 +123,9 @@ public class EntityFormActionConfigPolicy {
 
     /**
      * 返回动作栏配置，未配置时返回约定默认结构。
+     *
+     * @param viewConfig 视图配置内容，决定后续动作{@code bar}的处理规则
+     * @return 动作{@code bar}键值结果，供调用方继续处理
      */
     public Map<String, Object> actionBar(Map<String, Object> viewConfig) {
         Map<String, Object> configured = viewConfig == null
@@ -125,6 +143,14 @@ public class EntityFormActionConfigPolicy {
         return result;
     }
 
+    /**
+     * 校验{@code built}{@code overrides}；不满足约束时阻止后续处理。
+     *
+     * @param overrides {@code overrides}，供本方法校验{@code built}{@code overrides}时使用
+     * @param systemEntity 系统实体，供本方法校验{@code built}{@code overrides}时使用
+     * @return {@code built}{@code overrides}键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> validateBuiltInOverrides(
             Map<String, Object> overrides,
             boolean systemEntity) {
@@ -158,6 +184,18 @@ public class EntityFormActionConfigPolicy {
         return normalized;
     }
 
+    /**
+     * 校验自定义按钮集合；不满足约束时阻止后续处理。
+     *
+     * @param buttons 按钮集合，供本方法校验自定义按钮集合时使用
+     * @param systemEntity 系统实体，供本方法校验自定义按钮集合时使用
+     * @param actionSlotKeys 动作{@code slot}键集合，供本方法校验自定义按钮集合时使用
+     * @param requireExistingSlots {@code require}已有{@code slots}，供本方法校验自定义按钮集合时使用
+     * @param boundButtonKeys 绑定按钮键集合，供本方法校验自定义按钮集合时使用
+     * @param requireBindings {@code require}绑定集合，供本方法校验自定义按钮集合时使用
+     * @return 实体表单动作配置策略集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> validateCustomButtons(
             List<Map<String, Object>> buttons,
             boolean systemEntity,
@@ -252,12 +290,21 @@ public class EntityFormActionConfigPolicy {
     /**
      * 判断图标是否能由平台标准表单按钮渲染器解析。
      * 包可见供运行时兼容旧发布快照时复用，避免校验与输出白名单漂移。
+     *
+     * @param configured 已配置，供本方法判断是否{@code supported}按钮{@code icon}时使用
+     * @return {@code supported}按钮{@code icon}条件成立时为 true，否则为 false
      */
     static boolean isSupportedButtonIcon(Object configured) {
         return configured instanceof String icon
                 && BUTTON_ICONS.contains(icon.trim());
     }
 
+    /**
+     * 校验{@code labels}；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验{@code labels}的原始输入，结果供调用方继续使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateLabels(Object value) {
         if (value == null) {
             return;
@@ -272,6 +319,13 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 校验模式集合；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验模式集合的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验模式集合时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateModes(Object value, String label) {
         if (value == null) {
             return;
@@ -288,6 +342,11 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 校验{@code confirm}；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验{@code confirm}的原始输入，结果供调用方继续使用
+     */
     private void validateConfirm(Object value) {
         if (value == null) {
             return;
@@ -315,7 +374,11 @@ public class EntityFormActionConfigPolicy {
         EntityActionRuleBuiltInPolicy.validate(rule, false);
     }
 
-    /** 校验并把按钮中的 availabilityRule 原位替换成 canonical v2。 */
+    /**
+     * 校验并把按钮中的 availabilityRule 原位替换成 canonical v2。
+     *
+     * @param button 按钮，作为 {@code EntityActionRuleStructurePolicy.normalizeAndValidate} 的输入影响后续处理
+     */
     private void normalizeAvailabilityRule(
             Map<String, Object> button) {
         if (!button.containsKey("availabilityRule")
@@ -329,6 +392,14 @@ public class EntityFormActionConfigPolicy {
         button.put("availabilityRule", normalized);
     }
 
+    /**
+     * 整理映射数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理映射时匹配或展示
+     * @return 映射键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> map(Object value, String label) {
         if (!(value instanceof Map<?, ?> source)) {
@@ -340,10 +411,24 @@ public class EntityFormActionConfigPolicy {
         return result;
     }
 
+    /**
+     * 整理映射或空数据，供调用方遍历或继续处理。
+     *
+     * @param value 待处理映射或空的原始输入，结果供调用方继续使用
+     * @return 映射或空键值结果，供调用方继续处理
+     */
     private Map<String, Object> mapOrEmpty(Object value) {
         return value == null ? Map.of() : map(value, "表单按钮配置");
     }
 
+    /**
+     * 列出实体表单动作配置策略；查询结果供调用方展示或继续处理。
+     *
+     * @param value 待列出实体表单动作配置策略的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于列出实体表单动作配置策略时匹配或展示
+     * @return 实体表单动作配置策略集合，供调用方遍历或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private List<Map<String, Object>> list(
             Object value,
             String label) {
@@ -360,12 +445,28 @@ public class EntityFormActionConfigPolicy {
         return result;
     }
 
+    /**
+     * 处理可选布尔值，并将结果传给后续步骤。
+     *
+     * @param value 待处理可选布尔值的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理可选布尔值时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void optionalBoolean(Object value, String label) {
         if (value != null && !(value instanceof Boolean)) {
             throw new IllegalArgumentException(label + "必须是布尔值");
         }
     }
 
+    /**
+     * 处理可选整数，并将结果传给后续步骤。
+     *
+     * @param value 待处理可选整数的原始输入，结果供调用方继续使用
+     * @param min {@code min}，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param max 最大，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @param label 标签，后续用于处理可选整数时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void optionalInteger(
             Object value,
             int min,
@@ -381,6 +482,14 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 将输入解析为整数，供后续范围校验或计算使用。
+     *
+     * @param value 待处理整数的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理整数时匹配或展示
+     * @return 处理后的整数结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private int integer(Object value, String label) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -392,6 +501,14 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 处理可选枚举，并将结果传给后续步骤。
+     *
+     * @param value 待处理可选枚举的原始输入，结果供调用方继续使用
+     * @param allowed 允许，供本方法处理可选枚举时使用
+     * @param label 标签，后续用于处理可选枚举时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void optionalEnum(
             Object value,
             Set<String> allowed,
@@ -407,6 +524,14 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 校验并获取文本；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验并获取文本的原始输入，结果供调用方继续使用
+     * @param maxLength 最大长度，供本方法校验并获取文本时使用
+     * @param message 消息，作为 {@code IllegalArgumentException} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireText(
             Object value,
             int maxLength,
@@ -417,10 +542,22 @@ public class EntityFormActionConfigPolicy {
         }
     }
 
+    /**
+     * 规范化输入值，确保后续比较和持久化使用一致格式。
+     *
+     * @param value 待规范化实体表单动作配置策略的原始输入，结果供调用方继续使用
+     * @return 规范化后的实体表单动作配置策略文本，供调用方比较或展示
+     */
     private String normalize(Object value) {
         return text(value).toUpperCase(Locale.ROOT);
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
     }

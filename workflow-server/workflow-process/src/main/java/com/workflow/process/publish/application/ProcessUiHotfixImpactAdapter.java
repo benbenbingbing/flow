@@ -1,8 +1,8 @@
 package com.workflow.process.publish.application;
 
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessImpact;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
 import com.workflow.contracts.entity.ui.port.UiHotfixProcessImpactPort;
-import com.workflow.contracts.ui.hotfix.UiHotfixProcessTarget;
+import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
 import com.workflow.process.publish.infrastructure.persistence.record.ProcessUiReleaseBinding;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
@@ -43,6 +43,12 @@ public class ProcessUiHotfixImpactAdapter
     private final RuntimeService runtimeService;
     private final HistoryService historyService;
 
+    /**
+     * 处理{@code analyze}表单影响，并将结果传给后续步骤。
+     *
+     * @param formId 表单ID，后续用于处理{@code analyze}表单影响时定位或关联目标
+     * @return 处理后的{@code analyze}表单影响结果，供调用方继续处理
+     */
     @Override
     public UiHotfixProcessImpact analyzeFormImpact(String formId) {
         List<ProcessUiReleaseBinding> bindings =
@@ -127,6 +133,12 @@ public class ProcessUiHotfixImpactAdapter
                 targetHash(targets));
     }
 
+    /**
+     * 处理运行时{@code counts}，并将结果传给后续步骤。
+     *
+     * @param deploymentId {@code deployment}ID，后续用于处理运行时{@code counts}时定位或关联目标
+     * @return 处理后的运行时{@code counts}结果，供调用方继续处理
+     */
     private RuntimeCounts runtimeCounts(String deploymentId) {
         if (deploymentId == null || deploymentId.isBlank()) {
             return new RuntimeCounts(0L, 0L);
@@ -149,6 +161,13 @@ public class ProcessUiHotfixImpactAdapter
         return new RuntimeCounts(active, completed);
     }
 
+    /**
+     * 生成目标哈希文本，供后续匹配或展示。
+     *
+     * @param targets 目标集合，供本方法处理目标哈希时使用
+     * @return 处理后的目标哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String targetHash(List<UiHotfixProcessTarget> targets) {
         StringBuilder value = new StringBuilder();
         for (UiHotfixProcessTarget target : targets) {
@@ -171,6 +190,12 @@ public class ProcessUiHotfixImpactAdapter
         }
     }
 
+    /**
+     * 封装运行时{@code counts}的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param active 活动，保存在对象中供后续校验、查询或展示
+     * @param completed {@code completed}，保存在对象中供后续校验、查询或展示
+     */
     private record RuntimeCounts(long active, long completed) {
     }
 }

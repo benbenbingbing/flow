@@ -1,9 +1,9 @@
 package com.workflow.process.form.application;
 
-import com.workflow.contracts.entity.EntityFormBinding;
-import com.workflow.contracts.entity.EntityFormRuntimeContext;
+import com.workflow.contracts.entity.form.model.EntityFormBinding;
+import com.workflow.contracts.entity.form.model.EntityFormRuntimeContext;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;

@@ -1,9 +1,9 @@
 package com.workflow.process.action.application;
 
-import com.workflow.contracts.action.FlowActionContext;
-import com.workflow.contracts.action.FlowActionExecutionMode;
-import com.workflow.contracts.action.FlowActionFailurePolicy;
-import com.workflow.contracts.action.FlowActionScopeType;
+import com.workflow.contracts.process.action.context.FlowActionContext;
+import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
+import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
+import com.workflow.contracts.process.action.model.FlowActionScopeType;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;

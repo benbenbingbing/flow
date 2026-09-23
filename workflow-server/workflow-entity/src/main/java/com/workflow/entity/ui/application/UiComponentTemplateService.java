@@ -129,12 +129,21 @@ public class UiComponentTemplateService {
      *
      * <p>该方法仅作用于通过完整性校验后反序列化出的返回值，绝不更新历史
      * {@code snapshot_document}，也不重算 {@code content_hash}。</p>
+     *
+     * @param snapshot 快照，作为 {@code stringMap} 的输入影响后续处理
+     * @return 旧版接口引用键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizeLegacyInterfaceReferences(
             Map<String, Object> snapshot) {
         return stringMap(normalizeLegacyInterfaceValue(snapshot));
     }
 
+    /**
+     * 规范化旧版接口值；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化旧版接口值的原始输入，结果供调用方继续使用
+     * @return 规范化后的旧版接口值结果，供调用方继续处理
+     */
     private Object normalizeLegacyInterfaceValue(Object value) {
         if (value instanceof Map<?, ?> raw) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -159,6 +168,15 @@ public class UiComponentTemplateService {
         return value;
     }
 
+    /**
+     * 规范化旧版{@code pair}；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化旧版{@code pair}的原始输入，结果供调用方继续使用
+     * @param legacyIdKey 旧版ID键，后续用于授权校验、关联或幂等去重
+     * @param legacyOperationKey 旧版操作键，后续用于授权校验、关联或幂等去重
+     * @param extensionIdKey 扩展ID键，后续用于授权校验、关联或幂等去重
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void normalizeLegacyPair(
             Map<String, Object> value,
             String legacyIdKey,
@@ -193,6 +211,13 @@ public class UiComponentTemplateService {
         value.remove(legacyOperationKey);
     }
 
+    /**
+     * 判断是否{@code matching}接口；判断结果决定调用方的后续分支。
+     *
+     * @param definition 定义，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @param operationCode 操作编码，后续用于判断是否{@code matching}接口时定位或关联目标
+     * @return {@code matching}接口条件成立时为 true，否则为 false
+     */
     private boolean isMatchingInterface(
             UiExtensionDefinition definition,
             String operationCode) {
@@ -206,6 +231,12 @@ public class UiComponentTemplateService {
                             operationCode.trim()));
     }
 
+    /**
+     * 将输入映射的键规范为字符串，供后续序列化和字段读取。
+     *
+     * @param value 待处理字符串映射的原始输入，结果供调用方继续使用
+     * @return 字符串映射键值结果，供调用方继续处理
+     */
     private Map<String, Object> stringMap(Object value) {
         if (!(value instanceof Map<?, ?> raw)) {
             return Map.of();
@@ -216,6 +247,12 @@ public class UiComponentTemplateService {
         return result;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
@@ -306,6 +343,15 @@ public class UiComponentTemplateService {
         return result;
     }
 
+    /**
+     * 创建版本；结果供后续流程传递或持久化。
+     *
+     * @param template 模板，作为 {@code validateSnapshot} 的输入影响后续处理
+     * @param snapshot 快照，作为 {@code codec.canonicalize} 的输入影响后续处理
+     * @param description 描述，作为 {@code version.setDescription} 的输入影响后续处理
+     * @return 创建后的版本结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiComponentTemplateVersion createVersion(
             UiComponentTemplate template,
             Map<String, Object> snapshot,
@@ -367,6 +413,14 @@ public class UiComponentTemplateService {
         return version;
     }
 
+    /**
+     * 整理快照数据，供调用方遍历或继续处理。
+     *
+     * @param templateId 模板ID，后续用于处理快照时定位或关联目标
+     * @param version 版本，作为 {@code findVersion} 的输入影响后续处理
+     * @return 快照键值结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private Map<String, Object> snapshot(String templateId, int version) {
         UiComponentTemplateVersion found = findVersion(templateId, version);
         if (found == null) {
@@ -379,6 +433,13 @@ public class UiComponentTemplateService {
                 "组件模板快照");
     }
 
+    /**
+     * 查询版本；查询结果供调用方展示或继续处理。
+     *
+     * @param templateId 模板ID，后续用于查询版本时定位或关联目标
+     * @param version 版本，作为 {@code eq} 的输入影响后续处理
+     * @return 符合条件的界面组件模板版本结果，供调用方继续处理
+     */
     private UiComponentTemplateVersion findVersion(
             String templateId,
             int version) {
@@ -388,6 +449,12 @@ public class UiComponentTemplateService {
                         .eq(UiComponentTemplateVersion::getVersion, version));
     }
 
+    /**
+     * 验证版本{@code integrity}；不满足约束时阻止后续处理。
+     *
+     * @param version 版本，作为 {@code codec.read} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void verifyVersionIntegrity(UiComponentTemplateVersion version) {
         if (version == null
                 || !StringUtils.hasText(version.getSnapshotDocument())
@@ -407,6 +474,16 @@ public class UiComponentTemplateService {
                 "组件模板快照");
     }
 
+    /**
+     * 合并界面组件模板；结果供后续流程传递或持久化。
+     *
+     * @param base 基础，供本方法合并界面组件模板时使用
+     * @param local 本地，供本方法合并界面组件模板时使用
+     * @param incoming {@code incoming}，供本方法合并界面组件模板时使用
+     * @param path 路径，作为 {@code conflicts.add} 的输入影响后续处理
+     * @param conflicts {@code conflicts}，供本方法合并界面组件模板时使用
+     * @return 合并后的界面组件模板结果，供调用方继续处理
+     */
     private Object merge(
             Object base,
             Object local,
@@ -442,6 +519,13 @@ public class UiComponentTemplateService {
         return local;
     }
 
+    /**
+     * 处理{@code overlay}，并将结果传给后续步骤。
+     *
+     * @param target 目标，供本方法处理{@code overlay}时使用
+     * @param overrides {@code overrides}，供本方法处理{@code overlay}时使用
+     * @return 处理后的{@code overlay}结果，供调用方继续处理
+     */
     private Object overlay(Object target, Object overrides) {
         if (target instanceof Map<?, ?> targetMap
                 && overrides instanceof Map<?, ?> overrideMap) {
@@ -456,6 +540,13 @@ public class UiComponentTemplateService {
         return overrides;
     }
 
+    /**
+     * 校验并获取模板；不满足约束时阻止后续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的模板结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiComponentTemplate requireTemplate(String id) {
         UiComponentTemplate template = templateMapper.selectById(id);
         if (template == null || Integer.valueOf(1).equals(template.getDeleted())) {
@@ -464,6 +555,13 @@ public class UiComponentTemplateService {
         return template;
     }
 
+    /**
+     * 校验并获取模板更新；不满足约束时阻止后续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的模板更新结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private UiComponentTemplate requireTemplateForUpdate(String id) {
         UiComponentTemplate template = templateMapper.selectByIdForUpdate(id);
         if (template == null || Integer.valueOf(1).equals(template.getDeleted())) {
@@ -472,6 +570,12 @@ public class UiComponentTemplateService {
         return template;
     }
 
+    /**
+     * 校验并获取{@code versioned}模板；不满足约束时阻止后续处理。
+     *
+     * @param template 模板，供本方法校验并获取{@code versioned}模板时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void requireVersionedTemplate(UiComponentTemplate template) {
         if (isInitializationOnlyTemplate(template)) {
             throw new IllegalArgumentException(
@@ -479,6 +583,12 @@ public class UiComponentTemplateService {
         }
     }
 
+    /**
+     * 判断是否{@code initialization}仅模板；判断结果决定调用方的后续分支。
+     *
+     * @param template 模板，作为 {@code equalsIgnoreCase} 的输入影响后续处理
+     * @return {@code initialization}仅模板条件成立时为 true，否则为 false
+     */
     private boolean isInitializationOnlyTemplate(
             UiComponentTemplate template) {
         return template != null
@@ -486,6 +596,12 @@ public class UiComponentTemplateService {
                         template.getTemplateType());
     }
 
+    /**
+     * 校验界面组件模板；不满足约束时阻止后续处理。
+     *
+     * @param request 本次请求，后续经校验后用于校验界面组件模板
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validate(UiComponentTemplateSaveRequest request) {
         if (request == null
                 || !StringUtils.hasText(request.getTemplateKey())
@@ -500,6 +616,13 @@ public class UiComponentTemplateService {
         validateSnapshot(type, request.getSnapshot());
     }
 
+    /**
+     * 校验快照；不满足约束时阻止后续处理。
+     *
+     * @param templateType 模板类型标识，决定后续快照采用的处理分支
+     * @param snapshot 快照，作为 {@code snapshot.getOrDefault} 的输入影响后续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateSnapshot(
             String templateType,
             Map<String, Object> snapshot) {
@@ -533,7 +656,13 @@ public class UiComponentTemplateService {
         validateObjectDocument(field.get("renderConfig"), "渲染配置");
     }
 
-    /** 查找新模板中仍存在的历史 service/operation pair，不误伤普通业务字段。 */
+    /**
+     * 查找新模板中仍存在的历史 service/operation pair，不误伤普通业务字段。
+     *
+     * @param value 待处理旧版接口引用路径的原始输入，结果供调用方继续使用
+     * @param path 路径，供本方法处理旧版接口引用路径时使用
+     * @return 处理后的旧版接口引用路径文本，供调用方比较或展示
+     */
     private String legacyInterfaceReferencePath(Object value, String path) {
         if (value instanceof Map<?, ?> map) {
             boolean legacyColumn = map.containsKey("dataSourceId")
@@ -567,6 +696,13 @@ public class UiComponentTemplateService {
         return null;
     }
 
+    /**
+     * 校验对象文档；不满足约束时阻止后续处理。
+     *
+     * @param value 待校验对象文档的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于校验对象文档时匹配或展示
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateObjectDocument(Object value, String label) {
         if (value == null || (value instanceof String text && text.isBlank())) {
             return;
@@ -586,6 +722,13 @@ public class UiComponentTemplateService {
         }
     }
 
+    /**
+     * 生成哈希文本，供后续匹配或展示。
+     *
+     * @param value 待处理哈希的原始输入，结果供调用方继续使用
+     * @return 处理后的哈希文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String hash(String value) {
         try {
             return HexFormat.of().formatHex(
@@ -596,6 +739,12 @@ public class UiComponentTemplateService {
         }
     }
 
+    /**
+     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
+     *
+     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
+     * @return 处理后的空白截止空值文本，供调用方比较或展示
+     */
     private String blankToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

@@ -28,6 +28,8 @@ public class RelatedProcessCoordinationPublisher {
      * <p>事件键绑定 action execution、计划指纹和目标流程实例。
      * 同一流程动作重试时不会重复产生可见副作用。</p>
      *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param command 本次命令，后续经校验后用于发布关联流程协同{@code publisher}
      * @return 新增或已存在的幂等事件数量
      */
     public int publish(
@@ -62,7 +64,13 @@ public class RelatedProcessCoordinationPublisher {
         return queued;
     }
 
-    /** 按计划与目标生成可在消费边界重算的幂等键。 */
+    /**
+     * 按计划与目标生成可在消费边界重算的幂等键。
+     *
+     * @param plan 执行方案，后续决定操作步骤和校验约束
+     * @param target 目标，供本方法处理事件键时使用
+     * @return 处理后的事件键文本，供调用方比较或展示
+     */
     static String eventKey(
             RelatedProcessCoordinationPlan plan,
             TargetImpact target) {

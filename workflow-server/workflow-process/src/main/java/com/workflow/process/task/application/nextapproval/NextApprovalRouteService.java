@@ -57,6 +57,14 @@ public class NextApprovalRouteService {
     private final ObjectMapper objectMapper;
     private final MultiInstanceOutcomeService multiInstanceOutcomeService;
 
+    /**
+     * 解析下一步审批路由；输出作为后续校验或处理的输入。
+     *
+     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
+     * @param request 本次请求，后续经校验后用于解析下一步审批路由
+     * @return 解析后的下一步审批路由结果，供调用方继续处理
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     public NextApprovalResolution resolve(
             String taskId,
             NextApprovalPreviewRequest request) {
@@ -73,6 +81,11 @@ public class NextApprovalRouteService {
     /**
      * 提交前重算入口。includeSubmittedForm=false 时只使用 applyEditableData 后的
      * 引擎变量，避免再次信任请求中的原始表单数据。
+     *
+     * @param task 任务，作为 {@code result} 的输入影响后续处理
+     * @param request 本次请求，后续经校验后用于解析下一步审批路由
+     * @param includeSubmittedForm {@code include}已提交表单，供本方法解析下一步审批路由时使用
+     * @return 解析后的下一步审批路由结果，供调用方继续处理
      */
     public NextApprovalResolution resolve(
             Task task,
@@ -294,6 +307,12 @@ public class NextApprovalRouteService {
                 variables);
     }
 
+    /**
+     * 判断是否具有{@code unpredictable}分配；判断结果决定调用方的后续分支。
+     *
+     * @param target 目标，供本方法判断是否具有{@code unpredictable}分配时使用
+     * @return {@code unpredictable}分配条件成立时为 true，否则为 false
+     */
     private boolean hasUnpredictableAssignment(
             NextApprovalTarget target) {
         if (!target.selectionPolicy().visible()
@@ -313,6 +332,13 @@ public class NextApprovalRouteService {
                 .anyMatch(this::dynamicExpression));
     }
 
+    /**
+     * 判断{@code reads}已提交实体用户字段条件是否成立，供调用方选择后续分支。
+     *
+     * @param target 目标，作为 {@code effectiveResolver} 的输入影响后续处理
+     * @param submittedEditableFields 已提交可编辑字段，供本方法处理{@code reads}已提交实体用户字段时使用
+     * @return {@code reads}已提交实体用户字段条件成立时为 true，否则为 false
+     */
     private boolean readsSubmittedEntityUserField(
             NextApprovalTarget target,
             Set<String> submittedEditableFields) {
@@ -337,7 +363,14 @@ public class NextApprovalRouteService {
                 submittedEditableFields);
     }
 
-    /** 判断一个实体用户字段解析器是否读取本次尚未落库的字段。 */
+    /**
+     * 判断一个实体用户字段解析器是否读取本次尚未落库的字段。
+     *
+     * @param resolverCode 解析器编码，后续用于处理{@code reads}已提交实体用户字段时定位或关联目标
+     * @param extraParams 附加参数，供本方法处理{@code reads}已提交实体用户字段时使用
+     * @param submittedEditableFields 已提交可编辑字段，供本方法处理{@code reads}已提交实体用户字段时使用
+     * @return {@code reads}已提交实体用户字段条件成立时为 true，否则为 false
+     */
     private boolean readsSubmittedEntityUserField(
             String resolverCode,
             Map<String, Object> extraParams,
@@ -353,17 +386,39 @@ public class NextApprovalRouteService {
                 sameFieldCode(value, fieldCode));
     }
 
+    /**
+     * 判断相同字段编码条件是否成立，供调用方选择后续分支。
+     *
+     * @param left 左侧，供本方法处理相同字段编码时使用
+     * @param right 右侧，作为 {@code left.equals} 的输入影响后续处理
+     * @return 相同字段编码条件成立时为 true，否则为 false
+     */
     private boolean sameFieldCode(String left, String right) {
         return left.equals(right)
                 || left.replace("_", "").equalsIgnoreCase(
                 right.replace("_", ""));
     }
 
+    /**
+     * 判断动态表达式条件是否成立，供调用方选择后续分支。
+     *
+     * @param value 待处理动态表达式的原始输入，结果供调用方继续使用
+     * @return 动态表达式条件成立时为 true，否则为 false
+     */
     private boolean dynamicExpression(String value) {
         return StringUtils.hasText(value)
                 && (value.contains("${") || value.contains("#{"));
     }
 
+    /**
+     * 处理{@code walk}，并将结果传给后续步骤。
+     *
+     * @param element 元素，作为 {@code traversal.defer} 的输入影响后续处理
+     * @param model 模型，供本方法处理{@code walk}时使用
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param path 路径，供本方法处理{@code walk}时使用
+     * @param traversal 遍历，供本方法处理{@code walk}时使用
+     */
     private void walk(
             FlowElement element,
             BpmnModel model,
@@ -438,6 +493,12 @@ public class NextApprovalRouteService {
         }
     }
 
+    /**
+     * 判断{@code may}跳过{@code automatically}条件是否成立，供调用方选择后续分支。
+     *
+     * @param userTask 用户任务，作为 {@code firstText} 的输入影响后续处理
+     * @return {@code may}跳过{@code automatically}条件成立时为 true，否则为 false
+     */
     private boolean maySkipAutomatically(UserTask userTask) {
         String skipExpression = firstText(
                 userTask.getSkipExpression(),
@@ -455,6 +516,14 @@ public class NextApprovalRouteService {
                 "false"));
     }
 
+    /**
+     * 判断是否具有可见选择；判断结果决定调用方的后续分支。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param currentTask 当前任务，写入当前任务信息供后续待办展示和状态同步
+     * @param model 模型，供本方法判断是否具有可见选择时使用
+     * @return 可见选择条件成立时为 true，否则为 false
+     */
     private boolean hasVisibleSelection(
             String processDefinitionId,
             UserTask currentTask,
@@ -480,6 +549,12 @@ public class NextApprovalRouteService {
      * 仅检查当前节点之后、每条路径遇到的第一批用户任务。目标节点的
      * 配置属于它的前序审批面板；不能因为当前节点自身或无关分支有配置
      * 就开启预测并阻断旧流程。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param element 元素，供本方法判断是否具有可见选择{@code downstream}时使用
+     * @param model 模型，作为 {@code policyReader.read} 的输入影响后续处理
+     * @param visited {@code visited}，供本方法判断是否具有可见选择{@code downstream}时使用
+     * @return 可见选择{@code downstream}条件成立时为 true，否则为 false
      */
     private boolean hasVisibleSelectionDownstream(
             String processDefinitionId,
@@ -510,6 +585,14 @@ public class NextApprovalRouteService {
         return false;
     }
 
+    /**
+     * 查询{@code outgoing}；查询结果供调用方展示或继续处理。
+     *
+     * @param node 节点，供本方法查询{@code outgoing}时使用
+     * @param outgoing {@code outgoing}，作为 {@code List.copyOf} 的输入影响后续处理
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 序列流程集合，供调用方遍历或展示
+     */
     private List<SequenceFlow> selectOutgoing(
             FlowNode node,
             List<SequenceFlow> outgoing,
@@ -554,6 +637,13 @@ public class NextApprovalRouteService {
         return List.of();
     }
 
+    /**
+     * 处理目标，并将结果传给后续步骤。
+     *
+     * @param flow 流程，供本方法处理目标时使用
+     * @param model 模型，供本方法处理目标时使用
+     * @return 处理后的目标结果，供调用方继续处理
+     */
     private FlowElement target(SequenceFlow flow, BpmnModel model) {
         return flow.getTargetFlowElement() != null
                 ? flow.getTargetFlowElement()
@@ -561,6 +651,12 @@ public class NextApprovalRouteService {
                         flow.getTargetRef(), true);
     }
 
+    /**
+     * 应用动作流程变量，并将结果传给后续步骤。
+     *
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param request 本次请求，后续经校验后用于应用动作流程变量
+     */
     private void applyActionVariables(
             Map<String, Object> variables,
             NextApprovalPreviewRequest request) {
@@ -580,6 +676,12 @@ public class NextApprovalRouteService {
         }
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(String... values) {
         for (String value : values) {
             if (StringUtils.hasText(value)) {
@@ -589,6 +691,12 @@ public class NextApprovalRouteService {
         return null;
     }
 
+    /**
+     * 规范化动作；输出作为后续校验或处理的输入。
+     *
+     * @param action 动作标识，决定后续动作采用的处理分支
+     * @return 规范化后的动作文本，供调用方比较或展示
+     */
     private String normalizeAction(String action) {
         if (!StringUtils.hasText(action)) {
             return "approve";
@@ -601,6 +709,15 @@ public class NextApprovalRouteService {
         };
     }
 
+    /**
+     * 生成分组作用域键文本，供后续匹配或展示。
+     *
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param currentNodeId 当前节点ID，后续用于处理分组作用域键时定位或关联目标
+     * @param targets 目标集合，作为 {@code canonical.put} 的输入影响后续处理
+     * @return 处理后的分组作用域键文本，供调用方比较或展示
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     private String groupScopeKey(
             String processDefinitionId,
             String currentNodeId,
@@ -627,6 +744,12 @@ public class NextApprovalRouteService {
         }
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> raw)) {
@@ -637,18 +760,41 @@ public class NextApprovalRouteService {
         return result;
     }
 
+    /**
+     * 生成展示名称文本，供后续匹配或展示。
+     *
+     * @param element 元素，供本方法处理展示名称时使用
+     * @return 处理后的展示名称文本，供调用方比较或展示
+     */
     private String displayName(FlowElement element) {
         return StringUtils.hasText(element.getName())
                 ? element.getName() + "(" + element.getId() + ")"
                 : element.getId();
     }
 
+    /**
+     * 生成安全消息文本，供后续匹配或展示。
+     *
+     * @param exception 异常，供本方法处理安全消息时使用
+     * @return 处理后的安全消息文本，供调用方比较或展示
+     */
     private String safeMessage(Exception exception) {
         return StringUtils.hasText(exception.getMessage())
                 ? exception.getMessage()
                 : exception.getClass().getSimpleName();
     }
 
+    /**
+     * 处理结果，并将结果传给后续步骤。
+     *
+     * @param task 任务，作为 {@code NextApprovalResolution} 的输入影响后续处理
+     * @param status 状态标识，决定后续结果采用的处理分支
+     * @param message 消息，作为 {@code NextApprovalResolution} 的输入影响后续处理
+     * @param scopeKey 作用域键，后续用于授权校验、关联或幂等去重
+     * @param targets 目标集合，作为 {@code NextApprovalResolution} 的输入影响后续处理
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 处理后的结果，供调用方继续处理
+     */
     private NextApprovalResolution result(
             Task task,
             NextApprovalPreviewStatus status,
@@ -666,6 +812,9 @@ public class NextApprovalRouteService {
                         new LinkedHashMap<>(variables)));
     }
 
+    /**
+     * 负责遍历的业务处理；协调校验、状态变化及后续结果传递。
+     */
     private static final class Traversal {
         private final Map<String, UserTask> userTasks =
                 new LinkedHashMap<>();
@@ -674,18 +823,33 @@ public class NextApprovalRouteService {
         private String deferredMessage;
         private String blockedMessage;
 
+        /**
+         * 处理{@code defer}，并将结果传给后续步骤。
+         *
+         * @param message 消息，供本方法处理{@code defer}时使用
+         */
         private void defer(String message) {
             if (deferredMessage == null) {
                 deferredMessage = message;
             }
         }
 
+        /**
+         * 处理{@code block}，并将结果传给后续步骤。
+         *
+         * @param message 消息，供本方法处理{@code block}时使用
+         */
         private void block(String message) {
             if (blockedMessage == null) {
                 blockedMessage = message;
             }
         }
 
+        /**
+         * 判断{@code reached}{@code anything}条件是否成立，供调用方选择后续分支。
+         *
+         * @return {@code reached}{@code anything}条件成立时为 true，否则为 false
+         */
         private boolean reachedAnything() {
             return reached || ended || !userTasks.isEmpty();
         }

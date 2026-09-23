@@ -16,7 +16,12 @@ public class EntitySchemaPublishLock {
     private final DatabaseLockPort locks;
     private final ThreadLocal<Map<String, DatabaseLockPort.Handle>> held = new ThreadLocal<>();
 
-    /** 非阻塞获取；相同线程重复发布同一实体返回忙，防止覆盖句柄后泄露锁。 */
+    /**
+     * 非阻塞获取；相同线程重复发布同一实体返回忙，防止覆盖句柄后泄露锁。
+     *
+     * @param entityId 实体ID，后续用于处理尝试获取时定位或关联目标
+     * @return 尝试获取条件成立时为 true，否则为 false
+     */
     public boolean tryAcquire(String entityId) {
         Map<String, DatabaseLockPort.Handle> handles = held.get();
         if (handles != null && handles.containsKey(entityId)) return false;
@@ -30,7 +35,11 @@ public class EntitySchemaPublishLock {
         return true;
     }
 
-    /** 只释放当前线程持有的指定实体句柄；释放异常不覆盖原始发布结果。 */
+    /**
+     * 只释放当前线程持有的指定实体句柄；释放异常不覆盖原始发布结果。
+     *
+     * @param entityId 实体ID，后续用于处理发布版本时定位或关联目标
+     */
     public void release(String entityId) {
         var handles = held.get();
         if (handles == null) return;

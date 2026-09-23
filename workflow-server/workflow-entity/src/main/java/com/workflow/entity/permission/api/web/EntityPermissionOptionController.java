@@ -24,6 +24,12 @@ public class EntityPermissionOptionController {
 
     private final EntityPermissionCatalogService permissionCatalogService;
 
+    /**
+     * 读取选项；查询结果供调用方展示或继续处理。
+     *
+     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
+     * @return 符合条件的实体权限选项结果，供调用方继续处理
+     */
     @GetMapping("/entity-permission-options")
     public Result<List<EntityPermissionOptionDTO>> getOptions(
             @RequestParam String entityCode) {

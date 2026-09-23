@@ -33,7 +33,7 @@ Response 等传输层类型，将契约端口也放入 `api` 会形成两套语�
    替代的 deprecated 接口和兼容 shim，所有实现、继承关系、注入点和测试直接使用新
    FQCN，不建立 `legacy -> api -> port` 的多层桥接链。
 7. 接口的嵌套 record、异常和生命周期 Scope 与接口一起迁移，避免新 Port 继续依赖已
-   删除的旧类型。未被替换的边界模型仍保留在所属业务包，本次不做无关模型迁移。
+   删除的旧类型。首轮迁移暂时保留配套模型的旧位置；后续归包遵循下文的补充决策。
 
 ## 目标结构示例
 
@@ -86,3 +86,31 @@ DTO、Spring Bean、持久化模型或业务实现。
 - ADR-0007 退役开放流程后，`process.open.port`、`process.open.spi` 及其消费者均已删除，
   不再作为目标结构的一部分。
 - 架构测试成为新增或调整公共契约时的必经门禁。
+
+## 2026-09-23 补充：配套模型归位与端口命名
+
+在既有业务能力边界内完成模型归包，统一接口与其配套类型的查找入口：
+
+- 顶层 `action` 归入 `process.action.model/context`；`identity.resolver` 归入
+  `process.assignment.model/error`。
+- 顶层 `ui` 及 `catalog`、`hotfix`、`runtime` 中的契约归入
+  `entity.ui.model/context`；表单绑定与表单运行模型归入 `entity.form.model`。
+- Embed 签发模型归入 `embed.launch.model`；运行模型、委托上下文和注解分别归入
+  `embed.runtime.model/context/annotation`，共享失败投影放在 `embed.error`。
+- 审计、身份目录、组织职务、实体写入、列表、流程与迁移模型按各自能力归入
+  `model`，注解、线程作用域和跨边界异常按实际职责放入 `annotation/context/error`。
+- `OrganizationPositionDirectoryPort` 与组织职务模型聚合到 `identity.position`。
+- 三个名称未表达端口角色的接口统一为 `BootstrapJobPort`、`MigrationAssetPort`、
+  `FlowActionRuntimePort`；不改变其实现责任、方法签名或执行行为。
+
+`AuditEventIds` 和 `UiProviderArtifactIdentity` 留在各自能力根包，不增加通用工具包。
+后者仍在 contracts 内提供原有默认摘要算法；流程动作端口也继续保留原有 Object
+返回值。本轮不实施这两项职责重构。
+
+配套更新架构测试：顶层 Port 名称必须以 Port 结尾，model 不得依赖 port/spi，
+禁止重新引入顶层 action、ui 和 identity.resolver 旧包。带宿主访问能力的
+FlowActionContext 归为 context，不作为纯模型误套上述规则。
+
+仓库内采用同步更新 FQCN 和重新编译的迁移方式。外部插件需同步升级；已有 UI 发布
+快照固定了 Provider 制品摘要，依赖字节码的默认摘要可能随重新编译变化，发布时仍需
+按现有版本治理机制核对，不能把源码迁包视为部署时无条件兼容。

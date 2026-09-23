@@ -25,11 +25,22 @@ public class EntityActionRuleEvaluator {
     private final List<EntityActionRuleConditionProvider> conditionProviders;
     private final CurrentProcessTaskAssigneeLookup assigneeLookup;
 
+    /**
+     * 初始化实体动作规则求值器，保存构造参数供后续方法使用。
+     *
+     * @param conditionProviders 条件提供者集合，保存在对象中供后续校验、查询或展示
+     */
     public EntityActionRuleEvaluator(
             List<EntityActionRuleConditionProvider> conditionProviders) {
         this(conditionProviders, (CurrentProcessTaskAssigneeLookup) null);
     }
 
+    /**
+     * 初始化实体动作规则求值器，保存构造参数供后续方法使用。
+     *
+     * @param conditionProviders 条件提供者集合依赖，保存到当前对象供后续业务方法调用
+     * @param assigneeLookup 办理人查找依赖，保存到当前对象供后续业务方法调用
+     */
     public EntityActionRuleEvaluator(
             List<EntityActionRuleConditionProvider> conditionProviders,
             CurrentProcessTaskAssigneeLookup assigneeLookup) {
@@ -37,6 +48,12 @@ public class EntityActionRuleEvaluator {
         this.assigneeLookup = assigneeLookup;
     }
 
+    /**
+     * 初始化实体动作规则求值器，保存构造参数供后续方法使用。
+     *
+     * @param conditionProviders 条件提供者集合，保存在对象中供后续校验、查询或展示
+     * @param assigneeLookup 办理人查找，保存在对象中供后续校验、查询或展示
+     */
     @Autowired
     public EntityActionRuleEvaluator(
             List<EntityActionRuleConditionProvider> conditionProviders,
@@ -120,6 +137,16 @@ public class EntityActionRuleEvaluator {
         return "USER_FIELD".equalsIgnoreCase(type);
     }
 
+    /**
+     * 求值节点，并将结果传给后续步骤。
+     *
+     * @param node 节点，作为 {@code evaluateGroup} 的输入影响后续处理
+     * @param row 行，作为 {@code evaluateGroup} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param currentApprover 当前审批人，作为 {@code evaluateGroup} 的输入影响后续处理
+     * @return 节点条件成立时为 true，否则为 false
+     */
     private boolean evaluateNode(
             EntityActionRuleDTO.RuleNode node,
             EntityDataDTO row,
@@ -149,6 +176,15 @@ public class EntityActionRuleEvaluator {
         };
     }
 
+    /**
+     * 求值自定义，并将结果传给后续步骤。
+     *
+     * @param node 节点，作为 {@code evaluate} 的输入影响后续处理
+     * @param row 行，作为 {@code evaluate} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @return 自定义条件成立时为 true，否则为 false
+     */
     private boolean evaluateCustom(
             EntityActionRuleDTO.RuleNode node,
             EntityDataDTO row,
@@ -161,6 +197,16 @@ public class EntityActionRuleEvaluator {
                 .orElse(false);
     }
 
+    /**
+     * 求值分组，并将结果传给后续步骤。
+     *
+     * @param node 节点，供本方法求值分组时使用
+     * @param row 行，供本方法求值分组时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @param currentApprover 当前审批人，供本方法求值分组时使用
+     * @return 分组条件成立时为 true，否则为 false
+     */
     private boolean evaluateGroup(
             EntityActionRuleDTO.RuleNode node,
             EntityDataDTO row,
@@ -177,6 +223,15 @@ public class EntityActionRuleEvaluator {
         return children.stream().allMatch(child -> evaluateNode(child, row, user, statusCategory, currentApprover));
     }
 
+    /**
+     * 求值关系，并将结果传给后续步骤。
+     *
+     * @param relation 关系，供本方法求值关系时使用
+     * @param row 行，作为 {@code matchesUser} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param currentApprover 当前审批人，供本方法求值关系时使用
+     * @return 关系条件成立时为 true，否则为 false
+     */
     private boolean evaluateRelation(String relation, EntityDataDTO row, SysUser user, boolean currentApprover) {
         if (row == null || user == null || relation == null) {
             return false;
@@ -193,6 +248,13 @@ public class EntityActionRuleEvaluator {
         };
     }
 
+    /**
+     * 判断是否匹配用户；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否匹配用户的原始输入，结果供调用方继续使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 用户条件成立时为 true，否则为 false
+     */
     private boolean matchesUser(String value, SysUser user) {
         return StringUtils.hasText(value)
                 && (Objects.equals(value, user.getId()) || Objects.equals(value, user.getUsername()));
@@ -200,16 +262,32 @@ public class EntityActionRuleEvaluator {
 
     /**
      * 会签时实体只记其中一个办理人，回查未完成待办判断当前用户是否真正持有任务。
+     *
+     * @param row 行，作为 {@code assigneeLookup.isCurrentAssignee} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return {@code live}流程任务办理人条件成立时为 true，否则为 false
      */
     private boolean isLiveProcessTaskAssignee(EntityDataDTO row, SysUser user) {
         return assigneeLookup != null && assigneeLookup.isCurrentAssignee(row, user);
     }
 
-    /** 新条件只读取独立投影；缺失投影不能猜测为运行或完成。 */
+    /**
+     * 新条件只读取独立投影；缺失投影不能猜测为运行或完成。
+     *
+     * @param row 行，供本方法处理生命周期状态时使用
+     * @return 处理后的生命周期状态文本，供调用方比较或展示
+     */
     private String lifecycleState(EntityDataDTO row) {
         return row == null ? "NOT_STARTED" : row.getProcessStatus();
     }
 
+    /**
+     * 生成状态文本，供后续匹配或展示。
+     *
+     * @param row 行，供本方法处理状态时使用
+     * @param statusCategory 状态类别，决定后续状态或结果的归类
+     * @return 处理后的状态文本，供调用方比较或展示
+     */
     private String processState(EntityDataDTO row, String statusCategory) {
         if (row == null || !StringUtils.hasText(row.getProcessInstanceId())) {
             return "NOT_STARTED";
@@ -226,6 +304,13 @@ public class EntityActionRuleEvaluator {
         return "COMPLETED";
     }
 
+    /**
+     * 读取字段；查询结果供调用方展示或继续处理。
+     *
+     * @param row 行，作为 {@code firstPresent} 的输入影响后续处理
+     * @param field 字段，供本方法读取字段时使用
+     * @return 读取后的字段结果，供调用方继续处理
+     */
     private Object readField(EntityDataDTO row, String field) {
         if (row == null || field == null) {
             return null;
@@ -254,6 +339,13 @@ public class EntityActionRuleEvaluator {
         };
     }
 
+    /**
+     * 读取用户字段；查询结果供调用方展示或继续处理。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @param field 字段，供本方法读取用户字段时使用
+     * @return 读取后的用户字段结果，供调用方继续处理
+     */
     private Object readUserField(SysUser user, String field) {
         if (user == null || field == null) {
             return null;
@@ -268,6 +360,14 @@ public class EntityActionRuleEvaluator {
         };
     }
 
+    /**
+     * 处理首个存在，并将结果传给后续步骤。
+     *
+     * @param data 数据，后续用于处理首个存在并传递处理结果
+     * @param extData {@code ext}数据，供本方法处理首个存在时使用
+     * @param field 字段，作为 {@code data.get} 的输入影响后续处理
+     * @return 处理后的首个存在结果，供调用方继续处理
+     */
     private Object firstPresent(Map<String, Object> data, Map<String, Object> extData, String field) {
         if (data != null && data.containsKey(field)) {
             return data.get(field);
@@ -275,6 +375,14 @@ public class EntityActionRuleEvaluator {
         return extData == null ? null : extData.get(field);
     }
 
+    /**
+     * 比较实体动作规则求值器；结果供调用方的后续步骤使用。
+     *
+     * @param actual 实际，作为 {@code isEmpty} 的输入影响后续处理
+     * @param operator 操作人，供本方法比较实体动作规则求值器时使用
+     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
+     * @return 实体动作规则求值器条件成立时为 true，否则为 false
+     */
     private boolean compare(Object actual, String operator, Object expected) {
         String op = operator == null ? "EQ" : operator.toUpperCase(Locale.ROOT);
         if ("EMPTY".equals(op)) {
@@ -303,6 +411,13 @@ public class EntityActionRuleEvaluator {
         };
     }
 
+    /**
+     * 判断相等值条件是否成立，供调用方选择后续分支。
+     *
+     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
+     * @param expected 预期，供本方法处理相等值时使用
+     * @return 相等值条件成立时为 true，否则为 false
+     */
     private boolean equalsValue(Object actual, Object expected) {
         if (actual == null || expected == null) {
             return actual == expected;
@@ -317,6 +432,13 @@ public class EntityActionRuleEvaluator {
         return String.valueOf(actual).equals(String.valueOf(expected));
     }
 
+    /**
+     * 判断是否包含实体动作规则求值器；判断结果决定调用方的后续分支。
+     *
+     * @param actual 实际，供本方法判断是否包含实体动作规则求值器时使用
+     * @param expected 预期，供本方法判断是否包含实体动作规则求值器时使用
+     * @return 实体动作规则求值器条件成立时为 true，否则为 false
+     */
     private boolean contains(Object actual, Object expected) {
         if (actual instanceof Collection<?> collection) {
             return collection.stream().anyMatch(value -> equalsValue(value, expected));
@@ -325,7 +447,13 @@ public class EntityActionRuleEvaluator {
                 && String.valueOf(actual).contains(String.valueOf(expected));
     }
 
-    /** 集合型实际值（如当前用户 roleIds）按任一交集解释 IN。 */
+    /**
+     * 集合型实际值（如当前用户 roleIds）按任一交集解释 IN。
+     *
+     * @param actual 实际，供本方法处理{@code intersects}时使用
+     * @param expected 预期，作为 {@code toCollection} 的输入影响后续处理
+     * @return {@code intersects}条件成立时为 true，否则为 false
+     */
     private boolean intersects(Object actual, Object expected) {
         Collection<?> expectedValues = toCollection(expected);
         Collection<?> actualValues = actual instanceof Collection<?> values
@@ -335,6 +463,13 @@ public class EntityActionRuleEvaluator {
                         equalsValue(left, right)));
     }
 
+    /**
+     * 比较{@code ordered}；结果供调用方的后续步骤使用。
+     *
+     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
+     * @param expected 预期，供本方法比较{@code ordered}时使用
+     * @return 比较后的{@code ordered}结果，供调用方继续处理
+     */
     private int compareOrdered(Object actual, Object expected) {
         if (actual instanceof Number || expected instanceof Number) {
             try {
@@ -349,6 +484,12 @@ public class EntityActionRuleEvaluator {
         return String.valueOf(actual).compareTo(String.valueOf(expected));
     }
 
+    /**
+     * 判断是否空；判断结果决定调用方的后续分支。
+     *
+     * @param value 待判断是否空的原始输入，结果供调用方继续使用
+     * @return 空条件成立时为 true，否则为 false
+     */
     private boolean isEmpty(Object value) {
         if (value == null) {
             return true;
@@ -365,6 +506,12 @@ public class EntityActionRuleEvaluator {
         return false;
     }
 
+    /**
+     * 转换为集合；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为集合的原始输入，结果供调用方继续使用
+     * @return {@code collection<?>}集合，供调用方遍历或展示
+     */
     private Collection<?> toCollection(Object value) {
         if (value instanceof Collection<?> collection) {
             return collection;

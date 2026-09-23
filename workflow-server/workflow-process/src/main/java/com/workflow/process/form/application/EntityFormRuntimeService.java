@@ -2,8 +2,8 @@ package com.workflow.process.form.application;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.logging.LogValue;
-import com.workflow.contracts.ui.runtime.UiRuntimePurpose;
-import com.workflow.contracts.ui.runtime.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -58,6 +58,11 @@ public class EntityFormRuntimeService {
 
     /**
      * 根据流程发布上下文解析节点表单。
+     *
+     * @param nodeForm 节点表单，供本方法读取绑定时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于读取绑定时定位或关联目标
+     * @param purpose 用途，供本方法读取绑定时使用
+     * @return 符合条件的实体表单结果，供调用方继续处理
      */
     public EntityForm getByBinding(
             ProcessNodeForm nodeForm,
@@ -74,6 +79,10 @@ public class EntityFormRuntimeService {
     /**
      * 使用包含可选活动任务主体的可信解析上下文读取节点表单。
      * ACTIVE_TASK 页面必须传 task/process/record 坐标，签发的令牌才可用于审批按钮。
+     *
+     * @param nodeForm 节点表单，作为 {@code resolveByBinding} 的输入影响后续处理
+     * @param context 执行上下文，向后续绑定步骤传递身份、配置或状态
+     * @return 符合条件的实体表单结果，供调用方继续处理
      */
     public EntityForm getByBinding(
             ProcessNodeForm nodeForm,
@@ -85,6 +94,11 @@ public class EntityFormRuntimeService {
 
     /**
      * 返回包含原始钉版与有效热修复身份的解析结果。
+     *
+     * @param nodeForm 节点表单，供本方法解析绑定时使用
+     * @param processVersionHistoryId 流程版本历史ID，后续用于解析绑定时定位或关联目标
+     * @param purpose 用途，供本方法解析绑定时使用
+     * @return 解析后的绑定结果，供调用方继续处理
      */
     public ResolvedEntityFormRelease resolveByBinding(
             ProcessNodeForm nodeForm,
@@ -98,7 +112,13 @@ public class EntityFormRuntimeService {
                         nodeForm == null ? null : nodeForm.getNodeId()));
     }
 
-    /** 使用调用方已从流程引擎/待办读取的可信上下文解析并签发令牌。 */
+    /**
+     * 使用调用方已从流程引擎/待办读取的可信上下文解析并签发令牌。
+     *
+     * @param nodeForm 节点表单，作为 {@code LogValue.safe} 的输入影响后续处理
+     * @param context 执行上下文，向后续绑定步骤传递身份、配置或状态
+     * @return 解析后的绑定结果，供调用方继续处理
+     */
     public ResolvedEntityFormRelease resolveByBinding(
             ProcessNodeForm nodeForm,
             UiRuntimeResolutionContext context) {
@@ -180,6 +200,9 @@ public class EntityFormRuntimeService {
 
     /**
      * 校验最新流程版本的表单钉版，已批准热修复不视为过期。
+     *
+     * @param nodeForm 节点表单，作为 {@code releaseService.active} 的输入影响后续处理
+     * @param processVersionHistoryId 流程版本历史ID，后续用于校验并获取当前绑定新数据时定位或关联目标
      */
     public void requireCurrentBindingForNewData(
             ProcessNodeForm nodeForm,

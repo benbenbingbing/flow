@@ -7,7 +7,7 @@ import com.workflow.core.result.PageResult;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.process.definition.api.request.ProcessDefinitionQueryDTO;
 import com.workflow.process.definition.api.response.ProcessVersionHistoryDTO;
-import com.workflow.contracts.migration.ConfigMigrationPublishRequest;
+import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.process.definition.api.request.ProcessPublishRequest;
 import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;

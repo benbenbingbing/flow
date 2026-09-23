@@ -35,11 +35,23 @@ public class ProjectCustomCcRecipientResolver
     private static final String FALLBACK_TO_OPERATOR =
             "fallbackToOperator";
 
+    /**
+     * 生成编码文本，供后续匹配或展示。
+     *
+     * @return 处理后的编码文本，供调用方比较或展示
+     */
     @Override
     public String code() {
         return CODE;
     }
 
+    /**
+     * 解析项目自定义抄送{@code recipient}解析器；输出作为后续校验或处理的输入。
+     *
+     * @param context 执行上下文，向后续项目自定义抄送{@code recipient}解析器步骤传递身份、配置或状态
+     * @param parameters 参数集合，供本方法解析项目自定义抄送{@code recipient}解析器时使用
+     * @return 项目自定义抄送{@code recipient}解析器集合，供调用方遍历或展示
+     */
     @Override
     public List<String> resolve(
             CcRuntimeContext context,

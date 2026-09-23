@@ -32,7 +32,11 @@ public interface ProcessNodeApprovalOptionMapper
      *
      * @param approvalConfigId 审批配置ID
      */
-    /** 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。 */
+    /**
+     * 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。
+     *
+     * @param approvalConfigId 审批配置ID，后续用于删除审批配置ID时定位或关联目标
+     */
     default void deleteByApprovalConfigId(String approvalConfigId) {
         delete(Wrappers.<ProcessNodeApprovalOption>lambdaQuery()
                 .eq(ProcessNodeApprovalOption::getApprovalConfigId, approvalConfigId));

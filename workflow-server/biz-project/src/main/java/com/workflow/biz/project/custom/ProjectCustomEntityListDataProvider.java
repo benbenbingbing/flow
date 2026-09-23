@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.entity.list.DataScopePlan;
+import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
-import com.workflow.contracts.entity.list.EntityListQueryFields;
-import com.workflow.contracts.entity.list.EntityListRuntimeContext;
+import com.workflow.contracts.entity.list.model.EntityListQueryFields;
+import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -30,16 +30,34 @@ public class ProjectCustomEntityListDataProvider
     public static final String CODE =
             "PROJECT_CUSTOM_LIST_QUERY";
 
+    /**
+     * 读取编码；查询结果供调用方展示或继续处理。
+     *
+     * @return 读取后的编码文本，供调用方比较或展示
+     */
     @Override
     public String getCode() {
         return CODE;
     }
 
+    /**
+     * 读取用户可见名称，供页面和操作日志展示。
+     *
+     * @return 读取后的展示名称文本，供调用方比较或展示
+     */
     @Override
     public String getDisplayName() {
         return "项目自定义列表查询";
     }
 
+    /**
+     * 查询项目自定义实体列表数据提供者；查询结果供调用方展示或继续处理。
+     *
+     * @param context 执行上下文，向后续项目自定义实体列表数据提供者步骤传递身份、配置或状态
+     * @param dataScopePlan 数据作用域方案，供本方法查询项目自定义实体列表数据提供者时使用
+     * @param query 查询，供本方法查询项目自定义实体列表数据提供者时使用
+     * @return 查询后的项目自定义实体列表数据提供者结果，供调用方继续处理
+     */
     @Override
     public Object query(
             EntityListRuntimeContext context,
@@ -108,6 +126,12 @@ public class ProjectCustomEntityListDataProvider
                 pageSize);
     }
 
+    /**
+     * 处理{@code sample}记录，并将结果传给后续步骤。
+     *
+     * @param context 执行上下文，向后续{@code sample}记录步骤传递身份、配置或状态
+     * @return 处理后的{@code sample}记录结果，供调用方继续处理
+     */
     private EntityDataDTO sampleRecord(
             EntityListRuntimeContext context) {
         String entityCode =
@@ -142,6 +166,13 @@ public class ProjectCustomEntityListDataProvider
         return result;
     }
 
+    /**
+     * 处理正数{@code long}，并将结果传给后续步骤。
+     *
+     * @param value 待处理正数{@code long}的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的正数{@code long}结果，供调用方继续处理
+     */
     private long positiveLong(
             Object value,
             long fallback) {

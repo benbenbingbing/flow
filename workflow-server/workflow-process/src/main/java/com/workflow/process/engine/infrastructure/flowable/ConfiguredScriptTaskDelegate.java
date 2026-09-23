@@ -10,6 +10,12 @@ import org.springframework.stereotype.Component;
 @Component("configuredScriptTaskDelegate")
 public class ConfiguredScriptTaskDelegate implements JavaDelegate {
 
+    /**
+     * 执行已配置{@code script}任务委托，并将结果传给后续步骤。
+     *
+     * @param execution 执行，供本方法执行已配置{@code script}任务委托时使用
+     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     */
     @Override
     public void execute(DelegateExecution execution) {
         throw new IllegalStateException(

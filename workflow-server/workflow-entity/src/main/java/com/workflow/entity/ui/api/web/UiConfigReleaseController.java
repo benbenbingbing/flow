@@ -2,11 +2,11 @@ package com.workflow.entity.ui.api.web;
 
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
-import com.workflow.contracts.embed.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 
 import com.workflow.core.result.Result;
 import com.workflow.core.result.PageResult;
@@ -54,6 +54,7 @@ public class UiConfigReleaseController {
      * @param formId    表单ID
      * @param releaseId 指定发布ID（可选）
      * @param version   指定版本号（可选）
+     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 运行态发布快照
      */
     @GetMapping("/entity-forms/{formId}/runtime-release")
@@ -102,6 +103,10 @@ public class UiConfigReleaseController {
 
     /**
      * 撤销表单自身已保存但尚未发布的修改，外部依赖漂移保持不变。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理丢弃表单草稿
+     * @return 处理后的丢弃表单草稿结果，供调用方继续处理
      */
     @PostMapping("/entity-forms/{id}/discard-draft")
     public Result<UiConfigDraftDiscardResultDTO> discardFormDraft(
@@ -140,6 +145,10 @@ public class UiConfigReleaseController {
 
     /**
      * 预检表单普通发布或兼容热修复影响范围。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理预览表单发布
+     * @return 处理后的预览表单发布结果，供调用方继续处理
      */
     @PostMapping("/entity-forms/{id}/publish-preview")
     public Result<UiConfigPublishPreviewDTO> previewFormPublish(
@@ -165,6 +174,14 @@ public class UiConfigReleaseController {
                 releaseService.releases(UiConfigReleaseService.FORM, id));
     }
 
+    /**
+     * 处理表单发布版本{@code summaries}，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 处理后的表单发布版本{@code summaries}结果，供调用方继续处理
+     */
     @GetMapping("/entity-forms/{id}/release-summaries")
     public Result<PageResult<UiConfigReleaseSummaryDTO>> formReleaseSummaries(
             @PathVariable String id,
@@ -183,6 +200,7 @@ public class UiConfigReleaseController {
      *
      * @param id        表单ID
      * @param releaseId 发布记录ID
+     * @param request 本次请求，后续经校验后用于激活表单
      * @return 激活后的发布记录
      */
     @PostMapping("/entity-forms/{id}/releases/{releaseId}/activate")
@@ -202,6 +220,13 @@ public class UiConfigReleaseController {
                         : request.getExpectedActiveReleaseId()));
     }
 
+    /**
+     * 处理预览表单{@code activation}，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param releaseId 发布版本ID，后续用于处理预览表单{@code activation}时定位或关联目标
+     * @return 处理后的预览表单{@code activation}结果，供调用方继续处理
+     */
     @GetMapping("/entity-forms/{id}/releases/{releaseId}/activation-preview")
     public Result<UiConfigActivationPreviewDTO> previewFormActivation(
             @PathVariable String id,
@@ -215,6 +240,11 @@ public class UiConfigReleaseController {
 
     /**
      * 按发布顺序撤回表单热修复 rollout。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param releaseId 发布版本ID，后续用于处理回滚表单热修复时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理回滚表单热修复
+     * @return 处理后的回滚表单热修复结果，供调用方继续处理
      */
     @PostMapping("/entity-forms/{id}/releases/{releaseId}/rollback-hotfix")
     @RequiresPermission("entity:ui-config:hotfix:rollback")
@@ -258,6 +288,10 @@ public class UiConfigReleaseController {
 
     /**
      * 撤销列表自身已保存但尚未发布的修改，外部依赖漂移保持不变。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理丢弃列表草稿
+     * @return 处理后的丢弃列表草稿结果，供调用方继续处理
      */
     @PostMapping("/entity-list-config/{id}/discard-draft")
     public Result<UiConfigDraftDiscardResultDTO> discardListDraft(
@@ -296,6 +330,10 @@ public class UiConfigReleaseController {
 
     /**
      * 预检列表普通发布的差异与风险。列表不支持新建热修复。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param request 本次请求，后续经校验后用于处理预览列表发布
+     * @return 处理后的预览列表发布结果，供调用方继续处理
      */
     @PostMapping("/entity-list-config/{id}/publish-preview")
     public Result<UiConfigPublishPreviewDTO> previewListPublish(
@@ -321,6 +359,14 @@ public class UiConfigReleaseController {
                 releaseService.releases(UiConfigReleaseService.LIST, id));
     }
 
+    /**
+     * 列出发布版本{@code summaries}；查询结果供调用方展示或继续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
+     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
+     * @return 符合条件的界面配置发布版本摘要结果，供调用方继续处理
+     */
     @GetMapping("/entity-list-config/{id}/release-summaries")
     public Result<PageResult<UiConfigReleaseSummaryDTO>> listReleaseSummaries(
             @PathVariable String id,
@@ -339,6 +385,7 @@ public class UiConfigReleaseController {
      *
      * @param id        列表配置ID
      * @param releaseId 发布记录ID
+     * @param request 本次请求，后续经校验后用于激活界面配置发布版本列表
      * @return 激活后的发布记录
      */
     @PostMapping("/entity-list-config/{id}/releases/{releaseId}/activate")
@@ -358,6 +405,13 @@ public class UiConfigReleaseController {
                         : request.getExpectedActiveReleaseId()));
     }
 
+    /**
+     * 处理预览列表{@code activation}，并将结果传给后续步骤。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param releaseId 发布版本ID，后续用于处理预览列表{@code activation}时定位或关联目标
+     * @return 处理后的预览列表{@code activation}结果，供调用方继续处理
+     */
     @GetMapping(
             "/entity-list-config/{id}/releases/{releaseId}/activation-preview")
     public Result<UiConfigActivationPreviewDTO> previewListActivation(
@@ -370,6 +424,14 @@ public class UiConfigReleaseController {
                 releaseId));
     }
 
+    /**
+     * 恢复列表草稿；结果供调用方的后续步骤使用。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param releaseId 发布版本ID，后续用于恢复列表草稿时定位或关联目标
+     * @param request 本次请求，后续经校验后用于恢复列表草稿
+     * @return 恢复后的列表草稿结果，供调用方继续处理
+     */
     @PostMapping(
             "/entity-list-config/{id}/releases/{releaseId}/restore-draft")
     public Result<EntityListConfigDTO> restoreListDraft(
@@ -386,6 +448,11 @@ public class UiConfigReleaseController {
 
     /**
      * 兼容撤回升级前已经存在的列表热修复。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param releaseId 发布版本ID，后续用于处理回滚列表热修复时定位或关联目标
+     * @param request 本次请求，后续经校验后用于处理回滚列表热修复
+     * @return 处理后的回滚列表热修复结果，供调用方继续处理
      */
     @PostMapping(
             "/entity-list-config/{id}/releases/{releaseId}/rollback-hotfix")

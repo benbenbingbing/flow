@@ -49,6 +49,14 @@ public class PermissionRuleMatcher {
         this(orgMapper, userGroupMapper, matchProviders, null);
     }
 
+    /**
+     * 初始化权限规则匹配器，保存构造参数供后续方法使用。
+     *
+     * @param orgMapper 组织映射器依赖，保存到当前对象供后续业务方法调用
+     * @param userGroupMapper 用户分组映射器依赖，保存到当前对象供后续业务方法调用
+     * @param matchProviders 匹配提供者集合依赖，保存到当前对象供后续业务方法调用
+     * @param sqlFragmentCompiler SQL{@code fragment}{@code compiler}依赖，保存到当前对象供后续业务方法调用
+     */
     @org.springframework.beans.factory.annotation.Autowired
     public PermissionRuleMatcher(
             SysOrganizationMapper orgMapper,
@@ -107,6 +115,14 @@ public class PermissionRuleMatcher {
         match.getConditions().forEach(this::validateCondition);
     }
 
+    /**
+     * 校验节点；不满足约束时阻止后续处理。
+     *
+     * @param node 节点，作为 {@code validateCondition} 的输入影响后续处理
+     * @param depth 深度，供本方法校验节点时使用
+     * @param count 数量，供本方法校验节点时使用
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateNode(
             MatchConfigDTO.MatchNodeDTO node,
             int depth,
@@ -132,6 +148,12 @@ public class PermissionRuleMatcher {
         validateCondition(node.getCondition());
     }
 
+    /**
+     * 校验条件；不满足约束时阻止后续处理。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     */
     private void validateCondition(MatchConfigDTO.MatchConditionDTO condition) {
         if (condition == null || condition.getScopeType() == null
                 || condition.getScopeType().isBlank()) {
@@ -163,6 +185,13 @@ public class PermissionRuleMatcher {
         }
     }
 
+    /**
+     * 判断是否匹配节点；判断结果决定调用方的后续分支。
+     *
+     * @param node 节点，作为 {@code matchesCondition} 的输入影响后续处理
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 节点条件成立时为 true，否则为 false
+     */
     private boolean matchesNode(MatchConfigDTO.MatchNodeDTO node, SysUser user) {
         if (node == null) {
             return false;
@@ -180,6 +209,14 @@ public class PermissionRuleMatcher {
         return matchesCondition(node.getCondition(), user);
     }
 
+    /**
+     * 判断是否匹配{@code conditions}；判断结果决定调用方的后续分支。
+     *
+     * @param logic {@code logic}，供本方法判断是否匹配{@code conditions}时使用
+     * @param conditions {@code conditions}，供本方法判断是否匹配{@code conditions}时使用
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return {@code conditions}条件成立时为 true，否则为 false
+     */
     private boolean matchesConditions(
             String logic,
             List<MatchConfigDTO.MatchConditionDTO> conditions,
@@ -190,6 +227,13 @@ public class PermissionRuleMatcher {
         return conditions.stream().anyMatch(condition -> matchesCondition(condition, user));
     }
 
+    /**
+     * 判断是否匹配条件；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 条件条件成立时为 true，否则为 false
+     */
     private boolean matchesCondition(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
         if (condition == null || condition.getScopeType() == null) {
             return false;
@@ -217,6 +261,9 @@ public class PermissionRuleMatcher {
 
     /**
      * 指定用户既可能保存系统用户 ID，也可能保存用户名（选择器 value-key 或历史数据）。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 权限规则匹配器集合，供调用方遍历或展示
      */
     private List<String> userIdentities(SysUser user) {
         LinkedHashSet<String> identities = new LinkedHashSet<>();
@@ -229,6 +276,13 @@ public class PermissionRuleMatcher {
         return List.copyOf(identities);
     }
 
+    /**
+     * 判断是否匹配集合；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param currentIds 当前ID 集合，供本方法判断是否匹配集合时使用
+     * @return 集合条件成立时为 true，否则为 false
+     */
     private boolean matchesCollection(
             MatchConfigDTO.MatchConditionDTO condition,
             List<String> currentIds) {
@@ -243,6 +297,13 @@ public class PermissionRuleMatcher {
         return targetIds.stream().anyMatch(currentIds::contains);
     }
 
+    /**
+     * 判断是否匹配组织；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param currentOrganizationId 当前组织ID，后续用于判断是否匹配组织时定位或关联目标
+     * @return 组织条件成立时为 true，否则为 false
+     */
     private boolean matchesOrganization(
             MatchConfigDTO.MatchConditionDTO condition,
             String currentOrganizationId) {
@@ -264,6 +325,13 @@ public class PermissionRuleMatcher {
                         || path.contains("/" + targetId + "/"));
     }
 
+    /**
+     * 判断是否匹配自定义；判断结果决定调用方的后续分支。
+     *
+     * @param condition 筛选条件，后续与权限约束合并为查询条件
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 自定义条件成立时为 true，否则为 false
+     */
     private boolean matchesCustom(
             MatchConfigDTO.MatchConditionDTO condition,
             SysUser user) {
@@ -275,6 +343,13 @@ public class PermissionRuleMatcher {
                 .orElse(false);
     }
 
+    /**
+     * 生成规范化文本，供后续匹配或展示。
+     *
+     * @param value 待处理规范化的原始输入，结果供调用方继续使用
+     * @param fallback 兜底，主值不可用时供后续处理兜底
+     * @return 处理后的规范化文本，供调用方比较或展示
+     */
     private String normalized(String value, String fallback) {
         return value == null || value.isBlank()
                 ? fallback

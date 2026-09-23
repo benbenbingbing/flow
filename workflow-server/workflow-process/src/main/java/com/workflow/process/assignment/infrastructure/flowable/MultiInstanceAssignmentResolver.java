@@ -9,8 +9,8 @@ import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGr
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.contracts.identity.resolver.PersonResolveRequest;
-import com.workflow.contracts.identity.resolver.PersonResolveUsage;
+import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
+import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
@@ -47,8 +47,16 @@ class MultiInstanceAssignmentResolver {
     /**
      * 解析目标节点的启用本地用户名，并保持配置或解析器首次出现顺序。
      *
+     * @param processConfigId 流程配置ID，后续用于解析多实例分配解析器时定位或关联目标
+     * @param nodeId 节点ID，后续用于解析多实例分配解析器时定位或关联目标
+     * @param nodeName 节点名称，后续用于解析多实例分配解析器时匹配或展示
+     * @param config 配置内容，决定后续多实例分配解析器的处理规则
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
      * @param assignmentVersion 缺省历史配置为 1，统一基础配置为 2
      * @param multiInstanceSource 生效规则源是否真实为多实例 UserTask
+     * @return 多实例分配解析器集合，供调用方遍历或展示
      */
     List<String> resolve(
             String processConfigId,
@@ -103,7 +111,18 @@ class MultiInstanceAssignmentResolver {
                 new LinkedHashSet<>(legacy.roleKeys()));
     }
 
-    /** v2 普通任务与多人办理共同使用的基础办理人投影。 */
+    /**
+     * v2 普通任务与多人办理共同使用的基础办理人投影。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析基础分配时定位或关联目标
+     * @param nodeId 节点ID，后续用于解析基础分配时定位或关联目标
+     * @param nodeName 节点名称，后续用于解析基础分配时匹配或展示
+     * @param config 配置内容，决定后续基础分配的处理规则
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @return 多实例分配解析器集合，供调用方遍历或展示
+     */
     private List<String> resolveBaseAssignment(
             String processConfigId,
             String nodeId,
@@ -150,7 +169,19 @@ class MultiInstanceAssignmentResolver {
         return resolveStaticAssignment(users, groups, roles);
     }
 
-    /** 受控解析器在真实多实例语境中始终使用 MULTI_INSTANCE 用途。 */
+    /**
+     * 受控解析器在真实多实例语境中始终使用 MULTI_INSTANCE 用途。
+     *
+     * @param processConfigId 流程配置ID，后续用于解析解析器时定位或关联目标
+     * @param nodeId 节点ID，后续用于解析解析器时定位或关联目标
+     * @param nodeName 节点名称，后续用于解析解析器时匹配或展示
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置
+     * @param resolverCode 解析器编码，后续用于解析解析器时定位或关联目标
+     * @param extraParams 附加参数，供本方法解析解析器时使用
+     * @return 多实例分配解析器集合，供调用方遍历或展示
+     */
     private List<String> resolveWithResolver(
             String processConfigId,
             String nodeId,
@@ -195,6 +226,14 @@ class MultiInstanceAssignmentResolver {
                                 extraParams)));
     }
 
+    /**
+     * 解析{@code static}分配；输出作为后续校验或处理的输入。
+     *
+     * @param users 用户集合，作为 {@code addAll} 的输入影响后续处理
+     * @param groups 分组集合，供本方法解析{@code static}分配时使用
+     * @param roles 角色集合，供本方法解析{@code static}分配时使用
+     * @return 多实例分配解析器集合，供调用方遍历或展示
+     */
     private List<String> resolveStaticAssignment(
             LinkedHashSet<String> users,
             LinkedHashSet<String> groups,
@@ -234,6 +273,13 @@ class MultiInstanceAssignmentResolver {
         return resolveEnabledUsernames(users);
     }
 
+    /**
+     * 添加候选人分组集合；结果供后续流程传递或持久化。
+     *
+     * @param groups 分组集合，供本方法添加候选人分组集合时使用
+     * @param roles 角色集合，供本方法添加候选人分组集合时使用
+     * @param raw 待添加候选人分组集合的原始输入，结果供调用方继续使用
+     */
     private void addCandidateGroups(
             Set<String> groups,
             Set<String> roles,
@@ -249,6 +295,12 @@ class MultiInstanceAssignmentResolver {
         }
     }
 
+    /**
+     * 添加多实例分配解析器全部；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加多实例分配解析器全部时使用
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     */
     private void addAll(
             Collection<String> target,
             Collection<String> values) {
@@ -257,7 +309,12 @@ class MultiInstanceAssignmentResolver {
         }
     }
 
-    /** 将用户名或用户 ID 统一映射为启用且未删除的本地用户名。 */
+    /**
+     * 将用户名或用户 ID 统一映射为启用且未删除的本地用户名。
+     *
+     * @param keys 键集合，供本方法解析启用{@code usernames}时使用
+     * @return 多实例分配解析器集合，供调用方遍历或展示
+     */
     private List<String> resolveEnabledUsernames(
             Collection<String> keys) {
         LinkedHashSet<String> usernames = new LinkedHashSet<>();
@@ -280,6 +337,12 @@ class MultiInstanceAssignmentResolver {
         return new ArrayList<>(usernames);
     }
 
+    /**
+     * 判断启用条件是否成立，供调用方选择后续分支。
+     *
+     * @param user 目标用户信息，后续用于权限计算或业务规则判断
+     * @return 启用条件成立时为 true，否则为 false
+     */
     private boolean enabled(SysUser user) {
         return user != null
                 && SysUser.Status.ENABLED.getValue().equals(user.getStatus())
@@ -287,18 +350,36 @@ class MultiInstanceAssignmentResolver {
                 && StringUtils.hasText(user.getUsername());
     }
 
+    /**
+     * 判断启用条件是否成立，供调用方选择后续分支。
+     *
+     * @param group 分组，供本方法处理启用时使用
+     * @return 启用条件成立时为 true，否则为 false
+     */
     private boolean enabled(SysGroup group) {
         return group != null
                 && SysGroup.Status.ENABLED.getValue().equals(group.getStatus())
                 && !Integer.valueOf(1).equals(group.getDeleted());
     }
 
+    /**
+     * 判断启用条件是否成立，供调用方选择后续分支。
+     *
+     * @param role 角色，供本方法处理启用时使用
+     * @return 启用条件成立时为 true，否则为 false
+     */
     private boolean enabled(SysRole role) {
         return role != null
                 && SysRole.Status.ENABLED.getValue().equals(role.getStatus())
                 && !Integer.valueOf(1).equals(role.getDeleted());
     }
 
+    /**
+     * 添加CSV；结果供后续流程传递或持久化。
+     *
+     * @param target 目标，供本方法添加CSV时使用
+     * @param raw 待添加CSV的原始输入，结果供调用方继续使用
+     */
     private void addCsv(Set<String> target, Object raw) {
         if (raw instanceof Collection<?> values) {
             values.stream()
@@ -319,6 +400,12 @@ class MultiInstanceAssignmentResolver {
         }
     }
 
+    /**
+     * 规范化分配类型；输出作为后续校验或处理的输入。
+     *
+     * @param raw 待规范化分配类型的原始输入，结果供调用方继续使用
+     * @return 规范化后的分配类型文本，供调用方比较或展示
+     */
     private String normalizeAssignmentType(Object raw) {
         String type = text(raw);
         if (!StringUtils.hasText(type)) {
@@ -329,12 +416,24 @@ class MultiInstanceAssignmentResolver {
                 ? "resolver" : normalized;
     }
 
+    /**
+     * 将动态值转换为键值映射，供后续字段读取和校验。
+     *
+     * @param value 待处理映射值的原始输入，结果供调用方继续使用
+     * @return 映射值键值结果，供调用方继续处理
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> mapValue(Object value) {
         return value instanceof Map<?, ?>
                 ? (Map<String, Object>) value : Map.of();
     }
 
+    /**
+     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
+     *
+     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
+     * @return 处理后的首个文本文本，供调用方比较或展示
+     */
     private String firstText(Object... values) {
         for (Object value : values) {
             String text = text(value);
@@ -345,10 +444,22 @@ class MultiInstanceAssignmentResolver {
         return null;
     }
 
+    /**
+     * 将输入转换为文本，供后续校验、映射或展示使用。
+     *
+     * @param value 待处理文本的原始输入，结果供调用方继续使用
+     * @return 处理后的文本文本，供调用方比较或展示
+     */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * 生成空值安全文本，供后续匹配或展示。
+     *
+     * @param value 待处理空值安全的原始输入，结果供调用方继续使用
+     * @return 处理后的空值安全文本，供调用方比较或展示
+     */
     private String nullSafe(String value) {
         return value == null ? "" : value;
     }

@@ -11,10 +11,10 @@ import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.Exter
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemParameterRecord;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.contracts.audit.AuditAction;
-import com.workflow.contracts.audit.AuditModule;
-import com.workflow.contracts.audit.AuditRiskLevel;
-import com.workflow.contracts.audit.SystemAudit;
+import com.workflow.contracts.audit.model.AuditAction;
+import com.workflow.contracts.audit.model.AuditModule;
+import com.workflow.contracts.audit.model.AuditRiskLevel;
+import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.core.result.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -329,6 +329,9 @@ public class ExternalSystemService {
      *
      * <p>英文名按小写归一后判重，与数据库活动态唯一约束保持一致；参数值
      * 只用 hasText 判断非空，但保存原字符串，避免破坏模板、签名片段或空白。</p>
+     *
+     * @param inputs {@code inputs}，供本方法准备参数集合时使用
+     * @return 已准备参数集合，供调用方遍历或展示
      */
     private List<PreparedParameter> prepareParameters(
             List<ExternalSystemRequests.ParameterInput> inputs) {
@@ -383,6 +386,12 @@ public class ExternalSystemService {
 
     /**
      * 将校验后的参数逐行写入；不记录或转换 parameterValue。
+     *
+     * @param externalSystemId 外部系统ID，后续用于插入参数集合时定位或关联目标
+     * @param parameters 参数集合，供本方法插入参数集合时使用
+     * @param actor 操作人，作为 {@code record.setCreatedBy} 的输入影响后续处理
+     * @param now 当前时间，作为 {@code record.setCreateTime} 的输入影响后续处理
+     * @return 外部系统参数集合，供调用方遍历或展示
      */
     private List<ExternalSystemParameterRecord> insertParameters(
             String externalSystemId,
@@ -417,6 +426,9 @@ public class ExternalSystemService {
 
     /**
      * 批量读取参数数量；空分页不调用带 IN 条件的 Mapper。
+     *
+     * @param records 记录集合，供本方法处理参数{@code counts}时使用
+     * @return 参数{@code counts}键值结果，供调用方继续处理
      */
     private Map<String, Long> parameterCounts(
             List<ExternalSystemRecord> records) {
@@ -440,6 +452,12 @@ public class ExternalSystemService {
         return counts;
     }
 
+    /**
+     * 校验并获取已锁定；不满足约束时阻止后续处理。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @return 校验并获取后的已锁定结果，供调用方继续处理
+     */
     private ExternalSystemRecord requireLocked(String id) {
         ExternalSystemRecord current = StringUtils.hasText(id)
                 ? externalSystemMapper.selectForUpdate(id)
@@ -450,6 +468,13 @@ public class ExternalSystemService {
         return current;
     }
 
+    /**
+     * 转换为摘要；输出作为后续校验或处理的输入。
+     *
+     * @param record 记录，作为 {@code ExternalSystemViews.ExternalSystemSummary} 的输入影响后续处理
+     * @param parameterCount 参数数量，供本方法转换为摘要时使用
+     * @return 转换为后的摘要结果，供调用方继续处理
+     */
     private ExternalSystemViews.ExternalSystemSummary toSummary(
             ExternalSystemRecord record,
             long parameterCount) {
@@ -468,6 +493,13 @@ public class ExternalSystemService {
                 toInstant(record.getUpdateTime()));
     }
 
+    /**
+     * 转换为详情；输出作为后续校验或处理的输入。
+     *
+     * @param record 记录，作为 {@code ExternalSystemViews.ExternalSystemDetail} 的输入影响后续处理
+     * @param parameters 参数集合，供本方法转换为详情时使用
+     * @return 转换为后的详情结果，供调用方继续处理
+     */
     private ExternalSystemViews.ExternalSystemDetail toDetail(
             ExternalSystemRecord record,
             List<ExternalSystemParameterRecord> parameters) {
@@ -490,6 +522,12 @@ public class ExternalSystemService {
                 toInstant(record.getUpdateTime()));
     }
 
+    /**
+     * 转换为参数视图；输出作为后续校验或处理的输入。
+     *
+     * @param record 记录，作为 {@code ExternalSystemViews.ExternalSystemParameterView} 的输入影响后续处理
+     * @return 转换为后的参数视图结果，供调用方继续处理
+     */
     private ExternalSystemViews.ExternalSystemParameterView toParameterView(
             ExternalSystemParameterRecord record) {
         return new ExternalSystemViews.ExternalSystemParameterView(
@@ -500,6 +538,12 @@ public class ExternalSystemService {
                 record.getSortOrder() == null ? 0 : record.getSortOrder());
     }
 
+    /**
+     * 规范化系统编码；输出作为后续校验或处理的输入。
+     *
+     * @param value 待规范化系统编码的原始输入，结果供调用方继续使用
+     * @return 规范化后的系统编码文本，供调用方比较或展示
+     */
     private String normalizeSystemCode(String value) {
         String code = requiredTrimmed(
                 value, "系统编码", MAX_SYSTEM_CODE_LENGTH);
@@ -509,16 +553,34 @@ public class ExternalSystemService {
         return code;
     }
 
+    /**
+     * 生成默认创建状态文本，供后续匹配或展示。
+     *
+     * @param status 状态标识，决定后续默认创建状态采用的处理分支
+     * @return 处理后的默认创建状态文本，供调用方比较或展示
+     */
     private String defaultCreateStatus(String status) {
         return StringUtils.hasText(status)
                 ? requiredStatus(status)
                 : STATUS_ENABLED;
     }
 
+    /**
+     * 生成可选状态文本，供后续匹配或展示。
+     *
+     * @param status 状态标识，决定后续可选状态采用的处理分支
+     * @return 处理后的可选状态文本，供调用方比较或展示
+     */
     private String optionalStatus(String status) {
         return StringUtils.hasText(status) ? requiredStatus(status) : null;
     }
 
+    /**
+     * 生成必填状态文本，供后续匹配或展示。
+     *
+     * @param status 状态标识，决定后续必填状态采用的处理分支
+     * @return 处理后的必填状态文本，供调用方比较或展示
+     */
     private String requiredStatus(String status) {
         String normalized = requiredTrimmed(status, "状态", 1);
         if (!STATUS_ENABLED.equals(normalized)
@@ -528,6 +590,14 @@ public class ExternalSystemService {
         return normalized;
     }
 
+    /**
+     * 生成必填{@code trimmed}文本，供后续匹配或展示。
+     *
+     * @param value 待处理必填{@code trimmed}的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理必填{@code trimmed}时匹配或展示
+     * @param maxLength 最大长度，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的必填{@code trimmed}文本，供调用方比较或展示
+     */
     private String requiredTrimmed(
             String value,
             String label,
@@ -542,6 +612,14 @@ public class ExternalSystemService {
         return normalized;
     }
 
+    /**
+     * 生成可选{@code trimmed}文本，供后续匹配或展示。
+     *
+     * @param value 待处理可选{@code trimmed}的原始输入，结果供调用方继续使用
+     * @param label 标签，后续用于处理可选{@code trimmed}时匹配或展示
+     * @param maxLength 最大长度，作为 {@code invalid} 的输入影响后续处理
+     * @return 处理后的可选{@code trimmed}文本，供调用方比较或展示
+     */
     private String optionalTrimmed(
             String value,
             String label,
@@ -553,10 +631,21 @@ public class ExternalSystemService {
         return normalized;
     }
 
+    /**
+     * 去除文本首尾空白，并将空白结果转为 null 供后续缺失值判断。
+     *
+     * @param value 待清理截止空值的原始输入，结果供调用方继续使用
+     * @return 清理后的截止空值文本，供调用方比较或展示
+     */
     private String trimToNull(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    /**
+     * 校验并获取操作人；不满足约束时阻止后续处理。
+     *
+     * @return 校验并获取后的操作人文本，供调用方比较或展示
+     */
     private String requireActor() {
         String actor = UserContext.getUserId();
         if (!StringUtils.hasText(actor)) {
@@ -568,14 +657,31 @@ public class ExternalSystemService {
         return actor;
     }
 
+    /**
+     * 处理当前时间，并将结果传给后续步骤。
+     *
+     * @return 处理后的当前时间结果，供调用方继续处理
+     */
     private LocalDateTime now() {
         return LocalDateTime.now(ZoneOffset.UTC);
     }
 
+    /**
+     * 转换为绝对时间；输出作为后续校验或处理的输入。
+     *
+     * @param value 待转换为绝对时间的原始输入，结果供调用方继续使用
+     * @return 转换为后的绝对时间结果，供调用方继续处理
+     */
     private java.time.Instant toInstant(LocalDateTime value) {
         return value == null ? null : value.toInstant(ZoneOffset.UTC);
     }
 
+    /**
+     * 构造无效输入异常，阻止后续业务处理。
+     *
+     * @param message 消息，作为 {@code ExternalSystemManagementException} 的输入影响后续处理
+     * @return 处理后的无效结果，供调用方继续处理
+     */
     private ExternalSystemManagementException invalid(String message) {
         return new ExternalSystemManagementException(
                 400,
@@ -583,6 +689,11 @@ public class ExternalSystemService {
                 message);
     }
 
+    /**
+     * 构造目标不存在异常，供调用方终止后续处理。
+     *
+     * @return 处理后的非已找到结果，供调用方继续处理
+     */
     private ExternalSystemManagementException notFound() {
         return new ExternalSystemManagementException(
                 404,
@@ -590,6 +701,12 @@ public class ExternalSystemService {
                 "外部系统不存在");
     }
 
+    /**
+     * 构造{@code duplicated}编码异常，供调用方区分失败原因。
+     *
+     * @param systemCode 系统编码，后续用于处理{@code duplicated}编码时定位或关联目标
+     * @return 处理后的{@code duplicated}编码结果，供调用方继续处理
+     */
     private ExternalSystemManagementException duplicatedCode(
             String systemCode) {
         return new ExternalSystemManagementException(
@@ -598,6 +715,12 @@ public class ExternalSystemService {
                 "系统编码已存在且不可复用: " + systemCode);
     }
 
+    /**
+     * 构造{@code duplicated}参数名称异常，供调用方区分失败原因。
+     *
+     * @param nameEn 名称{@code en}，供本方法处理{@code duplicated}参数名称时使用
+     * @return 处理后的{@code duplicated}参数名称结果，供调用方继续处理
+     */
     private ExternalSystemManagementException duplicatedParameterName(
             String nameEn) {
         return new ExternalSystemManagementException(
@@ -628,6 +751,11 @@ public class ExternalSystemService {
         return expectedVersion;
     }
 
+    /**
+     * 构造版本冲突异常，供调用方区分失败原因。
+     *
+     * @return 处理后的版本冲突结果，供调用方继续处理
+     */
     private ExternalSystemManagementException versionConflict() {
         return new ExternalSystemManagementException(
                 409,
@@ -635,6 +763,14 @@ public class ExternalSystemService {
                 "外部系统已被其他管理员修改，请刷新后重试");
     }
 
+    /**
+     * 封装已准备参数的不可变数据；各分量供后续校验、传递或结果展示使用。
+     *
+     * @param nameZh 名称{@code zh}，保存在对象中供后续校验、查询或展示
+     * @param nameEn 名称{@code en}，保存在对象中供后续校验、查询或展示
+     * @param value 待处理已准备参数的原始输入，结果供调用方继续使用
+     * @param sortOrder 排序权重，后续用于稳定展示顺序
+     */
     private record PreparedParameter(
             String nameZh,
             String nameEn,

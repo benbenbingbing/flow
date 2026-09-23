@@ -47,6 +47,13 @@ public interface SysDictItemMapper extends BaseMapper<SysDictItem> {
                 .eq(SysDictItem::getParentId, parentId)).intValue();
     }
 
+    /**
+     * 查询启用编码；查询结果供调用方展示或继续处理。
+     *
+     * @param dictCode 字典编码，后续用于查询启用编码时定位或关联目标
+     * @param itemCode 条目编码，后续用于查询启用编码时定位或关联目标
+     * @return 查询后的启用编码结果，供调用方继续处理
+     */
     default SysDictItem selectEnabledByCode(String dictCode, String itemCode) {
         // 保留原查询仅取一行的语义，由分页插件生成目标数据库的限制语法。
         return selectPage(new Page<SysDictItem>(1, 1, false), Wrappers.<SysDictItem>lambdaQuery()
@@ -55,7 +62,12 @@ public interface SysDictItemMapper extends BaseMapper<SysDictItem> {
                 .eq(SysDictItem::getStatus, "0")).getRecords().stream().findFirst().orElse(null);
     }
 
-    /** 查询指定字典下可选的有效条目，按配置顺序及条目编码返回。 */
+    /**
+     * 查询指定字典下可选的有效条目，按配置顺序及条目编码返回。
+     *
+     * @param dictCode 字典编码，后续用于查询启用字典编码时定位或关联目标
+     * @return 系统字典条目集合，供调用方遍历或展示
+     */
     default List<SysDictItem> selectEnabledByDictCode(String dictCode) {
         return selectList(Wrappers.<SysDictItem>lambdaQuery()
                 .eq(SysDictItem::getDictCode, dictCode)

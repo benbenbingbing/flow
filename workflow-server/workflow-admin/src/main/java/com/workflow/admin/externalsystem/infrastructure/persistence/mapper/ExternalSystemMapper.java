@@ -23,12 +23,23 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
      * @param systemCode 系统编码
      * @return 已占用该编码的记录，不存在时返回 null
      */
-    /** 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。 */
+    /**
+     * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。
+     *
+     * @param systemCode 系统编码，后续用于查询{@code any}编码时定位或关联目标
+     * @return 查询后的{@code any}编码结果，供调用方继续处理
+     */
     default ExternalSystemRecord selectAnyByCode(String systemCode) {
         return selectAnyByCodePage(new OffsetPage<>(0, 1), systemCode).stream().findFirst().orElse(null);
     }
 
-    /** 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。 */
+    /**
+     * 保留原投影和连接，仅将外层首行限制交给 MyBatis-Plus。
+     *
+     * @param page 分页参数，用于限制后续查询范围和返回数量
+     * @param systemCode 系统编码，后续用于查询{@code any}编码分页时定位或关联目标
+     * @return 外部系统集合，供调用方遍历或展示
+     */
     @Select("""
             <script>
             SELECT id, system_name, system_code, status, address, description,
@@ -61,6 +72,16 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
 
     /**
      * 只更新可变基本信息，SQL 中不包含 system_code，并以期望版本作为并发条件。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param systemName 系统名称，后续用于更新可变字段时匹配或展示
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     * @param address 地址，供本方法更新可变字段时使用
+     * @param description 描述，供本方法更新可变字段时使用
+     * @param expectedVersion 预期版本，供本方法更新可变字段时使用
+     * @param updatedBy {@code updated}，供本方法更新可变字段时使用
+     * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 更新后的可变字段结果，供调用方继续处理
      */
     @Update("""
             UPDATE sys_external_system
@@ -86,6 +107,13 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
 
     /**
      * 更新外部系统启停状态，同时校验并推进乐观版本。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param status 目标状态，写入记录后供流程分支或列表查询使用
+     * @param expectedVersion 预期版本，供本方法更新状态时使用
+     * @param updatedBy {@code updated}，供本方法更新状态时使用
+     * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 更新后的状态结果，供调用方继续处理
      */
     @Update("""
             UPDATE sys_external_system
@@ -104,6 +132,12 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
 
     /**
      * 逻辑删除外部系统并同步将其状态置为禁用，同时推进乐观版本。
+     *
+     * @param id 目标记录 ID，后续用于定位具体数据或配置
+     * @param expectedVersion 预期版本，供本方法处理{@code soft}删除时使用
+     * @param updatedBy {@code updated}，供本方法处理{@code soft}删除时使用
+     * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
+     * @return 处理后的{@code soft}删除结果，供调用方继续处理
      */
     @Update("""
             UPDATE sys_external_system

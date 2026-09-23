@@ -1,6 +1,6 @@
 package com.workflow.entity.data;
 
-import com.workflow.contracts.process.ProcessStartRequest;
+import com.workflow.contracts.process.model.ProcessStartRequest;
 import com.workflow.core.database.JdbcDatabaseClock;
 import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.core.error.BusinessConflictException;
@@ -127,7 +127,7 @@ class MySqlProcessReservationDatabaseTest {
         }
 
         /** 与生产 EntityDataMutationService 一致：先写实体根行，再在同一事务发起流程。 */
-        com.workflow.contracts.process.ProcessStartResult start() {
+        com.workflow.contracts.process.model.ProcessStartResult start() {
             return h.tx.execute(status -> {
                 h.jdbc.update("UPDATE process_root SET touches=touches+1 WHERE id='record'");
                 return service.start(new ProcessStartRequest("config", "expense", "record", "EXP-1", "admin", "管理员", null, Map.of(), Map.of()));

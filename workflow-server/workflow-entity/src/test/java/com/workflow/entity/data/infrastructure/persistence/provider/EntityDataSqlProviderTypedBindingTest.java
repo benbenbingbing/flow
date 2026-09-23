@@ -4,7 +4,7 @@ import com.workflow.entity.data.application.EntityQueryConditions;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.permission.application.PermissionSqlParameters;
 import com.workflow.integration.database.api.DatabaseVendor;
-import com.workflow.integration.database.api.SchemaType;
+import com.workflow.integration.database.api.schema.SchemaType;
 import org.apache.ibatis.builder.annotation.ProviderContext;
 import org.apache.ibatis.mapping.MappedStatement;
 import org.apache.ibatis.mapping.SqlCommandType;
