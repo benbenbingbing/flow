@@ -158,13 +158,23 @@ jobs:
           exit 1
 
       - name: 上传部署文件
+        # 显式使用 Bash 的 pipefail，确保日志转换成功不会掩盖 scp 上传失败。
+        shell: bash
         run: |
+          ls -lh deploy/compose.ecs.yml deploy/deploy.sh "flow-images-$IMAGE_TAG.tar.gz"
           for attempt in $(seq 1 5); do
-            if scp \
-              deploy/compose.ecs.yml \
-              deploy/deploy.sh \
-              "flow-images-$IMAGE_TAG.tar.gz" \
-              "flow-deploy:$DEPLOY_PATH/"; then
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Starting upload (attempt $attempt/5)..."
+            # scp 在非终端环境会隐藏进度；script 分配伪终端以显示百分比、速度和 ETA。
+            # --return 保留 scp 退出码，--flush 和行缓冲确保进度实时到达 Actions 日志。
+            # 将覆盖当前行的回车转换成换行，保留历史进度及 scp 的 stalled 停滞提示。
+            if script --quiet --return --flush --command '
+              exec scp \
+                deploy/compose.ecs.yml \
+                deploy/deploy.sh \
+                "flow-images-$IMAGE_TAG.tar.gz" \
+                "flow-deploy:$DEPLOY_PATH/"
+            ' /dev/null < /dev/null | stdbuf -oL tr '\r' '\n'; then
+              echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] Deployment files uploaded successfully."
               exit 0
             fi
 
