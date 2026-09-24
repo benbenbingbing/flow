@@ -18,7 +18,7 @@
       compact
       @retry="loadCodeRule(entity.entityCode)"
     />
-    <el-form v-else v-loading="loading" :disabled="loading || codeRuleSaving" :model="codeRule" label-width="100px" size="default">
+    <el-form v-else v-loading="loading" :disabled="loading || codeRuleSaving" :model="codeRule" label-width="120px" size="default">
       <el-alert type="info" :closable="false" style="margin-bottom: 16px">
         {{ codeRule.generationMode === 'CUSTOM' ? '保存新记录时，由所选生成器生成完整编号。' : '默认格式：前缀 + 日期 + 序列号' }}
       </el-alert>
@@ -31,6 +31,12 @@
       </el-form-item>
       <template v-if="codeRule.generationMode === 'CUSTOM'">
         <el-form-item label="编码生成器" required>
+          <template #label>
+            <ConfigHelpLabel
+              label="编码生成器"
+              content="在业务模块实现 com.workflow.contracts.entity.code.EntityCodeGenerator 接口，并通过 @Component 注册为 Spring Bean。由 generate(context, configuration) 方法返回完整编码，可参考 ProjectEntityCodeGenerator 示例。"
+            />
+          </template>
           <el-select v-model="codeRule.generatorCode" placeholder="选择编码生成器" style="width: 100%" @change="changeGenerator">
             <el-option v-for="generator in generators" :key="generator.code" :value="generator.code" :label="generator.displayName" />
           </el-select>
@@ -100,6 +106,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { codeRuleApi } from '@/api/codeRule'
 import PageState from '@/components/PageState.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import { generatorSchemaFields, generatorConfigDefaults } from '@/shared/entity-code-rule'
 
