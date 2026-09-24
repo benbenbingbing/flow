@@ -267,6 +267,7 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("data-1", progress.getEntityData().get("id"));
         assertEquals("RUNNING", progress.getStatus());
         assertEquals("FINANCE_REVIEW", progress.getEntityData().get("status"));
+        assertEquals("RUNNING", progress.getEntityData().get("processStatus"));
         assertEquals("财务复核中", progress.getEntityData().get("_statusText"));
         assertEquals("pi-1", progress.getEntityData().get("processInstanceId"));
         assertEquals(
@@ -654,6 +655,7 @@ class ProcessProgressRuntimeServiceTest {
             EntityDataDTO dto = new EntityDataDTO();
             dto.setId("data-1");
             dto.setStatus("FINANCE_REVIEW");
+            dto.setProcessStatus("RUNNING");
             when(entityStatusService.getStatusNameMap("expense")).thenReturn(Map.of("FINANCE_REVIEW", "财务复核中"));
             dto.setCode("EXP-1");
             dto.setProcessInstanceId("pi-1");

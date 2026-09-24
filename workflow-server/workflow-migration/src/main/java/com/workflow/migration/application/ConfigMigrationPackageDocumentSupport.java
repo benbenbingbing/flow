@@ -24,6 +24,11 @@ final class ConfigMigrationPackageDocumentSupport {
         this.objectMapper = objectMapper;
     }
 
+    /** 将包内规则转换为统一配置契约，供依赖预检，不执行取号或保存。 */
+    com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule readCodeRule(Map<?, ?> value) {
+        return objectMapper.convertValue(value, com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule.class);
+    }
+
     /**
      * 处理整数值，并将结果传给后续步骤。
      *

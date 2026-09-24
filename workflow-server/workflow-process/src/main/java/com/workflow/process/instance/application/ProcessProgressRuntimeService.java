@@ -726,6 +726,8 @@ public class ProcessProgressRuntimeService {
         putIfNotNull(result, "name", entityData.getName());
         putIfNotNull(result, "code", entityData.getCode());
         putIfNotNull(result, "status", entityData.getStatus());
+        // 表单标题展示 biz 表的当前生命周期；progress.status 仍描述所查看的流程实例。
+        putIfNotNull(result, "processStatus", entityData.getProcessStatus());
         putIfNotNull(
                 result,
                 "processInstanceId",

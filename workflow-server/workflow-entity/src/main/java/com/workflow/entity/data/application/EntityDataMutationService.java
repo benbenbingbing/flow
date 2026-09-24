@@ -14,6 +14,7 @@ import com.workflow.entity.data.domain.policy.EntityProcessStatusPolicy;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+import com.workflow.entity.definition.application.code.EntityCodeGenerationInput;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -146,6 +147,8 @@ public class EntityDataMutationService {
         Map<String, Object> data =
                 recordMapper.toStorageMap(dto);
         dto.setData(originalData);
+        // 业务编号只由服务器创建，客户端值不应进入写前唯一性预留或字段规则校验。
+        data.remove("code");
         validator.validatePublishedFields(
                 entityCode,
                 data,
@@ -164,8 +167,11 @@ public class EntityDataMutationService {
                     tableName,
                     data,
                     currentUserId,
-                    currentUserName);
+                    currentUserName,
+                    multiValueData);
         } else {
+            // 编码只在创建时分配，更新入口不能通过 DTO 覆写。
+            data.remove("code");
             data.put("update_by", currentUserId);
             data.put("update_time", LocalDateTime.now());
             data.remove("submitter_id");
@@ -293,6 +299,7 @@ public class EntityDataMutationService {
                         id,
                         parentFormData,
                         existingData);
+        updateData.remove("code");
         validator.validatePublishedFields(
                 entityCode,
                 updateData,
@@ -574,7 +581,8 @@ public class EntityDataMutationService {
             String tableName,
             Map<String, Object> data,
             String currentUserId,
-            String currentUserName) {
+            String currentUserName,
+            Map<String, List<String>> multiValueData) {
         String id = StringUtils.hasText(dto.getId()) ? dto.getId() : generateId();
         LocalDateTime now = LocalDateTime.now();
         data.put("id", id);
@@ -598,11 +606,6 @@ public class EntityDataMutationService {
         dto.setProcessStatus("NOT_STARTED");
         data.put("status", defaultStatus);
         dto.setStatus(defaultStatus);
-        String code =
-                codeGeneratorService.generateCode(
-                        dto.getEntityCode());
-        data.put("code", code);
-        dto.setCode(code);
         if (dto.getData() != null
                 && dto.getData().get("name") != null) {
             String name =
@@ -611,6 +614,14 @@ public class EntityDataMutationService {
             data.put("name", name);
             dto.setName(name);
         }
+        // 多值字段稍后写关联表，但生成器仍应拿到本次表单的完整标量/多值输入。
+        Map<String, Object> generationData = new HashMap<>(data);
+        multiValueData.forEach((field, values) -> generationData.put(recordMapper.toColumnName(field), values));
+        String code =
+                codeGeneratorService.generateCode(new EntityCodeGenerationInput(
+                        dto.getEntityCode(), id, generationData, null, null, "root", null));
+        data.put("code", code);
+        dto.setCode(code);
         dynamicMapper.insert(tableName, data);
         dto.setId(id);
         entityRecordTeamService.record(

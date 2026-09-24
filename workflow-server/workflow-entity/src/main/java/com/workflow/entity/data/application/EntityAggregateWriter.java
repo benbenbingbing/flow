@@ -81,15 +81,18 @@ public class EntityAggregateWriter {
                 != com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.PROCESS_RUNTIME) {
             throw new IllegalArgumentException("流程运行态字段只能由流程引擎维护");
         }
-        return switch (command.operationType()) {
-            case CREATE -> create(command, prepared);
-            case UPDATE, APPLY_CHANGE ->
-                    update(command, prepared);
-            case DELETE -> delete(command);
-            case STATUS_CHANGE ->
-                    statusChange(command, prepared);
-            case UPSERT -> upsert(command, prepared);
-        };
+        // 作用域只来自可信变更命令，嵌套取号使用同一身份；异常路径也必须恢复线程状态。
+        try (var ignored = com.workflow.entity.definition.application.code.EntityCodeGenerationScope.open(command.context())) {
+            return switch (command.operationType()) {
+                case CREATE -> create(command, prepared);
+                case UPDATE, APPLY_CHANGE ->
+                        update(command, prepared);
+                case DELETE -> delete(command);
+                case STATUS_CHANGE ->
+                        statusChange(command, prepared);
+                case UPSERT -> upsert(command, prepared);
+            };
+        }
     }
 
     /**

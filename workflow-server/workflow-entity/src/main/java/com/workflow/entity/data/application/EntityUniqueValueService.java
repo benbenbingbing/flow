@@ -60,16 +60,16 @@ public class EntityUniqueValueService {
     }
 
     /**
-     * 释放逻辑删除或物理删除记录持有的唯一值，使该值可以再次使用。
+     * 释放普通字段唯一值，使它们可以再次使用；业务编码是历史身份，保留其专属占用。
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void release(String entityCode, String recordId) {
         jdbcTemplate.update(
-                "DELETE FROM entity_unique_value WHERE entity_code = ? AND record_id = ?",
+                "DELETE FROM entity_unique_value WHERE entity_code = ? AND record_id = ? AND field_code <> ?",
                 entityCode,
-                recordId);
+                recordId, EntityCodeReservationService.CODE_CLAIM_FIELD);
     }
 
     /**

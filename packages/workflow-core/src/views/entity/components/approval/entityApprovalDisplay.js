@@ -1,3 +1,25 @@
+import {
+  normalizeEntityStatusOptions,
+  resolveEntityStatusLabel,
+  resolveProcessStatusLabel
+} from '../../../../shared/entity-status-runtime.js'
+
+/**
+ * 查看、审批标题使用已加载的 biz 实体状态，避免历史实例或引擎状态覆盖当前记录。
+ * 实体状态名称优先使用入口配置，其次使用详情携带的名称（首页入口没有实体状态配置）。
+ * 缺失状态不推断生命周期，只展示已有信息。
+ */
+export function resolveApprovalDialogTitle(name, entityData, entityStatusOptions = []) {
+  const processStatus = resolveProcessStatusLabel(entityData?.processStatus ?? entityData?.process_status)
+  const status = entityData?.status
+  const configuredStatus = normalizeEntityStatusOptions(entityStatusOptions)
+    .find(option => option.value === String(status ?? ''))
+  const entityStatus = status == null || status === '' ? ''
+    : configuredStatus?.label || entityData?._statusText || resolveEntityStatusLabel(status)
+  const statusText = [processStatus, entityStatus].filter(Boolean).join('-')
+  return `${name || '任务审批'}${statusText ? `（${statusText}）` : ''}`
+}
+
 export function isFileUrl(value) {
   return typeof value === 'string'
     && /^(?:https?:\/\/|\/|blob:)/i.test(value)

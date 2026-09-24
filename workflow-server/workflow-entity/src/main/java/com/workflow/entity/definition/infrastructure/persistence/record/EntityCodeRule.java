@@ -13,7 +13,7 @@ import java.util.zip.CRC32;
  * 定义实体数据编码的生成规则
  */
 @Data
-@TableName("entity_code_rule")
+@TableName(value = "entity_code_rule", autoResultMap = true)
 public class EntityCodeRule {
 
     /** 编码前缀最大长度 */
@@ -28,6 +28,18 @@ public class EntityCodeRule {
      */
     @TableField("entity_code")
     private String entityCode;
+
+    /** RULE 使用内置格式和流水；CUSTOM 按 generatorCode 调用业务实现。旧配置默认 RULE。 */
+    @TableField("generation_mode")
+    private String generationMode;
+
+    /** 稳定的生成器标识，用于注册表查找实现，不保存 Bean 名或 Java 类名。 */
+    @TableField("generator_code")
+    private String generatorCode;
+
+    /** 业务参数，按生成器 Schema 校验；只保存配置，不得保存运行期流水或认证凭证。 */
+    @TableField(value = "generator_config", typeHandler = com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler.class)
+    private java.util.Map<String, Object> generatorConfig;
     
     /**
      * 编码前缀，如：CG、DD
@@ -102,6 +114,7 @@ public class EntityCodeRule {
     public static EntityCodeRule getDefault(String entityCode) {
         EntityCodeRule rule = new EntityCodeRule();
         rule.setEntityCode(entityCode);
+        rule.setGenerationMode("RULE");
         rule.setPrefix(defaultPrefix(entityCode));
         rule.setDateFormat("yyyyMMdd");
         rule.setSeqLength(6);

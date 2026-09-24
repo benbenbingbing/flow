@@ -546,7 +546,7 @@ class EntityRelationRuntimeUniqueClaimTest {
                     .thenReturn(true);
             when(dynamicTableService.getTableName("child"))
                     .thenReturn("wf_child");
-            when(codeGeneratorService.generateCode("child"))
+            when(codeGeneratorService.generateCode(org.mockito.ArgumentMatchers.argThat(input -> input != null && "child".equals(input.entityCode()))))
                     .thenReturn("C001");
             service = new EntityRelationRuntimeService(
                     dynamicMapper,
@@ -672,7 +672,7 @@ class EntityRelationRuntimeUniqueClaimTest {
                     .thenReturn(true);
             when(dynamicTableService.getTableName("grandchild"))
                     .thenReturn("wf_grandchild");
-            when(codeGeneratorService.generateCode("grandchild"))
+            when(codeGeneratorService.generateCode(org.mockito.ArgumentMatchers.argThat(input -> input != null && "grandchild".equals(input.entityCode()))))
                     .thenReturn("G001");
         }
 

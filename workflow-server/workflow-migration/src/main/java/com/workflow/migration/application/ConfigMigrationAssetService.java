@@ -1225,7 +1225,13 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         snapshot.put("relations", portableList(relationMapper.selectByParentEntityId(entity.getId())));
         snapshot.put("statuses", portableList(statusMapper.findByEntityCode(entity.getEntityCode())));
         EntityCodeRule codeRule = codeRuleMapper.findByEntityCode(entity.getEntityCode()).orElse(null);
-        snapshot.put("codeRule", codeRule == null ? null : portableMap(codeRule));
+        Map<String, Object> portableCodeRule = codeRule == null ? null : portableMap(codeRule);
+        if (portableCodeRule != null) {
+            // 迁移只携带配置和生成器依赖，不能把源环境的运行期计数覆盖到目标环境。
+            portableCodeRule.remove("currentSeq");
+            portableCodeRule.remove("seqDate");
+        }
+        snapshot.put("codeRule", portableCodeRule);
         List<Map<String, Object>> forms = new ArrayList<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();

@@ -546,9 +546,9 @@ class EntityDataDynamicServiceSubFormTest {
             when(dynamicTableService.tableExists("parent")).thenReturn(true);
             when(dynamicTableService.tableExists("child")).thenReturn(true);
             when(dynamicTableService.tableExists("tax")).thenReturn(true);
-            when(codeGeneratorService.generateCode("parent")).thenReturn("P001");
-            when(codeGeneratorService.generateCode("child")).thenReturn("C001");
-            when(codeGeneratorService.generateCode("tax")).thenReturn("T001");
+            when(codeGeneratorService.generateCode(org.mockito.ArgumentMatchers.argThat(input -> input != null && "parent".equals(input.entityCode())))).thenReturn("P001");
+            when(codeGeneratorService.generateCode(org.mockito.ArgumentMatchers.argThat(input -> input != null && "child".equals(input.entityCode())))).thenReturn("C001");
+            when(codeGeneratorService.generateCode(org.mockito.ArgumentMatchers.argThat(input -> input != null && "tax".equals(input.entityCode())))).thenReturn("T001");
             when(entityStatusMapper.findByCategory("parent", "NEW")).thenReturn(List.of());
             when(snapshotService.getLatestByEntityCode("parent")).thenReturn(snapshot("parent"));
         }

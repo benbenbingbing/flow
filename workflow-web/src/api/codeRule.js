@@ -1,6 +1,10 @@
 import request from '@/utils/request'
 
 export const codeRuleApi = {
+  /** 可用于指定动态实体的生成器及参数 Schema。 */
+  generators(entityCode) {
+    return request.get('/entity-code-rule/generators', { params: { entityCode } })
+  },
   /**
    * 获取实体的编码规则
    */

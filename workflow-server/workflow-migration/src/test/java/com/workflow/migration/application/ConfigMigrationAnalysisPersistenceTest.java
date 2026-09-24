@@ -53,6 +53,8 @@ class ConfigMigrationAnalysisPersistenceTest {
     @Mock
     private ConfigMigrationAssetService assetService;
     @Mock
+    private com.workflow.entity.definition.application.EntityCodeGeneratorService codeGeneratorService;
+    @Mock
     private ConfigMigrationPackageCodec packageCodec;
     @Mock
     private ConfigMigrationAssetMapper assetMapper;
@@ -97,6 +99,24 @@ class ConfigMigrationAnalysisPersistenceTest {
 
     @InjectMocks
     private ConfigMigrationPackageService service;
+
+    @Test
+    void missingCodeGeneratorBlocksImportBeforeAnyEntityIsCreated() {
+        ConfigImportPackage pack = new ConfigImportPackage(); pack.setId("custom-code");
+        ConfigImportItem item = new ConfigImportItem();
+        item.setId("custom-code-item"); item.setImportPackageId(pack.getId());
+        item.setAssetType("ENTITY"); item.setBusinessKey("project"); item.setSourceVersion(1);
+        item.setDependenciesJson("[]");
+        item.setSnapshotJson("{\"codeRule\":{\"generationMode\":\"CUSTOM\",\"generatorCode\":\"MISSING\"}}");
+        when(importPackageMapper.selectById(pack.getId())).thenReturn(pack);
+        when(importItemMapper.selectList(any())).thenReturn(List.of(item));
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("编码生成器未安装: MISSING"))
+                .when(codeGeneratorService).validateConfiguration(any());
+        var report = service.analyze(pack.getId());
+        assertEquals(true, report.get("blocked"));
+        assertTrue(documents.writeJson(report).contains("CODE_GENERATOR_UNAVAILABLE"));
+        org.mockito.Mockito.verify(entityMapper, org.mockito.Mockito.never()).insert(any(EntityDefinition.class));
+    }
 
     /** 导出跳过系统结构后，新旧依赖仍必须在目标环境校验，不能静默丢弃。 */
     @ParameterizedTest

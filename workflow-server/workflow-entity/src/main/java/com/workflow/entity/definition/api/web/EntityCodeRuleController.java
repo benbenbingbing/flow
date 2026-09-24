@@ -18,6 +18,13 @@ import org.springframework.web.bind.annotation.*;
 public class EntityCodeRuleController {
     
     private final EntityCodeGeneratorService codeGeneratorService;
+
+    /** 返回指定动态实体可使用的生成器及参数结构，供管理页选择。 */
+    @GetMapping("/generators")
+    public Result<java.util.List<com.workflow.entity.definition.application.code.EntityCodeGeneratorRegistry.Option>> generators(
+            @RequestParam String entityCode) {
+        return Result.success(codeGeneratorService.generators(entityCode));
+    }
     
     /**
      * 获取实体的编码规则

@@ -166,6 +166,7 @@ import ApprovalDecisionPanel from './ApprovalDecisionPanel.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
+  resolveApprovalDialogTitle,
   resolveApprovalEntityCode,
   resolveApprovalFormConfig
 } from '@flow/workflow-core/workflow/approval-display'
@@ -278,7 +279,6 @@ const {
   formConfigs,
   approvalConfig,
   processRuntimeMetadata,
-  getProcessStatusText,
   loadProcessDetail
 } = useProcessDetail()
 
@@ -288,11 +288,11 @@ const approvalFingerprint = () => JSON.stringify([entityData.value, approveForm]
 workspacePage.registerGuard(() => processDialogVisible.value && !isViewMode.value
   && Boolean(savedApprovalFingerprint) && savedApprovalFingerprint !== approvalFingerprint())
 
-const approvalDialogTitle = computed(() => {
-  const status = currentTask.value?.processStatus
-  const statusText = status ? `（${getProcessStatusText(status)}）` : ''
-  return `${currentTask.value?.name || '任务审批'}${statusText}`
-})
+const approvalDialogTitle = computed(() => resolveApprovalDialogTitle(
+  currentTask.value?.name,
+  entityData.value,
+  props.entityStatusOptions
+))
 
 // 计算属性：获取当前有效的审批配置
 const effectiveApprovalConfig = computed(() => {

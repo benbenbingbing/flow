@@ -3,6 +3,7 @@ import test from 'node:test'
 import { withEntityStatusRuntimeForm, PROCESS_STATUS_OPTIONS, resolveProcessStatusLabel } from '../src/shared/entity-status-runtime.js'
 import { normalizeEntityRecordForForm } from '../src/shared/form-runtime/index.js'
 import { useProcessDetail } from '../src/composables/useProcessDetail.js'
+import { resolveApprovalDialogTitle } from '../src/views/entity/components/approval/entityApprovalDisplay.js'
 
 test('lifecycle options are independent, readonly, and available to forms', () => {
   const form = withEntityStatusRuntimeForm({ fields: [{ id: 'f', fieldCode: 'processStatus' }], nodes: [{ nodeType: 'FIELD', bindingRef: 'f' }] }, [], [{ statusCode: 'RUNNING', statusName: '业务自定义状态' }])
@@ -48,6 +49,16 @@ test('history returned after switching records is also ignored', async () => {
   resolveHistory([{ taskName: 'old task' }])
   assert.equal(await old, false)
   assert.deepEqual(detail.processHistory.value, [])
+})
+
+test('entity dialog titles use biz lifecycle even when the viewed process has ended', async () => {
+  const detail = useProcessDetail({ request: { get: async () => ({
+    status: 'COMPLETED',
+    entityData: { processStatus: 'RUNNING', status: 'DRAFT' }
+  }) }, getProcessHistory: async () => [] })
+  assert.equal(await detail.loadProcessDetail('previous-instance'), true)
+  assert.equal(detail.progressData.value.status, 'COMPLETED')
+  assert.equal(resolveApprovalDialogTitle('数据详情', detail.entityData.value), '数据详情（运行中-草稿）')
 })
 
 

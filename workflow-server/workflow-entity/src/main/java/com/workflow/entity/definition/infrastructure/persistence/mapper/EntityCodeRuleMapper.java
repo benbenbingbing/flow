@@ -40,7 +40,10 @@ public interface EntityCodeRuleMapper extends BaseMapper<EntityCodeRule> {
             <script>
             UPDATE entity_code_rule SET current_seq = #{newSeq}, seq_date = #{newDate}, update_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}
              WHERE entity_code = #{entityCode}
-             AND seq_date = #{oldDate}
+             AND <choose>
+                 <when test="oldDate != null">seq_date = #{oldDate}</when>
+                 <otherwise>seq_date IS NULL</otherwise>
+                 </choose>
             </script>
             """)
     int updateSeqWithDate(@Param("entityCode") String entityCode,
@@ -62,11 +65,25 @@ public interface EntityCodeRuleMapper extends BaseMapper<EntityCodeRule> {
             UPDATE entity_code_rule SET current_seq = #{newSeq}, update_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}
              WHERE entity_code = #{entityCode}
              AND seq_date = #{seqDate}
-             AND current_seq = #{oldSeq}
+             AND COALESCE(current_seq, 0) = #{oldSeq}
             </script>
             """)
     int updateSeq(@Param("entityCode") String entityCode,
                   @Param("seqDate") String seqDate,
                   @Param("oldSeq") int oldSeq,
                   @Param("newSeq") int newSeq);
+
+    /** 保存配置时不更新 current_seq/seq_date，避免与独立取号事务竞争而回退流水。 */
+    @Update("""
+            <script>
+            UPDATE entity_code_rule
+               SET generation_mode = #{generationMode}, generator_code = #{generatorCode},
+                   generator_config = #{generatorConfig,typeHandler=com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler},
+                   prefix = #{prefix}, date_format = #{dateFormat}, seq_length = #{seqLength},
+                   seq_type = #{seqType}, example = #{example},
+                   update_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}
+             WHERE entity_code = #{entityCode}
+            </script>
+            """)
+    int updateConfiguration(EntityCodeRule rule);
 }

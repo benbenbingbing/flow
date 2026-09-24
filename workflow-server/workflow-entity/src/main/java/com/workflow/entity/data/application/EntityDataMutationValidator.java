@@ -90,6 +90,14 @@ public class EntityDataMutationValidator {
                 excludeId);
     }
 
+    /** 子行取号前校验普通业务字段；code 尚未生成，拿到最终值后再校验它的字段规则。 */
+    public void validateGenerationInput(String entityCode, Map<String, Object> storageData) {
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+        if (snapshot.getFields() == null) return;
+        validateRequired(snapshot, storageData);
+        validateRules(snapshot, storageData);
+    }
+
     /**
      * 校验必填；不满足约束时阻止后续处理。
      *
@@ -100,7 +108,8 @@ public class EntityDataMutationValidator {
             EntityPublishedSnapshot snapshot,
             Map<String, Object> storageData) {
         for (EntityField field : snapshot.getFields()) {
-            if (isRelationField(field)) {
+            // code 是服务器生成且不可编辑的身份，最终值由编码服务单独校验。
+            if (isRelationField(field) || "code".equals(field.getFieldCode())) {
                 continue;
             }
             String columnName =
@@ -410,7 +419,8 @@ public class EntityDataMutationValidator {
             EntityPublishedSnapshot snapshot,
             Map<String, Object> storageData) {
         for (EntityField field : snapshot.getFields()) {
-            if (isRelationField(field)) {
+            // code 是服务器生成且不可编辑的身份，最终值由编码服务单独校验。
+            if (isRelationField(field) || "code".equals(field.getFieldCode())) {
                 continue;
             }
             String columnName =

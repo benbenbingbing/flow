@@ -1085,6 +1085,11 @@ public class ConfigMigrationImportApplyService {
         boolean canCreate = full
                 || (sections.contains("definition") && sections.contains("fields"));
         String entityCode = text(definition.get("entityCode"), item.getBusinessKey());
+        if (snapshot.get("codeRule") instanceof Map<?, ?> rawRule) {
+            EntityCodeRule incomingRule = convert(mapValue(rawRule), EntityCodeRule.class);
+            incomingRule.setEntityCode(entityCode);
+            codeGeneratorService.validateConfiguration(incomingRule);
+        }
         if (EntityDefinition.StorageMode.SYSTEM.name().equalsIgnoreCase(
                 text(definition.get("storageMode"), EntityDefinition.StorageMode.DYNAMIC.name()))) {
             throw new IllegalStateException("迁移包不能创建或覆盖平台系统实体: " + entityCode);

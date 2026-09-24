@@ -75,6 +75,7 @@ import java.util.UUID;
 public class ConfigMigrationPackageService {
     private static final DateTimeFormatter PACKAGE_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final ConfigMigrationAssetService assetService;
+    private final com.workflow.entity.definition.application.EntityCodeGeneratorService codeGeneratorService;
     private final ConfigMigrationReferenceService referenceService;
     private final ConfigMigrationSubFormReferences subFormReferences;
     private final ConfigMigrationPackageCodec packageCodec;
@@ -1292,6 +1293,15 @@ public class ConfigMigrationPackageService {
             return risks;
         }
         Map<String, Object> snapshot = documents.readMap(item.getSnapshotJson());
+        if (snapshot.get("codeRule") instanceof Map<?, ?> rawRule) {
+            try {
+                var rule = documents.readCodeRule(rawRule);
+                rule.setEntityCode(item.getBusinessKey());
+                codeGeneratorService.validateConfiguration(rule);
+            } catch (IllegalArgumentException exception) {
+                risks.add(risk("BLOCKING", "CODE_GENERATOR_UNAVAILABLE", "codeRule", exception.getMessage()));
+            }
+        }
         if (!snapshot.containsKey("fields")) {
             return risks;
         }

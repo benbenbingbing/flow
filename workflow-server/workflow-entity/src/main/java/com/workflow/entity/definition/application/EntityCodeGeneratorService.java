@@ -11,10 +11,16 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
+import com.workflow.contracts.entity.code.*;
+import com.workflow.entity.definition.application.code.*;
+import com.workflow.entity.data.application.EntityCodeReservationService;
+import com.workflow.core.error.BusinessConflictException;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.List;
+import java.util.Set;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 /**
@@ -28,199 +34,105 @@ public class EntityCodeGeneratorService {
     
     private final EntityCodeRuleMapper codeRuleMapper;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
-    
+    private final RuleEntityCodeGenerator ruleGenerator;
+    private final EntityCodeGeneratorRegistry registry;
+    private final EntityCodeReservationService reservations;
+    private final EntityCodeContextFactory contexts;
+
+    /** 由主表/子表写入器传入经过字段校验的数据，生成时当前行还未入库。 */
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public String generateCode(EntityCodeGenerationInput input) {
+        return generateCode(contexts.create(input), input.suppliedCode());
+    }
+
     /**
-     * 生成数据编码
-     * 使用数据库乐观锁保证并发安全
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 生成后的编码文本，供调用方比较或展示
+     * 当前业务记录 INSERT 前调用。自定义实现加入当前事务；预留最终编码与业务行一起提交。
+     * suppliedCode 仅兼容旧规则模式的子行导入，自定义模式始终由服务端生成。
      */
-    @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
-    public String generateCode(String entityCode) {
-        // 查询或创建编码规则
-        EntityCodeRule rule = getOrCreateRule(entityCode);
-        
-        // 计算当前日期字符串
-        String currentDateStr = getCurrentDateStr(rule.getDateFormat());
-        
-        // 判断是否需要重置序列号
-        String seqDate = rule.getSeqDate();
-        boolean needReset = false;
-        
-        if (seqDate == null || seqDate.isEmpty()) {
-            needReset = true;
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public String generateCode(EntityCodeGenerationContext context, String suppliedCode) {
+        if (context == null || context.recordId() == null || context.recordId().isBlank()) {
+            throw new IllegalArgumentException("编码生成必须先分配记录ID");
+        }
+        EntityCodeRule rule = codeRuleMapper.findByEntityCode(context.entityCode())
+                .orElseGet(() -> EntityCodeRule.getDefault(context.entityCode()));
+        String mode = mode(rule);
+        String code;
+        if ("CUSTOM".equals(mode)) {
+            Map<String, Object> config = EntityCodeSnapshots.copy(rule.getGeneratorConfig());
+            EntityCodeGenerator generator = registry.require(rule.getGeneratorCode(), context.entityCode(), config);
+            code = generator.generate(context, config);
+        } else if (suppliedCode != null && !suppliedCode.isBlank()) {
+            code = suppliedCode;
         } else {
-            switch (EntityCodeRule.SeqType.valueOf(rule.getSeqType())) {
-                case DAY:
-                    needReset = !currentDateStr.equals(seqDate);
-                    break;
-                case MONTH:
-                    needReset = !currentDateStr.substring(0, 6).equals(seqDate.substring(0, 6));
-                    break;
-                case YEAR:
-                    needReset = !currentDateStr.substring(0, 4).equals(seqDate.substring(0, 4));
-                    break;
-                case NEVER:
-                    needReset = false;
-                    break;
-            }
+            validateConfiguration(rule);
+            code = ruleGenerator.generateCode(context.entityCode(), rule);
         }
-        
-        // 使用乐观锁更新序列号
-        int retryCount = 0;
-        int maxRetry = 10;
-        String code = null;
-        
-        while (retryCount < maxRetry) {
-            if (needReset) {
-                // 需要重置序列号，从1开始
-                int updated = codeRuleMapper.updateSeqWithDate(entityCode, seqDate, currentDateStr, 1);
-                if (updated > 0) {
-                    code = buildCode(rule, currentDateStr, 1);
-                    break;
-                }
-            } else {
-                // 在同一天内递增
-                int currentSeq = rule.getCurrentSeq() != null ? rule.getCurrentSeq() : 0;
-                int newSeq = currentSeq + 1;
-                int updated = codeRuleMapper.updateSeq(entityCode, seqDate, currentSeq, newSeq);
-                if (updated > 0) {
-                    code = buildCode(rule, currentDateStr, newSeq);
-                    break;
-                }
-            }
-            
-            // 更新失败，重新查询规则并重试
-            retryCount++;
-            log.warn("编码生成乐观锁冲突，第{}次重试", retryCount);
-            
-            Optional<EntityCodeRule> refreshed = codeRuleMapper.findByEntityCode(entityCode);
-            if (refreshed.isPresent()) {
-                rule = refreshed.get();
-                seqDate = rule.getSeqDate();
-                // 重新判断是否需要重置
-                if (seqDate == null || seqDate.isEmpty()) {
-                    needReset = true;
-                } else {
-                    switch (EntityCodeRule.SeqType.valueOf(rule.getSeqType())) {
-                        case DAY:
-                            needReset = !currentDateStr.equals(seqDate);
-                            break;
-                        case MONTH:
-                            needReset = !currentDateStr.substring(0, 6).equals(seqDate.substring(0, 6));
-                            break;
-                        case YEAR:
-                            needReset = !currentDateStr.substring(0, 4).equals(seqDate.substring(0, 4));
-                            break;
-                        case NEVER:
-                            needReset = false;
-                            break;
-                    }
-                }
-            } else {
-                // 规则被删除，重新创建
-                rule = createDefaultRule(entityCode);
-                needReset = true;
-            }
-        }
-        
-        if (code == null) {
-            throw new RuntimeException("生成编码失败，重试次数耗尽");
-        }
-        
-        log.debug("生成编码成功：entityCode={}, code={}", LogValue.safe(entityCode), LogValue.safe(code));
+        validateCode(code);
+        contexts.validateGeneratedCode(context.entityCode(), code);
+        reservations.reserve(context.entityCode(), context.recordId(), code);
         return code;
     }
-    
-    /**
-     * 获取或创建编码规则
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 符合条件的实体编码规则结果，供调用方继续处理
-     */
-    private EntityCodeRule getOrCreateRule(String entityCode) {
-        Optional<EntityCodeRule> optional = codeRuleMapper.findByEntityCode(entityCode);
-        if (optional.isPresent()) {
-            return optional.get();
-        }
-        
-        // 创建默认规则
-        return createDefaultRule(entityCode);
-    }
-    
-    /**
-     * 创建默认编码规则
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 创建后的默认规则结果，供调用方继续处理
-     */
-    private EntityCodeRule createDefaultRule(String entityCode) {
-        EntityCodeRule rule = EntityCodeRule.getDefault(entityCode);
-        codeRuleMapper.insert(rule);
-        log.info("创建默认编码规则：entityCode={}", LogValue.safe(entityCode));
-        return rule;
-    }
-    
-    /**
-     * 根据日期格式获取当前日期字符串
-     *
-     * @param dateFormat 日期{@code format}，后续用于判断有效期或展示该事件的发生时间
-     * @return 读取后的当前日期{@code str}文本，供调用方比较或展示
-     */
-    private String getCurrentDateStr(String dateFormat) {
-        if (dateFormat == null || dateFormat.isEmpty()) {
-            dateFormat = "yyyyMMdd";
-        }
-        // 处理Java日期格式，移除多余的字符
-        String javaFormat = dateFormat
-                .replace("yyyy", "yyyy")
-                .replace("MM", "MM")
-                .replace("dd", "dd")
-                .replace("-", "")
-                .replace("/", "");
-        
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(javaFormat);
-        return LocalDate.now().format(formatter);
-    }
-    
-    /**
-     * 构建最终编码
-     *
-     * @param rule 规则，作为 {@code code.append} 的输入影响后续处理
-     * @param dateStr 日期{@code str}，作为 {@code code.append} 的输入影响后续处理
-     * @param seq {@code seq}，供本方法构建编码时使用
-     * @return 构建后的编码文本，供调用方比较或展示
-     */
-    private String buildCode(EntityCodeRule rule, String dateStr, int seq) {
-        StringBuilder code = new StringBuilder();
-        
-        // 前缀
-        if (rule.getPrefix() != null && !rule.getPrefix().isEmpty()) {
-            code.append(rule.getPrefix());
-        }
-        
-        // 日期
-        code.append(dateStr);
-        
-        // 序列号（补零）
-        int seqLength = rule.getSeqLength() != null ? rule.getSeqLength() : 6;
-        String seqStr = String.format("%0" + seqLength + "d", seq);
-        code.append(seqStr);
-        
-        return code.toString();
-    }
-    
-    /**
-     * 预览编码（不实际生成）
-     *
-     * @param rule 规则，作为 {@code getCurrentDateStr} 的输入影响后续处理
-     * @return 处理后的预览编码文本，供调用方比较或展示
-     */
+
+    /** 预览只调用无副作用的样例接口，不创建规则、不占号，也不预留唯一值。 */
     public String previewCode(EntityCodeRule rule) {
-        String dateStr = getCurrentDateStr(rule.getDateFormat());
-        return buildCode(rule, dateStr, 1);
+        validateConfiguration(rule);
+        if ("RULE".equals(mode(rule))) {
+            String preview = ruleGenerator.previewCode(rule);
+            validateCode(preview);
+            return preview;
+        }
+        Map<String, Object> config = EntityCodeSnapshots.copy(rule.getGeneratorConfig());
+        return registry.require(rule.getGeneratorCode(), rule.getEntityCode(), config)
+                .preview(new EntityCodePreviewContext(rule.getEntityCode(), LocalDateTime.now()), config)
+                .map(code -> { validateCode(code); return code; }).orElse("");
     }
+
+    /** 迁移预检也使用同一校验，不要求目标实体已经创建，不执行取号。 */
+    public void validateConfiguration(EntityCodeRule rule) {
+        if (rule == null || rule.getEntityCode() == null || rule.getEntityCode().isBlank()) {
+            throw new IllegalArgumentException("实体编码不能为空");
+        }
+        rule.setGenerationMode(mode(rule));
+        if ("CUSTOM".equals(rule.getGenerationMode())) {
+            registry.require(rule.getGeneratorCode(), rule.getEntityCode(), rule.getGeneratorConfig());
+            return;
+        }
+        if (rule.getPrefix() != null && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
+            throw new IllegalArgumentException("编码前缀长度不能超过20个字符");
+        }
+        if (rule.getDateFormat() == null || rule.getDateFormat().isEmpty()) rule.setDateFormat("yyyyMMdd");
+        // 保留旧接口接受合法日期格式的行为，不把已有配置限制到页面下拉框的几个选项。
+        try {
+            java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern(
+                    rule.getDateFormat().replace("-", "").replace("/", "")));
+        } catch (java.time.DateTimeException | IllegalArgumentException exception) {
+            throw new IllegalArgumentException("不支持的编码日期格式", exception);
+        }
+        if (rule.getSeqLength() == null) rule.setSeqLength(6);
+        if (rule.getSeqLength() < 1 || rule.getSeqLength() > 100) throw new IllegalArgumentException("序号长度必须为1到100位，完整编码不得超过100位");
+        if (rule.getSeqType() == null) rule.setSeqType("DAY");
+        if (!Set.of("DAY", "MONTH", "YEAR", "NEVER").contains(rule.getSeqType())) throw new IllegalArgumentException("不支持的序号重置周期");
+    }
+
+    public List<EntityCodeGeneratorRegistry.Option> generators(String entityCode) {
+        entityAccessPolicy.requireDynamicByCode(entityCode);
+        return registry.options(entityCode);
+    }
+
+    private String mode(EntityCodeRule rule) {
+        String mode = rule.getGenerationMode() == null ? "RULE" : rule.getGenerationMode();
+        if (!Set.of("RULE", "CUSTOM").contains(mode)) throw new IllegalArgumentException("不支持的编码生成方式");
+        return mode;
+    }
+
+    private void validateCode(String code) {
+        if (code == null || code.isBlank() || code.codePointCount(0, code.length()) > 100
+                || !code.equals(code.strip()) || code.codePoints().anyMatch(Character::isISOControl)) {
+            throw new BusinessConflictException("ENTITY_CODE_INVALID", "生成的编码必须非空、无首尾空白或控制字符，且不超过100个字符");
+        }
+    }
+
     
     /**
      * 保存或更新编码规则
@@ -246,7 +158,9 @@ public class EntityCodeGeneratorService {
         }
         entityAccessPolicy.requireDynamicByCodeForUpdate(entityCode);
 
-        // 生成示例
+        validateConfiguration(rule);
+        if ("CUSTOM".equals(mode(rule))) reservations.validateExistingCodes(entityCode);
+        // 保存配置只生成展示样例，禁止调用正式取号接口。
         rule.setExample(previewCode(rule));
         
         Optional<EntityCodeRule> existing = codeRuleMapper.findByEntityCode(entityCode);
@@ -258,7 +172,14 @@ public class EntityCodeGeneratorService {
             rule.setSeqDate(old.getSeqDate());
             rule.setCreatedAt(old.getCreatedAt());
             rule.setUpdatedAt(null);
-            codeRuleMapper.updateById(rule);
+            // 只更新配置列，不能把读取到的旧序号写回，避免并发取号被回退。
+            if ("CUSTOM".equals(mode(rule))) {
+                rule.setPrefix(old.getPrefix());
+                rule.setDateFormat(old.getDateFormat());
+                rule.setSeqLength(old.getSeqLength());
+                rule.setSeqType(old.getSeqType());
+            }
+            codeRuleMapper.updateConfiguration(rule);
         } else {
             // 新规则的主键只能由服务端生成，不能复用客户端或旧实体残留的ID。
             rule.setId(null);

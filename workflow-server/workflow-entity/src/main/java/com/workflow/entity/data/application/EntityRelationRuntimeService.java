@@ -16,6 +16,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
+import com.workflow.entity.definition.application.code.EntityCodeGenerationInput;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
 import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
@@ -603,7 +604,7 @@ public class EntityRelationRuntimeService {
                 relationData,
                 prepared,
                 1,
-                new HashSet<>());
+                new HashSet<>(), "root");
     }
 
     /**
@@ -676,7 +677,8 @@ public class EntityRelationRuntimeService {
             Map<String, Object> relationData,
             EntityFormUniqueClaimService.PreparedUniqueClaims prepared,
             int depth,
-            Set<String> path) {
+            Set<String> path,
+            String submissionPath) {
         if (formUniqueClaimService != null) {
             formUniqueClaimService.verifyRelationPrepared(
                     relationData,
@@ -765,7 +767,9 @@ public class EntityRelationRuntimeService {
             // 同层子表单必须在任何子业务行锁/写入前一次性准备并排序锁定
             // 全部唯一值 gate，避免两事务各持一条新子行后反向等待 gate。
             List<PendingChildWrite> pendingWrites = new ArrayList<>();
+            int rowIndex = 0;
             for (Map<String, Object> row : incomingRows) {
+                String childPath = submissionPath + "/" + dataKey + "/" + rowIndex++;
                 TrustedSubFormUniqueReference.Resolved trusted =
                         TrustedSubFormUniqueReference.removePrepared(row);
                 List<FormUniqueMutationContext.Reference> formReferences =
@@ -799,13 +803,6 @@ public class EntityRelationRuntimeService {
                     submitted.put("id", childId);
                     submitted.put("create_by", UserContext.getUserId());
                     submitted.put("create_time", LocalDateTime.now());
-                    Object existingCode = submitted.get("code");
-                    if (existingCode == null
-                            || existingCode.toString().trim().isEmpty()) {
-                        submitted.put("code", codeGeneratorService
-                                .generateCode(
-                                        childDefinition.getEntityCode()));
-                    }
                 }
                 // 保留完整 projected record 供唯一性递归复核；仅真正写当前子表
                 // 的 childData 可以做 JSON 存储转换，childRelationData 必须保持
@@ -818,6 +815,22 @@ public class EntityRelationRuntimeService {
                         withoutRelationData(
                                 submitted,
                                 childRelations));
+                if (isNewChild) {
+                    // 先移除嵌套关系私有令牌，再把业务字段传给生成器；当前子行尚未 INSERT。
+                    String generatedCode = codeGeneratorService.generateCode(new EntityCodeGenerationInput(
+                            childDefinition.getEntityCode(), childId, childData,
+                            relation.getParentEntityCode(), parentId, childPath,
+                            stringValue(submitted.get("code"))));
+                    submitted.put("code", generatedCode);
+                    childData.put("code", generatedCode);
+                } else {
+                    // 更新子行只沿用既有编号，不能借父表单绕过只生成一次的约束。
+                    childData.remove("code");
+                    submitted.remove("code");
+                    String existingChildId = childId;
+                    existingRows.stream().filter(existing -> existingChildId.equals(stringValue(existing.get("id"))))
+                            .findFirst().ifPresent(existing -> submitted.put("code", existing.get("code")));
+                }
                 if (!formReferences.isEmpty()) {
                     if (formUniqueClaimService == null) {
                         throw new IllegalStateException(
@@ -840,7 +853,7 @@ public class EntityRelationRuntimeService {
                         childData,
                         childRelationData,
                         formReferences,
-                        trusted.prepared()));
+                        trusted.prepared(), childPath));
             }
 
             // 聚合提交采用“传入集合替换当前集合”语义。先按稳定顺序锁定全部
@@ -882,7 +895,7 @@ public class EntityRelationRuntimeService {
                         childRelationData,
                         pending.prepared(),
                         depth + 1,
-                        path);
+                        path, pending.submissionPath());
                 reconcileWrittenChild(
                         childDefinition,
                         childTableName,
@@ -1508,7 +1521,7 @@ public class EntityRelationRuntimeService {
             Map<String, Object> childData,
             Map<String, Object> childRelationData,
             List<FormUniqueMutationContext.Reference> formReferences,
-            PreparedUniqueClaims prepared) {
+            PreparedUniqueClaims prepared, String submissionPath) {
     }
 
     /**

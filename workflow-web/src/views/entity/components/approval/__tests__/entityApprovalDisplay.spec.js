@@ -5,10 +5,28 @@ import {
   hasRenderableApprovalForm,
   isFileUrl,
   isGroupedFileValue,
+  resolveApprovalDialogTitle,
   resolveApprovalEntityCode,
   resolveApprovalFieldLabel,
   resolveApprovalFormConfig
 } from '@flow/workflow-core/workflow/approval-display'
+
+assert.equal(resolveApprovalDialogTitle('第一个节点', {
+  processStatus: 'RUNNING', status: 'DRAFT'
+}), '第一个节点（运行中-草稿）')
+assert.equal(resolveApprovalDialogTitle('数据详情', {
+  processStatus: 'NOT_STARTED', status: 'DRAFT'
+}, [{ value: 'DRAFT', label: '待填写' }]), '数据详情（未发起-待填写）')
+assert.equal(resolveApprovalDialogTitle('审批详情', {
+  processStatus: 'COMPLETED', status: 'FINANCE_REVIEW', _statusText: '财务复核中'
+}), '审批详情（已完成-财务复核中）')
+assert.equal(resolveApprovalDialogTitle('数据详情', {
+  process_status: 'COMPLETED', status: 'REJECTED'
+}), '数据详情（已完成-已驳回）')
+assert.equal(resolveApprovalDialogTitle('数据详情', {
+  processStatus: 'RUNNING', status: 'CUSTOM'
+}), '数据详情（运行中-CUSTOM）')
+assert.equal(resolveApprovalDialogTitle('数据详情', null), '数据详情')
 
 assert.equal(isFileUrl('/api/files/design.pdf'), true)
 assert.equal(isFileUrl('https://example.test/design.pdf'), true)
