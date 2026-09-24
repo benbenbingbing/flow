@@ -1,5 +1,7 @@
 package com.workflow.process.assignment.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.workflow.core.database.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
@@ -420,7 +422,7 @@ public class AssigneeIncidentService {
         if (StringUtils.hasText(incident.processInstanceId())
                 && runtimeService.createProcessInstanceQuery()
                 .processInstanceId(incident.processInstanceId()).singleResult() != null) {
-            runtimeService.deleteProcessInstance(incident.processInstanceId(), reason);
+            runtimeService.deleteProcessInstance(incident.processInstanceId(), ProcessEndReason.encode("TERMINATED", reason));
         }
         jdbcTemplate.update("""
                 UPDATE process_assignee_incident

@@ -67,6 +67,17 @@ class EntityDataSqlProviderTypedBindingTest {
     }
 
     @Test
+    void fixedLowerBoundAndUserEqualityProduceTwoSqlPredicates() throws Exception {
+        for (var vendor : DatabaseVendor.values()) {
+            var rendered = render(vendor, typed(Map.of(
+                    "amount_start", "2", "amount", "1", "amount_op", "EQ")));
+            assertTrue(rendered.sql().contains(">= ?"));
+            assertTrue(rendered.sql().contains("= ?"));
+            assertEquals(List.of(new BigDecimal("2"), new BigDecimal("1")), rendered.values());
+        }
+    }
+
+    @Test
     void defaultStringLikeRemainsLikeWhileNumericDefaultRemainsEquality() throws Exception {
         for (var vendor : DatabaseVendor.values()) {
             for (Map<String, Object> condition : List.of(

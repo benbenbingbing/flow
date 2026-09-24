@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 /**
  * 任务候选组实体
- * 记录某个任务实例的候选审批组，用于会签/或签场景下分组匹配
+ * 保存平台任务的候选组或 ROLE_ 角色标识；可见性按查询时的有效成员关系判断
  */
 @Data
 @TableName("process_task_candidate_group")
@@ -19,11 +19,11 @@ public class ProcessTaskCandidateGroup {
     /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
-    /** 关联的流程任务实例ID */
-    private String taskInstanceId;
+    /** 关联 process_task.id；与引擎任务 ID 分离，认领/转办时保持同一平台任务。 */
+    private Long processTaskId;
     /** 候选组编码（角色/部门等） */
     private String groupCode;
-    /** 排序号，控制候选组处理顺序 */
+    /** 仅控制展示顺序；组成员实时匹配，角色使用引擎的 ROLE_ 前缀。 */
     private Integer sortOrder;
 
     /** 创建时间 */

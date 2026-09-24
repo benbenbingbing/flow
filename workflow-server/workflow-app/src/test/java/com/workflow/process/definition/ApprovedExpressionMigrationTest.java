@@ -83,6 +83,7 @@ class ApprovedExpressionMigrationTest {
     void migratesMultipleExpressionsAndOtherConditions() {
         String result = sanitizer.sanitize(wrap("${approved == true && amount > 100}"), "p1");
         assertTrue(result.contains("approved == 'approve'"));
-        assertTrue(result.contains("amount > 100"), "非 approved 的条件不应被误改");
+        // XML 序列化允许转义比较运算符；比较解码后的条件语义。
+        assertTrue(result.replace("&gt;", ">").contains("amount > 100"), "非 approved 的条件不应被误改");
     }
 }

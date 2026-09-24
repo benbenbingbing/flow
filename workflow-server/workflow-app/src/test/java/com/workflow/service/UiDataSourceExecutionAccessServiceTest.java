@@ -1149,6 +1149,8 @@ class UiDataSourceExecutionAccessServiceTest {
         UiExtensionDefinitionMapper extensions = mock(UiExtensionDefinitionMapper.class);
         when(extensions.selectById("source-1")).thenReturn(extension);
         UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        // 宿主通过带预算入口执行；调用 SPI 的真实默认方法，继续验证旧 Provider 收到相同授权和输入。
+        org.mockito.Mockito.doCallRealMethod().when(provider).execute(any(), any(), any(), any(), any());
         when(provider.getCode()).thenReturn("backfill-provider");
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));

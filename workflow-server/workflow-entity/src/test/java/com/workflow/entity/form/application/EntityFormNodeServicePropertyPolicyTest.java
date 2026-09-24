@@ -68,9 +68,6 @@ class EntityFormNodeServicePropertyPolicyTest {
                 "childFormId",
                 "childFormReleaseId",
                 "childFormReleaseVersion",
-                "templateId",
-                "templateVersion",
-                "localOverrides",
                 "bindingRef"));
 
         assertDoesNotThrow(() ->

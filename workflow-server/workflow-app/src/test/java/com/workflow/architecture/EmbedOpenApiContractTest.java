@@ -264,7 +264,7 @@ class EmbedOpenApiContractTest {
                             Set.of("200")),
                     operation(
                             "/api/embed/v1/session",
-                            HttpMethod.DELETE,
+                            HttpMethod.POST,
                             "logoutEmbedSession",
                             SecurityBoundary.EMBED_BEARER,
                             Set.of("204")),
@@ -860,7 +860,7 @@ class EmbedOpenApiContractTest {
                                 Instant.parse("2026-08-27T08:00:00Z"))));
         recordStatus(statuses,
                 new OperationKey(
-                        "/api/embed/v1/session", HttpMethod.DELETE),
+                        "/api/embed/v1/session", HttpMethod.POST),
                 controller.logout(
                         "Bearer "
                                 + "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",

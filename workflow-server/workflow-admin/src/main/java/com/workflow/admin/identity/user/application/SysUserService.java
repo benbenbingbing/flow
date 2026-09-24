@@ -254,10 +254,30 @@ public class SysUserService {
         if (idsOrUsernames == null || idsOrUsernames.isEmpty()) {
             return "";
         }
+        Map<String, String> names = getDisplayNameMap(idsOrUsernames);
         return idsOrUsernames.stream()
-                .map(this::getDisplayName)
+                .map(key -> names.getOrDefault(key, key))
                 .distinct()
                 .collect(Collectors.joining(","));
+    }
+
+    /**
+     * 一次请求内批量解析显示名称，不加载角色、组织或密码等无关字段。
+     * 保持用户名优先、禁用用户仍可展示、已删除/未知用户回退输入值的历史口径。
+     */
+    public Map<String, String> getDisplayNameMap(java.util.Collection<String> idsOrUsernames) {
+        if (idsOrUsernames == null || idsOrUsernames.isEmpty()) return Map.of();
+        List<String> keys = idsOrUsernames.stream().filter(StringUtils::hasText).distinct().toList();
+        Map<String, String> result = new java.util.LinkedHashMap<>();
+        for (int start = 0; start < keys.size(); start += 100) {
+            for (var row : userMapper.selectDisplayNameRows(keys.subList(start, Math.min(start + 100, keys.size())))) {
+                String nickname = StringUtils.hasText(row.getNickname()) ? row.getNickname() : row.getUsername();
+                String display = nickname.equals(row.getUsername()) ? nickname : nickname + "(" + row.getUsername() + ")";
+                result.putIfAbsent(row.getLookupKey(), display);
+            }
+        }
+        keys.forEach(key -> result.putIfAbsent(key, key));
+        return result;
     }
     
     /**

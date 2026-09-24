@@ -560,7 +560,7 @@ JWT Secret 以环境变量注入；Secret 内容变化不会更新旧 Pod，也�
 | 默认自动发布清单 | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)、[`deploy/compose.ecs.yml`](../deploy/compose.ecs.yml) |
 | Helm Server 角色与后台开关 | [`server-deployment.yaml`](../deploy/helm/flow/templates/server-deployment.yaml) |
 | 迁移 Hook 顺序 | [`migration-job.yaml`](../deploy/helm/flow/templates/migration-job.yaml) |
-| Scheduling 全局开关 | [`SchedulingConfiguration.java`](../workflow-server/workflow-app/src/main/java/com/workflow/config/SchedulingConfiguration.java) |
+| Scheduling 全局开关 | [`SchedulingConfiguration.java`](../workflow-server/workflow-app/src/main/java/com/workflow/config/scheduling/SchedulingConfiguration.java) |
 | SLA claim 与无 heartbeat 的 Worker | [`TaskSlaEventWorker.java`](../workflow-server/workflow-process/src/main/java/com/workflow/process/sla/runtime/application/TaskSlaEventWorker.java) |
 | SLA 租约恢复和 fenced ACK | [`ProcessTaskSlaEventMapper.java`](../workflow-server/workflow-process/src/main/java/com/workflow/process/sla/runtime/infrastructure/persistence/mapper/ProcessTaskSlaEventMapper.java) |
 | SLA 事务与 ACK 返回值 | [`TaskSlaEventProcessor.java`](../workflow-server/workflow-process/src/main/java/com/workflow/process/sla/runtime/application/TaskSlaEventProcessor.java) |
@@ -580,7 +580,7 @@ JWT Secret 以环境变量注入；Secret 内容变化不会更新旧 Pod，也�
 | Schema 入队/等待与 active hash | [`QueuedSchemaDdlExecutor.java`](../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/QueuedSchemaDdlExecutor.java)、[`V012`](../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V012__schema_change_active_deduplication.sql) |
 | 业务迁移数据预检 | [`BusinessMigrationPreflight.java`](../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java) |
 | Webhook 公平查询/恢复 | [`WebhookDeliveryMapper.java`](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/webhook/infrastructure/persistence/mapper/WebhookDeliveryMapper.java) |
-| Readiness 与业务连接池 | [`HealthController.java`](../workflow-server/workflow-app/src/main/java/com/workflow/config/HealthController.java) |
+| Readiness 与业务连接池 | [`HealthController.java`](../workflow-server/workflow-app/src/main/java/com/workflow/observability/HealthController.java) |
 | Open API 幂等/并发租约 | [`OpenIdempotencyService.java`](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/application/OpenIdempotencyService.java)、[`OpenApiConcurrencyLeaseService.java`](../workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/security/OpenApiConcurrencyLeaseService.java) |
 | 文件对象生命周期 | [`FileController.java`](../workflow-server/workflow-storage/src/main/java/com/workflow/storage/api/web/FileController.java) |
 | 数据库 NetworkPolicy | [`networkpolicy.yaml`](../deploy/helm/flow/templates/networkpolicy.yaml) |

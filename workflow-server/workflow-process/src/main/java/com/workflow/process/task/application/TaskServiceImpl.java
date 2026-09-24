@@ -572,7 +572,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     }
 
     /**
-     * 处理{@code withdraw}流程，并将结果传给后续步骤。
+     * 兼容旧 TaskService 调用，统一委托发起人撤回入口。
+     * 当前节点开关决定是否允许，不再按已有审批记录限制撤回。
      *
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @param reason 原因，供本方法处理{@code withdraw}流程时使用
@@ -587,34 +588,10 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_INSTANCE",
             targetIdArg = 0)
     public void withdrawProcess(String processInstanceId, String reason) {
-        HistoricProcessInstance processInstance = historyService
-                .createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-        if (processInstance == null) {
-            throw new RuntimeException("流程实例不存在");
-        }
-        if (!UserContext.requireUsernameOrId().equals(
-                processInstance.getStartUserId())) {
-            throw new RuntimeException("只有发起人才能撤回流程");
-        }
-        if (processInstance.getEndTime() != null) {
-            throw new RuntimeException("流程已结束，无法撤回");
-        }
-        long completedTaskCount = historyService
-                .createHistoricTaskInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .finished()
-                .count();
-        if (completedTaskCount > 0) {
-            throw new RuntimeException("流程已被审批，无法撤回");
-        }
-
-        // 撤回只保留一个权威实现，避免本类直接删除实例而绕过终止开关。
-        taskActionService.withdrawProcess(
-                processInstanceId,
-                UserContext.requireUsernameOrId(),
-                reason);
+        // 所有入口使用同一发起人、运行状态和当前节点开关校验，不再按“是否已审批”限制撤回。
+        String userId = UserContext.getUserId();
+        if (userId == null || userId.isBlank()) userId = UserContext.getUsername();
+        taskActionService.withdrawProcess(processInstanceId, userId, reason);
     }
 
     /**

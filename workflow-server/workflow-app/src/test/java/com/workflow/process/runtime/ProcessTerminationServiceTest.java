@@ -55,7 +55,7 @@ class ProcessTerminationServiceTest {
         Result<Void> result = fixture.service().terminateProcess("pi-1", "starter", "主动撤回");
 
         assertEquals(200, result.getCode());
-        verify(fixture.runtimeService).deleteProcessInstance("pi-1", "主动撤回");
+        verify(fixture.runtimeService).deleteProcessInstance("pi-1", com.workflow.process.status.application.ProcessEndReason.encode("TERMINATED", "主动撤回"));
         verify(fixture.nodeOperationCapabilityService).requireTerminateAllowed(
                 org.mockito.ArgumentMatchers.eq("pi-1"),
                 any(NodeOperationDecisionService.CheckContext.class));

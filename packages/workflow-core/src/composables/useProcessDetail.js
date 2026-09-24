@@ -78,10 +78,14 @@ export function useProcessDetail({ request, getProcessHistory }) {
         progressData.value = {
           completedNodes: progressRes.completedNodes || [],
           activeNodes: progressRes.activeNodes || [],
-          terminatedNodes: progressRes.terminatedNodes || [],
+          terminatedNodes: progressRes.cancelledNodes || progressRes.terminatedNodes || [],
+          cancelledNodes: progressRes.cancelledNodes || progressRes.terminatedNodes || [],
+          endType: progressRes.endType || null,
+          endReason: progressRes.endReason || null,
           executedSequenceFlows: progressRes.executedSequenceFlows || [],
           nodeAssigneeMap: progressRes.nodeAssigneeMap || {},
           nodeAssigneesMap: progressRes.nodeAssigneesMap || {},
+          rounds: progressRes.rounds || [],
           status: progressRes.status
         }
         entityData.value = progressRes.entityData || null
@@ -108,6 +112,9 @@ export function useProcessDetail({ request, getProcessHistory }) {
           else if (node.action === 'REJECTED') actionText = '驳回'
           else if (node.action === 'TRANSFERRED') actionText = '转办'
           else if (node.action === 'TERMINATED') actionText = '终止'
+          else if (node.action === 'WITHDRAWN') actionText = '撤回'
+          else if (node.action === 'CANCELLED' || node.status === 'CANCELLED') actionText = '已取消'
+          else if (node.action === 'COMPLETED') actionText = '完成'
           else if (node.action) actionText = node.action
           else if (node.status === 'COMPLETED') actionText = '完成'
           else if (node.status === 'TERMINATED') actionText = '终止'
@@ -119,7 +126,7 @@ export function useProcessDetail({ request, getProcessHistory }) {
               ? `发起人: ${node.assigneeName || node.assignee || startUserName}`
               : (node.assignee ? `执行人: ${node.assigneeName || node.assignee} ${actionText}${commentText}` : `${actionText}${commentText}`),
             time: node.endTime || node.startTime,
-            type: node.action === 'TRANSFERRED' ? 'warning' : (node.status === 'TERMINATED' ? 'danger' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
+            type: node.action === 'TRANSFERRED' ? 'warning' : (['TERMINATED', 'CANCELLED'].includes(node.status) ? 'danger' : node.status === 'WITHDRAWN' ? 'warning' : (node.status === 'COMPLETED' ? 'success' : 'primary')),
             status: node.status,
             action: node.action
           }
@@ -134,10 +141,10 @@ export function useProcessDetail({ request, getProcessHistory }) {
             title: h.taskName || '流程节点',
             description: isStart
               ? `发起人: ${h.assigneeName || h.assignee || startUserName}`
-              : `${h.assigneeName || h.assignee || '系统'} ${isTransfer ? '转办' : (h.action || '处理')}`,
+              : `${h.assigneeName || h.assignee || '系统'} ${isTransfer ? '转办' : ({ cancelled: '已取消', withdraw: '撤回', terminate: '终止', completed: '完成' }[h.result] || h.action || '处理')}${h.comment ? `（${h.comment}）` : ''}`,
             time: h.endTime || h.startTime,
-            type: isStart ? 'primary' : (isTransfer ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
-            status: h.endTime ? 'COMPLETED' : 'ACTIVE',
+            type: isStart ? 'primary' : ['cancelled', 'terminate'].includes(h.result) ? 'danger' : (isTransfer || h.result === 'withdraw' ? 'warning' : (h.action === '通过' ? 'success' : 'info')),
+            status: h.result === 'cancelled' ? 'CANCELLED' : h.result === 'withdraw' ? 'WITHDRAWN' : h.result === 'terminate' ? 'TERMINATED' : h.endTime ? 'COMPLETED' : 'ACTIVE',
             action: h.result
           }
         }).reverse()

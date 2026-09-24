@@ -11,7 +11,7 @@ import org.springframework.util.StringUtils;
 import java.util.Optional;
 
 /**
- * 从用户任务的 {@code assigneeConfig} 根级读取三个简化操作开关。
+ * 从用户任务的 {@code assigneeConfig} 根级读取四个简化操作开关。
  */
 @Component
 @RequiredArgsConstructor
@@ -22,13 +22,17 @@ public class NodeOperationConfigReader {
     public static final String ALLOW_ADD_SIGN = "allowAddSign";
     public static final String ALLOW_TERMINATE = "allowTerminate";
 
+    public static final String ALLOW_WITHDRAW = "allowWithdraw";
+
     private final ObjectMapper objectMapper;
 
     /**
-     * 读取显式简化配置。任一新字段存在即视为新配置，其余字段缺省为 {@code true}。
+     * 读取冻结的节点开关；新增节点由设计器显式写入四个值。
+     * 旧部署缺少 allowWithdraw 时沿用原终止门禁，避免升级代码改变存量实例权限；
+     * 一旦配置 allowWithdraw，撤回便独立于终止。旧三字段缺省继续保持历史值。
      *
      * @param element 元素，供本方法读取节点操作配置{@code reader}时使用
-     * @return 新配置；三个字段均不存在时返回空，以便调用方继续执行旧矩阵兼容逻辑
+     * @return 新配置；四个字段均不存在时返回空，以便调用方继续执行旧矩阵兼容逻辑
      */
     public Optional<NodeOperationConfig> read(BaseElement element) {
         String assigneeJson = ConfiguredTaskPropertyReader.read(
@@ -43,14 +47,17 @@ public class NodeOperationConfigReader {
             }
             boolean configured = root.has(ALLOW_TRANSFER)
                     || root.has(ALLOW_ADD_SIGN)
-                    || root.has(ALLOW_TERMINATE);
+                    || root.has(ALLOW_TERMINATE)
+                    || root.has(ALLOW_WITHDRAW);
             if (!configured) {
                 return Optional.empty();
             }
             return Optional.of(new NodeOperationConfig(
                     booleanValue(root, ALLOW_TRANSFER),
                     booleanValue(root, ALLOW_ADD_SIGN),
-                    booleanValue(root, ALLOW_TERMINATE)));
+                    booleanValue(root, ALLOW_TERMINATE),
+                    root.has(ALLOW_WITHDRAW) ? booleanValue(root, ALLOW_WITHDRAW)
+                            : booleanValue(root, ALLOW_TERMINATE)));
         } catch (IllegalArgumentException exception) {
             throw exception;
         } catch (Exception exception) {

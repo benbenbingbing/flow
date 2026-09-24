@@ -97,7 +97,7 @@ class EmbedSessionAuthenticationFilterTest {
                 mock(EmbedLifecycleMetrics.class),
                 mock(EmbedRuntimeAudit.class));
         MockHttpServletRequest request = new MockHttpServletRequest(
-                "DELETE", "/api/embed/v1/session");
+                "POST", "/api/embed/v1/session");
         MockHttpServletResponse response = new MockHttpServletResponse();
         AtomicBoolean called = new AtomicBoolean();
 

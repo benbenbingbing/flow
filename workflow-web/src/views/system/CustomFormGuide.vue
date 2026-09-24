@@ -42,7 +42,7 @@
         <section id="node-contract" class="guide-section">
           <h3>3. 稳定节点 ID 与单项保存</h3>
           <ul class="check-list">
-            <li>每个布局和内容节点都使用稳定 `nodeId`；改名、拖拽、发布和模板升级不会重建 ID。</li>
+            <li>每个布局和内容节点都使用稳定 `nodeId`；改名、拖拽和发布不会重建 ID。</li>
             <li>右侧属性面板只 PATCH 当前节点，删除和同级排序使用独立接口；其他节点的 revision 与更新时间保持不变。</li>
             <li>设计器统一通过节点右上角手柄拖拽；同级排序和跨容器移动都复用父子类型、循环引用与 8 层深度校验。已保存节点立即调用 reorder 并携带 expectedRevision，响应后刷新整棵草稿树，避免服务端 orderKey 重平衡造成其他节点 revision 过期。</li>
             <li>请求必须携带 `expectedRevision`。同节点并发修改返回 HTTP `409`，不同节点允许并行保存。</li>
@@ -96,7 +96,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>新增和编辑读取同一份节点类型 Schema，并经过同一套服务端创建/PATCH 白名单；不能依赖“新增时没有旧数据”或“编辑面板已隐藏”放宽校验。</li>
             <li>编辑历史节点时，不属于当前 nodeType 的活动 props、rules、组件参数和数据源绑定会被清除；需要审计的原值仅进入 `legacyProps` 等非活动兼容区，不参与预览、发布或运行时执行。</li>
             <li>`id`、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 不可编辑。已绑定实体字段或实体关系后，nodeType、fieldId、fieldCode、关系和子实体绑定同样不可编辑。</li>
-            <li>需要改字段或关系语义时，新建目标节点并绑定新字段/关系，迁移显示标签、布局、兼容组件、模板和该类型允许的数据源；草稿预览、发布验证通过后再删除旧节点。</li>
+            <li>需要改字段或关系语义时，新建目标节点并绑定新字段/关系，迁移显示标签、布局、兼容组件和该类型允许的数据源；草稿预览、发布验证通过后再删除旧节点。</li>
             <li>节点级扩展必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
             <li>默认动态表单的画布、草稿预览和已发布运行时使用同一递归树：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先。SECTION、GRID、TAB_SET、TAB、COLLAPSE 等容器在预览中必须保持容器语义。</li>
             <li>流程上下文仅提升根级 TAB_SET；嵌套在 SECTION、GRID、TAB 或其他容器中的 TAB_SET 仍由递归节点运行时原位渲染。扩展组件不能依赖外层页签 DOM 层级，应使用稳定 nodeId 和运行时 context。</li>
@@ -337,7 +337,7 @@ defineExpose({ validate })
         </section>
 
         <section id="release-template" class="guide-section">
-          <h3>12. STANDARD/HOTFIX、版本回滚与模板升级</h3>
+          <h3>12. STANDARD/HOTFIX、版本回滚</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
             <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
@@ -376,9 +376,6 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>父表单令牌由后端签发，5 分钟过期并绑定当前用户、运行目的、流程历史版本、节点、父表单 release 和当前深度；客户端不能提交自选 processVersionHistoryId。</li>
             <li>后端先验证父表单有效快照确实引用目标子表单 release，再递归解析子表单 HOTFIX；最大深度为 8，缺失引用、伪造、过期或越层令牌均拒绝。</li>
-            <li>字段组、区块和子表模板实例固定 `templateId + templateVersion + localOverrides`，不会自动跟随模板变化。</li>
-            <li>显式升级使用旧模板、目标模板和本地覆盖三方合并；冲突逐项确认，升级结果只进入草稿。</li>
-            <li>“复制后独立”不保留模板关系，适合无需后续升级的表单片段。</li>
           </ul>
         </section>
 
@@ -431,7 +428,6 @@ defineExpose({ validate })
             <li>循环引用和超过 8 层嵌套被发布校验拒绝。</li>
             <li>STANDARD 不影响运行中流程；HOTFIX 原子影响当前发起和运行中任务，历史实例仍用原快照。</li>
             <li>SAFE/REVIEW、节点集合增删补丁、权限拒绝、409 重新预检、逆序回滚和嵌套令牌 8 层限制均有负向测试。</li>
-            <li>模板三方升级保留 localOverrides，迁移可重复执行且快照哈希可核对。</li>
           </ul>
         </section>
       </main>
@@ -459,7 +455,7 @@ const toc = [
   { id: 'modes', label: '四种模式' },
   { id: 'data', label: '数据与校验' },
   { id: 'data-source', label: '统一数据源' },
-  { id: 'release-template', label: '发布与模板' },
+  { id: 'release-template', label: '发布与回滚' },
   { id: 'demo', label: '可运行 Demo' },
   { id: 'security', label: '安全边界' },
   { id: 'migration', label: '迁移兼容' },
@@ -489,9 +485,9 @@ const propertyRows = [
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', boundary: '不能位于根节点，父级只能选择有效 TAB_SET；无字段规则或数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限文本 text；普通说明或节标题由 textStyle 区分。', boundary: 'SECTION_TITLE 只改变展示样式；禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
-  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
-  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
-  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于在表单树中放置稳定动作插槽。', boundary: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 

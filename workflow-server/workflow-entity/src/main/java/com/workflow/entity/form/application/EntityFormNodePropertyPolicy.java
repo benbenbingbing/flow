@@ -42,8 +42,6 @@ final class EntityFormNodePropertyPolicy {
     private static final Set<String> RULE_TYPES = Set.of("FIELD");
     private static final Set<String> CHILD_FORM_TYPES = Set.of(
             "SUB_FORM", "REPEATER");
-    private static final Set<String> TEMPLATE_TYPES = Set.of(
-            "FIELD", "SUB_FORM", "REPEATER");
     private static final Set<String> LENGTH_VALIDATION_FIELD_TYPES = Set.of(
             "STRING", "TEXT");
     private static final Set<String> RANGE_VALIDATION_FIELD_TYPES = Set.of(
@@ -437,42 +435,6 @@ final class EntityFormNodePropertyPolicy {
     }
 
     /**
-     * 校验组件模板配置的合法性：模板ID与版本必须成对出现，局部覆盖依赖已锁定模板。
-     *
-     * @param nodeType        节点类型
-     * @param templateId      模板ID
-     * @param templateVersion 模板版本
-     * @param localOverrides  局部覆盖属性
-     * @throws IllegalArgumentException 节点不支持模板或模板配置不完整时抛出
-     */
-    static void validateTemplate(
-            String nodeType,
-            String templateId,
-            Integer templateVersion,
-            Map<String, Object> localOverrides) {
-        String normalizedType = normalize(nodeType);
-        boolean hasTemplate = StringUtils.hasText(templateId);
-        boolean hasVersion = templateVersion != null;
-        boolean hasOverrides = meaningful(localOverrides);
-        if (!supportsTemplate(normalizedType)
-                && (hasTemplate || hasVersion || hasOverrides)) {
-            throw new IllegalArgumentException(
-                    normalizedType + " 节点不支持组件模板配置");
-        }
-        if (hasTemplate != hasVersion) {
-            throw new IllegalArgumentException(
-                    "templateId 与 templateVersion 必须同时配置");
-        }
-        if (hasOverrides && !hasTemplate) {
-            throw new IllegalArgumentException(
-                    "localOverrides 必须依赖已锁定模板");
-        }
-        if (hasVersion && templateVersion < 1) {
-            throw new IllegalArgumentException("模板版本必须大于 0");
-        }
-    }
-
-    /**
      * 判断节点是否支持扩展组件配置。
      *
      * @param nodeType 节点类型
@@ -500,16 +462,6 @@ final class EntityFormNodePropertyPolicy {
      */
     static boolean supportsChildForm(String nodeType) {
         return CHILD_FORM_TYPES.contains(normalize(nodeType));
-    }
-
-    /**
-     * 判断节点是否支持组件模板配置。
-     *
-     * @param nodeType 节点类型
-     * @return 支持返回 true
-     */
-    static boolean supportsTemplate(String nodeType) {
-        return TEMPLATE_TYPES.contains(normalize(nodeType));
     }
 
     /**

@@ -90,16 +90,14 @@
           name="diagram"
           lazy
         >
-          <EntityApprovalDiagram
-            :bpmnXml="bpmnXml"
-            :progressData="progressData"
-            :processInstanceId="currentTask.processInstanceId"
-          />
+          <EntityProcessRoundHistory view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
+            :process-instance-id="currentTask.processInstanceId" :process-history="processHistory" />
         </el-tab-pane>
 
         <!-- 审批历史（仅在有流程实例时显示） -->
         <el-tab-pane v-if="currentTask?.processInstanceId" label="审批历史" name="history">
-          <EntityApprovalHistory :processHistory="processHistory" />
+          <EntityProcessRoundHistory view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
+            :process-instance-id="currentTask.processInstanceId" :process-history="processHistory" />
         </el-tab-pane>
 
         <el-tab-pane
@@ -163,8 +161,7 @@ import { useProcessDetail } from '@/composables/useProcessDetail'
 import { useNextApproverPreview } from '@/composables/useNextApproverPreview'
 import { useUserStore } from '@/stores/user'
 import EntityApprovalBasicInfo from './EntityApprovalBasicInfo.vue'
-import EntityApprovalHistory from './EntityApprovalHistory.vue'
-import EntityApprovalDiagram from './EntityApprovalDiagram.vue'
+import EntityProcessRoundHistory from './EntityProcessRoundHistory.vue'
 import ApprovalDecisionPanel from './ApprovalDecisionPanel.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
@@ -616,6 +613,15 @@ const openApprove = async (
         currentTask.value.processStatus = progressRes.status
         if (progressRes.processName) {
           currentTask.value.processName = progressRes.processName
+        }
+        // 并行/包容网关会同时产生多个任务；列表中的 currentTaskName 只是单值投影，
+        // 审批标题必须以本次实际授权的 taskId 为准，避免用户误认自己正在办理另一分支。
+        const actionableTask = Array.isArray(progressRes.tasks)
+          ? progressRes.tasks.find((task: any) =>
+            String(task?.taskId || '') === String(currentTask.value?.taskId || ''))
+          : null
+        if (actionableTask?.taskName) {
+          currentTask.value.name = actionableTask.taskName
         }
       }
       const config = progressRes.approvalConfig

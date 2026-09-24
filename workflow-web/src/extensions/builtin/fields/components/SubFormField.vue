@@ -775,12 +775,21 @@ const subFormConfig = computed(() => {
     repeatable = false
   }
 
+  // 关系定义的必填性保存在 isRequired/relationRequired；子表单组件的
+  // required/minRows 由此派生，避免配置显示“必填”却允许提交零子行。
+  const relationRequired = field?.relationRequired === true
+    || parsedComponentProps.value.subFormConfig?.relationRequired === true
+    || field?.isRequired === true
+    || field?.isRequired === 1
+    || field?.required === true
+  const minimumRows = Math.max(Number(field?.minRows) || 0, relationRequired ? 1 : 0)
   return {
     label: field?.fieldLabel || field?.fieldName || '明细',
     showHeaderTitle: false,
     fieldKey: field?.fieldCode || field?.fieldKey || 'detailList',
-    required: field?.required || false,
-    minRows: field?.minRows || 0,
+    required: relationRequired,
+    minRows: minimumRows,
+    autoAddMinRows: !relationRequired,
     maxRows: field?.maxRows || 100,
     fields: hasNodeTree.value ? runtimeFields.value : fields,
     showSummary: field?.showSummary || false,

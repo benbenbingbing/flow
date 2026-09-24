@@ -48,7 +48,7 @@ public class ProcessTask {
     /** 实体数据ID */
     private String entityDataId;
     
-    /** 执行人ID */
+    /** 当前实际办理人，兼容 ID/用户名；未认领普通任务为空，候选名单只能放在候选表。 */
     private String assigneeId;
     
     /** 执行人姓名 */
@@ -62,6 +62,30 @@ public class ProcessTask {
     
     /** 表单数据(JSON) */
     private String formData;
+
+    /** 发起人身份在创建/回填时确定；显示名称由用户目录解析，避免人员更名后显示旧值。 */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String startUserId;
+    /** 列表只读取这些业务摘要；投影服务用显式 SQL 更新，普通 updateById 不得回写旧摘要快照。 */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String businessName;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String businessCode;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String businessDataName;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String businessCurrentTaskName;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String businessStatus;
+    /** 区分尚未回填与摘要本身为空；未就绪记录不能直接进入摘要分页。 */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Boolean inboxSummaryReady;
+    /** 未就绪时仍用引擎候选关系，防止升级期间任务因空候选表丢失。 */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Boolean inboxIdentityReady;
+    /** 仅用于列表查询的用户目录展示值，不写入任务表。 */
+    @TableField(exist = false)
+    private String startUserName;
     
     /** 状态: todo-待办 done-已办 transfer-转办 skip-跳过 */
     private String status;

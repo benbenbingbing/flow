@@ -20,7 +20,7 @@ public class NodeOperationPolicyBpmnValidator {
     private final NodeOperationPolicyParser policyParser;
 
     /**
-     * 校验新三开关的布尔类型；存量矩阵仍按原规则校验并接受。
+     * 校验四个简化开关的布尔类型；存量矩阵仍按原规则校验并接受。
      *
      * @param bpmnXml 待发布 BPMN XML
      * @throws IllegalArgumentException BPMN 或节点操作配置不合法

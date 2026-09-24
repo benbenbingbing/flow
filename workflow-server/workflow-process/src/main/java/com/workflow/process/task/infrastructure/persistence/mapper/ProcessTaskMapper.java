@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
+import com.workflow.process.task.infrastructure.persistence.record.DoneTaskAggregate;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -19,6 +20,13 @@ import java.util.List;
 // 普通外层分页由 MyBatis-Plus 处理；锁定与嵌套分页仍保留必要的数据库适配。
 @Mapper
 public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
+
+    /** 已办明细、计数和时长聚合共享身份范围，避免统计口径随查询分叉。 */
+    String DONE_USER_SCOPE = " FROM process_task pt WHERE (" +
+            "pt.assignee_id = #{userId} " +
+            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
+            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
+            ") AND pt.status = 'done' AND pt.deleted = 0 ";
     
     /**
      * 待办列表和统计共用同一授权范围，以引擎当前办理人及候选关系为准。
@@ -187,6 +195,38 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     }
 
     /**
+     * 一批记录复用相同的引擎身份范围，最新任务优先；不能把不同记录的实体/流程坐标做笛卡尔匹配。
+     * 调用方每批最多 100 组，空集合明确返回空，避免退化为该用户全部待办查询。
+     */
+    @Select("<script>SELECT pt.task_id, pt.node_name, pt.entity_code, pt.entity_data_id, pt.process_instance_id, "
+            + "CASE WHEN NULLIF(ft.ASSIGNEE_, '') IS NOT NULL OR pt.node_type = 'ADD_SIGN' THEN 1 ELSE 0 END AS assigned_flag "
+            + TODO_USER_SCOPE + """
+            <choose>
+              <when test="records != null and records.size() > 0">
+                AND (
+                  <foreach collection="records" item="record" separator=" OR ">
+                    (1 = 1
+                      <choose>
+                        <when test="record.entityCode != null and record.entityDataId != null">
+                          AND pt.entity_code = #{record.entityCode} AND pt.entity_data_id = #{record.entityDataId}
+                        </when>
+                        <otherwise><if test="record.processInstanceId == null">AND 1 = 0</if></otherwise>
+                      </choose>
+                      <if test="record.processInstanceId != null">AND pt.process_instance_id = #{record.processInstanceId}</if>
+                    )
+                  </foreach>
+                )
+              </when>
+              <otherwise>AND 1 = 0</otherwise>
+            </choose>
+            ORDER BY pt.create_time DESC, pt.id DESC
+            </script>
+            """)
+    List<com.workflow.process.task.infrastructure.persistence.record.ActionableTaskSummaryRow> selectActionableTaskSummaries(
+            @Param("userId") String userId,
+            @Param("records") List<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates> records);
+
+    /**
      * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
      *
      * @param page 分页参数，用于限制后续查询范围和返回数量
@@ -238,6 +278,32 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
     }
 
     /**
+     * 与审批上下文使用完全相同的用户及记录范围，直接读取标量名称。
+     * 列表展示不能依赖实体单任务摘要，也避免 pt.* 映射的空属性造成误导。
+     */
+    default String selectActionableTaskName(String userId, String taskId,
+            String entityCode, String entityDataId, String processInstanceId) {
+        return selectActionableTaskNameRows(new OffsetPage<>(0, 1),
+                userId, taskId, entityCode, entityDataId, processInstanceId)
+                .stream().findFirst().orElse(null);
+    }
+
+    @Select("<script>SELECT pt.node_name " + TODO_USER_SCOPE + """
+            AND pt.task_id = #{taskId}
+            AND pt.entity_code = #{entityCode}
+            AND pt.entity_data_id = #{entityDataId}
+            AND pt.process_instance_id = #{processInstanceId}
+            </script>
+            """)
+    List<String> selectActionableTaskNameRows(
+            @Param("page") IPage<String> page,
+            @Param("userId") String userId,
+            @Param("taskId") String taskId,
+            @Param("entityCode") String entityCode,
+            @Param("entityDataId") String entityDataId,
+            @Param("processInstanceId") String processInstanceId);
+
+    /**
      * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
      *
      * @param page 分页参数，用于限制后续查询范围和返回数量
@@ -269,11 +335,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
      * @return 流程任务集合，供调用方遍历或展示
      */
-    @Select("<script> SELECT * FROM process_task pt WHERE (" +
-            "pt.assignee_id = #{userId} " +
-            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
-            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
-            ") AND pt.status = 'done' AND pt.deleted = 0 ORDER BY pt.end_time DESC </script>")
+    @Select("<script> SELECT * " + DONE_USER_SCOPE + " ORDER BY pt.end_time DESC </script>")
     List<ProcessTask> selectDoneByUser(@Param("userId") String userId);
     
     /**
@@ -312,6 +374,10 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
         return selectList(new Page<ProcessTask>(1, 1, false), Wrappers.<ProcessTask>lambdaQuery()
                 .eq(ProcessTask::getTaskId, taskId)).stream().findFirst().orElse(null);
     }
+
+    /** 流程历史一次读取操作结果的最小投影，节点循环不再逐任务回查。 */
+    @Select("SELECT task_id, action, action_label, comment FROM process_task WHERE process_instance_id = #{processInstanceId} AND deleted = 0 ORDER BY id")
+    List<ProcessTask> selectProgressHistoryByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
 
     /**
      * 根据Flowable任务ID加锁查询待办（FOR UPDATE）。
@@ -384,10 +450,11 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      * @param userId 用户身份 ID，后续用于权限判断、目标分配或操作记录
      * @return 符合条件的{@code done}用户数量
      */
-    @Select("<script> SELECT COUNT(*) FROM process_task pt WHERE (" +
-            "pt.assignee_id = #{userId} " +
-            "OR pt.assignee_id = (SELECT id FROM sys_user WHERE username = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')}) " +
-            "OR pt.assignee_id = (SELECT username FROM sys_user WHERE id = #{userId} AND deleted = 0 ${@com.workflow.integration.database.api.query.DatabaseQuerySql@page(_databaseId, '0', '1')})" +
-            ") AND pt.status = 'done' AND pt.deleted = 0 </script>")
+    @Select("<script> SELECT COUNT(*) " + DONE_USER_SCOPE + " </script>")
     Long countDoneByUser(@Param("userId") String userId);
+
+    /** 一次查询返回同一数据快照中的数量和总时长；NULL 时长仍计入 COUNT(*)。 */
+    @Select("<script> SELECT COUNT(*) AS task_count, COALESCE(SUM(pt.duration), 0) AS duration_total "
+            + DONE_USER_SCOPE + " </script>")
+    DoneTaskAggregate aggregateDoneByUser(@Param("userId") String userId);
 }

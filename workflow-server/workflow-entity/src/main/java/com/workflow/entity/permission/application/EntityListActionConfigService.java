@@ -478,12 +478,16 @@ public class EntityListActionConfigService {
             Map<String, Object> button = new LinkedHashMap<>(original);
             String key = asString(button.get("key"));
             String type = asString(button.get("type"));
-            boolean enabled = !Boolean.FALSE.equals(button.get("enabled"));
+            // 重新发起属于主动开放的能力，旧配置缺省或 null 均不能自动启用。
+            boolean enabled = "restartProcess".equals(key)
+                    ? Boolean.TRUE.equals(button.get("enabled"))
+                    : !Boolean.FALSE.equals(button.get("enabled"));
+            button.put("enabled", enabled);
             if (!StringUtils.hasText(asString(button.get("buttonType")))) {
                 button.put("buttonType", defaultButtonType(key));
             }
             EntityPermissionAction action = EntityPermissionAction.fromButtonKey(key);
-            if (action == EntityPermissionAction.APPROVE
+            if ((action == EntityPermissionAction.APPROVE || action == EntityPermissionAction.RESTART_PROCESS)
                     && filterUnavailableApprove
                     && definition != null
                     && definition.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) {
@@ -606,7 +610,8 @@ public class EntityListActionConfigService {
                 button("view", "查看", 1),
                 button("edit", "编辑", 2),
                 button("approve", "审批", 3),
-                button("delete", "删除", 4)
+                button("delete", "删除", 4),
+                button("restartProcess", "重新发起", 5)
         );
     }
 
@@ -625,7 +630,7 @@ public class EntityListActionConfigService {
         button.put("label", label);
         button.put("buttonType", defaultButtonType(key));
         button.put("sort", sort);
-        button.put("enabled", true);
+        button.put("enabled", !"restartProcess".equals(key));
         return button;
     }
 
@@ -654,6 +659,12 @@ public class EntityListActionConfigService {
      * @return 默认规则；无需限制的按钮返回 null，显式配置由调用方保留
      */
     private EntityActionRuleDTO defaultRule(String buttonKey) {
+        if ("restartProcess".equals(buttonKey)) {
+            return visibleRule(group("AND",
+                    relation("CURRENT_USER_IS_SUBMITTER"),
+                    condition("PROCESS_STATE", "EQ", "COMPLETED"),
+                    condition("STATUS_CATEGORY", "EQ", "WITHDRAWN")));
+        }
         if ("edit".equals(buttonKey)) {
             return visibleRule(ownDraftOrWithdrawnCondition());
         }
@@ -701,7 +712,9 @@ public class EntityListActionConfigService {
                         group("AND",
                                 condition("PROCESS_STATE", "EQ", "NOT_STARTED"),
                                 condition("STATUS_CATEGORY", "EQ", "NEW")),
-                        condition("STATUS_CATEGORY", "EQ", "WITHDRAWN")));
+                        // 重新发起未配置状态连线时仍可保留 WITHDRAWN，但运行中已不是可编辑撤回记录。
+                        group("AND", condition("PROCESS_STATE", "EQ", "COMPLETED"),
+                                condition("STATUS_CATEGORY", "EQ", "WITHDRAWN"))));
     }
 
     /**

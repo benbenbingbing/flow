@@ -38,5 +38,10 @@ public class EntityPermissionBootstrapRunner implements ApplicationRunner {
                     catalogService.synchronizeAll();
                     return true;
                 });
+        // 新权限有自己的升级标记；已有系统不会因旧任务已完成而遗漏此权限。
+        bootstrapJobCoordinator.executeOnce("entity-restart-process-permission", 1, () -> {
+            catalogService.synchronizeRestartPermissions();
+            return true;
+        });
     }
 }

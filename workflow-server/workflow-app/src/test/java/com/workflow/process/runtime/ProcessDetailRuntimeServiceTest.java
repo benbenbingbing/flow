@@ -75,6 +75,31 @@ class ProcessDetailRuntimeServiceTest {
         assertEquals("processing", detail.getNodeAssigneeMap().get("task-1").getStatus());
     }
 
+    @Test
+    void cancelledTaskAndWithdrawalAuditRemainSeparateFromCompletedHistory() {
+        Fixture fixture = new Fixture();
+        ProcessDetailRuntimeService service = fixture.service();
+        var logs = mock(com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "operationLogMapper", logs);
+        var historic = mock(HistoricProcessInstance.class);
+        when(historic.getEndTime()).thenReturn(new Date(3000));
+        when(historic.getDeleteReason()).thenReturn(
+                com.workflow.process.status.application.ProcessEndReason.encode("WITHDRAWN", "修正金额"));
+        var completed = mock(HistoricTaskInstance.class);
+        when(completed.getName()).thenReturn("审批");
+        when(completed.getEndTime()).thenReturn(new Date(3000));
+        var cancelled = mock(HistoricTaskInstance.class);
+        when(cancelled.getName()).thenReturn("审批");
+        when(cancelled.getEndTime()).thenReturn(new Date(3000));
+        when(cancelled.getDeleteReason()).thenReturn(
+                com.workflow.process.status.application.ProcessEndReason.encode("WITHDRAWN", "修正金额"));
+        @SuppressWarnings("unchecked")
+        List<ProcessDetailVO.HistoryVO> result = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                service, "buildHistory", "pi-1", historic, List.of(completed, cancelled));
+        assertEquals(List.of("发起", "完成", "已取消", "撤回"), result.stream().map(ProcessDetailVO.HistoryVO::getAction).toList());
+        assertEquals("修正金额", result.get(3).getComment());
+    }
+
     /** 测试夹具：封装 mock 依赖、查询桩与场景构造方法 */
     private static class Fixture {
         final RuntimeService runtimeService = mock(RuntimeService.class);

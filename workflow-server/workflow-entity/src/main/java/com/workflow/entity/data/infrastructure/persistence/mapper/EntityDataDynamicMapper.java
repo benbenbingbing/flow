@@ -16,6 +16,30 @@ import java.util.Map;
 @Mapper
 public interface EntityDataDynamicMapper {
 
+    /** 导出使用复合游标和独立的选中 ID 条件，不能覆盖用户筛选或权限条件，也不重复 COUNT。 */
+    @ResultMap("entityDataRow")
+    @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectExportBatch")
+    @Options(statementType = StatementType.PREPARED, useCache = false)
+    List<Map<String, Object>> selectExportBatch(
+            @Param("page") OffsetPage<Map<String, Object>> page,
+            @Param("tableName") String tableName,
+            @Param("condition") Map<String, Object> condition,
+            @Param("permissionSql") String permissionSql,
+            @Param("permissionParameters") Map<String, Object> permissionParameters,
+            @Param("selectedIds") List<String> selectedIds,
+            @Param("cursor") com.workflow.entity.data.application.EntityExportBatch.Cursor cursor,
+            @Param("sortColumn") String sortColumn,
+            @Param("sortDirection") String sortDirection);
+
+    /** 任务摘要只选固定展示列，可选 dataName 列由已发布字段元数据确定。 */
+    @ResultMap("entityDataRow")
+    @SelectProvider(type = com.workflow.entity.data.infrastructure.persistence.provider.EntityDataSqlProvider.class,
+            method = "selectTaskSummary")
+    Map<String, Object> selectTaskSummary(@Param("tableName") String tableName,
+                                         @Param("id") String id,
+                                         @Param("dataNameColumn") String dataNameColumn);
+
     /**
      * 根据ID查询
      *
@@ -292,7 +316,12 @@ public interface EntityDataDynamicMapper {
      * @return 数据 Map 列表
      */
     default List<Map<String, Object>> selectPage(String tableName, long offset, long limit) {
-        return selectPageRows(new OffsetPage<>(offset, limit), tableName);
+        return selectPage(tableName, offset, limit, null, null);
+    }
+
+    default List<Map<String, Object>> selectPage(String tableName, long offset, long limit,
+            String sortColumn, String sortDirection) {
+        return selectPageRows(new OffsetPage<>(offset, limit), tableName, sortColumn, sortDirection);
     }
 
     /**
@@ -307,7 +336,9 @@ public interface EntityDataDynamicMapper {
     @Options(statementType = StatementType.PREPARED)
     List<Map<String, Object>> selectPageRows(
             @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
-            @Param("tableName") String tableName);
+            @Param("tableName") String tableName,
+            @Param("sortColumn") String sortColumn,
+            @Param("sortDirection") String sortDirection);
 
     /**
      * 分页查询（带数据权限过滤），按创建时间倒序。
@@ -320,7 +351,15 @@ public interface EntityDataDynamicMapper {
      * @return 数据 Map 列表
      */
     default List<Map<String, Object>> selectPageWithPermission(String tableName, String permissionSql, Map<String, Object> permissionParameters, long offset, long limit) {
-        return selectPageWithPermissionRows(new OffsetPage<>(offset, limit), tableName, permissionSql, permissionParameters);
+        return selectPageWithPermission(tableName, permissionSql, permissionParameters,
+                offset, limit, null, null);
+    }
+
+    default List<Map<String, Object>> selectPageWithPermission(String tableName,
+            String permissionSql, Map<String, Object> permissionParameters, long offset,
+            long limit, String sortColumn, String sortDirection) {
+        return selectPageWithPermissionRows(new OffsetPage<>(offset, limit), tableName,
+                permissionSql, permissionParameters, sortColumn, sortDirection);
     }
 
     /**
@@ -339,7 +378,9 @@ public interface EntityDataDynamicMapper {
             @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("tableName") String tableName,
             @Param("permissionSql") String permissionSql,
-            @Param("permissionParameters") Map<String, Object> permissionParameters);
+            @Param("permissionParameters") Map<String, Object> permissionParameters,
+            @Param("sortColumn") String sortColumn,
+            @Param("sortDirection") String sortDirection);
 
     /**
      * 条件查询（带数据权限过滤）
@@ -368,7 +409,14 @@ public interface EntityDataDynamicMapper {
      * @return 数据 Map 列表
      */
     default List<Map<String, Object>> selectPageByCondition(String tableName, Map<String, Object> condition, long offset, long limit) {
-        return selectPageByConditionRows(new OffsetPage<>(offset, limit), tableName, condition);
+        return selectPageByCondition(tableName, condition, offset, limit, null, null);
+    }
+
+    default List<Map<String, Object>> selectPageByCondition(String tableName,
+            Map<String, Object> condition, long offset, long limit, String sortColumn,
+            String sortDirection) {
+        return selectPageByConditionRows(new OffsetPage<>(offset, limit), tableName,
+                condition, sortColumn, sortDirection);
     }
 
     /**
@@ -385,7 +433,9 @@ public interface EntityDataDynamicMapper {
     List<Map<String, Object>> selectPageByConditionRows(
             @Param("page") com.baomidou.mybatisplus.core.metadata.IPage<?> page,
             @Param("tableName") String tableName,
-            @Param("condition") Map<String, Object> condition);
+            @Param("condition") Map<String, Object> condition,
+            @Param("sortColumn") String sortColumn,
+            @Param("sortDirection") String sortDirection);
 
     /**
      * 分页条件查询（带数据权限过滤），按创建时间倒序。
@@ -399,7 +449,17 @@ public interface EntityDataDynamicMapper {
      * @return 数据 Map 列表
      */
     default List<Map<String, Object>> selectPageByConditionWithPermission(String tableName, Map<String, Object> condition, String permissionSql, Map<String, Object> permissionParameters, long offset, long limit) {
-        return selectPageByConditionWithPermissionRows(new OffsetPage<>(offset, limit), tableName, condition, permissionSql, permissionParameters);
+        return selectPageByConditionWithPermission(tableName, condition, permissionSql,
+                permissionParameters, offset, limit, null, null);
+    }
+
+    default List<Map<String, Object>> selectPageByConditionWithPermission(String tableName,
+            Map<String, Object> condition, String permissionSql,
+            Map<String, Object> permissionParameters, long offset, long limit,
+            String sortColumn, String sortDirection) {
+        return selectPageByConditionWithPermissionRows(new OffsetPage<>(offset, limit),
+                tableName, condition, permissionSql, permissionParameters,
+                sortColumn, sortDirection);
     }
 
     /**
@@ -420,7 +480,9 @@ public interface EntityDataDynamicMapper {
             @Param("tableName") String tableName,
             @Param("condition") Map<String, Object> condition,
             @Param("permissionSql") String permissionSql,
-            @Param("permissionParameters") Map<String, Object> permissionParameters);
+            @Param("permissionParameters") Map<String, Object> permissionParameters,
+            @Param("sortColumn") String sortColumn,
+            @Param("sortDirection") String sortDirection);
 
     /**
      * 统计数量

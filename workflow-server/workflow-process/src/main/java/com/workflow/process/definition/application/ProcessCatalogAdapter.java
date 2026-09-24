@@ -29,6 +29,30 @@ public class ProcessCatalogAdapter implements ProcessCatalogPort {
     /** 流程发布版本 Mapper */
     private final ProcessVersionHistoryMapper versionHistoryMapper;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.status.application.ProcessCancellationRequirements cancellationRequirements;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.flowable.engine.RepositoryService repositoryService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.flowable.engine.RuntimeService runtimeService;
+
+    /** 旧实例依赖其部署版本；配置草稿改动不能使旧实例失去终止/撤回目标。 */
+    @Override
+    public java.util.Set<String> requiredEndStatusCategories(String processId) {
+        var process = processMapper.selectByIdForUpdate(processId);
+        if (process == null) throw new IllegalArgumentException("流程定义不存在: " + processId);
+        var result = new java.util.LinkedHashSet<>(cancellationRequirements.requiredCategories(process.getBpmnXml()));
+        var definitions = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionKey(process.getProcessKey()).orderByProcessDefinitionVersion().desc().list();
+        for (int i = 0; i < definitions.size(); i++) {
+            var definition = definitions.get(i);
+            if (i == 0 || runtimeService.createProcessInstanceQuery().processDefinitionId(definition.getId()).count() > 0) {
+                result.addAll(cancellationRequirements.requiredCategories(repositoryService.getBpmnModel(definition.getId())));
+            }
+        }
+        return java.util.Set.copyOf(result);
+    }
+
     /**
      * 根据流程ID集合批量查询流程名称映射。
      *

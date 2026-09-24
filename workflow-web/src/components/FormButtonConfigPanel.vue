@@ -38,7 +38,7 @@
         <el-table-column label="启用" width="72" align="center">
           <template #default="{ row }">
             <el-switch
-              :model-value="builtInValue(row.key, 'enabled', true)"
+              :model-value="builtInValue(row.key, 'enabled', row.key !== 'restartProcess')"
               :disabled="systemEntity"
               @change="setBuiltInValue(row.key, 'enabled', $event)"
             />
@@ -650,6 +650,7 @@ function builtInLabel(key) {
     reset: '重置',
     save: '保存',
     saveAndStart: '保存并发起流程',
+    restartProcess: '保存并重新发起',
     submitApproval: '提交审批'
   }
   return labels[key] || key

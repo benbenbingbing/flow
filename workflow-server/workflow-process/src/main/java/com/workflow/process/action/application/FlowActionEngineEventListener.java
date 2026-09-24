@@ -1,5 +1,7 @@
 package com.workflow.process.action.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.process.action.model.FlowActionScopeType;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
@@ -85,14 +87,14 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
             case PROCESS_STARTED -> processEvent(trigger, FlowActionTriggerTiming.PROCESS_STARTED, null);
             case PROCESS_COMPLETED -> processEvent(trigger, FlowActionTriggerTiming.PROCESS_COMPLETED, null);
             case PROCESS_CANCELLED -> {
-                // 撤回与终止通过取消原因区分：包含"撤回"字样视为撤回
+                // 与状态同步和对账共用持久化类型，用户意见不能改变动作触发时机。
                 String reason = event instanceof FlowableCancelledEvent cancelled
                         ? stringValue(cancelled.getCause())
                         : null;
-                FlowActionTriggerTiming timing = reason != null && reason.contains("撤回")
+                FlowActionTriggerTiming timing = "WITHDRAWN".equals(ProcessEndReason.category(reason))
                         ? FlowActionTriggerTiming.PROCESS_WITHDRAWN
                         : FlowActionTriggerTiming.PROCESS_TERMINATED;
-                processEvent(trigger, timing, reason);
+                processEvent(trigger, timing, ProcessEndReason.comment(reason));
             }
             case PROCESS_COMPLETED_WITH_TERMINATE_END_EVENT,
                  PROCESS_COMPLETED_WITH_ERROR_END_EVENT,

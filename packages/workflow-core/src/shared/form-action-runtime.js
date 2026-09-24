@@ -48,7 +48,7 @@ async function resolveRuntimeFormActions(forms, context) {
  */
 function resolveSafeRuntimeActionFallback(form, context) {
   return resolveLocalFormActions(form, context)
-    .filter(action => action.type !== 'custom')
+    .filter(action => action.type !== 'custom' && action.key !== 'restartProcess')
     .map(action => applyUnavailableRuleFallback(action))
 }
 

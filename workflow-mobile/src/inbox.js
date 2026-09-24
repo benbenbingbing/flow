@@ -14,7 +14,8 @@ export function createInboxState() {
 
 /** 请求按列表隔离并带代次；筛选、刷新或退出后，迟到响应不能覆盖新列表。 */
 export function createInboxLoader(state, api, pageSize = 15) {
-  return async function load(kind, refresh = false) {
+  const pending = new Map()
+  async function request(kind, refresh = false) {
     const entry = state[kind], definition = INBOXES.find(item => item.key === kind)
     if (!entry || !definition || (!refresh && (entry.loading || entry.finished))) return
     const generation = refresh ? ++entry.generation : entry.generation
@@ -42,6 +43,26 @@ export function createInboxLoader(state, api, pageSize = 15) {
       if (entry.generation === generation) { entry.loading = false; entry.refreshing = false }
     }
   }
+  function load(kind, refresh = false) {
+    if (!state[kind] || (!refresh && (state[kind].loading || state[kind].finished))) {
+      return pending.get(kind)?.promise || Promise.resolve()
+    }
+    const promise = request(kind, refresh)
+    const generation = state[kind]?.generation
+    pending.set(kind, { promise, generation })
+    void promise.finally(() => {
+      if (pending.get(kind)?.promise === promise) pending.delete(kind)
+    })
+    return promise
+  }
+  // immediate watch 与 KeepAlive 首次 activated 共用初始化请求；手动刷新仍可开启新代次。
+  load.ensure = kind => {
+    const entry = state[kind]
+    if (!entry || entry.initialized) return Promise.resolve()
+    const active = pending.get(kind)
+    return active?.generation === entry.generation ? active.promise : load(kind, true)
+  }
+  return load
 }
 
 const invalidationListeners = new Set()

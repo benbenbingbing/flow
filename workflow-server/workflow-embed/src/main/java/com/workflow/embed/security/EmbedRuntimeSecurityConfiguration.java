@@ -61,7 +61,7 @@ public class EmbedRuntimeSecurityConfiguration {
                 HttpMethod.GET,
                 "/api/embed/v1/session");
         var sessionLogout = PathPatternRequestMatcher.withDefaults().matcher(
-                HttpMethod.DELETE,
+                HttpMethod.POST,
                 "/api/embed/v1/session");
         var heartbeat = PathPatternRequestMatcher.withDefaults().matcher(
                 HttpMethod.POST,

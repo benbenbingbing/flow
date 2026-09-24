@@ -152,6 +152,8 @@ class TaskActionServiceTest {
     /** 首页传入业务用户 ID，但自动知会以用户名保存，未读徽标必须使用同一收件身份。 */
     @Test
     void statisticsCountsCcByUsernameWhenCalledWithUserId() {
+        when(processTaskService.getDoneStatistics("admin-id"))
+                .thenReturn(new com.workflow.process.task.infrastructure.persistence.record.DoneTaskAggregate());
         SysUser user = new SysUser();
         user.setId("admin-id");
         user.setUsername("admin");
@@ -169,6 +171,8 @@ class TaskActionServiceTest {
     /** 兼容其他任务统计入口直接传用户名，目录按 ID 未命中时仍使用原用户名查询。 */
     @Test
     void statisticsAcceptsUsernameForCc() {
+        when(processTaskService.getDoneStatistics("admin"))
+                .thenReturn(new com.workflow.process.task.infrastructure.persistence.record.DoneTaskAggregate());
         HistoricProcessInstanceQuery query = mock(HistoricProcessInstanceQuery.class);
         when(historyService.createHistoricProcessInstanceQuery()).thenReturn(query);
         when(query.startedBy("admin")).thenReturn(query);
@@ -176,6 +180,24 @@ class TaskActionServiceTest {
 
         assertEquals(1L, service.getTaskStatistics("admin").get("unreadCcCount"));
         verify(processCcService).countUnreadCc("admin");
+    }
+
+    /** 首页只消费聚合结果，历史数量增长不得触发已办明细全量读取。 */
+    @Test
+    void statisticsUsesAggregateWithoutLoadingDoneTasks() {
+        var aggregate = new com.workflow.process.task.infrastructure.persistence.record.DoneTaskAggregate();
+        aggregate.setTaskCount(20_000L);
+        aggregate.setDurationTotal(new java.math.BigDecimal("72000000000"));
+        when(processTaskService.getDoneStatistics("admin")).thenReturn(aggregate);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(historicProcessInstanceQuery);
+        when(historicProcessInstanceQuery.startedBy("admin")).thenReturn(historicProcessInstanceQuery);
+
+        var statistics = service.getTaskStatistics("admin");
+
+        assertEquals(20_000L, statistics.get("doneCount"));
+        assertEquals(1.0, statistics.get("avgProcessTime"));
+        verify(processTaskService, never()).getDoneList(anyString());
+        verify(processTaskService, never()).countDone(anyString());
     }
 
     /** 测试完成任务接受 APPROVED 状态值：验证触发 Flowable complete、本地任务完成与任务同步 */
@@ -232,7 +254,7 @@ class TaskActionServiceTest {
     }
 
     @Test
-    void withdrawStopsBeforeDeleteWhenTerminateSwitchDenies() {
+    void withdrawStopsBeforeDeleteWhenWithdrawSwitchDenies() {
         org.flowable.engine.runtime.ProcessInstanceQuery processQuery =
                 mock(org.flowable.engine.runtime.ProcessInstanceQuery.class);
         org.flowable.engine.runtime.ProcessInstance processInstance =
@@ -242,9 +264,9 @@ class TaskActionServiceTest {
         when(processQuery.singleResult()).thenReturn(processInstance);
         when(processInstance.getStartUserId()).thenReturn("admin-id");
         doThrow(new com.workflow.core.error.ForbiddenException(
-                "当前节点不允许终止流程"))
+                "当前节点不允许撤回流程"))
                 .when(nodeOperationCapabilityService)
-                .requireConfiguredTerminateAllowed("proc-1");
+                .requireWithdrawAllowed(eq("proc-1"), any());
 
         assertThrows(
                 com.workflow.core.error.ForbiddenException.class,

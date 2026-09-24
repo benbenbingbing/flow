@@ -75,6 +75,8 @@ import java.util.UUID;
 public class ConfigMigrationPackageService {
     private static final DateTimeFormatter PACKAGE_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private final ConfigMigrationAssetService assetService;
+    private final ConfigMigrationReferenceService referenceService;
+    private final ConfigMigrationSubFormReferences subFormReferences;
     private final ConfigMigrationPackageCodec packageCodec;
     private final ConfigMigrationAssetMapper assetMapper;
     private final ConfigExportPackageMapper exportPackageMapper;
@@ -165,10 +167,29 @@ public class ConfigMigrationPackageService {
             asset.setLastExportAt(LocalDateTime.now());
             asset.setExportCount(Optional.ofNullable(asset.getExportCount()).orElse(0) + 1);
             asset.setUpdatedAt(LocalDateTime.now());
-            assetMapper.updateById(asset);
+            ConfigMigrationAsset exportState = new ConfigMigrationAsset();
+            exportState.setId(asset.getId());
+            exportState.setExportStatus(asset.getExportStatus());
+            exportState.setLastExportAt(asset.getLastExportAt());
+            exportState.setExportCount(asset.getExportCount());
+            exportState.setUpdatedAt(asset.getUpdatedAt());
+            assetMapper.updateById(exportState);
         }
         return exportSummary(exportPackage);
     }
+    /** 导出副本升级为新引用协议；历史资产及其哈希保持不变。 */
+    private List<ConfigMigrationAsset> portableExportAssets(List<ConfigMigrationAsset> assets) {
+        return assets.stream().map(asset -> {
+            ConfigMigrationAsset copy = new ConfigMigrationAsset();
+            org.springframework.beans.BeanUtils.copyProperties(asset, copy);
+            Map<String, Object> snapshot = subFormReferences.exportReferences(referenceService.exportReferences(documents.readMap(asset.getSnapshotJson())));
+            snapshot.put("schemaVersion", 2);
+            copy.setSnapshotJson(documents.writeJson(snapshot));
+            copy.setSnapshotSchemaVersion(2);
+            return copy;
+        }).toList();
+    }
+
     /**
      * 查询所有导出包摘要列表(按创建时间倒序)。
      *
@@ -367,6 +388,15 @@ public class ConfigMigrationPackageService {
             DependencyResolution dependencyResolution = resolveDependencies(dependencies, packageAssets);
             item.setMappingStatus(dependencyResolution.resolved() ? "RESOLVED" : "UNRESOLVED");
             List<Map<String, Object>> risks = new ArrayList<>(analyzeRisks(item));
+            try {
+                Map<String, Object> snapshot = documents.readMap(item.getSnapshotJson());
+                referenceService.importReferences(snapshot, this::mappedKey);
+                referenceService.validateAssignments(snapshot, this::mappedKey);
+                subFormReferences.validate(snapshot, packageFormReferences(items), this::mappedKey);
+            } catch (RuntimeException exception) {
+                risks.add(Map.of("level", "BLOCKING", "code", "REFERENCE_INVALID",
+                        "message", String.valueOf(exception.getMessage())));
+            }
             if ("PROCESS".equals(item.getAssetType())) {
                 try {
                     ConfigMigrationAssignmentSupport.validateBpmn(
@@ -573,6 +603,7 @@ public class ConfigMigrationPackageService {
             ConfigMigrationAsset asset,
             Object selection) {
         String assetKey = asset.getAssetType() + ":" + asset.getBusinessKey();
+        if (!selected.containsKey(assetKey)) asset = portableExportAssets(List.of(asset)).get(0);
         ConfigMigrationAsset existing = selected.putIfAbsent(assetKey, asset);
         Map<String, Object> normalized = packageCodec.normalizeSelection(selection);
         if (existing == null) {
@@ -912,6 +943,14 @@ public class ConfigMigrationPackageService {
                 item -> new PackageAsset(item.getAssetType(), item.getBusinessKey(),
                         documents.readMap(item.getSnapshotJson())), (left, right) -> left));
         for (ConfigImportItem item : items) {
+            Map<String, Object> snapshot = documents.readMap(item.getSnapshotJson());
+            try {
+                referenceService.importReferences(snapshot, this::mappedKey);
+                referenceService.validateAssignments(snapshot, this::mappedKey);
+                subFormReferences.validate(snapshot, packageFormReferences(items), this::mappedKey);
+            } catch (RuntimeException exception) {
+                throw new IllegalStateException("迁移引用校验失败: " + exception.getMessage(), exception);
+            }
             if ("PROCESS".equals(item.getAssetType())) {
                 ConfigMigrationAssignmentSupport.validateBpmn(
                         ConfigMigrationAssignmentSupport.text(documents.readMap(item.getSnapshotJson()).get("bpmnXml")));
@@ -925,6 +964,18 @@ public class ConfigMigrationPackageService {
             }
         }
     }
+    /** 按裁剪后的实际表单清单判断是否会恢复宿主，防止固定版本导入覆盖包外草稿。 */
+    private Set<String> packageFormReferences(List<ConfigImportItem> items) {
+        Set<String> forms = new LinkedHashSet<>();
+        for (ConfigImportItem item : items) {
+            if ("CONSISTENT".equals(item.getComparisonStatus())) continue;
+            for (Map<String, Object> form : documents.readMapList(documents.readMap(item.getSnapshotJson()).get("forms"))) {
+                forms.add("wf-form://" + item.getBusinessKey() + "/" + form.get("formKey"));
+            }
+        }
+        return forms;
+    }
+
     /**
      * 判断单个依赖在目标环境是否已满足。人员映射必须落到真实登录名/编码，不能以映射记录代替目标对象。
      *
@@ -942,6 +993,11 @@ public class ConfigMigrationPackageService {
             String type,
             String key,
             Map<String, PackageAsset> packageAssets) {
+        if ("FLOW_ACTION_CODE".equals(type)) {
+            var action = referenceService.actionByCode(key);
+            return Boolean.TRUE.equals(action.getEnabled())
+                    && flowActionCatalogPort.isConfiguredAndAvailable(action.getHandlerName());
+        }
         boolean targetOnly = Boolean.parseBoolean(String.valueOf(
                 dependency.getOrDefault(
                         ConfigMigrationPackageCodec.TARGET_ONLY_DEPENDENCY,

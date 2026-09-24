@@ -387,6 +387,20 @@ const getCellAction = (field: any, row: any) => {
 }
 
 const getFieldDisplayValue = (row: any, field: any) => {
+  if (field?.fieldCode === 'currentTaskName' || field?.fieldCode === 'current_task_name') {
+    const approve = row?.actionCapabilities?.approve
+    const targetName = approve?.actionableTaskName
+    if (approve?.visible && approve?.enabled && typeof targetName === 'string' && targetName.trim()) {
+      const summaryName = row.currentTaskName ?? row.current_task_name
+      const targetId = approve.actionableTaskId
+      const summaryId = row.currentTaskId ?? row.current_task_id
+      // 并行分支的实体摘要只能保存一个任务；同时展示入口目标与另一个分支，避免误办。
+      if (targetId && summaryId && targetId !== summaryId && summaryName && summaryName !== targetName) {
+        return `${targetName}（可办理；另有${summaryName}）`
+      }
+      return `${targetName}（可办理）`
+    }
+  }
   return formatListFieldValue(
     row,
     field,
@@ -507,6 +521,7 @@ const onToolbarClick = (btn: any) => {
 const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
   view: (row: any, btn: any) => emit('view', row, btn),
   edit: (row: any, btn: any) => emit('edit', row, btn),
+  restartProcess: (row: any, btn: any) => emit('edit', row, btn),
   approve: (row: any, btn: any) => emit('approve', row, btn),
   delete: (row: any, btn: any) => emit('delete', row, btn)
 }

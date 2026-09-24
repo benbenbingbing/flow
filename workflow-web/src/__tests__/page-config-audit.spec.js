@@ -1418,8 +1418,8 @@ assert.match(
 )
 assert.match(
   formDesigner,
-  /@command="handleAddNodeCommand"[\s\S]{0,500}添加节点[\s\S]{0,500}command="SECTION_TITLE">\s*节\s*<\/el-dropdown-item>/,
-  '节应作为“添加节点”菜单中的节点类型'
+  /@command="handleAddNodeCommand"[\s\S]{0,500}>\s*节点\s*<\/el-button>[\s\S]{0,500}command="SECTION_TITLE">\s*节\s*<\/el-dropdown-item>/,
+  '节应作为“节点”菜单中的节点类型'
 )
 assert.equal(
   formDesigner.includes('@click="addSection"'),
@@ -1428,7 +1428,7 @@ assert.equal(
 )
 assert.match(
   formDesigner,
-  /function handleAddNodeCommand\(command\)[\s\S]{0,300}command === 'SECTION_TITLE'[\s\S]{0,200}addSection\(\)/,
+  /async function handleAddNodeCommand\(command\)[\s\S]{0,500}command === 'SECTION_TITLE'[\s\S]{0,200}addSection\(\)/,
   '添加节点菜单中的“节”应复用标准节标题创建逻辑'
 )
 assert.match(
@@ -1827,7 +1827,7 @@ assert.equal(processDesign.includes('handleAdvancedCommand'), false, '流程设�
   'class="node-config-panel"',
   'nodeConfigVisible && selectedElement',
   'class="node-config-trigger"',
-  'openNodeConfig()'
+  '@click="openNodeConfig"'
 ].forEach((marker) => {
   assert.ok(processDesign.includes(marker), `流程节点配置缺少点击节点打开且保留状态的停靠面板: ${marker}`)
 })
@@ -1885,8 +1885,8 @@ for (const [name, source] of [['用户管理', userManagement], ['角色管理',
   assert.ok(source.includes('type="password"'), `${name}的新增用户流程应安全输入初始密码`)
   assert.equal(source.includes('temporaryPassword'), false, `${name}不得从 API 响应回显密码`)
 }
-assert.ok(roleManagement.includes('<RoleTableActions'), '角色列表应收敛为主操作与更多菜单')
-assert.ok(roleManagement.includes('label="操作" width="160"'), '角色列表操作列应适配常见桌面宽度')
+assert.ok(roleManagement.includes('<RoleTableActions'), '角色列表应通过统一操作组件保留各业务入口')
+assert.ok(roleManagement.includes('label="操作" width="220"'), '角色列表操作列应容纳直接展示的四个业务入口')
 
 const nodeConfigPanel = readFileSync(path.join(root, 'src/components/NodeConfigPanel.vue'), 'utf8')
 assert.equal(nodeConfigPanel.includes('<span class="node-id">'), false, '流程节点 ID 不应重复占用属性抽屉首屏')
@@ -2184,7 +2184,7 @@ const configSchemaEditor = readFileSync(path.join(root, 'src/components/ConfigSc
   'visibleWhen',
   'priorityValue',
   'orderValue',
-  'title="',
+  'title: group.label',
   "import SettingsSection from '@/components/SettingsSection.vue'"
 ].forEach((marker) => {
   assert.ok(configSchemaEditor.includes(marker), `扩展配置 Schema 缺少分组、排序或条件显示能力: ${marker}`)
@@ -2222,9 +2222,11 @@ const linkageConditionRuleEditor = readFileSync(
 
 assert.match(
   formDesigner,
-  /const selectedNodeHasLockedBinding = computed\(\(\) => \{[\s\S]*if \(!isEditableFieldNode\.value\) return false/,
-  '只有字段、子表和明细节点可以显示业务绑定锁定提示'
+  /const isEditableFieldNode = computed\(\(\) =>[\s\S]*\['FIELD', 'SUB_FORM', 'REPEATER'\]\.includes\(selectedNodeType\.value\)/,
+  '字段、子表和明细节点共用扩展能力边界'
 )
+assert.ok(!formDesigner.includes('handleTemplateChange') && !formDesigner.includes('upgradeSelectedTemplate'),
+  '表单节点不再显示模板绑定或升级入口')
 
 const processProgress = readFileSync(path.join(root, 'src/views/ProcessProgress.vue'), 'utf8')
 assert.match(processProgress, /userStore\.isSuperAdmin[\s\S]*FlowActionExecutionLog/, '流程进度页应仅为超级管理员展示动作执行记录')
@@ -2278,14 +2280,17 @@ const entityList = readFileSync(path.join(root, 'src/views/EntityList.vue'), 'ut
 })
 
 const formFieldRegistry = readFileSync(path.join(root, 'src/extensions/core/registries/formFieldRegistry.js'), 'utf8')
-;['text', 'textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
-  assert.ok(formFieldRegistry.includes(type), `表单运行时缺少字段类型线索: ${type}`)
+const generatedFieldDefinitions = readFileSync(path.join(root, 'src/extensions/generated/field-definitions.js'), 'utf8')
+assert.ok(formFieldRegistry.includes('fieldDefinitions'), '字段注册表必须使用统一生成的内置字段清单')
+;['textarea', 'number', 'select', 'radio', 'checkbox', 'date', 'switch', 'file', 'reference', 'sub_form'].forEach((type) => {
+  assert.ok(generatedFieldDefinitions.includes(`"name": "${type}"`), `表单运行时缺少字段类型线索: ${type}`)
 })
+assert.ok(formFieldRegistry.includes("'text'"), '文本字段的通用别名必须保留')
 
 const guideExpectations = {
-  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'registerCellComponent', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
+  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'LIST_CELL', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
   'src/views/system/ListFieldExtensionGuide.vue': [
-    'registerCellComponent',
+    'LIST_CELL',
     'ListFieldDataProvider',
     'FIELD_TEMPLATE',
     'DemoRiskProgressCell',
@@ -2294,8 +2299,8 @@ const guideExpectations = {
     'supportedEntityCodes',
     'GET /api/entity-list-config/extension-options'
   ],
-  'src/views/system/CustomListGuide.vue': ['registerCustomListComponent', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
-  'src/views/system/CustomFormGuide.vue': ['registerFormFieldComponent', 'registerFormNodeComponent', 'registerCustomFormComponent', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
+  'src/views/system/CustomListGuide.vue': ['extensions/manifests', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
+  'src/views/system/CustomFormGuide.vue': ['扩展清单', 'extensions/manifests', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
 for (const [file, markers] of Object.entries(guideExpectations)) {
   const source = readFileSync(path.join(root, file), 'utf8')
@@ -2308,7 +2313,6 @@ const configurationArchitectureExpectations = {
   'src/components/ui-config/InterfaceExtensionEditorDialog.vue': [
     '一条扩展记录就是一个可调用接口',
     'REGISTERED_PROVIDER',
-    'STRUCTURED_COMPUTE',
     'providerOperationCode',
     'inputSchema',
     'outputSchema',
@@ -2371,8 +2375,6 @@ const configurationArchitectureExpectations = {
     'FORM_INIT',
     'BEFORE_SUBMIT',
     'DataScopePlan',
-    'templateVersion + localOverrides',
-    '三方合并',
     'legacyProps',
     '配置迁移幂等与兼容',
     '运行时回退',
@@ -2408,13 +2410,10 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/releases',
     '/activate',
-    'templateVersion + localOverrides',
-    '三方合并',
     'legacyProps',
     '迁移必须幂等',
     '临时回退旧配置',
-    "group: 'common'",
-    "group: 'advanced'",
+    "group: 'common' | 'advanced'",
     'visibleWhen',
     '`order`',
     '`priority`',
@@ -2433,8 +2432,6 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/releases',
     '/activate',
-    'templateVersion + localOverrides',
-    '三方合并',
     '局部视觉或数据变化',
     '重复执行结果幂等',
     '临时回退旧配置'
@@ -2456,8 +2453,6 @@ const configurationArchitectureExpectations = {
     '/publish',
     '/releases',
     '/activate',
-    'templateVersion + localOverrides',
-    '三方合并',
     'legacyProps',
     '幂等转换',
     '临时回退旧配置'

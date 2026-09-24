@@ -36,7 +36,7 @@ public class NodeOperationPolicyParser {
      * @return 解析后的节点操作策略解析器结果，供调用方继续处理
      */
     public NodeOperationPolicy parse(BaseElement element) {
-        // 新三开关一旦出现即成为权威配置，避免同一节点同时受两套规则约束。
+        // 简化开关一旦出现即成为权威配置，避免同一节点同时受两套规则约束。
         if (operationConfigReader.read(element).isPresent()) {
             return NodeOperationPolicy.legacyCompatible();
         }

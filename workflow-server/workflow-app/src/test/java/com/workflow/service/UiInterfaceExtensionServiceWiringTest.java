@@ -27,13 +27,13 @@ import static org.mockito.Mockito.mock;
  * UI 数据源服务装配测试。
  *
  * <p>被测对象：{@link UiInterfaceExtensionService} 的 Spring Bean 装配，验证当容器存在多个 TaskExecutor 时
- * 能正确选择 applicationTaskExecutor 完成服务初始化。
+ * 能正确选择专用 uiExtensionTaskExecutor，避免慢扩展占用通用线程池。
  */
 class UiInterfaceExtensionServiceWiringTest {
 
-    /** 测试存在多个 TaskExecutor 时选用 applicationTaskExecutor 完成装配：验证 Bean 可正常获取 */
+    /** 多个 TaskExecutor 并存时必须装配扩展专用执行器。 */
     @Test
-    void selectsApplicationTaskExecutorWhenMultipleExecutorsExist() {
+    void selectsDedicatedExtensionExecutorWhenMultipleExecutorsExist() {
         try (AnnotationConfigApplicationContext context =
                      new AnnotationConfigApplicationContext()) {
             context.registerBean(UiExtensionDefinitionMapper.class,
@@ -59,6 +59,7 @@ class UiInterfaceExtensionServiceWiringTest {
             context.registerBean(JsonDocumentCodec.class,
                     () -> new JsonDocumentCodec(new ObjectMapper()));
             context.registerBean(UiExtensionDefinitionValidator.class);
+            context.register(com.workflow.entity.ui.application.UiExtensionExecutionConfiguration.class);
             context.registerBean(
                     "applicationTaskExecutor",
                     TaskExecutor.class,
@@ -72,6 +73,12 @@ class UiInterfaceExtensionServiceWiringTest {
             context.refresh();
 
             assertNotNull(context.getBean(UiInterfaceExtensionService.class));
+            var executor = context.getBean("uiExtensionTaskExecutor",
+                    org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor.class);
+            org.junit.jupiter.api.Assertions.assertSame(executor, org.springframework.test.util.ReflectionTestUtils
+                    .getField(context.getBean(UiInterfaceExtensionService.class), "taskExecutor"));
+            org.junit.jupiter.api.Assertions.assertEquals(8, executor.getMaxPoolSize());
+            org.junit.jupiter.api.Assertions.assertEquals(32, executor.getThreadPoolExecutor().getQueue().remainingCapacity());
         }
     }
 }

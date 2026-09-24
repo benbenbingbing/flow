@@ -131,11 +131,10 @@ public class EntityDataExportService {
             listFields = new ArrayList<>();
         }
 
-        // 3. 查询数据
-        List<EntityDataDTO> records = queryData(
-                entityCode,
-                request,
-                config);
+        // 选中导出最多 5000 行，先读取并校验全部选中结果，拒绝时不向响应写入任何数据。
+        // 全量导出只预读第一批，让配置/权限错误在写 CSV 之前返回，后续逐批写出并释放引用。
+        EntityExportBatch firstBatch = exportSelected ? null : readBatch(entityCode, request, config, null);
+        List<EntityDataDTO> records = exportSelected ? querySelectedData(entityCode, request, config) : List.of();
         if (exportSelected) {
             List<String> denied = records.stream()
                     .filter(record -> {
@@ -170,19 +169,16 @@ public class EntityDataExportService {
             writer.write(joinCsvLine(headers));
             writer.write("\n");
 
-            // 数据行
-            for (EntityDataDTO record : records) {
-                List<String> values = new ArrayList<>();
-                for (EntityListField field : listFields) {
-                    values.add(formatValue(getFieldValue(record, field.getFieldCode())));
+            if (exportSelected) {
+                writeRecords(writer, listFields, records);
+            } else {
+                EntityExportBatch batch = firstBatch;
+                while (!batch.records().isEmpty()) {
+                    writeRecords(writer, listFields, batch.records());
+                    writer.flush();
+                    if (batch.nextCursor() == null) break;
+                    batch = readBatch(entityCode, request, config, batch.nextCursor());
                 }
-                if (listFields.isEmpty()) {
-                    values.add(formatValue(record.getName()));
-                    values.add(formatValue(record.getCode()));
-                    values.add(formatValue(record.getStatus()));
-                }
-                writer.write(joinCsvLine(values));
-                writer.write("\n");
             }
             writer.flush();
         } catch (Exception e) {
@@ -192,30 +188,50 @@ public class EntityDataExportService {
         }
     }
 
-    /**
-     * 查询数据；查询结果供调用方展示或继续处理。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param request 本次请求，后续经校验后用于查询数据
-     * @param config 配置内容，决定后续数据的处理规则
-     * @return 实体数据集合，供调用方遍历或展示
-     */
-    private List<EntityDataDTO> queryData(
-            String entityCode,
-            EntityDataExportRequest request,
-            EntityListConfig config) {
-        List<EntityDataDTO> allRecords =
-                listConfigService.findListWithResolvedConfig(
-                        entityCode,
-                        request.getListKey(),
-                        config,
-                        request.getCondition());
-        if ("SELECTED".equalsIgnoreCase(request.getExportType()) && request.getIds() != null && !request.getIds().isEmpty()) {
-            return allRecords.stream()
-                    .filter(r -> request.getIds().contains(r.getId()))
-                    .collect(Collectors.toList());
+    /** 有界选中导出也通过 SQL 限制 ID，原有条件和权限保持 AND 关系。 */
+    private List<EntityDataDTO> querySelectedData(String entityCode, EntityDataExportRequest request, EntityListConfig config) {
+        List<EntityDataDTO> records = new ArrayList<>();
+        EntityExportBatch.Cursor cursor = null;
+        do {
+            EntityExportBatch batch = readBatch(entityCode, request, config, cursor);
+            if (batch.records().isEmpty()) break;
+            records.addAll(batch.records());
+            if (records.size() > MAX_SELECTED_EXPORT_ROWS) {
+                throw new IllegalStateException("选中导出超过允许数量，请重试");
+            }
+            cursor = batch.nextCursor();
+        } while (cursor != null);
+        return records;
+    }
+
+    /** 每次只读取一批；游标没有前进时显式失败，避免异常 Provider 导致无限循环。 */
+    private EntityExportBatch readBatch(String entityCode, EntityDataExportRequest request,
+            EntityListConfig config, EntityExportBatch.Cursor cursor) {
+        EntityExportBatch batch = listConfigService.findExportBatchWithResolvedConfig(entityCode,
+                request.getListKey(), config, request.getCondition(),
+                "SELECTED".equalsIgnoreCase(request.getExportType()) ? request.getIds() : null, cursor);
+        if (!batch.records().isEmpty() && cursor != null && cursor.equals(batch.nextCursor())) {
+            throw new IllegalStateException("导出游标未前进，请重试");
         }
-        return allRecords;
+        return batch;
+    }
+
+    /** 写入当前批次而不累积全部导出行，CSV 转义规则与原实现一致。 */
+    private void writeRecords(OutputStreamWriter writer, List<EntityListField> listFields,
+            List<EntityDataDTO> records) throws java.io.IOException {
+        for (EntityDataDTO record : records) {
+            List<String> values = new ArrayList<>();
+            for (EntityListField field : listFields) {
+                values.add(formatValue(getFieldValue(record, field.getFieldCode())));
+            }
+            if (listFields.isEmpty()) {
+                values.add(formatValue(record.getName()));
+                values.add(formatValue(record.getCode()));
+                values.add(formatValue(record.getStatus()));
+            }
+            writer.write(joinCsvLine(values));
+            writer.write("\n");
+        }
     }
 
     /**

@@ -49,3 +49,22 @@ test('history returned after switching records is also ignored', async () => {
   assert.equal(await old, false)
   assert.deepEqual(detail.processHistory.value, [])
 })
+
+
+test('withdrawal and cancelled tasks are distinct from approved history', async () => {
+  const detail = useProcessDetail({ request: { get: async () => ({
+    status: 'COMPLETED', endType: 'WITHDRAWN', endReason: '金额错误', cancelledNodes: ['review'],
+    nodeHistory: [
+      { nodeId: 'review', nodeName: '财务审批', status: 'CANCELLED', action: 'CANCELLED', assignee: 'finance', endTime: '2026-09-23' },
+      { nodeId: 'WITHDRAW_1', nodeName: '流程撤回', status: 'WITHDRAWN', action: 'WITHDRAWN', assignee: 'starter', comment: '金额错误', endTime: '2026-09-23' }
+    ]
+  }) }, getProcessHistory: async () => { throw new Error('should use node history') } })
+  assert.equal(await detail.loadProcessDetail('old-instance'), true)
+  assert.deepEqual(detail.progressData.value.terminatedNodes, ['review'])
+  assert.equal(detail.progressData.value.endType, 'WITHDRAWN')
+  assert.equal(detail.processHistory.value[0].status, 'WITHDRAWN')
+  assert.match(detail.processHistory.value[0].description, /撤回.*金额错误/)
+  assert.equal(detail.processHistory.value[1].status, 'CANCELLED')
+  assert.match(detail.processHistory.value[1].description, /已取消/)
+  assert.ok(detail.processHistory.value.every(item => !item.description.includes('通过')))
+})

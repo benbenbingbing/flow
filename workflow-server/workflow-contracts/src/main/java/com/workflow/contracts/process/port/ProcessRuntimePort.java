@@ -15,4 +15,10 @@ public interface ProcessRuntimePort {
      * @return 启动结果
      */
     ProcessStartResult start(ProcessStartRequest request);
+
+    /**
+     * 判断实体最新实例是否为该用户发起并已撤回，用于按钮能力查询。
+     * 不代表已获得实体更新或重新发起按钮权限，调用方仍必须校验已发布按钮和数据范围。
+     */
+    boolean canRestart(String entityCode, String entityRecordId, String previousInstanceId, String userId);
 }

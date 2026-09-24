@@ -102,6 +102,30 @@ class EntityTransitionStatusFlowableTest {
                 engine.getHistoryService().createHistoricProcessInstanceQuery().processInstanceId(bpmnEnd.getId()).singleResult()));
     }
 
+    @Test void typedCancellationPreservesCompletedActivitiesAndCancelsOnlyLiveOccurrence() {
+        deploy("cancel_history", graph("REVIEW"), true);
+        var instance = engine.getRuntimeService().startProcessInstanceByKey("cancel_history", vars());
+        // 同一节点先完成一轮，再被撤回；即使两轮在同一毫秒，也必须区分执行记录。
+        complete(instance.getId(), false);
+        String reason = com.workflow.process.status.application.ProcessEndReason.encode("WITHDRAWN", "金额填写错误");
+        engine.getRuntimeService().deleteProcessInstance(instance.getId(), reason);
+        var tasks = engine.getHistoryService().createHistoricActivityInstanceQuery()
+                .processInstanceId(instance.getId()).activityId("u").list();
+        assertEquals(2, tasks.size());
+        assertEquals(1, tasks.stream().filter(activity ->
+                com.workflow.process.status.application.ProcessEndReason.isCancelled(activity.getDeleteReason())).count());
+        verify(ends).publishProcessEnd(instance.getId(), "expense", "record-1", "WITHDRAWN", "WITHDRAWN");
+        var historic = engine.getHistoryService().createHistoricProcessInstanceQuery()
+                .processInstanceId(instance.getId()).singleResult();
+        assertEquals("WITHDRAWN", new ProcessEntityStatusPolicy(engine.getRepositoryService()).endCategory(historic));
+
+        deploy("typed_terminate", graph("REVIEW"), true);
+        var terminated = engine.getRuntimeService().startProcessInstanceByKey("typed_terminate", vars());
+        engine.getRuntimeService().deleteProcessInstance(terminated.getId(),
+                com.workflow.process.status.application.ProcessEndReason.encode("TERMINATED", "发起人撤回失败，需要终止"));
+        verify(ends).publishProcessEnd(terminated.getId(), "expense", "record-1", "TERMINATED", "TERMINATED");
+    }
+
     @Test void noConfiguredLineAndUnmarkedLegacyDeploymentAreIgnored() {
         deploy("empty", "<startEvent id=\"s\"/><endEvent id=\"e\"/>" + line("f", "s", "e", ""), true);
         var empty = engine.getRuntimeService().startProcessInstanceByKey("empty", vars());

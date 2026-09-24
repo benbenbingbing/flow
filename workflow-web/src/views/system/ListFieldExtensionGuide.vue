@@ -24,7 +24,7 @@
             <li>字段已经有值，只想换样子 → 第 2 节，只写一个单元格组件。</li>
             <li>要把已有字段拼成一列展示文本 → 第 3 节，设计器里配模板，不用写代码。</li>
             <li>这一列的值库里没有 → 第 4 节，写 Provider 往 <code>extData</code> 里补。</li>
-            <li>自己出数，还要画进度条、还能当查询条件 → 第 5 节，把 2 和 4 叠在同一列。</li>
+            <li>自己出数，还要画进度条 → 第 5 节，把 2 和 4 叠在同一列；查询使用实体字段。</li>
             <li>设计器每一项都填了、组件里要把 props 用全 → 第 6 节，看一次请求里实际长什么样。</li>
           </ol>
         </section>
@@ -225,7 +225,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
             <li>保存当前列，发布列表。</li>
           </ol>
           <p>后端 <code>TemplateListFieldDataProvider</code> 渲染后写入 <code>record.extData[字段编码]</code>。占位符取值顺序：<code>extData</code> → <code>data</code> → 系统字段（<code>id / code / name / status / submitterName</code>）。</p>
-          <p>这个数据源 <code>supportsQuery()</code> 为 true，可以勾「查询」。勾上之后，平台先补值，再在内存里按列的 <code>queryType</code> 过滤，不会把虚拟列写进实体 SQL。</p>
+          <p>这个数据源只用于展示，不支持查询或排序。数据库完成过滤、排序和分页后，平台只为当前页计算模板值。</p>
         </section>
 
         <section id="provider" class="guide-section">
@@ -265,7 +265,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         return List.of("expense");
     }
 
-    // 需要当查询条件时覆盖为 true，设计器里的「查询」才能勾
+    // 扩展值只用于展示；平台统一禁止虚拟列参与查询和排序
     @Override
     public boolean supportsQuery() {
         return false;
@@ -316,16 +316,10 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="combine" class="guide-section">
-          <h3>5. 同一列：出数 + 显示 + 查询</h3>
+          <h3>5. 同一列：出数 + 显示</h3>
           <p>出数和显示是同一列上的两个配置，不是两条规则。虚拟列选你的 Provider，渲染组件选你的单元格，阈值进 <code>renderConfig</code>，数据参数进 <code>dataSourceConfig</code>。</p>
-          <p>要进查询区：</p>
-          <ol class="check-list">
-            <li>Provider 的 <code>supportsQuery()</code> 返回 true，否则「查询」复选框是灰的。</li>
-            <li>勾上「查询」。即使不勾「列表」，只要勾了查询，后端仍会先 <code>enrich</code> 再过滤。</li>
-            <li>过滤在 <code>ListFieldConditionEvaluator</code> 里做。操作符用列上的 <code>queryType</code>，请求里也可以带 <code>{fieldCode}_op</code>。范围用 <code>{fieldCode}_start</code> / <code>{fieldCode}_end</code>。</li>
-          </ol>
-          <p>操作符：<code>EQ</code>、<code>NE</code>、<code>LIKE</code>/<code>CONTAINS</code>、<code>NOT_LIKE</code>/<code>NOT_CONTAINS</code>、<code>GT</code>、<code>GE</code>/<code>GTE</code>、<code>LT</code>、<code>LE</code>/<code>LTE</code>、<code>BETWEEN</code>、<code>IN</code>、<code>NOT_IN</code>、<code>EMPTY</code>/<code>IS_EMPTY</code>、<code>NOT_EMPTY</code>/<code>IS_NOT_EMPTY</code>。未识别的操作符当不匹配。</p>
-          <p>数据源没注册却拿这列当查询条件，后端会抛「查询字段的数据源未注册」，避免查着查着条件丢了。</p>
+          <p>查询和默认排序仅允许 <code>ENTITY_FIELD</code> 实体字段。虚拟列和接口补充列仅展示，Provider 的 <code>supportsQuery()</code> 声明不再启用内存过滤。</p>
+          <p>已有虚拟查询配置需要在设计器取消「查询」，修正关联的固定条件、页面参数及排序后重新发布。后端会明确拒绝旧配置，不会静默忽略条件或读取全量数据。</p>
         </section>
 
         <section id="deep" class="guide-section">
@@ -333,7 +327,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           <p>前面几节可以只碰 <code>value</code> 和两三个配置项。管理员把列配满、Provider 也把 <code>extData</code> 写满时，五个 props 会同时带齐。下面按一次真实渲染拆开。</p>
 
           <h4>6.1 格子实际收到的一份快照</h4>
-          <p>假设虚拟列编码 <code>riskScore</code>，数据源补了 82，渲染组件选了风险进度，阈值和查询都配过。组件入参就是这样（JSON 里的函数写成了说明）：</p>
+          <p>假设虚拟列编码 <code>riskScore</code>，数据源补了 82，渲染组件选了风险进度，展示阈值已配置。组件入参就是这样（JSON 里的函数写成了说明）：</p>
           <CodeCard title="一次渲染时的 props（值来自真实字段，不是示意乱编）" language="JSON">
             <pre v-pre><code>{
   "value": 82,
@@ -533,7 +527,7 @@ function reloadList() {
             <el-table-column prop="who" label="谁填" width="140" />
             <el-table-column prop="shape" label="配满时的内容" min-width="320" />
           </el-table>
-          <CodeCard title="同一列四份配置都写上" language="JSON">
+          <CodeCard title="列配置示例（queryConfig 仅用于实体字段）" language="JSON">
             <pre v-pre><code>{
   "dataSourceConfig": { "customerField": "customerId", "labelPrefix": "等级" },
   "renderConfig": { "warningAt": 40, "dangerAt": 70, "showText": true, "showLevel": true, "dangerText": "高风险" },
@@ -541,7 +535,7 @@ function reloadList() {
   "columnConfig": { "fixed": "left", "minWidth": 180, "showOverflowTooltip": true, "quickCopy": true }
 }</code></pre>
           </CodeCard>
-          <p>查询方式本身不在 <code>queryConfig</code> 里，在列字段 <code>queryType</code>。设计器可选：<code>EQ NE LIKE NOT_LIKE GT GE LT LE BETWEEN IN NOT_IN EMPTY NOT_EMPTY</code>。内存过滤里 <code>CONTAINS</code> 等于 <code>LIKE</code>，<code>GTE</code> 等于 <code>GE</code>，请求里也可以带 <code>riskScore_op=GE</code>、<code>riskScore_start</code> / <code>riskScore_end</code>。</p>
+          <p>查询方式本身不在 <code>queryConfig</code> 里，在列字段 <code>queryType</code>。设计器可选：<code>EQ NE LIKE NOT_LIKE GT GE LT LE BETWEEN IN NOT_IN EMPTY NOT_EMPTY</code>。这些条件仅用于实体字段，条件值通过参数绑定交给数据库执行。请求中的 <code>{fieldCode}_op</code> 指定操作符，<code>{fieldCode}_start</code> / <code>{fieldCode}_end</code> 指定范围。</p>
 
           <h4>6.5 Provider 方法全覆盖</h4>
           <p>接口里每个方法都重写时，行为如下。</p>
@@ -649,7 +643,7 @@ const contextRows = [
 
 const designerRows = [
   { place: '添加虚拟列', field: 'fieldId 以 virtual_ 开头', note: '自己出数用虚拟列；实体字段数据源不能改' },
-  { place: '用途：列表 / 查询', field: 'showInList / isQuery', note: '查询能否勾，看数据源 supportsQuery' },
+  { place: '用途：列表 / 查询', field: 'showInList / isQuery', note: '仅 ENTITY_FIELD 可查询；虚拟列仅展示' },
   { place: '字段数据源 + 参数表单', field: 'dataSourceType / dataSourceConfig', note: '选项来自 extension-options' },
   { place: '渲染组件 + 参数表单', field: 'renderComponent / renderConfig', note: '选项来自 getCellComponentOptions()' },
   { place: '保存当前列', field: 'PATCH .../fields/{id}/patch', note: '带 expectedRevision；还要再发布列表' }
@@ -670,7 +664,7 @@ const backApis = [
   { api: 'ListFieldDataProviderRegistry', file: 'list/extension/ListFieldDataProviderRegistry.java', note: '收集 Bean、校验编码、给出下拉' },
   { api: 'TemplateListFieldDataProvider', file: 'list/extension/TemplateListFieldDataProvider.java', note: '内置 FIELD_TEMPLATE' },
   { api: 'ProjectCustomListFieldDataProvider', file: 'project/custom/ProjectCustomListFieldDataProvider.java', note: '项目模块示例，类型 PROJECT_CUSTOM_FIELD' },
-  { api: 'ListFieldConditionEvaluator', file: 'list/extension/ListFieldConditionEvaluator.java', note: '补值之后的内存过滤' },
+  { api: 'EntityListQueryPolicy', file: 'list/application/EntityListQueryPolicy.java', note: '拒绝虚拟查询与排序' },
   { api: 'GET /api/entity-list-config/extension-options', file: 'EntityListConfigController', note: '设计器拉数据源选项' }
 ]
 
@@ -696,7 +690,7 @@ const providerFullRows = [
   { method: 'getDisplayName() / getDescription()', whenSet: '下拉显示名和说明，出现在 extension-options' },
   { method: 'getSupportedEntityCodes()', whenSet: '只出现在这些实体的数据源下拉；运行时已保存列不受影响' },
   { method: 'supportsVirtualField() = false', whenSet: '虚拟列下拉里禁用；只能绑在实体字段上（一般不要这么做）' },
-  { method: 'supportsQuery() = true', whenSet: '「查询」可勾；运行时先 enrich 再内存过滤' },
+  { method: 'supportsQuery() = false', whenSet: '扩展列只展示；查询、排序及分页由实体 SQL 完成' },
   { method: 'getConfigSchema()', whenSet: '数据来源表单；required 的 key 没填会拒保存' },
   { method: 'validateConfig(field, config)', whenSet: '必填过了之后再跑；用来拦业务上不合法的组合' },
   { method: 'enrich(...)', whenSet: '给当前页每条记录的 extData[fieldCode] 赋值' }
@@ -707,7 +701,7 @@ const providerMethods = [
   { method: 'getDisplayName() / getDescription()', note: '默认等于类型 / 空串。下拉用显示名' },
   { method: 'getSupportedEntityCodes()', note: '默认空=全部实体。只影响设计器下拉' },
   { method: 'supportsVirtualField()', note: '默认 true。false 时虚拟列不能选它' },
-  { method: 'supportsQuery()', note: '默认 false。true 才能勾查询' },
+  { method: 'supportsQuery()', note: '已弃用；扩展列统一不可查询' },
   { method: 'getConfigSchema()', note: '默认空。项用 key/label/type/required/defaultValue' },
   { method: 'validateConfig(field, config)', note: '默认空。保存列时先校验必填再调它' },
   { method: 'enrich(records, fields, context)', note: '批量补数。fields 已按类型过滤。抛错则整次查询失败' }

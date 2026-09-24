@@ -56,6 +56,9 @@ public class ProcessDetailVO {
      * 流程状态
      */
     private String status;
+    /** 该实例的实际结束类型和意见，供详情区分撤回、终止和正常结束。 */
+    private String endType;
+    private String endReason;
     
     /**
      * BPMN XML

@@ -140,11 +140,6 @@ public class UiConfigReleaseService {
             "COLLAPSE", STANDARD_CONTAINER_CHILD_TYPES,
             "SUB_FORM", STANDARD_CONTAINER_CHILD_TYPES,
             "REPEATER", STANDARD_CONTAINER_CHILD_TYPES);
-    private static final Map<String, Set<String>> TEMPLATE_NODE_TYPES = Map.of(
-            "FIELD_GROUP", Set.of("SECTION", "GRID", "TAB", "COLLAPSE"),
-            "FORM_SECTION", Set.of(
-                    "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE"),
-            "SUB_FORM", Set.of("SUB_FORM", "REPEATER"));
     private final UiConfigReleaseMapper releaseMapper;
     private final UiConfigHotfixTargetMapper hotfixTargetMapper;
     private final UiConfigReleaseAuditMapper releaseAuditMapper;
@@ -5606,7 +5601,6 @@ public class UiConfigReleaseService {
             formConfigurationValidator.validateForm(runtimeForm(snapshot));
             validateSubListReferences(snapshot);
             validateFormActions(snapshot);
-            validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             Map<String, Object> referenceSnapshot =
                     eventBindingSnapshotService
@@ -5906,7 +5900,7 @@ public class UiConfigReleaseService {
                 "built-in".equalsIgnoreCase(buttonType)
                         && ("TOOLBAR".equals(position)
                                 ? "create".equals(buttonKey)
-                                : Set.of("view", "edit", "approve")
+                                : Set.of("view", "edit", "approve", "restartProcess")
                                         .contains(buttonKey));
         if (!customOpenForm && !builtInTargetForm) {
             throw new IllegalArgumentException(
@@ -5952,7 +5946,6 @@ public class UiConfigReleaseService {
                     snapshotForm);
             validateSubListReferences(snapshot);
             validateFormActions(snapshot);
-            validateTemplateReferences(snapshot);
             validateExtensionReferences(snapshot);
             Map<String, Object> referenceSnapshot =
                     eventBindingSnapshotService
@@ -6410,64 +6403,6 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 校验模板引用；不满足约束时阻止后续处理。
-     *
-     * @param snapshot 快照，作为 {@code snapshotNodes} 的输入影响后续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void validateTemplateReferences(Map<String, Object> snapshot) {
-        List<EntityFormNode> nodes = snapshotNodes(snapshot);
-        for (EntityFormNode node : nodes) {
-            boolean hasTemplateId = StringUtils.hasText(node.getTemplateId());
-            boolean hasTemplateVersion = node.getTemplateVersion() != null;
-            if (!hasTemplateId && !hasTemplateVersion) {
-                continue;
-            }
-            if (!hasTemplateId
-                    || node.getTemplateVersion() == null
-                    || node.getTemplateVersion() < 1) {
-                throw new IllegalArgumentException(
-                        "节点模板必须同时锁定 templateId 和 templateVersion: "
-                                + nodeLabel(node));
-            }
-            UiComponentTemplate template =
-                    templateMapper.selectById(node.getTemplateId());
-            if (template == null
-                    || Integer.valueOf(1).equals(template.getDeleted())
-                    || !"ACTIVE".equalsIgnoreCase(template.getStatus())) {
-                throw new IllegalArgumentException(
-                        "节点引用的组件模板不存在或未启用: " + node.getTemplateId());
-            }
-            String templateType = normalize(template.getTemplateType());
-            Set<String> compatibleTypes = TEMPLATE_NODE_TYPES.get(templateType);
-            if (compatibleTypes == null
-                    || !compatibleTypes.contains(normalize(node.getNodeType()))) {
-                throw new IllegalArgumentException(
-                        incompatibleTemplateMessage(
-                                node,
-                                template,
-                                templateType));
-            }
-            UiComponentTemplateVersion version = templateVersionMapper.selectOne(
-                    new LambdaQueryWrapper<UiComponentTemplateVersion>()
-                            .eq(UiComponentTemplateVersion::getTemplateId,
-                                    node.getTemplateId())
-                            .eq(UiComponentTemplateVersion::getVersion,
-                                    node.getTemplateVersion()));
-            if (version == null) {
-                throw new IllegalArgumentException(
-                        "节点引用的组件模板版本不存在: "
-                                + node.getTemplateId()
-                                + "@"
-                                + node.getTemplateVersion());
-            }
-            verifyTemplateVersionIntegrity(
-                    version,
-                    "节点 " + nodeLabel(node));
-        }
-    }
-
-    /**
      * 校验列表模板引用；不满足约束时阻止后续处理。
      *
      * @param list 列表，作为 {@code validateListActionTemplateReferences} 的输入影响后续处理
@@ -6818,58 +6753,6 @@ public class UiConfigReleaseService {
         return StringUtils.hasText(node.getNodeKey())
                 ? node.getNodeKey()
                 : node.getId();
-    }
-
-    /**
-     * 生成可直接定位表单设计器节点的模板不兼容提示。
-     *
-     * <p>优先展示用户可见的节点标签，同时保留字段/节点编码、节点 ID、
-     * 模板名称与类型，避免仅返回内部 nodeKey 导致用户无法定位配置项。</p>
-     *
-     * @param node 节点，供本方法处理{@code incompatible}模板消息时使用
-     * @param template 模板，作为 {@code firstNonBlank} 的输入影响后续处理
-     * @param templateType 模板类型标识，决定后续{@code incompatible}模板消息采用的处理分支
-     * @return 处理后的{@code incompatible}模板消息文本，供调用方比较或展示
-     */
-    private String incompatibleTemplateMessage(
-            EntityFormNode node,
-            UiComponentTemplate template,
-            String templateType) {
-        Map<String, Object> props = StringUtils.hasText(node.getPropsDocument())
-                ? codec.readObject(
-                        node.getPropsDocument(),
-                        "组件模板引用节点属性")
-                : Map.of();
-        String displayName = firstNonBlank(
-                props.get("label"),
-                props.get("fieldName"),
-                node.getBindingRef(),
-                node.getNodeKey(),
-                node.getId());
-        String nodeCode = firstNonBlank(
-                props.get("fieldCode"),
-                node.getBindingRef(),
-                node.getNodeKey(),
-                node.getId());
-        String templateName = firstNonBlank(
-                template.getTemplateName(),
-                template.getTemplateKey(),
-                template.getId());
-        return "表单节点“"
-                + displayName
-                + "”（编码: "
-                + nodeCode
-                + "，节点类型: "
-                + node.getNodeType()
-                + "，节点ID: "
-                + node.getId()
-                + "）绑定了不兼容的组件模板“"
-                + templateName
-                + "”（模板类型: "
-                + templateType
-                + "，模板ID: "
-                + template.getId()
-                + "）。请在表单设计器中定位该节点，并在“锁定模板”中清除或更换兼容模板。";
     }
 
     /**

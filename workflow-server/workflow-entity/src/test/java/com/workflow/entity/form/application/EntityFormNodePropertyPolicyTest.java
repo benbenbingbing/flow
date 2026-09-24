@@ -532,11 +532,10 @@ class EntityFormNodePropertyPolicyTest {
     }
 
     /**
-     * 验证组件扩展与模板能力按节点类型约束：扩展仅 FIELD 允许、模板仅 REPEATER 允许，
-     * 不匹配类型或缺少必要参数会抛 IllegalArgumentException。
+     * 验证组件扩展仅允许 FIELD 节点使用；不匹配的节点类型会被拒绝。
      */
     @Test
-    void componentAndTemplateCapabilitiesAreTypeSpecific() {
+    void componentExtensionCapabilityIsTypeSpecific() {
         assertDoesNotThrow(() ->
                 EntityFormNodePropertyPolicy.validateExtension(
                         "FIELD", "money-field", 1, 1));
@@ -544,17 +543,5 @@ class EntityFormNodePropertyPolicyTest {
                 IllegalArgumentException.class,
                 () -> EntityFormNodePropertyPolicy.validateExtension(
                         "TEXT", "text-extension", 1, 1));
-
-        assertDoesNotThrow(() ->
-                EntityFormNodePropertyPolicy.validateTemplate(
-                        "REPEATER", "table-template", 2, Map.of()));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> EntityFormNodePropertyPolicy.validateTemplate(
-                        "GRID", "grid-template", 1, Map.of()));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> EntityFormNodePropertyPolicy.validateTemplate(
-                        "FIELD", "field-template", null, Map.of()));
     }
 }

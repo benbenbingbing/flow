@@ -1,6 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessProgressRuntimeService;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.task.application.LocalAddSignTaskAccessService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -55,6 +56,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -67,6 +70,71 @@ import static org.mockito.Mockito.when;
  * (含活动节点、已完成节点、节点历史、处理人映射)以及从发布快照加载表单配置。</p>
  */
 class ProcessProgressRuntimeServiceTest {
+
+    /** 节点数量增加时历史查询次数保持固定，并保留任务、执行和流程根变量的独立作用域。 */
+    @Test
+    void batchesHistoryWithoutCrossingRepeatedTaskOrExecutionScopes() {
+        Fixture fixture = new Fixture();
+        fixture.runningInstance(); fixture.processDefinition(); fixture.activeExecution();
+        fixture.activeTask(); fixture.noOperationLogs();
+        List<HistoricActivityInstance> activities = new java.util.ArrayList<>();
+        List<HistoricTaskInstance> tasks = new java.util.ArrayList<>();
+        List<org.flowable.variable.api.history.HistoricVariableInstance> variables = new java.util.ArrayList<>();
+        for (int i = 0; i < 40; i++) {
+            String taskId = "history-" + i;
+            var activity = fixture.activity("repeated-node", "重复审批", "userTask", "user-" + i,
+                    taskId, new Date(i * 1000L), new Date((i + 1) * 1000L));
+            when(activity.getExecutionId()).thenReturn("execution-" + i);
+            activities.add(activity);
+            var task = mock(HistoricTaskInstance.class);
+            when(task.getId()).thenReturn(taskId);
+            when(task.getTaskDefinitionKey()).thenReturn("repeated-node");
+            when(task.getEndTime()).thenReturn(new Date((i + 1) * 1000L));
+            when(task.getAssignee()).thenReturn("user-" + i);
+            tasks.add(task);
+            if (i != 1) {
+                variables.add(variable(taskId, "execution-" + i, "action", "action-" + i));
+                variables.add(variable(taskId, "execution-" + i, "actionLabel", "任务-" + i));
+            }
+        }
+        variables.add(variable(null, "execution-1", "actionLabel", "其他执行局部值"));
+        variables.add(variable(null, "pi-1", "actionLabel", "旧流程根操作名"));
+        when(fixture.activityQuery.list()).thenReturn(activities);
+        when(fixture.historicTaskQuery.list()).thenReturn(tasks);
+        when(fixture.variableQuery.list()).thenReturn(variables);
+        var local = new ProcessTask();
+        local.setTaskId("history-0"); local.setAction("LOCAL_ACTION"); local.setComment("本地操作记录");
+        when(fixture.processTaskMapper.selectProgressHistoryByProcessInstanceId("pi-1")).thenReturn(List.of(local));
+        var progress = fixture.service().getProcessProgress("pi-1");
+        assertEquals(40, progress.getNodeHistory().size());
+        assertEquals("LOCAL_ACTION", progress.getNodeHistory().get(0).getAction());
+        assertEquals("任务-0", progress.getNodeHistory().get(0).getActionLabel());
+        assertEquals("本地操作记录", progress.getNodeHistory().get(0).getComment());
+        assertEquals("旧流程根操作名", progress.getNodeHistory().get(1).getActionLabel());
+        assertEquals("其他执行局部值", progress.getNodeHistory().get(1).getVariables().get("actionLabel"));
+        assertEquals("任务-39", progress.getNodeHistory().get(39).getActionLabel());
+        assertEquals(40, progress.getNodeAssigneesMap().get("repeated-node").size());
+        assertEquals("任务-39", progress.getNodeAssigneeMap().get("repeated-node").getActionLabel());
+        verify(fixture.variableQuery).list();
+        verify(fixture.variableQuery, never()).taskId(any(String.class));
+        verify(fixture.variableQuery, never()).executionId(any(String.class));
+        verify(fixture.taskService).getProcessInstanceComments("pi-1", "comment");
+        verify(fixture.taskService, never()).getTaskComments(any(String.class));
+        verify(fixture.processTaskMapper).selectProgressHistoryByProcessInstanceId("pi-1");
+        verify(fixture.processTaskMapper, never()).selectByTaskId(any(String.class));
+        verify(fixture.sysUserService).getDisplayNameMap(org.mockito.ArgumentMatchers.argThat(ids -> ids.contains("user-39")));
+        verify(fixture.sysUserService, never()).getDisplayName(any(String.class));
+    }
+
+    private org.flowable.variable.api.history.HistoricVariableInstance variable(String taskId, String executionId,
+            String name, String value) {
+        var variable = mock(org.flowable.variable.api.history.HistoricVariableInstance.class);
+        when(variable.getTaskId()).thenReturn(taskId);
+        when(variable.getExecutionId()).thenReturn(executionId);
+        when(variable.getVariableName()).thenReturn(name);
+        when(variable.getValue()).thenReturn(value);
+        return variable;
+    }
 
     /**
      * 查询运行中流程进度应包含活动节点、已完成节点与处理人映射。
@@ -85,7 +153,8 @@ class ProcessProgressRuntimeServiceTest {
         fixture.activeTask();
         fixture.noOperationLogs();
         when(fixture.sysUserService.getNicknameByUsername("admin")).thenReturn("管理员");
-        when(fixture.sysUserService.getDisplayName("admin")).thenReturn("管理员");
+        when(fixture.sysUserService.getDisplayNameMap(org.mockito.ArgumentMatchers.anyCollection()))
+                .thenReturn(Map.of("admin", "管理员"));
 
         ProcessProgressDTO progress = service.getProcessProgress("pi-1");
 
@@ -122,6 +191,28 @@ class ProcessProgressRuntimeServiceTest {
         assertEquals("pd-1", progress.getProcessDefinitionId());
         assertEquals("expense_flow", progress.getProcessKey());
         assertEquals(7, progress.getProcessVersion());
+    }
+
+    @Test
+    void cancellationUsesExecutionReasonInsteadOfCloseEndTimesAndIncludesWithdrawalHistory() {
+        Fixture fixture = new Fixture();
+        fixture.completedInstance(); fixture.processDefinition(); fixture.emptyRuntimeHistory(); fixture.noOperationLogs();
+        var historic = fixture.historicProcessQuery.singleResult();
+        String reason = com.workflow.process.status.application.ProcessEndReason.encode("WITHDRAWN", "金额错误");
+        when(historic.getDeleteReason()).thenReturn(reason);
+        var completed = fixture.activity("finished", "已审批", "manualTask", null, null, new Date(1000), new Date(2000));
+        var cancelled = fixture.activity("cancelled", "待审批", "manualTask", null, null, new Date(1500), new Date(2000));
+        when(cancelled.getDeleteReason()).thenReturn(reason);
+        when(fixture.activityQuery.list()).thenReturn(List.of(completed, cancelled));
+        var progress = fixture.service().getProcessProgress("pi-1");
+        assertEquals("COMPLETED", progress.getStatus());
+        assertEquals("WITHDRAWN", progress.getEndType());
+        assertEquals(List.of("finished"), progress.getCompletedNodes());
+        assertEquals(List.of("cancelled"), progress.getCancelledNodes());
+        var stopped = progress.getNodeHistory().stream().filter(node -> "cancelled".equals(node.getNodeId())).findFirst().orElseThrow();
+        assertEquals("CANCELLED", stopped.getStatus());
+        assertEquals("CANCELLED", stopped.getAction());
+        assertTrue(progress.getNodeHistory().stream().anyMatch(node -> "流程撤回".equals(node.getNodeName()) && "金额错误".equals(node.getComment())));
     }
 
     /**
@@ -219,6 +310,38 @@ class ProcessProgressRuntimeServiceTest {
                 "default-release-4",
                 progress.getFormConfig().getFormReleaseId());
         assertEquals(4, progress.getFormConfig().getFormReleaseVersion());
+    }
+
+    /** 未显式绑表单的活动任务，也必须拿到绑定该任务和业务记录的默认表单令牌。 */
+    @Test
+    void activeTaskDefaultFormCarriesTaskBoundReleaseContext() {
+        Fixture fixture = new Fixture();
+        fixture.runningInstance();
+        fixture.processDefinition();
+        fixture.history();
+        fixture.activeExecution();
+        fixture.activeTask();
+        fixture.noOperationLogs();
+        fixture.entityVariables();
+        fixture.entityDefinition();
+        fixture.entityData();
+        fixture.noPublishedNodeForms();
+        fixture.resolvedDefaultForm();
+
+        ProcessProgressDTO progress = fixture.service()
+                .getProcessProgress("pi-1", "task-1-runtime");
+
+        assertEquals("default-active-task-token",
+                progress.getFormConfig().getReleaseResolutionToken());
+        verify(fixture.entityFormRuntimeService).getDefaultForm(
+                eq("entity-1"),
+                argThat(context -> context.purpose() == UiRuntimePurpose.ACTIVE_TASK
+                        && "history-1".equals(context.processVersionHistoryId())
+                        && "task-1".equals(context.nodeId())
+                        && "task-1-runtime".equals(context.taskId())
+                        && "pi-1".equals(context.processInstanceId())
+                        && "expense".equals(context.entityCode())
+                        && "data-1".equals(context.recordId())));
     }
 
     @Test
@@ -393,6 +516,7 @@ class ProcessProgressRuntimeServiceTest {
             when(executionQuery.processInstanceId("pi-1")).thenReturn(executionQuery);
             when(taskService.createTaskQuery()).thenReturn(taskQuery);
             when(taskQuery.processInstanceId("pi-1")).thenReturn(taskQuery);
+            when(taskQuery.includeIdentityLinks()).thenReturn(taskQuery);
             when(historyService.createHistoricTaskInstanceQuery()).thenReturn(historicTaskQuery);
             when(historicTaskQuery.processInstanceId("pi-1")).thenReturn(historicTaskQuery);
             when(historicTaskQuery.finished()).thenReturn(historicTaskQuery);
@@ -617,7 +741,10 @@ class ProcessProgressRuntimeServiceTest {
             form.setFormKey("default-form");
             form.setRuntimeReleaseId("default-release-4");
             form.setRuntimeReleaseVersion(4);
-            when(entityFormRuntimeService.getDefaultForm("entity-1"))
+            form.setReleaseResolutionToken("default-active-task-token");
+            when(entityFormRuntimeService.getDefaultForm(
+                    eq("entity-1"),
+                    any(com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))
                     .thenReturn(form);
         }
 

@@ -97,7 +97,7 @@ assert.match(
 )
 assert.match(
   entityDataTable,
-  /<div class="table-toolbar">[\s\S]*?<slot name="toolbar-leading"\s*\/>\s*<template v-for="btn in toolbarButtons"/,
+  /<div class="table-toolbar">[\s\S]*?<slot name="toolbar-leading"\s*\/>\s*<template v-for="btn in visibleToolbarButtons"/,
   '默认列表 tbar 的排障扩展位应与业务按钮保持兄弟关系'
 )
 assert.match(
@@ -112,6 +112,7 @@ const approvalDialog = source(
 const formDialog = source(
   '../../views/entity/components/EntityDataFormDialog.vue'
 )
+const processDetail = source('../../../../packages/workflow-core/src/composables/useProcessDetail.js')
 assert.match(
   approvalDialog,
   /<RuntimeVersionDiagnostics[\s\S]*approvalDialogTitle/,
@@ -165,13 +166,18 @@ assert.match(
 )
 assert.match(
   formDialog,
-  /openCreate[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  /openCreate[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*resetProcessDetail\(\)/,
   '新增弹窗打开前必须清理上一次编辑的流程诊断信息'
 )
 assert.match(
   formDialog,
-  /openEdit[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  /openEdit[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*resetProcessDetail\(\)/,
   '编辑弹窗切换记录前必须重置诊断状态'
+)
+assert.match(
+  processDetail,
+  /function resetProcessDetail\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
+  '共享流程重置方法必须同步清除上一条记录的运行版本信息'
 )
 
 const processProgress = source('../../views/ProcessProgress.vue')

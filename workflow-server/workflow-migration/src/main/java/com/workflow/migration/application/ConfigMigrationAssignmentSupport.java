@@ -102,11 +102,38 @@ final class ConfigMigrationAssignmentSupport {
                         String original = property.getAttribute("value");
                         Map<String, Object> config = read(original);
                         Map<String, Object> before = read(original);
-                        rewriteAssignment(config, at(context, name), mapper);
+                        rewriteExtension(name, config, at(context, name), mapper);
                         if (!config.equals(before)) {
                             property.setAttribute("value", write(config));
                             changed = true;
                         }
+                    }
+                }
+            }
+            // 知会允许挂在流程或非 UserTask 节点，不能只遍历办理人节点。
+            for (String namespace : EXTENSIONS) {
+                NodeList properties = document.getElementsByTagNameNS(namespace, "property");
+                for (int i = 0; i < properties.getLength(); i++) {
+                    Element property = (Element) properties.item(i);
+                    String name = property.getAttribute("name");
+                    if (!Set.of("ccConfig", "nodeOperationPolicy").contains(name)) continue;
+                    org.w3c.dom.Node owner = property.getParentNode();
+                    while (owner instanceof Element element && (!BPMN.equals(element.getNamespaceURI())
+                            || "extensionElements".equals(element.getLocalName()))) owner = owner.getParentNode();
+                    Map<String, Object> context = new LinkedHashMap<>();
+                    context.put("processKey", processKey == null ? "" : processKey);
+                    context.put("section", "bpmnXml");
+                    if (owner instanceof Element element) {
+                        context.put("nodeId", element.getAttribute("id"));
+                        context.put("nodeName", element.getAttribute("name"));
+                    }
+                    String original = property.getAttribute("value");
+                    Map<String, Object> config = read(original);
+                    Map<String, Object> before = read(original);
+                    rewriteExtension(name, config, at(context, name), mapper);
+                    if (!config.equals(before)) {
+                        property.setAttribute("value", write(config));
+                        changed = true;
                     }
                 }
             }
@@ -136,11 +163,12 @@ final class ConfigMigrationAssignmentSupport {
     static String rewriteNodeConfig(String json, Map<String, Object> context, ReferenceMapper mapper) {
         if (!StringUtils.hasText(json)) return json;
         Map<String, Object> config = read(json);
-        for (String field : List.of("assigneeConfig", "multiInstanceConfig")) {
-            if (config.get(field) instanceof Map<?, ?> nested) {
-                Map<String, Object> assignment = object(nested);
-                rewriteAssignment(assignment, at(context, field), mapper);
-                config.put(field, assignment);
+        for (String field : List.of("assigneeConfig", "multiInstanceConfig", "ccConfig", "nodeOperationPolicy")) {
+            Object nested = config.get(field);
+            if (nested instanceof Map<?, ?> || nested instanceof String) {
+                Map<String, Object> assignment = nested instanceof String text ? read(text) : object(nested);
+                rewriteExtension(field, assignment, at(context, field), mapper);
+                config.put(field, nested instanceof String ? write(assignment) : assignment);
             }
         }
         return write(config);
@@ -155,6 +183,20 @@ final class ConfigMigrationAssignmentSupport {
      */
     private static void rewriteAssignment(Map<String, Object> config,
             Map<String, Object> context, ReferenceMapper mapper) {
+        // 历史静态人员字段仍会被运行时读取，必须与新候选人字段一起转换。
+        for (String key : List.of("multiInstanceUserIds", "multiInstanceUsernames")) field(config, key, "USER_ID", context, mapper);
+        for (String key : List.of("multiInstanceGroupIds", "multiInstanceGroupCodes")) field(config, key, "GROUP_ID", context, mapper);
+        for (String key : List.of("multiInstanceRoleIds", "multiInstanceRoleCodes")) field(config, key, "ROLE_ID", context, mapper);
+        field(config, "multiInstanceUsers", "LEGACY_MIXED", context, mapper);
+        for (String name : List.of("ccConfig", "nodeOperationPolicy")) {
+            Object nested = config.get(name);
+            if (nested instanceof Map<?, ?> || nested instanceof String) {
+                Map<String, Object> document = nested instanceof String text ? read(text) : object(nested);
+                rewriteExtension(name, document, at(context, name), mapper);
+                config.put(name, nested instanceof String ? write(document) : document);
+            }
+        }
+
         String type = text(config.get("assigneeType")).toLowerCase(Locale.ROOT);
         switch (type) {
             case "user", "candidate" -> field(config, "assigneeValue", "USER", context, mapper);
@@ -192,6 +234,31 @@ final class ConfigMigrationAssignmentSupport {
             }
             selected.put("source", source);
             config.put("nextApproverSelection", selected);
+        }
+    }
+
+    /** 知会与节点固定操作范围同样使用身份引用，包内一律显式声明 ID 语义。 */
+    private static void rewriteExtension(String name, Map<String, Object> config,
+            Map<String, Object> context, ReferenceMapper mapper) {
+        if ("ccConfig".equals(name)) {
+            List<Map<String, Object>> rules = new ArrayList<>();
+            for (Map<String, Object> rule : maps(config.get("recipientRules"))) {
+                String type = text(rule.get("type")).toUpperCase(Locale.ROOT);
+                if (Set.of("DEPARTMENT", "DEPT", "ORGANIZATION", "ORG").contains(type)) type = "DEPT";
+                if (Set.of("USER", "ROLE", "GROUP", "DEPT").contains(type)) field(rule, "values", type + "_ID", context, mapper);
+                rules.add(rule);
+            }
+            if (config.containsKey("recipientRules")) config.put("recipientRules", rules);
+        } else if ("nodeOperationPolicy".equals(name)) {
+            Map<String, Object> operations = object(config.get("operations"));
+            operations.replaceAll((key, value) -> {
+                Map<String, Object> operation = object(value);
+                if ("FIXED".equals(operation.get("targetScope"))) field(operation, "targetIds", "USER_ID", at(context, key), mapper);
+                return operation;
+            });
+            if (config.containsKey("operations")) config.put("operations", operations);
+        } else {
+            rewriteAssignment(config, context, mapper);
         }
     }
 
@@ -278,7 +345,13 @@ final class ConfigMigrationAssignmentSupport {
         for (String part : value.split(",")) {
             String key = part.trim();
             if (key.isEmpty()) continue;
-            if ("ROLE_VALUES".equals(type)) {
+            if ("LEGACY_MIXED".equals(type)) {
+                result.add(key.startsWith("ROLE_")
+                        ? "ROLE_" + mapper.map("ROLE_ID", key.substring(5), context)
+                        : mapper.map("USER_ID", key, context));
+            } else if ("ROLE_ID".equals(type)) {
+                result.add(mapper.map(type, key.startsWith("ROLE_") ? key.substring(5) : key, context));
+            } else if ("ROLE_VALUES".equals(type)) {
                 result.add("ROLE_" + mapper.map("ROLE", key.startsWith("ROLE_") ? key.substring(5) : key, context));
             } else if ("GROUP_OR_ROLE".equals(type)) {
                 result.add(key.startsWith("ROLE_")
@@ -356,15 +429,24 @@ final class ConfigMigrationAssignmentSupport {
     }
 
     /**
-     * 合并同编码的全部引用位置，避免同一解析器不同参数只校验最后一个节点。
+     * 按依赖类型和编码合并为一项，与依赖表唯一约束保持一致。
+     * 来源说明不同不代表不同依赖；保留所有引用位置，避免只校验最后一个节点。
      *
-     * @param dependencies 依赖集合，供本方法合并依赖集合时使用
-     * @return 配置迁移分配支持集合，供调用方遍历或展示
+     * @param dependencies 原始依赖，可为空；缺少类型或编码的项按持久层约定忽略
+     * @return 独立的合并结果，供快照、计数和入库共同使用；不修改输入
      */
     static List<Map<String, Object>> mergeDependencies(List<Map<String, Object>> dependencies) {
-        Map<String, Map<String, Object>> result = new LinkedHashMap<>();
-        for (Map<String, Object> dependency : dependencies) {
-            String id = dependency.get("type") + ":" + dependency.get("key");
+        Map<List<String>, Map<String, Object>> result = new LinkedHashMap<>();
+        for (Map<String, Object> source : dependencies == null ? List.<Map<String, Object>>of() : dependencies) {
+            if (source == null) continue;
+            String type = text(source.get("type"));
+            String key = text(source.get("key"));
+            if (type.isBlank() || key.isBlank()) continue;
+            Map<String, Object> dependency = new LinkedHashMap<>(source);
+            dependency.put("type", type);
+            dependency.put("key", key);
+            // 用二元键避免编码中含冒号时与其他类型/编码组合碰撞。
+            List<String> id = List.of(type, key);
             Map<String, Object> existing = result.get(id);
             if (existing == null) {
                 result.put(id, new LinkedHashMap<>(dependency));
@@ -375,14 +457,35 @@ final class ConfigMigrationAssignmentSupport {
                 if (!references.contains(reference)) references.add(reference);
             }
             // 保留原有的后写覆盖规则：细粒度选择会在末尾添加 targetOnly 所属资产依赖。
-            Map<String, Object> merged = new LinkedHashMap<>(dependency);
+            Map<String, Object> merged = new LinkedHashMap<>(existing);
+            merged.putAll(dependency);
             if (!references.isEmpty()) merged.put("references", references);
-            if (Boolean.TRUE.equals(existing.get("required")) || Boolean.TRUE.equals(dependency.get("required"))) {
+            mergeDescriptions(merged, existing, dependency, "source", "sources");
+            mergeDescriptions(merged, existing, dependency, "location", "locations");
+            // required 缺省也是硬依赖，不能被另一个位置上的可选引用降级。
+            if (!Boolean.FALSE.equals(existing.get("required")) || !Boolean.FALSE.equals(dependency.get("required"))) {
                 merged.put("required", true);
             }
             result.put(id, merged);
         }
         return new ArrayList<>(result.values());
+    }
+
+    /** 多个来源保存在文档数组中；展示字段仍取最后一项，避免拼接超出数据库列长度。 */
+    private static void mergeDescriptions(Map<String, Object> merged, Map<String, Object> previous,
+            Map<String, Object> incoming, String scalar, String plural) {
+        Set<String> values = new LinkedHashSet<>();
+        for (Map<String, Object> source : List.of(previous, incoming)) {
+            if (source.get(plural) instanceof Collection<?> descriptions) {
+                descriptions.stream().map(ConfigMigrationAssignmentSupport::text)
+                        .filter(value -> !value.isBlank()).forEach(values::add);
+            }
+            String value = text(source.get(scalar));
+            if (!value.isBlank()) values.add(value);
+        }
+        if (values.size() > 1 || previous.containsKey(plural) || incoming.containsKey(plural)) {
+            merged.put(plural, new ArrayList<>(values));
+        }
     }
 
     /**

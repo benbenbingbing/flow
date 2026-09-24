@@ -852,15 +852,15 @@
                 disabled-reason="当前节点不支持复用与扩展"
                 v-show="activeNodeSettingsTab === 'extension'"
                 title="复用与扩展"
-                description="节点扩展、组件模板和组件参数"
-                :default-expanded="!!selectedField.componentName || !!selectedField.fieldComponentName || !!selectedField.templateId"
+                description="节点扩展和组件参数"
+                :default-expanded="!!selectedField.componentName || !!selectedField.fieldComponentName"
               >
                 <template #summary>
                   <el-tag
                     size="small"
-                    :type="selectedField.componentName || selectedField.fieldComponentName || selectedField.templateId ? 'success' : 'info'"
+                    :type="selectedField.componentName || selectedField.fieldComponentName ? 'success' : 'info'"
                   >
-                    {{ selectedField.componentName || selectedField.fieldComponentName || selectedField.templateId ? '已配置' : '未配置' }}
+                    {{ selectedField.componentName || selectedField.fieldComponentName ? '已配置' : '未配置' }}
                   </el-tag>
                 </template>
 
@@ -886,34 +886,6 @@
                   </div>
                 </SettingsFormItem>
 
-                <SettingsCapability :disabled="!isEditableFieldNode" reason="仅字段、子表单和明细表支持锁定模板">
-                  <el-form-item label="锁定模板">
-                    <el-select
-                      v-model="selectedField.templateId"
-                      clearable
-                      filterable
-                      placeholder="复制后独立"
-                      style="width: 100%"
-                      @change="handleTemplateChange"
-                    >
-                      <el-option
-                        v-for="template in componentTemplates"
-                        :key="template.id"
-                        :label="`${template.templateName} (v${template.currentVersion})`"
-                        :value="template.id"
-                      />
-                    </el-select>
-                  </el-form-item>
-                  <el-form-item v-if="selectedField.templateId" label="模板版本">
-                    <el-tag>v{{ selectedField.templateVersion || 1 }}</el-tag>
-                    <el-button
-                      link
-                      type="primary"
-                      style="margin-left: 8px"
-                      @click="upgradeSelectedTemplate"
-                    >检查升级</el-button>
-                  </el-form-item>
-                </SettingsCapability>
 
                 <SettingsCapability :disabled="!isFieldNode || !selectedComponentSchema.length" reason="当前组件未提供可配置参数">
                   <div class="property-subheading">组件参数</div>
@@ -1249,7 +1221,6 @@ import {
 } from '@/api/entityForm'
 import {
   uiConfigDraftApi,
-  uiComponentTemplateApi,
   uiExtensionApi,
   uiEventBindingApi
 } from '@/api/uiConfig'
@@ -1331,7 +1302,6 @@ const relatedContentAnchorOptions = computed(() => formFields.value
     label: `${nodeLabel(node)}（${formNodeTypeLabel(node.nodeType || legacyNodeType(node))}之后）`,
     nodeType: String(node.nodeType || legacyNodeType(node) || '').toUpperCase()
   })))
-const componentTemplates = ref([])
 const formFieldComponentOptions = getFormFieldComponentOptions()
 const localCustomFormOptions = getCustomFormComponentOptions()
 const localNodeExtensionOptions = getFormNodeComponentOptions()
@@ -2046,7 +2016,6 @@ const previewForm = computed(() => {
       ...field,
       dataSourceBindings: { ...(field.dataSourceBindings || {}) },
       legacyProps: { ...(field.legacyProps || {}) },
-      localOverrides: { ...(field.localOverrides || {}) }
     }, index)
   )
   return {
@@ -2984,8 +2953,6 @@ function nodeToField(node, fieldMetadata) {
     bindingRef: node.bindingRef || '',
     revision: node.revision,
     orderKey: node.orderKey,
-    templateId: node.templateId,
-    templateVersion: node.templateVersion,
     componentName: fieldComponentName
       ? ''
       : (node.componentName || ''),
@@ -3005,7 +2972,6 @@ function nodeToField(node, fieldMetadata) {
     componentExtensionType: fieldComponentName
       ? FORM_FIELD_EXTENSION_TYPE
       : '',
-    localOverrides: parseDocument(node.localOverridesDocument),
     legacyProps: parseDocument(node.legacyPropsDocument),
     dataSourceBindings: bindings,
     fieldId: props.fieldId ?? sourceField.fieldId ?? sourceField.id,
@@ -3046,9 +3012,13 @@ function nodeToField(node, fieldMetadata) {
       ?? props.publishedFormReleaseVersion
       ?? sourceField.childFormReleaseVersion
       ?? null,
-    isRequired: Object.hasOwn(props, 'required')
-      ? (props.required === true ? 1 : 0)
-      : (sourceField.isRequired || 0),
+    // 子表单节点的发布协议只保存 componentProps；关系必填性需从关系配置回读到设计态。
+    isRequired: isChildFormNode && node.bindingType === 'RELATION'
+      && componentConfig.subFormConfig?.relationRequired === true
+      ? 1
+      : (Object.hasOwn(props, 'required')
+          ? (props.required === true ? 1 : 0)
+          : (sourceField.isRequired || 0)),
     isReadonly: Object.hasOwn(props, 'readonly')
       ? (props.readonly === true ? 1 : 0)
       : (sourceField.isReadonly || 0),
@@ -3211,9 +3181,6 @@ function fieldToNodeEntity(field, index) {
     legacyPropsDocument: stringifyConfig(payload.legacyProps),
     orderKey: payload.orderKey || (index + 1) * 1000000,
     revision: field.revision || 1,
-    templateId: payload.templateId,
-    templateVersion: payload.templateVersion,
-    localOverridesDocument: stringifyConfig(payload.localOverrides)
   }
 }
 
@@ -4323,72 +4290,6 @@ async function loadDataSources({ strict = false } = {}) {
   }
 }
 
-async function loadComponentTemplates({ strict = false } = {}) {
-  try {
-    componentTemplates.value = await uiComponentTemplateApi.list()
-  } catch (error) {
-    componentTemplates.value = []
-    if (strict) throw error
-  }
-}
-
-async function handleTemplateChange(templateId) {
-  if (!selectedField.value || !templateId) {
-    if (selectedField.value) {
-      selectedField.value.templateVersion = null
-      selectedField.value.localOverrides = {}
-    }
-    return
-  }
-  const template = componentTemplates.value.find(item => item.id === templateId)
-  const versions = await uiComponentTemplateApi.versions(templateId)
-  const latest = versions.find(item => item.version === template?.currentVersion)
-    || versions[0]
-  if (!latest) return
-  const snapshot = parseDocument(latest.snapshotDocument)
-  const props = snapshot.props || snapshot
-  Object.assign(selectedField.value, props)
-  selectedField.value.templateVersion = latest.version
-  selectedField.value.localOverrides = {}
-  ElMessage.success(`已锁定模板 v${latest.version}，不会自动跟随升级`)
-}
-
-async function upgradeSelectedTemplate() {
-  const field = selectedField.value
-  if (!field?.templateId) return
-  const template = componentTemplates.value.find(item => item.id === field.templateId)
-  if (!template || template.currentVersion === field.templateVersion) {
-    ElMessage.info('当前已是最新模板版本')
-    return
-  }
-  const result = await uiComponentTemplateApi.upgrade(field.templateId, {
-    fromVersion: field.templateVersion,
-    toVersion: template.currentVersion,
-    currentSnapshot: fieldToNodePayload(field).props,
-    localOverrides: field.localOverrides || {}
-  })
-  if (result.requiresConfirmation) {
-    try {
-      await ElMessageBox.confirm(
-        `以下配置同时被模板和本地修改：${result.conflicts.join('、')}。继续后保留当前节点的本地值。`,
-        '确认模板升级',
-        {
-          type: 'warning',
-          confirmButtonText: '保留本地值并升级',
-          cancelButtonText: '取消'
-        }
-      )
-    } catch {
-      return
-    }
-  }
-  Object.assign(field, result.mergedSnapshot?.props || result.mergedSnapshot || {})
-  field.templateId = template.id
-  field.templateVersion = template.currentVersion
-  await saveSelectedNode()
-  ElMessage.success(`已保存模板升级 v${template.currentVersion}`)
-}
-
 async function loadDiff({ strict = false } = {}) {
   diffLoadSucceeded.value = false
   if (!form.value.id) {
@@ -4841,7 +4742,6 @@ async function reloadFormDesignerData({ resetInteraction = false } = {}) {
     await loadFormFields({ strict })
     await loadRelatedContents()
     await loadDataSources({ strict })
-    await loadComponentTemplates({ strict })
     await loadExtensionDefinitions({ strict })
     await loadDiff({ strict })
     completed = true

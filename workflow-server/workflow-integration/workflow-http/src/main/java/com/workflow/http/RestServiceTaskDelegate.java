@@ -1,6 +1,8 @@
 package com.workflow.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.workflow.core.concurrent.ExecutionDeadline;
+import jakarta.annotation.PreDestroy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flowable.bpmn.model.BaseElement;
 import org.flowable.bpmn.model.ExtensionAttribute;
@@ -35,7 +37,7 @@ import org.springframework.beans.factory.annotation.Autowired;
  * 以及响应结果字段映射。</p>
  */
 @Component("restServiceTaskDelegate")
-public class RestServiceTaskDelegate implements JavaDelegate {
+public class RestServiceTaskDelegate implements JavaDelegate, AutoCloseable {
 
     /** 变量模板正则，匹配 ${variable} 形式的占位符 */
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\$\\{([^}]+)}");
@@ -44,6 +46,7 @@ public class RestServiceTaskDelegate implements JavaDelegate {
     private final ObjectMapper objectMapper;
     private final WorkflowHttpProperties properties;
     private final PinnedHttpTransport transport;
+    private boolean ownsTransport;
 
     /**
      * 初始化{@code rest}服务任务委托，保存构造参数供后续方法使用。
@@ -63,6 +66,7 @@ public class RestServiceTaskDelegate implements JavaDelegate {
                 new PinnedHttpTransport(
                         endpointPolicy,
                         properties));
+        this.ownsTransport = true;
     }
 
     /**
@@ -141,30 +145,35 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         int retryCount = Math.max(0, Math.min(5, config.path("retryCount").asInt(0)));
         String errorHandling = config.path("errorHandling").asText("throw");
         Exception lastError = null;
-        // 按 retryCount 重试调用，成功则立即返回
-        for (int attempt = 0; attempt <= retryCount; attempt++) {
-            try {
-                HttpCallResult response = executeRequest(
-                        config,
-                        execution,
-                        url,
-                        contentType,
-                        timeout);
-                if (response.statusCode() < 200
-                        || response.statusCode() >= 300) {
-                    throw new HttpStatusException(
-                            response.statusCode());
+        // timeout 是整个节点的网络预算，重试、退避和 DNS 都不能重新开始计时。
+        try (var deadline = ExecutionDeadline.afterMillis(timeout * 1000L); var scope = deadline.attach()) {
+            for (int attempt = 0; attempt <= retryCount; attempt++) {
+                try {
+                    deadline.check();
+                    HttpCallResult response = executeRequest(config, execution, url, contentType, timeout);
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        throw new HttpStatusException(response.statusCode());
+                    }
+                    deadline.check();
+                    mapResult(config.path("resultMapping").asText(""), response.body(), execution);
+                    execution.setVariable(execution.getCurrentActivityId() + "_httpStatus", response.statusCode());
+                    return;
+                } catch (Exception exception) {
+                    lastError = exception;
+                    if (attempt >= retryCount || !isRetryable(exception)) break;
+                    try {
+                        long backoff = Math.min(1000L, 100L << attempt);
+                        if (deadline.remainingMillis() <= backoff) break;
+                        Thread.sleep(backoff);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        lastError = interrupted;
+                        break;
+                    } catch (ExecutionDeadline.ExceededException expired) {
+                        lastError = expired;
+                        break;
+                    }
                 }
-                mapResult(config.path("resultMapping").asText(""), response.body(), execution);
-                execution.setVariable(execution.getCurrentActivityId() + "_httpStatus", response.statusCode());
-                return;
-            } catch (Exception exception) {
-                lastError = exception;
-                if (attempt >= retryCount
-                        || !isRetryable(exception)) {
-                    break;
-                }
-                Thread.sleep(Math.min(1000L, 100L << attempt));
             }
         }
 
@@ -533,7 +542,10 @@ public class RestServiceTaskDelegate implements JavaDelegate {
      * @return 可重试条件成立时为 true，否则为 false
      */
     private boolean isRetryable(Exception exception) {
-        if (exception instanceof IllegalArgumentException
+        if (Thread.currentThread().isInterrupted()
+                || exception instanceof ExecutionDeadline.ExceededException
+                || exception instanceof PinnedHttpResources.UnavailableException
+                || exception instanceof IllegalArgumentException
                 || exception instanceof InterruptedException) {
             if (exception instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
@@ -543,6 +555,12 @@ public class RestServiceTaskDelegate implements JavaDelegate {
         return !(exception instanceof HttpStatusException status)
                 || status.statusCode == 429
                 || status.statusCode >= 500;
+    }
+
+    /** 手工构造的实例拥有传输资源；Spring 注入的共享传输由其自身生命周期关闭。 */
+    @PreDestroy
+    @Override public void close() {
+        if (ownsTransport) transport.close();
     }
 
     /**

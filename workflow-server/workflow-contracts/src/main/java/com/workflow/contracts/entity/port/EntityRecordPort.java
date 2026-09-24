@@ -6,6 +6,14 @@ package com.workflow.contracts.entity.port;
 public interface EntityRecordPort {
 
     /**
+     * 在终止/撤回产生引擎副作用前确认唯一的业务目标状态。
+     * @param entityCode 被取消流程绑定的实体
+     * @param category TERMINATED 或 WITHDRAWN，用于选择特殊操作的唯一目标
+     * @return 配置中的目标编码；缺失或重复时抛出配置冲突，调用者不得继续取消
+     */
+    String requireProcessEndStatus(String entityCode, String category);
+
+    /**
      * 更新当前任务；后续读取或执行将使用更新后的状态。
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围

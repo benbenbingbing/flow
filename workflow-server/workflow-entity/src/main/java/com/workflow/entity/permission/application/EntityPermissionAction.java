@@ -15,6 +15,7 @@ public enum EntityPermissionAction {
     BATCH_DELETE("batch-delete", "批量删除", "批量删除实体数据"),
     EXPORT("export", "导出选中", "导出选中的实体数据"),
     EXPORT_ALL("export-all", "导出全部", "导出当前数据权限范围内的全部数据"),
+    RESTART_PROCESS("restart-process", "重新发起", "在原记录上重新发起已撤回的流程，保留各轮历史"),
     APPROVE("approve", "审批", "查看并处理当前审批任务");
 
     private final String code;
@@ -90,6 +91,7 @@ public enum EntityPermissionAction {
             case "exportSelected" -> EXPORT;
             case "exportAll" -> EXPORT_ALL;
             case "approve" -> APPROVE;
+            case "restartProcess" -> RESTART_PROCESS;
             default -> null;
         };
     }

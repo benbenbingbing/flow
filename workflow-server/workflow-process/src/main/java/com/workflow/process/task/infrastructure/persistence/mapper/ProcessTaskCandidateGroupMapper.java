@@ -16,29 +16,23 @@ public interface ProcessTaskCandidateGroupMapper
         extends BaseMapper<ProcessTaskCandidateGroup> {
 
     /**
-     * 根据任务实例ID查询候选组列表（按排序号升序）。
+     * 根据平台任务主键 process_task.id查询候选组列表（按排序号升序）。
      *
-     * @param taskInstanceId 任务实例ID
+     * @param processTaskId 平台任务主键 process_task.id
      * @return 候选组列表
      */
-    default List<ProcessTaskCandidateGroup> findByTaskInstanceId(String taskInstanceId) {
+    default List<ProcessTaskCandidateGroup> findByProcessTaskId(Long processTaskId) {
         return selectList(Wrappers.<ProcessTaskCandidateGroup>lambdaQuery()
-                .eq(ProcessTaskCandidateGroup::getTaskInstanceId, taskInstanceId)
+                .eq(ProcessTaskCandidateGroup::getProcessTaskId, processTaskId)
                 .orderByAsc(ProcessTaskCandidateGroup::getSortOrder));
     }
 
     /**
-     * 根据任务实例ID删除其下所有候选组。
-     *
-     * @param taskInstanceId 任务实例ID
+     * 替换候选集合或结束任务时物理删除该任务的候选组；须与主表/引擎变更处于同一事务。
+     * @param processTaskId 平台任务主键 process_task.id，不接受引擎 task_id
      */
-    /**
-     * 该配置表没有逻辑删除字段，使用 BaseMapper 按条件物理删除。
-     *
-     * @param taskInstanceId 任务实例ID，后续用于删除任务实例ID时定位或关联目标
-     */
-    default void deleteByTaskInstanceId(String taskInstanceId) {
+    default void deleteByProcessTaskId(Long processTaskId) {
         delete(Wrappers.<ProcessTaskCandidateGroup>lambdaQuery()
-                .eq(ProcessTaskCandidateGroup::getTaskInstanceId, taskInstanceId));
+                .eq(ProcessTaskCandidateGroup::getProcessTaskId, processTaskId));
     }
 }

@@ -52,7 +52,6 @@ const schema = ({
   dataSourceUsages = [],
   binding = false,
   childForm = false,
-  template = false,
   gridSpan = false,
   containerAppearance = false
 }) => Object.freeze({
@@ -64,7 +63,6 @@ const schema = ({
   dataSourceUsages: Object.freeze(dataSourceUsages),
   binding,
   childForm,
-  template,
   gridSpan,
   containerAppearance
 })
@@ -144,7 +142,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'modeAccess',
       'gridSpan',
       'events',
-      'template',
       'nodeExtension'
     ],
     fieldProperties: true,
@@ -152,7 +149,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     rules: true,
     dataSourceUsages: FIELD_DATA_SOURCE_USAGES,
     binding: true,
-    template: true,
     gridSpan: true
   }),
   SUB_FORM: schema({
@@ -165,7 +161,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'template',
       'nodeExtension'
     ],
     configKeys: ['showPadding', 'showBorder'],
@@ -173,7 +168,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
-    template: true,
     gridSpan: true,
     containerAppearance: true
   }),
@@ -187,7 +181,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'template',
       'nodeExtension'
     ],
     configKeys: ['showPadding', 'showBorder'],
@@ -195,7 +188,6 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
-    template: true,
     gridSpan: true,
     containerAppearance: true
   }),
@@ -623,11 +615,6 @@ function buildClearFields(
     clearFields.add('childFormReleaseId')
     clearFields.add('childFormReleaseVersion')
   }
-  if (!nodeSchema.template || !payload.templateId) {
-    clearFields.add('templateId')
-    clearFields.add('templateVersion')
-    clearFields.add('localOverrides')
-  }
   if (!nodeSchema.binding || bindingType === 'NONE') {
     clearFields.add('bindingRef')
   }
@@ -758,11 +745,6 @@ export function buildFormNodePayload(
     if (childFormReleaseVersion != null) {
       payload.childFormReleaseVersion = childFormReleaseVersion
     }
-  }
-  if (nodeSchema.template && field.templateId) {
-    payload.templateId = field.templateId
-    payload.templateVersion = field.templateVersion || 1
-    payload.localOverrides = field.localOverrides || {}
   }
   if (forPatch) {
     payload.clearFields = buildClearFields(

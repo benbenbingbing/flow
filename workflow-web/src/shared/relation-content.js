@@ -9,6 +9,7 @@ export function restoreRelationEditorMetadata(field, config = {}) {
   field.refEntityId = field.childEntityId
   field.childRefFieldCode = config.childRefFieldCode || config.refFieldCode || field.childRefFieldCode || field.refFieldCode || ''
   field.refFieldCode = field.childRefFieldCode
+  field.relationRequired = config.relationRequired === true || field.relationRequired === true
   field.repeatable = field.relationType !== 'ONE_TO_ONE'
   return field
 }
@@ -27,7 +28,11 @@ export function buildRelationEditor({ relation, content, release }) {
     childRefFieldCode: relation.childRefFieldCode, refFieldCode: relation.childRefFieldCode,
     relationType: relation.relationType, repeatable: !single, layout: single ? 'form' : 'table',
     childFormId: content.id, refFormId: content.id, childFormReleaseId: release.id, childFormReleaseVersion: release.version,
-    componentProps: '{}', isRequired: relation.required ? 1 : 0, isReadonly: 0, isHidden: 0, gridSpan: 24
+    // 表单字段的通用 required 属性可能在节点设置中被重建；同时将关系约束
+    // 固定在子表单配置里，使发布快照及运行时仍能识别“至少一条子记录”。
+    componentProps: JSON.stringify({ subFormConfig: { relationRequired: relation.required === true } }),
+    relationRequired: relation.required === true,
+    isRequired: relation.required ? 1 : 0, isReadonly: 0, isHidden: 0, gridSpan: 24
   }
 }
 

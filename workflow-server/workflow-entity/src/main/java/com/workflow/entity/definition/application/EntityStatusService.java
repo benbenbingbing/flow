@@ -25,6 +25,7 @@ public class EntityStatusService {
     
     private final EntityStatusMapper entityStatusMapper;
     private final EntityDefinitionAccessPolicy entityAccessPolicy;
+    private final com.workflow.contracts.process.port.ProcessCatalogPort processCatalogPort;
     
     /**
      * 查询实体的状态列表
@@ -68,7 +69,17 @@ public class EntityStatusService {
             targetType = "ENTITY_STATUS",
             captureArguments = true)
     public void saveStatus(EntityStatus status) {
-        entityAccessPolicy.requireDynamicByCode(status.getEntityCode());
+        var entity = entityAccessPolicy.requireDynamicByCodeForUpdate(status.getEntityCode());
+        if (status.getId() != null && !status.getId().isBlank()) {
+            EntityStatus existing = entityStatusMapper.selectById(status.getId());
+            if (existing == null || !java.util.Objects.equals(existing.getEntityCode(), status.getEntityCode())) {
+                throw new IllegalArgumentException("状态不存在或不属于当前实体");
+            }
+        }
+        List<EntityStatus> candidates = new java.util.ArrayList<>(findByEntityCode(status.getEntityCode()));
+        candidates.removeIf(existing -> java.util.Objects.equals(existing.getId(), status.getId()));
+        candidates.add(status);
+        EntitySpecialStatusPolicy.validate(candidates, requiredCategories(entity));
         if (status.getId() == null || status.getId().isEmpty()) {
             entityStatusMapper.insert(status);
         } else {
@@ -92,7 +103,9 @@ public class EntityStatusService {
             targetIdArg = 0,
             captureArguments = true)
     public void saveStatusList(String entityCode, List<EntityStatus> statuses) {
-        entityAccessPolicy.requireDynamicByCode(entityCode);
+        var entity = entityAccessPolicy.requireDynamicByCodeForUpdate(entityCode);
+        // 与同实体的单项保存共用定义行锁，避免两个并发请求各自通过唯一性检查。
+        EntitySpecialStatusPolicy.validate(statuses, requiredCategories(entity));
         // 先物理删除旧的状态（避免主键冲突；全局逻辑删除配置会使 BaseMapper.delete 变成软删，这里必须物理删除）
         entityStatusMapper.physicalDeleteByEntityCode(entityCode);
 
@@ -129,6 +142,10 @@ public class EntityStatusService {
     public void deleteStatus(String id) {
         EntityStatus status = entityStatusMapper.selectById(id);
         if (status != null) {
+            var entity = entityAccessPolicy.requireDynamicByCodeForUpdate(status.getEntityCode());
+            var candidates = new java.util.ArrayList<>(findByEntityCode(status.getEntityCode()));
+            candidates.removeIf(value -> id.equals(value.getId()));
+            EntitySpecialStatusPolicy.validate(candidates, requiredCategories(entity));
             status.setDeleted(1);
             entityStatusMapper.updateById(status);
         }
@@ -144,4 +161,21 @@ public class EntityStatusService {
     public List<EntityStatus> findByCategory(String entityCode, String category) {
         return entityStatusMapper.findByCategory(entityCode, category);
     }
+    /** 特殊操作调用方使用此方法选择业务状态；不得依赖排序或名称猜测。 */
+    public String requireSpecialTarget(String entityCode, String category) {
+        return EntitySpecialStatusPolicy.requireTarget(category, findByCategory(entityCode, category));
+    }
+
+    /** 实体发布也校验存量状态，防止重复配置绕过新的保存入口。 */
+    public void validateForPublish(com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entity) {
+        EntitySpecialStatusPolicy.validate(findByEntityCode(entity.getEntityCode()), requiredCategories(entity));
+    }
+
+    private java.util.Set<String> requiredCategories(
+            com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entity) {
+        if (entity.getLifecycleMode() != com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition.LifecycleMode.WORKFLOW
+                || entity.getProcessDefinitionId() == null || entity.getProcessDefinitionId().isBlank()) return java.util.Set.of();
+        return processCatalogPort.requiredEndStatusCategories(entity.getProcessDefinitionId());
+    }
+
 }

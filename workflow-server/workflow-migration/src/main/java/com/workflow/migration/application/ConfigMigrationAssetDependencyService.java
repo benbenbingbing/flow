@@ -31,7 +31,7 @@ public class ConfigMigrationAssetDependencyService {
     /**
      * 用新的依赖列表覆盖指定资产的依赖记录。
      *
-     * <p>先删除该资产全部依赖，再依次写入新的依赖项；忽略缺少 type 或 key 的条目。</p>
+     * <p>按 type/key 合并所有来源后替换依赖，不能依赖上游已去重；忽略缺少 type 或 key 的条目。</p>
      *
      * @param assetId     资产ID
      * @param dependencies 新的依赖列表(可为空)
@@ -40,9 +40,7 @@ public class ConfigMigrationAssetDependencyService {
     public void replace(String assetId, List<Map<String, Object>> dependencies) {
         Map<String, Object> owner = sourceAsset(assetId);
         dependencyMapper.deleteByAssetId(assetId);
-        for (Map<String, Object> source : dependencies == null
-                ? List.<Map<String, Object>>of()
-                : dependencies) {
+        for (Map<String, Object> source : ConfigMigrationAssignmentSupport.mergeDependencies(dependencies)) {
             String type = text(source.get("type"));
             String key = text(source.get("key"));
             if (!StringUtils.hasText(type) || !StringUtils.hasText(key)) {

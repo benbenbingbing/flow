@@ -20,6 +20,48 @@ public class ProcessTaskAccessAdapter implements ProcessTaskAccessPort {
     private final ProcessTaskMapper taskMapper;
     private final ProcessPublishedSnapshotService publishedSnapshotService;
 
+    /** 批量入口只读取当前页所需字段，沿用权威身份 SQL，不改变列表或提交时的授权口径。 */
+    @Override
+    public java.util.Map<RecordCoordinates, TaskCapability> findCapabilities(String userId, List<RecordCoordinates> records) {
+        if (!StringUtils.hasText(userId) || records == null || records.isEmpty()) return java.util.Map.of();
+        List<RecordCoordinates> requested = records.stream().filter(java.util.Objects::nonNull)
+                .filter(record -> StringUtils.hasText(record.processInstanceId())
+                        || StringUtils.hasText(record.entityCode()) && StringUtils.hasText(record.entityDataId()))
+                .distinct().toList();
+        var result = new java.util.LinkedHashMap<RecordCoordinates, TaskCapability>();
+        for (int start = 0; start < requested.size(); start += 100) {
+            List<RecordCoordinates> batch = requested.subList(start, Math.min(start + 100, requested.size()));
+            // 与单条查询一致：不完整实体坐标不参与约束；有效流程坐标仍需联合匹配。
+            var queryRecords = batch.stream().map(record -> {
+                boolean entity = StringUtils.hasText(record.entityCode()) && StringUtils.hasText(record.entityDataId());
+                return new RecordCoordinates(entity ? record.entityCode() : null, entity ? record.entityDataId() : null,
+                        StringUtils.hasText(record.processInstanceId()) ? record.processInstanceId() : null);
+            }).distinct().toList();
+            var tasks = taskMapper.selectActionableTaskSummaries(userId, queryRecords);
+            for (RecordCoordinates record : batch) {
+                String taskId = null;
+                String taskName = null;
+                boolean assigned = false;
+                for (var task : tasks) {
+                    boolean entityMatches = !StringUtils.hasText(record.entityCode()) || !StringUtils.hasText(record.entityDataId())
+                            || java.util.Objects.equals(record.entityCode(), task.getEntityCode())
+                                && java.util.Objects.equals(record.entityDataId(), task.getEntityDataId());
+                    boolean processMatches = !StringUtils.hasText(record.processInstanceId())
+                            || java.util.Objects.equals(record.processInstanceId(), task.getProcessInstanceId());
+                    if (!entityMatches || !processMatches) continue;
+                    // 名称与 ID 始终取同一条最新可办理任务；办理人标记则取该记录所有匹配任务的并集。
+                    if (taskId == null && StringUtils.hasText(task.getTaskId())) {
+                        taskId = task.getTaskId();
+                        taskName = task.getNodeName();
+                    }
+                    assigned |= Integer.valueOf(1).equals(task.getAssignedFlag());
+                }
+                result.put(record, new TaskCapability(taskId, taskName, assigned));
+            }
+        }
+        return java.util.Map.copyOf(result);
+    }
+
     /**
      * 查询可执行任务ID；查询结果供调用方展示或继续处理。
      *
@@ -33,6 +75,26 @@ public class ProcessTaskAccessAdapter implements ProcessTaskAccessPort {
     public Optional<String> findActionableTaskId(
             String userId, String entityCode, String entityDataId, String processInstanceId) {
         return findTask(userId, entityCode, entityDataId, processInstanceId, false);
+    }
+
+    /** 列表中的可办理任务名称必须来自与提交目标同一条受限待办查询。 */
+    @Override
+    public Optional<String> findActionableTaskName(
+            String userId,
+            String taskId,
+            String entityCode,
+            String entityDataId,
+            String processInstanceId) {
+        if (!StringUtils.hasText(userId)
+                || !StringUtils.hasText(taskId)
+                || !StringUtils.hasText(entityCode)
+                || !StringUtils.hasText(entityDataId)
+                || !StringUtils.hasText(processInstanceId)) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(taskMapper.selectActionableTaskName(
+                        userId, taskId, entityCode, entityDataId, processInstanceId))
+                .filter(StringUtils::hasText);
     }
 
     /**

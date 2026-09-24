@@ -82,7 +82,8 @@ for (const legacyKey of [
 const defaultOperationPermissions = {
   allowTransfer: true,
   allowAddSign: true,
-  allowTerminate: true
+  allowTerminate: true,
+  allowWithdraw: true
 }
 assert.deepEqual(
   normalizeNodeOperationPermissions({}),
@@ -110,13 +111,14 @@ const unrestrictedLegacyPolicy = {
     addSignBefore: { ...unrestrictedLegacyOperation },
     addSignAfter: { ...unrestrictedLegacyOperation },
     addSignParallel: { ...unrestrictedLegacyOperation },
-    terminate: { ...unrestrictedLegacyOperation }
+    terminate: { ...unrestrictedLegacyOperation },
+    withdraw: { ...unrestrictedLegacyOperation }
   }
 }
 assert.deepEqual(
   normalizeNodeOperationPermissions({ nodeOperationPolicy: unrestrictedLegacyPolicy }),
   defaultOperationPermissions,
-  '旧矩阵仅包含无条件开放规则时可以无损折叠为三个开关'
+  '旧矩阵仅包含无条件开放规则时可以无损折叠为四个开关'
 )
 
 assert.deepEqual(
@@ -126,14 +128,16 @@ assert.deepEqual(
         ...unrestrictedLegacyPolicy.operations,
         transfer: { ...unrestrictedLegacyOperation, permissionCode: 'task:transfer' },
         addSignBefore: { ...unrestrictedLegacyOperation, allowedAddSignTypes: ['BEFORE'] },
-        terminate: { ...unrestrictedLegacyOperation, reasonRequired: true }
+        terminate: { ...unrestrictedLegacyOperation, reasonRequired: true },
+        withdraw: { ...unrestrictedLegacyOperation, reasonRequired: true }
       }
     }
   }),
   {
     allowTransfer: false,
     allowAddSign: false,
-    allowTerminate: false
+    allowTerminate: false,
+    allowWithdraw: false
   },
   '旧矩阵高级限制无法由开关表达时必须安全收紧，不能升级成无条件开放'
 )
@@ -172,7 +176,8 @@ assert.deepEqual(
   {
     allowTransfer: false,
     allowAddSign: true,
-    allowTerminate: true
+    allowTerminate: true,
+  allowWithdraw: true
   },
   '任一新开关存在后应优先使用新模型，其余缺失字段按 true 回填'
 )
@@ -185,10 +190,11 @@ assert.deepEqual(
   {
     allowTransfer: migratedOperationConfig.allowTransfer,
     allowAddSign: migratedOperationConfig.allowAddSign,
-    allowTerminate: migratedOperationConfig.allowTerminate
+    allowTerminate: migratedOperationConfig.allowTerminate,
+    allowWithdraw: migratedOperationConfig.allowWithdraw
   },
   defaultOperationPermissions,
-  '保存时必须把旧矩阵显式迁移为三个布尔字段'
+  '保存时必须把旧矩阵显式迁移为四个布尔字段'
 )
 assert.equal(
   Object.hasOwn(migratedOperationConfig, 'nodeOperationPolicy'),
@@ -208,7 +214,8 @@ assert.deepEqual(
   {
     allowTransfer: migratedLegacyPassthrough.allowTransfer,
     allowAddSign: migratedLegacyPassthrough.allowAddSign,
-    allowTerminate: migratedLegacyPassthrough.allowTerminate
+    allowTerminate: migratedLegacyPassthrough.allowTerminate,
+    allowWithdraw: migratedLegacyPassthrough.allowWithdraw
   },
   defaultOperationPermissions,
   '旧人员配置直通保存时也必须回填简化后的操作权限'

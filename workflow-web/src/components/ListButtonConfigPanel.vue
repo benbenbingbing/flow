@@ -533,6 +533,7 @@ const TOOLBAR_BUILTIN = {
 const ROW_BUILTIN = {
   view: { key: 'view', type: 'built-in', label: '查看', buttonType: 'primary', link: true, sort: 1, enabled: true },
   edit: { key: 'edit', type: 'built-in', label: '编辑', buttonType: 'primary', link: true, sort: 2, enabled: true },
+  restartProcess: { key: 'restartProcess', type: 'built-in', label: '重新发起', buttonType: 'primary', link: true, sort: 5, enabled: false },
   approve: { key: 'approve', type: 'built-in', label: '审批', buttonType: 'warning', link: true, sort: 3, enabled: true },
   delete: { key: 'delete', type: 'built-in', label: '删除', buttonType: 'danger', link: true, sort: 4, enabled: true }
 }
@@ -618,7 +619,7 @@ function canConfigureTargetForm(row) {
   if (props.type === 'toolbar') {
     return row.key === 'create'
   }
-  return ['view', 'edit', 'approve'].includes(row.key)
+  return ['view', 'edit', 'approve', 'restartProcess'].includes(row.key)
 }
 
 function normalizeTargetFormMode(row) {
@@ -822,6 +823,7 @@ function standardPermission(key) {
     view: 'view',
     edit: 'update',
     approve: 'approve',
+    restartProcess: 'restart-process',
     delete: 'delete'
   }
   const action = actionMap[key]
@@ -830,6 +832,7 @@ function standardPermission(key) {
 
 function withDefaults(button) {
   const normalized = { ...button }
+  if (normalized.key === 'restartProcess') normalized.enabled = button.enabled === true
   normalized.buttonType = resolveListButtonType(normalized)
   if (normalized.type === 'built-in') {
     normalized.perm = standardPermission(normalized.key)
@@ -890,7 +893,12 @@ function defaultRule(key) {
                 { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'NEW' }
               ]
             },
-            { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'WITHDRAWN' }
+            {
+              type: 'GROUP', logic: 'AND', children: [
+                { type: 'PROCESS_STATE', lifecycleVersion: 1, operator: 'EQ', value: 'COMPLETED' },
+                { type: 'STATUS_CATEGORY', operator: 'EQ', value: 'WITHDRAWN' }
+              ]
+            }
           ]
         }
       ]

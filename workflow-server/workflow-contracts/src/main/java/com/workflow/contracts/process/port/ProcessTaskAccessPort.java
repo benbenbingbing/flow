@@ -12,6 +12,30 @@ import java.util.Optional;
 public interface ProcessTaskAccessPort {
 
     /**
+     * 批量读取一页记录的入口能力，只用于本次展示；真正提交时仍调用精确任务校验。
+     * 平台实现按批查询，默认实现供既有外部适配器保持兼容，不能把候选人当作实际办理人。
+     */
+    default java.util.Map<RecordCoordinates, TaskCapability> findCapabilities(
+            String userId, List<RecordCoordinates> records) {
+        var result = new java.util.LinkedHashMap<RecordCoordinates, TaskCapability>();
+        for (RecordCoordinates record : records) {
+            String taskId = findActionableTaskId(userId, record.entityCode(), record.entityDataId(),
+                    record.processInstanceId()).orElse(null);
+            String taskName = taskId == null ? null : findActionableTaskName(userId, taskId,
+                    record.entityCode(), record.entityDataId(), record.processInstanceId()).orElse(null);
+            result.put(record, new TaskCapability(taskId, taskName, isCurrentAssignee(userId,
+                    record.entityCode(), record.entityDataId(), record.processInstanceId())));
+        }
+        return java.util.Map.copyOf(result);
+    }
+
+    /** 完整实体坐标或流程坐标至少具备一组；两组存在时必须联合匹配。 */
+    record RecordCoordinates(String entityCode, String entityDataId, String processInstanceId) {}
+
+    /** 同一用户/记录下最新可办理任务及实际办理人身份；候选审批能力与办理人身份分别保存。 */
+    record TaskCapability(String taskId, String taskName, boolean currentAssignee) {}
+
+    /**
      * 查找该记录上当前用户可审批的任务，包含已指派任务和未认领的真实候选任务。
      *
      * @param userId 用户 ID 或用户名
@@ -22,6 +46,26 @@ public interface ProcessTaskAccessPort {
      */
     Optional<String> findActionableTaskId(
             String userId, String entityCode, String entityDataId, String processInstanceId);
+
+    /**
+     * 读取已确定可办理任务的真实节点名称，供列表将可见审批目标与提交 taskId 对齐。
+     * 实现必须复用用户、任务和记录的联合访问范围；旧适配器默认不返回名称。
+     *
+     * @param userId 当前认证用户
+     * @param taskId 已由可办理能力选出的任务 ID
+     * @param entityCode 业务实体编码
+     * @param entityDataId 业务记录 ID
+     * @param processInstanceId 流程实例 ID
+     * @return 该任务的节点名称；任务不可访问或名称缺失时为空
+     */
+    default Optional<String> findActionableTaskName(
+            String userId,
+            String taskId,
+            String entityCode,
+            String entityDataId,
+            String processInstanceId) {
+        return Optional.empty();
+    }
 
     /**
      * 按客户端声明的任务坐标回查当前用户真正可办理的服务端任务上下文。

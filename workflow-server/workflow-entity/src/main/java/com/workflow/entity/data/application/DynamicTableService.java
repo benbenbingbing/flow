@@ -328,9 +328,17 @@ public class DynamicTableService {
             return List.of();
         }
         String tableName = quoteIdentifier(physicalTableName);
+        Set<String> physicalColumns = getTableColumnsByName(physicalTableName).stream()
+                .map(ColumnInfo::getName)
+                .collect(Collectors.toSet());
         List<String> conflicts = new ArrayList<>();
         for (EntityField field : fields) {
             if (!Boolean.TRUE.equals(field.getIsUnique()) || !isPhysicalDynamicField(field)) {
+                continue;
+            }
+            // 发布预检在 ADD COLUMN 执行前运行；新唯一字段尚无存量值可冲突，
+            // 直接查询草稿列会让预览因 Unknown column 失败。
+            if (!physicalColumns.contains(columnName(field))) {
                 continue;
             }
             String column = quoteIdentifier(columnName(field));

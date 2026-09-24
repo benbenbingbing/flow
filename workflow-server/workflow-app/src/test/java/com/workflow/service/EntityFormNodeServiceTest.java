@@ -1085,6 +1085,8 @@ class EntityFormNodeServiceTest {
                     relation.setRelationCode(bindingRef);
                     relation.setChildEntityId("entity-2");
                     relation.setChildRefFieldCode("parent_id");
+                    // 子表单/明细只接受组成关系；夹具应满足当前业务前置条件。
+                    relation.setOwnershipType(EntityRelation.OwnershipType.COMPOSITION);
                     relation.setRelationType(
                             bindingRef.contains("lines")
                                     ? EntityRelation.RelationType.ONE_TO_MANY

@@ -35,8 +35,6 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '自定义列数据源需实现 ListFieldDataProvider、加 @Component，并用 getDataSourceType() 返回唯一编码；实体字段可直接读取记录值。',
   'entityList.interfaceExtension':
     '选择一个已启用的列表扩展接口计算当前列。配置只保存接口 ID，输入输出结构由该接口自己的 Schema 约束。',
-  'entityList.queryInterfaceExtension':
-    '选择一个已启用的列表查询扩展接口接管数据查询。分页、筛选和排序作为统一输入传入，每次直接绑定一条完整接口。',
   'entityForm.interfaceExtension':
     '选择一个已启用的表单扩展接口作为数据源或字段能力。配置只保存接口 ID，不会在页面中拼装后端调用步骤。',
   'entityList.renderComponent':

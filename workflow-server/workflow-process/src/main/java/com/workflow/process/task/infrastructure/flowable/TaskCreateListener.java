@@ -27,7 +27,7 @@ public class TaskCreateListener implements TaskListener {
     /**
      * 任务创建回调：将 Flowable 任务连同流程变量同步到本地待办表。
      * <p>
-     * 同步失败仅记录日志，不抛出异常以免阻断流程。
+     * 本地任务是收件箱查询的基础，失败必须回滚，不能提交一个没有本地任务的引擎任务。
      *
      * @param delegateTask Flowable 委托任务
      */
@@ -50,7 +50,7 @@ public class TaskCreateListener implements TaskListener {
             log.info("任务同步到本地待办成功: taskId={}", taskId);
         } catch (Exception e) {
             log.error("任务同步到本地待办失败: taskId={}", taskId, e);
-            // 不抛出异常，不影响流程继续
+            throw new IllegalStateException("本地任务同步失败，回滚流程事务", e);
         }
     }
 }

@@ -94,6 +94,7 @@ class ConfigMigrationAssignmentTargetValidatorTest {
         entity.setBusinessKey("expense");
         entity.setDependenciesJson("[]");
         entity.setSnapshotJson("{\"fields\":[{\"fieldCode\":\"reviewer\",\"fieldType\":\"USER\"}]}");
+        MigrationReferenceTestFixture.attachTo(service);
         assertDoesNotThrow(() -> service.requireResolvedDependencies(List.of(process, entity)));
         entity.setSnapshotJson("{\"fields\":[{\"fieldCode\":\"reviewer\",\"fieldType\":\"STRING\"}]}");
         assertThrows(IllegalStateException.class, () -> service.requireResolvedDependencies(List.of(process, entity)));

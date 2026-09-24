@@ -44,6 +44,15 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EntityDataMutationService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private EntityTaskSummaryRefresh taskSummaryRefresh;
+
+    /** 与实体事务合并登记，避免一个审批动作多次改状态时反复读取相同摘要。 */
+    private void refreshTaskSummary(String entityCode, String recordId) {
+        if (taskSummaryRefresh != null) taskSummaryRefresh.changed(entityCode, recordId);
+    }
+
+
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityStatusMapper entityStatusMapper;
@@ -101,6 +110,8 @@ public class EntityDataMutationService {
                 relationRuntimeService.withoutRelationData(
                         originalData,
                         relations);
+        relationRuntimeService.stripUnpublishedRelationKeys(
+                definition, originalData, parentData, relations);
         Map<String, Object> relationData =
                 relationRuntimeService.extractRelationData(
                         originalData,
@@ -182,6 +193,7 @@ public class EntityDataMutationService {
                 && definition.getProcessDefinitionId() != null) {
             startWorkflow(dto);
         }
+        refreshTaskSummary(entityCode, dto.getId());
         return dto;
     }
 
@@ -230,6 +242,8 @@ public class EntityDataMutationService {
                         .withoutRelationDataFromRequest(
                                 formData,
                                 relations);
+        relationRuntimeService.stripUnpublishedRelationKeys(
+                definition, formData, parentFormData, relations);
         Map<String, Object> relationData =
                 relationRuntimeService
                         .extractRelationDataFromRequest(
@@ -249,11 +263,29 @@ public class EntityDataMutationService {
                 parentFormData,
                 multiValueData.keySet());
 
-        Map<String, Object> existingData =
-                dynamicMapper.selectById(tableName, id);
+        boolean restart = formData != null
+                && Boolean.parseBoolean(String.valueOf(formData.get("restartProcess")));
+        String previousInstanceId = formData == null ? null : asText(formData.get("previousProcessInstanceId"));
+        if (restart) {
+            EntityProcessRestartContext.require(entityCode, id, previousInstanceId);
+        }
+        // 重新发起和表单修改必须在同一记录锁及事务内，避免并发保存覆盖新一轮流程。
+        Map<String, Object> existingData = restart
+                ? dynamicMapper.selectByIdForUpdate(tableName, id)
+                : dynamicMapper.selectById(tableName, id);
         if (existingData == null) {
             throw new RuntimeException(
                     "数据不存在: " + id);
+        }
+        if (restart) {
+            EntityStatus status = entityStatusMapper.findByEntityAndCode(entityCode, asText(existingData.get("status")));
+            if (!java.util.Objects.equals(previousInstanceId, asText(existingData.get("process_instance_id")))
+                    || !"COMPLETED".equals(asText(existingData.get("process_status")))
+                    || status == null || !"WITHDRAWN".equals(status.getStatusCategory())
+                    || !processRuntimePort.canRestart(entityCode, id, previousInstanceId, UserContext.getUserId())) {
+                throw new BusinessConflictException("ENTITY_PROCESS_RESTART_DENIED",
+                        "仅原发起人可重新发起最新的已撤回流程，请刷新后重试");
+            }
         }
         Map<String, Object> updateData =
                 payloadMapper.buildUpdateData(
@@ -301,6 +333,7 @@ public class EntityDataMutationService {
         if (dto.getData() != null) {
             dto.getData().putAll(relationData);
         }
+        refreshTaskSummary(entityCode, id);
         return startWorkflowIfRequested(
                 entityCode,
                 id,
@@ -342,6 +375,7 @@ public class EntityDataMutationService {
         dynamicMapper.deleteById(
                 tableName,
                 id);
+        refreshTaskSummary(entityCode, id);
         if (uniqueValueService != null) {
             uniqueValueService.release(entityCode, id);
         }
@@ -385,6 +419,7 @@ public class EntityDataMutationService {
         dynamicMapper.physicalDeleteById(
                 tableName,
                 id);
+        refreshTaskSummary(entityCode, id);
         if (uniqueValueService != null) {
             uniqueValueService.release(entityCode, id);
         }
@@ -430,6 +465,7 @@ public class EntityDataMutationService {
                 currentTaskId,
                 currentTaskName,
                 currentTaskAssignee);
+        refreshTaskSummary(entityCode, entityDataId);
     }
 
     /**
@@ -476,6 +512,9 @@ public class EntityDataMutationService {
         updateData.put("process_status", "COMPLETED");
         // 空 fallback 表示连线模式，不按流程结束结果猜测业务状态。
         if (StringUtils.hasText(fallbackStatus)) {
+            if (com.workflow.entity.definition.application.EntitySpecialStatusPolicy.CATEGORIES.contains(statusCategory)) {
+                getStatusByCategory(entityCode, statusCategory, fallbackStatus);
+            }
             String currentStatus = existingData == null
                     ? null
                     : asText(existingData.get("status"));
@@ -518,6 +557,7 @@ public class EntityDataMutationService {
                 null,
                 null,
                 null);
+        refreshTaskSummary(entityCode, entityDataId);
     }
 
     /**
@@ -608,7 +648,8 @@ public class EntityDataMutationService {
                 Boolean.TRUE.equals(requested)
                         || "true".equalsIgnoreCase(
                                 String.valueOf(requested));
-        if (!startProcess) {
+        boolean restart = Boolean.parseBoolean(String.valueOf(formData.get("restartProcess")));
+        if (!startProcess && !restart) {
             return dto;
         }
         validator.validateProcessStart(
@@ -617,7 +658,7 @@ public class EntityDataMutationService {
         String existingProcessInstanceId =
                 asText(existingData.get(
                         "process_instance_id"));
-        if (StringUtils.hasText(
+        if (!restart && StringUtils.hasText(
                 existingProcessInstanceId)) {
             return dto;
         }
@@ -628,7 +669,14 @@ public class EntityDataMutationService {
         dto.setSubmitterName(asText(
                 existingData.get("submitter_name")));
         dto.setProcessVariables(null);
-        startWorkflow(dto);
+        // 更新 DTO 只含补丁字段；新实例必须使用保存后的完整数据和原业务编号。
+        EntityDataDTO persisted = payloadMapper.toRuntimeDto(dynamicMapper.selectById(
+                dynamicTableService.getTableName(entityCode), id), entityCode);
+        dto.setCode(persisted.getCode());
+        dto.setData(persisted.getData());
+        enrichMultiValues(entityCode, List.of(dto));
+        if (dto.getData() != null) dto.getData().putAll(relationData);
+        startWorkflow(dto, restart ? existingProcessInstanceId : null);
         Map<String, Object> refreshedData =
                 dynamicMapper.selectById(
                         dynamicTableService.getTableName(
@@ -769,6 +817,11 @@ public class EntityDataMutationService {
      * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
      */
     private void startWorkflow(EntityDataDTO dto) {
+        startWorkflow(dto, null);
+    }
+
+    /** 原记录新建一轮实例时传入旧实例坐标，由流程关联锁保证只能启动一次。 */
+    private void startWorkflow(EntityDataDTO dto, String previousInstanceId) {
         EntityPublishedSnapshot snapshot =
                 snapshotService.getLatestByEntityCode(
                         dto.getEntityCode());
@@ -795,7 +848,8 @@ public class EntityDataMutationService {
                                         "PROCESSING",
                                         "PENDING"),
                                 dto.getData(),
-                                dto.getProcessVariables()));
+                                dto.getProcessVariables(),
+                                previousInstanceId));
 
         LocalDateTime startedAt =
                 LocalDateTime.now();
@@ -834,6 +888,7 @@ public class EntityDataMutationService {
                 dynamicTableService.getTableName(
                         dto.getEntityCode()),
                 updateData);
+        refreshTaskSummary(dto.getEntityCode(), dto.getId());
 
         dto.setProcessInstanceId(
                 result.processInstanceId());
@@ -933,6 +988,10 @@ public class EntityDataMutationService {
             String entityCode,
             String category,
             String fallback) {
+        if (com.workflow.entity.definition.application.EntitySpecialStatusPolicy.CATEGORIES.contains(category)) {
+            return com.workflow.entity.definition.application.EntitySpecialStatusPolicy.requireTarget(
+                    category, entityStatusMapper.findByCategory(entityCode, category));
+        }
         try {
             List<EntityStatus> statuses =
                     entityStatusMapper.findByCategory(

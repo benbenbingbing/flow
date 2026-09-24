@@ -70,6 +70,9 @@ public class ProcessTaskController {
     @Autowired
     private NextApproverCandidateService nextApproverCandidateService;
 
+    @Autowired
+    private com.workflow.process.task.application.TaskInboxQueryService taskInboxQueryService;
+
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
      *
@@ -93,6 +96,11 @@ public class ProcessTaskController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
+        if (taskInboxQueryService != null) {
+            var page = taskInboxQueryService.findPage(new com.workflow.process.task.application.TaskInboxQuery(
+                    currentUser, "todo", pageNum, pageSize, keyword, startUserName, priority, startDate, endDate));
+            if (page.isPresent()) return Result.success(page.get());
+        }
         List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
         Map<String, Map<String, String>> statusNames = new HashMap<>();
         List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
@@ -125,6 +133,11 @@ public class ProcessTaskController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         String currentUser = UserContext.getUsername();
         currentUser = requireCurrentUser(currentUser);
+        if (taskInboxQueryService != null) {
+            var page = taskInboxQueryService.findPage(new com.workflow.process.task.application.TaskInboxQuery(
+                    currentUser, "done", pageNum, pageSize, keyword, startUserName, priority, startDate, endDate));
+            if (page.isPresent()) return Result.success(page.get());
+        }
         List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
         Map<String, Map<String, String>> statusNames = new HashMap<>();
         List<TaskVO> voList = TaskListFilter.filter(tasks.stream()

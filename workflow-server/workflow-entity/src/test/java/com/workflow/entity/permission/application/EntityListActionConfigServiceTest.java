@@ -36,28 +36,46 @@ class EntityListActionConfigServiceTest {
             List.of());
     private final EntityActionRuleEvaluator evaluator = new EntityActionRuleEvaluator(List.of());
 
+    @Test
+    void restartDefaultsOffAndRequiresAnExplicitBooleanTrue() throws Exception {
+        var defaults = service.resolveRowButtons(null, "expense");
+        assertEquals(false, defaults.stream().filter(button -> "restartProcess".equals(button.get("key")))
+                .findFirst().orElseThrow().get("enabled"));
+        for (String enabled : List.of("", ",\"enabled\":null", ",\"enabled\":false", ",\"enabled\":true")) {
+            EntityListConfig config = new EntityListConfig();
+            config.setEntityCode("expense");
+            config.setPublishedSnapshot(true);
+            config.setRowActionConfig("[{\"key\":\"restartProcess\",\"type\":\"built-in\"" + enabled + "}]");
+            service.normalizeForSave(config);
+            Map<?, ?> button = (Map<?, ?>) objectMapper.readValue(config.getRowActionConfig(), List.class).get(0);
+            assertEquals(enabled.endsWith("true"), button.get("enabled"));
+            assertEquals("entity:expense:restart-process", button.get("perm"));
+        }
+    }
+
     @ParameterizedTest
     @CsvSource({
-            "u1, other, NEW, false, true",
-            "other, u1, NEW, false, true",
-            "other, other, NEW, false, false",
-            "u1, other, NEW, true, false",
-            "u1, other, APPROVING, true, false",
-            "u1, other, WITHDRAWN, true, true",
-            "other, u1, WITHDRAWN, true, true",
-            "other, other, WITHDRAWN, true, false"
+            "u1, other, NEW, NOT_STARTED, true",
+            "other, u1, NEW, NOT_STARTED, true",
+            "other, other, NEW, NOT_STARTED, false",
+            "u1, other, NEW, RUNNING, false",
+            "u1, other, APPROVING, RUNNING, false",
+            "u1, other, WITHDRAWN, COMPLETED, true",
+            "other, u1, WITHDRAWN, COMPLETED, true",
+            "other, other, WITHDRAWN, COMPLETED, false",
+            "u1, u1, WITHDRAWN, RUNNING, false"
     })
     void defaultEditAndDeleteEnforceTheSameOwnershipAndState(
             String creator, String submitter, String category,
-            boolean processStarted, boolean expected) {
+            String processState, boolean expected) {
         List<Map<String, Object>> buttons = service.resolveRowButtons(null, "expense");
         EntityActionRuleDTO edit = rule(buttons, "edit");
         EntityActionRuleDTO delete = rule(buttons, "delete");
         EntityDataDTO row = new EntityDataDTO();
         row.setCreateBy(creator);
         row.setSubmitterId(submitter);
-        row.setProcessInstanceId(processStarted ? "process-1" : null);
-        row.setProcessStatus(processStarted ? "RUNNING" : "NOT_STARTED");
+        row.setProcessInstanceId("NOT_STARTED".equals(processState) ? null : "process-1");
+        row.setProcessStatus(processState);
         SysUser user = new SysUser();
         user.setId("u1");
 

@@ -39,6 +39,11 @@ public class EntityActionCapabilityService {
     private final EntityStatusMapper statusMapper;
     private final SysUserService userService;
     private final CurrentProcessTaskAssigneeLookup assigneeLookup;
+    // 只有校验“重新发起”时才需要流程运行时；延迟解析以避免列表配置加载
+    // 经任务表单适配器回到 UI 配置发布服务的 Spring 初始化环。
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.workflow.contracts.process.port.ProcessRuntimePort processRuntimePort;
 
     /**
      * 强制要求当前用户拥有指定标准动作权限，否则抛出禁止访问异常。
@@ -110,24 +115,27 @@ public class EntityActionCapabilityService {
         actionConfigService.resolveToolbarButtons(config, entityCode).stream()
                 .filter(this::isSelectionToolbarButton)
                 .forEach(buttons::add);
-        for (EntityDataDTO row : rows) {
-            Map<String, EntityActionCapabilityDTO> capabilities = new LinkedHashMap<>();
-            for (Map<String, Object> button : buttons) {
-                if (Boolean.FALSE.equals(button.get("enabled"))) {
-                    continue;
+        // 同一页多个按钮共享任务能力；作用域在展示结束时关闭，提交校验仍读取实时任务。
+        try (var display = assigneeLookup.openDisplayBatch(rows, user)) {
+            for (EntityDataDTO row : rows) {
+                Map<String, EntityActionCapabilityDTO> capabilities = new LinkedHashMap<>();
+                for (Map<String, Object> button : buttons) {
+                    if (Boolean.FALSE.equals(button.get("enabled"))) {
+                        continue;
+                    }
+                    String key = asString(button.get("key"));
+                    if (!StringUtils.hasText(key)) {
+                        continue;
+                    }
+                    capabilities.put(key, evaluateButton(
+                            entityCode,
+                            button,
+                            row,
+                            user,
+                            statusCategories.get(row.getStatus())));
                 }
-                String key = asString(button.get("key"));
-                if (!StringUtils.hasText(key)) {
-                    continue;
-                }
-                capabilities.put(key, evaluateButton(
-                        entityCode,
-                        button,
-                        row,
-                        user,
-                        statusCategories.get(row.getStatus())));
+                row.setActionCapabilities(capabilities);
             }
-            row.setActionCapabilities(capabilities);
         }
     }
 
@@ -555,7 +563,10 @@ public class EntityActionCapabilityService {
             // 任务 ID 只会在所有条件通过后附加，失败能力不泄露待办标识。
             return conditions;
         }
-        return EntityActionCapabilityDTO.allowedForTask(actionableTaskId);
+        return EntityActionCapabilityDTO.allowedForTask(
+                actionableTaskId,
+                assigneeLookup.findActionableTaskName(row, user, actionableTaskId)
+                        .orElse(null));
     }
 
     /**
@@ -594,6 +605,15 @@ public class EntityActionCapabilityService {
         if (!PermissionUtil.hasPermission(permissionCode)) {
             return EntityActionCapabilityDTO.hidden("无操作权限");
         }
+        if ("restartProcess".equals(asString(button.get("key")))) {
+            if (!Boolean.TRUE.equals(button.get("enabled"))) {
+                return EntityActionCapabilityDTO.hidden("未启用重新发起");
+            }
+            EntityActionCapabilityDTO restart = evaluateRestartAction(entityCode, row);
+            if (!restart.isVisible() || !restart.isEnabled()) {
+                return restart;
+            }
+        }
         EntityActionRuleDTO rule = actionConfigService.readRule(button);
         boolean approveAction = "approve".equals(asString(button.get("key")));
         String actionableTaskId = null;
@@ -615,7 +635,10 @@ public class EntityActionCapabilityService {
             return conditions;
         }
         return approveAction
-                ? EntityActionCapabilityDTO.allowedForTask(actionableTaskId)
+                ? EntityActionCapabilityDTO.allowedForTask(
+                        actionableTaskId,
+                        assigneeLookup.findActionableTaskName(row, user, actionableTaskId)
+                                .orElse(null))
                 : EntityActionCapabilityDTO.allowed();
     }
 
@@ -719,6 +742,26 @@ public class EntityActionCapabilityService {
                         condition, row, user, statusCategory, true)
                 : ruleEvaluator.evaluate(
                         condition, row, user, statusCategory);
+    }
+
+    /**
+     * 列表和表单共用重新发起资格：编辑/重新发起权限、已完成的撤回实体，
+     * 以及最新实例真实结束事实和原发起人身份；状态文字不能替代引擎校验。
+     */
+    public EntityActionCapabilityDTO evaluateRestartAction(String entityCode, EntityDataDTO row) {
+        if (!PermissionUtil.hasPermission(EntityPermissionAction.RESTART_PROCESS.permissionCode(entityCode))
+                || !PermissionUtil.hasPermission(EntityPermissionAction.UPDATE.permissionCode(entityCode))) {
+            return EntityActionCapabilityDTO.hidden("无重新发起权限");
+        }
+        if (row == null || !"COMPLETED".equals(row.getProcessStatus())
+                || !"WITHDRAWN".equals(statusCategory(entityCode, row))) {
+            return EntityActionCapabilityDTO.hidden("仅已撤回的数据可以重新发起");
+        }
+        if (!processRuntimePort.canRestart(entityCode, row.getId(), row.getProcessInstanceId(),
+                UserContext.getUserId())) {
+            return EntityActionCapabilityDTO.hidden("仅原发起人可重新发起最新的已撤回流程");
+        }
+        return EntityActionCapabilityDTO.allowed();
     }
 
     /**

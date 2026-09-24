@@ -2792,7 +2792,7 @@ process_instance_id 唯一约束防止同一流程实例重复关联；状态同
 
 承接平台待办、已办、节点执行、办理人与业务记录定位，是任务查询与审批记录的主要平台数据。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 34 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 42 个。
 
 #### 6.2.2 字段设计
 
@@ -2811,10 +2811,18 @@ process_instance_id 唯一约束防止同一流程实例重复关联；状态同
 | `entity_code` | 实体编码 | `varchar(64)` | 是 | `NULL` | 实体编码。 | 现存 |
 | `entity_data_id` | 实体数据ID | `varchar(64)` | 是 | `NULL` | 实体数据ID。 | 现存 |
 | `assignee_id` | 执行人ID | `varchar(64)` | 是 | `NULL` | 执行人ID。 | 现存 |
-| `assignee_name` | 执行人姓名 | `varchar(64)` | 是 | `NULL` | 执行人姓名。 | 现存 |
+| `assignee_name` | 执行人或候选身份展示名称 | `longtext` | 是 | `NULL` | 执行人姓名。 | 现存 |
 | `assignee_type` | 执行人类型 | `varchar(32)` | 是 | `NULL` | 执行人类型: user/group/role。 | 现存 |
 | `form_key` | 表单标识 | `varchar(128)` | 是 | `NULL` | 表单标识。 | 现存 |
 | `form_data` | 表单数据 | `longtext` | 是 | `NULL`（隐式） | 表单数据。 | 现存 |
+| `start_user_id` | 发起人身份 | `varchar(100)` | 是 | `NULL` | 创建/回填时保存用户 ID 或用户名，展示时读取用户当前名称。 | V105 新增 |
+| `business_name` | 业务名称摘要 | `longtext` | 是 | `NULL` | 列表展示和搜索；业务变更同事务同步全部关联任务。 | V105 新增 |
+| `business_code` | 业务编号摘要 | `longtext` | 是 | `NULL` | 与业务当前编号同步，不读取完整表单。 | V105 新增 |
+| `business_data_name` | 自定义名称摘要 | `longtext` | 是 | `NULL` | 保留原 dataName 字段来源，与业务系统 name 分开。 | V105 新增 |
+| `business_current_task_name` | 当前业务节点摘要 | `longtext` | 是 | `NULL` | 随业务当前节点变化，不等于本任务 node_name。 | V105 新增 |
+| `business_status` | 业务状态摘要 | `longtext` | 是 | `NULL` | 当前业务状态码，不等于任务状态或办理动作。 | V105 新增 |
+| `inbox_summary_ready` | 摘要就绪 | `tinyint` | 否 | `0` | 区分空摘要与未回填，未就绪范围保留旧查询。 | V105 新增 |
+| `inbox_identity_ready` | 候选关系就绪 | `tinyint` | 否 | `0` | 未同步时仍查询引擎候选，避免升级期间漏办。 | V105 新增 |
 | `status` | 状态 | `varchar(20)` | 是 | `'todo'` | 状态：todo待办/done已办/transfer已转办/skip已跳过/withdrawn已撤回。 | 现存 |
 | `action` | 操作 | `varchar(32)` | 是 | `NULL` | 操作: approve/reject/transfer/skip。 | 现存 |
 | `action_label` | 操作显示文本 | `varchar(200)` | 是 | `NULL` | 操作显示文本，如"同意，需要会签"。 | 现存 |
@@ -2842,6 +2850,9 @@ process_instance_id 唯一约束防止同一流程实例重复关联；状态同
 - ``KEY `idx_status` (`status`)``。
 - ``KEY `idx_business_key` (`business_key`)``。
 - ``KEY `idx_process_task_sla_status` (`sla_status`,`due_time`)``。
+- ``KEY `idx_task_done_page` (`assignee_id`,`status`,`deleted`,`end_time`,`id`)``。
+- ``KEY `idx_task_todo_page` (`status`,`deleted`,`create_time`,`id`)``。
+- ``KEY `idx_task_business_summary` (`entity_code`,`entity_data_id`,`id`)``。
 
 本表未声明物理外键。
 
@@ -2851,11 +2862,13 @@ process_instance_id 唯一约束防止同一流程实例重复关联；状态同
 
 #### 6.2.4 业务规则
 
-task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可互换。SLA 摘要列与 SLA 台账共同维护。
+task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可互换。assignee_id 只存实际办理人，普通未认领任务为空，候选身份保存在两张关系表。SLA 摘要列与 SLA 台账共同维护。业务摘要在业务变更事务中同步，历史已办也显示业务最新值。
 
 原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
 
 #### 6.2.5 来源与迁移
+
+V105 新增摘要字段与索引，并扩展候选显示名称；详见 [V105](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V105__task_inbox_read_model.java)。
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V019__task_sla_work_calendar.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V019__task_sla_work_calendar.sql)。
 
@@ -2874,15 +2887,16 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `task_instance_id` | 关联的流程任务实例ID | `varchar(64)` | 否 | 无 | 关联的流程任务实例ID。 | 现存 |
+| `process_task_id` | 平台任务主键 | `bigint` | 否 | 无 | 关联 process_task.id；不能使用 Flowable task_id 或旧实例 ID。 | V105 调整 |
 | `user_id` | 候选用户ID | `varchar(100)` | 否 | 无 | 候选用户ID。 | 现存 |
-| `sort_order` | 排序号 | `int` | 否 | `'0'` | 排序号，控制候选用户处理顺序。 | 现存 |
+| `sort_order` | 排序号 | `int` | 否 | `'0'` | 稳定展示顺序，不控制会签处理顺序。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
 #### 6.3.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_process_task_candidate_user` (`task_instance_id`,`user_id`)``。
+- ``UNIQUE KEY `uk_process_task_candidate_user` (`process_task_id`,`user_id`)``。
+- ``KEY `idx_task_candidate_user_lookup` (`user_id`,`process_task_id`)``。
 
 本表未声明物理外键。
 
@@ -2895,6 +2909,8 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 候选不等于实际办理人；执行审批仍需检查当前任务权限与状态。
 
 #### 6.3.5 来源与迁移
+
+[V105](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V105__task_inbox_read_model.java) 调整任务关联并增加反向索引；非空旧关系必须先核验，迁移不会猜测归属或清空数据。
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
@@ -2913,23 +2929,26 @@ task_id 为引擎任务标识，本表 id 为平台任务标识；两者不可�
 | 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
 | --- | --- | --- | --- | --- | --- | --- |
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 主键ID。 | 现存 |
-| `task_instance_id` | 关联的流程任务实例ID | `varchar(64)` | 否 | 无 | 关联的流程任务实例ID。 | 现存 |
+| `process_task_id` | 平台任务主键 | `bigint` | 否 | 无 | 关联 process_task.id；不能使用 Flowable task_id 或旧实例 ID。 | V105 调整 |
 | `group_code` | 候选组编码 | `varchar(100)` | 否 | 无 | 候选组编码（角色/部门等）。 | 现存 |
-| `sort_order` | 排序号 | `int` | 否 | `'0'` | 排序号，控制候选组处理顺序。 | 现存 |
+| `sort_order` | 排序号 | `int` | 否 | `'0'` | 稳定展示顺序，不控制会签处理顺序。 | 现存 |
 | `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 
 #### 6.4.3 索引与关联
 
 - ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_process_task_candidate_group` (`task_instance_id`,`group_code`)``。
+- ``UNIQUE KEY `uk_process_task_candidate_group` (`process_task_id`,`group_code`)``。
+- ``KEY `idx_task_candidate_group_lookup` (`group_code`,`process_task_id`)``。
 
 本表未声明物理外键。
 
 #### 6.4.4 业务规则
 
-候选组与系统组或角色的解释由任务权限服务负责，不应仅按名称匹配。
+只保存引擎候选标识，不展开全部组成员；普通组兼容 ID/编码，ROLE_ 前缀表示角色。查询当前有效成员关系，提交仍执行引擎实时授权。
 
 #### 6.4.5 来源与迁移
+
+[V105](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V105__task_inbox_read_model.java) 调整任务关联并增加反向索引；非空旧关系必须先核验，迁移不会猜测归属或清空数据。
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
@@ -6556,7 +6575,7 @@ owner_id、lease_token 与 lease_until 控制跨实例租约；事件键用于�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V004__outbox_leases.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V004__outbox_leases.sql)。
 
-实现定位：[OutboxRecordMapper.java](../../workflow-server/workflow-integration/workflow-outbox/src/main/java/com/workflow/outbox/infrastructure/persistence/mapper/OutboxRecordMapper.java)、[AsyncQueueMetrics.java](../../workflow-server/workflow-app/src/main/java/com/workflow/config/AsyncQueueMetrics.java)、[OutboxRetentionService.java](../../workflow-server/workflow-integration/workflow-outbox/src/main/java/com/workflow/outbox/application/OutboxRetentionService.java)。
+实现定位：[OutboxRecordMapper.java](../../workflow-server/workflow-integration/workflow-outbox/src/main/java/com/workflow/outbox/infrastructure/persistence/mapper/OutboxRecordMapper.java)、[AsyncQueueMetrics.java](../../workflow-server/workflow-app/src/main/java/com/workflow/observability/AsyncQueueMetrics.java)、[OutboxRetentionService.java](../../workflow-server/workflow-integration/workflow-outbox/src/main/java/com/workflow/outbox/application/OutboxRetentionService.java)。
 
 ### 13.6 workflow_bootstrap_job 启动初始化任务表
 
@@ -6591,7 +6610,7 @@ owner_id、lease_token 与 lease_until 控制跨实例租约；事件键用于�
 
 结构依据：[V007__bootstrap_job_coordination.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V007__bootstrap_job_coordination.sql)。
 
-实现定位：[DatabaseBootstrapJobCoordinator.java](../../workflow-server/workflow-app/src/main/java/com/workflow/config/DatabaseBootstrapJobCoordinator.java)、[HealthController.java](../../workflow-server/workflow-app/src/main/java/com/workflow/config/HealthController.java)。
+实现定位：[DatabaseBootstrapJobCoordinator.java](../../workflow-server/workflow-app/src/main/java/com/workflow/bootstrap/DatabaseBootstrapJobCoordinator.java)、[HealthController.java](../../workflow-server/workflow-app/src/main/java/com/workflow/observability/HealthController.java)。
 
 ### 13.7 workflow_schema_change 数据库结构执行队列表
 

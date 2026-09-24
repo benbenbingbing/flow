@@ -41,8 +41,8 @@ import java.util.zip.ZipOutputStream;
 @RequiredArgsConstructor
 public class ConfigMigrationPackageCodec {
 
-    private static final int FORMAT_VERSION = 2;              // 当前发布包格式版本
-    private static final int MIN_SUPPORTED_FORMAT_VERSION = 1;
+    private static final int FORMAT_VERSION = 3;              // 当前发布包格式版本
+    private static final int MIN_SUPPORTED_FORMAT_VERSION = 3;
     private static final int MAX_ENTRY_COUNT = 500;           // 单包最大条目数
     private static final int MAX_ENTRY_SIZE = 20 * 1024 * 1024;   // 单个条目最大字节数(20MB)
     private static final int MAX_TOTAL_SIZE = 100 * 1024 * 1024;  // 解压后最大总字节数(100MB)
@@ -191,9 +191,7 @@ public class ConfigMigrationPackageCodec {
             Map<String, Object> snapshot = readMap(snapshotBytes, new TypeReference<>() {});
             Map<String, Object> selection = normalizeSelection(asset.get("selection"));
             String packagedSourceHash = String.valueOf(asset.get("sourceHash"));
-            String verifiedHash = formatVersion == 1
-                    ? sha256(snapshotBytes)
-                    : hashSnapshot(snapshot);
+            String verifiedHash = hashSnapshot(snapshot);
             if (!MessageDigest.isEqual(
                     packagedSourceHash.getBytes(StandardCharsets.UTF_8),
                     verifiedHash.getBytes(StandardCharsets.UTF_8))) {
@@ -630,7 +628,7 @@ public class ConfigMigrationPackageCodec {
                         && StringUtils.hasText(text)) {
                     result.add(text);
                 }
-                collectValuesForKeys(child, names, result);
+                if (!"childFormReleaseRef".equals(String.valueOf(key))) collectValuesForKeys(child, names, result);
             });
         } else if (value instanceof Collection<?> collection) {
             collection.forEach(child -> collectValuesForKeys(child, names, result));
@@ -763,7 +761,8 @@ public class ConfigMigrationPackageCodec {
         if (value instanceof Collection<?> collection) {
             return collection.stream().anyMatch(child -> containsReference(child, key));
         }
-        return value instanceof String text && text.contains(key);
+        return value instanceof String text && (text.contains(key)
+                || text.contains(java.net.URLEncoder.encode(key, StandardCharsets.UTF_8)));
     }
 
     /**

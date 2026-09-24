@@ -1,7 +1,9 @@
 package com.workflow.entity.list.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityExportBatch;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.result.PageResult;
@@ -16,7 +18,6 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.list.extension.ListFieldDataProvider;
-import com.workflow.entity.list.extension.ListFieldConditionEvaluator;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
@@ -42,10 +43,10 @@ public class EntityDataListConfigService {
     private final EntityListFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final ListFieldDataProviderRegistry providerRegistry;
-    private final ListFieldConditionEvaluator conditionEvaluator;
     private final EntityActionCapabilityService actionCapabilityService;
     private final EntityListPublishedRuntimeService publishedRuntimeService;
     private final UiInterfaceExtensionService uiDataSourceService;
+    private final JsonDocumentCodec jsonDocumentCodec;
 
     /**
      * 查询实体数据列表（带列表配置扩展）
@@ -87,15 +88,18 @@ public class EntityDataListConfigService {
                 : publishedRuntimeService.resolveFields(
                         config,
                         fieldMapper.findByListConfigId(config.getId()));
-        ConditionPartition conditionPartition = partitionCondition(allFields, condition);
+        EntityListQueryPolicy.validateConfiguration(allFields);
+        EntityListQueryPolicy.validateFilters(allFields, condition);
+        EntityListQueryPolicy.validateSort(allFields, defaultSort(config).field());
+        Map<String, Object> baseCondition = condition == null ? Map.of() : condition;
 
         // 2. 基础查询（传入 listConfigId 以应用列表级权限规则）
         List<EntityDataDTO> records;
-        if (!conditionPartition.baseCondition().isEmpty()) {
+        if (!baseCondition.isEmpty()) {
             records = dynamicService.findByCondition(
                     entityCode,
                     resolvedListKey,
-                    conditionPartition.baseCondition());
+                    baseCondition);
         } else {
             records = dynamicService.findByEntityCode(entityCode, resolvedListKey);
         }
@@ -104,13 +108,16 @@ public class EntityDataListConfigService {
             return records;
         }
 
-        return enrichRecords(
+        List<EntityDataDTO> enriched = enrichRecords(
                 entityCode,
                 listKey,
                 config,
                 allFields,
-                records,
-                conditionPartition.extensionCondition());
+                records);
+        // 兼容未分页内部调用的排序；导出入口改用分批数据库查询。
+        List<EntityDataDTO> sorted = new ArrayList<>(enriched);
+        sortConfiguredRecords(sorted, defaultSort(config));
+        return sorted;
     }
 
     /**
@@ -165,48 +172,146 @@ public class EntityDataListConfigService {
                 : publishedRuntimeService.resolveFields(
                         config,
                         fieldMapper.findByListConfigId(config.getId()));
-        ConditionPartition conditionPartition = partitionCondition(allFields, condition);
-
-        if (!conditionPartition.extensionCondition().isEmpty()) {
-            List<EntityDataDTO> allRecords =
-                    findListWithResolvedConfig(
-                            entityCode,
-                            listKey,
-                            config,
-                            condition);
-            long safePageNum = Math.max(1, pageNum);
-            long safePageSize = Math.max(1, Math.min(200, pageSize));
-            int fromIndex = (int) Math.min(
-                    allRecords.size(),
-                    (safePageNum - 1) * safePageSize);
-            int toIndex = (int) Math.min(
-                    allRecords.size(),
-                    fromIndex + safePageSize);
-            return new PageResult<>(
-                    new ArrayList<>(allRecords.subList(fromIndex, toIndex)),
-                    allRecords.size(),
-                    safePageNum,
-                    safePageSize);
-        }
+        EntityListQueryPolicy.validateConfiguration(allFields);
+        EntityListQueryPolicy.validateFilters(allFields, condition);
+        EntityListQueryPolicy.validateSort(allFields, defaultSort(config).field());
+        Map<String, Object> baseCondition = condition == null ? Map.of() : condition;
+        DefaultSort sort = defaultSort(config);
 
         PageResult<EntityDataDTO> page = dynamicService.findPage(
                 entityCode,
                 resolvedListKey,
-                conditionPartition.baseCondition(),
+                baseCondition,
                 pageNum,
-                pageSize);
+                pageSize,
+                sort.field(),
+                sort.direction());
         List<EntityDataDTO> enriched = enrichRecords(
                 entityCode,
                 listKey,
                 config,
                 allFields,
-                page.getRecords(),
-                Map.of());
+                page.getRecords());
         return new PageResult<>(
                 enriched,
                 page.getTotal(),
                 page.getPageNum(),
                 page.getPageSize());
+    }
+
+    /**
+     * 只从调用方已解析的发布配置读取排序，避免设计器草稿影响运行页。
+     * 字段合法性由动态实体服务对照发布字段校验，SQL 提供者再校验标识符。
+     */
+    private DefaultSort defaultSort(EntityListConfig config) {
+        if (config == null || !StringUtils.hasText(config.getViewConfig())) {
+            return new DefaultSort(null, null);
+        }
+        Map<String, Object> view = jsonDocumentCodec.readObject(
+                config.getViewConfig(), "列表视图配置");
+        if (!(view.get("table") instanceof Map<?, ?> table)) {
+            return new DefaultSort(null, null);
+        }
+        Object field = table.get("defaultSortField");
+        Object direction = table.get("defaultSortDirection");
+        return new DefaultSort(field instanceof String value ? value : null,
+                direction instanceof String value ? value : null);
+    }
+
+    private record DefaultSort(String field, String direction) {}
+
+    /**
+     * 导出只读取一个有界批次；ID 限制独立传入 SQL，不能覆盖列表原有过滤条件。
+     * 使用调用开始时解析的发布配置，避免批次之间漂移到新的列表发布版本。
+     */
+    public EntityExportBatch findExportBatchWithResolvedConfig(String entityCode, String listKey,
+            EntityListConfig config, Map<String, Object> condition, List<String> selectedIds,
+            EntityExportBatch.Cursor cursor) {
+        List<EntityListField> fields = config == null ? List.of() : publishedRuntimeService.resolveFields(
+                config, fieldMapper.findByListConfigId(config.getId()));
+        EntityListQueryPolicy.validateConfiguration(fields);
+        EntityListQueryPolicy.validateFilters(fields, condition);
+        DefaultSort sort = defaultSort(config);
+        EntityListQueryPolicy.validateSort(fields, sort.field());
+        EntityExportBatch batch = dynamicService.findExportBatch(entityCode, config == null ? null : config.getListKey(),
+                condition, selectedIds, cursor, sort.field(), sort.direction());
+        return new EntityExportBatch(enrichRecords(entityCode, listKey, config, fields, batch.records()), batch.nextCursor());
+    }
+
+    /**
+     * 兼容未分页内部调用的列表排序；运行页和导出入口均在数据库排序。
+     * 数字按数值比较，避免金额 9 与 10 被当作字符串排反。
+     */
+    private void sortConfiguredRecords(List<EntityDataDTO> records, DefaultSort sort) {
+        if (records.size() < 2 || !StringUtils.hasText(sort.field())) {
+            return;
+        }
+        String direction = StringUtils.hasText(sort.direction())
+                ? sort.direction().trim().toUpperCase(Locale.ROOT) : "ASC";
+        if (!"ASC".equals(direction) && !"DESC".equals(direction)) {
+            throw new IllegalArgumentException("默认排序方向仅支持 ASC 或 DESC");
+        }
+        Comparator<EntityDataDTO> comparator = (left, right) -> {
+            int compared = compareSortValues(
+                    entitySortValue(left, sort.field()),
+                    entitySortValue(right, sort.field()));
+            if ("DESC".equals(direction)) {
+                compared = -compared;
+            }
+            return compared != 0 ? compared : compareSortValues(right.getId(), left.getId());
+        };
+        records.sort(comparator);
+    }
+
+    private Object entitySortValue(EntityDataDTO record, String field) {
+        if (record.getData() != null && record.getData().containsKey(field)) {
+            return record.getData().get(field);
+        }
+        return switch (field) {
+            case "id" -> record.getId();
+            case "name" -> record.getName();
+            case "code" -> record.getCode();
+            case "status" -> record.getStatus();
+            case "processStatus" -> record.getProcessStatus();
+            case "processInstanceId" -> record.getProcessInstanceId();
+            case "processStartTime" -> record.getProcessStartTime();
+            case "processEndTime" -> record.getProcessEndTime();
+            case "currentTaskId" -> record.getCurrentTaskId();
+            case "currentTaskName" -> record.getCurrentTaskName();
+            case "currentTaskAssignee" -> record.getCurrentTaskAssignee();
+            case "submitterId" -> record.getSubmitterId();
+            case "submitterName" -> record.getSubmitterName();
+            case "deptId" -> record.getDeptId();
+            case "deptName" -> record.getDeptName();
+            case "submitTime" -> record.getSubmitTime();
+            case "create_time" -> record.getCreateTime();
+            case "update_time" -> record.getUpdateTime();
+            case "create_by" -> record.getCreateBy();
+            case "update_by" -> record.getUpdateBy();
+            case "deleted" -> record.getDeleted();
+            default -> null;
+        };
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private int compareSortValues(Object left, Object right) {
+        if (left == right) {
+            return 0;
+        }
+        if (left == null) {
+            return -1;
+        }
+        if (right == null) {
+            return 1;
+        }
+        if (left instanceof Number && right instanceof Number) {
+            return new java.math.BigDecimal(left.toString())
+                    .compareTo(new java.math.BigDecimal(right.toString()));
+        }
+        if (left instanceof Comparable comparable && left.getClass().isInstance(right)) {
+            return comparable.compareTo(right);
+        }
+        return left.toString().compareTo(right.toString());
     }
 
     /**
@@ -217,7 +322,6 @@ public class EntityDataListConfigService {
      * @param config 配置内容，决定后续记录集合的处理规则
      * @param allFields 全部字段，作为 {@code enrichUnifiedDataSources} 的输入影响后续处理
      * @param records 记录集合，作为 {@code enrichUnifiedDataSources} 的输入影响后续处理
-     * @param extensionCondition 扩展条件，作为 {@code conditionEvaluator.filter} 的输入影响后续处理
      * @return 实体数据集合，供调用方遍历或展示
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
@@ -226,8 +330,7 @@ public class EntityDataListConfigService {
             String listKey,
             EntityListConfig config,
             List<EntityListField> allFields,
-            List<EntityDataDTO> records,
-            Map<String, Object> extensionCondition) {
+            List<EntityDataDTO> records) {
         if (records == null || records.isEmpty()) {
             return records == null ? List.of() : records;
         }
@@ -238,9 +341,9 @@ public class EntityDataListConfigService {
                     config,
                     allFields,
                     records);
-            // 3. 筛选出非 ENTITY_FIELD 的字段。查询字段即使不展示，也必须补充值后再过滤。
+            // 扩展列只补充当前查询结果中需要展示的值，不能再影响页边界或总数。
             List<EntityListField> customFields = allFields.stream()
-                    .filter(f -> Boolean.TRUE.equals(f.getShowInList()) || Boolean.TRUE.equals(f.getIsQuery()))
+                    .filter(f -> Boolean.TRUE.equals(f.getShowInList()))
                     .filter(f -> !StringUtils.hasText(f.getInterfaceExtensionId()))
                     .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
                     .collect(Collectors.toList());
@@ -262,13 +365,6 @@ public class EntityDataListConfigService {
 
                 ListFieldDataProvider provider = providerRegistry.getProvider(dataSourceType);
                 if (provider == null) {
-                    boolean usedForFiltering = fields.stream().anyMatch(field ->
-                            hasExtensionCondition(
-                                    extensionCondition,
-                                    field.getFieldCode()));
-                    if (usedForFiltering) {
-                        throw new IllegalStateException("查询字段的数据源未注册: " + dataSourceType);
-                    }
                     log.warn("跳过历史未注册列表字段数据源: type={}, fields={}", dataSourceType,
                             fields.stream().map(EntityListField::getFieldCode).collect(Collectors.toList()));
                     continue;
@@ -283,10 +379,6 @@ public class EntityDataListConfigService {
                 }
             }
 
-            records = conditionEvaluator.filter(
-                    records,
-                    customFields,
-                    extensionCondition);
         }
 
         actionCapabilityService.enrichRows(entityCode, config, records);
@@ -310,8 +402,7 @@ public class EntityDataListConfigService {
             List<EntityDataDTO> records) {
         for (EntityListField field : fields) {
             if (!StringUtils.hasText(field.getInterfaceExtensionId())
-                    || (!Boolean.TRUE.equals(field.getShowInList())
-                    && !Boolean.TRUE.equals(field.getIsQuery()))) {
+                    || !Boolean.TRUE.equals(field.getShowInList())) {
                 continue;
             }
             UiExtensionExecuteRequest request = new UiExtensionExecuteRequest();
@@ -428,74 +519,6 @@ public class EntityDataListConfigService {
     }
 
     /**
-     * 处理{@code partition}条件，并将结果传给后续步骤。
-     *
-     * @param fields 字段集合，后续逐项校验、转换或持久化
-     * @param condition 筛选条件，后续与权限约束合并为查询条件
-     * @return 处理后的{@code partition}条件结果，供调用方继续处理
-     */
-    private ConditionPartition partitionCondition(
-            List<EntityListField> fields,
-            Map<String, Object> condition) {
-        if (condition == null || condition.isEmpty() || fields == null || fields.isEmpty()) {
-            return new ConditionPartition(
-                    condition == null ? new LinkedHashMap<>() : new LinkedHashMap<>(condition),
-                    new LinkedHashMap<>());
-        }
-
-        Set<String> extensionCodes = fields.stream()
-                .filter(field -> Boolean.TRUE.equals(field.getIsQuery()))
-                .filter(field -> field.getDataSourceType() != null)
-                .filter(field -> !"ENTITY_FIELD".equalsIgnoreCase(field.getDataSourceType()))
-                .map(EntityListField::getFieldCode)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<String, Object> baseCondition = new LinkedHashMap<>();
-        Map<String, Object> extensionCondition = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : condition.entrySet()) {
-            String baseKey = stripConditionSuffix(entry.getKey());
-            if (extensionCodes.contains(baseKey)) {
-                extensionCondition.put(entry.getKey(), entry.getValue());
-            } else {
-                baseCondition.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return new ConditionPartition(baseCondition, extensionCondition);
-    }
-
-    /**
-     * 生成{@code strip}条件后缀文本，供后续匹配或展示。
-     *
-     * @param key 键，后续用于授权校验、关联或幂等去重
-     * @return 处理后的{@code strip}条件后缀文本，供调用方比较或展示
-     */
-    private String stripConditionSuffix(String key) {
-        if (key.endsWith("_start")) {
-            return key.substring(0, key.length() - 6);
-        }
-        if (key.endsWith("_end")) {
-            return key.substring(0, key.length() - 4);
-        }
-        if (key.endsWith("_op")) {
-            return key.substring(0, key.length() - 3);
-        }
-        return key;
-    }
-
-    /**
-     * 判断是否具有扩展条件；判断结果决定调用方的后续分支。
-     *
-     * @param condition 筛选条件，后续与权限约束合并为查询条件
-     * @param fieldCode 字段编码，后续用于判断是否具有扩展条件时定位或关联目标
-     * @return 扩展条件条件成立时为 true，否则为 false
-     */
-    private boolean hasExtensionCondition(Map<String, Object> condition, String fieldCode) {
-        return condition.keySet().stream()
-                .map(this::stripConditionSuffix)
-                .anyMatch(fieldCode::equals);
-    }
-
-    /**
      * 校验并获取请求列表；不满足约束时阻止后续处理。
      *
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
@@ -509,17 +532,6 @@ public class EntityDataListConfigService {
             throw new IllegalArgumentException(
                     "列表不存在或尚未发布: " + listKey);
         }
-    }
-
-    /**
-     * 封装条件{@code partition}的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param baseCondition 基础条件，保存在对象中供后续校验、查询或展示
-     * @param extensionCondition 扩展条件，保存在对象中供后续校验、查询或展示
-     */
-    private record ConditionPartition(
-            Map<String, Object> baseCondition,
-            Map<String, Object> extensionCondition) {
     }
 
     /**

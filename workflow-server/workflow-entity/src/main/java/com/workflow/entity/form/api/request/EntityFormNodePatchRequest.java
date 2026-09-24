@@ -46,12 +46,6 @@ public class EntityFormNodePatchRequest {
     private Map<String, Object> legacyProps;
     /** 排序键 */
     private Long orderKey;
-    /** 来源模板 ID */
-    private String templateId;
-    /** 来源模板版本 */
-    private Integer templateVersion;
-    /** 模板本地覆盖配置 */
-    private Map<String, Object> localOverrides;
     /** 需要清空的字段集合（局部更新时置空指定字段） */
     private Set<String> clearFields;
 }

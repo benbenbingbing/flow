@@ -12,14 +12,42 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class ConfigMigrationAssetDependencyServiceTest {
+
+    @Test
+    void persistenceMergesDuplicateBusinessKeysBeforeInsertingAndRetainsLocations() {
+        var mapper = mock(ConfigMigrationAssetDependencyMapper.class);
+        var jdbc = mock(JdbcTemplate.class);
+        var codec = new JsonDocumentCodec(new com.fasterxml.jackson.databind.ObjectMapper());
+        when(jdbc.queryForList(anyString(), eq("asset-1"))).thenReturn(List.of(Map.of(
+                "assetType", "PROCESS", "businessKey", "all_flow", "sourceVersion", 24)));
+        var service = new ConfigMigrationAssetDependencyService(mapper, codec, jdbc);
+        service.replace("asset-1", List.of(
+                Map.of("type", "USER", "key", "admin", "required", true, "source", "办理人",
+                        "location", "review.assignee", "references", List.of(Map.of("nodeId", "review"))),
+                Map.of("type", " USER ", "key", " admin ", "required", false, "source", "知会",
+                        "location", "notify.ccConfig", "references", List.of(Map.of("nodeId", "notify"))),
+                Map.of("type", "ROLE", "key", "admin", "required", true),
+                Map.of("type", "USER", "key", " ")));
+        var captor = ArgumentCaptor.forClass(ConfigMigrationAssetDependency.class);
+        verify(mapper, times(2)).insert(captor.capture());
+        var user = captor.getAllValues().stream().filter(value -> "USER".equals(value.getDependencyType())).findFirst().orElseThrow();
+        assertEquals("admin", user.getDependencyKey());
+        assertTrue(user.getRequired());
+        var document = codec.readObject(user.getDependencyDocument(), "依赖");
+        assertEquals(List.of("办理人", "知会"), document.get("sources"));
+        assertEquals(List.of("review.assignee", "notify.ccConfig"), document.get("locations"));
+        assertEquals(List.of(Map.of("nodeId", "review"), Map.of("nodeId", "notify")), document.get("references"));
+    }
 
     @Test
     void persistsStableSourceVersionLocationStrengthAndParseStatus() {

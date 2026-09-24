@@ -305,10 +305,21 @@ public interface OutboxRecordMapper extends BaseMapper<OutboxRecord> {
      * 只清理已完成且超过保留期的事件，不影响待处理、失败或持有租约的记录。
      *
      * @param cutoff 截止点，供本方法删除{@code processed}之前时使用
-     * @return 删除后的{@code processed}之前结果，供调用方继续处理
+     * @param limit 单批最多删除的数量，控制在数据库 IN 表达式支持的范围内
+     * @return 当前批实际删除数
      */
-    default int deleteProcessedBefore(LocalDateTime cutoff) {
+    default int deleteProcessedBatchBefore(LocalDateTime cutoff, int limit) {
+        if (limit < 1 || limit > 1_000) throw new IllegalArgumentException("Outbox 清理批次必须在 1～1000 之间");
+        var ids = selectList(new OffsetPage<OutboxRecord>(0, limit), Wrappers.<OutboxRecord>lambdaQuery()
+                .select(OutboxRecord::getId)
+                .eq(OutboxRecord::getStatus, "PROCESSED")
+                .lt(OutboxRecord::getProcessedTime, cutoff)
+                .orderByAsc(OutboxRecord::getProcessedTime, OutboxRecord::getId))
+                .stream().map(OutboxRecord::getId).toList();
+        if (ids.isEmpty()) return 0;
+        // 删除时重查状态，避免被管理员重新投递的事件在选择 ID 后误删。
         return delete(Wrappers.<OutboxRecord>lambdaQuery()
+                .in(OutboxRecord::getId, ids)
                 .eq(OutboxRecord::getStatus, "PROCESSED")
                 .lt(OutboxRecord::getProcessedTime, cutoff));
     }

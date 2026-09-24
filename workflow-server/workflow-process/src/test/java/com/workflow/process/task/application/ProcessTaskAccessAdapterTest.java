@@ -25,6 +25,21 @@ class ProcessTaskAccessAdapterTest {
     private ProcessPublishedSnapshotService publishedSnapshotService;
     private ProcessTaskAccessAdapter adapter;
 
+    @Test
+    void batchPartitionsCoordinatesAndDoesNotFallBackToPerRecordQueries() {
+        var records = java.util.stream.IntStream.range(0, 205)
+                .mapToObj(index -> new com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates(
+                        "expense", "record-" + index, "process-" + index)).toList();
+        var result = adapter.findCapabilities("user-1", records);
+        assertEquals(205, result.size());
+        var batches = org.mockito.ArgumentCaptor.forClass(java.util.List.class);
+        org.mockito.Mockito.verify(taskMapper, org.mockito.Mockito.times(3))
+                .selectActionableTaskSummaries(org.mockito.ArgumentMatchers.eq("user-1"), batches.capture());
+        assertEquals(java.util.List.of(100, 100, 5), batches.getAllValues().stream().map(java.util.List::size).toList());
+        org.mockito.Mockito.verifyNoMoreInteractions(taskMapper);
+        verifyNoInteractions(publishedSnapshotService);
+    }
+
     @BeforeEach
     void setUp() {
         taskMapper = mock(ProcessTaskMapper.class);
@@ -53,6 +68,25 @@ class ProcessTaskAccessAdapterTest {
                 .isEmpty());
 
         verifyNoInteractions(taskMapper, publishedSnapshotService);
+    }
+
+    @Test
+    void taskNameUsesSameScopedTaskQueryAsApprovalTarget() {
+        when(taskMapper.selectActionableTaskName(
+                "user-1", "task-1", "expense", "record-1", "process-1"))
+                .thenReturn("常规审批");
+
+        assertEquals(Optional.of("常规审批"), adapter.findActionableTaskName(
+                "user-1", "task-1", "expense", "record-1", "process-1"));
+        assertTrue(adapter.findActionableTaskName(
+                "user-1", "task-other", "expense", "record-1", "process-1")
+                .isEmpty());
+        assertTrue(adapter.findActionableTaskName(
+                "user-1", "task-1", "expense", "record-1", null)
+                .isEmpty());
+        verify(taskMapper).selectActionableTaskName(
+                "user-1", "task-1", "expense", "record-1", "process-1");
+        verifyNoInteractions(publishedSnapshotService);
     }
 
     @Test

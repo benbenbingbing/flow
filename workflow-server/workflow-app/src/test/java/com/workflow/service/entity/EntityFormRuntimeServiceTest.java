@@ -1,6 +1,7 @@
 package com.workflow.service.entity;
 
 import com.workflow.process.form.application.EntityFormRuntimeService;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.form.application.ResolvedEntityFormRelease;
@@ -18,6 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 
 class EntityFormRuntimeServiceTest {
 
@@ -50,6 +53,36 @@ class EntityFormRuntimeServiceTest {
         assertSame(runtimeForm, result);
         assertEquals("release-4", result.getRuntimeReleaseId());
         assertEquals(4, result.getRuntimeReleaseVersion());
+    }
+
+    /** 默认表单用于活动审批时，应按实际发布坐标签发与任务绑定的令牌。 */
+    @Test
+    void defaultFormSignsActiveTaskReleaseContext() {
+        UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
+        EntityFormMapper formMapper = mock(EntityFormMapper.class);
+        UiReleaseResolutionTokenService tokenService =
+                mock(UiReleaseResolutionTokenService.class);
+        EntityFormRuntimeService service = new EntityFormRuntimeService(
+                releaseService, formMapper, tokenService);
+        EntityForm defaultForm = new EntityForm();
+        defaultForm.setId("form-1");
+        EntityForm runtimeForm = new EntityForm();
+        runtimeForm.setId("form-1");
+        UiRuntimeResolutionContext context = UiRuntimeResolutionContext.activeTask(
+                "history-1", "task-node-1", "task-1", "instance-1", "expense", "record-1");
+        when(formMapper.selectDefaultByEntityId("entity-1"))
+                .thenReturn(defaultForm);
+        when(releaseService.resolveRuntimeFormRelease("form-1"))
+                .thenReturn(new ResolvedEntityFormRelease(runtimeForm, "release-4", 4));
+        when(tokenService.issue(
+                same(context), eq("form-1"), eq("release-4"), eq(4), eq(0)))
+                .thenReturn("active-task-token");
+
+        EntityForm result = service.getDefaultForm("entity-1", context);
+
+        assertEquals("release-4", result.getRuntimeReleaseId());
+        assertEquals(4, result.getRuntimeReleaseVersion());
+        assertEquals("active-task-token", result.getReleaseResolutionToken());
     }
 
     @Test

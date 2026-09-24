@@ -180,6 +180,8 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationMenuImporter menuImporter;
     private final ConfigMigrationPackageCodec packageCodec;
     private final ConfigMigrationPackageService packageService;
+    private final ConfigMigrationReferenceService referenceService;
+    private final ConfigMigrationSubFormReferences subFormReferences;
     private final ObjectMapper objectMapper;
     private final DatabaseQueryDialect queryDialect;
 
@@ -273,10 +275,6 @@ public class ConfigMigrationImportApplyService {
                 actionableItems, ConfigMigrationAssetService.ENTITY)) {
             entities.add(prepareEntity(item, false));
         }
-        for (EntityContext context : entities) {
-            applyEntityConfiguration(context, false);
-        }
-
         List<SystemEntityUiContext> systemEntityUis =
                 new ArrayList<>();
         for (ConfigImportItem item : itemsOfType(
@@ -284,9 +282,21 @@ public class ConfigMigrationImportApplyService {
                 ConfigMigrationAssetService.SYSTEM_ENTITY_UI)) {
             systemEntityUis.add(prepareSystemEntityUi(item));
         }
-        for (SystemEntityUiContext context : systemEntityUis) {
-            applySystemEntityUiConfiguration(context);
+        for (EntityContext context : entities) prepareUiOwners(context.entity(), context.snapshot());
+        for (SystemEntityUiContext context : systemEntityUis) prepareUiOwners(context.entity(), context.snapshot());
+        for (EntityContext context : entities) applyEntityConfiguration(context, false, true);
+        for (SystemEntityUiContext context : systemEntityUis) applySystemEntityUiConfiguration(context, true);
+        // 固定历史版本先按子依赖顺序恢复；最后再恢复包内当前表单，不能让历史版本成为最终活跃版本。
+        boolean createdPinnedVersion = false;
+        for (EntityContext context : entities) createdPinnedVersion |= preparePinnedForms(context.snapshot());
+        for (SystemEntityUiContext context : systemEntityUis) createdPinnedVersion |= preparePinnedForms(context.snapshot());
+        if (createdPinnedVersion) {
+            // 历史固定版本可能临时使用旧实体事件和接口定义；恢复包内当前定义后再发布当前表单。
+            for (EntityContext context : entities) restoreCurrentUiDependencies(context.entity(), context.snapshot());
+            for (SystemEntityUiContext context : systemEntityUis) restoreCurrentUiDependencies(context.entity(), context.snapshot());
         }
+        for (EntityContext context : entities) applyFormsAndLists(context.entity(), context.snapshot());
+        for (SystemEntityUiContext context : systemEntityUis) applyFormsAndLists(context.entity(), context.snapshot());
 
         // 所有目标表单、列表、数据源和扩展都已落库并产生初始发布版本后，
         // 再统一恢复跨实体关联内容，避免导入顺序导致目标内容尚不存在。
@@ -482,9 +492,7 @@ public class ConfigMigrationImportApplyService {
             String targetCode = mappedKey("DEPT", sourceKey);
             SysOrganization organization =
                     organizationMapper.selectByCode(targetCode);
-            if (organization == null) {
-                organization = organizationMapper.selectById(targetCode);
-            }
+            // 新包的 scopeKey 是组织编码；不能把未找到的编码再当成本地 ID 尝试。
             if (organization == null) {
                 throw new IllegalStateException(
                         "工作日历绑定的目标组织不存在: " + sourceKey);
@@ -620,9 +628,6 @@ public class ConfigMigrationImportApplyService {
         }
         String targetKey = mappedKey("USER", sourceKey);
         SysUser user = userMapper.selectByUsername(targetKey);
-        if (user == null) {
-            user = userMapper.selectById(targetKey);
-        }
         if (user == null) {
             throw new IllegalStateException(
                     "SLA策略引用的目标用户不存在: "
@@ -910,7 +915,7 @@ public class ConfigMigrationImportApplyService {
     private SystemEntityUiContext prepareSystemEntityUi(
             ConfigImportItem item) {
         Map<String, Object> snapshot =
-                readMap(item.getSnapshotJson());
+                referenceService.importReferences(readMap(item.getSnapshotJson()), this::mappedKey);
         Map<String, Object> definition =
                 mapValue(snapshot.get("definition"));
         String entityCode = text(
@@ -941,8 +946,12 @@ public class ConfigMigrationImportApplyService {
      *
      * @param context 执行上下文，向后续系统实体界面配置步骤传递身份、配置或状态
      */
+    private void applySystemEntityUiConfiguration(SystemEntityUiContext context) {
+        applySystemEntityUiConfiguration(context, false);
+    }
+
     private void applySystemEntityUiConfiguration(
-            SystemEntityUiContext context) {
+            SystemEntityUiContext context, boolean deferUi) {
         Map<String, Object> snapshot = context.snapshot();
         EntityDefinition entity = context.entity();
         rewriteAttachmentItemReferences(entity, snapshot);
@@ -983,12 +992,7 @@ public class ConfigMigrationImportApplyService {
                     entity.getId(),
                     mapList(snapshot.get("eventBindings")));
         }
-        if (snapshot.containsKey("forms")) {
-            applyForms(entity, mapList(snapshot.get("forms")));
-        }
-        if (snapshot.containsKey("lists")) {
-            applyLists(entity, mapList(snapshot.get("lists")));
-        }
+        if (!deferUi) applyFormsAndLists(entity, snapshot);
     }
 
     /**
@@ -1072,7 +1076,7 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalStateException 系统实体或实体创建失败
      */
     private EntityContext prepareEntity(ConfigImportItem item, boolean rollbackMode) {
-        Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+        Map<String, Object> snapshot = referenceService.importReferences(readMap(item.getSnapshotJson()), this::mappedKey);
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
         Map<String, Object> selection = packageCodec.selectionOf(snapshot);
         Set<String> sections = stringSet(selection.get("sections"));
@@ -1144,6 +1148,10 @@ public class ConfigMigrationImportApplyService {
      * @param rollbackMode 回滚模式标识，决定后续实体配置采用的处理分支
      */
     private void applyEntityConfiguration(EntityContext context, boolean rollbackMode) {
+        applyEntityConfiguration(context, rollbackMode, false);
+    }
+
+    private void applyEntityConfiguration(EntityContext context, boolean rollbackMode, boolean deferUi) {
         Map<String, Object> snapshot = context.snapshot();
         EntityDefinition entity = context.entity();
         if (snapshot.containsKey("fields")) {
@@ -1212,12 +1220,7 @@ public class ConfigMigrationImportApplyService {
                     entity.getId(),
                     mapList(snapshot.get("eventBindings")));
         }
-        if (snapshot.containsKey("forms")) {
-            applyForms(entity, mapList(snapshot.get("forms")));
-        }
-        if (snapshot.containsKey("lists")) {
-            applyLists(entity, mapList(snapshot.get("lists")));
-        }
+        if (!deferUi) applyFormsAndLists(entity, snapshot);
         if (snapshot.containsKey("scopePolicies") || snapshot.containsKey("scopeBindings")) {
             applyDataScopes(
                     entity,
@@ -1452,17 +1455,71 @@ public class ConfigMigrationImportApplyService {
         return result;
     }
 
-    /**
-     * 应用表单集合，并将结果传给后续步骤。
-     *
-     * @param entity 实体，作为 {@code fieldsByCode} 的输入影响后续处理
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
+    /** 所有实体的 UI 宿主先按业务键复用/创建，跨实体子表单不再依赖包内排列顺序。 */
+    private void prepareUiOwners(EntityDefinition entity, Map<String, Object> snapshot) {
+        for (Map<String, Object> form : mapList(snapshot.get("forms"))) {
+            String key = text(form.get("formKey"), null);
+            ensureInterfaceScopeForm(entity, key, entity.getEntityCode() + "/" + key, form, Map.of());
+        }
+        for (Map<String, Object> list : mapList(snapshot.get("lists"))) {
+            String key = text(list.get("listKey"), null);
+            ensureInterfaceScopeList(entity, key, entity.getEntityCode() + "/" + key, list, Map.of());
+        }
+    }
+
+    private void applyFormsAndLists(EntityDefinition entity, Map<String, Object> snapshot) {
+        if (snapshot.containsKey("forms")) applyForms(entity, mapList(snapshot.get("forms")));
+        if (snapshot.containsKey("lists")) applyLists(entity, mapList(snapshot.get("lists")));
+    }
+
+    private boolean preparePinnedForms(Map<String, Object> snapshot) {
+        boolean[] created = { false };
+        // 丢弃物化结果，保留正文的编码引用，后续表单落库时再次按指纹取同一个本地版本。
+        subFormReferences.materialize(snapshot, this::mappedKey, pinned -> {
+            created[0] = true;
+            return importPinnedForm(pinned);
+        });
+        return created[0];
+    }
+
+    private void restoreCurrentUiDependencies(EntityDefinition entity, Map<String, Object> snapshot) {
+        applyInterfaceExtensions(entity, interfaceExtensionValues(snapshot));
+        if (snapshot.containsKey("eventBindings")) restoreEventBindings("ENTITY", entity.getId(), mapList(snapshot.get("eventBindings")));
+    }
+
+    /** 补齐固定内容，只在缺少相同内容版本时发布；当前表单由外层第二阶段恢复。 */
+    private com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease importPinnedForm(Map<String, Object> pinned) {
+        String[] coordinate = ConfigMigrationSubFormReferences.coordinate(text(pinned.get("formRef"), ""));
+        EntityDefinition entity = entityMapper.findByEntityCode(mappedKey("ENTITY", coordinate[0]))
+                .orElseThrow(() -> new IllegalStateException("固定子表单所属实体不存在: " + coordinate[0]));
+        Map<String, Object> snapshot = referenceService.importReferences(pinned, this::mappedKey);
+        Map<String, Object> form = mapValue(snapshot.get("form"));
+        form.put("formKey", mappedKey("FORM", coordinate[1]));
+        snapshot.put("forms", List.of(form));
+        prepareUiOwners(entity, snapshot);
+        if (snapshot.containsKey("extensions")) applyExtensions(mapList(snapshot.get("extensions")));
+        List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
+        ensureInterfaceScopeOwners(entity, interfaces, mapList(snapshot.get("forms")), List.of());
+        Map<String, String> interfacesByCode = applyInterfaceExtensions(entity, interfaces);
+        snapshot.put("forms", rewriteInterfaceReferences(snapshot.get("forms"), interfacesByCode));
+        rewriteAttachmentItemReferences(entity, snapshot);
+        Map<String, Object> importedForm = mapList(snapshot.get("forms")).get(0);
+        if (importedForm.containsKey("_inheritedEventBindings")) {
+            restoreEventBindings("ENTITY", entity.getId(), mapList(importedForm.get("_inheritedEventBindings")));
+        }
+        applyForms(entity, mapList(snapshot.get("forms")));
+        publishImportedViewCompositions(applyImportedViewCompositions(entity, snapshot));
+        var release = subFormReferences.findMatchingRelease(pinned, this::mappedKey);
+        if (release == null) throw new IllegalStateException("固定子表单导入后内容校验不一致: " + pinned.get("formRef"));
+        return release;
+    }
+
+    /** 按 formKey/nodeKey 复用表单和节点；固定子表单引用先换成本地版本，再校验和发布。 */
     private void applyForms(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
         List<String> formIds = new ArrayList<>();
-        for (Map<String, Object> value : values) {
+        for (Map<String, Object> sourceValue : values) {
+            Map<String, Object> value = subFormReferences.materialize(sourceValue, this::mappedKey, this::importPinnedForm);
             EntityForm form = convert(value, EntityForm.class);
             EntityForm existing = formMapper.selectByEntityIdAndFormKey(entity.getId(), form.getFormKey());
             form.setId(existing == null ? null : existing.getId());
@@ -1887,7 +1944,9 @@ public class ConfigMigrationImportApplyService {
                             "queryDataSourceCode").contains(key));
             for (Map.Entry<String, Object> entry :
                     entries.entrySet()) {
-                if (isInterfaceExtensionCodeKey(entry.getKey())
+                if ("childFormReleaseRef".equals(entry.getKey())) {
+                    rewritten.put(entry.getKey(), entry.getValue());
+                } else if (isInterfaceExtensionCodeKey(entry.getKey())
                         && entry.getValue() instanceof String code) {
                     String id = StringUtils.hasText(legacyOperationCode)
                             ? idsByCode.get(code + "." + legacyOperationCode)
@@ -2528,40 +2587,76 @@ public class ConfigMigrationImportApplyService {
             EntityDefinition entity,
             List<Map<String, Object>> policyValues,
             List<Map<String, Object>> bindingValues) {
+        // 先清理逻辑删除墓碑，避免移除方案时与历史 (entityCode, policyKey, deleted) 唯一键冲突。
         listScopeBindingMapper.purgeDeletedByEntityCode(entity.getEntityCode());
         listScopePolicyMapper.purgeDeletedByEntityCode(entity.getEntityCode());
-        listScopeBindingMapper.delete(new LambdaQueryWrapper<EntityListScopeBinding>()
-                .eq(EntityListScopeBinding::getEntityCode, entity.getEntityCode()));
-        listScopePolicyMapper.delete(new LambdaQueryWrapper<EntityListScopePolicy>()
-                .eq(EntityListScopePolicy::getEntityCode, entity.getEntityCode()));
-
+        // 按业务键复用方案；绑定没有独立 code，按完整语义匹配保留相同绑定的 ID。
+        // 只删除本次快照已经移除的记录，避免每次导入制造一批新的权限记录。
+        List<EntityListScopePolicy> existingPolicies = listScopePolicyMapper.selectList(
+                new LambdaQueryWrapper<EntityListScopePolicy>().eq(EntityListScopePolicy::getEntityCode, entity.getEntityCode()));
+        List<EntityListScopeBinding> existingBindings = listScopeBindingMapper.selectList(
+                new LambdaQueryWrapper<EntityListScopeBinding>().eq(EntityListScopeBinding::getEntityCode, entity.getEntityCode()));
+        Map<String, EntityListScopePolicy> policiesByKey = new LinkedHashMap<>();
+        for (EntityListScopePolicy policy : existingPolicies) {
+            if (policiesByKey.putIfAbsent(policy.getPolicyKey(), policy) != null) {
+                throw new IllegalStateException("目标数据范围方案编码重复: " + policy.getPolicyKey());
+            }
+        }
         Map<String, String> policyIds = new LinkedHashMap<>();
         for (Map<String, Object> value : policyValues) {
             EntityListScopePolicy policy = convert(value, EntityListScopePolicy.class);
-            policy.setId(null);
+            if (!StringUtils.hasText(policy.getPolicyKey()) || policyIds.containsKey(policy.getPolicyKey())) {
+                throw new IllegalStateException("迁移数据范围方案编码为空或重复: " + policy.getPolicyKey());
+            }
+            EntityListScopePolicy existing = policiesByKey.get(policy.getPolicyKey());
+            policy.setId(existing == null ? null : existing.getId());
             policy.setEntityCode(entity.getEntityCode());
             policy.setStatus("DRAFT");
             policy.setReviewRequired(0);
-            policy.setCreatedBy(UserContext.getUserId());
+            policy.setCreatedBy(existing == null ? UserContext.getUserId() : existing.getCreatedBy());
             policy.setDeleted(0);
-            listScopePolicyMapper.insert(policy);
+            if (existing == null) listScopePolicyMapper.insert(policy);
+            else listScopePolicyMapper.updateById(policy);
             policyIds.put(policy.getPolicyKey(), policy.getId());
         }
+        Set<String> retainedBindings = new LinkedHashSet<>();
+        Set<Map<String, Object>> incomingBindings = new LinkedHashSet<>();
         for (Map<String, Object> value : bindingValues) {
             String policyKey = text(value.get("policyKey"), null);
             String policyId = policyIds.get(policyKey);
-            if (!StringUtils.hasText(policyId)) {
-                throw new IllegalStateException("数据范围绑定引用的方案不存在: " + policyKey);
-            }
+            if (!StringUtils.hasText(policyId)) throw new IllegalStateException("数据范围绑定引用的方案不存在: " + policyKey);
             EntityListScopeBinding binding = convert(value, EntityListScopeBinding.class);
             binding.setId(null);
             binding.setEntityCode(entity.getEntityCode());
             binding.setPolicyId(policyId);
-            binding.setCreatedBy(UserContext.getUserId());
-            binding.setDeleted(0);
-            listScopeBindingMapper.insert(binding);
+            Map<String, Object> signature = scopeBindingIdentity(binding);
+            if (!incomingBindings.add(signature)) throw new IllegalStateException("迁移包存在重复数据范围绑定: " + policyKey);
+            EntityListScopeBinding existing = existingBindings.stream()
+                    .filter(candidate -> !retainedBindings.contains(candidate.getId()))
+                    .filter(candidate -> signature.equals(scopeBindingIdentity(candidate)))
+                    .findFirst().orElse(null);
+            if (existing != null) {
+                retainedBindings.add(existing.getId());
+            } else {
+                binding.setCreatedBy(UserContext.getUserId());
+                binding.setDeleted(0);
+                listScopeBindingMapper.insert(binding);
+                retainedBindings.add(binding.getId());
+            }
         }
+        existingBindings.stream().filter(value -> !retainedBindings.contains(value.getId()))
+                .forEach(value -> listScopeBindingMapper.deleteById(value.getId()));
+        existingPolicies.stream().filter(value -> !policyIds.containsKey(value.getPolicyKey()))
+                .forEach(value -> listScopePolicyMapper.deleteById(value.getId()));
         listScopeService.publish(entity.getEntityCode(), "配置迁移导入发布");
+    }
+
+    /** 排除审计字段，JSON 按结构比较，格式空白不会造成重复绑定。 */
+    private Map<String, Object> scopeBindingIdentity(EntityListScopeBinding binding) {
+        Map<String, Object> identity = objectMapper.convertValue(binding, new TypeReference<>() { });
+        for (String key : List.of("id", "createdBy", "updatedBy", "createdAt", "updatedAt", "deleted")) identity.remove(key);
+        if (StringUtils.hasText(binding.getMatchConfig())) identity.put("matchConfig", readMap(binding.getMatchConfig()));
+        return identity;
     }
 
     /**
@@ -2632,7 +2727,7 @@ public class ConfigMigrationImportApplyService {
      * @return 流程上下文
      */
     private ProcessContext prepareProcess(ConfigImportItem item) {
-        Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+        Map<String, Object> snapshot = referenceService.importReferences(readMap(item.getSnapshotJson()), this::mappedKey);
         Map<String, Object> definition = mapValue(snapshot.get("definition"));
         Map<String, Object> selection = packageCodec.selectionOf(snapshot);
         Set<String> sections = stringSet(selection.get("sections"));
@@ -2765,7 +2860,7 @@ public class ConfigMigrationImportApplyService {
                 action.setId(null);
                 action.setVersionId(null);
                 action.setProcessConfigId(process.getId());
-                action.setInterfaceName(mappedKey("FLOW_ACTION_HANDLER", action.getInterfaceName()));
+
                 action.setDeleted(0);
                 flowActionService.saveAction(action);
             }
@@ -3255,8 +3350,9 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalStateException 引用格式非法、所属实体或表单不存在
      */
     private String resolveFormId(String formRef) {
-        if (!StringUtils.hasText(formRef) || !formRef.startsWith("wf-form://")) {
-            return formRef;
+        if (!StringUtils.hasText(formRef)) return formRef;
+        if (!formRef.startsWith("wf-form://")) {
+            throw new IllegalStateException("表单引用缺少 entityCode/formKey: " + formRef);
         }
         String[] segments = formRef.substring("wf-form://".length()).split("/", 2);
         if (segments.length != 2) {
@@ -3282,6 +3378,11 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalStateException 用户或部门不存在
      */
     private String resolveAssigneeValue(String type, String portableValue) {
+        if (type.endsWith("_ID")) {
+            String identityType = type.substring(0, type.length() - 3);
+            return referenceService.targetId(identityType, mappedKey(identityType,
+                    ConfigMigrationReferenceSupport.code(identityType, portableValue)));
+        }
         if ("USER".equals(type)) {
             String username = mappedKey("USER", portableValue);
             SysUser user = userMapper.selectByUsername(username);

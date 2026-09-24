@@ -84,13 +84,7 @@ public class ProcessStatusReconciliationWorker {
      * @return 处理后的类别文本，供调用方比较或展示
      */
     private String category(String deleteReason) {
-        if (deleteReason != null
-                && deleteReason.startsWith("发起人撤回")) {
-            return "WITHDRAWN";
-        }
-        return deleteReason != null && !deleteReason.isBlank()
-                ? "TERMINATED"
-                : "COMPLETED";
+        return ProcessEndReason.category(deleteReason);
     }
 
     /**

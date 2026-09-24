@@ -91,6 +91,13 @@ assert.equal(parentContent.config.target.contentType, 'FORM')
 assert.equal(buildRelatedContentPayload(parentContent, 'FORM', 'req-form').config.relation.direction, 'REVERSE')
 assert.throws(() => applyEntityRelationBinding(parentContent, { ...reverse, direction: 'FORWARD' }), /不能替换/)
 const composition = { ...relation, ownershipType: 'COMPOSITION' }
+const requiredEditor = buildRelationEditor({
+  relation: { ...composition, required: true },
+  content: { id: 'child-form' },
+  release: { id: 'release', version: 3 }
+})
+assert.equal(requiredEditor.isRequired, 1)
+assert.equal(JSON.parse(requiredEditor.componentProps).subFormConfig.relationRequired, true)
 for (const [type, nodeType] of [['ONE_TO_ONE', 'SUB_FORM'], ['ONE_TO_MANY', 'REPEATER']]) {
   const node = buildRelationEditor({ relation: { ...composition, relationType: type }, content: { id: 'child-form' }, release: { id: 'release', version: 3 } })
   assert.equal(node.nodeType, nodeType)

@@ -200,7 +200,7 @@ class RelatedProcessCoordinationBoundaryTest {
                 eventKey);
         verify(runtime).deleteProcessInstance(
                 "process-1",
-                "宿主终止 [coordination:" + eventKey + "]");
+                com.workflow.process.status.application.ProcessEndReason.encode("TERMINATED", "宿主终止 [coordination:" + eventKey + "]"));
         verify(taskService).deleteTasksByProcessInstance("process-1");
         ArgumentCaptor<ProcessOperationLog> audit =
                 ArgumentCaptor.forClass(ProcessOperationLog.class);

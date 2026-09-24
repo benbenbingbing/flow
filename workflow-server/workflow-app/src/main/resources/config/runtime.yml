@@ -72,6 +72,10 @@ spring:
 
 # 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
 workflow:
+  # 扩展执行独立于通用异步线程池；排队时间计入接口超时，满载按接口失败策略返回。
+  ui-extension:
+    execution-threads: ${WORKFLOW_UI_EXTENSION_EXECUTION_THREADS:8}
+    execution-queue-capacity: ${WORKFLOW_UI_EXTENSION_EXECUTION_QUEUE_CAPACITY:32}
   # 应用初始数据安装设置，用于管理员及系统实体等初始化。
   bootstrap:
     # 启用初始数据安装；生产服务关闭，仅 bootstrap 作业开启。

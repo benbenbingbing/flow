@@ -265,7 +265,7 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 - `workflow-web/nginx.conf`
 - `workflow-web/src/views/entity/EntityDataList.vue`
 - `workflow-web/src/views/entity/components/EntityDataFormDialog.vue`
-- `workflow-server/workflow-app/src/main/java/com/workflow/config/CorsConfig.java`
+- `workflow-server/workflow-app/src/main/java/com/workflow/config/web/WebAccessConfiguration.java`
 - `workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/AuthInterceptor.java`
 - `workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/infrastructure/EndpointAuthorizationInterceptor.java`
 - `workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/security/OpenIntegrationSecurityConfiguration.java`
@@ -537,7 +537,7 @@ Namespace 下任意已绑定用户，应配合最小来源网段、强审计和�
 1. 读取 `Authorization: Bearer <opaqueToken>`。
 2. 对 256-bit 随机 Token 计算 SHA-256 后查询 `embed_session`，明文 Token 从不落库。
 3. Runtime、查询和 Heartbeat 只接受 ACTIVE 且未超过 idle/absolute expiry 的 Session。
-   `DELETE /session` 使用同一 Token 摘要但走受限 Logout 分支：只允许 ACTIVE 执行终止，
+   `POST /session` 使用同一 Token 摘要但走受限 Logout 分支：只允许 ACTIVE 执行终止，
    LOGGED_OUT 仅返回幂等 204，不建立业务 UserContext；其他终态按对应过期/撤销错误返回。
 4. 检查 Application、Grant、View、Identity Provider、Identity Binding 和 Flow 用户仍有效，
    且各安全版本与 Session 快照一致。
@@ -948,7 +948,7 @@ allowedActions, dataScope, eventCode, serviceId, operationCode
 | 方法与路径 | 权限 | 说明 |
 | --- | --- | --- |
 | `GET /api/embed-management/v1/views/{viewId}/grants` | `system:embed:view` | 查询 View 的应用授权 |
-| `PUT /api/embed-management/v1/views/{viewId}/grants/{applicationId}` | `system:embed:manage` | 创建或更新授权 |
+| `POST /api/embed-management/v1/views/{viewId}/grants/{applicationId}` | `system:embed:manage` | 创建或更新授权 |
 | `POST /api/embed-management/v1/views/{viewId}/grants/{applicationId}/status` | `system:embed:manage` | 启用或禁用 |
 | `POST /api/embed-management/v1/views/{viewId}/grants/{applicationId}/revoke` | `system:embed:manage` | 永久撤销 |
 
@@ -1634,7 +1634,7 @@ Content-Type: application/json
 时间。
 
 ```http
-DELETE /api/embed/v1/session
+POST /api/embed/v1/session
 Authorization: Bearer <embed-session-token>
 ```
 
@@ -3043,7 +3043,7 @@ SDK 默认创建：
 | `POST /api/embed/v1/launches/{launchId}/exchange` | V1 已实现 | 一次性 Launch code | Exchange Service |
 | `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | 非秘密 Session 状态 |
 | `POST /api/embed/v1/session/heartbeat` | V1 已实现 | Embed Bearer | 仅按服务端时间延长 idle 到期 |
-| `DELETE /api/embed/v1/session` | V1 已实现 | Embed Bearer | 幂等退出和 Session Slot 释放 |
+| `POST /api/embed/v1/session` | V1 已实现 | Embed Bearer | 幂等退出和 Session Slot 释放 |
 | `GET /api/embed/v1/runtime/bootstrap` | V1 已实现 | Embed Bearer | Runtime Facade |
 | `GET /api/embed/v1/runtime/schema` | V1 已实现（仅 LIST） | Embed Bearer | 列表 External Projection |
 | `POST /api/embed/v1/runtime/list/query` | V1 已实现 | Embed Bearer | 复用列表查询服务 |
@@ -3055,7 +3055,7 @@ SDK 默认创建：
 | `/api/embed/v1/runtime/actions/*` | 未注册/禁止调用 | 不适用 | 页内动作直接复用 Flow 原生端点且不要求 ACTION_EXECUTE；不建设宿主任意动作 Bridge |
 | `GET /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
 | `POST /api/embed/v1/session/heartbeat` | V1 已实现 | Embed Bearer | Session Service |
-| `DELETE /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
+| `POST /api/embed/v1/session` | V1 已实现 | Embed Bearer | Session Service |
 
 V1 不提供独立 `PROCESS_START` 路由，也不允许浏览器通过创建请求布尔参数绕过权限。
 Published Form 内建 `saveAndStart` 只提交封闭 `actionKey`，服务端重新解析按钮后在专用

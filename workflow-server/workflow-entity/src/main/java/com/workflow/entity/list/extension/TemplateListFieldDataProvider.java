@@ -60,13 +60,13 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
     }
 
     /**
-     * 判断是否支持查询；判断结果决定调用方的后续分支。
+     * 模板只在数据库分页后计算展示值，不能参与筛选，否则必须读取全部候选行。
      *
      * @return 查询条件成立时为 true，否则为 false
      */
     @Override
     public boolean supportsQuery() {
-        return true;
+        return false;
     }
 
     /**

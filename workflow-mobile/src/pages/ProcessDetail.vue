@@ -67,6 +67,9 @@ const snapshot = ref(history.state.row || {}), detail = useProcessDetail({ reque
 const loading = ref(false), loaded = ref(false), error = ref(''), ccError = ref(''), conflict = ref(false), record = ref({}), form = ref(null), entityFields = ref([]), task = ref(null), operations = ref({}), rejected = ref(null), formActions = ref([])
 const activeTab = ref('basic'), formRef = ref(), approvalRef = ref(), approvalOpen = ref(false), diagramOpen = ref(false), action = ref('approve'), comment = ref(''), pending = ref(''), submitting = ref(false)
 const processOperations = ref({})
+// 读取本轮实例状态；不能使用实体最新一轮的状态，也不能用终止能力代替撤回开关。
+const canWithdraw = computed(() => detail.progressData.value?.status === 'RUNNING'
+  && processOperations.value.withdraw === true)
 const moreActionsTarget = ref(null)
 const operation = ref(null), operationOpen = ref(false), operationUsers = ref([]), operationComment = ref(''), operationPicker = ref(false), addSignType = ref('')
 let sequence = 0, savedFingerprint = '', completed = false
@@ -99,7 +102,7 @@ watch(() => [action.value, record.value], () => { if (loaded.value) preview.sche
 const footerActions = computed(() => {
   const items = footerFormActions(formActions.value).filter(item => !['close', 'reset', 'save', 'saveAndStart'].includes(item.key) && (item.key !== 'submitApproval' || canApprove.value))
   if (canApprove.value) items.push(...getTodoTaskMoreActions({ ...snapshot.value, ...task.value, taskId: taskId.value, taskOperations: operations.value }).filter(item => item.command !== 'sla' && (item.command !== 'cc' || operations.value.manualCc === true)).map(item => ({ key: item.command, label: item.label })))
-  if (processOperations.value.withdraw === true) items.push({ key: 'withdraw', label: '撤回流程' })
+  if (canWithdraw.value) items.push({ key: 'withdraw', label: '撤回流程' })
   if (canResubmit.value) items.push({ key: 'resubmit', label: '重新提交', primary: true })
   return items
 })
@@ -219,7 +222,7 @@ async function submitOperation() {
     // 操作前重新取能力，防止打开面板后任务已被其他人办理或权限被撤销。
     if (key === 'withdraw') {
       processOperations.value = await tasks.getProcessOperations(route.params.instanceId)
-      if (processOperations.value.withdraw !== true) throw new Error('当前流程已不允许撤回，请刷新后重试')
+      if (!canWithdraw.value) throw new Error('当前流程已不允许撤回，请刷新后重试')
     } else if (key !== 'resubmit') await refreshOperations()
     const allowed = { transfer: 'transfer', addSign: 'addSign', cc: 'manualCc' }[key]
     if (allowed && operations.value[allowed] !== true) throw new Error('当前任务已不允许此操作，请刷新后重试')

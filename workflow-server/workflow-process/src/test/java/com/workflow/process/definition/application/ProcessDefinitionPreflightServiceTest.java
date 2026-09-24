@@ -317,6 +317,58 @@ class ProcessDefinitionPreflightServiceTest {
         assertEquals(0, preview.blockerCount());
     }
 
+    /** 包容分叉无默认流时，业务字段可能全部不命中；预检应提示运行失败风险。 */
+    @Test
+    void inclusiveGatewayWithoutDefaultWarnsAboutZeroMatch() {
+        process.setBpmnXml(threeWayGatewayXml().replace("exclusiveGateway", "inclusiveGateway"));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertTrue(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("INCLUSIVE_GATEWAY_NO_DEFAULT")
+                        && "Decision".equals(issue.elementId())
+                        && !issue.blocking()));
+    }
+
+    /** 默认流为零命中提供兜底，存在时不再给出包容网关无兜底提醒。 */
+    @Test
+    void inclusiveGatewayWithDefaultDoesNotWarnAboutZeroMatch() {
+        process.setBpmnXml(threeWayGatewayXml()
+                .replace("exclusiveGateway", "inclusiveGateway")
+                .replace("<bpmn:inclusiveGateway id=\"Decision\"/>",
+                        "<bpmn:inclusiveGateway id=\"Decision\" default=\"FlowZero\"/>"));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("INCLUSIVE_GATEWAY_NO_DEFAULT")));
+    }
+
+    /** 网关转换遗留的可视化条件组没有对应执行表达式时，发布必须阻断。 */
+    @Test
+    void staleConditionGroupOnInclusiveFlowBlocksPublishing() {
+        process.setBpmnXml(threeWayGatewayXml()
+                .replace("exclusiveGateway", "inclusiveGateway")
+                .replace("targetNamespace=\"http://workflow.test/gateway\"",
+                        "xmlns:flowable=\"http://flowable.org/bpmn\" "
+                                + "targetNamespace=\"http://workflow.test/gateway\"")
+                .replace("<bpmn:sequenceFlow id=\"FlowZero\" sourceRef=\"Decision\" targetRef=\"Zero\">",
+                        "<bpmn:sequenceFlow id=\"FlowZero\" sourceRef=\"Decision\" targetRef=\"Zero\">"
+                                + "<bpmn:extensionElements><flowable:properties>"
+                                + "<flowable:property name=\"conditionGroupConfig\" value=\"saved-group\"/>"
+                                + "</flowable:properties></bpmn:extensionElements>")
+                .replace("<bpmn:conditionExpression>${amount == 0}</bpmn:conditionExpression>", ""));
+
+        ProcessPublishPreviewDTO preview = service.preview(process);
+
+        assertFalse(preview.publishable());
+        assertTrue(preview.issues().stream().anyMatch(issue ->
+                issue.code().equals("GATEWAY_CONDITION_CONFIG_NOT_EFFECTIVE")
+                        && "FlowZero".equals(issue.elementId())
+                        && issue.blocking()));
+    }
+
     @Test
     void alwaysSkipUserTaskDoesNotRequireFallbackAssignee() {
         process.setBpmnXml(skipXml("true", "${amount > 100}"));

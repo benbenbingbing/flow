@@ -418,6 +418,9 @@ public class EntityListRuntimeService {
             if (hasTrustedFilterConflict(requiredFilters, contextFilters)) return emptyPage(safeRequest);
             requiredFilters.putAll(contextFilters);
         }
+        if (EntityListFixedFilters.conflictsWithFixedEquality(filters, requiredFilters)) {
+            return emptyPage(safeRequest);
+        }
         if (serverPinnedEntry && (hasTrustedFilterConflict(filters, publishedFixedFilters)
                 || hasTrustedFilterConflict(filters, trustedContextFilters))) return emptyPage(safeRequest);
         if (compositionContext != null && compositionContext.matchNone()) return emptyPage(safeRequest);
@@ -426,6 +429,7 @@ public class EntityListRuntimeService {
                 || hasTrustedFilterConflict(EntityListFixedFilters.normalize(filters), parameterFilters)) return emptyPage(safeRequest);
         requiredFilters.putAll(parameterFilters);
         filters = EntityListFixedFilters.apply(filters, requiredFilters);
+        validateDatabaseQuery(config, filters);
 
         UiEventExecuteRequest event = new UiEventExecuteRequest();
         event.setEventCode(UiDataSourceUsages.LIST_LOAD);
@@ -1046,6 +1050,8 @@ public class EntityListRuntimeService {
                                 map,
                                 new TypeReference<Map<String, Object>>() {})
                         : Map.of();
+        // 事件前置步骤可能改写 filters；进入默认查询前再次校验，不能绕过列表列约束。
+        validateDatabaseQuery(config, filters);
         int pageNum = positiveInt(
                 eventInput.get("pageNum"),
                 (int) Math.max(1, safeRequest.getPageNum()));
@@ -1186,6 +1192,7 @@ public class EntityListRuntimeService {
                 request == null ? Map.of() : request.getFilters());
         filters = EntityListFixedFilters.apply(filters, EntityListFixedFilters.normalize(
                 readObject(config.getFixedFilterConfig(), "列表固定条件")));
+        validateDatabaseQuery(config, filters);
         PermissionPreviewDTO preview =
                 dataPermissionEngine.previewPermissionDetail(entityCode, listKey, user);
         PageResult<EntityDataDTO> page = dynamicService.findPageForUser(
@@ -1489,7 +1496,7 @@ public class EntityListRuntimeService {
         for (EntityListField field : publishedRuntimeService.resolveFields(
                 config,
                 fieldMapper.findByListConfigId(config.getId()))) {
-            if (Boolean.TRUE.equals(field.getIsQuery())) {
+            if (Boolean.TRUE.equals(field.getIsQuery()) && EntityListQueryPolicy.isEntityField(field)) {
                 queryFields.add(field.getFieldCode());
             }
         }
@@ -1502,6 +1509,18 @@ public class EntityListRuntimeService {
             result.put(entry.getKey(), entry.getValue());
         }
         return result;
+    }
+
+    /** 普通、接口和事件查询统一拒绝虚拟筛选/排序，旧发布版必须通过正常编辑发布修正。 */
+    private void validateDatabaseQuery(EntityListConfig config, Map<String, Object> filters) {
+        List<EntityListField> fields = publishedRuntimeService.resolveFields(
+                config, fieldMapper.findByListConfigId(config.getId()));
+        EntityListQueryPolicy.validateConfiguration(fields);
+        EntityListQueryPolicy.validateFilters(fields, filters);
+        Map<String, Object> view = readObject(config.getViewConfig(), "列表视图配置");
+        if (view.get("table") instanceof Map<?, ?> table) {
+            EntityListQueryPolicy.validateSort(fields, text(table.get("defaultSortField")));
+        }
     }
 
     /**

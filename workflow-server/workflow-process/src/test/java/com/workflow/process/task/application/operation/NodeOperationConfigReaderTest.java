@@ -39,18 +39,20 @@ class NodeOperationConfigReaderTest {
     }
 
     @Test
-    void readsAllThreeExplicitSwitches() {
+    void readsAllFourExplicitSwitches() {
         NodeOperationConfig config = reader.read(userTaskWithAssigneeConfig("""
                 {
                   "allowTransfer": false,
                   "allowAddSign": true,
-                  "allowTerminate": false
+                  "allowTerminate": false,
+                  "allowWithdraw": true
                 }
                 """)).orElseThrow();
 
         assertFalse(config.allowTransfer());
         assertTrue(config.allowAddSign());
         assertFalse(config.allowTerminate());
+        assertTrue(config.allowWithdraw());
     }
 
     @Test
@@ -62,6 +64,21 @@ class NodeOperationConfigReaderTest {
                         """)));
 
         assertTrue(exception.getMessage().contains("allowAddSign"));
+    }
+
+    @Test
+    void explicitWithdrawFalseOverridesLegacyTerminateDefault() {
+        var config = reader.read(userTaskWithAssigneeConfig("{\"allowWithdraw\":false}")).orElseThrow();
+        assertTrue(config.allowTerminate());
+        assertFalse(config.allowWithdraw());
+        assertThrows(IllegalArgumentException.class, () -> reader.read(
+                userTaskWithAssigneeConfig("{\"allowWithdraw\":\"true\"}")));
+    }
+
+    @Test
+    void oldDeploymentWithoutWithdrawalSwitchKeepsOldTerminateGate() {
+        assertFalse(reader.read(userTaskWithAssigneeConfig("{\"allowTerminate\":false}")).orElseThrow().allowWithdraw());
+        assertTrue(reader.read(userTaskWithAssigneeConfig("{\"allowTerminate\":true}")).orElseThrow().allowWithdraw());
     }
 
     private UserTask userTaskWithAssigneeConfig(String config) {

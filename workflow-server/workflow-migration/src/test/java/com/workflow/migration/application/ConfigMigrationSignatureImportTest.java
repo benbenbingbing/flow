@@ -28,6 +28,9 @@ import static org.mockito.Mockito.*;
 /** 使用真实 wfpack 编解码覆盖跨密钥确认、内容完整性、确认审计及后续依赖阻断。 */
 @ExtendWith(MockitoExtension.class)
 class ConfigMigrationSignatureImportTest {
+    @org.junit.jupiter.api.BeforeEach
+    void configureReferenceServices() { MigrationReferenceTestFixture.attachTo(service); }
+
     private static final String SOURCE_KEY = "source-key-0123456789abcdef0123456789";
     private static final String TARGET_KEY = "target-key-0123456789abcdef0123456789";
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
@@ -160,6 +163,21 @@ class ConfigMigrationSignatureImportTest {
         byte[] invalid = zip(entries);
         assertThrows(IllegalArgumentException.class,
                 () -> service.importPackage(file(invalid), "DEV", sha(invalid)));
+        verifyNoInteractions(importPackageMapper, importItemMapper);
+    }
+
+    @Test
+    void legacyFormatsAreRejectedEvenWithValidContentChecksums() throws Exception {
+        for (int version : List.of(1, 2)) {
+            var entries = unzip(packageData(TARGET_KEY));
+            var manifest = json.readValue(entries.get("manifest.json"), new TypeReference<Map<String, Object>>() {});
+            assertEquals(3, manifest.get("formatVersion"));
+            manifest.put("formatVersion", version);
+            entries.put("manifest.json", json.writeValueAsBytes(manifest));
+            refreshChecksums(entries);
+            var error = assertThrows(IllegalArgumentException.class, () -> packageCodec.decode(zip(entries)));
+            assertEquals("不支持的发布包格式版本: " + version, error.getMessage());
+        }
         verifyNoInteractions(importPackageMapper, importItemMapper);
     }
 

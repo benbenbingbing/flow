@@ -58,6 +58,8 @@ public class ProcessInstanceService {
     private final ProcessTerminationService processTerminationService;
     private final NodeOperationCapabilityService nodeOperationCapabilityService;
     private final EntityStatusService entityStatusService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcessRoundService processRoundService;
     
     
     /**
@@ -92,8 +94,9 @@ public class ProcessInstanceService {
             String processInstanceId,
             String taskId) {
         processInstanceAccessService.requireReadAccess(processInstanceId);
-        return processProgressRuntimeService.getProcessProgress(
-                processInstanceId, taskId);
+        ProcessProgressDTO progress = processProgressRuntimeService.getProcessProgress(processInstanceId, taskId);
+        progress.setRounds(processRoundService.listReadableRounds(processInstanceId));
+        return progress;
     }
     
     /**
@@ -513,11 +516,16 @@ public class ProcessInstanceService {
         }
         
         List<MyStartedProcessVO> pageRecords = list;
-        // 终止能力涉及活动任务和部署模型查询，仅计算当前页，避免列表总量放大查询次数。
+        // 终止、撤回能力涉及活动任务和部署模型查询，仅计算当前页，避免列表总量放大查询次数。
         for (MyStartedProcessVO item : pageRecords) {
             if ("RUNNING".equals(item.getStatus())) {
                 item.setCanTerminate(nodeOperationCapabilityService.canTerminateProcess(
                         item.getProcessInstanceId(), userId));
+                item.setCanWithdraw(nodeOperationCapabilityService.canWithdrawProcess(
+                        item.getProcessInstanceId(), userId));
+            } else {
+                item.setCanTerminate(false);
+                item.setCanWithdraw(false);
             }
         }
         return new PageResult<>(

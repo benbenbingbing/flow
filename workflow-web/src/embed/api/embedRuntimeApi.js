@@ -123,8 +123,7 @@ function exchangeBody(input = {}) {
  * FORM 字段本身走 Flow 标准 API，因此这里不再暴露逐字段/逐控件兼容端点。
  */
 export function createEmbedRuntimeApi(client = createEmbedRequest()) {
-  if (!client || typeof client.get !== 'function' || typeof client.post !== 'function'
-    || typeof client.delete !== 'function') {
+  if (!client || typeof client.get !== 'function' || typeof client.post !== 'function') {
     throw new TypeError('Embed API client 无效')
   }
 
@@ -182,7 +181,7 @@ export function createEmbedRuntimeApi(client = createEmbedRequest()) {
     },
 
     logout() {
-      return client.delete('/session', { ...PROTOCOL_OPTIONS, keepalive: true })
+      return client.post('/session', undefined, { ...PROTOCOL_OPTIONS, keepalive: true })
     }
   })
 }

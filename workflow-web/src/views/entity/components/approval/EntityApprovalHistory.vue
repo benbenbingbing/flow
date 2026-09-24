@@ -8,8 +8,8 @@
     >
       <div class="history-item">
         <span class="history-title">{{ item.title }}</span>
-        <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (item.status === 'TERMINATED' ? 'danger' : 'warning')">
-          {{ item.status === 'COMPLETED' ? '已完成' : (item.status === 'TERMINATED' ? '已终止' : '进行中') }}
+        <el-tag size="small" :type="item.status === 'COMPLETED' ? 'success' : (['TERMINATED', 'CANCELLED'].includes(item.status) ? 'danger' : 'warning')">
+          {{ ({ COMPLETED: '已完成', TERMINATED: '已终止', WITHDRAWN: '已撤回', CANCELLED: '已取消' })[item.status] || '进行中' }}
         </el-tag>
       </div>
       <div class="history-desc">{{ item.description }}</div>

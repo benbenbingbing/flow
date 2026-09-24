@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import BpmnModeler from 'bpmn-js/lib/Modeler'
 import flowableModdle from '@/assets/flowable.json'
 import { translate as customTranslate } from '@/utils/bpmn-i18n'
+import { initializeNewUserTaskPermissions } from '@/utils/nodeOperationDefaults'
 
 import 'bpmn-js/dist/assets/diagram-js.css'
 import 'bpmn-js/dist/assets/bpmn-font/css/bpmn.css'
@@ -64,6 +65,11 @@ const initModeler = () => {
     container: canvasRef.value,
     additionalModules: [customTranslateModule],
     moddleExtensions: { flowable: flowableModdle }
+  })
+
+  // 覆盖拖拽、追加、类型替换等创建入口，未打开节点设置也会持久化安全默认值。
+  modeler.value.on('commandStack.shape.create.preExecute', event => {
+    initializeNewUserTaskPermissions(event.context.shape, modeler.value.get('moddle'))
   })
 
   try {

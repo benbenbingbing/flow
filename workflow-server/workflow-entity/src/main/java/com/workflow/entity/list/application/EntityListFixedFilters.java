@@ -1,10 +1,10 @@
 package com.workflow.entity.list.application;
 
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 /** 列表固定条件的统一语义，供默认查询、事件接口和权限范围预览共同使用。 */
 public final class EntityListFixedFilters {
@@ -28,8 +28,9 @@ public final class EntityListFixedFilters {
     }
 
     /**
-     * 返回独立的查询条件副本，并以可信条件替换同字段的整组用户条件。
-     * 同字段的 _op/_start/_end 必须一起处理，否则客户端可通过遗留运算符放宽固定值。
+     * 返回独立的查询条件副本。普通值条件与范围条件可同时交给 SQL 查询器按 AND 执行，
+     * 因此固定下界不能抹掉用户的等值筛选。相同方向的边界取更严格者，可信普通值及其
+     * 运算符仍覆盖用户同名键，避免客户端通过修改运算符放宽固定值。
      * 深拷贝避免事件 Provider 原地修改 IN 数组后污染后续步骤的可信条件。
      *
      * @param input 待应用实体列表固定过滤条件的原始输入，结果供调用方继续使用
@@ -39,12 +40,70 @@ public final class EntityListFixedFilters {
     public static Map<String, Object> apply(Map<String, Object> input, Map<String, Object> trusted) {
         Map<String, Object> result = new LinkedHashMap<>(input == null ? Map.of() : input);
         if (trusted != null && !trusted.isEmpty()) {
-            Set<String> fields = trusted.keySet().stream().map(EntityListFixedFilters::field)
-                    .collect(Collectors.toSet());
-            result.keySet().removeIf(key -> fields.contains(field(key)));
-            trusted.forEach((key, value) -> result.put(key, copy(value)));
+            trusted.forEach((key, value) -> {
+                String base = field(key);
+                if ((key.endsWith("_start") || key.endsWith("_end")) && result.containsKey(key)) {
+                    result.put(key, tighterBound(result.get(key), value, key.endsWith("_start")));
+                } else if (key.endsWith("_op") && !trusted.containsKey(base) && result.containsKey(base)) {
+                    // BETWEEN 等范围运算符不参与标量比较；保留用户标量的运算符。
+                    // 范围上下界仍由可信值约束，无法通过此运算符修改放宽。
+                    return;
+                } else {
+                    result.put(key, copy(value));
+                }
+            });
         }
         return result;
+    }
+
+    /**
+     * 固定等值与用户同字段等值/集合筛选相斥时提前返回空页。扁平过滤格式不能
+     * 同时携带两份标量条件，直接覆盖用户值会让页面显示与查询输入不一致。
+     * 只判断可精确求交的运算符；其它运算符仍由固定条件确保访问范围不扩大。
+     */
+    public static boolean conflictsWithFixedEquality(Map<String, Object> input, Map<String, Object> trusted) {
+        if (input == null || trusted == null) return false;
+        for (Map.Entry<String, Object> entry : trusted.entrySet()) {
+            String key = entry.getKey();
+            if (!key.equals(field(key)) || !input.containsKey(key)
+                    || !"EQ".equalsIgnoreCase(String.valueOf(trusted.getOrDefault(key + "_op", "EQ")))) {
+                continue;
+            }
+            Object requested = input.get(key);
+            String operation = input.containsKey(key + "_op")
+                    ? String.valueOf(input.get(key + "_op")).toUpperCase()
+                    : requested instanceof String ? "LIKE" : "EQ";
+            boolean contains = requested instanceof List<?> values
+                    && values.stream().anyMatch(value -> equalValue(value, entry.getValue()));
+            if ("EQ".equals(operation) && !equalValue(requested, entry.getValue())
+                    || "NE".equals(operation) && equalValue(requested, entry.getValue())
+                    || "IN".equals(operation) && !contains
+                    || "NOT_IN".equals(operation) && contains) return true;
+        }
+        return false;
+    }
+
+    private static boolean equalValue(Object left, Object right) {
+        if (Objects.equals(left, right)) return true;
+        if (!(left instanceof Number) && !(right instanceof Number)) return false;
+        try {
+            return new BigDecimal(left.toString()).compareTo(new BigDecimal(right.toString())) == 0;
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    /** 同向数值边界取交集；无法确定数据库排序语义时保留可信边界，防止放宽发布范围。 */
+    private static Object tighterBound(Object user, Object trusted, boolean lower) {
+        if (user == null || user instanceof String text && text.isBlank()) return copy(trusted);
+        if (trusted == null || trusted instanceof String text && text.isBlank()) return copy(user);
+        int comparison;
+        try {
+            comparison = new BigDecimal(user.toString()).compareTo(new BigDecimal(trusted.toString()));
+        } catch (NumberFormatException ignored) {
+            return copy(trusted);
+        }
+        return copy((lower ? comparison > 0 : comparison < 0) ? user : trusted);
     }
 
     /**

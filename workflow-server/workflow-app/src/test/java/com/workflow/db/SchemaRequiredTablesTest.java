@@ -253,8 +253,9 @@ class SchemaRequiredTablesTest {
                 "/system/entity-mutation-policies"));
         assertTrue(removal.contains(
                 "system/EntityMutationPolicyManagement"));
-        assertTrue(removal.indexOf("FROM sys_role_menu")
-                < removal.indexOf("FROM sys_menu menu\nJOIN"));
+        assertTrue(removal.indexOf("DELETE role_grant")
+                < removal.indexOf("DELETE menu"),
+                "应先删除旧菜单授权，再删除菜单本身");
         assertTrue(removal.contains(
                 "UPDATE `entity_version_config`"));
         assertTrue(removal.contains(
@@ -365,16 +366,19 @@ class SchemaRequiredTablesTest {
                     "missing interface extension column: " + column);
         }
         assertTrue(migration.contains("'INTERFACE'"));
-        assertTrue(migration.contains(
-                "DROP TABLE `ui_data_source_definition`"));
+        // V088 迁移数据，V089 完成契约回填后才移除旧表；不能提前删除迁移源。
+        String completion = Files.readString(MIGRATION_DIRECTORY.resolve(
+                "V089__complete_interface_extension_contract.sql"));
+        assertFalse(migration.contains("DROP TABLE IF EXISTS `ui_data_source_definition`"));
+        assertTrue(completion.contains("DROP TABLE IF EXISTS `ui_data_source_definition`"));
         assertFalse(migration.contains("DROP TABLE `ui_event_binding`"));
         assertTrue(migration.contains(
                 "`interface_extension_id`"));
         assertTrue(migration.contains(
                 "`query_interface_extension_id`"));
-        assertTrue(migration.contains(
+        assertTrue(completion.contains(
                 "DROP COLUMN `data_source_operation_code`"));
-        assertTrue(migration.contains(
+        assertTrue(completion.contains(
                 "DROP COLUMN `query_operation_code`"));
         assertTrue(migration.contains(
                 "JSON_SET(`step_document`, '$.extensionId'"));

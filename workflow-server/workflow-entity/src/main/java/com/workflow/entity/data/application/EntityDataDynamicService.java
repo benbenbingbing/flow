@@ -35,7 +35,7 @@ import java.util.Map;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class EntityDataDynamicService {
+public class EntityDataDynamicService implements com.workflow.contracts.entity.port.EntityTaskSummaryPort {
 
     private final EntityDataDynamicMapper dynamicMapper;
     private final EntityDefinitionMapper definitionMapper;
@@ -152,12 +152,69 @@ public class EntityDataDynamicService {
             Map<String, Object> condition,
             long requestedPageNum,
             long requestedPageSize) {
+        return findPage(entityCode, listKey, condition, requestedPageNum,
+                requestedPageSize, null, null);
+    }
+
+    /**
+     * 按已发布实体字段排序后分页，供配置驱动的列表使用。排序在 SQL 分页之前执行，
+     * 避免只调整当前页造成跨页顺序错误；普通调用仍沿用创建时间倒序。
+     *
+     * @param sortField 列表配置中的字段编码；为空使用默认顺序
+     * @param sortDirection ASC 或 DESC，不能包含 SQL 片段
+     */
+    @Transactional(readOnly = true)
+    public PageResult<EntityDataDTO> findPage(
+            String entityCode,
+            String listKey,
+            Map<String, Object> condition,
+            long requestedPageNum,
+            long requestedPageSize,
+            String sortField,
+            String sortDirection) {
         return findPageWithPermission(
                 entityCode,
                 condition,
                 requestedPageNum,
                 requestedPageSize,
-                getDataPermission(entityCode, listKey));
+                getDataPermission(entityCode, listKey),
+                sortField,
+                sortDirection);
+    }
+
+    /**
+     * 导出专用有界查询，不执行 COUNT，也不从头扫描已导出的记录。
+     * selectedIds 为 null 表示全量导出，空集合表示无选中记录；两者不能混淆。
+     * 每批重新执行数据权限和多值条件，所有条件按 AND 生效。
+     */
+    @Transactional(readOnly = true)
+    public EntityExportBatch findExportBatch(String entityCode, String listKey, Map<String, Object> condition,
+            List<String> selectedIds, EntityExportBatch.Cursor cursor, String sortField, String sortDirection) {
+        DataPermissionResult permission = getDataPermission(entityCode, listKey);
+        if (!permission.isHasPermission() || (selectedIds != null && selectedIds.isEmpty())) {
+            return new EntityExportBatch(List.of(), null);
+        }
+        if (selectedIds != null && selectedIds.size() > 5_000) {
+            throw new IllegalArgumentException("导出选中 ID 不能超过 5000 个");
+        }
+        var prepared = multiValueRuntimeService.prepareConditions(requireDefinition(entityCode), condition);
+        permission.intersect(prepared.sqlCondition());
+        if (!permission.isHasPermission()) return new EntityExportBatch(List.of(), null);
+        List<EntityField> runtimeFields = getRuntimeFields(entityCode);
+        String sortColumn = resolveSortColumn(runtimeFields, sortField);
+        var typed = EntityQueryConditions.fromPublishedFields(prepared.condition(), runtimeFields);
+        var rows = dynamicMapper.selectExportBatch(new com.workflow.core.database.OffsetPage<>(0, 200),
+                dynamicTableService.getTableName(entityCode), typed,
+                permission.isNeedFilter() ? permission.getSqlCondition() : null, permission.getSqlParameters(),
+                selectedIds, cursor, sortColumn, sortDirection);
+        List<EntityDataDTO> records = rows.stream()
+                .map(row -> recordMapper.toDto(row, entityCode, runtimeFields)).toList();
+        enrichMultiValues(entityCode, records);
+        if (rows.isEmpty()) return new EntityExportBatch(records, null);
+        Map<String, Object> last = rows.get(rows.size() - 1);
+        return new EntityExportBatch(records,
+                new EntityExportBatch.Cursor(last.get(sortColumn == null ? "create_time" : sortColumn),
+                        String.valueOf(last.get("id"))));
     }
 
     /**
@@ -187,7 +244,7 @@ public class EntityDataDynamicService {
                 dataPermissionEngine.calculatePermission(
                         entityCode,
                         listKey,
-                        user));
+                        user), null, null);
     }
 
     /**
@@ -225,7 +282,7 @@ public class EntityDataDynamicService {
                 condition,
                 requestedPageNum,
                 requestedPageSize,
-                permission);
+                permission, null, null);
     }
 
     /**
@@ -258,7 +315,9 @@ public class EntityDataDynamicService {
             Map<String, Object> condition,
             long requestedPageNum,
             long requestedPageSize,
-            DataPermissionResult permission) {
+            DataPermissionResult permission,
+            String sortField,
+            String sortDirection) {
         long pageNum = Math.max(1, requestedPageNum);
         long pageSize = Math.max(
                 1,
@@ -282,13 +341,16 @@ public class EntityDataDynamicService {
         }
 
         List<EntityField> runtimeFields = getRuntimeFields(entityCode);
+        String sortColumn = resolveSortColumn(runtimeFields, sortField);
         Map<String, Object> preparedCondition = EntityQueryConditions.fromPublishedFields(prepared.condition(), runtimeFields);
         PageRows pageRows = loadPageRows(
                 tableName,
                 preparedCondition,
                 permission,
                 offset,
-                pageSize);
+                pageSize,
+                sortColumn,
+                sortDirection);
         List<EntityDataDTO> records =
                 pageRows.rows().stream()
                         .map(data -> recordMapper.toDto(
@@ -319,7 +381,9 @@ public class EntityDataDynamicService {
             Map<String, Object> condition,
             DataPermissionResult permission,
             long offset,
-            long pageSize) {
+            long pageSize,
+            String sortColumn,
+            String sortDirection) {
         boolean hasCondition =
                 condition != null && !condition.isEmpty();
         if (hasCondition && permission.isNeedFilter()) {
@@ -335,7 +399,9 @@ public class EntityDataDynamicService {
                             permission.getSqlCondition(),
                             permission.getSqlParameters(),
                             offset,
-                            pageSize));
+                            pageSize,
+                            sortColumn,
+                            sortDirection));
         }
         if (hasCondition) {
             return new PageRows(
@@ -346,7 +412,9 @@ public class EntityDataDynamicService {
                             tableName,
                             condition,
                             offset,
-                            pageSize));
+                            pageSize,
+                            sortColumn,
+                            sortDirection));
         }
         if (permission.isNeedFilter()) {
             return new PageRows(
@@ -359,14 +427,33 @@ public class EntityDataDynamicService {
                             permission.getSqlCondition(),
                             permission.getSqlParameters(),
                             offset,
-                            pageSize));
+                            pageSize,
+                            sortColumn,
+                            sortDirection));
         }
         return new PageRows(
                 dynamicMapper.count(tableName),
                 dynamicMapper.selectPage(
                         tableName,
                         offset,
-                        pageSize));
+                        pageSize,
+                        sortColumn,
+                        sortDirection));
+    }
+
+    /**
+     * 只接受发布快照中真实存在的物理列。字段编码来自列表配置，不能直接拼接成 SQL。
+     */
+    private String resolveSortColumn(List<EntityField> fields, String sortField) {
+        if (sortField == null || sortField.isBlank()) {
+            return null;
+        }
+        return fields.stream()
+                .filter(field -> sortField.equals(field.getFieldCode()))
+                .map(EntityField::getDbColumnName)
+                .filter(column -> column != null && column.matches("[A-Za-z][A-Za-z0-9_]*"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("默认排序字段不是已发布实体字段: " + sortField));
     }
 
     /**
@@ -388,6 +475,31 @@ public class EntityDataDynamicService {
         }
         return assembleAggregate(data, entityCode);
     }
+
+    /**
+     * 任务投影内部读取：只选择当前列表字段，不展开关系或多值集合。
+     * 只有来源确实不存在时返回空摘要；查询故障继续抛出，不能把失败误记为已回填。
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public com.workflow.contracts.entity.model.EntityTaskSummary findTaskSummary(String entityCode, String recordId) {
+        var empty = com.workflow.contracts.entity.model.EntityTaskSummary.empty();
+        if (entityCode == null || recordId == null
+                || definitionMapper.findByEntityCode(entityCode).isEmpty()) return empty;
+        String customNameColumn = getRuntimeFields(entityCode).stream()
+                .filter(field -> "name".equals(field.getFieldCode()))
+                .map(field -> field.getDbColumnName())
+                .filter(column -> column != null && !column.equals("name"))
+                .findFirst().orElse(null);
+        Map<String, Object> data = dynamicMapper.selectTaskSummary(
+                dynamicTableService.getTableName(entityCode), recordId, customNameColumn);
+        if (data == null) return empty;
+        return new com.workflow.contracts.entity.model.EntityTaskSummary(
+                summaryText(data.get("name")), summaryText(data.get("code")), summaryText(data.get("data_name")),
+                summaryText(data.get("current_task_name")), summaryText(data.get("status")));
+    }
+
+    private String summaryText(Object value) { return value == null ? null : value.toString(); }
 
     /**
      * 按ID查询当前用户可访问的实体数据；结果供后续展示或处理。

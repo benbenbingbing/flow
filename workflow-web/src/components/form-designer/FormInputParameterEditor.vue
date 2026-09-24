@@ -28,7 +28,7 @@
       </el-table-column>
       <el-table-column label="参数编码" min-width="170">
         <template #default="{ row }">
-          <el-input v-model="row.code" placeholder="例如：projectId" />
+          <el-input v-model="row.code" placeholder="例如：projectId" @focus="rememberParameterCode(row)" @blur="commitParameterCode(row)" />
         </template>
       </el-table-column>
       <el-table-column label="类型" width="130">
@@ -109,6 +109,7 @@ import {
 } from '@flow/workflow-core/subform-parameter-contract'
 
 const schema = defineModel({ type: Object, default: () => ({}) })
+const emit = defineEmits(['code-change'])
 
 const typeOptions = [
   { value: 'string', label: '文本' },
@@ -121,10 +122,14 @@ const typeOptions = [
 
 const rows = ref(getInputParameterDefinitions(schema.value))
 let syncingFromModel = false
+let lastEmittedSchema = ''
+const editOrigins = new WeakMap()
 
 watch(
   schema,
   value => {
+    // 输入框中的临时空编码尚不能进入 Schema；忽略本编辑器自己的写回，保留行供用户继续输入。
+    if (JSON.stringify(value) === lastEmittedSchema) return
     const next = getInputParameterDefinitions(value)
     if (JSON.stringify(next) === JSON.stringify(rows.value)) return
     syncingFromModel = true
@@ -138,7 +143,9 @@ watch(
   rows,
   value => {
     if (syncingFromModel) return
-    schema.value = buildInputParameterSchema(value)
+    const nextSchema = buildInputParameterSchema(value)
+    lastEmittedSchema = JSON.stringify(nextSchema)
+    schema.value = nextSchema
   },
   { deep: true }
 )
@@ -165,6 +172,20 @@ const validationMessage = computed(() => {
 
 function updateRows(next) {
   rows.value = [...next]
+}
+
+function rememberParameterCode(row) {
+  if (!editOrigins.has(row)) editOrigins.set(row, row.code)
+}
+
+function commitParameterCode(row) {
+  const previousCode = editOrigins.get(row)
+  const nextCode = String(row.code || '').trim()
+  // 空值、非法值和重复编码都不应重绑定用途；用户改成合法新键并离开输入框后再一次性迁移引用。
+  if (!previousCode || !/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(nextCode)
+    || rows.value.some(item => item !== row && item.code === nextCode)) return
+  editOrigins.delete(row)
+  if (previousCode !== nextCode) emit('code-change', previousCode, nextCode)
 }
 
 function addParameter() {

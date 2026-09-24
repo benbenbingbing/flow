@@ -76,6 +76,18 @@ export const FORM_BUILT_IN_ACTIONS = Object.freeze({
     validateBeforeExecute: true,
     modes: ['create', 'edit']
   },
+  restartProcess: {
+    key: 'restartProcess',
+    type: 'built-in',
+    label: '保存并重新发起',
+    icon: 'Refresh',
+    buttonType: 'primary',
+    sort: 45,
+    placement: 'FOOTER',
+    enabled: false,
+    validateBeforeExecute: true,
+    modes: ['edit']
+  },
   submitApproval: {
     key: 'submitApproval',
     type: 'built-in',
@@ -541,7 +553,7 @@ function defaultBuiltIn(key, mode) {
   return {
     ...cloneValue(preset),
     label,
-    enabled: true,
+    enabled: preset.enabled !== false,
     enabledModes: [...preset.modes]
   }
 }
@@ -554,7 +566,10 @@ function applyBuiltInOverride(base, value, mode) {
   ).filter(item => base.modes.includes(item))
   return {
     ...base,
-    enabled: override.enabled !== false,
+    // 重新发起必须显式配置 true；恢复默认值也会重新关闭。
+    enabled: base.key === 'restartProcess'
+      ? override.enabled === true
+      : override.enabled !== false,
     label: override.labelByMode?.[mode] || base.label,
     icon: override.icon ?? base.icon,
     buttonType: override.buttonType || base.buttonType,

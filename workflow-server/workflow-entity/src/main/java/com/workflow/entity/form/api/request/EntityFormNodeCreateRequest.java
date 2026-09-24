@@ -44,10 +44,4 @@ public class EntityFormNodeCreateRequest {
     private Map<String, Object> legacyProps;
     /** 排序键 */
     private Long orderKey;
-    /** 来源模板 ID */
-    private String templateId;
-    /** 来源模板版本 */
-    private Integer templateVersion;
-    /** 模板本地覆盖配置 */
-    private Map<String, Object> localOverrides;
 }

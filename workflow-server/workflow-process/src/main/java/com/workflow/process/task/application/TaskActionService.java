@@ -1,5 +1,7 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
@@ -778,7 +780,7 @@ public class TaskActionService {
     }
 
     /**
-     * 发起人撤回尚在运行的流程，先校验终止开关，再删除引擎实例和本地待办。
+     * 发起人撤回尚在运行的流程，先校验独立撤回开关，再删除引擎实例和本地待办。
      * 实体活动在删除前记录，供业务记录保留撤回原因。
      *
      * @param processInstanceId 待撤回的流程实例 ID，用于校验运行状态并删除引擎实例
@@ -816,21 +818,16 @@ public class TaskActionService {
             throw new RuntimeException("只有发起人才能撤回流程");
         }
 
-        // 撤回同样会删除运行中实例，因此必须受“允许终止”总开关约束。
-        nodeOperationCapabilityService.requireConfiguredTerminateAllowed(
-                processInstanceId);
-        if (nodeOperationDecisionService != null) {
-            nodeOperationDecisionService.requireAllowedForProcess(
-                    processInstanceId,
-                    com.workflow.process.task.application.operation.NodeOperationPolicy.Operation.WITHDRAW,
-                    com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
-                            .ofReason(reason));
-        }
+        // 与 PC 列表及移动端能力查询共用撤回门禁；不再绑定“允许终止”。
+        nodeOperationCapabilityService.requireWithdrawAllowed(processInstanceId,
+                com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext
+                        .ofReason(reason));
 
         try {
             String entityCode = asString(runtimeService.getVariable(processInstanceId, "entityCode"));
             String entityDataId = asString(runtimeService.getVariable(processInstanceId, "entityDataId"));
             if (StringUtils.hasText(entityCode) && StringUtils.hasText(entityDataId)) {
+                entityRecordPort.requireProcessEndStatus(entityCode, "WITHDRAWN");
                 entityRecordPort.recordActivity(
                         entityCode,
                         entityDataId,
@@ -840,8 +837,17 @@ public class TaskActionService {
                         null);
             }
 
-            // 删除流程实例（撤回相当于终止流程）
-            runtimeService.deleteProcessInstance(processInstanceId, "发起人撤回: " + reason);
+            // 结束类型与自由意见分离，结束监听和对账不会再根据意见文字猜测动作。
+            runtimeService.deleteProcessInstance(processInstanceId, ProcessEndReason.encode("WITHDRAWN", reason));
+            var operationLog = new com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog();
+            operationLog.setProcessInstanceId(processInstanceId);
+            operationLog.setOperationType("WITHDRAW");
+            operationLog.setOperatorId(userId);
+            operationLog.setOperatorName(sysUserService.getDisplayName(userId));
+            operationLog.setOperationTime(LocalDateTime.now());
+            operationLog.setOperationComment(reason);
+            // 撤回记录与引擎取消同事务保存，确保结束后时间线有明确的操作人和原因。
+            operationLogMapper.insert(operationLog);
 
             // 清理本地待办
             processTaskService.deleteTasksByProcessInstance(processInstanceId);
@@ -960,6 +966,37 @@ public class TaskActionService {
             log.warn("合并转办记录到历史失败", e);
         }
 
+        // 与流程进度接口保持相同结束操作记录，旧客户端不能漏掉撤回事件。
+        var endLogs = operationLogMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>()
+                .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getProcessInstanceId, processInstanceId)
+                .in(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType, "TERMINATE", "WITHDRAW")
+                .orderByAsc(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationTime));
+        for (var operation : endLogs) {
+            TaskVO end = new TaskVO();
+            boolean withdrawn = "WITHDRAW".equals(operation.getOperationType());
+            end.setProcessInstanceId(processInstanceId);
+            end.setTaskName(withdrawn ? "流程撤回" : "流程终止");
+            end.setResult(withdrawn ? "withdraw" : "terminate");
+            end.setAssignee(operation.getOperatorId());
+            end.setAssigneeName(operation.getOperatorName());
+            end.setComment(operation.getOperationComment());
+            if (operation.getOperationTime() != null) {
+                end.setEndTime(Date.from(operation.getOperationTime().atZone(ZoneId.systemDefault()).toInstant()));
+            }
+            historyList.add(end);
+        }
+        if (endLogs.isEmpty() && historicInstance != null && historicInstance.getEndTime() != null
+                && ProcessEndReason.isCancelled(historicInstance.getDeleteReason())) {
+            TaskVO end = new TaskVO();
+            boolean withdrawn = "WITHDRAWN".equals(ProcessEndReason.category(historicInstance.getDeleteReason()));
+            end.setProcessInstanceId(processInstanceId);
+            end.setTaskName(withdrawn ? "流程撤回" : "流程终止");
+            end.setResult(withdrawn ? "withdraw" : "terminate");
+            end.setComment(ProcessEndReason.comment(historicInstance.getDeleteReason()));
+            end.setEndTime(historicInstance.getEndTime());
+            historyList.add(end);
+        }
+
         return historyList;
     }
 
@@ -985,9 +1022,9 @@ public class TaskActionService {
         Long todoCount = processTaskService.countTodo(userId);
         statistics.put("todoCount", todoCount);
 
-        // 已办任务数：当前用户已处理完成的任务数量
-        Long doneCount = processTaskService.countDone(userId);
-        statistics.put("doneCount", doneCount);
+        // 数量与时长在同一次数据库聚合中读取，避免加载历史全集和两次读取的口径漂移。
+        var doneStatistics = processTaskService.getDoneStatistics(userId);
+        statistics.put("doneCount", doneStatistics.getTaskCount());
 
         // 我发起的流程数：当前用户作为发起人的历史流程实例数量
         long myProcessCount = historyService.createHistoricProcessInstanceQuery()
@@ -995,15 +1032,7 @@ public class TaskActionService {
                 .count();
         statistics.put("processCount", myProcessCount);
 
-        // 平均处理时长：基于已办任务的 duration 累加后取平均，单位小时（保留一位小数）
-        List<ProcessTask> doneTasks = processTaskService.getDoneList(userId);
-        long totalDuration = doneTasks.stream()
-                .filter(t -> t.getDuration() != null)
-                .mapToLong(ProcessTask::getDuration)
-                .sum();
-        // duration 单位为毫秒，先除以任务数得到平均值，再换算为小时
-        double avgHours = doneTasks.isEmpty() ? 0 : (totalDuration / doneTasks.size() / 1000.0 / 60 / 60);
-        statistics.put("avgProcessTime", Math.round(avgHours * 10) / 10.0);
+        statistics.put("avgProcessTime", doneStatistics.averageHours());
 
         // 任务统计入口通常传业务用户 ID，自动知会和收件箱接口则使用用户名。
         // 先统一收件身份，避免已有知会记录但首页未读徽标始终为零；兼容直接传用户名的调用。
@@ -1033,6 +1062,12 @@ public class TaskActionService {
         vo.setEndTime(historicTask.getEndTime());
         vo.setDuration(historicTask.getDurationInMillis());
 
+        // 被取消任务的结束时间不是审批时间，不得落入默认通过的兼容分支。
+        if (StringUtils.hasText(historicTask.getDeleteReason()) && !"completed".equals(historicTask.getDeleteReason())) {
+            vo.setResult("cancelled");
+            vo.setComment(ProcessEndReason.comment(historicTask.getDeleteReason()));
+            return vo;
+        }
         // 获取任务评论
         List<org.flowable.engine.task.Comment> comments = taskService.getTaskComments(historicTask.getId());
         String commentMsg = comments.isEmpty() ? null : comments.get(0).getFullMessage();
@@ -1051,7 +1086,7 @@ public class TaskActionService {
             if ((action == null || action.isBlank()) && localTask != null) {
                 action = localTask.getAction();
             }
-            vo.setResult(action != null ? action : "approve");
+            vo.setResult(action != null ? action : "completed");
         }
 
         return vo;

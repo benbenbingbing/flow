@@ -818,6 +818,45 @@ class EntityListRuntimeViewCompositionTest {
                 eq(Map.of("status", "ACTIVE", "status_op", "EQ")), anyLong(), anyLong());
     }
 
+    /** 页面金额等值查询与发布的金额下界必须同时进入最终数据库查询。 */
+    @Test
+    void pageQueryIntersectsPublishedFixedRangeOnTheSameField() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"amount_start\":\"2\"}");
+        configureActiveList(published);
+        EntityListField amount = new EntityListField();
+        amount.setFieldCode("amount");
+        amount.setIsQuery(true);
+        when(publishedRuntimeService.resolveFields(eq(published), any())).thenReturn(List.of(amount));
+        when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setFilters(Map.of("amount", "1", "amount_op", "EQ"));
+
+        service.query("target_entity", "default", request);
+
+        verify(dataListService).findPageWithResolvedConfig(eq("target_entity"), eq("default"), eq(published),
+                eq(Map.of("amount", "1", "amount_op", "EQ", "amount_start", "2")), anyLong(), anyLong());
+    }
+
+    @Test
+    void incompatiblePageEqualityCannotBeSilentlyReplacedByPublishedEquality() {
+        EntityListConfig published = publishedList();
+        published.setFixedFilterConfig("{\"amount\":2}");
+        configureActiveList(published);
+        EntityListField amount = new EntityListField();
+        amount.setFieldCode("amount");
+        amount.setIsQuery(true);
+        when(publishedRuntimeService.resolveFields(eq(published), any())).thenReturn(List.of(amount));
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setFilters(Map.of("amount", 1, "amount_op", "EQ"));
+
+        PageResult<?> page = (PageResult<?>) service.query("target_entity", "default", request);
+
+        assertEquals(0, page.getTotal());
+        verify(dataListService, never()).findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong());
+    }
+
     /** REPLACE 和 AFTER 的结果都由 replaced 标记触发同一服务端复核，不能返回范围外的候选 ID。 */
     @Test
     void replacementCannotBypassPublishedFixedFilters() {

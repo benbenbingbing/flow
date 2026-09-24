@@ -1,5 +1,7 @@
 package com.workflow.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.list.application.EntityDataListConfigService;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
@@ -13,7 +15,6 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListFiel
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
-import com.workflow.entity.list.extension.ListFieldConditionEvaluator;
 import com.workflow.entity.list.extension.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
@@ -34,14 +35,14 @@ import static org.mockito.Mockito.when;
 /**
  * 实体数据列表配置服务测试。
  *
- * <p>被测对象：{@link EntityDataListConfigService}，覆盖虚拟字段条件不下发动态 SQL 而在增强后过滤、
+ * <p>被测对象：{@link EntityDataListConfigService}，覆盖虚拟字段条件显式拒绝且不读取数据、
  * 基础条件使用权限感知的服务端分页等场景。
  */
 class EntityDataListConfigServiceTest {
 
-    /** 测试虚拟字段条件不下发动态 SQL 并在增强后过滤：验证仅基础条件下发查询，虚拟字段在增强后按 LIKE 过滤 */
+    /** 直接请求虚拟条件也必须在读取实体数据之前失败，不能依赖前端是否展示查询项 */
     @Test
-    void virtualConditionsAreNotSentToDynamicSqlAndAreFilteredAfterEnrichment() {
+    void virtualConditionsAreRejectedBeforeReadingData() {
         EntityDataDynamicService dynamicService = mock(EntityDataDynamicService.class);
         EntityListConfigMapper configMapper = mock(EntityListConfigMapper.class);
         EntityListFieldMapper fieldMapper = mock(EntityListFieldMapper.class);
@@ -57,10 +58,10 @@ class EntityDataListConfigServiceTest {
                 fieldMapper,
                 definitionMapper,
                 providerRegistry,
-                new ListFieldConditionEvaluator(),
                 capabilityService,
                 publishedRuntimeService,
-                uiDataSourceService);
+                uiDataSourceService,
+                new JsonDocumentCodec(new ObjectMapper()));
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -83,37 +84,10 @@ class EntityDataListConfigServiceTest {
         when(publishedRuntimeService.resolveFields(config, List.of(virtualField)))
                 .thenReturn(List.of(virtualField));
 
-        EntityDataDTO first = row("1", "张三");
-        EntityDataDTO second = row("2", "李四");
-        Map<String, Object> baseCondition = Map.of("status", "DRAFT", "status_op", "EQ");
-        when(dynamicService.findByCondition("expense", "default", baseCondition))
-                .thenReturn(List.of(first, second));
-
-        ListFieldDataProvider provider = mock(ListFieldDataProvider.class);
-        when(providerRegistry.getProvider("CUSTOM_SUMMARY")).thenReturn(provider);
-        org.mockito.Mockito.doAnswer(invocation -> {
-            List<EntityDataDTO> records = invocation.getArgument(0);
-            records.forEach(record -> {
-                record.setExtData(new HashMap<>());
-                record.getExtData().put("summary", record.getSubmitterName() + " 报销单");
-            });
-            return null;
-        }).when(provider).enrich(
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.anyMap());
-
-        List<EntityDataDTO> result = service.findListWithConfig(
-                "expense",
-                "default",
-                Map.of(
-                        "status", "DRAFT",
-                        "status_op", "EQ",
-                        "summary", "张三",
-                        "summary_op", "LIKE"));
-
-        assertEquals(List.of(first), result);
-        verify(dynamicService).findByCondition("expense", "default", baseCondition);
+        virtualField.setIsQuery(false);
+        assertThrows(IllegalArgumentException.class, () -> service.findListWithConfig(
+                "expense", "default", Map.of("summary", "张三", "summary_op", "LIKE")));
+        verifyNoInteractions(dynamicService, providerRegistry, uiDataSourceService);
     }
 
     /** 测试基础条件使用权限感知的服务端分页：验证分页查询走 findPage 且对结果做权限增强 */
@@ -134,10 +108,10 @@ class EntityDataListConfigServiceTest {
                 fieldMapper,
                 definitionMapper,
                 providerRegistry,
-                new ListFieldConditionEvaluator(),
                 capabilityService,
                 publishedRuntimeService,
-                uiDataSourceService);
+                uiDataSourceService,
+                new JsonDocumentCodec(new ObjectMapper()));
 
         EntityDefinition definition = new EntityDefinition();
         definition.setId("entity-1");
@@ -145,6 +119,7 @@ class EntityDataListConfigServiceTest {
         EntityListConfig config = new EntityListConfig();
         config.setId("list-1");
         config.setListKey("default");
+        config.setViewConfig("{\"table\":{\"defaultSortField\":\"amount\",\"defaultSortDirection\":\"DESC\"}}");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
         when(publishedRuntimeService.resolveConfig(config, null, null, null))
                 .thenReturn(config);
@@ -158,7 +133,7 @@ class EntityDataListConfigServiceTest {
                 "default",
                 condition,
                 2,
-                10)).thenReturn(new PageResult<>(List.of(row), 21, 2, 10));
+                10, "amount", "DESC")).thenReturn(new PageResult<>(List.of(row), 21, 2, 10));
 
         PageResult<EntityDataDTO> result = service.findPageWithConfig(
                 "expense",
@@ -175,8 +150,54 @@ class EntityDataListConfigServiceTest {
                 "default",
                 condition,
                 2,
-                10);
+                10, "amount", "DESC");
         verify(capabilityService).enrichRows("expense", config, List.of(row));
+    }
+
+    /** 旧发布版仍配置虚拟查询时明确失败，管理员需取消配置后重新发布。 */
+    @Test
+    void legacyVirtualQueryConfigurationCannotTriggerFullListPagination() {
+        EntityDataDynamicService dynamicService = mock(EntityDataDynamicService.class);
+        EntityListConfigMapper configMapper = mock(EntityListConfigMapper.class);
+        EntityListFieldMapper fieldMapper = mock(EntityListFieldMapper.class);
+        EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
+        ListFieldDataProviderRegistry providerRegistry = mock(ListFieldDataProviderRegistry.class);
+        EntityListPublishedRuntimeService publishedRuntimeService =
+                mock(EntityListPublishedRuntimeService.class);
+        EntityDataListConfigService service = new EntityDataListConfigService(
+                dynamicService, configMapper, fieldMapper, definitionMapper,
+                providerRegistry,
+                mock(EntityActionCapabilityService.class), publishedRuntimeService,
+                mock(UiInterfaceExtensionService.class),
+                new JsonDocumentCodec(new ObjectMapper()));
+
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        when(definitionMapper.findByEntityCode("expense"))
+                .thenReturn(Optional.of(definition));
+        EntityListConfig config = new EntityListConfig();
+        config.setId("list-1");
+        config.setListKey("default");
+        config.setViewConfig("{\"table\":{\"defaultSortField\":\"amount\",\"defaultSortDirection\":\"DESC\"}}");
+        when(configMapper.findByEntityIdAndListKey("entity-1", "default"))
+                .thenReturn(config);
+        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+                .thenReturn(config);
+
+        EntityListField virtualField = new EntityListField();
+        virtualField.setFieldCode("summary");
+        virtualField.setDataSourceType("CUSTOM_SUMMARY");
+        virtualField.setShowInList(true);
+        virtualField.setIsQuery(true);
+        virtualField.setQueryType("LIKE");
+        when(fieldMapper.findByListConfigId("list-1"))
+                .thenReturn(List.of(virtualField));
+        when(publishedRuntimeService.resolveFields(config, List.of(virtualField)))
+                .thenReturn(List.of(virtualField));
+
+        assertThrows(IllegalArgumentException.class, () -> service.findPageWithConfig(
+                "expense", "default", Map.of(), 1, 20));
+        verifyNoInteractions(dynamicService, providerRegistry);
     }
 
     /** 显式列表不存在时必须失败关闭，不能退回不带列表约束的通用查询。 */
@@ -232,10 +253,10 @@ class EntityDataListConfigServiceTest {
                 mock(EntityListFieldMapper.class),
                 definitionMapper,
                 mock(ListFieldDataProviderRegistry.class),
-                new ListFieldConditionEvaluator(),
                 mock(EntityActionCapabilityService.class),
                 publishedRuntimeService,
-                mock(UiInterfaceExtensionService.class));
+                mock(UiInterfaceExtensionService.class),
+                new JsonDocumentCodec(new ObjectMapper()));
         return new ServiceFixture(service, dynamicService);
     }
 

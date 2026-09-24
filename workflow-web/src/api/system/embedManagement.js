@@ -119,7 +119,7 @@ export function createEmbedManagementApi(transport = request) {
       },
       upsert(viewId, applicationId, data) {
         return call(
-          'put',
+          'post',
           `${viewPath(viewId)}/grants/${id(applicationId)}`,
           data
         )

@@ -50,10 +50,12 @@ public interface ListFieldDataProvider {
     }
 
     /**
-     * 是否支持作为查询条件使用，默认不支持
+     * 历史扩展能力标记，仅保留源代码兼容；平台统一禁止扩展列参与查询和排序。
+     * 新实现只需补充当前页展示值，无需覆盖本方法。
      *
      * @return 查询条件成立时为 true，否则为 false
      */
+    @Deprecated
     default boolean supportsQuery() {
         return false;
     }

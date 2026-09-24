@@ -29,6 +29,13 @@ public class EntityRecordMutationAdapter
     private final EntityMutationPort mutationPort;
     private final EntityMutationIsolationExecutor isolationExecutor;
     private final EntityRecordTeamService teamService;
+    private final com.workflow.entity.definition.application.EntityStatusService statusService;
+
+    /** 先验证配置再取消引擎，避免流程结束后才发现目标状态缺失。 */
+    @Override
+    public String requireProcessEndStatus(String entityCode, String category) {
+        return statusService.requireSpecialTarget(entityCode, category);
+    }
 
     /**
      * 更新当前任务；后续读取或执行将使用更新后的状态。

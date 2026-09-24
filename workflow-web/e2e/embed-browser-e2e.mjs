@@ -987,7 +987,7 @@ async function main() {
           })
           return
         }
-        if (request.method === 'DELETE'
+        if (request.method === 'POST'
             && url.pathname === '/api/embed/v1/session') {
           session.active = false
           state.logoutAcks.push(session.spec.key)

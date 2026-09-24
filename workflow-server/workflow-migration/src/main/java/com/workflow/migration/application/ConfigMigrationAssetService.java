@@ -117,7 +117,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
     public static final String TASK_SLA_POLICY = "TASK_SLA_POLICY"; // 资产类型：SLA策略
     public static final String COMPLETE = "COMPLETE"; // 快照完整度：完整
 
-    private static final int SNAPSHOT_SCHEMA_VERSION = 1;
+    private static final int SNAPSHOT_SCHEMA_VERSION = 2;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final Set<String> TECHNICAL_KEYS = Set.of(
             "id", "entityId", "formId", "fieldId", "listConfigId", "policyId", "processConfigId",
@@ -128,6 +128,9 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
     private static final Pattern SENSITIVE_XML = Pattern.compile(
             "(?i)(password|secret|token|apiKey)(\\s*=\\s*\")([^\"]*)(\")");
     private final ConfigMigrationAssetMapper assetMapper;
+    private final ConfigMigrationReferenceService referenceService;
+    private final ConfigMigrationSubFormReferences subFormReferences;
+    private final ConfigMigrationPackageCodec packageCodec;
     private final EntityDefinitionMapper entityMapper;
     private final SysDictMapper dictMapper;
     private final SysDictItemMapper dictItemMapper;
@@ -1092,12 +1095,101 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
     }
 
     /**
-     * 构建实体快照；结果供后续流程传递或持久化。
-     *
-     * @param entity 实体，作为 {@code baseSnapshot} 的输入影响后续处理
-     * @return 实体快照键值结果，供调用方继续处理
+     * 用指定不可变发布版本生成表单迁移文档，复用正式导出的接口、节点及关联内容转换。
+     * 不切换源表单的活跃版本，也不写源库；子表单历史版本因此可以独立随包携带。
      */
+    Map<String, Object> pinnedFormSnapshot(EntityForm form, UiConfigRelease release) {
+        EntityDefinition entity = entityMapper.selectById(form.getEntityId());
+        if (entity == null || !"FORM".equals(release.getConfigType()) || !form.getId().equals(release.getConfigId())) {
+            throw new IllegalArgumentException("子表单发布版本归属不一致: " + release.getId());
+        }
+        Map<String, Object> snapshot = buildEntitySnapshot(entity, Map.of(form.getId(), release));
+        // 只携带这个固定表单真正使用的扩展，避免顺带导入同实体其他 UI 的配置。
+        snapshot = packageCodec.selectSnapshot(snapshot, Map.of("full", false,
+                "sections", List.of("forms"), "formKeys", List.of(form.getFormKey())));
+        Map<String, Object> pinned = new LinkedHashMap<>();
+        pinned.put("entityCode", entity.getEntityCode());
+        pinned.put("form", castList(snapshot.get("forms")).stream()
+                .filter(value -> form.getFormKey().equals(value.get("formKey")))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException("子表单发布内容不存在")));
+        for (String section : List.of("extensions", "interfaceExtensions", "dependencies")) {
+            if (snapshot.containsKey(section)) pinned.put(section, snapshot.get(section));
+        }
+        pinned.put("interfaceExtensions", pinnedInterfaceDefinitions(
+                mapValue(pinned.get("form")), castList(pinned.get("interfaceExtensions"))));
+        return pinned;
+    }
+
+    /**
+     * 固定表单使用发布时冻结的接口配置。当前接口草稿可能已修改，不能用它重建历史按钮行为。
+     * 同一个固定版本引用同一接口的不同实现时明确拒绝导出，避免静默选择任意一个实现。
+     */
+    List<Map<String, Object>> pinnedInterfaceDefinitions(Map<String, Object> form,
+            List<Map<String, Object>> definitions) {
+        Map<String, Map<String, Object>> frozen = new LinkedHashMap<>();
+        for (String section : List.of("eventBindings", "_inheritedEventBindings")) {
+            for (Map<String, Object> binding : castList(form.get(section))) {
+                for (Map<String, Object> step : castList(binding.get("steps"))) {
+                    if (!step.containsKey("executableSnapshot")) continue;
+                    Map<String, Object> executable = mapValue(parseJson(text(step.get("executableSnapshot")), Map.of()));
+                    String key = text(executable.get("extensionKey"));
+                    if (!StringUtils.hasText(key)) throw new IllegalArgumentException("固定接口执行快照缺少 extensionKey");
+                    Map<String, Object> definition = new LinkedHashMap<>();
+                    for (String field : List.of("displayName", "implementationType", "providerCode", "scopeType",
+                            "providerOperationCode", "interfaceContextType", "interfaceKind", "implementationConfigDocument",
+                            "executionPolicyDocument", "inputSchemaDocument", "outputSchemaDocument")) {
+                        definition.put(field, executable.get(field));
+                    }
+                    definition.put("status", "ACTIVE");
+                    definition.put("scopeRef", portableInterfaceScope(text(executable.get("scopeType")),
+                            text(executable.get("scopeId"))));
+                    Map<String, Object> previous = frozen.putIfAbsent(key, definition);
+                    if (previous != null && !previous.equals(definition)) {
+                        throw new IllegalArgumentException("固定表单内同一接口存在不同的冻结实现: " + key);
+                    }
+                }
+            }
+        }
+        List<Map<String, Object>> result = definitions.stream().map(source -> {
+            Map<String, Object> restored = new LinkedHashMap<>(source);
+            Map<String, Object> executable = frozen.remove(text(source.get("extensionKey")));
+            if (executable != null) restored.putAll(executable);
+            return restored;
+        }).toList();
+        if (!frozen.isEmpty()) throw new IllegalArgumentException("固定接口缺少可移植定义: " + frozen.keySet());
+        return result;
+    }
+
+    /** 把接口使用范围转为稳定坐标，禁止将源 scopeId 作为目标定位条件。 */
+    private String portableInterfaceScope(String type, String id) {
+        if ("GLOBAL".equalsIgnoreCase(type) || !StringUtils.hasText(type)) return null;
+        String ownerId = id;
+        String suffix = "";
+        if ("FORM".equalsIgnoreCase(type)) {
+            EntityForm form = formMapper.selectById(id);
+            if (form == null) throw new IllegalArgumentException("接口所属表单不存在: " + id);
+            ownerId = form.getEntityId();
+            suffix = "/" + form.getFormKey();
+        } else if ("LIST".equalsIgnoreCase(type)) {
+            EntityListConfig list = listConfigMapper.selectById(id);
+            if (list == null) throw new IllegalArgumentException("接口所属列表不存在: " + id);
+            ownerId = list.getEntityId();
+            suffix = "/" + list.getListKey();
+        } else if (!"ENTITY".equalsIgnoreCase(type)) {
+            throw new IllegalArgumentException("接口使用范围不支持迁移: " + type);
+        }
+        EntityDefinition owner = entityMapper.selectById(ownerId);
+        if (owner == null) throw new IllegalArgumentException("接口所属实体不存在: " + ownerId);
+        return owner.getEntityCode() + suffix;
+    }
+
+    /** 生成按业务编码关联的完整实体发布配置。 */
     private Map<String, Object> buildEntitySnapshot(EntityDefinition entity) {
+        return buildEntitySnapshot(entity, Map.of());
+    }
+
+    private Map<String, Object> buildEntitySnapshot(EntityDefinition entity,
+            Map<String, UiConfigRelease> releaseOverrides) {
         Map<String, Object> snapshot = baseSnapshot(ENTITY, entity.getEntityCode(), entity.getEntityName());
         Map<String, Object> definition = new LinkedHashMap<>();
         definition.put("entityCode", entity.getEntityCode());
@@ -1137,14 +1229,16 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         List<Map<String, Object>> forms = new ArrayList<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
-        List<Map<String, Object>> entityEventBindings =
-                portableEventBindings(
-                        eventBindingSnapshotService.snapshotOwner(
-                                "ENTITY", entity.getId()));
+        List<Map<String, Object>> entityEventBindings = releaseOverrides.isEmpty()
+                ? portableEventBindings(eventBindingSnapshotService.snapshotOwner("ENTITY", entity.getId()))
+                : releasedOwnerBindings(mapValue(parseJson(releaseOverrides.values().iterator().next()
+                        .getSnapshotDocument(), Map.of())), "ENTITY", entity.getId());
         collectInterfaceExtensionIds(
                 entityEventBindings, dataSourceIds);
         for (EntityForm form : formMapper.selectByEntityId(entity.getId())) {
-            UiConfigRelease activeRelease = configReleaseMapper.findActive("FORM", form.getId());
+            if (!releaseOverrides.isEmpty() && !releaseOverrides.containsKey(form.getId())) continue;
+            UiConfigRelease activeRelease = releaseOverrides.containsKey(form.getId())
+                    ? releaseOverrides.get(form.getId()) : configReleaseMapper.findActive("FORM", form.getId());
             Map<String, Object> releaseSnapshot = activeRelease == null
                     ? Map.of()
                     : mapValue(parseJson(
@@ -1220,11 +1314,13 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
                             entity.getEntityCode(),
                             extensionReferences,
                             dataSourceIds));
+            if (!releaseOverrides.isEmpty()) formSnapshot.put("_inheritedEventBindings", entityEventBindings);
             collectInterfaceExtensionIds(formSnapshot, dataSourceIds);
             forms.add(formSnapshot);
         }
         snapshot.put("forms", forms);
-        List<EntityListConfig> listConfigs = listConfigMapper.findByEntityId(entity.getId());
+        List<EntityListConfig> listConfigs = releaseOverrides.isEmpty()
+                ? listConfigMapper.findByEntityId(entity.getId()) : List.of();
         Map<String, String> listKeysById = new LinkedHashMap<>();
         List<Map<String, Object>> lists = new ArrayList<>();
         for (EntityListConfig listConfig : listConfigs) {
@@ -1850,6 +1946,8 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
             }
             Map<String, Object> value = new LinkedHashMap<>();
             value.put("extensionKey", definition.getExtensionKey());
+            value.put("version", definition.getVersion());
+            value.put("snapshotVersion", definition.getSnapshotVersion());
             value.put("displayName", definition.getDisplayName());
             value.put("implementationType", definition.getImplementationType());
             value.put("providerCode", definition.getProviderCode());
@@ -2122,8 +2220,9 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
                 portableBpmn, config.getProcessKey(), (type, key, context) -> {
                     String portable = portableAssignmentKey(type, key);
                     Map<String, Object> dependency = new LinkedHashMap<>();
-                    dependency.put("type", type);
-                    dependency.put("key", portable);
+                    String dependencyType = type.endsWith("_ID") ? type.substring(0, type.length() - 3) : type;
+                    dependency.put("type", dependencyType);
+                    dependency.put("key", type.endsWith("_ID") ? ConfigMigrationReferenceSupport.code(dependencyType, portable) : portable);
                     dependency.put("required", true);
                     dependency.put("targetOnly", !ENTITY.equals(type));
                     dependency.put("source", "流程 " + config.getProcessKey() + " / 节点 "
@@ -2212,6 +2311,10 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         if (existing != null) {
             return existing;
         }
+        snapshot = subFormReferences.exportReferences(referenceService.exportReferences(snapshot));
+        // 引用转换会追加依赖，最终快照、摘要数量和依赖表必须使用同一份业务键合并结果。
+        dependencies = deduplicateDependencies(castList(snapshot.get("dependencies")));
+        snapshot.put("dependencies", dependencies);
         String snapshotJson = writeJson(snapshot);
         ConfigMigrationAsset asset = new ConfigMigrationAsset();
         asset.setAssetType(assetType);
@@ -2408,6 +2511,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
      * @return 处理后的可移植分配键文本，供调用方比较或展示
      */
     private String portableAssignmentKey(String type, String key) {
+        if (type.endsWith("_ID")) {
+            String identityType = type.substring(0, type.length() - 3);
+            return key.startsWith("wf-ref://") ? key : ConfigMigrationReferenceSupport.reference(
+                    identityType, referenceService.sourceCode(identityType, key));
+        }
         if ("USER".equals(type)) {
             SysUser user = userMapper.selectByUsername(key);
             if (user == null) user = userMapper.selectById(key);

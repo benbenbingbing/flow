@@ -180,7 +180,7 @@
 
 <script setup>
 import EmptyAssigneePolicyEditor from '@/components/EmptyAssigneePolicyEditor.vue'
-import { computed, ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -241,11 +241,12 @@ const designerRef = ref()
 const processData = ref({})
 const loadError = ref('')
 const selectedElement = ref(null)
+const selectedElementName = ref('')
 const nodeConfigVisible = ref(false)
 const globalActionVisible = ref(false)
 const globalActionCount = ref(0)
 const nodeConfigDrawerTitle = computed(() => {
-  const name = selectedElement.value?.businessObject?.name?.trim()
+  const name = selectedElementName.value.trim()
   return `节点配置 · ${name || '未命名节点'}`
 })
 const nodeConfigTypeText = computed(() => getNodeTypeText(selectedElement.value?.type))
@@ -323,6 +324,7 @@ const handleKeydown = (e) => {
 
 const onElementClick = (element) => {
   selectedElement.value = element || null
+  selectedElementName.value = element?.businessObject?.name || ''
   // 数据对象、参与者等建模元素没有平台属性面板，点击后应同步关闭旧节点配置。
   nodeConfigVisible.value = Boolean(element)
 }
@@ -344,6 +346,21 @@ const onCommandStackChanged = ({ canUndo: undo, canRedo: redo, historyToken }) =
   canUndo.value = undo
   canRedo.value = redo
   currentHistoryToken.value = historyToken || 'root'
+  // bpmn-js 的“更改元素类型”会保留 ID 却替换元素对象。重新读取注册表，
+  // 避免右侧继续展示旧网关类型；撤销/重做及删除时也与画布保持一致。
+  if (selectedElement.value?.id) {
+    const modeler = designerRef.value?.getModeler?.()
+    const current = modeler?.get('elementRegistry')?.get(selectedElement.value.id)
+    if (current && current !== toRaw(selectedElement.value)) {
+      current._modeler = modeler
+      selectedElement.value = current
+    } else if (!current && modeler) {
+      selectedElement.value = null
+      nodeConfigVisible.value = false
+    }
+  }
+  // bpmn-js 修改的是 Vue 响应式系统外的原始对象；显式同步标题。
+  selectedElementName.value = selectedElement.value?.businessObject?.name || ''
 }
 
 const onImported = ({ historyToken } = {}) => {
@@ -591,6 +608,7 @@ const handleNodeConfigSave = () => {
   // 节点配置只写入了 bpmn-js 内存模型，未落库。
   // 仅标记脏状态，不弹提示，避免一次保存弹出多个 toast。
   // 真正落库由顶部“保存草稿”按钮完成，落库成功后才提示。
+  selectedElementName.value = selectedElement.value?.businessObject?.name || ''
   hasUnsavedNodeChanges.value = true
 }
 
@@ -661,7 +679,8 @@ onUnmounted(() => {
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 
-.node-config-panel {
+/* 限定设计器外层面板；子组件根节点同名，不能继承这里的布局定位。 */
+.design-container > .node-config-panel {
   width: 33.333vw;
   min-width: 440px;
   flex-shrink: 0;
@@ -837,7 +856,7 @@ onUnmounted(() => {
     flex-wrap: wrap;
   }
 
-  .node-config-panel {
+  .design-container > .node-config-panel {
     position: absolute;
     inset: 0;
     z-index: 8;

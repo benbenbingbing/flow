@@ -24,12 +24,16 @@ import static org.mockito.Mockito.when;
 class RestServiceTaskDelegateTest {
 
     private HttpServer server;
+    private final java.util.List<RestServiceTaskDelegate> delegates = new java.util.ArrayList<>();
+    private java.util.concurrent.ExecutorService serverWorkers;
 
     @AfterEach
     void stopServer() {
+        delegates.forEach(RestServiceTaskDelegate::close);
         if (server != null) {
             server.stop(0);
         }
+        if (serverWorkers != null) serverWorkers.shutdownNow();
     }
 
     @Test
@@ -114,6 +118,7 @@ class RestServiceTaskDelegateTest {
                         new ObjectMapper(),
                         new RestEndpointPolicy(properties),
                         properties);
+        delegates.add(delegate);
 
         assertThrows(
                 IllegalStateException.class,
@@ -167,10 +172,67 @@ class RestServiceTaskDelegateTest {
 
     private RestServiceTaskDelegate newDelegate() {
         WorkflowHttpProperties properties = testProperties();
-        return new RestServiceTaskDelegate(
+        var delegate = new RestServiceTaskDelegate(
                 new ObjectMapper(),
                 new RestEndpointPolicy(properties),
                 properties);
+        delegates.add(delegate);
+        return delegate;
+    }
+
+    /** 多次网络等待共享一秒预算，同时保留所有尝试的幂等键。 */
+    @Test
+    void retriesShareTotalDeadlineAndPreserveIdempotencyKey() throws Exception {
+        var keys = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        serverWorkers = java.util.concurrent.Executors.newCachedThreadPool();
+        server.setExecutor(serverWorkers);
+        server.createContext("/slow", exchange -> {
+            keys.add(exchange.getRequestHeaders().getFirst("Idempotency-Key"));
+            try { Thread.sleep(650); respond(exchange, 503, "busy"); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            catch (IOException cancelled) { /* 第二次请求会因剩余预算耗尽而取消。 */ }
+            finally { exchange.close(); }
+        });
+        server.start();
+        DelegateExecution execution = restExecution("throw", 5);
+        long start = System.nanoTime();
+        assertThrows(RuntimeException.class, () -> newDelegate().execute(execution));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 1800);
+        assertEquals(java.util.List.of("instance-1:rest-task-1", "instance-1:rest-task-1"), keys);
+        verify(execution).setVariable("rest-task-1_httpError", "REST_SERVICE_TASK_FAILED");
+    }
+
+    @Test
+    void totalTimeoutStillHonorsContinueFailurePolicy() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        serverWorkers = java.util.concurrent.Executors.newCachedThreadPool();
+        server.setExecutor(serverWorkers);
+        server.createContext("/slow", exchange -> {
+            try { Thread.sleep(3000); respond(exchange, 200, "{}"); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            catch (IOException cancelled) { /* 预算到期后连接关闭。 */ }
+            finally { exchange.close(); }
+        });
+        server.start();
+        DelegateExecution execution = restExecution("continue", 0);
+        newDelegate().execute(execution);
+        verify(execution).setVariable("rest-task-1_httpError", "REST_SERVICE_TASK_FAILED");
+        org.mockito.Mockito.verify(execution, org.mockito.Mockito.never())
+                .setVariable(org.mockito.ArgumentMatchers.eq("rest-task-1_httpStatus"), org.mockito.ArgumentMatchers.any());
+    }
+
+    private DelegateExecution restExecution(String failurePolicy, int retries) {
+        String config = """
+                {"url":"http://127.0.0.1:%d/slow", "method":"GET", "timeout":1,
+                 "retryCount":%d, "errorHandling":"%s"}
+                """.formatted(server.getAddress().getPort(), retries, failurePolicy);
+        DelegateExecution execution = mock(DelegateExecution.class);
+        when(execution.getCurrentFlowElement()).thenReturn(serviceTask("restConfig", config));
+        when(execution.getProcessInstanceId()).thenReturn("instance-1");
+        when(execution.getCurrentActivityId()).thenReturn("rest-task-1");
+        return execution;
     }
 
     private WorkflowHttpProperties testProperties() {

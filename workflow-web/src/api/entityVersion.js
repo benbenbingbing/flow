@@ -35,7 +35,7 @@ export const entityVersionApi = {
   },
   /**
    * 使用当前 revision 保存唯一配置并立即生效。
-   * 滚动部署期间仅在新 PUT 路由不存在时兼容旧 Controller；确认 N 版已覆盖
+   * 滚动部署期间仅在新 POST 路由不存在时兼容旧 Controller；确认 N 版已覆盖
    * 所有环境后，应在 N+1 删除此前端 fallback，并在 active release 完成最终
    * 投影与对账后停止兼容读取；后端仍继续兼容写入。
    * N+2 改为 config-only 读写并保留旧 schema，完成滚动且等待所有 N+1 Pod 和
@@ -46,7 +46,7 @@ export const entityVersionApi = {
     try {
       return await request({
         url: `/entity-versions/configs/${entityCode}/current`,
-        method: 'PUT',
+        method: 'POST',
         data,
         headers: { 'If-Match': String(expectedRevision) },
         silentError: true

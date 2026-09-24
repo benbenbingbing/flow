@@ -15,7 +15,7 @@ const props = defineProps({ progress: { type: Object, default: () => ({}) }, nod
 defineEmits(['diagram'])
 const statusLabel = computed(() => ({ RUNNING: '运行中', COMPLETED: '已完成', SUSPENDED: '已挂起', TERMINATED: '已终止', REJECTED: '已驳回', WITHDRAWN: '已撤回' })[props.progress.status] || props.progress.status || '—')
 // 按真实状态分组，保留并行节点，不能以列表序号推断流程完成比例。
-const groups = computed(() => [ ['activeNodes', '当前办理', 'clock-o'], ['completedNodes', '已完成', 'passed'], ['terminatedNodes', '已终止', 'cross'] ].map(([key, label, icon]) => ({ key, label, icon, nodes: (props.progress[key] || []).map(node => {
+const groups = computed(() => [ ['activeNodes', '当前办理', 'clock-o'], ['completedNodes', '已完成', 'passed'], ['terminatedNodes', props.progress.endType === 'WITHDRAWN' ? '已取消（流程撤回）' : props.progress.endType === 'TERMINATED' ? '已取消（流程终止）' : '已取消', 'cross'] ].map(([key, label, icon]) => ({ key, label, icon, nodes: (props.progress[key] || []).map(node => {
   const id = typeof node === 'object' ? node.id || node.nodeId : node, metadata = props.nodes.find(item => item.nodeId === id || item.id === id) || {}
   const people = props.progress.nodeAssigneesMap?.[id] || [props.progress.nodeAssigneeMap?.[id]].filter(Boolean)
   return { id, type: metadata.type, name: metadata.nodeName || metadata.name || node.nodeName || node.name || id, assignees: people.map(user => typeof user === 'object' ? user.displayName || user.name || user.username : user).join('、') }

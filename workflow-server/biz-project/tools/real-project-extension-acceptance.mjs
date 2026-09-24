@@ -2810,7 +2810,7 @@ async function configureEntityVersioning(entity) {
     diffPolicy: currentVersion.diffPolicy || {}
   }
   const savedVersion = await api(
-    'PUT',
+    'POST',
     `/entity-versions/configs/${entityCode}/current`,
     versionDocument,
     {

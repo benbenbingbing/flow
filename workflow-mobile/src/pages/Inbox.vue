@@ -71,7 +71,10 @@ const detach = onSessionCleared(() => {
 })
 const detachInvalidation = onInboxesInvalidated(kinds => {
   badgeGeneration++
-  kinds.forEach(key => { state[key].initialized = false })
+  // 失效时也淘汰在途请求，避免办理前的旧响应把缓存重新标记成有效。
+  kinds.forEach(key => {
+    if (state[key]) Object.assign(state[key], { initialized: false, generation: state[key].generation + 1, loading: false })
+  })
 })
 onBeforeUnmount(() => { badgeGeneration++; detach(); detachInvalidation() })
 watch(() => route.params.kind, async (value, previous) => {
@@ -80,14 +83,16 @@ watch(() => route.params.kind, async (value, previous) => {
   void loadBadgeCounts()
   if (state[previous]) state[previous].scroll = window.scrollY
   lastKind.value = value
-  if (!state[value].initialized) await load(value, true)
+  await load.ensure(value)
   await nextTick(); window.scrollTo(0, state[value].scroll)
 }, { immediate: true })
 onDeactivated(() => { current.value.scroll = window.scrollY })
 onActivated(async () => {
-  if (!current.value.initialized || router.options.history.state.refreshInbox) {
+  if (router.options.history.state.refreshInbox) {
     await load(kind.value, true)
     history.replaceState({ ...history.state, refreshInbox: false }, '')
+  } else {
+    await load.ensure(kind.value)
   }
   await nextTick(); window.scrollTo(0, current.value.scroll)
 })

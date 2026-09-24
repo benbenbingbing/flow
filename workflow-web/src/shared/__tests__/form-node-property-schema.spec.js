@@ -101,7 +101,6 @@ const expectedSchemas = {
       'modeAccess',
       'gridSpan',
       'events',
-      'template',
       'nodeExtension'
     ],
     capabilities: {
@@ -110,7 +109,6 @@ const expectedSchemas = {
       rules: true,
       binding: true,
       childForm: false,
-      template: true,
       gridSpan: true
     }
   },
@@ -124,7 +122,6 @@ const expectedSchemas = {
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'template',
       'nodeExtension'
     ],
     capabilities: {
@@ -133,7 +130,6 @@ const expectedSchemas = {
       rules: false,
       binding: true,
       childForm: true,
-      template: true,
       gridSpan: true,
       containerAppearance: true
     }
@@ -148,7 +144,6 @@ const expectedSchemas = {
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'template',
       'nodeExtension'
     ],
     capabilities: {
@@ -157,7 +152,6 @@ const expectedSchemas = {
       rules: false,
       binding: true,
       childForm: true,
-      template: true,
       gridSpan: true,
       containerAppearance: true
     }
@@ -185,7 +179,6 @@ Object.entries(expectedSchemas).forEach(([nodeType, expected]) => {
     rules: false,
     binding: false,
     childForm: false,
-    template: false,
     gridSpan: false,
     containerAppearance: false,
     ...expected.capabilities
@@ -550,11 +543,9 @@ assert.deepEqual(fieldPayload.dataSourceBindings.FIELD_DEFAULT, {
 assert.equal(fieldPayload.componentName, 'currency-field')
 assert.equal(fieldPayload.componentVersion, 3)
 assert.equal(fieldPayload.snapshotVersion, 5)
-assert.equal(fieldPayload.templateId, 'field-template')
-assert.equal(fieldPayload.templateVersion, 4)
-assert.deepEqual(fieldPayload.localOverrides, {
-  label: '申请金额'
-})
+assert.equal(fieldPayload.templateId, undefined)
+assert.equal(fieldPayload.templateVersion, undefined)
+assert.equal(fieldPayload.localOverrides, undefined)
 
 ;['SUB_FORM', 'REPEATER'].forEach(nodeType => {
   const payload = buildFormNodePayload(
@@ -706,9 +697,6 @@ assertMissing(
   'childFormId',
   'childFormReleaseId',
   'childFormReleaseVersion',
-  'templateId',
-  'templateVersion',
-  'localOverrides',
   'bindingRef'
 ].forEach(key => {
   assert.equal(collapseClearFields.has(key), true, `COLLAPSE PATCH clears ${key}`)

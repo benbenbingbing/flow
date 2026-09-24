@@ -31,6 +31,12 @@
           </el-empty>
         </div>
         <div v-else class="relation-row one-to-one-form">
+          <div v-if="canRemoveRow" class="form-row-header">
+            <span class="row-title">{{ config.label || '子数据' }}</span>
+            <el-button type="danger" size="small" text @click="removeRow(0)">
+              <el-icon><Delete /></el-icon>移除数据
+            </el-button>
+          </div>
           <slot
             v-if="$slots.row"
             name="row"
@@ -200,6 +206,7 @@ import {
   cloneSubFormValue
 } from '@flow/workflow-core/subform-value-sync'
 import { resolveFormContainerAppearance } from '@flow/workflow-core/form-container-appearance'
+import { hasOneToOneSubFormContent } from '@/shared/subform-row-presence'
 
 const props = defineProps({
   config: {
@@ -287,7 +294,9 @@ const showHeader = computed(() => {
 const showRowHeader = computed(() => {
   if (isOneToOne.value) return false
   if (!canRemoveRow.value) return false
-  if (isRepeatable.value) return rowData.value.length > 1
+  // 即使仅剩一行，只要未达到 minRows，也必须允许用户移除该行。
+  // 否则可选的一对多关系无法从“一行”恢复为“零行”。
+  if (isRepeatable.value) return true
   return !props.config.required
 })
 
@@ -304,7 +313,9 @@ const formLayoutClass = computed(() => {
 })
 
 function outputValue() {
-  return isOneToOne.value ? (rowData.value[0] || null) : rowData.value
+  if (!isOneToOne.value) return rowData.value
+  const row = rowData.value[0]
+  return hasOneToOneSubFormContent(row, props.config.fields) ? row : null
 }
 
 function resetRowData(newVal) {
@@ -312,7 +323,7 @@ function resetRowData(newVal) {
     ? newVal
     : (newVal && typeof newVal === 'object' ? [newVal] : [])
   const comparable = isOneToOne.value
-    ? (normalized[0] || null)
+    ? (hasOneToOneSubFormContent(normalized[0], props.config.fields) ? normalized[0] : null)
     : normalized
   if (areSubFormValuesEqual(outputValue(), comparable)) {
     ensureMinRows()
@@ -347,11 +358,11 @@ onMounted(() => {
 
 function ensureMinRows() {
   if (!props.config.fields?.length) return
+  // 必填关系要求用户明确添加子记录；自动补空白行会让“零条”提交伪装成一条空记录。
+  if (props.config.autoAddMinRows === false) return
   if (isOneToOne.value) {
-    // 一对一：编辑模式下无数据时自动初始化一行
-    if (rowData.value.length === 0 && canEdit.value) {
-      appendBlankRow()
-    }
+    // 可选一对一也只能由用户显式添加。预填的空白对象会被聚合保存
+    // 当作真实子记录写入，造成“未填写”却多出一条只有外键的子数据。
     return
   }
   if (!canEdit.value) return

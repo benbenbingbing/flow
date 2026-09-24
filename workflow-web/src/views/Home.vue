@@ -322,6 +322,14 @@
               size="small"
               @click="handleTerminate(row)"
             >终止</el-button>
+            <el-button
+              v-if="row.status === 'RUNNING' && row.canWithdraw === true"
+              type="warning"
+              size="small"
+              :loading="withdrawingInstanceId === row.processInstanceId"
+              :disabled="Boolean(withdrawingInstanceId)"
+              @click="handleWithdraw(row)"
+            >撤回</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -590,6 +598,7 @@ import {
   getDoneList,
   getMyCcList,
   getMyStartedList,
+  getProcessOperations,
   getStatistics,
   getTaskOperations,
   getTaskSla,
@@ -598,7 +607,8 @@ import {
   pauseTaskSla,
   previewAddSign,
   resumeTaskSla,
-  terminateProcess
+  terminateProcess,
+  withdrawProcess
 } from '@/api/processTask'
 import {
   ADD_SIGN_TYPE_OPTIONS,
@@ -646,6 +656,7 @@ const activeTabLabel = computed(() => ({
 const todoList = ref([])
 const doneList = ref([])
 const startedList = ref([])
+const withdrawingInstanceId = ref('')
 const ccList = ref([])
 const todoTotal = ref(0)
 const doneTotal = ref(0)
@@ -1378,6 +1389,43 @@ async function submitTransfer() {
     ElMessage.error('转办失败')
   } finally {
     transferLoading.value = false
+  }
+}
+
+/**
+ * 发起人从列表撤回当前实例。确认后重新读取实例能力，节点变化或请求失败均不提交；
+ * 最终授权由写接口再次执行，撤回成功后同步刷新列表和工作台计数。
+ */
+async function handleWithdraw(row) {
+  if (withdrawingInstanceId.value || row.status !== 'RUNNING' || row.canWithdraw !== true) return
+  withdrawingInstanceId.value = row.processInstanceId
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '撤回后本轮流程结束，未完成的待办将取消。确认撤回吗？',
+      '撤回流程',
+      {
+        type: 'warning', inputType: 'textarea', inputPlaceholder: '请输入撤回原因（选填）',
+        inputValidator: value => !value || value.length <= 2000 || '撤回原因不能超过 2000 字',
+        confirmButtonText: '确认撤回', cancelButtonText: '取消'
+      }
+    )
+    const operations = await getProcessOperations(row.processInstanceId)
+    row.canWithdraw = operations?.withdraw === true
+    if (!row.canWithdraw) {
+      ElMessage.warning('撤回权限或流程状态已变化，请刷新列表后重试')
+      await loadStartedList()
+      return
+    }
+    await withdrawProcess({ processInstanceId: row.processInstanceId, reason: (value || '').trim() })
+    ElMessage.success('撤回成功')
+    await Promise.all([loadStartedList(), loadStatistics()])
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error(error?.message || '撤回失败，请刷新列表后重试')
+      await loadStartedList()
+    }
+  } finally {
+    withdrawingInstanceId.value = ''
   }
 }
 

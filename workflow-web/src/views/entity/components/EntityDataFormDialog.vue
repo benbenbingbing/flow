@@ -84,14 +84,12 @@
         name="diagram"
         lazy
       >
-        <EntityApprovalDiagram
-          :bpmnXml="bpmnXml"
-          :progressData="progressData"
-          :processInstanceId="processInstanceId"
-        />
+        <EntityProcessRoundHistory view="diagram" :bpmn-xml="bpmnXml" :progress-data="progressData"
+          :process-instance-id="processInstanceId" :process-history="processHistory" />
       </el-tab-pane>
       <el-tab-pane v-if="hasProcessInfo" label="审批历史" name="history">
-        <EntityApprovalHistory :processHistory="processHistory" />
+        <EntityProcessRoundHistory view="history" :bpmn-xml="bpmnXml" :progress-data="progressData"
+          :process-instance-id="processInstanceId" :process-history="processHistory" />
       </el-tab-pane>
       <el-tab-pane
         v-if="hasProcessInfo && userStore.isSuperAdmin"
@@ -153,8 +151,7 @@ import {
   resolveRuntimeFormTabLayout
 } from '@flow/workflow-core/form-runtime'
 import EntityDataFormFields from './EntityDataFormFields.vue'
-import EntityApprovalHistory from './approval/EntityApprovalHistory.vue'
-import EntityApprovalDiagram from './approval/EntityApprovalDiagram.vue'
+import EntityProcessRoundHistory from './approval/EntityProcessRoundHistory.vue'
 import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
@@ -620,8 +617,8 @@ async function handleFormAction(action: any) {
       await handleReset()
       return
     }
-    if (action.key === 'save' || action.key === 'saveAndStart') {
-      await handleSubmit(action.key === 'saveAndStart')
+    if (['save', 'saveAndStart', 'restartProcess'].includes(action.key)) {
+      await handleSubmit(action.key === 'saveAndStart', action.key === 'restartProcess')
       return
     }
     if (action.type !== 'custom') return
@@ -892,7 +889,7 @@ async function validateRuntimeForms() {
  * 提交当前表单。startProcess 控制保存后是否发起流程；提交体只包含发布表单
  * 允许的字段，并带上发布解析令牌供服务端定位、校验本次使用的表单快照。
  */
-const handleSubmit = async (startProcess = false) => {
+const handleSubmit = async (startProcess = false, restartProcess = false) => {
   try {
     const valid = await validateRuntimeForms()
     if (!valid) return
@@ -927,7 +924,8 @@ const handleSubmit = async (startProcess = false) => {
       // Embed 等受控宿主可替换“最终提交”传输，但字段渲染、校验、联动和按钮
       // 始终走本组件的同一原生运行时，避免形成第二套逐组件兼容实现。
       result = await props.submitTransport({
-        actionKey: formData.startProcess ? 'saveAndStart' : 'save',
+        actionKey: restartProcess ? 'restartProcess' : formData.startProcess ? 'saveAndStart' : 'save',
+        previousProcessInstanceId: restartProcess ? processInstanceId.value : undefined,
         data: submittedData,
         entityCode: props.entityCode,
         formId: runtimeForm.value?.id,
@@ -953,13 +951,15 @@ const handleSubmit = async (startProcess = false) => {
           viewCompositionTraversalToken:
             launchRuntimeContext.value?.viewCompositionTraversalToken
             || undefined,
-          startProcess: formData.startProcess
+          startProcess: formData.startProcess,
+          restartProcess,
+          previousProcessInstanceId: restartProcess ? processInstanceId.value : undefined
         },
         formData.startProcess,
         props.listKey,
         listReleaseContext.value
       )
-      ElMessage.success('更新成功')
+      ElMessage.success(restartProcess ? '已保存并重新发起' : '更新成功')
     } else {
       result = await entityDataApi.save(
         data,

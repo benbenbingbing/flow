@@ -394,7 +394,7 @@ paths:
           $ref: '#/components/responses/SessionForbidden'
         '429':
           $ref: '#/components/responses/RateLimited'
-    delete:
+    post:
       tags:
         - Session
       operationId: logoutEmbedSession

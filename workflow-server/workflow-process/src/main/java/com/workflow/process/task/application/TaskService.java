@@ -65,7 +65,7 @@ public interface TaskService {
     /**
      * 撤回流程。
      *
-     * <p>发起人可在第一个审批人审批前撤回流程实例。</p>
+     * <p>发起人可在流程未结束且所有当前活动节点允许撤回时撤回流程实例。</p>
      *
      * @param processInstanceId 流程实例ID
      * @param reason            撤回原因

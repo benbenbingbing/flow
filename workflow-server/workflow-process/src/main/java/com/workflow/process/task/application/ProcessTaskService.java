@@ -43,6 +43,9 @@ public class ProcessTaskService {
     private final IdentityDirectoryPort identityDirectoryPort;
     private final com.workflow.process.sla.runtime.application.TaskSlaRuntimeService
             taskSlaRuntimeService;
+
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<TaskInboxProjectionService> inboxProjection;
     
     /**
      * 初始化流程任务服务，保存构造参数供后续方法使用。
@@ -133,6 +136,9 @@ public class ProcessTaskService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessTask createTask(org.flowable.task.service.delegate.DelegateTask delegateTask, Map<String, Object> variables) {
+        ProcessTask existing = taskMapper.selectByTaskId(delegateTask.getId());
+        // 重复创建事件不能产生第二条镜像；最终身份由提交前投影统一刷新。
+        if (existing != null) return existing;
         ProcessTask task = new ProcessTask();
         task.setProcessInstanceId(delegateTask.getProcessInstanceId());
         task.setProcessDefinitionId(delegateTask.getProcessDefinitionId());
@@ -208,10 +214,10 @@ public class ProcessTaskService {
                     }
                 }
                 if (!groupIds.isEmpty()) {
-                    task.setAssigneeId(String.join(",", groupIds));
+                    task.setAssigneeId(null); // 候选组保存在独立关系表，不能混作实际办理人。
                     task.setAssigneeName(groupMemberNames.isEmpty() ? String.join(",", groupIds) : String.join(",", groupMemberNames));
                 } else if (!candidateUserIds.isEmpty()) {
-                    task.setAssigneeId(String.join(",", candidateUserIds));
+                    task.setAssigneeId(null); // 直接候选用户同样由候选关系表表达。
                     task.setAssigneeName(getUserNamesFromIds(candidateUserIds));
                 }
             } catch (Exception e) {
@@ -271,6 +277,21 @@ public class ProcessTaskService {
      */
     @Transactional(rollbackFor = Exception.class)
     public ProcessTask createTask(Task flowableTask, Map<String, Object> variables) {
+        ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
+        if (existing != null) {
+            // 转办沿用同一个引擎任务 ID。恢复原镜像而不是违反唯一索引重新插入，
+            // 原操作保留于审计日志；已办理时间/意见不能泄漏到新的待办阶段。
+            if (!ProcessTask.STATUS_TODO.equals(existing.getStatus())) {
+                taskMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<ProcessTask>lambdaUpdate()
+                        .eq(ProcessTask::getId, existing.getId()).set(ProcessTask::getStatus, ProcessTask.STATUS_TODO)
+                        .set(ProcessTask::getAssigneeId, flowableTask.getAssignee()).set(ProcessTask::getAssigneeType, "user")
+                        .set(ProcessTask::getAction, null).set(ProcessTask::getActionLabel, null).set(ProcessTask::getComment, null)
+                        .set(ProcessTask::getEndTime, null).set(ProcessTask::getDuration, null)
+                        .set(ProcessTask::getStartTime, LocalDateTime.now()).set(ProcessTask::getUpdateTime, LocalDateTime.now()));
+                existing = taskMapper.selectById(existing.getId());
+            }
+            return existing;
+        }
         ProcessTask task = new ProcessTask();
         task.setProcessInstanceId(flowableTask.getProcessInstanceId());
         task.setProcessDefinitionId(flowableTask.getProcessDefinitionId());
@@ -353,10 +374,10 @@ public class ProcessTaskService {
                     }
                 }
                 if (!groupIds.isEmpty()) {
-                    task.setAssigneeId(String.join(",", groupIds));
+                    task.setAssigneeId(null); // 候选组保存在独立关系表，不能混作实际办理人。
                     task.setAssigneeName(groupMemberNames.isEmpty() ? String.join(",", groupIds) : String.join(",", groupMemberNames));
                 } else if (!candidateUserIds.isEmpty()) {
-                    task.setAssigneeId(String.join(",", candidateUserIds));
+                    task.setAssigneeId(null); // 直接候选用户同样由候选关系表表达。
                     task.setAssigneeName(getUserNamesFromIds(candidateUserIds));
                 }
             } catch (Exception e) {
@@ -557,7 +578,8 @@ public class ProcessTaskService {
                     // 检查是否已存在
                     ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
                     if (existing != null) {
-                        log.debug("任务 {} 已存在，跳过同步", flowableTask.getId());
+                        // 存量关系缺失和最终分配变化都需要修复，不能只检查主表是否存在。
+                        if (inboxProjection != null) inboxProjection.getObject().synchronizeTask(flowableTask.getId());
                         continue;
                     }
 
@@ -567,10 +589,12 @@ public class ProcessTaskService {
                     }
 
                     createTask(flowableTask, variables);
+                    if (inboxProjection != null) inboxProjection.getObject().synchronizeTask(flowableTask.getId());
                 } catch (Exception e) {
                     log.error("同步任务 {} 失败: failureType={}",
                             LogValue.safe(flowableTask.getId()), LogValue.failureType(e));
-                    // 继续同步其他任务
+                    // 候选/摘要不完整不能与引擎状态分别提交；保留原异常并回滚整个同步事务。
+                    throw new IllegalStateException("同步任务镜像失败: " + flowableTask.getId(), e);
                 }
             }
         }
@@ -721,6 +745,11 @@ public class ProcessTaskService {
     public Long countDone(String userId) {
         return taskMapper.countDoneByUser(userId);
     }
+
+    /** 按已办列表的用户身份范围聚合统计，避免为首页统计加载全部历史任务。 */
+    public com.workflow.process.task.infrastructure.persistence.record.DoneTaskAggregate getDoneStatistics(String userId) {
+        return taskMapper.aggregateDoneByUser(userId);
+    }
     
     /**
      * 删除流程实例的所有待办
@@ -738,6 +767,9 @@ public class ProcessTaskService {
         List<ProcessTask> tasks = taskMapper.selectByProcessInstance(processInstanceId);
         
         for (ProcessTask task : tasks) {
+            // 已办记录承载实际审批结果及意见，终止/撤回只能清理未完成待办。
+            // 否则原审批历史会丢失动作，并被历史变量的兜底结果污染。
+            if (!ProcessTask.STATUS_TODO.equals(task.getStatus())) continue;
             // 使用 MP 的 deleteById 进行逻辑删除（@TableLogic 字段无法通过 updateById 更新）
             taskMapper.deleteById(task.getId());
             log.info("删除流程待办: taskId={}, processInstanceId={}", 

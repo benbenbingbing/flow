@@ -66,6 +66,9 @@ public class EntityDefinitionServiceTest {
     private EntityDefinitionMapper entityMapper;
 
     @Mock
+    private com.workflow.entity.definition.application.EntityStatusService entityStatusService;
+
+    @Mock
     private EntityFieldMapper fieldMapper;
 
     @Mock
@@ -136,6 +139,7 @@ public class EntityDefinitionServiceTest {
     /** 初始化测试实体与字段，并预置流程目录、表名生成、字段选项等 Mock 返回值 */
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(entityService, "entityStatusService", entityStatusService);
         testEntity = new EntityDefinition();
         testEntity.setId("1");
         testEntity.setEntityCode("test_entity");

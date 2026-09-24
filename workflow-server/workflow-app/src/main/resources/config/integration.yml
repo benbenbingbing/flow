@@ -38,9 +38,19 @@ workflow:
     allow-private-addresses: ${WORKFLOW_HTTP_ALLOW_PRIVATE_ADDRESSES:false}
     # 建立出站 HTTP 连接的超时，单位秒。
     connect-timeout-seconds: ${WORKFLOW_HTTP_CONNECT_TIMEOUT_SECONDS:5}
-    # 单次出站调用可设置的超时上限，单位秒，防止长期占用执行线程。
+    # 出站调用总预算上限，单位秒；REST 节点的全部重试与退避共享此预算。
     max-request-timeout-seconds: ${WORKFLOW_HTTP_MAX_REQUEST_TIMEOUT_SECONDS:30}
     # 出站请求体字节数上限，限制外部调用载荷。
     max-request-bytes: ${WORKFLOW_HTTP_MAX_REQUEST_BYTES:262144}
     # 读取外部响应的字节数上限，避免超大响应耗尽内存。
     max-response-bytes: ${WORKFLOW_HTTP_MAX_RESPONSE_BYTES:1048576}
+    # 在途请求满载时快速失败，按目标隔离慢调用；DNS 等待也计入在途数量。
+    max-concurrent-requests: ${WORKFLOW_HTTP_MAX_CONCURRENT_REQUESTS:64}
+    max-concurrent-per-target: ${WORKFLOW_HTTP_MAX_CONCURRENT_PER_TARGET:8}
+    # 连接池按地址和访问策略隔离，限制池数量并回收空闲/过期连接。
+    max-cached-pools: ${WORKFLOW_HTTP_MAX_CACHED_POOLS:32}
+    pool-idle-seconds: ${WORKFLOW_HTTP_POOL_IDLE_SECONDS:60}
+    connection-ttl-seconds: ${WORKFLOW_HTTP_CONNECTION_TTL_SECONDS:300}
+    # 连续网络或服务端失败后短暂熔断，只放行一个恢复探测。
+    circuit-failure-threshold: ${WORKFLOW_HTTP_CIRCUIT_FAILURE_THRESHOLD:5}
+    circuit-open-seconds: ${WORKFLOW_HTTP_CIRCUIT_OPEN_SECONDS:30}

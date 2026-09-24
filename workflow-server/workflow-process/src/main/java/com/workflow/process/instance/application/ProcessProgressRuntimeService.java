@@ -1,5 +1,6 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
 import com.workflow.entity.form.api.response.FormConfigDTO;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -89,7 +90,7 @@ public class ProcessProgressRuntimeService {
      * 获取流程进度视图。
      * <p>
      * 步骤：获取流程实例与状态 -> 解析流程定义与 BPMN XML -> 提取已完成节点/已执行连线/当前活动节点 ->
-     * 识别被终止节点 -> 构建节点审批历史（含转办、终止记录合并）-> 组装当前任务 -> 构建节点处理人映射 ->
+     * 识别真实取消的执行记录 -> 构建节点审批历史（含转办、终止、撤回记录合并）-> 组装当前任务 -> 构建节点处理人映射 ->
      * 加载实体数据与表单/审批配置。
      *
      * @param processInstanceId 流程实例ID
@@ -227,7 +228,7 @@ public class ProcessProgressRuntimeService {
                 .list();
         // 4. 提取已完成的节点
         List<String> completedNodes = historicActivities.stream()
-                .filter(h -> h.getEndTime() != null)
+                .filter(h -> h.getEndTime() != null && !ProcessEndReason.isCancelled(h.getDeleteReason()))
                 .map(HistoricActivityInstance::getActivityId)
                 .distinct()
                 .collect(Collectors.toList());
@@ -253,28 +254,22 @@ public class ProcessProgressRuntimeService {
         } else {
             progress.setActiveNodes(new ArrayList<>());
         }
-        // 6.1 终止流程：识别被终止时正在执行的节点
-        if (historicInstance != null && historicInstance.getDeleteReason() != null) {
-            historicInstance = historyService.createHistoricProcessInstanceQuery()
-                    .processInstanceId(processInstanceId)
-                    .singleResult();
-            if (historicInstance != null && historicInstance.getEndTime() != null) {
-                long processEndTime = historicInstance.getEndTime().getTime();
-                List<String> terminatedNodes = historicActivities.stream()
-                        .filter(h -> h.getEndTime() != null)
-                        .filter(h -> Math.abs(h.getEndTime().getTime() - processEndTime) < 2000) // 2秒内视为被终止的节点
-                        .map(HistoricActivityInstance::getActivityId)
-                        .distinct()
-                        .collect(Collectors.toList());
-                progress.setTerminatedNodes(terminatedNodes);
-                // 从已完成节点中移除被终止的节点，避免显示为绿色"已完成"
-                completedNodes.removeAll(terminatedNodes);
-            } else {
-                progress.setTerminatedNodes(new ArrayList<>());
-            }
-        } else {
-            progress.setTerminatedNodes(new ArrayList<>());
+        // 引擎为每次活动执行保存取消原因；同一节点循环执行时，以最新一轮判断图上状态。
+        // 不再以结束时间接近推断取消，避免将刚审批完成的节点误标为终止。
+        Map<String, HistoricActivityInstance> latestActivities = new java.util.LinkedHashMap<>();
+        historicActivities.forEach(activity -> latestActivities.put(activity.getActivityId(), activity));
+        List<String> cancelledNodes = latestActivities.values().stream()
+                .filter(activity -> ProcessEndReason.isCancelled(activity.getDeleteReason()))
+                .map(HistoricActivityInstance::getActivityId).distinct().collect(Collectors.toList());
+        progress.setCancelledNodes(cancelledNodes);
+        progress.setTerminatedNodes(cancelledNodes); // 旧客户端继续识别取消节点；新客户端根据 endType 展示原因。
+        if (historicInstance != null && historicInstance.getEndTime() != null) {
+            progress.setEndType(new com.workflow.process.status.application.ProcessEntityStatusPolicy(repositoryService).endCategory(historicInstance));
+            progress.setEndReason(ProcessEndReason.comment(historicInstance.getDeleteReason()));
         }
+        // 历史变量、任务和评论按实例批量读取，节点循环仅做内存索引查找。
+        ProcessProgressReadBatch batch = new ProcessProgressReadBatch(processInstanceId, historyService,
+                taskService, processTaskMapper, sysGroupMapper, sysUserGroupMapper);
         // 7. 构建节点历史记录
         List<ProcessProgressDTO.NodeHistoryDTO> nodeHistory = historicActivities.stream()
                 .filter(h -> !"sequenceFlow".equals(h.getActivityType())) // 排除连线
@@ -301,27 +296,18 @@ public class ProcessProgressRuntimeService {
                     }
                     dto.setNodeName(nodeName);
                     dto.setAssignee(assigneeId);
-                    // 将用户ID/用户名转换为统一显示名称：nickname(username)
-                    if (assigneeId != null && !assigneeId.isEmpty() && !assigneeId.startsWith("${")) {
-                        String displayName = sysUserService.getDisplayName(assigneeId);
-                        if (!assigneeId.equals(displayName)) {
-                            dto.setAssigneeName(displayName);
-                        }
-                    }
                     dto.setStartTime(h.getStartTime() != null ? formatDate(h.getStartTime()) : null);
                     dto.setEndTime(h.getEndTime() != null ? formatDate(h.getEndTime()) : null);
                     dto.setDuration(h.getDurationInMillis());
-                    dto.setStatus(h.getEndTime() != null ? "COMPLETED" : "ACTIVE");
-                    // 查询该节点关联的历史变量（快照）
-                    java.util.List<org.flowable.variable.api.history.HistoricVariableInstance> nodeVars = null;
-                    if (h.getTaskId() != null) {
-                        nodeVars = historyService.createHistoricVariableInstanceQuery()
-                                .taskId(h.getTaskId()).list();
+                    boolean cancelled = ProcessEndReason.isCancelled(h.getDeleteReason());
+                    dto.setStatus(cancelled ? "CANCELLED" : h.getEndTime() != null ? "COMPLETED" : "ACTIVE");
+                    if (cancelled) {
+                        dto.setAction("CANCELLED");
+                        dto.setActionLabel("已取消");
+                        dto.setComment(ProcessEndReason.comment(h.getDeleteReason()));
                     }
-                    if ((nodeVars == null || nodeVars.isEmpty()) && h.getExecutionId() != null) {
-                        nodeVars = historyService.createHistoricVariableInstanceQuery()
-                                .executionId(h.getExecutionId()).list();
-                    }
+                    // 优先任务局部变量，无任务变量时才回退到同一执行实例。
+                    var nodeVars = batch.nodeVariables(h.getTaskId(), h.getExecutionId());
                     if (nodeVars != null && !nodeVars.isEmpty()) {
                         java.util.Map<String, Object> vars = new java.util.HashMap<>();
                         for (var v : nodeVars)
@@ -330,19 +316,17 @@ public class ProcessProgressRuntimeService {
                         dto.setVariables(vars);
                     }
                     // 获取任务处理方式
-                    if (h.getEndTime() != null && "userTask".equals(h.getActivityType())) {
+                    if (!cancelled && h.getEndTime() != null && "userTask".equals(h.getActivityType())) {
                         // 查询任务评论判断处理方式
                         try {
-                            List<org.flowable.engine.task.Comment> comments = taskService
-                                    .getTaskComments(h.getTaskId());
-                            String commentMsg = comments.isEmpty() ? null : comments.get(0).getFullMessage();
+                            String commentMsg = batch.latestComment(h.getTaskId());
                             if (commentMsg != null && commentMsg.contains("转办给:")) {
                                 dto.setAction("TRANSFERRED");
                             } else {
                                 // 优先从本地 process_task 表获取每个任务的实际 action（最准确）
                                 String action = null;
                                 String actionLabel = null;
-                                var localTask = processTaskMapper.selectByTaskId(h.getTaskId());
+                                var localTask = batch.localTasks.get(h.getTaskId());
                                 if (localTask != null && localTask.getAction() != null) {
                                     action = localTask.getAction();
                                     actionLabel = localTask.getActionLabel();
@@ -350,35 +334,15 @@ public class ProcessProgressRuntimeService {
                                         dto.setComment(localTask.getComment());
                                     }
                                 } else {
-                                    // fallback：从历史变量获取（按任务ID查）
-                                    var actionVar = historyService.createHistoricVariableInstanceQuery()
-                                            .taskId(h.getTaskId())
-                                            .variableName("action")
-                                            .singleResult();
-                                    action = actionVar != null ? (String) actionVar.getValue() : null;
+                                    action = batch.taskValue(h.getTaskId(), "action");
                                 }
-                                if (actionLabel == null) {
-                                    var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                                            .taskId(h.getTaskId())
-                                            .variableName("actionLabel")
-                                            .singleResult();
-                                    actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
-                                }
-                                // 兼容旧数据中的流程根变量。按实例 ID 查询也会包含任务/执行局部变量，
-                                // 自动跳过任务没有自身操作名称，必须排除局部变量，避免多行异常或串用其他任务的值。
-                                if (actionLabel == null) {
-                                    var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                                            .processInstanceId(processInstanceId)
-                                            .excludeLocalVariables()
-                                            .variableName("actionLabel")
-                                            .singleResult();
-                                    actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
-                                }
+                                if (actionLabel == null) actionLabel = batch.actionLabel(h.getTaskId());
                                 dto.setAction(normalizeAction(action));
                                 dto.setActionLabel(actionLabel);
                             }
                         } catch (Exception e) {
-                            dto.setAction("APPROVED");
+                            // 历史读取失败只确认任务已结束，不能凭兜底结果声称审批通过。
+                            dto.setAction("COMPLETED");
                         }
                     }
                     return dto;
@@ -400,14 +364,12 @@ public class ProcessProgressRuntimeService {
                 String nodeId = null;
                 String nodeName = null;
                 if (log.getTaskId() != null) {
-                    var historicTask = historyService.createHistoricTaskInstanceQuery()
-                            .taskId(log.getTaskId())
-                            .singleResult();
+                    var historicTask = batch.historicTaskById.get(log.getTaskId());
                     if (historicTask != null) {
                         nodeId = historicTask.getTaskDefinitionKey();
                         nodeName = historicTask.getName();
                     } else {
-                        var task = taskService.createTaskQuery().taskId(log.getTaskId()).singleResult();
+                        var task = batch.activeTaskById.get(log.getTaskId());
                         if (task != null) {
                             nodeId = task.getTaskDefinitionKey();
                             nodeName = task.getName();
@@ -419,7 +381,7 @@ public class ProcessProgressRuntimeService {
                 dto.setNodeName(nodeName != null ? nodeName : "任务转办");
                 dto.setNodeType("userTask");
                 dto.setAssignee(log.getOperatorId());
-                dto.setAssigneeName(sysUserService.getDisplayName(log.getOperatorId()));
+                dto.setAssigneeName(log.getOperatorId());
                 dto.setAction("TRANSFERRED");
                 dto.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
                 String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
@@ -444,41 +406,55 @@ public class ProcessProgressRuntimeService {
         } catch (Exception e) {
             log.warn("合并转办记录失败", e);
         }
-        // 7.2 合并终止记录到审批历史中
+        // 7.2 两种结束操作都保留独立时间线，不能由实体的当前业务状态推断历史动作。
         try {
             List<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog> terminateLogs = operationLogMapper
                     .selectList(
                             new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog>()
                                     .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getProcessInstanceId,
                                             processInstanceId)
-                                    .eq(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType,
-                                            "TERMINATE")
+                                    .in(com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationType,
+                                            "TERMINATE", "WITHDRAW")
                                     .orderByAsc(
                                             com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog::getOperationTime));
             for (com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog log : terminateLogs) {
                 ProcessProgressDTO.NodeHistoryDTO dto = new ProcessProgressDTO.NodeHistoryDTO();
-                dto.setNodeId("TERMINATE_" + log.getId());
-                dto.setNodeName("流程终止");
-                dto.setNodeType("terminate");
+                boolean withdrawn = "WITHDRAW".equals(log.getOperationType());
+                String endType = withdrawn ? "WITHDRAWN" : "TERMINATED";
+                dto.setNodeId(log.getOperationType() + "_" + log.getId());
+                dto.setNodeName(withdrawn ? "流程撤回" : "流程终止");
+                dto.setNodeType(withdrawn ? "withdraw" : "terminate");
                 dto.setAssignee(log.getOperatorId());
-                dto.setAssigneeName(sysUserService.getDisplayName(log.getOperatorId()));
-                dto.setAction("TERMINATED");
+                dto.setAssigneeName(log.getOperatorId());
+                dto.setAction(endType);
                 dto.setComment(log.getOperationComment());
                 String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
                 dto.setStartTime(opTime);
                 dto.setEndTime(opTime);
-                dto.setStatus("TERMINATED");
+                dto.setStatus(endType);
                 nodeHistory.add(dto);
             }
         } catch (Exception e) {
-            log.warn("合并终止记录失败", e);
+            log.warn("合并流程结束操作记录失败", e);
+        }
+        // 存量撤回没有独立操作日志时，保留可确认的结束事实；未知操作者不猜成发起人。
+        if (progress.getEndType() != null && !"COMPLETED".equals(progress.getEndType())
+                && nodeHistory.stream().noneMatch(item -> progress.getEndType().equals(item.getAction()))) {
+            var end = new ProcessProgressDTO.NodeHistoryDTO();
+            boolean withdrawn = "WITHDRAWN".equals(progress.getEndType());
+            end.setNodeId("PROCESS_END_" + processInstanceId);
+            end.setNodeName(withdrawn ? "流程撤回" : "流程终止");
+            end.setNodeType(withdrawn ? "withdraw" : "terminate");
+            end.setAction(progress.getEndType());
+            end.setStatus(progress.getEndType());
+            end.setComment(progress.getEndReason());
+            end.setEndTime(formatDate(historicInstance.getEndTime()));
+            nodeHistory.add(end);
         }
         progress.setNodeHistory(nodeHistory);
         // 8. 获取当前任务信息
         if (processInstance != null) {
-            List<Task> tasks = taskService.createTaskQuery()
-                    .processInstanceId(processInstanceId)
-                    .list();
+            List<Task> tasks = batch.activeTasks;
             List<ProcessProgressDTO.TaskInfoDTO> taskInfos = tasks.stream()
                     .map(t -> {
                         ProcessProgressDTO.TaskInfoDTO dto = new ProcessProgressDTO.TaskInfoDTO();
@@ -486,7 +462,7 @@ public class ProcessProgressRuntimeService {
                         dto.setTaskName(t.getName());
                         dto.setNodeId(t.getTaskDefinitionKey());
                         dto.setAssignee(t.getAssignee());
-                        dto.setAssigneeName(sysUserService.getDisplayName(t.getAssignee()));
+                        dto.setAssigneeName(t.getAssignee());
                         dto.setCreateTime(t.getCreateTime() != null ? formatDate(t.getCreateTime()) : null);
                         return dto;
                     })
@@ -509,7 +485,7 @@ public class ProcessProgressRuntimeService {
                 localInfo.setTaskName(localTask.getNodeName());
                 localInfo.setNodeId(authorized.sourceTask().getTaskDefinitionKey());
                 localInfo.setAssignee(localTask.getAssigneeId());
-                localInfo.setAssigneeName(sysUserService.getDisplayName(localTask.getAssigneeId()));
+                localInfo.setAssigneeName(localTask.getAssigneeId());
                 localInfo.setCreateTime(localTask.getCreateTime() == null
                         ? null : localTask.getCreateTime().format(DATE_FORMATTER));
                 taskInfos.add(localInfo);
@@ -520,7 +496,8 @@ public class ProcessProgressRuntimeService {
                             + requestedTaskId);
         }
         // 9. 构建节点处理人映射（用于前端悬停显示）
-        buildNodeAssigneeMap(progress, processInstanceId);
+        buildNodeAssigneeMap(progress, batch);
+        batch.fillDisplayNames(progress, sysUserService);
         // 10. 获取实体数据和表单配置
         loadEntityDataAndFormConfig(
                 progress,
@@ -535,21 +512,19 @@ public class ProcessProgressRuntimeService {
      * 包含已完成节点的审批人信息和当前节点的处理人信息
      *
      * @param progress 进度，供本方法构建节点办理人映射时使用
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
+     * @param batch 本次请求已读取的任务和历史数据，不跨请求复用
      */
-    private void buildNodeAssigneeMap(ProcessProgressDTO progress, String processInstanceId) {
+    private void buildNodeAssigneeMap(ProcessProgressDTO progress, ProcessProgressReadBatch batch) {
         Map<String, ProcessProgressDTO.AssigneeInfoDTO> assigneeMap = new HashMap<>();
         Map<String, List<ProcessProgressDTO.AssigneeInfoDTO>> assigneesMap = new HashMap<>();
         // 1. 查询历史任务（已完成的任务）
-        List<HistoricTaskInstance> historicTasks = historyService.createHistoricTaskInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .finished()
-                .list();
+        List<HistoricTaskInstance> historicTasks = batch.historicTasks.stream()
+                .filter(task -> task.getEndTime() != null).toList();
         for (HistoricTaskInstance task : historicTasks) {
             String nodeId = task.getTaskDefinitionKey();
             ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
             String userId = task.getAssignee();
-            String displayName = sysUserService.getDisplayName(userId);
+            String displayName = userId;
             info.setAssigneeId(userId);
             info.setAssigneeName(displayName);
             info.setHandleTime(task.getEndTime() != null ? formatDate(task.getEndTime()) : null);
@@ -558,34 +533,23 @@ public class ProcessProgressRuntimeService {
             String action = null;
             String actionLabel = null;
             String comment = null;
-            var localTask = processTaskMapper.selectByTaskId(task.getId());
+            var localTask = batch.localTasks.get(task.getId());
             if (localTask != null) {
                 action = localTask.getAction();
                 actionLabel = localTask.getActionLabel();
                 comment = localTask.getComment();
             }
-            if (action == null) {
-                var actionVar = historyService.createHistoricVariableInstanceQuery()
-                        .taskId(task.getId()).variableName("action").singleResult();
-                action = actionVar != null ? (String) actionVar.getValue() : null;
-            }
-            if (actionLabel == null) {
-                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                        .taskId(task.getId()).variableName("actionLabel").singleResult();
-                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
-            }
-            // 仅兼容读取旧流程根变量，排除任务和执行局部变量；自动跳过任务无自身名称时，
-            // 同一实例中的其他任务名称不能参与单值查询或作为该节点的显示文本。
-            if (actionLabel == null) {
-                var actionLabelVar = historyService.createHistoricVariableInstanceQuery()
-                        .processInstanceId(processInstanceId)
-                        .excludeLocalVariables()
-                        .variableName("actionLabel").singleResult();
-                actionLabel = actionLabelVar != null ? (String) actionLabelVar.getValue() : null;
-            }
+            if (action == null) action = batch.taskValue(task.getId(), "action");
+            if (actionLabel == null) actionLabel = batch.actionLabel(task.getId());
             info.setAction(normalizeAction(action));
             info.setActionLabel(actionLabel);
             info.setComment(comment);
+            if (ProcessEndReason.isCancelled(task.getDeleteReason())) {
+                info.setStatus("CANCELLED");
+                info.setAction("CANCELLED");
+                info.setActionLabel("已取消");
+                info.setComment(ProcessEndReason.comment(task.getDeleteReason()));
+            }
             // 单节点处理人映射：保留最新的
             if (!assigneeMap.containsKey(nodeId) ||
                     (task.getEndTime() != null &&
@@ -598,50 +562,15 @@ public class ProcessProgressRuntimeService {
             assigneesMap.computeIfAbsent(nodeId, k -> new ArrayList<>()).add(info);
         }
         // 2. 查询当前活动任务
-        List<Task> activeTasks = taskService.createTaskQuery()
-                .processInstanceId(processInstanceId)
-                .list();
+        List<Task> activeTasks = batch.activeTasks;
         for (Task task : activeTasks) {
             String nodeId = task.getTaskDefinitionKey();
             ProcessProgressDTO.AssigneeInfoDTO info = new ProcessProgressDTO.AssigneeInfoDTO();
             String userId = task.getAssignee();
             if (userId == null || userId.isEmpty()) {
-                // 尝试从候选组/候选人中解析
-                try {
-                    List<org.flowable.identitylink.api.IdentityLink> identityLinks = taskService
-                            .getIdentityLinksForTask(task.getId());
-                    List<String> groupMemberNames = new ArrayList<>();
-                    List<String> candidateUsers = new ArrayList<>();
-                    for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
-                        if (link.getGroupId() != null) {
-                            String members = getGroupMemberNames(link.getGroupId());
-                            if (members != null && !members.isEmpty()) {
-                                for (String m : members.split(",")) {
-                                    if (!groupMemberNames.contains(m)) {
-                                        groupMemberNames.add(m);
-                                    }
-                                }
-                            }
-                        } else if (link.getUserId() != null) {
-                            candidateUsers.add(link.getUserId());
-                        }
-                    }
-                    if (!groupMemberNames.isEmpty()) {
-                        info.setAssigneeId(null);
-                        info.setAssigneeName(String.join(",", groupMemberNames));
-                    } else if (!candidateUsers.isEmpty()) {
-                        info.setAssigneeId(null);
-                        info.setAssigneeName(getUserNamesFromIds(candidateUsers));
-                    } else {
-                        info.setAssigneeId(null);
-                        info.setAssigneeName("未分配");
-                    }
-                } catch (Exception e) {
-                    info.setAssigneeId(null);
-                    info.setAssigneeName("未分配");
-                }
+                batch.prepareCandidateNames(task, info);
             } else {
-                String displayName = sysUserService.getDisplayName(userId);
+                String displayName = userId;
                 info.setAssigneeId(userId);
                 info.setAssigneeName(displayName);
             }
@@ -881,12 +810,13 @@ public class ProcessProgressRuntimeService {
             }
             // 3. 加载表单详情（优先级：流程发布快照 > 默认）
             List<ProcessProgressDTO.FormConfigDTO> formConfigs = new ArrayList<>();
+            ProcessPublishedSnapshotService.PublishedNodeForms published = null;
             // 3a. 最高优先级：从流程发布快照查询节点表单绑定
             if (progress.getProcessDefinitionId() != null
                     && !progress.getProcessDefinitionId().isEmpty()
                     && targetNodeId != null
                     && !targetNodeId.isEmpty()) {
-                ProcessPublishedSnapshotService.PublishedNodeForms published = processPublishedSnapshotService
+                published = processPublishedSnapshotService
                         .getNodeFormsContextByProcessDefinitionId(
                                 progress.getProcessDefinitionId(),
                                 targetNodeId);
@@ -932,8 +862,26 @@ public class ProcessProgressRuntimeService {
             }
             // 3b. 映射表中没有表单绑定，使用默认表单兜底。
             if (formConfigs.isEmpty()) {
+                // 默认表单虽未钉在节点上，审批仍需与实际发布历史和活动任务绑定，
+                // 否则页面能显示按钮，但提交时因缺少发布令牌被安全校验拒绝。
+                com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext defaultFormContext = null;
+                if (published != null) {
+                    String historyId = published.history().getId();
+                    defaultFormContext = "RUNNING".equals(progress.getStatus())
+                            && StringUtils.hasText(requestedTaskId)
+                            ? com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.activeTask(
+                                    historyId,
+                                    targetNodeId,
+                                    requestedTaskId,
+                                    progress.getProcessInstanceId(),
+                                    entityCode,
+                                    entityDataId)
+                            : com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.historical(
+                                    historyId,
+                                    targetNodeId);
+                }
                 com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm = entityFormRuntimeService
-                        .getDefaultForm(entityDef.getId());
+                        .getDefaultForm(entityDef.getId(), defaultFormContext);
                 if (entityForm != null) {
                     formConfigs.add(buildProgressFormConfig(entityForm, null, null));
                     log.debug(
@@ -1269,47 +1217,6 @@ public class ProcessProgressRuntimeService {
     }
 
     /**
-     * 获取组成员显示名称列表（去重）
-     *
-     * @param groupCode 分组编码，后续用于读取分组成员名称集合时定位或关联目标
-     * @return 读取后的分组成员名称集合文本，供调用方比较或展示
-     */
-    private String getGroupMemberNames(String groupCode) {
-        try {
-            com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup group = sysGroupMapper
-                    .selectByGroupCode(groupCode);
-            if (group == null) {
-                return groupCode;
-            }
-            List<String> userIds = sysUserGroupMapper.selectUserIdsByGroupId(group.getId());
-            if (userIds == null || userIds.isEmpty()) {
-                return group.getGroupName();
-            }
-            List<String> names = new ArrayList<>();
-            for (String userId : userIds) {
-                String displayName = sysUserService.getDisplayName(userId);
-                if (!names.contains(displayName)) {
-                    names.add(displayName);
-                }
-            }
-            return names.isEmpty() ? group.getGroupName() : String.join(",", names);
-        } catch (Exception e) {
-            log.warn("获取组成员失败: {}", groupCode, e);
-            return groupCode;
-        }
-    }
-
-    /**
-     * 根据用户ID/用户名列表获取统一显示名称列表
-     *
-     * @param idsOrNames ID 集合或名称集合，作为 {@code sysUserService.getDisplayNames} 的输入影响后续处理
-     * @return 读取后的用户名称集合起始ID 集合文本，供调用方比较或展示
-     */
-    private String getUserNamesFromIds(List<String> idsOrNames) {
-        return sysUserService.getDisplayNames(idsOrNames);
-    }
-
-    /**
      * 规范化任务 action 为显示状态码；自定义 action 保留原始值
      *
      * @param action 动作标识，决定后续动作采用的处理分支
@@ -1317,7 +1224,7 @@ public class ProcessProgressRuntimeService {
      */
     private String normalizeAction(String action) {
         if (action == null || action.isBlank()) {
-            return "APPROVED";
+            return "COMPLETED";
         }
         return switch (action.trim().toLowerCase()) {
             case "approve", "approved" -> "APPROVED";

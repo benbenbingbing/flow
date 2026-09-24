@@ -46,7 +46,6 @@ public class UiComponentTemplateService {
 
     /** 允许的模板类型。 */
     private static final Set<String> TEMPLATE_TYPES = Set.of(
-            "FIELD_GROUP", "FORM_SECTION", "SUB_FORM",
             "LIST_COLUMN_GROUP", "BUTTON_GROUP");
 
     /** 列模板不得携带具体列表字段身份与排序信息。 */
@@ -635,6 +634,14 @@ public class UiComponentTemplateService {
         Object fieldValue = snapshot.getOrDefault("field", snapshot);
         if (!(fieldValue instanceof Map<?, ?> field)) {
             throw new IllegalArgumentException("列表列模板快照必须包含 field 对象");
+        }
+        // 模板复制也必须遵守数据库分页约束，不能再生成需要全量内存过滤的虚拟查询列。
+        if (Boolean.TRUE.equals(field.get("isQuery"))
+                && ((field.get("dataSourceType") != null
+                    && !"ENTITY_FIELD".equalsIgnoreCase(String.valueOf(field.get("dataSourceType")).trim()))
+                    || (field.get("interfaceExtensionId") != null
+                        && StringUtils.hasText(String.valueOf(field.get("interfaceExtensionId")))))) {
+            throw new IllegalArgumentException("虚拟列模板不能作为查询条件");
         }
         for (String key : LIST_COLUMN_IDENTITY_KEYS) {
             if (field.containsKey(key)) {

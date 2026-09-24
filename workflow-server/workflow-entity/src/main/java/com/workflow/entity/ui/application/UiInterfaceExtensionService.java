@@ -45,8 +45,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import com.workflow.core.concurrent.ExecutionDeadline;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -60,6 +61,7 @@ import java.util.regex.Pattern;
  * 并提供带 TTL 的结果缓存。
  * </p>
  */
+@lombok.extern.slf4j.Slf4j
 @Service
 public class UiInterfaceExtensionService {
         private static final Set<String> SOURCE_TYPES = Set.of(
@@ -130,8 +132,14 @@ public class UiInterfaceExtensionService {
         /** Provider 超时执行使用的任务执行器。 */
         private final TaskExecutor taskExecutor;
 
-        /** 接口执行结果缓存，按 key+版本+内容哈希索引。 */
-        private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
+        /** 最多 512 条、估算 16 MiB、128 个在途键；权限/版本隔离信息仍完整参与摘要。 */
+        private final UiExtensionResultCache cache = new UiExtensionResultCache(512, 16 * 1024 * 1024, 128);
+
+        /** 无访问的过期键也需回收，避免高基数输入长时间占用堆内存。 */
+        @org.springframework.scheduling.annotation.Scheduled(fixedDelay = 30_000, initialDelay = 30_000)
+        public void cleanUpResultCache() {
+                cache.cleanUp();
+        }
 
         /**
          * 构造接口扩展执行服务，注入数据源提供器和异步执行器。
@@ -147,7 +155,7 @@ public class UiInterfaceExtensionService {
          * @param definitionValidator    接口扩展定义与 Schema 校验器
          * @param providers              注册的数据源提供器集合
          * @param codec                  JSON 文档编解码器
-         * @param taskExecutor           应用异步任务执行器
+         * @param taskExecutor           扩展接口专用执行器，隔离慢扩展对应用共享线程池的占用
          */
         public UiInterfaceExtensionService(
                         UiExtensionDefinitionMapper mapper,
@@ -161,7 +169,7 @@ public class UiInterfaceExtensionService {
                         UiExtensionDefinitionValidator definitionValidator,
                         List<UiDataSourceProvider> providers,
                         JsonDocumentCodec codec,
-                        @Qualifier("applicationTaskExecutor") TaskExecutor taskExecutor) {
+                        @Qualifier("uiExtensionTaskExecutor") TaskExecutor taskExecutor) {
                 this.mapper = mapper;
                 this.formMapper = formMapper;
                 this.listMapper = listMapper;
@@ -1945,48 +1953,27 @@ public class UiInterfaceExtensionService {
                                 "数据源输入");
                 Map<String, Object> policy = read(
                                 definition.getExecutionPolicyDocument(), "数据源执行策略");
-                String cacheKey = cacheKey(
-                                definition,
-                                input,
-                                authorization,
-                                request);
                 int cacheSeconds = integer(policy.get("cacheSeconds"), 0);
-                CacheEntry cached = cache.get(cacheKey);
-                if (cacheSeconds > 0 && cached != null && cached.expiresAt() > System.currentTimeMillis()) {
-                        definitionValidator.validateSchemaValue(
-                                        outputSchema,
-                                        cached.value(),
-                                        "数据源输出");
-                        return cached.value();
-                }
-                try {
-                        String userId = authorization.user().getId();
-                        String username = authorization.user().getUsername();
-                        int timeoutMs = integer(policy.get("timeoutMs"), 3000);
-                        Object result = CompletableFuture.supplyAsync(() -> {
-                                UserContext.setCurrentUser(userId, username);
-                                try {
-                                        return executeInternal(
-                                                        definition,
-                                                        request,
-                                                        config,
-                                                        input,
-                                                        authorization);
-                                } finally {
-                                        UserContext.clear();
-                                }
-                        }, taskExecutor).get(timeoutMs, TimeUnit.MILLISECONDS);
-                        definitionValidator.validateSchemaValue(
-                                        outputSchema,
-                                        result,
-                                        "数据源输出");
-                        if (cacheSeconds > 0) {
-                                cache.put(cacheKey, new CacheEntry(
-                                                result,
-                                                System.currentTimeMillis() + cacheSeconds * 1000L));
+                // 不启用缓存时不序列化完整输入/权限上下文，也不维护在途缓存键。
+                String cacheKey = cacheSeconds > 0 ? cacheKey(definition, input, authorization, request) : null;
+                try (ExecutionDeadline invocationDeadline = ExecutionDeadline.afterMillis(
+                                Math.max(1, Math.min(120_000, integer(policy.get("timeoutMs"), 3000))));
+                                var invocationScope = invocationDeadline.attach()) {
+                        if (cacheKey == null) {
+                                return loadAuthorized(definition, request, authorization, config, input, outputSchema, policy);
                         }
-                        return result;
+                        UiExtensionResultCache.Hit cached = cache.get(cacheKey);
+                        if (cached != null) return cached.value();
+                        return cache.coalesce(cacheKey, () -> {
+                                // 另一个调用可能在当前线程等待加载资格期间刚刚写入缓存。
+                                UiExtensionResultCache.Hit ready = cache.get(cacheKey);
+                                if (ready != null) return ready.value();
+                                Object result = loadAuthorized(definition, request, authorization, config, input, outputSchema, policy);
+                                cacheResult(cacheKey, result, cacheSeconds);
+                                return result;
+                        });
                 } catch (Exception exception) {
+                        if (exception instanceof InterruptedException) Thread.currentThread().interrupt();
                         RuntimeException failure = executionFailure(exception);
                         if (isNonRecoverable(failure)) {
                                 throw failure;
@@ -1997,6 +1984,55 @@ public class UiInterfaceExtensionService {
                                         fallback,
                                         "数据源输出");
                         return fallback;
+                }
+        }
+
+        /** 无法用有界 JSON 文档估重的结果不驻留缓存，缓存策略不能让已成功的 Provider 调用失败。 */
+        private void cacheResult(String key, Object result, int seconds) {
+                try {
+                        String document = codec.write(result, "接口缓存结果");
+                        long weight = 256L + (document == null ? 0 : 4L * document.length());
+                        cache.put(key, result, seconds, weight);
+                } catch (IllegalArgumentException unsupported) {
+                        log.debug("接口结果超出可缓存文档范围，跳过缓存");
+                }
+        }
+
+        /** 实际加载与同键请求合并分开，成功且符合 Schema 的结果才允许进入缓存。 */
+        private Object loadAuthorized(UiExtensionDefinition definition, UiExtensionExecuteRequest request,
+                        UiDataSourceExecutionAuthorization authorization, Map<String, Object> config,
+                        Map<String, Object> input, Map<String, Object> outputSchema, Map<String, Object> policy) throws Exception {
+                int timeoutMs = Math.max(1, Math.min(120_000, integer(policy.get("timeoutMs"), 3000)));
+                // 预算在入队前创建；取消 FutureTask 会中断正在运行的线程，过期排队任务不会执行。
+                try (ExecutionDeadline deadline = ExecutionDeadline.afterMillis(timeoutMs)) {
+                        FutureTask<Object> work = new FutureTask<>(() -> {
+                                try (var scope = deadline.attach()) {
+                                        deadline.check();
+                                        UserContext.setCurrentUser(authorization.user().getId(), authorization.user().getUsername());
+                                        try {
+                                                Object result = executeInternal(definition, request, config, input, authorization);
+                                                deadline.check();
+                                                return result;
+                                        } finally {
+                                                UserContext.clear();
+                                        }
+                                }
+                        });
+                        taskExecutor.execute(work);
+                        try {
+                                Object result = work.get(deadline.remainingMillis(), TimeUnit.MILLISECONDS);
+                                deadline.check();
+                                definitionValidator.validateSchemaValue(outputSchema, result, "数据源输出");
+                                return result;
+                        } catch (TimeoutException | InterruptedException | ExecutionDeadline.ExceededException failure) {
+                                work.cancel(true);
+                                deadline.cancel();
+                                // FutureTask 取消后仍可能留在队列，主动移除以立即归还排队容量。
+                                if (taskExecutor instanceof org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor pool) {
+                                        pool.getThreadPoolExecutor().remove(work);
+                                }
+                                throw failure;
+                        }
                 }
         }
 
@@ -2045,10 +2081,11 @@ public class UiInterfaceExtensionService {
                                         definition,
                                         definition.getProviderVersion() != null);
                         return provider.execute(
-                                        context,
-                                        authorization.dataScopePlan(),
-                                        config,
-                                        input);
+                                context,
+                                authorization.dataScopePlan(),
+                                config,
+                                input,
+                                ExecutionDeadline.current());
                 }
                 throw new IllegalArgumentException("不支持的数据源类型: " + sourceType);
         }
@@ -2334,9 +2371,9 @@ public class UiInterfaceExtensionService {
                                 "dataScopePlan",
                                 dataScopeFingerprint(
                                                 authorization.dataScopePlan()));
-                return codec.canonicalize(
+                return sha256(codec.canonicalize(
                                 codec.write(key, "数据源缓存键"),
-                                "数据源缓存键");
+                                "数据源缓存键"));
         }
 
         /**
@@ -2786,8 +2823,6 @@ public class UiInterfaceExtensionService {
          * @param value 待处理缓存入口的原始输入，结果供调用方继续使用
          * @param expiresAt 过期时间，后续用于判断有效期或展示该事件的发生时间
          */
-        private record CacheEntry(Object value, long expiresAt) {
-        }
 
         /**
          * 封装提供者身份的不可变数据；各分量供后续校验、传递或结果展示使用。

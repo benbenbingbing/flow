@@ -91,6 +91,27 @@ class EntityFormActionServiceTest {
     }
 
     @Test
+    void restartIsOptInAndRuntimeEligibilityStillApplies() {
+        EntityDataDTO row = new EntityDataDTO();
+        row.setId("record-1"); row.setProcessInstanceId("withdrawn-instance");
+        var defaults = service.resolveTrustedPublishedSnapshot(publishedForm(defaultActionBar()), definition, "edit", row);
+        assertFalse(defaults.stream().anyMatch(action -> "restartProcess".equals(action.getKey())));
+        EntityForm enabled = publishedForm("""
+                {"actionBar":{"builtInOverrides":{"restartProcess":{"enabled":true}}}}
+                """);
+        when(capabilityService.evaluateRestartAction("work_order", row))
+                .thenReturn(EntityActionCapabilityDTO.allowed());
+        var action = service.resolveTrustedPublishedSnapshot(enabled, definition, "edit", row).stream()
+                .filter(item -> "restartProcess".equals(item.getKey())).findFirst().orElseThrow();
+        assertTrue(action.isVisible() && action.isEnabled());
+        when(capabilityService.evaluateRestartAction("work_order", row))
+                .thenReturn(EntityActionCapabilityDTO.hidden("非最新撤回实例"));
+        var denied = service.resolveTrustedPublishedSnapshot(enabled, definition, "edit", row).stream()
+                .filter(item -> "restartProcess".equals(item.getKey())).findFirst().orElseThrow();
+        assertFalse(denied.isVisible());
+    }
+
+    @Test
     void exactPublishedSnapshotUsesCanonicalCreateButtonsWithoutFollowingActive() {
         EntityForm pinned = publishedForm(defaultActionBar());
 

@@ -110,7 +110,8 @@ public class ListFieldDataProviderRegistry {
                     .label(provider.getDisplayName())
                     .description(provider.getDescription())
                     .supportsVirtualField(provider.supportsVirtualField())
-                    .supportsQuery(provider.supportsQuery())
+                    // 扩展提供者仅补充展示值，平台不再接受其内存筛选能力声明。
+                    .supportsQuery(false)
                     .supportedEntityCodes(supportedEntityCodes)
                     .configSchema(provider.getConfigSchema())
                     .build());

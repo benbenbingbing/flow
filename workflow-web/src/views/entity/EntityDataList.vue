@@ -230,6 +230,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
@@ -553,7 +554,7 @@ async function loadVersionCapabilities(
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
     return listConfigFields.value
-      .filter((f: any) => f.isQuery)
+      .filter((f: any) => f.isQuery && supportsEntityFieldQuery(f))
       .map((f: any) => {
         const originField = entityFields.value.find((ef: any) => ef.fieldCode === f.fieldCode)
         const queryConfig = safeParseConfig(f.queryConfig)
@@ -658,6 +659,7 @@ const customListRuntime = computed(() => ({
   create: handleCreate,
   view: handleView,
   edit: handleEdit,
+  restartProcess: handleEdit,
   delete: handleDelete,
   approve: handleApprove,
   versions: showVersionAction.value ? handleVersions : undefined,
@@ -1049,6 +1051,9 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
 }
 // 查询
 const handleSearch = () => {
+  // 普通业务列表的筛选语义已改变：旧选中行可能被隐藏，却仍能触发导出或删除。
+  // 选择器场景需要跨查询收集数据且有“已选择”计数，保留其原有选择行为。
+  if (!selectionScene.value) selectedRows.value = []
   pageNum.value = 1
   loadDataList()
 }

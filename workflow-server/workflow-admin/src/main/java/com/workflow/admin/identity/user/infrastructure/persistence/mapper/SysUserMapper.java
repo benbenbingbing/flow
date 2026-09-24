@@ -20,6 +20,25 @@ import java.time.LocalDateTime;
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
     /**
+     * 批量读取展示所需列，调用方每批最多 100 个键。比较交给数据库以保持大小写/排序规则，
+     * 每个分支都从用户表查询，避免 Oracle 等产品对无 FROM 常量表的方言差异。
+     * CONCAT 明确 UNION 输出参数的字符串类型，避免数据库在准备语句时无法推导类型。
+     */
+    @Select("""
+            <script>
+            <foreach collection="keys" item="key" separator=" UNION ALL ">
+              SELECT CONCAT(#{key,jdbcType=VARCHAR}, '') AS lookup_key, username, nickname,
+                CASE WHEN username = #{key,jdbcType=VARCHAR} THEN 0 ELSE 1 END AS match_rank
+              FROM sys_user WHERE deleted = 0
+                AND (username = #{key,jdbcType=VARCHAR} OR id = #{key,jdbcType=VARCHAR})
+            </foreach>
+            ORDER BY match_rank
+            </script>
+            """)
+    List<com.workflow.admin.identity.user.infrastructure.persistence.record.UserDisplayNameRow> selectDisplayNameRows(
+            @Param("keys") List<String> keys);
+
+    /**
      * 批量查询仍存在的用户 ID，供用户组成员写入前校验。
      *
      * <p>禁用用户仍可保留成员关系，因此这里只排除已逻辑删除用户。</p>

@@ -18,7 +18,6 @@ import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -64,7 +63,7 @@ public class EmbedGrantManagementController {
      * @param request 本次请求，后续经校验后用于处理新增或更新
      * @return 处理后的新增或更新结果，供调用方继续处理
      */
-    @PutMapping("/{applicationId}")
+    @PostMapping("/{applicationId}")
     @RequiresPermission("system:embed:manage")
     public ApiResponse<EmbedManagementViews.GrantView> upsert(
             @PathVariable String viewId,

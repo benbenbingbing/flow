@@ -95,8 +95,8 @@ assert.equal(Object.hasOwn(calls[0].options.headers, 'Cookie'), false)
 assert.equal(Object.hasOwn(calls[0].options.headers, 'Origin'), false)
 assert.equal(calls[0].options.body, JSON.stringify({ pageNum: 1 }))
 
-assert.equal(await client.delete('/session'), undefined)
-assert.equal(calls[1].options.method, 'DELETE')
+assert.equal(await client.post('/session'), undefined)
+assert.equal(calls[1].options.method, 'POST')
 assert.equal(calls[1].options.body, undefined)
 
 await assert.rejects(
@@ -121,10 +121,6 @@ const fakeClient = {
   post(path, body, options) {
     runtimeCalls.push({ method: 'POST', path, body, options })
     return Promise.resolve({})
-  },
-  delete(path, options) {
-    runtimeCalls.push({ method: 'DELETE', path, options })
-    return Promise.resolve()
   }
 }
 const runtimeApi = createEmbedRuntimeApi(fakeClient)
@@ -163,7 +159,7 @@ assert.deepEqual(runtimeCalls.map(call => `${call.method} ${call.path}`), [
   'POST /runtime/records',
   'GET /session',
   'POST /session/heartbeat',
-  'DELETE /session'
+  'POST /session'
 ])
 assert.deepEqual(runtimeCalls[0].body, {
   launchCode: TEST_LAUNCH_CODE,

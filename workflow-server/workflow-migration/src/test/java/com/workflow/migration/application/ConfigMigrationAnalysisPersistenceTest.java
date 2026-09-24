@@ -46,6 +46,9 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ConfigMigrationAnalysisPersistenceTest {
+    @org.junit.jupiter.api.BeforeEach
+    void configureReferenceServices() { MigrationReferenceTestFixture.attachTo(service); }
+
 
     @Mock
     private ConfigMigrationAssetService assetService;

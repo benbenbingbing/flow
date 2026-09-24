@@ -23,9 +23,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 转办、加签和终止三个操作的服务端权威能力入口。
+ * 转办、加签、终止和撤回四个操作的服务端权威能力入口。
  *
- * <p>新三开关优先；未配置新开关时继续叠加旧矩阵判定，确保已部署流程不会扩大权限。</p>
+ * <p>简化开关优先；未配置新开关时继续叠加旧矩阵判定，确保已部署流程不会扩大权限。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -101,7 +101,7 @@ public class NodeOperationCapabilityService {
     }
 
     /**
-     * 仅校验当前部署节点的新三开关。
+     * 仅校验当前部署节点的简化开关。
      *
      * <p>SLA 等系统动作不具备交互用户语义，但仍不得绕过节点的转办/加签总开关。
      * 存量部署未配置新字段时按允许处理，不将旧矩阵的角色和条件强加给系统动作。</p>
@@ -142,7 +142,7 @@ public class NodeOperationCapabilityService {
     /**
      * 仅校验流程当前所有活动用户节点的“允许终止”开关。
      *
-     * <p>用于 Open API 取消、撤回等非标准终止入口的硬门禁。并行分支按 AND
+     * <p>用于 Open API 取消等非标准终止入口的硬门禁。并行分支按 AND
      * 聚合；没有活动用户任务时不存在可应用的节点开关，保持该入口原有行为。</p>
      *
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
@@ -183,7 +183,7 @@ public class NodeOperationCapabilityService {
         try {
             List<Task> tasks = activeTasks(processInstanceId);
             if (tasks.isEmpty()) return false;
-            requireConfiguredTerminateAllowed(tasks);
+            requireConfiguredWithdrawAllowed(tasks);
             return tasks.stream().allMatch(task -> {
                 NodeOperationDecisionService.ActionDecision decision =
                         legacyDecisionService.availableActions(task.getId()).get("withdraw");
@@ -191,6 +191,31 @@ public class NodeOperationCapabilityService {
             });
         } catch (RuntimeException exception) {
             return false;
+        }
+    }
+
+    /**
+     * 撤回写入口的统一门禁。必须存在活动任务，且各分支都允许撤回；
+     * 旧矩阵的理由、时限等约束仍在写入前校验，不以界面按钮替代授权。
+     * @param processInstanceId 当前运行实例
+     * @param context 本次撤回理由等提交信息
+     * @throws ForbiddenException 任一活动分支不允许撤回时抛出，调用方不得删除实例
+     */
+    public void requireWithdrawAllowed(String processInstanceId,
+            NodeOperationDecisionService.CheckContext context) {
+        List<Task> tasks = activeTasks(processInstanceId);
+        if (tasks.isEmpty()) throw new ForbiddenException("当前流程没有可校验的活动任务");
+        requireConfiguredWithdrawAllowed(tasks);
+        legacyDecisionService.requireAllowedForProcess(
+                processInstanceId, NodeOperationPolicy.Operation.WITHDRAW, context);
+    }
+
+    /** 与只读能力查询共用同一节点开关，防止 PC、移动端或直接调用接口绕过限制。 */
+    private void requireConfiguredWithdrawAllowed(List<Task> tasks) {
+        for (Task task : tasks) {
+            if (!config(task).allowWithdraw()) {
+                throw new ForbiddenException("当前节点不允许撤回流程");
+            }
         }
     }
 

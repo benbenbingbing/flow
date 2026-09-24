@@ -1,5 +1,6 @@
 <template>
   <div class="number-field">
+    <!-- 清空数值应产生 null；列表查询会据此移除过滤条件，不能由组件默认值转成 0。 -->
     <el-input-number
       v-model="fieldValue"
       :placeholder="placeholder"
@@ -9,6 +10,7 @@
       :precision="precision"
       :step="step"
       :controls="controls"
+      :value-on-clear="null"
       style="width: 100%"
       v-on="customEventListeners"
       @change="handleChange"

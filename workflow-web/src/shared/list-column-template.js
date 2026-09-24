@@ -1,3 +1,5 @@
+import { supportsEntityFieldQuery } from './list-query-policy.js'
+
 export const LIST_COLUMN_TEMPLATE_TYPE = 'LIST_COLUMN_GROUP'
 
 const TEMPLATE_IDENTITY_KEYS = new Set([
@@ -97,6 +99,7 @@ export function parseListColumnTemplateSnapshot(snapshotDocument) {
     || field.interfaceExtensionId
     || field.dataSourceId
     || null
+  if (!supportsEntityFieldQuery(normalizedField)) normalizedField.isQuery = false
   return {
     metadata: snapshot.metadata && typeof snapshot.metadata === 'object'
       ? snapshot.metadata
@@ -112,6 +115,8 @@ export function applyListColumnTemplateSnapshot(target, snapshotDocument) {
     templateVersion: null,
     localOverridesDocument: ''
   })
+  // 模板没有目标字段身份；落到虚拟列时必须再检查，不能复制出虚拟查询条件。
+  if (!supportsEntityFieldQuery(target)) target.isQuery = false
   return target
 }
 
@@ -144,10 +149,12 @@ export function buildListColumnTemplateSnapshot(editor) {
 
 export function sanitizeTemplateFieldConfig(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return Object.fromEntries(
+  const field = Object.fromEntries(
     Object.entries(value)
       .filter(([key]) => !TEMPLATE_IDENTITY_KEYS.has(key))
   )
+  if (!supportsEntityFieldQuery(field)) field.isQuery = false
+  return field
 }
 
 export function mappingObjectToRows(value) {

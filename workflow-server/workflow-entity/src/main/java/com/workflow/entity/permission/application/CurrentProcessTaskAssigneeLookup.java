@@ -3,6 +3,8 @@ package com.workflow.entity.permission.application;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates;
+import com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -19,6 +21,48 @@ import java.util.Optional;
 public class CurrentProcessTaskAssigneeLookup {
 
     private final ProcessTaskAccessPort taskAccessPort;
+    private final ThreadLocal<DisplayBatch> displayBatch = new ThreadLocal<>();
+
+    /**
+     * 只在列表展示循环内开启一次惰性批量查询，嵌套调用结束后恢复旧作用域。
+     * 结果不跨请求驻留，精确任务上下文与提交操作不使用此展示快照。
+     */
+    public DisplayScope openDisplayBatch(java.util.List<EntityDataDTO> rows, SysUser user) {
+        DisplayBatch previous = displayBatch.get();
+        var coordinates = rows.stream().filter(row -> hasLookupCoordinates(row, user))
+                .map(this::coordinates).distinct().toList();
+        displayBatch.set(new DisplayBatch(user == null ? null : identity(user), coordinates));
+        return () -> { if (previous == null) displayBatch.remove(); else displayBatch.set(previous); };
+    }
+
+    public interface DisplayScope extends AutoCloseable { @Override void close(); }
+
+    private TaskCapability displayedCapability(EntityDataDTO row, SysUser user) {
+        DisplayBatch batch = displayBatch.get();
+        if (batch == null || !java.util.Objects.equals(batch.userId, identity(user))) return null;
+        RecordCoordinates key = coordinates(row);
+        if (!batch.records.contains(key)) return null;
+        if (batch.loaded == null) batch.loaded = taskAccessPort.findCapabilities(batch.userId, batch.orderedRecords);
+        return batch.loaded.getOrDefault(key, new TaskCapability(null, null, false));
+    }
+
+    private RecordCoordinates coordinates(EntityDataDTO row) {
+        boolean entity = StringUtils.hasText(row.getEntityCode()) && StringUtils.hasText(row.getId());
+        return new RecordCoordinates(entity ? row.getEntityCode() : null, entity ? row.getId() : null,
+                StringUtils.hasText(row.getProcessInstanceId()) ? row.getProcessInstanceId() : null);
+    }
+
+    private static final class DisplayBatch {
+        final String userId;
+        final java.util.List<RecordCoordinates> orderedRecords;
+        final java.util.Set<RecordCoordinates> records;
+        java.util.Map<RecordCoordinates, TaskCapability> loaded;
+        DisplayBatch(String userId, java.util.List<RecordCoordinates> records) {
+            this.userId = userId;
+            this.orderedRecords = records;
+            this.records = java.util.Set.copyOf(records);
+        }
+    }
 
     /**
      * 判断用户是否为该记录的当前待办办理人。
@@ -28,7 +72,10 @@ public class CurrentProcessTaskAssigneeLookup {
      * @return 存在实际指派给当前用户的未完成任务时返回 true；候选人返回 false
      */
     public boolean isCurrentAssignee(EntityDataDTO row, SysUser user) {
-        return hasLookupCoordinates(row, user) && taskAccessPort.isCurrentAssignee(
+        if (!hasLookupCoordinates(row, user)) return false;
+        TaskCapability displayed = displayedCapability(row, user);
+        if (displayed != null) return displayed.currentAssignee();
+        return taskAccessPort.isCurrentAssignee(
                 identity(user), row.getEntityCode(), row.getId(), row.getProcessInstanceId());
     }
 
@@ -49,8 +96,31 @@ public class CurrentProcessTaskAssigneeLookup {
         if (!hasLookupCoordinates(row, user)) {
             return Optional.empty();
         }
+        TaskCapability displayed = displayedCapability(row, user);
+        if (displayed != null) return Optional.ofNullable(displayed.taskId());
         return taskAccessPort.findActionableTaskId(
                 identity(user), row.getEntityCode(), row.getId(), row.getProcessInstanceId());
+    }
+
+    /**
+     * 使用已选中的可办理 taskId 回查任务名称，使列表文案与实际提交目标一致。
+     * 查询仍限制在当前用户、业务记录和流程实例内，不能信任实体行的任务摘要。
+     */
+    public Optional<String> findActionableTaskName(
+            EntityDataDTO row, SysUser user, String taskId) {
+        if (!hasLookupCoordinates(row, user)
+                || !StringUtils.hasText(taskId)
+                || !StringUtils.hasText(row.getEntityCode())
+                || !StringUtils.hasText(row.getId())
+                || !StringUtils.hasText(row.getProcessInstanceId())) {
+            return Optional.empty();
+        }
+        TaskCapability displayed = displayedCapability(row, user);
+        if (displayed != null) return taskId.equals(displayed.taskId())
+                ? Optional.ofNullable(displayed.taskName()).filter(StringUtils::hasText) : Optional.empty();
+        return taskAccessPort.findActionableTaskName(
+                identity(user), taskId, row.getEntityCode(),
+                row.getId(), row.getProcessInstanceId());
     }
 
     /**

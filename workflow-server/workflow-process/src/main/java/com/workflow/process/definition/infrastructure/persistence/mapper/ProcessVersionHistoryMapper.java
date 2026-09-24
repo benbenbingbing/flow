@@ -93,9 +93,11 @@ public interface ProcessVersionHistoryMapper extends BaseMapper<ProcessVersionHi
      */
     default ProcessVersionHistory findLatestByProcessKey(String processKey) {
         // 首行限制交给分页插件，避免加载全部结果或在 Mapper 内拼接数据库分页语法。
+        // 已逻辑删除的版本仍用于历史审计，但不能再作为新实例使用的当前版本。
         return selectList(new Page<ProcessVersionHistory>(1, 1, false), Wrappers.<ProcessVersionHistory>lambdaQuery()
                 .eq(ProcessVersionHistory::getProcessKey, processKey)
                 .eq(ProcessVersionHistory::getStatus, "ACTIVE")
+                .eq(ProcessVersionHistory::getDeleted, 0)
                 .orderByDesc(ProcessVersionHistory::getVersion)).stream().findFirst().orElse(null);
     }
 }

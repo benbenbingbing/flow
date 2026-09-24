@@ -1,68 +1,94 @@
 <template>
-  <div class="role-management">
-    <div class="page-header">
-      <h2>角色管理</h2>
-      <el-button type="primary" @click="handleAdd">
-        <el-icon><Plus /></el-icon>
-        新增角色
-      </el-button>
-    </div>
-    
-    <PageState
-      v-if="loadError"
-      type="error"
-      title="角色列表加载失败"
-      :description="loadError"
-      retryable
-      @retry="fetchRoleList"
-    />
+  <div class="role-management system-management">
+    <el-card>
+      <el-form :model="queryParams" class="search-form" label-width="80px" @submit.prevent="handleSearch">
+        <el-form-item label="角色名称">
+          <el-input v-model="queryParams.roleName" placeholder="请输入角色名称" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="角色编码">
+          <el-input v-model="queryParams.roleCode" placeholder="请输入角色编码" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-select v-model="queryParams.status" clearable placeholder="全部状态">
+            <el-option label="启用" value="0" />
+            <el-option label="禁用" value="1" />
+          </el-select>
+        </el-form-item>
+        <div class="search-actions">
+          <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+          <el-button @click="handleReset">重置</el-button>
+        </div>
+      </el-form>
+      <div class="table-toolbar">
+        <el-button type="primary" :icon="Plus" @click="handleAdd">新增角色</el-button>
+      </div>
 
-    <!-- 角色表格 -->
-    <el-table v-else v-loading="loading" :data="roleList" border stripe empty-text="暂无角色">
-      <el-table-column type="index" label="#" width="60" align="center" />
-      
-      <el-table-column prop="roleName" label="角色名称" min-width="130" show-overflow-tooltip />
-      
-      <el-table-column prop="roleCode" label="角色编码" min-width="130" show-overflow-tooltip />
-      
-      <el-table-column prop="description" label="描述" min-width="140" show-overflow-tooltip />
-      
-      <el-table-column prop="sort" label="排序" width="60" align="center" />
+      <PageState
+        v-if="loadError"
+        type="error"
+        title="角色列表加载失败"
+        :description="loadError"
+        retryable
+        @retry="fetchRoleList"
+      />
 
-      <el-table-column prop="userCount" label="用户数" width="70" align="center">
-        <template #default="{ row }">{{ row.userCount ?? 0 }}</template>
-      </el-table-column>
+      <!-- 角色表格 -->
+      <el-table v-else v-loading="loading" :data="pagedRoles" stripe row-key="id" empty-text="当前条件下没有角色">
+        <el-table-column type="index" label="#" width="60" align="center" :index="index => (queryParams.pageNum - 1) * queryParams.pageSize + index + 1" />
       
-      <el-table-column prop="status" label="状态" width="70" align="center">
-        <template #default="{ row }">
-          <el-switch
-            v-model="row.status"
-            :active-value="'0'"
-            :inactive-value="'1'"
-            inline-prompt
-            active-text="启"
-            inactive-text="禁"
-            :disabled="row.roleCode === 'super_admin'"
-            @change="handleStatusChange(row)"
-          />
-        </template>
-      </el-table-column>
+        <el-table-column prop="roleName" label="角色名称" min-width="130" show-overflow-tooltip />
       
-      <el-table-column prop="createTime" label="创建时间" width="150" :formatter="formatDateColumn" />
+        <el-table-column prop="roleCode" label="角色编码" min-width="130" show-overflow-tooltip />
       
-      <el-table-column label="操作" width="160" fixed="right">
-        <template #default="{ row }">
-          <RoleTableActions
-            :role="row"
-            @edit="handleEdit"
-            @assign-menu="handleAssignMenu"
-            @users="handleRoleUsers"
-            @delete="handleDelete"
-          />
-        </template>
-      </el-table-column>
-    </el-table>
+        <el-table-column prop="status" label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              :active-value="'0'"
+              :inactive-value="'1'"
+              inline-prompt
+              active-text="启"
+              inactive-text="禁"
+              :disabled="row.roleCode === 'super_admin'"
+              @change="handleStatusChange(row)"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="sort" label="排序" width="70" align="center" />
+
+        <el-table-column prop="userCount" label="用户数" width="90" align="center">
+          <template #default="{ row }">{{ row.userCount ?? 0 }}</template>
+        </el-table-column>
+      
+        <el-table-column prop="createTime" label="创建时间" width="180" :formatter="formatDateColumn" show-overflow-tooltip />
+      
+        <el-table-column label="操作" width="220" fixed="right">
+          <template #default="{ row }">
+            <div class="table-row-actions">
+              <RoleTableActions
+                :role="row"
+                @edit="handleEdit"
+                @assign-menu="handleAssignMenu"
+                @users="handleRoleUsers"
+                @delete="handleDelete"
+              />
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
     
+      <el-pagination
+        v-model:current-page="queryParams.pageNum"
+        v-model:page-size="queryParams.pageSize"
+        :total="filteredRoles.length"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @size-change="queryParams.pageNum = 1"
+      />
+    </el-card>
+
     <!-- 角色编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
@@ -546,6 +572,38 @@ import {
 const loading = ref(false)
 const loadError = ref('')
 const roleList = ref<any[]>([])
+const queryParams = reactive({ roleName: '', roleCode: '', status: '', pageNum: 1, pageSize: 20 })
+const appliedFilters = reactive({ roleName: '', roleCode: '', status: '' })
+// 角色接口返回完整列表，先按已提交条件筛选再分页，避免只在当前页内搜索。
+const filteredRoles = computed(() => roleList.value.filter(role =>
+  String(role.roleName || '').toLocaleLowerCase().includes(appliedFilters.roleName)
+  && String(role.roleCode || '').toLocaleLowerCase().includes(appliedFilters.roleCode)
+  && (!appliedFilters.status || String(role.status) === appliedFilters.status)
+))
+const pagedRoles = computed(() => filteredRoles.value.slice(
+  (queryParams.pageNum - 1) * queryParams.pageSize, queryParams.pageNum * queryParams.pageSize
+))
+
+/** 查询提交时才应用输入条件，并从第一页重新展示匹配角色。 */
+const handleSearch = () => {
+  Object.assign(appliedFilters, {
+    roleName: queryParams.roleName.trim().toLocaleLowerCase(),
+    roleCode: queryParams.roleCode.trim().toLocaleLowerCase(),
+    status: queryParams.status
+  })
+  queryParams.pageNum = 1
+  fetchRoleList()
+}
+
+const handleReset = () => {
+  Object.assign(queryParams, { roleName: '', roleCode: '', status: '' })
+  handleSearch()
+}
+
+// 删除末页角色或切换状态后，回到仍有数据的有效页码。
+watch(() => filteredRoles.value.length, total => {
+  queryParams.pageNum = Math.min(queryParams.pageNum, Math.max(1, Math.ceil(total / queryParams.pageSize)))
+})
 const menuTree = ref<any[]>([])
 const menuLoading = ref(false)
 const permissionOptions = computed(() => flattenPermissionMenuTree(menuTree.value))
@@ -1097,22 +1155,7 @@ watch([permissionDomain, permissionTypes], refreshPermissionTrees, { deep: true 
 </script>
 
 <style scoped lang="scss">
-.role-management {
-  padding: 20px;
-  
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-    }
-  }
-}
+@use './system-management.scss';
 
 .permission-dialog-footer {
   display: flex;

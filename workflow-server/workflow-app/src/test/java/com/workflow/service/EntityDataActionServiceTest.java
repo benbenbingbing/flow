@@ -138,6 +138,17 @@ class EntityDataActionServiceTest {
         }
 
         @Test
+        void restartCannotSkipThePublishedFormButtonByUsingOnlyAListContext() {
+                EntityListConfig config = new EntityListConfig(); config.setId("list-1"); config.setListKey("default");
+                when(actionConfigService.resolveListConfig("asset", "default")).thenReturn(config);
+                assertThrows(com.workflow.core.error.BusinessForbiddenException.class,
+                        () -> service.update("asset", "1", "default", Map.of(
+                                "restartProcess", true, "previousProcessInstanceId", "old", "data", Map.of())));
+                verify(mutationPort, never()).execute(any(EntityMutationCommand.class));
+                verify(eventRuntimeService, never()).execute(any(), any());
+        }
+
+        @Test
         void readOnlyDetailDoesNotExecuteUiEventChain() {
                 EntityListConfig config = new EntityListConfig();
                 config.setListKey("default");

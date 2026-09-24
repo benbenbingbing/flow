@@ -23,7 +23,7 @@ public class EntityFormActionConfigPolicy {
     public static final Set<String> MODES =
             Set.of("create", "edit", "approve", "view");
     public static final Set<String> BUILT_IN_KEYS =
-            Set.of("close", "reset", "save", "saveAndStart",
+            Set.of("close", "reset", "save", "saveAndStart", "restartProcess",
                     "submitApproval");
     private static final Set<String> BUTTON_TYPES =
             Set.of("default", "primary", "success", "warning", "danger",

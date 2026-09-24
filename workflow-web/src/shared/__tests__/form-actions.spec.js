@@ -17,6 +17,14 @@ const baseForm = {
   viewConfig: {}
 }
 
+// 缺省、null 和字符串 true 都不能自动开放重新发起。
+for (const enabled of [undefined, null, false, 'true', true]) {
+  const form = { id: 'form-1', viewConfig: { actionBar: { builtInOverrides: { restartProcess: { enabled } } } } }
+  const actions = resolveLocalFormActions(form, { mode: 'edit' })
+  assert.equal(actions.some(action => action.key === 'restartProcess'), enabled === true)
+  assert.equal(resolveLocalFormActions(form, { mode: 'create' }).some(action => action.key === 'restartProcess'), false)
+}
+
 const buttonAppearanceCases = [
   ['DEFAULT', { plain: false, round: false, circle: false }],
   ['PLAIN', { plain: true, round: false, circle: false }],

@@ -816,21 +816,10 @@
       <section v-if="isUserTask && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="操作权限"
-          description="控制当前节点是否允许转办、加签和终止流程"
+          description="控制当前节点是否允许转办、加签、终止和发起人撤回"
           :collapsible="false"
         >
-          <el-form :model="assigneeForm" label-width="100px" size="small">
-            <el-form-item label="允许转办">
-              <el-switch v-model="assigneeForm.allowTransfer" />
-            </el-form-item>
-            <el-form-item label="允许加签">
-              <el-switch v-model="assigneeForm.allowAddSign" />
-            </el-form-item>
-            <el-form-item label="允许终止">
-              <el-switch v-model="assigneeForm.allowTerminate" />
-              <div class="form-tip">存在并行活动节点时，所有节点均允许才能终止流程</div>
-            </el-form-item>
-          </el-form>
+          <NodeOperationPermissions v-model="assigneeForm" />
         </SettingsSection>
       </section>
       
@@ -956,8 +945,9 @@
 
               <el-row :gutter="10">
                 <el-col :span="12">
-                  <el-form-item label="超时时间(秒)">
-                    <el-input-number v-model="restForm.timeout" :min="1" :max="300" style="width: 100%" />
+                  <el-form-item label="总超时(秒)">
+                    <el-input-number v-model="restForm.timeout" :min="1" :max="120" style="width: 100%" />
+                    <div class="form-tip">全部重试与等待共用此时间，实际执行受系统超时上限限制。</div>
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
@@ -1310,6 +1300,17 @@
               <el-radio-button value="default">默认流</el-radio-button>
             </el-radio-group>
           </el-form-item>
+          <el-alert
+            v-if="staleConditionConfig"
+            title="已保存的条件组尚未参与流程运行"
+            type="error"
+            :closable="false"
+            show-icon
+            class="condition-parse-warning"
+          >
+            网关类型转换后，这条连线保留了旧条件组，但缺少实际执行的条件表达式。
+            请重新选择“表达式”，核对完整表达式，然后点击“应用到画布”并保存草稿。
+          </el-alert>
           
           <!-- 表达式编辑器 -->
           <template v-if="conditionForm.type === 'expression'">
@@ -1333,10 +1334,12 @@
                 show-icon
                 class="condition-group-tip"
               />
+              <!-- 仅上游用户任务提供审批选项时才展示 approved，避免出现无法选择值的空下拉框。 -->
               <FlowConditionGroupEditor
                 :group="conditionRoot"
                 :entity-fields="entityFields"
                 :approval-options="sourceNodeApprovalOptions"
+                :include-approval-property="sourceNodeApprovalOptions.length > 0"
                 @change="updateCondition"
               />
             </div>
@@ -1969,6 +1972,7 @@ import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import NodeOperationPermissions from '@/components/NodeOperationPermissions.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
@@ -2114,9 +2118,10 @@ const assigneeForm = ref({
     backoffMultiplier: 2,
     responsibilityOwner: ''
   },
-  allowTransfer: true,
-  allowAddSign: true,
+  allowTransfer: false,
+  allowAddSign: false,
   allowTerminate: true,
+  allowWithdraw: false,
   assignee: '',
   candidateUsers: '',
   candidateGroups: '',
@@ -2267,6 +2272,7 @@ const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParamet
 const conditionForm = ref({ type: '', expression: '' })
 const conditionRoot = ref(createFlowConditionGroup())
 const conditionParseWarning = ref('')
+const staleConditionConfig = ref(false)
 const skipConditionRoot = ref(createFlowConditionGroup())
 const skipConditionParseWarning = ref('')
 const skipConditionOriginalExpression = ref('')
@@ -3046,6 +3052,7 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
         allowTransfer: operationPermissions.allowTransfer,
         allowAddSign: operationPermissions.allowAddSign,
         allowTerminate: operationPermissions.allowTerminate,
+        allowWithdraw: operationPermissions.allowWithdraw,
         // 基础执行人配置
         assignee: assignee, 
         candidateUsers: candidateUsers, 
@@ -3288,6 +3295,13 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
       const savedConditionRoot = parseFlowConditionConfig(extProps['conditionGroupConfig'])
       const parsedConditionRoot = savedConditionRoot || parseFlowConditionExpression(expressionBody)
       conditionRoot.value = parsedConditionRoot || createFlowConditionGroup()
+      // 网关类型转换可能只留下可视化元数据而移除执行表达式；必须显式提示用户重新应用。
+      staleConditionConfig.value = Boolean(
+        String(extProps['conditionGroupConfig'] || '').trim()
+        && !bo.conditionExpression
+        && bo.sourceRef?.default !== bo
+        && ['bpmn:ExclusiveGateway', 'bpmn:InclusiveGateway'].includes(bo.sourceRef?.$type)
+      )
       conditionParseWarning.value = expressionBody && !parsedConditionRoot
         ? '原表达式会继续保留且不会被自动覆盖。若要使用条件组，请先确认并清空原表达式。'
         : ''
@@ -4658,6 +4672,7 @@ function applyConfigurationSection(section) {
             }
           }
         }
+        staleConditionConfig.value = false
         break
       case 'actions':
         // 流程动作自动保存，无需额外操作

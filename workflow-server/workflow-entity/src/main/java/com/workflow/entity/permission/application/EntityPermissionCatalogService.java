@@ -142,6 +142,29 @@ public class EntityPermissionCatalogService {
     }
 
     /**
+     * 升级时仅补齐流程实体的重新发起权限。独立的 bootstrap 版本避免重跑旧的
+     * 状态初始化或重写历史按钮配置；普通角色仍需管理员授权，按钮仍默认关闭。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void synchronizeRestartPermissions() {
+        List<EntityDefinition> entities = definitionMapper.selectList(
+                new LambdaQueryWrapper<EntityDefinition>().orderByAsc(EntityDefinition::getCreatedAt));
+        if (entities.isEmpty()) return;
+        List<SysRole> administrators = roleMapper.selectAdministratorRoles();
+        if (administrators == null || administrators.isEmpty()) {
+            throw new IllegalStateException("重新发起权限初始化失败：系统缺少管理员角色");
+        }
+        SysMenu root = ensureRootMenu();
+        for (EntityDefinition entity : entities) {
+            if (entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM
+                    || entity.getLifecycleMode() != EntityDefinition.LifecycleMode.WORKFLOW) continue;
+            SysMenu permission = ensurePermissionMenu(ensureEntityContainer(root, entity), entity,
+                    EntityPermissionAction.RESTART_PROCESS);
+            grantToAdministrators(permission.getId(), administrators);
+        }
+    }
+
+    /**
      * 同步单个实体的标准权限菜单与初始状态。
      *
      * @param entity 实体定义，为空或系统实体直接返回
@@ -496,7 +519,7 @@ public class EntityPermissionCatalogService {
         if (entity != null && entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
             return false;
         }
-        return action != EntityPermissionAction.APPROVE
+        return (action != EntityPermissionAction.APPROVE && action != EntityPermissionAction.RESTART_PROCESS)
                 || entity == null
                 || entity.getLifecycleMode() == EntityDefinition.LifecycleMode.WORKFLOW;
     }

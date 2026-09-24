@@ -18,7 +18,7 @@
 | 文件 | 修改内容 |
 |------|----------|
 | `pom.xml` | 添加 jjwt 依赖 |
-| `config/CorsConfig.java` | 注册认证拦截器 |
+| `config/WebAccessConfiguration.java` | 注册认证拦截器 |
 | `controller/ProcessTaskController.java` | 使用 UserContext.getUsername() 替换 CURRENT_USER 常量 |
 | `service/SysUserService.java` | 添加 updatePassword() 方法 |
 

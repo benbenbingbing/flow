@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
+@org.springframework.context.annotation.Import(com.workflow.config.database.MySqlErrorTestConfiguration.class)
 @WebMvcTest(SysRoleController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")

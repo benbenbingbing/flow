@@ -18,21 +18,21 @@
     />
     <!-- 组表格 -->
     <el-table v-else v-loading="loading" :data="groupList" border stripe>
-      <el-table-column type="index" label="#" width="60" align="center" />
+      <el-table-column type="index" label="#" width="48" align="center" />
       
-      <el-table-column prop="groupName" label="组名称" min-width="150" />
+      <el-table-column prop="groupName" label="组名称" min-width="120" />
       
-      <el-table-column prop="groupCode" label="组编码" min-width="150" />
+      <el-table-column prop="groupCode" label="组编码" min-width="130" />
       
-      <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="description" label="描述" min-width="140" show-overflow-tooltip />
 
-      <el-table-column label="成员数" width="90" align="center">
+      <el-table-column label="成员数" width="68" align="center">
         <template #default="{ row }">{{ row.userIds?.length || 0 }}</template>
       </el-table-column>
       
-      <el-table-column prop="sort" label="排序" width="80" align="center" />
+      <el-table-column prop="sort" label="排序" width="56" align="center" />
       
-      <el-table-column prop="status" label="状态" width="90" align="center">
+      <el-table-column prop="status" label="状态" width="76" align="center">
         <template #default="{ row }">
           <el-switch
             v-model="row.status"
@@ -48,9 +48,11 @@
         </template>
       </el-table-column>
       
-      <el-table-column prop="createTime" label="创建时间" width="160" />
+      <el-table-column label="创建时间" width="160" show-overflow-tooltip>
+        <template #default="{ row }">{{ formatGroupDateTime(row.createTime) }}</template>
+      </el-table-column>
       
-      <el-table-column v-if="canManage" label="操作" width="240" fixed="right">
+      <el-table-column v-if="canManage" label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link size="small" @click="handleEdit(row)">
             编辑
@@ -131,6 +133,7 @@
           </el-col>
         </el-row>
       </el-form>
+      <el-alert v-if="submitError" :title="submitError" type="error" :closable="false" show-icon />
       
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -194,6 +197,7 @@ const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
 const submitLoading = ref(false)
+const submitError = ref('')
 
 const formData = reactive({
   id: '',
@@ -225,6 +229,11 @@ const currentGroupId = ref('')
 const statusPendingIds = reactive(new Set<string>())
 const isStatusPending = (id: unknown) => statusPendingIds.has(String(id ?? '').trim())
 
+// 接口返回的是本地日期时间字符串，直接展示日期和时间，避免按 UTC 解析后产生时区偏移。
+const formatGroupDateTime = (value: unknown) => value
+  ? String(value).replace('T', ' ').slice(0, 19)
+  : '-'
+
 // 获取组列表
 const fetchGroupList = async () => {
   loading.value = true
@@ -240,6 +249,7 @@ const fetchGroupList = async () => {
 
 // 重置表单
 const resetForm = () => {
+  submitError.value = ''
   Object.assign(formData, {
     id: '',
     groupName: '',
@@ -277,6 +287,7 @@ const handleEdit = (row: any) => {
 // 提交表单
 const handleSubmit = async () => {
   if (!canManage.value) return
+  submitError.value = ''
   // Element Plus 校验失败会拒绝 Promise；在事件入口消费它，避免产生未处理异常。
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -288,6 +299,9 @@ const handleSubmit = async () => {
     ElMessage.success(isUpdate ? '更新成功' : '创建成功')
     dialogVisible.value = false
     await fetchGroupList()
+  } catch (error: any) {
+    // 服务端唯一键等业务校验需要留在表单内显示，方便用户直接修改后重试。
+    submitError.value = error?.response?.data?.message || error?.message || '保存失败，请稍后重试'
   } finally {
     submitLoading.value = false
   }

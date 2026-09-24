@@ -1,0 +1,71 @@
+// 用户与角色页共用流程管理的卡片、查询区、工具栏和分页间距。
+.system-management {
+  min-width: 0;
+  height: 100%;
+
+  .search-form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+    align-items: start;
+    gap: 16px 24px;
+    margin-bottom: 18px;
+
+    .el-form-item {
+      min-width: 0;
+      margin: 0;
+    }
+
+    :deep(.el-form-item__content) { min-width: 0; }
+    .el-input, .el-select { width: 100%; }
+  }
+
+  .search-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 32px;
+    grid-column: 4;
+    grid-row: 1;
+    white-space: nowrap;
+  }
+
+  .table-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+
+    .el-button + .el-button { margin-left: 0; }
+  }
+
+  .table-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    white-space: nowrap;
+
+    :deep(.el-button + .el-button) { margin-left: 0; }
+  }
+
+  .pagination {
+    justify-content: flex-end;
+    margin-top: 18px;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 1200px) {
+  .system-management {
+    .search-form { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .search-actions { grid-column: 1 / -1; grid-row: auto; }
+  }
+}
+
+@media (max-width: 760px) {
+  .system-management {
+    .search-form { grid-template-columns: 1fr; gap: 12px; }
+    .pagination { justify-content: flex-start; }
+  }
+}

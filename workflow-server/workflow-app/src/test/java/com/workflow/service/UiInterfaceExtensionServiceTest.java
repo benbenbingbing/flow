@@ -188,7 +188,7 @@ class UiInterfaceExtensionServiceTest {
      */
     @Test
     void pinnedOperationExecutesFrozenDefinitionAfterDraftChanges() {
-        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        UiDataSourceProvider provider = mockProvider();
         when(provider.getCode()).thenReturn("safe-provider");
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
@@ -373,7 +373,7 @@ class UiInterfaceExtensionServiceTest {
                         "source-1", "query");
 
         UiDataSourceProvider driftedProvider =
-                mock(UiDataSourceProvider.class);
+                mockProvider();
         when(driftedProvider.getCode()).thenReturn("safe-provider");
         when(driftedProvider.getVersion()).thenReturn(1);
         when(driftedProvider.getArtifactDigest())
@@ -666,7 +666,7 @@ class UiInterfaceExtensionServiceTest {
     @Test
     void isolatesCacheForTwoInterfaceExtensionsOnSameRevision() {
         AtomicInteger calls = new AtomicInteger();
-        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        UiDataSourceProvider provider = mockProvider();
         when(provider.getCode()).thenReturn("safe-provider");
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
@@ -707,7 +707,7 @@ class UiInterfaceExtensionServiceTest {
     @Test
     void isolatesPinnedCacheForDifferentFrozenDefinitions() {
         AtomicInteger calls = new AtomicInteger();
-        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        UiDataSourceProvider provider = mockProvider();
         when(provider.getCode()).thenReturn("safe-provider");
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
@@ -1147,12 +1147,89 @@ class UiInterfaceExtensionServiceTest {
                 ? null : codec.write(value, label);
     }
 
+    private UiDataSourceProvider mockProvider() {
+        UiDataSourceProvider provider = mock(UiDataSourceProvider.class);
+        when(provider.execute(any(), any(), anyMap(), anyMap(), any())).thenCallRealMethod();
+        return provider;
+    }
+
+    /** 超时必须中断实际工作，并允许同一个有界执行器继续服务下一次请求。 */
+    @Test
+    void timedOutProviderIsCancelledAndWorkerCapacityRecovers() throws Exception {
+        var pool = new com.workflow.entity.ui.application.UiExtensionExecutionConfiguration()
+                .uiExtensionTaskExecutor(1, 1);
+        pool.initialize();
+        var stopped = new java.util.concurrent.CountDownLatch(1);
+        var calls = new AtomicInteger();
+        UiDataSourceProvider provider = mockProvider();
+        when(provider.getCode()).thenReturn("safe-provider");
+        when(provider.getVersion()).thenReturn(1);
+        when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
+        org.mockito.Mockito.doAnswer(call -> {
+            var control = call.getArgument(4, com.workflow.contracts.execution.ExecutionControl.class);
+            assertTrue(control.remainingMillis() <= 200);
+            assertEquals("user-1", UserContext.getUserId());
+            if (calls.incrementAndGet() == 1) {
+                try { new java.util.concurrent.CountDownLatch(1).await(); }
+                catch (InterruptedException cancelled) { Thread.currentThread().interrupt(); }
+                finally { stopped.countDown(); }
+                control.check();
+            }
+            return Map.of("value", "ok");
+        }).when(provider).execute(any(), any(), anyMap(), anyMap(), any());
+        TestContext context = context(List.of(provider), pool);
+        authorize(context, plan("1=1", 7));
+        when(context.mapper().selectById("source-1")).thenReturn(definition(context.codec(),
+                "REGISTERED_PROVIDER", "safe-provider", Map.of(), Map.of(), Map.of(),
+                Map.of("timeoutMs", 200, "failurePolicy", "FAIL")));
+        try {
+            assertThrows(RuntimeException.class, () -> context.service().execute("source-1", request(Map.of(), null)));
+            assertTrue(stopped.await(2, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(Map.of("value", "ok"), context.service().execute("source-1", request(Map.of(), null)));
+            assertEquals(2, calls.get());
+            assertEquals(0, pool.getQueueSize());
+            assertEquals("user-1", UserContext.getUserId());
+            pool.submit(() -> {
+                org.junit.jupiter.api.Assertions.assertNull(UserContext.getUserId());
+                org.junit.jupiter.api.Assertions.assertNull(com.workflow.core.concurrent.ExecutionDeadline.current());
+            }).get(2, java.util.concurrent.TimeUnit.SECONDS);
+        } finally { pool.shutdown(); }
+    }
+
+    /** 已过期的排队任务不能在忙线程释放后补执行，也不能继续占用有限队列。 */
+    @Test
+    void expiredQueuedProviderNeverRunsAndQueueSlotIsReleased() throws Exception {
+        var pool = new com.workflow.entity.ui.application.UiExtensionExecutionConfiguration()
+                .uiExtensionTaskExecutor(1, 1);
+        pool.initialize();
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var unblock = new java.util.concurrent.CountDownLatch(1);
+        pool.execute(() -> {
+            entered.countDown();
+            try { unblock.await(); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); }
+        });
+        AtomicInteger calls = new AtomicInteger();
+        TestContext context = context(List.of(provider(calls, Map.of("ok", true))), pool);
+        authorize(context, plan("1=1", 7));
+        when(context.mapper().selectById("source-1")).thenReturn(definition(context.codec(),
+                "REGISTERED_PROVIDER", "safe-provider", Map.of(), Map.of(), Map.of(),
+                Map.of("timeoutMs", 100, "failurePolicy", "FAIL")));
+        try {
+            assertTrue(entered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+            assertThrows(RuntimeException.class, () -> context.service().execute("source-1", request(Map.of(), null)));
+            assertEquals(0, pool.getQueueSize());
+            unblock.countDown();
+            pool.submit(() -> {}).get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertEquals(0, calls.get());
+        } finally { unblock.countDown(); pool.shutdown(); }
+    }
+
     /** 构造带调用计数与固定返回值的 Mock provider */
     private UiDataSourceProvider provider(
             AtomicInteger calls,
             Object result) {
         UiDataSourceProvider provider =
-                mock(UiDataSourceProvider.class);
+                mockProvider();
         when(provider.getCode()).thenReturn("safe-provider");
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
@@ -1230,8 +1307,11 @@ class UiInterfaceExtensionServiceTest {
     }
 
     /** 装配测试上下文。 */
-    private TestContext context(
-            List<UiDataSourceProvider> providers) {
+    private TestContext context(List<UiDataSourceProvider> providers) {
+        return context(providers, new SimpleAsyncTaskExecutor("ui-data-source-test-"));
+    }
+
+    private TestContext context(List<UiDataSourceProvider> providers, org.springframework.core.task.TaskExecutor executor) {
         UiExtensionDefinitionMapper mapper =
                 mock(UiExtensionDefinitionMapper.class);
         EntityFormMapper formMapper =
@@ -1301,8 +1381,7 @@ class UiInterfaceExtensionServiceTest {
                 new UiExtensionDefinitionValidator(codec),
                 providers,
                 codec,
-                new SimpleAsyncTaskExecutor(
-                        "ui-data-source-test-"));
+                executor);
         return new TestContext(
                 service,
                 mapper,

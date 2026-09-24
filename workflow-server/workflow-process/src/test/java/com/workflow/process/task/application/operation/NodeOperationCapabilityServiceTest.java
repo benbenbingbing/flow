@@ -222,8 +222,8 @@ class NodeOperationCapabilityServiceTest {
         Task second = task("task-2", "review-b", "definition-1", "process-1");
         query(first, List.of(first, second));
         when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(
-                userTask("review-a", "{\"allowTerminate\":true}"),
-                userTask("review-b", "{\"allowTerminate\":true}")));
+                userTask("review-a", "{\"allowTerminate\":false,\"allowWithdraw\":true}"),
+                userTask("review-b", "{\"allowTerminate\":false,\"allowWithdraw\":true}")));
         when(legacyDecisionService.availableActions("task-1")).thenReturn(withdrawDecision(true));
         when(legacyDecisionService.availableActions("task-2")).thenReturn(withdrawDecision(false));
         assertEquals(false, service.canWithdrawProcess("process-1", "other"));
@@ -232,8 +232,8 @@ class NodeOperationCapabilityServiceTest {
         assertEquals(true, service.canWithdrawProcess("process-1", "starter"));
         // 新开关仍是硬门禁，旧撤回矩阵允许不能越过它。
         when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(
-                userTask("review-a", "{\"allowTerminate\":true}"),
-                userTask("review-b", "{\"allowTerminate\":false}")));
+                userTask("review-a", "{\"allowTerminate\":false,\"allowWithdraw\":true}"),
+                userTask("review-b", "{\"allowTerminate\":true,\"allowWithdraw\":false}")));
         assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
     }
 
@@ -253,6 +253,32 @@ class NodeOperationCapabilityServiceTest {
         assertEquals(true, service.canWithdrawProcess("process-1", "starter"));
         when(tasks.list()).thenReturn(List.of());
         assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
+    }
+
+    @Test
+    void withdrawalWriteUsesIndependentSwitchAndRejectsEmptyOrMixedBranches() {
+        Task first = task("task-1", "review-a", "definition-1", "process-1");
+        Task second = task("task-2", "review-b", "definition-1", "process-1");
+        TaskQuery tasks = query(first, List.of(first));
+        when(repositoryService.getBpmnModel("definition-1")).thenReturn(model(
+                userTask("review-a", "{\"allowTerminate\":false,\"allowWithdraw\":true}"),
+                userTask("review-b", "{\"allowTerminate\":true,\"allowWithdraw\":false}")));
+        var context = NodeOperationDecisionService.CheckContext.ofReason("更正资料");
+        assertDoesNotThrow(() -> service.requireWithdrawAllowed("process-1", context));
+        verify(legacyDecisionService).requireAllowedForProcess("process-1", NodeOperationPolicy.Operation.WITHDRAW, context);
+        when(tasks.list()).thenReturn(List.of(first, second));
+        assertThrows(ForbiddenException.class, () -> service.requireWithdrawAllowed("process-1", context));
+        when(tasks.list()).thenReturn(List.of());
+        assertThrows(ForbiddenException.class, () -> service.requireWithdrawAllowed("process-1", context));
+    }
+
+    @Test
+    void endedProcessCannotBeWithdrawn() {
+        ProcessInstanceQuery query = mock(ProcessInstanceQuery.class);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(query);
+        when(query.processInstanceId("process-1")).thenReturn(query);
+        assertEquals(false, service.canWithdrawProcess("process-1", "starter"));
+        verifyNoInteractions(taskService);
     }
 
     private void runtimeStarter(String starter) {

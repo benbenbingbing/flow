@@ -360,7 +360,7 @@ await controller.destroy()
 assert.equal(calls.at(-1).operation, 'logout')
 assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROYED)
 
-// destroy ACK 必须严格晚于 DELETE Session 完成，重复命令复用同一注销。
+// destroy ACK 必须严格晚于 POST Session 完成，重复命令复用同一注销。
 const delayedLogout = deferred()
 let delayedLogoutCalls = 0
 const delayedBridge = createBridgeHarness()

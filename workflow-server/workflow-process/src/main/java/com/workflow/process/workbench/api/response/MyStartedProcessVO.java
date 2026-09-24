@@ -74,7 +74,7 @@ public class MyStartedProcessVO {
     private String endTime;
     
     /**
-     * 流程状态：RUNNING-运行中，COMPLETED-已完成，TERMINATED-已终止，SUSPENDED-已挂起
+     * 本轮实例生命周期：RUNNING-运行中，COMPLETED-已完成（包括终止、撤回）。
      */
     private String status;
     
@@ -91,4 +91,7 @@ public class MyStartedProcessVO {
 
     /** 当前登录发起人是否可以终止该运行中流程。 */
     private Boolean canTerminate;
+
+    /** 当前发起人且所有活动节点允许撤回时为 true；PC 列表据此显示按钮，写接口仍重新校验。 */
+    private Boolean canWithdraw;
 }

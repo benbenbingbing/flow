@@ -23,6 +23,13 @@ flowable:
 
 # 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
 workflow:
+  # 收件箱摘要分页；用户可见任务未回填完时自动沿用旧查询，可独立关闭新读取进行回切。
+  task-inbox:
+    read-model-enabled: ${TASK_INBOX_READ_MODEL_ENABLED:true}
+    # 回填每轮至多 100 条、每条独立事务；关闭只停止历史补齐，不停止业务事务中的同步。
+    backfill-enabled: ${TASK_INBOX_BACKFILL_ENABLED:true}
+    backfill-initial-delay-ms: ${TASK_INBOX_BACKFILL_INITIAL_DELAY_MS:5000}
+    backfill-delay-ms: ${TASK_INBOX_BACKFILL_DELAY_MS:10000}
   # 事务消息出站队列，负责提交后投递、失败重试和历史清理。
   outbox:
     # 出站队列扫描的固定延迟，单位毫秒，控制投递延迟和数据库轮询压力。

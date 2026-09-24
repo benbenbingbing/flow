@@ -256,8 +256,8 @@
               <el-option label="初始" value="NEW" />
               <el-option label="处理中" value="PROCESSING" />
               <el-option label="已完成" value="COMPLETED" />
-              <el-option label="已终止" value="TERMINATED" />
-              <el-option label="已撤回" value="WITHDRAWN" />
+              <el-option label="已终止" value="TERMINATED" :disabled="statusList.some(item => item !== row && item.statusCategory === 'TERMINATED')" />
+              <el-option label="已撤回" value="WITHDRAWN" :disabled="statusList.some(item => item !== row && item.statusCategory === 'WITHDRAWN')" />
             </el-select>
           </template>
         </el-table-column>
@@ -975,9 +975,11 @@ const formatDate = (dateStr) => {
     second: '2-digit'
   })
 }
-// 格式化数据库类型（根据字段类型、长度、精度动态计算）
+// 发布 DDL 由字段类型和尺寸生成；业务字段不能直接展示可能过期的 dbType 元数据。
 const formatDbType = (field) => {
-  if (field.dbType) return field.dbType
+  // 存量系统 status 元数据仍可能记录 varchar(20)，物理主表基线固定为 varchar(50)。
+  if (field.isSystem && field.fieldCode === 'status') return 'varchar(50)'
+  if (field.isSystem && field.dbType) return field.dbType
   switch (field.fieldType) {
     case 'STRING':
     case 'SELECT':
@@ -985,15 +987,16 @@ const formatDbType = (field) => {
     case 'USER':
     case 'DEPT':
     case 'REFERENCE':
-      return `varchar(${field.fieldLength || 200})`
+      return `varchar(${field.fieldLength ?? 200})`
     case 'TEXT':
+    case 'RICH_TEXT':
       return 'text'
     case 'INTEGER':
       return 'int'
     case 'LONG':
       return 'bigint'
     case 'DECIMAL':
-      return `decimal(${field.fieldLength || 18},${field.fieldPrecision || 2})`
+      return `decimal(${field.fieldLength ?? 18},${field.fieldPrecision ?? 2})`
     case 'DATE':
       return 'date'
     case 'DATETIME':
@@ -1007,9 +1010,9 @@ const formatDbType = (field) => {
     case 'IMAGE':
       return 'text'
     case 'MULTI_REFERENCE':
-      return 'json'
+      return 'longtext'
     default:
-      return 'varchar(255)'
+      return field.dbType || 'varchar(255)'
   }
 }
 // 发布实体（先显示差异预览）
@@ -1273,6 +1276,13 @@ const removeStatus = (index) => {
   statusList.value.splice(index, 1)
 }
 const saveStatusConfig = async () => {
+  // 特殊操作按类别选择唯一目标，重复配置会让终止/撤回结果产生歧义。
+  for (const category of ['TERMINATED', 'WITHDRAWN']) {
+    if (statusList.value.filter(item => item.statusCategory === category).length > 1) {
+      ElMessage.warning(`${category === 'TERMINATED' ? '终止' : '撤回'}类状态只能配置一个`)
+      return
+    }
+  }
   // 验证数据
   for (const status of statusList.value) {
     if (!status.statusCode || !status.statusName) {

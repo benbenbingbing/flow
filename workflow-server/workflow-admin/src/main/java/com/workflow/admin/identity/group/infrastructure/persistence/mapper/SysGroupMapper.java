@@ -16,6 +16,28 @@ import java.util.List;
  */
 @Mapper
 public interface SysGroupMapper extends BaseMapper<SysGroup> {
+
+    /**
+     * 分批读取候选组展示信息；调用方须传入非空且最多 200 个编码。
+     * 保留原始查询编码，使大小写、重音等比较沿用数据库规则，避免内存按编码匹配丢失结果。
+     */
+    @Select("""
+            <script>
+            <foreach collection="codes" item="code" separator=" UNION ALL ">
+              SELECT CONCAT(#{code,jdbcType=VARCHAR}, '') AS lookup_code, id, group_name
+              FROM sys_group WHERE deleted = 0 AND group_code = #{code,jdbcType=VARCHAR}
+            </foreach>
+            </script>
+            """)
+    List<GroupDisplayRow> selectDisplayGroupsByCodes(@Param("codes") List<String> codes);
+
+    /** 原始候选编码用于回填展示；id 用于下一步批量读取成员，空组回退到 groupName。 */
+    @lombok.Data
+    class GroupDisplayRow {
+        private String lookupCode;
+        private String id;
+        private String groupName;
+    }
     
     /**
      * 检查组编码是否存在

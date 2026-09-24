@@ -100,6 +100,8 @@ class EntityActionCapabilityServiceTaskBindingTest {
                 .thenReturn(true);
         when(assigneeLookup.findActionableTaskId(row, currentUser))
                 .thenReturn(Optional.of("task-lisi"));
+        when(assigneeLookup.findActionableTaskName(row, currentUser, "task-lisi"))
+                .thenReturn(Optional.of("常规审批"));
 
         service.enrichRows(ENTITY_CODE, listConfig, List.of(row));
 
@@ -108,10 +110,43 @@ class EntityActionCapabilityServiceTaskBindingTest {
         assertTrue(approve.isVisible());
         assertTrue(approve.isEnabled());
         assertEquals("task-lisi", approve.getActionableTaskId());
+        assertEquals("常规审批", approve.getActionableTaskName());
         assertEquals(
                 "task-other-assignee",
                 row.getCurrentTaskId(),
                 "实体流程摘要的 currentTaskId 语义不得被当前用户能力覆盖");
+    }
+
+    @Test
+    void wholePageBindsTaskIdsAndNamesWithOneCapabilityBatch() {
+        var port = mock(com.workflow.contracts.process.port.ProcessTaskAccessPort.class);
+        var realLookup = new CurrentProcessTaskAssigneeLookup(port);
+        var realService = new EntityActionCapabilityService(actionConfigService,
+                new EntityActionRuleEvaluator(List.of(), realLookup), statusMapper, userService, realLookup);
+        var rows = java.util.stream.IntStream.range(0, 30).mapToObj(index -> {
+            var row = multiInstanceRow(); row.setId("record-" + index); return row;
+        }).toList();
+        when(port.findCapabilities(org.mockito.ArgumentMatchers.eq("user-lisi"), org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(call -> {
+                    List<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates> records = call.getArgument(1);
+                    var capabilities = new java.util.HashMap<com.workflow.contracts.process.port.ProcessTaskAccessPort.RecordCoordinates,
+                            com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability>();
+                    records.forEach(record -> capabilities.put(record,
+                            new com.workflow.contracts.process.port.ProcessTaskAccessPort.TaskCapability(
+                                    "task-" + record.entityDataId(), "当前审批", false)));
+                    return capabilities;
+                });
+        realService.enrichRows(ENTITY_CODE, listConfig, rows);
+        for (var row : rows) {
+            var capability = row.getActionCapabilities().get("approve");
+            assertTrue(capability.isVisible());
+            assertTrue(capability.isEnabled());
+            assertEquals("task-" + row.getId(), capability.getActionableTaskId());
+            assertEquals("当前审批", capability.getActionableTaskName());
+        }
+        org.mockito.Mockito.verify(port).findCapabilities(org.mockito.ArgumentMatchers.eq("user-lisi"),
+                org.mockito.ArgumentMatchers.argThat(records -> records.size() == 30));
+        org.mockito.Mockito.verifyNoMoreInteractions(port);
     }
 
     @Test
@@ -225,7 +260,9 @@ class EntityActionCapabilityServiceTaskBindingTest {
 
         assertFalse(row.getActionCapabilities().get("approve").isVisible());
         assertNull(row.getActionCapabilities().get("approve").getActionableTaskId());
-        verifyNoInteractions(assigneeLookup);
+        // 开启展示作用域不读取数据；无审批权限时不得触发任何实际任务查询。
+        org.mockito.Mockito.verify(assigneeLookup).openDisplayBatch(List.of(row), currentUser);
+        org.mockito.Mockito.verifyNoMoreInteractions(assigneeLookup);
     }
 
     @Test

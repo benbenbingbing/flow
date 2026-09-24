@@ -90,4 +90,18 @@ public interface UiDataSourceProvider {
             DataScopePlan dataScopePlan,
             Map<String, Object> configuration,
             Map<String, Object> input);
+
+    /**
+     * 带执行预算的新入口。旧 Provider 继续调用四参数方法；涉及自建客户端或长循环的实现
+     * 应覆盖本方法，传递 remainingMillis 并注册资源取消，不能自行创建无界后台任务。
+     * 平台 HTTP 和 MyBatis 调用还会自动继承当前线程的预算。
+     */
+    default Object execute(UiInvocationContext context, DataScopePlan dataScopePlan,
+            Map<String, Object> configuration, Map<String, Object> input,
+            com.workflow.contracts.execution.ExecutionControl control) {
+        control.check();
+        Object result = execute(context, dataScopePlan, configuration, input);
+        control.check();
+        return result;
+    }
 }

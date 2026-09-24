@@ -192,7 +192,7 @@ class EntityRelationDefinitionServiceTest {
     void rejectsReservedRuntimeDataKey() {
         stubEntitiesAndForeignKey();
         EntityRelationSaveRequest request = request();
-        request.setDataKey("title");
+        request.setDataKey("processInstanceId");
 
         BusinessConflictException failure = assertThrows(
                 BusinessConflictException.class,
@@ -201,6 +201,15 @@ class EntityRelationDefinitionServiceTest {
         assertEquals(
                 "ENTITY_RELATION_DATA_KEY_RESERVED",
                 failure.getErrorCode());
+    }
+
+    @Test
+    void acceptsTitleAsRelationDataKey() {
+        stubEntitiesAndForeignKey();
+        EntityRelationSaveRequest request = request();
+        request.setDataKey("title");
+
+        assertDoesNotThrow(() -> service.create("parent-1", request));
     }
 
     @Test

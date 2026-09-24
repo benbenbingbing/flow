@@ -163,7 +163,8 @@
                   <template #default="{ row }">
                     <div class="field-purpose-controls">
                       <el-checkbox v-model="row.showInList">列表</el-checkbox>
-                      <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row)">查询</el-checkbox>
+                      <el-checkbox v-model="row.isQuery" :disabled="!supportsQuery(row) && !row.isQuery">查询</el-checkbox>
+                      <span v-if="!supportsQuery(row) && row.isQuery" class="text-danger">虚拟列仅展示，请取消查询并重新发布</span>
                     </div>
                   </template>
                 </el-table-column>
@@ -922,6 +923,7 @@
   </div>
 </template>
 <script setup>
+import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -1616,8 +1618,7 @@ function isVirtualField(field) {
   return String(field?.fieldId || '').startsWith('virtual_')
 }
 function supportsQuery(field) {
-  const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
-  return option?.supportsQuery !== false
+  return supportsEntityFieldQuery(field)
 }
 function addVirtualField() {
   const timestamp = Date.now()
@@ -1679,7 +1680,7 @@ async function removeVirtualField(field) {
 }
 function handleDataSourceChange(field) {
   const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
-  if (option?.supportsQuery === false) {
+  if (!supportsQuery(field)) {
     field.isQuery = false
   }
   const schema = option?.configSchema || []

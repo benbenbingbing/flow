@@ -107,9 +107,11 @@ assert.match(listDesign, /route\.query\.targetType/, '列表事件深链必须�
 assert.match(formDesign, /route\.query\.targetType/, '表单事件深链必须保留字段或按钮目标')
 assert.match(
   formSettings,
-  /@changed="onEventBindingsChanged"/,
+  /@changed="handleEventBindingsChanged"/,
   '表单事件保存后必须立即刷新草稿与发布差异'
 )
+assert.match(formSettings, /return onEventBindingsChanged\(\)/,
+  '表单事件变更处理必须调用统一差异刷新链')
 assert.match(
   formDesign,
   /onEventBindingsChanged: loadDiff/,

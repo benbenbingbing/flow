@@ -19,6 +19,8 @@ public class EntityActionCapabilityDTO {
      * 该值来自未完成待办查询，不等同于实体行上可能指向兄弟任务的 currentTaskId。
      */
     private String actionableTaskId;
+    /** 与 actionableTaskId 对应的任务名称，列表据此标明实际审批入口。 */
+    private String actionableTaskName;
 
     /**
      * 保留原有三参数构造契约；非任务按钮没有可办理任务 ID。
@@ -29,6 +31,12 @@ public class EntityActionCapabilityDTO {
      */
     public EntityActionCapabilityDTO(boolean visible, boolean enabled, String reason) {
         this(visible, enabled, reason, null);
+    }
+
+    /** 保留原有四参数构造契约，未提供名称时由调用方按需回查。 */
+    public EntityActionCapabilityDTO(boolean visible, boolean enabled, String reason,
+            String actionableTaskId) {
+        this(visible, enabled, reason, actionableTaskId, null);
     }
 
     /**
@@ -48,6 +56,13 @@ public class EntityActionCapabilityDTO {
      */
     public static EntityActionCapabilityDTO allowedForTask(String actionableTaskId) {
         return new EntityActionCapabilityDTO(true, true, "", actionableTaskId);
+    }
+
+    /** 同时返回审批目标和名称，避免并行任务的实体摘要误导办理人。 */
+    public static EntityActionCapabilityDTO allowedForTask(
+            String actionableTaskId, String actionableTaskName) {
+        return new EntityActionCapabilityDTO(
+                true, true, "", actionableTaskId, actionableTaskName);
     }
 
     /**

@@ -107,6 +107,17 @@ public class EntityVersionDiffDTO {
         private String dbType;
 
         /**
+         * 业务字段的存储长度或 DECIMAL 总位数。发布预览需用它计算物理列类型，
+         * 因为可编辑的 dbType 元数据不参与实际 DDL 生成。
+         */
+        private Integer fieldLength;
+
+        /**
+         * DECIMAL 小数位数；与 fieldLength 一起决定发布时的物理精度。
+         */
+        private Integer fieldPrecision;
+
+        /**
          * 数据库列名（下划线命名）
          */
         private String dbColumnName;

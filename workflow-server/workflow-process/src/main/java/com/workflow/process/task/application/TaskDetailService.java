@@ -146,12 +146,12 @@ public class TaskDetailService {
         List<TaskDetailDTO.FormConfigDTO> formConfigs = new ArrayList<>();
         String formKey = addSignContext == null ? processTask.getFormKey()
                 : addSignContext.sourceTask().getFormKey();
+        ProcessPublishedSnapshotService.PublishedNodeForms published = null;
 
         if (processDefinitionId != null
                 && nodeId != null) {
             try {
-                ProcessPublishedSnapshotService.PublishedNodeForms published =
-                        processPublishedSnapshotService
+                published = processPublishedSnapshotService
                                 .getNodeFormsContextByProcessDefinitionId(
                                         processDefinitionId,
                                         nodeId);
@@ -196,8 +196,20 @@ public class TaskDetailService {
                 com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef =
                         entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
                 if (entityDef != null) {
+                    // 默认表单虽未显式绑定节点，任务详情同样需要活动任务令牌，
+                    // 否则从此入口进入审批会显示按钮却无法通过提交鉴权。
+                    UiRuntimeResolutionContext defaultFormContext = published == null
+                            ? null
+                            : UiRuntimeResolutionContext.activeTask(
+                                    published.history().getId(),
+                                    nodeId,
+                                    taskId,
+                                    processInstanceId,
+                                    entityCode,
+                                    processTask.getEntityDataId());
                     EntityForm form =
-                            entityFormRuntimeService.getDefaultForm(entityDef.getId());
+                            entityFormRuntimeService.getDefaultForm(
+                                    entityDef.getId(), defaultFormContext);
                     if (form == null) {
                         List<EntityForm> forms =
                                 entityFormMapper.selectByEntityId(entityDef.getId());

@@ -1,5 +1,7 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.result.Result;
 import com.workflow.contracts.audit.model.AuditAction;
@@ -98,20 +100,12 @@ public class ProcessTerminationService {
                 processInstanceId,
                 NodeOperationDecisionService.CheckContext.ofReason(reason));
 
-        String entityCode = null;
-        String entityDataId = null;
-        try {
-            entityCode = (String) runtimeService.getVariable(
-                    processInstanceId,
-                    "entityCode");
-            entityDataId = (String) runtimeService.getVariable(
-                    processInstanceId,
-                    "entityDataId");
-        } catch (Exception exception) {
-            log.warn(
-                    "终止前获取流程变量失败: processInstanceId={}",
-                    LogValue.safe(processInstanceId),
-                    LogValue.failureType(exception));
+        // 元数据读取失败必须阻止终止，不能跳过实体目标状态校验后继续删除实例。
+        String entityCode = (String) runtimeService.getVariable(processInstanceId, "entityCode");
+        String entityDataId = (String) runtimeService.getVariable(processInstanceId, "entityDataId");
+
+        if (org.springframework.util.StringUtils.hasText(entityCode)) {
+            entityRecordPort.requireProcessEndStatus(entityCode, "TERMINATED");
         }
 
         try {
@@ -120,13 +114,11 @@ public class ProcessTerminationService {
                     : "发起人主动终止";
             runtimeService.deleteProcessInstance(
                     processInstanceId,
-                    deleteReason);
+                    ProcessEndReason.encode("TERMINATED", deleteReason));
             processTaskService.deleteTasksByProcessInstance(
                     processInstanceId);
             writeTerminateLog(
-                    LogValue.safe(processInstanceId),
-                    LogValue.safe(userId),
-                    LogValue.safe(deleteReason));
+                    processInstanceId, userId, deleteReason);
             if (entityCode != null && entityDataId != null) {
                 entityRecordPort.recordActivity(
                         entityCode,
@@ -138,9 +130,7 @@ public class ProcessTerminationService {
             }
             log.info(
                     "流程终止成功: processInstanceId={}, userId={}, reason={}",
-                    LogValue.safe(processInstanceId),
-                    LogValue.safe(userId),
-                    LogValue.safe(deleteReason));
+                    processInstanceId, userId, deleteReason);
             return Result.success(null);
         } catch (Exception exception) {
             // 返回业务错误也必须回滚已推进的引擎与实体状态，避免吞异常后提交半成品。
@@ -169,19 +159,16 @@ public class ProcessTerminationService {
             String processInstanceId,
             String userId,
             String deleteReason) {
-        try {
-            ProcessOperationLog operationLog = new ProcessOperationLog();
-            operationLog.setProcessInstanceId(processInstanceId);
-            operationLog.setOperationType("TERMINATE");
-            operationLog.setOperatorId(userId);
-            operationLog.setOperatorName(
-                    identityDirectoryPort.getDisplayName(userId));
-            operationLog.setOperationTime(LocalDateTime.now());
-            operationLog.setOperationComment(deleteReason);
-            operationLogMapper.insert(operationLog);
-        } catch (Exception exception) {
-            log.warn("记录终止日志失败", exception);
-        }
+        ProcessOperationLog operationLog = new ProcessOperationLog();
+        operationLog.setProcessInstanceId(processInstanceId);
+        operationLog.setOperationType("TERMINATE");
+        operationLog.setOperatorId(userId);
+        operationLog.setOperatorName(
+                identityDirectoryPort.getDisplayName(userId));
+        operationLog.setOperationTime(LocalDateTime.now());
+        operationLog.setOperationComment(deleteReason);
+        // 日志是审批历史的事实来源，失败必须让外层事务回滚，不能吞掉异常。
+        operationLogMapper.insert(operationLog);
     }
 
 }

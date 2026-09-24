@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 实体数据控制器单元测试
  */
-@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
+@org.springframework.context.annotation.Import(com.workflow.config.database.MySqlErrorTestConfiguration.class)
 @WebMvcTest(EntityDataController.class)
 @AutoConfigureMockMvc(addFilters = false)
 public class EntityDataControllerTest {

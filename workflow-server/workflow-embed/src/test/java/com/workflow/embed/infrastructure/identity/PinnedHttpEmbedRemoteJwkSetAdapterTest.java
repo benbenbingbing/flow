@@ -244,12 +244,12 @@ class PinnedHttpEmbedRemoteJwkSetAdapterTest {
 
         WorkflowHttpProperties properties = new WorkflowHttpProperties();
         properties.setMaxResponseBytes(256 * 1024);
-        PinnedHttpTransport realTransport = new PinnedHttpTransport(
-                new RestEndpointPolicy(properties), properties);
-        PinnedHttpEmbedRemoteJwkSetAdapter realAdapter = adapter(realTransport, 4);
-
-        assertThrows(IllegalStateException.class, () -> realAdapter.load(
-                provider("private", 1, 1, "https://127.0.0.1/jwks"), false));
+        try (PinnedHttpTransport realTransport = new PinnedHttpTransport(
+                new RestEndpointPolicy(properties), properties)) {
+            PinnedHttpEmbedRemoteJwkSetAdapter realAdapter = adapter(realTransport, 4);
+            assertThrows(IllegalStateException.class, () -> realAdapter.load(
+                    provider("private", 1, 1, "https://127.0.0.1/jwks"), false));
+        }
     }
 
     private PinnedHttpEmbedRemoteJwkSetAdapter adapter(

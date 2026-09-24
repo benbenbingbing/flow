@@ -188,7 +188,7 @@ class MySqlServiceQueryDatabaseTest {
             f.jdbc.update("INSERT INTO " + action + " VALUES ('future-created','PENDING',NULL,?),('running','RUNNING',NULL,?)",
                     now.plusSeconds(5), now);
             // 固定从数据库取得的 UTC 边界，避免断言依赖测试线程执行速度。
-            var metrics = new com.workflow.config.AsyncQueueMetrics(new JdbcTemplate(f.isolatedDataSource()), registry, () -> now);
+            var metrics = new com.workflow.observability.AsyncQueueMetrics(new JdbcTemplate(f.isolatedDataSource()), registry, () -> now);
             metrics.refresh();
             assertEquals(2, registry.get("workflow.queue.items").tag("queue", "outbox").tag("state", "ready").gauge().value());
             assertEquals(1, registry.get("workflow.queue.items").tag("queue", "outbox").tag("state", "running").gauge().value());

@@ -264,6 +264,20 @@ public class EntityFormRuntimeService {
      * @return 运行时默认表单，不存在时返回 null
      */
     public EntityForm getDefaultForm(String entityId) {
+        return getDefaultForm(entityId, null);
+    }
+
+    /**
+     * 按当前默认发布版本加载表单，并在审批任务上下文完整时签发与任务绑定的解析令牌。
+     * 默认表单没有节点钉版，但审批按钮仍必须证明本次展示与提交使用同一发布快照。
+     *
+     * @param entityId 实体 ID
+     * @param context 已由流程进度校验的发布历史、节点和任务上下文；普通独立查看可为空
+     * @return 实际生效的默认发布表单，不存在时返回 null
+     */
+    public EntityForm getDefaultForm(
+            String entityId,
+            UiRuntimeResolutionContext context) {
         EntityForm form = formMapper.selectDefaultByEntityId(entityId);
         if (form == null) {
             return null;
@@ -276,6 +290,15 @@ public class EntityFormRuntimeService {
             runtimeForm.setRuntimeReleaseId(resolved.releaseId());
             runtimeForm.setRuntimeReleaseVersion(
                     resolved.releaseVersion());
+            if (context != null) {
+                runtimeForm.setReleaseResolutionToken(
+                        resolutionTokenService.issue(
+                                context,
+                                runtimeForm.getId(),
+                                resolved.releaseId(),
+                                resolved.releaseVersion(),
+                                0));
+            }
         }
         return runtimeForm;
     }

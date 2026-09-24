@@ -175,6 +175,16 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         EntityProcessLink latest = entityProcessLinkMapper.selectLatestForUpdate(
                 request.entityCode(),
                 request.entityRecordId());
+        // 下一代必须由明确的重新发起请求创建；旧请求或重复点击不能隐式启动新一轮。
+        if (StringUtils.hasText(request.previousProcessInstanceId())) {
+            if (latest == null || !request.previousProcessInstanceId().equals(latest.getProcessInstanceId())
+                    || !canRestart(request.entityCode(), request.entityRecordId(),
+                            request.previousProcessInstanceId(), request.submitterId())) {
+                throw new BusinessConflictException("PROCESS_RESTART_NOT_ALLOWED", "流程已变化或不允许重新发起，请刷新后重试");
+            }
+        } else if (latest != null && "ENDED".equals(latest.getState())) {
+            throw new BusinessConflictException("PROCESS_RESTART_REQUIRED", "已有流程已结束，请使用重新发起操作");
+        }
         int generation = latest == null
                 ? 1
                 : ("ENDED".equals(latest.getState())
@@ -226,6 +236,22 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
                     "实体流程正在发起，请稍后重试");
         }
         return locked;
+    }
+
+    /**
+     * 同一实体、最新代次、真实撤回原因与发起人必须全部匹配。实体投影即使被误改为撤回也不能放行。
+     * 写入口已持有实体行及流程链接锁；只读能力查询不加锁，实际发起时会重新检查。
+     */
+    @Override
+    public boolean canRestart(String entityCode, String entityRecordId, String previousInstanceId, String userId) {
+        if (!StringUtils.hasText(previousInstanceId) || !StringUtils.hasText(userId)) return false;
+        EntityProcessLink latest = entityProcessLinkMapper.selectLatest(entityCode, entityRecordId);
+        if (latest == null || !previousInstanceId.equals(latest.getProcessInstanceId())
+                || !"ENDED".equals(latest.getState()) || !"WITHDRAWN".equals(latest.getEndType())) return false;
+        if (runtimeService.createProcessInstanceQuery().processInstanceId(previousInstanceId).singleResult() != null) return false;
+        var historic = historyService.createHistoricProcessInstanceQuery().processInstanceId(previousInstanceId).singleResult();
+        return historic != null && historic.getEndTime() != null && userId.equals(historic.getStartUserId())
+                && "WITHDRAWN".equals(com.workflow.process.status.application.ProcessEndReason.category(historic.getDeleteReason()));
     }
 
     /**

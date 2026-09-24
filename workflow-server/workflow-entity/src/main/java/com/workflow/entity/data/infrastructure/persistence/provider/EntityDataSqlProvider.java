@@ -22,6 +22,18 @@ public class EntityDataSqlProvider {
 
     private static final Pattern SQL_IDENTIFIER = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
 
+    /** 固定摘要投影避开 SELECT *；唯一可变列必须来自已发布元数据且通过标识符校验。 */
+    public String selectTaskSummary(Map<String, Object> params, ProviderContext context) {
+        String customColumn = (String) params.get("dataNameColumn");
+        if (customColumn != null && !SQL_IDENTIFIER.matcher(customColumn).matches()) {
+            throw new IllegalArgumentException("非法任务摘要字段");
+        }
+        String extra = customColumn == null ? "NULL" :
+                DatabaseQueryDialects.forDatabaseId(context.getDatabaseId()).quoteIdentifier(customColumn);
+        return "SELECT name,code,status,current_task_name," + extra + " AS data_name FROM "
+                + tableName(params, context) + " WHERE id=#{id} AND deleted=0";
+    }
+
     /**
      * 根据 ID 查询
      *
@@ -370,7 +382,7 @@ public class EntityDataSqlProvider {
     }
 
     /**
-     * 分页查询（不带条件），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
+     * 分页查询（不带条件）；未指定可信排序列时按创建时间、主键倒序。
      *
      * @param params 参数 Map，需含 tableName；行范围由 Mapper 的 MP Page 提供
      * @param context 执行上下文，向后续实体数据SQL提供者分页步骤传递身份、配置或状态
@@ -379,11 +391,11 @@ public class EntityDataSqlProvider {
     public String selectPage(Map<String, Object> params, ProviderContext context) {
         String tableName = tableName(params, context);
         return "SELECT * FROM " + tableName
-                + " WHERE deleted = 0 ORDER BY create_time DESC, id DESC";
+                + " WHERE deleted = 0" + pageOrderBy(params, context);
     }
 
     /**
-     * 分页查询（带数据权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
+     * 分页查询（带数据权限过滤）；可信排序列在数据库分页前生效。
      *
      * @param params 参数 Map，需含 tableName、permissionSql；行范围由 Mapper 的 MP Page 提供
      * @param context 执行上下文，向后续分页权限步骤传递身份、配置或状态
@@ -398,7 +410,7 @@ public class EntityDataSqlProvider {
         if (permissionSql != null && !permissionSql.isBlank()) {
             sql.append(" AND (").append(permissionSql).append(")");
         }
-        sql.append(" ORDER BY create_time DESC, id DESC");
+        sql.append(pageOrderBy(params, context));
         return sql.toString();
     }
 
@@ -432,7 +444,7 @@ public class EntityDataSqlProvider {
     }
 
     /**
-     * 分页条件查询（不带权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
+     * 分页条件查询（不带权限过滤）；可信排序列在数据库分页前生效。
      *
      * @param params 参数 Map，需含 tableName、condition；行范围由 Mapper 的 MP Page 提供
      * @param context 执行上下文，向后续分页条件步骤传递身份、配置或状态
@@ -446,12 +458,12 @@ public class EntityDataSqlProvider {
         sql.append("SELECT * FROM ").append(tableName)
                 .append(" WHERE deleted = 0");
         appendConditionSql(sql, params, condition, context);
-        sql.append(" ORDER BY create_time DESC, id DESC");
+        sql.append(pageOrderBy(params, context));
         return sql.toString();
     }
 
     /**
-     * 分页条件查询（带数据权限过滤），按创建时间、主键倒序，确保同一时间的数据分页顺序稳定。
+     * 分页条件查询（带数据权限过滤）；可信排序列在数据库分页前生效。
      *
      * @param params 参数 Map，需含 tableName、condition、permissionSql；行范围由 Mapper 的 MP Page 提供
      * @param context 执行上下文，向后续分页条件权限步骤传递身份、配置或状态
@@ -469,8 +481,81 @@ public class EntityDataSqlProvider {
             sql.append(" AND (").append(permissionSql).append(")");
         }
         appendConditionSql(sql, params, condition, context);
-        sql.append(" ORDER BY create_time DESC, id DESC");
+        sql.append(pageOrderBy(params, context));
         return sql.toString();
+    }
+
+    /**
+     * 导出以排序列和主键定位下一批，选中 ID 作为独立 AND 条件保留原有用户/权限限制。
+     * 所有值沿用发布字段的类型绑定；仅经过标识符校验的物理列进入 SQL 结构。
+     */
+    public String selectExportBatch(Map<String, Object> params, ProviderContext context) {
+        StringBuilder sql = new StringBuilder("SELECT * FROM ").append(tableName(params, context))
+                .append(" WHERE deleted = 0");
+        String permissionSql = (String) params.get("permissionSql");
+        if (permissionSql != null && !permissionSql.isBlank()) sql.append(" AND (").append(permissionSql).append(")");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> condition = (Map<String, Object>) params.get("condition");
+        appendConditionSql(sql, params, condition, context);
+        if (params.get("selectedIds") instanceof List<?> ids) {
+            if (ids.isEmpty()) {
+                sql.append(" AND 1 = 0");
+            } else {
+                if (ids.size() > 5_000) throw new IllegalArgumentException("导出选中 ID 不能超过 5000 个");
+                // Oracle 等数据库限制单个 IN 的表达式数量；分组仍在同一查询中排序、按 200 行取批次。
+                List<String> groups = new ArrayList<>();
+                for (int start = 0; start < ids.size(); start += 500) {
+                    List<String> bindings = new ArrayList<>();
+                    for (int i = start; i < Math.min(start + 500, ids.size()); i++) {
+                        bindings.add(bindConditionScalar(params, condition, "id", ids.get(i), "__exportId" + i, context));
+                    }
+                    groups.add("id IN (" + String.join(", ", bindings) + ")");
+                }
+                sql.append(" AND (").append(String.join(" OR ", groups)).append(")");
+            }
+        }
+        // 先解析排序，校验方向后才能构造比较运算符；空值顺序遵循各数据库默认排序。
+        String order = pageOrderBy(params, context);
+        boolean configured = params.get("sortColumn") instanceof String value && !value.isBlank();
+        String sortColumn = configured ? (String) params.get("sortColumn") : "create_time";
+        boolean ascending = configured && (params.get("sortDirection") == null
+                || "ASC".equalsIgnoreCase(params.get("sortDirection").toString().trim()));
+        String quoted = requireIdentifier(sortColumn, "导出排序字段", context);
+        if (params.get("cursor") instanceof com.workflow.entity.data.application.EntityExportBatch.Cursor cursor) {
+            String id = bindConditionScalar(params, condition, "id", cursor.id(), "__exportCursorId", context);
+            boolean nullHigh = !java.util.Set.of("MYSQL", "OCEANBASE_MYSQL").contains(context.getDatabaseId());
+            boolean nullFirst = ascending != nullHigh;
+            if (cursor.sortValue() == null) {
+                sql.append(" AND ((").append(quoted).append(" IS NULL AND id < ").append(id).append(")");
+                if (nullFirst) sql.append(" OR ").append(quoted).append(" IS NOT NULL");
+            } else {
+                String value = bindConditionScalar(params, condition, sortColumn, cursor.sortValue(), "__exportCursorSort", context);
+                sql.append(" AND ((").append(quoted).append(ascending ? " > " : " < ").append(value)
+                        .append(") OR (").append(quoted).append(" = ").append(value)
+                        .append(" AND id < ").append(id).append(")");
+                if (!nullFirst) sql.append(" OR ").append(quoted).append(" IS NULL");
+            }
+            sql.append(")");
+        }
+        return sql.append(order).toString();
+    }
+
+    /**
+     * 分页排序只能使用应用层已核实的发布物理列；再次校验标识符和方向，
+     * 防止配置 JSON 被直接拼成 SQL。数据库按原始列类型排序，DECIMAL 不会按文本字典序。
+     */
+    private String pageOrderBy(Map<String, Object> params, ProviderContext context) {
+        Object rawColumn = params.get("sortColumn");
+        if (!(rawColumn instanceof String column) || column.isBlank()) {
+            return " ORDER BY create_time DESC, id DESC";
+        }
+        String quotedColumn = requireIdentifier(column, "排序字段", context);
+        Object rawDirection = params.get("sortDirection");
+        String direction = rawDirection == null ? "ASC" : rawDirection.toString().trim().toUpperCase(java.util.Locale.ROOT);
+        if (!"ASC".equals(direction) && !"DESC".equals(direction)) {
+            throw new IllegalArgumentException("默认排序方向仅支持 ASC 或 DESC");
+        }
+        return " ORDER BY " + quotedColumn + " " + direction + ", id DESC";
     }
 
     /**

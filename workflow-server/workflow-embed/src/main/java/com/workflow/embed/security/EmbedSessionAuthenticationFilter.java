@@ -177,8 +177,8 @@ public class EmbedSessionAuthenticationFilter extends OncePerRequestFilter {
             return false;
         }
         if ("/api/embed/v1/session".equals(path)) {
-            // Logout owns a special idempotent guard that accepts LOGGED_OUT but no business API.
-            return "DELETE".equalsIgnoreCase(request.getMethod());
+            // POST 退出由会话服务执行专用校验，允许同一 Token 重复退出；其他会话请求仍走业务认证。
+            return "POST".equalsIgnoreCase(request.getMethod());
         }
         if ("/api/embed/v1/session/heartbeat".equals(path)) {
             return false;

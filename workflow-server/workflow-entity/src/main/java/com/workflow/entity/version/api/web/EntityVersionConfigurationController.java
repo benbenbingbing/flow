@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.PutMapping;
 
 import java.util.List;
 import java.util.Map;
@@ -121,7 +120,7 @@ public class EntityVersionConfigurationController {
     }
 
     /**
-     * 根 PUT 是本版过渡别名；新客户端使用对称的 /current 资源。
+     * 根 POST 是本版过渡别名；新客户端使用对称的 /current 资源。
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param ifMatch 条件匹配，作为 {@code ApiResponse.success} 的输入影响后续处理
@@ -129,7 +128,7 @@ public class EntityVersionConfigurationController {
      * @return 保存后的实体版本配置结果，供调用方继续处理
      */
     @Deprecated(forRemoval = true)
-    @PutMapping("/{entityCode}")
+    @PostMapping("/{entityCode}")
     @RequiresPermission("entity:version:config:update")
     public ApiResponse<EntityVersionConfiguration> save(
             @PathVariable String entityCode,
@@ -147,7 +146,7 @@ public class EntityVersionConfigurationController {
      * @param request 本次请求，后续经校验后用于保存实体版本配置当前
      * @return 保存后的实体版本配置当前结果，供调用方继续处理
      */
-    @PutMapping("/{entityCode}/current")
+    @PostMapping("/{entityCode}/current")
     @RequiresPermission("entity:version:config:update")
     public ApiResponse<EntityVersionConfiguration> saveCurrent(
             @PathVariable String entityCode,

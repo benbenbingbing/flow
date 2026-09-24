@@ -37,8 +37,7 @@ public class ProcessEntityStatusPolicy {
      */
     public String endCategory(org.flowable.engine.history.HistoricProcessInstance historic) {
         String reason = historic.getDeleteReason();
-        if (reason != null && reason.contains("撤回")) return "WITHDRAWN";
-        if (reason != null && !reason.isBlank()) return "TERMINATED";
+        if (reason != null && !reason.isBlank()) return ProcessEndReason.category(reason);
         BpmnModel model = repositoryService.getBpmnModel(historic.getProcessDefinitionId());
         var end = model == null || historic.getEndActivityId() == null ? null
                 : model.getFlowElement(historic.getEndActivityId());

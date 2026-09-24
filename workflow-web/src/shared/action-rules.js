@@ -46,7 +46,10 @@ export function createActionRulePreset(value) {
             condition('PROCESS_STATE', 'EQ', 'NOT_STARTED'),
             condition('STATUS_CATEGORY', 'EQ', 'NEW')
           ]),
-          condition('STATUS_CATEGORY', 'EQ', 'WITHDRAWN')
+          group('AND', [
+            condition('PROCESS_STATE', 'EQ', 'COMPLETED'),
+            condition('STATUS_CATEGORY', 'EQ', 'WITHDRAWN')
+          ])
         ])
       ]),
       message: '仅本人未流转草稿或已撤回数据可以操作'

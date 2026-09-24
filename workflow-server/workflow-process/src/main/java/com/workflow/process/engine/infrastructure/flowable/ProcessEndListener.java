@@ -1,5 +1,7 @@
 package com.workflow.process.engine.infrastructure.flowable;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.workflow.process.status.application.ProcessStatusSyncPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -84,14 +86,10 @@ public class ProcessEndListener implements FlowableEventListener {
                                 deleteReason = String.valueOf(
                                                 cancelledEvent.getCause());
                         }
-                        boolean withdrawn = deleteReason != null
-                                        && deleteReason.contains("撤回");
-                        boolean terminated = (deleteReason != null
-                                        && !deleteReason.isEmpty())
-                                        || eventType.contains("_WITH_");
-                        String statusCategory = withdrawn
-                                        ? "WITHDRAWN"
-                                        : (terminated ? "TERMINATED" : "COMPLETED");
+                        String statusCategory = ProcessEndReason.category(deleteReason);
+                        if ("COMPLETED".equals(statusCategory) && eventType.contains("_WITH_")) {
+                                statusCategory = "TERMINATED";
+                        }
 
                         String idempotencyKey = String.join(
                                         ":",

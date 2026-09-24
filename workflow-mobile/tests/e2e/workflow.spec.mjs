@@ -24,7 +24,7 @@ async function fixture(page, { theme = () => DEFAULT_MOBILE_THEME, form = simple
     else if (endpoint === '/process-instance/instance-test/progress') data = { status: 'RUNNING', processName: '测试流程', entityData: record, formConfig: form, activeNodes: ['review'], ...progress, approvalConfig: { enabled: true, options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] } }
     else if (endpoint === '/entity/code/test') data = { id: 'entity-test', entityCode: 'test', fields: [] }
     else if (endpoint.startsWith('/ui-runtime/events/')) data = { effects: [] }
-    else if (endpoint === '/process-instance/instance-test/operations') data = processOperations
+    else if (endpoint === '/process-instance/instance-test/operations') data = typeof processOperations === 'function' ? processOperations() : processOperations
     else if (endpoint.endsWith('/next-approver-options')) data = { records: candidates, total: candidates.length }
     else if (endpoint === '/process-rollback/rejected-status/instance-test') data = rejected
     else if (endpoint === '/entity-selector/USER') data = { records: [{ username: 'reviewer', nickname: '测试办理人' }], total: 1 }
@@ -534,7 +534,7 @@ test('下一审批人候选受发布范围约束并携带当前表单提交', as
 })
 
 test('我发起的无需任务办理权即可按实例能力撤回', async ({ page }) => {
-  const state = await fixture(page, { processOperations: { withdraw: true } })
+  const state = await fixture(page, { processOperations: { withdraw: true, terminate: false } })
   await page.goto('process/instance-test?kind=started')
   await page.locator('.van-nav-bar__right').getByRole('button', { name: '更多操作', exact: true }).click()
   await expect(page.locator('.mobile-action-bar')).toHaveCount(0)
@@ -549,6 +549,37 @@ test('我发起的无需任务办理权即可按实例能力撤回', async ({ pa
   expect(state.errors).toEqual([])
 })
 
+
+// 撤回与终止独立；已结束实例、未显式授权以及开窗后节点变化都必须拒绝。
+for (const scenario of [
+  { name: '当前节点关闭撤回', capabilities: { withdraw: false, terminate: true }, status: 'RUNNING' },
+  { name: '缺失撤回权限', capabilities: { terminate: true }, status: 'RUNNING' },
+  { name: '非布尔撤回权限', capabilities: { withdraw: 'true' }, status: 'RUNNING' },
+  { name: '流程已经完成', capabilities: { withdraw: true }, status: 'COMPLETED' }
+]) {
+  test(`移动端撤回隐藏：${scenario.name}`, async ({ page }) => {
+    const state = await fixture(page, { processOperations: scenario.capabilities, progress: { status: scenario.status } })
+    await page.goto('process/instance-test?kind=started')
+    await expect(page.getByRole('tabpanel').first()).toBeVisible()
+    const more = page.getByRole('button', { name: '更多操作', exact: true })
+    if (await more.count() && await more.isEnabled()) await more.click()
+    await expect(page.getByRole('button', { name: '撤回流程', exact: true })).toHaveCount(0)
+    expect(state.writes).toEqual([])
+  })
+}
+
+test('移动端撤回确认时节点权限变化则阻止写入', async ({ page }) => {
+  let allowed = true
+  const state = await fixture(page, { processOperations: () => ({ withdraw: allowed, terminate: false }) })
+  await page.goto('process/instance-test?kind=started')
+  await page.getByRole('button', { name: '更多操作', exact: true }).click()
+  await page.getByRole('button', { name: '撤回流程', exact: true }).click()
+  allowed = false
+  await page.getByRole('button', { name: '确认', exact: true }).click()
+  await expect(page.getByText('当前流程已不允许撤回，请刷新后重试', { exact: true })).toBeVisible()
+  expect(state.writes).toEqual([])
+  expect(state.requests.filter(item => item.endpoint === '/process-instance/instance-test/operations')).toHaveLength(2)
+})
 
 test('驳回使用发布的动作选项；转办保持办理人协议', async ({ page }) => {
   const state = await fixture(page, { operations: { approve: true, reject: true, transfer: true } })

@@ -3,7 +3,7 @@
     <div class="guide-header">
       <div>
         <h2>表单与列表配置扩展</h2>
-        <p>稳定节点、单项保存、统一数据源、发布快照、模板升级和前后端扩展 SPI 的完整契约。</p>
+        <p>稳定节点、单项保存、统一数据源、发布快照和前后端扩展 SPI 的完整契约。</p>
       </div>
       <el-tag type="success">配置优先，代码兜底</el-tag>
     </div>
@@ -160,7 +160,7 @@ Content-Type: application/json
             <li>历史节点编辑保存时按当前 Schema 归一化：不兼容的活动 props、rules、组件参数和数据源绑定必须清除，必要原值仅进入 `legacyProps` 等非活动兼容区，运行时和发布快照不得继续消费。</li>
             <li>实体字段或实体关系已经绑定时，`nodeType`、fieldId、fieldCode、关系与子实体绑定必须锁定。需要改变数据语义时创建新节点，再显式迁移可复用显示配置。</li>
             <li>RELATION 子表节点的 childEntityId、relationType、childRefFieldCode 和 relationCode 必须由实体关系定义反向计算；请求值只能匹配，不能补写或覆盖。引用 release 所属表单的 entityId 必须等于关系子实体。</li>
-            <li>绑定迁移采用“新建目标节点 → 绑定新字段/关系 → 迁移标签、布局、兼容组件、模板和允许的数据源 → 预览与发布 → 删除旧节点”，禁止原地改 bindingType/bindingRef。</li>
+            <li>绑定迁移采用“新建目标节点 → 绑定新字段/关系 → 迁移标签、布局、兼容组件和允许的数据源 → 预览与发布 → 删除旧节点”，禁止原地改 bindingType/bindingRef。</li>
             <li>扩展 manifest 必须声明适用 `nodeTypes`、supportedBindings 与 configSchema。设计器只渲染该类型允许的参数；后端 PATCH 仍须按节点类型白名单拒绝未知、不兼容或已锁定字段。</li>
             <li>组件切换只能发生在兼容的实体字段类型集合内；切换后应清除不兼容的组件参数、校验和数据源绑定，不能静默保留无效配置。</li>
             <li>设计画布、草稿预览和激活 release 使用同一递归节点布局：新表单统一 grid 并读取 gridSpan，历史垂直 / 水平仍按 24 / 12 栅格兼容，显式 GRID 容器优先；标签位置与宽度由 viewConfig.labelPosition / labelWidth 独立控制；容器节点不能在预览中退回扁平字段列表。</li>
@@ -189,13 +189,13 @@ Content-Type: application/json
             <el-descriptions-item label="columnConfig">快捷复制、固定位置、最小宽度、溢出提示等列展示配置。</el-descriptions-item>
           </el-descriptions>
           <div class="tips">
-            <p>查询字段不要求同时显示在列表中。虚拟查询字段会先完成扩展值计算，再由后端结构化条件过滤，不会把虚拟字段拼进实体 SQL。</p>
+            <p>实体查询字段不要求同时显示在列表中。虚拟列只负责展示，不允许筛选或排序；扩展值仅在数据库分页后补充。</p>
           </div>
         </section>
 
         <section id="provider" class="guide-section">
           <h3>6. 既有列表数据提供者</h3>
-          <p>复杂关联、聚合或业务计算通过 Spring Bean 注册。编码必须稳定且唯一，配置保存时后端会校验数据源是否存在、参数是否完整、是否支持虚拟列和查询。</p>
+          <p>复杂关联、聚合或业务计算通过 Spring Bean 注册。编码必须稳定且唯一，配置保存时后端会校验数据源是否存在、参数是否完整、是否支持虚拟列；扩展列不允许配置查询。</p>
           <CodeCard title="CustomerLevelProvider.java" language="Java">
             <pre v-pre><code>@Component
 public class CustomerLevelProvider implements ListFieldDataProvider {
@@ -216,7 +216,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
 
     @Override
     public boolean supportsQuery() {
-        return true;
+        return false;
     }
 
     @Override
@@ -319,10 +319,10 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="release-api" class="guide-section">
-          <h3>10. 草稿、STANDARD/HOTFIX、回滚与模板升级</h3>
+          <h3>10. 草稿、STANDARD/HOTFIX、回滚</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">返回可编辑草稿、稳定项目 ID、revision 和未发布状态。</el-descriptions-item>
-            <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限、模板和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
+            <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
             <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；两者返回 draftHash、activeReleaseId 和 SAFE/REVIEW 风险项，只有表单 HOTFIX 返回 impactToken、流程版本和影响实例。</el-descriptions-item>
             <el-descriptions-item label="/publish">`releaseMode` 缺省为 `STANDARD`；只有表单接受 `HOTFIX` 并要求回传预检状态，列表传 HOTFIX 返回冲突。</el-descriptions-item>
             <el-descriptions-item label="/release-summaries">分页列出不含快照文档的历史摘要；完整 `/releases` 保留给需要版本内容的设计能力。</el-descriptions-item>
@@ -452,9 +452,6 @@ Content-Type: application/json
             <li>发布历史聚合 `rolloutStatus`：`ACTIVE` 正在生效且可撤回，`SUPERSEDED` 已被更新热修复替代，`ROLLED_BACK` 已撤回；只有 ACTIVE 显示或接受撤回操作。</li>
             <li>`impactToken` 绑定 configType/configId、releaseMode、draftHash、activeReleaseId、targetHash 和 riskLevel；任一输入变化必须重新预检。</li>
             <li>`releaseResolutionToken` 是服务端 HMAC 签发的 5 分钟短期令牌，绑定用户、运行目的、流程历史版本、节点、父表单 release 和深度；嵌套最大 8 层，前端不得自行拼接流程版本上下文。</li>
-            <li>模板实例固定 `templateId + templateVersion + localOverrides`，模板发布新版本不会自动级联。</li>
-            <li>显式升级使用“旧模板、目标模板、本地覆盖”三方合并；冲突逐项确认后只写入草稿，再预览和发布。</li>
-            <li>“复制后独立”不保留模板关系，适合无需后续升级的局部配置。</li>
           </ul>
         </section>
 
@@ -549,7 +546,7 @@ const props = defineProps({
           <h3>15. 验收清单</h3>
           <ul class="check-list">
             <li>虚拟列能显示、排序位置正确，空值有明确占位。</li>
-            <li>隐藏查询项仍可查询，虚拟查询不会触发未知数据库列错误。</li>
+            <li>隐藏的实体查询项仍可查询；虚拟筛选和排序在保存、发布及请求时显式拒绝。</li>
             <li>未注册数据源不能保存；历史未注册展示字段不会绕过查询过滤。</li>
             <li>自定义组件不存在时回退默认文本，不影响列表基本访问。</li>
             <li>数据权限、功能权限和行操作能力仍由后端统一计算。</li>
@@ -614,9 +611,9 @@ const nodePropertyRows = [
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', locked: '不能位于根节点，父级只能是有效 TAB_SET；无字段规则和数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', locked: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限说明内容 text；用于提示和静态文本。', locked: '禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
-  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、模板、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
-  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系与外键绑定不可改。' },
-  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、模板、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、节点扩展和受控数据源。', locked: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份不可改。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系与外键绑定不可改。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', locked: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不支持 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于放置稳定的运行时动作插槽。', locked: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 
@@ -652,7 +649,7 @@ const providerContext = [
 
 const builtIns = [
   { type: 'ENTITY_FIELD', capability: '读取实体系统字段或自定义字段，支持数据库查询条件' },
-  { type: 'FIELD_TEMPLATE', capability: '安全字段占位符组合，支持虚拟列和结构化查询' },
+  { type: 'FIELD_TEMPLATE', capability: '安全字段占位符组合，虚拟列只用于展示' },
   { type: 'DefaultText', capability: '默认文本与空值占位' },
   { type: 'StatusBadge', capability: '状态文本和颜色映射' },
   { type: 'DateFormatter', capability: '安全日期模板格式化' }

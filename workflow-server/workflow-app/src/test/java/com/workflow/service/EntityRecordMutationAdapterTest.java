@@ -35,7 +35,7 @@ class EntityRecordMutationAdapterTest {
                 new EntityRecordMutationAdapter(
                         mutationPort,
                         isolationExecutor,
-                        teamService);
+                        teamService, mock(com.workflow.entity.definition.application.EntityStatusService.class));
 
         assertDoesNotThrow(() -> adapter.markProcessEnded(
                 "process-1",
@@ -51,7 +51,7 @@ class EntityRecordMutationAdapterTest {
         EntityRecordMutationAdapter adapter = new EntityRecordMutationAdapter(
                 mutationPort,
                 mock(EntityMutationIsolationExecutor.class),
-                mock(EntityRecordTeamService.class));
+                mock(EntityRecordTeamService.class), mock(com.workflow.entity.definition.application.EntityStatusService.class));
 
         adapter.updateCurrentTask(
                 "ZDWREQ",

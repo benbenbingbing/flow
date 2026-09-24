@@ -849,10 +849,19 @@ export function validateEmptyAssigneeStrategy(value, allowInherit = true) {
   return ''
 }
 
+/** 仅用于新建节点；显式落入 BPMN，未打开配置面板也不能回退到历史默认权限。 */
+export const NEW_NODE_OPERATION_PERMISSIONS = Object.freeze({
+  allowTransfer: false,
+  allowAddSign: false,
+  allowTerminate: true,
+  allowWithdraw: false
+})
+
 const SIMPLE_NODE_OPERATION_KEYS = [
   'allowTransfer',
   'allowAddSign',
-  'allowTerminate'
+  'allowTerminate',
+  'allowWithdraw'
 ]
 const LEGACY_ADD_SIGN_OPERATION_KEYS = [
   'addSignBefore',
@@ -874,7 +883,7 @@ function configuredValues(value) {
 }
 
 /**
- * 判断旧矩阵规则是否携带三开关无法表达的限制。
+ * 判断旧矩阵规则是否携带简单开关无法表达的限制。
  *
  * 折叠时宁可关闭权限，也不能把条件、权限码、理由、目标范围或加签类型等
  * 限制静默升级成无条件开放。默认占位值不视为限制，以兼容旧编辑器的完整快照。
@@ -918,9 +927,10 @@ function legacyOperationIsUnconditionallyEnabled(operations, operation) {
 }
 
 /**
- * 将节点的操作权限归一化为三个稳定布尔字段。
+ * 将节点的操作权限归一化为四个稳定布尔字段。
  *
- * 新字段优先且缺项默认开放；只有三个新字段全部缺失时才读取旧矩阵。
+ * 新节点显式保存默认值；此处兼容历史配置，保留旧三开关及撤回依赖终止的旧规则。
+ * 显式 allowWithdraw 独立控制撤回。所有简化字段缺失时才读取旧矩阵。
  * 旧矩阵仅能安全降级无条件开放的规则，无法等价表达的高级限制统一关闭。
  */
 export function normalizeNodeOperationPermissions(value = {}) {
@@ -938,7 +948,9 @@ export function normalizeNodeOperationPermissions(value = {}) {
     return {
       allowTransfer: normalizeBooleanSetting(simpleSource.allowTransfer, true),
       allowAddSign: normalizeBooleanSetting(simpleSource.allowAddSign, true),
-      allowTerminate: normalizeBooleanSetting(simpleSource.allowTerminate, true)
+      allowTerminate: normalizeBooleanSetting(simpleSource.allowTerminate, true),
+      allowWithdraw: normalizeBooleanSetting(simpleSource.allowWithdraw,
+        normalizeBooleanSetting(simpleSource.allowTerminate, true))
     }
   }
 
@@ -949,7 +961,8 @@ export function normalizeNodeOperationPermissions(value = {}) {
     return {
       allowTransfer: true,
       allowAddSign: true,
-      allowTerminate: true
+      allowTerminate: true,
+      allowWithdraw: true
     }
   }
 
@@ -958,7 +971,8 @@ export function normalizeNodeOperationPermissions(value = {}) {
     allowTransfer: legacyOperationIsUnconditionallyEnabled(operations, 'transfer'),
     allowAddSign: LEGACY_ADD_SIGN_OPERATION_KEYS.every(operation =>
       legacyOperationIsUnconditionallyEnabled(operations, operation)),
-    allowTerminate: legacyOperationIsUnconditionallyEnabled(operations, 'terminate')
+    allowTerminate: legacyOperationIsUnconditionallyEnabled(operations, 'terminate'),
+    allowWithdraw: legacyOperationIsUnconditionallyEnabled(operations, 'withdraw')
   }
 }
 

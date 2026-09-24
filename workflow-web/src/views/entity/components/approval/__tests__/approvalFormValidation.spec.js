@@ -55,8 +55,8 @@ assert.match(
 )
 assert.match(
   preview,
-  /getValidationError:\s*\(\)\s*=>\s*firstCrossFieldError\.value\s*\|\|\s*firstUniqueError\.value/,
-  'FormPreview 必须暴露当前表单作用域的首个唯一错误'
+  /getValidationError:\s*\(\)\s*=>\s*firstCustomValidationError\.value\s*\|\|\s*firstCrossFieldError\.value\s*\|\|\s*firstUniqueError\.value/,
+  'FormPreview 必须按自定义、跨字段、唯一性校验的顺序暴露当前表单作用域的具体错误'
 )
 
 console.log('approval form validation contract tests passed')

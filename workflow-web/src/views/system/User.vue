@@ -1,226 +1,237 @@
 <template>
-  <div class="user-management">
-    <div class="page-header">
-      <h2>用户管理</h2>
-      <el-button type="primary" @click="handleAdd">
-        <el-icon><Plus /></el-icon>
-        新增用户
-      </el-button>
-    </div>
-
-    <el-form :model="queryParams" inline class="user-filters">
-      <el-form-item label="关键词">
-        <el-input
-          v-model="queryParams.keyword"
-          class="keyword-input"
-          placeholder="账号、姓名、邮箱或手机号"
-          clearable
-          @keyup.enter="handleSearch"
-        />
-      </el-form-item>
-      <el-form-item label="组织">
-        <el-select
-          v-model="queryParams.orgId"
-          class="filter-select"
-          clearable
-          filterable
-          placeholder="全部组织"
-        >
-          <el-option v-for="item in orgOptions" :key="item.id" :label="item.orgName" :value="item.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="部门">
-        <el-select
-          v-model="queryParams.deptId"
-          class="filter-select"
-          clearable
-          filterable
-          placeholder="全部部门"
-        >
-          <el-option v-for="item in deptOptions" :key="item.id" :label="item.orgName" :value="item.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="角色">
-        <el-select
-          v-model="queryParams.roleId"
-          class="filter-select"
-          clearable
-          filterable
-          placeholder="全部角色"
-        >
-          <el-option v-for="role in roleOptions" :key="role.id" :label="role.roleName" :value="role.id" />
-        </el-select>
-      </el-form-item>
-      <el-form-item v-if="canViewPosition" label="职务">
-        <el-select
-          v-model="queryParams.positionCode"
-          class="filter-select"
-          clearable
-          filterable
-          placeholder="全部职务"
-        >
-          <el-option
-            v-for="position in positionOptions"
-            :key="position.positionCode"
-            :label="position.positionName"
-            :value="position.positionCode"
+  <div class="user-management system-management">
+    <el-card>
+      <el-form :model="queryParams" class="search-form" label-width="80px" @submit.prevent="handleSearch">
+        <el-form-item label="关键词">
+          <el-input v-model="queryParams.keyword" placeholder="账号、姓名、邮箱或手机号" clearable @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="组织/部门">
+          <SystemFilterPicker
+            v-model="organizationFilter"
+            :options="organizationFilterOptions"
+            title="选择组织/部门"
+            entity-label="组织/部门"
+            placeholder="全部组织/部门"
+            tree
+            :loading="filterLoading.organization"
+            :error="filterErrors.organization"
+            @retry="fetchOrgOptions"
           />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="状态">
-        <el-select v-model="queryParams.status" class="status-select" clearable placeholder="全部状态">
-          <el-option label="启用" value="0" />
-          <el-option label="禁用" value="1" />
-        </el-select>
-      </el-form-item>
-      <el-form-item>
-        <el-button type="primary" @click="handleSearch">查询</el-button>
-        <el-button @click="handleReset">重置</el-button>
-      </el-form-item>
-    </el-form>
+        </el-form-item>
+        <el-form-item label="角色">
+          <SystemFilterPicker
+            v-model="queryParams.roleId"
+            :options="roleFilterOptions"
+            title="选择角色"
+            entity-label="角色"
+            placeholder="全部角色"
+            :loading="filterLoading.role"
+            :error="filterErrors.role"
+            @retry="fetchRoleOptions"
+          />
+        </el-form-item>
+        <template v-if="filtersExpanded">
+          <el-form-item v-if="canViewPosition" label="职务">
+            <SystemFilterPicker
+              v-model="queryParams.positionCode"
+              :options="positionFilterOptions"
+              title="选择职务"
+              entity-label="职务"
+              placeholder="全部职务"
+              :loading="filterLoading.position"
+              :error="filterErrors.position"
+              @retry="fetchPositionOptions"
+            />
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="queryParams.status" clearable placeholder="全部状态">
+              <el-option label="启用" value="0" />
+              <el-option label="禁用" value="1" />
+            </el-select>
+          </el-form-item>
+        </template>
+        <div class="search-actions">
+          <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+          <el-button @click="handleReset">重置</el-button>
+          <el-button link type="primary" :aria-expanded="filtersExpanded" @click="filtersExpanded = !filtersExpanded">
+            {{ filtersExpanded ? '收起' : '展开' }}{{ advancedFilterCount ? `（${advancedFilterCount}）` : '' }}
+            <el-icon><ArrowUp v-if="filtersExpanded" /><ArrowDown v-else /></el-icon>
+          </el-button>
+        </div>
+      </el-form>
 
-    <div class="batch-toolbar">
-      <span>已选择 {{ selectedUsers.length }} 人</span>
-      <el-button :disabled="!selectedUsers.length" @click="openBatchRoleDialog">批量分配角色</el-button>
-      <el-button :disabled="!selectedUsers.length" @click="handleBatchStatus('0')">批量启用</el-button>
-      <el-button type="danger" plain :disabled="!selectedUsers.length" @click="handleBatchStatus('1')">
-        批量禁用
-      </el-button>
-    </div>
+      <div class="table-toolbar">
+        <el-button type="primary" @click="handleAdd">新增用户</el-button>
+        <!-- 批量入口常驻，未选择时禁用，方便用户发现功能并保持工具栏位置稳定。 -->
+        <el-button :disabled="!selectedUsers.length" @click="openBatchRoleDialog">批量分配角色</el-button>
+        <el-button :disabled="!selectedUsers.length" @click="handleBatchStatus('0')">批量启用</el-button>
+        <el-button type="danger" plain :disabled="!selectedUsers.length" @click="handleBatchStatus('1')">批量禁用</el-button>
+      </div>
 
-    <PageState
-      v-if="loadError"
-      type="error"
-      title="用户列表加载失败"
-      :description="loadError"
-      retryable
-      @retry="fetchUserList"
-    />
+      <PageState
+        v-if="loadError"
+        type="error"
+        title="用户列表加载失败"
+        :description="loadError"
+        retryable
+        @retry="fetchUserList"
+      />
 
-    <!-- 用户表格沿用系统管理模块的标准表格，仅对长内容做收纳处理。 -->
-    <el-table
-      v-else
-      v-loading="loading"
-      :data="userList"
-      border
-      stripe
-      empty-text="当前条件下没有用户"
-      @selection-change="selectedUsers = $event"
-    >
-      <el-table-column type="selection" width="44" :selectable="row => row.username !== 'admin'" />
-      <el-table-column type="index" label="#" width="60" align="center" />
+      <!-- 与流程管理保持一致：无竖向边框，长内容省略，次要操作收进菜单。 -->
+      <el-table
+        v-else
+        v-loading="loading"
+        :data="userList"
+        stripe
+        row-key="id"
+        empty-text="当前条件下没有用户"
+        @selection-change="selectedUsers = $event"
+      >
+        <el-table-column type="selection" width="44" :selectable="row => row.username !== 'admin'" />
+        <el-table-column type="index" label="#" width="60" align="center" :index="index => (queryParams.pageNum - 1) * queryParams.pageSize + index + 1" />
 
-      <el-table-column prop="username" label="用户名" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="username" label="用户名" min-width="150" show-overflow-tooltip />
 
-      <el-table-column prop="nickname" label="昵称" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="nickname" label="昵称" min-width="130" show-overflow-tooltip />
 
-      <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
+        <el-table-column prop="email" label="邮箱" min-width="190" show-overflow-tooltip />
 
-      <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
+        <el-table-column prop="phone" label="手机号" width="130" show-overflow-tooltip />
 
-      <el-table-column prop="orgName" label="组织" min-width="130" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              :active-value="'0'"
+              :inactive-value="'1'"
+              inline-prompt
+              active-text="启"
+              inactive-text="禁"
+              :disabled="row.username === 'admin'"
+              @change="handleStatusChange(row)"
+            />
+          </template>
+        </el-table-column>
 
-      <el-table-column prop="deptName" label="部门" min-width="130" show-overflow-tooltip />
+        <el-table-column label="组织/部门" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ [row.orgName, row.deptName].filter(Boolean).join(' / ') || '-' }}
+          </template>
+        </el-table-column>
 
-      <el-table-column prop="roles" label="角色" min-width="200">
-        <template #default="{ row }">
-          <div v-if="row.roles?.length" class="role-list">
-            <el-tooltip :content="row.roles[0].roleName" placement="top">
-              <el-tag size="small" class="role-tag">
-                <span class="role-tag__text">{{ row.roles[0].roleName }}</span>
+        <el-table-column prop="roles" label="角色" min-width="200">
+          <template #default="{ row }">
+            <div v-if="row.roles?.length" class="role-list">
+              <el-tooltip :content="row.roles[0].roleName" placement="top">
+                <el-tag size="small" class="role-tag">
+                  <span class="role-tag__text">{{ row.roles[0].roleName }}</span>
+                </el-tag>
+              </el-tooltip>
+              <el-tooltip
+                v-if="row.roles.length > 1"
+                :content="row.roles.slice(1).map(role => role.roleName).join('、')"
+                placement="top"
+              >
+                <el-tag size="small" type="info">+{{ row.roles.length - 1 }}</el-tag>
+              </el-tooltip>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="canViewPosition" label="当前任职" min-width="220">
+          <template #default="{ row }">
+            <div v-if="currentPositionAssignments(row).length" class="position-list">
+              <el-tooltip
+                v-for="assignment in currentPositionAssignments(row).slice(0, 2)"
+                :key="assignment.id || `${assignment.positionCode}-${assignment.organizationUnitId}`"
+                :content="positionAssignmentLabel(assignment)"
+                placement="top"
+              >
+                <el-tag size="small" type="success" effect="plain" class="position-tag">
+                  {{ assignment.positionName || assignment.positionCode }}
+                </el-tag>
+              </el-tooltip>
+              <el-tag v-if="currentPositionAssignments(row).length > 2" size="small" type="info">
+                +{{ currentPositionAssignments(row).length - 2 }}
               </el-tag>
-            </el-tooltip>
-            <el-tooltip
-              v-if="row.roles.length > 1"
-              :content="row.roles.slice(1).map(role => role.roleName).join('、')"
-              placement="top"
-            >
-              <el-tag size="small" type="info">+{{ row.roles.length - 1 }}</el-tag>
-            </el-tooltip>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="createTime" label="创建时间" width="180" :formatter="formatDateColumn" show-overflow-tooltip />
+
+        <el-table-column label="操作" width="160" fixed="right">
+          <template #default="{ row }">
+            <div class="table-row-actions">
+              <el-button type="primary" link @click="handleView(row)">查看</el-button>
+              <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
+              <el-dropdown trigger="click" placement="bottom-end">
+                <el-button link type="primary" :icon="MoreFilled" aria-label="更多用户操作" />
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click="handleResetPassword(row)">重置密码</el-dropdown-item>
+                    <el-dropdown-item v-if="canAssignPosition" @click="openPositionAssignment(row)">职务任命</el-dropdown-item>
+                    <el-dropdown-item divided :disabled="row.username === 'admin'" @click="handleDelete(row)">
+                      <span :class="{ 'danger-action': row.username !== 'admin' }">删除用户</span>
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        v-model:current-page="queryParams.pageNum"
+        v-model:page-size="queryParams.pageSize"
+        :total="total"
+        :page-sizes="[10, 20, 50, 100]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @size-change="handlePageSizeChange"
+        @current-change="fetchUserList"
+      />
+    </el-card>
+
+    <el-dialog v-model="viewDialogVisible" title="查看用户" width="min(720px, 94vw)" destroy-on-close>
+      <el-descriptions v-if="viewUser" :column="2" border class="user-details">
+        <el-descriptions-item label="用户名">{{ viewUser.username || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="昵称">{{ viewUser.nickname || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="邮箱">{{ viewUser.email || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="手机号">{{ viewUser.phone || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态" :span="2">
+          <el-tag :type="viewUser.status === '0' ? 'success' : 'info'" size="small">
+            {{ viewUser.status === '0' ? '启用' : '禁用' }}
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="组织/部门" :span="2">
+          {{ [viewUser.orgName, viewUser.deptName].filter(Boolean).join(' / ') || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="角色" :span="2">
+          <div v-if="viewUser.roles?.length" class="user-detail-roles">
+            <el-tag v-for="role in viewUser.roles" :key="role.id" size="small">{{ role.roleName }}</el-tag>
           </div>
           <span v-else>-</span>
-        </template>
-      </el-table-column>
-
-      <el-table-column v-if="canViewPosition" label="当前任职" min-width="220">
-        <template #default="{ row }">
-          <div v-if="currentPositionAssignments(row).length" class="position-list">
-            <el-tooltip
-              v-for="assignment in currentPositionAssignments(row).slice(0, 2)"
-              :key="assignment.id || `${assignment.positionCode}-${assignment.organizationUnitId}`"
-              :content="positionAssignmentLabel(assignment)"
-              placement="top"
-            >
-              <el-tag size="small" type="success" effect="plain" class="position-tag">
-                {{ assignment.positionName || assignment.positionCode }}
-              </el-tag>
-            </el-tooltip>
-            <el-tag v-if="currentPositionAssignments(row).length > 2" size="small" type="info">
-              +{{ currentPositionAssignments(row).length - 2 }}
-            </el-tag>
-          </div>
+        </el-descriptions-item>
+        <el-descriptions-item v-if="canViewPosition" label="当前任职" :span="2">
+          <template v-if="currentPositionAssignments(viewUser).length">
+            <div v-for="(assignment, index) in currentPositionAssignments(viewUser)" :key="assignment.assignmentId || assignment.id || index">
+              {{ positionAssignmentLabel(assignment) }}
+            </div>
+          </template>
           <span v-else>-</span>
-        </template>
-      </el-table-column>
+        </el-descriptions-item>
+        <el-descriptions-item label="创建时间">{{ formatDateValue(viewUser.createTime) }}</el-descriptions-item>
+        <el-descriptions-item label="更新时间">{{ formatDateValue(viewUser.updateTime) }}</el-descriptions-item>
+      </el-descriptions>
+      <template #footer>
+        <el-button @click="viewDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
 
-      <el-table-column prop="status" label="状态" width="90" align="center">
-        <template #default="{ row }">
-          <el-switch
-            v-model="row.status"
-            :active-value="'0'"
-            :inactive-value="'1'"
-            inline-prompt
-            active-text="启"
-            inactive-text="禁"
-            :disabled="row.username === 'admin'"
-            @change="handleStatusChange(row)"
-          />
-        </template>
-      </el-table-column>
-
-      <el-table-column prop="createTime" label="创建时间" width="170" :formatter="formatDateColumn" />
-
-      <el-table-column label="操作" width="285" fixed="right">
-        <template #default="{ row }">
-          <el-button type="primary" link size="small" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="primary" link size="small" @click="handleResetPassword(row)">
-            重置密码
-          </el-button>
-          <el-button
-            v-if="canAssignPosition"
-            type="primary"
-            link
-            size="small"
-            @click="openPositionAssignment(row)"
-          >
-            职务任命
-          </el-button>
-          <el-button
-            type="danger"
-            link
-            size="small"
-            :disabled="row.username === 'admin'"
-            @click="handleDelete(row)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-
-    <el-pagination
-      v-model:current-page="queryParams.pageNum"
-      v-model:page-size="queryParams.pageSize"
-      :total="total"
-      :page-sizes="[10, 20, 50, 100]"
-      layout="total, sizes, prev, pager, next, jumper"
-      class="pagination"
-      @size-change="handlePageSizeChange"
-      @current-change="fetchUserList"
-    />
-    
     <!-- 用户编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
@@ -375,7 +386,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowUp, MoreFilled, Search } from '@element-plus/icons-vue'
 import {
   getUserPage,
   createUser,
@@ -389,8 +400,9 @@ import {
 } from '@/api/system/user'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
-import { formatDateColumn } from '@/shared/list-runtime'
+import { formatDateColumn, formatDateValue } from '@/shared/list-runtime'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
+import SystemFilterPicker from '@/views/system/components/SystemFilterPicker.vue'
 import { getEnabledPositions } from '@/api/system/position'
 import { useUserStore } from '@/stores/user'
 
@@ -412,6 +424,10 @@ const roleOptions = ref<any[]>([])
 const positionOptions = ref<any[]>([])
 const orgOptions = ref<any[]>([])
 const deptOptions = ref<any[]>([])
+const organizationOptions = ref<any[]>([])
+const filtersExpanded = ref(false)
+const filterLoading = reactive({ organization: false, role: false, position: false })
+const filterErrors = reactive({ organization: '', role: '', position: '' })
 const queryParams = reactive({
   keyword: '',
   orgId: '',
@@ -422,11 +438,47 @@ const queryParams = reactive({
   pageNum: 1,
   pageSize: 20
 })
+// 合并控件只允许一个组织节点生效；切换组织/部门或清空时同时清除另一类旧条件。
+const organizationFilter = computed({
+  get: () => queryParams.deptId || queryParams.orgId,
+  set: (value: string) => {
+    const node = organizationOptions.value.find(item => String(item.id) === value)
+    queryParams.orgId = node?.type === 'org' ? value : ''
+    queryParams.deptId = node?.type === 'dept' ? value : ''
+  }
+})
+const organizationFilterOptions = computed(() => {
+  const nodes = new Map(organizationOptions.value.map(item => [String(item.id), item]))
+  return organizationOptions.value.map(item => {
+    const names = [item.orgName]
+    const visited = new Set([String(item.id)])
+    let parent = nodes.get(String(item.parentId))
+    // 展示完整名称路径，帮助区分不同组织下的同名部门；不可见祖先不参与补全。
+    while (parent && !visited.has(String(parent.id))) {
+      names.unshift(parent.orgName)
+      visited.add(String(parent.id))
+      parent = nodes.get(String(parent.parentId))
+    }
+    return { value: String(item.id), label: item.orgName, code: item.orgCode,
+      parentValue: String(item.parentId), kind: item.type, path: names.join(' / ') }
+  })
+})
+const roleFilterOptions = computed(() => roleOptions.value.map(item => ({
+  value: String(item.id), label: item.roleName, code: item.roleCode, description: item.description
+})))
+const positionFilterOptions = computed(() => positionOptions.value.map(item => ({
+  value: item.positionCode, label: item.positionName, code: item.positionCode, description: item.description
+})))
+// 折叠不清空条件，用数量提示仍在生效的高级筛选；重置才恢复全部条件。
+const advancedFilterCount = computed(() => Number(!!queryParams.status)
+  + Number(canViewPosition.value && !!queryParams.positionCode))
 const batchRoleDialogVisible = ref(false)
 const batchRoleIds = ref<string[]>([])
 const batchLoading = ref(false)
 const positionAssignmentVisible = ref(false)
 const positionAssignmentUser = ref<any>(null)
+const viewDialogVisible = ref(false)
+const viewUser = ref<any>(null)
 // 对话框
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
@@ -508,24 +560,34 @@ const handlePageSizeChange = () => {
   fetchUserList()
 }
 
-// 获取角色选项
+// 获取角色选项，同时为选择弹窗提供加载状态和失败重试。
 const fetchRoleOptions = async () => {
+  filterLoading.role = true
+  filterErrors.role = ''
   try {
     roleOptions.value = await getRoles() || []
   } catch (error) {
+    filterErrors.role = '无法读取角色，请重试。'
     console.error('获取角色列表失败', error)
+  } finally {
+    filterLoading.role = false
   }
 }
 
 const fetchPositionOptions = async () => {
   if (!canViewPosition.value) return
+  filterLoading.position = true
+  filterErrors.position = ''
   try {
     const result = await getEnabledPositions()
     positionOptions.value = Array.isArray(result)
       ? result
       : result?.records || result?.list || []
   } catch (error) {
+    filterErrors.position = '无法读取职务，请重试。'
     console.error('获取职务列表失败', error)
+  } finally {
+    filterLoading.position = false
   }
 }
 
@@ -557,16 +619,22 @@ const handlePositionAssignmentSaved = async () => {
   await fetchUserList()
 }
 
-// 获取组织部门选项
+// 获取启用的平铺节点：查询选择器按 parentId 还原组织与部门的混合树。
 const fetchOrgOptions = async () => {
+  filterLoading.organization = true
+  filterErrors.organization = ''
   try {
     const res = await request.get('/system/org/enabled')
     if (res && Array.isArray(res)) {
+      organizationOptions.value = res
       orgOptions.value = res.filter((item: any) => item.type === 'org')
       deptOptions.value = res.filter((item: any) => item.type === 'dept')
     }
   } catch (error) {
+    filterErrors.organization = '无法读取组织/部门，请重试。'
     console.error('获取组织部门列表失败', error)
+  } finally {
+    filterLoading.organization = false
   }
 }
 
@@ -591,6 +659,12 @@ const handleAdd = () => {
   resetForm()
   dialogTitle.value = '新增用户'
   dialogVisible.value = true
+}
+
+/** 展示列表记录的只读详情，不复用可写的编辑表单，避免查看操作覆盖编辑状态。 */
+const handleView = (row: any) => {
+  viewUser.value = { ...row }
+  viewDialogVisible.value = true
 }
 
 // 编辑用户
@@ -767,55 +841,19 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+@use './system-management.scss';
+
 .user-management {
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  padding: 20px;
-  
-  .page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    
-    h2 {
-      margin: 0;
-      font-size: 20px;
-      font-weight: 500;
-    }
-  }
 }
 
-.user-management :deep(.el-table) {
-  width: 100%;
-  max-width: 100%;
-}
+.danger-action { color: var(--el-color-danger); }
 
-.user-filters {
-  margin-bottom: 8px;
-}
-
-.keyword-input {
-  width: 230px;
-}
-
-.filter-select {
-  width: 140px;
-}
-
-.status-select {
-  width: 120px;
-}
-
-.batch-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-  margin-bottom: 12px;
-  color: #606266;
-}
+.user-details :deep(.el-descriptions__body) { overflow-wrap: anywhere; }
+.user-detail-roles { display: flex; flex-wrap: wrap; gap: 6px; }
+.user-detail-roles .el-tag { height: auto; white-space: normal; }
 
 .role-list {
   display: flex;
@@ -849,29 +887,7 @@ onMounted(() => {
   text-overflow: ellipsis;
 }
 
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
 .batch-role-form {
   margin-top: 18px;
-}
-
-@media (max-width: 760px) {
-  .user-management {
-    padding: 12px;
-  }
-
-  .batch-toolbar {
-    flex-wrap: wrap;
-  }
-
-  .user-filters :deep(.el-form-item),
-  .keyword-input,
-  .filter-select,
-  .status-select {
-    width: 100%;
-  }
 }
 </style>

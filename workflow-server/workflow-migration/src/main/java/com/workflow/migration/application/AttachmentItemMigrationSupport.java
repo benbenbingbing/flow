@@ -140,6 +140,7 @@ final class AttachmentItemMigrationSupport {
             ObjectMapper objectMapper) {
         if (source instanceof Map<?, ?> map) {
             for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if ("childFormReleaseRef".equals(String.valueOf(entry.getKey()))) continue;
                 if ("fileItems".equals(String.valueOf(entry.getKey()))
                         && entry.getValue() instanceof Collection<?> items) {
                     for (Object item : items) {
@@ -184,7 +185,10 @@ final class AttachmentItemMigrationSupport {
             Map<String, Object> rewritten = new LinkedHashMap<>();
             map.forEach((key, value) -> {
                 String name = String.valueOf(key);
-                if ("itemKey".equals(name)
+                if ("childFormReleaseRef".equals(name)) {
+                    // 固定子表单属于另一个实体，必须由它自己的字段目录处理附件项。
+                    rewritten.put(name, value);
+                } else if ("itemKey".equals(name)
                         && value instanceof String itemKey
                         && targetKeys.containsKey(itemKey)) {
                     rewritten.put(name, targetKeys.get(itemKey));

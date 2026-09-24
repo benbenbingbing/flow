@@ -24,7 +24,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -122,14 +121,14 @@ class EntityVersionConfigurationControllerTest {
     }
 
     @Test
-    void currentPutAndRootAliasParseIfMatchForCasSave() throws Exception {
+    void currentPostAndRootAliasParseIfMatchForCasSave() throws Exception {
         when(service.save(
                 eq("asset"),
                 any(EntityVersionConfiguration.class),
                 eq(7)))
                 .thenReturn(configuration(8));
 
-        mockMvc.perform(put(
+        mockMvc.perform(post(
                         "/api/entity-versions/configs/asset/current")
                         .header("If-Match", "W/\"7\"")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -139,7 +138,7 @@ class EntityVersionConfigurationControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.revision").value(8));
 
-        mockMvc.perform(put(
+        mockMvc.perform(post(
                         "/api/entity-versions/configs/asset")
                         .header("If-Match", "7")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -155,9 +154,9 @@ class EntityVersionConfigurationControllerTest {
     }
 
     @Test
-    void putWithoutIfMatchIsRejectedByTheHttpContract()
+    void postWithoutIfMatchIsRejectedByTheHttpContract()
             throws Exception {
-        mockMvc.perform(put(
+        mockMvc.perform(post(
                         "/api/entity-versions/configs/asset/current")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

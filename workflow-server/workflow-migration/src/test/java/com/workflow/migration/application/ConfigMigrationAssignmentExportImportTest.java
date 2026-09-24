@@ -38,6 +38,9 @@ import static org.mockito.Mockito.*;
 /** 从真实发布包编码到目标分析/映射的回归，确保不把源环境账号目录作为导出前提。 */
 @ExtendWith(MockitoExtension.class)
 class ConfigMigrationAssignmentExportImportTest {
+    @org.junit.jupiter.api.BeforeEach
+    void configureReferenceServices() { MigrationReferenceTestFixture.attachTo(service); }
+
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     @Mock ConfigMigrationAssetService assetService;
     @Mock ConfigMigrationAssetMapper assetMapper;

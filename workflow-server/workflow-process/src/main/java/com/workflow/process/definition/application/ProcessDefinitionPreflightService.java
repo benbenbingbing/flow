@@ -97,6 +97,8 @@ public class ProcessDefinitionPreflightService {
     private final ProcessPublishHistoryService publishHistoryService;
     private final RuntimeService runtimeService;
     private final ObjectMapper objectMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcessCancellationStatusValidator cancellationStatusValidator;
 
     /**
      * 对当前持久化草稿执行完整发布预检。
@@ -153,6 +155,9 @@ public class ProcessDefinitionPreflightService {
                 }
                 if (nodeOperationPolicyBpmnValidator != null) {
                     nodeOperationPolicyBpmnValidator.validate(bpmnXml);
+                }
+                if (cancellationStatusValidator != null) {
+                    cancellationStatusValidator.validate(config);
                 }
                 bpmnPublishSanitizer.sanitize(
                         bpmnXml,
@@ -273,16 +278,38 @@ public class ProcessDefinitionPreflightService {
             String nodeId = entry.getKey();
             String type = localName(entry.getValue());
             List<FlowEdge> nodeOutgoing = outgoing.getOrDefault(nodeId, List.of());
-            if ("exclusiveGateway".equals(type) && nodeOutgoing.size() > 1) {
+            if (("exclusiveGateway".equals(type) || "inclusiveGateway".equals(type))
+                    && nodeOutgoing.size() > 1) {
                 String defaultFlow = entry.getValue().getAttribute("default");
-                // 默认分支是所有条件未命中时的可选兜底；条件已覆盖业务取值时无需配置。
-                // 预检不推断表达式覆盖范围，仅校验非默认出线必须明确配置条件。
+                boolean hasUnconditionalFlow = false;
                 for (FlowEdge edge : nodeOutgoing) {
-                    if (!edge.id().equals(defaultFlow) && !edge.hasCondition()) {
+                    if (edge.id().equals(defaultFlow)) {
+                        continue;
+                    }
+                    // 旧条件组可能在网关类型转换后残留，却未编译为 Flowable 真正执行的条件。
+                    // 此时面板看似有配置，实际会走无条件流，因此必须在发布前阻断。
+                    if (edge.hasConditionConfig() && !edge.hasCondition()) {
+                        addIssue(issues, "GATEWAY_CONDITION_CONFIG_NOT_EFFECTIVE", Severity.BLOCKER,
+                                edge.id(), "sequenceFlow", "连线保存了条件组但没有生效的条件表达式",
+                                "重新选择表达式并应用到画布，再保存草稿", config.getId());
+                    }
+                    if (!edge.hasCondition()) {
+                        hasUnconditionalFlow = true;
+                    }
+                    if ("exclusiveGateway".equals(type) && !edge.hasCondition()
+                            && !edge.hasConditionConfig()) {
                         addIssue(issues, "GATEWAY_CONDITION_MISSING", Severity.BLOCKER, edge.id(), "sequenceFlow",
                                 "排他网关的非默认连线缺少条件表达式",
                                 "为该连线配置受控条件表达式", config.getId());
                     }
+                }
+                // 包容分叉在所有表达式均为 false 且无默认流时会于发起时抛异常。
+                // 预检无法证明任意业务数据都被条件覆盖，故以非阻断提醒要求用户检查兜底。
+                if ("inclusiveGateway".equals(type) && !StringUtils.hasText(defaultFlow)
+                        && !hasUnconditionalFlow) {
+                    addIssue(issues, "INCLUSIVE_GATEWAY_NO_DEFAULT", Severity.WARNING, nodeId,
+                            type, "包容网关没有默认流；当所有条件都不满足时流程无法继续",
+                            "请配置默认流，或确认条件覆盖所有可能的业务数据", config.getId());
                 }
             }
         }
@@ -969,7 +996,7 @@ public class ProcessDefinitionPreflightService {
             } else if ("sequenceFlow".equals(type) && StringUtils.hasText(id)) {
                 FlowEdge edge = new FlowEdge(
                         id, element.getAttribute("sourceRef"), element.getAttribute("targetRef"),
-                        hasCondition(element));
+                        hasCondition(element), hasConditionConfig(element));
                 edges.add(edge);
                 fingerprints.put(id, fingerprint(element));
             }
@@ -991,6 +1018,23 @@ public class ProcessDefinitionPreflightService {
         for (int index = 0; index < descendants.getLength(); index++) {
             if ("conditionExpression".equals(localName(descendants.item(index)))
                     && StringUtils.hasText(descendants.item(index).getTextContent())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断连线是否保存过可视化条件组。该元数据不等同于运行条件，需与
+     * {@code conditionExpression} 对照，避免网关类型转换后把失效配置误发布。
+     */
+    private boolean hasConditionConfig(Element sequenceFlow) {
+        NodeList descendants = sequenceFlow.getElementsByTagName("*");
+        for (int index = 0; index < descendants.getLength(); index++) {
+            Node node = descendants.item(index);
+            if ("property".equals(localName(node)) && node instanceof Element property
+                    && "conditionGroupConfig".equals(property.getAttribute("name"))
+                    && StringUtils.hasText(property.getAttribute("value"))) {
                 return true;
             }
         }
@@ -1266,9 +1310,11 @@ public class ProcessDefinitionPreflightService {
      * @param id 对象标识，供后续引用、更新或关联
      * @param sourceRef 来源引用，保存在对象中供后续校验、查询或展示
      * @param targetRef 目标引用，保存在对象中供后续校验、查询或展示
-     * @param hasCondition {@code has}条件，保存在对象中供后续校验、查询或展示
+     * @param hasCondition 是否存在 Flowable 实际执行的条件表达式
+     * @param hasConditionConfig 是否保留可视化条件组元数据；与执行表达式比对以阻断失效配置
      */
-    private record FlowEdge(String id, String sourceRef, String targetRef, boolean hasCondition) {
+    private record FlowEdge(String id, String sourceRef, String targetRef,
+                            boolean hasCondition, boolean hasConditionConfig) {
     }
 
     /**

@@ -471,7 +471,7 @@ class EntityDataDynamicServiceSubFormTest {
         snapshot.setFields(List.of(approvedAt));
         when(fixture.snapshotService.getLatestByEntityCode("parent"))
                 .thenReturn(snapshot);
-        when(fixture.dynamicMapper.selectById("wf_parent", "parent-1"))
+        when(fixture.dynamicMapper.selectByIdForUpdate("wf_parent", "parent-1"))
                 .thenReturn(new HashMap<>(Map.of(
                         "id", "parent-1",
                         "status", "BACKLOG")));

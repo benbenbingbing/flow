@@ -53,6 +53,8 @@ import java.util.stream.Collectors;
 public class EntityDefinitionService {
     private static final String ORGANIZATION_ENTITY_CODE = "sys_organization";
     private final EntityDefinitionMapper entityMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private EntityStatusService entityStatusService;
     private final EntityFieldMapper fieldMapper;
     private final EntityRelationMapper relationMapper;
     private final EntityPublishHistoryMapper publishHistoryMapper;
@@ -307,7 +309,7 @@ public class EntityDefinitionService {
 
         // 3. status - 状态（不可编辑，系统维护）
         EntityField statusField = createSystemField(entityId, "status", "状态",
-                EntityField.FieldType.STRING, "varchar(20)", 20, false, ++sortOrder);
+                EntityField.FieldType.STRING, "varchar(50)", 50, false, ++sortOrder);
         statusField.setDefaultValue("DRAFT");
         fieldMapper.insert(statusField);
 
@@ -755,6 +757,7 @@ public class EntityDefinitionService {
                     "平台系统实体不执行动态建表和发布");
         }
 
+        entityStatusService.validateForPublish(entity);
         relationDefinitionService.validateForPublish(id);
         List<EntityRelation> publishingRelations = safeRelations(
                 relationMapper.selectByParentEntityId(id));

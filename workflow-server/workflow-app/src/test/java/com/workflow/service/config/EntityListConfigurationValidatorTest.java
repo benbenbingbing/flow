@@ -36,6 +36,31 @@ import static org.mockito.Mockito.when;
  */
 class EntityListConfigurationValidatorTest {
 
+    /** Provider 声明支持查询也不能绕过统一约束，保存与发布都复用本校验器。 */
+    @Test
+    void rejectsVirtualQueriesAndSorts() {
+        var mapper = mock(EntityFieldMapper.class);
+        var validator = validator(mapper);
+        var field = new EntityListField();
+        field.setFieldId("virtual_summary");
+        field.setFieldCode("summary");
+        field.setDataSourceType("FIELD_TEMPLATE");
+        field.setIsQuery(true);
+        var dto = new EntityListConfigDTO();
+        dto.setEntityId("entity-1");
+        dto.setEntityCode("expense");
+        dto.setListKey("default");
+        dto.setFields(List.of(field));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> validator.validate(dto))
+                .getMessage().contains("虚拟列"));
+
+        // 没有列配置时仍应检查默认排序，防止仅修改 viewConfig 绕过字段规则。
+        dto.setFields(null);
+        dto.setViewConfig(Map.of("table", Map.of("defaultSortField", "summary")));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> validator.validate(dto))
+                .getMessage().contains("排序字段"));
+    }
+
     /** 测试将空白 JSON 列配置归一化为 null：验证 columnConfig/queryConfig/renderConfig 空白值被置为 null */
     @Test
     void normalizesBlankJsonColumnsToNull() {

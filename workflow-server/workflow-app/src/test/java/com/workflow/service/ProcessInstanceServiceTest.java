@@ -76,6 +76,7 @@ public class ProcessInstanceServiceTest {
         assertEquals(25, result.getTotal());
         assertEquals(1, result.getRecords().size());
         assertEquals("COMPLETED", result.getRecords().get(0).getStatus());
+        assertEquals(false, result.getRecords().get(0).getCanWithdraw());
         assertEquals("FINANCE_REVIEW", result.getRecords().get(0).getEntityStatus());
         assertEquals("财务复核中", result.getRecords().get(0).getEntityStatusText());
         verify(history).listPage(10, 10);
@@ -83,6 +84,27 @@ public class ProcessInstanceServiceTest {
         verifyNoInteractions(runtimeService);
     }
 
+
+    @Test
+    void runningStartedRowIncludesIndependentWithdrawalCapability() {
+        var history = mock(org.flowable.engine.history.HistoricProcessInstanceQuery.class, RETURNS_SELF);
+        when(historyService.createHistoricProcessInstanceQuery()).thenReturn(history);
+        when(history.count()).thenReturn(1L);
+        var running = mock(org.flowable.engine.history.HistoricProcessInstance.class);
+        when(running.getId()).thenReturn("current");
+        when(running.getProcessVariables()).thenReturn(Map.of());
+        when(history.listPage(0, 10)).thenReturn(List.of(running));
+        when(repositoryService.createProcessDefinitionQuery()).thenReturn(mock(ProcessDefinitionQuery.class, RETURNS_SELF));
+        var executions = mock(ExecutionQuery.class, RETURNS_SELF);
+        when(runtimeService.createExecutionQuery()).thenReturn(executions);
+        when(executions.list()).thenReturn(List.of());
+        when(nodeOperationCapabilityService.canTerminateProcess("current", "starter")).thenReturn(false);
+        when(nodeOperationCapabilityService.canWithdrawProcess("current", "starter")).thenReturn(true);
+        var row = processInstanceService.getMyStartedList("starter", 1, 10, null, null, null).getRecords().get(0);
+        assertEquals("RUNNING", row.getStatus());
+        assertEquals(false, row.getCanTerminate());
+        assertEquals(true, row.getCanWithdraw());
+    }
 
     @Mock
     private RuntimeService runtimeService;
@@ -107,6 +129,9 @@ public class ProcessInstanceServiceTest {
 
     @Mock
     private EntityStatusService entityStatusService;
+
+    @Mock
+    private com.workflow.process.task.application.operation.NodeOperationCapabilityService nodeOperationCapabilityService;
 
     @InjectMocks
     private ProcessInstanceService processInstanceService;

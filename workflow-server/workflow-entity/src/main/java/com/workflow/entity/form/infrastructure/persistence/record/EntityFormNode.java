@@ -13,6 +13,8 @@ import java.time.LocalDateTime;
  * 实体表单节点实体，对应 entity_form_node 表。
  * 描述表单的递归节点树结构（容器、字段、子表单等），承载组件绑定、属性与校验配置。
  */
+// 历史发布快照不可改写；忽略已退役的模板绑定，实际节点配置继续独立生效。
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"templateId", "templateVersion", "localOverridesDocument", "localOverrides"})
 @Data
 @TableName("entity_form_node")
 public class EntityFormNode {
@@ -50,12 +52,6 @@ public class EntityFormNode {
     private Long orderKey;
     /** 草稿元数据修订号 */
     private Integer revision;
-    /** 节点引用的组件模板ID */
-    private String templateId;
-    /** 节点引用的组件模板版本号 */
-    private Integer templateVersion;
-    /** 模板本地覆盖配置（JSON） */
-    private String localOverridesDocument;
 
     /** 创建时间 */
     @TableField("create_time")

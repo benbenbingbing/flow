@@ -350,12 +350,12 @@ assert.ok(entityDataListSource.includes('historyReadable: versionCapabilities.va
 assert.ok(entityDataListSource.includes(':runtimeEnabled="versionCapabilities.runtimeEnabled"'))
 assert.match(
   versionApiSource,
-  /saveConfig\(entityCode,[\s\S]{0,500}method: 'PUT'[\s\S]{0,160}'If-Match'/,
-  '实体版本配置保存应使用 PUT 与 revision 乐观锁'
+  /saveConfig\(entityCode,[\s\S]{0,500}method: 'POST'[\s\S]{0,160}'If-Match'/,
+  '实体版本配置保存应使用 POST 与 revision 乐观锁'
 )
 assert.match(
   versionApiSource,
-  /saveConfig\(entityCode,[\s\S]{0,400}`\/entity-versions\/configs\/\$\{entityCode\}\/current`[\s\S]{0,100}method: 'PUT'/,
+  /saveConfig\(entityCode,[\s\S]{0,400}`\/entity-versions\/configs\/\$\{entityCode\}\/current`[\s\S]{0,100}method: 'POST'/,
   '当前配置保存必须使用语义明确的 /current 路径'
 )
 assert.ok(versionApiSource.includes('const LEGACY_SAVE_FALLBACK_STATUSES = new Set([404, 405])'))

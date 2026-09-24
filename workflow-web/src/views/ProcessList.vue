@@ -64,18 +64,18 @@
             {{ formatDate(row.updatedAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
             <div class="table-row-actions">
               <el-button link type="primary" @click="handleDesign(row)">设计</el-button>
               <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
               <el-button
-                v-if="row.status === 'DRAFT' || row.status === 'DISABLED'"
+                v-if="row.status === 'DRAFT' || row.status === 'DISABLED' || row.hasUnpublishedChanges"
                 link
                 type="success"
                 @click="handlePublish(row)"
               >
-                发布
+                {{ row.status === 'PUBLISHED' ? '发布新版本' : '发布' }}
               </el-button>
               <el-button
                 v-if="row.status === 'PUBLISHED'"
@@ -361,6 +361,7 @@ import { processActionApi } from '@/api/processAction'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import { generateMigrationTag } from '@/utils/migrationTag'
+import { showRequestError } from '@/utils/request'
 import PageState from '@/components/PageState.vue'
 
 const router = useRouter()
@@ -612,7 +613,7 @@ const handleConfirmPublish = async () => {
     fetchData()
   } catch (error) {
     console.error(error)
-    ElMessage.error(error.message || '发布失败')
+    showRequestError(error, '发布失败')
     if (error?.status === 409 || error?.errorCode === 'PROCESS_PUBLISH_PREVIEW_STALE') {
       await loadPublishPreview()
     }

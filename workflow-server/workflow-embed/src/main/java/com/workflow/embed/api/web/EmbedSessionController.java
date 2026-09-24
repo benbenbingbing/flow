@@ -23,7 +23,6 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -124,13 +123,13 @@ public class EmbedSessionController {
     }
 
     /**
-     * 处理{@code logout}，并将结果传给后续步骤。
+     * 使用 Bearer Token 幂等退出会话；重复退出仍返回 204，便于 iframe 销毁时安全重试。
      *
-     * @param authorization 授权，作为 {@code authenticationService.logoutAuthorization} 的输入影响后续处理
-     * @param request 本次请求，后续经校验后用于处理{@code logout}
-     * @return 处理后的{@code logout}结果，供调用方继续处理
+     * @param authorization Embed Bearer Token，由会话服务校验并定位需要终止的会话
+     * @param request 提供已规范化的关联 ID，供退出审计使用
+     * @return 无响应体的 204，并禁止缓存退出结果
      */
-    @DeleteMapping("/session")
+    @PostMapping("/session")
     public ResponseEntity<Void> logout(
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
             HttpServletRequest request) {

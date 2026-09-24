@@ -7,6 +7,8 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
+import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
@@ -34,6 +36,9 @@ class DynamicTableLargeTextUniqueScanTest {
         field.setFieldType(EntityField.FieldType.TEXT); field.setIsUnique(true);
         when(resolver.resolve(entity)).thenReturn("biz_sample");
         when(metadata.tableExists("biz_sample")).thenReturn(true);
+        when(metadata.columns("biz_sample")).thenReturn(List.of(new SchemaColumnMetadata(
+                "memo", "TEXT", java.sql.Types.LONGVARCHAR, null, null, null,
+                true, null, null, false, false, 1)));
         var query = DatabaseQueryDialects.forVendor(vendor);
         var service = new DynamicTableService(jdbc, mock(EntityFieldMapper.class), resolver,
                 mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(vendor), metadata, query);
@@ -55,5 +60,28 @@ class DynamicTableLargeTextUniqueScanTest {
                 || vendor == DatabaseVendor.OCEANBASE_ORACLE;
         assertEquals(lob, rendered.contains("DBMS_LOB.COMPARE"));
         assertFalse(rendered.contains("notes"), "必须使用可信物理列名");
+    }
+
+    @Test
+    void skipsUniqueConflictQueryForColumnNotYetCreatedByPublishPlan() {
+        var jdbc = mock(JdbcTemplate.class);
+        var metadata = mock(SchemaMetadataPort.class);
+        var resolver = mock(EntityPhysicalTableResolver.class);
+        var entity = new EntityDefinition();
+        entity.setId("sample"); entity.setEntityCode("sample");
+        var field = new EntityField();
+        field.setFieldCode("new_unique"); field.setDbColumnName("new_unique");
+        field.setFieldType(EntityField.FieldType.STRING); field.setIsUnique(true);
+        when(resolver.resolve(entity)).thenReturn("biz_sample");
+        when(metadata.tableExists("biz_sample")).thenReturn(true);
+        when(metadata.columns("biz_sample")).thenReturn(List.of(new SchemaColumnMetadata(
+                "id", "VARCHAR", java.sql.Types.VARCHAR, 64L, null, null,
+                false, null, null, true, true, 1)));
+        var service = new DynamicTableService(jdbc, mock(EntityFieldMapper.class), resolver,
+                mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(DatabaseVendor.MYSQL),
+                metadata, DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
+
+        assertTrue(service.scanUniqueConflicts(entity, List.of(field)).isEmpty());
+        verify(jdbc, never()).query(any(String.class), any(RowCallbackHandler.class));
     }
 }

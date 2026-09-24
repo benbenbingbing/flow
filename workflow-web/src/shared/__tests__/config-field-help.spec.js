@@ -65,7 +65,6 @@ for (const required of [
   'uiEvent.extensionInterface',
   'entityForm.interfaceExtension',
   'entityList.interfaceExtension',
-  'entityList.queryInterfaceExtension',
   'extensionInterface.backendImplementation',
   'extensionInterface.providerOperationCode',
   'extensionInterface.implementationConfig',

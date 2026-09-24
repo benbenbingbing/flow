@@ -47,6 +47,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .eq(FlowAction::getProcessConfigId, processConfigId)
                 .eq(FlowAction::getScopeType, scopeType)
                 .eq(FlowAction::getStatus, "DRAFT")
+                // 绑定查询也必须过滤逻辑删除，避免旧动作在设计器重新出现。
+                .eq(FlowAction::getDeleted, 0)
                 .orderByAsc(FlowAction::getTriggerTiming, FlowAction::getSortOrder));
     }
     
@@ -83,6 +85,8 @@ public interface FlowActionMapper extends BaseMapper<FlowAction> {
                 .eq(FlowAction::getScopeType, scopeType)
                 .eq(FlowAction::getTriggerTiming, triggerTiming)
                 .eq(FlowAction::getStatus, "PUBLISHED")
+                // 已删除动作不能被发布版本重新执行。
+                .eq(FlowAction::getDeleted, 0)
                 .orderByAsc(FlowAction::getSortOrder));
     }
 

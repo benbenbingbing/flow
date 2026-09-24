@@ -121,7 +121,7 @@
               <el-form-item label="作为查询条件">
                 <el-switch
                   v-model="form.isQuery"
-                  :disabled="selectedDataSource?.supportsQuery === false"
+                  :disabled="!supportsEntityFieldQuery(form) && !form.isQuery"
                 />
               </el-form-item>
               <el-form-item label="查询方式">
@@ -307,6 +307,7 @@
 </template>
 
 <script setup>
+import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import { computed, defineComponent, h, reactive, ref } from 'vue'
 import { CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import { ElInput, ElMessage } from 'element-plus'
@@ -527,7 +528,7 @@ function normalizeTemplateKey(value) {
 
 function handleDataSourceChange() {
   form.dataSourceConfig = applySchemaDefaults(selectedDataSource.value?.configSchema || [], {})
-  if (selectedDataSource.value?.supportsQuery === false) form.isQuery = false
+  if (!supportsEntityFieldQuery(form)) form.isQuery = false
 }
 
 function handleRendererChange() {

@@ -19,6 +19,7 @@
         <span class="node-name">{{ tooltip.nodeName }}</span>
       </div>
       <div class="tooltip-content">
+        <div v-if="tooltip.status === 'terminated'" class="info-row"><span class="label">状态：</span><span class="value">{{ cancellationLabel }}</span></div>
         <template v-if="tooltip.assigneeList && tooltip.assigneeList.length > 0">
           <div class="info-row">
             <span class="label">处理人：</span>
@@ -26,7 +27,7 @@
           <div v-for="(item, idx) in tooltip.assigneeList" :key="idx" class="assignee-item">
             <span class="assignee-status-dot" :class="item.status?.toLowerCase() || 'pending'"></span>
             <span class="value">{{ item.assigneeName || item.assigneeId || '未分配' }}</span>
-            <span class="assignee-action" v-if="item.status === 'COMPLETED'">{{ item.actionLabel || (item.action === 'REJECTED' ? '驳回' : item.action === 'TRANSFERRED' ? '转办' : item.action === 'APPROVED' ? '通过' : item.action) }}</span>
+            <span class="assignee-action" v-if="['COMPLETED', 'CANCELLED'].includes(item.status)">{{ item.actionLabel || (item.action === 'REJECTED' ? '驳回' : item.action === 'TRANSFERRED' ? '转办' : item.action === 'APPROVED' ? '通过' : item.action) }}</span>
             <span class="assignee-time">{{ item.handleTime || '' }}</span>
           </div>
         </template>
@@ -47,7 +48,7 @@
         <template v-else>
           <div class="info-row">
             <span class="label">状态：</span>
-            <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : tooltip.status === 'terminated' ? '已终止' : '未开始' }}</span>
+            <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : tooltip.status === 'terminated' ? cancellationLabel : '未开始' }}</span>
           </div>
         </template>
       </div>
@@ -56,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
 import BpmnViewer from 'bpmn-js/lib/Viewer'
 import BpmnNavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
 
@@ -106,6 +107,10 @@ const tooltip = ref({
   assigneeList: null,
   pinned: false
 })
+
+// 生命周期统一为已完成，图上的取消说明必须读取所查看实例的结束类型。
+const cancellationLabel = computed(() => props.progressData?.endType === 'WITHDRAWN'
+  ? '已取消（流程撤回）' : props.progressData?.endType === 'TERMINATED' ? '已取消（流程终止）' : '已取消')
 
 // 颜色配置
 const COLORS = {
@@ -338,11 +343,6 @@ const highlightProcess = () => {
         status = 'terminated'
       } else if (rawCompletedNodes.includes(elementId)) {
         status = 'completed'
-      }
-      
-      // 终止流程的结束节点标记为红色
-      if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
-        status = 'terminated'
       }
       
       setNodeStyle(canvas, element, COLORS[status], status)
@@ -613,10 +613,6 @@ const addMouseEventListeners = () => {
         } else if (rawCompletedNodes.includes(elementId)) {
           status = 'completed'
         }
-        // 终止流程的结束节点标记为红色
-        if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
-          status = 'terminated'
-        }
 
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
         const assigneeList = props.progressData.nodeAssigneesMap?.[elementId] || null
@@ -689,9 +685,6 @@ const addMouseEventListeners = () => {
             status = 'terminated'
           } else if (rawCompletedNodes.includes(elementId)) {
             status = 'completed'
-          }
-          if (props.progressData?.status === 'TERMINATED' && elementType === 'bpmn:EndEvent') {
-            status = 'terminated'
           }
 
           const position = computeTooltipPosition(element)

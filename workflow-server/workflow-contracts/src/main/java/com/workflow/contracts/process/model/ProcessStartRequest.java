@@ -16,6 +16,7 @@ import java.util.Objects;
  * @param submitterName 流程提交人名称，后续用于发起记录和页面展示
  * @param processingStatus 处理状态标识，决定后续流程启动请求采用的处理分支
  * @param data 数据，后续用于处理流程启动请求并传递处理结果
+ * @param previousProcessInstanceId 重新发起时必须携带的上一轮实例 ID，用于防重复和防止旧请求启动错误代次
  * @param variables 流程变量，后续传给流程引擎或规则求值器使用
  */
 public record ProcessStartRequest(
@@ -27,7 +28,16 @@ public record ProcessStartRequest(
         String submitterName,
         String processingStatus,
         Map<String, Object> data,
-        Map<String, Object> variables) {
+        Map<String, Object> variables,
+        String previousProcessInstanceId) {
+
+    /** 首次发起及旧内部调用不携带上一轮 ID，不获得创建下一代实例的权限。 */
+    public ProcessStartRequest(String processDefinitionId, String entityCode, String entityRecordId,
+            String code, String submitterId, String submitterName, String processingStatus,
+            Map<String, Object> data, Map<String, Object> variables) {
+        this(processDefinitionId, entityCode, entityRecordId, code, submitterId, submitterName,
+                processingStatus, data, variables, null);
+    }
 
     /**
      * 初始化流程启动请求，保存构造参数供后续方法使用。

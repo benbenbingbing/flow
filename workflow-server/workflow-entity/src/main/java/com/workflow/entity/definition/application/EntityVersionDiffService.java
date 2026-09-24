@@ -123,8 +123,12 @@ public class EntityVersionDiffService {
 
             // 生成DDL预览（只包含新增字段）
             if (!diff.getAddedFields().isEmpty()) {
-                List<EntityField> newFields = diff.getAddedFields().stream()
-                        .map(this::convertDiffToField)
+                Set<String> addedFieldCodes = diff.getAddedFields().stream()
+                        .map(EntityVersionDiffDTO.FieldDiff::getFieldCode)
+                        .collect(Collectors.toSet());
+                // DDL 必须使用完整字段定义。差异 DTO 只供界面展示，反向转换会丢失默认值和物理列名。
+                List<EntityField> newFields = currentFields.stream()
+                        .filter(field -> addedFieldCodes.contains(field.getFieldCode()))
                         .collect(Collectors.toList());
                 List<String> ddls = dynamicTableService.buildAddColumnSqlPreviews(entity.getEntityCode(), newFields);
                 diff.getPendingDdls().addAll(ddls);
@@ -222,6 +226,8 @@ public class EntityVersionDiffService {
         diff.setFieldName(newField.getFieldName());
         diff.setFieldType(newField.getFieldType() != null ? newField.getFieldType().name() : null);
         diff.setDbType(newField.getDbType());
+        diff.setFieldLength(newField.getFieldLength());
+        diff.setFieldPrecision(newField.getFieldPrecision());
         diff.setDbColumnName(newField.getDbColumnName());
         diff.setIsRequired(newField.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(newField.getIsPublished()));
@@ -281,6 +287,8 @@ public class EntityVersionDiffService {
         diff.setFieldName(newField.getFieldName());
         diff.setFieldType(newField.getFieldType() != null ? newField.getFieldType().name() : null);
         diff.setDbType(newField.getDbType());
+        diff.setFieldLength(newField.getFieldLength());
+        diff.setFieldPrecision(newField.getFieldPrecision());
         diff.setDbColumnName(newField.getDbColumnName());
         diff.setIsRequired(newField.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(newField.getIsPublished()));
@@ -340,6 +348,8 @@ public class EntityVersionDiffService {
         diff.setFieldName(field.getFieldName());
         diff.setFieldType(field.getFieldType() != null ? field.getFieldType().name() : null);
         diff.setDbType(field.getDbType());
+        diff.setFieldLength(field.getFieldLength());
+        diff.setFieldPrecision(field.getFieldPrecision());
         diff.setDbColumnName(field.getDbColumnName());
         diff.setIsRequired(field.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(field.getIsPublished()));
@@ -374,6 +384,8 @@ public class EntityVersionDiffService {
         diff.setFieldName(field.getFieldName());
         diff.setFieldType(field.getFieldType() != null ? field.getFieldType().name() : null);
         diff.setDbType(field.getDbType());
+        diff.setFieldLength(field.getFieldLength());
+        diff.setFieldPrecision(field.getFieldPrecision());
         diff.setDbColumnName(field.getDbColumnName());
         diff.setIsRequired(field.getIsRequired());
         diff.setIsPublished(Boolean.TRUE.equals(field.getIsPublished()));
@@ -392,27 +404,6 @@ public class EntityVersionDiffService {
         }
 
         return diff;
-    }
-
-    /**
-     * 转换差异截止字段；输出作为后续校验或处理的输入。
-     *
-     * @param diff 差异，作为 {@code field.setId} 的输入影响后续处理
-     * @return 转换后的差异截止字段结果，供调用方继续处理
-     */
-    private EntityField convertDiffToField(EntityVersionDiffDTO.FieldDiff diff) {
-        EntityField field = new EntityField();
-        field.setId(diff.getFieldId());
-        field.setFieldCode(diff.getFieldCode());
-        field.setFieldName(diff.getFieldName());
-        if (diff.getFieldType() != null) {
-            field.setFieldType(EntityField.FieldType.valueOf(diff.getFieldType()));
-        }
-        field.setDbType(diff.getDbType());
-        field.setIsRequired(diff.getIsRequired());
-        field.setIsPublished(diff.getIsPublished());
-        field.setIsSystem(diff.getIsSystem());
-        return field;
     }
 
     /**

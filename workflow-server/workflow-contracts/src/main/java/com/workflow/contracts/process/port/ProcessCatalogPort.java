@@ -14,6 +14,12 @@ import java.util.Map;
 public interface ProcessCatalogPort {
 
     /**
+     * 获取草稿、当前发布版本及仍运行版本依赖的特殊结束状态类别。
+     * 实体状态保存时据此阻止删除唯一目标；实现不应执行流程或把动态条件当作禁用。
+     */
+    java.util.Set<String> requiredEndStatusCategories(String processId);
+
+    /**
      * 根据流程 ID 集合批量查询流程名称。
      *
      * @param processIds 流程 ID 集合

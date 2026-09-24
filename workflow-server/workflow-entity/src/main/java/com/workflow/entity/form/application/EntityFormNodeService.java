@@ -52,7 +52,7 @@ import java.util.regex.Pattern;
  *
  * <p>
  * 支持基于乐观锁的节点变更、父子关系与嵌套深度校验、子表单发布版本引用锁定、
- * 组件模板与扩展引用校验，以及通过差异比对批量重建表单节点树。
+ * 组件扩展引用校验，以及通过差异比对批量重建表单节点树。
  * </p>
  */
 @Service
@@ -88,8 +88,7 @@ public class EntityFormNodeService {
         private static final Set<String> CLEARABLE_PATCH_FIELDS = Set.of(
                         "parentId", "bindingRef", "componentName", "componentVersion",
                         "snapshotVersion", "childFormId", "childFormReleaseId",
-                        "childFormReleaseVersion", "rules", "dataSourceBindings",
-                        "templateId", "templateVersion", "localOverrides");
+                        "childFormReleaseVersion", "rules", "dataSourceBindings");
         private static final Set<String> IMMUTABLE_BOUND_PROP_KEYS = Set.of(
                         "fieldId", "fieldCode", "fieldType");
         private static final Set<String> IMMUTABLE_SUB_FORM_CONFIG_KEYS = Set.of(
@@ -231,10 +230,6 @@ public class EntityFormNodeService {
                                 ? nextOrderKey(formId, node.getParentId())
                                 : request.getOrderKey());
                 node.setRevision(1);
-                node.setTemplateId(blankToNull(request.getTemplateId()));
-                node.setTemplateVersion(request.getTemplateVersion());
-                node.setLocalOverridesDocument(
-                                write(request.getLocalOverrides(), "模板本地覆盖"));
                 node.setCreatedAt(LocalDateTime.now());
                 node.setUpdatedAt(LocalDateTime.now());
                 node.setDeleted(0);
@@ -335,9 +330,6 @@ public class EntityFormNodeService {
                                 .set("data_source_bindings_document", updated.getDataSourceBindingsDocument())
                                 .set("legacy_props_document", updated.getLegacyPropsDocument())
                                 .set("order_key", updated.getOrderKey())
-                                .set("template_id", updated.getTemplateId())
-                                .set("template_version", updated.getTemplateVersion())
-                                .set("local_overrides_document", updated.getLocalOverridesDocument())
                                 .set("revision", updated.getRevision())
                                 .set("update_time", updated.getUpdatedAt());
                 int affected;
@@ -1525,11 +1517,6 @@ public class EntityFormNodeService {
                                 nodeType,
                                 normalize(request.getBindingType(), "NONE"),
                                 blankToNull(request.getBindingRef()));
-                EntityFormNodePropertyPolicy.validateTemplate(
-                                nodeType,
-                                request.getTemplateId(),
-                                request.getTemplateVersion(),
-                                request.getLocalOverrides());
         }
 
         /**
@@ -1619,29 +1606,6 @@ public class EntityFormNodeService {
                         node.setComponentName(null);
                         node.setComponentVersion(null);
                         node.setSnapshotVersion(null);
-                }
-
-                Map<String, Object> localOverrides = read(node.getLocalOverridesDocument(), "模板本地覆盖");
-                try {
-                        EntityFormNodePropertyPolicy.validateTemplate(
-                                        nodeType,
-                                        node.getTemplateId(),
-                                        node.getTemplateVersion(),
-                                        localOverrides);
-                } catch (IllegalArgumentException exception) {
-                        if (!migrateUnsupported) {
-                                throw exception;
-                        }
-                        Map<String, Object> template = new LinkedHashMap<>();
-                        template.put("templateId", node.getTemplateId());
-                        template.put("templateVersion", node.getTemplateVersion());
-                        template.put("localOverrides", localOverrides);
-                        if (EntityFormNodePropertyPolicy.meaningful(template)) {
-                                inactive.put("template", template);
-                        }
-                        node.setTemplateId(null);
-                        node.setTemplateVersion(null);
-                        node.setLocalOverridesDocument(null);
                 }
 
                 try {
@@ -2102,21 +2066,6 @@ public class EntityFormNodeService {
                 if (request.getOrderKey() != null) {
                         target.setOrderKey(request.getOrderKey());
                 }
-                if (request.getTemplateId() != null || clear.contains("templateId")) {
-                        target.setTemplateId(clear.contains("templateId")
-                                        ? null
-                                        : blankToNull(request.getTemplateId()));
-                }
-                if (request.getTemplateVersion() != null || clear.contains("templateVersion")) {
-                        target.setTemplateVersion(clear.contains("templateVersion")
-                                        ? null
-                                        : request.getTemplateVersion());
-                }
-                if (request.getLocalOverrides() != null || clear.contains("localOverrides")) {
-                        target.setLocalOverridesDocument(clear.contains("localOverrides")
-                                        ? null
-                                        : write(request.getLocalOverrides(), "模板本地覆盖"));
-                }
         }
 
         /**
@@ -2511,14 +2460,6 @@ public class EntityFormNodeService {
                         throw new IllegalArgumentException(
                                         nodeType + " 节点不支持子表单发布引用");
                 }
-                if (!EntityFormNodePropertyPolicy.supportsTemplate(nodeType)
-                                && (StringUtils.hasText(request.getTemplateId())
-                                                || request.getTemplateVersion() != null
-                                                || EntityFormNodePropertyPolicy.meaningful(
-                                                                request.getLocalOverrides()))) {
-                        throw new IllegalArgumentException(
-                                        nodeType + " 节点不支持组件模板配置");
-                }
                 if (request.getBindingType() != null
                                 && !EntityFormNodePropertyPolicy.bindingTypes(nodeType)
                                                 .contains(normalize(request.getBindingType(), "NONE"))) {
@@ -2588,9 +2529,6 @@ public class EntityFormNodeService {
                 target.setLegacyPropsDocument(source.getLegacyPropsDocument());
                 target.setOrderKey(source.getOrderKey());
                 target.setRevision(source.getRevision());
-                target.setTemplateId(source.getTemplateId());
-                target.setTemplateVersion(source.getTemplateVersion());
-                target.setLocalOverridesDocument(source.getLocalOverridesDocument());
                 target.setCreatedAt(source.getCreatedAt());
                 target.setDeleted(source.getDeleted());
                 return target;
@@ -2629,10 +2567,6 @@ public class EntityFormNodeService {
                 request.setOrderKey(source.getOrderKey() == null
                                 ? fallbackOrder
                                 : source.getOrderKey());
-                request.setTemplateId(source.getTemplateId());
-                request.setTemplateVersion(source.getTemplateVersion());
-                request.setLocalOverrides(
-                                read(source.getLocalOverridesDocument(), "模板本地覆盖"));
                 return request;
         }
 
@@ -2670,10 +2604,6 @@ public class EntityFormNodeService {
                                         read(source.getLegacyPropsDocument(), "历史节点属性"));
                 }
                 request.setOrderKey(source.getOrderKey());
-                request.setTemplateId(source.getTemplateId());
-                request.setTemplateVersion(source.getTemplateVersion());
-                request.setLocalOverrides(
-                                read(source.getLocalOverridesDocument(), "模板本地覆盖"));
                 addClearIfMissing(
                                 clear, "parentId", source.getParentId(), current.getParentId());
                 addClearIfMissing(
@@ -2703,16 +2633,6 @@ public class EntityFormNodeService {
                                         source.getLegacyPropsDocument(),
                                         current.getLegacyPropsDocument());
                 }
-                addClearIfMissing(
-                                clear, "templateId",
-                                source.getTemplateId(), current.getTemplateId());
-                addClearIfMissing(
-                                clear, "templateVersion",
-                                source.getTemplateVersion(), current.getTemplateVersion());
-                addClearIfMissing(
-                                clear, "localOverrides",
-                                source.getLocalOverridesDocument(),
-                                current.getLocalOverridesDocument());
                 request.setClearFields(clear.isEmpty() ? null : clear);
                 return request;
         }
@@ -2764,12 +2684,7 @@ public class EntityFormNodeService {
                                                 && !Objects.equals(
                                                                 source.getLegacyPropsDocument(),
                                                                 current.getLegacyPropsDocument())
-                                || !Objects.equals(source.getOrderKey(), current.getOrderKey())
-                                || !Objects.equals(source.getTemplateId(), current.getTemplateId())
-                                || !Objects.equals(source.getTemplateVersion(), current.getTemplateVersion())
-                                || !Objects.equals(
-                                                source.getLocalOverridesDocument(),
-                                                current.getLocalOverridesDocument());
+                                || !Objects.equals(source.getOrderKey(), current.getOrderKey());
         }
 
         /**

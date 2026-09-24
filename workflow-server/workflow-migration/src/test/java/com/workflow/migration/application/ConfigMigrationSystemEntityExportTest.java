@@ -40,6 +40,9 @@ import static org.mockito.Mockito.when;
 /** 系统实体引用的新旧快照必须可导出，且仍保留目标环境必须满足的硬依赖。 */
 @ExtendWith(MockitoExtension.class)
 class ConfigMigrationSystemEntityExportTest {
+    @org.junit.jupiter.api.BeforeEach
+    void configureReferenceServices() { MigrationReferenceTestFixture.attachTo(service); }
+
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     @Mock

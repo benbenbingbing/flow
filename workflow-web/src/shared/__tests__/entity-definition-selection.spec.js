@@ -80,7 +80,7 @@ assert.match(
 )
 assert.match(
   entityRelationSource,
-  /title="选择关系子实体"[\s\S]{0,200}:query="\{ storageMode: 'DYNAMIC', status: 'PUBLISHED' \}"/,
+  /title="选择关联实体"[\s\S]{0,200}:query="\{ storageMode: 'DYNAMIC', status: 'PUBLISHED' \}"/,
   '独立实体关系的子实体应限制为已发布动态实体'
 )
 assert.equal(
@@ -116,7 +116,6 @@ assert.match(
   ':owner-id="String(entityId || \'\')"',
   '实体默认事件可作为该实体表单和列表的上级事件链',
   '替换上级',
-  '禁用自定义',
   '保存后需重新发布相关表单和列表',
   '已发布页面继续使用原有事件快照'
 ].forEach(marker => assert.ok(

@@ -2,6 +2,7 @@ package com.workflow.entity.list.application.validation;
 
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
+import com.workflow.entity.list.application.EntityListQueryPolicy;
 
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -99,6 +100,9 @@ public class EntityListConfigurationValidator {
         validateStructured(dto.getFixedFilterConfig(), "固定查询条件");
 
         List<EntityListField> fields = dto.getFields();
+        EntityListQueryPolicy.validateConfiguration(fields);
+        EntityListQueryPolicy.validateFilters(fields,
+                com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getFixedFilterConfig()));
         com.workflow.entity.ui.application.PageParameterPolicy.validate(
                 com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig()), "LIST",
                 fields == null ? null : fields.stream().filter(field -> Boolean.TRUE.equals(field.getIsQuery()))
@@ -109,19 +113,28 @@ public class EntityListConfigurationValidator {
                 dto.getQueryInterfaceExtensionId(),
                 fields);
         if (fields == null) {
-            return;
+            fields = List.of();
         }
         if (fields.size() > 200) {
             throw new IllegalArgumentException("单个列表最多配置 200 个字段");
         }
 
-        Set<String> entityFieldIds = entityFieldMapper.findByEntityId(dto.getEntityId()).stream()
+        List<EntityField> entityFields = entityFieldMapper.findByEntityId(dto.getEntityId());
+        Set<String> entityFieldIds = entityFields.stream()
                 .map(EntityField::getId)
                 .map(String::valueOf)
                 .collect(Collectors.toSet());
         Set<String> fieldCodes = new HashSet<>();
         for (EntityListField field : fields) {
             validateField(field, entityFieldIds, fieldCodes);
+        }
+        var view = com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig());
+        if (view.get("table") instanceof java.util.Map<?, ?> table
+                && table.get("defaultSortField") instanceof String sortField && StringUtils.hasText(sortField)) {
+            EntityListQueryPolicy.validateSort(fields, sortField);
+            if (entityFields.stream().noneMatch(field -> sortField.equals(field.getFieldCode()))) {
+                throw new IllegalArgumentException("默认排序字段不是实体字段: " + sortField);
+            }
         }
     }
 
@@ -176,9 +189,6 @@ public class EntityListConfigurationValidator {
             if (!provider.supportsVirtualField()
                     && String.valueOf(field.getFieldId()).startsWith("virtual_")) {
                 throw new IllegalArgumentException("数据源不支持虚拟字段: " + dataSourceType);
-            }
-            if (Boolean.TRUE.equals(field.getIsQuery()) && !provider.supportsQuery()) {
-                throw new IllegalArgumentException("数据源不支持查询条件: " + dataSourceType);
             }
         }
 

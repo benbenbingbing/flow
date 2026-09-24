@@ -653,7 +653,7 @@ const apiExpectations = {
     'publish',
     'delete'
   ],
-  'src/api/uiHotfixGovernance.js': ['apply', 'review', 'cancel', 'get', 'list'],
+  'src/api/uiHotfixGovernance.js': ['get', 'list'],
   'src/api/entityListRuntime.js': ['getSchema', 'query', 'simulate'],
   'src/api/entityListScope.js': ['getConfiguration', 'createPolicy', 'createBinding', 'publish'],
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'getTaskOperations', 'previewAddSign', 'addSignTask', 'cancelAddSign', 'ccTask', 'getMyCcList', 'markCcRead', 'withdrawProcess', 'terminateProcess'],
@@ -689,7 +689,12 @@ const apiExpectations = {
 
 for (const [file, names] of Object.entries(apiExpectations)) {
   // 宿主适配器只创建客户端；API 方法实现在 workspace 共享包中。
-  const shared = { 'src/api/auth.js': 'auth', 'src/api/entity.js': 'entity', 'src/api/processTask.js': 'processTask' }[file]
+  const shared = {
+    'src/api/auth.js': 'auth',
+    'src/api/entity.js': 'entity',
+    'src/api/processTask.js': 'processTask',
+    'src/api/entityListRuntime.js': 'entityListRuntime'
+  }[file]
   const source = readFileSync(file, 'utf8') + (shared ? readFileSync(new URL(import.meta.resolve(`@flow/workflow-api/${shared}`)), 'utf8') : '')
   for (const name of names) {
     assert.ok(source.includes(name), `${file} 缺少功能 API: ${name}`)
@@ -1093,6 +1098,8 @@ assert.ok(
   ),
   '首页待办更多按钮应使用无边框图标按钮'
 )
+// 待办菜单已抽到跨端共享包，页面只负责把选中任务交给该能力函数。
+const todoActionsSource = readFileSync(new URL(import.meta.resolve('@flow/workflow-core/workflow-task-actions')), 'utf8')
 for (const action of [
   "command: 'transfer', label: '转办'",
   "command: 'addSign', label: '加签'",
@@ -1100,11 +1107,11 @@ for (const action of [
   "command: 'cc', label: '知会'",
   "command: 'sla',"
 ]) {
-  assert.ok(homeSource.includes(action), `首页待办更多菜单缺少操作：${action}`)
+  assert.ok(todoActionsSource.includes(action), `首页待办更多菜单缺少操作：${action}`)
 }
 assert.ok(
-  homeSource.includes('row.taskOperations?.transfer === true')
-    && homeSource.includes('row.taskOperations?.addSign === true'),
+  todoActionsSource.includes('task.taskOperations?.transfer === true')
+    && todoActionsSource.includes('task.taskOperations?.addSign === true'),
   '首页只能在服务端明确允许时展示转办和发起加签'
 )
 assert.ok(

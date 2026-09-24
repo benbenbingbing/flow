@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 /**
  * 任务候选用户实体
- * 记录某个任务实例的候选审批人，用于会签/或签场景下人员匹配
+ * 保存平台任务的直接候选用户；不包含由组成员展开的用户，也不代表已办理人员
  */
 @Data
 @TableName("process_task_candidate_user")
@@ -19,11 +19,11 @@ public class ProcessTaskCandidateUser {
     /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
-    /** 关联的流程任务实例ID */
-    private String taskInstanceId;
+    /** 关联 process_task.id；使用平台主键，不能传 Flowable task_id 或已退役的旧实例 ID。 */
+    private Long processTaskId;
     /** 候选用户ID */
     private String userId;
-    /** 排序号，控制候选用户处理顺序 */
+    /** 稳定展示顺序；不决定会签先后或授予办理权限。 */
     private Integer sortOrder;
 
     /** 创建时间 */

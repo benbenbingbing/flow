@@ -1,5 +1,5 @@
 <template>
-  <FormInputParameterEditor v-model="schema" />
+  <FormInputParameterEditor v-model="schema" @code-change="renameParameterBindings" />
   <section class="parameter-usage">
     <div class="parameter-heading"><strong>参数用途</strong><el-button :disabled="!parameters.length" @click="add">增加用途</el-button></div>
     <p>{{ kind === 'LIST' ? '可作为列表附加查询条件；关系范围和权限仍然生效。' : '可初始化可编辑字段，只填空值、不覆盖已有数据。' }} 参数也可供数据源、接口和事件通过 params 使用。</p>
@@ -25,6 +25,10 @@ const parameters = computed(() => getInputParameterDefinitions(schema.value))
 const usableFields = computed(() => pageParameterFields(props.fields).filter(f => f.fieldCode && (props.kind === 'LIST' ? f.isQuery : f.fieldCode !== 'id' && !f.isReadonly && !f.readonly && !f.isSystem)))
 function patch(index, value) { bindings.value = bindings.value.map((row, i) => i === index ? { ...row, ...value } : row) }
 function add() { bindings.value = [...bindings.value, { parameter: parameters.value[0]?.code || '', usage: props.kind === 'LIST' ? 'FILTER' : 'INITIALIZE', targetField: '', ...(props.kind === 'LIST' ? { operator: 'EQ' } : {}) }] }
+function renameParameterBindings(previousCode, nextCode) {
+  // 参数编码是用途行的外键，编辑器改名必须同步引用，避免已保存映射指向不存在的参数。
+  bindings.value = bindings.value.map(row => row.parameter === previousCode ? { ...row, parameter: nextCode } : row)
+}
 </script>
 <style scoped>
 .parameter-usage { margin-top:24px; }.parameter-heading { display:flex; justify-content:space-between; align-items:center; }

@@ -768,7 +768,7 @@ public class EntityListRelationalConfigService {
                 "built-in".equalsIgnoreCase(action.getButtonType())
                         && (TOOLBAR.equals(action.getPosition())
                                 ? "create".equals(action.getButtonKey())
-                                : Set.of("view", "edit", "approve")
+                                : Set.of("view", "edit", "approve", "restartProcess")
                                         .contains(action.getButtonKey()));
 
         if (!StringUtils.hasText(targetFormId)) {

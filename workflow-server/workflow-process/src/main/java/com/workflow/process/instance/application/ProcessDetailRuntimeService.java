@@ -20,6 +20,10 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.history.HistoricTaskInstance;
 import org.springframework.stereotype.Service;
+import com.workflow.process.status.application.ProcessEndReason;
+import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +43,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ProcessDetailRuntimeService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private ProcessOperationLogMapper operationLogMapper;
+
 
     /** Flowable 运行时服务，查询运行中流程实例与执行 */
     private final RuntimeService runtimeService;
@@ -95,6 +102,10 @@ public class ProcessDetailRuntimeService {
                 .orderByHistoricTaskInstanceEndTime().asc()
                 .list();
         detail.setHistory(buildHistory(instanceId, historicInstance, historicTasks));
+        if (historicInstance != null && historicInstance.getEndTime() != null) {
+            detail.setEndType(ProcessEndReason.category(historicInstance.getDeleteReason()));
+            detail.setEndReason(ProcessEndReason.comment(historicInstance.getDeleteReason()));
+        }
         detail.setNodeAssigneeMap(buildNodeAssigneeMap(instanceId, processInstance, historicTasks));
         loadFormData(detail, historicInstance);
         return detail;
@@ -201,7 +212,8 @@ public class ProcessDetailRuntimeService {
                 .list();
 
         List<String> completedNodes = historicActivities.stream()
-                .filter(h -> h.getEndTime() != null && !"sequenceFlow".equals(h.getActivityType()))
+                .filter(h -> h.getEndTime() != null && !ProcessEndReason.isCancelled(h.getDeleteReason())
+                        && !"sequenceFlow".equals(h.getActivityType()))
                 .map(HistoricActivityInstance::getActivityId)
                 .distinct()
                 .collect(Collectors.toList());
@@ -238,18 +250,52 @@ public class ProcessDetailRuntimeService {
             String assigneeId = task.getAssignee();
             history.setAssignee(assigneeId);
             String displayName = sysUserService.getDisplayName(assigneeId);
-            if (!assigneeId.equals(displayName)) {
+            if (!java.util.Objects.equals(assigneeId, displayName)) {
                 history.setAssigneeName(displayName);
             }
-            history.setAction("通过");
+            // 引擎删除的历史任务同样有结束时间，不能因此把取消记为通过。
+            boolean cancelled = ProcessEndReason.isCancelled(task.getDeleteReason());
+            history.setAction(cancelled ? "已取消" : "完成");
+            if (cancelled) history.setComment(ProcessEndReason.comment(task.getDeleteReason()));
             history.setStartTime(formatDate(task.getStartTime()));
             history.setEndTime(formatDate(task.getEndTime()));
             history.setDuration(task.getDurationInMillis());
             loadTaskVariables(history, task);
+            if (!cancelled && history.getVariables() != null) {
+                Object action = history.getVariables().get("action");
+                history.setAction("approve".equals(action) ? "通过" : "reject".equals(action) ? "驳回" : "完成");
+            }
             historyList.add(history);
         }
 
-        return mergeMultiInstanceHistory(historyList);
+        List<ProcessDetailVO.HistoryVO> result = mergeMultiInstanceHistory(historyList);
+        if (historicInstance != null && historicInstance.getEndTime() != null
+                && ProcessEndReason.isCancelled(historicInstance.getDeleteReason())) {
+            // 详情接口与进度接口使用相同的结构化结束事实和可靠操作日志。
+            List<ProcessOperationLog> logs = operationLogMapper.selectList(Wrappers.<ProcessOperationLog>lambdaQuery()
+                    .eq(ProcessOperationLog::getProcessInstanceId, instanceId)
+                    .in(ProcessOperationLog::getOperationType, "TERMINATE", "WITHDRAW")
+                    .orderByAsc(ProcessOperationLog::getOperationTime));
+            for (ProcessOperationLog log : logs) {
+                var end = new ProcessDetailVO.HistoryVO();
+                boolean withdrawn = "WITHDRAW".equals(log.getOperationType());
+                end.setTaskName(withdrawn ? "流程撤回" : "流程终止");
+                end.setAction(withdrawn ? "撤回" : "终止");
+                end.setAssignee(log.getOperatorId()); end.setAssigneeName(log.getOperatorName());
+                end.setComment(log.getOperationComment());
+                end.setEndTime(log.getOperationTime() == null ? null : log.getOperationTime().format(
+                        java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+                result.add(end);
+            }
+            if (logs.isEmpty()) {
+                var end = new ProcessDetailVO.HistoryVO();
+                boolean withdrawn = "WITHDRAWN".equals(ProcessEndReason.category(historicInstance.getDeleteReason()));
+                end.setTaskName(withdrawn ? "流程撤回" : "流程终止"); end.setAction(withdrawn ? "撤回" : "终止");
+                end.setComment(ProcessEndReason.comment(historicInstance.getDeleteReason()));
+                end.setEndTime(formatDate(historicInstance.getEndTime())); result.add(end);
+            }
+        }
+        return result;
     }
 
     /**
@@ -292,7 +338,8 @@ public class ProcessDetailRuntimeService {
     private List<ProcessDetailVO.HistoryVO> mergeMultiInstanceHistory(List<ProcessDetailVO.HistoryVO> historyList) {
         Map<String, List<ProcessDetailVO.HistoryVO>> historyGroup = new LinkedHashMap<>();
         for (ProcessDetailVO.HistoryVO history : historyList) {
-            historyGroup.computeIfAbsent(history.getTaskName(), key -> new ArrayList<>()).add(history);
+            // 按处理结果分组，取消的会签分支不得和已通过分支合并成“通过”。
+            historyGroup.computeIfAbsent(history.getTaskName() + "|" + history.getAction(), key -> new ArrayList<>()).add(history);
         }
 
         List<ProcessDetailVO.HistoryVO> mergedHistory = new ArrayList<>();
@@ -330,7 +377,7 @@ public class ProcessDetailRuntimeService {
         merged.setAssignee(String.join(",", assignees));
         merged.setAssigneeName(String.join(",", assigneeNames));
         boolean hasActive = list.stream().anyMatch(h -> h.getEndTime() == null);
-        merged.setAction(hasActive ? "进行中" : "通过");
+        merged.setAction(hasActive ? "进行中" : list.get(0).getAction());
         merged.setStartTime(list.get(0).getStartTime());
         merged.setEndTime(list.stream()
                 .map(ProcessDetailVO.HistoryVO::getEndTime)
@@ -378,8 +425,9 @@ public class ProcessDetailRuntimeService {
             assignee.setAssigneeId(userId);
             assignee.setAssigneeName(displayName);
             assignee.setHandleTime(formatDate(task.getEndTime()));
-            assignee.setAction("通过");
-            assignee.setStatus("completed");
+            boolean cancelled = ProcessEndReason.isCancelled(task.getDeleteReason());
+            assignee.setAction(cancelled ? "已取消" : "完成");
+            assignee.setStatus(cancelled ? "cancelled" : "completed");
             nodeAssigneeMap.put(task.getTaskDefinitionKey(), assignee);
         }
 

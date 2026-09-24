@@ -48,6 +48,15 @@ import java.util.stream.Collectors;
 @Service
 public class EntityRelationRuntimeService {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private EntityTaskSummaryRefresh taskSummaryRefresh;
+
+    /** 子记录可能有独立流程；随父聚合编辑/删除时也必须刷新其任务摘要。 */
+    private void refreshTaskSummary(String entityCode, String recordId) {
+        if (taskSummaryRefresh != null) taskSummaryRefresh.changed(entityCode, recordId);
+    }
+
+
     private static final int MAX_RELATION_DEPTH = 8;
     private static final int MAX_SELF_RELATION_ANCESTORS = 256;
 
@@ -356,17 +365,113 @@ public class EntityRelationRuntimeService {
      * @return 剔除关系字段后的数据副本
      */
     public Map<String, Object> withoutRelationData(Map<String, Object> data, List<EntityRelation> relations) {
-        if (data == null || data.isEmpty() || relations == null || relations.isEmpty()) {
+        if (data == null || data.isEmpty()) {
             return data;
         }
         Map<String, Object> parentData = new HashMap<>(data);
+        // 即使当前发布版本没有启用关系，也要返回可修改副本；后续还需剔除
+        // 旧表单提交的停用关系键，不能修改调用方原始 payload。
+        if (relations == null || relations.isEmpty()) {
+            return parentData;
+        }
         for (EntityRelation relation : relations) {
+            if (relation == null) {
+                continue;
+            }
             String dataKey = effectiveDataKey(relation);
+            String relationCode = relation.getRelationCode();
+            // 旧表单可能仍用关系编码提交，而新版关系已改用独立 dataKey。
+            // 两种键都不是父表物理列，尤其停用后不能漏入父表 INSERT。
+            boolean hasDataKey = StringUtils.hasText(dataKey)
+                    && data.containsKey(dataKey);
+            boolean hasCodeAlias = StringUtils.hasText(relationCode)
+                    && !relationCode.equals(dataKey)
+                    && data.containsKey(relationCode);
+            if (Boolean.FALSE.equals(relation.getEnabled())
+                    && ((hasDataKey && hasRelationContent(data.get(dataKey)))
+                    || (hasCodeAlias
+                    && hasRelationContent(data.get(relationCode))))) {
+                throw new BusinessConflictException(
+                        "ENTITY_RELATION_DISABLED_FORM_STALE",
+                        "关系“" + relation.getRelationName()
+                                + "”已停用，当前表单仍包含该关系；请更新并重新发布表单后重试");
+            }
             if (StringUtils.hasText(dataKey)) {
                 parentData.remove(dataKey);
             }
+            if (StringUtils.hasText(relationCode)) {
+                parentData.remove(relationCode);
+            }
         }
         return parentData;
+    }
+
+    /**
+     * 拦截已从发布快照中消失、但旧表单仍提交的关系键。
+     *
+     * <p>发布快照只保存启用关系，停用后它不再出现在 {@code loadRelations}
+     * 中；此处用当前关系草稿识别其旧键，但仅处理发布快照没有的关系，避免
+     * “草稿刚停用、尚未发布”时提前改变已发布关系的运行行为。空值从父表
+     * payload 中剔除，非空值明确要求重发旧表单，不能作为不存在的物理列入库。</p>
+     *
+     * @param definition 当前父实体
+     * @param requestData 原始表单提交，可含 data 子对象
+     * @param parentData 已复制并剔除启用关系的父表数据
+     * @param publishedRelations 当前已发布的启用关系
+     * @throws BusinessConflictException 旧表单仍提交已停用关系的实际子数据时抛出
+     */
+    public void stripUnpublishedRelationKeys(
+            EntityDefinition definition,
+            Map<String, Object> requestData,
+            Map<String, Object> parentData,
+            List<EntityRelation> publishedRelations) {
+        if (definition == null || !StringUtils.hasText(definition.getId())
+                || requestData == null || parentData == null) {
+            return;
+        }
+        List<EntityRelation> draftRelations =
+                relationMapper.selectAllByParentEntityId(definition.getId());
+        if (draftRelations == null || draftRelations.isEmpty()) {
+            return;
+        }
+        Map<String, Object> source = nestedData(requestData);
+        Map<String, Object> target = nestedData(parentData);
+        for (EntityRelation draft : draftRelations) {
+            if (draft == null || (publishedRelations != null
+                    && publishedRelations.stream().anyMatch(relation ->
+                    relation != null && java.util.Objects.equals(
+                            relation.getRelationCode(), draft.getRelationCode())))) {
+                continue;
+            }
+            String dataKey = effectiveDataKey(draft);
+            String relationCode = draft.getRelationCode();
+            boolean hasDataKey = StringUtils.hasText(dataKey)
+                    && source.containsKey(dataKey);
+            boolean hasCodeAlias = StringUtils.hasText(relationCode)
+                    && !relationCode.equals(dataKey)
+                    && source.containsKey(relationCode);
+            if ((hasDataKey && hasRelationContent(source.get(dataKey)))
+                    || (hasCodeAlias
+                    && hasRelationContent(source.get(relationCode)))) {
+                throw new BusinessConflictException(
+                        "ENTITY_RELATION_DISABLED_FORM_STALE",
+                        "关系“" + draft.getRelationName()
+                                + "”未在当前实体版本启用；请更新并重新发布表单后重试");
+            }
+            if (hasDataKey) {
+                target.remove(dataKey);
+            }
+            if (hasCodeAlias) {
+                target.remove(relationCode);
+            }
+        }
+    }
+
+    /** 读取表单协议中真正承载业务字段的 Map，供关系键清理使用。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> nestedData(Map<String, Object> formData) {
+        Object data = formData.get("data");
+        return data instanceof Map<?, ?> ? (Map<String, Object>) data : formData;
     }
 
     /**
@@ -405,12 +510,40 @@ public class EntityRelationRuntimeService {
             return result;
         }
         for (EntityRelation relation : relations) {
+            if (relation == null || Boolean.FALSE.equals(relation.getEnabled())) {
+                continue;
+            }
             String dataKey = effectiveDataKey(relation);
             if (StringUtils.hasText(dataKey) && data.containsKey(dataKey)) {
                 result.put(dataKey, data.get(dataKey));
+            } else if (StringUtils.hasText(dataKey)
+                    && StringUtils.hasText(relation.getRelationCode())
+                    && data.containsKey(relation.getRelationCode())) {
+                // 老发布表单仍可能把关系编码作为控件键；统一归一到新 dataKey。
+                result.put(dataKey, data.get(relation.getRelationCode()));
             }
         }
         return result;
+    }
+
+    /**
+     * 判断停用关系的旧表单是否仍提交了实际子数据。
+     * 空值按“未填写”处理以便旧表单的主记录仍可保存，非空值必须提示表单失配。
+     */
+    private boolean hasRelationContent(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return !map.isEmpty();
+        }
+        if (value instanceof java.util.Collection<?> collection) {
+            return !collection.isEmpty();
+        }
+        if (value instanceof CharSequence text) {
+            return StringUtils.hasText(text);
+        }
+        return true;
     }
 
     /**
@@ -563,17 +696,27 @@ public class EntityRelationRuntimeService {
                     "可信子表单写计划无法由当前关系定义完整执行");
         }
         if (!StringUtils.hasText(parentId) || relations == null || relations.isEmpty()
-                || relationData == null || relationData.isEmpty() || depth > MAX_RELATION_DEPTH) {
+                || depth > MAX_RELATION_DEPTH) {
+            return;
+        }
+        validateRequiredRelations(parentId, relations, relationData);
+        if (relationData == null || relationData.isEmpty()) {
             return;
         }
         for (EntityRelation relation : relations) {
+            if (relation == null || Boolean.FALSE.equals(relation.getEnabled())) {
+                continue;
+            }
             String dataKey = effectiveDataKey(relation);
             if (!StringUtils.hasText(dataKey) || !relationData.containsKey(dataKey)) {
                 continue;
             }
             Object relationValue = relationData.get(dataKey);
-            if (relationValue == null) {
-                // 前端未提供该关系字段数据时，跳过处理，避免误删已有子表数据
+            if (relationValue == null
+                    && relation.getRelationType()
+                    != EntityRelation.RelationType.ONE_TO_ONE) {
+                // 一对多的 null 沿用旧协议“保持现状”；一对一的显式 null
+                // 表示用户移除当前子记录，缺键才表示未提交该关系。
                 continue;
             }
             if (relation.getOwnershipType()
@@ -731,6 +874,7 @@ public class EntityRelationRuntimeService {
                 } else {
                     dynamicMapper.update(childTableName, childData);
                 }
+                refreshTaskSummary(childDefinition.getEntityCode(), childId);
                 activeIds.add(childId);
                 saveRelationData(
                         childId,
@@ -754,6 +898,60 @@ public class EntityRelationRuntimeService {
                     existingRows,
                     activeIds);
             path.remove(pathKey);
+        }
+    }
+
+    /**
+     * 校验必填关系在本次聚合提交后的子记录集合非空。
+     *
+     * <p>提交了空集合表示替换并删除旧子行；未提交关系键则保留旧子行，
+     * 因此需要查询已有归属，不能把两种情况都当作“有旧数据即可通过”。
+     * 该校验在父子写入事务内执行，失败会回滚已经写入的父记录。</p>
+     *
+     * @param parentId 当前父记录 ID
+     * @param relations 当前已发布的关系定义
+     * @param relationData 本次提交的关系数据，缺键表示保持已有子记录
+     * @throws BusinessConflictException 必填关系在提交后没有子记录时抛出
+     */
+    private void validateRequiredRelations(
+            String parentId,
+            List<EntityRelation> relations,
+            Map<String, Object> relationData) {
+        for (EntityRelation relation : relations) {
+            if (relation == null
+                    || !Boolean.TRUE.equals(relation.getRequired())
+                    || Boolean.FALSE.equals(relation.getEnabled())) {
+                continue;
+            }
+            String dataKey = effectiveDataKey(relation);
+            boolean submitted = StringUtils.hasText(dataKey)
+                    && relationData != null
+                    && relationData.containsKey(dataKey)
+                    && (relationData.get(dataKey) != null
+                    || relation.getRelationType()
+                    == EntityRelation.RelationType.ONE_TO_ONE);
+            if (submitted) {
+                if (!toRelationRows(
+                        relationData.get(dataKey),
+                        relation.getRelationType()).isEmpty()) {
+                    continue;
+                }
+            } else {
+                EntityDefinition childDefinition = loadChildEntity(relation);
+                if (childDefinition != null
+                        && StringUtils.hasText(childDefinition.getEntityCode())
+                        && StringUtils.hasText(relation.getChildRefFieldCode())
+                        && dynamicTableService.tableExists(childDefinition.getEntityCode())
+                        && !findRowsByReference(
+                                dynamicTableService.getTableName(childDefinition.getEntityCode()),
+                                relation.getChildRefFieldCode(),
+                                parentId).isEmpty()) {
+                    continue;
+                }
+            }
+            throw new BusinessConflictException(
+                    "ENTITY_RELATION_REQUIRED_MISSING",
+                    "关系 " + relation.getRelationName() + " 至少需要一条子记录");
         }
     }
 
@@ -887,6 +1085,7 @@ public class EntityRelationRuntimeService {
                 } else {
                     dynamicMapper.deleteById(childTableName, childId);
                 }
+                refreshTaskSummary(childDefinition.getEntityCode(), childId);
                 releaseChildClaims(
                         childDefinition.getEntityCode(),
                         childId);
@@ -1235,6 +1434,7 @@ public class EntityRelationRuntimeService {
             String id = stringValue(row.get("id"));
             if (StringUtils.hasText(id) && !activeIds.contains(id)) {
                 dynamicMapper.deleteById(tableName, id);
+                refreshTaskSummary(childEntityCode, id);
                 releaseChildClaims(childEntityCode, id);
             }
         }

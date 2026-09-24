@@ -1,7 +1,7 @@
 package com.workflow.entity.data;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.config.DatabaseBootstrapJobCoordinator;
+import com.workflow.bootstrap.DatabaseBootstrapJobCoordinator;
 import com.workflow.core.database.JdbcDatabaseClock;
 import com.workflow.core.database.JdbcLockedRow;
 import com.workflow.core.error.BusinessConflictException;

@@ -6,7 +6,7 @@ import com.workflow.integration.database.api.error.DatabaseErrorKind;
 import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration;
-import com.workflow.config.GlobalExceptionHandler;
+import com.workflow.web.GlobalExceptionHandler;
 import com.workflow.config.database.DatabaseConfiguration;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
 import com.workflow.core.database.DatabaseExceptionClassifier;

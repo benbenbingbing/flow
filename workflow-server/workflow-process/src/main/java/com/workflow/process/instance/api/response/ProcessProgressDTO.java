@@ -17,6 +17,8 @@ public class ProcessProgressDTO {
      * 流程实例ID
      */
     private String processInstanceId;
+    /** 当前用户可读的各轮实例，供历史选择器使用；每轮进度仍独立鉴权读取。 */
+    private List<ProcessRoundDTO> rounds = List.of();
     
     /**
      * 流程定义ID
@@ -44,9 +46,16 @@ public class ProcessProgressDTO {
     private String bpmnXml;
     
     /**
-     * 流程状态：RUNNING-运行中，COMPLETED-已完成，SUSPENDED-已挂起
+     * 生命周期：RUNNING-运行中、COMPLETED-已完成；挂起仍运行中，不能用于判断审批是否通过。
      */
     private String status;
+
+    /** 当前所查看实例的结束类型，供图示和历史区分正常结束、终止与撤回，不能读取实体最新一轮替代。 */
+    private String endType;
+    /** 本次实例的结束意见，仅用于展示，不参与类型和权限判断。 */
+    private String endReason;
+    /** 引擎确认被取消的活动节点，供图示标记取消，不代表审批完成。 */
+    private List<String> cancelledNodes;
     
     /**
      * 已完成的节点ID列表

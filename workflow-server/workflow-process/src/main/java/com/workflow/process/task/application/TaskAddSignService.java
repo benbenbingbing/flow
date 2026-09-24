@@ -778,6 +778,15 @@ public class TaskAddSignService {
         child.setCreateTime(LocalDateTime.now());
         child.setUpdateTime(LocalDateTime.now());
         child.setDeleted(0);
+        // 加签没有对应的引擎创建事件；复用源任务摘要，后续业务更新会按记录同步全部子任务。
+        child.setStartUserId(source.getStartUserId());
+        child.setBusinessName(source.getBusinessName());
+        child.setBusinessCode(source.getBusinessCode());
+        child.setBusinessDataName(source.getBusinessDataName());
+        child.setBusinessCurrentTaskName(source.getBusinessCurrentTaskName());
+        child.setBusinessStatus(source.getBusinessStatus());
+        child.setInboxSummaryReady(Boolean.TRUE.equals(source.getInboxSummaryReady()));
+        child.setInboxIdentityReady(true);
         return child;
     }
 

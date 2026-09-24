@@ -79,7 +79,7 @@ V1 只允许 `refresh`、`set-theme`、`set-locale`、`focus`、`destroy` 五种
 事件判断完成结果，不能把方法返回视为业务操作完成。
 当前原生界面仅提供 `zh-CN` 文案；`setLocale` 对其它语言返回关联 `error`，并保持当前语言。
 
-`destroy()` 是幂等的异步完成语义：iframe 只有在 `DELETE /api/embed/v1/session`
+`destroy()` 是幂等的异步完成语义：iframe 只有在 `POST /api/embed/v1/session`
 成功、服务端已释放活跃会话配额后才回传关联 ACK，SDK 随后才关闭
 MessagePort 并移除 iframe。重复调用会返回同一个 Promise，不会重复发送命令。
 

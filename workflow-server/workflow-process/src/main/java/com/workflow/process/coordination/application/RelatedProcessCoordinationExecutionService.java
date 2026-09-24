@@ -1,5 +1,7 @@
 package com.workflow.process.coordination.application;
 
+import com.workflow.process.status.application.ProcessEndReason;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.audit.model.AuditAction;
@@ -239,7 +241,7 @@ public class RelatedProcessCoordinationExecutionService {
                 ? plan.reason() : "宿主流程终止传播";
         // 关联终止用于维护父子流程状态一致性，属于系统编排而非用户操作，明确豁免节点终止开关。
         runtimeService.deleteProcessInstance(
-                current.processInstanceId(), reason + " " + marker);
+                current.processInstanceId(), ProcessEndReason.encode("TERMINATED", reason + " " + marker));
         processTaskService.deleteTasksByProcessInstance(
                 current.processInstanceId());
         writeLog(

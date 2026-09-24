@@ -66,6 +66,8 @@ public class EntityDataActionService {
             "formId",
             "id",
             "startProcess",
+            "restartProcess",
+            "previousProcessInstanceId",
             "processVariables",
             "extData",
             "actionCapabilities",
@@ -585,9 +587,12 @@ public class EntityDataActionService {
                 effectiveListKey,
                 id,
                 "edit",
-                actionKey(formData == null
-                        ? null : formData.get("startProcess")));
+                updateActionKey(formData));
         if (origin == null) {
+            if (isRestart(formData)) {
+                throw new com.workflow.core.error.BusinessForbiddenException(
+                        "FORM_ACTION_RELEASE_CONTEXT_REQUIRED", "重新发起必须通过已发布表单提交");
+            }
             return updateDefault(
                     entityCode,
                     id,
@@ -627,6 +632,8 @@ public class EntityDataActionService {
                                 "startProcess",
                                 input.get("startProcess"));
                     }
+                    copyRestartIntent(input, updateRequest);
+                    requireRestartAction(entityCode, config, row, updateRequest);
                     // 发布事件可调整最终动作，不能沿用事件执行前的按钮判断。
                     requireFormMutationAction(
                             origin,
@@ -634,8 +641,7 @@ public class EntityDataActionService {
                             effectiveListKey,
                             id,
                             "edit",
-                            actionKey(updateRequest.get(
-                                    "startProcess")));
+                            updateActionKey(updateRequest));
                     return mutateUpdate(
                             entityCode,
                             id,
@@ -680,6 +686,8 @@ public class EntityDataActionService {
                     "startProcess",
                     formData.get("startProcess"));
         }
+        copyRestartIntent(formData, updateRequest);
+        requireRestartAction(entityCode, config, row, updateRequest);
         return mutateUpdate(
                 entityCode,
                 id,
@@ -1012,7 +1020,7 @@ public class EntityDataActionService {
             Map<String, Object> updateRequest,
             EventOrigin origin,
             String traceKey) {
-        EntityMutationResult result = mutationPort.execute(
+        java.util.function.Supplier<EntityMutationResult> write = () -> mutationPort.execute(
                 EntityMutationCommand.update(
                         entityCode,
                         id,
@@ -1024,6 +1032,10 @@ public class EntityDataActionService {
                                 traceKey,
                                 entityCode,
                                 id)));
+        EntityMutationResult result = isRestart(updateRequest)
+                ? EntityProcessRestartContext.execute(entityCode, id,
+                        text(updateRequest.get("previousProcessInstanceId")), write)
+                : write.get();
         return entityData(
                 result.record(),
                 entityCode,
@@ -1407,6 +1419,10 @@ public class EntityDataActionService {
             String mode,
             String actionKey) {
         if (origin == null || !"FORM".equals(origin.configType())) {
+            if ("restartProcess".equals(actionKey)) {
+                throw new com.workflow.core.error.BusinessForbiddenException(
+                        "FORM_ACTION_RELEASE_CONTEXT_REQUIRED", "重新发起必须通过已启用按钮的发布表单提交");
+            }
             return;
         }
         FormActionResolveRequest request = new FormActionResolveRequest();
@@ -1421,6 +1437,36 @@ public class EntityDataActionService {
         request.setRecordId(recordId);
         formActionService.requireBuiltInMutationAction(
                 request, actionKey);
+    }
+
+    /** 区分首次发起和重新发起，不能用旧的保存并发起权限代替新按钮开关。 */
+    private String updateActionKey(Map<String, Object> request) {
+        return isRestart(request) ? "restartProcess"
+                : actionKey(request == null ? null : request.get("startProcess"));
+    }
+
+    private boolean isRestart(Map<String, Object> request) {
+        return request != null && Boolean.parseBoolean(String.valueOf(request.get("restartProcess")));
+    }
+
+    private void copyRestartIntent(Map<String, Object> source, Map<String, Object> target) {
+        if (source == null) return;
+        for (String key : List.of("restartProcess", "previousProcessInstanceId")) {
+            if (source.containsKey(key)) target.put(key, source.get(key));
+        }
+    }
+
+    /** 表单及事件校验之后再检查已发布列表开关，缺省配置不得隐式开放重新发起。 */
+    private void requireRestartAction(String entityCode, EntityListConfig config,
+            EntityDataDTO row, Map<String, Object> request) {
+        if (!isRestart(request)) return;
+        capabilityService.requireRowActionForConfig(entityCode, config, "restartProcess", row);
+        if (!StringUtils.hasText(text(request.get("previousProcessInstanceId")))
+                || !java.util.Objects.equals(row.getProcessInstanceId(),
+                        text(request.get("previousProcessInstanceId")))) {
+            throw new com.workflow.core.error.BusinessConflictException(
+                    "ENTITY_PROCESS_RESTART_STALE", "流程已发生变化，请刷新后重新操作");
+        }
     }
 
     /**
@@ -1527,6 +1573,7 @@ public class EntityDataActionService {
         if (formData != null && formData.containsKey("startProcess")) {
             input.put("startProcess", formData.get("startProcess"));
         }
+        copyRestartIntent(formData, input);
         return input;
     }
 

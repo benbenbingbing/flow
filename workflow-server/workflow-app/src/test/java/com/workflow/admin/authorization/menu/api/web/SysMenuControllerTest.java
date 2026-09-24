@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 菜单管理控制器单元测试
  */
-@org.springframework.context.annotation.Import(com.workflow.config.MySqlErrorTestConfiguration.class)
+@org.springframework.context.annotation.Import(com.workflow.config.database.MySqlErrorTestConfiguration.class)
 @WebMvcTest(SysMenuController.class)
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")

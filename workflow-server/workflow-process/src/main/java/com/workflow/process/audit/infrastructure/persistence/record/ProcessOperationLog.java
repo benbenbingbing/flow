@@ -25,7 +25,7 @@ public class ProcessOperationLog {
     private String taskId;
     
     /**
-     * 操作类型：START/CLAIM/COMPLETE/TRANSFER/DELEGATE/REJECT/RETURN/CC
+     * 操作类型：START/CLAIM/COMPLETE/TRANSFER/DELEGATE/REJECT/RETURN/CC/TERMINATE/WITHDRAW
      */
     private String operationType;
     

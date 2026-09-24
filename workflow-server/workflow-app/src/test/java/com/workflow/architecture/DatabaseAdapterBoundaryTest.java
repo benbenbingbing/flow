@@ -15,6 +15,8 @@ class DatabaseAdapterBoundaryTest {
             .should().dependOnClassesThat().resideInAnyPackage(
                     "com.workflow.entity..", "com.workflow.process..", "com.workflow.admin..",
                     "com.workflow.contracts..", "com.workflow.core..", "com.workflow.config..",
+                    "com.workflow.bootstrap..", "com.workflow.adapter..", "com.workflow.web..",
+                    "com.workflow.observability..",
                     "com.workflow.migration..", "java.sql..", "javax.sql..",
                     "org.springframework..", "org.apache.ibatis..", "com.baomidou..");
 

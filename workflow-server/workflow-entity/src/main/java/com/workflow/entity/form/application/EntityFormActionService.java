@@ -59,6 +59,7 @@ public class EntityFormActionService {
             "reset", Set.of("create", "edit"),
             "save", Set.of("create", "edit"),
             "saveAndStart", Set.of("create", "edit"),
+            "restartProcess", Set.of("edit"),
             "submitApproval", Set.of("approve"));
 
     private final EntityFormMapper formMapper;
@@ -114,7 +115,7 @@ public class EntityFormActionService {
      * 在内置表单动作产生业务副作用前，使用客户端会话携带的固定发布令牌
      * 重新解析同一快照并校验按钮能力。
      *
-     * <p>该入口只接受会触发服务端变更的 save/saveAndStart/submitApproval。
+     * <p>该入口只接受会触发服务端变更的 save/saveAndStart/restartProcess/submitApproval。
      * 发布 ID、版本和签名令牌必须完整，防止调用方省略表单坐标后退回草稿或
      * 最新 ACTIVE，从而绕过用户实际看到的按钮条件。</p>
      *
@@ -126,7 +127,7 @@ public class EntityFormActionService {
             FormActionResolveRequest request,
             String actionKey) {
         if (request == null
-                || !Set.of("save", "saveAndStart", "submitApproval")
+                || !Set.of("save", "saveAndStart", "restartProcess", "submitApproval")
                 .contains(actionKey)) {
             throw new IllegalArgumentException("不支持的表单内置变更动作");
         }
@@ -226,7 +227,7 @@ public class EntityFormActionService {
 
         for (String key : List.of(
                 "close", "reset", "save",
-                "saveAndStart", "submitApproval")) {
+                "saveAndStart", "restartProcess", "submitApproval")) {
             if (!BUILT_IN_MODES.get(key).contains(normalizedMode)) {
                 continue;
             }
@@ -673,13 +674,23 @@ public class EntityFormActionService {
             return EntityActionCapabilityDTO.hidden(
                     "当前数据不能发起流程");
         }
+        if ("restartProcess".equals(key)) {
+            if (!workflowReady(definition)) {
+                return EntityActionCapabilityDTO.hidden("实体流程尚未就绪");
+            }
+            EntityActionCapabilityDTO restart = capabilityService.evaluateRestartAction(
+                    definition.getEntityCode(), row);
+            if (!restart.isVisible() || !restart.isEnabled()) {
+                return restart;
+            }
+        }
         if ("submitApproval".equals(key)) {
             // 打开审批表单不会抢占候选任务；提交按钮需使用可审批身份，并继续叠加发布覆盖条件。
             return capabilityService.evaluateApprovalAction(
                     definition.getEntityCode(), row, approvalRule(), readRule(button));
         }
         EntityPermissionAction action = switch (key) {
-            case "save", "saveAndStart" ->
+            case "save", "saveAndStart", "restartProcess" ->
                     "create".equals(mode)
                             ? EntityPermissionAction.CREATE
                             : EntityPermissionAction.UPDATE;
@@ -873,17 +884,18 @@ public class EntityFormActionService {
                     "create".equals(mode)
                             ? "保存" : "保存修改";
             case "saveAndStart" -> "保存并发起流程";
+            case "restartProcess" -> "保存并重新发起";
             case "submitApproval" -> "提交审批";
             default -> key;
         });
         button.put("icon", switch (key) {
             case "reset" -> "RefreshLeft";
-            case "save", "saveAndStart" -> "Check";
+            case "save", "saveAndStart", "restartProcess" -> "Check";
             case "submitApproval" -> "Select";
             default -> "";
         });
         button.put("buttonType",
-                Set.of("save", "saveAndStart", "submitApproval")
+                Set.of("save", "saveAndStart", "restartProcess", "submitApproval")
                         .contains(key)
                         ? "primary" : "default");
         button.put("sort", switch (key) {
@@ -892,12 +904,12 @@ public class EntityFormActionService {
             case "save" -> 30;
             default -> 40;
         });
-        button.put("enabled", true);
+        button.put("enabled", !"restartProcess".equals(key));
         button.put("enabledModes",
                 new ArrayList<>(BUILT_IN_MODES.get(key)));
         button.put("placement", "FOOTER");
         button.put("validateBeforeExecute",
-                Set.of("save", "saveAndStart", "submitApproval")
+                Set.of("save", "saveAndStart", "restartProcess", "submitApproval")
                         .contains(key));
         return button;
     }
@@ -941,7 +953,9 @@ public class EntityFormActionService {
     private boolean enabledForMode(
             Map<String, Object> button,
             String mode) {
-        return !Boolean.FALSE.equals(button.get("enabled"))
+        return ("restartProcess".equals(button.get("key"))
+                ? Boolean.TRUE.equals(button.get("enabled"))
+                : !Boolean.FALSE.equals(button.get("enabled")))
                 && modes(button).contains(mode);
     }
 
