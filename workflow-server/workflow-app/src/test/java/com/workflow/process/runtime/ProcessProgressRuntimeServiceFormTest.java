@@ -10,7 +10,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * BPMN 表单绑定解析测试。
+ * 完成态表单节点选择测试。实际表单绑定由发布快照测试覆盖。
  */
 public class ProcessProgressRuntimeServiceFormTest {
 
@@ -34,51 +34,6 @@ public class ProcessProgressRuntimeServiceFormTest {
         "    </bpmn:userTask>\n" +
         "  </bpmn:process>\n" +
         "</bpmn:definitions>";
-
-    /**
-     * 反射调用私有方法 resolveFormKeyFromBpmn，解析第二节点的表单 ID。
-     *
-     * <p>断言返回第二个节点绑定的 entityFormId，验证 BPMN 多节点表单解析正确。</p>
-     */
-    @Test
-    void testResolveFormKeyFromBpmnForSecondNode() throws Exception {
-        ProcessProgressRuntimeService service = service();
-        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
-        method.setAccessible(true);
-
-        String result = (String) method.invoke(service, "Activity_1stkhyf", TEST_BPMN_XML);
-        assertNotNull(result, "应该解析到 entityFormId");
-        assertEquals("2049424188225126402", result, "第二个节点的 entityFormId 应该匹配");
-    }
-
-    /**
-     * 反射调用私有方法 resolveFormKeyFromBpmn，解析第一节点的表单 ID。
-     *
-     * <p>断言返回第一个节点绑定的 entityFormId，验证首节点表单解析正确。</p>
-     */
-    @Test
-    void testResolveFormKeyFromBpmnForFirstNode() throws Exception {
-        ProcessProgressRuntimeService service = service();
-        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
-        method.setAccessible(true);
-
-        String result = (String) method.invoke(service, "Activity_0c9s28z", TEST_BPMN_XML);
-        assertNotNull(result, "应该解析到 entityFormId");
-        assertEquals("2049423744157384706", result, "第一个节点的 entityFormId 应该匹配");
-    }
-
-    /**
-     * 反射调用私有方法 resolveFormKeyFromBpmn，查询不存在的节点应返回 null。
-     */
-    @Test
-    void testResolveFormKeyFromBpmnForNonExistentNode() throws Exception {
-        ProcessProgressRuntimeService service = service();
-        Method method = ProcessProgressRuntimeService.class.getDeclaredMethod("resolveFormKeyFromBpmn", String.class, String.class);
-        method.setAccessible(true);
-
-        String result = (String) method.invoke(service, "NonExistent", TEST_BPMN_XML);
-        assertNull(result, "不存在的节点应该返回 null");
-    }
 
     @Test
     void completedProcessUsesLastCompletedUserTaskInsteadOfGateway()
@@ -112,6 +67,7 @@ public class ProcessProgressRuntimeServiceFormTest {
     private ProcessProgressRuntimeService service() {
         return new ProcessProgressRuntimeService(
                 null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null,
+                    null);
     }
 }

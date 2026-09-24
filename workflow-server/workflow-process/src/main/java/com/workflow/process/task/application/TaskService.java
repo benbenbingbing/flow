@@ -32,18 +32,6 @@ public interface TaskService {
     PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange);
     
     /**
-     * 分页获取已办任务列表。
-     *
-     * @param pageNum     页码
-     * @param pageSize    每页大小
-     * @param processName 流程名称筛选（可选）
-     * @param taskName    任务名称筛选（可选）
-     * @param timeRange   时间范围筛选（week/month/year，可选）
-     * @return 已办任务分页结果
-     */
-    PageResult<TaskVO> getDoneList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange);
-    
-    /**
      * 完成任务审批（通过/驳回/转办/自定义操作）。
      *
      * @param taskId      任务ID

@@ -1,7 +1,10 @@
 package com.workflow.process.task;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.model.EntityTaskSummary;
@@ -88,6 +91,11 @@ class TaskInboxDatabaseTest {
         mybatis.setDatabaseId(mysqlAdmin == null ? "POSTGRESQL" : "MYSQL"); mybatis.setMapUnderscoreToCamelCase(true);
         for (Class<?> type : List.of(ProcessTaskMapper.class, ProcessTaskCandidateUserMapper.class,
                 ProcessTaskCandidateGroupMapper.class, TaskInboxMapper.class, TaskInboxProjectionMapper.class, com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper.class)) mybatis.addMapper(type);
+        // 投影回填已接入 IPage，独立测试工厂也必须安装生产环境的分页插件。
+        var pagination = new MybatisPlusInterceptor();
+        pagination.addInnerInterceptor(new PaginationInnerInterceptor(mysqlAdmin == null ? DbType.POSTGRE_SQL : DbType.MYSQL));
+        mybatis.addInterceptor(pagination);
+        // 计数器位于分页插件外层，才能在插件转调六参数 query 前统计一次业务查询。
         mybatis.addInterceptor(new QueryCounter(queryCount));
         new com.workflow.config.database.DatabaseMybatisConfiguration().largeTextBindings().customize(mybatis);
         var factory = new MybatisSqlSessionFactoryBean();

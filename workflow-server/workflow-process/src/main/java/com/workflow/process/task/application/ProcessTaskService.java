@@ -4,8 +4,6 @@ import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.entity.form.port.EntityFormRuntimePort;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
-import com.workflow.contracts.identity.model.IdentityGroup;
-import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 
@@ -139,18 +135,65 @@ public class ProcessTaskService {
         ProcessTask existing = taskMapper.selectByTaskId(delegateTask.getId());
         // 重复创建事件不能产生第二条镜像；最终身份由提交前投影统一刷新。
         if (existing != null) return existing;
+        return insertTaskMirror(new TaskMirrorInput(
+                delegateTask.getId(), delegateTask.getProcessInstanceId(), delegateTask.getProcessDefinitionId(),
+                delegateTask.getTaskDefinitionKey(), delegateTask.getName(), delegateTask.getAssignee(),
+                delegateTask.getPriority()), variables, null);
+    }
+    
+    /**
+     * 创建流程待办
+     * 当流程启动或流转到新节点时调用
+     *
+     * @param flowableTask Flowable任务，作为 {@code task.setProcessInstanceId} 的输入影响后续处理
+     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
+     * @return 创建后的任务结果，供调用方继续处理
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public ProcessTask createTask(Task flowableTask, Map<String, Object> variables) {
+        ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
+        if (existing != null) {
+            // 转办沿用同一个引擎任务 ID。恢复原镜像而不是违反唯一索引重新插入，
+            // 原操作保留于审计日志；已办理时间/意见不能泄漏到新的待办阶段。
+            if (!ProcessTask.STATUS_TODO.equals(existing.getStatus())) {
+                taskMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<ProcessTask>lambdaUpdate()
+                        .eq(ProcessTask::getId, existing.getId()).set(ProcessTask::getStatus, ProcessTask.STATUS_TODO)
+                        .set(ProcessTask::getAssigneeId, flowableTask.getAssignee()).set(ProcessTask::getAssigneeType, "user")
+                        .set(ProcessTask::getAction, null).set(ProcessTask::getActionLabel, null).set(ProcessTask::getComment, null)
+                        .set(ProcessTask::getEndTime, null).set(ProcessTask::getDuration, null)
+                        .set(ProcessTask::getStartTime, LocalDateTime.now()).set(ProcessTask::getUpdateTime, LocalDateTime.now()));
+                existing = taskMapper.selectById(existing.getId());
+            }
+            return existing;
+        }
+        return insertTaskMirror(new TaskMirrorInput(
+                flowableTask.getId(), flowableTask.getProcessInstanceId(), flowableTask.getProcessDefinitionId(),
+                flowableTask.getTaskDefinitionKey(), flowableTask.getName(), flowableTask.getAssignee(),
+                flowableTask.getPriority()), variables, (String) variables.get("submitterName"));
+    }
+
+    /** 两类引擎任务适配后的初始化输入，不携带可变引擎对象或触发额外查询。 */
+    private record TaskMirrorInput(String taskId, String processInstanceId, String processDefinitionId,
+                                   String nodeId, String nodeName, String assignee, int priority) {}
+
+    /**
+     * 创建全新的本地镜像并初始化 SLA。调用方已执行其各自的重复事件/转办恢复判断，
+     * 本方法不触发投影，也不更改外层事务及提交前身份同步的锁顺序。
+     */
+    private ProcessTask insertTaskMirror(TaskMirrorInput input, Map<String, Object> variables,
+                                         String initialAssigneeName) {
         ProcessTask task = new ProcessTask();
-        task.setProcessInstanceId(delegateTask.getProcessInstanceId());
-        task.setProcessDefinitionId(delegateTask.getProcessDefinitionId());
-        task.setTaskId(delegateTask.getId());
-        task.setNodeId(delegateTask.getTaskDefinitionKey());
-        task.setNodeName(delegateTask.getName());
+        task.setProcessInstanceId(input.processInstanceId());
+        task.setProcessDefinitionId(input.processDefinitionId());
+        task.setTaskId(input.taskId());
+        task.setNodeId(input.nodeId());
+        task.setNodeName(input.nodeName());
         task.setNodeType("USER_TASK");
         
         // 获取流程信息
         ProcessInstance processInstance = runtimeService
                 .createProcessInstanceQuery()
-                .processInstanceId(delegateTask.getProcessInstanceId())
+                .processInstanceId(input.processInstanceId())
                 .singleResult();
         
         if (processInstance != null) {
@@ -183,14 +226,16 @@ public class ProcessTaskService {
         }
         
         // 设置执行人
-        String assignee = delegateTask.getAssignee();
+        String assignee = input.assignee();
         task.setAssigneeId(assignee);
+        // 普通任务恢复路径保留原先的名称种子；监听事件不提前写入该名称。
+        if (initialAssigneeName != null) task.setAssigneeName(initialAssigneeName);
         
         if (assignee == null || assignee.isEmpty()) {
             // 如果没有指定执行人，检查候选组和候选人
             task.setAssigneeType("group");
             try {
-                List<org.flowable.identitylink.api.IdentityLink> identityLinks = flowableTaskService.getIdentityLinksForTask(delegateTask.getId());
+                List<org.flowable.identitylink.api.IdentityLink> identityLinks = flowableTaskService.getIdentityLinksForTask(input.taskId());
                 List<String> groupIds = new java.util.ArrayList<>();
                 List<String> groupMemberNames = new java.util.ArrayList<>();
                 List<String> candidateUserIds = new java.util.ArrayList<>();
@@ -228,7 +273,7 @@ public class ProcessTaskService {
         }
         
         task.setStatus(ProcessTask.STATUS_TODO);
-        task.setPriority(delegateTask.getPriority());
+        task.setPriority(input.priority());
         task.setStartTime(LocalDateTime.now());
         task.setCreateTime(LocalDateTime.now());
         task.setUpdateTime(LocalDateTime.now());
@@ -261,173 +306,13 @@ public class ProcessTaskService {
         if (taskSlaRuntimeService != null) {
             taskSlaRuntimeService.initialize(task, variables);
         }
-        log.info("创建流程待办: processInstanceId={}, nodeName={}, taskId={}", 
+        log.info("创建流程待办: processInstanceId={}, nodeName={}, taskId={}",
                 task.getProcessInstanceId(), task.getNodeName(), task.getId());
         
         return task;
     }
-    
-    /**
-     * 创建流程待办
-     * 当流程启动或流转到新节点时调用
-     *
-     * @param flowableTask Flowable任务，作为 {@code task.setProcessInstanceId} 的输入影响后续处理
-     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
-     * @return 创建后的任务结果，供调用方继续处理
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public ProcessTask createTask(Task flowableTask, Map<String, Object> variables) {
-        ProcessTask existing = taskMapper.selectByTaskId(flowableTask.getId());
-        if (existing != null) {
-            // 转办沿用同一个引擎任务 ID。恢复原镜像而不是违反唯一索引重新插入，
-            // 原操作保留于审计日志；已办理时间/意见不能泄漏到新的待办阶段。
-            if (!ProcessTask.STATUS_TODO.equals(existing.getStatus())) {
-                taskMapper.update(null, com.baomidou.mybatisplus.core.toolkit.Wrappers.<ProcessTask>lambdaUpdate()
-                        .eq(ProcessTask::getId, existing.getId()).set(ProcessTask::getStatus, ProcessTask.STATUS_TODO)
-                        .set(ProcessTask::getAssigneeId, flowableTask.getAssignee()).set(ProcessTask::getAssigneeType, "user")
-                        .set(ProcessTask::getAction, null).set(ProcessTask::getActionLabel, null).set(ProcessTask::getComment, null)
-                        .set(ProcessTask::getEndTime, null).set(ProcessTask::getDuration, null)
-                        .set(ProcessTask::getStartTime, LocalDateTime.now()).set(ProcessTask::getUpdateTime, LocalDateTime.now()));
-                existing = taskMapper.selectById(existing.getId());
-            }
-            return existing;
-        }
-        ProcessTask task = new ProcessTask();
-        task.setProcessInstanceId(flowableTask.getProcessInstanceId());
-        task.setProcessDefinitionId(flowableTask.getProcessDefinitionId());
-        task.setTaskId(flowableTask.getId());
-        task.setNodeId(flowableTask.getTaskDefinitionKey());
-        task.setNodeName(flowableTask.getName());
-        task.setNodeType("USER_TASK");
-        
-        // 获取流程信息
-        ProcessInstance processInstance = runtimeService
-                .createProcessInstanceQuery()
-                .processInstanceId(flowableTask.getProcessInstanceId())
-                .singleResult();
-        
-        if (processInstance != null) {
-            task.setProcessKey(processInstance.getProcessDefinitionKey());
-            task.setBusinessKey(processInstance.getBusinessKey());
-            
-            // 获取流程定义名称 - 优先从ProcessDefinitionConfig获取
-            try {
-                String processKey = processInstance.getProcessDefinitionKey();
-                com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig config = 
-                    processDefinitionConfigMapper.findByProcessKey(processKey).orElse(null);
-                if (config != null && config.getProcessName() != null) {
-                    task.setProcessName(config.getProcessName());
-                } else {
-                    // 从Flowable获取
-                    org.flowable.engine.repository.ProcessDefinition processDef = repositoryService
-                            .createProcessDefinitionQuery()
-                            .processDefinitionId(processInstance.getProcessDefinitionId())
-                            .singleResult();
-                    if (processDef != null) {
-                        task.setProcessName(processDef.getName());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("获取流程定义名称失败: {}", e.getMessage());
-            }
-            
-            // 从变量中获取业务数据
-            task.setEntityCode((String) variables.get("entityCode"));
-            task.setEntityDataId((String) variables.get("entityDataId"));
-        }
-        
-        // 设置执行人 - 优先使用assignee，否则使用候选组/候选人
-        String assignee = flowableTask.getAssignee();
-        task.setAssigneeId(assignee);
-        
-        // 从变量中获取发起人信息
-        String submitterName = (String) variables.get("submitterName");
-        if (submitterName != null) {
-            task.setAssigneeName(submitterName);
-        }
-        
-        if (assignee == null || assignee.isEmpty()) {
-            // 如果没有指定执行人，检查候选组和候选人
-            task.setAssigneeType("group");
-            try {
-                List<org.flowable.identitylink.api.IdentityLink> identityLinks = flowableTaskService.getIdentityLinksForTask(flowableTask.getId());
-                List<String> groupIds = new java.util.ArrayList<>();
-                List<String> groupMemberNames = new java.util.ArrayList<>();
-                List<String> candidateUserIds = new java.util.ArrayList<>();
-                for (org.flowable.identitylink.api.IdentityLink link : identityLinks) {
-                    // owner、participant 等关联不授予认领权限，不能投影为候选审批人。
-                    if (!"candidate".equals(link.getType())) {
-                        continue;
-                    }
-                    if (link.getGroupId() != null) {
-                        groupIds.add(link.getGroupId());
-                        String members = getGroupMemberNames(link.getGroupId());
-                        if (members != null && !members.isEmpty()) {
-                            for (String m : members.split(",")) {
-                                if (!groupMemberNames.contains(m)) {
-                                    groupMemberNames.add(m);
-                                }
-                            }
-                        }
-                    } else if (link.getUserId() != null) {
-                        candidateUserIds.add(link.getUserId());
-                    }
-                }
-                if (!groupIds.isEmpty()) {
-                    task.setAssigneeId(null); // 候选组保存在独立关系表，不能混作实际办理人。
-                    task.setAssigneeName(groupMemberNames.isEmpty() ? String.join(",", groupIds) : String.join(",", groupMemberNames));
-                } else if (!candidateUserIds.isEmpty()) {
-                    task.setAssigneeId(null); // 直接候选用户同样由候选关系表表达。
-                    task.setAssigneeName(getUserNamesFromIds(candidateUserIds));
-                }
-            } catch (Exception e) {
-                log.warn("获取任务候选人失败: {}", e.getMessage());
-            }
-        } else {
-            task.setAssigneeType("user");
-        }
-        
-        task.setStatus(ProcessTask.STATUS_TODO);
-        task.setPriority(flowableTask.getPriority());
-        task.setStartTime(LocalDateTime.now());
-        task.setCreateTime(LocalDateTime.now());
-        task.setUpdateTime(LocalDateTime.now());
-        
-        // 从节点配置获取表单信息
-        try {
-            String entityCode = task.getEntityCode();
-            String nodeId = task.getNodeId();
-            if (entityCode != null && nodeId != null) {
-                // 通过entityCode获取流程定义配置ID
-                String processDefinitionId = entityFormRuntimePort.findContext(entityCode)
-                        .map(context -> context.processDefinitionId())
-                        .orElse(null);
-                if (processDefinitionId != null) {
-                    com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig nodeConfig = nodeConfigMapper
-                            .selectByNodeIdAndProcessId(nodeId, processDefinitionId);
-                    if (nodeConfig != null && nodeConfig.getConfigJson() != null) {
-                        com.fasterxml.jackson.databind.JsonNode config = objectMapper
-                                .readTree(nodeConfig.getConfigJson());
-                        if (config.has("formKey")) {
-                            task.setFormKey(config.get("formKey").asText());
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("获取节点表单配置失败: {}", e.getMessage());
-        }
-        
-        taskMapper.insert(task);
-        if (taskSlaRuntimeService != null) {
-            taskSlaRuntimeService.initialize(task, variables);
-        }
-        log.info("创建流程待办: processInstanceId={}, processName={}, nodeName={}, taskId={}, assignee={}", 
-                task.getProcessInstanceId(), task.getProcessName(), task.getNodeName(), task.getId(), task.getAssigneeId());
-        
-        return task;
-    }
-    
+
+
     /**
      * 完成流程待办
      * 当任务办理完成时调用
@@ -815,22 +700,7 @@ public class ProcessTaskService {
      */
     private String getGroupMemberNames(String groupCode) {
         try {
-            IdentityGroup group = identityDirectoryPort.findGroup(groupCode).orElse(null);
-            if (group == null) {
-                return groupCode;
-            }
-            List<IdentityUser> users = identityDirectoryPort.findGroupUsers(group.id());
-            if (users.isEmpty()) {
-                return group.name();
-            }
-            List<String> names = new java.util.ArrayList<>();
-            for (IdentityUser user : users) {
-                String displayName = identityDirectoryPort.getDisplayName(user.id());
-                if (!names.contains(displayName)) {
-                    names.add(displayName);
-                }
-            }
-            return names.isEmpty() ? group.name() : String.join(",", names);
+            return String.join(",", TaskCandidateNames.groupMembers(identityDirectoryPort, groupCode));
         } catch (Exception e) {
             log.warn("获取组成员失败: {}", groupCode, e);
             return groupCode;

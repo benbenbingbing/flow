@@ -68,4 +68,35 @@ class EntityVersionDiffServiceTest {
         assertEquals(2, diff.getAddedFields().get(0).getFieldPrecision());
         assertEquals(1, diff.getPendingDdls().size());
     }
+    @Test
+    void pendingAndHistoricalDiffKeepSameChangesAndIgnoreMissingLegacyPhysicalMetadata() {
+        var definitions = mock(EntityDefinitionMapper.class);
+        var fields = mock(EntityFieldMapper.class);
+        var history = mock(EntityPublishHistoryService.class);
+        var service = new EntityVersionDiffService(definitions, fields, history, mock(DynamicTableService.class), new ObjectMapper());
+        var entity = new EntityDefinition(); entity.setId("e1"); entity.setEntityCode("expense");
+        when(definitions.selectById("e1")).thenReturn(entity);
+        var previous = new com.workflow.entity.definition.api.response.EntityFieldDTO();
+        previous.setFieldCode("amount"); previous.setFieldName("旧金额"); previous.setDefaultValue("0");
+        var current = new EntityField(); current.setId("f1"); current.setFieldCode("amount");
+        current.setFieldName("金额"); current.setDefaultValue("1"); current.setFieldLength(12);
+        current.setFieldPrecision(2); current.setDbColumnName("custom_amount"); current.setIsRequired(true);
+        when(fields.findByEntityId("e1")).thenReturn(List.of(current));
+        // 使用独立构造的发布 DTO，防止测试和实现共同遗漏同一字段而产生假通过。
+        var publishedCurrent = new com.workflow.entity.definition.api.response.EntityFieldDTO();
+        publishedCurrent.setId("f1"); publishedCurrent.setFieldCode("amount"); publishedCurrent.setFieldName("金额");
+        publishedCurrent.setDefaultValue("1"); publishedCurrent.setFieldLength(12); publishedCurrent.setFieldPrecision(2);
+        publishedCurrent.setDbColumnName("custom_amount"); publishedCurrent.setIsRequired(true);
+        var from = new EntityPublishHistoryDTO(); from.setVersion(1); from.setFields(List.of(previous));
+        var to = new EntityPublishHistoryDTO(); to.setVersion(2); to.setFields(List.of(publishedCurrent));
+        when(history.getLatestVersion("e1")).thenReturn(from);
+        when(history.getVersion("e1", 1)).thenReturn(from); when(history.getVersion("e1", 2)).thenReturn(to);
+        var pending = service.getPendingPublishDiff("e1"); var historical = service.compareVersions("e1", 1, 2);
+        assertEquals(historical.getModifiedFields(), pending.getModifiedFields());
+        assertEquals("字段名称: 旧金额 → 金额; 必填: null → true; 默认值: 0 → 1",
+                pending.getModifiedFields().get(0).getChangeDescription());
+        assertEquals(12, pending.getModifiedFields().get(0).getFieldLength());
+        assertEquals(false, pending.getModifiedFields().get(0).getIsSystem());
+    }
+
 }

@@ -579,29 +579,6 @@ public class DataPermissionEngine {
     }
 
     /**
-     * 生成与文本，供后续匹配或展示。
-     *
-     * @param left 左侧，供本方法处理与时使用
-     * @param right 右侧，作为 {@code AND} 的输入影响后续处理
-     * @return 处理后的与文本，供调用方比较或展示
-     */
-    private String and(String left, String right) {
-        if (!StringUtils.hasText(left) || !StringUtils.hasText(right)) {
-            return null;
-        }
-        if ("1=0".equals(left) || "1=0".equals(right)) {
-            return "1=0";
-        }
-        if ("1=1".equals(left)) {
-            return right;
-        }
-        if ("1=1".equals(right)) {
-            return left;
-        }
-        return "(" + left + ") AND (" + right + ")";
-    }
-
-    /**
      * 生成或非空值文本，供后续匹配或展示。
      *
      * @param left 左侧，供本方法处理或非空值时使用

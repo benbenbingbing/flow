@@ -1,5 +1,7 @@
 package com.workflow.admin.authorization.menu.application;
 
+import com.workflow.admin.authorization.application.MenuTreeAssembler;
+
 import com.workflow.core.logging.LogValue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -369,28 +371,7 @@ public class SysMenuService {
         Map<String, SysMenu> menuMap = menus.stream()
                 .collect(Collectors.toMap(SysMenu::getId, m -> m, (m1, m2) -> m1));
         
-        List<SysMenu> tree = new ArrayList<>();
-        
-        for (SysMenu menu : menus) {
-            if ("0".equals(menu.getParentId()) || menu.getParentId() == null) {
-                // 顶级菜单
-                tree.add(menu);
-            } else {
-                // 子菜单
-                SysMenu parent = menuMap.get(menu.getParentId());
-                if (parent != null) {
-                    if (parent.getChildren() == null) {
-                        parent.setChildren(new ArrayList<>());
-                    }
-                    parent.getChildren().add(menu);
-                }
-            }
-        }
-        
-        // 按排序值排序
-        tree.sort(Comparator.comparingInt(SysMenu::getSort));
-        
-        return tree;
+        return MenuTreeAssembler.assemble(menus, menuMap);
     }
 
     /**

@@ -159,7 +159,8 @@ class ProcessProgressAutoSkipIntegrationTest {
                 engine.getTaskService(), mock(SysUserService.class), entityService, forms, entityMapper,
                 mock(ProcessTaskMapper.class), mock(SysGroupMapper.class), mock(SysUserGroupMapper.class),
                 mock(SysUserMapper.class), mock(ProcessOperationLogMapper.class), snapshots,
-                mock(LocalAddSignTaskAccessService.class), mock(EntityStatusService.class));
+                mock(LocalAddSignTaskAccessService.class), mock(EntityStatusService.class),
+                    new com.workflow.process.instance.application.PublishedBpmnReader(engine.getRepositoryService(), snapshots));
     }
 
     private String bpmn() {

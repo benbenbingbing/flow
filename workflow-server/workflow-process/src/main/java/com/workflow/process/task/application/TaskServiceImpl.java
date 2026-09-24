@@ -3,7 +3,6 @@ package com.workflow.process.task.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
-import com.workflow.core.result.PageRequest;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
@@ -15,21 +14,16 @@ import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.flowable.engine.HistoryService;
-import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.history.HistoricProcessInstance;
-import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.task.api.Task;
-import org.flowable.task.api.TaskQuery;
 import org.flowable.task.api.history.HistoricTaskInstance;
-import org.flowable.task.api.history.HistoricTaskInstanceQuery;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -46,14 +40,13 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
     private final org.flowable.engine.TaskService flowableTaskService;
     private final HistoryService historyService;
     private final RuntimeService runtimeService;
-    private final RepositoryService repositoryService;
     private final com.workflow.process.task.application.ProcessTaskService processTaskService;
     private final com.workflow.entity.form.application.EntityFormService entityFormService;
     private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
-    private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     /** 办理权威入口。本类不再维护第二套会签完成逻辑。 */
     private final TaskActionService taskActionService;
+    private final TaskListQueryService taskListQueryService;
 
     /**
      * 读取{@code statistics}；查询结果供调用方展示或继续处理。
@@ -118,87 +111,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
      */
     @Override
     public PageResult<TaskVO> getTodoList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
-        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
-        List<ProcessTask> visibleTasks = processTaskService.getTodoList(UserContext.requireUsernameOrId());
-        if (visibleTasks.isEmpty()) {
-            return new PageResult<>(List.of(), 0L, page.pageNumber(), page.pageSize());
-        }
-        List<String> engineTaskIds = visibleTasks.stream()
-                .filter(task -> !"ADD_SIGN".equals(task.getNodeType()))
-                .map(ProcessTask::getTaskId).toList();
-        List<TaskVO> visible = new java.util.ArrayList<>();
-        if (!engineTaskIds.isEmpty()) {
-            TaskQuery query = flowableTaskService.createTaskQuery()
-                    .taskIds(engineTaskIds)
-                    .active()
-                    .orderByTaskCreateTime()
-                    .desc();
-            query.list().stream().map(this::convertToTodoVO).forEach(visible::add);
-        }
-        // ADD_SIGN 仅有本地任务，已由统一待办 SQL 校验编排和办理人；不能再要求子引擎任务存在。
-        visibleTasks.stream().filter(task -> "ADD_SIGN".equals(task.getNodeType()))
-                .map(this::convertAddSignToTodoVO).forEach(visible::add);
-        Date startDate = StringUtils.hasText(timeRange) ? getStartDateByRange(timeRange) : null;
-        List<TaskVO> matching = visible.stream()
-                .filter(vo -> startDate == null || vo.getCreateTime() != null && vo.getCreateTime().after(startDate))
-                .filter(vo -> !StringUtils.hasText(processName)
-                        || vo.getProcessName() != null && vo.getProcessName().contains(processName))
-                .filter(vo -> !StringUtils.hasText(taskName)
-                        || vo.getTaskName() != null && vo.getTaskName().contains(taskName))
-                .sorted(java.util.Comparator.comparing(TaskVO::getCreateTime,
-                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
-                .toList();
-        List<TaskVO> records = matching.stream().skip(page.offset()).limit(page.pageSize()).toList();
-        return new PageResult<>(records, (long) matching.size(), page.pageNumber(), page.pageSize());
-    }
-
-    /**
-     * 读取{@code done}列表；查询结果供调用方展示或继续处理。
-     *
-     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
-     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
-     * @param processName 流程名称，后续用于读取{@code done}列表时匹配或展示
-     * @param taskName 任务名称，后续用于读取{@code done}列表时匹配或展示
-     * @param timeRange 时间范围，作为 {@code getStartDateByRange} 的输入影响后续处理
-     * @return 符合条件的任务结果，供调用方继续处理
-     */
-    @Override
-    public PageResult<TaskVO> getDoneList(Integer pageNum, Integer pageSize, String processName, String taskName, String timeRange) {
-        PageRequest page = PageRequest.normalize(pageNum, pageSize, 10, 100);
-        HistoricTaskInstanceQuery query = historyService.createHistoricTaskInstanceQuery()
-                .taskAssignee(UserContext.requireUsernameOrId())
-                .finished()
-                .orderByHistoricTaskInstanceEndTime()
-                .desc();
-        
-        // 时间范围过滤
-        if (StringUtils.hasText(timeRange)) {
-            Date startDate = getStartDateByRange(timeRange);
-            if (startDate != null) {
-                query.taskCompletedAfter(startDate);
-            }
-        }
-        
-        long total = query.count();
-        List<HistoricTaskInstance> tasks = page.offset() <= Integer.MAX_VALUE ? query.listPage((int) page.offset(), page.pageSize()) : List.of();
-        
-        List<TaskVO> records = tasks.stream()
-                .map(this::convertToDoneVO)
-                .filter(vo -> {
-                    if (StringUtils.hasText(processName)) {
-                        return vo.getProcessName() != null && vo.getProcessName().contains(processName);
-                    }
-                    return true;
-                })
-                .filter(vo -> {
-                    if (StringUtils.hasText(taskName)) {
-                        return vo.getTaskName() != null && vo.getTaskName().contains(taskName);
-                    }
-                    return true;
-                })
-                .collect(Collectors.toList());
-        
-        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
+        return taskListQueryService.findLegacyTodo(pageNum, pageSize, processName, taskName, timeRange);
     }
 
     /**
@@ -248,7 +161,7 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             return null;
         }
         
-        TaskVO vo = convertToTodoVO(task);
+        TaskVO vo = taskListQueryService.convertToTodoVO(task);
         
         // 获取流程变量中的实体信息
         String entityCode = (String) runtimeService.getVariable(task.getProcessInstanceId(), "entityCode");
@@ -345,230 +258,6 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
         }
         
         return vo;
-    }
-
-    /**
-     * 转换为待办VO
-     *
-     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
-     * @return 转换后的截止待办VO结果，供调用方继续处理
-     */
-    private TaskVO convertToTodoVO(Task task) {
-        TaskVO vo = new TaskVO();
-        vo.setTaskId(task.getId());
-        vo.setTaskName(task.getName());
-        vo.setProcessInstanceId(task.getProcessInstanceId());
-        vo.setProcessDefinitionId(task.getProcessDefinitionId());
-        vo.setCreateTime(task.getCreateTime());
-        vo.setPriority(task.getPriority());
-        vo.setAssignee(task.getAssignee());
-        vo.setClaimRequired(!StringUtils.hasText(task.getAssignee()));
-        vo.setCanClaim(!StringUtils.hasText(task.getAssignee()));
-        vo.setAssigneeType(vo.getCanClaim() ? "group" : "user");
-        applySlaSummary(vo, task.getId());
-        
-        // 获取流程定义信息
-        ProcessDefinition pd = repositoryService.createProcessDefinitionQuery()
-                .processDefinitionId(task.getProcessDefinitionId())
-                .singleResult();
-        if (pd != null) {
-            vo.setProcessName(pd.getName());
-        }
-        
-        // 获取流程实例发起人
-        HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
-                .processInstanceId(task.getProcessInstanceId())
-                .singleResult();
-        if (hpi != null) {
-            vo.setStartUserName(sysUserService.getDisplayName(hpi.getStartUserId()));
-            vo.setBusinessKey(hpi.getBusinessKey());
-        }
-        
-        // 获取数据标题、编码、当前任务名（从实体数据）
-        try {
-            String entityCode = (String) runtimeService.getVariable(task.getProcessInstanceId(), "entityCode");
-            String entityDataId = (String) runtimeService.getVariable(task.getProcessInstanceId(), "entityDataId");
-            if (entityDataId != null) {
-                com.workflow.entity.data.api.response.EntityDataDTO entityData = null;
-                if (entityCode != null) {
-                    try {
-                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
-                    } catch (Exception ex) {
-                        // fallback to entityDataService
-                    }
-                }
-                if (entityData != null) {
-                    if (entityData.getData() != null) {
-                        vo.setDataName((String) entityData.getData().get("name"));
-                    }
-                    vo.setName(entityData.getName());
-                    vo.setCode(entityData.getCode());
-                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("获取数据标题失败: {}", e.getMessage());
-        }
-        
-        return vo;
-    }
-
-    /**
-     * 将已通过统一访问查询的本地加签子任务转换为列表项。
-     * 加签办理人已由明细确定，不提供认领；保留 ADD_SIGN 类型以进入专用通过/驳回流程。
-     *
-     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
-     * @return 转换后的添加签名截止待办VO结果，供调用方继续处理
-     */
-    private TaskVO convertAddSignToTodoVO(ProcessTask task) {
-        TaskVO vo = new TaskVO();
-        vo.setTaskId(task.getTaskId());
-        vo.setTaskName(task.getNodeName());
-        vo.setNodeType("ADD_SIGN");
-        vo.setProcessInstanceId(task.getProcessInstanceId());
-        vo.setProcessDefinitionId(task.getProcessDefinitionId());
-        vo.setProcessName(task.getProcessName());
-        vo.setBusinessKey(task.getBusinessKey());
-        LocalDateTime created = task.getStartTime() != null ? task.getStartTime() : task.getCreateTime();
-        vo.setCreateTime(created == null ? null : Date.from(created.atZone(ZoneId.systemDefault()).toInstant()));
-        vo.setPriority(task.getPriority());
-        vo.setAssignee(task.getAssigneeId());
-        vo.setAssigneeName(task.getAssigneeName());
-        vo.setAssigneeType("user");
-        vo.setClaimRequired(false);
-        vo.setCanClaim(false);
-        vo.setEntityCode(task.getEntityCode());
-        vo.setEntityDataId(task.getEntityDataId());
-        vo.setFormKey(task.getFormKey());
-        vo.setSlaStatus(task.getSlaStatus());
-        vo.setResponseDueTime(toDate(task.getResponseDueTime()));
-        vo.setDueTime(toDate(task.getDueTime()));
-        return vo;
-    }
-
-    /**
-     * 转换为已办VO
-     *
-     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
-     * @return 转换后的截止{@code done}VO结果，供调用方继续处理
-     */
-    private TaskVO convertToDoneVO(HistoricTaskInstance task) {
-        TaskVO vo = new TaskVO();
-        vo.setTaskId(task.getId());
-        vo.setTaskName(task.getName());
-        vo.setProcessInstanceId(task.getProcessInstanceId());
-        vo.setProcessDefinitionId(task.getProcessDefinitionId());
-        vo.setCreateTime(task.getCreateTime());
-        vo.setEndTime(task.getEndTime());
-        vo.setDuration(task.getDurationInMillis());
-        vo.setPriority(task.getPriority());
-        vo.setAssignee(task.getAssignee());
-        applySlaSummary(vo, task.getId());
-        
-        // 获取流程定义信息
-        ProcessDefinition pd = repositoryService.createProcessDefinitionQuery()
-                .processDefinitionId(task.getProcessDefinitionId())
-                .singleResult();
-        if (pd != null) {
-            vo.setProcessName(pd.getName());
-        }
-        
-        // 获取流程实例发起人
-        HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
-                .processInstanceId(task.getProcessInstanceId())
-                .singleResult();
-        if (hpi != null) {
-            vo.setStartUserName(sysUserService.getDisplayName(hpi.getStartUserId()));
-            vo.setBusinessKey(hpi.getBusinessKey());
-        }
-        
-        // 获取审批意见（简化处理）
-        vo.setResult("approve"); // 默认可通过变量判断
-        
-        // 获取数据标题、编码、当前任务名（从历史变量）
-        try {
-            var entityCodeVar = historyService.createHistoricVariableInstanceQuery()
-                    .processInstanceId(task.getProcessInstanceId())
-                    .variableName("entityCode")
-                    .singleResult();
-            String entityCode = entityCodeVar != null ? (String) entityCodeVar.getValue() : null;
-            
-            var entityDataVar = historyService.createHistoricVariableInstanceQuery()
-                    .processInstanceId(task.getProcessInstanceId())
-                    .variableName("entityDataId")
-                    .singleResult();
-            String entityDataId = entityDataVar != null ? (String) entityDataVar.getValue() : null;
-            if (entityDataId != null) {
-                com.workflow.entity.data.api.response.EntityDataDTO entityData = null;
-                if (entityCode != null) {
-                    try {
-                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
-                    } catch (Exception ex) {
-                        // fallback to entityDataService
-                    }
-                }
-                if (entityData != null) {
-                    if (entityData.getData() != null) {
-                        vo.setDataName((String) entityData.getData().get("name"));
-                    }
-                    vo.setName(entityData.getName());
-                    vo.setCode(entityData.getCode());
-                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("获取数据标题失败: {}", e.getMessage());
-        }
-        
-        return vo;
-    }
-
-    /**
-     * 应用SLA摘要，并将结果传给后续步骤。
-     *
-     * @param vo VO，供本方法应用SLA摘要时使用
-     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
-     */
-    private void applySlaSummary(TaskVO vo, String taskId) {
-        ProcessTask local = processTaskService.getTaskByTaskId(taskId);
-        if (local == null) {
-            return;
-        }
-        vo.setSlaStatus(local.getSlaStatus());
-        vo.setResponseDueTime(toDate(local.getResponseDueTime()));
-        vo.setDueTime(toDate(local.getDueTime()));
-    }
-
-    /**
-     * 转换为日期；输出作为后续校验或处理的输入。
-     *
-     * @param value 待转换为日期的原始输入，结果供调用方继续使用
-     * @return 转换为后的日期结果，供调用方继续处理
-     */
-    private Date toDate(LocalDateTime value) {
-        return value == null
-                ? null
-                : Date.from(value.toInstant(ZoneOffset.UTC));
-    }
-
-    /**
-     * 根据时间范围获取开始日期
-     *
-     * @param range 范围，供本方法读取启动日期范围时使用
-     * @return 符合条件的日期结果，供调用方继续处理
-     */
-    private Date getStartDateByRange(String range) {
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        switch (range) {
-            case "week":
-                return Date.from(now.minusWeeks(1).atZone(ZoneId.systemDefault()).toInstant());
-            case "month":
-                return Date.from(now.minusMonths(1).atZone(ZoneId.systemDefault()).toInstant());
-            case "year":
-                return Date.from(now.minusYears(1).atZone(ZoneId.systemDefault()).toInstant());
-            default:
-                return null;
-        }
     }
 
     /**

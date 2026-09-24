@@ -16,10 +16,7 @@ import com.workflow.process.task.api.response.NextApprovalPreviewResponse;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
 import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.form.application.EntityFormActionService;
-import com.workflow.entity.definition.application.EntityStatusService;
-import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import com.workflow.process.task.application.ProcessTaskService;
-import com.workflow.process.task.application.TaskListFilter;
 import com.workflow.process.task.application.TaskDetailService;
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.nextapproval.NextApprovalPreviewService;
@@ -36,13 +33,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 流程待办控制器
@@ -58,11 +50,7 @@ public class ProcessTaskController {
     private final TaskActionService taskActionService;
     private final ProcessInstanceAccessService processInstanceAccessService;
     private final com.workflow.process.task.application.TaskAddSignService taskAddSignService;
-    private final com.workflow.entity.data.application.EntityDataDynamicService entityDataDynamicService;
-    private final org.flowable.engine.HistoryService historyService;
-    private final com.workflow.admin.identity.user.application.SysUserService sysUserService;
     private final EntityFormActionService formActionService;
-    private final EntityStatusService entityStatusService;
 
     @Autowired
     private NextApprovalPreviewService nextApprovalPreviewService;
@@ -70,8 +58,7 @@ public class ProcessTaskController {
     @Autowired
     private NextApproverCandidateService nextApproverCandidateService;
 
-    @Autowired
-    private com.workflow.process.task.application.TaskInboxQueryService taskInboxQueryService;
+    private final com.workflow.process.task.application.TaskListQueryService taskListQueryService;
 
     /**
      * 获取用户待办列表（分页，兼容前端TaskVO格式）
@@ -94,20 +81,9 @@ public class ProcessTaskController {
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        String currentUser = UserContext.getUsername();
-        currentUser = requireCurrentUser(currentUser);
-        if (taskInboxQueryService != null) {
-            var page = taskInboxQueryService.findPage(new com.workflow.process.task.application.TaskInboxQuery(
-                    currentUser, "todo", pageNum, pageSize, keyword, startUserName, priority, startDate, endDate));
-            if (page.isPresent()) return Result.success(page.get());
-        }
-        List<ProcessTask> tasks = processTaskService.getTodoList(currentUser);
-        Map<String, Map<String, String>> statusNames = new HashMap<>();
-        List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
-                .map(task -> convertToTaskVO(task, statusNames))
-                .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
-
-        return Result.success(page(voList, pageNum, pageSize));
+        String currentUser = requireCurrentUser(UserContext.getUsername());
+        return Result.success(taskListQueryService.findInbox(currentUser, "todo", pageNum, pageSize,
+                keyword, startUserName, priority, startDate, endDate));
     }
 
     /**
@@ -131,20 +107,9 @@ public class ProcessTaskController {
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        String currentUser = UserContext.getUsername();
-        currentUser = requireCurrentUser(currentUser);
-        if (taskInboxQueryService != null) {
-            var page = taskInboxQueryService.findPage(new com.workflow.process.task.application.TaskInboxQuery(
-                    currentUser, "done", pageNum, pageSize, keyword, startUserName, priority, startDate, endDate));
-            if (page.isPresent()) return Result.success(page.get());
-        }
-        List<ProcessTask> tasks = processTaskService.getDoneList(currentUser);
-        Map<String, Map<String, String>> statusNames = new HashMap<>();
-        List<TaskVO> voList = TaskListFilter.filter(tasks.stream()
-                .map(task -> convertToTaskVO(task, statusNames))
-                .collect(Collectors.toList()), keyword, startUserName, priority, startDate, endDate);
-
-        return Result.success(page(voList, pageNum, pageSize));
+        String currentUser = requireCurrentUser(UserContext.getUsername());
+        return Result.success(taskListQueryService.findInbox(currentUser, "done", pageNum, pageSize,
+                keyword, startUserName, priority, startDate, endDate));
     }
 
     /**
@@ -461,129 +426,6 @@ public class ProcessTaskController {
      */
     private BusinessConflictException taskAlreadyCompleted() {
         return new BusinessConflictException("TASK_ALREADY_COMPLETED", "任务不存在或已被处理，请刷新待办列表");
-    }
-
-    /**
-     * 将任务转换为列表摘要，发起人取流程历史，业务状态取关联实体当前记录。
-     *
-     * @param task 任务，作为 {@code vo.setTaskId} 的输入影响后续处理
-     * @param statusNames 单次列表请求内的实体状态名称缓存，避免相同实体重复查询配置
-     * @return 转换后的截止任务VO结果，供调用方继续处理
-     */
-    private TaskVO convertToTaskVO(ProcessTask task, Map<String, Map<String, String>> statusNames) {
-        TaskVO vo = new TaskVO();
-        vo.setTaskId(task.getTaskId());
-        vo.setTaskName(task.getNodeName());
-        vo.setNodeType(task.getNodeType());
-        vo.setProcessInstanceId(task.getProcessInstanceId());
-        vo.setProcessDefinitionId(task.getProcessDefinitionId());
-        vo.setProcessName(task.getProcessName());
-        vo.setAssignee(task.getAssigneeId());
-        vo.setAssigneeName(task.getAssigneeName()); // 执行人姓名
-        vo.setAssigneeType(task.getAssigneeType());
-        vo.setClaimRequired("group".equalsIgnoreCase(task.getAssigneeType()));
-        // 候选身份只决定是否允许提前接手；所有合法待办均可直接进入审批。
-        vo.setCanClaim(ProcessTask.STATUS_TODO.equals(task.getStatus())
-                && "group".equalsIgnoreCase(task.getAssigneeType())
-                && !"ADD_SIGN".equals(task.getNodeType()));
-        
-        // 发起人名称从流程实例历史记录中查询，不能复用 assigneeName（候选组任务时 assigneeName 是组名）
-        String startUserName = null;
-        try {
-            org.flowable.engine.history.HistoricProcessInstance hpi = historyService.createHistoricProcessInstanceQuery()
-                    .processInstanceId(task.getProcessInstanceId())
-                    .singleResult();
-            if (hpi != null && hpi.getStartUserId() != null) {
-                startUserName = sysUserService.getDisplayName(hpi.getStartUserId());
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-        vo.setStartUserName(startUserName);
-        vo.setBusinessKey(task.getBusinessKey());
-
-        // 时间转换
-        if (task.getStartTime() != null) {
-            vo.setCreateTime(Date.from(task.getStartTime().atZone(ZoneId.systemDefault()).toInstant()));
-        }
-        if (task.getEndTime() != null) {
-            vo.setEndTime(Date.from(task.getEndTime().atZone(ZoneId.systemDefault()).toInstant()));
-        }
-
-        vo.setDuration(task.getDuration());
-        vo.setPriority(task.getPriority());
-        vo.setResult(task.getAction());
-        vo.setComment(task.getComment());
-        vo.setSlaStatus(task.getSlaStatus());
-        vo.setResponseDueTime(toUtcDate(task.getResponseDueTime()));
-        vo.setDueTime(toUtcDate(task.getDueTime()));
-
-        // 扩展字段
-        vo.setEntityCode(task.getEntityCode());
-        vo.setEntityDataId(task.getEntityDataId());
-        vo.setFormKey(task.getFormKey());
-
-        // 实体业务状态与任务结果独立返回，不能用 todo/done 或 approve 推断实体状态。
-        try {
-            String entityCode = task.getEntityCode();
-            String entityDataId = task.getEntityDataId();
-            if (entityDataId != null) {
-                com.workflow.entity.data.api.response.EntityDataDTO entityData = null;
-                if (entityCode != null) {
-                    try {
-                        entityData = entityDataDynamicService.findById(entityCode, entityDataId);
-                    } catch (Exception ex) {
-                        // fallback
-                    }
-                }
-                if (entityData != null) {
-                    if (entityData.getData() != null) {
-                        vo.setDataName((String) entityData.getData().get("name"));
-                    }
-                    vo.setName(entityData.getName());
-                    vo.setCode(entityData.getCode());
-                    vo.setCurrentTaskName(entityData.getCurrentTaskName());
-                    vo.setEntityStatus(entityData.getStatus());
-                    if (entityData.getStatus() != null && entityCode != null) {
-                        vo.setEntityStatusText(statusNames.computeIfAbsent(
-                                entityCode, entityStatusService::getStatusNameMap).get(entityData.getStatus()));
-                    }
-                }
-            }
-        } catch (Exception e) {
-            // ignore
-        }
-
-        return vo;
-    }
-
-    /**
-     * 转换为UTC日期；输出作为后续校验或处理的输入。
-     *
-     * @param value 待转换为UTC日期的原始输入，结果供调用方继续使用
-     * @return 转换为后的UTC日期结果，供调用方继续处理
-     */
-    private Date toUtcDate(java.time.LocalDateTime value) {
-        return value == null
-                ? null
-                : Date.from(value.toInstant(ZoneOffset.UTC));
-    }
-
-    /**
-     * 分页查询流程任务；查询结果供调用方展示或继续处理。
-     *
-     * @param tasks 任务集合，供本方法分页查询流程任务时使用
-     * @param requestedPage 请求页码，后续归一化并换算为数据库查询偏移
-     * @param requestedSize 请求页大小，后续限制单次查询和返回数量
-     * @return 符合条件的任务结果，供调用方继续处理
-     */
-    private PageResult<TaskVO> page(List<TaskVO> tasks, Integer requestedPage, Integer requestedSize) {
-        int pageNum = requestedPage == null ? 1 : Math.max(1, requestedPage);
-        int pageSize = requestedSize == null ? 10 : Math.min(100, Math.max(1, requestedSize));
-        int total = tasks.size();
-        int start = Math.min((pageNum - 1) * pageSize, total);
-        int end = Math.min(start + pageSize, total);
-        return new PageResult<>(tasks.subList(start, end), total, pageNum, pageSize);
     }
 
     /**

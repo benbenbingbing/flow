@@ -61,6 +61,7 @@ public class ProcessDetailRuntimeService {
     private final SysUserService sysUserService;
     /** 用户组 Mapper，查询候选组名称 */
     private final SysGroupMapper sysGroupMapper;
+    private final PublishedBpmnReader publishedBpmnReader;
 
     /**
      * 获取流程实例详情。
@@ -563,44 +564,7 @@ public class ProcessDetailRuntimeService {
      * @return 读取后的BPMNXML流程定义ID文本，供调用方比较或展示
      */
     private String getBpmnXmlByProcessDefinitionId(String processDefinitionId) {
-        if (processDefinitionId == null) {
-            return null;
-        }
-        try {
-            ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
-                    .processDefinitionId(processDefinitionId)
-                    .singleResult();
-            if (processDefinition == null) {
-                return null;
-            }
-            try {
-                org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
-                if (model != null) {
-                    byte[] modelBytes = repositoryService.getModelEditorSource(model.getId());
-                    if (modelBytes != null) {
-                        return new String(modelBytes, java.nio.charset.StandardCharsets.UTF_8);
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("无法从 Model 获取 BPMN XML", e);
-            }
-
-            String resourceName = processDefinition.getResourceName();
-            if (resourceName != null) {
-                org.flowable.engine.repository.Deployment deployment = repositoryService.createDeploymentQuery()
-                        .deploymentId(processDefinition.getDeploymentId())
-                        .singleResult();
-                if (deployment != null) {
-                    java.io.InputStream resourceStream = repositoryService.getResourceAsStream(deployment.getId(), resourceName);
-                    if (resourceStream != null) {
-                        return new String(resourceStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("获取 BPMN XML 失败", e);
-        }
-        return null;
+        return publishedBpmnReader.read(processDefinitionId);
     }
 
     /**

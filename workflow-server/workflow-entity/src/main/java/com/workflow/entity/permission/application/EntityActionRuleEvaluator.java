@@ -8,13 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.time.temporal.Temporal;
-import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+
+import static com.workflow.entity.permission.application.PermissionConditionComparison.compare;
 
 /**
  * 结构化实体按钮规则执行器。
@@ -375,150 +374,4 @@ public class EntityActionRuleEvaluator {
         return extData == null ? null : extData.get(field);
     }
 
-    /**
-     * 比较实体动作规则求值器；结果供调用方的后续步骤使用。
-     *
-     * @param actual 实际，作为 {@code isEmpty} 的输入影响后续处理
-     * @param operator 操作人，供本方法比较实体动作规则求值器时使用
-     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
-     * @return 实体动作规则求值器条件成立时为 true，否则为 false
-     */
-    private boolean compare(Object actual, String operator, Object expected) {
-        String op = operator == null ? "EQ" : operator.toUpperCase(Locale.ROOT);
-        if ("EMPTY".equals(op)) {
-            return isEmpty(actual);
-        }
-        if ("NOT_EMPTY".equals(op)) {
-            return !isEmpty(actual);
-        }
-        // 缺少实际字段或比较值时必须失败关闭，尤其不能让 NE/NOT_IN/LT
-        // 这类取反或有序比较把“不存在”误判成满足条件。
-        if (actual == null || expected == null) {
-            return false;
-        }
-        return switch (op) {
-            case "EQ" -> equalsValue(actual, expected);
-            case "NE" -> !equalsValue(actual, expected);
-            case "IN" -> intersects(actual, expected);
-            case "NOT_IN" -> !intersects(actual, expected);
-            case "CONTAINS" -> contains(actual, expected);
-            case "NOT_CONTAINS" -> !contains(actual, expected);
-            case "GT" -> compareOrdered(actual, expected) > 0;
-            case "GTE" -> compareOrdered(actual, expected) >= 0;
-            case "LT" -> compareOrdered(actual, expected) < 0;
-            case "LTE" -> compareOrdered(actual, expected) <= 0;
-            default -> false;
-        };
-    }
-
-    /**
-     * 判断相等值条件是否成立，供调用方选择后续分支。
-     *
-     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
-     * @param expected 预期，供本方法处理相等值时使用
-     * @return 相等值条件成立时为 true，否则为 false
-     */
-    private boolean equalsValue(Object actual, Object expected) {
-        if (actual == null || expected == null) {
-            return actual == expected;
-        }
-        if (actual instanceof Number || expected instanceof Number) {
-            try {
-                return new BigDecimal(String.valueOf(actual))
-                        .compareTo(new BigDecimal(String.valueOf(expected))) == 0;
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return String.valueOf(actual).equals(String.valueOf(expected));
-    }
-
-    /**
-     * 判断是否包含实体动作规则求值器；判断结果决定调用方的后续分支。
-     *
-     * @param actual 实际，供本方法判断是否包含实体动作规则求值器时使用
-     * @param expected 预期，供本方法判断是否包含实体动作规则求值器时使用
-     * @return 实体动作规则求值器条件成立时为 true，否则为 false
-     */
-    private boolean contains(Object actual, Object expected) {
-        if (actual instanceof Collection<?> collection) {
-            return collection.stream().anyMatch(value -> equalsValue(value, expected));
-        }
-        return actual != null && expected != null
-                && String.valueOf(actual).contains(String.valueOf(expected));
-    }
-
-    /**
-     * 集合型实际值（如当前用户 roleIds）按任一交集解释 IN。
-     *
-     * @param actual 实际，供本方法处理{@code intersects}时使用
-     * @param expected 预期，作为 {@code toCollection} 的输入影响后续处理
-     * @return {@code intersects}条件成立时为 true，否则为 false
-     */
-    private boolean intersects(Object actual, Object expected) {
-        Collection<?> expectedValues = toCollection(expected);
-        Collection<?> actualValues = actual instanceof Collection<?> values
-                ? values : List.of(actual);
-        return actualValues.stream().anyMatch(left ->
-                expectedValues.stream().anyMatch(right ->
-                        equalsValue(left, right)));
-    }
-
-    /**
-     * 比较{@code ordered}；结果供调用方的后续步骤使用。
-     *
-     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
-     * @param expected 预期，供本方法比较{@code ordered}时使用
-     * @return 比较后的{@code ordered}结果，供调用方继续处理
-     */
-    private int compareOrdered(Object actual, Object expected) {
-        if (actual instanceof Number || expected instanceof Number) {
-            try {
-                return new BigDecimal(String.valueOf(actual))
-                        .compareTo(new BigDecimal(String.valueOf(expected)));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        if (actual instanceof Temporal || expected instanceof Temporal) {
-            return String.valueOf(actual).compareTo(String.valueOf(expected));
-        }
-        return String.valueOf(actual).compareTo(String.valueOf(expected));
-    }
-
-    /**
-     * 判断是否空；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否空的原始输入，结果供调用方继续使用
-     * @return 空条件成立时为 true，否则为 false
-     */
-    private boolean isEmpty(Object value) {
-        if (value == null) {
-            return true;
-        }
-        if (value instanceof String text) {
-            return text.isBlank();
-        }
-        if (value instanceof Collection<?> collection) {
-            return collection.isEmpty();
-        }
-        if (value instanceof Map<?, ?> map) {
-            return map.isEmpty();
-        }
-        return false;
-    }
-
-    /**
-     * 转换为集合；输出作为后续校验或处理的输入。
-     *
-     * @param value 待转换为集合的原始输入，结果供调用方继续使用
-     * @return {@code collection<?>}集合，供调用方遍历或展示
-     */
-    private Collection<?> toCollection(Object value) {
-        if (value instanceof Collection<?> collection) {
-            return collection;
-        }
-        if (value != null && value.getClass().isArray()) {
-            return List.of((Object[]) value);
-        }
-        return value == null ? List.of() : List.of(value);
-    }
 }

@@ -62,25 +62,11 @@ public class EntityFormNodeService {
         /** 节点排序步长，用于 orderKey 的稀疏分布以支持插入。 */
         public static final long ORDER_STEP = 1_000_000L;
         /** 表单节点最大嵌套深度。 */
-        public static final int MAX_DEPTH = 8;
+        public static final int MAX_DEPTH = FormNodeStructurePolicy.MAX_DEPTH;
 
         private static final Pattern NODE_KEY = Pattern.compile("[A-Za-z][A-Za-z0-9_-]{0,99}");
-        private static final Set<String> NODE_TYPES = Set.of(
-                        "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE",
-                        "TEXT", "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
-        private static final Set<String> CONTAINER_TYPES = Set.of(
-                        "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE", "SUB_FORM", "REPEATER");
-        private static final Set<String> STANDARD_CONTAINER_CHILD_TYPES = Set.of(
-                        "SECTION", "GRID", "TAB_SET", "COLLAPSE",
-                        "TEXT", "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
-        private static final Map<String, Set<String>> ALLOWED_CHILD_TYPES = Map.of(
-                        "SECTION", STANDARD_CONTAINER_CHILD_TYPES,
-                        "GRID", STANDARD_CONTAINER_CHILD_TYPES,
-                        "TAB_SET", Set.of("TAB"),
-                        "TAB", STANDARD_CONTAINER_CHILD_TYPES,
-                        "COLLAPSE", STANDARD_CONTAINER_CHILD_TYPES,
-                        "SUB_FORM", STANDARD_CONTAINER_CHILD_TYPES,
-                        "REPEATER", STANDARD_CONTAINER_CHILD_TYPES);
+        private static final Set<String> NODE_TYPES = FormNodeStructurePolicy.NODE_TYPES;
+        private static final Set<String> CONTAINER_TYPES = FormNodeStructurePolicy.CONTAINER_TYPES;
         private static final Set<String> BINDING_TYPES = Set.of(
                         "ENTITY_FIELD", "RELATION", "COMPUTED", "CONTEXT", "NONE");
         private static final Set<String> SUB_FORM_NODE_TYPES = Set.of(
@@ -692,7 +678,7 @@ public class EntityFormNodeService {
                 nodes.forEach(node -> byId.put(node.getId(), node));
                 for (EntityFormNode node : nodes) {
                         validateNode(node, node.getId());
-                        validateParentChildType(node, byId.get(node.getParentId()));
+                        FormNodeStructurePolicy.validateParentChild(node, byId.get(node.getParentId()));
                         int depth = 1;
                         Set<String> visited = new HashSet<>();
                         String parentId = node.getParentId();
@@ -1284,18 +1270,10 @@ public class EntityFormNodeService {
         }
 
         /**
-         * 读取表单发布版本引用；查询结果供调用方展示或继续处理。
-         *
-         * @param props 属性，作为 {@code objectMap} 的输入影响后续处理
-         * @param nodeLabel 节点标签，后续用于读取表单发布版本引用时匹配或展示
-         * @return 读取后的表单发布版本引用结果，供调用方继续处理
+         * 只解析子表单引用，不要求引用完整。旧数据探测与发布校验共享别名优先级，
+         * 是否允许缺少发布版本由各自入口决定；格式错误仍沿用原异常。
          */
-        private FormReleaseReference readFormReleaseReference(
-                        Map<String, Object> props,
-                        String nodeLabel) {
-                if (props == null || props.isEmpty()) {
-                        return null;
-                }
+        private FormReleaseReference readRawFormReleaseReference(Map<String, Object> props) {
                 Map<String, Object> componentProps = objectMap(props.get("componentProps"), "子表单组件属性");
                 Map<String, Object> nestedConfig = objectMap(componentProps.get("subFormConfig"), "子表单配置");
                 Map<String, Object> directConfig = objectMap(props.get("subFormConfig"), "子表单配置");
@@ -1329,6 +1307,26 @@ public class EntityFormNodeService {
                                 nestedConfig.get("childFormReleaseVersion"),
                                 nestedConfig.get("refFormReleaseVersion"),
                                 nestedConfig.get("publishedFormReleaseVersion"));
+                return new FormReleaseReference(formId, releaseId, releaseVersion);
+        }
+
+        /**
+         * 读取表单发布版本引用；查询结果供调用方展示或继续处理。
+         *
+         * @param props 属性，作为 {@code objectMap} 的输入影响后续处理
+         * @param nodeLabel 节点标签，后续用于读取表单发布版本引用时匹配或展示
+         * @return 读取后的表单发布版本引用结果，供调用方继续处理
+         */
+        private FormReleaseReference readFormReleaseReference(
+                        Map<String, Object> props,
+                        String nodeLabel) {
+                if (props == null || props.isEmpty()) {
+                        return null;
+                }
+                FormReleaseReference raw = readRawFormReleaseReference(props);
+                String formId = raw.formId();
+                String releaseId = raw.releaseId();
+                Integer releaseVersion = raw.releaseVersion();
                 if (!StringUtils.hasText(formId)
                                 && !StringUtils.hasText(releaseId)
                                 && releaseVersion == null) {
@@ -1733,7 +1731,7 @@ public class EntityFormNodeService {
                 EntityFormNode parent = StringUtils.hasText(node.getParentId())
                                 ? requireNode(node.getFormId(), node.getParentId())
                                 : null;
-                validateParentChildType(node, parent);
+                FormNodeStructurePolicy.validateParentChild(node, parent);
                 validateExistingChildren(node);
                 if (StringUtils.hasText(node.getDataSourceBindingsDocument())) {
                         Map<String, Object> bindings = codec.readObject(
@@ -1923,38 +1921,6 @@ public class EntityFormNodeService {
         }
 
         /**
-         * 校验父级子级类型；不满足约束时阻止后续处理。
-         *
-         * @param child 子级，供本方法校验父级子级类型时使用
-         * @param parent 父级，作为 {@code ALLOWED_CHILD_TYPES.get} 的输入影响后续处理
-         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-         */
-        private void validateParentChildType(
-                        EntityFormNode child,
-                        EntityFormNode parent) {
-                if (parent == null) {
-                        if ("TAB".equals(child.getNodeType())) {
-                                throw new IllegalArgumentException("TAB 节点只能位于 TAB_SET 下");
-                        }
-                        return;
-                }
-                Set<String> allowedChildren = ALLOWED_CHILD_TYPES.get(parent.getNodeType());
-                if (allowedChildren == null || !allowedChildren.contains(child.getNodeType())) {
-                        if ("TAB".equals(child.getNodeType())) {
-                                throw new IllegalArgumentException("TAB 节点只能位于 TAB_SET 下");
-                        }
-                        if ("TAB_SET".equals(parent.getNodeType())) {
-                                throw new IllegalArgumentException("TAB_SET 的直接子节点只能是 TAB");
-                        }
-                        throw new IllegalArgumentException(
-                                        parent.getNodeType()
-                                                        + " 节点不能直接包含 "
-                                                        + child.getNodeType()
-                                                        + " 节点");
-                }
-        }
-
-        /**
          * 校验已有子节点；不满足约束时阻止后续处理。
          *
          * @param parent 父级，作为 {@code nodeMapper.findSiblings} 的输入影响后续处理
@@ -1962,7 +1928,7 @@ public class EntityFormNodeService {
         private void validateExistingChildren(EntityFormNode parent) {
                 List<EntityFormNode> children = nodeMapper.findSiblings(parent.getFormId(), parent.getId());
                 for (EntityFormNode child : children) {
-                        validateParentChildType(child, parent);
+                        FormNodeStructurePolicy.validateParentChild(child, parent);
                 }
         }
 
@@ -2700,39 +2666,10 @@ public class EntityFormNodeService {
                 }
                 Map<String, Object> props = read(
                                 node.getPropsDocument(), "子表单节点属性");
-                Map<String, Object> componentProps = objectMap(props.get("componentProps"), "子表单组件属性");
-                Map<String, Object> nestedConfig = objectMap(componentProps.get("subFormConfig"), "子表单配置");
-                Map<String, Object> directConfig = objectMap(props.get("subFormConfig"), "子表单配置");
-                String formId = firstText(
-                                props.get("childFormId"),
-                                props.get("refFormId"),
-                                props.get("publishedFormId"),
-                                directConfig.get("childFormId"),
-                                directConfig.get("refFormId"),
-                                directConfig.get("publishedFormId"),
-                                nestedConfig.get("childFormId"),
-                                nestedConfig.get("refFormId"),
-                                nestedConfig.get("publishedFormId"));
-                String releaseId = firstText(
-                                props.get("childFormReleaseId"),
-                                props.get("refFormReleaseId"),
-                                props.get("publishedFormReleaseId"),
-                                directConfig.get("childFormReleaseId"),
-                                directConfig.get("refFormReleaseId"),
-                                directConfig.get("publishedFormReleaseId"),
-                                nestedConfig.get("childFormReleaseId"),
-                                nestedConfig.get("refFormReleaseId"),
-                                nestedConfig.get("publishedFormReleaseId"));
-                Integer releaseVersion = firstInteger(
-                                props.get("childFormReleaseVersion"),
-                                props.get("refFormReleaseVersion"),
-                                props.get("publishedFormReleaseVersion"),
-                                directConfig.get("childFormReleaseVersion"),
-                                directConfig.get("refFormReleaseVersion"),
-                                directConfig.get("publishedFormReleaseVersion"),
-                                nestedConfig.get("childFormReleaseVersion"),
-                                nestedConfig.get("refFormReleaseVersion"),
-                                nestedConfig.get("publishedFormReleaseVersion"));
+                FormReleaseReference raw = readRawFormReleaseReference(props);
+                String formId = raw.formId();
+                String releaseId = raw.releaseId();
+                Integer releaseVersion = raw.releaseVersion();
                 return StringUtils.hasText(formId)
                                 && (!StringUtils.hasText(releaseId) || releaseVersion == null);
         }

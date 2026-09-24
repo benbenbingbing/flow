@@ -378,47 +378,8 @@ public class EntityFieldDefinitionService {
     private EntityFieldDTO convertToDTOWithRelation(
             EntityDefinition entity,
             EntityField field) {
-        EntityFieldDTO dto = new EntityFieldDTO();
-        dto.setId(field.getId());
-        dto.setFieldCode(field.getFieldCode());
-        dto.setFieldName(field.getFieldName());
-        dto.setFieldType(field.getFieldType());
-        dto.setDbType(field.getDbType());
-        dto.setFieldLength(field.getFieldLength());
-        dto.setFieldPrecision(field.getFieldPrecision());
-        dto.setDbColumnName(field.getDbColumnName());
-        dto.setIsRequired(field.getIsRequired());
-        dto.setIsUnique(field.getIsUnique());
-        dto.setDefaultValue(field.getDefaultValue());
-        dto.setOptionsJson(field.getOptionsJson());
-        List<Map<String, Object>> options =
-                fieldOptionService.findOptions(field.getId());
-        dto.setOptions(options);
-        dto.setDictType(field.getDictType());
-        dto.setValueStorage(field.getValueStorage());
-        dto.setValidateRules(field.getValidateRules());
-        dto.setSortOrder(field.getSortOrder());
-        dto.setIsSystem(field.getIsSystem());
-        dto.setEditable(field.getEditable());
-        dto.setIsPublished(field.getIsPublished());
-        dto.setUiConfigurable(
-                systemEntityFieldPolicy.isUiConfigurable(entity, field));
-        dto.setRuntimeReadable(
-                systemEntityFieldPolicy.isRuntimeReadable(entity, field));
-        dto.setFileTypes(field.getFileTypes());
-        dto.setFileMaxSize(field.getFileMaxSize());
-        dto.setFileMaxCount(field.getFileMaxCount());
-        dto.setRefEntityId(field.getRefEntityId());
-        EntityField.RefEntityType referenceType =
-                field.getRefEntityType() != null
-                        ? field.getRefEntityType()
-                        : systemEntityFieldPolicy.referenceType(
-                                entity.getEntityCode(),
-                                field.getFieldCode());
-        dto.setRefEntityType(
-                referenceType == null ? null : referenceType.name());
-        dto.setRefFieldCode(field.getRefFieldCode());
-        dto.setRefListKey(field.getRefListKey());
+        EntityFieldDTO dto = EntityFieldViewMapper.forDefinition(entity, field, systemEntityFieldPolicy);
+        dto.setOptions(fieldOptionService.findOptions(field.getId()));
         if (field.getFieldType() == EntityField.FieldType.FILE
                 || field.getFieldType() == EntityField.FieldType.IMAGE) {
             dto.setFileItems(fileItemService.findByFieldId(field.getId()));

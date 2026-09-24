@@ -1399,19 +1399,7 @@ public class EntityDefinitionService {
     private EntityFieldDTO convertToDTO(
             EntityDefinition entity,
             EntityField field) {
-        EntityFieldDTO dto = new EntityFieldDTO();
-        dto.setId(field.getId());
-        dto.setFieldCode(field.getFieldCode());
-        dto.setFieldName(field.getFieldName());
-        dto.setFieldType(field.getFieldType());
-        dto.setDbType(field.getDbType());
-        dto.setFieldLength(field.getFieldLength());
-        dto.setFieldPrecision(field.getFieldPrecision());
-        dto.setDbColumnName(field.getDbColumnName());
-        dto.setIsRequired(field.getIsRequired());
-        dto.setIsUnique(field.getIsUnique());
-        dto.setDefaultValue(field.getDefaultValue());
-        dto.setOptionsJson(field.getOptionsJson());
+        EntityFieldDTO dto = EntityFieldViewMapper.forDefinition(entity, field, systemEntityFieldPolicy);
         List<Map<String, Object>> structuredOptions = fieldOptionService.findOptions(field.getId());
         if (structuredOptions.isEmpty() && StringUtils.isNotBlank(field.getOptionsJson())) {
             try {
@@ -1421,31 +1409,6 @@ public class EntityDefinitionService {
             }
         }
         dto.setOptions(structuredOptions);
-        dto.setDictType(field.getDictType());
-        dto.setValueStorage(field.getValueStorage());
-        dto.setValidateRules(field.getValidateRules());
-        dto.setSortOrder(field.getSortOrder());
-        dto.setIsSystem(field.getIsSystem());
-        dto.setEditable(field.getEditable());
-        dto.setIsPublished(field.getIsPublished());
-        dto.setUiConfigurable(
-                systemEntityFieldPolicy.isUiConfigurable(entity, field));
-        dto.setRuntimeReadable(
-                systemEntityFieldPolicy.isRuntimeReadable(entity, field));
-        dto.setFileTypes(field.getFileTypes());
-        dto.setFileMaxSize(field.getFileMaxSize());
-        dto.setFileMaxCount(field.getFileMaxCount());
-        // 实体引用/子表单字段
-        dto.setRefEntityId(field.getRefEntityId());
-        EntityField.RefEntityType referenceType = field.getRefEntityType() != null
-                ? field.getRefEntityType()
-                : systemEntityFieldPolicy.referenceType(
-                        entity == null ? null : entity.getEntityCode(),
-                        field.getFieldCode());
-        dto.setRefEntityType(
-                referenceType == null ? null : referenceType.name());
-        dto.setRefFieldCode(field.getRefFieldCode());
-        dto.setRefListKey(field.getRefListKey());
         // 加载文件字段的多组附件配置
         if (field.getFieldType() == EntityField.FieldType.FILE || field.getFieldType() == EntityField.FieldType.IMAGE) {
             try {

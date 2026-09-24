@@ -28,7 +28,9 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.lang.reflect.Method;
+import com.workflow.process.task.application.TaskListQueryService;
+import com.workflow.process.task.application.TaskInboxQueryService;
+import java.util.List;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
@@ -54,16 +56,6 @@ class ProcessTaskControllerTest {
 
     @Test
     void todoTaskMappingIncludesSlaSummary() throws Exception {
-        ProcessTaskController controller = new ProcessTaskController(
-                mock(ProcessTaskService.class),
-                mock(TaskDetailService.class),
-                mock(TaskActionService.class),
-                mock(ProcessInstanceAccessService.class),
-                mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class),
-                mock(HistoryService.class),
-                mock(SysUserService.class),
-                mock(EntityFormActionService.class), mock(EntityStatusService.class));
         LocalDateTime responseDue = LocalDateTime.of(
                 2026, 8, 4, 2, 21, 20);
         LocalDateTime completionDue = responseDue.plusMinutes(1);
@@ -73,10 +65,8 @@ class ProcessTaskControllerTest {
         task.setResponseDueTime(responseDue);
         task.setDueTime(completionDue);
 
-        Method converter = ProcessTaskController.class
-                .getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
-        converter.setAccessible(true);
-        TaskVO result = (TaskVO) converter.invoke(controller, task, new java.util.HashMap<>());
+        TaskVO result = queryMirror(task, mock(EntityDataDynamicService.class),
+                mock(HistoryService.class), mock(SysUserService.class), mock(EntityStatusService.class));
 
         assertEquals("BREACHED", result.getSlaStatus());
         assertEquals(
@@ -114,15 +104,7 @@ class ProcessTaskControllerTest {
         task.setAssigneeName("另一位办理人");
         task.setStatus(taskStatus);
         task.setAction("approve");
-        var controller = new ProcessTaskController(mock(ProcessTaskService.class), mock(TaskDetailService.class),
-                mock(TaskActionService.class), mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
-                records, history, users, mock(EntityFormActionService.class), statuses);
-        Method converter = ProcessTaskController.class.getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
-        converter.setAccessible(true);
-        Map<String, Map<String, String>> cache = new java.util.HashMap<>();
-
-        TaskVO result = (TaskVO) converter.invoke(controller, task, cache);
-        converter.invoke(controller, task, cache);
+        TaskVO result = queryMirror(task, records, history, users, statuses);
 
         assertEquals("流程发起人", result.getStartUserName());
         assertEquals("另一位办理人", result.getAssigneeName());
@@ -136,16 +118,13 @@ class ProcessTaskControllerTest {
     void withdrawUsesAuthenticatedUserId() {
         TaskActionService taskActionService =
                 mock(TaskActionService.class);
-        ProcessTaskController controller = new ProcessTaskController(
-                mock(ProcessTaskService.class),
+        ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class),
                 mock(TaskDetailService.class),
                 taskActionService,
                 mock(ProcessInstanceAccessService.class),
                 mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class),
-                mock(HistoryService.class),
-                mock(SysUserService.class),
-                mock(EntityFormActionService.class), mock(EntityStatusService.class));
+                mock(EntityFormActionService.class),
+                mock(TaskListQueryService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
         controller.withdrawProcess(Map.of(
@@ -168,10 +147,8 @@ class ProcessTaskControllerTest {
         task.setAssigneeType(assigneeType);
         task.setStatus(status);
         task.setNodeType(nodeType);
-        Method converter = ProcessTaskController.class.getDeclaredMethod("convertToTaskVO", ProcessTask.class, Map.class);
-        converter.setAccessible(true);
-
-        TaskVO result = (TaskVO) converter.invoke(controller(mock(TaskActionService.class)), task, new java.util.HashMap<>());
+        TaskVO result = queryMirror(task, mock(EntityDataDynamicService.class),
+                mock(HistoryService.class), mock(SysUserService.class), mock(EntityStatusService.class));
 
         assertEquals(canClaim, result.getCanClaim());
     }
@@ -224,10 +201,13 @@ class ProcessTaskControllerTest {
         TaskDetailService detailService = mock(TaskDetailService.class);
         TaskAddSignService addSignService = mock(TaskAddSignService.class);
         when(addSignService.isAddSignTask("addsign-1")).thenReturn(true);
-        ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
-                actionService, mock(ProcessInstanceAccessService.class), addSignService,
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class), mock(EntityStatusService.class));
+        ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class),
+                detailService,
+                actionService,
+                mock(ProcessInstanceAccessService.class),
+                addSignService,
+                mock(EntityFormActionService.class),
+                mock(TaskListQueryService.class));
         if (!authorized) {
             doThrow(new ForbiddenException("无加签审批权"))
                     .when(detailService).requireLocalAddSignTaskAccess("addsign-1");
@@ -245,10 +225,13 @@ class ProcessTaskControllerTest {
     void ordinaryTaskDetailStillRequiresEngineTaskAccess() {
         TaskActionService actionService = mock(TaskActionService.class);
         TaskDetailService detailService = mock(TaskDetailService.class);
-        ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class), detailService,
-                actionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class), mock(EntityStatusService.class));
+        ProcessTaskController controller = new ProcessTaskController(mock(ProcessTaskService.class),
+                detailService,
+                actionService,
+                mock(ProcessInstanceAccessService.class),
+                mock(TaskAddSignService.class),
+                mock(EntityFormActionService.class),
+                mock(TaskListQueryService.class));
         doThrow(new ForbiddenException("无审批权")).when(actionService).requireTaskAccess("task-1");
 
         assertThrows(ForbiddenException.class, () -> controller.getTaskDetail("task-1"));
@@ -275,10 +258,32 @@ class ProcessTaskControllerTest {
                 () -> controller(service).claimTask("task-1")));
     }
 
+    /** 通过真实查询服务和控制器验证序列化前的列表内容，同时验证每页状态缓存。 */
+    private TaskVO queryMirror(ProcessTask task, EntityDataDynamicService records, HistoryService history,
+                               SysUserService users, EntityStatusService statuses) {
+        UserContext.setCurrentUser("user-1", "alice");
+        var tasks = mock(ProcessTaskService.class);
+        when(tasks.getTodoList("alice")).thenReturn(List.of(task, task));
+        when(tasks.getDoneList("alice")).thenReturn(List.of(task, task));
+        var lists = new TaskListQueryService(mock(org.flowable.engine.TaskService.class), history,
+                mock(org.flowable.engine.RuntimeService.class), mock(org.flowable.engine.RepositoryService.class),
+                tasks, records, users, statuses, mock(TaskInboxQueryService.class));
+        var controller = new ProcessTaskController(tasks, mock(TaskDetailService.class), mock(TaskActionService.class),
+                mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
+                mock(EntityFormActionService.class), lists);
+        var result = "done".equals(task.getStatus())
+                ? controller.getDoneList(1, 10, null, null, null, null, null)
+                : controller.getTodoList(1, 10, null, null, null, null, null);
+        return result.getData().getRecords().get(0);
+    }
+
     private ProcessTaskController controller(TaskActionService taskActionService) {
-        return new ProcessTaskController(mock(ProcessTaskService.class), mock(TaskDetailService.class),
-                taskActionService, mock(ProcessInstanceAccessService.class), mock(TaskAddSignService.class),
-                mock(EntityDataDynamicService.class), mock(HistoryService.class), mock(SysUserService.class),
-                mock(EntityFormActionService.class), mock(EntityStatusService.class));
+        return new ProcessTaskController(mock(ProcessTaskService.class),
+                mock(TaskDetailService.class),
+                taskActionService,
+                mock(ProcessInstanceAccessService.class),
+                mock(TaskAddSignService.class),
+                mock(EntityFormActionService.class),
+                mock(TaskListQueryService.class));
     }
 }

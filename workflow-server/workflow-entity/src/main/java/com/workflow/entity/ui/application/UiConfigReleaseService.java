@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.form.application.FormNodeStructurePolicy;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.form.application.EntityFormNodeService;
 import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
@@ -122,24 +124,9 @@ public class UiConfigReleaseService {
     public static final String ACTIVE_AND_FUTURE = "ACTIVE_AND_FUTURE";
     private static final String HOTFIX_PATCH = "PATCH";
     private static final String HOTFIX_FULL_SNAPSHOT = "FULL_SNAPSHOT";
-    private static final int MAX_FORM_DEPTH = 8;
-    private static final Set<String> FORM_NODE_TYPES = Set.of(
-            "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE",
-            "TEXT", "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
-    private static final Set<String> FORM_CONTAINER_TYPES = Set.of(
-            "SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE",
-            "SUB_FORM", "REPEATER");
-    private static final Set<String> STANDARD_CONTAINER_CHILD_TYPES = Set.of(
-            "SECTION", "GRID", "TAB_SET", "COLLAPSE",
-            "TEXT", "FIELD", "SUB_FORM", "REPEATER", "ACTION_SLOT");
-    private static final Map<String, Set<String>> ALLOWED_CHILD_TYPES = Map.of(
-            "SECTION", STANDARD_CONTAINER_CHILD_TYPES,
-            "GRID", STANDARD_CONTAINER_CHILD_TYPES,
-            "TAB_SET", Set.of("TAB"),
-            "TAB", STANDARD_CONTAINER_CHILD_TYPES,
-            "COLLAPSE", STANDARD_CONTAINER_CHILD_TYPES,
-            "SUB_FORM", STANDARD_CONTAINER_CHILD_TYPES,
-            "REPEATER", STANDARD_CONTAINER_CHILD_TYPES);
+    private static final int MAX_FORM_DEPTH = FormNodeStructurePolicy.MAX_DEPTH;
+    private static final Set<String> FORM_NODE_TYPES = FormNodeStructurePolicy.NODE_TYPES;
+    private static final Set<String> FORM_CONTAINER_TYPES = FormNodeStructurePolicy.CONTAINER_TYPES;
     private final UiConfigReleaseMapper releaseMapper;
     private final UiConfigHotfixTargetMapper hotfixTargetMapper;
     private final UiConfigReleaseAuditMapper releaseAuditMapper;
@@ -6578,7 +6565,7 @@ public class UiConfigReleaseService {
                 throw new IllegalArgumentException(
                         "发布快照中的表单节点父级不存在: " + nodeLabel(node));
             }
-            validateSnapshotParentChild(node, parent);
+            FormNodeStructurePolicy.validateParentChild(node, parent);
             int depth = 1;
             Set<String> visited = new HashSet<>();
             String parentId = node.getParentId();
@@ -6610,38 +6597,6 @@ public class UiConfigReleaseService {
         referenceCache.put(formId, referencedFormIds(nodes));
         validatePublishedFormGraph(
                 formId, 1, new LinkedHashSet<>(), referenceCache);
-    }
-
-    /**
-     * 校验快照父级子级；不满足约束时阻止后续处理。
-     *
-     * @param child 子级，供本方法校验快照父级子级时使用
-     * @param parent 父级，作为 {@code ALLOWED_CHILD_TYPES.get} 的输入影响后续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void validateSnapshotParentChild(
-            EntityFormNode child,
-            EntityFormNode parent) {
-        if (parent == null) {
-            if ("TAB".equals(child.getNodeType())) {
-                throw new IllegalArgumentException("TAB 节点只能位于 TAB_SET 下");
-            }
-            return;
-        }
-        Set<String> allowedChildren = ALLOWED_CHILD_TYPES.get(parent.getNodeType());
-        if (allowedChildren == null || !allowedChildren.contains(child.getNodeType())) {
-            if ("TAB".equals(child.getNodeType())) {
-                throw new IllegalArgumentException("TAB 节点只能位于 TAB_SET 下");
-            }
-            if ("TAB_SET".equals(parent.getNodeType())) {
-                throw new IllegalArgumentException("TAB_SET 的直接子节点只能是 TAB");
-            }
-            throw new IllegalArgumentException(
-                    parent.getNodeType()
-                            + " 节点不能直接包含 "
-                            + child.getNodeType()
-                            + " 节点");
-        }
     }
 
     /**
@@ -7111,34 +7066,6 @@ public class UiConfigReleaseService {
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("模板版本必须是整数", exception);
         }
-    }
-
-    /**
-     * 将输入解析为整数，供后续范围校验或计算使用。
-     *
-     * @param value 待处理整数的原始输入，结果供调用方继续使用
-     * @param fallback 兜底，主值不可用时供后续处理兜底
-     * @return 处理后的整数结果，供调用方继续处理
-     */
-    private Integer integer(Object value, int fallback) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        try {
-            return value == null ? fallback : Integer.parseInt(String.valueOf(value));
-        } catch (NumberFormatException exception) {
-            return fallback;
-        }
-    }
-
-    /**
-     * 处理布尔值{@code flag}，并将结果传给后续步骤。
-     *
-     * @param value 待处理布尔值{@code flag}的原始输入，结果供调用方继续使用
-     * @return 处理后的布尔值{@code flag}结果，供调用方继续处理
-     */
-    private Integer booleanFlag(Object value) {
-        return Boolean.TRUE.equals(value) ? 1 : 0;
     }
 
     /**

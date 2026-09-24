@@ -3,7 +3,6 @@ package com.workflow.entity.version.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -25,12 +24,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -966,17 +962,9 @@ public class EntityRecordSnapshotService {
      */
     private String hash(Object material) {
         try {
-            String canonical = objectMapper.writer()
-                    .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-                    .writeValueAsString(material);
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256")
-                            .digest(canonical.getBytes(
-                                    StandardCharsets.UTF_8)));
+            return EntityVersionFingerprint.hash(objectMapper, material);
         } catch (Exception exception) {
-            throw new IllegalStateException(
-                    "实体版本快照哈希生成失败",
-                    exception);
+            throw new IllegalStateException("实体版本快照哈希生成失败", exception);
         }
     }
 
@@ -1686,16 +1674,7 @@ public class EntityRecordSnapshotService {
      * @return 处理后的实体结构哈希文本，供调用方比较或展示
      */
     private String entitySchemaHash(EntityPublishedSnapshot snapshot) {
-        Map<String, Object> material = new LinkedHashMap<>();
-        material.put("historyId", snapshot.getHistoryId());
-        material.put("entityId", snapshot.getEntityId());
-        material.put("entityCode", snapshot.getEntityCode());
-        material.put("version", snapshot.getVersion());
-        material.put("fields", safe(snapshot.getFields()));
-        material.put("relationsSnapshotAvailable",
-                snapshot.isRelationsSnapshotAvailable());
-        material.put("relations", safe(snapshot.getRelations()));
-        return hash(material);
+        return hash(EntityVersionFingerprint.entitySchemaMaterial(snapshot));
     }
 
     /**
@@ -1710,24 +1689,7 @@ public class EntityRecordSnapshotService {
             EntityPublishedSnapshot parent,
             EntityPublishedSnapshot child,
             EntityRelation relation) {
-        Map<String, Object> material = new LinkedHashMap<>();
-        material.put("sourceEntityCode", parent.getEntityCode());
-        material.put("sourceReleaseId", parent.getHistoryId());
-        material.put("targetEntityCode", child.getEntityCode());
-        material.put("targetReleaseId", child.getHistoryId());
-        material.put("relationCode", relation.getRelationCode());
-        material.put("dataKey", firstText(
-                relation.getDataKey(), relation.getParentFieldCode(),
-                relation.getRelationCode()));
-        material.put("childRefFieldCode", relation.getChildRefFieldCode());
-        material.put("relationType", relation.getRelationType() == null
-                ? null : relation.getRelationType().name());
-        material.put("ownershipType", relation.getOwnershipType() == null
-                ? null : relation.getOwnershipType().name());
-        material.put("cascadeDelete", relation.getCascadeDelete());
-        material.put("required", relation.getRequired());
-        material.put("enabled", relation.getEnabled());
-        return hash(material);
+        return hash(EntityVersionFingerprint.relationDefinitionMaterial(parent, child, relation));
     }
 
     /**

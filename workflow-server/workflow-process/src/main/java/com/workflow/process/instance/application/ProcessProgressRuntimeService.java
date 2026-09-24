@@ -12,7 +12,6 @@ import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGr
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
-import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -70,6 +69,7 @@ public class ProcessProgressRuntimeService {
     private final ProcessPublishedSnapshotService processPublishedSnapshotService;
     private final LocalAddSignTaskAccessService localAddSignTaskAccessService;
     private final EntityStatusService entityStatusService;
+    private final PublishedBpmnReader publishedBpmnReader;
     /** 日期时间格式化器（用于操作日志时间格式化） */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -160,61 +160,7 @@ public class ProcessProgressRuntimeService {
             if (processDefinition != null) {
                 progress.setProcessKey(processDefinition.getKey());
                 progress.setProcessVersion(processDefinition.getVersion());
-                // 获取 BPMN XML（从 Flowable 获取完整的 XML，包含 DI 图形信息）
-                try {
-                    org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
-                    if (model != null) {
-                        byte[] modelBytes = repositoryService.getModelEditorSource(model.getId());
-                        if (modelBytes != null) {
-                            progress.setBpmnXml(new String(modelBytes, java.nio.charset.StandardCharsets.UTF_8));
-                        }
-                    }
-                } catch (Exception e) {
-                    log.debug("无法从 Model 获取 BPMN XML，尝试从资源获取", e);
-                }
-                // 如果无法从 Model 获取，尝试从部署资源获取
-                if (progress.getBpmnXml() == null) {
-                    try {
-                        String resourceName = processDefinition.getResourceName();
-                        if (resourceName != null) {
-                            org.flowable.engine.repository.Deployment deployment = repositoryService
-                                    .createDeploymentQuery()
-                                    .deploymentId(processDefinition.getDeploymentId())
-                                    .singleResult();
-                            if (deployment != null) {
-                                java.io.InputStream resourceStream = repositoryService.getResourceAsStream(
-                                        deployment.getId(), resourceName);
-                                if (resourceStream != null) {
-                                    progress.setBpmnXml(new String(resourceStream.readAllBytes(),
-                                            java.nio.charset.StandardCharsets.UTF_8));
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        log.warn("从 Flowable 获取 BPMN XML 失败", e);
-                    }
-                }
-                // 部署资源缺失时只能回退到该部署 ID 对应的发布历史快照，
-                // 绝不能读取当前流程草稿的 BPMN。
-                if (!StringUtils.hasText(progress.getBpmnXml())) {
-                    try {
-                        ProcessVersionHistory publishedVersion =
-                                processPublishedSnapshotService
-                                        .getVersionByProcessDefinitionId(
-                                                processDefinitionId);
-                        if (publishedVersion != null
-                                && StringUtils.hasText(
-                                        publishedVersion.getBpmnXml())) {
-                            progress.setBpmnXml(
-                                    publishedVersion.getBpmnXml());
-                        }
-                    } catch (RuntimeException exception) {
-                        log.warn(
-                                "无法读取流程部署对应的发布 BPMN 快照: processDefinitionId={}",
-                                processDefinitionId,
-                                exception);
-                    }
-                }
+                progress.setBpmnXml(publishedBpmnReader.read(processDefinition));
                 progress.setProcessName(
                         StringUtils.hasText(processDefinition.getName())
                                 ? processDefinition.getName()
@@ -1048,66 +994,6 @@ public class ProcessProgressRuntimeService {
                     }));
         }
         return formConfig;
-    }
-
-    /**
-     * 从 BPMN XML 解析表单绑定
-     * 支持格式：
-     * 1. extensionElements -> properties -> property name="entityFormId"
-     * value="xxx"
-     * 2. userTask 标签上的 flowable:formKey="xxx" 属性
-     *
-     * @param nodeId 节点ID，后续用于解析表单键起始BPMN时定位或关联目标
-     * @param bpmnXml BPMNXML，作为 {@code builder.parse} 的输入影响后续处理
-     * @return 解析后的表单键起始BPMN文本，供调用方比较或展示
-     */
-    private String resolveFormKeyFromBpmn(String nodeId, String bpmnXml) {
-        if (bpmnXml == null || nodeId == null || nodeId.isEmpty()) {
-            return null;
-        }
-        try {
-            javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(true);
-            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
-            org.w3c.dom.Document doc = builder.parse(new java.io.ByteArrayInputStream(bpmnXml.getBytes("UTF-8")));
-            // 查找指定 id 的 userTask 元素
-            org.w3c.dom.NodeList userTasks = doc.getElementsByTagNameNS("*", "userTask");
-            for (int i = 0; i < userTasks.getLength(); i++) {
-                org.w3c.dom.Element userTask = (org.w3c.dom.Element) userTasks.item(i);
-                if (nodeId.equals(userTask.getAttribute("id"))) {
-                    // 1. 优先解析 extensionElements -> properties -> property name="entityFormId"
-                    org.w3c.dom.NodeList extElements = userTask.getElementsByTagNameNS("*", "extensionElements");
-                    for (int j = 0; j < extElements.getLength(); j++) {
-                        org.w3c.dom.Element extElement = (org.w3c.dom.Element) extElements.item(j);
-                        org.w3c.dom.NodeList properties = extElement.getElementsByTagNameNS("*", "properties");
-                        for (int k = 0; k < properties.getLength(); k++) {
-                            org.w3c.dom.Element props = (org.w3c.dom.Element) properties.item(k);
-                            org.w3c.dom.NodeList propList = props.getElementsByTagNameNS("*", "property");
-                            for (int m = 0; m < propList.getLength(); m++) {
-                                org.w3c.dom.Element prop = (org.w3c.dom.Element) propList.item(m);
-                                String name = prop.getAttribute("name");
-                                String value = prop.getAttribute("value");
-                                if ("entityFormId".equals(name) && value != null && !value.isEmpty()) {
-                                    return value;
-                                }
-                            }
-                        }
-                    }
-                    // 2. 回退：解析 userTask 标签上的 formKey 属性（flowable:formKey 或 formKey）
-                    String formKey = userTask.getAttribute("formKey");
-                    if (formKey == null || formKey.isEmpty()) {
-                        formKey = userTask.getAttributeNS("http://flowable.org/bpmn", "formKey");
-                    }
-                    if (formKey != null && !formKey.isEmpty()) {
-                        return formKey;
-                    }
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            log.debug("从BPMN解析表单绑定失败: {}", e.getMessage());
-            return null;
-        }
     }
 
     /**

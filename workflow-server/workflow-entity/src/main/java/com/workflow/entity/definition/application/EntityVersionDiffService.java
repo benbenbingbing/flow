@@ -2,14 +2,12 @@ package com.workflow.entity.definition.application;
 
 import com.workflow.entity.data.application.DynamicTableService;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.definition.api.response.EntityPublishHistoryDTO;
 import com.workflow.entity.definition.api.response.EntityVersionDiffDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.definition.infrastructure.persistence.record.EntityPublishHistory;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import lombok.RequiredArgsConstructor;
@@ -220,57 +218,7 @@ public class EntityVersionDiffService {
      * @return 比较后的字段结果，供调用方继续处理
      */
     private EntityVersionDiffDTO.FieldDiff compareField(EntityFieldDTO oldField, EntityField newField) {
-        EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
-        diff.setFieldId(newField.getId());
-        diff.setFieldCode(newField.getFieldCode());
-        diff.setFieldName(newField.getFieldName());
-        diff.setFieldType(newField.getFieldType() != null ? newField.getFieldType().name() : null);
-        diff.setDbType(newField.getDbType());
-        diff.setFieldLength(newField.getFieldLength());
-        diff.setFieldPrecision(newField.getFieldPrecision());
-        diff.setDbColumnName(newField.getDbColumnName());
-        diff.setIsRequired(newField.getIsRequired());
-        diff.setIsPublished(Boolean.TRUE.equals(newField.getIsPublished()));
-        diff.setIsSystem(Boolean.TRUE.equals(newField.getIsSystem()));
-
-        // 检查是否有变化
-        List<String> changes = new ArrayList<>();
-
-        if (!Objects.equals(oldField.getFieldName(), newField.getFieldName())) {
-            changes.add("字段名称: " + oldField.getFieldName() + " → " + newField.getFieldName());
-        }
-        if (!Objects.equals(oldField.getIsRequired(), newField.getIsRequired())) {
-            changes.add("必填: " + oldField.getIsRequired() + " → " + newField.getIsRequired());
-        }
-        if (!Objects.equals(oldField.getIsUnique(), newField.getIsUnique())) {
-            changes.add("唯一: " + oldField.getIsUnique() + " → " + newField.getIsUnique());
-        }
-        if (!Objects.equals(oldField.getDefaultValue(), newField.getDefaultValue())) {
-            changes.add("默认值: " + oldField.getDefaultValue() + " → " + newField.getDefaultValue());
-        }
-        // 字段长度/精度/列名：只有两边都不为null才比较，避免历史版本缺失这些数据导致误判
-        if (oldField.getFieldLength() != null && newField.getFieldLength() != null
-                && !Objects.equals(oldField.getFieldLength(), newField.getFieldLength())) {
-            changes.add("字段长度: " + oldField.getFieldLength() + " → " + newField.getFieldLength());
-        }
-        if (oldField.getFieldPrecision() != null && newField.getFieldPrecision() != null
-                && !Objects.equals(oldField.getFieldPrecision(), newField.getFieldPrecision())) {
-            changes.add("小数位数: " + oldField.getFieldPrecision() + " → " + newField.getFieldPrecision());
-        }
-        if (oldField.getDbColumnName() != null && newField.getDbColumnName() != null
-                && !Objects.equals(oldField.getDbColumnName(), newField.getDbColumnName())) {
-            changes.add("数据库列名: " + oldField.getDbColumnName() + " → " + newField.getDbColumnName());
-        }
-
-        if (changes.isEmpty()) {
-            diff.setChangeType(EntityVersionDiffDTO.FieldDiff.ChangeType.UNCHANGED);
-            diff.setChangeDescription("无变化");
-        } else {
-            diff.setChangeType(EntityVersionDiffDTO.FieldDiff.ChangeType.MODIFY);
-            diff.setChangeDescription(String.join("; ", changes));
-        }
-
-        return diff;
+        return compareField(oldField, EntityFieldViewMapper.fromField(newField));
     }
 
     /**
@@ -342,32 +290,7 @@ public class EntityVersionDiffService {
      * @return 转换后的截止字段差异结果，供调用方继续处理
      */
     private EntityVersionDiffDTO.FieldDiff convertToFieldDiff(EntityField field, EntityVersionDiffDTO.FieldDiff.ChangeType changeType) {
-        EntityVersionDiffDTO.FieldDiff diff = new EntityVersionDiffDTO.FieldDiff();
-        diff.setFieldId(field.getId());
-        diff.setFieldCode(field.getFieldCode());
-        diff.setFieldName(field.getFieldName());
-        diff.setFieldType(field.getFieldType() != null ? field.getFieldType().name() : null);
-        diff.setDbType(field.getDbType());
-        diff.setFieldLength(field.getFieldLength());
-        diff.setFieldPrecision(field.getFieldPrecision());
-        diff.setDbColumnName(field.getDbColumnName());
-        diff.setIsRequired(field.getIsRequired());
-        diff.setIsPublished(Boolean.TRUE.equals(field.getIsPublished()));
-        diff.setIsSystem(Boolean.TRUE.equals(field.getIsSystem()));
-        diff.setChangeType(changeType);
-
-        switch (changeType) {
-            case ADD:
-                diff.setChangeDescription("新增字段");
-                break;
-            case REMOVE:
-                diff.setChangeDescription("删除字段");
-                break;
-            default:
-                diff.setChangeDescription("");
-        }
-
-        return diff;
+        return convertToFieldDiff(EntityFieldViewMapper.fromField(field), changeType);
     }
 
     /**

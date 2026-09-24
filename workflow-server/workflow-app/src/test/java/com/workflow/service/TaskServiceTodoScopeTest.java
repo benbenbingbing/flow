@@ -50,13 +50,15 @@ class TaskServiceTodoScopeTest {
         history = mock(HistoryService.class, RETURNS_DEEP_STUBS);
         runtime = mock(RuntimeService.class, RETURNS_DEEP_STUBS);
         processTasks = mock(ProcessTaskService.class);
-        service = new TaskServiceImpl(flowable,
-                history,
-                runtime,
-                mock(RepositoryService.class, RETURNS_DEEP_STUBS),
-                processTasks, mock(EntityFormService.class),
-                mock(EntityDataDynamicService.class), mock(SysUserService.class),
-                new ObjectMapper(), mock(TaskActionService.class));
+        var repository = mock(RepositoryService.class, RETURNS_DEEP_STUBS);
+        var records = mock(EntityDataDynamicService.class);
+        var users = mock(SysUserService.class);
+        var lists = new com.workflow.process.task.application.TaskListQueryService(flowable, history, runtime,
+                repository, processTasks, records, users,
+                mock(com.workflow.entity.definition.application.EntityStatusService.class),
+                mock(com.workflow.process.task.application.TaskInboxQueryService.class));
+        service = new TaskServiceImpl(flowable, history, runtime, processTasks,
+                mock(EntityFormService.class), records, new ObjectMapper(), mock(TaskActionService.class), lists);
     }
 
     @AfterEach

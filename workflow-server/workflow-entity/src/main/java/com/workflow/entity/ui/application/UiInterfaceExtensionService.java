@@ -22,7 +22,6 @@ import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
@@ -2256,46 +2255,6 @@ public class UiInterfaceExtensionService {
         }
 
         /**
-         * 复制定义；结果供后续流程传递或持久化。
-         *
-         * @param source 待复制定义的原始输入，结果供调用方继续使用
-         * @return 复制后的定义结果，供调用方继续处理
-         */
-        private UiExtensionDefinition copyDefinition(
-                        UiExtensionDefinition source) {
-                UiExtensionDefinition target = new UiExtensionDefinition();
-                target.setId(source.getId());
-                target.setSourceCode(source.getSourceCode());
-                target.setSourceName(source.getSourceName());
-                target.setSourceType(source.getSourceType());
-                target.setProviderCode(source.getProviderCode());
-                target.setScopeType(source.getScopeType());
-                target.setScopeId(source.getScopeId());
-                target.setConfigDocument(source.getConfigDocument());
-                target.setExecutionPolicyDocument(source.getExecutionPolicyDocument());
-                target.setOperationInputSchemaDocument(
-                                source.getOperationInputSchemaDocument());
-                target.setOperationOutputSchemaDocument(
-                                source.getOperationOutputSchemaDocument());
-                target.setOperationCode(source.getOperationCode());
-                target.setOperationContextType(source.getOperationContextType());
-                target.setOperationKind(source.getOperationKind());
-                target.setExtensionType(source.getExtensionType());
-                target.setVersion(source.getVersion());
-                target.setSnapshotVersion(source.getSnapshotVersion());
-                target.setLegacyServiceId(source.getLegacyServiceId());
-                target.setProviderVersion(source.getProviderVersion());
-                target.setProviderArtifactDigest(
-                                source.getProviderArtifactDigest());
-                target.setRevision(source.getRevision());
-                target.setEnabled(source.getEnabled());
-                target.setCreatedAt(source.getCreatedAt());
-                target.setUpdatedAt(source.getUpdatedAt());
-                target.setDeleted(source.getDeleted());
-                return target;
-        }
-
-        /**
          * 处理失败，并将结果传给后续步骤。
          *
          * @param policy 策略内容，决定后续失败的处理规则
@@ -2629,21 +2588,6 @@ public class UiInterfaceExtensionService {
         }
 
         /**
-         * 写入界面接口扩展列表；后续读取或执行将使用更新后的状态。
-         *
-         * @param value 待写入界面接口扩展列表的原始输入，结果供调用方继续使用
-         * @param label 标签，后续用于写入界面接口扩展列表时匹配或展示
-         * @return 写入后的界面接口扩展列表文本，供调用方比较或展示
-         */
-        private String writeList(
-                        List<Map<String, Object>> value,
-                        String label) {
-                return value == null || value.isEmpty()
-                                ? null
-                                : codec.write(value, label);
-        }
-
-        /**
          * 读取界面接口扩展；查询结果供调用方展示或继续处理。
          *
          * @param value 待读取界面接口扩展的原始输入，结果供调用方继续使用
@@ -2654,25 +2598,6 @@ public class UiInterfaceExtensionService {
                 return StringUtils.hasText(value)
                                 ? codec.readObject(value, label)
                                 : new LinkedHashMap<>();
-        }
-
-        /**
-         * 读取界面接口扩展列表；查询结果供调用方展示或继续处理。
-         *
-         * @param value 待读取界面接口扩展列表的原始输入，结果供调用方继续使用
-         * @param label 标签，后续用于读取界面接口扩展列表时匹配或展示
-         * @return 界面接口扩展集合，供调用方遍历或展示
-         */
-        private List<Map<String, Object>> readList(
-                        String value,
-                        String label) {
-                if (!StringUtils.hasText(value)) {
-                        return List.of();
-                }
-                return codec.readArray(value, label).stream()
-                                .filter(Map.class::isInstance)
-                                .map(item -> stringMap((Map<?, ?>) item))
-                                .toList();
         }
 
         /**

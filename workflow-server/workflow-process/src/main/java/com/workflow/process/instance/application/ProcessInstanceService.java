@@ -58,6 +58,7 @@ public class ProcessInstanceService {
     private final ProcessTerminationService processTerminationService;
     private final NodeOperationCapabilityService nodeOperationCapabilityService;
     private final EntityStatusService entityStatusService;
+    private final PublishedBpmnReader publishedBpmnReader;
     @org.springframework.beans.factory.annotation.Autowired
     private ProcessRoundService processRoundService;
     
@@ -302,52 +303,7 @@ public class ProcessInstanceService {
      * @return 读取后的BPMNXML流程定义ID文本，供调用方比较或展示
      */
     private String getBpmnXmlByProcessDefinitionId(String processDefinitionId) {
-        if (processDefinitionId == null) {
-            return null;
-        }
-        
-        try {
-            ProcessDefinition processDefinition = repositoryService.createProcessDefinitionQuery()
-                    .processDefinitionId(processDefinitionId)
-                    .singleResult();
-            
-            if (processDefinition == null) {
-                return null;
-            }
-            
-            // 先从 Model 获取
-            try {
-                org.flowable.engine.repository.Model model = repositoryService.getModel(processDefinition.getId());
-                if (model != null) {
-                    byte[] modelBytes = repositoryService.getModelEditorSource(model.getId());
-                    if (modelBytes != null) {
-                        return new String(modelBytes, java.nio.charset.StandardCharsets.UTF_8);
-                    }
-                }
-            } catch (Exception e) {
-                log.debug("无法从 Model 获取 BPMN XML", e);
-            }
-            
-            // 从部署资源获取
-            String resourceName = processDefinition.getResourceName();
-            if (resourceName != null) {
-                org.flowable.engine.repository.Deployment deployment = repositoryService.createDeploymentQuery()
-                        .deploymentId(processDefinition.getDeploymentId())
-                        .singleResult();
-                if (deployment != null) {
-                    java.io.InputStream resourceStream = repositoryService.getResourceAsStream(
-                            deployment.getId(), resourceName);
-                    if (resourceStream != null) {
-                        return new String(resourceStream.readAllBytes(), 
-                                java.nio.charset.StandardCharsets.UTF_8);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("获取 BPMN XML 失败", e);
-        }
-        
-        return null;
+        return publishedBpmnReader.read(processDefinitionId);
     }
     
     /**

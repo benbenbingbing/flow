@@ -9,10 +9,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -43,33 +39,7 @@ public class TaskInboxQueryService {
 
     /** 纯摘要映射；状态字典按实体缓存，绝不在逐条映射时读取历史流程或业务详情。 */
     private TaskVO toVO(ProcessTask task, Map<String, Map<String, String>> statusNames) {
-        TaskVO vo = new TaskVO();
-        vo.setTaskId(task.getTaskId());
-        vo.setTaskName(task.getNodeName());
-        vo.setNodeType(task.getNodeType());
-        vo.setProcessInstanceId(task.getProcessInstanceId());
-        vo.setProcessDefinitionId(task.getProcessDefinitionId());
-        vo.setProcessName(task.getProcessName());
-        vo.setAssignee(task.getAssigneeId());
-        vo.setAssigneeName(task.getAssigneeName());
-        vo.setAssigneeType(task.getAssigneeType());
-        vo.setClaimRequired("group".equalsIgnoreCase(task.getAssigneeType()));
-        vo.setCanClaim("todo".equals(task.getStatus()) && "group".equalsIgnoreCase(task.getAssigneeType())
-                && !"ADD_SIGN".equals(task.getNodeType()));
-        vo.setStartUserName(task.getStartUserName());
-        vo.setBusinessKey(task.getBusinessKey());
-        vo.setCreateTime(date(task.getStartTime(), ZoneId.systemDefault()));
-        vo.setEndTime(date(task.getEndTime(), ZoneId.systemDefault()));
-        vo.setDuration(task.getDuration());
-        vo.setPriority(task.getPriority());
-        vo.setResult(task.getAction());
-        vo.setComment(task.getComment());
-        vo.setSlaStatus(task.getSlaStatus());
-        vo.setResponseDueTime(date(task.getResponseDueTime(), ZoneOffset.UTC));
-        vo.setDueTime(date(task.getDueTime(), ZoneOffset.UTC));
-        vo.setEntityCode(task.getEntityCode());
-        vo.setEntityDataId(task.getEntityDataId());
-        vo.setFormKey(task.getFormKey());
+        TaskVO vo = TaskListViewMapper.fromMirror(task);
         vo.setName(task.getBusinessName());
         vo.setCode(task.getBusinessCode());
         vo.setDataName(task.getBusinessDataName());
@@ -82,7 +52,4 @@ public class TaskInboxQueryService {
         return vo;
     }
 
-    private Date date(LocalDateTime value, ZoneId zone) {
-        return value == null ? null : Date.from(value.atZone(zone).toInstant());
-    }
 }

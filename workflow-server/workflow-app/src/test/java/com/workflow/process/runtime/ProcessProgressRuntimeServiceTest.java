@@ -564,6 +564,7 @@ class ProcessProgressRuntimeServiceTest {
         /** 设置流程定义桩数据，含 Key 与名称 */
         void processDefinition() {
             ProcessDefinition processDefinition = mock(ProcessDefinition.class);
+            when(processDefinition.getId()).thenReturn("pd-1");
             when(processDefinition.getKey()).thenReturn("expense_flow");
             when(processDefinition.getName()).thenReturn("expense_flow");
             when(processDefinition.getVersion()).thenReturn(7);
@@ -756,7 +757,8 @@ class ProcessProgressRuntimeServiceTest {
                     runtimeService, historyService, repositoryService, taskService,
                     sysUserService, entityDataDynamicService, entityFormRuntimeService,
                     entityDefinitionMapper, processTaskMapper, sysGroupMapper, sysUserGroupMapper,
-                    sysUserMapper, operationLogMapper, snapshotService, localAddSignTaskAccessService, entityStatusService);
+                    sysUserMapper, operationLogMapper, snapshotService, localAddSignTaskAccessService, entityStatusService,
+                    new com.workflow.process.instance.application.PublishedBpmnReader(repositoryService, snapshotService));
         }
     }
 }

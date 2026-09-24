@@ -19,7 +19,6 @@ import com.workflow.entity.ui.api.request.UiEventBindingSaveRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiEventBinding;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
@@ -92,29 +91,8 @@ public class UiEventBindingService {
             UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
             UiDataSourceUsages.ROW_BUTTON_CLICK,
             UiDataSourceUsages.FORM_BUTTON_CLICK);
-    private static final Set<String> FORM_EVENTS = Set.of(
-            UiDataSourceUsages.DETAIL_LOAD,
-            UiDataSourceUsages.DATA_CREATE,
-            UiDataSourceUsages.DATA_UPDATE,
-            UiDataSourceUsages.FORM_OPEN,
-            UiDataSourceUsages.FORM_SAVE,
-            UiDataSourceUsages.FORM_RESET,
-            UiDataSourceUsages.FIELD_CHANGE,
-            UiDataSourceUsages.ENTITY_SELECTED,
-            UiDataSourceUsages.FIELD_BUTTON_CLICK,
-            UiDataSourceUsages.SUBFORM_LOAD,
-            UiDataSourceUsages.SUBFORM_SAVE,
-            UiDataSourceUsages.FORM_BUTTON_CLICK);
-    private static final Set<String> LIST_EVENTS = Set.of(
-            UiDataSourceUsages.LIST_LOAD,
-            UiDataSourceUsages.LIST_EXPORT,
-            UiDataSourceUsages.DETAIL_LOAD,
-            UiDataSourceUsages.DATA_CREATE,
-            UiDataSourceUsages.DATA_UPDATE,
-            UiDataSourceUsages.DATA_DELETE,
-            UiDataSourceUsages.DATA_BATCH_DELETE,
-            UiDataSourceUsages.TOOLBAR_BUTTON_CLICK,
-            UiDataSourceUsages.ROW_BUTTON_CLICK);
+    private static final Set<String> FORM_EVENTS = UiEventBindingApplicability.FORM_EVENTS;
+    private static final Set<String> LIST_EVENTS = UiEventBindingApplicability.LIST_EVENTS;
     private static final Set<String> FORM_FIELD_EVENTS = Set.of(
             UiDataSourceUsages.FIELD_CHANGE,
             UiDataSourceUsages.ENTITY_SELECTED,
@@ -551,29 +529,6 @@ public class UiEventBindingService {
                 LogValue.safe(chain.entityCode()),
                 LogValue.safe(chain.listKey()),
                 LogValue.safe(source));
-    }
-
-    /**
-     * 处理空链，并将结果传给后续步骤。
-     *
-     * @param configType 配置类型标识，决定后续空链采用的处理分支
-     * @param request 本次请求，后续经校验后用于处理空链
-     * @return 处理后的空链结果，供调用方继续处理
-     */
-    private ResolvedEventChain emptyChain(
-            String configType,
-            UiEventExecuteRequest request) {
-        ConfigIdentity identity = identity(
-                configType,
-                request.getConfigId());
-        return new ResolvedEventChain(
-                List.of(),
-                null,
-                null,
-                identity.entityId(),
-                identity.entityCode(),
-                identity.listKey(),
-                Map.of());
     }
 
     /**
@@ -1258,16 +1213,6 @@ public class UiEventBindingService {
     private String normalize(String value) {
         return StringUtils.hasText(value)
                 ? value.trim().toUpperCase(Locale.ROOT) : "";
-    }
-
-    /**
-     * 把空白文本转为 null，避免后续把空字符串当作有效配置。
-     *
-     * @param value 待处理空白截止空值的原始输入，结果供调用方继续使用
-     * @return 处理后的空白截止空值文本，供调用方比较或展示
-     */
-    private String blankToNull(String value) {
-        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     /**

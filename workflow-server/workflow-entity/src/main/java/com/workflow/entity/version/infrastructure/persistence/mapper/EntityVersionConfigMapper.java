@@ -112,6 +112,7 @@ public interface EntityVersionConfigMapper
                 .set(EntityVersionConfig::getEnabled, enabled)
                 .set(EntityVersionConfig::getConfigDocument, configDocument)
                 .set(EntityVersionConfig::getUpdateBy, updateBy)
-                .setSql("revision = revision + 1, update_time = CURRENT_TIMESTAMP"));
+                .setIncrBy(EntityVersionConfig::getRevision, 1)
+                .setSql("update_time = CURRENT_TIMESTAMP"));
     }
 }

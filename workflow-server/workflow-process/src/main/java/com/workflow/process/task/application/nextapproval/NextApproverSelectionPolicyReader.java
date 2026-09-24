@@ -475,22 +475,6 @@ public class NextApproverSelectionPolicyReader {
     }
 
     /**
-     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 处理后的首个文本文本，供调用方比较或展示
-     */
-    private String firstText(Object... values) {
-        for (Object value : values) {
-            String result = text(value);
-            if (StringUtils.hasText(result)) {
-                return result.trim();
-            }
-        }
-        return null;
-    }
-
-    /**
      * 将输入转换为文本，供后续校验、映射或展示使用。
      *
      * @param value 待处理文本的原始输入，结果供调用方继续使用

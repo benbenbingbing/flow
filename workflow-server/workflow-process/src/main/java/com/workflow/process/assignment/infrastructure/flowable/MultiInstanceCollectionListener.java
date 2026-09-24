@@ -27,7 +27,6 @@ import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.bpmn.model.Activity;
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.FlowElement;
-import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.bpmn.model.SubProcess;
 import org.flowable.bpmn.model.UserTask;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -698,23 +697,6 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
     }
 
     /**
-     * 规范化分配类型；输出作为后续校验或处理的输入。
-     *
-     * @param raw 待规范化分配类型的原始输入，结果供调用方继续使用
-     * @return 规范化后的分配类型文本，供调用方比较或展示
-     */
-    private String normalizeAssignmentType(Object raw) {
-        String value = text(raw);
-        if (!StringUtils.hasText(value)) {
-            return "";
-        }
-        String normalized = value.trim().toLowerCase(
-                java.util.Locale.ROOT);
-        return "interface".equals(normalized)
-                ? "resolver" : normalized;
-    }
-
-    /**
      * 生成已发布流程配置ID文本，供后续匹配或展示。
      *
      * @param definition 定义，作为 {@code findByDeploymentId} 的输入影响后续处理
@@ -769,28 +751,6 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
      * @return 映射值键值结果，供调用方继续处理
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> mapValue(Object value) {
-        return value instanceof Map<?, ?>
-                ? (Map<String, Object>) value
-                : Map.of();
-    }
-
-    /**
-     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 处理后的首个文本文本，供调用方比较或展示
-     */
-    private String firstText(Object... values) {
-        for (Object value : values) {
-            String text = text(value);
-            if (text != null && !text.isBlank()) {
-                return text;
-            }
-        }
-        return null;
-    }
-
     /**
      * 将输入转换为文本，供后续校验、映射或展示使用。
      *
@@ -799,16 +759,6 @@ public class MultiInstanceCollectionListener implements FlowableEventListener {
      */
     private String text(Object value) {
         return value == null ? null : String.valueOf(value);
-    }
-
-    /**
-     * 生成空值安全文本，供后续匹配或展示。
-     *
-     * @param value 待处理空值安全的原始输入，结果供调用方继续使用
-     * @return 处理后的空值安全文本，供调用方比较或展示
-     */
-    private String nullSafe(String value) {
-        return value == null ? "" : value;
     }
 
     /**

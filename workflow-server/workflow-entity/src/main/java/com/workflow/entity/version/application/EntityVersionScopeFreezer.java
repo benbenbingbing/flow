@@ -3,7 +3,6 @@ package com.workflow.entity.version.application;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
@@ -15,11 +14,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -530,16 +526,7 @@ public class EntityVersionScopeFreezer {
      * @return 处理后的实体结构哈希文本，供调用方比较或展示
      */
     private String entitySchemaHash(EntityPublishedSnapshot snapshot) {
-        Map<String, Object> material = new LinkedHashMap<>();
-        material.put("historyId", snapshot.getHistoryId());
-        material.put("entityId", snapshot.getEntityId());
-        material.put("entityCode", snapshot.getEntityCode());
-        material.put("version", snapshot.getVersion());
-        material.put("fields", safe(snapshot.getFields()));
-        material.put("relationsSnapshotAvailable",
-                snapshot.isRelationsSnapshotAvailable());
-        material.put("relations", safe(snapshot.getRelations()));
-        return hash(material);
+        return hash(EntityVersionFingerprint.entitySchemaMaterial(snapshot));
     }
 
     /**
@@ -554,24 +541,7 @@ public class EntityVersionScopeFreezer {
             EntityPublishedSnapshot parent,
             EntityPublishedSnapshot child,
             EntityRelation relation) {
-        Map<String, Object> material = new LinkedHashMap<>();
-        material.put("sourceEntityCode", parent.getEntityCode());
-        material.put("sourceReleaseId", parent.getHistoryId());
-        material.put("targetEntityCode", child.getEntityCode());
-        material.put("targetReleaseId", child.getHistoryId());
-        material.put("relationCode", relation.getRelationCode());
-        material.put("dataKey", firstText(
-                relation.getDataKey(), relation.getParentFieldCode(),
-                relation.getRelationCode()));
-        material.put("childRefFieldCode", relation.getChildRefFieldCode());
-        material.put("relationType", relation.getRelationType() == null
-                ? null : relation.getRelationType().name());
-        material.put("ownershipType", relation.getOwnershipType() == null
-                ? null : relation.getOwnershipType().name());
-        material.put("cascadeDelete", relation.getCascadeDelete());
-        material.put("required", relation.getRequired());
-        material.put("enabled", relation.getEnabled());
-        return hash(material);
+        return hash(EntityVersionFingerprint.relationDefinitionMaterial(parent, child, relation));
     }
 
     /**
@@ -660,12 +630,7 @@ public class EntityVersionScopeFreezer {
      */
     private String hash(Object value) {
         try {
-            byte[] input = objectMapper.writer()
-                    .with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-                    .writeValueAsString(value)
-                    .getBytes(StandardCharsets.UTF_8);
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(input));
+            return EntityVersionFingerprint.hash(objectMapper, value);
         } catch (Exception exception) {
             throw new IllegalStateException("数据版本范围摘要计算失败", exception);
         }

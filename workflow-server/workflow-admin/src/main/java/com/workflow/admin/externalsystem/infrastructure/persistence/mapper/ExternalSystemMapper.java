@@ -3,11 +3,11 @@ package com.workflow.admin.externalsystem.infrastructure.persistence.mapper;
 import java.util.List;
 import com.workflow.core.database.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 
@@ -81,29 +81,23 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
      * @param expectedVersion 预期版本，供本方法更新可变字段时使用
      * @param updatedBy {@code updated}，供本方法更新可变字段时使用
      * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
-     * @return 更新后的可变字段结果，供调用方继续处理
+     * @return 受影响行数；记录不存在、已删除或版本冲突时返回 0
      */
-    @Update("""
-            UPDATE sys_external_system
-            SET system_name = #{systemName},
-                status = #{status},
-                address = #{address},
-                description = #{description},
-                version = version + 1,
-                updated_by = #{updatedBy},
-                update_time = #{updateTime}
-            WHERE id = #{id} AND deleted = 0
-              AND version = #{expectedVersion}
-            """)
-    int updateMutableFields(
-            @Param("id") String id,
-            @Param("systemName") String systemName,
-            @Param("status") String status,
-            @Param("address") String address,
-            @Param("description") String description,
-            @Param("expectedVersion") long expectedVersion,
-            @Param("updatedBy") String updatedBy,
-            @Param("updateTime") LocalDateTime updateTime);
+    default int updateMutableFields(String id, String systemName, String status, String address,
+                                    String description, long expectedVersion, String updatedBy,
+                                    LocalDateTime updateTime) {
+        // 显式 set 保留 NULL 清空语义；版本校验、自增和字段修改必须在同一条 UPDATE 中完成。
+        return update(null, Wrappers.<ExternalSystemRecord>lambdaUpdate()
+                .set(ExternalSystemRecord::getSystemName, systemName)
+                .set(ExternalSystemRecord::getStatus, status)
+                .set(ExternalSystemRecord::getAddress, address)
+                .set(ExternalSystemRecord::getDescription, description)
+                .setIncrBy(ExternalSystemRecord::getVersion, 1)
+                .set(ExternalSystemRecord::getUpdatedBy, updatedBy)
+                .set(ExternalSystemRecord::getUpdateTime, updateTime)
+                .eq(ExternalSystemRecord::getId, id)
+                .eq(ExternalSystemRecord::getVersion, expectedVersion));
+    }
 
     /**
      * 更新外部系统启停状态，同时校验并推进乐观版本。
@@ -113,22 +107,18 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
      * @param expectedVersion 预期版本，供本方法更新状态时使用
      * @param updatedBy {@code updated}，供本方法更新状态时使用
      * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
-     * @return 更新后的状态结果，供调用方继续处理
+     * @return 受影响行数；记录不存在、已删除或版本冲突时返回 0
      */
-    @Update("""
-            UPDATE sys_external_system
-            SET status = #{status}, version = version + 1,
-                updated_by = #{updatedBy},
-                update_time = #{updateTime}
-            WHERE id = #{id} AND deleted = 0
-              AND version = #{expectedVersion}
-            """)
-    int updateStatus(
-            @Param("id") String id,
-            @Param("status") String status,
-            @Param("expectedVersion") long expectedVersion,
-            @Param("updatedBy") String updatedBy,
-            @Param("updateTime") LocalDateTime updateTime);
+    default int updateStatus(String id, String status, long expectedVersion,
+                             String updatedBy, LocalDateTime updateTime) {
+        return update(null, Wrappers.<ExternalSystemRecord>lambdaUpdate()
+                .set(ExternalSystemRecord::getStatus, status)
+                .setIncrBy(ExternalSystemRecord::getVersion, 1)
+                .set(ExternalSystemRecord::getUpdatedBy, updatedBy)
+                .set(ExternalSystemRecord::getUpdateTime, updateTime)
+                .eq(ExternalSystemRecord::getId, id)
+                .eq(ExternalSystemRecord::getVersion, expectedVersion));
+    }
 
     /**
      * 逻辑删除外部系统并同步将其状态置为禁用，同时推进乐观版本。
@@ -137,19 +127,17 @@ public interface ExternalSystemMapper extends BaseMapper<ExternalSystemRecord> {
      * @param expectedVersion 预期版本，供本方法处理{@code soft}删除时使用
      * @param updatedBy {@code updated}，供本方法处理{@code soft}删除时使用
      * @param updateTime 更新时间，后续用于判断有效期或展示该事件的发生时间
-     * @return 处理后的{@code soft}删除结果，供调用方继续处理
+     * @return 受影响行数；记录不存在、已删除或版本冲突时返回 0
      */
-    @Update("""
-            UPDATE sys_external_system
-            SET deleted = 1, status = '1', version = version + 1,
-                updated_by = #{updatedBy},
-                update_time = #{updateTime}
-            WHERE id = #{id} AND deleted = 0
-              AND version = #{expectedVersion}
-            """)
-    int softDelete(
-            @Param("id") String id,
-            @Param("expectedVersion") long expectedVersion,
-            @Param("updatedBy") String updatedBy,
-            @Param("updateTime") LocalDateTime updateTime);
+    default int softDelete(String id, long expectedVersion, String updatedBy, LocalDateTime updateTime) {
+        // BaseMapper 自动限定活动记录；显式更新删除标记以便同时禁用系统并推进版本。
+        return update(null, Wrappers.<ExternalSystemRecord>lambdaUpdate()
+                .set(ExternalSystemRecord::getDeleted, 1)
+                .set(ExternalSystemRecord::getStatus, "1")
+                .setIncrBy(ExternalSystemRecord::getVersion, 1)
+                .set(ExternalSystemRecord::getUpdatedBy, updatedBy)
+                .set(ExternalSystemRecord::getUpdateTime, updateTime)
+                .eq(ExternalSystemRecord::getId, id)
+                .eq(ExternalSystemRecord::getVersion, expectedVersion));
+    }
 }

@@ -7,8 +7,6 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
@@ -725,8 +723,8 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         }
         try {
             JsonNode root = objectMapper.readTree(document);
-            rewriteSlaUserReferences(
-                    root,
+            SlaUserReferenceRewriter.rewrite(
+                    root, objectMapper,
                     value -> {
                         String portable = portableUserReference(value);
                         addDependency(
@@ -758,48 +756,6 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         }
         // 源环境查询只用于把本地 ID 转为登录名；账号是否存在由目标环境校验。
         return "wf-user://" + portableAssignmentKey("USER", value);
-    }
-
-    /**
-     * 处理重写SLA用户引用，并将结果传给后续步骤。
-     *
-     * @param node 节点，供本方法处理重写SLA用户引用时使用
-     * @param converter {@code converter}，作为 {@code objectNode.put} 的输入影响后续处理
-     */
-    private void rewriteSlaUserReferences(
-            JsonNode node,
-            java.util.function.UnaryOperator<String> converter) {
-        if (node == null) {
-            return;
-        }
-        if (node instanceof ObjectNode objectNode) {
-            List<String> names = new ArrayList<>();
-            objectNode.fieldNames().forEachRemaining(names::add);
-            for (String name : names) {
-                JsonNode value = objectNode.get(name);
-                if ("userId".equals(name) && value.isTextual()) {
-                    objectNode.put(
-                            name,
-                            converter.apply(value.asText()));
-                    continue;
-                }
-                if ("userIds".equals(name)
-                        && value instanceof ArrayNode values) {
-                    ArrayNode converted = objectMapper.createArrayNode();
-                    values.forEach(item -> converted.add(
-                            item.isTextual()
-                                    ? converter.apply(item.asText())
-                                    : item.asText()));
-                    objectNode.set(name, converted);
-                    continue;
-                }
-                rewriteSlaUserReferences(value, converter);
-            }
-            return;
-        }
-        if (node.isArray()) {
-            node.forEach(value -> rewriteSlaUserReferences(value, converter));
-        }
     }
 
     /**
@@ -2361,17 +2317,6 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         return assetMapper.selectOne(new LambdaQueryWrapper<ConfigMigrationAsset>()
                 .eq(ConfigMigrationAsset::getAssetType, assetType)
                 .eq(ConfigMigrationAsset::getSourceHistoryId, sourceHistoryId));
-    }
-
-    /**
-     * 判断是否存在配置迁移资产；判断结果决定调用方的后续分支。
-     *
-     * @param assetType 资产类型标识，决定后续配置迁移资产采用的处理分支
-     * @param sourceHistoryId 来源历史ID，后续用于判断是否存在配置迁移资产时定位或关联目标
-     * @return 配置迁移资产条件成立时为 true，否则为 false
-     */
-    private boolean exists(String assetType, String sourceHistoryId) {
-        return findByHistory(assetType, sourceHistoryId) != null;
     }
 
     /**

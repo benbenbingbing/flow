@@ -9,8 +9,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.admin.dictionary.application.DictCacheService;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
@@ -27,7 +25,6 @@ import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
 import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
-import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -596,8 +593,8 @@ public class ConfigMigrationImportApplyService {
         }
         try {
             JsonNode root = objectMapper.readTree(document);
-            rewriteSlaUserReferences(
-                    root,
+            SlaUserReferenceRewriter.rewrite(
+                    root, objectMapper,
                     this::resolveSlaUserReference);
             return objectMapper.writeValueAsString(root);
         } catch (Exception exception) {
@@ -634,50 +631,6 @@ public class ConfigMigrationImportApplyService {
                             + sourceKey);
         }
         return user.getId();
-    }
-
-    /**
-     * 处理重写SLA用户引用，并将结果传给后续步骤。
-     *
-     * @param node 节点，供本方法处理重写SLA用户引用时使用
-     * @param converter {@code converter}，作为 {@code objectNode.put} 的输入影响后续处理
-     */
-    private void rewriteSlaUserReferences(
-            JsonNode node,
-            java.util.function.UnaryOperator<String> converter) {
-        if (node == null) {
-            return;
-        }
-        if (node instanceof ObjectNode objectNode) {
-            List<String> names = new ArrayList<>();
-            objectNode.fieldNames().forEachRemaining(names::add);
-            for (String name : names) {
-                JsonNode value = objectNode.get(name);
-                if ("userId".equals(name) && value.isTextual()) {
-                    objectNode.put(
-                            name,
-                            converter.apply(value.asText()));
-                    continue;
-                }
-                if ("userIds".equals(name)
-                        && value instanceof ArrayNode values) {
-                    ArrayNode converted =
-                            objectMapper.createArrayNode();
-                    values.forEach(item -> converted.add(
-                            item.isTextual()
-                                    ? converter.apply(item.asText())
-                                    : item.asText()));
-                    objectNode.set(name, converted);
-                    continue;
-                }
-                rewriteSlaUserReferences(value, converter);
-            }
-            return;
-        }
-        if (node.isArray()) {
-            node.forEach(value ->
-                    rewriteSlaUserReferences(value, converter));
-        }
     }
 
     /**

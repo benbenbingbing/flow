@@ -19,7 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -748,34 +747,11 @@ public class PermissionSqlBuilder {
             case "roleIds" -> user.getRoleIds();
             default -> null;
         };
-        return compare(actual, node.getOperator(), node.getValue());
-    }
-
-    /**
-     * 比较权限SQL构建器；结果供调用方的后续步骤使用。
-     *
-     * @param actual 实际，作为 {@code isEmpty} 的输入影响后续处理
-     * @param operator 操作人，作为 {@code normalized} 的输入影响后续处理
-     * @param expected 预期，作为 {@code equalsValue} 的输入影响后续处理
-     * @return 权限SQL构建器条件成立时为 true，否则为 false
-     */
-    private boolean compare(Object actual, String operator, Object expected) {
-        String op = normalized(operator, "EQ");
-        return switch (op) {
-            case "EMPTY" -> isEmpty(actual);
-            case "NOT_EMPTY" -> !isEmpty(actual);
-            case "EQ" -> equalsValue(actual, expected);
-            case "NE" -> !equalsValue(actual, expected);
-            case "IN" -> toValues(expected).stream().anyMatch(value -> equalsValue(actual, value));
-            case "NOT_IN" -> toValues(expected).stream().noneMatch(value -> equalsValue(actual, value));
-            case "CONTAINS" -> contains(actual, expected);
-            case "NOT_CONTAINS" -> !contains(actual, expected);
-            case "GT" -> compareOrdered(actual, expected) > 0;
-            case "GTE" -> compareOrdered(actual, expected) >= 0;
-            case "LT" -> compareOrdered(actual, expected) < 0;
-            case "LTE" -> compareOrdered(actual, expected) <= 0;
-            default -> false;
-        };
+        // 遗留 SQL 配置允许逗号分隔的集合输入；先按原协议归一化，再共用比较语义。
+        String operator = normalized(node.getOperator(), "EQ");
+        Object expected = node.getValue() != null && Set.of("IN", "NOT_IN").contains(operator)
+                ? toValues(node.getValue()) : node.getValue();
+        return PermissionConditionComparison.compare(actual, operator, expected);
     }
 
     /**
@@ -1255,26 +1231,6 @@ public class PermissionSqlBuilder {
     }
 
     /**
-     * 生成或SQL文本，供后续匹配或展示。
-     *
-     * @param left 左侧，供本方法处理或SQL时使用
-     * @param right 右侧，作为 {@code OR} 的输入影响后续处理
-     * @return 处理后的或SQL文本，供调用方比较或展示
-     */
-    private String orSql(String left, String right) {
-        if (!StringUtils.hasText(left) || "1=0".equals(left)) {
-            return StringUtils.hasText(right) ? right : "1=0";
-        }
-        if (!StringUtils.hasText(right) || "1=0".equals(right)) {
-            return left;
-        }
-        if ("1=1".equals(left) || "1=1".equals(right)) {
-            return "1=1";
-        }
-        return "(" + left + ") OR (" + right + ")";
-    }
-
-    /**
      * 判断是否匹配用户SQL；判断结果决定调用方的后续分支。
      *
      * @param field 字段，供本方法判断是否匹配用户SQL时使用
@@ -1441,83 +1397,6 @@ public class PermissionSqlBuilder {
                     .toList();
         }
         return List.of(value);
-    }
-
-    /**
-     * 判断相等值条件是否成立，供调用方选择后续分支。
-     *
-     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
-     * @param expected 预期，供本方法处理相等值时使用
-     * @return 相等值条件成立时为 true，否则为 false
-     */
-    private boolean equalsValue(Object actual, Object expected) {
-        if (actual == null || expected == null) {
-            return actual == expected;
-        }
-        if (actual instanceof Number || expected instanceof Number) {
-            try {
-                return new BigDecimal(String.valueOf(actual))
-                        .compareTo(new BigDecimal(String.valueOf(expected))) == 0;
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return String.valueOf(actual).equals(String.valueOf(expected));
-    }
-
-    /**
-     * 判断是否包含权限SQL构建器；判断结果决定调用方的后续分支。
-     *
-     * @param actual 实际，供本方法判断是否包含权限SQL构建器时使用
-     * @param expected 预期，供本方法判断是否包含权限SQL构建器时使用
-     * @return 权限SQL构建器条件成立时为 true，否则为 false
-     */
-    private boolean contains(Object actual, Object expected) {
-        if (actual instanceof Collection<?> collection) {
-            return collection.stream().anyMatch(value -> equalsValue(value, expected));
-        }
-        return actual != null && expected != null
-                && String.valueOf(actual).contains(String.valueOf(expected));
-    }
-
-    /**
-     * 比较{@code ordered}；结果供调用方的后续步骤使用。
-     *
-     * @param actual 实际，作为 {@code BigDecimal} 的输入影响后续处理
-     * @param expected 预期，供本方法比较{@code ordered}时使用
-     * @return 比较后的{@code ordered}结果，供调用方继续处理
-     */
-    private int compareOrdered(Object actual, Object expected) {
-        if (actual == null || expected == null) {
-            return -1;
-        }
-        try {
-            return new BigDecimal(String.valueOf(actual))
-                    .compareTo(new BigDecimal(String.valueOf(expected)));
-        } catch (NumberFormatException ignored) {
-            return String.valueOf(actual).compareTo(String.valueOf(expected));
-        }
-    }
-
-    /**
-     * 判断是否空；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否空的原始输入，结果供调用方继续使用
-     * @return 空条件成立时为 true，否则为 false
-     */
-    private boolean isEmpty(Object value) {
-        if (value == null) {
-            return true;
-        }
-        if (value instanceof String text) {
-            return text.isBlank();
-        }
-        if (value instanceof Collection<?> collection) {
-            return collection.isEmpty();
-        }
-        if (value instanceof Map<?, ?> map) {
-            return map.isEmpty();
-        }
-        return false;
     }
 
     /**

@@ -66,7 +66,7 @@ public class ProcessTask {
     /** 发起人身份在创建/回填时确定；显示名称由用户目录解析，避免人员更名后显示旧值。 */
     @TableField(updateStrategy = FieldStrategy.NEVER)
     private String startUserId;
-    /** 列表只读取这些业务摘要；投影服务用显式 SQL 更新，普通 updateById 不得回写旧摘要快照。 */
+    /** 列表只读取这些业务摘要；投影服务显式局部更新，普通 updateById 不得回写旧摘要快照。 */
     @TableField(updateStrategy = FieldStrategy.NEVER)
     private String businessName;
     @TableField(updateStrategy = FieldStrategy.NEVER)

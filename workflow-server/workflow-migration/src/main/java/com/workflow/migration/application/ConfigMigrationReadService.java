@@ -1,5 +1,8 @@
 package com.workflow.migration.application;
 
+import static com.workflow.migration.application.ConfigMigrationPackageViews.exportSummary;
+import static com.workflow.migration.application.ConfigMigrationPackageViews.importSummary;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.core.result.PageResult;
@@ -120,7 +123,7 @@ public class ConfigMigrationReadService {
         Page<ConfigExportPackage> page = exportPackageMapper.selectPage(
                 page(pageNum, pageSize), wrapper);
         List<Map<String, Object>> records = page.getRecords().stream()
-                .map(this::exportSummary)
+                .map(ConfigMigrationPackageViews::exportSummary)
                 .toList();
         return pageResult(page, records);
     }
@@ -139,7 +142,7 @@ public class ConfigMigrationReadService {
         Page<ConfigImportPackage> page = importPackageMapper.selectPage(
                 page(pageNum, pageSize), importSummaryQuery());
         List<Map<String, Object>> records = page.getRecords().stream()
-                .map(this::importSummary)
+                .map(ConfigMigrationPackageViews::importSummary)
                 .toList();
         return pageResult(page, records);
     }
@@ -155,7 +158,7 @@ public class ConfigMigrationReadService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> listImportOptions() {
         return importPackageMapper.selectList(importSummaryQuery()).stream()
-                .map(this::importSummary)
+                .map(ConfigMigrationPackageViews::importSummary)
                 .toList();
     }
 
@@ -240,51 +243,4 @@ public class ConfigMigrationReadService {
                 .orderByDesc(ConfigImportPackage::getId);
     }
 
-    /**
-     * 整理导出摘要数据，供调用方遍历或继续处理。
-     *
-     * @param value 待处理导出摘要的原始输入，结果供调用方继续使用
-     * @return 导出摘要键值结果，供调用方继续处理
-     */
-    private Map<String, Object> exportSummary(ConfigExportPackage value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", value.getId());
-        result.put("packageNo", value.getPackageNo());
-        result.put("migrationTag", value.getMigrationTag());
-        result.put("fileName", value.getFileName());
-        result.put("checksum", value.getChecksum());
-        result.put("status", value.getStatus());
-        result.put("assetCount", value.getAssetCount());
-        result.put("createdBy", value.getCreatedBy());
-        result.put("createdAt", value.getCreatedAt());
-        result.put("downloadCount", value.getDownloadCount());
-        result.put("lastDownloadAt", value.getLastDownloadAt());
-        return result;
-    }
-
-    /**
-     * 整理导入摘要数据，供调用方遍历或继续处理。
-     *
-     * @param value 待处理导入摘要的原始输入，结果供调用方继续使用
-     * @return 导入摘要键值结果，供调用方继续处理
-     */
-    private Map<String, Object> importSummary(ConfigImportPackage value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", value.getId());
-        result.put("packageNo", value.getPackageNo());
-        result.put("sourceEnvironment", value.getSourceEnvironment());
-        result.put("signatureStatus", value.getSignatureStatus());
-        result.put("signatureConfirmedBy", value.getSignatureConfirmedBy());
-        result.put("signatureConfirmedAt", value.getSignatureConfirmedAt());
-        result.put("migrationTag", value.getMigrationTag());
-        result.put("fileName", value.getFileName());
-        result.put("checksum", value.getChecksum());
-        result.put("status", value.getStatus());
-        result.put("importedBy", value.getImportedBy());
-        result.put("importedAt", value.getImportedAt());
-        result.put("publishedBy", value.getPublishedBy());
-        result.put("publishedAt", value.getPublishedAt());
-        result.put("errorMessage", value.getErrorMessage());
-        return result;
-    }
 }

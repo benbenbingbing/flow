@@ -375,9 +375,18 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
                 .eq(ProcessTask::getTaskId, taskId)).stream().findFirst().orElse(null);
     }
 
-    /** 流程历史一次读取操作结果的最小投影，节点循环不再逐任务回查。 */
-    @Select("SELECT task_id, action, action_label, comment FROM process_task WHERE process_instance_id = #{processInstanceId} AND deleted = 0 ORDER BY id")
-    List<ProcessTask> selectProgressHistoryByProcessInstanceId(@Param("processInstanceId") String processInstanceId);
+    /**
+     * 按流程实例一次读取未删除任务的操作历史，节点循环不再逐任务回查。
+     * @param processInstanceId 流程实例 ID，限定历史读取范围
+     * @return 按主键升序排列的 taskId、action、actionLabel、comment 四列投影，其余字段不加载
+     */
+    default List<ProcessTask> selectProgressHistoryByProcessInstanceId(String processInstanceId) {
+        return selectList(Wrappers.<ProcessTask>lambdaQuery()
+                .select(ProcessTask::getTaskId, ProcessTask::getAction, ProcessTask::getActionLabel,
+                        ProcessTask::getComment)
+                .eq(ProcessTask::getProcessInstanceId, processInstanceId)
+                .orderByAsc(ProcessTask::getId));
+    }
 
     /**
      * 根据Flowable任务ID加锁查询待办（FOR UPDATE）。

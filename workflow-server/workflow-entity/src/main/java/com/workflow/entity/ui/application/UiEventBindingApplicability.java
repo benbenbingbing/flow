@@ -13,7 +13,7 @@ import java.util.Set;
  */
 final class UiEventBindingApplicability {
 
-    private static final Set<String> FORM_EVENTS = Set.of(
+    static final Set<String> FORM_EVENTS = Set.of(
             UiDataSourceUsages.DETAIL_LOAD,
             UiDataSourceUsages.DATA_CREATE,
             UiDataSourceUsages.DATA_UPDATE,
@@ -27,7 +27,7 @@ final class UiEventBindingApplicability {
             UiDataSourceUsages.SUBFORM_SAVE,
             UiDataSourceUsages.FORM_BUTTON_CLICK);
 
-    private static final Set<String> LIST_EVENTS = Set.of(
+    static final Set<String> LIST_EVENTS = Set.of(
             UiDataSourceUsages.LIST_LOAD,
             UiDataSourceUsages.LIST_EXPORT,
             UiDataSourceUsages.DETAIL_LOAD,

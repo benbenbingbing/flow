@@ -12,6 +12,7 @@ import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseM
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
 import com.workflow.process.sla.runtime.infrastructure.persistence.mapper.ProcessTaskSlaMapper;
+import com.workflow.process.task.infrastructure.persistence.mapper.TaskInboxProjectionMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -99,6 +100,38 @@ class DatabasePaginationMapperContractTest {
             List<Object> pageValues = values.subList(values.size() - (item.offset() == 0 ? 1 : 2), values.size());
             assertEquals(item.offset() == 0 ? List.of(item.limit()) : List.of(item.offset(), item.limit()),
                     pageValues.stream().map(value -> ((Number) value).longValue()).toList(), item.name());
+        }
+    }
+
+    @Test
+    void inboxProjectionPaginationUsesConfiguredDatabaseDialect() throws Exception {
+        // 覆盖生产使用的五种 MP 分页方言；OceanBase 的两种模式分别复用 MySQL/Oracle。
+        for (DbType type : List.of(DbType.MYSQL, DbType.POSTGRE_SQL, DbType.ORACLE_12C, DbType.KINGBASE_ES, DbType.DM)) {
+            for (boolean first : List.of(true, false)) {
+                BoundQuery query = renderWrapper(TaskInboxProjectionMapper.class, mapper -> {
+                    if (first) mapper.findFirstBusinessTask(SENTINEL, "record");
+                    else mapper.findUnready(17, 3);
+                });
+                assertNotNull(query.page());
+                assertFalse(query.page().searchCount());
+                assertEquals(0, query.page().offset());
+                assertEquals(first ? 1 : 3, query.page().getSize());
+                String original = query.bound().getSql();
+                List<Object> originalValues = query.values();
+                new PaginationInnerInterceptor(type).beforeQuery(null, query.statement(), query.parameters(),
+                        RowBounds.DEFAULT, null, query.bound());
+                assertNotEquals(original, query.bound().getSql(), type + " 必须在数据库端限制数量");
+                assertFalse(query.bound().getSql().contains(SENTINEL));
+                assertEquals(originalValues, query.values().subList(0, originalValues.size()));
+                long limit = first ? 1L : 3L;
+                List<Long> expected = switch (type) {
+                    case ORACLE_12C -> List.of(0L, limit);
+                    case DM -> List.of(limit, 0L);
+                    default -> List.of(limit);
+                };
+                assertEquals(expected, query.values().subList(originalValues.size(), query.values().size())
+                        .stream().map(value -> ((Number) value).longValue()).toList(), type.name());
+            }
         }
     }
 

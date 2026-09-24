@@ -9,7 +9,6 @@ import java.util.Map;
 import org.apache.ibatis.annotations.Select;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -46,33 +45,32 @@ class ExternalSystemMapperSqlContractTest {
         assertTrue(lockSql.contains("deleted = 0"));
         assertTrue(lockSql.contains("for update"));
 
-        Method updateMethod = ExternalSystemMapper.class.getDeclaredMethod(
-                "updateMutableFields",
-                String.class, String.class, String.class, String.class,
-                String.class, long.class, String.class,
-                LocalDateTime.class);
-        String updateSql = sql(
-                updateMethod.getAnnotation(Update.class).value());
-        assertFalse(updateSql.contains("system_code"));
-        assertTrue(updateSql.contains("version = version + 1"));
-        assertTrue(updateSql.contains("version = #{expectedversion}"));
-        assertTrue(updateSql.contains("updated_by = #{updatedby}"));
-
-        Method statusMethod = ExternalSystemMapper.class.getDeclaredMethod(
-                "updateStatus", String.class, String.class, long.class,
-                String.class, LocalDateTime.class);
-        String statusSql = sql(
-                statusMethod.getAnnotation(Update.class).value());
-        assertTrue(statusSql.contains("version = version + 1"));
-        assertTrue(statusSql.contains("version = #{expectedversion}"));
-
-        Method deleteMethod = ExternalSystemMapper.class.getDeclaredMethod(
-                "softDelete", String.class, long.class, String.class,
-                LocalDateTime.class);
-        String deleteSql = sql(
-                deleteMethod.getAnnotation(Update.class).value());
-        assertTrue(deleteSql.contains("version = version + 1"));
-        assertTrue(deleteSql.contains("version = #{expectedversion}"));
+        // 检查真实 MP 生成的语句，不能在改用默认方法后继续依赖 @Update 注解。
+        var configuration = new MybatisConfiguration();
+        configuration.addMapper(ExternalSystemMapper.class);
+        var mapper = mock(ExternalSystemMapper.class, CALLS_REAL_METHODS);
+        doAnswer(invocation -> {
+            Map<String, Object> parameters = new java.util.HashMap<>();
+            parameters.put("et", null);
+            parameters.put("ew", invocation.getArgument(1));
+            String updateSql = sql(new String[]{configuration
+                    .getMappedStatement(ExternalSystemMapper.class.getName() + ".update")
+                    .getBoundSql(parameters).getSql()}).replaceAll("\\s+", "");
+            assertFalse(updateSql.contains("system_code"));
+            assertTrue(updateSql.contains("version=version+1"));
+            assertTrue(updateSql.contains("updated_by=?"));
+            assertTrue(updateSql.contains("update_time=?"));
+            String where = updateSql.substring(updateSql.indexOf("where"));
+            assertTrue(where.contains("deleted=0"));
+            assertTrue(where.contains("id=?"));
+            assertTrue(where.contains("version=?"));
+            return 1;
+        }).when(mapper).update(org.mockito.ArgumentMatchers.isNull(), any());
+        LocalDateTime now = LocalDateTime.of(2026, 1, 1, 0, 0);
+        mapper.updateMutableFields("id", "name", "0", null, null, 4L, "actor", now);
+        mapper.updateStatus("id", "1", 4L, "actor", now);
+        mapper.softDelete("id", 4L, "actor", now);
+        verify(mapper, times(3)).update(org.mockito.ArgumentMatchers.isNull(), any());
     }
 
     @Test

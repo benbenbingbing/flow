@@ -660,21 +660,6 @@ public class RelativeOrgPositionCollectionHandler
     }
 
     /**
-     * 按候选顺序取首个非空文本，供后续匹配或展示使用。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 处理后的首个文本文本，供调用方比较或展示
-     */
-    private String firstText(Object... values) {
-        for (Object value : values) {
-            if (value != null && StringUtils.hasText(String.valueOf(value))) {
-                return String.valueOf(value).trim();
-            }
-        }
-        return null;
-    }
-
-    /**
      * 将动态值转换为键值映射，供后续字段读取和校验。
      *
      * @param value 待处理映射值的原始输入，结果供调用方继续使用

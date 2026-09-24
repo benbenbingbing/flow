@@ -65,26 +65,6 @@ public class TaskController {
     }
 
     /**
-     * 获取已办任务列表
-     *
-     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
-     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
-     * @param processName 流程名称，后续用于读取{@code done}列表时匹配或展示
-     * @param taskName 任务名称，后续用于读取{@code done}列表时匹配或展示
-     * @param timeRange 时间范围，作为 {@code Result.success} 的输入影响后续处理
-     * @return 符合条件的任务结果，供调用方继续处理
-     */
-    @GetMapping("/done")
-    public Result<PageResult<TaskVO>> getDoneList(
-            @RequestParam(defaultValue = "1") Integer pageNum,
-            @RequestParam(defaultValue = "10") Integer pageSize,
-            @RequestParam(required = false) String processName,
-            @RequestParam(required = false) String taskName,
-            @RequestParam(required = false) String timeRange) {
-        return Result.success(taskService.getDoneList(pageNum, pageSize, processName, taskName, timeRange));
-    }
-
-    /**
      * 完成任务审批
      *
      * @param params 参数，作为 {@code requireSubmitApprovalAction} 的输入影响后续处理

@@ -515,21 +515,6 @@ public class EntityVersionConfigurationValidator {
     }
 
     /**
-     * 校验并获取定义；不满足约束时阻止后续处理。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void requireDefinition(String entityCode) {
-        if (!StringUtils.hasText(entityCode)
-                || definitionMapper.findByEntityCode(entityCode.trim())
-                        .isEmpty()) {
-            throw new IllegalArgumentException(
-                    "实体不存在: " + entityCode);
-        }
-    }
-
-    /**
      * 将输入转换为文本，供后续校验、映射或展示使用。
      *
      * @param value 待处理文本的原始输入，结果供调用方继续使用

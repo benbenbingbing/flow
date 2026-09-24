@@ -1,9 +1,11 @@
 package com.workflow.migration.application;
 
+import static com.workflow.migration.application.ConfigMigrationPackageViews.exportSummary;
+import static com.workflow.migration.application.ConfigMigrationPackageViews.importSummary;
+
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
@@ -14,7 +16,6 @@ import com.workflow.migration.api.request.ConfigEnvironmentMappingRequest;
 import com.workflow.migration.api.request.ConfigExportRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.migration.infrastructure.persistence.record.ConfigAssetBaseline;
@@ -200,7 +201,7 @@ public class ConfigMigrationPackageService {
     public List<Map<String, Object>> listExports() {
         return exportPackageMapper.selectList(new LambdaQueryWrapper<ConfigExportPackage>()
                         .orderByDesc(ConfigExportPackage::getCreatedAt))
-                .stream().map(this::exportSummary).toList();
+                .stream().map(ConfigMigrationPackageViews::exportSummary).toList();
     }
     /**
      * 下载指定导出包并累加下载次数。
@@ -335,7 +336,7 @@ public class ConfigMigrationPackageService {
     public List<Map<String, Object>> listImports() {
         return importPackageMapper.selectList(new LambdaQueryWrapper<ConfigImportPackage>()
                         .orderByDesc(ConfigImportPackage::getImportedAt))
-                .stream().map(this::importSummary).toList();
+                .stream().map(ConfigMigrationPackageViews::importSummary).toList();
     }
     /**
      * 查询指定导入批次的条目列表(按资产类型、业务编码排序)。
@@ -1534,52 +1535,6 @@ public class ConfigMigrationPackageService {
             throw new IllegalArgumentException("导入批次不存在: " + id);
         }
         return importPackage;
-    }
-    /**
-     * 整理导出摘要数据，供调用方遍历或继续处理。
-     *
-     * @param value 待处理导出摘要的原始输入，结果供调用方继续使用
-     * @return 导出摘要键值结果，供调用方继续处理
-     */
-    private Map<String, Object> exportSummary(ConfigExportPackage value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", value.getId());
-        result.put("packageNo", value.getPackageNo());
-        result.put("migrationTag", value.getMigrationTag());
-        result.put("fileName", value.getFileName());
-        result.put("checksum", value.getChecksum());
-        result.put("status", value.getStatus());
-        result.put("assetCount", value.getAssetCount());
-        result.put("createdBy", value.getCreatedBy());
-        result.put("createdAt", value.getCreatedAt());
-        result.put("downloadCount", value.getDownloadCount());
-        result.put("lastDownloadAt", value.getLastDownloadAt());
-        return result;
-    }
-    /**
-     * 整理导入摘要数据，供调用方遍历或继续处理。
-     *
-     * @param value 待处理导入摘要的原始输入，结果供调用方继续使用
-     * @return 导入摘要键值结果，供调用方继续处理
-     */
-    private Map<String, Object> importSummary(ConfigImportPackage value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", value.getId());
-        result.put("packageNo", value.getPackageNo());
-        result.put("sourceEnvironment", value.getSourceEnvironment());
-        result.put("signatureStatus", value.getSignatureStatus());
-        result.put("signatureConfirmedBy", value.getSignatureConfirmedBy());
-        result.put("signatureConfirmedAt", value.getSignatureConfirmedAt());
-        result.put("migrationTag", value.getMigrationTag());
-        result.put("fileName", value.getFileName());
-        result.put("checksum", value.getChecksum());
-        result.put("status", value.getStatus());
-        result.put("importedBy", value.getImportedBy());
-        result.put("importedAt", value.getImportedAt());
-        result.put("publishedBy", value.getPublishedBy());
-        result.put("publishedAt", value.getPublishedAt());
-        result.put("errorMessage", value.getErrorMessage());
-        return result;
     }
     /**
      * 整理字符串设置数据，供调用方遍历或继续处理。

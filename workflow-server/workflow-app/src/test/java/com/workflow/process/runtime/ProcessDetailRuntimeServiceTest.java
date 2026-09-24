@@ -204,7 +204,8 @@ class ProcessDetailRuntimeServiceTest {
         ProcessDetailRuntimeService service() {
             return new ProcessDetailRuntimeService(
                     runtimeService, historyService, repositoryService, taskService,
-                    processConfigMapper, sysUserService, sysGroupMapper);
+                    processConfigMapper, sysUserService, sysGroupMapper,
+                    new com.workflow.process.instance.application.PublishedBpmnReader(repositoryService, org.mockito.Mockito.mock(com.workflow.process.publish.application.ProcessPublishedSnapshotService.class)));
         }
     }
 }

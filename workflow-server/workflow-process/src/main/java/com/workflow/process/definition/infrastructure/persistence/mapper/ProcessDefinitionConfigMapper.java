@@ -40,7 +40,7 @@ public interface ProcessDefinitionConfigMapper extends BaseMapper<ProcessDefinit
                 .set(ProcessDefinitionConfig::getBpmnXml, bpmnXml)
                 .set(ProcessDefinitionConfig::getDraftHash, draftHash)
                 // 修订号比较与递增继续在一条语句内完成，不能拆成读取后覆盖写入。
-                .setSql("draft_revision = draft_revision + 1")
+                .setIncrBy(ProcessDefinitionConfig::getDraftRevision, 1)
                 .setSql("update_time = CURRENT_TIMESTAMP")
                 .eq(ProcessDefinitionConfig::getId, id)
                 .eq(ProcessDefinitionConfig::getDraftRevision, expectedRevision));

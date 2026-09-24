@@ -140,14 +140,7 @@ public class TaskInboxProjectionService implements TaskBusinessSummaryPort {
         Set<String> names = new LinkedHashSet<>();
         for (String user : candidateUsers) names.add(directory.getDisplayName(user));
         for (String group : candidateGroups) {
-            var entry = directory.findGroup(group);
-            if (entry.isEmpty()) {
-                names.add(group);
-            } else {
-                var members = directory.findGroupUsers(entry.get().id());
-                if (members.isEmpty()) names.add(entry.get().name());
-                else members.forEach(user -> names.add(directory.getDisplayName(user.id())));
-            }
+            names.addAll(TaskCandidateNames.groupMembers(directory, group));
         }
         names.remove(null);
         return names.isEmpty() ? null : String.join(",", names);

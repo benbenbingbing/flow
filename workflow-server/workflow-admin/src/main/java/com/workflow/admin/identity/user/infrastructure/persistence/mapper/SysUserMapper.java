@@ -7,7 +7,6 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
 import java.time.LocalDateTime;
@@ -53,20 +52,24 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     }
 
     /**
-     * Atomically activates the disabled built-in account only while it still
-     * carries the historical public password hash.
+     * 仅在内置管理员仍被禁用且密码匹配历史哈希时原子激活，防止覆盖已更换的凭据。
      *
      * @param passwordHash 密码哈希，供本方法激活初始化管理员时使用
      * @param expectedPasswordHash 预期密码哈希，供本方法激活初始化管理员时使用
      * @return 激活后的初始化管理员结果，供调用方继续处理
      */
-    @Update("UPDATE sys_user SET password = #{passwordHash}, "
-            + "password_reset_required = 0, status = '0', update_time = CURRENT_TIMESTAMP "
-            + "WHERE id = '1' AND username = 'admin' AND deleted = 0 AND status = '1' "
-            + "AND password = #{expectedPasswordHash}")
-    int activateBootstrapAdministrator(
-            @Param("passwordHash") String passwordHash,
-            @Param("expectedPasswordHash") String expectedPasswordHash);
+    default int activateBootstrapAdministrator(String passwordHash, String expectedPasswordHash) {
+        // 保留数据库时间和数字布尔值，避免改变审计时钟或依赖驱动的 Boolean 转换。
+        return update(null, Wrappers.<SysUser>lambdaUpdate()
+                .set(SysUser::getPassword, passwordHash)
+                .set(SysUser::getPasswordResetRequired, 0)
+                .set(SysUser::getStatus, "0")
+                .setSql("update_time = CURRENT_TIMESTAMP")
+                .eq(SysUser::getId, "1")
+                .eq(SysUser::getUsername, "admin")
+                .eq(SysUser::getStatus, "1")
+                .eq(SysUser::getPassword, expectedPasswordHash));
+    }
 
     /**
      * 检查内置管理员是否仍处于可激活状态；密码哈希保持参数绑定。
@@ -121,19 +124,17 @@ public interface SysUserMapper extends BaseMapper<SysUser> {
     List<SysUser> selectForUpdateByIds(@Param("ids") List<String> ids);
 
     /**
-     * 处理{@code increment}令牌版本，并将结果传给后续步骤。
+     * 原子递增活动用户的令牌版本，使已有登录会话在后续版本校验时失效。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @return 处理后的{@code increment}令牌版本结果，供调用方继续处理
+     * @return 受影响行数；用户不存在或已删除时返回 0
      */
-    @Update("""
-            UPDATE sys_user
-            SET token_version = token_version + 1,
-                update_time = CURRENT_TIMESTAMP
-            WHERE id = #{id}
-              AND deleted = 0
-            """)
-    int incrementTokenVersion(@Param("id") String id);
+    default int incrementTokenVersion(String id) {
+        return update(null, Wrappers.<SysUser>lambdaUpdate()
+                .setIncrBy(SysUser::getTokenVersion, 1)
+                .setSql("update_time = CURRENT_TIMESTAMP")
+                .eq(SysUser::getId, id));
+    }
     
     /**
      * 检查用户名是否存在
