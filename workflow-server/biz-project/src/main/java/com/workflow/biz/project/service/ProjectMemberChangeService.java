@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,7 +41,7 @@ public class ProjectMemberChangeService {
             "ALLOCATION_CHANGE");
     private static final Set<String> ALLOWED_PROJECT_STATUSES = Set.of(
             "APPROVED", "ACTIVE", "PAUSED", "ACCEPTING");
-    private final EntityDataDynamicService entityDataService;
+    private final EntityRecordQueryPort entityDataService;
     private final ProjectEntityMutationExecutor mutationExecutor;
     private final ProjectMemberChangeRuleSupport rules;
     private final ProjectMemberChangeTraceSupport traceSupport;
@@ -54,7 +54,7 @@ public class ProjectMemberChangeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateChange(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -82,7 +82,7 @@ public class ProjectMemberChangeService {
      * @param request 本次请求，后续经校验后用于校验变更
      * @return 变更键值结果，供调用方继续处理
      */
-    Map<String, Object> validateChange(EntityDataDTO request) {
+    Map<String, Object> validateChange(EntityRecordData request) {
         return mutationExecutor.inSession(
                 null,
                 "MEMBER_CHANGE_PRECHECK",
@@ -96,7 +96,7 @@ public class ProjectMemberChangeService {
      * @return 包含权限复核、交接和安全复核结论的校验结果，供后续审批节点使用
      */
     private Map<String, Object> validateChangeInternal(
-            EntityDataDTO request) {
+            EntityRecordData request) {
         requireEntity(request, REQUEST);
         Map<String, Object> requestData = data(request);
         String operation = upper(read(
@@ -108,7 +108,7 @@ public class ProjectMemberChangeService {
         }
         String projectId = requireText(
                 requestData, "project_id", "项目不能为空");
-        EntityDataDTO project =
+        EntityRecordData project =
                 entityDataService.findById(PROJECT, projectId);
         if (!ALLOWED_PROJECT_STATUSES.contains(project.getStatus())) {
             conflict(
@@ -123,10 +123,10 @@ public class ProjectMemberChangeService {
                     "计划生效日期不能为空");
         }
         validateProjectDate(project, effectiveDate);
-        EntityDataDTO member = null;
+        EntityRecordData member = null;
         String targetUserId;
         BigDecimal requestedAllocation = BigDecimal.ZERO;
-        List<EntityDataDTO> activeRoles = List.of();
+        List<EntityRecordData> activeRoles = List.of();
         boolean accessReviewRequired;
         boolean securityReviewRequired;
         boolean handoverRequired = false;
@@ -269,7 +269,7 @@ public class ProjectMemberChangeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> captureManagerReview(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -287,7 +287,7 @@ public class ProjectMemberChangeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> recordDecision(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context,
             String decision) {
         return mutationExecutor.inSession(
@@ -305,7 +305,7 @@ public class ProjectMemberChangeService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyChange(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -319,7 +319,7 @@ public class ProjectMemberChangeService {
      * @param request 本次请求，后续经校验后用于应用变更
      * @return 变更键值结果，供调用方继续处理
      */
-    Map<String, Object> applyChange(EntityDataDTO request) {
+    Map<String, Object> applyChange(EntityRecordData request) {
         return mutationExecutor.inSession(
                 null,
                 "CHANGE_EFFECTIVE",
@@ -333,7 +333,7 @@ public class ProjectMemberChangeService {
      * @return 变更内部键值结果，供调用方继续处理
      */
     private Map<String, Object> applyChangeInternal(
-            EntityDataDTO request) {
+            EntityRecordData request) {
         requireEntity(request, REQUEST);
         Map<String, Object> requestData = data(request);
         String existingMemberId = text(read(
@@ -351,7 +351,7 @@ public class ProjectMemberChangeService {
                 requestData, "project_id", "项目不能为空");
         LocalDate effectiveDate = date(read(
                 requestData, "effective_date"));
-        EntityDataDTO member;
+        EntityRecordData member;
         int transferredRoleCount = 0;
         switch (operation) {
             case "JOIN" -> member =
@@ -464,8 +464,8 @@ public class ProjectMemberChangeService {
      * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
      * @return 创建后的成员结果，供调用方继续处理
      */
-    private EntityDataDTO createMember(
-            EntityDataDTO request,
+    private EntityRecordData createMember(
+            EntityRecordData request,
             String projectId,
             LocalDate effectiveDate) {
         Map<String, Object> source = data(request);
@@ -524,7 +524,7 @@ public class ProjectMemberChangeService {
         memberData.put(
                 "handover_completed_flag", false);
         memberData.put("source_process", "F07");
-        EntityDataDTO dto = new EntityDataDTO();
+        EntityRecordData dto = new EntityRecordData();
         dto.setEntityCode(PROJECT_MEMBER);
         dto.setName(
                 "项目成员-"
@@ -533,7 +533,7 @@ public class ProjectMemberChangeService {
         dto.setSubmitterName(
                 request.getSubmitterName());
         dto.setData(memberData);
-        EntityDataDTO created =
+        EntityRecordData created =
                 mutationExecutor.save(dto);
         mutationExecutor.update(
                 PROJECT_MEMBER,
@@ -552,17 +552,17 @@ public class ProjectMemberChangeService {
      * @return 应用后的{@code leave}结果，供调用方继续处理
      */
     private int applyLeave(
-            EntityDataDTO request,
-            EntityDataDTO member,
+            EntityRecordData request,
+            EntityRecordData member,
             LocalDate effectiveDate) {
         Map<String, Object> requestData = data(request);
         String projectId = text(read(
                 requestData, "project_id"));
-        List<EntityDataDTO> activeRoles =
+        List<EntityRecordData> activeRoles =
                 rules.activeRoles(projectId, member.getId());
         String handoverMemberId = text(read(
                 requestData, "handover_member_id"));
-        EntityDataDTO handoverMember =
+        EntityRecordData handoverMember =
                 StringUtils.hasText(handoverMemberId)
                         ? entityDataService.findById(
                         PROJECT_MEMBER,
@@ -607,7 +607,7 @@ public class ProjectMemberChangeService {
                     "PROJECT_MEMBER_HANDOVER_REQUIRED",
                     "成员存在有效项目角色，必须指定交接成员");
         }
-        for (EntityDataDTO assignment : activeRoles) {
+        for (EntityRecordData assignment : activeRoles) {
             transferRole(
                     request,
                     assignment,
@@ -625,9 +625,9 @@ public class ProjectMemberChangeService {
      * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
      */
     private void transferRole(
-            EntityDataDTO request,
-            EntityDataDTO assignment,
-            EntityDataDTO handoverMember,
+            EntityRecordData request,
+            EntityRecordData assignment,
+            EntityRecordData handoverMember,
             LocalDate effectiveDate) {
         Map<String, Object> oldData = data(assignment);
         mutationExecutor.update(
@@ -664,8 +664,8 @@ public class ProjectMemberChangeService {
         newData.put(
                 "handover_completed_flag", true);
         newData.put("source_process", "F07");
-        EntityDataDTO replacement =
-                new EntityDataDTO();
+        EntityRecordData replacement =
+                new EntityRecordData();
         replacement.setEntityCode(
                 PROJECT_ROLE_ASSIGNMENT);
         replacement.setName(
@@ -676,7 +676,7 @@ public class ProjectMemberChangeService {
         replacement.setSubmitterName(
                 request.getSubmitterName());
         replacement.setData(newData);
-        EntityDataDTO created =
+        EntityRecordData created =
                 mutationExecutor.save(replacement);
         mutationExecutor.update(
                 PROJECT_ROLE_ASSIGNMENT,
@@ -694,7 +694,7 @@ public class ProjectMemberChangeService {
      * @param customData 自定义数据，供本方法更新成员与角色集合时使用
      */
     private void updateMemberAndRoles(
-            EntityDataDTO member,
+            EntityRecordData member,
             String memberStatus,
             String roleStatus,
             Map<String, Object> customData) {
@@ -702,7 +702,7 @@ public class ProjectMemberChangeService {
                 PROJECT_MEMBER,
                 member.getId(),
                 update(memberStatus, customData));
-        for (EntityDataDTO role :
+        for (EntityRecordData role :
                 rules.rolesForMember(member.getId())) {
             if (Set.of("ACTIVE", "SUSPENDED")
                     .contains(role.getStatus())) {
@@ -724,7 +724,7 @@ public class ProjectMemberChangeService {
      * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
      */
     private void validateProjectDate(
-            EntityDataDTO project,
+            EntityRecordData project,
             LocalDate effectiveDate) {
         LocalDate projectStart = date(read(
                 data(project), "planned_start_date"));
@@ -796,7 +796,7 @@ public class ProjectMemberChangeService {
      */
     private void validateOperationStatus(
             String operation,
-            EntityDataDTO member) {
+            EntityRecordData member) {
         boolean allowed = switch (operation) {
             case "LEAVE" -> Set.of(
                     "ACTIVE", "SUSPENDED")
@@ -822,7 +822,7 @@ public class ProjectMemberChangeService {
      * @param effectiveDate 有效日期，后续用于判断有效期或展示该事件的发生时间
      */
     private void validateEffectiveDate(
-            EntityDataDTO member,
+            EntityRecordData member,
             LocalDate effectiveDate) {
         LocalDate joinDate = date(read(
                 data(member), "join_date"));
@@ -846,10 +846,10 @@ public class ProjectMemberChangeService {
     private void validateLeave(
             Map<String, Object> requestData,
             String projectId,
-            EntityDataDTO member,
+            EntityRecordData member,
             LocalDate effectiveDate,
             boolean handoverRequired,
-            List<EntityDataDTO> activeRoles) {
+            List<EntityRecordData> activeRoles) {
         String handoverMemberId = text(read(
                 requestData, "handover_member_id"));
         if (handoverRequired
@@ -865,7 +865,7 @@ public class ProjectMemberChangeService {
                         "PROJECT_MEMBER_HANDOVER_SELF",
                         "交接成员不能选择本人");
             }
-            EntityDataDTO handover =
+            EntityRecordData handover =
                     entityDataService.findById(
                             PROJECT_MEMBER,
                             handoverMemberId);

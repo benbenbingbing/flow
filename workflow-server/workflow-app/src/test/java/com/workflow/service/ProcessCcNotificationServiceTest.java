@@ -3,10 +3,10 @@ package com.workflow.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
-import com.workflow.process.cc.application.CcNotificationChannel;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
+import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
 import com.workflow.process.cc.application.CcNotificationPayload;
 import com.workflow.process.cc.application.ProcessCcNotificationOutboxHandler;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
@@ -27,8 +27,8 @@ class ProcessCcNotificationServiceTest {
 
     @Test
     void publishesOneIdempotentEventPerChannel() {
-        OutboxPublisher outboxPublisher =
-                mock(OutboxPublisher.class);
+        OutboxPublishPort outboxPublisher =
+                mock(OutboxPublishPort.class);
         ProcessCcNotificationPublisher publisher =
                 new ProcessCcNotificationPublisher(outboxPublisher);
         ProcessCcRecord record = record();
@@ -57,8 +57,8 @@ class ProcessCcNotificationServiceTest {
                 new ObjectMapper().findAndRegisterModules();
         ProcessCcRecordMapper recordMapper =
                 mock(ProcessCcRecordMapper.class);
-        CcNotificationChannel channel =
-                mock(CcNotificationChannel.class);
+        CcNotificationChannelProvider channel =
+                mock(CcNotificationChannelProvider.class);
         when(channel.channel()).thenReturn("EMAIL");
         ProcessCcRecord record = record();
         when(recordMapper.selectById("cc-1"))
@@ -84,9 +84,13 @@ class ProcessCcNotificationServiceTest {
                 0,
                 LocalDateTime.now()));
 
-        verify(channel).send(
-                record,
-                Map.of("subject", "待审批"));
+        var delivered = org.mockito.ArgumentCaptor.forClass(
+                com.workflow.contracts.process.cc.model.CcNotification.class);
+        verify(channel).send(delivered.capture(), org.mockito.ArgumentMatchers.eq(Map.of("subject", "待审批")));
+        assertEquals(record.getId(), delivered.getValue().getId());
+        assertEquals(record.getCcUserId(), delivered.getValue().getCcUserId());
+        delivered.getValue().setCcUserId("changed-by-extension");
+        assertEquals("observer", record.getCcUserId(), "渠道不能修改宿主持久化对象");
     }
 
     private ProcessCcRecord record() {

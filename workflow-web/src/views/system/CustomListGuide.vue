@@ -164,7 +164,7 @@ function remove(row) {
           </CodeCard>
           <p>列表设计器中的自定义按钮也可将“自定义模式”设为“打开列表”，直接配置目标实体、目标 listKey、弹窗/抽屉、选择方式、relationKey 和可选选择回调。</p>
           <p>表单的 CUSTOM 实体引用字段可在“选择列表”中指定 listKey，运行时以 `FORM_PICKER` 场景打开统一列表；选择型场景会自动隐藏新增、编辑、审批和删除等业务动作。</p>
-          <p class="muted">后端只信任 `sourceEntityCode + sourceRecordId + relationKey`，并由 `EntityListContextResolver` 重新读取来源数据；前端参数不能扩大数据范围。</p>
+          <p class="muted">后端只信任 `sourceEntityCode + sourceRecordId + relationKey`，并由 `EntityListContextResolverProvider` 重新读取来源数据；前端参数不能扩大数据范围。</p>
         </section>
 
         <section id="runtime" class="guide-section">

@@ -2,6 +2,7 @@ package com.workflow.entity.data;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.code.*;
+import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityCodeReservationService;
@@ -188,7 +189,7 @@ class EntityCustomCodeTransactionTest {
         }
 
         EntityCodeGeneratorService service(java.util.function.Function<EntityCodeGenerationContext, String> generate) {
-            EntityCodeGenerator custom = new EntityCodeGenerator() {
+            EntityCodeGeneratorProvider custom = new EntityCodeGeneratorProvider() {
                 public String getCode() { return "TEST"; }
                 public String getDisplayName() { return "Test"; }
                 public String generate(EntityCodeGenerationContext context, Map<String, Object> config) { return generate.apply(context); }

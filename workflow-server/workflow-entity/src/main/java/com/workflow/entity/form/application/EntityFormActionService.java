@@ -21,7 +21,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNode
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityActionRuleStructurePolicy;
 import com.workflow.entity.permission.application.EntityPermissionAction;
@@ -804,7 +804,7 @@ public class EntityFormActionService {
             String entityCode,
             Map<String, Object> button,
             EntityDataDTO row) {
-        EntityActionRuleDTO rule = readRule(button);
+        EntityActionRule rule = readRule(button);
         if (rule == null) {
             return EntityActionCapabilityDTO.allowed();
         }
@@ -842,19 +842,19 @@ public class EntityFormActionService {
      *
      * @return 处理后的审批规则结果，供调用方继续处理
      */
-    private EntityActionRuleDTO approvalRule() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        EntityActionRuleDTO.RuleNode relation =
-                new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule approvalRule() {
+        EntityActionRule rule = new EntityActionRule();
+        EntityActionRule.RuleNode relation =
+                new EntityActionRule.RuleNode();
         relation.setType("RELATION");
         relation.setRelation("CURRENT_USER_IS_ASSIGNEE");
-        EntityActionRuleDTO.RuleNode process =
-                new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode process =
+                new EntityActionRule.RuleNode();
         process.setType("PROCESS_STATE");
         process.setOperator("EQ");
         process.setValue("RUNNING");
-        EntityActionRuleDTO.RuleNode root =
-                new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode root =
+                new EntityActionRule.RuleNode();
         root.setType("GROUP");
         root.setLogic("AND");
         root.setChildren(List.of(relation, process));
@@ -1210,7 +1210,7 @@ public class EntityFormActionService {
      * @param button 按钮，供本方法读取规则时使用
      * @return 读取后的规则结果，供调用方继续处理
      */
-    private EntityActionRuleDTO readRule(
+    private EntityActionRule readRule(
             Map<String, Object> button) {
         Object raw = button.get("availabilityRule");
         if (raw == null) {
@@ -1220,7 +1220,7 @@ public class EntityFormActionService {
         configPolicy.validateAvailabilityRule(raw);
         return objectMapper.convertValue(
                 EntityActionRuleStructurePolicy.normalizeAndValidate(raw),
-                EntityActionRuleDTO.class);
+                EntityActionRule.class);
     }
 
     /**

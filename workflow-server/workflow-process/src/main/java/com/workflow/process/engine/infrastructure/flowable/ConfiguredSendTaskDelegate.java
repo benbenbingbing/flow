@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.workflow.process.cc.application.ProcessCcRuntimeService;
-import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.DelegateExecution;

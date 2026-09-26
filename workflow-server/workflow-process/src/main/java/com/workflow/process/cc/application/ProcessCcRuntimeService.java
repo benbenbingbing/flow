@@ -1,5 +1,9 @@
 package com.workflow.process.cc.application;
 
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
+
+import com.workflow.contracts.process.cc.spi.CcRecipientProvider;
+
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
@@ -65,7 +69,7 @@ public class ProcessCcRuntimeService {
     private final SysOrganizationMapper organizationMapper;
     private final ObjectMapper objectMapper;
     /** 自定义知会人员解析器列表 */
-    private final List<CcRecipientResolver> customResolvers;
+    private final List<CcRecipientProvider> customResolvers;
     /** 统一人员解析器运行时 */
     private final PersonResolverRuntimeService personResolverRuntimeService;
     /** 人工知会与任务认领使用一致的业务身份、候选用户及候选组校验。 */
@@ -378,7 +382,7 @@ public class ProcessCcRuntimeService {
                             extraParams)));
         }
 
-        CcRecipientResolver resolver = customResolvers.stream()
+        CcRecipientProvider resolver = customResolvers.stream()
                 .filter(item -> item.code().equalsIgnoreCase(resolverCode))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("未注册知会人员解析器: " + resolverCode));

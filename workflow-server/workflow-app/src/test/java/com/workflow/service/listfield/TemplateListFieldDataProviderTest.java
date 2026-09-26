@@ -3,8 +3,8 @@ package com.workflow.service.listfield;
 import com.workflow.entity.list.extension.TemplateListFieldDataProvider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
+import com.workflow.contracts.entity.list.model.ListFieldDataConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -37,12 +37,12 @@ class TemplateListFieldDataProviderTest {
     @Test
     void composesFieldsWithoutExecutingScripts() {
         TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());
-        EntityListField field = new EntityListField();
+        ListFieldDataConfig field = new ListFieldDataConfig();
         field.setFieldCode("summary");
         field.setDataSourceConfig("{\"template\":\"${code} / ${owner}\"}");
         field.setRenderConfig("{\"emptyText\":\"-\"}");
 
-        EntityDataDTO row = new EntityDataDTO();
+        ListFieldDataRecord row = new ListFieldDataRecord();
         row.setCode("PO-001");
         row.setData(new HashMap<>(Map.of("owner", "张三")));
 
@@ -56,13 +56,13 @@ class TemplateListFieldDataProviderTest {
     void usesCellRenderEmptyTextForMissingTemplateValues() {
         TemplateListFieldDataProvider provider =
                 new TemplateListFieldDataProvider(new ObjectMapper());
-        EntityListField field = new EntityListField();
+        ListFieldDataConfig field = new ListFieldDataConfig();
         field.setFieldCode("summary");
         field.setDataSourceConfig(
                 "{\"template\":\"${code} / ${owner}\"}");
         field.setRenderConfig("{\"emptyText\":\"未填写\"}");
 
-        EntityDataDTO row = new EntityDataDTO();
+        ListFieldDataRecord row = new ListFieldDataRecord();
         row.setCode("PO-001");
         row.setData(new HashMap<>());
 
@@ -79,10 +79,10 @@ class TemplateListFieldDataProviderTest {
     @Test
     void rendersAuditFieldsByDatabaseColumnNames() {
         TemplateListFieldDataProvider provider = new TemplateListFieldDataProvider(new ObjectMapper());
-        EntityListField field = new EntityListField();
+        ListFieldDataConfig field = new ListFieldDataConfig();
         field.setFieldCode("summary");
         field.setDataSourceConfig("{\"template\":\"${create_time} / ${update_time} / ${create_by} / ${update_by}\"}");
-        EntityDataDTO row = new EntityDataDTO();
+        ListFieldDataRecord row = new ListFieldDataRecord();
         var created = java.time.LocalDateTime.of(2026, 9, 20, 10, 0);
         row.setCreateTime(created);
         row.setUpdateTime(created.plusHours(1));

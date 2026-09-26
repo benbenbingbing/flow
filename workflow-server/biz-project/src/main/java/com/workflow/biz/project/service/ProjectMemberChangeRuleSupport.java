@@ -2,8 +2,8 @@ package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +30,7 @@ final class ProjectMemberChangeRuleSupport {
     private static final Set<String> ACTIVE_MEMBER_STATUSES = Set.of(
             "PENDING_JOIN", "ACTIVE", "SUSPENDED", "PENDING_LEAVE");
 
-    private final EntityDataDynamicService entityDataService;
+    private final EntityRecordQueryPort entityDataService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -40,7 +40,7 @@ final class ProjectMemberChangeRuleSupport {
      * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
      */
     ProjectMemberChangeRuleSupport(
-            EntityDataDynamicService entityDataService,
+            EntityRecordQueryPort entityDataService,
             ObjectMapper objectMapper) {
         this.entityDataService = entityDataService;
         this.objectMapper = objectMapper;
@@ -101,10 +101,10 @@ final class ProjectMemberChangeRuleSupport {
      * @param projectId 项目ID，后续用于校验并获取目标成员时定位或关联目标
      * @return 校验并获取后的目标成员结果，供调用方继续处理
      */
-    EntityDataDTO requireTargetMember(Map<String, Object> requestData, String projectId) {
+    EntityRecordData requireTargetMember(Map<String, Object> requestData, String projectId) {
         String memberId = ProjectGovernanceValues.requireText(
                 requestData, "project_member_id", "目标项目成员不能为空");
-        EntityDataDTO member = entityDataService.findById(PROJECT_MEMBER, memberId);
+        EntityRecordData member = entityDataService.findById(PROJECT_MEMBER, memberId);
         if (!Objects.equals(projectId, text(read(data(member), "project_id")))) {
             conflict("PROJECT_MEMBER_PROJECT_MISMATCH", "目标成员不属于所选项目");
         }
@@ -118,7 +118,7 @@ final class ProjectMemberChangeRuleSupport {
      * @param memberId 成员ID，后续用于处理活动角色集合时定位或关联目标
      * @return 实体数据集合，供调用方遍历或展示
      */
-    List<EntityDataDTO> activeRoles(String projectId, String memberId) {
+    List<EntityRecordData> activeRoles(String projectId, String memberId) {
         return entityDataService.findByCondition(
                         PROJECT_ROLE_ASSIGNMENT,
                         Map.of("project_id", projectId, "member_id", memberId)).stream()
@@ -131,7 +131,7 @@ final class ProjectMemberChangeRuleSupport {
      * @param memberId 成员ID，后续用于处理角色集合成员时定位或关联目标
      * @return 实体数据集合，供调用方遍历或展示
      */
-    List<EntityDataDTO> rolesForMember(String memberId) {
+    List<EntityRecordData> rolesForMember(String memberId) {
         return entityDataService.findByCondition(
                 PROJECT_ROLE_ASSIGNMENT, Map.of("member_id", memberId));
     }
@@ -142,7 +142,7 @@ final class ProjectMemberChangeRuleSupport {
      * @param assignment 分配，作为 {@code data} 的输入影响后续处理
      * @return 主要{@code manager}角色条件成立时为 true，否则为 false
      */
-    boolean isPrimaryManagerRole(EntityDataDTO assignment) {
+    boolean isPrimaryManagerRole(EntityRecordData assignment) {
         Map<String, Object> values = data(assignment);
         return "PROJECT_MANAGER".equals(upper(read(values, "role_code")))
                 && bool(read(values, "primary_flag"));
@@ -183,7 +183,7 @@ final class ProjectMemberChangeRuleSupport {
      * @return {@code proposed}成员数据键值结果，供调用方继续处理
      */
     Map<String, Object> proposedMemberData(
-            String operation, Map<String, Object> requestData, EntityDataDTO member) {
+            String operation, Map<String, Object> requestData, EntityRecordData member) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (member != null) result.putAll(data(member));
         result.put("operation_type", operation);

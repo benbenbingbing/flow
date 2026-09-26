@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import com.workflow.core.logging.LogValue;
 import com.workflow.biz.project.service.ProjectEntityMutationExecutor;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ import java.util.Set;
 @Component("projectExtensionAcceptanceFlowActionHandler")
 @RequiredArgsConstructor
 public class ProjectExtensionAcceptanceFlowActionHandler
-        implements TypedFlowActionHandler<
+        implements TypedFlowActionProvider<
         ProjectExtensionAcceptanceFlowActionHandler.Parameters> {
 
     public static final String ENTITY_CODE =

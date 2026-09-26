@@ -1,7 +1,7 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -69,7 +69,7 @@ class PermissionConditionParityTest {
         when(fields.findByEntityId("e1")).thenReturn(List.of());
         PermissionSqlBuilder builder = new PermissionSqlBuilder(definitions, fields,
                 mock(EntityStatusMapper.class), List.of(), DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("USER_FIELD"); node.setField(field); node.setOperator(op); node.setValue(value);
         FilterConfigDTO filter = new FilterConfigDTO(); filter.setType("RULE"); filter.setRoot(node);
         assertEquals(expected, evaluator.evaluate(node, null, user, null), field + " " + op + " button");

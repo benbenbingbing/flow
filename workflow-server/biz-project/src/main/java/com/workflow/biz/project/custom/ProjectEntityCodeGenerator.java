@@ -1,7 +1,7 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.entity.code.EntityCodeGenerationContext;
-import com.workflow.contracts.entity.code.EntityCodeGenerator;
+import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 import com.workflow.contracts.entity.code.EntityCodePreviewContext;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import java.util.Set;
 
 /** 项目编码扩展示例：使用预分配记录 ID 保证多实例安全，无需查询尚未插入的项目记录。 */
 @Component
-public class ProjectEntityCodeGenerator implements EntityCodeGenerator {
+public class ProjectEntityCodeGenerator implements EntityCodeGeneratorProvider {
     @Override public String getCode() { return "PROJECT_RECORD_ID"; }
     @Override public String getDisplayName() { return "项目编号（前缀 + 记录ID）"; }
     @Override public Set<String> supportedEntityCodes() { return Set.of("project"); }

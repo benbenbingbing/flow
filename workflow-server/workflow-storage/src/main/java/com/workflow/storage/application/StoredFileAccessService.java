@@ -5,8 +5,8 @@ import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.admin.authorization.application.CurrentUserRoleService;
-import com.workflow.admin.security.context.UserContext;
+import com.workflow.contracts.identity.port.CurrentActorPort;
+import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
@@ -40,7 +40,8 @@ public class StoredFileAccessService {
             "[\\x21-\\x7E]{1,128}");
 
     private final JdbcTemplate jdbcTemplate;
-    private final CurrentUserRoleService currentUserRoleService;
+    private final CurrentAuthorizationPort currentUserRoleService;
+    private final CurrentActorPort currentActor;
     private final JdbcWriteAttempt writeAttempt;
     private final DatabaseQueryDialect queryDialect;
 
@@ -217,7 +218,7 @@ public class StoredFileAccessService {
      * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
      */
     private String currentUserId() {
-        String userId = UserContext.getUserId();
+        String userId = currentActor.current().userId();
         if (!StringUtils.hasText(userId)) {
             throw new ForbiddenException("用户未登录");
         }

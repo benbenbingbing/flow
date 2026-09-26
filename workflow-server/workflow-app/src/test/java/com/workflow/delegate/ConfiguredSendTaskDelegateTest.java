@@ -5,7 +5,7 @@ import com.workflow.process.engine.infrastructure.flowable.ConfiguredSendTaskDel
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.cc.application.ProcessCcRuntimeService;
-import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
 import org.flowable.bpmn.model.ExtensionAttribute;
 import org.flowable.bpmn.model.ExtensionElement;
 import org.flowable.bpmn.model.ServiceTask;

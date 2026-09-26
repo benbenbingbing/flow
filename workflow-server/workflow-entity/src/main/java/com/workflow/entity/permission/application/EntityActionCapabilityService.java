@@ -9,7 +9,7 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort.ActionableTaskContext;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -339,7 +339,7 @@ public class EntityActionCapabilityService {
             String entityCode,
             String actionKey,
             String permissionCode,
-            EntityActionRuleDTO rule,
+            EntityActionRule rule,
             EntityDataDTO row) {
         EntityActionCapabilityDTO capability =
                 evaluateConfiguredAction(
@@ -414,7 +414,7 @@ public class EntityActionCapabilityService {
                 ? null : rows.get(0).getId();
         requirePublishedButtonIdentity(
                 entityCode, actionKey, button, recordId);
-        EntityActionRuleDTO rule = actionConfigService.readRule(button);
+        EntityActionRule rule = actionConfigService.readRule(button);
         SysUser user = currentUser();
         List<EntityDataDTO> targets = rows == null || rows.isEmpty()
                 ? java.util.Collections.singletonList(null)
@@ -503,7 +503,7 @@ public class EntityActionCapabilityService {
     public EntityActionCapabilityDTO evaluateConfiguredAction(
             String entityCode,
             String permissionCode,
-            EntityActionRuleDTO rule,
+            EntityActionRule rule,
             EntityDataDTO row) {
         if (!PermissionUtil.hasPermission(permissionCode)) {
             return EntityActionCapabilityDTO.hidden(
@@ -517,7 +517,7 @@ public class EntityActionCapabilityService {
                                 row.getStatus())
                         : null;
         return evaluateConditions(
-                new EntityActionRuleDTO[] {rule},
+                new EntityActionRule[] {rule},
                 row,
                 user,
                 status == null ? null : status.getStatusCategory(),
@@ -543,8 +543,8 @@ public class EntityActionCapabilityService {
     public EntityActionCapabilityDTO evaluateApprovalAction(
             String entityCode,
             EntityDataDTO row,
-            EntityActionRuleDTO mandatoryRule,
-            EntityActionRuleDTO overrideRule) {
+            EntityActionRule mandatoryRule,
+            EntityActionRule overrideRule) {
         SysUser user = currentUser();
         String actionableTaskId = assigneeLookup.findActionableTaskId(row, user).orElse(null);
         if (!StringUtils.hasText(actionableTaskId)) {
@@ -554,7 +554,7 @@ public class EntityActionCapabilityService {
         EntityStatus status = row != null && StringUtils.hasText(row.getStatus())
                 ? statusMapper.findByEntityAndCode(entityCode, row.getStatus()) : null;
         EntityActionCapabilityDTO conditions = evaluateConditions(
-                new EntityActionRuleDTO[] {mandatoryRule, overrideRule},
+                new EntityActionRule[] {mandatoryRule, overrideRule},
                 row,
                 user,
                 status == null ? null : status.getStatusCategory(),
@@ -614,7 +614,7 @@ public class EntityActionCapabilityService {
                 return restart;
             }
         }
-        EntityActionRuleDTO rule = actionConfigService.readRule(button);
+        EntityActionRule rule = actionConfigService.readRule(button);
         boolean approveAction = "approve".equals(asString(button.get("key")));
         String actionableTaskId = null;
         if (approveAction) {
@@ -626,7 +626,7 @@ public class EntityActionCapabilityService {
             }
         }
         EntityActionCapabilityDTO conditions = evaluateConditions(
-                new EntityActionRuleDTO[] {rule},
+                new EntityActionRule[] {rule},
                 row,
                 user,
                 statusCategory,
@@ -663,7 +663,7 @@ public class EntityActionCapabilityService {
         if (!PermissionUtil.hasPermission(permissionCode)) {
             return EntityActionCapabilityDTO.hidden("无操作权限");
         }
-        EntityActionRuleDTO rule = actionConfigService.readRule(button);
+        EntityActionRule rule = actionConfigService.readRule(button);
         if (rule == null) {
             return EntityActionCapabilityDTO.allowed();
         }
@@ -697,19 +697,19 @@ public class EntityActionCapabilityService {
      * @return 求值后的{@code conditions}结果，供调用方继续处理
      */
     private EntityActionCapabilityDTO evaluateConditions(
-            EntityActionRuleDTO[] rules,
+            EntityActionRule[] rules,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,
             boolean approval) {
-        for (EntityActionRuleDTO rule : rules) {
+        for (EntityActionRule rule : rules) {
             if (rule != null && !evaluateCondition(
                     rule.getVisibleWhen(), row, user, statusCategory, approval)) {
                 return EntityActionCapabilityDTO.hidden(
                         "当前数据不满足显示条件");
             }
         }
-        for (EntityActionRuleDTO rule : rules) {
+        for (EntityActionRule rule : rules) {
             if (rule != null && !evaluateCondition(
                     rule.getEnabledWhen(), row, user, statusCategory, approval)) {
                 String reason = StringUtils.hasText(rule.getDisabledMessage())
@@ -732,7 +732,7 @@ public class EntityActionCapabilityService {
      * @return 条件条件成立时为 true，否则为 false
      */
     private boolean evaluateCondition(
-            EntityActionRuleDTO.RuleNode condition,
+            EntityActionRule.RuleNode condition,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,

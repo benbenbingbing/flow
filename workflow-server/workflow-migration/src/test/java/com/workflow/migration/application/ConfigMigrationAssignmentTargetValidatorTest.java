@@ -3,7 +3,7 @@ package com.workflow.migration.application;
 import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -37,7 +37,7 @@ class ConfigMigrationAssignmentTargetValidatorTest {
     @Test
     void parameterValidatorReceivesMappedCoordinates() {
         PersonResolverRuntimeService runtime = mock(PersonResolverRuntimeService.class);
-        PersonResolverConfigurationValidator rules = mock(PersonResolverConfigurationValidator.class);
+        PersonResolverConfigurationValidationProvider rules = mock(PersonResolverConfigurationValidationProvider.class);
         when(rules.resolverCode()).thenReturn("relativeOrgPosition");
         when(runtime.supportsConfigured("relativeOrgPosition", PersonResolveUsage.ASSIGNEE)).thenReturn(true);
         var validator = new ConfigMigrationAssignmentTargetValidator(runtime,

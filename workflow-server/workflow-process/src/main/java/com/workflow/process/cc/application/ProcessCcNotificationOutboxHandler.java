@@ -1,10 +1,13 @@
 package com.workflow.process.cc.application;
 
+import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.process.cc.model.CcNotification;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
@@ -16,11 +19,11 @@ import java.util.Map;
  */
 @Component
 public class ProcessCcNotificationOutboxHandler
-        implements OutboxEventHandler {
+        implements OutboxEventHandlerProvider {
 
     private final ProcessCcRecordMapper recordMapper;
     private final ObjectMapper objectMapper;
-    private final Map<String, CcNotificationChannel> channels;
+    private final Map<String, CcNotificationChannelProvider> channels;
 
     /**
      * 初始化流程抄送通知待发送事件处理器，保存构造参数供后续方法使用。
@@ -32,7 +35,7 @@ public class ProcessCcNotificationOutboxHandler
     public ProcessCcNotificationOutboxHandler(
             ProcessCcRecordMapper recordMapper,
             ObjectMapper objectMapper,
-            List<CcNotificationChannel> channels) {
+            List<CcNotificationChannelProvider> channels) {
         this.recordMapper = recordMapper;
         this.objectMapper = objectMapper;
         this.channels = indexChannels(channels);
@@ -66,14 +69,14 @@ public class ProcessCcNotificationOutboxHandler
             throw new IllegalStateException(
                     "知会记录不存在: " + payload.ccRecordId());
         }
-        CcNotificationChannel channel = channels.get(
+        CcNotificationChannelProvider channel = channels.get(
                 payload.channel());
         if (channel == null) {
             throw new IllegalStateException(
                     "未注册通知渠道: " + payload.channel());
         }
         channel.send(
-                record,
+                notification(record),
                 payload.message() == null
                         ? Map.of()
                         : payload.message());
@@ -86,13 +89,13 @@ public class ProcessCcNotificationOutboxHandler
      * @return 索引{@code channels}键值结果，供调用方继续处理
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
-    private Map<String, CcNotificationChannel> indexChannels(
-            List<CcNotificationChannel> values) {
-        Map<String, CcNotificationChannel> result =
+    private Map<String, CcNotificationChannelProvider> indexChannels(
+            List<CcNotificationChannelProvider> values) {
+        Map<String, CcNotificationChannelProvider> result =
                 new LinkedHashMap<>();
-        for (CcNotificationChannel channel : values) {
+        for (CcNotificationChannelProvider channel : values) {
             String code = channel.channel().trim().toUpperCase();
-            CcNotificationChannel previous =
+            CcNotificationChannelProvider previous =
                     result.putIfAbsent(code, channel);
             if (previous != null) {
                 throw new IllegalStateException(
@@ -100,5 +103,29 @@ public class ProcessCcNotificationOutboxHandler
             }
         }
         return Map.copyOf(result);
+    }
+
+    /** 投递只传递渠道需要的业务快照，持久化状态和实体实例不跨越 SPI 边界。 */
+    private CcNotification notification(ProcessCcRecord record) {
+        CcNotification result = new CcNotification();
+        result.setId(record.getId());
+        result.setProcessInstanceId(record.getProcessInstanceId());
+        result.setProcessDefinitionId(record.getProcessDefinitionId());
+        result.setProcessKey(record.getProcessKey());
+        result.setProcessName(record.getProcessName());
+        result.setDataName(record.getDataName());
+        result.setBusinessKey(record.getBusinessKey());
+        result.setNodeId(record.getNodeId());
+        result.setNodeName(record.getNodeName());
+        result.setCcUserId(record.getCcUserId());
+        result.setCcUserName(record.getCcUserName());
+        result.setCcType(record.getCcType());
+        result.setCcTiming(record.getCcTiming());
+        result.setOperatorId(record.getOperatorId());
+        result.setOperatorName(record.getOperatorName());
+        result.setComment(record.getComment());
+        result.setSourceTaskId(record.getSourceTaskId());
+        result.setSourceType(record.getSourceType());
+        return result;
     }
 }

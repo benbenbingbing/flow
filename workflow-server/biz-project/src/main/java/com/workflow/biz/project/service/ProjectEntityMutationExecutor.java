@@ -1,6 +1,8 @@
 package com.workflow.biz.project.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
@@ -9,11 +11,12 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -66,35 +69,35 @@ public class ProjectEntityMutationExecutor {
     }
 
     /**
-     * 保存项目实体变更执行器；后续读取或执行将使用更新后的状态。
+     * 在当前变更会话中创建实体记录；审计字段沿用实体写入协议，返回独立业务投影。
      *
-     * @param dto DTO，作为 {@code objectMapper.convertValue} 的输入影响后续处理
-     * @return 保存后的项目实体变更执行器结果，供调用方继续处理
+     * @param dto 待创建记录，entityCode 指定目标实体，data 携带发布字段值
+     * @return 已创建或幂等重放的记录
      */
-    public EntityDataDTO save(EntityDataDTO dto) {
+    public EntityRecordData save(EntityRecordData dto) {
         Map<String, Object> payload = objectMapper.convertValue(
                 dto,
                 new TypeReference<>() {
                 });
+        // 业务投影不依赖 Jackson 注解；写入协议仍使用实体的规范审计字段名。
+        payload.put("create_by", payload.remove("createBy"));
         EntityMutationResult result = execute(
                 dto.getEntityCode(),
                 null,
                 EntityMutationOperationType.CREATE,
                 payload);
-        return objectMapper.convertValue(
-                result.record(),
-                EntityDataDTO.class);
+        return readRecord(result.record());
     }
 
     /**
-     * 更新项目实体变更执行器；后续读取或执行将使用更新后的状态。
+     * 在当前会话中更新记录；变更生效会话使用 APPLY_CHANGE，其余会话使用 UPDATE。
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     * @param payload 载荷，后续用于更新项目实体变更执行器并传递处理结果
-     * @return 更新后的项目实体变更执行器结果，供调用方继续处理
+     * @param payload 实体变更端口接受的字段载荷
+     * @return 变更后的记录投影
      */
-    public EntityDataDTO update(
+    public EntityRecordData update(
             String entityCode,
             String recordId,
             Map<String, Object> payload) {
@@ -109,9 +112,7 @@ public class ProjectEntityMutationExecutor {
                 recordId,
                 operationType,
                 payload);
-        return objectMapper.convertValue(
-                result.record(),
-                EntityDataDTO.class);
+        return readRecord(result.record());
     }
 
     /**
@@ -275,6 +276,24 @@ public class ProjectEntityMutationExecutor {
             return baseIdempotencyKey
                     + ":mutation:"
                     + sequence.incrementAndGet();
+        }
+    }
+
+    /** 变更回执可能含 HTTP 展示字段；只解码业务投影，避免将按钮或表单令牌变成插件协议。 */
+    private EntityRecordData readRecord(Map<String, Object> record) {
+        if (record == null) {
+            return null;
+        }
+        Map<String, Object> projected = new LinkedHashMap<>(record);
+        if (projected.containsKey("create_by")) {
+            projected.put("createBy", projected.remove("create_by"));
+        }
+        try {
+            return objectMapper.readerFor(EntityRecordData.class)
+                    .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                    .readValue((JsonNode) objectMapper.valueToTree(projected));
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("实体变更回执无法转换为业务投影", exception);
         }
     }
 }

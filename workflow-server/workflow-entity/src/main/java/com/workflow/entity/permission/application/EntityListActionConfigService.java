@@ -1,8 +1,10 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.spi.EntityPermissionOptionProvider;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
@@ -311,7 +313,7 @@ public class EntityListActionConfigService {
      * @param button 按钮配置，可为 null
      * @return 规则对象，不存在返回 null
      */
-    public EntityActionRuleDTO readRule(Map<String, Object> button) {
+    public EntityActionRule readRule(Map<String, Object> button) {
         Object rawRule = button == null ? null : button.get("availabilityRule");
         if (rawRule == null) {
             return null;
@@ -497,7 +499,7 @@ public class EntityListActionConfigService {
             if (action != null) {
                 button.put("perm", action.permissionCode(entityCode));
                 if (!button.containsKey("availabilityRule")) {
-                    EntityActionRuleDTO defaultRule = defaultRule(key);
+                    EntityActionRule defaultRule = defaultRule(key);
                     if (defaultRule != null) {
                         button.put("availabilityRule", objectMapper.convertValue(defaultRule, Map.class));
                     }
@@ -510,7 +512,7 @@ public class EntityListActionConfigService {
             }
             validatePermission(entityCode, asString(button.get("perm")), strictCustomPermission);
 
-            EntityActionRuleDTO rule = readRule(button);
+            EntityActionRule rule = readRule(button);
             if (rule != null) {
                 button.put("availabilityRule", objectMapper.convertValue(rule, Map.class));
             }
@@ -658,7 +660,7 @@ public class EntityListActionConfigService {
      * @param buttonKey 列表按钮编码
      * @return 默认规则；无需限制的按钮返回 null，显式配置由调用方保留
      */
-    private EntityActionRuleDTO defaultRule(String buttonKey) {
+    private EntityActionRule defaultRule(String buttonKey) {
         if ("restartProcess".equals(buttonKey)) {
             return visibleRule(group("AND",
                     relation("CURRENT_USER_IS_SUBMITTER"),
@@ -672,7 +674,7 @@ public class EntityListActionConfigService {
             return visibleRule(ownDraftOrWithdrawnCondition());
         }
         if ("batchDelete".equals(buttonKey)) {
-            EntityActionRuleDTO rule = new EntityActionRuleDTO();
+            EntityActionRule rule = new EntityActionRule();
             rule.setEnabledWhen(ownDraftOrWithdrawnCondition());
             rule.setDisabledMessage("选中数据中存在不可删除的数据");
             return rule;
@@ -691,9 +693,9 @@ public class EntityListActionConfigService {
      * @param condition 筛选条件，后续与权限约束合并为查询条件
      * @return 处理后的可见规则结果，供调用方继续处理
      */
-    private EntityActionRuleDTO visibleRule(
-            EntityActionRuleDTO.RuleNode condition) {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+    private EntityActionRule visibleRule(
+            EntityActionRule.RuleNode condition) {
+        EntityActionRule rule = new EntityActionRule();
         rule.setVisibleWhen(condition);
         return rule;
     }
@@ -703,7 +705,7 @@ public class EntityListActionConfigService {
      *
      * @return 处理后的{@code own}草稿或{@code withdrawn}条件结果，供调用方继续处理
      */
-    private EntityActionRuleDTO.RuleNode ownDraftOrWithdrawnCondition() {
+    private EntityActionRule.RuleNode ownDraftOrWithdrawnCondition() {
         return group("AND",
                 group("OR",
                         relation("CURRENT_USER_IS_CREATOR"),
@@ -724,8 +726,8 @@ public class EntityListActionConfigService {
      * @param children 子节点，作为 {@code node.setChildren} 的输入影响后续处理
      * @return 处理后的分组结果，供调用方继续处理
      */
-    private EntityActionRuleDTO.RuleNode group(String logic, EntityActionRuleDTO.RuleNode... children) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode group(String logic, EntityActionRule.RuleNode... children) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("GROUP");
         node.setLogic(logic);
         node.setChildren(List.of(children));
@@ -738,8 +740,8 @@ public class EntityListActionConfigService {
      * @param relation 关系，作为 {@code node.setRelation} 的输入影响后续处理
      * @return 处理后的关系结果，供调用方继续处理
      */
-    private EntityActionRuleDTO.RuleNode relation(String relation) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode relation(String relation) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("RELATION");
         node.setRelation(relation);
         return node;
@@ -753,8 +755,8 @@ public class EntityListActionConfigService {
      * @param value 待处理条件的原始输入，结果供调用方继续使用
      * @return 处理后的条件结果，供调用方继续处理
      */
-    private EntityActionRuleDTO.RuleNode condition(String type, String operator, Object value) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode condition(String type, String operator, Object value) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType(type);
         if ("PROCESS_STATE".equals(type)) node.setLifecycleVersion(1);
         node.setOperator(operator);

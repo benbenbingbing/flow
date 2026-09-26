@@ -1,9 +1,11 @@
 package com.workflow.entity.list.extension;
 
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
+import com.workflow.contracts.entity.list.model.ListFieldDataConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -89,14 +91,14 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
      */
     @Override
     public void enrich(
-            List<EntityDataDTO> records,
-            List<EntityListField> fields,
+            List<ListFieldDataRecord> records,
+            List<ListFieldDataConfig> fields,
             Map<String, Object> context) {
-        for (EntityListField field : fields) {
+        for (ListFieldDataConfig field : fields) {
             Map<String, Object> config = parse(field.getDataSourceConfig());
             String template = String.valueOf(config.getOrDefault("template", ""));
             String emptyText = resolveEmptyText(field);
-            for (EntityDataDTO record : records) {
+            for (ListFieldDataRecord record : records) {
                 String value = render(template, emptyText, record);
                 if (record.getExtData() == null) {
                     record.setExtData(new HashMap<>());
@@ -112,7 +114,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
      * @param field 字段，作为 {@code parse} 的输入影响后续处理
      * @return 解析后的空文本文本，供调用方比较或展示
      */
-    private String resolveEmptyText(EntityListField field) {
+    private String resolveEmptyText(ListFieldDataConfig field) {
         Map<String, Object> renderConfig = parse(field.getRenderConfig());
         Object configured = renderConfig.get("emptyText");
         return configured == null || String.valueOf(configured).isBlank()
@@ -128,7 +130,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
      * @param record 记录，作为 {@code getValue} 的输入影响后续处理
      * @return 处理后的{@code render}文本，供调用方比较或展示
      */
-    private String render(String template, String emptyText, EntityDataDTO record) {
+    private String render(String template, String emptyText, ListFieldDataRecord record) {
         Matcher matcher = PLACEHOLDER.matcher(template);
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {
@@ -149,7 +151,7 @@ public class TemplateListFieldDataProvider implements ListFieldDataProvider {
      * @param fieldCode 字段编码，后续用于读取值时定位或关联目标
      * @return 符合条件的模板列表字段数据提供者结果，供调用方继续处理
      */
-    private Object getValue(EntityDataDTO record, String fieldCode) {
+    private Object getValue(ListFieldDataRecord record, String fieldCode) {
         if (record.getExtData() != null && record.getExtData().containsKey(fieldCode)) {
             return record.getExtData().get(fieldCode);
         }

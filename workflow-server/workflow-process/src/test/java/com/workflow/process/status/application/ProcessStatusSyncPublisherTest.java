@@ -1,7 +1,7 @@
 package com.workflow.process.status.application;
 
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import org.junit.jupiter.api.Test;
 
 import static org.mockito.ArgumentMatchers.argThat;
@@ -13,8 +13,8 @@ class ProcessStatusSyncPublisherTest {
 
     @Test
     void reconciliationRequeuesFailedProcessEndEvent() {
-        OutboxPublisher outboxPublisher =
-                mock(OutboxPublisher.class);
+        OutboxPublishPort outboxPublisher =
+                mock(OutboxPublishPort.class);
         ProcessStatusSyncPublisher publisher =
                 new ProcessStatusSyncPublisher(outboxPublisher);
 

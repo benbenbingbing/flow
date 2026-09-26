@@ -17,10 +17,7 @@
             <groupId>com.workflow</groupId>
             <artifactId>workflow-core</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.workflow</groupId>
-            <artifactId>workflow-contracts</artifactId>
-        </dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-port</artifactId></dependency>
         <dependency>
             <groupId>com.workflow</groupId>
             <artifactId>workflow-http</artifactId>

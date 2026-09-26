@@ -11,8 +11,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.admin.security.context.UserContextCurrentActorProvider;
+import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
+import com.workflow.core.error.ForbiddenException;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFileAccessService;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +33,7 @@ class StoredFileAccessServiceTest {
 
     private EmbeddedDatabase database;
     private StoredFileAccessService service;
+    private CurrentAuthorizationPort authorization;
 
     @BeforeEach
     void setUp() {
@@ -63,9 +66,11 @@ class StoredFileAccessServiceTest {
         org.mockito.Mockito.when(errors.isUniqueViolation("23505", 23505)).thenReturn(true);
         var queries = mock(com.workflow.integration.database.api.query.DatabaseQueryDialect.class);
         org.mockito.Mockito.when(queries.readGuardClause()).thenReturn(" FOR UPDATE");
+        authorization = mock(CurrentAuthorizationPort.class);
         service = new StoredFileAccessService(
                 jdbcTemplate,
-                mock(CurrentUserRoleService.class), new JdbcWriteAttempt(jdbcTemplate, errors), queries);
+                authorization,
+                new UserContextCurrentActorProvider(), new JdbcWriteAttempt(jdbcTemplate, errors), queries);
         UserContext.setCurrentUser("user-1", "tester");
     }
 
@@ -147,6 +152,26 @@ class StoredFileAccessServiceTest {
                 () -> service.prepareUpload("contains space", file("data")));
 
         assertEquals(400, exception.getResultCode());
+    }
+
+    @Test
+    void onlyOwnerOrAuthenticatedAdministratorCanReadAndDelete() {
+        MockMultipartFile file = file("content");
+        String url = "s3://files/private.txt";
+        service.register(stored(url), file, service.prepareUpload("private-01", file));
+
+        service.requireRead(url);
+        service.requireDelete(url);
+        UserContext.setCurrentUser("other-user", "other");
+        assertThrows(ForbiddenException.class, () -> service.requireRead(url));
+        assertThrows(ForbiddenException.class, () -> service.requireDelete(url));
+
+        org.mockito.Mockito.when(authorization.isAdministrator()).thenReturn(true);
+        service.requireRead(url);
+        service.requireDelete(url);
+        assertThrows(ForbiddenException.class, () -> service.requireRead("s3://files/missing.txt"));
+        UserContext.clear();
+        assertThrows(ForbiddenException.class, () -> service.requireRead(url));
     }
 
     private MockMultipartFile file(String content) {

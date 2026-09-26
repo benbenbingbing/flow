@@ -22,7 +22,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
 import com.workflow.process.cc.application.ProcessCcConfigService;
 import com.workflow.process.cc.application.ProcessCcNotificationPublisher;
 import org.flowable.engine.TaskService;

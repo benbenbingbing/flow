@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.audit.context.OperationContext;
 import com.workflow.contracts.audit.context.OperationContextHolder;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
@@ -25,7 +25,7 @@ class FlowActionExecutorOperationContextTest {
         AtomicReference<OperationContext> observed =
                 new AtomicReference<>();
         // 已发布的旧动作 Handler 必须仍能注入到 canonical SPI 消费端。
-        FlowActionHandler handler = new com.workflow.contracts.process.action.spi.FlowActionHandler() {
+        FlowActionProvider handler = new com.workflow.contracts.process.action.spi.FlowActionProvider() {
             @Override
             public void execute(FlowActionContext context) {
                 observed.set(OperationContextHolder.current()

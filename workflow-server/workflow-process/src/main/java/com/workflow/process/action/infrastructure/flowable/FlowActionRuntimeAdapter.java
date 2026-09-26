@@ -2,8 +2,8 @@ package com.workflow.process.action.infrastructure.flowable;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.HistoryService;
 import org.flowable.engine.RuntimeService;
@@ -28,7 +28,7 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
     private final RuntimeService runtimeService;
     private final TaskService taskService;
     private final HistoryService historyService;
-    private final EntityDataDynamicService entityDataDynamicService;
+    private final EntityRecordQueryPort entityDataDynamicService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -163,10 +163,10 @@ public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
      *
      * @param entityCode   实体编码
      * @param entityDataId 实体数据 ID
-     * @return 实体数据 DTO
+     * @return 经宿主读取策略校验后的业务记录投影，不含 HTTP 表单令牌和按钮能力
      */
     @Override
-    public EntityDataDTO getEntityData(String entityCode, String entityDataId) {
+    public EntityRecordData getEntityData(String entityCode, String entityDataId) {
         return entityDataDynamicService.findById(entityCode, entityDataId);
     }
 

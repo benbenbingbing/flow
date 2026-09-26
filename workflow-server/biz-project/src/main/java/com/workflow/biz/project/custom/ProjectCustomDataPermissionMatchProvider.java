@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
-import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionMatchProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -42,7 +42,7 @@ public class ProjectCustomDataPermissionMatchProvider
      */
     @Override
     public void validate(
-            MatchConfigDTO.MatchConditionDTO condition) {
+            PermissionMatchConfig.MatchConditionDTO condition) {
         if (condition == null
                 || condition.getTargetIds() == null
                 || condition.getTargetIds().isEmpty()) {
@@ -67,16 +67,16 @@ public class ProjectCustomDataPermissionMatchProvider
      */
     @Override
     public boolean matches(
-            MatchConfigDTO.MatchConditionDTO condition,
-            SysUser user) {
+            PermissionMatchConfig.MatchConditionDTO condition,
+            IdentityUser user) {
         if (condition == null || user == null) {
             return false;
         }
         validate(condition);
         Set<String> identities =
                 new LinkedHashSet<>();
-        add(identities, user.getId());
-        add(identities, user.getUsername());
+        add(identities, user.id());
+        add(identities, user.username());
         List<String> targets =
                 condition.getTargetIds();
         boolean matched = "ALL".equalsIgnoreCase(
@@ -87,7 +87,7 @@ public class ProjectCustomDataPermissionMatchProvider
         log.info(
                 "项目数据权限用户范围匹配: scopeType={}, userId={}, targetCount={}, operator={}, matched={}",
                 SCOPE_TYPE,
-                LogValue.safe(user.getId()),
+                LogValue.safe(user.id()),
                 targets.size(),
                 condition.getOperator(),
                 matched);

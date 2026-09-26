@@ -1,5 +1,7 @@
 package com.workflow.service.permission;
 
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
+
 import com.workflow.entity.permission.application.model.DataPermissionResult;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -169,7 +171,7 @@ class HasTodoPermissionBindingTest {
         binding.setListKey("default");
         binding.setEnabled(1);
         binding.setRuleEffect(effect);
-        binding.setMatchConfig(new MatchConfigDTO());
+        binding.setMatchConfig(new PermissionMatchConfig());
         return binding;
     }
 }

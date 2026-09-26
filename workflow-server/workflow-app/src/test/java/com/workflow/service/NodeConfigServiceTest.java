@@ -1,8 +1,8 @@
 package com.workflow.service;
 
-import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
-import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.process.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
+import com.workflow.process.form.infrastructure.persistence.record.FormConfig;
 
 import com.workflow.process.configuration.application.NodeConfigService;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;

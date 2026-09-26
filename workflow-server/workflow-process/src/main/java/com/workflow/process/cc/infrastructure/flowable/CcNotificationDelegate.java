@@ -1,7 +1,7 @@
 package com.workflow.process.cc.infrastructure.flowable;
 
 import com.workflow.process.cc.application.ProcessCcRuntimeService;
-import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
 import com.workflow.process.cc.application.ProcessCcConfigService;
 import lombok.RequiredArgsConstructor;
 import org.flowable.engine.RepositoryService;

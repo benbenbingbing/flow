@@ -1,8 +1,8 @@
 package com.workflow.entity;
 
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
-import com.workflow.entity.form.infrastructure.persistence.record.FormFieldConfig;
+import com.workflow.process.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.form.infrastructure.persistence.record.FormFieldConfig;
 
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;

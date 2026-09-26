@@ -6,7 +6,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
@@ -215,7 +215,7 @@ class MySqlMultiValuePermissionDatabaseTest {
     }
     private static SysUser user(String id, String dept) { var user = new SysUser(); user.setId(id); user.setDeptId(dept); return user; }
     private static FilterConfigDTO rule(String field, String operation, Object value) {
-        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("FIELD"); node.setField(field); node.setOperator(operation); node.setValue(value); filter.setRoot(node); return filter;
     }
     private static FilterConfigDTO mapping(String type, String field) {
@@ -223,7 +223,7 @@ class MySqlMultiValuePermissionDatabaseTest {
         mapping.setUserField(field); mapping.setDeptField(field); filter.setFieldMapping(mapping); return filter;
     }
     private static FilterConfigDTO group(String logic, FilterConfigDTO... filters) {
-        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("GROUP"); node.setLogic(logic); node.setChildren(Arrays.stream(filters).map(FilterConfigDTO::getRoot).toList());
         filter.setRoot(node); return filter;
     }

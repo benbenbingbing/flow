@@ -230,8 +230,8 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     }
 
     @Override
-    public void enrich(List&lt;EntityDataDTO&gt; records,
-                       List&lt;EntityListField&gt; fields,
+    public void enrich(List&lt;ListFieldDataRecord&gt; records,
+                       List&lt;ListFieldDataConfig&gt; fields,
                        Map&lt;String, Object&gt; context) {
         // 1. 汇总当前页/当前结果集中的客户ID
         // 2. 一次批量查询客户等级
@@ -259,7 +259,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <li>外部调用必须设置超时、限流和降级；敏感信息不能写入配置 JSON。</li>
             <li>自定义查询仍受实体数据权限约束，提供者只能处理已授权记录。</li>
             <li>需要接管整页查询时实现 `EntityListDataProvider`，平台会传入不可绕过的 `DataScopePlan`。</li>
-            <li>来源记录联动使用 `EntityListContextResolver`，不要信任前端直接传入的客户、部门、项目或组织 ID。</li>
+            <li>来源记录联动使用 `EntityListContextResolverProvider`，不要信任前端直接传入的客户、部门、项目或组织 ID。</li>
           </ul>
         </section>
 

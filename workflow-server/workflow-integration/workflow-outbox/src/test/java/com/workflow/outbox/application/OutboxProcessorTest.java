@@ -1,7 +1,7 @@
 package com.workflow.outbox.application;
 
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import org.junit.jupiter.api.Test;
@@ -31,7 +31,7 @@ class OutboxProcessorTest {
     void marksSuccessfulEventAsProcessed() throws Exception {
         OutboxRecordMapper mapper =
                 mock(OutboxRecordMapper.class);
-        OutboxEventHandler handler =
+        OutboxEventHandlerProvider handler =
                 handler("TEST");
         OutboxRecord record = processingRecord();
         when(mapper.selectClaimed(record.getId(), "worker-1"))
@@ -52,7 +52,7 @@ class OutboxProcessorTest {
     void schedulesRetryWhenHandlerFails() throws Exception {
         OutboxRecordMapper mapper =
                 mock(OutboxRecordMapper.class);
-        OutboxEventHandler handler =
+        OutboxEventHandlerProvider handler =
                 handler("TEST");
         when(handler.retryable()).thenReturn(true);
         doThrow(new IllegalStateException("temporary"))
@@ -89,7 +89,7 @@ class OutboxProcessorTest {
     void releasesLeaseWhenHandlerHasLinkageError() throws Exception {
         OutboxRecordMapper mapper =
                 mock(OutboxRecordMapper.class);
-        OutboxEventHandler handler =
+        OutboxEventHandlerProvider handler =
                 handler("TEST");
         when(handler.retryable()).thenReturn(true);
         doThrow(new NoClassDefFoundError(
@@ -129,7 +129,7 @@ class OutboxProcessorTest {
     @Test
     void sendsNonIdempotentFailureDirectlyToDeadLetter() throws Exception {
         OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
-        OutboxEventHandler handler = handler("NOTIFICATION");
+        OutboxEventHandlerProvider handler = handler("NOTIFICATION");
         doThrow(new IllegalStateException("unknown delivery"))
                 .when(handler)
                 .handle(any(OutboxEvent.class));
@@ -164,7 +164,7 @@ class OutboxProcessorTest {
     @Test
     void ignoresQueuedHeartbeatAfterProcessingCompletes() throws Exception {
         OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
-        OutboxEventHandler handler = handler("TEST");
+        OutboxEventHandlerProvider handler = handler("TEST");
         OutboxRecord record = processingRecord();
         when(mapper.selectClaimed(record.getId(), "worker-1"))
                 .thenReturn(record);
@@ -195,9 +195,9 @@ class OutboxProcessorTest {
                 record.getId(), "worker-1", 7L, 120);
     }
 
-    private OutboxEventHandler handler(String topic) {
-        OutboxEventHandler handler =
-                mock(OutboxEventHandler.class);
+    private OutboxEventHandlerProvider handler(String topic) {
+        OutboxEventHandlerProvider handler =
+                mock(OutboxEventHandlerProvider.class);
         when(handler.topic()).thenReturn(topic);
         return handler;
     }

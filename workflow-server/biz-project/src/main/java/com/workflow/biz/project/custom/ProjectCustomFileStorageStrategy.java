@@ -1,11 +1,11 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.storage.application.port.FileStorageStrategy;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.contracts.storage.model.StoredFile;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
+import com.workflow.contracts.storage.model.FileUpload;
 
 import java.io.IOException;
 import java.util.Map;
@@ -20,7 +20,7 @@ import java.util.Map;
 @Slf4j
 @Component
 public class ProjectCustomFileStorageStrategy
-        implements FileStorageStrategy {
+        implements FileStorageProvider {
 
     public static final String STORAGE_TYPE =
             "PROJECT_LOG_ONLY";
@@ -34,16 +34,16 @@ public class ProjectCustomFileStorageStrategy
      */
     @Override
     public Map<String, String> upload(
-            MultipartFile file) {
+            FileUpload file) {
         log.info(
                 "项目日志型存储收到上传请求: storageType={}, originalFilename={}, size={}, contentType={}",
                 STORAGE_TYPE,
                 LogValue.safe(file == null
                         ? null
-                        : file.getOriginalFilename()),
-                file == null ? null : file.getSize(),
+                        : file.originalFilename()),
+                file == null ? null : file.size(),
                 LogValue.safe(file == null
-                        ? null : file.getContentType()));
+                        ? null : file.contentType()));
         throw unsupported();
     }
 

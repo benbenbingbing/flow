@@ -245,7 +245,8 @@ class MySqlRuntimeTimeDatabaseTest {
             f.table("storage_file_object", "id VARCHAR(64) PRIMARY KEY, storage_url VARCHAR(200) UNIQUE, deleted INT, update_time DATETIME(6)");
             var h = new Harness(f);
             h.jdbc.update("INSERT INTO storage_file_object VALUES ('a','url-a',0,NULL),('b','url-b',0,NULL)");
-            var service = new StoredFileAccessService(h.jdbc, mock(CurrentUserRoleService.class), h.attempt, QUERY);
+            var service = new StoredFileAccessService(h.jdbc, mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
+                new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt, QUERY);
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'"); service.markDeleted("url-a"); utcUpdated(h,"storage_file_object","a");
                 assertEquals(0, h.jdbc.queryForObject("SELECT deleted FROM storage_file_object WHERE id='b'", Integer.class));

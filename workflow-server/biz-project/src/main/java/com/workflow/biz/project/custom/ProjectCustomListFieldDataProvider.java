@@ -3,9 +3,9 @@ package com.workflow.biz.project.custom;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.list.extension.ListFieldDataProvider;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.model.ListFieldDataConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -98,14 +98,14 @@ public class ProjectCustomListFieldDataProvider
      */
     @Override
     public void enrich(
-            List<EntityDataDTO> records,
-            List<EntityListField> fields,
+            List<ListFieldDataRecord> records,
+            List<ListFieldDataConfig> fields,
             Map<String, Object> context) {
-        List<EntityDataDTO> safeRecords =
+        List<ListFieldDataRecord> safeRecords =
                 records == null ? List.of() : records;
-        List<EntityListField> safeFields =
+        List<ListFieldDataConfig> safeFields =
                 fields == null ? List.of() : fields;
-        for (EntityListField field : safeFields) {
+        for (ListFieldDataConfig field : safeFields) {
             if (field == null
                     || field.getFieldCode() == null
                     || field.getFieldCode().isBlank()) {
@@ -126,7 +126,7 @@ public class ProjectCustomListFieldDataProvider
                     LogValue.safe(field.getFieldCode()),
                     LogValue.safe(labelPrefix),
                     safeRecords.size());
-            for (EntityDataDTO record : safeRecords) {
+            for (ListFieldDataRecord record : safeRecords) {
                 if (record == null) {
                     continue;
                 }

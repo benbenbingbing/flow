@@ -34,7 +34,7 @@
           <template #label>
             <ConfigHelpLabel
               label="编码生成器"
-              content="在业务模块实现 com.workflow.contracts.entity.code.EntityCodeGenerator 接口，并通过 @Component 注册为 Spring Bean。由 generate(context, configuration) 方法返回完整编码，可参考 ProjectEntityCodeGenerator 示例。"
+              content="在业务模块实现 com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider 接口，并通过 @Component 注册为 Spring Bean。由 generate(context, configuration) 方法返回完整编码，可参考 ProjectEntityCodeGenerator 示例。"
             />
           </template>
           <el-select v-model="codeRule.generatorCode" placeholder="选择编码生成器" style="width: 100%" @change="changeGenerator">

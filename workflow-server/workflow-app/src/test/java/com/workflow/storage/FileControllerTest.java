@@ -20,8 +20,8 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.storage.api.web.FileController;
 import com.workflow.storage.application.FileStorageFactory;
-import com.workflow.storage.application.port.FileStorageStrategy;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.application.StoredFileAccessService;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
@@ -68,7 +68,7 @@ class FileControllerTest {
     @Test
     void removesObjectThatLosesConcurrentRegistration() {
         FileStorageFactory factory = mock(FileStorageFactory.class);
-        FileStorageStrategy strategy = mock(FileStorageStrategy.class);
+        FileStorageProvider strategy = mock(FileStorageProvider.class);
         StoredFileAccessService accessService =
                 mock(StoredFileAccessService.class);
         MockMultipartFile file = new MockMultipartFile(
@@ -91,7 +91,7 @@ class FileControllerTest {
         when(accessService.prepareUpload("upload-02", file))
                 .thenReturn(claim);
         when(factory.getStrategy()).thenReturn(strategy);
-        when(strategy.upload(file)).thenReturn(current);
+        when(strategy.upload(org.mockito.ArgumentMatchers.any(com.workflow.contracts.storage.model.FileUpload.class))).thenReturn(current);
         when(strategy.delete("s3://files/current.txt"))
                 .thenReturn(true);
         when(accessService.register(current, file, claim))
@@ -110,8 +110,8 @@ class FileControllerTest {
     void previewStreamsThroughConfiguredStorageBackend()
             throws Exception {
         FileStorageFactory factory = mock(FileStorageFactory.class);
-        FileStorageStrategy strategy =
-                mock(FileStorageStrategy.class);
+        FileStorageProvider strategy =
+                mock(FileStorageProvider.class);
         when(factory.getStrategy()).thenReturn(strategy);
         when(strategy.open("s3://files/key"))
                 .thenReturn(new StoredFile(
@@ -142,8 +142,8 @@ class FileControllerTest {
     void previewDistinguishesMissingObjectFromBackendOutage()
             throws Exception {
         FileStorageFactory factory = mock(FileStorageFactory.class);
-        FileStorageStrategy strategy =
-                mock(FileStorageStrategy.class);
+        FileStorageProvider strategy =
+                mock(FileStorageProvider.class);
         when(factory.getStrategy()).thenReturn(strategy);
         when(strategy.open("missing"))
                 .thenThrow(new FileNotFoundException());

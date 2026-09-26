@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -36,7 +36,7 @@ public class ProjectSystemRemovalGuard {
     private static final Set<String> TERMINAL_CHANGE_STATUSES =
             Set.of("EFFECTIVE", "REJECTED", "CANCELLED", "FAILED");
 
-    private final EntityDataDynamicService entityDataService;
+    private final EntityRecordQueryPort entityDataService;
 
     /**
      * 收集阻断项；结果供调用方的后续步骤使用。
@@ -120,7 +120,7 @@ public class ProjectSystemRemovalGuard {
             List<String> blockers,
             String projectId,
             String systemId) {
-        List<EntityDataDTO> projectRequirements =
+        List<EntityRecordData> projectRequirements =
                 entityDataService.findByCondition(
                                 REQUIREMENT_PROJECT_LINK,
                                 Map.of("project_id", projectId))
@@ -131,7 +131,7 @@ public class ProjectSystemRemovalGuard {
                                 .contains(item.getStatus()))
                         .toList();
         long affectedRequirements = 0;
-        for (EntityDataDTO projectRequirement
+        for (EntityRecordData projectRequirement
                 : projectRequirements) {
             String requirementId = text(read(
                     data(projectRequirement),
@@ -196,7 +196,7 @@ public class ProjectSystemRemovalGuard {
      * @param condition 筛选条件，后续与权限约束合并为查询条件
      * @return 实体数据集合，供调用方遍历或展示
      */
-    private List<EntityDataDTO> optionalFind(
+    private List<EntityRecordData> optionalFind(
             String entityCode,
             Map<String, Object> condition) {
         try {

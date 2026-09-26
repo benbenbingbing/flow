@@ -16,8 +16,8 @@ import com.workflow.admin.extension.action.infrastructure.persistence.record.Flo
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinitionEntity;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionEntityMapper;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import com.workflow.admin.extension.action.domain.model.FlowActionVisibilityScope;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationContext;
@@ -37,7 +37,7 @@ import java.util.Set;
 /**
  * 流程动作定义服务。
  *
- * <p>管理动作处理器目录：扫描容器内所有 {@link FlowActionHandler} Bean，与持久化的动作定义
+ * <p>管理动作处理器目录：扫描容器内所有 {@link FlowActionProvider} Bean，与持久化的动作定义
  * 配置合并，提供前端可见的处理器选项列表；并负责处理器中文名称、可见范围、实体绑定的
  * 增删改与校验。系统管理员可维护目录配置。</p>
  */
@@ -99,7 +99,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
     public FlowActionHandlerOption save(String beanName, FlowActionDefinitionRequest request) {
         currentUserRoleService.requireAdministrator(
                 "只有管理员可以维护流程动作目录");
-        FlowActionHandler handler = applicationContext.getBeansOfType(FlowActionHandler.class).get(beanName);
+        FlowActionProvider handler = applicationContext.getBeansOfType(FlowActionProvider.class).get(beanName);
         if (handler == null) {
             throw new RuntimeException("未找到流程动作处理器：" + beanName);
         }
@@ -174,7 +174,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         FlowActionHandlerOption option = toOption(
                 definition,
                 definition.getHandlerName(),
-                applicationContext.getBean(definition.getHandlerName(), FlowActionHandler.class),
+                applicationContext.getBean(definition.getHandlerName(), FlowActionProvider.class),
                 true);
         if (!isVisible(option, entityCode)) {
             throw new RuntimeException("该流程动作不允许在当前实体中使用：" + definition.getDisplayName());
@@ -225,7 +225,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
      * @return 处理器选项列表
      */
     private List<FlowActionHandlerOption> buildOptions(boolean includeUnconfigured) {
-        Map<String, FlowActionHandler> handlers = applicationContext.getBeansOfType(FlowActionHandler.class);
+        Map<String, FlowActionProvider> handlers = applicationContext.getBeansOfType(FlowActionProvider.class);
         Map<String, FlowActionDefinition> definitions = new LinkedHashMap<>();
         for (FlowActionDefinition definition : definitionMapper.findAllActive()) {
             definitions.put(definition.getHandlerName(), definition);
@@ -237,7 +237,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         List<FlowActionHandlerOption> result = new ArrayList<>();
         for (String beanName : names) {
             FlowActionDefinition definition = definitions.get(beanName);
-            FlowActionHandler handler = handlers.get(beanName);
+            FlowActionProvider handler = handlers.get(beanName);
             if (!includeUnconfigured && definition == null) {
                 continue;
             }
@@ -258,7 +258,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
     private FlowActionHandlerOption toOption(
             FlowActionDefinition definition,
             String beanName,
-            FlowActionHandler handler,
+            FlowActionProvider handler,
             boolean configured) {
         FlowActionHandlerOption option = new FlowActionHandlerOption();
         option.setDefinitionId(definition == null ? null : definition.getId());
@@ -282,8 +282,8 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
         option.setConfigured(configured);
         option.setAvailable(handler != null);
         if (handler != null) {
-            option.setTyped(handler instanceof TypedFlowActionHandler<?>);
-            if (handler instanceof TypedFlowActionHandler<?> typed) {
+            option.setTyped(handler instanceof TypedFlowActionProvider<?>);
+            if (handler instanceof TypedFlowActionProvider<?> typed) {
                 option.setParamType(typed.getParamType().getName());
             }
             option.setSupportedTriggerTimings(handler.supportedTriggerTimings());

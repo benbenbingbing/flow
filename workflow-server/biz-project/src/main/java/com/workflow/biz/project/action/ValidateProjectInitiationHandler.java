@@ -1,8 +1,8 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectGovernanceService;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import java.util.Set;
  * Blocks process start when project cross-entity prerequisites are not satisfied.
  */
 @Component("validateProjectInitiationHandler")
-public class ValidateProjectInitiationHandler implements FlowActionHandler {
+public class ValidateProjectInitiationHandler implements FlowActionProvider {
 
     private final ProjectGovernanceService governanceService;
 
@@ -64,8 +64,8 @@ public class ValidateProjectInitiationHandler implements FlowActionHandler {
      */
     @Override
     public void execute(FlowActionContext context) {
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO project)) {
+        EntityRecordData project = context.getEntityData();
+        if (project == null) {
             throw new IllegalStateException("Project initiation data is unavailable.");
         }
         Map<String, Object> result =

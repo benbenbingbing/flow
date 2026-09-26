@@ -1166,7 +1166,7 @@ class UiInterfaceExtensionServiceTest {
         when(provider.getVersion()).thenReturn(1);
         when(provider.getArtifactDigest()).thenReturn("a".repeat(64));
         org.mockito.Mockito.doAnswer(call -> {
-            var control = call.getArgument(4, com.workflow.contracts.execution.ExecutionControl.class);
+            var control = call.getArgument(4, com.workflow.contracts.execution.port.ExecutionControlPort.class);
             assertTrue(control.remainingMillis() <= 200);
             assertEquals("user-1", UserContext.getUserId());
             if (calls.incrementAndGet() == 1) {

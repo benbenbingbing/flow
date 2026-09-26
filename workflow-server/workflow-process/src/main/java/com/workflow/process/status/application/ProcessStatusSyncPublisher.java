@@ -1,7 +1,7 @@
 package com.workflow.process.status.application;
 
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,7 +16,7 @@ public class ProcessStatusSyncPublisher {
     /** 消费者按此主题路由状态同步事件，发布与订阅必须保持一致。 */
     public static final String TOPIC = "PROCESS_STATUS_SYNC";
 
-    private final OutboxPublisher outboxPublisher;
+    private final OutboxPublishPort outboxPublisher;
 
     /**
      * 任务完成时发布指定目标状态；taskId 作为事件序号区分同一流程的多个任务。

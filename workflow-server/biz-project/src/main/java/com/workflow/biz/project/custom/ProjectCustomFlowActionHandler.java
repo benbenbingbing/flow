@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -21,7 +21,7 @@ import java.util.Set;
 @Slf4j
 @Component("projectCustomFlowActionHandler")
 public class ProjectCustomFlowActionHandler
-        implements FlowActionHandler {
+        implements FlowActionProvider {
 
     /** 验收场景标识，写入动作执行结果并用于日志定位。 */
     private static final String SCENARIO = "scenario";

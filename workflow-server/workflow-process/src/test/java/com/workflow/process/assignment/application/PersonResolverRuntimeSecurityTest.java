@@ -14,8 +14,10 @@ import com.workflow.contracts.process.assignment.model.PersonPrincipalType;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
+import com.workflow.contracts.identity.port.IdentityMembershipPort;
+import com.workflow.contracts.process.assignment.port.PersonResolverRegistrationPort;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,11 +25,29 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 class PersonResolverRuntimeSecurityTest {
+
+    @Test
+    void configuredResolverMustRemainEnabledInTheOwnedDirectory() {
+        var registrations = mock(PersonResolverRegistrationPort.class);
+        var service = new PersonResolverRuntimeService(List.of(resolver(List.of())),
+                mock(IdentityMembershipPort.class), registrations);
+
+        assertTrue(service.supports("securityResolver", PersonResolveUsage.ASSIGNEE));
+        assertFalse(service.supportsConfigured("securityResolver", PersonResolveUsage.ASSIGNEE));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.requireConfigured("securityResolver", PersonResolveUsage.ASSIGNEE));
+
+        when(registrations.isEnabled("securityResolver")).thenReturn(true);
+        assertTrue(service.supportsConfigured("securityResolver", PersonResolveUsage.ASSIGNEE));
+    }
 
     @Test
     void excludesDisabledDeletedAndUnknownUsersFromResolverResults() {
@@ -39,20 +59,20 @@ class PersonResolverRuntimeSecurityTest {
         when(userMapper.selectByUsername("deleted"))
                 .thenReturn(user("deleted", SysUser.Status.ENABLED, 1));
 
-        PersonResolver resolver = resolver(List.of(
+        PersonResolverProvider resolver = resolver(List.of(
                 PersonPrincipal.user("active"),
                 PersonPrincipal.user("disabled"),
                 PersonPrincipal.user("deleted"),
                 PersonPrincipal.user("unknown"),
                 PersonPrincipal.user("active")));
         PersonResolverRuntimeService service = new PersonResolverRuntimeService(
-                List.of(resolver),
+                List.of(resolver), new com.workflow.admin.identity.infrastructure.adapter.IdentityMembershipAdapter(
                 userMapper,
                 mock(SysRoleMapper.class),
                 mock(SysUserRoleMapper.class),
                 mock(SysGroupMapper.class),
                 mock(SysUserGroupMapper.class),
-                mock(SysOrganizationMapper.class));
+                mock(SysOrganizationMapper.class)), code -> true);
 
         assertEquals(
                 List.of("active"),
@@ -94,19 +114,19 @@ class PersonResolverRuntimeSecurityTest {
         when(userMapper.selectByUsername("active"))
                 .thenReturn(user("active", SysUser.Status.ENABLED, 0));
 
-        PersonResolver resolver = resolver(List.of(
+        PersonResolverProvider resolver = resolver(List.of(
                 new PersonPrincipal(
                         PersonPrincipalType.ROLE, "disabled-role"),
                 new PersonPrincipal(
                         PersonPrincipalType.GROUP, "disabled-group")));
         PersonResolverRuntimeService service = new PersonResolverRuntimeService(
-                List.of(resolver),
+                List.of(resolver), new com.workflow.admin.identity.infrastructure.adapter.IdentityMembershipAdapter(
                 userMapper,
                 roleMapper,
                 userRoleMapper,
                 groupMapper,
                 userGroupMapper,
-                mock(SysOrganizationMapper.class));
+                mock(SysOrganizationMapper.class)), code -> true);
 
         assertEquals(
                 List.of(),
@@ -123,9 +143,8 @@ class PersonResolverRuntimeSecurityTest {
                                 "disabled-group"))));
     }
 
-    private PersonResolver resolver(List<PersonPrincipal> principals) {
-        // 通过旧 SPI fixture 覆盖 canonical Runtime 对存量扩展的兼容性。
-        return new com.workflow.contracts.process.assignment.spi.PersonResolver() {
+    private PersonResolverProvider resolver(List<PersonPrincipal> principals) {
+        return new PersonResolverProvider() {
             @Override
             public PersonResolverDescriptor descriptor() {
                 return new PersonResolverDescriptor(

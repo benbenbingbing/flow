@@ -1,7 +1,7 @@
 package com.workflow.process.configuration.infrastructure.persistence.record;
 
 import com.baomidou.mybatisplus.annotation.*;
-import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.form.infrastructure.persistence.record.FormConfig;
 import lombok.Data;
 
 import java.time.LocalDateTime;

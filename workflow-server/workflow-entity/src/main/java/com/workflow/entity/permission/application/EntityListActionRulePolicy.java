@@ -1,7 +1,9 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -28,12 +30,12 @@ public class EntityListActionRulePolicy {
      * @param rawRule availabilityRule 原始文档
      * @return 完整校验后的 DTO
      */
-    public EntityActionRuleDTO read(Object rawRule) {
+    public EntityActionRule read(Object rawRule) {
         Map<String, Object> normalized =
                 EntityActionRuleStructurePolicy.normalizeAndValidate(rawRule);
         EntityActionRuleBuiltInPolicy.validate(normalized, true);
-        EntityActionRuleDTO rule = objectMapper.convertValue(
-                normalized, EntityActionRuleDTO.class);
+        EntityActionRule rule = objectMapper.convertValue(
+                normalized, EntityActionRule.class);
         validateCustomNode(rule.getVisibleWhen());
         validateCustomNode(rule.getEnabledWhen());
         return rule;
@@ -56,7 +58,7 @@ public class EntityListActionRulePolicy {
      * @param node 节点，作为 {@code provider.validate} 的输入影响后续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    private void validateCustomNode(EntityActionRuleDTO.RuleNode node) {
+    private void validateCustomNode(EntityActionRule.RuleNode node) {
         if (node == null) {
             return;
         }

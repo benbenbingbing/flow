@@ -9,7 +9,7 @@ import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
-import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

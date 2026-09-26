@@ -11,7 +11,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -219,17 +219,17 @@ class EntityActionCapabilityServiceTaskBindingTest {
         EntityDataDTO row = multiInstanceRow();
         when(assigneeLookup.findActionableTaskId(row, currentUser))
                 .thenReturn(Optional.of("candidate-task"));
-        EntityActionRuleDTO rule = assigneeRule();
-        EntityActionRuleDTO.RuleNode status = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule rule = assigneeRule();
+        EntityActionRule.RuleNode status = new EntityActionRule.RuleNode();
         status.setType("STATUS_CODE");
         status.setOperator("EQ");
         status.setValue("PENDING");
-        EntityActionRuleDTO.RuleNode field = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode field = new EntityActionRule.RuleNode();
         field.setType("FIELD");
         field.setField("name");
         field.setOperator("EQ");
         field.setValue("ready");
-        EntityActionRuleDTO.RuleNode all = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode all = new EntityActionRule.RuleNode();
         all.setType("GROUP");
         all.setLogic("AND");
         all.setChildren(List.of(rule.getVisibleWhen(), status, field));
@@ -271,7 +271,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
         row.setData(new java.util.LinkedHashMap<>(Map.of(
                 "visible", false,
                 "enabled", false)));
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        EntityActionRule rule = new EntityActionRule();
         rule.setVisibleWhen(fieldCondition("visible", true));
         rule.setEnabledWhen(fieldCondition("enabled", true));
         rule.setDisabledMessage("当前记录已锁定");
@@ -297,7 +297,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
         Map<String, Object> batchDelete = Map.of(
                 "key", "batchDelete",
                 "enabled", true);
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        EntityActionRule rule = new EntityActionRule();
         rule.setVisibleWhen(fieldCondition("visible", true));
         rule.setEnabledWhen(fieldCondition("enabled", true));
         rule.setDisabledMessage("选中记录不可删除");
@@ -340,7 +340,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
                 "key", "exportSelected",
                 "enabled", true,
                 "perm", APPROVE_PERMISSION);
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        EntityActionRule rule = new EntityActionRule();
         rule.setVisibleWhen(fieldCondition("visible", true));
         rule.setEnabledWhen(fieldCondition("enabled", true));
         rule.setDisabledMessage("选中记录不可导出");
@@ -372,7 +372,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
                 "customMode", "open-related-content", "enabled", true);
         when(actionConfigService.resolveToolbarButtons(listConfig, ENTITY_CODE)).thenReturn(List.of(button));
         when(actionConfigService.permissionFor(ENTITY_CODE, button)).thenReturn(APPROVE_PERMISSION);
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
+        EntityActionRule rule = new EntityActionRule();
         rule.setVisibleWhen(fieldCondition("visible", true));
         rule.setEnabledWhen(fieldCondition("enabled", true));
         when(actionConfigService.readRule(button)).thenReturn(rule);
@@ -398,7 +398,7 @@ class EntityActionCapabilityServiceTaskBindingTest {
                     "customMode", "event", "selectionRequirement", requirement);
             when(actionConfigService.resolveToolbarButtons(listConfig, ENTITY_CODE)).thenReturn(List.of(button));
             when(actionConfigService.permissionFor(ENTITY_CODE, button)).thenReturn(APPROVE_PERMISSION);
-            EntityActionRuleDTO rule = new EntityActionRuleDTO();
+            EntityActionRule rule = new EntityActionRule();
             rule.setVisibleWhen(fieldCondition("visible", true));
             rule.setEnabledWhen(fieldCondition("enabled", true));
             when(actionConfigService.readRule(button)).thenReturn(rule);
@@ -424,21 +424,21 @@ class EntityActionCapabilityServiceTaskBindingTest {
     }
 
     /** 默认审批规则要求当前用户持有该记录的未完成待办。 */
-    private EntityActionRuleDTO assigneeRule() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        EntityActionRuleDTO.RuleNode relation =
-                new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule assigneeRule() {
+        EntityActionRule rule = new EntityActionRule();
+        EntityActionRule.RuleNode relation =
+                new EntityActionRule.RuleNode();
         relation.setType("RELATION");
         relation.setRelation("CURRENT_USER_IS_ASSIGNEE");
         rule.setVisibleWhen(relation);
         return rule;
     }
 
-    private EntityActionRuleDTO.RuleNode fieldCondition(
+    private EntityActionRule.RuleNode fieldCondition(
             String field,
             Object value) {
-        EntityActionRuleDTO.RuleNode node =
-                new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode node =
+                new EntityActionRule.RuleNode();
         node.setType("FIELD");
         node.setField(field);
         node.setOperator("EQ");

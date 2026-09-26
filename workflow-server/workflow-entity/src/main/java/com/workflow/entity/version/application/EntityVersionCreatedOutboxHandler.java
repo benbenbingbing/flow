@@ -1,7 +1,7 @@
 package com.workflow.entity.version.application;
 
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 public class EntityVersionCreatedOutboxHandler
-        implements OutboxEventHandler {
+        implements OutboxEventHandlerProvider {
 
     /**
      * 生成{@code topic}文本，供后续匹配或展示。

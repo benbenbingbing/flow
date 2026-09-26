@@ -3,7 +3,7 @@ package com.workflow.process.definition.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -22,8 +22,8 @@ class RelativePositionPublishSanitizerTest {
     @Test
     void multiInstancePublishesDynamicCollectionHandlerAndValidatesUsage() {
         ProcessBpmnPublishSanitizer sanitizer = configuredSanitizer();
-        PersonResolverConfigurationValidator validator =
-                mock(PersonResolverConfigurationValidator.class);
+        PersonResolverConfigurationValidationProvider validator =
+                mock(PersonResolverConfigurationValidationProvider.class);
         when(validator.resolverCode())
                 .thenReturn("relativeOrgPosition");
         ReflectionTestUtils.setField(

@@ -72,6 +72,9 @@ class ConfigMigrationPublishRollbackTest {
 
     @BeforeEach
     void setUp() {
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "dictionaryAssets",
+                new com.workflow.admin.dictionary.infrastructure.adapter.DictionaryMigrationAdapter(
+                        dictMapper, dictItemMapper, dictCacheService, objectMapper));
         batch = new ConfigImportPackage();
         batch.setId("import-1");
         batch.setStatus("ANALYZED");

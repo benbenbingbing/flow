@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.spi.EntityPermissionOptionProvider;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.entity.permission.api.response.EntityPermissionOptionDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -87,14 +89,16 @@ public class EntityPermissionCatalogService {
                         "实体已有的自定义按钮权限",
                         "CUSTOM")));
         for (EntityPermissionOptionProvider provider : optionProviders) {
-            List<EntityPermissionOptionDTO> provided = provider.getOptions(entityCode);
+            var provided = provider.getOptions(entityCode);
             if (provided == null) {
                 continue;
             }
-            for (EntityPermissionOptionDTO option : provided) {
+            for (var option : provided) {
                 if (option != null && StringUtils.hasText(option.getCode())
                         && options.stream().noneMatch(existing -> existing.getCode().equals(option.getCode()))) {
-                    options.add(option);
+                    // SPI 模型独立于 API DTO，保持原有 HTTP 字段及按权限码去重的行为。
+                    options.add(new EntityPermissionOptionDTO(option.getAction(), option.getCode(),
+                            option.getLabel(), option.getDescription(), option.getCategory()));
                 }
             }
         }

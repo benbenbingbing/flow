@@ -1,10 +1,12 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
+
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.schema.SchemaType;
 import com.workflow.entity.data.application.EntityTableDefinitionFactory;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -374,7 +376,7 @@ public class PermissionSqlBuilder {
      */
     private String buildRuleSql(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             SysUser user,
             Map<String, RuleFieldColumn> fieldColumns,
             int depth,
@@ -432,12 +434,12 @@ public class PermissionSqlBuilder {
      */
     private String buildGroupSql(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             SysUser user,
             Map<String, RuleFieldColumn> fieldColumns,
             int depth,
             int[] count, Map<String, Object> parameters, List<String> validityGuards) {
-        List<EntityActionRuleDTO.RuleNode> children = node.getChildren();
+        List<EntityActionRule.RuleNode> children = node.getChildren();
         if (children == null || children.isEmpty()) {
             return "1=0";
         }
@@ -735,7 +737,7 @@ public class PermissionSqlBuilder {
      * @param user 目标用户信息，后续用于权限计算或业务规则判断
      * @return 用户字段条件成立时为 true，否则为 false
      */
-    private boolean evaluateUserField(EntityActionRuleDTO.RuleNode node, SysUser user) {
+    private boolean evaluateUserField(EntityActionRule.RuleNode node, SysUser user) {
         if (user == null || !StringUtils.hasText(node.getField())) {
             return false;
         }
@@ -765,12 +767,12 @@ public class PermissionSqlBuilder {
      */
     private String buildCustomSql(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             SysUser user, Map<String, Object> parameters) {
         return filterProviders.stream()
                 .filter(provider -> provider.getType().equalsIgnoreCase(node.getType()))
                 .findFirst()
-                .map(provider -> provider.toSql(entityCode, node, user, parameters))
+                .map(provider -> provider.toSql(entityCode, node, PermissionExtensionInputs.user(user), parameters))
                 .filter(StringUtils::hasText)
                 .orElse("1=0");
     }
@@ -787,7 +789,7 @@ public class PermissionSqlBuilder {
      */
     private void validateRuleNode(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             Map<String, RuleFieldColumn> fieldColumns,
             int depth,
             int[] count) {
@@ -806,7 +808,7 @@ public class PermissionSqlBuilder {
                 if (node.getChildren() == null || node.getChildren().isEmpty()) {
                     throw new IllegalArgumentException("条件组不能为空");
                 }
-                for (EntityActionRuleDTO.RuleNode child : node.getChildren()) {
+                for (EntityActionRule.RuleNode child : node.getChildren()) {
                     validateRuleNode(entityCode, child, fieldColumns, depth + 1, count);
                 }
             }

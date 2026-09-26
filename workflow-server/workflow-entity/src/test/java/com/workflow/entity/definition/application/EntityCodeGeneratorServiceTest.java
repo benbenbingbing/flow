@@ -5,6 +5,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityCo
 import com.workflow.entity.definition.application.code.*;
 import com.workflow.entity.data.application.EntityCodeReservationService;
 import com.workflow.contracts.entity.code.*;
+import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,11 +45,11 @@ class EntityCodeGeneratorServiceTest {
     @Mock private EntityCodeContextFactory contexts;
     private EntityCodeGeneratorService service;
 
-    private EntityCodeGeneratorRegistry registry(EntityCodeGenerator... generators) {
+    private EntityCodeGeneratorRegistry registry(EntityCodeGeneratorProvider... generators) {
         return new EntityCodeGeneratorRegistry(List.of(generators), new UiExtensionDefinitionValidator(new JsonDocumentCodec(new ObjectMapper())));
     }
 
-    private void use(EntityCodeGenerator generator) {
+    private void use(EntityCodeGeneratorProvider generator) {
         service = new EntityCodeGeneratorService(codeRuleMapper, entityAccessPolicy, ruleGenerator,
                 registry(generator), reservations, contexts);
     }
@@ -189,7 +190,7 @@ class EntityCodeGeneratorServiceTest {
     void registryRejectsDuplicateNamesAndWrongEntityOrConfiguration() {
         var generator = generator("PROJECT", new AtomicInteger(), "XM-001", Optional.empty());
         assertThrows(IllegalStateException.class, () -> registry(generator, generator));
-        EntityCodeGenerator restricted = new EntityCodeGenerator() {
+        EntityCodeGeneratorProvider restricted = new EntityCodeGeneratorProvider() {
             public String getCode() { return "SCOPED"; }
             public String getDisplayName() { return "Scoped"; }
             public Set<String> supportedEntityCodes() { return Set.of("asset"); }
@@ -224,8 +225,8 @@ class EntityCodeGeneratorServiceTest {
                 "actor", "dept", null, null, Map.of(), LocalDateTime.now(), "request:root");
     }
 
-    private EntityCodeGenerator generator(String code, AtomicInteger calls, String result, Optional<String> preview) {
-        return new EntityCodeGenerator() {
+    private EntityCodeGeneratorProvider generator(String code, AtomicInteger calls, String result, Optional<String> preview) {
+        return new EntityCodeGeneratorProvider() {
             public String getCode() { return code; }
             public String getDisplayName() { return code; }
             public String generate(EntityCodeGenerationContext context, Map<String, Object> config) {

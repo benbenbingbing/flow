@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 在真实 MySQL 上验证 V090 设置表、V091 随机签名密钥及 V100/V101 布局默认偏好。
+ * 在真实 MySQL 上验证 V090/V091、V100/V101 及 V108 将偏好合并为 JSON 的升级路径。
  * 仅运行设置相关迁移，历史全量迁移重放由独立集成检查承担。
  * 可通过 settingsTestJdbcUrl 指向预建的空白回环测试库；不读取业务数据库配置，不清理外部库。
  */
@@ -154,6 +154,51 @@ class GlobalSettingsMigrationTest {
         assertEquals(0, count("SELECT COUNT(*) FROM sys_global_setting WHERE scope_type = 'USER' AND setting_key = 'ui.layout.tabs_enabled'"));
         assertEquals(0, tabs.migrate().migrationsExecuted);
         assertEquals("true", scalar(sidebarQuery), "新增标签模式不能重置其他系统偏好");
+        verifyMergedPreferences(tabs, initializedKey, keyQuery);
+    }
+
+    /** 验证非法旧值不会部分写入、稀疏继承、显式 false、已有新值优先和重复执行。 */
+    private void verifyMergedPreferences(Flyway previous, String signingKey, String keyQuery) throws Exception {
+        var migration = new db.migration.V108__merge_user_interface_preferences();
+        int before = count("SELECT COUNT(*) FROM sys_global_setting");
+        try (Connection connection = DriverManager.getConnection(url, username, password)) {
+            var context = new org.flywaydb.core.api.migration.Context() {
+                public org.flywaydb.core.api.configuration.Configuration getConfiguration() { return previous.getConfiguration(); }
+                public Connection getConnection() { return connection; }
+            };
+            assertThrows(SQLException.class, () -> migration.migrate(context));
+            assertTrue(connection.getAutoCommit());
+        }
+        assertEquals(before, count("SELECT COUNT(*) FROM sys_global_setting"));
+        assertEquals(0, count("SELECT COUNT(*) FROM sys_global_setting WHERE setting_key = 'ui.user_preferences'"));
+        // 修正本测试刻意注入的非法值后，迁移应保留 false，不把它当作未配置。
+        execute("UPDATE sys_global_setting SET setting_value='false' WHERE id='plain-text'");
+        execute("INSERT INTO sys_global_setting (id, scope_type, owner_id, setting_key, name, setting_value_type, setting_value) VALUES "
+                + "('old-sidebar-b','USER','user-b','ui.layout.sidebar_collapsed','菜单偏好','BOOLEAN','false'),"
+                + "('old-tabs-b','USER','user-b','ui.layout.tabs_enabled','标签偏好','BOOLEAN','true'),"
+                + "('new-a','USER','user-a','ui.user_preferences','用户界面偏好','JSON','{\"fieldTypesCollapsed\":true}')");
+        Flyway merged = Flyway.configure().dataSource(url, username, password).locations("filesystem:" + migrationDirectory)
+                .javaMigrations(migration).placeholderReplacement(false).cleanDisabled(true).target("108").load();
+        assertEquals(1, merged.migrate().migrationsExecuted);
+        merged.validate();
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        String base = "SELECT setting_value FROM sys_global_setting WHERE setting_key='ui.user_preferences' AND owner_id=";
+        var system = json.readTree(scalar(base + "'0'"));
+        assertEquals(3, system.size());
+        assertTrue(system.path("sidebarCollapsed").booleanValue());
+        assertFalse(system.path("tabsEnabled").booleanValue());
+        var userB = json.readTree(scalar(base + "'user-b'"));
+        assertEquals(2, userB.size());
+        assertFalse(userB.path("sidebarCollapsed").booleanValue());
+        assertTrue(userB.path("tabsEnabled").booleanValue());
+        assertFalse(userB.has("fieldTypesCollapsed"), "未配置字段必须继续继承，不复制系统默认值");
+        assertTrue(json.readTree(scalar(base + "'user-a'")).path("fieldTypesCollapsed").booleanValue());
+        assertFalse(json.readTree(scalar(base + "'user-c'")).path("fieldTypesCollapsed").booleanValue());
+        assertEquals(0, count("SELECT COUNT(*) FROM sys_global_setting WHERE setting_key IN ('ui.entity_design.field_types_collapsed','ui.layout.sidebar_collapsed','ui.layout.tabs_enabled')"));
+        assertEquals(4, count("SELECT COUNT(*) FROM sys_global_setting WHERE setting_key='ui.user_preferences' AND setting_value_type='JSON'"));
+        assertEquals(signingKey, scalar(keyQuery));
+        assertEquals(0, merged.migrate().migrationsExecuted);
+        assertEquals("1", scalar("SELECT version FROM sys_global_setting WHERE id='new-a'"));
     }
 
     private static Flyway flyway(String target) {

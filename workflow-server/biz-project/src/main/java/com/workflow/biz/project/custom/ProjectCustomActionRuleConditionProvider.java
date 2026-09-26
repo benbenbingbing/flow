@@ -1,10 +1,10 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
-import com.workflow.entity.permission.application.EntityActionRuleConditionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -45,7 +45,7 @@ public class ProjectCustomActionRuleConditionProvider
      */
     @Override
     public void validate(
-            EntityActionRuleDTO.RuleNode node) {
+            EntityActionRule.RuleNode node) {
         if (node == null
                 || !StringUtils.hasText(node.getField())) {
             throw new IllegalArgumentException(
@@ -73,9 +73,9 @@ public class ProjectCustomActionRuleConditionProvider
      */
     @Override
     public boolean evaluate(
-            EntityActionRuleDTO.RuleNode node,
-            EntityDataDTO row,
-            SysUser user,
+            EntityActionRule.RuleNode node,
+            EntityRecordData row,
+            IdentityUser user,
             String statusCategory) {
         validate(node);
         Object actual = readField(row, node.getField());
@@ -100,7 +100,7 @@ public class ProjectCustomActionRuleConditionProvider
                 LogValue.safe(row == null
                         ? null : row.getId()),
                 LogValue.safe(user == null
-                        ? null : user.getId()),
+                        ? null : user.id()),
                 LogValue.safe(statusCategory),
                 matched);
         return matched;
@@ -114,7 +114,7 @@ public class ProjectCustomActionRuleConditionProvider
      * @return 读取后的字段结果，供调用方继续处理
      */
     private Object readField(
-            EntityDataDTO row,
+            EntityRecordData row,
             String field) {
         if (row == null) {
             return null;

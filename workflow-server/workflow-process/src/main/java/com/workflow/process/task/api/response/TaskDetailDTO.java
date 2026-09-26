@@ -1,6 +1,6 @@
 package com.workflow.process.task.api.response;
 
-import com.workflow.entity.form.api.response.FormConfigDTO;
+import com.workflow.process.form.api.response.FormConfigDTO;
 
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import lombok.Data;

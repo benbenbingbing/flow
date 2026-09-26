@@ -13,7 +13,7 @@ import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityLi
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.entity.permission.api.request.EntityListScopeListBindingsRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy;
@@ -135,8 +135,8 @@ class EntityListScopeServiceTest {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("SQL");
         filter.setSql("biz.create_by = #{userId}");
-        MatchConfigDTO audience = new MatchConfigDTO();
-        MatchConfigDTO.MatchConditionDTO condition = new MatchConfigDTO.MatchConditionDTO();
+        PermissionMatchConfig audience = new PermissionMatchConfig();
+        PermissionMatchConfig.MatchConditionDTO condition = new PermissionMatchConfig.MatchConditionDTO();
         condition.setScopeType("SQL");
         condition.setSql("biz.create_by = #{userId}");
         audience.setConditions(List.of(condition));

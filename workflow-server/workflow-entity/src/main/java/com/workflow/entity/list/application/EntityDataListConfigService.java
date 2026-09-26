@@ -17,7 +17,8 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListFiel
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
-import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
+import com.workflow.entity.list.extension.ListFieldExtensionMapping;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import lombok.RequiredArgsConstructor;
@@ -371,7 +372,17 @@ public class EntityDataListConfigService {
                 }
 
                 try {
-                    provider.enrich(records, fields, context);
+                    // 扩展只接收展示快照；逐行合并结果，不能替换行身份、权限或持久化配置。
+                    var extensionRecords = records.stream()
+                            .map(ListFieldExtensionMapping::record)
+                            .toList();
+                    provider.enrich(extensionRecords, fields.stream()
+                            .map(ListFieldExtensionMapping::field)
+                            .toList(), context);
+                    for (int index = 0; index < records.size(); index++) {
+                        ListFieldExtensionMapping.apply(
+                                extensionRecords.get(index), records.get(index));
+                    }
                 } catch (Exception e) {
                     log.error("列表字段数据补充失败: type={}, entityCode={}, failureType={}",
                             LogValue.safe(dataSourceType), LogValue.safe(entityCode), LogValue.failureType(e));

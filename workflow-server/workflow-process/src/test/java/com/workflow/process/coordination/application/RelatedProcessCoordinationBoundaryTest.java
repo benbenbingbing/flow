@@ -7,8 +7,8 @@ import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.model.EntityRelationGraph.RecordRef;
 import com.workflow.entity.definition.application.model.PublishedRelationPath;
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
 import com.workflow.process.audit.infrastructure.persistence.record.ProcessOperationLog;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
@@ -38,7 +38,7 @@ class RelatedProcessCoordinationBoundaryTest {
 
     @Test
     void publisherUsesStablePerTargetOutboxKey() {
-        OutboxPublisher outbox = mock(OutboxPublisher.class);
+        OutboxPublishPort outbox = mock(OutboxPublishPort.class);
         RelatedProcessCoordinationPublisher publisher =
                 new RelatedProcessCoordinationPublisher(outbox);
         RelatedProcessCoordinationPlan plan = plan(

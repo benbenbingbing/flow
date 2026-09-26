@@ -1,8 +1,8 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectGovernanceService;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import java.util.Set;
  * Applies an approved ADD, UPDATE or REMOVE operation to the governed relationship entity.
  */
 @Component("applyProjectSystemChangeHandler")
-public class ApplyProjectSystemChangeHandler implements FlowActionHandler {
+public class ApplyProjectSystemChangeHandler implements FlowActionProvider {
 
     private final ProjectGovernanceService governanceService;
 
@@ -69,8 +69,8 @@ public class ApplyProjectSystemChangeHandler implements FlowActionHandler {
             context.addExecutionTrace("SKIPPED", "Project-system change was not approved.");
             return;
         }
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO request)) {
+        EntityRecordData request = context.getEntityData();
+        if (request == null) {
             throw new IllegalStateException("Project-system change data is unavailable.");
         }
         Map<String, Object> result =

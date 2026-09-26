@@ -2,7 +2,7 @@ package com.workflow.process.action.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.audit.AuditEventIds;
 import com.workflow.contracts.audit.model.AuditSourcePointer;
 import com.workflow.contracts.audit.context.OperationContext;
@@ -23,7 +23,7 @@ import java.util.Map;
 /**
  * 流程动作执行器。
  *
- * <p>统一组装流程动作上下文、解析参数，并调用已发布动作对应的 {@link FlowActionHandler}。</p>
+ * <p>统一组装流程动作上下文、解析参数，并调用已发布动作对应的 {@link FlowActionProvider}。</p>
  */
 @Slf4j
 @Component
@@ -264,7 +264,7 @@ public class FlowActionExecutor {
      *
      * @param action 动作配置
      * @param ctx    执行上下文
-     * @throws RuntimeException 处理器 Bean 不存在或未实现 FlowActionHandler 接口时抛出
+     * @throws RuntimeException 处理器 Bean 不存在或未实现 FlowActionProvider 接口时抛出
      */
     private void invoke(FlowAction action, FlowActionContext ctx) {
         resolveHandler(action).execute(ctx);
@@ -286,7 +286,7 @@ public class FlowActionExecutor {
      * @param action 动作标识，决定后续处理器采用的处理分支
      * @return 解析后的处理器结果，供调用方继续处理
      */
-    private FlowActionHandler resolveHandler(FlowAction action) {
+    private FlowActionProvider resolveHandler(FlowAction action) {
         String beanName = action.getInterfaceName();
         if (!StringUtils.hasText(beanName)) {
             throw new RuntimeException("流程动作未配置接口名称: " + action.getActionName());
@@ -299,8 +299,8 @@ public class FlowActionExecutor {
             throw new RuntimeException("未找到流程动作对应的 Bean: " + beanName, e);
         }
 
-        if (!(bean instanceof FlowActionHandler handler)) {
-            throw new RuntimeException("Bean '" + beanName + "' 未实现 FlowActionHandler 接口");
+        if (!(bean instanceof FlowActionProvider handler)) {
+            throw new RuntimeException("Bean '" + beanName + "' 未实现 FlowActionProvider 接口");
         }
         return handler;
     }

@@ -1,6 +1,8 @@
 package com.workflow.entity.permission.application;
 
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionMatchProvider;
+
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
@@ -15,7 +17,7 @@ import java.util.Set;
 /**
  * 数据权限用户匹配器。
  *
- * <p>根据 {@link MatchConfigDTO} 中的适用用户条件判断当前用户是否命中。
+ * <p>根据 {@link PermissionMatchConfig} 中的适用用户条件判断当前用户是否命中。
  * 支持内置范围（全部用户、用户、角色、用户组、部门、组织）以及通过
  * {@link EntityDataPermissionMatchProvider} 扩展的自定义范围。</p>
  */
@@ -76,14 +78,14 @@ public class PermissionRuleMatcher {
      * @param user  当前用户，为空返回 false
      * @return 命中返回 true
      */
-    public boolean matches(MatchConfigDTO match, SysUser user) {
+    public boolean matches(PermissionMatchConfig match, SysUser user) {
         if (match == null || user == null) {
             return false;
         }
         if (match.getRoot() != null) {
             return matchesNode(match.getRoot(), user);
         }
-        List<MatchConfigDTO.MatchConditionDTO> conditions = match.getConditions();
+        List<PermissionMatchConfig.MatchConditionDTO> conditions = match.getConditions();
         if (conditions == null || conditions.isEmpty()) {
             return false;
         }
@@ -96,7 +98,7 @@ public class PermissionRuleMatcher {
      * @param match 适用用户配置，为空抛出异常
      * @throws IllegalArgumentException 配置为空、缺少条件、逻辑非法或过于复杂时抛出
      */
-    public void validate(MatchConfigDTO match) {
+    public void validate(PermissionMatchConfig match) {
         if (match == null) {
             throw new IllegalArgumentException("适用用户配置不能为空");
         }
@@ -124,7 +126,7 @@ public class PermissionRuleMatcher {
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private void validateNode(
-            MatchConfigDTO.MatchNodeDTO node,
+            PermissionMatchConfig.MatchNodeDTO node,
             int depth,
             int[] count) {
         if (node == null) {
@@ -140,7 +142,7 @@ public class PermissionRuleMatcher {
             if (node.getChildren() == null || node.getChildren().isEmpty()) {
                 throw new IllegalArgumentException("适用用户条件组不能为空");
             }
-            for (MatchConfigDTO.MatchNodeDTO child : node.getChildren()) {
+            for (PermissionMatchConfig.MatchNodeDTO child : node.getChildren()) {
                 validateNode(child, depth + 1, count);
             }
             return;
@@ -154,7 +156,7 @@ public class PermissionRuleMatcher {
      * @param condition 筛选条件，后续与权限约束合并为查询条件
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    private void validateCondition(MatchConfigDTO.MatchConditionDTO condition) {
+    private void validateCondition(PermissionMatchConfig.MatchConditionDTO condition) {
         if (condition == null || condition.getScopeType() == null
                 || condition.getScopeType().isBlank()) {
             throw new IllegalArgumentException("适用用户条件缺少范围类型");
@@ -192,12 +194,12 @@ public class PermissionRuleMatcher {
      * @param user 目标用户信息，后续用于权限计算或业务规则判断
      * @return 节点条件成立时为 true，否则为 false
      */
-    private boolean matchesNode(MatchConfigDTO.MatchNodeDTO node, SysUser user) {
+    private boolean matchesNode(PermissionMatchConfig.MatchNodeDTO node, SysUser user) {
         if (node == null) {
             return false;
         }
         if ("GROUP".equalsIgnoreCase(node.getType())) {
-            List<MatchConfigDTO.MatchNodeDTO> children = node.getChildren();
+            List<PermissionMatchConfig.MatchNodeDTO> children = node.getChildren();
             if (children == null || children.isEmpty()) {
                 return false;
             }
@@ -219,7 +221,7 @@ public class PermissionRuleMatcher {
      */
     private boolean matchesConditions(
             String logic,
-            List<MatchConfigDTO.MatchConditionDTO> conditions,
+            List<PermissionMatchConfig.MatchConditionDTO> conditions,
             SysUser user) {
         if ("AND".equalsIgnoreCase(logic)) {
             return conditions.stream().allMatch(condition -> matchesCondition(condition, user));
@@ -234,7 +236,7 @@ public class PermissionRuleMatcher {
      * @param user 目标用户信息，后续用于权限计算或业务规则判断
      * @return 条件条件成立时为 true，否则为 false
      */
-    private boolean matchesCondition(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
+    private boolean matchesCondition(PermissionMatchConfig.MatchConditionDTO condition, SysUser user) {
         if (condition == null || condition.getScopeType() == null) {
             return false;
         }
@@ -284,7 +286,7 @@ public class PermissionRuleMatcher {
      * @return 集合条件成立时为 true，否则为 false
      */
     private boolean matchesCollection(
-            MatchConfigDTO.MatchConditionDTO condition,
+            PermissionMatchConfig.MatchConditionDTO condition,
             List<String> currentIds) {
         List<String> targetIds = condition.getTargetIds();
         if (targetIds == null || targetIds.isEmpty()
@@ -305,7 +307,7 @@ public class PermissionRuleMatcher {
      * @return 组织条件成立时为 true，否则为 false
      */
     private boolean matchesOrganization(
-            MatchConfigDTO.MatchConditionDTO condition,
+            PermissionMatchConfig.MatchConditionDTO condition,
             String currentOrganizationId) {
         List<String> targetIds = condition.getTargetIds();
         if (targetIds == null || targetIds.isEmpty()
@@ -333,13 +335,13 @@ public class PermissionRuleMatcher {
      * @return 自定义条件成立时为 true，否则为 false
      */
     private boolean matchesCustom(
-            MatchConfigDTO.MatchConditionDTO condition,
+            PermissionMatchConfig.MatchConditionDTO condition,
             SysUser user) {
         return matchProviders.stream()
                 .filter(provider -> provider.getScopeType()
                         .equalsIgnoreCase(condition.getScopeType()))
                 .findFirst()
-                .map(provider -> provider.matches(condition, user))
+                .map(provider -> provider.matches(condition, PermissionExtensionInputs.user(user)))
                 .orElse(false);
     }
 

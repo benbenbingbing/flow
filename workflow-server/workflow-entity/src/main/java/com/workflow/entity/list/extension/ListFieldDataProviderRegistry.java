@@ -1,5 +1,7 @@
 package com.workflow.entity.list.extension;
 
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.entity.list.api.response.ListFieldDataSourceOptionDTO;
@@ -138,7 +140,7 @@ public class ListFieldDataProviderRegistry {
         }
         Map<String, Object> config = parseObject(field.getDataSourceConfig(), "数据源配置");
         validateSchema(provider.getConfigSchema(), config);
-        provider.validateConfig(field, config);
+        provider.validateConfig(ListFieldExtensionMapping.field(field), config);
     }
 
     /**

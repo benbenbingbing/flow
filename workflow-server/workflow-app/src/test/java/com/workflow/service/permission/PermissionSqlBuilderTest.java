@@ -1,12 +1,12 @@
 package com.workflow.service.permission;
 
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
-import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
@@ -338,8 +338,8 @@ class PermissionSqlBuilderTest {
             @Override
             public String toSql(
                     String entityCode,
-                    EntityActionRuleDTO.RuleNode node,
-                    SysUser user) {
+                    EntityActionRule.RuleNode node,
+                    com.workflow.contracts.identity.model.IdentityUser user) {
                 return "customer_level = 'VIP'";
             }
         };
@@ -352,7 +352,7 @@ class PermissionSqlBuilderTest {
                         com.workflow.integration.database.api.DatabaseVendor.MYSQL));
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType("RULE");
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("CRM:CUSTOMER_LEVEL");
         filter.setRoot(node);
 
@@ -507,10 +507,10 @@ class PermissionSqlBuilderTest {
     }
 
     /** 构造逻辑分组节点（AND/OR），含子节点 */
-    private EntityActionRuleDTO.RuleNode group(
+    private EntityActionRule.RuleNode group(
             String logic,
-            EntityActionRuleDTO.RuleNode... children) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+            EntityActionRule.RuleNode... children) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("GROUP");
         node.setLogic(logic);
         node.setChildren(List.of(children));
@@ -518,20 +518,20 @@ class PermissionSqlBuilderTest {
     }
 
     /** 构造关系节点（如 CURRENT_USER_IS_CREATOR） */
-    private EntityActionRuleDTO.RuleNode relation(String relation) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode relation(String relation) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("RELATION");
         node.setRelation(relation);
         return node;
     }
 
     /** 构造带字段、操作符与值的比较条件节点 */
-    private EntityActionRuleDTO.RuleNode condition(
+    private EntityActionRule.RuleNode condition(
             String type,
             String field,
             String operator,
             Object value) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType(type);
         node.setField(field);
         node.setOperator(operator);

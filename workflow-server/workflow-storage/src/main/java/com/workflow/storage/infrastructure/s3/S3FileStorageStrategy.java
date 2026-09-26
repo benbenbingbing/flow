@@ -1,7 +1,7 @@
 package com.workflow.storage.infrastructure.s3;
 
-import com.workflow.storage.application.port.FileStorageStrategy;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import jakarta.annotation.PreDestroy;
 import java.io.FileNotFoundException;
@@ -19,7 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import org.springframework.web.multipart.MultipartFile;
+import com.workflow.contracts.storage.model.FileUpload;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -41,7 +41,7 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 @ConditionalOnProperty(
         name = "file.storage.type",
         havingValue = "s3")
-public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable {
+public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable {
 
     private final FileStorageProperties.S3Config config;
     private final S3Client client;
@@ -107,13 +107,13 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
     @Override
-    public Map<String, String> upload(MultipartFile file) {
-        String key = objectKey(file.getOriginalFilename());
-        String contentType = StringUtils.hasText(file.getContentType())
-                ? file.getContentType()
+    public Map<String, String> upload(FileUpload file) {
+        String key = objectKey(file.originalFilename());
+        String contentType = StringUtils.hasText(file.contentType())
+                ? file.contentType()
                 : "application/octet-stream";
-        // SDK 同步消费请求体，上传结束后由调用方关闭 MultipartFile 打开的流。
-        try (InputStream stream = file.getInputStream()) {
+        // SDK 同步消费请求体，本 Provider 在上传成功或失败后均关闭宿主提供的内容流。
+        try (InputStream stream = file.openStream()) {
             client.putObject(
                     PutObjectRequest.builder()
                             .bucket(config.getBucket())
@@ -122,11 +122,11 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
                             .metadata(Map.of(
                                     "original-name-b64",
                                     encodeOriginalName(
-                                            file.getOriginalFilename())))
+                                            file.originalFilename())))
                             .build(),
                     RequestBody.fromInputStream(
                             stream,
-                            file.getSize()));
+                            file.size()));
         } catch (IOException exception) {
             throw new IllegalStateException(
                     "读取上传文件失败",
@@ -135,8 +135,8 @@ public class S3FileStorageStrategy implements FileStorageStrategy, AutoCloseable
         Map<String, String> result = new HashMap<>();
         result.put("url", getAccessUrl(key));
         result.put("filename", key);
-        result.put("originalName", file.getOriginalFilename());
-        result.put("size", String.valueOf(file.getSize()));
+        result.put("originalName", file.originalFilename());
+        result.put("size", String.valueOf(file.size()));
         return result;
     }
 

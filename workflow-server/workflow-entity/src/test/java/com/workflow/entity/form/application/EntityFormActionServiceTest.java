@@ -33,7 +33,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
@@ -223,7 +223,7 @@ class EntityFormActionServiceTest {
         authorizedRow.setStatus("LOCKED");
         when(capabilityService.evaluateConfiguredAction(
                 eq("work_order"), isNull(),
-                any(EntityActionRuleDTO.class), same(authorizedRow)))
+                any(EntityActionRule.class), same(authorizedRow)))
                 .thenReturn(EntityActionCapabilityDTO.disabled("记录已锁定"));
         String actionBar = """
                 {"actionBar":{"version":1,"builtInOverrides":{"close":{
@@ -250,7 +250,7 @@ class EntityFormActionServiceTest {
         assertEquals("记录已锁定", close.getReason());
         verify(capabilityService).evaluateConfiguredAction(
                 eq("work_order"), isNull(),
-                any(EntityActionRuleDTO.class), same(authorizedRow));
+                any(EntityActionRule.class), same(authorizedRow));
     }
 
     @Test
@@ -310,7 +310,7 @@ class EntityFormActionServiceTest {
                         "hash-1"));
         when(capabilityService.evaluateConfiguredAction(
                 eq("work_order"), isNull(),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.hidden(
                         "当前数据不满足显示条件"));
         FormActionResolveRequest request = new FormActionResolveRequest();
@@ -348,7 +348,7 @@ class EntityFormActionServiceTest {
                 """);
         when(capabilityService.evaluateConfiguredAction(
                 eq("work_order"), isNull(),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(
                         EntityActionCapabilityDTO.hidden("不显示"),
                         EntityActionCapabilityDTO.disabled("当前用户不可关闭"));
@@ -481,7 +481,7 @@ class EntityFormActionServiceTest {
                         "记录不可编辑"));
         when(capabilityService.evaluateConfiguredAction(
                 eq("work_order"), eq("entity:work_order:generate"),
-                any(EntityActionRuleDTO.class), same(row)))
+                any(EntityActionRule.class), same(row)))
                 .thenReturn(EntityActionCapabilityDTO.hidden(
                         "不满足显示条件"));
         EntityForm form = publishedForm("""
@@ -510,7 +510,7 @@ class EntityFormActionServiceTest {
         row.setId("record-1");
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.hidden(
                         "当前用户没有可办理任务"));
 
@@ -588,7 +588,7 @@ class EntityFormActionServiceTest {
                 .thenReturn(row);
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.allowedForTask(
                         "task-r1"));
         when(capabilityService.findActionableApprovalTaskContext(
@@ -635,7 +635,7 @@ class EntityFormActionServiceTest {
         // 能力摘要可只带同记录的最近待办；执行必须以显式 taskId 精确回查。
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.allowedForTask(
                         "task-latest"));
         when(capabilityService.findActionableApprovalTaskContext(
@@ -678,7 +678,7 @@ class EntityFormActionServiceTest {
                 .thenReturn(row);
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.allowedForTask(
                         "task-current"));
         UiEventExecuteRequest request = buttonRequest(
@@ -723,7 +723,7 @@ class EntityFormActionServiceTest {
                         "hash-r2"));
         when(capabilityService.evaluateApprovalAction(
                 eq("work_order"), same(row),
-                any(EntityActionRuleDTO.class), isNull()))
+                any(EntityActionRule.class), isNull()))
                 .thenReturn(EntityActionCapabilityDTO.allowedForTask(
                         "task-r1"));
         when(capabilityService.findActionableApprovalTaskContext(

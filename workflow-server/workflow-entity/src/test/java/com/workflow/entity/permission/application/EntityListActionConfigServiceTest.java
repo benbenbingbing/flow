@@ -7,7 +7,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -69,8 +69,8 @@ class EntityListActionConfigServiceTest {
             String creator, String submitter, String category,
             String processState, boolean expected) {
         List<Map<String, Object>> buttons = service.resolveRowButtons(null, "expense");
-        EntityActionRuleDTO edit = rule(buttons, "edit");
-        EntityActionRuleDTO delete = rule(buttons, "delete");
+        EntityActionRule edit = rule(buttons, "edit");
+        EntityActionRule delete = rule(buttons, "delete");
         EntityDataDTO row = new EntityDataDTO();
         row.setCreateBy(creator);
         row.setSubmitterId(submitter);
@@ -101,7 +101,7 @@ class EntityListActionConfigServiceTest {
 
         Map<?, ?> stored = (Map<?, ?>) objectMapper.readValue(config.getRowActionConfig(), List.class).get(0);
         assertTrue(stored.containsKey("availabilityRule"));
-        EntityActionRuleDTO edit = rule(service.resolveRowButtons(config, "expense"), "edit");
+        EntityActionRule edit = rule(service.resolveRowButtons(config, "expense"), "edit");
         assertEquals(2, edit.getVersion());
         assertTrue(edit.getVisibleWhen() != null);
     }
@@ -124,7 +124,7 @@ class EntityListActionConfigServiceTest {
 
         service.normalizeForSave(config);
 
-        EntityActionRuleDTO edit = rule(service.resolveRowButtons(config, "expense"), "edit");
+        EntityActionRule edit = rule(service.resolveRowButtons(config, "expense"), "edit");
         assertEquals("指定状态可以编辑", edit.getDisabledMessage());
         assertEquals("STATUS_CODE", edit.getEnabledWhen().getType());
         assertEquals("REVIEW", edit.getEnabledWhen().getValue());
@@ -139,7 +139,7 @@ class EntityListActionConfigServiceTest {
         unrestrictedButton.put("availabilityRule", unrestrictedRule);
         config.setRowActionConfig(objectMapper.writeValueAsString(List.of(unrestrictedButton)));
         service.normalizeForSave(config);
-        EntityActionRuleDTO unrestricted = rule(
+        EntityActionRule unrestricted = rule(
                 service.resolveRowButtons(config, "expense"), "edit");
         assertNull(unrestricted.getVisibleWhen());
         assertNull(unrestricted.getEnabledWhen());
@@ -147,7 +147,7 @@ class EntityListActionConfigServiceTest {
 
     @Test
     void defaultBatchDeleteUsesEnabledCondition() {
-        EntityActionRuleDTO rule = rule(
+        EntityActionRule rule = rule(
                 service.resolveToolbarButtons(null, "expense"),
                 "batchDelete");
 
@@ -156,7 +156,7 @@ class EntityListActionConfigServiceTest {
         assertEquals("选中数据中存在不可删除的数据", rule.getDisabledMessage());
     }
 
-    private EntityActionRuleDTO rule(List<Map<String, Object>> buttons, String key) {
+    private EntityActionRule rule(List<Map<String, Object>> buttons, String key) {
         return service.readRule(buttons.stream()
                 .filter(button -> key.equals(button.get("key")))
                 .findFirst()

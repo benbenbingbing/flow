@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -47,7 +47,7 @@ class S3FileStorageStrategyTest {
                 "data".getBytes(StandardCharsets.UTF_8));
 
         java.util.Map<String, String> uploaded =
-                strategy.upload(upload);
+                strategy.upload(com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter.from(upload));
         try (StoredFile opened =
                 strategy.open(uploaded.get("url"))) {
             assertEquals("中文.txt", opened.filename());

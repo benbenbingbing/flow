@@ -1,7 +1,7 @@
 package com.workflow.process.coordination.application;
 
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Operation;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.ProcessState;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.TargetImpact;
@@ -20,7 +20,7 @@ public class RelatedProcessCoordinationPublisher {
 
     public static final String TOPIC = "RELATED_PROCESS_COORDINATION";
 
-    private final OutboxPublisher outboxPublisher;
+    private final OutboxPublishPort outboxPublisher;
 
     /**
      * 为每个真正受影响的活动流程发布一条事件。

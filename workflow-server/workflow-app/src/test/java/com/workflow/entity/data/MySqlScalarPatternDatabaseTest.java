@@ -7,7 +7,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
@@ -95,7 +95,7 @@ class MySqlScalarPatternDatabaseTest {
         try (var f = fixture(false)) {
             var h = new Harness(f, EntityDataDynamicMapper.class); var builder = builder();
             var filter = rule("l", "CONTAINS", "9223372036854775808");
-            var group = new EntityActionRuleDTO.RuleNode(); group.setType("GROUP"); group.setLogic("AND");
+            var group = new EntityActionRule.RuleNode(); group.setType("GROUP"); group.setLogic("AND");
             group.setChildren(List.of(filter.getRoot(), rule("flag", "EQ", true).getRoot())); filter.setRoot(group);
             var params = new LinkedHashMap<String, Object>();
             String allowed = builder.buildFilterSql("asset", filter, user(), params);
@@ -191,7 +191,7 @@ class MySqlScalarPatternDatabaseTest {
         var field = new EntityField(); field.setFieldCode(column); field.setDbColumnName(column); field.setFieldType(type); field.setFieldLength(precision); field.setFieldPrecision(scale); return field;
     }
     private static FilterConfigDTO rule(String field, String operator, Object value) {
-        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("FIELD"); node.setField(field); node.setOperator(operator); node.setValue(value); filter.setRoot(node); return filter;
     }
     private static SysUser user() { var user = new SysUser(); user.setId("user"); return user; }

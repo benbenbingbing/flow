@@ -4,8 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +18,7 @@ import java.util.Set;
  */
 @Component("recordProjectMemberDecisionHandler")
 public class RecordProjectMemberDecisionHandler
-        implements TypedFlowActionHandler<
+        implements TypedFlowActionProvider<
         RecordProjectMemberDecisionHandler.Parameters> {
 
     private final ProjectMemberChangeService service;
@@ -104,8 +104,8 @@ public class RecordProjectMemberDecisionHandler
     public void execute(
             FlowActionContext context,
             Parameters parameters) {
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO request)) {
+        EntityRecordData request = context.getEntityData();
+        if (request == null) {
             throw new IllegalStateException(
                     "Project member change data is unavailable.");
         }

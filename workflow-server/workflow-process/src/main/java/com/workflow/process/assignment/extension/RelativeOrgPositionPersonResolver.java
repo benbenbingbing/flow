@@ -18,9 +18,9 @@ import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.error.PersonResolutionException;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.process.assignment.domain.RelativeOrgPositionConfig.Anchor;
 import com.workflow.process.assignment.domain.RelativeOrgPositionConfig.LookupMode;
@@ -42,7 +42,7 @@ import java.util.Set;
  */
 @Component("relativeOrgPositionPersonResolver")
 public class RelativeOrgPositionPersonResolver
-        implements PersonResolver, PersonResolverConfigurationValidator {
+        implements PersonResolverProvider, PersonResolverConfigurationValidationProvider {
 
     private static final PersonResolverDescriptor DESCRIPTOR =
             new PersonResolverDescriptor(

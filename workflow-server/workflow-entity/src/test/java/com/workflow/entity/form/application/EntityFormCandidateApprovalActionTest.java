@@ -27,7 +27,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormNodeMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.application.CurrentProcessTaskAssigneeLookup;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityActionRuleEvaluator;
@@ -387,7 +387,7 @@ class EntityFormCandidateApprovalActionTest {
 
     @Test
     void failedEnabledOverrideDisablesAndDoesNotLeakTaskId() throws Exception {
-        EntityActionRuleDTO override = enabledApprovalOverride();
+        EntityActionRule override = enabledApprovalOverride();
         setSubmitOverride(override);
         row.setName("not-ready");
 
@@ -437,7 +437,7 @@ class EntityFormCandidateApprovalActionTest {
                 .stream().filter(button -> key.equals(button.getKey())).findFirst().orElseThrow();
     }
 
-    private void setSubmitOverride(EntityActionRuleDTO rule) throws Exception {
+    private void setSubmitOverride(EntityActionRule rule) throws Exception {
         form.setViewConfig(objectMapper.writeValueAsString(Map.of("actionBar", Map.of(
                 "version", 1,
                 "builtInOverrides", Map.of("submitApproval", Map.of(
@@ -445,9 +445,9 @@ class EntityFormCandidateApprovalActionTest {
                 "customButtons", List.of()))));
     }
 
-    private EntityActionRuleDTO assignedRule() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        EntityActionRuleDTO.RuleNode relation = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule assignedRule() {
+        EntityActionRule rule = new EntityActionRule();
+        EntityActionRule.RuleNode relation = new EntityActionRule.RuleNode();
         relation.setType("RELATION");
         relation.setRelation("CURRENT_USER_IS_ASSIGNEE");
         rule.setVisibleWhen(relation);
@@ -455,21 +455,21 @@ class EntityFormCandidateApprovalActionTest {
     }
 
     /** 启用条件同时限制候选身份、状态和业务字段，防止仅验证候选分支。 */
-    private EntityActionRuleDTO enabledApprovalOverride() {
-        EntityActionRuleDTO rule = new EntityActionRuleDTO();
-        EntityActionRuleDTO.RuleNode assignee = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule enabledApprovalOverride() {
+        EntityActionRule rule = new EntityActionRule();
+        EntityActionRule.RuleNode assignee = new EntityActionRule.RuleNode();
         assignee.setType("RELATION");
         assignee.setRelation("CURRENT_USER_IS_ASSIGNEE");
-        EntityActionRuleDTO.RuleNode status = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode status = new EntityActionRule.RuleNode();
         status.setType("STATUS_CODE");
         status.setOperator("EQ");
         status.setValue("PENDING");
-        EntityActionRuleDTO.RuleNode field = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode field = new EntityActionRule.RuleNode();
         field.setType("FIELD");
         field.setField("name");
         field.setOperator("EQ");
         field.setValue("ready");
-        EntityActionRuleDTO.RuleNode group = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode group = new EntityActionRule.RuleNode();
         group.setType("GROUP");
         group.setLogic("AND");
         group.setChildren(List.of(assignee, status, field));

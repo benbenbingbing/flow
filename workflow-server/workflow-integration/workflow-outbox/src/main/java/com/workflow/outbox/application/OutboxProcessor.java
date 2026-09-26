@@ -1,7 +1,7 @@
 package com.workflow.outbox.application;
 
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class OutboxProcessor {
 
     private final OutboxRecordMapper mapper;
-    private final Map<String, OutboxEventHandler> handlers;
+    private final Map<String, OutboxEventHandlerProvider> handlers;
     private final TaskScheduler heartbeatScheduler;
 
     @Value("${workflow.outbox.retry-initial-seconds:30}")
@@ -44,7 +44,7 @@ public class OutboxProcessor {
      */
     public OutboxProcessor(
             OutboxRecordMapper mapper,
-            List<OutboxEventHandler> handlers,
+            List<OutboxEventHandlerProvider> handlers,
             @Qualifier("outboxHeartbeatScheduler") TaskScheduler heartbeatScheduler) {
         this.mapper = mapper;
         this.handlers = indexHandlers(handlers);
@@ -84,7 +84,7 @@ public class OutboxProcessor {
                 Instant.now().plus(heartbeatPeriod),
                 heartbeatPeriod);
         try {
-            OutboxEventHandler handler = handlers.get(record.getTopic());
+            OutboxEventHandlerProvider handler = handlers.get(record.getTopic());
             if (handler == null) {
                 throw new IllegalStateException(
                         "未注册 Outbox 处理器: " + record.getTopic());
@@ -140,17 +140,17 @@ public class OutboxProcessor {
      * @return 索引{@code handlers}键值结果，供调用方继续处理
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
-    private Map<String, OutboxEventHandler> indexHandlers(
-            List<OutboxEventHandler> values) {
-        Map<String, OutboxEventHandler> result = new LinkedHashMap<>();
-        for (OutboxEventHandler handler : values) {
+    private Map<String, OutboxEventHandlerProvider> indexHandlers(
+            List<OutboxEventHandlerProvider> values) {
+        Map<String, OutboxEventHandlerProvider> result = new LinkedHashMap<>();
+        for (OutboxEventHandlerProvider handler : values) {
             String topic = handler.topic();
             if (topic == null || topic.isBlank()) {
                 throw new IllegalStateException(
                         "Outbox 处理器 topic 不能为空: "
                                 + handler.getClass().getName());
             }
-            OutboxEventHandler previous = result.putIfAbsent(
+            OutboxEventHandlerProvider previous = result.putIfAbsent(
                     topic.trim(),
                     handler);
             if (previous != null) {
@@ -217,7 +217,7 @@ public class OutboxProcessor {
         int maxRetries = record.getMaxRetries() == null
                 ? 8
                 : Math.max(1, record.getMaxRetries());
-        OutboxEventHandler handler = handlers.get(record.getTopic());
+        OutboxEventHandlerProvider handler = handlers.get(record.getTopic());
         boolean retryable = handler != null && handler.retryable();
         String status = !retryable || retries >= maxRetries
                 ? "DEAD"

@@ -1,29 +1,5 @@
 <template>
   <div class="position-management">
-    <div class="page-header">
-      <div>
-        <h2>职务管理</h2>
-        <p>职务描述业务责任，任职关系决定某人在具体组织或部门中承担该职务。</p>
-      </div>
-      <div class="page-header__actions">
-        <el-button
-          v-if="activeTab === 'definitions' && canManage"
-          type="primary"
-          @click="openPositionDialog()"
-        >
-          <el-icon><Plus /></el-icon>新增职务
-        </el-button>
-        <template v-if="activeTab === 'assignments' && canAssign">
-          <el-button @click="openBatchDialog">
-            <el-icon><DocumentAdd /></el-icon>批量任命
-          </el-button>
-          <el-button type="primary" @click="openAssignmentDialog()">
-            <el-icon><Plus /></el-icon>新增任职
-          </el-button>
-        </template>
-      </div>
-    </div>
-
     <el-tabs v-model="activeTab" class="position-tabs" @tab-change="handleTabChange">
       <el-tab-pane label="职务定义" name="definitions">
         <el-form :model="positionQuery" inline class="filter-bar">
@@ -54,10 +30,17 @@
               <el-option label="停用" value="DISABLED" />
             </el-select>
           </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="searchPositions">查询</el-button>
-            <el-button @click="resetPositionQuery">重置</el-button>
-          </el-form-item>
+          <div class="filter-bar__actions">
+            <div class="filter-bar__action-group">
+              <el-button type="primary" @click="searchPositions">查询</el-button>
+              <el-button @click="resetPositionQuery">重置</el-button>
+            </div>
+            <div v-if="canManage" class="filter-bar__action-group filter-bar__manage">
+              <el-button type="primary" @click="openPositionDialog()">
+                <el-icon><Plus /></el-icon>新增职务
+              </el-button>
+            </div>
+          </div>
         </el-form>
 
         <PageState
@@ -212,10 +195,20 @@
               <el-form-item>
                 <el-checkbox v-model="assignmentQuery.activeOnly">仅当前有效</el-checkbox>
               </el-form-item>
-              <el-form-item>
-                <el-button type="primary" @click="searchAssignments">查询</el-button>
-                <el-button @click="resetAssignmentQuery">重置</el-button>
-              </el-form-item>
+              <div class="filter-bar__actions">
+                <div class="filter-bar__action-group">
+                  <el-button type="primary" @click="searchAssignments">查询</el-button>
+                  <el-button @click="resetAssignmentQuery">重置</el-button>
+                </div>
+                <div v-if="canAssign" class="filter-bar__action-group filter-bar__manage">
+                  <el-button @click="openBatchDialog">
+                    <el-icon><DocumentAdd /></el-icon>批量任命
+                  </el-button>
+                  <el-button type="primary" @click="openAssignmentDialog()">
+                    <el-icon><Plus /></el-icon>新增任职
+                  </el-button>
+                </div>
+              </div>
             </el-form>
 
             <PageState
@@ -923,19 +916,18 @@ onMounted(async () => {
   box-sizing: border-box;
   background: #fff;
 }
-.page-header,
-.page-header__actions,
 .assignment-context,
 .organization-panel__header,
 .organization-node {
   display: flex;
   align-items: center;
 }
-.page-header { justify-content: space-between; gap: 16px; margin-bottom: 10px; }
-.page-header h2 { margin: 0; font-size: 20px; font-weight: 500; }
-.page-header p { margin: 6px 0 0; color: var(--el-text-color-secondary); font-size: 13px; }
-.page-header__actions { gap: 10px; }
 .filter-bar { padding: 12px 12px 0; margin-bottom: 14px; background: var(--el-fill-color-extra-light); border-radius: 8px; }
+/* 操作区独占筛选条件下方一行，窄屏时允许按钮分组换行，避免挤压输入项。 */
+.filter-bar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-bottom: 12px; }
+.filter-bar__action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.filter-bar__action-group :deep(.el-button + .el-button) { margin-left: 0; }
+.filter-bar__manage { margin-left: auto; }
 .position-tabs :deep(.el-tabs__content) { overflow: visible; }
 .inline-tag { margin-left: 8px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
@@ -955,7 +947,6 @@ onMounted(async () => {
 .batch-reason { margin-top: 14px; }
 @media (max-width: 900px) {
   .position-management { padding: 12px; }
-  .page-header { align-items: flex-start; flex-direction: column; }
   .assignment-layout { grid-template-columns: 1fr; }
   .organization-panel { max-height: 320px; overflow: auto; }
 }

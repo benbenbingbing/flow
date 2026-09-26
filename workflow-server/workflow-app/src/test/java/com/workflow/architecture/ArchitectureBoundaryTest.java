@@ -72,6 +72,30 @@ class ArchitectureBoundaryTest {
                             "jakarta.servlet..");
 
     @ArchTest
+    static final ArchRule STORAGE_USES_IDENTITY_CONTRACTS =
+            noClasses().that().resideInAPackage("com.workflow.storage..")
+                    .should().dependOnClassesThat().resideInAPackage("com.workflow.admin..");
+
+    @ArchTest
+    static final ArchRule PROJECT_BUSINESS_USES_ENTITY_CONTRACTS =
+            noClasses().that().resideInAnyPackage(
+                            "com.workflow.biz.project.action..", "com.workflow.biz.project.service..")
+                    .should().dependOnClassesThat().resideInAnyPackage(
+                            "com.workflow.entity..", "com.workflow.process..", "com.workflow.admin..");
+
+    @ArchTest
+    static final ArchRule PERSON_RESOLVER_USES_IDENTITY_PORTS =
+            noClasses().that().haveSimpleName("PersonResolverRuntimeService")
+                    .should().dependOnClassesThat().resideInAPackage("com.workflow.admin..");
+
+    @ArchTest
+    static final ArchRule SHARED_CONTRACTS_NEVER_REFERENCE_IMPLEMENTATION =
+            noClasses().that().resideInAPackage("com.workflow.contracts..")
+                    .should().dependOnClassesThat(
+                            JavaClass.Predicates.resideInAPackage("com.workflow..")
+                                    .and(JavaClass.Predicates.resideOutsideOfPackage("com.workflow.contracts..")));
+
+    @ArchTest
     static final ArchRule BUSINESS_MODULES_USE_AUDIT_CONTRACTS_ONLY =
             noClasses()
                     .that().resideOutsideOfPackage("com.workflow.admin.audit..")

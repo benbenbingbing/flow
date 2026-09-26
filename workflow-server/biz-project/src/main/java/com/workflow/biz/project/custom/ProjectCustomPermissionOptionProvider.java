@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.permission.api.response.EntityPermissionOptionDTO;
+import com.workflow.contracts.entity.permission.model.EntityPermissionOption;
 import com.workflow.entity.permission.application.EntityPermissionAction;
-import com.workflow.entity.permission.application.EntityPermissionOptionProvider;
+import com.workflow.contracts.entity.permission.spi.EntityPermissionOptionProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -31,7 +31,7 @@ public class ProjectCustomPermissionOptionProvider
      * @return 实体权限选项集合，供调用方遍历或展示
      */
     @Override
-    public List<EntityPermissionOptionDTO> getOptions(
+    public List<EntityPermissionOption> getOptions(
             String entityCode) {
         if (!StringUtils.hasText(entityCode)) {
             return List.of();
@@ -41,7 +41,7 @@ public class ProjectCustomPermissionOptionProvider
                 "项目实体权限选项目录加载: entityCode={}, permissionCode={}",
                 LogValue.safe(entityCode),
                 LogValue.safe(code));
-        return List.of(new EntityPermissionOptionDTO(
+        return List.of(new EntityPermissionOption(
                 "project-review",
                 code,
                 "项目复核",

@@ -3,13 +3,13 @@ package com.workflow.service.permission;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import com.workflow.entity.permission.application.EntityListScopeService;
@@ -314,10 +314,10 @@ class DataPermissionEngineTest {
         filter.setSql("biz.create_by = #{userId}");
         EntityListScopeSnapshotDTO snapshot = snapshot("INHERIT", policy("sql", filter));
         EntityListScopeBindingDTO binding = binding("sql", "default", "ALLOW");
-        MatchConfigDTO.MatchConditionDTO sqlAudience = new MatchConfigDTO.MatchConditionDTO();
+        PermissionMatchConfig.MatchConditionDTO sqlAudience = new PermissionMatchConfig.MatchConditionDTO();
         sqlAudience.setScopeType("SQL");
         sqlAudience.setSql("#{userId} = 'u1'");
-        MatchConfigDTO match = new MatchConfigDTO();
+        PermissionMatchConfig match = new PermissionMatchConfig();
         match.setConditions(List.of(sqlAudience));
         binding.setMatchConfig(match);
         snapshot.setBindings(List.of(binding));
@@ -470,9 +470,9 @@ class DataPermissionEngineTest {
         binding.setListKey(listKey);
         binding.setRuleEffect(effect);
         binding.setEnabled(1);
-        MatchConfigDTO match = new MatchConfigDTO();
-        MatchConfigDTO.MatchConditionDTO allUsers =
-                new MatchConfigDTO.MatchConditionDTO();
+        PermissionMatchConfig match = new PermissionMatchConfig();
+        PermissionMatchConfig.MatchConditionDTO allUsers =
+                new PermissionMatchConfig.MatchConditionDTO();
         allUsers.setScopeType("ALL_USERS");
         match.setConditions(List.of(allUsers));
         binding.setMatchConfig(match);
@@ -498,7 +498,7 @@ class DataPermissionEngineTest {
     /** 构造带类型与根节点的过滤配置 */
     private FilterConfigDTO filter(
             String type,
-            EntityActionRuleDTO.RuleNode root) {
+            EntityActionRule.RuleNode root) {
         FilterConfigDTO filter = new FilterConfigDTO();
         filter.setType(type);
         filter.setRoot(root);
@@ -506,11 +506,11 @@ class DataPermissionEngineTest {
     }
 
     /** 构造字段/状态比较条件节点 */
-    private EntityActionRuleDTO.RuleNode condition(
+    private EntityActionRule.RuleNode condition(
             String type,
             String operator,
             Object value) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType(type);
         node.setOperator(operator);
         node.setValue(value);

@@ -6,8 +6,8 @@ import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditResult;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
 import com.workflow.contracts.audit.model.SystemAuditEvent;
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,7 +37,7 @@ class SystemAuditApplicationServiceTest {
                 .when(outboxWriter)
                 .enqueue(any(AuditLogPayload.class));
         SystemAuditApplicationService service = service(
-                mock(OutboxPublisher.class),
+                mock(OutboxPublishPort.class),
                 outboxWriter,
                 eventPublisher);
 
@@ -50,8 +50,8 @@ class SystemAuditApplicationServiceTest {
 
     @Test
     void requiredAuditFailureBlocksBusiness() {
-        OutboxPublisher outboxPublisher =
-                mock(OutboxPublisher.class);
+        OutboxPublishPort outboxPublisher =
+                mock(OutboxPublishPort.class);
         doThrow(new IllegalStateException("outbox unavailable"))
                 .when(outboxPublisher)
                 .publish(any(OutboxPublishRequest.class));
@@ -70,7 +70,7 @@ class SystemAuditApplicationServiceTest {
         SystemAuditOutboxWriter outboxWriter =
                 mock(SystemAuditOutboxWriter.class);
         SystemAuditApplicationService service = service(
-                mock(OutboxPublisher.class),
+                mock(OutboxPublishPort.class),
                 outboxWriter,
                 mock(ApplicationEventPublisher.class));
 
@@ -97,7 +97,7 @@ class SystemAuditApplicationServiceTest {
     }
 
     private SystemAuditApplicationService service(
-            OutboxPublisher outboxPublisher,
+            OutboxPublishPort outboxPublisher,
             SystemAuditOutboxWriter outboxWriter,
             ApplicationEventPublisher eventPublisher) {
         AuditLogPayloadFactory factory =

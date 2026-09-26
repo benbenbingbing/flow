@@ -19,8 +19,8 @@ import com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMuta
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxPublishRequest;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
 import com.workflow.outbox.application.DatabaseOutboxPublisher;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import java.nio.file.Files;

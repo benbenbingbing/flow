@@ -1,10 +1,10 @@
 package com.workflow.service.listfield;
 
-import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import org.junit.jupiter.api.Test;
 
@@ -92,8 +92,8 @@ class ListFieldDataProviderRegistryTest {
 
             @Override
             public void enrich(
-                    List<EntityDataDTO> records,
-                    List<EntityListField> fields,
+                    List<ListFieldDataRecord> records,
+                    List<com.workflow.contracts.entity.list.model.ListFieldDataConfig> fields,
                     Map<String, Object> context) {
             }
         };
@@ -118,8 +118,8 @@ class ListFieldDataProviderRegistryTest {
 
             @Override
             public void enrich(
-                    List<EntityDataDTO> records,
-                    List<EntityListField> fields,
+                    List<ListFieldDataRecord> records,
+                    List<com.workflow.contracts.entity.list.model.ListFieldDataConfig> fields,
                     Map<String, Object> context) {
             }
         };

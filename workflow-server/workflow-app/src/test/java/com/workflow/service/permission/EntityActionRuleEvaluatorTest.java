@@ -3,7 +3,7 @@ package com.workflow.service.permission;
 import com.workflow.entity.permission.application.EntityActionRuleEvaluator;
 
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +25,7 @@ class EntityActionRuleEvaluatorTest {
         EntityDataDTO row = row("u", "u", "p", "TERMINATED");
         row.setProcessStatus("COMPLETED");
         row.setProcessEndTime(java.time.LocalDateTime.now());
-        var node = new EntityActionRuleDTO.RuleNode();
+        var node = new EntityActionRule.RuleNode();
         node.setType("PROCESS_STATE"); node.setOperator("EQ"); node.setValue("COMPLETED");
         node.setLifecycleVersion(1);
         var rule = node;
@@ -94,7 +94,7 @@ class EntityActionRuleEvaluatorTest {
         assertFalse(evaluator.evaluate(assigneeRule(), row, lisi, "PROCESSING"));
     }
 
-    private EntityActionRuleDTO.RuleNode assigneeRule() {
+    private EntityActionRule.RuleNode assigneeRule() {
         return relation("CURRENT_USER_IS_ASSIGNEE");
     }
 
@@ -103,7 +103,7 @@ class EntityActionRuleEvaluatorTest {
     void customFieldConditionsAreSupported() {
         EntityDataDTO row = row("user-1", "user-1", null, "DRAFT");
         row.setData(Map.of("amount", 120));
-        EntityActionRuleDTO.RuleNode node = node("FIELD", "GT", 100);
+        EntityActionRule.RuleNode node = node("FIELD", "GT", 100);
         node.setField("amount");
 
         assertTrue(evaluator.evaluate(node, row, user("user-1", "zhangsan", "dept-1"), "NEW"));
@@ -118,7 +118,7 @@ class EntityActionRuleEvaluatorTest {
         for (String operator : List.of(
                 "EQ", "NE", "IN", "NOT_IN", "CONTAINS",
                 "NOT_CONTAINS", "GT", "GTE", "LT", "LTE")) {
-            EntityActionRuleDTO.RuleNode condition =
+            EntityActionRule.RuleNode condition =
                     node("FIELD", operator,
                             List.of("IN", "NOT_IN").contains(operator)
                                     ? List.of("x") : "x");
@@ -126,9 +126,9 @@ class EntityActionRuleEvaluatorTest {
             assertFalse(evaluator.evaluate(
                     condition, row, user, "NEW"), operator);
         }
-        EntityActionRuleDTO.RuleNode empty = node("FIELD", "EMPTY", null);
+        EntityActionRule.RuleNode empty = node("FIELD", "EMPTY", null);
         empty.setField("missingField");
-        EntityActionRuleDTO.RuleNode notEmpty =
+        EntityActionRule.RuleNode notEmpty =
                 node("FIELD", "NOT_EMPTY", null);
         notEmpty.setField("missingField");
         assertTrue(evaluator.evaluate(empty, row, user, "NEW"));
@@ -140,10 +140,10 @@ class EntityActionRuleEvaluatorTest {
     void userRoleCollectionUsesIntersectionForSetOperators() {
         SysUser user = user("user-1", "zhangsan", "dept-1");
         user.setRoleIds(List.of("role-a", "role-b"));
-        EntityActionRuleDTO.RuleNode in =
+        EntityActionRule.RuleNode in =
                 node("USER_FIELD", "IN", List.of("role-b", "role-c"));
         in.setField("roleIds");
-        EntityActionRuleDTO.RuleNode notIn =
+        EntityActionRule.RuleNode notIn =
                 node("USER_FIELD", "NOT_IN", List.of("role-c"));
         notIn.setField("roleIds");
 
@@ -154,7 +154,7 @@ class EntityActionRuleEvaluatorTest {
     }
 
     /** 构造删除规则：归属人 + (未开始/新建 或 已撤回) */
-    private EntityActionRuleDTO.RuleNode deleteRule() {
+    private EntityActionRule.RuleNode deleteRule() {
         return group("AND",
                 group("OR",
                         relation("CURRENT_USER_IS_CREATOR"),
@@ -167,10 +167,10 @@ class EntityActionRuleEvaluatorTest {
     }
 
     /** 构造逻辑分组节点（AND/OR），含子节点 */
-    private EntityActionRuleDTO.RuleNode group(
+    private EntityActionRule.RuleNode group(
             String logic,
-            EntityActionRuleDTO.RuleNode... children) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+            EntityActionRule.RuleNode... children) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("GROUP");
         node.setLogic(logic);
         node.setChildren(List.of(children));
@@ -178,16 +178,16 @@ class EntityActionRuleEvaluatorTest {
     }
 
     /** 构造关系节点（如 CURRENT_USER_IS_CREATOR） */
-    private EntityActionRuleDTO.RuleNode relation(String relation) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode relation(String relation) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType("RELATION");
         node.setRelation(relation);
         return node;
     }
 
     /** 构造字段/状态比较节点 */
-    private EntityActionRuleDTO.RuleNode node(String type, String operator, Object value) {
-        EntityActionRuleDTO.RuleNode node = new EntityActionRuleDTO.RuleNode();
+    private EntityActionRule.RuleNode node(String type, String operator, Object value) {
+        EntityActionRule.RuleNode node = new EntityActionRule.RuleNode();
         node.setType(type);
         node.setOperator(operator);
         node.setValue(value);

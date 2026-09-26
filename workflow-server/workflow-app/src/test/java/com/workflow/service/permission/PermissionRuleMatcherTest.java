@@ -1,10 +1,10 @@
 package com.workflow.service.permission;
 
-import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionMatchProvider;
 import com.workflow.entity.permission.application.PermissionRuleMatcher;
 import com.workflow.entity.permission.application.PermissionSqlFragmentCompiler;
 
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
@@ -57,7 +57,7 @@ class PermissionRuleMatcherTest {
         PermissionRuleMatcher matcher = matcher();
         SysUser user = new SysUser();
         user.setRoleIds(List.of("role-a", "role-b"));
-        MatchConfigDTO match = match("OR", condition("ROLE", List.of("role-b"), "ANY", false));
+        PermissionMatchConfig match = match("OR", condition("ROLE", List.of("role-b"), "ANY", false));
 
         assertTrue(matcher.matches(match, user));
     }
@@ -69,7 +69,7 @@ class PermissionRuleMatcherTest {
         SysUser user = new SysUser();
         user.setId("u1");
         when(userGroupMapper.selectGroupIdsByUserId("u1")).thenReturn(List.of("group-a", "group-b"));
-        MatchConfigDTO match = match("OR", condition("GROUP", List.of("group-b"), "ANY", false));
+        PermissionMatchConfig match = match("OR", condition("GROUP", List.of("group-b"), "ANY", false));
 
         assertTrue(matcher.matches(match, user));
     }
@@ -83,7 +83,7 @@ class PermissionRuleMatcherTest {
         SysOrganization org = new SysOrganization();
         org.setPath("/root/dept-parent/dept-child/");
         when(orgMapper.selectById("dept-child")).thenReturn(org);
-        MatchConfigDTO match = match("OR", condition("DEPT", List.of("dept-parent"), "ANY", true));
+        PermissionMatchConfig match = match("OR", condition("DEPT", List.of("dept-parent"), "ANY", true));
 
         assertTrue(matcher.matches(match, user));
     }
@@ -97,7 +97,7 @@ class PermissionRuleMatcherTest {
         SysOrganization org = new SysOrganization();
         org.setPath("/root/org-parent/org-child/");
         when(orgMapper.selectById("org-child")).thenReturn(org);
-        MatchConfigDTO match = match("OR", condition("ORG", List.of("org-parent"), "ANY", true));
+        PermissionMatchConfig match = match("OR", condition("ORG", List.of("org-parent"), "ANY", true));
 
         assertTrue(matcher.matches(match, user));
     }
@@ -110,12 +110,12 @@ class PermissionRuleMatcherTest {
         user.setId("u1");
         user.setRoleIds(List.of("role-a"));
 
-        MatchConfigDTO.MatchNodeDTO root = group("AND",
+        PermissionMatchConfig.MatchNodeDTO root = group("AND",
                 leaf(condition("USER", List.of("u1"), "ANY", false)),
                 group("OR",
                         leaf(condition("ROLE", List.of("role-a"), "ANY", false)),
                         leaf(condition("ROLE", List.of("role-b"), "ANY", false))));
-        MatchConfigDTO config = new MatchConfigDTO();
+        PermissionMatchConfig config = new PermissionMatchConfig();
         config.setRoot(root);
 
         assertTrue(matcher.matches(config, user));
@@ -131,8 +131,8 @@ class PermissionRuleMatcherTest {
             }
 
             @Override
-            public boolean matches(MatchConfigDTO.MatchConditionDTO condition, SysUser user) {
-                return "u1".equals(user.getId());
+            public boolean matches(PermissionMatchConfig.MatchConditionDTO condition, com.workflow.contracts.identity.model.IdentityUser user) {
+                return "u1".equals(user.id());
             }
         };
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
@@ -141,7 +141,7 @@ class PermissionRuleMatcherTest {
                 List.of(provider));
         SysUser user = new SysUser();
         user.setId("u1");
-        MatchConfigDTO match = match(
+        PermissionMatchConfig match = match(
                 "OR",
                 condition("CRM:CUSTOMER_MANAGER", List.of(), "ANY", false));
 
@@ -158,7 +158,7 @@ class PermissionRuleMatcherTest {
                 orgMapper, userGroupMapper, List.of(), compiler);
         SysUser user = new SysUser();
         user.setId("u1");
-        MatchConfigDTO.MatchConditionDTO condition =
+        PermissionMatchConfig.MatchConditionDTO condition =
                 condition("SQL", List.of(), "ANY", false);
         condition.setSql("#{userId} = 'u1'");
 
@@ -172,7 +172,7 @@ class PermissionRuleMatcherTest {
                 new PermissionSqlFragmentCompiler(mock(JdbcTemplate.class), null, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
                 orgMapper, userGroupMapper, List.of(), compiler);
-        MatchConfigDTO.MatchConditionDTO condition =
+        PermissionMatchConfig.MatchConditionDTO condition =
                 condition("SQL", List.of(), "ANY", false);
         condition.setSql("biz.create_by = #{userId}");
 
@@ -185,7 +185,7 @@ class PermissionRuleMatcherTest {
         PermissionRuleMatcher matcher = matcher();
         SysUser user = new SysUser();
         user.setId("u1");
-        MatchConfigDTO match = match(
+        PermissionMatchConfig match = match(
                 "OR",
                 condition("EXPRESSION", List.of(), "ANY", false));
 
@@ -198,22 +198,22 @@ class PermissionRuleMatcherTest {
     }
 
     /** 构造指定逻辑与条件列表的匹配配置 */
-    private MatchConfigDTO match(
+    private PermissionMatchConfig match(
             String logic,
-            MatchConfigDTO.MatchConditionDTO... conditions) {
-        MatchConfigDTO match = new MatchConfigDTO();
+            PermissionMatchConfig.MatchConditionDTO... conditions) {
+        PermissionMatchConfig match = new PermissionMatchConfig();
         match.setLogic(logic);
         match.setConditions(List.of(conditions));
         return match;
     }
 
     /** 构造匹配条件（作用域类型、目标 ID、操作符、是否含子部门） */
-    private MatchConfigDTO.MatchConditionDTO condition(
+    private PermissionMatchConfig.MatchConditionDTO condition(
             String scopeType,
             List<String> targetIds,
             String operator,
             boolean includeSubDept) {
-        MatchConfigDTO.MatchConditionDTO condition = new MatchConfigDTO.MatchConditionDTO();
+        PermissionMatchConfig.MatchConditionDTO condition = new PermissionMatchConfig.MatchConditionDTO();
         condition.setScopeType(scopeType);
         condition.setTargetIds(targetIds);
         condition.setOperator(operator);
@@ -222,10 +222,10 @@ class PermissionRuleMatcherTest {
     }
 
     /** 构造逻辑分组节点（AND/OR），含子节点 */
-    private MatchConfigDTO.MatchNodeDTO group(
+    private PermissionMatchConfig.MatchNodeDTO group(
             String logic,
-            MatchConfigDTO.MatchNodeDTO... children) {
-        MatchConfigDTO.MatchNodeDTO node = new MatchConfigDTO.MatchNodeDTO();
+            PermissionMatchConfig.MatchNodeDTO... children) {
+        PermissionMatchConfig.MatchNodeDTO node = new PermissionMatchConfig.MatchNodeDTO();
         node.setType("GROUP");
         node.setLogic(logic);
         node.setChildren(List.of(children));
@@ -233,8 +233,8 @@ class PermissionRuleMatcherTest {
     }
 
     /** 构造包装单个条件的叶子节点 */
-    private MatchConfigDTO.MatchNodeDTO leaf(MatchConfigDTO.MatchConditionDTO condition) {
-        MatchConfigDTO.MatchNodeDTO node = new MatchConfigDTO.MatchNodeDTO();
+    private PermissionMatchConfig.MatchNodeDTO leaf(PermissionMatchConfig.MatchConditionDTO condition) {
+        PermissionMatchConfig.MatchNodeDTO node = new PermissionMatchConfig.MatchNodeDTO();
         node.setType("CONDITION");
         node.setCondition(condition);
         return node;

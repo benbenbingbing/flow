@@ -21,7 +21,7 @@ const listConfigApi = readFileSync(join(srcRoot, 'api/entityListConfig.js'), 'ut
 const router = readFileSync(join(srcRoot, 'router/index.js'), 'utf8')
 
 const provider = readFileSync(
-  join(backendRoot, 'workflow-entity/src/main/java/com/workflow/entity/list/extension/ListFieldDataProvider.java'),
+  join(backendRoot, 'workflow-spi/src/main/java/com/workflow/contracts/entity/list/spi/ListFieldDataProvider.java'),
   'utf8'
 )
 const registry = readFileSync(

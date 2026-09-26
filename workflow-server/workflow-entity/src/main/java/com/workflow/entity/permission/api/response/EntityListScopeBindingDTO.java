@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.api.response;
 
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
+
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -19,7 +21,7 @@ public class EntityListScopeBindingDTO {
     /** 列表标识 */
     private String listKey;
     /** 适用对象匹配条件 */
-    private MatchConfigDTO matchConfig;
+    private PermissionMatchConfig matchConfig;
     /** 规则效果（如 INCLUDE/EXCLUDE） */
     private String ruleEffect;
     /** 是否启用（0-禁用，1-启用） */

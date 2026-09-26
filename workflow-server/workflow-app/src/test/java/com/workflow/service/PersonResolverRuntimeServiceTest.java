@@ -5,7 +5,7 @@ import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
@@ -36,7 +36,7 @@ class PersonResolverRuntimeServiceTest {
     void forwardsFixedContextAndExtraParams() {
         AtomicReference<PersonResolveRequest> captured =
                 new AtomicReference<>();
-        PersonResolver resolver = resolver(
+        PersonResolverProvider resolver = resolver(
                 Set.of(PersonResolveUsage.CC),
                 request -> {
                     captured.set(request);
@@ -68,7 +68,7 @@ class PersonResolverRuntimeServiceTest {
 
     @Test
     void rejectsUnsupportedUsage() {
-        PersonResolver resolver = resolver(
+        PersonResolverProvider resolver = resolver(
                 Set.of(PersonResolveUsage.CC),
                 request -> PersonResolveResult.users(
                         List.of("observer")));
@@ -87,13 +87,13 @@ class PersonResolverRuntimeServiceTest {
                                 Map.of())));
     }
 
-    private PersonResolver resolver(
+    private PersonResolverProvider resolver(
             Set<PersonResolveUsage> usages,
             java.util.function.Function<
                     PersonResolveRequest,
                     PersonResolveResult> function) {
         // 验证旧 SPI 实现仍可作为新运行时接口的实现被接纳。
-        return new com.workflow.contracts.process.assignment.spi.PersonResolver() {
+        return new com.workflow.contracts.process.assignment.spi.PersonResolverProvider() {
             @Override
             public PersonResolverDescriptor descriptor() {
                 return new PersonResolverDescriptor(
@@ -118,16 +118,16 @@ class PersonResolverRuntimeServiceTest {
     }
 
     private PersonResolverRuntimeService service(
-            PersonResolver resolver,
+            PersonResolverProvider resolver,
             SysUserMapper userMapper) {
         return new PersonResolverRuntimeService(
-                List.of(resolver),
+                List.of(resolver), new com.workflow.admin.identity.infrastructure.adapter.IdentityMembershipAdapter(
                 userMapper,
                 mock(SysRoleMapper.class),
                 mock(SysUserRoleMapper.class),
                 mock(SysGroupMapper.class),
                 mock(SysUserGroupMapper.class),
-                mock(SysOrganizationMapper.class));
+                mock(SysOrganizationMapper.class)), code -> true);
     }
 
     private PersonResolveRequest request(

@@ -9,7 +9,7 @@ import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
 import com.workflow.process.sla.policy.application.model.TaskSlaPolicySnapshot;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser.LegacyAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
@@ -71,7 +71,7 @@ public class ProcessBpmnPublishSanitizer {
 
     /** 解析器自身拥有 extraParams 语义，发布器只负责路由校验请求。 */
     @Autowired(required = false)
-    private List<PersonResolverConfigurationValidator>
+    private List<PersonResolverConfigurationValidationProvider>
             personResolverConfigurationValidators = List.of();
 
     /**
@@ -1384,7 +1384,7 @@ public class ProcessBpmnPublishSanitizer {
             boolean multiInstance,
             String processConfigId,
             Object rawExtraParams) {
-        PersonResolverConfigurationValidator validator =
+        PersonResolverConfigurationValidationProvider validator =
                 personResolverConfigurationValidators == null
                         ? null
                         : personResolverConfigurationValidators.stream()

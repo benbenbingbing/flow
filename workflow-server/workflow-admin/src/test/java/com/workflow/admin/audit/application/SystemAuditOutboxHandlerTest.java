@@ -8,7 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.persistence.record.SystemOperationLog;
 import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
-import com.workflow.outbox.api.OutboxEvent;
+import com.workflow.contracts.outbox.model.OutboxEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
 

@@ -25,11 +25,11 @@
 
 ## 实现接口
 
-接口在 `workflow-contracts`：`com.workflow.contracts.entity.code.EntityCodeGenerator`。业务模块实现后注册为 Spring Bean，平台自动发现。一个生成器可以被多个实体选择；`supportedEntityCodes()` 可限制适用实体。
+接口在 `workflow-spi`：`com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider`。业务模块实现后注册为 Spring Bean，平台自动发现。一个生成器可以被多个实体选择；`supportedEntityCodes()` 可限制适用实体。
 
 ```java
 @Component
-public class OrderCodeGenerator implements EntityCodeGenerator {
+public class OrderCodeGenerator implements EntityCodeGeneratorProvider {
     public String getCode() { return "ORDER_CODE"; }
     public String getDisplayName() { return "订单业务编号"; }
     public Set<String> supportedEntityCodes() { return Set.of("order"); }

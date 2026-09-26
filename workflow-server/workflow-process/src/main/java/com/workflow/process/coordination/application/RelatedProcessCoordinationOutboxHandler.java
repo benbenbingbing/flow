@@ -2,8 +2,8 @@ package com.workflow.process.coordination.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -12,7 +12,7 @@ import org.springframework.util.StringUtils;
 @Component
 @RequiredArgsConstructor
 public class RelatedProcessCoordinationOutboxHandler
-        implements OutboxEventHandler {
+        implements OutboxEventHandlerProvider {
 
     private final ObjectMapper objectMapper;
     private final RelatedProcessCoordinationExecutionService executionService;

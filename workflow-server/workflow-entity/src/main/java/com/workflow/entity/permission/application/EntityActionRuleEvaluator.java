@@ -1,7 +1,9 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
+
 import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,7 +72,7 @@ public class EntityActionRuleEvaluator {
      * @return 规则满足返回 true
      */
     public boolean evaluate(
-            EntityActionRuleDTO.RuleNode root,
+            EntityActionRule.RuleNode root,
             EntityDataDTO row,
             SysUser user,
             String statusCategory) {
@@ -95,7 +97,7 @@ public class EntityActionRuleEvaluator {
      * @return 审批入口规则满足时为 true
      */
     public boolean evaluateForApproval(
-            EntityActionRuleDTO.RuleNode root,
+            EntityActionRule.RuleNode root,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,
@@ -119,7 +121,7 @@ public class EntityActionRuleEvaluator {
      * @return 无数据行也可完整求值时返回 true
      */
     public boolean isRowIndependent(
-            EntityActionRuleDTO.RuleNode root) {
+            EntityActionRule.RuleNode root) {
         if (root == null) {
             return true;
         }
@@ -147,7 +149,7 @@ public class EntityActionRuleEvaluator {
      * @return 节点条件成立时为 true，否则为 false
      */
     private boolean evaluateNode(
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,
@@ -185,14 +187,15 @@ public class EntityActionRuleEvaluator {
      * @return 自定义条件成立时为 true，否则为 false
      */
     private boolean evaluateCustom(
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             EntityDataDTO row,
             SysUser user,
             String statusCategory) {
         return conditionProviders.stream()
                 .filter(provider -> provider.getType().equalsIgnoreCase(node.getType()))
                 .findFirst()
-                .map(provider -> provider.evaluate(node, row, user, statusCategory))
+                .map(provider -> provider.evaluate(node, com.workflow.entity.data.application.mapping.EntityRecordProjection.project(row),
+                        PermissionExtensionInputs.user(user), statusCategory))
                 .orElse(false);
     }
 
@@ -207,12 +210,12 @@ public class EntityActionRuleEvaluator {
      * @return 分组条件成立时为 true，否则为 false
      */
     private boolean evaluateGroup(
-            EntityActionRuleDTO.RuleNode node,
+            EntityActionRule.RuleNode node,
             EntityDataDTO row,
             SysUser user,
             String statusCategory,
             boolean currentApprover) {
-        List<EntityActionRuleDTO.RuleNode> children = node.getChildren();
+        List<EntityActionRule.RuleNode> children = node.getChildren();
         if (children == null || children.isEmpty()) {
             return false;
         }

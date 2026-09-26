@@ -118,6 +118,10 @@ docs/project-member-change-e2e/project-member-change-20260730015454.json
 
 ## 运行时扩展
 
+项目动作和治理服务通过 `EntityRecordQueryPort` / `EntityMutationPort` 读取及变更业务记录，
+使用 `EntityRecordData`，不依赖实体实现服务和 HTTP DTO。权限与知会扩展使用 contracts 中的
+SPI，身份参数为 `IdentityUser`；知会扩展不再使本模块直接依赖 workflow-process。
+
 实体、字段、表单、列表、数据范围、BPMN、节点配置和状态映射均通过配置实现。项目专用代码仅处理配置无法表达的跨实体聚合规则：
 
 - `CreateSystemAssetHandler`：F05 创建系统资产并回写。

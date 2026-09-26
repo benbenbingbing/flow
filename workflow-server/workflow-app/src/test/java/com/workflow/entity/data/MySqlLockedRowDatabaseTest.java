@@ -22,7 +22,7 @@ import com.workflow.entity.form.uniqueness.infrastructure.persistence.mapper.Ent
 import com.workflow.entity.version.application.*;
 import com.workflow.entity.version.infrastructure.persistence.mapper.*;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedSessionExchangeMapper;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.dao.DataAccessException;
@@ -154,7 +154,7 @@ class MySqlLockedRowDatabaseTest {
                     new EntityRecordSnapshotService.SnapshotCapture(Map.of("recordId", "record"), "hash", "release", 1));
             when(versions.findMaxVersionNo("asset", "record")).thenReturn(0);
             // 版本号分配使用真实服务/计数器 Mapper；无关快照与 Outbox 以替身隔离业务数据。
-            var service = new EntityRecordVersionService(versions, snapshots, mock(OutboxPublisher.class), new ObjectMapper().findAndRegisterModules(),
+            var service = new EntityRecordVersionService(versions, snapshots, mock(OutboxPublishPort.class), new ObjectMapper().findAndRegisterModules(),
                     mock(EntityVersionConfigurationService.class), mock(EntityVersionPolicyMatcher.class), mapper,
                     mock(EntityRecordVersionDatasetMapper.class), mock(EntityRecordVersionDatasetRowMapper.class),
                     mock(EntityDataDynamicService.class), mock(EntityAggregateWriter.class), locks,

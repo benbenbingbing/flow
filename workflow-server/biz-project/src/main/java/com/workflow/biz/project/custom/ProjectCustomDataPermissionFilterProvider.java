@@ -1,9 +1,9 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
+import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
-import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -40,7 +40,7 @@ public class ProjectCustomDataPermissionFilterProvider
     @Override
     public void validate(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node) {
+            EntityActionRule.RuleNode node) {
         log.info(
                 "项目数据权限 SQL 条件校验: type={}, entityCode={}, field={}, operator={}",
                 TYPE,
@@ -62,14 +62,14 @@ public class ProjectCustomDataPermissionFilterProvider
     @Override
     public String toSql(
             String entityCode,
-            EntityActionRuleDTO.RuleNode node,
-            SysUser user) {
+            EntityActionRule.RuleNode node,
+            IdentityUser user) {
         log.info(
                 "项目数据权限 SQL 条件编译: type={}, entityCode={}, userId={}, result=DENY",
                 TYPE,
                 LogValue.safe(entityCode),
                 LogValue.safe(user == null
-                        ? null : user.getId()));
+                        ? null : user.id()));
         return "1=0";
     }
 }

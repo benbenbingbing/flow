@@ -15,7 +15,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListFiel
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
-import com.workflow.entity.list.extension.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.Test;
@@ -39,6 +39,74 @@ import static org.mockito.Mockito.when;
  * 基础条件使用权限感知的服务端分页等场景。
  */
 class EntityDataListConfigServiceTest {
+
+    /** 真实补数入口只接受展示结果，Provider 无法替换行身份、分页或保存的列配置。 */
+    @Test
+    void providerSnapshotsPreserveHostIdentityAndApplyDisplayValues() {
+        var dynamicService = mock(EntityDataDynamicService.class);
+        var configMapper = mock(EntityListConfigMapper.class);
+        var fieldMapper = mock(EntityListFieldMapper.class);
+        var definitionMapper = mock(EntityDefinitionMapper.class);
+        var registry = mock(ListFieldDataProviderRegistry.class);
+        var capabilities = mock(EntityActionCapabilityService.class);
+        var published = mock(EntityListPublishedRuntimeService.class);
+        var service = new EntityDataListConfigService(dynamicService, configMapper, fieldMapper,
+                definitionMapper, registry, capabilities, published, mock(UiInterfaceExtensionService.class),
+                new JsonDocumentCodec(new ObjectMapper()));
+
+        var entity = new EntityDefinition();
+        entity.setId("entity-1");
+        var config = new EntityListConfig();
+        config.setId("list-1");
+        config.setListKey("default");
+        var field = new EntityListField();
+        field.setFieldCode("summary");
+        field.setShowInList(true);
+        field.setDataSourceType("CUSTOM_SUMMARY");
+        var source = row("record-1", "张三");
+        source.setStatus("OPEN");
+        source.setFormReleaseResolutionToken("host-only");
+        source.setCreateBy("creator");
+        source.setCreateTime(java.time.LocalDateTime.of(2026, 9, 26, 12, 0));
+
+        when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
+        when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
+        when(published.resolveConfig(config, null, null, null)).thenReturn(config);
+        when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of(field));
+        when(published.resolveFields(config, List.of(field))).thenReturn(List.of(field));
+        when(dynamicService.findPage("expense", "default", Map.of(), 2, 10, null, null))
+                .thenReturn(new PageResult<>(List.of(source), 21, 2, 10));
+        when(registry.getProvider("CUSTOM_SUMMARY")).thenReturn(new ListFieldDataProvider() {
+            public String getDataSourceType() { return "CUSTOM_SUMMARY"; }
+
+            public void enrich(
+                    List<com.workflow.contracts.entity.list.model.ListFieldDataRecord> records,
+                    List<com.workflow.contracts.entity.list.model.ListFieldDataConfig> fields,
+                    Map<String, Object> context) {
+                var record = records.get(0);
+                assertEquals("creator", record.getCreateBy());
+                assertEquals(source.getCreateTime(), record.getCreateTime());
+                assertThrows(UnsupportedOperationException.class, records::clear);
+                record.setId("replaced-id");
+                record.setStatus("CHANGED");
+                record.setData(Map.of("owner", "李四"));
+                record.setExtData(Map.of("summary", "计算结果"));
+                fields.get(0).setFieldCode("changed-config");
+            }
+        });
+
+        var result = service.findPageWithConfig("expense", "default", Map.of(), 2, 10);
+        assertEquals(21, result.getTotal());
+        assertEquals(2, result.getPageNum());
+        assertEquals(List.of(source), result.getRecords());
+        assertEquals("record-1", source.getId());
+        assertEquals("OPEN", source.getStatus());
+        assertEquals("host-only", source.getFormReleaseResolutionToken());
+        assertEquals("李四", source.getData().get("owner"));
+        assertEquals("计算结果", source.getExtData().get("summary"));
+        assertEquals("summary", field.getFieldCode());
+        verify(capabilities).enrichRows("expense", config, List.of(source));
+    }
 
     /** 直接请求虚拟条件也必须在读取实体数据之前失败，不能依赖前端是否展示查询项 */
     @Test

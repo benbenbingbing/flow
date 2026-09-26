@@ -1,6 +1,6 @@
 package com.workflow.process.configuration.api.model;
 
-import com.workflow.entity.form.api.response.FormConfigDTO;
+import com.workflow.process.form.api.response.FormConfigDTO;
 import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
 import lombok.Data;
 

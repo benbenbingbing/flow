@@ -18,11 +18,11 @@
 
 | 类 | 接口 | 前端/接口入口 | 稳定标识 |
 | --- | --- | --- | --- |
-| `ProjectCustomFlowActionHandler` | `FlowActionHandler` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomFlowActionHandler` |
-| `ProjectCustomTypedFlowActionHandler` | `TypedFlowActionHandler` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomTypedFlowActionHandler` |
-| `ProjectExtensionAcceptanceFlowActionHandler` | `FlowActionHandler` | 项目扩展验收流程的流程/节点/连线动作 | Bean `projectExtensionAcceptanceFlowActionHandler` |
+| `ProjectCustomFlowActionHandler` | `FlowActionProvider` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomFlowActionHandler` |
+| `ProjectCustomTypedFlowActionHandler` | `TypedFlowActionProvider` | 定制开发 -> 扩展管理 -> 流程动作 | Bean `projectCustomTypedFlowActionHandler` |
+| `ProjectExtensionAcceptanceFlowActionHandler` | `FlowActionProvider` | 项目扩展验收流程的流程/节点/连线动作 | Bean `projectExtensionAcceptanceFlowActionHandler` |
 | `ProjectCustomFlowActionTriggerProvider` | `FlowActionTriggerProvider` | 流程动作触发时机 | `PROJECT_CUSTOM_MANUAL_EVENT` |
-| `ProjectCustomPersonResolver` | `PersonResolver` | 定制开发 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
+| `ProjectCustomPersonResolver` | `PersonResolverProvider` | 定制开发 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
 | `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
 | `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
 | `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
@@ -36,17 +36,17 @@
 | --- | --- | --- | --- |
 | `ProjectCustomEntityListDataProvider` | `EntityListDataProvider` | `PROJECT_CUSTOM_LIST_QUERY` | 遵守数据范围计划，第 1 页返回一条不落库的验收记录 |
 | `ProjectCustomEntityListSchemaProvider` | `EntityListSchemaProvider` | `PROJECT_CUSTOM_LIST_SCHEMA` | 在 `viewConfig` 增加 `projectCustomSchema` 标记 |
-| `ProjectCustomEntityListContextResolver` | `EntityListContextResolver` | `projectCustomRelation` | 不信任客户端参数，返回空可信条件 |
+| `ProjectCustomEntityListContextResolver` | `EntityListContextResolverProvider` | `projectCustomRelation` | 不信任客户端参数，返回空可信条件 |
 | `ProjectCustomActionRuleConditionProvider` | `EntityActionRuleConditionProvider` | `PROJECT:CUSTOM_CONDITION` | 支持 EQ、NE、IN 的行条件 |
 | `ProjectCustomDataPermissionMatchProvider` | `EntityDataPermissionMatchProvider` | `PROJECT:CUSTOM_MATCH` | 按用户 ID 或用户名匹配 |
 | `ProjectCustomDataPermissionFilterProvider` | `EntityDataPermissionFilterProvider` | `PROJECT:CUSTOM_FILTER` | 固定编译为 `1=0` |
-| `ProjectCustomCcRecipientResolver` | `CcRecipientResolver` | `projectCustomCcRecipient` | 兼容旧知会解析器配置 |
-| `ProjectCustomCcNotificationChannel` | `CcNotificationChannel` | `PROJECT_LOG` | 只打印通知元数据 |
-| `ProjectCustomFileStorageStrategy` | `FileStorageStrategy` | `PROJECT_LOG_ONLY` | 打印后抛出未实现异常，不伪造成功 |
-| `ProjectCustomOutboxEventHandler` | `OutboxEventHandler` | `PROJECT_CUSTOM_OUTBOX` | 只打印事件元数据 |
+| `ProjectCustomCcRecipientResolver` | `CcRecipientProvider` | `projectCustomCcRecipient` | 兼容旧知会解析器配置 |
+| `ProjectCustomCcNotificationChannel` | `CcNotificationChannelProvider` | `PROJECT_LOG` | 只打印通知元数据 |
+| `ProjectCustomFileStorageStrategy` | `FileStorageProvider` | `PROJECT_LOG_ONLY` | 打印后抛出未实现异常，不伪造成功 |
+| `ProjectCustomOutboxEventHandler` | `OutboxEventHandlerProvider` | `PROJECT_CUSTOM_OUTBOX` | 只打印事件元数据 |
 
 `PROJECT_LOG` 渠道当前尚未出现在知会前端配置中，内置发布器默认仍使用
-`IN_APP`。`PROJECT_CUSTOM_OUTBOX` 需要业务代码通过 `OutboxPublisher` 发布同名
+`IN_APP`。`PROJECT_CUSTOM_OUTBOX` 需要业务代码通过 `OutboxPublishPort` 发布同名
 主题。文件存储可用 `file.storage.type=PROJECT_LOG_ONLY` 验证调用，但不能用于
 保存真实文件。
 

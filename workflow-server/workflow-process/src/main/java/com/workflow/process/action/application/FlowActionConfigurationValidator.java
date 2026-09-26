@@ -3,7 +3,7 @@ package com.workflow.process.action.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.process.action.model.FlowActionScopeType;
 import com.workflow.contracts.process.action.model.FlowActionTimingOption;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
@@ -81,8 +81,8 @@ public class FlowActionConfigurationValidator {
         } catch (Exception e) {
             throw new RuntimeException("流程动作处理器不存在: " + action.getInterfaceName(), e);
         }
-        if (!(bean instanceof FlowActionHandler handler)) {
-            throw new RuntimeException("Bean '" + action.getInterfaceName() + "' 未实现 FlowActionHandler 接口");
+        if (!(bean instanceof FlowActionProvider handler)) {
+            throw new RuntimeException("Bean '" + action.getInterfaceName() + "' 未实现 FlowActionProvider 接口");
         }
         // 处理器可声明仅支持部分触发时机
         Set<String> supportedTimings = handler.supportedTriggerTimings();

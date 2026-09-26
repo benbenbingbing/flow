@@ -1,5 +1,7 @@
 package com.workflow.entity.permission.application;
 
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -166,7 +168,7 @@ class PermissionMultiValueSqlTest {
     }
     private static SysUser user() { var user = new SysUser(); user.setId("u"); user.setDeptId("d"); return user; }
     private static FilterConfigDTO rule(String field, String operator, Object value) {
-        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("FIELD"); node.setField(field); node.setOperator(operator); node.setValue(value); filter.setRoot(node); return filter;
     }
     private static FilterConfigDTO mapping(String type, String field) {

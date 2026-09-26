@@ -14,7 +14,7 @@
     "test:config-migration": "node src/shared/__tests__/config-migration-pagination.spec.js && node src/views/system/__tests__/configMigrationPagination.spec.js && node src/shared/__tests__/config-migration-upload.spec.js",
     "test:action-rules": "node src/shared/__tests__/action-rules.spec.js",
     "test:workspace-tabs": "node src/shared/__tests__/workspace-tabs.spec.js",
-    "test:settings": "npm run test:workspace-tabs && node src/shared/__tests__/boolean-preference.spec.js && node src/shared/__tests__/setting-value.spec.js",
+    "test:settings": "npm run test:workspace-tabs && node src/shared/__tests__/user-interface-preferences.spec.js && node src/shared/__tests__/setting-value.spec.js && node src/shared/__tests__/sidebar-branding.spec.js",
     "test:permission-preview": "node src/views/__tests__/entityPermissionPreview.spec.js",
     "test:home-cc": "node src/views/__tests__/homeCcRefresh.spec.js",
     "test:entity-relations": "node src/shared/__tests__/entity-relation.spec.js && node src/shared/__tests__/entity-relation-ui-contract.spec.js && node src/shared/__tests__/relation-content.spec.js && node src/shared/__tests__/related-content.spec.js && node src/shared/__tests__/list-related-content.spec.js && node src/shared/__tests__/related-content-runtime.spec.js && npm run test:page-parameters",

@@ -218,9 +218,9 @@
         <div class="section-title">七、处理器开发与能力声明</div>
         <div class="section-content">
           <ol class="step-list">
-            <li>实现 <code>FlowActionHandler</code>，并注册为 Spring Bean。</li>
+            <li>实现 <code>FlowActionProvider</code>，并注册为 Spring Bean。</li>
             <li>声明处理器支持的时机和执行方式，避免在配置界面中被误选。</li>
-            <li>需要结构化参数时实现 <code>TypedFlowActionHandler&lt;T&gt;</code>。</li>
+            <li>需要结构化参数时实现 <code>TypedFlowActionProvider&lt;T&gt;</code>。</li>
             <li>外部接口动作使用 <code>ctx.getIdempotencyKey()</code> 作为幂等键。</li>
             <li>发布流程后动作才进入运行态；草稿动作不会影响已发布版本。</li>
           </ol>
@@ -233,7 +233,7 @@
               </div>
             </template>
             <pre class="code-block" v-pre><code>@Component("sendNotificationHandler")
-public class SendNotificationHandler implements FlowActionHandler {
+public class SendNotificationHandler implements FlowActionProvider {
 
     @Override
     public Set&lt;String&gt; supportedTriggerTimings() {
@@ -428,7 +428,7 @@ const fieldList = [
     field: 'interfaceName',
     type: 'Spring Bean Name / String',
     required: '是',
-    meaning: '实际执行逻辑对应的 FlowActionHandler Bean 名称。',
+    meaning: '实际执行逻辑对应的 FlowActionProvider Bean 名称。',
     notes: '保存和发布时校验 Bean、接口类型、支持时机及支持执行方式。'
   },
   {

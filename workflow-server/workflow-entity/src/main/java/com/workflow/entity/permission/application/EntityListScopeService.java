@@ -3,7 +3,7 @@ package com.workflow.entity.permission.application;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeConfigurationDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
@@ -11,7 +11,7 @@ import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyPreviewDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeBindingMapper;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopePolicyMapper;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeReleaseMapper;
@@ -155,7 +155,7 @@ public class EntityListScopeService {
         FilterConfigDTO filter = readJson(policy.getFilterConfig(), FilterConfigDTO.class);
         sqlBuilder.validateFilter(policy.getEntityCode(), filter);
         // 与新建列表绑定一致，旧规则未保存适用对象时按全部用户处理。
-        MatchConfigDTO audience = filter.getAudience() == null
+        PermissionMatchConfig audience = filter.getAudience() == null
                 ? allUsersMatch() : filter.getAudience();
         validateMatchConfig(audience);
 
@@ -387,7 +387,7 @@ public class EntityListScopeService {
                 request.getEntityCode(), request.getListKey()) == null) {
             throw new IllegalArgumentException("适用列表不存在: " + request.getListKey());
         }
-        MatchConfigDTO match = request.getMatchConfig();
+        PermissionMatchConfig match = request.getMatchConfig();
         validateMatchConfig(match);
         String effect = normalized(request.getRuleEffect(), "ALLOW");
         if (!EFFECTS.contains(effect)) {
@@ -760,7 +760,7 @@ public class EntityListScopeService {
     private EntityListScopeBindingDTO toBindingDTO(EntityListScopeBinding binding) {
         EntityListScopeBindingDTO dto = new EntityListScopeBindingDTO();
         BeanUtils.copyProperties(binding, dto);
-        dto.setMatchConfig(readJson(binding.getMatchConfig(), MatchConfigDTO.class));
+        dto.setMatchConfig(readJson(binding.getMatchConfig(), PermissionMatchConfig.class));
         return dto;
     }
 
@@ -877,7 +877,7 @@ public class EntityListScopeService {
      * @param match 匹配，作为 {@code ruleMatcher.validate} 的输入影响后续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    private void validateMatchConfig(MatchConfigDTO match) {
+    private void validateMatchConfig(PermissionMatchConfig match) {
         if (match == null) {
             throw new IllegalArgumentException("适用用户配置不能为空");
         }
@@ -894,13 +894,13 @@ public class EntityListScopeService {
      * @return 处理后的默认{@code personal}过滤结果，供调用方继续处理
      */
     private FilterConfigDTO defaultPersonalFilter() {
-        EntityActionRuleDTO.RuleNode root = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode root = new EntityActionRule.RuleNode();
         root.setType("GROUP");
         root.setLogic("OR");
-        EntityActionRuleDTO.RuleNode creator = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode creator = new EntityActionRule.RuleNode();
         creator.setType("RELATION");
         creator.setRelation("CURRENT_USER_IS_CREATOR");
-        EntityActionRuleDTO.RuleNode submitter = new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode submitter = new EntityActionRule.RuleNode();
         submitter.setType("RELATION");
         submitter.setRelation("CURRENT_USER_IS_SUBMITTER");
         root.setChildren(List.of(creator, submitter));
@@ -943,10 +943,10 @@ public class EntityListScopeService {
      *
      * @return 处理后的全部用户集合匹配结果，供调用方继续处理
      */
-    private MatchConfigDTO allUsersMatch() {
-        MatchConfigDTO match = new MatchConfigDTO();
-        MatchConfigDTO.MatchConditionDTO condition =
-                new MatchConfigDTO.MatchConditionDTO();
+    private PermissionMatchConfig allUsersMatch() {
+        PermissionMatchConfig match = new PermissionMatchConfig();
+        PermissionMatchConfig.MatchConditionDTO condition =
+                new PermissionMatchConfig.MatchConditionDTO();
         condition.setScopeType("ALL_USERS");
         match.setConditions(List.of(condition));
         return match;

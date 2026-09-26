@@ -9,7 +9,7 @@ import com.workflow.embed.infrastructure.persistence.mapper.EmbedIdempotencyMapp
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.outbox.api.OutboxEvent;
+import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.application.ProcessStatusSyncOutboxHandler;
 import com.workflow.process.status.application.ProcessStatusSyncPayload;

@@ -1,6 +1,8 @@
 package com.workflow.process.cc.application;
 
-import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
+import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
+
+import com.workflow.contracts.process.cc.model.CcNotification;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -12,7 +14,7 @@ import java.util.Map;
  * 发送动作无需额外操作，通用 Outbox 仅负责统一维护投递状态。</p>
  */
 @Component
-public class InAppCcNotificationChannel implements CcNotificationChannel {
+public class InAppCcNotificationChannel implements CcNotificationChannelProvider {
     /**
      * 生成通道文本，供后续匹配或展示。
      *
@@ -31,7 +33,7 @@ public class InAppCcNotificationChannel implements CcNotificationChannel {
      */
     @Override
     public void send(
-            ProcessCcRecord record,
+            CcNotification record,
             Map<String, Object> message) {
         // process_cc_record 本身就是站内知会收件箱，Outbox 只负责统一发送状态。
     }

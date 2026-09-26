@@ -1,14 +1,14 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -25,7 +25,7 @@ import java.util.Set;
  * supplied by platform configuration.</p>
  */
 @Component("createSystemAssetHandler")
-public class CreateSystemAssetHandler implements FlowActionHandler {
+public class CreateSystemAssetHandler implements FlowActionProvider {
 
     private static final String SOURCE_ENTITY = "system_application";
     private static final String TARGET_ENTITY = "system_asset";
@@ -86,8 +86,8 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
             return;
         }
 
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO application)) {
+        EntityRecordData application = context.getEntityData();
+        if (application == null) {
             throw new IllegalStateException("System application data is unavailable.");
         }
         Map<String, Object> source = application.getData() == null
@@ -214,7 +214,7 @@ public class CreateSystemAssetHandler implements FlowActionHandler {
      * @return 资产数据键值结果，供调用方继续处理
      */
     private Map<String, Object> buildAssetData(
-            EntityDataDTO application,
+            EntityRecordData application,
             Map<String, Object> source) {
         Map<String, Object> target = new LinkedHashMap<>();
         copy(source, target, "proposed_abbreviation", "system_abbreviation");

@@ -1,7 +1,7 @@
 package com.workflow.devtools.demo.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component("demoSimpleActionHandler")
-public class DemoSimpleActionHandler implements FlowActionHandler {
+public class DemoSimpleActionHandler implements FlowActionProvider {
 
     /**
      * 执行流程动作：打印动作上下文与自定义参数的详细信息，用于联调演示。

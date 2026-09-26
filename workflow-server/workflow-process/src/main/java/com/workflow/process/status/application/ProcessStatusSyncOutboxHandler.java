@@ -2,8 +2,8 @@ package com.workflow.process.status.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.port.EntityRecordPort;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.infrastructure.persistence.mapper.ProcessStatusSyncMapper;
 import com.workflow.process.status.infrastructure.persistence.record.ProcessStatusSyncRecord;
@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 @RequiredArgsConstructor
 public class ProcessStatusSyncOutboxHandler
-        implements OutboxEventHandler {
+        implements OutboxEventHandlerProvider {
 
     private final ObjectMapper objectMapper;
     private final ProcessStatusSyncMapper statusSyncMapper;

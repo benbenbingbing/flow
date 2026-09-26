@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -38,7 +38,7 @@ final class ProjectMemberChangeTraceSupport {
      * @return {@code manager}{@code review}键值结果，供调用方继续处理
      */
     Map<String, Object> captureManagerReview(
-            EntityDataDTO request, FlowActionContext context) {
+            EntityRecordData request, FlowActionContext context) {
         requireEntity(request, REQUEST);
         LocalDateTime reviewedAt = LocalDateTime.now();
         Map<String, Object> values = new LinkedHashMap<>();
@@ -58,7 +58,7 @@ final class ProjectMemberChangeTraceSupport {
      * @return 决策键值结果，供调用方继续处理
      */
     Map<String, Object> recordDecision(
-            EntityDataDTO request, FlowActionContext context, String decision) {
+            EntityRecordData request, FlowActionContext context, String decision) {
         requireEntity(request, REQUEST);
         Map<String, Object> trace = new LinkedHashMap<>();
         trace.put("decision", decision == null || decision.isBlank() ? "UNKNOWN" : decision);

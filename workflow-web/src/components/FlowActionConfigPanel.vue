@@ -189,7 +189,7 @@
               @selected="onHandlerSelected"
             />
             <div class="form-tip">
-              {{ currentHandler?.description || '处理器必须实现 FlowActionHandler，提交后动作应使用幂等键' }}
+              {{ currentHandler?.description || '处理器必须实现 FlowActionProvider，提交后动作应使用幂等键' }}
             </div>
           </el-form-item>
 

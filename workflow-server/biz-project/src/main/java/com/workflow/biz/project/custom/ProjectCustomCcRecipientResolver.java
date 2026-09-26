@@ -1,8 +1,8 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.process.cc.application.CcRecipientResolver;
-import com.workflow.process.cc.application.CcRuntimeContext;
+import com.workflow.contracts.process.cc.spi.CcRecipientProvider;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @Component
 public class ProjectCustomCcRecipientResolver
-        implements CcRecipientResolver {
+        implements CcRecipientProvider {
 
     public static final String CODE =
             "projectCustomCcRecipient";

@@ -78,6 +78,7 @@ public class GlobalSettingService {
         Definition definition = registry.require(key);
         requireScope(definition, SYSTEM);
         JsonNode value = validValue(definition, mapper.find(SYSTEM, "0", key));
+        if (USER_INTERFACE_PREFERENCES.equals(key)) return UserInterfacePreferences.resolve(null, value);
         if (value == null) value = definition.defaultValue();
         if (value.isNull()) throw GlobalSettingException.invalid("请先在全局设置中配置有效的" + definition.name());
         return value.deepCopy();
@@ -179,7 +180,8 @@ public class GlobalSettingService {
     }
 
     /**
-     * 只对合法值进行继承判断，false/0/空字符串都是实际覆盖；对象按整项覆盖。
+     * 只对合法值进行继承判断，false/0/空字符串都是实际覆盖。
+     * 用户界面偏好按字段继承，其他 JSON 设置仍按整项覆盖。
      *
      * @param definition 定义，作为 {@code validValue} 的输入影响后续处理
      * @param current 当前，作为 {@code validValue} 的输入影响后续处理
@@ -190,21 +192,29 @@ public class GlobalSettingService {
     private GlobalSettingView resolve(Definition definition, GlobalSettingRecord current,
                                       GlobalSettingRecord inherited, String scope) {
         JsonNode value = validValue(definition, current);
+        JsonNode currentValue = value;
+        JsonNode inheritedValue = validValue(definition, inherited);
         String source = scope;
         if (value == null) {
-            value = validValue(definition, inherited);
+            value = inheritedValue;
             source = SYSTEM;
         }
         if (value == null) {
             value = definition.defaultValue().deepCopy();
             source = "DEFAULT";
         }
+        boolean preferences = USER_INTERFACE_PREFERENCES.equals(definition.key());
+        if (preferences) {
+            value = UserInterfacePreferences.resolve(inheritedValue, currentValue);
+            source = currentValue != null && !currentValue.isEmpty() ? scope
+                    : inheritedValue != null && !inheritedValue.isEmpty() ? SYSTEM : "DEFAULT";
+        }
         return new GlobalSettingView(definition.key(), definition.name(), definition.remark(),
                 definition.valueType().name(), definition.sensitive() ? null : value,
                 definition.sensitive() ? null : definition.defaultValue().deepCopy(), source,
                 definition.scopes().contains(USER), current == null ? null
                 : new GlobalSettingView.StoredVersion(current.getId(), current.getVersion()),
-                definition.sensitive(), !value.isNull());
+                definition.sensitive(), !value.isNull(), preferences ? currentValue : null);
     }
 
     /**

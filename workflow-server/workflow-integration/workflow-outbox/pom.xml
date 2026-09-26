@@ -13,7 +13,8 @@
     <dependencies>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-database</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-port</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-spi</artifactId></dependency>
         <dependency><groupId>com.baomidou</groupId><artifactId>mybatis-plus-spring-boot3-starter</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-json</artifactId></dependency>

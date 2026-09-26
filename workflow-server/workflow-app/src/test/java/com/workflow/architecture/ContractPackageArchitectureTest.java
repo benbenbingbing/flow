@@ -51,6 +51,14 @@ class ContractPackageArchitectureTest {
                     .should().haveSimpleNameEndingWith("Port");
 
     @ArchTest
+    static final ArchRule SPI_NAMES_DECLARE_THEIR_ROLE =
+            classes()
+                    .that().resideInAPackage("com.workflow.contracts..spi")
+                    .and().areTopLevelClasses()
+                    .and().doNotHaveSimpleName("package-info")
+                    .should().haveSimpleNameEndingWith("Provider");
+
+    @ArchTest
     static final ArchRule MODELS_DO_NOT_DEPEND_ON_PORTS_OR_SPI =
             noClasses()
                     .that().resideInAPackage("com.workflow.contracts..model..")

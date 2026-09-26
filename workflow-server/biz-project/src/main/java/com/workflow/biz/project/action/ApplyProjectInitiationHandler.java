@@ -1,8 +1,8 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectGovernanceService;
 import org.springframework.stereotype.Component;
 
@@ -13,7 +13,7 @@ import java.util.Set;
  * Creates governed members and role assignments and activates initial links after approval.
  */
 @Component("applyProjectInitiationHandler")
-public class ApplyProjectInitiationHandler implements FlowActionHandler {
+public class ApplyProjectInitiationHandler implements FlowActionProvider {
 
     private final ProjectGovernanceService governanceService;
 
@@ -69,8 +69,8 @@ public class ApplyProjectInitiationHandler implements FlowActionHandler {
             context.addExecutionTrace("SKIPPED", "Project initiation was not approved.");
             return;
         }
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO project)) {
+        EntityRecordData project = context.getEntityData();
+        if (project == null) {
             throw new IllegalStateException("Project initiation data is unavailable.");
         }
         Map<String, Object> result =

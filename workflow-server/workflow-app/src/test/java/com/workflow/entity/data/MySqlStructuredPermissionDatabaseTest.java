@@ -1,12 +1,14 @@
 package com.workflow.entity.data;
 
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
+
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.entity.permission.application.PermissionSqlParameters;
@@ -138,9 +140,9 @@ class MySqlStructuredPermissionDatabaseTest {
         try (var f = fixture()) {
             var h = new Harness(f, EntityDataDynamicMapper.class); var builder = builder();
             h.jdbc.update("INSERT INTO biz_structured_scope(id,create_by,i,status,deleted) VALUES ('own',?,12,'OPEN',0),('delegated','delegator',12,'OPEN',0),('denied',?,12,'SECRET',0),('small',?,2,'OPEN',0),('other','other',12,'OPEN',0),('deleted',?,12,'OPEN',1)", SPECIAL, SPECIAL, SPECIAL, SPECIAL);
-            var own = new EntityActionRuleDTO.RuleNode(); own.setType("RELATION"); own.setRelation("CURRENT_USER_IS_CREATOR");
+            var own = new EntityActionRule.RuleNode(); own.setType("RELATION"); own.setRelation("CURRENT_USER_IS_CREATOR");
             var amount = rule("i", "GTE", "10").getRoot();
-            var root = new EntityActionRuleDTO.RuleNode(); root.setType("GROUP"); root.setLogic("AND"); root.setChildren(List.of(own, amount));
+            var root = new EntityActionRule.RuleNode(); root.setType("GROUP"); root.setLogic("AND"); root.setChildren(List.of(own, amount));
             var allowFilter = filter("RULE"); allowFilter.setRoot(root);
             var parameters = new LinkedHashMap<String, Object>(); parameters.put("permissionValue1", null);
             String allowed = builder.buildFilterSql("asset", allowFilter, user(SPECIAL, "reader", null), parameters);
@@ -165,15 +167,15 @@ class MySqlStructuredPermissionDatabaseTest {
                 assertThrows(IllegalArgumentException.class, () -> builder.buildFilterSql("asset", invalid, user("u", null, null), new LinkedHashMap<>()));
             }
             h.jdbc.update("INSERT INTO biz_structured_scope(id,`order`,deleted) VALUES ('match',?,0),('other','other',0)", SPECIAL);
-            var provider = new com.workflow.entity.permission.application.EntityDataPermissionFilterProvider() {
+            var provider = new com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider() {
                 public String getType() { return "CUSTOM:BOUND"; }
-                public String toSql(String entity, EntityActionRuleDTO.RuleNode node, SysUser user) { throw new AssertionError("Expected shared bindings"); }
-                public String toSql(String entity, EntityActionRuleDTO.RuleNode node, SysUser user, Map<String, Object> parameters) {
-                    return "`order` = " + PermissionSqlParameters.bindText(parameters, user.getId());
+                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.contracts.identity.model.IdentityUser user) { throw new AssertionError("Expected shared bindings"); }
+                public String toSql(String entity, EntityActionRule.RuleNode node, com.workflow.contracts.identity.model.IdentityUser user, Map<String, Object> parameters) {
+                    return "`order` = " + PermissionSqlParameters.bindText(parameters, user.id());
                 }
             };
             var custom = new PermissionSqlBuilder(null, null, null, List.of(provider), DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
-            var node = new EntityActionRuleDTO.RuleNode(); node.setType("CUSTOM:BOUND"); var filter = filter("RULE"); filter.setRoot(node);
+            var node = new EntityActionRule.RuleNode(); node.setType("CUSTOM:BOUND"); var filter = filter("RULE"); filter.setRoot(node);
             var parameters = new LinkedHashMap<String, Object>();
             assertScope(h, custom.buildFilterSql("asset", filter, user(SPECIAL, null, null), parameters), parameters, "match");
         }
@@ -246,7 +248,7 @@ class MySqlStructuredPermissionDatabaseTest {
         var field = new EntityField(); field.setFieldCode(code); field.setDbColumnName(column); field.setFieldType(type); return field;
     }
     private static FilterConfigDTO rule(String field, String operator, Object value) {
-        var filter = filter("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = filter("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("FIELD"); node.setField(field); node.setOperator(operator); node.setValue(value); filter.setRoot(node); return filter;
     }
     private static FilterConfigDTO filter(String type) { var filter = new FilterConfigDTO(); filter.setType(type); return filter; }

@@ -3,7 +3,7 @@ package com.workflow.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.workflow.storage.application.FileStorageFactory;
-import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import com.workflow.storage.infrastructure.config.ProductionStorageConfigurationGuard;
 import com.workflow.storage.infrastructure.minio.MinioFileStorageStrategy;
@@ -30,9 +30,9 @@ class MinioStorageConfigurationTest {
                 "file.storage.minio.access-key=minio-test-access",
                 "file.storage.minio.secret-key=minio-test-secret")
                 .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(FileStorageStrategy.class)
+                    assertThat(context).hasNotFailed().hasSingleBean(FileStorageProvider.class)
                             .hasSingleBean(ProductionStorageConfigurationGuard.class);
-                    FileStorageStrategy strategy = context.getBean(FileStorageFactory.class).getStrategy();
+                    FileStorageProvider strategy = context.getBean(FileStorageFactory.class).getStrategy();
                     assertThat(strategy).isExactlyInstanceOf(MinioFileStorageStrategy.class);
                     assertThat(strategy.getStorageType()).isEqualTo("minio");
                     assertThat(strategy.getAccessUrl("image.png")).isEqualTo("s3://flow-files/image.png");
@@ -43,7 +43,7 @@ class MinioStorageConfigurationTest {
     void existingS3ConfigurationDoesNotRequireMinioProperties() {
         runner.withPropertyValues("file.storage.type=s3", "file.storage.s3.bucket=existing-files")
                 .run(context -> {
-                    assertThat(context).hasNotFailed().hasSingleBean(FileStorageStrategy.class)
+                    assertThat(context).hasNotFailed().hasSingleBean(FileStorageProvider.class)
                             .doesNotHaveBean(MinioFileStorageStrategy.class);
                     assertThat(context.getBean(FileStorageFactory.class).getStrategy())
                             .isExactlyInstanceOf(S3FileStorageStrategy.class);

@@ -4,7 +4,8 @@
       v-model="selectedIcon"
       placeholder="点击选择图标"
       readonly
-      @click="dialogVisible = true"
+      :disabled="disabled"
+      @click="!disabled && (dialogVisible = true)"
     >
       <template #prefix>
         <el-icon v-if="selectedIcon && getIconComponent(selectedIcon)">
@@ -12,7 +13,7 @@
         </el-icon>
       </template>
       <template #suffix>
-        <el-icon @click.stop="clearIcon" v-if="selectedIcon">
+        <el-icon @click.stop="clearIcon" v-if="selectedIcon && !disabled">
           <CircleClose />
         </el-icon>
       </template>
@@ -64,6 +65,7 @@ import {
 
 const props = defineProps<{
   modelValue: string
+  disabled?: boolean
 }>()
 
 const emit = defineEmits(['update:modelValue'])
@@ -88,13 +90,19 @@ const filteredIcons = computed(() => {
 const getIconComponent = (iconName: string) => resolveMenuIcon(iconName)
 
 const selectIcon = (icon: string) => {
+  if (props.disabled) return
   selectedIcon.value = normalizeMenuIconName(icon)
   dialogVisible.value = false
 }
 
 const clearIcon = () => {
+  if (props.disabled) return
   selectedIcon.value = ''
 }
+
+watch(() => props.disabled, disabled => {
+  if (disabled) dialogVisible.value = false
+})
 
 watch(() => dialogVisible.value, (val) => {
   if (val) {

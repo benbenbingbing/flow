@@ -4,8 +4,8 @@ import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.notification.action.SendNotificationHandler;
 import com.workflow.process.assignment.extension.ProcessInitiatorPersonResolver;
 import org.junit.jupiter.api.Test;
@@ -17,8 +17,8 @@ class ExtensionImplementationOriginTest {
 
     @Test
     void treatsThirdPartySpiImplementationsAsCustomByDefault() {
-        FlowActionHandler actionHandler = context -> { };
-        PersonResolver personResolver = new PersonResolver() {
+        FlowActionProvider actionHandler = context -> { };
+        PersonResolverProvider personResolver = new PersonResolverProvider() {
             @Override
             public PersonResolverDescriptor descriptor() {
                 return null;

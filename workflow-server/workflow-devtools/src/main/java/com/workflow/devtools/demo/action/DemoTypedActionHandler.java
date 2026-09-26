@@ -1,7 +1,7 @@
 package com.workflow.devtools.demo.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component("demoTypedActionHandler")
-public class DemoTypedActionHandler implements TypedFlowActionHandler<DemoActionParams> {
+public class DemoTypedActionHandler implements TypedFlowActionProvider<DemoActionParams> {
 
     /**
      * 返回类型化参数的类型，供平台将 paramsJson 反序列化为该类型。

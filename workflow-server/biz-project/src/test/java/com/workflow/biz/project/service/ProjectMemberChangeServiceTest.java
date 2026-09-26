@@ -6,8 +6,8 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,14 +33,14 @@ import static org.mockito.Mockito.when;
 
 class ProjectMemberChangeServiceTest {
 
-    private EntityDataDynamicService entityDataService;
+    private EntityRecordQueryPort entityDataService;
     private EntityMutationPort entityMutationPort;
     private ProjectMemberChangeService service;
     private AtomicInteger roleIndex;
 
     @BeforeEach
     void setUp() {
-        entityDataService = mock(EntityDataDynamicService.class);
+        entityDataService = mock(EntityRecordQueryPort.class);
         entityMutationPort = mock(EntityMutationPort.class);
         roleIndex = new AtomicInteger();
         ObjectMapper objectMapper =
@@ -96,7 +96,7 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void validatesJoinAndCalculatesAccessReviewRoutes() {
-        EntityDataDTO request = joinRequest(
+        EntityRecordData request = joinRequest(
                 "USER-NEW", "60");
         request.getData().put(
                 "account_required_flag", true);
@@ -161,7 +161,7 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void rejectsDuplicateActiveMember() {
-        EntityDataDTO request =
+        EntityRecordData request =
                 joinRequest("USER-1", "50");
         when(entityDataService.findById(
                 "project", "PRJ-1"))
@@ -193,7 +193,7 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void rejectsCrossProjectAllocationAboveOneHundred() {
-        EntityDataDTO request =
+        EntityRecordData request =
                 joinRequest("USER-2", "45");
         when(entityDataService.findById(
                 "project", "PRJ-1"))
@@ -236,13 +236,13 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void rejectsLeaveWithActiveRoleWithoutHandover() {
-        EntityDataDTO member = member(
+        EntityRecordData member = member(
                 "MEM-1",
                 "PRJ-1",
                 "USER-1",
                 "ACTIVE",
                 "100");
-        EntityDataDTO request =
+        EntityRecordData request =
                 leaveRequest("MEM-1");
         when(entityDataService.findById(
                 "project", "PRJ-1"))
@@ -274,7 +274,7 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void appliesLeaveAndTransfersActiveRoles() {
-        EntityDataDTO request =
+        EntityRecordData request =
                 leaveRequest("MEM-1");
         request.getData().put(
                 "handover_member_id", "MEM-2");
@@ -284,19 +284,19 @@ class ProjectMemberChangeServiceTest {
         request.getData().put(
                 "permission_revoke_deadline",
                 "2026-08-21");
-        EntityDataDTO sourceMember = member(
+        EntityRecordData sourceMember = member(
                 "MEM-1",
                 "PRJ-1",
                 "USER-1",
                 "ACTIVE",
                 "100");
-        EntityDataDTO handoverMember = member(
+        EntityRecordData handoverMember = member(
                 "MEM-2",
                 "PRJ-1",
                 "USER-2",
                 "ACTIVE",
                 "80");
-        EntityDataDTO activeRole = role(
+        EntityRecordData activeRole = role(
                 "ROLE-1",
                 "MEM-1",
                 "PROJECT_MANAGER",
@@ -405,7 +405,7 @@ class ProjectMemberChangeServiceTest {
 
     @Test
     void reusesAlreadyEffectiveRequestWithoutMutation() {
-        EntityDataDTO request =
+        EntityRecordData request =
                 joinRequest("USER-3", "50");
         request.setStatus("EFFECTIVE");
         request.getData().put(
@@ -421,7 +421,7 @@ class ProjectMemberChangeServiceTest {
                 .execute(any());
     }
 
-    private EntityDataDTO joinRequest(
+    private EntityRecordData joinRequest(
             String userId,
             String allocation) {
         Map<String, Object> values =
@@ -452,7 +452,7 @@ class ProjectMemberChangeServiceTest {
                 values);
     }
 
-    private EntityDataDTO leaveRequest(
+    private EntityRecordData leaveRequest(
             String memberId) {
         Map<String, Object> values =
                 new LinkedHashMap<>();
@@ -471,7 +471,7 @@ class ProjectMemberChangeServiceTest {
                 values);
     }
 
-    private EntityDataDTO project() {
+    private EntityRecordData project() {
         return entity(
                 "project",
                 "PRJ-1",
@@ -484,7 +484,7 @@ class ProjectMemberChangeServiceTest {
                         "2026-12-31"));
     }
 
-    private EntityDataDTO member(
+    private EntityRecordData member(
             String id,
             String projectId,
             String userId,
@@ -507,7 +507,7 @@ class ProjectMemberChangeServiceTest {
                         false));
     }
 
-    private EntityDataDTO role(
+    private EntityRecordData role(
             String id,
             String memberId,
             String roleCode,
@@ -530,13 +530,13 @@ class ProjectMemberChangeServiceTest {
                         "2026-08-01"));
     }
 
-    private EntityDataDTO entity(
+    private EntityRecordData entity(
             String entityCode,
             String id,
             String code,
             String status,
             Map<String, Object> values) {
-        EntityDataDTO dto = new EntityDataDTO();
+        EntityRecordData dto = new EntityRecordData();
         dto.setEntityCode(entityCode);
         dto.setId(id);
         dto.setCode(code);

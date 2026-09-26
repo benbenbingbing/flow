@@ -9,11 +9,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.dictionary.application.DictCacheService;
-import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
-import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
-import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDict;
-import com.workflow.admin.dictionary.infrastructure.persistence.record.SysDictItem;
+import com.workflow.contracts.dictionary.port.DictionaryMigrationPort;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
@@ -134,8 +130,6 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationAssetMapper migrationAssetMapper;
     private final ConfigEnvironmentMappingMapper environmentMappingMapper;
     private final EntityDefinitionMapper entityMapper;
-    private final SysDictMapper dictMapper;
-    private final SysDictItemMapper dictItemMapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityFieldFileItemMapper fileItemMapper;
     private final EntityFormMapper formMapper;
@@ -170,7 +164,7 @@ public class ConfigMigrationImportApplyService {
     private final UiConfigReleaseService uiConfigReleaseService;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
     private final UiViewCompositionService viewCompositionService;
-    private final DictCacheService dictCacheService;
+    private final DictionaryMigrationPort dictionaryAssets;
     private final SystemEntityFieldPolicy systemEntityFieldPolicy;
     private final ConfigMigrationProcessLockCoordinator processLockCoordinator;
     private final ConfigMigrationAssetService assetService;
@@ -259,7 +253,7 @@ public class ConfigMigrationImportApplyService {
             applyDictionary(item);
         }
         if (!dictionaries.isEmpty()) {
-            dictCacheService.reload();
+            dictionaryAssets.refreshCache();
             for (ConfigImportItem item : dictionaries) {
                 assetService.ensureDictionaryAsset(
                         item.getBusinessKey());
@@ -367,102 +361,7 @@ public class ConfigMigrationImportApplyService {
      * @param item 条目，作为 {@code readMap} 的输入影响后续处理
      */
     private void applyDictionary(ConfigImportItem item) {
-        Map<String, Object> snapshot =
-                readMap(item.getSnapshotJson());
-        SysDict incoming = convert(
-                mapValue(snapshot.get("definition")),
-                SysDict.class);
-        String dictCode = text(
-                incoming.getDictCode(), item.getBusinessKey());
-        SysDict dictionary = dictMapper.selectOne(
-                new LambdaQueryWrapper<SysDict>()
-                        .eq(SysDict::getDictCode, dictCode));
-        LocalDateTime now = LocalDateTime.now();
-        if (dictionary == null) {
-            dictionary = incoming;
-            dictionary.setId(null);
-            dictionary.setDictCode(dictCode);
-            dictionary.setStatus(
-                    StringUtils.hasText(dictionary.getStatus())
-                            ? dictionary.getStatus()
-                            : SysDict.Status.ENABLED.getValue());
-            dictionary.setDeleted(0);
-            dictionary.setCreateTime(now);
-            dictionary.setUpdateTime(now);
-            dictMapper.insert(dictionary);
-        } else {
-            dictionary.setDictName(incoming.getDictName());
-            dictionary.setDescription(incoming.getDescription());
-            dictionary.setStatus(incoming.getStatus());
-            dictionary.setSort(incoming.getSort());
-            dictionary.setUpdateTime(now);
-            dictMapper.updateById(dictionary);
-        }
-
-        Map<String, SysDictItem> targetItems = dictItemMapper
-                .selectAllByDictId(dictionary.getId())
-                .stream()
-                .filter(value -> value.getDeleted() == null
-                        || value.getDeleted() == 0)
-                .collect(java.util.stream.Collectors.toMap(
-                        SysDictItem::getItemCode,
-                        value -> value,
-                        (left, right) -> left,
-                        LinkedHashMap::new));
-        List<Map<String, Object>> incomingItems =
-                mapList(snapshot.get("items"));
-        for (Map<String, Object> value : incomingItems) {
-            SysDictItem incomingItem = convert(
-                    value, SysDictItem.class);
-            if (!StringUtils.hasText(
-                    incomingItem.getItemCode())) {
-                throw new IllegalStateException(
-                        "迁移字典项缺少 itemCode: " + dictCode);
-            }
-            SysDictItem target = targetItems.get(
-                    incomingItem.getItemCode());
-            String targetId =
-                    target == null ? null : target.getId();
-            LocalDateTime createdAt = target == null
-                    ? now : target.getCreateTime();
-            incomingItem.setId(targetId);
-            incomingItem.setDictId(dictionary.getId());
-            incomingItem.setDictCode(dictCode);
-            incomingItem.setParentId("0");
-            incomingItem.setDeleted(0);
-            incomingItem.setCreateTime(createdAt);
-            incomingItem.setUpdateTime(now);
-            if (target == null) {
-                dictItemMapper.insert(incomingItem);
-            } else {
-                dictItemMapper.updateById(incomingItem);
-            }
-            targetItems.put(
-                    incomingItem.getItemCode(), incomingItem);
-        }
-
-        // 首轮写入取得目标主键后，再解析父项编码，避免依赖源环境 parentId。
-        for (Map<String, Object> value : incomingItems) {
-            String itemCode = text(
-                    value.get("itemCode"), null);
-            String parentItemCode = text(
-                    value.get("parentItemCode"), null);
-            SysDictItem target = targetItems.get(itemCode);
-            SysDictItem parent =
-                    StringUtils.hasText(parentItemCode)
-                            ? targetItems.get(parentItemCode)
-                            : null;
-            if (StringUtils.hasText(parentItemCode)
-                    && parent == null) {
-                throw new IllegalStateException(
-                        "迁移字典项父节点不存在: "
-                                + dictCode + "." + parentItemCode);
-            }
-            target.setParentId(
-                    parent == null ? "0" : parent.getId());
-            target.setUpdateTime(now);
-            dictItemMapper.updateById(target);
-        }
+        dictionaryAssets.apply(item.getBusinessKey(), readMap(item.getSnapshotJson()));
     }
 
     /**
@@ -760,7 +659,7 @@ public class ConfigMigrationImportApplyService {
             applyDictionary(item);
         }
         if (!dictionaryRollbacks.isEmpty()) {
-            dictCacheService.reload();
+            dictionaryAssets.refreshCache();
             dictionaryRollbacks.forEach(item ->
                     assetService.ensureDictionaryAsset(
                             item.getBusinessKey()));
@@ -3050,18 +2949,8 @@ public class ConfigMigrationImportApplyService {
         }
         if (ConfigMigrationAssetService.DICTIONARY
                 .equals(item.getAssetType())) {
-            SysDict dictionary = dictMapper.selectOne(
-                    new LambdaQueryWrapper<SysDict>()
-                            .eq(SysDict::getDictCode,
-                                    item.getBusinessKey()));
-            if (dictionary != null) {
-                dictionary.setStatus(
-                        SysDict.Status.DISABLED.getValue());
-                dictionary.setUpdateTime(LocalDateTime.now());
-                dictMapper.updateById(dictionary);
-                dictCacheService.reload();
-                assetService.ensureDictionaryAsset(
-                        item.getBusinessKey());
+            if (dictionaryAssets.disable(item.getBusinessKey())) {
+                assetService.ensureDictionaryAsset(item.getBusinessKey());
             }
             return;
         }

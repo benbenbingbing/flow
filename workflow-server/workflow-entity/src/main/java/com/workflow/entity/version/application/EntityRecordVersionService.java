@@ -30,8 +30,8 @@ import com.workflow.entity.version.infrastructure.persistence.record.EntityRecor
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDataset;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersionDatasetRow;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
-import com.workflow.outbox.api.OutboxPublishRequest;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.model.OutboxPublishRequest;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -63,7 +63,7 @@ public class EntityRecordVersionService {
 
     private final EntityRecordVersionMapper versionMapper;
     private final EntityRecordSnapshotService snapshotService;
-    private final OutboxPublisher outboxPublisher;
+    private final OutboxPublishPort outboxPublisher;
     private final ObjectMapper objectMapper;
     private final EntityVersionConfigurationService configurationService;
     private final EntityVersionPolicyMatcher policyMatcher;

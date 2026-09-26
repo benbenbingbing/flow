@@ -1,8 +1,8 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.process.cc.application.CcNotificationChannel;
-import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
+import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
+import com.workflow.contracts.process.cc.model.CcNotification;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -17,7 +17,7 @@ import java.util.Map;
 @Slf4j
 @Component
 public class ProjectCustomCcNotificationChannel
-        implements CcNotificationChannel {
+        implements CcNotificationChannelProvider {
 
     public static final String CHANNEL =
             "PROJECT_LOG";
@@ -40,7 +40,7 @@ public class ProjectCustomCcNotificationChannel
      */
     @Override
     public void send(
-            ProcessCcRecord record,
+            CcNotification record,
             Map<String, Object> message) {
         log.info(
                 "项目知会通知渠道执行: channel={}, ccRecordId={}, processInstanceId={}, nodeId={}, ccUserId={}, messageKeys={}",

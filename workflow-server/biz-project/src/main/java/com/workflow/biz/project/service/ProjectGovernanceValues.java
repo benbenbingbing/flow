@@ -1,7 +1,7 @@
 package com.workflow.biz.project.service;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -47,7 +47,7 @@ final class ProjectGovernanceValues {
      * @param dto DTO，供本方法处理数据时使用
      * @return 数据键值结果，供调用方继续处理
      */
-    static Map<String, Object> data(EntityDataDTO dto) {
+    static Map<String, Object> data(EntityRecordData dto) {
         return dto.getData() == null
                 ? Map.of() : dto.getData();
     }
@@ -60,7 +60,7 @@ final class ProjectGovernanceValues {
      * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
      */
     static void requireEntity(
-            EntityDataDTO dto,
+            EntityRecordData dto,
             String entityCode) {
         if (dto == null
                 || !entityCode.equals(dto.getEntityCode())) {

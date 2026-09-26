@@ -2,7 +2,7 @@ package com.workflow.notification.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +22,7 @@ import java.util.Set;
  */
 @Slf4j
 @Component("sendNotificationHandler")
-public class SendNotificationHandler implements FlowActionHandler {
+public class SendNotificationHandler implements FlowActionProvider {
 
     /**
      * 处理实现来源，并将结果传给后续步骤。

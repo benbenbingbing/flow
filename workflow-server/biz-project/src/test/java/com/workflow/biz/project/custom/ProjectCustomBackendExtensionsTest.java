@@ -3,13 +3,13 @@ package com.workflow.biz.project.custom;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.contracts.process.action.spi.FlowActionTriggerProvider;
 import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.list.spi.DataScopePredicateProvider;
 import com.workflow.contracts.entity.list.spi.EntityListActionProvider;
-import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
+import com.workflow.contracts.entity.list.spi.EntityListContextResolverProvider;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
@@ -18,7 +18,7 @@ import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.port.ProcessTaskAccessPort;
 import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.contracts.migration.port.MigrationAssetPort;
@@ -29,23 +29,23 @@ import com.workflow.contracts.entity.ui.context.ListInvocationContext;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
 import com.workflow.contracts.entity.ui.port.UiExtensionCatalogPort;
 import com.workflow.core.result.PageResult;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.list.extension.ListFieldDataProvider;
-import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
-import com.workflow.entity.permission.application.EntityActionRuleConditionProvider;
-import com.workflow.entity.permission.application.EntityDataPermissionFilterProvider;
-import com.workflow.entity.permission.application.EntityDataPermissionMatchProvider;
-import com.workflow.entity.permission.application.EntityPermissionOptionProvider;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
-import com.workflow.process.cc.application.CcNotificationChannel;
-import com.workflow.process.cc.application.CcRecipientResolver;
-import com.workflow.process.cc.application.CcRuntimeContext;
-import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
+import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
+import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
+import com.workflow.contracts.entity.list.model.ListFieldDataConfig;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
+import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionFilterProvider;
+import com.workflow.contracts.entity.permission.spi.EntityDataPermissionMatchProvider;
+import com.workflow.contracts.entity.permission.spi.EntityPermissionOptionProvider;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
+import com.workflow.contracts.process.cc.spi.CcNotificationChannelProvider;
+import com.workflow.contracts.process.cc.spi.CcRecipientProvider;
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
+import com.workflow.contracts.process.cc.model.CcNotification;
 import com.workflow.biz.project.service.ProjectEntityMutationExecutor;
-import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;
@@ -124,12 +124,12 @@ class ProjectCustomBackendExtensionsTest {
                             "projectCustomTypedFlowActionHandler",
                             "projectExtensionAcceptanceFlowActionHandler"),
                     context.getBeansOfType(
-                                    FlowActionHandler.class)
+                                    FlowActionProvider.class)
                             .keySet());
             assertSingleBean(
                     context,
                     FlowActionTriggerProvider.class);
-            assertSingleBean(context, PersonResolver.class);
+            assertSingleBean(context, PersonResolverProvider.class);
             assertEquals(
                     4,
                     context.getBeansOfType(
@@ -146,7 +146,7 @@ class ProjectCustomBackendExtensionsTest {
                     EntityListSchemaProvider.class);
             assertSingleBean(
                     context,
-                    EntityListContextResolver.class);
+                    EntityListContextResolverProvider.class);
             assertSingleBean(
                     context,
                     EntityListActionProvider.class);
@@ -167,16 +167,16 @@ class ProjectCustomBackendExtensionsTest {
                     EntityDataPermissionFilterProvider.class);
             assertSingleBean(
                     context,
-                    CcRecipientResolver.class);
+                    CcRecipientProvider.class);
             assertSingleBean(
                     context,
-                    CcNotificationChannel.class);
+                    CcNotificationChannelProvider.class);
             assertSingleBean(
                     context,
-                    FileStorageStrategy.class);
+                    FileStorageProvider.class);
             assertSingleBean(
                     context,
-                    OutboxEventHandler.class);
+                    OutboxEventHandlerProvider.class);
 
             Set<String> uiDataSourceProviderCodes =
                     context.getBeansOfType(
@@ -200,12 +200,12 @@ class ProjectCustomBackendExtensionsTest {
                     ProjectCustomFileStorageStrategy
                             .STORAGE_TYPE,
                     context.getBean(
-                            FileStorageStrategy.class)
+                            FileStorageProvider.class)
                             .getStorageType());
             assertEquals(
                     ProjectCustomOutboxEventHandler.TOPIC,
                     context.getBean(
-                            OutboxEventHandler.class)
+                            OutboxEventHandlerProvider.class)
                             .topic());
         }
     }
@@ -256,10 +256,12 @@ class ProjectCustomBackendExtensionsTest {
 
         ProjectCustomUiDataSourceProvider uiProvider =
                 new ProjectCustomUiDataSourceProvider();
-        EntityDataDTO uiRecord = new EntityDataDTO();
+        com.workflow.entity.data.api.response.EntityDataDTO uiRecord =
+                new com.workflow.entity.data.api.response.EntityDataDTO();
         uiRecord.setId("PROJECT-UI-1");
         uiRecord.setCode("PRJ-UI-001");
-        EntityListField uiField = new EntityListField();
+        com.workflow.entity.list.infrastructure.persistence.record.EntityListField uiField =
+                new com.workflow.entity.list.infrastructure.persistence.record.EntityListField();
         uiField.setFieldCode("unifiedSummary");
         Object uiResult = uiProvider.execute(
                 listInvocationContext(
@@ -449,11 +451,11 @@ class ProjectCustomBackendExtensionsTest {
         assertEquals("1 = 0",
                 emptyPlan.sqlFragment());
 
-        EntityDataDTO record = new EntityDataDTO();
+        ListFieldDataRecord record = new ListFieldDataRecord();
         record.setId("PROJECT-1");
         record.setCode("PRJ-001");
-        EntityListField field =
-                new EntityListField();
+        ListFieldDataConfig field =
+                new ListFieldDataConfig();
         field.setFieldCode("customSummary");
         field.setDataSourceConfig(
                 "{\"labelPrefix\":\"验收前缀\"}");
@@ -629,11 +631,9 @@ class ProjectCustomBackendExtensionsTest {
                         "Project",
                         permissionCode));
 
-        SysUser user = new SysUser();
-        user.setId("USER-1");
-        user.setUsername("demo");
-        MatchConfigDTO.MatchConditionDTO match =
-                new MatchConfigDTO.MatchConditionDTO();
+        var user = new com.workflow.contracts.identity.model.IdentityUser("USER-1", "demo", null, null, null);
+        PermissionMatchConfig.MatchConditionDTO match =
+                new PermissionMatchConfig.MatchConditionDTO();
         match.setScopeType(
                 ProjectCustomDataPermissionMatchProvider
                         .SCOPE_TYPE);
@@ -643,12 +643,12 @@ class ProjectCustomBackendExtensionsTest {
                 new ProjectCustomDataPermissionMatchProvider()
                         .matches(match, user));
 
-        EntityDataDTO row = new EntityDataDTO();
+        var row = new com.workflow.contracts.entity.model.EntityRecordData();
         row.setId("PROJECT-1");
         row.setData(Map.of("riskLevel", "HIGH"));
         row.setCode("PROJECT-001");
-        EntityActionRuleDTO.RuleNode condition =
-                new EntityActionRuleDTO.RuleNode();
+        EntityActionRule.RuleNode condition =
+                new EntityActionRule.RuleNode();
         condition.setType(
                 ProjectCustomActionRuleConditionProvider
                         .TYPE);
@@ -695,8 +695,8 @@ class ProjectCustomBackendExtensionsTest {
                                         "fallbackToOperator",
                                         true)));
 
-        ProcessCcRecord ccRecord =
-                new ProcessCcRecord();
+        CcNotification ccRecord =
+                new CcNotification();
         ccRecord.setId("CC-1");
         ccRecord.setProcessInstanceId("PROC-1");
         ccRecord.setCcUserId("USER-1");

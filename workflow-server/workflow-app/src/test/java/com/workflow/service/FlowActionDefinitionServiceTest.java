@@ -8,7 +8,7 @@ import com.workflow.admin.extension.action.infrastructure.persistence.record.Flo
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionEntityMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationContext;
@@ -40,7 +40,7 @@ class FlowActionCatalogServiceTest {
     /** 被测服务 */
     private FlowActionCatalogService service;
     /** 测试用空动作处理器 */
-    private FlowActionHandler handler;
+    private FlowActionProvider handler;
 
     /** 装配被测服务与各 Mock 依赖 */
     @BeforeEach
@@ -71,7 +71,7 @@ class FlowActionCatalogServiceTest {
         when(definitionEntityMapper.findEntityCodes("global")).thenReturn(List.of());
         when(definitionEntityMapper.findEntityCodes("order")).thenReturn(List.of("order"));
         when(definitionEntityMapper.findEntityCodes("customer")).thenReturn(List.of("customer"));
-        when(applicationContext.getBeansOfType(FlowActionHandler.class)).thenReturn(Map.of(
+        when(applicationContext.getBeansOfType(FlowActionProvider.class)).thenReturn(Map.of(
                 "globalHandler", handler,
                 "orderHandler", handler,
                 "customerHandler", handler));
@@ -94,7 +94,7 @@ class FlowActionCatalogServiceTest {
         when(definitionMapper.findActiveById("customer")).thenReturn(Optional.of(customer));
         when(definitionEntityMapper.findEntityCodes("customer")).thenReturn(List.of("customer"));
         when(applicationContext.containsBean("customerHandler")).thenReturn(true);
-        when(applicationContext.getBean("customerHandler", FlowActionHandler.class)).thenReturn(handler);
+        when(applicationContext.getBean("customerHandler", FlowActionProvider.class)).thenReturn(handler);
         when(entityCodeCatalogPort.findEntityCodeByProcessDefinitionId("process-1")).thenReturn("order");
 
         assertThrows(

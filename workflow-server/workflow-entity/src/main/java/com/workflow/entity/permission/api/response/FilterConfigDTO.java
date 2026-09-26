@@ -1,5 +1,9 @@
 package com.workflow.entity.permission.api.response;
 
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
+
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+
 import lombok.Data;
 
 import java.util.List;
@@ -32,7 +36,7 @@ public class FilterConfigDTO {
      * 结构化根节点。type=RULE 时优先生效；
      * 为空时兼容旧版简单类型。
      */
-    private EntityActionRuleDTO.RuleNode root;
+    private EntityActionRule.RuleNode root;
 
     /**
      * 规则目录上的允许/拒绝，列表绑定时复制到 binding。
@@ -42,7 +46,7 @@ public class FilterConfigDTO {
     /**
      * 规则目录上的适用对象，列表绑定时复制到 binding。
      */
-    private MatchConfigDTO audience;
+    private PermissionMatchConfig audience;
 
     /**
      * 类型为 SQL 时的记录过滤片段。主表别名固定为 biz。

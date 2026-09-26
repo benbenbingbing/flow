@@ -3,7 +3,7 @@ package com.workflow.migration.application;
 import com.workflow.contracts.identity.position.port.OrganizationPositionDirectoryPort;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +22,7 @@ import static com.workflow.migration.application.ConfigMigrationAssignmentSuppor
 class ConfigMigrationAssignmentTargetValidator {
     private final PersonResolverRuntimeService resolverRuntimeService;
     private final OrganizationPositionDirectoryPort organizationDirectory;
-    private final List<PersonResolverConfigurationValidator> configurationValidators;
+    private final List<PersonResolverConfigurationValidationProvider> configurationValidators;
 
     /**
      * 检查岗位、层级、人员字段及解析器。字段查询由调用方提供，允许引用同包即将发布的实体。
@@ -75,7 +75,7 @@ class ConfigMigrationAssignmentTargetValidator {
                 }
             } else {
                 boolean validated = false;
-                for (PersonResolverConfigurationValidator validator : configurationValidators) {
+                for (PersonResolverConfigurationValidationProvider validator : configurationValidators) {
                     if (key.equals(validator.resolverCode())) {
                         validator.validate(new PersonResolverConfigurationValidationRequest(
                                 usage, mode, multi, params));

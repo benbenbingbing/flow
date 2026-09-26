@@ -6,8 +6,8 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
 
 class ProjectGovernanceServiceTest {
 
-    private EntityDataDynamicService entityDataService;
+    private EntityRecordQueryPort entityDataService;
     private EntityMutationPort entityMutationPort;
     private ProjectGovernanceService service;
     private AtomicInteger memberIndex;
@@ -42,7 +42,7 @@ class ProjectGovernanceServiceTest {
 
     @BeforeEach
     void setUp() {
-        entityDataService = mock(EntityDataDynamicService.class);
+        entityDataService = mock(EntityRecordQueryPort.class);
         entityMutationPort = mock(EntityMutationPort.class);
         memberIndex = new AtomicInteger();
         catalogIndex = new AtomicInteger();
@@ -99,20 +99,20 @@ class ProjectGovernanceServiceTest {
 
     @Test
     void validatesProjectInitiationAcrossRequirementAndSystemEntities() {
-        EntityDataDTO project = projectWithInitialScope();
-        EntityDataDTO requirement = entity(
+        EntityRecordData project = projectWithInitialScope();
+        EntityRecordData requirement = entity(
                 "requirement",
                 "REQ-1",
                 "REQ2026072800005",
                 "BACKLOG",
                 Map.of());
-        EntityDataDTO system = entity(
+        EntityRecordData system = entity(
                 "system_asset",
                 "SYS-1",
                 "SYS2026072800001",
                 "PROPOSED",
                 Map.of());
-        EntityDataDTO allocation = entity(
+        EntityRecordData allocation = entity(
                 "requirement_project_link",
                 "RPL-1",
                 "REQPRJ1",
@@ -137,7 +137,7 @@ class ProjectGovernanceServiceTest {
 
     @Test
     void rejectsProjectWhenRequirementAllocationExceedsOneHundredPercent() {
-        EntityDataDTO project = projectWithInitialScope();
+        EntityRecordData project = projectWithInitialScope();
         when(entityDataService.findById("requirement", "REQ-1"))
                 .thenReturn(entity(
                         "requirement",
@@ -172,8 +172,8 @@ class ProjectGovernanceServiceTest {
 
     @Test
     void projectApprovalCreatesMembersRolesAndActivatesInitialLinks() {
-        EntityDataDTO project = projectWithInitialScope();
-        EntityDataDTO requirementLink = entity(
+        EntityRecordData project = projectWithInitialScope();
+        EntityRecordData requirementLink = entity(
                 "requirement_project_link",
                 "RPL-1",
                 "RPL1",
@@ -181,7 +181,7 @@ class ProjectGovernanceServiceTest {
                 new LinkedHashMap<>(Map.of(
                         "project_id", "PRJ-1",
                         "requirement_id", "REQ-1")));
-        EntityDataDTO systemLink = entity(
+        EntityRecordData systemLink = entity(
                 "project_system_link",
                 "PSL-1",
                 "PSL1",
@@ -242,7 +242,7 @@ class ProjectGovernanceServiceTest {
 
     @Test
     void rejectsRemovalWhenSystemScopedProjectRoleIsStillActive() {
-        EntityDataDTO request = projectSystemChange("REMOVE");
+        EntityRecordData request = projectSystemChange("REMOVE");
         when(entityDataService.findById("project", "PRJ-1"))
                 .thenReturn(entity("project", "PRJ-1", "PRJ1", "ACTIVE", Map.of()));
         when(entityDataService.findById("system_asset", "SYS-1"))
@@ -274,7 +274,7 @@ class ProjectGovernanceServiceTest {
 
     @Test
     void appliesApprovedAddAndMarksRequestEffective() {
-        EntityDataDTO request = projectSystemChange("ADD");
+        EntityRecordData request = projectSystemChange("ADD");
         request.getData().remove("project_system_link_id");
         request.getData().put("construction_mode", "ENHANCEMENT");
         request.getData().put("relation_reason", "新增客户画像能力改造范围");
@@ -317,7 +317,7 @@ class ProjectGovernanceServiceTest {
                 requestUpdate.payload().get("status"));
     }
 
-    private EntityDataDTO projectWithInitialScope() {
+    private EntityRecordData projectWithInitialScope() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("project_type", "NEW_SYSTEM");
         data.put("project_manager_id", "1");
@@ -338,7 +338,7 @@ class ProjectGovernanceServiceTest {
                 "system_id", "SYS-1",
                 "planned_start_date", "2026-08-01",
                 "planned_end_date", "2026-12-15"))));
-        EntityDataDTO project = entity(
+        EntityRecordData project = entity(
                 "project",
                 "PRJ-1",
                 "PRJ2026072800001",
@@ -350,7 +350,7 @@ class ProjectGovernanceServiceTest {
         return project;
     }
 
-    private EntityDataDTO projectSystemChange(String operation) {
+    private EntityRecordData projectSystemChange(String operation) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("operation_type", operation);
         data.put("project_id", "PRJ-1");
@@ -359,7 +359,7 @@ class ProjectGovernanceServiceTest {
         data.put("risk_level", "MEDIUM");
         data.put("planned_effective_date", LocalDate.now().plusDays(1).toString());
         data.put("rollback_plan", "恢复原项目系统关系");
-        EntityDataDTO request = entity(
+        EntityRecordData request = entity(
                 "project_system_change_request",
                 "PSC-1",
                 "PRJSC2026072800001",
@@ -371,13 +371,13 @@ class ProjectGovernanceServiceTest {
         return request;
     }
 
-    private EntityDataDTO entity(
+    private EntityRecordData entity(
             String entityCode,
             String id,
             String code,
             String status,
             Map<String, Object> data) {
-        EntityDataDTO dto = new EntityDataDTO();
+        EntityRecordData dto = new EntityRecordData();
         dto.setEntityCode(entityCode);
         dto.setId(id);
         dto.setCode(code);

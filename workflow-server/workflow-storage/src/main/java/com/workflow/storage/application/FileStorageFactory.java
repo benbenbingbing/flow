@@ -1,6 +1,6 @@
 package com.workflow.storage.application;
 
-import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
 
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +19,7 @@ public class FileStorageFactory {
     /** 文件存储配置属性 */
     private final FileStorageProperties properties;
     /** Spring 注入的全部存储策略实现列表 */
-    private final List<FileStorageStrategy> strategies;
+    private final List<FileStorageProvider> strategies;
 
     /**
      * 获取当前配置的存储策略。
@@ -27,9 +27,9 @@ public class FileStorageFactory {
      * @return 与配置 type 匹配的存储策略
      * @throws IllegalStateException 当配置的存储类型无对应实现时抛出
      */
-    public FileStorageStrategy getStrategy() {
+    public FileStorageProvider getStrategy() {
         String type = properties.getType();
-        for (FileStorageStrategy strategy : strategies) {
+        for (FileStorageProvider strategy : strategies) {
             if (strategy.getStorageType().equalsIgnoreCase(type)) {
                 return strategy;
             }

@@ -5,7 +5,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
@@ -82,7 +82,7 @@ class PermissionLobComparisonTest {
         return new PermissionSqlBuilder(definitions, fields, null, List.of(), DatabaseQueryDialects.forVendor(vendor));
     }
     private static FilterConfigDTO rule(String operator, Object value) {
-        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRuleDTO.RuleNode();
+        var filter = new FilterConfigDTO(); filter.setType("RULE"); var node = new EntityActionRule.RuleNode();
         node.setType("FIELD"); node.setField("body"); node.setOperator(operator); node.setValue(value); filter.setRoot(node); return filter;
     }
     private static SysUser user() { var user = new SysUser(); user.setId("u"); return user; }

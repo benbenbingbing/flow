@@ -7,7 +7,7 @@ import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeSnapshotDTO;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
-import com.workflow.entity.permission.api.response.MatchConfigDTO;
+import com.workflow.contracts.entity.permission.model.PermissionMatchConfig;
 import com.workflow.entity.permission.application.DataPermissionEngine.ExplicitListPermission;
 import com.workflow.entity.permission.infrastructure.persistence.mapper.EntityListScopeDelegationMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -117,7 +117,7 @@ class DataPermissionEngineExplicitListPermissionTest {
         binding.setListKey(INTERNAL_KEY);
         binding.setRuleEffect(effect);
         binding.setEnabled(1);
-        binding.setMatchConfig(new MatchConfigDTO());
+        binding.setMatchConfig(new PermissionMatchConfig());
 
         EntityListScopeSnapshotDTO snapshot =
                 new EntityListScopeSnapshotDTO();

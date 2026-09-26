@@ -3,7 +3,7 @@ package com.workflow.biz.project.custom;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +26,7 @@ import java.util.Set;
 @Slf4j
 @Component
 public class ProjectCustomPersonResolver
-        implements PersonResolver {
+        implements PersonResolverProvider {
 
     public static final String CODE =
             "projectCustomPersonResolver";

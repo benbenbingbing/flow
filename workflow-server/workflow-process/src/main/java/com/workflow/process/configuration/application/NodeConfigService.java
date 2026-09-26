@@ -1,11 +1,11 @@
 package com.workflow.process.configuration.application;
 
-import com.workflow.entity.form.api.response.FormConfigDTO;
-import com.workflow.entity.form.api.response.FormFieldConfigDTO;
-import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
-import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
-import com.workflow.entity.form.infrastructure.persistence.record.FormFieldConfig;
+import com.workflow.process.form.api.response.FormConfigDTO;
+import com.workflow.process.form.api.response.FormFieldConfigDTO;
+import com.workflow.process.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.process.form.infrastructure.persistence.mapper.FormFieldConfigMapper;
+import com.workflow.process.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.form.infrastructure.persistence.record.FormFieldConfig;
 
 import com.workflow.process.configuration.api.model.AssigneeConfigDTO;
 import com.workflow.process.configuration.api.model.NodeConfigDTO;

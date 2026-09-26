@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionTriggerTiming;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -21,7 +21,7 @@ import java.util.Set;
  */
 @Component("projectLifecycleAuditHandler")
 public class ProjectLifecycleAuditHandler
-        implements TypedFlowActionHandler<
+        implements TypedFlowActionProvider<
         ProjectLifecycleAuditHandler.Parameters> {
 
     /**

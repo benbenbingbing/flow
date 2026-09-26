@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.application.code;
 
-import com.workflow.contracts.entity.code.EntityCodeGenerator;
+import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
 import com.workflow.contracts.entity.code.EntityCodeSnapshots;
 import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import org.springframework.stereotype.Component;
@@ -12,13 +12,13 @@ import java.util.Map;
 /** 按稳定标识注册业务生成器；重复标识启动失败，不允许由 Bean 顺序决定实际实现。 */
 @Component
 public class EntityCodeGeneratorRegistry {
-    private final Map<String, EntityCodeGenerator> generators = new LinkedHashMap<>();
+    private final Map<String, EntityCodeGeneratorProvider> generators = new LinkedHashMap<>();
     private final UiExtensionDefinitionValidator validator;
 
-    public EntityCodeGeneratorRegistry(List<EntityCodeGenerator> implementations,
+    public EntityCodeGeneratorRegistry(List<EntityCodeGeneratorProvider> implementations,
             UiExtensionDefinitionValidator validator) {
         this.validator = validator;
-        for (EntityCodeGenerator generator : implementations) {
+        for (EntityCodeGeneratorProvider generator : implementations) {
             String code = generator.getCode();
             if (code == null || !code.matches("[A-Z][A-Z0-9_]{0,63}")) {
                 throw new IllegalStateException("编码生成器标识不合法: " + code);
@@ -31,8 +31,8 @@ public class EntityCodeGeneratorRegistry {
     }
 
     /** 校验实体适用范围和参数，供配置保存、迁移预检、预览及运行时共同使用。 */
-    public EntityCodeGenerator require(String code, String entityCode, Map<String, Object> configuration) {
-        EntityCodeGenerator generator = generators.get(code);
+    public EntityCodeGeneratorProvider require(String code, String entityCode, Map<String, Object> configuration) {
+        EntityCodeGeneratorProvider generator = generators.get(code);
         if (generator == null) throw new IllegalArgumentException("编码生成器未安装: " + code);
         if (!supports(generator, entityCode)) throw new IllegalArgumentException("编码生成器不支持实体: " + entityCode);
         Map<String, Object> config = EntityCodeSnapshots.copy(configuration);
@@ -48,7 +48,7 @@ public class EntityCodeGeneratorRegistry {
                         generator.configurationSchema())).toList();
     }
 
-    private boolean supports(EntityCodeGenerator generator, String entityCode) {
+    private boolean supports(EntityCodeGeneratorProvider generator, String entityCode) {
         return generator.supportedEntityCodes().isEmpty() || generator.supportedEntityCodes().contains(entityCode);
     }
 

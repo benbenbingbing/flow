@@ -3,7 +3,7 @@ package com.workflow.biz.project.action;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +25,7 @@ class RecordProjectMemberDecisionHandlerTest {
         RecordProjectMemberDecisionHandler handler =
                 new RecordProjectMemberDecisionHandler(
                         service);
-        EntityDataDTO request = new EntityDataDTO();
+        EntityRecordData request = new EntityRecordData();
         request.setId("REQUEST-1");
         FlowActionContext context =
                 new FlowActionContext();

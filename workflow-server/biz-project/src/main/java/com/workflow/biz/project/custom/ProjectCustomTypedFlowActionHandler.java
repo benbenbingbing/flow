@@ -2,7 +2,7 @@ package com.workflow.biz.project.custom;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,7 +20,7 @@ import java.util.Set;
 @Slf4j
 @Component("projectCustomTypedFlowActionHandler")
 public class ProjectCustomTypedFlowActionHandler
-        implements TypedFlowActionHandler<
+        implements TypedFlowActionProvider<
         ProjectCustomTypedFlowActionHandler.Parameters> {
 
     /**

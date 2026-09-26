@@ -1,6 +1,6 @@
 package com.workflow.core.concurrent;
 
-import com.workflow.contracts.execution.ExecutionControl;
+import com.workflow.contracts.execution.port.ExecutionControlPort;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -16,7 +16,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
  * 跨 HTTP、数据库与 Provider 的单调时钟预算。线程绑定只在明确的执行作用域内存在；
  * 取消回调使用独立有界线程，防止驱动的 cancel 阻塞返回超时的请求线程。
  */
-public final class ExecutionDeadline implements ExecutionControl, AutoCloseable {
+public final class ExecutionDeadline implements ExecutionControlPort, AutoCloseable {
     private static final ThreadLocal<ExecutionDeadline> CURRENT = new ThreadLocal<>();
     private static final ScheduledThreadPoolExecutor EXPIRATIONS = expirationExecutor();
     private static final ThreadPoolExecutor CANCELLATIONS = new ThreadPoolExecutor(2, 2, 30,

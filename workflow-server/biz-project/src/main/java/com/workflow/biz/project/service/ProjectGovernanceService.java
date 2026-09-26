@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.data.api.response.EntityDataDTO;
-import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,7 +46,7 @@ public class ProjectGovernanceService {
             Set.of("APPROVED", "ACTIVE", "PAUSED", "ACCEPTING");
     private static final Set<String> TERMINAL_LINK_STATUSES =
             Set.of("INVALID", "REJECTED", "CANCELLED");
-    private final EntityDataDynamicService entityDataService;
+    private final EntityRecordQueryPort entityDataService;
     private final ProjectEntityMutationExecutor mutationExecutor;
     private final ProjectSystemRemovalGuard removalGuard;
     private final ObjectMapper objectMapper;
@@ -58,7 +58,7 @@ public class ProjectGovernanceService {
      * @return 项目发起键值结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
-    public Map<String, Object> validateProjectInitiation(EntityDataDTO project) {
+    public Map<String, Object> validateProjectInitiation(EntityRecordData project) {
         return validateProjectInitiationInternal(project);
     }
 
@@ -71,7 +71,7 @@ public class ProjectGovernanceService {
      */
     @Transactional(readOnly = true)
     public Map<String, Object> validateProjectInitiation(
-            EntityDataDTO project,
+            EntityRecordData project,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -87,7 +87,7 @@ public class ProjectGovernanceService {
      * @return 项目发起内部键值结果，供调用方继续处理
      */
     private Map<String, Object> validateProjectInitiationInternal(
-            EntityDataDTO project) {
+            EntityRecordData project) {
         requireEntity(project, PROJECT);
         Map<String, Object> data = data(project);
 
@@ -131,7 +131,7 @@ public class ProjectGovernanceService {
      * @return 项目发起键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> applyProjectInitiation(EntityDataDTO project) {
+    public Map<String, Object> applyProjectInitiation(EntityRecordData project) {
         return mutationExecutor.inSession(
                 null,
                 "INITIAL_EFFECTIVE",
@@ -148,7 +148,7 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectInitiation(
-            EntityDataDTO project,
+            EntityRecordData project,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -164,7 +164,7 @@ public class ProjectGovernanceService {
      * @return 项目发起内部键值结果，供调用方继续处理
      */
     private Map<String, Object> applyProjectInitiationInternal(
-            EntityDataDTO project) {
+            EntityRecordData project) {
         requireEntity(project, PROJECT);
         Map<String, Object> data = data(project);
         if (bool(read(data, "initialization_completed_flag"))) {
@@ -184,21 +184,21 @@ public class ProjectGovernanceService {
                 LocalDate.now());
         LocalDate plannedLeaveDate = date(read(data, "planned_end_date"));
 
-        EntityDataDTO managerMember = ensureMember(
+        EntityRecordData managerMember = ensureMember(
                 project,
                 text(read(data, "project_manager_id")),
                 sourceDeptId,
                 joinDate,
                 plannedLeaveDate,
                 "项目经理");
-        EntityDataDTO businessMember = ensureMember(
+        EntityRecordData businessMember = ensureMember(
                 project,
                 text(read(data, "business_owner_id")),
                 sourceDeptId,
                 joinDate,
                 plannedLeaveDate,
                 "业务负责人");
-        EntityDataDTO productMember = ensureMember(
+        EntityRecordData productMember = ensureMember(
                 project,
                 text(read(data, "product_owner_id")),
                 sourceDeptId,
@@ -231,11 +231,11 @@ public class ProjectGovernanceService {
                 joinDate,
                 plannedLeaveDate);
 
-        List<EntityDataDTO> requirementLinks =
+        List<EntityRecordData> requirementLinks =
                 entityDataService.findByCondition(
                         REQUIREMENT_PROJECT_LINK,
                         Map.of("project_id", projectId));
-        for (EntityDataDTO link : requirementLinks) {
+        for (EntityRecordData link : requirementLinks) {
             Map<String, Object> custom = new LinkedHashMap<>();
             if (!StringUtils.hasText(text(read(data(link), "responsible_member_id")))) {
                 custom.put("responsible_member_id", managerMember.getId());
@@ -247,11 +247,11 @@ public class ProjectGovernanceService {
         }
 
         LocalDateTime effectiveAt = LocalDateTime.now();
-        List<EntityDataDTO> systemLinks =
+        List<EntityRecordData> systemLinks =
                 entityDataService.findByCondition(
                         PROJECT_SYSTEM_LINK,
                         Map.of("project_id", projectId));
-        for (EntityDataDTO link : systemLinks) {
+        for (EntityRecordData link : systemLinks) {
             Map<String, Object> custom = new LinkedHashMap<>();
             if (!StringUtils.hasText(text(read(data(link), "project_system_lead_id")))) {
                 custom.put("project_system_lead_id", managerMember.getId());
@@ -301,7 +301,7 @@ public class ProjectGovernanceService {
      * @return 项目系统变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> validateProjectSystemChange(EntityDataDTO request) {
+    public Map<String, Object> validateProjectSystemChange(EntityRecordData request) {
         return mutationExecutor.inSession(
                 null,
                 "CHANGE_PRECHECK",
@@ -318,7 +318,7 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> validateProjectSystemChange(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -334,7 +334,7 @@ public class ProjectGovernanceService {
      * @return 项目系统变更内部键值结果，供调用方继续处理
      */
     private Map<String, Object> validateProjectSystemChangeInternal(
-            EntityDataDTO request) {
+            EntityRecordData request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
         Map<String, Object> data = data(request);
         String operation = upper(read(data, "operation_type"));
@@ -344,21 +344,21 @@ public class ProjectGovernanceService {
 
         String projectId = requireText(data, "project_id", "项目不能为空");
         String systemId = requireText(data, "system_id", "系统不能为空");
-        EntityDataDTO project = entityDataService.findById(PROJECT, projectId);
+        EntityRecordData project = entityDataService.findById(PROJECT, projectId);
         if (!ALLOWED_PROJECT_STATUSES.contains(project.getStatus())) {
             conflict(
                     "PROJECT_STATUS_NOT_ALLOWED",
                     "项目必须处于已批准、进行中、暂停或验收中状态");
         }
-        EntityDataDTO system = entityDataService.findById(SYSTEM_ASSET, systemId);
+        EntityRecordData system = entityDataService.findById(SYSTEM_ASSET, systemId);
         if ("RETIRED".equals(system.getStatus())) {
             conflict("SYSTEM_RETIRED", "已退役系统不能加入或调整项目范围");
         }
 
         String linkId = text(read(data, "project_system_link_id"));
-        EntityDataDTO sourceLink = null;
+        EntityRecordData sourceLink = null;
         if ("ADD".equals(operation)) {
-            List<EntityDataDTO> existing = entityDataService.findByCondition(
+            List<EntityRecordData> existing = entityDataService.findByCondition(
                     PROJECT_SYSTEM_LINK,
                     Map.of("project_id", projectId, "system_id", systemId));
             if (existing.stream().anyMatch(item ->
@@ -454,7 +454,7 @@ public class ProjectGovernanceService {
      * @return 项目系统变更键值结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> applyProjectSystemChange(EntityDataDTO request) {
+    public Map<String, Object> applyProjectSystemChange(EntityRecordData request) {
         return mutationExecutor.inSession(
                 null,
                 "CHANGE_EFFECTIVE",
@@ -471,7 +471,7 @@ public class ProjectGovernanceService {
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> applyProjectSystemChange(
-            EntityDataDTO request,
+            EntityRecordData request,
             FlowActionContext context) {
         return mutationExecutor.inSession(
                 context,
@@ -487,7 +487,7 @@ public class ProjectGovernanceService {
      * @return 项目系统变更内部键值结果，供调用方继续处理
      */
     private Map<String, Object> applyProjectSystemChangeInternal(
-            EntityDataDTO request) {
+            EntityRecordData request) {
         requireEntity(request, PROJECT_SYSTEM_CHANGE);
         Map<String, Object> data = data(request);
         String existingEffectiveLinkId = text(read(data, "effective_link_id"));
@@ -503,11 +503,11 @@ public class ProjectGovernanceService {
         String projectId = requireText(data, "project_id", "项目不能为空");
         String systemId = requireText(data, "system_id", "系统不能为空");
         LocalDateTime effectiveAt = LocalDateTime.now();
-        EntityDataDTO effectiveLink;
+        EntityRecordData effectiveLink;
 
         switch (operation) {
             case "ADD" -> {
-                EntityDataDTO link = new EntityDataDTO();
+                EntityRecordData link = new EntityRecordData();
                 link.setEntityCode(PROJECT_SYSTEM_LINK);
                 link.setName("项目系统关系-" + projectId + "-" + systemId);
                 link.setSubmitterId(request.getSubmitterId());
@@ -608,7 +608,7 @@ public class ProjectGovernanceService {
             LocalDate projectEnd) {
         for (Map<String, Object> link : links) {
             String requirementId = requireText(link, "requirement_id", "需求范围中存在空需求");
-            EntityDataDTO requirement = entityDataService.findById(REQUIREMENT, requirementId);
+            EntityRecordData requirement = entityDataService.findById(REQUIREMENT, requirementId);
             if (!ALLOWED_REQUIREMENT_STATUSES.contains(requirement.getStatus())) {
                 conflict(
                         "REQUIREMENT_STATUS_NOT_ALLOWED",
@@ -648,7 +648,7 @@ public class ProjectGovernanceService {
             LocalDate projectEnd) {
         for (Map<String, Object> link : links) {
             String systemId = requireText(link, "system_id", "系统范围中存在空系统");
-            EntityDataDTO system = entityDataService.findById(SYSTEM_ASSET, systemId);
+            EntityRecordData system = entityDataService.findById(SYSTEM_ASSET, systemId);
             if ("RETIRED".equals(system.getStatus())) {
                 conflict("SYSTEM_RETIRED", "已退役系统不能纳入项目范围：" + system.getCode());
             }
@@ -694,8 +694,8 @@ public class ProjectGovernanceService {
      * @param responsibility {@code responsibility}，作为 {@code conflict} 的输入影响后续处理
      * @return 确保后的成员结果，供调用方继续处理
      */
-    private EntityDataDTO ensureMember(
-            EntityDataDTO project,
+    private EntityRecordData ensureMember(
+            EntityRecordData project,
             String userId,
             String sourceDeptId,
             LocalDate joinDate,
@@ -704,10 +704,10 @@ public class ProjectGovernanceService {
         if (!StringUtils.hasText(userId)) {
             conflict("PROJECT_KEY_MEMBER_REQUIRED", responsibility + "不能为空");
         }
-        List<EntityDataDTO> existing = entityDataService.findByCondition(
+        List<EntityRecordData> existing = entityDataService.findByCondition(
                 PROJECT_MEMBER,
                 Map.of("project_id", project.getId(), "user_id", userId));
-        EntityDataDTO member = existing.stream()
+        EntityRecordData member = existing.stream()
                 .filter(item -> Set.of("ACTIVE", "PENDING_JOIN", "SUSPENDED")
                         .contains(item.getStatus()))
                 .findFirst()
@@ -752,15 +752,15 @@ public class ProjectGovernanceService {
      * @param effectiveTo 有效截止，作为 {@code assignmentData.put} 的输入影响后续处理
      */
     private void ensureRoleAssignment(
-            EntityDataDTO project,
-            EntityDataDTO member,
+            EntityRecordData project,
+            EntityRecordData member,
             String roleCode,
             String roleName,
             boolean primary,
             LocalDate effectiveFrom,
             LocalDate effectiveTo) {
-        EntityDataDTO catalog = ensureRoleCatalog(project, roleCode, roleName, primary);
-        List<EntityDataDTO> existing = entityDataService.findByCondition(
+        EntityRecordData catalog = ensureRoleCatalog(project, roleCode, roleName, primary);
+        List<EntityRecordData> existing = entityDataService.findByCondition(
                 PROJECT_ROLE_ASSIGNMENT,
                 Map.of("project_id", project.getId(), "role_code", roleCode));
         if (existing.stream().anyMatch(item ->
@@ -782,7 +782,7 @@ public class ProjectGovernanceService {
         assignmentData.put("handover_required_flag", false);
         assignmentData.put("handover_completed_flag", false);
         assignmentData.put("source_process", "F03");
-        EntityDataDTO assignment = saveStandalone(
+        EntityRecordData assignment = saveStandalone(
                 PROJECT_ROLE_ASSIGNMENT,
                 project.getName() + "-" + roleName,
                 project,
@@ -802,12 +802,12 @@ public class ProjectGovernanceService {
      * @param primaryUnique 主要唯一，作为 {@code catalogData.put} 的输入影响后续处理
      * @return 确保后的角色目录结果，供调用方继续处理
      */
-    private EntityDataDTO ensureRoleCatalog(
-            EntityDataDTO project,
+    private EntityRecordData ensureRoleCatalog(
+            EntityRecordData project,
             String roleCode,
             String roleName,
             boolean primaryUnique) {
-        List<EntityDataDTO> existing = entityDataService.findByCondition(
+        List<EntityRecordData> existing = entityDataService.findByCondition(
                 PROJECT_ROLE_CATALOG,
                 Map.of("role_code", roleCode));
         if (!existing.isEmpty()) {
@@ -835,7 +835,7 @@ public class ProjectGovernanceService {
      * @param label 标签，后续用于校验成员时匹配或展示
      */
     private void validateMember(String projectId, String memberId, String label) {
-        EntityDataDTO member = entityDataService.findById(PROJECT_MEMBER, memberId);
+        EntityRecordData member = entityDataService.findById(PROJECT_MEMBER, memberId);
         if (!Objects.equals(projectId, text(read(data(member), "project_id")))
                 || !"ACTIVE".equals(member.getStatus())) {
             conflict("PROJECT_MEMBER_INVALID", label + "必须为该项目的有效成员");
@@ -874,12 +874,12 @@ public class ProjectGovernanceService {
      * @param customData 自定义数据，作为 {@code dto.setData} 的输入影响后续处理
      * @return 保存后的{@code standalone}结果，供调用方继续处理
      */
-    private EntityDataDTO saveStandalone(
+    private EntityRecordData saveStandalone(
             String entityCode,
             String name,
-            EntityDataDTO source,
+            EntityRecordData source,
             Map<String, Object> customData) {
-        EntityDataDTO dto = new EntityDataDTO();
+        EntityRecordData dto = new EntityRecordData();
         dto.setEntityCode(entityCode);
         dto.setName(name);
         dto.setSubmitterId(source.getSubmitterId());

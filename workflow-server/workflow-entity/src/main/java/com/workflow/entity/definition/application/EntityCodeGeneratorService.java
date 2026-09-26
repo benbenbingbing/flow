@@ -1,5 +1,7 @@
 package com.workflow.entity.definition.application;
 
+import com.workflow.contracts.entity.code.spi.EntityCodeGeneratorProvider;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.contracts.audit.model.AuditAction;
@@ -60,7 +62,7 @@ public class EntityCodeGeneratorService {
         String code;
         if ("CUSTOM".equals(mode)) {
             Map<String, Object> config = EntityCodeSnapshots.copy(rule.getGeneratorConfig());
-            EntityCodeGenerator generator = registry.require(rule.getGeneratorCode(), context.entityCode(), config);
+            EntityCodeGeneratorProvider generator = registry.require(rule.getGeneratorCode(), context.entityCode(), config);
             code = generator.generate(context, config);
         } else if (suppliedCode != null && !suppliedCode.isBlank()) {
             code = suppliedCode;

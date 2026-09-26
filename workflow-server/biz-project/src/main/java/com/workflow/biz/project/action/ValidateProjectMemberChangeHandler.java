@@ -1,8 +1,8 @@
 package com.workflow.biz.project.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
-import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.biz.project.service.ProjectMemberChangeService;
 import org.springframework.stereotype.Component;
 
@@ -14,7 +14,7 @@ import java.util.Set;
  */
 @Component("validateProjectMemberChangeHandler")
 public class ValidateProjectMemberChangeHandler
-        implements FlowActionHandler {
+        implements FlowActionProvider {
 
     private final ProjectMemberChangeService service;
 
@@ -66,8 +66,8 @@ public class ValidateProjectMemberChangeHandler
      */
     @Override
     public void execute(FlowActionContext context) {
-        Object entityData = context.getEntityData();
-        if (!(entityData instanceof EntityDataDTO request)) {
+        EntityRecordData request = context.getEntityData();
+        if (request == null) {
             throw new IllegalStateException(
                     "Project member change data is unavailable.");
         }

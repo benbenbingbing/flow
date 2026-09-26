@@ -4,7 +4,7 @@ import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,7 +16,7 @@ import java.util.Set;
  * 返回流程发起人的内置人员解析器。
  */
 @Component
-public class ProcessInitiatorPersonResolver implements PersonResolver {
+public class ProcessInitiatorPersonResolver implements PersonResolverProvider {
 
     private static final PersonResolverDescriptor DESCRIPTOR =
             new PersonResolverDescriptor(

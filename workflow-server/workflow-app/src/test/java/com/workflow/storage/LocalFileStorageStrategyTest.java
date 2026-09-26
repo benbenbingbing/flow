@@ -32,7 +32,7 @@ class LocalFileStorageStrategyTest {
                 "image/png",
                 new byte[]{1, 2, 3});
 
-        Map<String, String> result = strategy.upload(file);
+        Map<String, String> result = strategy.upload(com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter.from(file));
 
         assertThat(result.get("url")).startsWith("/uploads/");
         assertThat(result.get("url")).doesNotContain(tempDir.toString());
@@ -60,7 +60,7 @@ class LocalFileStorageStrategyTest {
         };
 
         try {
-            Map<String, String> result = strategy.upload(file);
+            Map<String, String> result = strategy.upload(com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter.from(file));
 
             assertThat(Files.readString(absoluteDirectory.resolve(result.get("filename"))))
                     .isEqualTo("relative upload");

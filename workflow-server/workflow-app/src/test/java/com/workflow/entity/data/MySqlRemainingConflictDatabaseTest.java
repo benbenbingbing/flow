@@ -1,5 +1,7 @@
 package com.workflow.entity.data;
 
+import com.workflow.contracts.process.cc.model.CcRuntimeContext;
+
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -165,7 +167,8 @@ class MySqlRemainingConflictDatabaseTest {
             table(f, "storage_file_object", "V011__storage_object_ownership.sql");
             alter(f, "storage_file_object", "V018__storage_upload_idempotency.sql"); effectTable(f);
             var h = new Harness(f);
-            var service = h.transactional(new StoredFileAccessService(h.jdbc, mock(CurrentUserRoleService.class), h.attempt,
+            var service = h.transactional(new StoredFileAccessService(h.jdbc, mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
+                new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt,
                     DatabaseQueryDialects.forDatabaseId("MYSQL")));
             var file = new MockMultipartFile("file", "name.txt", "text/plain", "same content".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var barrier = new CyclicBarrier(6);

@@ -84,9 +84,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.actionFailurePolicy':
     '事务内可选择回滚或记录后继续；提交后可选择自动重试或记录后忽略。可用策略会随执行方式变化。',
   'process.flowActionHandler':
-    '后端自定义需实现 FlowActionHandler、加 @Component；Bean 名称即处理器编码。需要类型化参数时可实现 TypedFlowActionHandler。',
+    '后端自定义需实现 FlowActionProvider、加 @Component；Bean 名称即处理器编码。需要类型化参数时可实现 TypedFlowActionProvider。',
   'process.personResolver':
-    '后端自定义需实现 PersonResolver、加 @Component，并在 descriptor() 中声明唯一编码、适用场景和参数 Schema。',
+    '后端自定义需实现 PersonResolverProvider、加 @Component，并在 descriptor() 中声明唯一编码、适用场景和参数 Schema。',
   'uiEvent.inheritanceMode':
     '表单或列表的上级是实体「默认事件」中配置的同名事件；字段或按钮的上级还包括所在表单或列表的同名公共事件。继承并追加会保留上级步骤；替换上级会移除这些上级步骤，仅使用当前层步骤；禁用自定义会清空截至当前层的自定义步骤。是否替代平台默认动作仍由步骤执行位置决定。',
   'uiEvent.formButtonInheritanceMode':

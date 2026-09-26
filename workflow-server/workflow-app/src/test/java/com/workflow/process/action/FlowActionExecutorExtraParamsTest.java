@@ -1,7 +1,7 @@
 package com.workflow.process.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import com.workflow.process.action.application.FlowActionExecutor;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
@@ -29,7 +29,7 @@ class FlowActionExecutorExtraParamsTest {
         FlowActionExecutionService executionService =
                 mock(FlowActionExecutionService.class);
         when(applicationContext.getBean("sampleAction"))
-                .thenReturn((FlowActionHandler) context -> {});
+                .thenReturn((FlowActionProvider) context -> {});
         FlowActionExecutor executor = new FlowActionExecutor(
                 applicationContext,
                 helper,
@@ -59,7 +59,7 @@ class FlowActionExecutorExtraParamsTest {
                 mock(FlowActionExecutionService.class);
         AtomicReference<FlowActionContext> captured =
                 new AtomicReference<>();
-        FlowActionHandler handler = captured::set;
+        FlowActionProvider handler = captured::set;
         when(applicationContext.getBean("sampleAction"))
                 .thenReturn(handler);
 

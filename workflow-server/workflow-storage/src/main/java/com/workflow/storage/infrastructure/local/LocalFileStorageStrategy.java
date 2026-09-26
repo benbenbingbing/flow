@@ -1,13 +1,13 @@
 package com.workflow.storage.infrastructure.local;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.storage.application.port.FileStorageStrategy;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.web.multipart.MultipartFile;
+import com.workflow.contracts.storage.model.FileUpload;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 import java.io.File;
@@ -33,7 +33,7 @@ import java.util.UUID;
         havingValue = "local",
         matchIfMissing = true)
 @RequiredArgsConstructor
-public class LocalFileStorageStrategy implements FileStorageStrategy {
+public class LocalFileStorageStrategy implements FileStorageProvider {
 
     /** 文件存储配置属性 */
     private final FileStorageProperties properties;
@@ -46,7 +46,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
      * @throws RuntimeException 当文件写入失败时抛出
      */
     @Override
-    public Map<String, String> upload(MultipartFile file) {
+    public Map<String, String> upload(FileUpload file) {
         try {
             Path uploadDir = Path.of(properties.getLocal().getPath())
                     .toAbsolutePath()
@@ -54,7 +54,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             Files.createDirectories(uploadDir);
 
             // 解析原始文件名与扩展名
-            String originalFilename = file.getOriginalFilename();
+            String originalFilename = file.originalFilename();
             String extension = "";
             if (originalFilename != null && originalFilename.contains(".")) {
                 extension = originalFilename.substring(originalFilename.lastIndexOf("."));
@@ -67,8 +67,8 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             if (!destination.startsWith(uploadDir)) {
                 throw new IOException("文件目标路径超出上传目录");
             }
-            // Servlet 容器可能再次解析 transferTo(File) 的相对路径。
-            try (InputStream inputStream = file.getInputStream()) {
+            // 消费宿主提供的流，由存储后端控制目标路径和关闭时机，不依赖 Web 上传对象的落盘行为。
+            try (InputStream inputStream = file.openStream()) {
                 Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
             }
 
@@ -77,7 +77,7 @@ public class LocalFileStorageStrategy implements FileStorageStrategy {
             result.put("url", fileUrl);
             result.put("filename", newFilename);
             result.put("originalName", originalFilename);
-            result.put("size", String.valueOf(file.getSize()));
+            result.put("size", String.valueOf(file.size()));
 
             log.info("本地文件上传成功: {}", LogValue.safe(newFilename));
             return result;

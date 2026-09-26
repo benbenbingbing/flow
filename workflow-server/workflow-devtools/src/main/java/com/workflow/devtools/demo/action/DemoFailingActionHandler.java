@@ -1,7 +1,7 @@
 package com.workflow.devtools.demo.action;
 
 import com.workflow.contracts.process.action.context.FlowActionContext;
-import com.workflow.contracts.process.action.spi.FlowActionHandler;
+import com.workflow.contracts.process.action.spi.FlowActionProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * 用于验证平台在事务提交后（AFTER_COMMIT）执行动作的失败处理与重试机制。
  */
 @Component("demoFailingActionHandler")
-public class DemoFailingActionHandler implements FlowActionHandler {
+public class DemoFailingActionHandler implements FlowActionProvider {
 
     /**
      * 推荐在事务提交后执行，避免失败回滚主事务。

@@ -11,9 +11,10 @@ import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.storage.application.FileStorageFactory;
-import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter;
 import com.workflow.storage.application.error.FileUploadIdempotencyException;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.application.StoredFileAccessService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -146,8 +147,9 @@ public class FileController {
             if (claim.replay() != null) {
                 return Result.success(claim.replay());
             }
-            FileStorageStrategy strategy = storageFactory.getStrategy();
-            Map<String, String> result = strategy.upload(file);
+            FileStorageProvider strategy = storageFactory.getStrategy();
+            Map<String, String> result = strategy.upload(
+                    MultipartFileUploadAdapter.from(file));
             try {
                 StoredFileAccessService.UploadRegistration registration =
                         fileAccessService.register(
@@ -179,7 +181,7 @@ public class FileController {
      * @param stored 已存储，供本方法删除之后失败{@code registration}时使用
      */
     private void deleteAfterFailedRegistration(
-            FileStorageStrategy strategy,
+            FileStorageProvider strategy,
             Map<String, String> stored) {
         try {
             if (!strategy.delete(stored.get("url"))) {
@@ -239,7 +241,7 @@ public class FileController {
     public Result<Void> deleteFile(@RequestParam("url") String fileUrl) {
         fileAccessService.requireDelete(fileUrl);
         try {
-            FileStorageStrategy strategy = storageFactory.getStrategy();
+            FileStorageProvider strategy = storageFactory.getStrategy();
             boolean success = strategy.delete(fileUrl);
             if (success) {
                 fileAccessService.markDeleted(fileUrl);
@@ -266,7 +268,7 @@ public class FileController {
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding.FILE_READ)
     public void previewFile(@RequestParam("url") String fileUrl, HttpServletResponse response) {
         fileAccessService.requireRead(fileUrl);
-        FileStorageStrategy strategy = storageFactory.getStrategy();
+        FileStorageProvider strategy = storageFactory.getStrategy();
         try (StoredFile file = strategy.open(fileUrl)) {
             response.setContentType(file.contentType());
             response.setHeader("X-Content-Type-Options", "nosniff");

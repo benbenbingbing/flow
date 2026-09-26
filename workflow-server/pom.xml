@@ -19,7 +19,8 @@
 
     <modules>
         <module>workflow-core</module>
-        <module>workflow-contracts</module>
+        <module>workflow-port</module>
+        <module>workflow-spi</module>
         <module>workflow-admin</module>
         <module>workflow-storage</module>
         <module>workflow-db-migrator</module>
@@ -74,7 +75,12 @@
             </dependency>
             <dependency>
                 <groupId>com.workflow</groupId>
-                <artifactId>workflow-contracts</artifactId>
+                <artifactId>workflow-port</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.workflow</groupId>
+                <artifactId>workflow-spi</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

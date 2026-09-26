@@ -28,9 +28,15 @@ public class ContractPermissionProvider implements EntityPermissionOptionProvide
 
 ### 自定义规则条件
 
-实现 `EntityActionRuleConditionProvider`：
+实现 `com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider`。
+输入使用契约中的业务投影，不引用实体 HTTP DTO 或管理模块的持久化用户对象：
 
 ```java
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
+import com.workflow.contracts.entity.permission.spi.EntityActionRuleConditionProvider;
+import com.workflow.contracts.identity.model.IdentityUser;
+
 @Component
 public class CustomerLevelConditionProvider implements EntityActionRuleConditionProvider {
     @Override
@@ -40,11 +46,12 @@ public class CustomerLevelConditionProvider implements EntityActionRuleCondition
 
     @Override
     public boolean evaluate(
-            EntityActionRuleDTO.RuleNode node,
-            EntityDataDTO row,
-            SysUser user,
+            EntityActionRule.RuleNode node,
+            EntityRecordData row,
+            IdentityUser user,
             String statusCategory) {
-        return Objects.equals(row.getData().get("customerLevel"), node.getValue());
+        return row != null && row.getData() != null
+                && Objects.equals(row.getData().get("customerLevel"), node.getValue());
     }
 }
 ```

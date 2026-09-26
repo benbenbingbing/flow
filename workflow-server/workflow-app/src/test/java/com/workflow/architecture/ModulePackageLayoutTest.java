@@ -25,7 +25,8 @@ class ModulePackageLayoutTest {
 
         for (String module : List.of(
                 "workflow-core",
-                "workflow-contracts",
+                "workflow-port",
+                "workflow-spi",
                 "workflow-admin",
                 "workflow-storage",
                 "workflow-db-migrator",
@@ -42,6 +43,7 @@ class ModulePackageLayoutTest {
         }
 
         for (String retired : List.of(
+                "workflow-contracts",
                 "workflow-common",
                 "workflow-system",
                 "workflow-action",
@@ -58,9 +60,8 @@ class ModulePackageLayoutTest {
     void productionSourcesStayInsideModuleOwnedPackages() throws Exception {
         for (ModuleLayout layout : List.of(
                 new ModuleLayout("workflow-core", "com.workflow.core"),
-                new ModuleLayout(
-                        "workflow-contracts",
-                        "com.workflow.contracts"),
+                new ModuleLayout("workflow-port", "com.workflow.contracts"),
+                new ModuleLayout("workflow-spi", "com.workflow.contracts"),
                 new ModuleLayout("workflow-admin", "com.workflow.admin"),
                 new ModuleLayout("workflow-storage", "com.workflow.storage"),
                 new ModuleLayout("workflow-db-migrator", "com.workflow.dbmigrator"),

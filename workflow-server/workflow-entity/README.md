@@ -15,7 +15,7 @@
 
 各能力按需使用 `api`、`application`、`domain`、`infrastructure`。HTTP 请求和响应放入 `api.request/response`；内部计算结果放入 `application.model`；执行上下文放入 `application.context`；应用定义的外部能力接口放入 `application.port`。数据权限计算结果包含 SQL 条件，属于内部应用模型。
 校验器归入已有的 `application.validation`。仅供单个服务使用的包内辅助类保留同包，不为分目录扩大其可见性。
-实体变更调用版本捕获能力，版本能力仍负责快照和版本规则。跨模块访问使用 `workflow-contracts` 中的端口。
+实体变更调用版本捕获能力，版本能力仍负责快照和版本规则。跨模块访问使用 `workflow-port` 中的端口。
 
 ## 跨模块端口
 
@@ -23,3 +23,6 @@
 - 流程模块通过 `EntityRecordPort` 更新实体流程字段和活动记录。
 - 流程表单解析通过 `EntityFormRuntimePort` 读取实体表单上下文。
 - 发布资产通过 `MigrationAssetPort` 登记到迁移模块。
+- 业务动作通过 `EntityRecordQueryPort` 获取 `EntityRecordData`；该投影不包含 HTTP 表单令牌和按钮能力，写入继续使用 `EntityMutationPort`。
+- 按钮条件、权限过滤和用户范围扩展使用 `contracts.entity.permission.spi`，规则配置位于对应 `model` 包。宿主在调用 SPI 前转换身份和实体数据，插件不再接收 `SysUser` 或 `EntityDataDTO`。
+- `process_form_config` 与 `process_form_field_config` 是流程节点配置，相关 DTO、Mapper 和记录类型由 process 模块拥有；通用实体表单仍由本模块管理。

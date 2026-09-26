@@ -9,13 +9,13 @@ import com.workflow.process.assignment.application.LegacyMultiInstanceAssignment
 import com.workflow.process.configuration.infrastructure.persistence.record.AssigneeConfig;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping;
-import com.workflow.entity.form.infrastructure.persistence.record.FormConfig;
+import com.workflow.process.form.infrastructure.persistence.record.FormConfig;
 import com.workflow.process.configuration.infrastructure.persistence.record.NodeConfig;
 import com.workflow.process.configuration.infrastructure.persistence.record.ProcessNodeApproval;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
-import com.workflow.entity.form.infrastructure.persistence.mapper.FormConfigMapper;
+import com.workflow.process.form.infrastructure.persistence.mapper.FormConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.process.configuration.application.ProcessNodeApprovalOptionService;

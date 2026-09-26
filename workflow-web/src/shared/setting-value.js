@@ -11,7 +11,7 @@ export function settingInputText(setting) {
  * 按设置类型校验用户输入并返回持久化文本。字符串自动编码，用户无需输入引号；
  * JSON 只允许对象/数组，避免与布尔、数字、字符串的专用输入语义混淆。
  */
-export function serializeSettingInput(type, input) {
+export function serializeSettingInput(type, input, maxBytes = 16 * 1024) {
   let value
   if (type === 'BOOLEAN') {
     if (typeof input !== 'boolean') throw new Error('请输入布尔值')
@@ -33,6 +33,6 @@ export function serializeSettingInput(type, input) {
     throw new Error('不支持的设置值类型')
   }
   const text = JSON.stringify(value)
-  if (new TextEncoder().encode(text).length > 16 * 1024) throw new Error('设置值不能超过 16 KiB')
+  if (new TextEncoder().encode(text).length > maxBytes) throw new Error(`设置值不能超过 ${maxBytes / 1024} KiB`)
   return text
 }

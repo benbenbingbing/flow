@@ -1,30 +1,18 @@
 package com.workflow.process.assignment.application;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.workflow.contracts.process.assignment.model.PersonPrincipal;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
-import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
-import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
-import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
-import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
-import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
-import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
-import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
-import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
-import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
-import com.workflow.admin.extension.person.infrastructure.persistence.mapper.PersonResolverDefinitionMapper;
-import com.workflow.admin.extension.person.infrastructure.persistence.record.PersonResolverDefinition;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
+import com.workflow.contracts.identity.port.IdentityMembershipPort;
+import com.workflow.contracts.process.assignment.port.PersonResolverRegistrationPort;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
@@ -34,16 +22,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class PersonResolverRuntimeService {
 
-    private final List<PersonResolver> resolvers;
-    private final SysUserMapper userMapper;
-    private final SysRoleMapper roleMapper;
-    private final SysUserRoleMapper userRoleMapper;
-    private final SysGroupMapper groupMapper;
-    private final SysUserGroupMapper userGroupMapper;
-    private final SysOrganizationMapper organizationMapper;
-
-    @Autowired(required = false)
-    private PersonResolverDefinitionMapper resolverDefinitionMapper;
+    private final List<PersonResolverProvider> resolvers;
+    private final IdentityMembershipPort memberships;
+    private final PersonResolverRegistrationPort registrations;
 
     /**
      * 判断是否支持人员解析器运行时；判断结果决定调用方的后续分支。
@@ -53,7 +34,7 @@ public class PersonResolverRuntimeService {
      * @return 人员解析器运行时条件成立时为 true，否则为 false
      */
     public boolean supports(String resolverCode, PersonResolveUsage usage) {
-        PersonResolver resolver = find(resolverCode);
+        PersonResolverProvider resolver = find(resolverCode);
         return resolver != null
                 && (resolver.descriptor().supportedUsages().isEmpty()
                 || resolver.descriptor().supportedUsages().contains(usage));
@@ -72,17 +53,7 @@ public class PersonResolverRuntimeService {
         if (!supports(resolverCode, usage)) {
             return false;
         }
-        if (resolverDefinitionMapper == null) {
-            // 兼容不启动 Spring 的轻量单测；应用上下文中该 Mapper 必然注入。
-            return true;
-        }
-        // resolver_code/deleted 唯一约束已保证至多一条有效目录。
-        PersonResolverDefinition definition = resolverDefinitionMapper.selectOne(
-                new LambdaQueryWrapper<PersonResolverDefinition>()
-                        .eq(PersonResolverDefinition::getResolverCode, resolverCode)
-                        .eq(PersonResolverDefinition::getDeleted, 0));
-        return definition != null
-                && Boolean.TRUE.equals(definition.getEnabled());
+        return registrations.isEnabled(resolverCode);
     }
 
     /**
@@ -115,7 +86,7 @@ public class PersonResolverRuntimeService {
     public List<String> resolveUsernames(
             String resolverCode,
             PersonResolveRequest request) {
-        PersonResolver resolver = find(resolverCode);
+        PersonResolverProvider resolver = find(resolverCode);
         if (resolver == null) {
             throw new IllegalArgumentException(
                     "未注册人员解析器: " + resolverCode);
@@ -144,7 +115,7 @@ public class PersonResolverRuntimeService {
      */
     public List<String> resolvePrincipalUsernames(
             Collection<PersonPrincipal> principals) {
-        LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
+        LinkedHashSet<String> users = new LinkedHashSet<>();
         if (principals == null) {
             return List.of();
         }
@@ -152,17 +123,16 @@ public class PersonResolverRuntimeService {
             if (principal == null) {
                 continue;
             }
-            List<SysUser> resolved = switch (principal.type()) {
-                case USER -> resolveDirectUsers(List.of(principal.key()));
-                case ROLE -> resolveRoles(List.of(principal.key()));
-                case GROUP -> resolveGroups(List.of(principal.key()));
+            List<String> resolved = switch (principal.type()) {
+                case USER -> memberships.users(List.of(principal.key()));
+                case ROLE -> memberships.roles(List.of(principal.key()));
+                case GROUP -> memberships.groups(List.of(principal.key()));
                 case ORGANIZATION ->
-                        resolveOrganizations(List.of(principal.key()));
+                        memberships.organizations(List.of(principal.key()));
             };
-            resolved.forEach(user ->
-                    users.putIfAbsent(user.getUsername(), user));
+            users.addAll(resolved);
         }
-        return new ArrayList<>(users.keySet());
+        return new ArrayList<>(users);
     }
 
     /**
@@ -171,7 +141,7 @@ public class PersonResolverRuntimeService {
      * @param resolverCode 解析器编码，后续用于查询人员解析器运行时时定位或关联目标
      * @return 符合条件的人员解析器结果，供调用方继续处理
      */
-    private PersonResolver find(String resolverCode) {
+    private PersonResolverProvider find(String resolverCode) {
         if (!StringUtils.hasText(resolverCode)) {
             return null;
         }
@@ -182,128 +152,4 @@ public class PersonResolverRuntimeService {
                 .orElse(null);
     }
 
-    /**
-     * 解析{@code direct}用户集合；输出作为后续校验或处理的输入。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 系统用户集合，供调用方遍历或展示
-     */
-    private List<SysUser> resolveDirectUsers(List<String> values) {
-        LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
-        for (String value : values) {
-            SysUser user = userMapper.selectByUsername(value);
-            if (user == null) {
-                user = userMapper.selectById(value);
-            }
-            if (user != null
-                    && SysUser.Status.ENABLED.getValue()
-                    .equals(user.getStatus())
-                    && !Integer.valueOf(1).equals(user.getDeleted())) {
-                users.putIfAbsent(user.getUsername(), user);
-            }
-        }
-        return new ArrayList<>(users.values());
-    }
-
-    /**
-     * 解析角色集合；输出作为后续校验或处理的输入。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 系统用户集合，供调用方遍历或展示
-     */
-    private List<SysUser> resolveRoles(List<String> values) {
-        LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
-        for (String value : values) {
-            List<SysRole> roles = roleMapper.selectList(
-                    new LambdaQueryWrapper<SysRole>()
-                            .and(wrapper -> wrapper
-                                    .eq(SysRole::getId, value)
-                                    .or()
-                                    .eq(SysRole::getRoleCode, value))
-                            .eq(SysRole::getStatus,
-                                    SysRole.Status.ENABLED.getValue())
-                            .eq(SysRole::getDeleted, 0));
-            for (SysRole role : roles) {
-                if (role == null
-                        || !SysRole.Status.ENABLED.getValue()
-                        .equals(role.getStatus())
-                        || Integer.valueOf(1).equals(role.getDeleted())) {
-                    continue;
-                }
-                resolveDirectUsers(
-                        userRoleMapper.selectUserIdsByRoleId(role.getId()))
-                        .forEach(user ->
-                                users.putIfAbsent(
-                                        user.getUsername(), user));
-            }
-        }
-        return new ArrayList<>(users.values());
-    }
-
-    /**
-     * 解析分组集合；输出作为后续校验或处理的输入。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 系统用户集合，供调用方遍历或展示
-     */
-    private List<SysUser> resolveGroups(List<String> values) {
-        LinkedHashMap<String, SysUser> users = new LinkedHashMap<>();
-        for (String value : values) {
-            List<SysGroup> groups = groupMapper.selectList(
-                    new LambdaQueryWrapper<SysGroup>()
-                            .and(wrapper -> wrapper
-                                    .eq(SysGroup::getId, value)
-                                    .or()
-                                    .eq(SysGroup::getGroupCode, value))
-                            .eq(SysGroup::getStatus,
-                                    SysGroup.Status.ENABLED.getValue())
-                            .eq(SysGroup::getDeleted, 0));
-            for (SysGroup group : groups) {
-                if (group == null
-                        || !SysGroup.Status.ENABLED.getValue()
-                        .equals(group.getStatus())
-                        || Integer.valueOf(1).equals(group.getDeleted())) {
-                    continue;
-                }
-                resolveDirectUsers(
-                        userGroupMapper.selectUserIdsByGroupId(group.getId()))
-                        .forEach(user ->
-                                users.putIfAbsent(
-                                        user.getUsername(), user));
-            }
-        }
-        return new ArrayList<>(users.values());
-    }
-
-    /**
-     * 解析{@code organizations}；输出作为后续校验或处理的输入。
-     *
-     * @param values 待写入的列值映射，后续作为绑定参数生成插入语句
-     * @return 系统用户集合，供调用方遍历或展示
-     */
-    private List<SysUser> resolveOrganizations(List<String> values) {
-        List<String> ids = new ArrayList<>();
-        for (String value : values) {
-            SysOrganization organization =
-                    organizationMapper.selectById(value);
-            if (organization == null) {
-                organization = organizationMapper.selectByCode(value);
-            }
-            if (organization != null
-                    && "0".equals(organization.getStatus())) {
-                ids.add(organization.getId());
-            }
-        }
-        if (ids.isEmpty()) {
-            return List.of();
-        }
-        return userMapper.selectList(new LambdaQueryWrapper<SysUser>()
-                .eq(SysUser::getStatus,
-                        SysUser.Status.ENABLED.getValue())
-                .eq(SysUser::getDeleted, 0)
-                .and(wrapper -> wrapper
-                        .in(SysUser::getDeptId, ids)
-                        .or()
-                        .in(SysUser::getOrgId, ids)));
-    }
 }

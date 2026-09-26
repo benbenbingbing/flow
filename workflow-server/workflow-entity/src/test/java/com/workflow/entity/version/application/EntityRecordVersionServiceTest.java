@@ -24,7 +24,7 @@ import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityRecordVersion;
-import com.workflow.outbox.api.OutboxPublisher;
+import com.workflow.contracts.outbox.port.OutboxPublishPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,7 +62,7 @@ class EntityRecordVersionServiceTest {
     @Mock
     private EntityRecordSnapshotService snapshotService;
     @Mock
-    private OutboxPublisher outboxPublisher;
+    private OutboxPublishPort outboxPublisher;
     @Mock
     private EntityVersionConfigurationService configurationService;
     @Mock

@@ -6,7 +6,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
@@ -93,7 +93,7 @@ class MySqlTypedEmptyPermissionDatabaseTest {
                     assertEquals(expected.size(), mapper.countWithPermission("biz_permission", predicate, Map.of()), field);
                 }
             }
-            var root = new EntityActionRuleDTO.RuleNode(); root.setType("GROUP"); root.setLogic("AND");
+            var root = new EntityActionRule.RuleNode(); root.setType("GROUP"); root.setLogic("AND");
             root.setChildren(List.of(rule("description", "EMPTY"), rule("amount", "NOT_EMPTY")));
             String predicate = builder.buildFilterSql("expense", filter(root), user);
             assertEquals(List.of("zero"), mapper.selectPageWithPermission("biz_permission", predicate, Map.of(), 0, 100)
@@ -124,11 +124,11 @@ class MySqlTypedEmptyPermissionDatabaseTest {
         }
     }
 
-    private static EntityActionRuleDTO.RuleNode rule(String field, String operator) {
-        var node = new EntityActionRuleDTO.RuleNode(); node.setType("FIELD"); node.setField(field); node.setOperator(operator); return node;
+    private static EntityActionRule.RuleNode rule(String field, String operator) {
+        var node = new EntityActionRule.RuleNode(); node.setType("FIELD"); node.setField(field); node.setOperator(operator); return node;
     }
 
-    private static FilterConfigDTO filter(EntityActionRuleDTO.RuleNode node) {
+    private static FilterConfigDTO filter(EntityActionRule.RuleNode node) {
         var filter = new FilterConfigDTO(); filter.setType("RULE"); filter.setRoot(node); return filter;
     }
 

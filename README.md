@@ -72,7 +72,8 @@ docs/                  领域设计、数据库、测试和历史资料
 | 模块 | 职责 |
 | --- | --- |
 | `workflow-core` | 统一结果、异常、安全注解和无业务语义的基础能力 |
-| `workflow-contracts` | 跨模块端口、事件和稳定契约 |
+| `workflow-port` | 平台能力端口及共享边界模型 |
+| `workflow-spi` | 自定义扩展 Provider 及扩展专用模型，单向依赖 workflow-port |
 | `workflow-admin` | 认证、用户、角色、组织、菜单、权限和系统审计 |
 | `workflow-storage` | 文件元数据、访问控制和存储策略 |
 | `workflow-db-migrator` | Flyway、Flowable 建表迁移和 DDL 队列 Worker |
@@ -84,7 +85,7 @@ docs/                  领域设计、数据库、测试和历史资料
 | `workflow-devtools` | 仅用于测试和开发的辅助实现 |
 | `workflow-app` | Spring Boot 入口和最终运行制品 |
 
-模块间共享能力应通过 `workflow-contracts` 暴露，不能直接访问其他模块的内部 Mapper。
+模块间共享能力应通过 `workflow-port` 暴露，自定义扩展实现 `workflow-spi` 中的 Provider，不能直接访问其他模块的内部 Mapper。
 新数据库变更统一放在
 `workflow-server/workflow-db-migrator/src/main/resources/db/migration/`。已经发布的迁移
 文件不得修改或重排版本。

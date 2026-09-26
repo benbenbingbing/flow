@@ -1,21 +1,21 @@
 package com.workflow.biz.project.custom;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.outbox.api.OutboxEvent;
-import com.workflow.outbox.api.OutboxEventHandler;
+import com.workflow.contracts.outbox.model.OutboxEvent;
+import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
  * Outbox 事件处理器示例。
  *
- * <p>主题为 {@value #TOPIC}。业务方可通过平台 {@code OutboxPublisher}
+ * <p>主题为 {@value #TOPIC}。业务方可通过平台 {@code OutboxPublishPort}
  * 发布该主题；处理器只记录稳定元数据，不解析或输出事件正文。</p>
  */
 @Slf4j
 @Component
 public class ProjectCustomOutboxEventHandler
-        implements OutboxEventHandler {
+        implements OutboxEventHandlerProvider {
 
     public static final String TOPIC =
             "PROJECT_CUSTOM_OUTBOX";

@@ -10,7 +10,7 @@ import com.workflow.admin.extension.person.infrastructure.persistence.mapper.Per
 import com.workflow.admin.extension.person.infrastructure.persistence.record.PersonResolverDefinition;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationContext;
@@ -179,7 +179,7 @@ public class PersonResolverCatalogService {
      */
     private Map<String, ResolverBean> resolverBeans() {
         Map<String, ResolverBean> result = new LinkedHashMap<>();
-        applicationContext.getBeansOfType(PersonResolver.class)
+        applicationContext.getBeansOfType(PersonResolverProvider.class)
                 .forEach((beanName, resolver) -> {
                     String code = resolver.descriptor().code();
                     ResolverBean previous = result.putIfAbsent(
@@ -366,6 +366,6 @@ public class PersonResolverCatalogService {
      * @param beanName {@code bean}名称，后续用于处理解析器{@code bean}时匹配或展示
      * @param resolver 解析器，保存在对象中供后续校验、查询或展示
      */
-    private record ResolverBean(String beanName, PersonResolver resolver) {
+    private record ResolverBean(String beanName, PersonResolverProvider resolver) {
     }
 }

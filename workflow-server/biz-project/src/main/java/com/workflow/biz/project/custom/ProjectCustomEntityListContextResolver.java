@@ -1,6 +1,6 @@
 package com.workflow.biz.project.custom;
 
-import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
+import com.workflow.contracts.entity.list.spi.EntityListContextResolverProvider;
 import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
 import com.workflow.core.logging.LogValue;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +17,7 @@ import java.util.Map;
 @Slf4j
 @Component
 public class ProjectCustomEntityListContextResolver
-        implements EntityListContextResolver {
+        implements EntityListContextResolverProvider {
 
     public static final String RELATION_KEY =
             "projectCustomRelation";

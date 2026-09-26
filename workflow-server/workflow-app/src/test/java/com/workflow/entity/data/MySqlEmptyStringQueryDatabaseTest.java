@@ -10,7 +10,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDyna
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityStatusMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityStatus;
-import com.workflow.entity.permission.api.response.EntityActionRuleDTO;
+import com.workflow.contracts.entity.permission.model.EntityActionRule;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;
 import com.workflow.entity.permission.application.PermissionSqlBuilder;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
@@ -77,7 +77,7 @@ class MySqlEmptyStringQueryDatabaseTest {
                     "RUNNING", "(process_instance_id IS NOT NULL AND process_instance_id <> '' AND process_end_time IS NULL)",
                     "COMPLETED", "(process_instance_id IS NOT NULL AND process_instance_id <> '' AND process_end_time IS NOT NULL AND status NOT IN ('BACK','STOP'))");
             for (var entry : legacy.entrySet()) {
-                var rule = new EntityActionRuleDTO.RuleNode(); rule.setType("PROCESS_STATE"); rule.setOperator("EQ"); rule.setValue(entry.getKey());
+                var rule = new EntityActionRule.RuleNode(); rule.setType("PROCESS_STATE"); rule.setOperator("EQ"); rule.setValue(entry.getKey());
                 var filter = new FilterConfigDTO(); filter.setType("RULE"); filter.setRoot(rule);
                 var parameters = new java.util.LinkedHashMap<String, Object>();
                 String actual = builder.buildFilterSql("expense", filter, user, parameters);

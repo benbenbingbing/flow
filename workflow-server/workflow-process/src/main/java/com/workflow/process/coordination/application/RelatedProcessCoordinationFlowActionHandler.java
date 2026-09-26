@@ -4,7 +4,7 @@ import com.workflow.contracts.process.action.context.FlowActionContext;
 import com.workflow.contracts.process.action.model.FlowActionExecutionMode;
 import com.workflow.contracts.process.action.model.FlowActionFailurePolicy;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
-import com.workflow.contracts.process.action.spi.TypedFlowActionHandler;
+import com.workflow.contracts.process.action.spi.TypedFlowActionProvider;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Command;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.Operation;
 import com.workflow.process.coordination.application.RelatedProcessCoordinationPlan.TargetImpact;
@@ -25,7 +25,7 @@ import java.util.Map;
 @Component
 @RequiredArgsConstructor
 public class RelatedProcessCoordinationFlowActionHandler
-        implements TypedFlowActionHandler<Command> {
+        implements TypedFlowActionProvider<Command> {
 
     private final RelatedProcessCoordinationPlanService planService;
     private final RelatedProcessCoordinationPublisher publisher;

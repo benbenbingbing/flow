@@ -4,7 +4,7 @@ import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
@@ -15,7 +15,7 @@ import java.util.Set;
  * 流程中自定义用户信息
  */
 @Component("ZdwCustomPerson")
-public class ZdwCustomPerson implements PersonResolver {
+public class ZdwCustomPerson implements PersonResolverProvider {
 
     /**
      * 处理描述，并将结果传给后续步骤。

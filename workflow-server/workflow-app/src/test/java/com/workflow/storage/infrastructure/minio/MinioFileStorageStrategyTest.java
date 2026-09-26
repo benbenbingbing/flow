@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.sun.net.httpserver.HttpServer;
-import com.workflow.storage.application.model.StoredFile;
+import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;
@@ -63,7 +63,7 @@ class MinioFileStorageStrategyTest {
         when(client.getObject(any(GetObjectRequest.class))).thenReturn(downloadStream);
 
         try (MinioFileStorageStrategy strategy = new MinioFileStorageStrategy(config, client)) {
-            Map<String, String> result = strategy.upload(file);
+            Map<String, String> result = strategy.upload(com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter.from(file));
             String key = result.get("filename");
             assertTrue(key.matches("\\d{4}/\\d{2}/\\d{2}/[a-f0-9-]+\\.png"));
             String prefix = accessUrl.isEmpty() ? "s3://flow-files/" : accessUrl.replaceAll("/+$", "") + "/";

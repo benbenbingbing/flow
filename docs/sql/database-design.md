@@ -2446,7 +2446,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[FormConfigMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/mapper/FormConfigMapper.java)、[FormConfig.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/record/FormConfig.java)、[NodeConfigService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/configuration/application/NodeConfigService.java)。
+实现定位：[FormConfigMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/form/infrastructure/persistence/mapper/FormConfigMapper.java)、[FormConfig.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/form/infrastructure/persistence/record/FormConfig.java)、[NodeConfigService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/configuration/application/NodeConfigService.java)。
 
 ### 5.10 process_form_field_config 流程节点表单字段表
 
@@ -2490,7 +2490,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[FormFieldConfigMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/mapper/FormFieldConfigMapper.java)、[FormFieldConfig.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/infrastructure/persistence/record/FormFieldConfig.java)、[NodeConfigService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/configuration/application/NodeConfigService.java)。
+实现定位：[FormFieldConfigMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/form/infrastructure/persistence/mapper/FormFieldConfigMapper.java)、[FormFieldConfig.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/form/infrastructure/persistence/record/FormFieldConfig.java)、[NodeConfigService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/configuration/application/NodeConfigService.java)。
 
 ### 5.11 process_action 流程动作绑定表
 

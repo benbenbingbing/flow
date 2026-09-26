@@ -8,7 +8,8 @@
     <dependencies>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-database</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-core</artifactId></dependency>
-        <dependency><groupId>com.workflow</groupId><artifactId>workflow-contracts</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-port</artifactId></dependency>
+        <dependency><groupId>com.workflow</groupId><artifactId>workflow-spi</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-admin</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-storage</artifactId></dependency>
         <dependency><groupId>com.workflow</groupId><artifactId>workflow-db-migrator</artifactId></dependency>

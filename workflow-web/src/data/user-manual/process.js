@@ -847,7 +847,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
-                { field: '处理器', meaning: 'Spring 容器中的 FlowActionHandler Bean 名和实现类。', defaultLimit: '只读；Bean 未注册时标记为不可用。', effect: '作为执行器定位实际代码的稳定技术键。', publish: '跨环境必须保持 Bean 名稳定，不能只迁移中文名称。' },
+                { field: '处理器', meaning: 'Spring 容器中的 FlowActionProvider Bean 名和实现类。', defaultLimit: '只读；Bean 未注册时标记为不可用。', effect: '作为执行器定位实际代码的稳定技术键。', publish: '跨环境必须保持 Bean 名稳定，不能只迁移中文名称。' },
                 { field: '中文名称', meaning: '流程设计器下拉框展示的业务名称。', defaultLimit: '必填，例如“发送待办通知”“同步审批结果”。', effect: '避免配置人员直接面对英文 Bean 名。', publish: '名称可调整，不影响已发布动作的 handlerName 快照。' },
                 { field: '用途说明', meaning: '说明动作做什么、适合哪些时机、输入输出和风险。', defaultLimit: '可选但建议填写。', effect: '选择处理器后显示在字段下方，帮助避免误配。', publish: '外部调用应注明幂等、超时和补偿要求。' },
                 { field: '可见范围', meaning: 'GLOBAL 表示所有流程可选；ENTITY 表示仅指定实体绑定的流程可选。', defaultLimit: '未配置处理器默认不可选；ENTITY 必须选择实体。', effect: '从后端过滤处理器目录，前端不能通过伪造 entityCode 绕过。', publish: '流程保存时后端会按 processConfigId 再次校验。' },

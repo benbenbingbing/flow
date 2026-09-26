@@ -8,10 +8,7 @@
         'is-resizing': sidebarResizing
       }"
     >
-      <div class="logo" :title="sidebarCollapsed ? '流程配置系统' : undefined">
-        <el-icon size="24"><Connection /></el-icon>
-        <span v-if="!sidebarCollapsed">流程配置系统</span>
-      </div>
+      <SidebarBrand class="logo" :branding="sidebarBranding.value" :collapsed="sidebarCollapsed" />
       <el-menu
         :default-active="activeMenuPath"
         :collapse="sidebarCollapsed"
@@ -117,10 +114,7 @@
       size="min(82vw, 300px)"
       :with-header="false"
     >
-      <div class="logo mobile-logo">
-        <el-icon size="24"><Connection /></el-icon>
-        <span>流程配置系统</span>
-      </div>
+      <SidebarBrand class="logo mobile-logo" :branding="sidebarBranding.value" />
       <el-menu
         :default-active="activeMenuPath"
         router
@@ -143,12 +137,14 @@
 import { ref, computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Menu, Connection, ArrowDown, Expand, Fold } from '@element-plus/icons-vue'
+import { Menu, ArrowDown, Expand, Fold } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { useSidebarPreferenceStore } from '@/stores/sidebarPreference'
+import { useSidebarBrandingStore } from '@/stores/sidebarBranding'
 import { getPermissions, logout } from '@/api/auth'
 import { getSidebarMenuTree } from '@/api/system/menu'
 import SidebarMenuItem from '@/components/SidebarMenuItem.vue'
+import SidebarBrand from '@/components/SidebarBrand.vue'
 import MenuSearch from '@/components/MenuSearch.vue'
 import WorkspaceTabs from '@/components/workspace/WorkspaceTabs.vue'
 import WorkspacePages from '@/components/workspace/WorkspacePages.vue'
@@ -179,6 +175,7 @@ const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
 const sidebarPreference = useSidebarPreferenceStore()
+const sidebarBranding = useSidebarBrandingStore()
 const mobileMenuVisible = ref(false)
 const initialSidebarLayout = readSidebarLayout()
 const sidebarWidth = ref(initialSidebarLayout.width)
@@ -355,6 +352,7 @@ onMounted(() => {
   window.addEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.addEventListener('storage', handleStorageChange)
   window.addEventListener('focus', sidebarPreference.refresh)
+  window.addEventListener('focus', sidebarBranding.refresh)
 })
 
 onBeforeUnmount(() => {
@@ -362,6 +360,7 @@ onBeforeUnmount(() => {
   window.removeEventListener(SIDEBAR_MENU_REFRESH_EVENT, loadMenus)
   window.removeEventListener('storage', handleStorageChange)
   window.removeEventListener('focus', sidebarPreference.refresh)
+  window.removeEventListener('focus', sidebarBranding.refresh)
 })
 
 // 系统默认值刷新也可能收起菜单，此时必须结束尚未完成的宽度拖拽。
@@ -429,25 +428,6 @@ async function handleCommand(command) {
 
 .sidebar.is-resizing {
   transition: none;
-}
-
-.logo {
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  font-size: 16px;
-  font-weight: bold;
-  border-bottom: 1px solid #1f2d3d;
-}
-
-.logo .el-icon {
-  margin-right: 10px;
-}
-
-.sidebar.is-collapsed .logo .el-icon {
-  margin-right: 0;
 }
 
 .menu {
@@ -563,11 +543,6 @@ async function handleCommand(command) {
 :deep(.mobile-nav-drawer .el-drawer__body) {
   padding: 0;
   background: #304156;
-}
-
-.mobile-logo {
-  justify-content: flex-start;
-  padding: 0 20px;
 }
 
 .mobile-menu {

@@ -32,7 +32,7 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.list.model.EntityListQueryFields;
 import com.workflow.contracts.entity.list.model.EntityListRuntimeContext;
-import com.workflow.contracts.entity.list.spi.EntityListContextResolver;
+import com.workflow.contracts.entity.list.spi.EntityListContextResolverProvider;
 import com.workflow.contracts.entity.list.spi.EntityListDataProvider;
 import com.workflow.contracts.entity.list.spi.EntityListSchemaProvider;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
@@ -78,7 +78,7 @@ public class EntityListRuntimeService {
     private final UiEventRuntimeService uiEventRuntimeService;
     private final CurrentUserRoleService currentUserRoleService;
     private final UiViewCompositionTokenService viewCompositionTokenService;
-    private final List<EntityListContextResolver> contextResolvers;
+    private final List<EntityListContextResolverProvider> contextResolvers;
     private final List<EntityListDataProvider> dataProviders;
     private final List<EntityListSchemaProvider> schemaProviders;
 
@@ -1540,7 +1540,7 @@ public class EntityListRuntimeService {
         if (context == null || !StringUtils.hasText(context.getRelationKey())) {
             return Map.of();
         }
-        EntityListContextResolver resolver = contextResolvers.stream()
+        EntityListContextResolverProvider resolver = contextResolvers.stream()
                 .filter(item -> item.getRelationKey().equalsIgnoreCase(context.getRelationKey()))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(

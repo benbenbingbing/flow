@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.workflow.admin.setting.api.error.GlobalSettingException;
 import org.springframework.stereotype.Component;
@@ -21,23 +20,19 @@ import java.util.Set;
 public class GlobalSettingRegistry {
     public static final String SYSTEM = "SYSTEM";
     public static final String USER = "USER";
-    public static final String FIELD_TYPES_COLLAPSED = "ui.entity_design.field_types_collapsed";
-    public static final String SIDEBAR_COLLAPSED = "ui.layout.sidebar_collapsed";
-    public static final String TABS_ENABLED = "ui.layout.tabs_enabled";
+    public static final String USER_INTERFACE_PREFERENCES = "ui.user_preferences";
+    public static final String SIDEBAR_BRANDING = "ui.layout.sidebar_branding";
     public static final String MOBILE_THEME = "ui.mobile.theme";
     public static final String MIGRATION_SIGNING_KEY = "config.migration.signing_key";
     private static final int MAX_VALUE_BYTES = 16 * 1024;
     private final ObjectMapper json = new ObjectMapper();
     private final List<Definition> definitions = List.of(new Definition(
-            FIELD_TYPES_COLLAPSED, "实体设计字段类型面板收起状态",
-            "true 表示收起，false 表示展开，默认展开。同一账号在所有实体设计页共用；用户设置优先于系统设置，删除个人记录后恢复继承。切换状态自动保存，不影响实体未保存状态和发布。",
-            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
-            SIDEBAR_COLLAPSED, "左侧主菜单收起状态",
-            "true 表示收起，false 表示展开，默认展开。未保存个人偏好时使用系统设置；用户手动切换后自动保存个人偏好，同一账号跨页面和浏览器共用，用户配置优先于系统配置。仅控制桌面主菜单，移动端导航抽屉不受影响。",
-            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
-            TABS_ENABLED, "启用顶部多标签页",
-            "true 表示在顶部面包屑位置显示页面选项卡，false 表示单页模式并显示面包屑，默认关闭。用户可在右上角用户菜单切换，个人配置优先于系统配置。切换标签保留页面状态，关闭未保存页面时确认；已打开标签和业务输入仅保留在当前会话内，刷新页面后不恢复。偏好保存失败不影响本次模式切换。",
-            ValueType.BOOLEAN, BooleanNode.FALSE, Set.of(SYSTEM, USER), true, false), new Definition(
+            USER_INTERFACE_PREFERENCES, "用户界面偏好",
+            "统一维护字段类型面板收起、左侧主菜单收起和顶部多标签页三个选项，默认均关闭。用户主动切换后保存个人选择；按字段优先使用个人配置，未设置的字段继承系统默认值。同一账号跨页面和浏览器共用，恢复某个选项不会清除其他个人选择。",
+            ValueType.JSON, UserInterfacePreferences.defaultValue(), Set.of(SYSTEM, USER), true, false), new Definition(
+            SIDEBAR_BRANDING, "侧边栏标识",
+            "配置左侧菜单顶部的名称、图标和自定义图片，桌面侧栏与窄屏导航共用。图片以 imageBase64 存入 JSON，支持不超过 32 KiB 的 PNG、JPG、GIF、WebP，优先于图标显示；未配置时默认使用 Connection 图标和“流程配置系统”。仅支持系统配置，保存后当前页面立即更新，其他页面刷新后生效。",
+            ValueType.JSON, SidebarBrandingConfiguration.defaultValue(), Set.of(SYSTEM), true, false), new Definition(
             MOBILE_THEME, "移动端主题",
             "系统统一的移动端配色。支持预设与自定义浅色主题，保存后刷新移动端页面即可生效；不支持个人覆盖，不影响电脑端配色。",
             ValueType.JSON, MobileThemeConfiguration.defaultValue(), Set.of(SYSTEM), true, false), new Definition(
@@ -90,8 +85,11 @@ public class GlobalSettingRegistry {
      * @return 解析后的全局设置{@code registry}结果，供调用方继续处理
      */
     public JsonNode parse(Definition definition, String text) {
-        JsonNode value = parse(definition.valueType(), text);
+        int maxBytes = SIDEBAR_BRANDING.equals(definition.key()) ? SidebarBrandingConfiguration.MAX_VALUE_BYTES : MAX_VALUE_BYTES;
+        JsonNode value = parse(definition.valueType(), text, maxBytes);
+        if (USER_INTERFACE_PREFERENCES.equals(definition.key())) return UserInterfacePreferences.normalize(value);
         if (MOBILE_THEME.equals(definition.key())) return MobileThemeConfiguration.normalize(value);
+        if (SIDEBAR_BRANDING.equals(definition.key())) return SidebarBrandingConfiguration.normalize(value);
         if (MIGRATION_SIGNING_KEY.equals(definition.key())) {
             String key = value.textValue();
             int bytes = key.getBytes(StandardCharsets.UTF_8).length;
@@ -113,8 +111,13 @@ public class GlobalSettingRegistry {
      * @return 解析后的全局设置{@code registry}结果，供调用方继续处理
      */
     public JsonNode parse(ValueType type, String text) {
-        if (text == null || text.isBlank() || text.getBytes(StandardCharsets.UTF_8).length > MAX_VALUE_BYTES) {
-            throw GlobalSettingException.invalid("设置值不能为空且不能超过 16 KiB");
+        return parse(type, text, MAX_VALUE_BYTES);
+    }
+
+    /** 标识单独放宽以容纳小图片，其他设置继续使用通用上限；大小校验先于 JSON 解析。 */
+    private JsonNode parse(ValueType type, String text, int maxBytes) {
+        if (text == null || text.isBlank() || text.getBytes(StandardCharsets.UTF_8).length > maxBytes) {
+            throw GlobalSettingException.invalid("设置值不能为空且不能超过 " + maxBytes / 1024 + " KiB");
         }
         try {
             JsonNode value = json.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(text);

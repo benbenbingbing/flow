@@ -1,6 +1,6 @@
 package com.workflow.process.instance.api.response;
 
-import com.workflow.entity.form.api.response.FormConfigDTO;
+import com.workflow.process.form.api.response.FormConfigDTO;
 
 import lombok.Data;
 import java.util.List;

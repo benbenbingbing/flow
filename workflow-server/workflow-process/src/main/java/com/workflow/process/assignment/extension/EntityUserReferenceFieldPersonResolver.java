@@ -11,9 +11,9 @@ import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.error.PersonResolutionException;
-import com.workflow.contracts.process.assignment.spi.PersonResolver;
+import com.workflow.contracts.process.assignment.spi.PersonResolverProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
-import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
+import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidationProvider;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -27,7 +27,7 @@ import java.util.Set;
  */
 @Component("entityUserReferenceFieldPersonResolver")
 public class EntityUserReferenceFieldPersonResolver
-        implements PersonResolver, PersonResolverConfigurationValidator {
+        implements PersonResolverProvider, PersonResolverConfigurationValidationProvider {
 
     private static final PersonResolverDescriptor DESCRIPTOR =
             new PersonResolverDescriptor(

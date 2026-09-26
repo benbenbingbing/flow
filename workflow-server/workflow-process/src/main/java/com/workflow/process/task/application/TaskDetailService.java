@@ -1,7 +1,7 @@
 package com.workflow.process.task.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.form.api.response.FormConfigDTO;
+import com.workflow.process.form.api.response.FormConfigDTO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
