@@ -266,9 +266,9 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 - `workflow-web/src/views/entity/EntityDataList.vue`
 - `workflow-web/src/views/entity/components/EntityDataFormDialog.vue`
 - `workflow-server/workflow-app/src/main/java/com/workflow/config/web/WebAccessConfiguration.java`
-- `workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/AuthInterceptor.java`
+- `workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/web/AuthInterceptor.java`
 - `workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/infrastructure/EndpointAuthorizationInterceptor.java`
-- `workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/security/OpenIntegrationSecurityConfiguration.java`
+- `workflow-server/workflow-open-api/src/main/java/com/workflow/openapi/infrastructure/config/OpenIntegrationSecurityConfiguration.java`
 - `workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/api/web/EntityListRuntimeController.java`
 - `workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/api/web/EntityDataController.java`
 - `workflow-server/workflow-process/src/main/java/com/workflow/process/form/api/web/EntityFormResolveController.java`

@@ -1,5 +1,13 @@
 package com.workflow.embed.management.api;
 
+import com.workflow.embed.management.api.request.EmbedManagementRequests;
+import com.workflow.embed.management.api.response.EmbedManagementViews;
+import com.workflow.embed.management.api.web.EmbedGrantManagementController;
+import com.workflow.embed.management.api.web.EmbedIdentityManagementController;
+import com.workflow.embed.management.api.web.EmbedOperationsManagementController;
+import com.workflow.embed.management.api.web.EmbedOptionsManagementController;
+import com.workflow.embed.management.api.web.EmbedViewManagementController;
+
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

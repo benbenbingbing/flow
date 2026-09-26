@@ -2,7 +2,7 @@ package com.workflow.database;
 
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
-import com.workflow.core.database.InitializedDriverDataSource;
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.integration.database.api.DatabaseVendor;

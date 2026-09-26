@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.embed.management.api.EmbedManagementException;
-import com.workflow.embed.management.crypto.EmbedSubjectDigester;
+import com.workflow.embed.management.api.error.EmbedManagementException;
+import com.workflow.embed.management.application.port.EmbedSubjectDigester;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateBindingCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateProviderCommand;

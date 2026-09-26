@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.openapi.security.OpenApplicationActorResolver;
+import com.workflow.openapi.application.security.OpenApplicationActorResolver;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 

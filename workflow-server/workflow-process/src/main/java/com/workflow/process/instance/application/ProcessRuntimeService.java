@@ -1,7 +1,7 @@
 package com.workflow.process.instance.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.database.port.DatabaseClockPort;
 import com.workflow.process.task.application.TaskService;
 
@@ -15,8 +15,8 @@ import com.workflow.contracts.process.model.ProcessStartRequest;
 import com.workflow.contracts.process.model.ProcessStartResult;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig;
 import com.workflow.process.assignment.infrastructure.flowable.MultiInstanceCollectionListener;
-import com.workflow.process.assignment.relative.InitiatorOrganizationSnapshotService;
-import com.workflow.process.assignment.relative.RelativeOrgPositionProcessInspector;
+import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
+import com.workflow.process.assignment.application.RelativeOrgPositionProcessInspector;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper;
 import com.workflow.process.definition.application.DeployedSkipExpressionSafety;
 import com.workflow.process.task.application.ProcessTaskService;

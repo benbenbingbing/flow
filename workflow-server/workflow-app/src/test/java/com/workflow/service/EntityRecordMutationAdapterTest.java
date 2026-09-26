@@ -5,7 +5,7 @@ import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
 import com.workflow.entity.data.infrastructure.adapter.EntityRecordMutationAdapter;
-import com.workflow.entity.version.application.EntityMutationIsolationExecutor;
+import com.workflow.entity.mutation.application.EntityMutationIsolationExecutor;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 

@@ -1,12 +1,12 @@
 package com.workflow.config.database;
 
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcDatabaseClock;
-import com.workflow.core.database.JdbcIdempotentInsert;
-import com.workflow.core.database.JdbcLockedRow;
-import com.workflow.core.database.JdbcWriteAttempt;
-import com.workflow.core.database.DatabaseExceptionClassifier;
-import com.workflow.core.database.DatabaseSQLExceptionTranslator;
+import com.workflow.core.database.jdbc.JdbcDatabaseClock;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
+import com.workflow.core.database.jdbc.DatabaseSQLExceptionTranslator;
 import com.workflow.integration.database.api.error.DatabaseErrorDialect;
 import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 

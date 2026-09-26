@@ -442,7 +442,7 @@ class DataPermissionEngineTest {
     @Test
     void nullBindingCannotBeOverwrittenWhenCombiningPermissionResults() {
         var values = new java.util.LinkedHashMap<String, Object>(); values.put("value", null);
-        var permission = com.workflow.entity.permission.api.response.DataPermissionResult.withCondition("original", values);
+        var permission = com.workflow.entity.permission.application.model.DataPermissionResult.withCondition("original", values);
         assertThrows(IllegalArgumentException.class, () -> permission.intersect("changed", Map.of("value", "replacement")));
         assertEquals("original", permission.getSqlCondition()); assertEquals(values, permission.getSqlParameters());
         permission.intersect("same", values);

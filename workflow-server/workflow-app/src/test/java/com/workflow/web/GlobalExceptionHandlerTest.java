@@ -96,8 +96,8 @@ class GlobalExceptionHandlerTest {
     static class CrossFieldController {
         @GetMapping("/cross-field-test")
         public void fail() {
-            throw new com.workflow.core.error.FormCrossFieldValidationException(java.util.List.of(
-                    new com.workflow.core.error.FormCrossFieldValidationException.FieldError("end", "range", "start", "结束不得早于开始")));
+            throw new com.workflow.entity.form.application.error.FormCrossFieldValidationException(java.util.List.of(
+                    new com.workflow.entity.form.application.error.FormCrossFieldValidationException.FieldError("end", "range", "start", "结束不得早于开始")));
         }
     }
 

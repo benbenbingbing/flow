@@ -1,5 +1,7 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.task.application.model.TaskInboxQuery;
+
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.definition.application.EntityStatusService;
 import com.workflow.process.task.api.response.TaskVO;

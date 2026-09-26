@@ -1,5 +1,7 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.application.model.EntityExportBatch;
+
 import com.workflow.entity.data.api.request.EntityDataExportRequest;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.application.EntityDataListConfigService;

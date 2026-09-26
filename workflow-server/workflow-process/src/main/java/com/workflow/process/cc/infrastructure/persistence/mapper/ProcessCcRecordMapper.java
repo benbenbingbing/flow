@@ -1,7 +1,7 @@
 package com.workflow.process.cc.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;

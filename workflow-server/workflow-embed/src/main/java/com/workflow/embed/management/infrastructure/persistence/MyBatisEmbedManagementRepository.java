@@ -1,6 +1,6 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.form.port.EntityNewDataFormRuntimePort.ResolvedForm;
@@ -31,7 +31,7 @@ import com.workflow.embed.management.infrastructure.persistence.ManagementPersis
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ProviderRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ReleaseRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ViewRow;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;

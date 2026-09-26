@@ -8,7 +8,7 @@ import com.workflow.contracts.embed.runtime.model.EmbedNativeListDependencyClosu
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.application.UiConfigReleaseService;

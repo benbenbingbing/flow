@@ -24,7 +24,7 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;

@@ -21,7 +21,7 @@ import com.workflow.embed.domain.EmbedReleaseSnapshot;
 import com.workflow.embed.management.domain.EmbedManagementModel.ReleaseState;
 import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
 import com.workflow.embed.management.domain.EmbedManagementModel.ValidationResult;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;

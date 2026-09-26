@@ -4,7 +4,7 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ApplicationOpti
 import com.workflow.embed.management.domain.EmbedManagementModel.IdentityProviderOption;
 import com.workflow.embed.management.domain.EmbedManagementModel.OptionsFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.Page;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

@@ -1,6 +1,6 @@
 package com.workflow.entity.version.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,7 +37,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;

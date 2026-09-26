@@ -1,5 +1,7 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+
 import com.workflow.entity.form.application.model.FormUniqueCandidate;
 import com.workflow.entity.form.application.model.FormUniqueCheck;
 import com.workflow.entity.form.application.model.FormUniqueRule;

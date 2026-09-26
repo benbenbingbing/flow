@@ -1,9 +1,9 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.admin.audit.domain.SystemOperationLog;
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
+import com.workflow.admin.audit.infrastructure.persistence.record.SystemOperationLog;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;

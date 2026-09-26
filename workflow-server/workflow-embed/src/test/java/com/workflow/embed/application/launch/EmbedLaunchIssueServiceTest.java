@@ -27,7 +27,7 @@ import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeReques
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.validation.EmbedPublishedContextValidator;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedApplicationSnapshot;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;

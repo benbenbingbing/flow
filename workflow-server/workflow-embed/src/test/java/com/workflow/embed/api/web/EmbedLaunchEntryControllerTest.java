@@ -8,7 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.embed.application.launch.EmbedLaunchEntryService;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Optional;

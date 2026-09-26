@@ -1,5 +1,9 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApprovalResolution;
+import com.workflow.process.task.application.nextapproval.model.NextApprovalTarget;
+import com.workflow.process.task.application.nextapproval.model.NextApproverSelectionPolicy;
+
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;

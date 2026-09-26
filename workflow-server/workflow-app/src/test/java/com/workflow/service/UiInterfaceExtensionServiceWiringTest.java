@@ -3,7 +3,7 @@ package com.workflow.service;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiInvocationContextFactory;
@@ -59,7 +59,7 @@ class UiInterfaceExtensionServiceWiringTest {
             context.registerBean(JsonDocumentCodec.class,
                     () -> new JsonDocumentCodec(new ObjectMapper()));
             context.registerBean(UiExtensionDefinitionValidator.class);
-            context.register(com.workflow.entity.ui.application.UiExtensionExecutionConfiguration.class);
+            context.register(com.workflow.entity.ui.infrastructure.config.UiExtensionExecutionConfiguration.class);
             context.registerBean(
                     "applicationTaskExecutor",
                     TaskExecutor.class,

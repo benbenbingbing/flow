@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.model.UiDataSourceExecutionAuthorization;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -9,7 +11,7 @@ import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;

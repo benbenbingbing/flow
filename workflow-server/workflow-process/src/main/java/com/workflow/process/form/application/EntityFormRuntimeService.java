@@ -9,7 +9,7 @@ import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeFo
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

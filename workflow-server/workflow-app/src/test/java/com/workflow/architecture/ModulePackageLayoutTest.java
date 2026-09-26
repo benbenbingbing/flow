@@ -28,9 +28,11 @@ class ModulePackageLayoutTest {
                 "workflow-contracts",
                 "workflow-admin",
                 "workflow-storage",
+                "workflow-db-migrator",
                 "workflow-entity",
                 "workflow-process",
                 "workflow-open-api",
+                "workflow-embed",
                 "workflow-integration",
                 "workflow-migration",
                 "workflow-devtools",
@@ -61,8 +63,10 @@ class ModulePackageLayoutTest {
                         "com.workflow.contracts"),
                 new ModuleLayout("workflow-admin", "com.workflow.admin"),
                 new ModuleLayout("workflow-storage", "com.workflow.storage"),
+                new ModuleLayout("workflow-db-migrator", "com.workflow.dbmigrator"),
                 new ModuleLayout("workflow-entity", "com.workflow.entity"),
                 new ModuleLayout("workflow-process", "com.workflow.process"),
+                new ModuleLayout("workflow-embed", "com.workflow.embed"),
                 new ModuleLayout(
                         "workflow-open-api",
                         "com.workflow.openapi"),
@@ -103,8 +107,12 @@ class ModulePackageLayoutTest {
                 assertTrue(matcher.find(), "missing package: " + file);
 
                 String packageName = matcher.group(1);
+                // Flyway 按固定目录发现历史 Java 迁移，它们不属于工具启动器的包命名空间。
+                boolean flywayMigration = layout.module().equals("workflow-db-migrator")
+                        && packageName.equals("db.migration")
+                        && file.getFileName().toString().matches("V[0-9]+__.+\\.java");
                 assertTrue(
-                        packageName.equals(layout.packageRoot())
+                        flywayMigration || packageName.equals(layout.packageRoot())
                                 || packageName.startsWith(
                                 layout.packageRoot() + "."),
                         () -> file + " belongs to " + packageName

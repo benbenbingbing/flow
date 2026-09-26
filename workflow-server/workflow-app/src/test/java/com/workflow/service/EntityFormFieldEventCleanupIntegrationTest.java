@@ -2,7 +2,7 @@ package com.workflow.service;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.fasterxml.jackson.databind.ObjectMapper;

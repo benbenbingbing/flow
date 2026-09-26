@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.auth.application.AuthSessionService;
-import com.workflow.admin.auth.infrastructure.AuthInterceptor;
+import com.workflow.admin.auth.infrastructure.web.AuthInterceptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
@@ -29,13 +29,13 @@ import com.workflow.embed.application.audit.EmbedRuntimeAudit;
 import com.workflow.embed.application.port.EmbedTrafficControlPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
 import com.workflow.embed.application.session.EmbedSessionAuthenticationService;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
-import com.workflow.embed.security.EmbedRuntimeSecurityConfiguration;
+import com.workflow.embed.infrastructure.config.EmbedRuntimeSecurityConfiguration;
 import com.workflow.embed.security.EmbedDelegatedRuntimePolicy;
-import com.workflow.embed.security.EmbedSessionAuthenticationFilter;
+import com.workflow.embed.infrastructure.web.EmbedSessionAuthenticationFilter;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Set;

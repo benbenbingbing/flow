@@ -2,7 +2,7 @@ package com.workflow.process.assignment.application;
 
 import com.workflow.process.status.application.ProcessEndReason;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;

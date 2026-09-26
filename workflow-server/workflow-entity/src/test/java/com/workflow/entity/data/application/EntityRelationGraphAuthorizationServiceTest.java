@@ -10,7 +10,7 @@ import com.workflow.entity.definition.application.model.PublishedRelationPath.Ho
 import com.workflow.entity.definition.application.model.PublishedRelationPath.LinkField;
 import com.workflow.entity.definition.application.model.PublishedRelationPath.LinkValueType;
 import com.workflow.entity.definition.application.model.PublishedRelationPath.StepType;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.permission.application.DataPermissionEngine.ExplicitListPermission;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;

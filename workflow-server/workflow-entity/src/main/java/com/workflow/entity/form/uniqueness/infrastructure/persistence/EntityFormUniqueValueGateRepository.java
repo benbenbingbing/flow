@@ -2,7 +2,7 @@ package com.workflow.entity.form.uniqueness.infrastructure.persistence;
 
 import com.workflow.entity.form.uniqueness.infrastructure.persistence.mapper.EntityFormUniqueValueGateMapper;
 import lombok.RequiredArgsConstructor;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import java.util.Map;
 import org.springframework.stereotype.Repository;
 

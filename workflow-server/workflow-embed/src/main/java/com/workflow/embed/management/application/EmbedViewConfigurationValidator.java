@@ -10,7 +10,7 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ResolvedResourc
 import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
 import com.workflow.embed.management.domain.EmbedManagementModel.ValidationResult;
 import com.workflow.embed.management.domain.EmbedManagementModel.Violation;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

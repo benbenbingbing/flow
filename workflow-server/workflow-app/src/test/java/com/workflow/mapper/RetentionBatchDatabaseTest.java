@@ -5,7 +5,7 @@ import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.baomidou.mybatisplus.annotation.DbType;
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
 import com.workflow.core.database.BoundedRetentionRunner;
 import com.workflow.core.database.port.DatabaseLockPort;

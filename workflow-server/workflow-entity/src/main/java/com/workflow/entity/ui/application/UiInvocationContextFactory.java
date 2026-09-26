@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.model.UiDataSourceExecutionAuthorization;
+
 import com.workflow.contracts.entity.ui.context.CommonInvocationContext;
 import com.workflow.contracts.entity.ui.model.EntityDescriptor;
 import com.workflow.contracts.entity.ui.context.EntityInvocationContext;

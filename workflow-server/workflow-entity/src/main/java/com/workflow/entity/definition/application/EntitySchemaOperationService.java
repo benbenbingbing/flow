@@ -1,7 +1,7 @@
 package com.workflow.entity.definition.application;
 
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;

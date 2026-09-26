@@ -1,6 +1,6 @@
 package com.workflow.embed.infrastructure.persistence.adapter;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.embed.application.port.EmbedAssertionReplayPort;
 import com.workflow.embed.application.port.EmbedExternalIdentityBindingPort;
 import com.workflow.embed.application.port.EmbedFlowUserPort;

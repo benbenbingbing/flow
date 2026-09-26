@@ -1,5 +1,7 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.admin.identity.user.application.SysUserService;
@@ -10,7 +12,7 @@ import com.workflow.entity.form.api.response.FormUniquePrecheckResponse;
 import com.workflow.entity.form.application.model.FormUniqueCheck;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import lombok.RequiredArgsConstructor;

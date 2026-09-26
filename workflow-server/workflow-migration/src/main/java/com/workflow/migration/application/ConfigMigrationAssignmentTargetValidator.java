@@ -5,7 +5,7 @@ import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
-import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
+import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

@@ -1,7 +1,7 @@
 package com.workflow.entity.data;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.core.database.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.EmbedIdempotencyClaim;
 import com.workflow.embed.infrastructure.persistence.adapter.MyBatisEmbedIdempotencyAdapter;
@@ -106,7 +106,7 @@ class MySqlIdempotentInsertDatabaseTest {
                 if (url.matches(".*[?&]useAffectedRows=[^&]*.*")) {
                     url = url.replaceAll("([?&])useAffectedRows=[^&]*", "$1useAffectedRows=" + affected);
                 } else url += (url.contains("?") ? "&" : "?") + "useAffectedRows=" + affected;
-                var source = new com.workflow.core.database.InitializedDriverDataSource(url,
+                var source = new com.workflow.core.database.jdbc.InitializedDriverDataSource(url,
                         System.getenv("FLOW_MYSQL_TEST_USER"), System.getenv("FLOW_MYSQL_TEST_PASSWORD"), null,
                         com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles.connectionInitSql(DatabaseVendor.MYSQL));
                 var insert = new JdbcIdempotentInsert(new JdbcTemplate(source), DatabaseDialects.insert(DatabaseVendor.MYSQL));

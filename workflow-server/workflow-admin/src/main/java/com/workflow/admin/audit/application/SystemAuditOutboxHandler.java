@@ -1,9 +1,9 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.outbox.api.OutboxEventHandler;
 import lombok.RequiredArgsConstructor;

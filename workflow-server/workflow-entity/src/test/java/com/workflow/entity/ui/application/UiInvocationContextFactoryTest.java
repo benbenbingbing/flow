@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.model.UiDataSourceExecutionAuthorization;
+
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.contracts.entity.ui.context.EntityInvocationContext;

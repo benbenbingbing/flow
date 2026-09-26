@@ -4,7 +4,7 @@ import com.workflow.embed.infrastructure.persistence.mapper.EmbedTrafficControlM
 import com.workflow.integration.database.api.sql.DatabaseScalarValues;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApiRequestLeaseMapper;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationApplicationMapper;
-import com.workflow.openapi.security.OpenApiConcurrencyLeaseService;
+import com.workflow.openapi.application.security.OpenApiConcurrencyLeaseService;
 import com.workflow.entity.data.MySqlRuntimePaginationDatabaseTest.Fixture;
 import com.workflow.entity.data.MySqlWriteAttemptDatabaseTest.Harness;
 import java.time.*;

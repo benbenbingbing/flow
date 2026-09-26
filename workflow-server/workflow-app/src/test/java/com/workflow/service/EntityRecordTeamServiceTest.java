@@ -5,7 +5,7 @@ import com.workflow.core.database.port.SchemaMetadataPort;
 
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.EntityRecordTeamService;
-import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
 
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

@@ -16,7 +16,7 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserRoleMapper;
-import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
+import com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper;
 import com.workflow.admin.identity.position.application.PositionAssignmentQueryService;
 import com.workflow.admin.identity.position.application.PositionOrganizationScopeService;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionAssignmentViewRow;

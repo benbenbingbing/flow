@@ -1,7 +1,7 @@
 package com.workflow.process.sla.runtime.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.process.sla.runtime.infrastructure.persistence.record.ProcessTaskSlaEvent;

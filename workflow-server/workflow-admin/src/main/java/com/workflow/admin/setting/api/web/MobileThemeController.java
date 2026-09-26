@@ -1,6 +1,6 @@
 package com.workflow.admin.setting.api.web;
 
-import com.workflow.admin.setting.api.MobileThemeView;
+import com.workflow.admin.setting.api.response.MobileThemeView;
 import com.workflow.admin.setting.application.GlobalSettingService;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.PublicApi;

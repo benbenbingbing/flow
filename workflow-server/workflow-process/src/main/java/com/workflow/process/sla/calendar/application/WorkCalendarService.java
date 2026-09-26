@@ -1,5 +1,8 @@
 package com.workflow.process.sla.calendar.application;
 
+import com.workflow.process.sla.calendar.application.model.WorkCalendarResolutionSnapshot;
+import com.workflow.process.sla.calendar.application.model.WorkCalendarSnapshot;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;

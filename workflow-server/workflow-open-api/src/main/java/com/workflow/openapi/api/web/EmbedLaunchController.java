@@ -2,14 +2,14 @@ package com.workflow.openapi.api.web;
 
 import com.workflow.contracts.embed.launch.model.EmbedApplicationActor;
 import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
-import com.workflow.openapi.api.OpenIntegrationEndpoint;
+import com.workflow.openapi.api.annotation.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.response.OpenApiResponse;
 import com.workflow.openapi.api.response.OpenEmbedLaunchResponse;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.web.CorrelationContext;
-import com.workflow.openapi.security.OpenApplicationActorResolver;
-import com.workflow.openapi.web.OpenRequestTrace;
+import com.workflow.openapi.application.security.OpenApplicationActorResolver;
+import com.workflow.openapi.infrastructure.web.OpenRequestTrace;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;

@@ -9,7 +9,7 @@ import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.embed.application.port.EmbedMaintenancePort;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterCursor;
 import com.workflow.embed.application.port.EmbedMaintenancePort.CounterObservation;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;

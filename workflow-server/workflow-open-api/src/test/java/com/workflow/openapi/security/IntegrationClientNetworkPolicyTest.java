@@ -1,5 +1,8 @@
 package com.workflow.openapi.security;
 
+import com.workflow.openapi.infrastructure.config.OpenIntegrationProperties;
+import com.workflow.openapi.infrastructure.security.OpenIntegrationClientAddressResolver;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;

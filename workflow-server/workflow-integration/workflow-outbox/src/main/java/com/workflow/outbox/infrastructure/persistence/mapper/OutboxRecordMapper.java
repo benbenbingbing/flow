@@ -1,7 +1,7 @@
 package com.workflow.outbox.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.outbox.infrastructure.persistence.record.OutboxRecord;
 import org.apache.ibatis.annotations.Mapper;

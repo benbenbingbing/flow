@@ -1,6 +1,8 @@
 package com.workflow.process.task.infrastructure.persistence.mapper;
 
-import com.workflow.process.task.application.TaskInboxQuery;
+import com.workflow.process.task.infrastructure.persistence.provider.TaskInboxSqlProvider;
+
+import com.workflow.process.task.application.model.TaskInboxQuery;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
 import org.apache.ibatis.annotations.*;
 import java.util.List;

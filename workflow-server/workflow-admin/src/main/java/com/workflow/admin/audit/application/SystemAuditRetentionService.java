@@ -1,6 +1,6 @@
 package com.workflow.admin.audit.application;
 
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import com.workflow.core.database.BoundedRetentionRunner;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

@@ -46,8 +46,7 @@ class ProductionArtifactSecurityTest {
         String observabilityConfig = Files.readString(
                 Path.of("src/main/resources/config/observability.yml"));
         String jwtSource = Files.readString(Path.of(
-                "../workflow-admin/src/main/java/com/workflow/admin/auth/"
-                        + "infrastructure/JwtUtil.java"));
+                "../workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/security/JwtUtil.java"));
 
         assertFalse(databaseConfig.contains("allowMultiQueries=true"));
         assertTrue(databaseConfig.contains("serverTimezone=UTC"));

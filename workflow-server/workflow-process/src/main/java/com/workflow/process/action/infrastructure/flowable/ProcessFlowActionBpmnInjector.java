@@ -1,0 +1,146 @@
+package com.workflow.process.action.infrastructure.flowable;
+
+import com.workflow.core.logging.LogValue;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.XMLConstants;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+import java.io.ByteArrayInputStream;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+
+/**
+ * 流程动作 BPMN 兼容清理器。
+ *
+ * <p>流程动作已改为全局 Flowable 事件分发。发布时移除顺序流上的全部监听器，
+ * 防止历史或用户配置绕过平台动作白名单。</p>
+ */
+@Slf4j
+@Service
+public class ProcessFlowActionBpmnInjector {
+
+    private static final String LISTENER_BEAN_EXPRESSION = "${sequenceFlowExecutionListener}";
+
+    /**
+     * 清理 BPMN XML 中平台历史注入的顺序流监听器。
+     *
+     * @param processConfigId 流程配置 ID
+     * @param bpmnXml         原始 BPMN XML
+     * @return 注入后的 BPMN XML
+     */
+    public String inject(String processConfigId, String bpmnXml) {
+        if (!StringUtils.hasText(bpmnXml)) {
+            return bpmnXml;
+        }
+
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+            factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+            Document doc = factory.newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(bpmnXml.getBytes(StandardCharsets.UTF_8)));
+
+            NodeList sequenceFlows = doc.getElementsByTagNameNS("*", "sequenceFlow");
+            boolean changed = false;
+            for (int i = 0; i < sequenceFlows.getLength(); i++) {
+                Element sequenceFlow = (Element) sequenceFlows.item(i);
+                changed |= removeLegacyListeners(sequenceFlow);
+            }
+
+            if (!changed) {
+                return bpmnXml;
+            }
+
+            return toXmlString(doc);
+        } catch (Exception e) {
+            log.warn("清理历史流程动作监听器失败: processConfigId={}, failureType={}",
+                    LogValue.safe(processConfigId), LogValue.failureType(e));
+            return bpmnXml;
+        }
+    }
+
+    /**
+     * 移除旧版{@code listeners}；后续读取或执行将使用更新后的状态。
+     *
+     * @param sequenceFlow 序列流程，作为 {@code findChildElement} 的输入影响后续处理
+     * @return 旧版{@code listeners}条件成立时为 true，否则为 false
+     */
+    private boolean removeLegacyListeners(Element sequenceFlow) {
+        String nsUri = sequenceFlow.getNamespaceURI();
+        Element extensionElements = findChildElement(sequenceFlow, nsUri, "extensionElements");
+        if (extensionElements == null) {
+            return false;
+        }
+        boolean changed = false;
+        NodeList children = extensionElements.getChildNodes();
+        for (int index = children.getLength() - 1; index >= 0; index--) {
+            Node child = children.item(index);
+            if (child.getNodeType() != Node.ELEMENT_NODE) {
+                continue;
+            }
+            Element element = (Element) child;
+            if ("executionListener".equals(element.getLocalName())
+                    || "taskListener".equals(element.getLocalName())) {
+                extensionElements.removeChild(child);
+                changed = true;
+            }
+        }
+        if (!extensionElements.hasChildNodes()) {
+            sequenceFlow.removeChild(extensionElements);
+        }
+        return changed;
+    }
+
+    /**
+     * 查询子级元素；查询结果供调用方展示或继续处理。
+     *
+     * @param parent 父级，供本方法查询子级元素时使用
+     * @param namespaceUri 命名空间{@code uri}，供本方法查询子级元素时使用
+     * @param localName 本地名称，后续用于查询子级元素时匹配或展示
+     * @return 符合条件的元素结果，供调用方继续处理
+     */
+    private Element findChildElement(Element parent, String namespaceUri, String localName) {
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node child = children.item(i);
+            if (child.getNodeType() == Node.ELEMENT_NODE
+                    && localName.equals(child.getLocalName())
+                    && (namespaceUri == null || namespaceUri.equals(child.getNamespaceURI()))) {
+                return (Element) child;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 转换为XML字符串；输出作为后续校验或处理的输入。
+     *
+     * @param doc {@code doc}，作为 {@code transformer.transform} 的输入影响后续处理
+     * @return 转换为后的XML字符串文本，供调用方比较或展示
+     * @throws Exception 下游操作失败时向调用方传递
+     */
+    private String toXmlString(Document doc) throws Exception {
+        TransformerFactory transformerFactory = TransformerFactory.newInstance();
+        Transformer transformer = transformerFactory.newTransformer();
+        transformer.setOutputProperty(OutputKeys.INDENT, "no");
+        transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+        StringWriter writer = new StringWriter();
+        transformer.transform(new DOMSource(doc), new StreamResult(writer));
+        return writer.toString();
+    }
+}

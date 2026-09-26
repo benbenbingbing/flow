@@ -1,7 +1,7 @@
 package com.workflow.bootstrap;
 
 import com.workflow.contracts.bootstrap.port.BootstrapJobPort;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.database.port.DatabaseClockPort;
 import java.util.List;
 import java.util.Map;

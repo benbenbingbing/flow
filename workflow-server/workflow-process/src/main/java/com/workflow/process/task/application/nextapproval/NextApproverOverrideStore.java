@@ -1,5 +1,7 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApproverOverride;
+
 import lombok.RequiredArgsConstructor;
 import org.flowable.bpmn.model.Activity;
 import org.flowable.bpmn.model.BpmnModel;

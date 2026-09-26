@@ -1,6 +1,6 @@
 package com.workflow.process.assignment.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;

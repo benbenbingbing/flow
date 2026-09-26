@@ -5,7 +5,7 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.entity.form.application.EntityFormService;
-import com.workflow.entity.form.application.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
@@ -426,7 +426,7 @@ class NodeFormSubmissionServiceTest {
         FormSubmissionTraceService traceService =
                 mock(FormSubmissionTraceService.class);
         FormSubmissionExecutionContext executionContext =
-                com.workflow.entity.form.application.FormCrossFieldRuntimeContext.withReadonlyForms(
+                com.workflow.entity.form.application.context.FormCrossFieldRuntimeContext.withReadonlyForms(
                         executionContext(), List.of("form-1"));
         when(traceService.current(
                 eq("PROCESS_APPROVAL_SUBMIT"),

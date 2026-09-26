@@ -2,11 +2,11 @@ package com.workflow.process.definition.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.process.sla.calendar.application.WorkCalendarResolutionSnapshot;
+import com.workflow.process.sla.calendar.application.model.WorkCalendarResolutionSnapshot;
 import com.workflow.process.sla.calendar.application.WorkCalendarService;
-import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
+import com.workflow.process.sla.calendar.application.model.WorkCalendarSnapshot;
 import com.workflow.process.sla.policy.application.TaskSlaPolicyService;
-import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
+import com.workflow.process.sla.policy.application.model.TaskSlaPolicySnapshot;
 import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.contracts.process.assignment.model.PersonResolverConfigurationValidationRequest;
 import com.workflow.contracts.process.assignment.spi.PersonResolverConfigurationValidator;
@@ -351,11 +351,9 @@ public class ProcessBpmnPublishSanitizer {
             boolean multiInstanceSource) {
         String resolverCode = configuredPersonResolverCode(
                 config, multiInstanceSource);
-        return com.workflow.process.assignment.relative
-                .RelativeOrgPositionConfig.RESOLVER_CODE
+        return com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
                 .equals(resolverCode)
-                || com.workflow.process.assignment.entity
-                .EntityUserReferenceFieldConfig.RESOLVER_CODE
+                || com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig.RESOLVER_CODE
                 .equals(resolverCode);
     }
 
@@ -1395,11 +1393,9 @@ public class ProcessBpmnPublishSanitizer {
                         .findFirst()
                         .orElse(null);
         if (validator == null) {
-            if (com.workflow.process.assignment.relative
-                    .RelativeOrgPositionConfig.RESOLVER_CODE
+            if (com.workflow.process.assignment.domain.RelativeOrgPositionConfig.RESOLVER_CODE
                     .equals(resolverCode)
-                    || com.workflow.process.assignment.entity
-                    .EntityUserReferenceFieldConfig.RESOLVER_CODE
+                    || com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig.RESOLVER_CODE
                     .equals(resolverCode)) {
                 throw nextApproverConfigError(
                         nodeId,

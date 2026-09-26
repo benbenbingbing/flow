@@ -3,7 +3,7 @@ package com.workflow.service;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.entity.ui.application.UiComponentTemplateService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

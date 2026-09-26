@@ -11,7 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.embed.application.port.EmbedSessionPersistencePort;
 import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;

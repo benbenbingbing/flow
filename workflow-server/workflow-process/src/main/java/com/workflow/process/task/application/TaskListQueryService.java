@@ -1,5 +1,7 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.task.application.model.TaskInboxQuery;
+
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.PageResult;
 import com.workflow.core.result.PageRequest;

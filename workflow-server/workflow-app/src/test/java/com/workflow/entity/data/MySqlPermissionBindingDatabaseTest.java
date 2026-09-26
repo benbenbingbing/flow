@@ -4,7 +4,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.core.database.port.SchemaMetadataPort;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.data.application.EntityRecordTeamService;
-import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.permission.api.response.FilterConfigDTO;

@@ -546,7 +546,7 @@ data_key 是聚合中的稳定属性；parent_field_id、parent_field_code 为�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V043__decouple_entity_relations.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V043__decouple_entity_relations.sql)。
 
-实现定位：[EntityRelationMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/persistence/mapper/EntityRelationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[ConfigMigrationAssetService.java](../../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
+实现定位：[EntityRelationMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/persistence/mapper/EntityRelationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[ConfigMigrationAssetService.java](../../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
 
 ### 1.8 entity_publish_history 实体发布历史表
 
@@ -1803,7 +1803,7 @@ N 版（V082 expand）的应用查询仍会读取 active release，以兼容混�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)；[V083__remove_entity_mutation_policy.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V083__remove_entity_mutation_policy.sql) 明确保留本表。
 
-实现定位：[EntityMutationReceiptMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityMutationReceiptMapper.java)、[UiViewCompositionActionReceiptService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiViewCompositionActionReceiptService.java)、[EntityMutationReceiptService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityMutationReceiptService.java)。
+实现定位：[EntityMutationReceiptMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutation/infrastructure/persistence/mapper/EntityMutationReceiptMapper.java)、[UiViewCompositionActionReceiptService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiViewCompositionActionReceiptService.java)、[EntityMutationReceiptService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/mutation/application/EntityMutationReceiptService.java)。
 
 ### 4.4 entity_record_version 实体记录版本表
 
@@ -1879,7 +1879,7 @@ V2 通过 dataset 子表保存关系集合。旧契约记录仍使用 snapshot_d
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V045__entity_version_scope_snapshot_v2.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V045__entity_version_scope_snapshot_v2.sql)、[V046__record_version_global_idempotency.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V046__record_version_global_idempotency.sql)、[V082__simplify_entity_version_configuration.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V082__simplify_entity_version_configuration.sql)。
 
-实现定位：[EntityRecordVersionMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[EntityRecordVersionService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
+实现定位：[EntityRecordVersionMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/infrastructure/persistence/mapper/EntityRecordVersionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[EntityRecordVersionService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/version/application/EntityRecordVersionService.java)。
 
 ### 4.5 entity_record_version_dataset 记录版本关系数据集表
 
@@ -2681,7 +2681,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[PersonResolverDefinitionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/extension/person/infrastructure/persistence/mapper/PersonResolverDefinitionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
+实现定位：[PersonResolverDefinitionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/extension/person/infrastructure/persistence/mapper/PersonResolverDefinitionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
 
 ### 5.15 process_ui_release_binding 流程与界面发布绑定表
 
@@ -4428,7 +4428,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
 
-实现定位：[SysOrganizationMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/infrastructure/persistence/mapper/SysOrganizationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[SysOrganizationService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/application/SysOrganizationService.java)。
+实现定位：[SysOrganizationMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/infrastructure/persistence/mapper/SysOrganizationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysOrganizationService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/application/SysOrganizationService.java)。
 
 ### 9.2 sys_position 全局职务定义表
 
@@ -4479,7 +4479,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
 
-实现定位：[SysPositionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
+实现定位：[SysPositionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
 
 ### 9.3 sys_position_assignment 组织职务任职表
 
@@ -4539,7 +4539,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
 
-实现定位：[SysPositionAssignmentMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
+实现定位：[SysPositionAssignmentMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PersonResolverRuntimeService.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/assignment/application/PersonResolverRuntimeService.java)。
 
 ### 9.4 sys_position_assignment_batch 职务批量任命回执表
 
@@ -4577,7 +4577,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 结构依据：[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
 
-实现定位：[SysPositionAssignmentBatchMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentBatchMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[PositionAssignmentService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/application/PositionAssignmentService.java)。
+实现定位：[SysPositionAssignmentBatchMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/infrastructure/persistence/mapper/SysPositionAssignmentBatchMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[PositionAssignmentService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/position/application/PositionAssignmentService.java)。
 
 ### 9.5 sys_user 系统用户表
 
@@ -4869,7 +4869,7 @@ password 保存口令哈希，token_version 用于撤销此前签发的会话。
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[SysMenuMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/menu/infrastructure/persistence/mapper/SysMenuMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[SysMenuService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/menu/application/SysMenuService.java)。
+实现定位：[SysMenuMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/menu/infrastructure/persistence/mapper/SysMenuMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysMenuService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/authorization/menu/application/SysMenuService.java)。
 
 ### 9.11 sys_role_menu 角色菜单权限关联表
 
@@ -4947,7 +4947,7 @@ password 保存口令哈希，token_version 用于撤销此前签发的会话。
 
 结构依据：[V008__distributed_login_throttle.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V008__distributed_login_throttle.sql)。
 
-实现定位：[LoginThrottleMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/LoginThrottleMapper.java)、[LoginThrottleService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/application/LoginThrottleService.java)。
+实现定位：[LoginThrottleMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/persistence/mapper/LoginThrottleMapper.java)、[LoginThrottleService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/application/LoginThrottleService.java)。
 
 ### 9.13 auth_refresh_session 浏览器刷新会话表
 
@@ -4993,7 +4993,7 @@ password 保存口令哈希，token_version 用于撤销此前签发的会话。
 
 结构依据：[V037__refresh_session.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V037__refresh_session.sql)、[V040__align_refresh_session_user_collation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V040__align_refresh_session_user_collation.sql)。
 
-实现定位：[AuthRefreshSessionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/AuthRefreshSessionMapper.java)、[SysUserService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
+实现定位：[AuthRefreshSessionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/persistence/mapper/AuthRefreshSessionMapper.java)、[SysUserService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
 
 ## 10. 集成应用安全底座
 
@@ -5729,7 +5729,7 @@ launch_code_digest 为启动码摘要；ui_form_presentation 在 V077 新增并�
 
 实现定位：[EmbedOperationsMapper.java](../../workflow-server/workflow-embed/src/main/java/com/workflow/embed/management/infrastructure/persistence/EmbedOperationsMapper.java)、[EmbedSessionExchangeMapper.java](../../workflow-server/workflow-embed/src/main/java/com/workflow/embed/infrastructure/persistence/mapper/EmbedSessionExchangeMapper.java)。
 
-用途变更依据：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/DatabaseMigrator.java)。
+用途变更依据：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/DatabaseMigrator.java)。
 
 ### 11.9 embed_session 嵌入运行会话表
 
@@ -5839,7 +5839,7 @@ launch_code_digest 为启动码摘要；ui_form_presentation 在 V077 新增并�
 
 实现定位：[EmbedOperationsMapper.java](../../workflow-server/workflow-embed/src/main/java/com/workflow/embed/management/infrastructure/persistence/EmbedOperationsMapper.java)、[EmbedManagementMapper.java](../../workflow-server/workflow-embed/src/main/java/com/workflow/embed/management/infrastructure/persistence/EmbedManagementMapper.java)。
 
-用途变更依据：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/DatabaseMigrator.java)。
+用途变更依据：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/DatabaseMigrator.java)。
 
 ### 11.10 embed_session_counter 嵌入活跃会话计数表
 
@@ -6360,7 +6360,7 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[SysDictMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/infrastructure/persistence/mapper/SysDictMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[SysDictService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/application/SysDictService.java)。
+实现定位：[SysDictMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/infrastructure/persistence/mapper/SysDictMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysDictService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/application/SysDictService.java)。
 
 ### 13.2 sys_dict_item 系统字典明细表
 
@@ -6410,7 +6410,7 @@ V058 新增来源坐标、依赖强度和解析状态；UNKNOWN 或 INVALID 不�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
 
-实现定位：[SysDictItemMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/infrastructure/persistence/mapper/SysDictItemMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/BusinessMigrationPreflight.java)、[SysDictItemService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/application/SysDictItemService.java)。
+实现定位：[SysDictItemMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/infrastructure/persistence/mapper/SysDictItemMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysDictItemService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/dictionary/application/SysDictItemService.java)。
 
 ### 13.3 storage_file_object 文件对象归属表
 
@@ -6525,7 +6525,7 @@ V064 增加 operation_id、父操作与来源坐标，供同一次跨模块操�
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V064__unified_audit_operation_context.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V064__unified_audit_operation_context.sql)。
 
-实现定位：[SystemOperationLogMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/infrastructure/SystemOperationLogMapper.java)、[SystemOperationLog.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/domain/SystemOperationLog.java)、[SystemAuditQueryService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/application/SystemAuditQueryService.java)。
+实现定位：[SystemOperationLogMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/infrastructure/persistence/mapper/SystemOperationLogMapper.java)、[SystemOperationLog.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/infrastructure/persistence/record/SystemOperationLog.java)、[SystemAuditQueryService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/audit/application/SystemAuditQueryService.java)。
 
 ### 13.5 workflow_outbox_event 事务发件箱事件表
 
@@ -6656,7 +6656,7 @@ active_hash 约束活跃结构请求的重复申请，执行进程通过租约�
 
 结构依据：[V009__schema_change_queue.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V009__schema_change_queue.sql)、[V012__schema_change_active_deduplication.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V012__schema_change_active_deduplication.sql)。
 
-实现定位：[SchemaChangeWorker.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/SchemaChangeWorker.java)、[QueuedSchemaDdlExecutor.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/QueuedSchemaDdlExecutor.java)。
+实现定位：[SchemaChangeWorker.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/SchemaChangeWorker.java)、[QueuedSchemaDdlExecutor.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/data/infrastructure/schema/QueuedSchemaDdlExecutor.java)。
 
 ### 13.8 sys_external_system 外部系统基础信息表
 
@@ -6825,7 +6825,7 @@ active_hash 约束活跃结构请求的重复申请，执行进程通过租约�
 
 结构依据：[pom.xml](../../workflow-server/pom.xml)。
 
-实现定位：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/migration/runner/DatabaseMigrator.java)。
+实现定位：[DatabaseMigrator.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/DatabaseMigrator.java)。
 
 依赖定义：[Flyway MySQL 11.20.3 本地依赖](/Users/dawei/.m2/repository/org/flywaydb/flyway-mysql/11.20.3/flyway-mysql-11.20.3.jar) 中的 `MySQLDatabase.getRawCreateScript`。V074 的统一排序规则过程跳过本表；此处记录本机库的实际值。
 

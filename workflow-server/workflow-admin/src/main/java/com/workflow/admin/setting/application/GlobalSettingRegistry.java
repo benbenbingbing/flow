@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.BooleanNode;
 import com.fasterxml.jackson.databind.node.NullNode;
-import com.workflow.admin.setting.api.GlobalSettingException;
+import com.workflow.admin.setting.api.error.GlobalSettingException;
 import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.util.List;

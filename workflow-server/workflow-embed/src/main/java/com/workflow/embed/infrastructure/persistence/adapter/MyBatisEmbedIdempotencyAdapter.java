@@ -13,7 +13,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.LinkedHashMap;
-import com.workflow.core.database.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Repository;

@@ -1,7 +1,9 @@
 package com.workflow.admin.auth.application;
 
-import com.workflow.admin.auth.infrastructure.LoginThrottleMapper;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.admin.auth.infrastructure.config.LoginThrottleProperties;
+
+import com.workflow.admin.auth.infrastructure.persistence.mapper.LoginThrottleMapper;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.error.RateLimitExceededException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;

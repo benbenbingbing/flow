@@ -6,7 +6,7 @@ import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.response.NextApprovalPreviewResponse;
 import com.workflow.process.task.api.response.NextApprovalPreviewStatus;
 import com.workflow.process.task.api.response.NextApproverCandidateDTO;
-import com.workflow.process.task.application.nextapproval.FlowableConditionEvaluator;
+import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvaluator;
 import com.workflow.process.task.application.nextapproval.NextApprovalPreviewService;
 import com.workflow.process.task.application.nextapproval.NextApprovalRouteService;
 import com.workflow.process.task.application.nextapproval.NextApproverCandidateService;

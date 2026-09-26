@@ -17,7 +17,7 @@ import com.workflow.embed.management.domain.EmbedManagementModel.SurfaceType;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;

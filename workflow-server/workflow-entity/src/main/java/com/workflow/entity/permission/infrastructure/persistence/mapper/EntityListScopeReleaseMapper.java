@@ -1,7 +1,7 @@
 package com.workflow.entity.permission.infrastructure.persistence.mapper;
 
 import java.util.List;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopeRelease;

@@ -1,5 +1,7 @@
 package com.workflow.migration.application;
 
+import com.workflow.migration.application.model.DownloadFile;
+
 import static com.workflow.migration.application.ConfigMigrationPackageViews.exportSummary;
 import static com.workflow.migration.application.ConfigMigrationPackageViews.importSummary;
 

@@ -30,8 +30,9 @@ import java.util.regex.Pattern;
  * <p>平台不再开放 BPMN 节点异步执行能力，因此草稿保存与正式发布必须共用该边界：
  * 去除 Flowable、Camunda、Activiti 的进入/离开异步属性及只对异步作业有意义的独占属性。
  * 其余引擎扩展属性与未知命名空间属性保持不变。</p>
+ * <p>公开的归一化入口供设计期应用服务与部署适配器共同调用，确保最终部署仍执行同一规则。</p>
  */
-final class ProcessBpmnSynchronousExecutionNormalizer {
+public final class ProcessBpmnSynchronousExecutionNormalizer {
 
     private static final String BPMN_NAMESPACE =
             "http://www.omg.org/spec/BPMN/20100524/MODEL";
@@ -99,7 +100,7 @@ final class ProcessBpmnSynchronousExecutionNormalizer {
      * @return 已强制同步的 BPMN XML；无相关属性时返回原字符串
      * @throws IllegalArgumentException XML 含异步候选属性但无法安全解析或序列化时抛出
      */
-    static String normalize(String bpmnXml) {
+    public static String normalize(String bpmnXml) {
         if (bpmnXml == null
                 || bpmnXml.isBlank()
                 || !CANDIDATE_ATTRIBUTE.matcher(bpmnXml).find()) {

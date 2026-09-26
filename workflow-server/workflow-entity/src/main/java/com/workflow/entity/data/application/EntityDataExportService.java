@@ -1,5 +1,7 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.application.model.EntityExportBatch;
+
 import com.workflow.core.logging.LogValue;
 import com.workflow.entity.list.application.EntityDataListConfigService;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;

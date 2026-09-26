@@ -240,7 +240,7 @@ class EmbedPersistenceSqlContractTest {
                 .anyMatch(com.baomidou.mybatisplus.core.metadata.IPage.class::isAssignableFrom);
         if (frameworkPage) {
             Object limit = parameters.get("limit");
-            arguments.put("page", new com.workflow.core.database.OffsetPage<>(0,
+            arguments.put("page", new com.workflow.core.database.mybatis.OffsetPage<>(0,
                     limit == null ? 1 : ((Number) limit).longValue()));
         }
         var bound = statement.getBoundSql(arguments);

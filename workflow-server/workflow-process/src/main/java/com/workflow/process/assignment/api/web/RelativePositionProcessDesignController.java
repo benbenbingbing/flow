@@ -8,8 +8,8 @@ import com.workflow.contracts.process.assignment.error.PersonResolutionException
 import com.workflow.core.result.ApiResponse;
 import com.workflow.core.security.RequiresPermission;
 import com.workflow.process.assignment.api.request.RelativePositionPreviewRequest;
-import com.workflow.process.assignment.relative.RelativeOrgPositionPersonResolver;
-import com.workflow.process.assignment.relative.RelativeOrgPositionPreview;
+import com.workflow.process.assignment.extension.RelativeOrgPositionPersonResolver;
+import com.workflow.process.assignment.application.model.RelativeOrgPositionPreview;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

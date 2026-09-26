@@ -14,7 +14,7 @@ import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
-import com.workflow.entity.version.application.EntityMutationReceiptService;
+import com.workflow.entity.mutation.application.EntityMutationReceiptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

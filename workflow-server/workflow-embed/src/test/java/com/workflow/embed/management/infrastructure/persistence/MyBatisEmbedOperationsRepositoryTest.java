@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.embed.management.infrastructure.persistence.record.EmbedOperationsRows.LaunchRow;
-import com.workflow.embed.management.port.EmbedOperationsRepository.LaunchRevokeOutcome;
+import com.workflow.embed.management.application.port.EmbedOperationsRepository.LaunchRevokeOutcome;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;

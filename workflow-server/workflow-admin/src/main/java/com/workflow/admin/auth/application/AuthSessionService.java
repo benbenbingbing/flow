@@ -1,10 +1,12 @@
 package com.workflow.admin.auth.application;
 
-import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
-import com.workflow.admin.auth.infrastructure.AuthRefreshSessionRecord;
-import com.workflow.admin.auth.infrastructure.JwtAccessToken;
-import com.workflow.admin.auth.infrastructure.JwtTokenInspection;
-import com.workflow.admin.auth.infrastructure.JwtUtil;
+import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
+
+import com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper;
+import com.workflow.admin.auth.infrastructure.persistence.record.AuthRefreshSessionRecord;
+import com.workflow.admin.auth.infrastructure.security.JwtAccessToken;
+import com.workflow.admin.auth.infrastructure.security.JwtTokenInspection;
+import com.workflow.admin.auth.infrastructure.security.JwtUtil;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import java.nio.charset.StandardCharsets;

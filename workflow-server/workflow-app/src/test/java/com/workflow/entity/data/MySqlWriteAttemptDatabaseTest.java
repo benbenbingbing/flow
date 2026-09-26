@@ -11,11 +11,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.application.SystemAuditFailureWriter;
 import com.workflow.admin.audit.application.SystemAuditOutboxHandler;
 import com.workflow.admin.audit.domain.AuditLogPayload;
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.version.application.EntityMutationReceiptService;
-import com.workflow.entity.version.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
+import com.workflow.entity.mutation.application.EntityMutationReceiptService;
+import com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
@@ -134,7 +134,7 @@ class MySqlWriteAttemptDatabaseTest {
             String outbox = currentTable(f, "workflow_outbox_event");
             String work = f.table("write_attempt_item", "id VARCHAR(64) PRIMARY KEY, required_value VARCHAR(10) NOT NULL");
             var h = new Harness(f, OutboxRecordMapper.class, ItemMapper.class);
-            var publisher = h.transactional(new DatabaseOutboxPublisher(h.mapper(OutboxRecordMapper.class), h.json, h.attempt, new com.workflow.core.database.JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
+            var publisher = h.transactional(new DatabaseOutboxPublisher(h.mapper(OutboxRecordMapper.class), h.json, h.attempt, new com.workflow.core.database.jdbc.JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
             var original = event("same", "original");
             publisher.publish(original);
             String id = f.jdbc.queryForObject("SELECT id FROM " + outbox, String.class);
@@ -166,7 +166,7 @@ class MySqlWriteAttemptDatabaseTest {
             String work = f.table("write_attempt_item", "id VARCHAR(64) PRIMARY KEY, required_value VARCHAR(10) NOT NULL");
             var h = new Harness(f, OutboxRecordMapper.class, ItemMapper.class);
             var publisher = h.transactional(new DatabaseOutboxPublisher(h.mapper(OutboxRecordMapper.class), h.json,
-                    h.attempt, new com.workflow.core.database.JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
+                    h.attempt, new com.workflow.core.database.jdbc.JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
             publisher.publish(event("existing", "old"));
             String id = f.jdbc.queryForObject("SELECT id FROM " + outbox, String.class);
             f.jdbc.update("UPDATE " + outbox + " SET status='DEAD'");

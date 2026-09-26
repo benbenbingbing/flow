@@ -1,6 +1,6 @@
 package com.workflow.admin.setting.application;
 
-import com.workflow.admin.setting.api.GlobalSettingException;
+import com.workflow.admin.setting.api.error.GlobalSettingException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;

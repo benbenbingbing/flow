@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.identity.model.CurrentActor;
-import com.workflow.embed.management.api.EmbedManagementException;
+import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.Capability;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.GrantState;

@@ -2,7 +2,7 @@ package com.workflow.entity.data;
 
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
 import com.workflow.entity.data.application.DynamicTableService;
-import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;

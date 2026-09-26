@@ -13,7 +13,7 @@ import com.workflow.process.assignment.application.NodeAssignmentReferenceResolv
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;
-import com.workflow.process.task.application.nextapproval.NextApproverOverride;
+import com.workflow.process.task.application.nextapproval.model.NextApproverOverride;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

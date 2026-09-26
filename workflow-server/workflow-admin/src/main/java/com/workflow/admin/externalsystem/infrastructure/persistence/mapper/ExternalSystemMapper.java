@@ -1,7 +1,7 @@
 package com.workflow.admin.externalsystem.infrastructure.persistence.mapper;
 
 import java.util.List;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.admin.externalsystem.infrastructure.persistence.record.ExternalSystemRecord;

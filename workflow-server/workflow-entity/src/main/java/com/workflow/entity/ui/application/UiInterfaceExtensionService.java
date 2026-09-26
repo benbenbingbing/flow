@@ -1,5 +1,9 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.model.UiBindingPoint;
+import com.workflow.entity.ui.application.model.UiDataSourceExecutionAuthorization;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
+
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;

@@ -1,7 +1,7 @@
 package com.workflow.service.config;
 
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
-import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
+import com.workflow.entity.ui.application.validation.UiConfigInterfaceReferenceValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

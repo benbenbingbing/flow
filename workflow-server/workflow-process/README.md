@@ -4,16 +4,18 @@
 
 ## 包边界
 
-- `com.workflow.process.api`：流程模块对外应用接口和请求适配。
 - `com.workflow.process.definition`：流程定义、节点模型和设计期校验。
-- `com.workflow.process.deployment`：Flowable 部署适配。
 - `com.workflow.process.publish`：发布、版本和回滚。
-- `com.workflow.process.runtime`：实例、进度、终止和运行态查询。
+- `com.workflow.process.instance`：实例、进度、终止和运行态查询。
 - `com.workflow.process.task`：审批、驳回、撤回、重提、加签和知会。
 - `com.workflow.process.assignment`：办理人、候选人和多实例解析。
-- `com.workflow.process.compatibility`：迁移期间的旧接口适配，不允许新增业务规则。
+- `com.workflow.process.action`：流程动作编排、执行和引擎事件适配。
+- `com.workflow.process.engine.infrastructure.flowable`：脚本、DMN、REST 等引擎服务任务委托。
+- `com.workflow.process.form/configuration/status/cc/sla`：流程表单、节点配置、状态同步、抄送和时限管理。
 
-现有 `com.workflow.controller`、`com.workflow.service`、`com.workflow.mapper` 作为兼容结构逐步迁移。
+各能力按需使用 `api`、`application`、`domain`、`infrastructure`。监听器、条件求值和部署实现归入对应能力的 `infrastructure.flowable`；SQL Provider 与 Mapper 分别位于 `infrastructure.persistence.provider/mapper`。
+办理人扩展实现在 `assignment.extension`，配置模型在 `assignment.domain`，组织快照与设计期检查服务在 `assignment.application`。
+历史 BPMN 引用的 `restServiceTaskDelegate` 和兼容监听器继续使用原 Bean 名称。HTTP 传输由 `workflow-http` 提供，通用 HTTP 模块不依赖 Flowable。
 流程模块不得直接访问其他模块的内部 Service 或 Mapper，应依赖 `workflow-contracts` 端口。
 
 ## 跨模块端口

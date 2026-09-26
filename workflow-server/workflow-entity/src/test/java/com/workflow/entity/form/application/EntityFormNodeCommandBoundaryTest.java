@@ -3,7 +3,7 @@ package com.workflow.entity.form.application;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
 import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;

@@ -1,5 +1,7 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApproverOverride;
+
 import org.flowable.bpmn.model.BpmnModel;
 import org.flowable.bpmn.model.MultiInstanceLoopCharacteristics;
 import org.flowable.bpmn.model.UserTask;

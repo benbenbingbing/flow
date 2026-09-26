@@ -1,7 +1,7 @@
 package com.workflow.entity.permission.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeBindingDTO;
 import com.workflow.entity.permission.api.response.EntityListScopeDefaultDTO;
 import com.workflow.entity.permission.api.response.EntityListScopePolicyDTO;

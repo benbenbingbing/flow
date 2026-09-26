@@ -1,5 +1,7 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
+
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 import com.workflow.integration.database.api.schema.SchemaColumnMetadata;

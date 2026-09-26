@@ -1,7 +1,7 @@
 package com.workflow.process.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.core.database.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.outbox.api.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;

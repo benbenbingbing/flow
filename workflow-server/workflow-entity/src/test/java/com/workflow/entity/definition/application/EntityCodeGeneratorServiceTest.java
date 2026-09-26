@@ -6,7 +6,7 @@ import com.workflow.entity.definition.application.code.*;
 import com.workflow.entity.data.application.EntityCodeReservationService;
 import com.workflow.contracts.entity.code.*;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 import java.util.List;

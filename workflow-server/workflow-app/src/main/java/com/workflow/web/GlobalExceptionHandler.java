@@ -1,7 +1,7 @@
 package com.workflow.web;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.core.error.FormCrossFieldValidationException;
+import com.workflow.entity.form.application.error.FormCrossFieldValidationException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.error.RevisionConflictException;
@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.dao.DataAccessException;
-import com.workflow.core.database.DatabaseExceptionClassifier;
+import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;

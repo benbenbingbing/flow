@@ -1,6 +1,6 @@
 package com.workflow.admin.identity.user.application;
 
-import com.workflow.admin.auth.infrastructure.AuthRefreshSessionMapper;
+import com.workflow.admin.auth.infrastructure.persistence.mapper.AuthRefreshSessionMapper;
 import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
 import com.workflow.admin.identity.position.application.PositionAssignmentQueryService;
 import com.workflow.admin.identity.position.application.PositionOrganizationScopeService;

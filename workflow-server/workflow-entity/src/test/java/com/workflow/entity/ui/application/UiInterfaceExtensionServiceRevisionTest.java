@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
+
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;

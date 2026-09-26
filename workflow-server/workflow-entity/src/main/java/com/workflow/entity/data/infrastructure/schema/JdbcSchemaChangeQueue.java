@@ -1,11 +1,11 @@
 package com.workflow.entity.data.infrastructure.schema;
 
 import com.workflow.integration.database.api.schema.SchemaDdlDialect;
-import com.workflow.core.database.DatabaseExceptionClassifier;
-import com.workflow.core.database.DatabaseSQLExceptionTranslator;
+import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
+import com.workflow.core.database.jdbc.DatabaseSQLExceptionTranslator;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.core.database.port.*;
-import com.workflow.core.database.JdbcDatabaseClock;
+import com.workflow.core.database.jdbc.JdbcDatabaseClock;
 import com.workflow.integration.database.schema.validation.SchemaStatementScope;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;

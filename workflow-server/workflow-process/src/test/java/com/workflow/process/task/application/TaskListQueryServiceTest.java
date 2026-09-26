@@ -1,5 +1,7 @@
 package com.workflow.process.task.application;
 
+import com.workflow.process.task.application.model.TaskInboxQuery;
+
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.application.EntityStatusService;

@@ -1,5 +1,7 @@
 package com.workflow.storage.application;
 
+import com.workflow.storage.application.port.FileStorageStrategy;
+
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

@@ -45,7 +45,7 @@ import com.workflow.process.cc.application.CcRecipientResolver;
 import com.workflow.process.cc.application.CcRuntimeContext;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.biz.project.service.ProjectEntityMutationExecutor;
-import com.workflow.storage.application.FileStorageStrategy;
+import com.workflow.storage.application.port.FileStorageStrategy;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.annotation.AnnotatedElementUtils;

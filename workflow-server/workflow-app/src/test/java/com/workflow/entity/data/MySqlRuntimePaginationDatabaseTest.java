@@ -1,5 +1,7 @@
 package com.workflow.entity.data;
 
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
+
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityPublishHistoryMapper;
@@ -166,7 +168,7 @@ class MySqlRuntimePaginationDatabaseTest {
         record LockCase(String table, String column, Class<?> mapper, String method) {}
         var cases = List.of(
                 new LockCase("process_task_sla", "task_id", com.workflow.process.sla.runtime.infrastructure.persistence.mapper.ProcessTaskSlaMapper.class, "findByTaskIdForUpdate"),
-                new LockCase("entity_mutation_receipt", "idempotency_key", com.workflow.entity.version.infrastructure.persistence.mapper.EntityMutationReceiptMapper.class, "findByIdempotencyKeyForReplay"),
+                new LockCase("entity_mutation_receipt", "idempotency_key", com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMutationReceiptMapper.class, "findByIdempotencyKeyForReplay"),
                 new LockCase("process_task_add_sign_user", "generated_task_id", com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignUserMapper.class, "findByGeneratedTaskIdForUpdate"),
                 new LockCase("process_task", "task_id", com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper.class, "selectByTaskIdForUpdate"),
                 new LockCase("process_task_add_sign", "id", com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskAddSignMapper.class, "selectByIdForUpdate"));

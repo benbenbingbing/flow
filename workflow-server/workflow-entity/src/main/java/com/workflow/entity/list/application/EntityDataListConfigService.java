@@ -3,7 +3,7 @@ package com.workflow.entity.list.application;
 import com.workflow.core.logging.LogValue;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.data.application.EntityDataDynamicService;
-import com.workflow.entity.data.application.EntityExportBatch;
+import com.workflow.entity.data.application.model.EntityExportBatch;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 
 import com.workflow.core.result.PageResult;

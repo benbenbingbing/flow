@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;

@@ -13,7 +13,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFil
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiMutableInterfaceReferenceNormalizer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;

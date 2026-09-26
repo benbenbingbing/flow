@@ -3,7 +3,7 @@ package com.workflow.admin.setting.application;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.workflow.admin.setting.api.GlobalSettingException;
+import com.workflow.admin.setting.api.error.GlobalSettingException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;

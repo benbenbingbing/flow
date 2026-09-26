@@ -5,7 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 import com.sun.net.httpserver.HttpServer;
-import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import java.io.ByteArrayInputStream;
 import java.io.FileNotFoundException;

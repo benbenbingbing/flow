@@ -14,10 +14,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.workflow.embed.application.port.EmbedDigestPort;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeLease;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedTrafficControlMapper;

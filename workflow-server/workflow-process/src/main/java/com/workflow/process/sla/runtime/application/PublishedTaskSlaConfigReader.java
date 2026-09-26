@@ -1,5 +1,7 @@
 package com.workflow.process.sla.runtime.application;
 
+import com.workflow.process.sla.runtime.application.model.PublishedTaskSlaConfig;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.engine.infrastructure.flowable.ConfiguredTaskPropertyReader;

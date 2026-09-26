@@ -1,5 +1,7 @@
 package com.workflow.embed.api.web;
 
+import com.workflow.embed.api.response.EmbedApiEnvelope;
+
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
@@ -11,7 +13,7 @@ import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.EmbedSessionIssued;
 import com.workflow.embed.domain.EmbedSessionState;
-import com.workflow.embed.security.EmbedSessionAuthenticationFilter;
+import com.workflow.embed.infrastructure.web.EmbedSessionAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

@@ -1,6 +1,6 @@
 package com.workflow.database;
 
-import com.workflow.core.database.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import java.sql.*;
@@ -70,8 +70,8 @@ class MySqlIdempotentInsertFailureTest {
             when(connection.setSavepoint()).thenReturn(point);
             when(connection.prepareStatement(anyString())).thenReturn(statement);
             var jdbc = new JdbcTemplate(source);
-            jdbc.setExceptionTranslator(new com.workflow.core.database.DatabaseSQLExceptionTranslator(
-                    new com.workflow.core.database.DatabaseExceptionClassifier(DatabaseDialects.errors(DatabaseVendor.MYSQL))));
+            jdbc.setExceptionTranslator(new com.workflow.core.database.jdbc.DatabaseSQLExceptionTranslator(
+                    new com.workflow.core.database.jdbc.DatabaseExceptionClassifier(DatabaseDialects.errors(DatabaseVendor.MYSQL))));
             insert = new JdbcIdempotentInsert(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL));
         }
     }

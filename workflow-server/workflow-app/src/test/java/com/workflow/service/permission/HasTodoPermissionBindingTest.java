@@ -1,5 +1,7 @@
 package com.workflow.service.permission;
 
+import com.workflow.entity.permission.application.model.DataPermissionResult;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;

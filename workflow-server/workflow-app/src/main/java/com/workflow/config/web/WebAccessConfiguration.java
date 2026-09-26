@@ -1,8 +1,8 @@
 package com.workflow.config.web;
 
-import com.workflow.admin.auth.infrastructure.AuthInterceptor;
+import com.workflow.admin.auth.infrastructure.web.AuthInterceptor;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
-import com.workflow.embed.security.EmbedDelegatedRuntimeAuthorizationInterceptor;
+import com.workflow.embed.infrastructure.web.EmbedDelegatedRuntimeAuthorizationInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;

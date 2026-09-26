@@ -1,6 +1,6 @@
 package com.workflow.core.concurrent;
 
-import com.workflow.core.database.ExecutionDeadlineInterceptor;
+import com.workflow.core.database.mybatis.ExecutionDeadlineInterceptor;
 import java.sql.Statement;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;

@@ -1,5 +1,7 @@
 package com.workflow.process.task;
 
+import com.workflow.process.task.application.model.TaskInboxQuery;
+
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;

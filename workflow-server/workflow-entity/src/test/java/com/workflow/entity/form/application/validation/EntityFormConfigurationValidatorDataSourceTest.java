@@ -8,7 +8,7 @@ import com.workflow.entity.form.application.EntityFormActionConfigPolicy;
 import com.workflow.entity.form.application.FormUniqueRulePolicy;
 import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
 import org.junit.jupiter.api.Test;
 

@@ -1,5 +1,7 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.application.model.EntityExportBatch;
+
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.security.context.UserContext;
@@ -15,7 +17,7 @@ import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -203,7 +205,7 @@ public class EntityDataDynamicService implements com.workflow.contracts.entity.p
         List<EntityField> runtimeFields = getRuntimeFields(entityCode);
         String sortColumn = resolveSortColumn(runtimeFields, sortField);
         var typed = EntityQueryConditions.fromPublishedFields(prepared.condition(), runtimeFields);
-        var rows = dynamicMapper.selectExportBatch(new com.workflow.core.database.OffsetPage<>(0, 200),
+        var rows = dynamicMapper.selectExportBatch(new com.workflow.core.database.mybatis.OffsetPage<>(0, 200),
                 dynamicTableService.getTableName(entityCode), typed,
                 permission.isNeedFilter() ? permission.getSqlCondition() : null, permission.getSqlParameters(),
                 selectedIds, cursor, sortColumn, sortDirection);

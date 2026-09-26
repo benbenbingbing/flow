@@ -1,7 +1,7 @@
 package com.workflow.config.database;
 
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
-import com.workflow.core.database.InitializedDriverDataSource;
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
 
 import com.workflow.core.database.port.DatabaseConnections;
 import com.workflow.integration.database.api.schema.SchemaDdlDialect;

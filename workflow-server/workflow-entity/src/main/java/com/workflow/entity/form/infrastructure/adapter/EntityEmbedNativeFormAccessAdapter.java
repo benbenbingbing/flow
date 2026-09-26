@@ -12,7 +12,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.api.response.FormActionRuntimeDTO;
 import com.workflow.entity.form.application.EntityFormActionService;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.list.application.EntityListReleaseContext;
 import com.workflow.entity.list.application.EntityListRuntimeService;

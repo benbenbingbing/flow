@@ -1,10 +1,10 @@
 package com.workflow.embed.infrastructure.persistence.adapter;
 
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.embed.application.port.EmbedDigestPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedTrafficControlMapper;

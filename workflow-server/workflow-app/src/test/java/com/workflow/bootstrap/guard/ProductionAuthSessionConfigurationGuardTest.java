@@ -3,7 +3,7 @@ package com.workflow.bootstrap.guard;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.workflow.admin.auth.application.AuthSessionProperties;
+import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
 import org.junit.jupiter.api.Test;
 
 /**

@@ -2,7 +2,7 @@ package com.workflow.storage;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.mock;
 
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.security.context.UserContext;
-import com.workflow.storage.application.FileUploadIdempotencyException;
+import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFileAccessService;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;

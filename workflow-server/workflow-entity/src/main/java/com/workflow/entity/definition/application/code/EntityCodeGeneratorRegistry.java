@@ -2,7 +2,7 @@ package com.workflow.entity.definition.application.code;
 
 import com.workflow.contracts.entity.code.EntityCodeGenerator;
 import com.workflow.contracts.entity.code.EntityCodeSnapshots;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;

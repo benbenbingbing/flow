@@ -2,18 +2,18 @@ package com.workflow.entity.data;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.audit.api.SystemAuditQuery;
+import com.workflow.admin.audit.api.request.SystemAuditQuery;
 import com.workflow.admin.audit.application.SystemAuditQueryService;
-import com.workflow.admin.audit.domain.SystemOperationLog;
-import com.workflow.admin.audit.infrastructure.SystemOperationLogMapper;
+import com.workflow.admin.audit.infrastructure.persistence.record.SystemOperationLog;
+import com.workflow.admin.audit.infrastructure.persistence.mapper.SystemOperationLogMapper;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
-import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
 import com.workflow.entity.data.infrastructure.adapter.EntityUserReferenceAdapter;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -179,7 +179,7 @@ class MySqlServiceQueryDatabaseTest {
             String columns = "id VARCHAR(64) PRIMARY KEY, status VARCHAR(32), next_retry_time DATETIME(6), create_time DATETIME(6)";
             String outbox = f.table("workflow_outbox_event", columns);
             String action = f.table("process_action_execution", columns);
-            LocalDateTime now = new com.workflow.core.database.JdbcDatabaseClock(f.jdbc,
+            LocalDateTime now = new com.workflow.core.database.jdbc.JdbcDatabaseClock(f.jdbc,
                     com.workflow.integration.database.api.DatabaseVendor.MYSQL).utcNow();
             f.jdbc.update("INSERT INTO " + outbox + " VALUES ('ready','PENDING',NULL,?),('retry','FAILED',?,?),"
                             + "('later','FAILED',?,?),('running','PROCESSING',NULL,?),('dead','DEAD',NULL,?)",

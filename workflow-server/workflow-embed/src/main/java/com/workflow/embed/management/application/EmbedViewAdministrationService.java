@@ -9,7 +9,7 @@ import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.identity.model.CurrentActor;
 import com.workflow.contracts.identity.port.CurrentActorPort;
-import com.workflow.embed.management.api.EmbedManagementException;
+import com.workflow.embed.management.api.error.EmbedManagementException;
 import com.workflow.embed.management.domain.EmbedManagementModel.ChangeStatusCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.CreateViewCommand;
 import com.workflow.embed.management.domain.EmbedManagementModel.Page;
@@ -19,7 +19,7 @@ import com.workflow.embed.management.domain.EmbedManagementModel.ValidationResul
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewFilter;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewState;
 import com.workflow.embed.management.domain.EmbedManagementModel.ViewStatus;
-import com.workflow.embed.management.port.EmbedManagementRepository;
+import com.workflow.embed.management.application.port.EmbedManagementRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;

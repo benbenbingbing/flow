@@ -27,7 +27,7 @@ class ExternalSystemMapperSqlContractTest {
     void codeLookupIncludesDeletedRowsAndUsesDirectIndexedEquality()
             throws Exception {
         Method method = ExternalSystemMapper.class.getDeclaredMethod(
-                "selectAnyByCodePage", com.workflow.core.database.OffsetPage.class, String.class);
+                "selectAnyByCodePage", com.workflow.core.database.mybatis.OffsetPage.class, String.class);
         String sql = sql(method.getAnnotation(Select.class).value());
 
         assertTrue(sql.contains("where system_code = #{systemcode}"));

@@ -14,11 +14,11 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.embed.domain.EmbedIdentityProviderSnapshot;
-import com.workflow.http.HttpTransportRequest;
-import com.workflow.http.HttpTransportResult;
-import com.workflow.http.PinnedHttpTransport;
-import com.workflow.http.RestEndpointPolicy;
-import com.workflow.http.WorkflowHttpProperties;
+import com.workflow.http.api.HttpTransportRequest;
+import com.workflow.http.api.HttpTransportResult;
+import com.workflow.http.transport.PinnedHttpTransport;
+import com.workflow.http.policy.RestEndpointPolicy;
+import com.workflow.http.config.WorkflowHttpProperties;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

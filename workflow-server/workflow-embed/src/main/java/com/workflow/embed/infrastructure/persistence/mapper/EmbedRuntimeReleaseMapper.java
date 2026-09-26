@@ -1,7 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
 import java.util.List;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.embed.infrastructure.persistence.record.EmbedRuntimeReleaseRow;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;

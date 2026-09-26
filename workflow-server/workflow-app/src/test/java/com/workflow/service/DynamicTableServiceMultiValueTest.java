@@ -5,7 +5,7 @@ import com.workflow.core.database.port.SchemaMetadataPort;
 
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
-import com.workflow.entity.data.application.SchemaDdlExecutor;
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
 
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import org.junit.jupiter.api.Test;

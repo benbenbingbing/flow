@@ -1,7 +1,7 @@
 package com.workflow.entity.list.application.validation;
 
 import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
-import com.workflow.entity.ui.application.UiConfigInterfaceReferenceValidator;
+import com.workflow.entity.ui.application.validation.UiConfigInterfaceReferenceValidator;
 import com.workflow.entity.list.application.EntityListQueryPolicy;
 
 import com.workflow.core.serialization.JsonDocumentCodec;

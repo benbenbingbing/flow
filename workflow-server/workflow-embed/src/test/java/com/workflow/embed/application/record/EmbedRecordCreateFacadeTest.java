@@ -13,7 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.embed.runtime.port.EmbedRecordCreatePort;
-import com.workflow.embed.api.web.EmbedRecordCreateRequest;
+import com.workflow.embed.api.request.EmbedRecordCreateRequest;
 import com.workflow.embed.application.port.EmbedIdempotencyPort;
 import com.workflow.embed.application.port.EmbedOperationReceiptPort;
 import com.workflow.embed.application.record.EmbedNativeRecordCreateAuthorizationService.Authorization;

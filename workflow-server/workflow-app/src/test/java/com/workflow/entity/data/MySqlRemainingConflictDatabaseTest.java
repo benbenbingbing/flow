@@ -14,7 +14,7 @@ import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest
 import com.workflow.process.assignment.application.*;
 import com.workflow.process.cc.application.*;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;
-import com.workflow.storage.application.FileUploadIdempotencyException;
+import com.workflow.storage.application.error.FileUploadIdempotencyException;
 import com.workflow.storage.application.StoredFileAccessService;
 import java.nio.file.Files;
 import java.nio.file.Path;

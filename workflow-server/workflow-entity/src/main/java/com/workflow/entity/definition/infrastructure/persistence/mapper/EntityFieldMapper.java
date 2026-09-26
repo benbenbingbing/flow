@@ -1,6 +1,6 @@
 package com.workflow.entity.definition.infrastructure.persistence.mapper;
 
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;

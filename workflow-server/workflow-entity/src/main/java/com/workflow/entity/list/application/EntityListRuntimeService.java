@@ -11,7 +11,7 @@ import com.workflow.entity.list.api.response.EntityListSchemaDTO;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.permission.api.request.EntityListScopeSimulationRequest;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.api.response.EntityListScopeSimulationDTO;
 import com.workflow.entity.permission.api.response.PermissionPreviewDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;

@@ -1,5 +1,12 @@
 package com.workflow.openapi.security;
 
+import com.workflow.openapi.application.security.IntegrationCredentialUsageService;
+import com.workflow.openapi.application.security.IntegrationRateLimitService;
+import com.workflow.openapi.application.security.OpenApiConcurrencyLeaseService;
+import com.workflow.openapi.application.security.OpenApplicationActorResolver;
+import com.workflow.openapi.infrastructure.config.OpenIntegrationSecurityConfiguration;
+import com.workflow.openapi.infrastructure.security.OpenIntegrationClientAddressResolver;
+
 import static org.hamcrest.Matchers.is;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;

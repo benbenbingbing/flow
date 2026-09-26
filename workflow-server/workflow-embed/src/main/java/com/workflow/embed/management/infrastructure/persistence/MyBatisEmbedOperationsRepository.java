@@ -4,7 +4,7 @@ import com.workflow.embed.management.domain.EmbedOperationsModel.LaunchSummary;
 import com.workflow.embed.management.domain.EmbedOperationsModel.SessionSummary;
 import com.workflow.embed.management.infrastructure.persistence.record.EmbedOperationsRows.LaunchRow;
 import com.workflow.embed.management.infrastructure.persistence.record.EmbedOperationsRows.SessionRow;
-import com.workflow.embed.management.port.EmbedOperationsRepository;
+import com.workflow.embed.management.application.port.EmbedOperationsRepository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;

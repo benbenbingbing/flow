@@ -1,7 +1,7 @@
 package com.workflow.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.audit.infrastructure.SystemAuditAspect;
+import com.workflow.admin.audit.infrastructure.aop.SystemAuditAspect;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
@@ -13,8 +13,8 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.model.EntityMutationOperationType;
 import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.entity.version.application.EntityMutationPipeline;
-import com.workflow.entity.version.application.EntityMutationTransactionExecutor;
+import com.workflow.entity.mutation.application.EntityMutationPipeline;
+import com.workflow.entity.mutation.application.EntityMutationTransactionExecutor;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.process.action.application.FlowActionExecutionService;
 import com.workflow.process.action.domain.FlowActionTriggerEvent;

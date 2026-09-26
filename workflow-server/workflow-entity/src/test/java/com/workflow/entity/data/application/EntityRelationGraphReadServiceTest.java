@@ -1,5 +1,7 @@
 package com.workflow.entity.data.application;
 
+import com.workflow.entity.data.application.port.EntityRelationProjectionReadPort;
+
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.core.error.BusinessConflictException;
@@ -7,9 +9,9 @@ import com.workflow.core.error.ForbiddenException;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.Grant;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.AccessMode;
 import com.workflow.entity.data.application.EntityRelationGraphAuthorizationPlan.InternalPurpose;
-import com.workflow.entity.data.application.EntityRelationProjectionReadPort.ProjectionPage;
-import com.workflow.entity.data.application.EntityRelationProjectionReadPort.ProjectionQuery;
-import com.workflow.entity.data.application.EntityRelationProjectionReadPort.ProjectionRow;
+import com.workflow.entity.data.application.port.EntityRelationProjectionReadPort.ProjectionPage;
+import com.workflow.entity.data.application.port.EntityRelationProjectionReadPort.ProjectionQuery;
+import com.workflow.entity.data.application.port.EntityRelationProjectionReadPort.ProjectionRow;
 import com.workflow.entity.data.application.model.EntityRelationGraph;
 import com.workflow.entity.data.application.model.EntityRelationGraph.Limits;
 import com.workflow.entity.definition.application.PublishedRelationPathResolver;

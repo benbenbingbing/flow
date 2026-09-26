@@ -1,7 +1,7 @@
 package com.workflow.outbox.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

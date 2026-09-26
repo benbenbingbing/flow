@@ -1,9 +1,14 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApprovalResolution;
+import com.workflow.process.task.application.nextapproval.model.NextApprovalTarget;
+import com.workflow.process.task.application.nextapproval.model.NextApproverSelectionPolicy;
+import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvaluator;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
-import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
+import com.workflow.entity.form.application.error.FormSubmissionPreviewDeferredException;
+import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;
 import com.workflow.process.form.application.NodeFormSubmissionService;
 import com.workflow.process.task.application.MultiInstanceOutcomeService;

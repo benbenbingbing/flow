@@ -1,11 +1,11 @@
 package com.workflow.admin.setting.api.web;
 
 import com.workflow.admin.auth.application.AuthSessionService;
-import com.workflow.admin.auth.infrastructure.AuthInterceptor;
+import com.workflow.admin.auth.infrastructure.web.AuthInterceptor;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.infrastructure.EndpointAuthorizationInterceptor;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
-import com.workflow.admin.setting.api.MobileThemeView;
+import com.workflow.admin.setting.api.response.MobileThemeView;
 import com.workflow.admin.setting.application.GlobalSettingService;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;

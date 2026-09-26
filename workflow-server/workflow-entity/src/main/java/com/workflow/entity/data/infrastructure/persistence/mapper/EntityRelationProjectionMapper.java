@@ -2,7 +2,7 @@ package com.workflow.entity.data.infrastructure.persistence.mapper;
 
 import com.workflow.entity.data.infrastructure.persistence.provider.EntityRelationProjectionSqlProvider;
 import org.apache.ibatis.annotations.Mapper;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import java.util.HashMap;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.SelectProvider;

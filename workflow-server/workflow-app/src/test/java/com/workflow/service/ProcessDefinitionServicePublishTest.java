@@ -11,7 +11,7 @@ import com.workflow.process.definition.infrastructure.persistence.mapper.Process
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.application.ProcessBpmnPublishSanitizer;
 import com.workflow.process.definition.application.ProcessDefinitionNodeSyncService;
-import com.workflow.process.definition.application.ProcessFlowableDeploymentService;
+import com.workflow.process.definition.infrastructure.flowable.ProcessFlowableDeploymentService;
 import com.workflow.process.definition.application.ProcessPublishHistoryService;
 import com.workflow.process.definition.application.ProcessDefinitionPreflightService;
 import org.flowable.engine.repository.Deployment;

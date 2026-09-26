@@ -1,6 +1,6 @@
 package com.workflow.config.migration;
 
-import com.workflow.migration.runner.BusinessMigrationPreflight;
+import com.workflow.dbmigrator.runner.BusinessMigrationPreflight;
 import org.flywaydb.core.Flyway;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;

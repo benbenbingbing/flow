@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.ui.application.validation.UiConfigInterfaceReferenceValidator;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;

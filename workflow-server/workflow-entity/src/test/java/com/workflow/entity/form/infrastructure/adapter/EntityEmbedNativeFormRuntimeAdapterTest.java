@@ -15,7 +15,7 @@ import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;

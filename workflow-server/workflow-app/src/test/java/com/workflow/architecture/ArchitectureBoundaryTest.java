@@ -10,6 +10,10 @@ import com.workflow.process.instance.application.ProcessTerminationService;
 import com.workflow.process.task.application.ProcessTaskService;
 
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.workflow.embed.management.api.web.EmbedIdentityManagementController;
+import com.workflow.embed.management.api.web.EmbedViewManagementController;
+import com.workflow.embed.management.api.request.EmbedManagementRequests;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
@@ -34,6 +38,16 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
         packages = "com.workflow",
         importOptions = ImportOption.DoNotIncludeTests.class)
 class ArchitectureBoundaryTest {
+
+    // 已发布的两个局部更新接口使用 PATCH；精确到方法签名，避免整个管理包豁免约束。
+    // 请求方法、路径和响应仍由 EmbedOpenApiContractTest 与 OpenAPI 文档双向校验。
+    private static final Set<String> ESTABLISHED_PATCH_ENDPOINTS = Set.of(
+            EmbedIdentityManagementController.class.getName()
+                    + ".updateProvider(java.lang.String, "
+                    + EmbedManagementRequests.UpdateProviderRequest.class.getName() + ")",
+            EmbedViewManagementController.class.getName()
+                    + ".updateDraft(java.lang.String, "
+                    + EmbedManagementRequests.UpdateDraftRequest.class.getName() + ")");
 
     private static final Set<String> DYNAMIC_MAPPER_WRITE_METHODS =
             Set.of(
@@ -164,9 +178,19 @@ class ArchitectureBoundaryTest {
             methods()
                     .that().areDeclaredInClassesThat()
                     .resideInAPackage("..api.web..")
-                    .should().notBeAnnotatedWith(PutMapping.class)
-                    .andShould().notBeAnnotatedWith(
-                            DeleteMapping.class)
-                    .andShould().notBeAnnotatedWith(
-                            PatchMapping.class);
+                    .should(new ArchCondition<JavaMethod>(
+                            "use GET or POST, preserving the two established PATCH endpoints") {
+                        @Override
+                        public void check(JavaMethod method, ConditionEvents events) {
+                            boolean establishedPatch = ESTABLISHED_PATCH_ENDPOINTS
+                                    .contains(method.getFullName());
+                            boolean forbidden = method.isAnnotatedWith(PutMapping.class)
+                                    || method.isAnnotatedWith(DeleteMapping.class)
+                                    || (method.isAnnotatedWith(PatchMapping.class) && !establishedPatch);
+                            if (forbidden) {
+                                events.add(SimpleConditionEvent.violated(method,
+                                        method.getFullName() + " 使用未允许的 HTTP 请求方法"));
+                            }
+                        }
+                    });
 }

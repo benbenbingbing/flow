@@ -1,7 +1,7 @@
 package com.workflow.process.cc.application;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.core.result.PageResult;
 import com.workflow.process.cc.infrastructure.persistence.record.ProcessCcRecord;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;

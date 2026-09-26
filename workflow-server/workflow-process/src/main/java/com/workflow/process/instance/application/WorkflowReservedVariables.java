@@ -1,6 +1,6 @@
 package com.workflow.process.instance.application;
 
-import com.workflow.process.assignment.relative.InitiatorOrganizationSnapshotService;
+import com.workflow.process.assignment.application.InitiatorOrganizationSnapshotService;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

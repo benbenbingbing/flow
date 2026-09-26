@@ -1,6 +1,6 @@
 package com.workflow.embed.management.infrastructure.persistence;
 
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.ApplicationOptionRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.IdentityProviderOptionRow;
 import com.workflow.embed.management.infrastructure.persistence.ManagementPersistenceRows.BindingRow;

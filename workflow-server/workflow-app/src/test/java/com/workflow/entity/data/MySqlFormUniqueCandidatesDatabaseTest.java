@@ -1,6 +1,6 @@
 package com.workflow.entity.data;
 
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;

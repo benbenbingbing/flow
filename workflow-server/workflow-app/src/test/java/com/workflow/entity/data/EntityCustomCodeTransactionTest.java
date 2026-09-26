@@ -10,7 +10,7 @@ import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.code.*;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;

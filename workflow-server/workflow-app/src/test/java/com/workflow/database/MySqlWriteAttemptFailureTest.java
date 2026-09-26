@@ -1,6 +1,6 @@
 package com.workflow.database;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import java.sql.*;
@@ -69,8 +69,8 @@ class MySqlWriteAttemptFailureTest {
         var f = fixture();
         var sql = new SQLException("unique", "23000", 1062);
         sql.addSuppressed(new SQLException("close failed", "08006"));
-        var translator = new com.workflow.core.database.DatabaseSQLExceptionTranslator(
-                new com.workflow.core.database.DatabaseExceptionClassifier(DatabaseDialects.errors(DatabaseVendor.MYSQL)));
+        var translator = new com.workflow.core.database.jdbc.DatabaseSQLExceptionTranslator(
+                new com.workflow.core.database.jdbc.DatabaseExceptionClassifier(DatabaseDialects.errors(DatabaseVendor.MYSQL)));
         var translated = translator.translate("insert", "sql", sql);
         assertFalse(translated instanceof DuplicateKeyException);
         assertSame(translated, assertThrows(DataAccessException.class,

@@ -8,7 +8,7 @@ import com.workflow.process.instance.infrastructure.persistence.mapper.EntityPro
 import com.workflow.process.status.infrastructure.persistence.mapper.ProcessStatusSyncMapper;
 import com.workflow.process.status.infrastructure.persistence.record.ProcessStatusSyncRecord;
 import lombok.RequiredArgsConstructor;
-import com.workflow.core.database.JdbcIdempotentInsert;
+import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.core.database.port.DatabaseClockPort;
 import java.util.LinkedHashMap;
 import org.springframework.stereotype.Component;

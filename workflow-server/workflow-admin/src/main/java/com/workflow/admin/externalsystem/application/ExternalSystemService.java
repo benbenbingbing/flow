@@ -2,8 +2,8 @@ package com.workflow.admin.externalsystem.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.admin.externalsystem.api.ExternalSystemErrorCode;
-import com.workflow.admin.externalsystem.api.ExternalSystemManagementException;
+import com.workflow.admin.externalsystem.api.error.ExternalSystemErrorCode;
+import com.workflow.admin.externalsystem.api.error.ExternalSystemManagementException;
 import com.workflow.admin.externalsystem.api.request.ExternalSystemRequests;
 import com.workflow.admin.externalsystem.api.response.ExternalSystemViews;
 import com.workflow.admin.externalsystem.infrastructure.persistence.mapper.ExternalSystemMapper;

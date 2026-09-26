@@ -1,6 +1,6 @@
 package com.workflow.bootstrap.guard;
 
-import com.workflow.admin.auth.application.AuthSessionProperties;
+import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 

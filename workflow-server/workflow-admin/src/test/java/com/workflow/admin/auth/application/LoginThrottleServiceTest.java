@@ -1,5 +1,7 @@
 package com.workflow.admin.auth.application;
 
+import com.workflow.admin.auth.infrastructure.config.LoginThrottleProperties;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
@@ -10,8 +12,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.workflow.admin.auth.infrastructure.LoginThrottleMapper;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.admin.auth.infrastructure.persistence.mapper.LoginThrottleMapper;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.error.RateLimitExceededException;
 import java.time.Clock;
 import java.time.Instant;

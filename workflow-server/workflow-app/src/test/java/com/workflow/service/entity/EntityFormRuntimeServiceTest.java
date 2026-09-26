@@ -4,7 +4,7 @@ import com.workflow.process.form.application.EntityFormRuntimeService;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;

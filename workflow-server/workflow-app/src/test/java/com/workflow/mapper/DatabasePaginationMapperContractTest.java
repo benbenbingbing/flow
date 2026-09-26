@@ -7,7 +7,7 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.GlobalConfigUtils;
 import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.version.infrastructure.persistence.mapper.EntityRecordVersionMapper;
 import com.workflow.process.cc.infrastructure.persistence.mapper.ProcessCcRecordMapper;

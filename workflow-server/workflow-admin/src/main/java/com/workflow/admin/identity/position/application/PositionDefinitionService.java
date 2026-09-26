@@ -2,8 +2,8 @@ package com.workflow.admin.identity.position.application;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.admin.identity.position.api.PositionErrorCode;
-import com.workflow.admin.identity.position.api.PositionManagementException;
+import com.workflow.admin.identity.position.api.error.PositionErrorCode;
+import com.workflow.admin.identity.position.api.error.PositionManagementException;
 import com.workflow.admin.identity.position.api.request.PositionRequests;
 import com.workflow.admin.identity.position.api.response.PositionViews;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionMapper;

@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.ProtectedContext;
 import com.workflow.embed.domain.SubjectDigest;
-import com.workflow.embed.management.crypto.ConfiguredEmbedSubjectDigester;
+import com.workflow.embed.management.infrastructure.crypto.ConfiguredEmbedSubjectDigester;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashMap;

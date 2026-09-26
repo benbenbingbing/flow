@@ -20,15 +20,15 @@ import com.workflow.contracts.embed.launch.port.EmbedLaunchIssuePort;
 import com.workflow.contracts.embed.launch.model.EmbedLaunchIssued;
 import com.workflow.contracts.embed.launch.model.EmbedLaunchView;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
-import com.workflow.embed.api.web.EmbedApiExceptionHandler;
+import com.workflow.embed.api.error.EmbedApiExceptionHandler;
 import com.workflow.embed.api.web.EmbedLaunchEntryController;
 import com.workflow.embed.api.web.EmbedNativeFormTargetController;
 import com.workflow.embed.api.web.EmbedRecordCreateController;
-import com.workflow.embed.api.web.EmbedRecordCreateRequest;
-import com.workflow.embed.api.web.EmbedRecordCreateViews;
+import com.workflow.embed.api.request.EmbedRecordCreateRequest;
+import com.workflow.embed.api.response.EmbedRecordCreateViews;
 import com.workflow.embed.api.web.EmbedRuntimeController;
-import com.workflow.embed.api.web.EmbedRuntimeListQueryRequest;
-import com.workflow.embed.api.web.EmbedRuntimeViews;
+import com.workflow.embed.api.request.EmbedRuntimeListQueryRequest;
+import com.workflow.embed.api.response.EmbedRuntimeViews;
 import com.workflow.embed.api.web.EmbedSessionController;
 import com.workflow.embed.application.launch.EmbedLaunchEntryService;
 import com.workflow.embed.application.record.EmbedRecordCreateFacade;
@@ -36,7 +36,7 @@ import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
 import com.workflow.embed.application.runtime.EmbedRuntimeReadFacade;
 import com.workflow.embed.application.session.EmbedSessionAuthenticationService;
 import com.workflow.embed.application.session.EmbedSessionExchangeService;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.AuthenticatedEmbedSession;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
@@ -46,9 +46,9 @@ import com.workflow.embed.domain.EmbedSessionState;
 import com.workflow.embed.security.EmbedContextHolder;
 import com.workflow.openapi.api.request.OpenEmbedLaunchRequest;
 import com.workflow.openapi.api.web.EmbedLaunchController;
-import com.workflow.openapi.security.OpenApplicationActorResolver;
-import com.workflow.openapi.security.OpenApplicationActorResolver.ResolvedApplicationActor;
-import com.workflow.openapi.security.OpenIntegrationProperties;
+import com.workflow.openapi.application.security.OpenApplicationActorResolver;
+import com.workflow.openapi.application.security.OpenApplicationActorResolver.ResolvedApplicationActor;
+import com.workflow.openapi.infrastructure.config.OpenIntegrationProperties;
 import io.swagger.v3.core.util.Yaml31;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.Operation;
@@ -699,8 +699,7 @@ class EmbedOpenApiContractTest {
 
     private TokenEndpointBinding tokenEndpointBinding() throws Exception {
         Class<?> configurationType = Class.forName(
-                "com.workflow.openapi.security."
-                        + "OpenIntegrationSecurityConfiguration"
+                com.workflow.openapi.infrastructure.config.OpenIntegrationSecurityConfiguration.class.getName()
                         + "$EnabledOpenIntegrationSecurity");
         Constructor<?> constructor = configurationType
                 .getDeclaredConstructor();
@@ -837,8 +836,7 @@ class EmbedOpenApiContractTest {
         MockHttpServletRequest authenticatedRequest =
                 tracedRequest();
         authenticatedRequest.setAttribute(
-                com.workflow.embed.security
-                        .EmbedSessionAuthenticationFilter
+                com.workflow.embed.infrastructure.web.EmbedSessionAuthenticationFilter
                         .AUTHENTICATED_SESSION_ATTRIBUTE,
                 session);
         EmbedSessionState state = new EmbedSessionState(

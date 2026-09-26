@@ -6,7 +6,7 @@ import com.workflow.entity.permission.infrastructure.persistence.record.EntityLi
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListActionMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListFieldMapper;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.entity.data.MySqlRuntimePaginationDatabaseTest.Fixture;
 import com.workflow.entity.data.MySqlWriteAttemptDatabaseTest.Harness;

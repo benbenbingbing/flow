@@ -9,7 +9,7 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.data.application.EntityMutationSystemFields;
 import com.workflow.contracts.entity.mutation.error.EntityMutationTargetNotFoundException;
 import com.workflow.entity.data.application.EntityRecordTeamService;
-import com.workflow.entity.version.application.EntityMutationIsolationExecutor;
+import com.workflow.entity.mutation.application.EntityMutationIsolationExecutor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

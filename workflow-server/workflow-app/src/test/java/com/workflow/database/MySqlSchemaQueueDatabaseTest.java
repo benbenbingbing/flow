@@ -7,14 +7,14 @@ import com.workflow.integration.database.api.schema.SchemaIndex;
 import com.workflow.integration.database.api.schema.SchemaTable;
 import com.workflow.integration.database.api.schema.SchemaType;
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
-import com.workflow.core.database.InitializedDriverDataSource;
-import com.workflow.core.database.JdbcDatabaseClock;
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
+import com.workflow.core.database.jdbc.JdbcDatabaseClock;
 
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.entity.data.infrastructure.schema.JdbcSchemaChangeQueue;
-import com.workflow.migration.schema.JdbcSchemaChangeWorker;
+import com.workflow.dbmigrator.schema.JdbcSchemaChangeWorker;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
-import com.workflow.migration.schema.SchemaDdlReplayVerifier;
+import com.workflow.dbmigrator.schema.SchemaDdlReplayVerifier;
 import com.workflow.core.database.lock.JdbcDatabaseLock;
 import com.workflow.core.database.port.DatabaseLockPort;
 import org.junit.jupiter.api.Test;

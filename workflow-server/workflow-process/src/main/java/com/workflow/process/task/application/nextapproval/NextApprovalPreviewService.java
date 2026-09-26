@@ -1,5 +1,9 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApprovalResolution;
+import com.workflow.process.task.application.nextapproval.model.NextApprovalTarget;
+import com.workflow.process.task.application.nextapproval.model.NextApproverSelectionPolicy;
+
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.response.NextApprovalNodeDTO;
 import com.workflow.process.task.api.response.NextApprovalPreviewResponse;

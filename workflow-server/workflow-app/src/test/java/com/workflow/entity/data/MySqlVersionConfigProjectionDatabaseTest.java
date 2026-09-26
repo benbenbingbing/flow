@@ -1,5 +1,7 @@
 package com.workflow.entity.data;
 
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
+
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 
 import com.fasterxml.jackson.databind.ObjectMapper;

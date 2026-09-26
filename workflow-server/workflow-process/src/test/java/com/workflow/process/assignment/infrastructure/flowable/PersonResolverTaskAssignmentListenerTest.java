@@ -6,7 +6,7 @@ import com.workflow.contracts.process.assignment.model.PersonResolveUsage;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
-import com.workflow.process.task.application.nextapproval.NextApproverOverride;
+import com.workflow.process.task.application.nextapproval.model.NextApproverOverride;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEntityEvent;

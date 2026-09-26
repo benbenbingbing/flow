@@ -1,6 +1,6 @@
 package com.workflow.entity.data.infrastructure.persistence.mapper;
 
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import org.apache.ibatis.annotations.*;
 import org.apache.ibatis.mapping.StatementType;
 
@@ -28,7 +28,7 @@ public interface EntityDataDynamicMapper {
             @Param("permissionSql") String permissionSql,
             @Param("permissionParameters") Map<String, Object> permissionParameters,
             @Param("selectedIds") List<String> selectedIds,
-            @Param("cursor") com.workflow.entity.data.application.EntityExportBatch.Cursor cursor,
+            @Param("cursor") com.workflow.entity.data.application.model.EntityExportBatch.Cursor cursor,
             @Param("sortColumn") String sortColumn,
             @Param("sortDirection") String sortDirection);
 

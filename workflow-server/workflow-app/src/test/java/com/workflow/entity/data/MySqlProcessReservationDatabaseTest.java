@@ -1,8 +1,8 @@
 package com.workflow.entity.data;
 
 import com.workflow.contracts.process.model.ProcessStartRequest;
-import com.workflow.core.database.JdbcDatabaseClock;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcDatabaseClock;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;

@@ -1,6 +1,8 @@
 package com.workflow.storage.application;
 
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.storage.application.error.FileUploadIdempotencyException;
+
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;

@@ -3,7 +3,7 @@ package com.workflow.entity.version.application;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
@@ -52,7 +52,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 
 @ExtendWith(MockitoExtension.class)
 class EntityRecordVersionServiceTest {

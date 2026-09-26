@@ -1,7 +1,7 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessRuntimeService;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
 

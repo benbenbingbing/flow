@@ -31,7 +31,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.Map;
 import java.util.List;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Qualifier;

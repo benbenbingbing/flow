@@ -1,8 +1,8 @@
 package com.workflow.admin.identity.position.application;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.workflow.admin.identity.position.api.PositionErrorCode;
-import com.workflow.admin.identity.position.api.PositionManagementException;
+import com.workflow.admin.identity.position.api.error.PositionErrorCode;
+import com.workflow.admin.identity.position.api.error.PositionManagementException;
 import com.workflow.admin.identity.position.api.response.PositionViews;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentMapper;
 import com.workflow.admin.identity.position.infrastructure.persistence.record.PositionAssignmentViewRow;

@@ -6,7 +6,7 @@ import com.workflow.contracts.process.assignment.model.PersonResolveResult;
 import com.workflow.contracts.process.assignment.model.PersonResolverDescriptor;
 import com.workflow.contracts.process.action.spi.FlowActionHandler;
 import com.workflow.contracts.process.assignment.spi.PersonResolver;
-import com.workflow.notification.SendNotificationHandler;
+import com.workflow.notification.action.SendNotificationHandler;
 import com.workflow.process.assignment.extension.ProcessInitiatorPersonResolver;
 import org.junit.jupiter.api.Test;
 

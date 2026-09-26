@@ -29,7 +29,7 @@ import com.workflow.embed.application.audit.EmbedLifecycleAudit;
 import com.workflow.embed.application.audit.EmbedAuditCorrelation;
 import com.workflow.embed.application.validation.EmbedOriginNormalizer;
 import com.workflow.embed.application.validation.EmbedPublishedContextValidator;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedEntryMode;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;

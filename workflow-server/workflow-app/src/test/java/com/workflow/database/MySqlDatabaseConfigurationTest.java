@@ -4,7 +4,7 @@ import com.workflow.config.database.DatabaseConfiguration;
 import com.workflow.config.database.DatabaseDataSourceConfiguration;
 import com.workflow.config.database.DatabaseMybatisConfiguration;
 import com.workflow.config.database.NumericBooleanTypeHandler;
-import com.workflow.core.database.InitializedDriverDataSource;
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
 
 import com.workflow.core.database.port.DatabaseConnections;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;

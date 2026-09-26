@@ -7,7 +7,7 @@ import org.mockito.InOrder;
 
 import java.util.List;
 import java.util.Map;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.inOrder;

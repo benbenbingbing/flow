@@ -28,7 +28,7 @@
 - `workflow-integration/workflow-database/dialect`、`query`、`schema`：七种产品的语法规则、SQL 生成及纯文本校验。锁描述包括绑定键、调用类型、成功/竞争返回码和专用事务释放要求，描述本身不触发任何执行。
 - `workflow-core/com.workflow.core.database`：通用连接、JDBC 时钟/元数据/锁执行及其本地接口，以及沿用 MyBatis-Plus Page 的 OffsetPage 适配。执行器从 integration 取得语法，负责资源关闭、返回值校验和事务边界；分页适配只保存原始 offset，不生成 SQL。
 - `workflow-entity`：实体字段和索引定义、结构计划、直接 DDL 执行、结构请求入队与等待。队列端口和实现位于 `entity.data.infrastructure.schema`。
-- `workflow-db-migrator/com.workflow.migration.schema`：结构 worker 和重放验收执行。历史 Flyway 迁移仍不参与本轮修改。
+- `workflow-db-migrator/com.workflow.dbmigrator.schema`：结构 worker 和重放验收执行。历史 Flyway 迁移仍不参与本轮修改。
 - `workflow-app/com.workflow.config.database`：Spring 数据源、方言和 MyBatis 装配。厂商 JDBC 驱动 profile 属于 app/db-migrator 运行制品，不属于纯方言模块。
 
 调用方向：业务模块直接依赖 `workflow-database` 的公共标准；`contracts` 中不保留数据库方言接口。MyBatis 动态 SQL 使用同模块 `DatabaseQuerySql` 入口，查询方言直接按产品缓存，不再使用跨模块 SPI。

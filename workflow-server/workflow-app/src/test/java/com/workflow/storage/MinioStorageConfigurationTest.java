@@ -3,7 +3,7 @@ package com.workflow.storage;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.workflow.storage.application.FileStorageFactory;
-import com.workflow.storage.application.FileStorageStrategy;
+import com.workflow.storage.application.port.FileStorageStrategy;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import com.workflow.storage.infrastructure.config.ProductionStorageConfigurationGuard;
 import com.workflow.storage.infrastructure.minio.MinioFileStorageStrategy;

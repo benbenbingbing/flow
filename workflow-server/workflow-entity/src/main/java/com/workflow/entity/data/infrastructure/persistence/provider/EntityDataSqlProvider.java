@@ -521,7 +521,7 @@ public class EntityDataSqlProvider {
         boolean ascending = configured && (params.get("sortDirection") == null
                 || "ASC".equalsIgnoreCase(params.get("sortDirection").toString().trim()));
         String quoted = requireIdentifier(sortColumn, "导出排序字段", context);
-        if (params.get("cursor") instanceof com.workflow.entity.data.application.EntityExportBatch.Cursor cursor) {
+        if (params.get("cursor") instanceof com.workflow.entity.data.application.model.EntityExportBatch.Cursor cursor) {
             String id = bindConditionScalar(params, condition, "id", cursor.id(), "__exportCursorId", context);
             boolean nullHigh = !java.util.Set.of("MYSQL", "OCEANBASE_MYSQL").contains(context.getDatabaseId());
             boolean nullFirst = ascending != nullHigh;

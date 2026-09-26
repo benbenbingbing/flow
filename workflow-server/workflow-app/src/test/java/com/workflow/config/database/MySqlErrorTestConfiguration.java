@@ -1,6 +1,6 @@
 package com.workflow.config.database;
 
-import com.workflow.core.database.DatabaseExceptionClassifier;
+import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import org.springframework.boot.test.context.TestConfiguration;

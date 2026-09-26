@@ -3,7 +3,7 @@ package com.workflow.outbox.application;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.outbox.api.OutboxPublishRequest;
 import com.workflow.outbox.infrastructure.persistence.mapper.OutboxRecordMapper;
@@ -34,7 +34,7 @@ class DatabaseOutboxPublisherTest {
                 new DatabaseOutboxPublisher(
                         mapper,
                         new ObjectMapper(),
-                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)), mock(com.workflow.core.database.JdbcLockedRow.class));
+                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)), mock(com.workflow.core.database.jdbc.JdbcLockedRow.class));
 
         publisher.publish(request());
 
@@ -58,7 +58,7 @@ class DatabaseOutboxPublisherTest {
                 new DatabaseOutboxPublisher(
                         mapper,
                         new ObjectMapper(),
-                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)), mock(com.workflow.core.database.JdbcLockedRow.class));
+                new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)), mock(com.workflow.core.database.jdbc.JdbcLockedRow.class));
 
         publisher.publishOrRequeueFailed(request());
 

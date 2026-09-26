@@ -3,9 +3,9 @@ package com.workflow.admin.auth.api.web;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.core.security.PublicApi;
 
-import com.workflow.admin.auth.infrastructure.ClientAddressResolver;
+import com.workflow.admin.auth.infrastructure.web.ClientAddressResolver;
 import com.workflow.admin.auth.application.AuthSessionException;
-import com.workflow.admin.auth.application.AuthSessionProperties;
+import com.workflow.admin.auth.infrastructure.config.AuthSessionProperties;
 import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.AuthTokenBundle;
 import com.workflow.admin.auth.application.LoginThrottleService;

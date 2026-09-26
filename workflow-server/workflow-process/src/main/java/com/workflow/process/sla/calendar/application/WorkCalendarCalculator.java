@@ -1,5 +1,7 @@
 package com.workflow.process.sla.calendar.application;
 
+import com.workflow.process.sla.calendar.application.model.WorkCalendarSnapshot;
+
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;

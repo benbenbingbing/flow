@@ -13,7 +13,7 @@ import com.workflow.embed.application.port.EmbedSecretGeneratorPort;
 import com.workflow.embed.application.port.EmbedSessionExchangeTransactionPort;
 import com.workflow.embed.application.port.EmbedTrafficControlPort;
 import com.workflow.embed.application.validation.EmbedOriginNormalizer;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedErrorCode;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.domain.EmbedLaunchExchangeCandidate;

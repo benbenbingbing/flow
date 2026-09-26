@@ -1,6 +1,8 @@
 package com.workflow.admin.setting.api.web;
 
-import com.workflow.admin.setting.api.*;
+import com.workflow.admin.setting.api.request.GlobalSettingRequests;
+import com.workflow.admin.setting.api.response.GlobalSettingView;
+
 import com.workflow.admin.setting.application.GlobalSettingService;
 import com.workflow.core.result.Result;
 import com.workflow.core.security.AuthenticatedApi;

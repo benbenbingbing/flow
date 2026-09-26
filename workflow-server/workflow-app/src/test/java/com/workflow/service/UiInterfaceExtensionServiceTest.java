@@ -2,9 +2,9 @@ package com.workflow.service;
 
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
 import com.workflow.entity.definition.application.EntityUiConfigurationPolicy;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiDataSourceExecutionAccessService;
-import com.workflow.entity.ui.application.UiDataSourceExecutionAuthorization;
+import com.workflow.entity.ui.application.model.UiDataSourceExecutionAuthorization;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiInvocationContextFactory;
 
@@ -1156,7 +1156,7 @@ class UiInterfaceExtensionServiceTest {
     /** 超时必须中断实际工作，并允许同一个有界执行器继续服务下一次请求。 */
     @Test
     void timedOutProviderIsCancelledAndWorkerCapacityRecovers() throws Exception {
-        var pool = new com.workflow.entity.ui.application.UiExtensionExecutionConfiguration()
+        var pool = new com.workflow.entity.ui.infrastructure.config.UiExtensionExecutionConfiguration()
                 .uiExtensionTaskExecutor(1, 1);
         pool.initialize();
         var stopped = new java.util.concurrent.CountDownLatch(1);
@@ -1199,7 +1199,7 @@ class UiInterfaceExtensionServiceTest {
     /** 已过期的排队任务不能在忙线程释放后补执行，也不能继续占用有限队列。 */
     @Test
     void expiredQueuedProviderNeverRunsAndQueueSlotIsReleased() throws Exception {
-        var pool = new com.workflow.entity.ui.application.UiExtensionExecutionConfiguration()
+        var pool = new com.workflow.entity.ui.infrastructure.config.UiExtensionExecutionConfiguration()
                 .uiExtensionTaskExecutor(1, 1);
         pool.initialize();
         var entered = new java.util.concurrent.CountDownLatch(1);

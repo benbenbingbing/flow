@@ -1,5 +1,7 @@
 package com.workflow.embed.config;
 
+import com.workflow.embed.infrastructure.config.EmbedProperties;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 

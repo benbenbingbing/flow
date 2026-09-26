@@ -2,6 +2,8 @@ package com.workflow.migration.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.migration.infrastructure.archive.WfpackArchive;
+import com.workflow.migration.infrastructure.crypto.WfpackIntegrity;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.setting.application.GlobalSettingService;
@@ -10,26 +12,18 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
-import java.util.zip.ZipOutputStream;
 
 /**
  * 配置迁移发布包编解码器。
@@ -43,9 +37,6 @@ public class ConfigMigrationPackageCodec {
 
     private static final int FORMAT_VERSION = 3;              // 当前发布包格式版本
     private static final int MIN_SUPPORTED_FORMAT_VERSION = 3;
-    private static final int MAX_ENTRY_COUNT = 500;           // 单包最大条目数
-    private static final int MAX_ENTRY_SIZE = 20 * 1024 * 1024;   // 单个条目最大字节数(20MB)
-    private static final int MAX_TOTAL_SIZE = 100 * 1024 * 1024;  // 解压后最大总字节数(100MB)
     static final String SELECTION_METADATA = "_selection";
     static final String TARGET_ONLY_DEPENDENCY = "targetOnly";
 
@@ -121,14 +112,14 @@ public class ConfigMigrationPackageCodec {
         entries.put("manifest.json", writeBytes(manifest));
 
         Map<String, String> checksums = new LinkedHashMap<>();
-        entries.forEach((path, value) -> checksums.put(path, sha256(value)));
+        entries.forEach((path, value) -> checksums.put(path, WfpackIntegrity.sha256(value)));
         byte[] checksumsBytes = writeBytes(checksums);
         entries.put("checksums.json", checksumsBytes);
         String signature = hmac(checksumsBytes);
         entries.put("signature.sig", signature.getBytes(StandardCharsets.UTF_8));
 
-        byte[] packageData = zip(entries);
-        return new EncodedPackage(packageData, sha256(packageData), signature,
+        byte[] packageData = WfpackArchive.zip(entries);
+        return new EncodedPackage(packageData, WfpackIntegrity.sha256(packageData), signature,
                 packageNo + ".wfpack", manifest);
     }
 
@@ -144,14 +135,7 @@ public class ConfigMigrationPackageCodec {
      * @throws IllegalArgumentException 包内容为空、超限、文件校验失败、格式不支持等
      */
     public DecodedPackage decode(byte[] packageData) {
-        if (packageData == null || packageData.length == 0) {
-            throw new IllegalArgumentException("发布包内容为空");
-        }
-        if (packageData.length > MAX_TOTAL_SIZE) {
-            throw new IllegalArgumentException("发布包超过最大限制 100MB");
-        }
-
-        Map<String, byte[]> entries = unzip(packageData);
+        Map<String, byte[]> entries = WfpackArchive.unzip(packageData);
         byte[] manifestBytes = requiredEntry(entries, "manifest.json");
         byte[] checksumBytes = requiredEntry(entries, "checksums.json");
         String signature = new String(requiredEntry(entries, "signature.sig"), StandardCharsets.UTF_8).trim();
@@ -169,7 +153,7 @@ public class ConfigMigrationPackageCodec {
         }
         checksums.forEach((path, expected) -> {
             byte[] value = requiredEntry(entries, path);
-            String actual = sha256(value);
+            String actual = WfpackIntegrity.sha256(value);
             if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8),
                     actual.getBytes(StandardCharsets.UTF_8))) {
                 throw new IllegalArgumentException("发布包文件校验失败: " + path);
@@ -212,7 +196,7 @@ public class ConfigMigrationPackageCodec {
                 String.valueOf(manifest.get("packageNo")),
                 String.valueOf(manifest.get("migrationTag")),
                 String.valueOf(manifest.getOrDefault("sourceEnvironment", "")),
-                sha256(packageData),
+                WfpackIntegrity.sha256(packageData),
                 signature,
                 MessageDigest.isEqual(signature.getBytes(StandardCharsets.UTF_8),
                         hmac(checksumBytes).getBytes(StandardCharsets.UTF_8)),
@@ -385,7 +369,7 @@ public class ConfigMigrationPackageCodec {
         if (Boolean.TRUE.equals(selection.get("full"))) {
             return "FULL";
         }
-        return "PARTIAL:" + sha256(writeBytes(selection)).substring(0, 32);
+        return "PARTIAL:" + WfpackIntegrity.sha256(writeBytes(selection)).substring(0, 32);
     }
 
     /**
@@ -409,7 +393,7 @@ public class ConfigMigrationPackageCodec {
     String hashSnapshot(Map<String, Object> snapshot) {
         Map<String, Object> content = new LinkedHashMap<>(snapshot);
         content.remove(SELECTION_METADATA);
-        return sha256(writeBytes(content));
+        return WfpackIntegrity.sha256(writeBytes(content));
     }
 
     /**
@@ -951,90 +935,6 @@ public class ConfigMigrationPackageCodec {
     }
 
     /**
-     * 处理{@code zip}，并将结果传给后续步骤。
-     *
-     * @param entries {@code entries}，供本方法处理{@code zip}时使用
-     * @return 处理后的{@code zip}结果，供调用方继续处理
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private byte[] zip(Map<String, byte[]> entries) {
-        try {
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            try (ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8)) {
-                for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
-                    ZipEntry zipEntry = new ZipEntry(entry.getKey());
-                    zipEntry.setTime(0);
-                    zip.putNextEntry(zipEntry);
-                    zip.write(entry.getValue());
-                    zip.closeEntry();
-                }
-            }
-            return output.toByteArray();
-        } catch (Exception e) {
-            throw new IllegalStateException("发布包生成失败", e);
-        }
-    }
-
-    /**
-     * 整理{@code unzip}数据，供调用方遍历或继续处理。
-     *
-     * @param data 数据，后续用于处理{@code unzip}并传递处理结果
-     * @return {@code unzip}键值结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private Map<String, byte[]> unzip(byte[] data) {
-        Map<String, byte[]> entries = new LinkedHashMap<>();
-        int totalSize = 0;
-        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(data), StandardCharsets.UTF_8)) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-                String path = entry.getName();
-                validateEntryPath(path);
-                if (entries.size() >= MAX_ENTRY_COUNT) {
-                    throw new IllegalArgumentException("发布包文件数量超过限制");
-                }
-                ByteArrayOutputStream output = new ByteArrayOutputStream();
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = zip.read(buffer)) != -1) {
-                    output.write(buffer, 0, read);
-                    if (output.size() > MAX_ENTRY_SIZE) {
-                        throw new IllegalArgumentException("发布包文件超过 20MB: " + path);
-                    }
-                }
-                totalSize += output.size();
-                if (totalSize > MAX_TOTAL_SIZE) {
-                    throw new IllegalArgumentException("发布包解压后超过 100MB");
-                }
-                if (entries.put(path, output.toByteArray()) != null) {
-                    throw new IllegalArgumentException("发布包包含重复路径: " + path);
-                }
-            }
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IllegalArgumentException("发布包不是有效的 wfpack 文件", e);
-        }
-        return entries;
-    }
-
-    /**
-     * 校验入口路径；不满足约束时阻止后续处理。
-     *
-     * @param path 路径，作为 {@code IllegalArgumentException} 的输入影响后续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void validateEntryPath(String path) {
-        if (!StringUtils.hasText(path) || path.startsWith("/") || path.contains("../")
-                || path.contains("..\\") || path.contains(":")) {
-            throw new IllegalArgumentException("发布包包含非法路径: " + path);
-        }
-    }
-
-    /**
      * 处理必填入口，并将结果传给后续步骤。
      *
      * @param entries {@code entries}，供本方法处理必填入口时使用
@@ -1058,28 +958,7 @@ public class ConfigMigrationPackageCodec {
      */
     private String hmac(byte[] value) {
         String signingKey = globalSettings.readSystemValue(MIGRATION_SIGNING_KEY).textValue();
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(signingKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            return HexFormat.of().formatHex(mac.doFinal(value));
-        } catch (Exception e) {
-            throw new IllegalStateException("发布包签名失败", e);
-        }
-    }
-
-    /**
-     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
-     *
-     * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
-     * @return 处理后的{@code sha256}文本，供调用方比较或展示
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private String sha256(byte[] value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
-        } catch (Exception e) {
-            throw new IllegalStateException("发布包哈希计算失败", e);
-        }
+        return WfpackIntegrity.hmac(value, signingKey);
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.instance.application.ProcessProgressReadBatch;
+
 import com.workflow.process.status.application.ProcessEndReason;
 import com.workflow.entity.form.api.response.FormConfigDTO;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;

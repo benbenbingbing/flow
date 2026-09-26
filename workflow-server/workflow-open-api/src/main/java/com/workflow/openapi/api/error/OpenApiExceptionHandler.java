@@ -2,10 +2,10 @@ package com.workflow.openapi.api.error;
 
 import com.workflow.core.logging.LogValue;
 import com.workflow.contracts.embed.error.EmbedBoundaryFailure;
-import com.workflow.openapi.api.OpenIntegrationEndpoint;
+import com.workflow.openapi.api.annotation.OpenIntegrationEndpoint;
 import com.workflow.openapi.api.response.OpenApiResponse;
-import com.workflow.openapi.web.OpenRequestTrace;
-import com.workflow.openapi.web.OpenPayloadTooLargeException;
+import com.workflow.openapi.infrastructure.web.OpenRequestTrace;
+import com.workflow.openapi.api.error.OpenPayloadTooLargeException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;

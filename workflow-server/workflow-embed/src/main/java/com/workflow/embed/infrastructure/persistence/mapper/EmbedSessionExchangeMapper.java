@@ -1,7 +1,7 @@
 package com.workflow.embed.infrastructure.persistence.mapper;
 
 import java.util.List;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.embed.domain.EmbedSessionExchangePlan;
 import com.workflow.embed.infrastructure.persistence.record.EmbedApplicationLockRow;
 import com.workflow.embed.infrastructure.persistence.record.EmbedBindingLockRow;

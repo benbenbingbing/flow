@@ -3,7 +3,7 @@ package com.workflow.entity.data.infrastructure.adapter;
 import com.workflow.contracts.entity.list.model.DataScopePlan;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.DynamicTableService;
-import com.workflow.entity.data.application.EntityRelationProjectionReadPort;
+import com.workflow.entity.data.application.port.EntityRelationProjectionReadPort;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationProjectionMapper;
 import com.workflow.entity.data.infrastructure.persistence.provider.EntityRelationProjectionSqlProvider.ColumnProjection;
 import com.workflow.entity.definition.application.model.PublishedRelationPath.LinkField;

@@ -1,5 +1,8 @@
 package com.workflow.process.task.application.nextapproval;
 
+import com.workflow.process.task.application.nextapproval.model.NextApprovalTarget;
+import com.workflow.process.task.application.nextapproval.model.NextApproverSelectionPolicy;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.assignment.application.LegacyMultiInstanceAssignmentParser;

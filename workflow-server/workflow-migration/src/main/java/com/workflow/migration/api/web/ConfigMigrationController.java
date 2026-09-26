@@ -16,7 +16,7 @@ import com.workflow.migration.application.ConfigMigrationAssetService;
 import com.workflow.migration.application.ConfigMigrationImportApplyService;
 import com.workflow.migration.application.ConfigMigrationPackageService;
 import com.workflow.migration.application.ConfigMigrationReadService;
-import com.workflow.migration.application.DownloadFile;
+import com.workflow.migration.application.model.DownloadFile;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;

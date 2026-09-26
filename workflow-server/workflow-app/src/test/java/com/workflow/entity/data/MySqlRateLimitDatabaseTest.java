@@ -1,19 +1,19 @@
 package com.workflow.entity.data;
 
-import com.workflow.admin.auth.application.LoginThrottleProperties;
+import com.workflow.admin.auth.infrastructure.config.LoginThrottleProperties;
 import com.workflow.admin.auth.application.LoginThrottleService;
-import com.workflow.admin.auth.infrastructure.LoginThrottleMapper;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.admin.auth.infrastructure.persistence.mapper.LoginThrottleMapper;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.error.RateLimitExceededException;
 import com.workflow.embed.application.port.EmbedTrafficControlPort.RuntimeRequestClass;
-import com.workflow.embed.config.EmbedProperties;
+import com.workflow.embed.infrastructure.config.EmbedProperties;
 import com.workflow.embed.domain.EmbedException;
 import com.workflow.embed.infrastructure.persistence.adapter.MyBatisEmbedTrafficControlAdapter;
 import com.workflow.embed.infrastructure.persistence.mapper.EmbedTrafficControlMapper;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.openapi.infrastructure.persistence.mapper.IntegrationRateLimitMapper;
-import com.workflow.openapi.security.IntegrationRateLimitService;
+import com.workflow.openapi.application.security.IntegrationRateLimitService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.*;

@@ -1,7 +1,7 @@
 package com.workflow.process.sla;
 
 import com.workflow.process.sla.calendar.application.WorkCalendarCalculator;
-import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
+import com.workflow.process.sla.calendar.application.model.WorkCalendarSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

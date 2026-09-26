@@ -13,7 +13,7 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilityDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionChangedReferenceDTO;
-import com.workflow.entity.version.application.EntityMutationReceiptService;
+import com.workflow.entity.mutation.application.EntityMutationReceiptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;

@@ -1,5 +1,8 @@
 package com.workflow.openapi.security;
 
+import com.workflow.openapi.infrastructure.config.OpenIntegrationProperties;
+import com.workflow.openapi.infrastructure.config.OpenIntegrationSecurityConfiguration;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;

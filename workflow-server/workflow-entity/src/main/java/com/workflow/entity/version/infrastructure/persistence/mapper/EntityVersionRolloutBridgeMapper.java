@@ -1,6 +1,6 @@
 package com.workflow.entity.version.infrastructure.persistence.mapper;
 
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import com.workflow.entity.version.infrastructure.persistence.record.EntityVersionRolloutState;
 import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.Mapper;

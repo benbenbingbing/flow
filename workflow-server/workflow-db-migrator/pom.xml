@@ -67,7 +67,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <classifier>exec</classifier>
-                    <mainClass>com.workflow.migration.runner.DatabaseMigrator</mainClass>
+                    <mainClass>com.workflow.dbmigrator.runner.DatabaseMigrator</mainClass>
                 </configuration>
             </plugin>
         </plugins>

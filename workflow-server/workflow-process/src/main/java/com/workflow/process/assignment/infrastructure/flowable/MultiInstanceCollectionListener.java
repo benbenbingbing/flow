@@ -10,8 +10,8 @@ import com.workflow.process.assignment.application.LegacyMultiInstanceAssignment
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver;
 import com.workflow.process.assignment.application.NodeAssignmentReferenceResolver.ResolvedAssignment;
 import com.workflow.process.assignment.application.PersonResolverRuntimeService;
-import com.workflow.process.assignment.entity.EntityUserReferenceFieldConfig;
-import com.workflow.process.assignment.relative.RelativeOrgPositionConfig;
+import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
+import com.workflow.process.assignment.domain.RelativeOrgPositionConfig;
 import com.workflow.process.definition.infrastructure.persistence.mapper.ProcessVersionHistoryMapper;
 import com.workflow.process.task.infrastructure.MultiInstanceVariableNames;
 import com.workflow.process.task.application.nextapproval.NextApproverOverrideStore;

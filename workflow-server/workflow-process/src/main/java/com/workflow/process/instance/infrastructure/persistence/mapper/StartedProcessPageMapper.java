@@ -1,7 +1,7 @@
 package com.workflow.process.instance.infrastructure.persistence.mapper;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.workflow.core.database.OffsetPage;
+import com.workflow.core.database.mybatis.OffsetPage;
 import org.apache.ibatis.annotations.*;
 import java.util.*;
 

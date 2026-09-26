@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.util.function.Supplier;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 

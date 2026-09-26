@@ -2,7 +2,7 @@ package com.workflow.entity.definition.application;
 
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
-import com.workflow.core.database.JdbcLockedRow;
+import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.core.database.port.SchemaMetadataPort;

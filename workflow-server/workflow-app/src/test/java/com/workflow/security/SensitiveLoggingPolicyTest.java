@@ -16,9 +16,7 @@ class SensitiveLoggingPolicyTest {
                         + "entity/data/application/"
                         + "EntityDataDynamicService.java"));
         String notificationHandler = Files.readString(Path.of(
-                "../workflow-integration/workflow-notification/"
-                        + "src/main/java/com/workflow/notification/"
-                        + "SendNotificationHandler.java"));
+                "../workflow-integration/workflow-notification/src/main/java/com/workflow/notification/action/SendNotificationHandler.java"));
 
         assertFalse(entityService.contains("data={}"));
         assertFalse(notificationHandler.contains("receiver={}"));

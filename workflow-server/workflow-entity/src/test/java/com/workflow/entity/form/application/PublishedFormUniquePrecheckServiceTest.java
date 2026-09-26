@@ -1,5 +1,7 @@
 package com.workflow.entity.form.application;
 
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
@@ -15,7 +17,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
-import com.workflow.entity.permission.api.response.DataPermissionResult;
+import com.workflow.entity.permission.application.model.DataPermissionResult;
 import com.workflow.entity.permission.application.DataPermissionEngine;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import org.junit.jupiter.api.AfterEach;

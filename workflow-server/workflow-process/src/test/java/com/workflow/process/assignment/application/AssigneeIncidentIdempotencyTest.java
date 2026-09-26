@@ -2,7 +2,7 @@ package com.workflow.process.assignment.application;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
-import com.workflow.core.database.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import org.flowable.engine.RuntimeService;

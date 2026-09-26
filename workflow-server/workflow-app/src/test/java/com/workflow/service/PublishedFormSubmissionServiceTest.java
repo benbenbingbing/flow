@@ -1,14 +1,14 @@
 package com.workflow.service;
 
-import com.workflow.entity.form.application.FormSubmissionExecutionContext;
-import com.workflow.entity.form.application.FormSubmissionPreviewDeferredException;
+import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
+import com.workflow.entity.form.application.error.FormSubmissionPreviewDeferredException;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
-import com.workflow.entity.form.application.PublishedFormRequiredValidator;
-import com.workflow.entity.form.application.ResolvedEntityFormRelease;
+import com.workflow.entity.form.application.validation.PublishedFormRequiredValidator;
+import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 import com.workflow.entity.form.uniqueness.application.TrustedSubFormUniqueReference;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiExtensionDefinitionValidator;
+import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 
@@ -1021,7 +1021,7 @@ class PublishedFormSubmissionServiceTest {
                 codec,
                 new UiExtensionDefinitionValidator(codec),
                 requiredValidator,
-                new com.workflow.entity.form.application.PublishedFormCrossFieldValidator(
+                new com.workflow.entity.form.application.validation.PublishedFormCrossFieldValidator(
                         mock(com.workflow.entity.data.application.EntityDataDynamicService.class),
                         new ObjectMapper(), codec,
                         new com.workflow.entity.form.application.PublishedFormConditionEvaluator(new ObjectMapper())));
@@ -1041,7 +1041,7 @@ class PublishedFormSubmissionServiceTest {
         form.setFields(List.of(start, end)); form.setNodes(List.of());
         when(releases.resolveRuntimeFormRelease("form-1", null, null)).thenReturn(resolution(form, "release-1", 1));
         when(extensions.execute(eq("source-1"), org.mockito.ArgumentMatchers.any())).thenReturn(Map.of("end", 5));
-        var error = assertThrows(com.workflow.core.error.FormCrossFieldValidationException.class,
+        var error = assertThrows(com.workflow.entity.form.application.error.FormCrossFieldValidationException.class,
                 () -> service.applyForm("form-1", "expense", null, "edit", Map.of("start", 10, "end", 20)));
         assertEquals("end", error.getFieldErrors().get(0).fieldCode());
         assertEquals("range", error.getFieldErrors().get(0).ruleId());

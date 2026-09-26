@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.audit.domain.AuditLogPayload;
 import com.workflow.admin.audit.infrastructure.AuditDiffCalculator;
 import com.workflow.admin.audit.infrastructure.AuditPayloadSanitizer;
-import com.workflow.admin.audit.infrastructure.AuditRequestMetadataProvider;
+import com.workflow.admin.audit.infrastructure.web.AuditRequestMetadataProvider;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;

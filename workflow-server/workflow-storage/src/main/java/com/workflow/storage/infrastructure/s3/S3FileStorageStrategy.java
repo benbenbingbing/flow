@@ -1,7 +1,7 @@
 package com.workflow.storage.infrastructure.s3;
 
-import com.workflow.storage.application.FileStorageStrategy;
-import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.storage.application.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import jakarta.annotation.PreDestroy;
 import java.io.FileNotFoundException;

@@ -1,11 +1,13 @@
 package com.workflow.process.sla.runtime.application;
 
+import com.workflow.process.sla.runtime.application.model.PublishedTaskSlaConfig;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.process.sla.calendar.application.WorkCalendarCalculator;
-import com.workflow.process.sla.calendar.application.WorkCalendarSnapshot;
-import com.workflow.process.sla.policy.application.TaskSlaPolicySnapshot;
+import com.workflow.process.sla.calendar.application.model.WorkCalendarSnapshot;
+import com.workflow.process.sla.policy.application.model.TaskSlaPolicySnapshot;
 import com.workflow.process.sla.runtime.api.response.TaskSlaDTO;
 import com.workflow.process.sla.runtime.infrastructure.persistence.mapper.ProcessTaskSlaEventMapper;
 import com.workflow.process.sla.runtime.infrastructure.persistence.mapper.ProcessTaskSlaMapper;

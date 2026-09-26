@@ -1,8 +1,8 @@
 package com.workflow.config.flowable;
 
-import com.workflow.entity.ui.application.UiExtensionExecutionConfiguration;
-import com.workflow.outbox.config.OutboxExecutionConfiguration;
-import com.workflow.process.action.config.FlowActionExecutionConfiguration;
+import com.workflow.entity.ui.infrastructure.config.UiExtensionExecutionConfiguration;
+import com.workflow.outbox.infrastructure.config.OutboxExecutionConfiguration;
+import com.workflow.process.action.infrastructure.config.FlowActionExecutionConfiguration;
 import org.flowable.common.spring.async.SpringAsyncTaskExecutor;
 import org.flowable.spring.SpringProcessEngineConfiguration;
 import org.flowable.spring.boot.ProcessEngineAutoConfiguration;

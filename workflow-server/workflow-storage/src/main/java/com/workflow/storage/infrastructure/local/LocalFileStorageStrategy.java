@@ -1,8 +1,8 @@
 package com.workflow.storage.infrastructure.local;
 
 import com.workflow.core.logging.LogValue;
-import com.workflow.storage.application.FileStorageStrategy;
-import com.workflow.storage.application.StoredFile;
+import com.workflow.storage.application.port.FileStorageStrategy;
+import com.workflow.storage.application.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

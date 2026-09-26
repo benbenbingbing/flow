@@ -1,7 +1,7 @@
 package com.workflow.admin.identity.position.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.workflow.admin.identity.position.api.PositionErrorCode;
+import com.workflow.admin.identity.position.api.error.PositionErrorCode;
 import com.workflow.admin.identity.position.api.request.PositionRequests;
 import com.workflow.admin.identity.position.api.response.PositionViews;
 import com.workflow.admin.identity.position.infrastructure.persistence.mapper.SysPositionAssignmentBatchMapper;

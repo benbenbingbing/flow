@@ -1,5 +1,7 @@
 package com.workflow.process.instance.application;
 
+import com.workflow.process.instance.application.ProcessProgressReadBatch;
+
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;

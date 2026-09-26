@@ -1,9 +1,11 @@
 package com.workflow.entity.data;
 
+import com.workflow.entity.data.application.port.SchemaDdlExecutor;
+
 import com.workflow.entity.data.application.*;
-import com.workflow.entity.data.infrastructure.JdbcSchemaDdlExecutor;
+import com.workflow.entity.data.infrastructure.schema.JdbcSchemaDdlExecutor;
 import com.workflow.core.database.port.DatabaseConnections;
-import com.workflow.core.database.InitializedDriverDataSource;
+import com.workflow.core.database.jdbc.InitializedDriverDataSource;
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
 import javax.sql.DataSource;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -12,7 +14,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.integration.database.schema.dialect.MySqlSchemaDdlDialect;
 import org.junit.jupiter.api.*;
 import com.workflow.core.database.schema.JdbcSchemaMetadata;
-import com.workflow.migration.schema.SchemaDdlReplayVerifier;
+import com.workflow.dbmigrator.schema.SchemaDdlReplayVerifier;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
