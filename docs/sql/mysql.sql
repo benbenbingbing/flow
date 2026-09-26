@@ -1588,7 +1588,7 @@ CREATE TABLE `embed_application_grant` (
   `application_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '应用ID。',
   `view_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '视图ID。',
   `identity_provider_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '身份提供方ID。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'DISABLED\',\'REVOKED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'DISABLED\\\',\\\'REVOKED\\\'。',
   `trusted_subject_assertion` tinyint NOT NULL DEFAULT '0' COMMENT '是否信任人员断言；CHECK 枚举：0,1。',
   `revision_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'FOLLOW_ACTIVE' COMMENT '修订号模式。',
   `pinned_revision` bigint DEFAULT NULL COMMENT '固定修订号。',
@@ -1649,7 +1649,7 @@ CREATE TABLE `embed_external_identity_binding` (
   `subject_digest_key_version` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主体摘要键版本。',
   `subject_hint` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主体提示。',
   `flow_user_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Flow用户ID。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'DISABLED\',\'REVOKED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'DISABLED\\\',\\\'REVOKED\\\'。',
   `binding_version` bigint NOT NULL DEFAULT '1' COMMENT '绑定版本。',
   `effective_at` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) COMMENT '生效时间。',
   `expires_at` datetime(6) DEFAULT NULL COMMENT '过期时间。',
@@ -1679,14 +1679,14 @@ CREATE TABLE `embed_external_identity_binding` (
 CREATE TABLE `embed_identity_provider` (
   `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
   `name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '名称。',
-  `type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '类型；CHECK 枚举：\'SIGNED_JWT\',\'TRUSTED_EXTERNAL_ID\'。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'DISABLED\',\'REVOKED\'。',
+  `type` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '类型；CHECK 枚举：\\\'SIGNED_JWT\\\',\\\'TRUSTED_EXTERNAL_ID\\\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'DISABLED\\\',\\\'REVOKED\\\'。',
   `issuer` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发行者。',
   `issuer_uniqueness_key` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (coalesce(`issuer`,_utf8mb4'<trusted-external-id>')) STORED COMMENT '发行者唯一性键；数据库生成，表达式见本表实现说明。',
   `subject_namespace` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主体命名空间。',
   `audiences_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '受众集合JSON。',
   `algorithms_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '算法集合JSON。',
-  `jwks_mode` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'JWKS模式；CHECK 枚举：\'STATIC_JWK_SET\',\'REMOTE_JWKS\'。',
+  `jwks_mode` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'JWKS模式；CHECK 枚举：\\\'STATIC_JWK_SET\\\',\\\'REMOTE_JWKS\\\'。',
   `jwks_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT 'JWKSJSON。',
   `jwks_url` varchar(2048) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'JWKSURL。',
   `clock_skew_seconds` int NOT NULL DEFAULT '30' COMMENT '允许时钟偏差秒数。',
@@ -1733,17 +1733,17 @@ CREATE TABLE `embed_launch` (
   `subject_digest_key_version` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主体摘要键版本。',
   `parent_origin` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '父级来源。',
   `channel_id` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '通道ID。',
-  `entry_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '入口模式；CHECK 枚举：\'LIST\',\'CREATE\' / \'VIEW\',\'EDIT\'。',
+  `entry_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '入口模式；CHECK 枚举：\\\'LIST\\\',\\\'CREATE\\\' / \\\'VIEW\\\',\\\'EDIT\\\'。',
   `record_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '记录ID。',
   `context_ciphertext` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文密文。',
   `context_cipher_key_version` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文加密键版本。',
   `context_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文摘要。',
   `context_digest_key_version` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文摘要键版本。',
   `ui_locale` varchar(35) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'zh-CN' COMMENT '界面语言区域。',
-  `ui_theme` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'light' COMMENT '界面主题；CHECK 枚举：\'light\',\'dark\',\'system\'。',
-  `ui_form_presentation` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'seamless' COMMENT '表单展示方式：seamless 或 dialog，默认 seamless；CHECK 枚举：\'seamless\',\'dialog\'；迁移声明排序规则 utf8mb4_bin，标准迁移器完成后再统一为 utf8mb4_unicode_ci。',
+  `ui_theme` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'light' COMMENT '界面主题；CHECK 枚举：\\\'light\\\',\\\'dark\\\',\\\'system\\\'。',
+  `ui_form_presentation` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'seamless' COMMENT '表单展示方式：seamless 或 dialog，默认 seamless；CHECK 枚举：\\\'seamless\\\',\\\'dialog\\\'；迁移声明排序规则 utf8mb4_bin，标准迁移器完成后再统一为 utf8mb4_unicode_ci。',
   `launch_code_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '启动编码摘要。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ISSUED' COMMENT '状态；CHECK 枚举：\'ISSUED\',\'CONSUMED\',\'EXPIRED\',\'REVOKED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ISSUED' COMMENT '状态；CHECK 枚举：\\\'ISSUED\\\',\\\'CONSUMED\\\',\\\'EXPIRED\\\',\\\'REVOKED\\\'。',
   `expires_at` datetime(6) NOT NULL COMMENT '过期时间。',
   `consumed_at` datetime(6) DEFAULT NULL COMMENT '消费时间。',
   `consumed_session_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '消费会话ID。',
@@ -1794,7 +1794,7 @@ CREATE TABLE `embed_operation_receipt` (
   `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
   `idempotency_record_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '幂等记录ID。',
   `application_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '应用ID。',
-  `operation` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作；CHECK 枚举： \'EMBED_RECORD_CREATE\',\'EMBED_RECORD_UPDATE\',\'EMBED_ACTION_EXECUTE\'。',
+  `operation` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作；CHECK 枚举： \\\'EMBED_RECORD_CREATE\\\',\\\'EMBED_RECORD_UPDATE\\\',\\\'EMBED_ACTION_EXECUTE\\\'。',
   `actor_scope_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作主体范围摘要。',
   `view_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '视图键。',
   `target_type` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '目标类型。',
@@ -1832,7 +1832,7 @@ CREATE TABLE `embed_session` (
   `binding_version` bigint NOT NULL COMMENT '绑定版本。',
   `parent_origin` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '父级来源。',
   `channel_id` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '通道ID。',
-  `entry_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '入口模式；CHECK 枚举：\'LIST\',\'CREATE\' / \'VIEW\',\'EDIT\'。',
+  `entry_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '入口模式；CHECK 枚举：\\\'LIST\\\',\\\'CREATE\\\' / \\\'VIEW\\\',\\\'EDIT\\\'。',
   `record_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '记录ID。',
   `parent_nonce_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '父级随机数摘要。',
   `child_nonce_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '子级随机数摘要。',
@@ -1841,13 +1841,13 @@ CREATE TABLE `embed_session` (
   `context_digest` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文摘要。',
   `context_digest_key_version` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '上下文摘要键版本。',
   `ui_locale` varchar(35) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'zh-CN' COMMENT '界面语言区域。',
-  `ui_theme` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'light' COMMENT '界面主题；CHECK 枚举：\'light\',\'dark\',\'system\'。',
-  `ui_form_presentation` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'seamless' COMMENT '表单展示方式：seamless 或 dialog，默认 seamless；CHECK 枚举：\'seamless\',\'dialog\'；迁移声明排序规则 utf8mb4_bin，标准迁移器完成后再统一为 utf8mb4_unicode_ci。',
+  `ui_theme` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'light' COMMENT '界面主题；CHECK 枚举：\\\'light\\\',\\\'dark\\\',\\\'system\\\'。',
+  `ui_form_presentation` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'seamless' COMMENT '表单展示方式：seamless 或 dialog，默认 seamless；CHECK 枚举：\\\'seamless\\\',\\\'dialog\\\'；迁移声明排序规则 utf8mb4_bin，标准迁移器完成后再统一为 utf8mb4_unicode_ci。',
   `capability_snapshot_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '能力快照JSON。',
   `application_version` bigint NOT NULL COMMENT '应用版本。',
   `grant_security_version` bigint NOT NULL COMMENT '授权安全版本。',
   `view_security_version` bigint NOT NULL COMMENT '视图安全版本。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'LOGGED_OUT\',\'EXPIRED\',\'REVOKED\' / \'LOGGED_OUT\',\'EXPIRED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'LOGGED_OUT\\\',\\\'EXPIRED\\\',\\\'REVOKED\\\' / \\\'LOGGED_OUT\\\',\\\'EXPIRED\\\'。',
   `slot_released` tinyint NOT NULL DEFAULT '0' COMMENT '会话名额是否已释放。',
   `slot_released_at` datetime(6) DEFAULT NULL COMMENT '会话名额释放时间。',
   `issued_at` datetime(6) NOT NULL COMMENT '签发时间。',
@@ -1920,8 +1920,8 @@ CREATE TABLE `embed_view` (
   `view_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '视图键。',
   `name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '名称。',
   `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '说明。',
-  `surface_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '界面类型；CHECK 枚举：\'LIST\',\'FORM\'。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT' COMMENT '状态；CHECK 枚举：\'DRAFT\',\'ACTIVE\',\'DISABLED\',\'RETIRED\'。',
+  `surface_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '界面类型；CHECK 枚举：\\\'LIST\\\',\\\'FORM\\\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'DRAFT' COMMENT '状态；CHECK 枚举：\\\'DRAFT\\\',\\\'ACTIVE\\\',\\\'DISABLED\\\',\\\'RETIRED\\\'。',
   `draft_config_json` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '草稿配置JSON。',
   `draft_revision` bigint NOT NULL DEFAULT '1' COMMENT '草稿修订号。',
   `published_release_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发布发布ID。',
@@ -1946,7 +1946,7 @@ CREATE TABLE `embed_view_release` (
   `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
   `view_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '视图ID。',
   `revision` bigint NOT NULL COMMENT '修订号。',
-  `surface_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '界面类型；CHECK 枚举：\'LIST\',\'FORM\'。',
+  `surface_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '界面类型；CHECK 枚举：\\\'LIST\\\',\\\'FORM\\\'。',
   `entity_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '实体编码。',
   `list_key` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '列表键。',
   `default_form_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '默认表单ID。',
@@ -1995,6 +1995,9 @@ CREATE TABLE `entity_code_rule` (
   `example` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '编码示例。',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。',
+  `generation_mode` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'RULE' COMMENT '编码生成模式：RULE 使用内置规则，CUSTOM 调用登记的生成器；运行时按此选择策略',
+  `generator_code` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '自定义生成器编码，CUSTOM 模式下用于定位扩展实现',
+  `generator_config` text COLLATE utf8mb4_unicode_ci COMMENT '自定义生成器参数文档，调用扩展实现时作为输入并由应用校验',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_entity_code` (`entity_code`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体业务编码规则表';
@@ -2026,7 +2029,7 @@ CREATE TABLE `entity_definition` (
   KEY `idx_lifecycle_mode` (`lifecycle_mode`),
   KEY `idx_storage_mode` (`storage_mode`),
   KEY `idx_entity_definition_process_binding` (`active_process_definition_key`)
-) ENGINE=InnoDB AUTO_INCREMENT=2099424350330544131 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体定义表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103130977992589314 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体定义表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -2066,7 +2069,7 @@ CREATE TABLE `entity_field` (
   UNIQUE KEY `uk_entity_field` (`entity_id`,`field_code`),
   KEY `idx_entity_id` (`entity_id`),
   KEY `idx_field_code` (`field_code`)
-) ENGINE=InnoDB AUTO_INCREMENT=2100452095680323873 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体字段定义表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103133476224909315 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='实体字段定义表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -2155,9 +2158,6 @@ CREATE TABLE `entity_form_node` (
   `legacy_props_document` longtext COLLATE utf8mb4_unicode_ci COMMENT '无法识别的历史属性JSON文档；仍保存历史或当前节点类型不适用的属性，并参与恢复；不是已废弃的空列。',
   `order_key` bigint NOT NULL DEFAULT '1000000' COMMENT '稀疏排序键。',
   `revision` int NOT NULL DEFAULT '1' COMMENT '修订号：节点草稿修订号。',
-  `template_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '来源模板ID。',
-  `template_version` int DEFAULT NULL COMMENT '锁定模板版本。',
-  `local_overrides_document` longtext COLLATE utf8mb4_unicode_ci COMMENT '模板实例本地覆盖JSON文档。',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。',
   `deleted` tinyint NOT NULL DEFAULT '0' COMMENT '逻辑删除标记：逻辑删除标志（0-未删除 1-已删除）。',
@@ -2884,7 +2884,7 @@ CREATE TABLE `integration_application` (
   `application_name` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '应用名称。',
   `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '说明。',
   `owner_organization_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '所有者组织ID。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'DISABLED\',\'REVOKED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'DISABLED\\\',\\\'REVOKED\\\'。',
   `rate_limit_per_minute` int NOT NULL DEFAULT '60' COMMENT '每分钟请求上限。',
   `max_concurrency` int NOT NULL DEFAULT '10' COMMENT '最大并发数。',
   `allowed_source_cidrs` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci COMMENT '允许的来源网段集合。',
@@ -2911,7 +2911,7 @@ CREATE TABLE `integration_application_credential` (
   `application_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '应用ID。',
   `secret_hash` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '密钥哈希：应用凭证哈希，用于验证凭证，不能反推出原始凭证。',
   `credential_hint` varchar(12) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '凭证提示。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\'ACTIVE\',\'REVOKED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE' COMMENT '状态；CHECK 枚举：\\\'ACTIVE\\\',\\\'REVOKED\\\'。',
   `credential_version` bigint NOT NULL COMMENT '凭证版本。',
   `expires_at` datetime(6) DEFAULT NULL COMMENT '过期时间。',
   `last_used_at` datetime(6) DEFAULT NULL COMMENT '最近使用时间。',
@@ -2938,7 +2938,7 @@ CREATE TABLE `integration_idempotency_record` (
   `operation` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '操作。',
   `idempotency_key` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '幂等键：标识同一业务请求的幂等键，具体唯一性范围见本表索引。',
   `request_hash` char(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '请求哈希：请求内容摘要，用于核验幂等重试是否携带相同内容。',
-  `status` varchar(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态；CHECK 枚举： \'PROCESSING\',\'SUCCEEDED\',\'FAILED_RETRYABLE\' 。',
+  `status` varchar(24) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '状态；CHECK 枚举： \\\'PROCESSING\\\',\\\'SUCCEEDED\\\',\\\'FAILED_RETRYABLE\\\' 。',
   `resource_type` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '资源类型。',
   `resource_id` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '资源ID。',
   `response_status` smallint DEFAULT NULL COMMENT '响应状态。',
@@ -2996,6 +2996,9 @@ CREATE TABLE `process_action` (
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。',
   `created_by` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '创建人。',
   `deleted` int DEFAULT '0' COMMENT '逻辑删除标记：是否删除 0-未删除 1-已删除。',
+  `failure_strategy_code` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败策略编码，动作执行失败时用于选择对应处置逻辑',
+  `failure_strategy_version` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败策略版本，保证发布配置绑定稳定的策略实现',
+  `failure_strategy_config` text COLLATE utf8mb4_unicode_ci COMMENT '失败策略参数文档，供重试、终止或人工处置逻辑解析',
   PRIMARY KEY (`id`),
   KEY `idx_process_config` (`process_config_id`),
   KEY `idx_version` (`version_id`),
@@ -3073,6 +3076,14 @@ CREATE TABLE `process_action_execution` (
   `duration_ms` bigint DEFAULT NULL COMMENT '执行耗时毫秒。',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '更新时间。',
+  `failure_strategy_snapshot` mediumtext COLLATE utf8mb4_unicode_ci COMMENT '执行时的失败策略快照，后续重试沿用触发时的配置',
+  `attempt_no` int NOT NULL DEFAULT '0' COMMENT '执行尝试序号，每次重试递增，供审计和幂等判断',
+  `attempt_lease_token` bigint DEFAULT NULL COMMENT '尝试租约令牌，防止过期执行器提交重试结果',
+  `termination_reason` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '执行终止原因，区分重试耗尽、人工停止等结束路径',
+  `resolution_status` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '失败处置状态，跟踪自动重试或人工处理结果',
+  `replay_root_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '重放链根执行ID，用于聚合同一原始动作的后续执行',
+  `replay_of_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '被重放的执行ID，用于追踪当前执行的来源',
+  `handler_idempotency_key` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '处理器幂等键，跨重试和重放避免重复副作用',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_process_action_execution_idempotency` (`idempotency_key`),
   KEY `idx_process_action_execution_ready` (`status`,`next_retry_time`,`create_time`),
@@ -3204,7 +3215,7 @@ CREATE TABLE `process_definition_config` (
   KEY `idx_process_key` (`process_key`),
   KEY `idx_status` (`status`),
   KEY `idx_category` (`category`)
-) ENGINE=InnoDB AUTO_INCREMENT=2099424243996549122 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程定义配置表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103464330386096131 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程定义配置表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -3323,7 +3334,7 @@ CREATE TABLE `process_node_assignee` (
   `deleted` tinyint DEFAULT '0' COMMENT '逻辑删除标记：是否删除。',
   PRIMARY KEY (`id`),
   KEY `idx_node_config_id` (`node_config_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2102556042004025346 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程节点办理人配置表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103464596808286211 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程节点办理人配置表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -3341,7 +3352,7 @@ CREATE TABLE `process_node_config` (
   PRIMARY KEY (`id`),
   KEY `idx_process_config_id` (`process_config_id`),
   KEY `idx_node_id` (`node_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2102556042024996866 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程节点配置表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103464596799897603 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程节点配置表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -3444,7 +3455,7 @@ CREATE TABLE `process_task` (
   `entity_code` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '实体编码。',
   `entity_data_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '实体数据ID。',
   `assignee_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '执行人ID。',
-  `assignee_name` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '执行人姓名。',
+  `assignee_name` longtext COLLATE utf8mb4_unicode_ci COMMENT '执行人姓名。',
   `assignee_type` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '执行人类型: user/group/role。',
   `form_key` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '表单标识。',
   `form_data` longtext COLLATE utf8mb4_unicode_ci COMMENT '表单数据。',
@@ -3465,14 +3476,25 @@ CREATE TABLE `process_task` (
   `timeout_action` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '超时策略。',
   `timeout_handled` tinyint DEFAULT '0' COMMENT '是否已处理超时。',
   `priority` int DEFAULT '0' COMMENT '优先级。',
+  `start_user_id` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '发起人身份，兼容用户ID和用户名',
+  `business_name` longtext COLLATE utf8mb4_unicode_ci COMMENT '任务列表业务摘要，与业务当前值同步',
+  `business_code` longtext COLLATE utf8mb4_unicode_ci COMMENT '任务列表业务摘要，与业务当前值同步',
+  `business_data_name` longtext COLLATE utf8mb4_unicode_ci COMMENT '任务列表业务摘要，与业务当前值同步',
+  `business_current_task_name` longtext COLLATE utf8mb4_unicode_ci COMMENT '任务列表业务摘要，与业务当前值同步',
+  `business_status` longtext COLLATE utf8mb4_unicode_ci COMMENT '任务列表业务摘要，与业务当前值同步',
+  `inbox_summary_ready` tinyint NOT NULL DEFAULT '0' COMMENT '摘要已回填；0时保留旧读取语义',
+  `inbox_identity_ready` tinyint NOT NULL DEFAULT '0' COMMENT '候选身份已从引擎最终状态同步',
   PRIMARY KEY (`id`),
   UNIQUE KEY `task_id` (`task_id`),
   KEY `idx_process_instance` (`process_instance_id`),
   KEY `idx_assignee` (`assignee_id`,`status`),
   KEY `idx_status` (`status`),
   KEY `idx_business_key` (`business_key`),
-  KEY `idx_process_task_sla_status` (`sla_status`,`due_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=643 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='平台流程任务表';
+  KEY `idx_process_task_sla_status` (`sla_status`,`due_time`),
+  KEY `idx_task_done_page` (`assignee_id`,`status`,`deleted`,`end_time`,`id`),
+  KEY `idx_task_todo_page` (`status`,`deleted`,`create_time`,`id`),
+  KEY `idx_task_business_summary` (`entity_code`,`entity_data_id`,`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=658 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='平台流程任务表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -3519,24 +3541,26 @@ CREATE TABLE `process_task_add_sign_user` (
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `process_task_candidate_group` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
-  `task_instance_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联的流程任务实例ID。',
+  `process_task_id` bigint NOT NULL COMMENT '平台任务主键，关联 process_task.id，供候选组查询与清理',
   `group_code` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '候选组编码（角色/部门等）。',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序号，控制候选组处理顺序。',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_process_task_candidate_group` (`task_instance_id`,`group_code`)
+  UNIQUE KEY `uk_process_task_candidate_group` (`process_task_id`,`group_code`),
+  KEY `idx_task_candidate_group_lookup` (`group_code`,`process_task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务候选组表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `process_task_candidate_user` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
-  `task_instance_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联的流程任务实例ID。',
+  `process_task_id` bigint NOT NULL COMMENT '平台任务主键，关联 process_task.id，供候选用户查询与清理',
   `user_id` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '候选用户ID。',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序号，控制候选用户处理顺序。',
   `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间。',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_process_task_candidate_user` (`task_instance_id`,`user_id`)
+  UNIQUE KEY `uk_process_task_candidate_user` (`process_task_id`,`user_id`),
+  KEY `idx_task_candidate_user_lookup` (`user_id`,`process_task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='任务候选用户表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -3686,7 +3710,7 @@ CREATE TABLE `process_version_history` (
   KEY `idx_process_key` (`process_key`),
   KEY `idx_version` (`version`),
   KEY `idx_deployment_id` (`deployment_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2102556041735589891 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程发布历史表';
+) ENGINE=InnoDB AUTO_INCREMENT=2103464596770537474 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='流程发布历史表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
@@ -3914,10 +3938,10 @@ CREATE TABLE `sys_position` (
   `id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：全局职务定义；职务本身不携带组织范围，也不产生系统权限。',
   `position_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务编码。',
   `position_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '职务名称。',
-  `applicable_unit_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '适用单元类型；CHECK 枚举：\'ORG\',\'DEPT\',\'ANY\'。',
-  `holder_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '任职者模式；CHECK 枚举：\'SINGLE\',\'MULTIPLE\'。',
+  `applicable_unit_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '适用单元类型；CHECK 枚举：\\\'ORG\\\',\\\'DEPT\\\',\\\'ANY\\\'。',
+  `holder_mode` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '任职者模式；CHECK 枚举：\\\'SINGLE\\\',\\\'MULTIPLE\\\'。',
   `built_in` tinyint NOT NULL DEFAULT '0' COMMENT '内置内置；CHECK 枚举：0,1。',
-  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED' COMMENT '状态；CHECK 枚举：\'ENABLED\',\'DISABLED\'。',
+  `status` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ENABLED' COMMENT '状态；CHECK 枚举：\\\'ENABLED\\\',\\\'DISABLED\\\'。',
   `sort_order` int NOT NULL DEFAULT '0' COMMENT '排序号。',
   `description` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '说明。',
   `revision` int NOT NULL DEFAULT '1' COMMENT '修订号。',
@@ -4401,7 +4425,7 @@ CREATE TABLE `ui_hotfix_observation_metric` (
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `ui_view_composition` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：表单或列表设计器中的“关联内容”草稿记录。 目标内容、关联方式、允许操作和特殊处理统一保存在经过严格校验的 config_document 中；独立记录使关联内容可以稳定排序、乐观并发更新， 并能作为宿主发布快照的一部分参与差异比较和撤销。',
-  `owner_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '所有者类型；CHECK 枚举：\'FORM\', \'LIST\'。',
+  `owner_type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '所有者类型；CHECK 枚举：\\\'FORM\\\', \\\'LIST\\\'。',
   `owner_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '持有者ID：表单或列表配置ID。',
   `composition_key` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '宿主内稳定业务标识。',
   `anchor_type` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'OWNER' COMMENT '锚点类型。',
@@ -4549,7 +4573,8 @@ CREATE TABLE `workflow_outbox_event` (
   UNIQUE KEY `uk_workflow_outbox_topic_event` (`topic`,`event_key`),
   KEY `idx_workflow_outbox_ready` (`status`,`next_retry_time`,`create_time`),
   KEY `idx_workflow_outbox_aggregate` (`aggregate_type`,`aggregate_id`),
-  KEY `idx_workflow_outbox_lease` (`status`,`lease_until`)
+  KEY `idx_workflow_outbox_lease` (`status`,`lease_until`),
+  KEY `idx_workflow_outbox_retention` (`status`,`processed_time`,`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱事件表';
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
@@ -4625,7 +4650,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (683413866831122108,315408474423554179,'dict_name','字典名称','STRING','varchar(100)',100,1,0,NULL,NULL,NULL,3,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'dict_name',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (660514776571799460,315408474423554179,'id','主键ID','STRING','varchar(64)',64,1,1,NULL,NULL,NULL,1,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1041515214726648952,315408474423554179,'sort','排序','INTEGER','int',NULL,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (835260617712650971,315408474423554179,'status','状态：0-启用 1-禁用','STRING','char(1)',1,0,0,NULL,NULL,NULL,5,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (835260617712650971,315408474423554179,'status','状态：0-启用 1-禁用','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,5,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (392848417810309094,315408474423554179,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,9,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (343176658012303195,319550136508222867,'breadcrumb','是否显示面包屑：0-否 1-是','STRING','char(1)',1,0,0,NULL,NULL,NULL,13,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'breadcrumb',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (558990094873955059,319550136508222867,'component','组件路径','STRING','varchar(255)',255,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'component',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4648,7 +4673,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (158131531689092062,319550136508222867,'remark','备注','STRING','varchar(500)',500,0,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'remark',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (509277996761328404,319550136508222867,'resource_type','菜单资源类型，ENTITY_LIST 表示动态实体列表','STRING','varchar(30)',30,0,0,NULL,NULL,NULL,24,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'resource_type',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (323682773251959664,319550136508222867,'sort','显示排序','INTEGER','int',NULL,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (628997735940863871,319550136508222867,'status','状态：0-禁用 1-启用','STRING','char(1)',1,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (628997735940863871,319550136508222867,'status','状态：0-禁用 1-启用','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (658300988401276707,319550136508222867,'update_by','更新者','STRING','varchar(64)',64,0,0,NULL,NULL,NULL,18,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_by',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (531863267937602399,319550136508222867,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,19,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (555037528202687605,319550136508222867,'visible','显示状态：0-隐藏 1-显示','STRING','char(1)',1,0,0,NULL,NULL,NULL,11,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'visible',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4663,7 +4688,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (317101019809934504,429188770482109985,'password','密码','STRING','varchar(100)',100,1,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'password',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1039751570117789095,429188770482109985,'password_reset_required','password_reset_required','BOOLEAN','tinyint',NULL,1,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'password_reset_required',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (475192751198870445,429188770482109985,'phone','手机号','STRING','varchar(20)',20,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'phone',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (59576534536847010,429188770482109985,'status','状态（0启用 1禁用）','STRING','char(1)',1,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (59576534536847010,429188770482109985,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (42152131250552875,429188770482109985,'token_version','Incremented to revoke all previously issued sessions','LONG','bigint',NULL,1,0,NULL,NULL,NULL,15,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'token_version',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (736587934404834291,429188770482109985,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (184566779876080086,429188770482109985,'username','用户名','STRING','varchar(50)',50,1,1,NULL,NULL,NULL,2,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'username',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4686,7 +4711,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (160051157971634527,687980787977785014,'parent_id','父项ID，0表示顶级','STRING','varchar(64)',64,0,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'parent_id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1042513892081176326,687980787977785014,'remark','备注','STRING','varchar(500)',500,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'remark',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (290497113002851889,687980787977785014,'sort','排序','INTEGER','int',NULL,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (23540013034190091,687980787977785014,'status','状态：0-启用 1-禁用','STRING','char(1)',1,0,0,NULL,NULL,NULL,9,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (23540013034190091,687980787977785014,'status','状态：0-启用 1-禁用','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,9,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (541437194327279494,687980787977785014,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,13,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (125004887893384772,695805941702569049,'create_time','创建时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,7,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'create_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (50302947400312544,695805941702569049,'deleted','删除标志（0正常 1删除）','BOOLEAN','tinyint',NULL,0,0,NULL,NULL,NULL,9,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'deleted',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4696,7 +4721,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (846037797095146960,695805941702569049,'role_name','角色名称','STRING','varchar(50)',50,1,0,NULL,NULL,NULL,2,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'role_name',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (469870220014538885,695805941702569049,'sort','显示排序','INTEGER','int',NULL,0,0,NULL,NULL,NULL,5,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (511818241961063640,695805941702569049,'sort_order','排序号','INTEGER','int',NULL,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort_order',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (249397106466806541,695805941702569049,'status','状态（0启用 1禁用）','STRING','char(1)',1,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (249397106466806541,695805941702569049,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (990484312511420209,695805941702569049,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (106998218957706418,704307435534855320,'create_time','创建时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'create_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (957745245096590288,704307435534855320,'group_id','组ID','STRING','varchar(64)',64,1,0,NULL,NULL,NULL,3,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'group_id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4717,7 +4742,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (689704407809393946,869084506871349004,'path','完整路径，如：/0/1/5/10/','STRING','varchar(500)',500,0,0,NULL,NULL,NULL,7,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'path',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (34676674937238359,869084506871349004,'phone','联系电话','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,11,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'phone',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (799314663885053329,869084506871349004,'sort_order','排序号','INTEGER','int',NULL,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort_order',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1046028949155177888,869084506871349004,'status','状态：0-启用，1-禁用','STRING','varchar(10)',10,0,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1046028949155177888,869084506871349004,'status','状态：0-启用，1-禁用','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (46123295334207598,869084506871349004,'type','类型：org-组织，dept-部门','STRING','varchar(20)',20,1,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'type',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (923457855008240877,869084506871349004,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,17,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (221052828124990695,924525185085388686,'create_time','创建时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,7,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'create_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
@@ -4729,7 +4754,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (22985037036471449,924525185085388686,'parent_id','父组ID','STRING','varchar(64)',64,0,0,NULL,NULL,NULL,10,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'parent_id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (332274980659204946,924525185085388686,'sort','排序','INTEGER','int',NULL,0,0,NULL,NULL,NULL,5,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (836913778987896460,924525185085388686,'sort_order','排序号','INTEGER','int',NULL,0,0,NULL,NULL,NULL,11,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'sort_order',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (370552990036906948,924525185085388686,'status','状态（0启用 1禁用）','STRING','char(1)',1,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (370552990036906948,924525185085388686,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (335370829110629664,924525185085388686,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 
 -- 流程动作处理器目录表的系统初始记录。
@@ -4751,9 +4776,7 @@ INSERT INTO `sys_dict_item` (`id`, `dict_id`, `dict_code`, `parent_id`, `item_co
 INSERT INTO `sys_dict_item` (`id`, `dict_id`, `dict_code`, `parent_id`, `item_code`, `item_label`, `item_value`, `sort`, `status`, `remark`, `deleted`, `create_time`, `update_time`) VALUES ('dict_org_level_team_001','dict_org_business_level_001','organization_business_level','0','TEAM','团队','TEAM',60,'0',NULL,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 
 -- 全局设置与个人偏好表的系统初始记录。
-INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`, `version`, `created_by`, `updated_by`, `create_time`, `update_time`) VALUES ('setting_entity_field_types','SYSTEM','0','ui.entity_design.field_types_collapsed','实体设计字段类型面板收起状态','BOOLEAN','false','true 表示收起，false 表示展开，默认展开。同一账号在所有实体设计页共用；用户设置优先于系统设置，删除个人记录后恢复继承。切换状态自动保存，不影响实体未保存状态和发布。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`, `version`, `created_by`, `updated_by`, `create_time`, `update_time`) VALUES ('setting_layout_sidebar_collapsed','SYSTEM','0','ui.layout.sidebar_collapsed','左侧主菜单收起状态','BOOLEAN','false','true 表示收起，false 表示展开，默认展开。未保存个人偏好时使用系统设置；用户手动切换后自动保存个人偏好，同一账号跨页面和浏览器共用，用户配置优先于系统配置。仅控制桌面主菜单，移动端导航抽屉不受影响。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
-INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`, `version`, `created_by`, `updated_by`, `create_time`, `update_time`) VALUES ('setting_layout_tabs_enabled','SYSTEM','0','ui.layout.tabs_enabled','启用顶部多标签页','BOOLEAN','false','true 表示在顶部面包屑位置显示页面选项卡，false 表示单页模式并显示面包屑，默认关闭。用户可在右上角用户菜单切换，个人配置优先于系统配置。切换标签保留页面状态，关闭未保存页面时确认；已打开标签和业务输入仅保留在当前会话内，刷新页面后不恢复。偏好保存失败不影响本次模式切换。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
+INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`, `version`, `created_by`, `updated_by`, `create_time`, `update_time`) VALUES ('99777a7f-819f-4830-885e-eb36e7607b19','SYSTEM','0','ui.user_preferences','用户界面偏好','JSON','{\"fieldTypesCollapsed\":false,\"sidebarCollapsed\":false,\"tabsEnabled\":false}','字段类型面板收起、左侧主菜单收起和顶部多标签页统一存储；按字段优先使用个人配置，缺失字段继承系统默认值。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 
 -- 菜单与功能权限表的系统初始记录。
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`, `is_frame`, `is_cache`, `query`, `entity_code`, `resource_type`, `list_key`) VALUES ('300','0','配置管理','M','Box',3,'/config',NULL,NULL,'0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,'migration-v076',CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
@@ -4953,13 +4976,13 @@ INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES (
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('fca636d487e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_override_permission',CURRENT_TIMESTAMP);
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('fffc1112adfbecab7f3f747beab1ad10','1','embed_perm_view',CURRENT_TIMESTAMP);
 
--- 用户角色关联表的系统初始记录。
-INSERT INTO `sys_user_role` (`id`, `user_id`, `role_id`, `create_time`) VALUES ('2029842904071012353','1','1',CURRENT_TIMESTAMP);
-
 -- 为新库随机生成迁移包签名密钥，避免复用现有库的密钥。
 INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`) VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', JSON_QUOTE(LOWER(HEX(RANDOM_BYTES(32)))), '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
 
 -- 只初始化超级管理员；历史公开占位哈希仅用于 Bootstrap 识别，账号初始禁用。
 INSERT INTO `sys_user` (`id`, `username`, `nickname`, `password`, `email`, `phone`, `avatar`, `status`, `create_time`, `update_time`, `deleted`, `org_id`, `dept_id`, `password_reset_required`, `token_version`) VALUES ('1', 'admin', '超级管理员', '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6', 'admin@workflow.com', NULL, NULL, '1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL, NULL, 1, 0);
+
+-- 将唯一初始用户绑定到内置超级管理员角色。
+INSERT INTO `sys_user_role` (`id`, `user_id`, `role_id`, `create_time`) VALUES ('bootstrap_admin_role_001', '1', '1', CURRENT_TIMESTAMP);
 
 SET FOREIGN_KEY_CHECKS=@INIT_OLD_FOREIGN_KEY_CHECKS;
