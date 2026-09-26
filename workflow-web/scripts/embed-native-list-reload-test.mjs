@@ -7,7 +7,15 @@ import { normalizeEntityVersionCapabilities } from '../src/shared/entity-version
 /** 执行组件的真实加载方法，以可控 API/挂载时机验证异步结果，不依赖 DOM 或字符串断言。 */
 async function componentMethods(path, names, dependencies) {
   const source = await readFile(new URL(path, import.meta.url), 'utf8')
-  const script = parse(source).descriptor.scriptSetup.content
+  let script = parse(source).descriptor.scriptSetup.content
+  if (path.endsWith('/EntityDataList.vue')) {
+    const workspace = await readFile(new URL('../src/views/entity/list/useEntityVersionCapabilities.js', import.meta.url), 'utf8')
+    const workspaceAst = babelParse(workspace, { sourceType: 'module' })
+    const body = workspaceAst.program.body.find(node => node.type === 'ExportNamedDeclaration'
+      && node.declaration?.id?.name === 'useEntityVersionCapabilities').declaration.body.body
+    script = script.replace(/const \{[^}]+\} = useEntityVersionCapabilities\([^\n]+\)/, '')
+    script += '\n' + body.filter(node => names.includes(node.type === 'VariableDeclaration' ? node.declarations[0].id.name : node.id?.name)).map(node => workspace.slice(node.start, node.end)).join('\n')
+  }
   const ast = babelParse(script, { sourceType: 'module', plugins: ['typescript'] })
   const selected = ast.program.body.filter(node => names.includes(
     node.type === 'VariableDeclaration' ? node.declarations[0].id.name : node.id?.name

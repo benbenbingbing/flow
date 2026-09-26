@@ -38,3 +38,20 @@ be reviewed without mixing runtime changes into the acceptance closure.
   dedicated form-resolution service.
 - Keep progress aggregation and DTO assembly in the runtime service.
 - Target: below 1,000 lines with active and historical form tests retained.
+
+## 2026-09-24 frontend extraction update
+
+The current round extracted form-node conversion, entity permissions, publication,
+list-column models, SLA editing, related-content target selection, inbox loading
+and statistics, event-step validation, and record-version capabilities. The
+standalone progress page now delegates BPMN rendering to the shared viewer.
+See `output/frontend-refactor-progress-2026-09-24.md` for exact files, sizes,
+verification, and the remaining boundaries in each page.
+
+The original strict budget is unchanged and still reports historical excess.
+`npm run check:frontend-budget` adds a Git-base comparison for PC, mobile and
+shared packages: new files are limited to 900 lines and existing oversized files
+cannot grow. This freezes further growth without treating legacy debt as resolved.
+The NodeConfigPanel assignee, multi-instance and CC extractions above remain future
+work; this round extracted controlled SLA UI and copy-on-write extension updates
+validated with real BPMN command-stack undo/redo.

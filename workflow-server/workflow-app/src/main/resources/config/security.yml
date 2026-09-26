@@ -62,3 +62,9 @@ jwt:
   secret: ${JWT_SECRET}
   # 登录访问令牌有效期，单位毫秒，过期后通过登录会话刷新。
   expiration: ${JWT_ACCESS_TTL_MS:900000}
+
+# 发布快照授权，与登录令牌分别校验；修改后只影响新签发的普通页面令牌。
+ui:
+  release-resolution:
+    # 单位秒，范围 60～86400，默认 10 分钟；子表单继承父令牌期限，Embed 使用会话绝对期限。
+    ttl-seconds: ${UI_RELEASE_RESOLUTION_TTL_SECONDS:600}

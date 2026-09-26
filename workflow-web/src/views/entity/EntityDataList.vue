@@ -230,13 +230,15 @@
   </div>
 </template>
 <script setup lang="ts">
+import { useEntityVersionCapabilities } from './list/useEntityVersionCapabilities.js'
+
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityApi, entityDataApi } from '@/api/entity'
-import { entityVersionApi } from '@/api/entityVersion'
+
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { applySelectionReturnMappings } from '@/utils/selectionReturnMappings'
@@ -280,10 +282,7 @@ import { mapPageParameters, resolvePageParameters } from '@flow/workflow-core/pa
 import RelatedContentRuntime from '@/components/related-content/RelatedContentRuntime.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
-import {
-  canShowEntityVersionAction,
-  normalizeEntityVersionCapabilities
-} from '@/shared/entity-version-capabilities'
+import { canShowEntityVersionAction } from '@/shared/entity-version-capabilities'
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -496,7 +495,13 @@ function hasVersionViewPermission(entityCodeValue: string) {
 }
 const canViewVersions = computed(() =>
   hasVersionViewPermission(entityCode.value))
-const versionCapabilities = ref(normalizeEntityVersionCapabilities())
+
+const {
+  versionCapabilities,
+  resetVersionCapabilities,
+  loadVersionCapabilities
+} = useEntityVersionCapabilities({ entityCode, entityDefinition, isSystemEntity, canViewVersions })
+
 const showVersionAction = computed(() => canShowEntityVersionAction({
   selectionScene: selectionScene.value,
   isSystemEntity: isSystemEntity.value,
@@ -504,52 +509,7 @@ const showVersionAction = computed(() => canShowEntityVersionAction({
   runtimeEnabled: versionCapabilities.value.runtimeEnabled,
   historyReadable: versionCapabilities.value.historyReadable
 }))
-let versionCapabilitiesGeneration = 0
 
-/**
- * 实体或列表上下文变化时先关闭入口；代次递增用于丢弃旧请求的迟到响应。
- */
-function resetVersionCapabilities() {
-  versionCapabilitiesGeneration += 1
-  versionCapabilities.value = normalizeEntityVersionCapabilities()
-  return versionCapabilitiesGeneration
-}
-
-/**
- * 仅为有权查看版本的普通实体读取运行能力。能力接口失败不阻断列表，
- * 并保持默认关闭，避免出现可见但点击后必然失败的入口。
- */
-async function loadVersionCapabilities(
-  requestedEntityCode: string,
-  generation: number
-) {
-  if (!requestedEntityCode
-      || requestedEntityCode !== entityCode.value
-      || generation !== versionCapabilitiesGeneration
-      || !entityDefinition.value?.id
-      || isSystemEntity.value
-      || !canViewVersions.value) {
-    return
-  }
-  try {
-    const capabilities = await entityVersionApi.recordCapabilities(
-      requestedEntityCode
-    )
-    if (generation !== versionCapabilitiesGeneration
-        || requestedEntityCode !== entityCode.value) {
-      return
-    }
-    versionCapabilities.value = normalizeEntityVersionCapabilities(
-      capabilities
-    )
-  } catch (error) {
-    if (generation === versionCapabilitiesGeneration
-        && requestedEntityCode === entityCode.value) {
-      versionCapabilities.value = normalizeEntityVersionCapabilities()
-    }
-    console.warn('加载实体版本能力失败，版本入口保持隐藏:', error)
-  }
-}
 // 查询字段（使用列表配置）
 const queryFields = computed(() => {
   if (listConfigFields.value.length > 0) {
@@ -1001,7 +961,7 @@ const loadDefaultForm = async (notifyOnError = false) => {
     console.error('加载新增数据表单失败:', e)
     loadedDefaultForm.value = null
     if (notifyOnError) {
-      ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')
+      showRequestError(e, e?.message || '加载最新发布表单失败，请稍后重试')
     }
     return false
   }
@@ -1093,7 +1053,7 @@ const handleDelete = async (row: any) => {
     loadDataList()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || '删除失败')
+      showRequestError(error, error.message || '删除失败')
     }
   }
 }
@@ -1120,7 +1080,7 @@ const handleBatchDelete = async () => {
     loadDataList()
   } catch (error: any) {
     if (error !== 'cancel') {
-      ElMessage.error(error.message || '批量删除失败')
+      showRequestError(error, error.message || '批量删除失败')
     }
   }
 }
@@ -1146,7 +1106,7 @@ const handleExport = async (exportType: string) => {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   } catch (error: any) {
-    ElMessage.error(error.message || '导出失败')
+    showRequestError(error, error.message || '导出失败')
   }
 }
 const handleEventAction = async ({
@@ -1262,7 +1222,7 @@ const handleCreate = async (button?: any) => {
       }
     })
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载按钮指定表单失败')
+    showRequestError(error, error?.message || '加载按钮指定表单失败')
   } finally {
     createFormLoading.value = false
   }
@@ -1285,7 +1245,7 @@ const handleEdit = async (row: any, button?: any) => {
       context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载按钮指定表单失败')
+    showRequestError(error, error?.message || '加载按钮指定表单失败')
   }
 }
 
@@ -1298,7 +1258,7 @@ const handleView = async (row: any, button?: any) => {
       context: { ...relatedContentRuntimeContext.value, params: { ...relatedContentRuntimeContext.value.params, ...buttonParameters(button, row) } }
     })
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载按钮指定表单失败')
+    showRequestError(error, error?.message || '加载按钮指定表单失败')
   }
 }
 
@@ -1314,7 +1274,7 @@ const handleApprove = async (row: any, button?: any) => {
       requireActionCapability: true
     })
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载按钮指定表单失败')
+    showRequestError(error, error?.message || '加载按钮指定表单失败')
   }
 }
 

@@ -138,6 +138,7 @@ import { resolvePageParameters, initializePageFields, pageParameterFields } from
 import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
+import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { uiEventBindingApi } from '@/api/uiConfig'
@@ -156,7 +157,7 @@ import FlowActionExecutionLog from '@/components/FlowActionExecutionLog.vue'
 import FormActionBar from '@/components/FormActionBar.vue'
 import RuntimeVersionDiagnostics from '@/components/RuntimeVersionDiagnostics.vue'
 import {
-  acquireFormActionExecution,
+  runFormAction,
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
@@ -379,6 +380,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => {
 
 function handleDialogClosed() {
   if (dialogVisible.value) return // 切换标签只是暂时隐藏，保留运行上下文及输入。
+  launchRuntimeContext.value = {} // 真正关闭后使尚未返回的按钮/表单事件失效。
   runtimeDiagnosticsRef.value?.reset()
   processRuntimeMetadata.value = {}
   emit('closed')
@@ -480,6 +482,8 @@ async function loadFormActions() {
  */
 async function executeFormEvent(eventCode: string) {
   if (!runtimeForm.value?.id) return
+  const context = launchRuntimeContext.value
+  const isCurrent = () => launchRuntimeContext.value === context
   const result = await uiEventBindingApi.execute(eventCode, {
     configType: 'FORM',
     configId: String(runtimeForm.value.id),
@@ -517,174 +521,82 @@ async function executeFormEvent(eventCode: string) {
       mode: isEdit.value ? 'edit' : 'create'
     }
   })
-  await applyFormEventResult(result)
-  if (result?.message) {
+  await applyFormEventResult(result, isCurrent)
+  if (isCurrent() && result?.message) {
     ElMessage.success(result.message)
   }
 }
 
 /** 按服务端效果顺序回填或导航；FIELD_MAPPING 的覆盖策略决定是否保留用户现有值。 */
-async function applyFormEventResult(result: any) {
-  const effects = Array.isArray(result?.effects) ? result.effects : []
-  for (const effect of effects) {
-    const type = String(effect?.type || '').toUpperCase()
-    if (type === 'FIELD_MAPPING') {
-      const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
-      for (const mapping of mappings) {
-        const targetPath = String(mapping?.targetPath || '')
-        if (!targetPath) continue
-        const value = resolvePath(effect.data || {}, targetPath)
-        const formPath = targetPath.replace(/^form\./, '').replace(/^data\./, '')
-        const current = resolvePath(formData.data, formPath)
-        const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
-        if (overwrite === 'IF_EMPTY' && !emptyValue(current)) {
-          continue
-        }
-        if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
-          try {
-            await ElMessageBox.confirm(
-              `字段“${fieldName(formPath)}”已有值，是否覆盖？`,
-              '确认回填',
-              { type: 'warning' }
-            )
-          } catch {
-            continue
-          }
-        }
-        setPath(formData.data, formPath, value)
-      }
-      continue
-    }
-    if (type === 'MESSAGE' && effect.message) {
-      ElMessage({
-        type: effect.level || 'success',
-        message: effect.message
-      })
-      continue
-    }
-    if (type === 'OPEN_ROUTE' && effect.route) {
-      await router.push(effect.route)
-      continue
-    }
-    if (type === 'CLOSE_FORM') {
-      dialogVisible.value = false
-      continue
-    }
-    if (type === 'REFRESH_PARENT') {
-      emit('success')
-      continue
-    }
-    if (type === 'DOWNLOAD_TASK') {
-      ElMessage.success(effect.message || '下载任务已创建')
-    }
-  }
-  if (!effects.length && result?.data && typeof result.data === 'object') {
-    const patch = result.data.form || result.data.data || result.data
-    Object.entries(patch || {}).forEach(([key, value]) => {
-      formData.data[key] = value
-    })
-  }
+async function applyFormEventResult(result: any, isCurrent = () => true) {
+  await applyFormEffects(result, {
+    getRecord: () => formData.data,
+    setField: (key: string, value: any) => { formData.data[key] = value },
+    getFields: () => props.entityFields,
+    isCurrent,
+    navigate: (effect: any) => router.push(effect.route),
+    close: () => { dialogVisible.value = false },
+    refresh: () => emit('success')
+  })
 }
 
-async function confirmAction(action: any) {
-  if (action?.confirm?.enabled !== true) return true
-  try {
-    await ElMessageBox.confirm(
-      action.confirm.message || `确认执行“${action.label}”？`,
-      '操作确认',
-      { type: 'warning' }
-    )
-    return true
-  } catch {
-    return false
-  }
-}
+
 
 /** 统一分发保存、重置及自定义按钮；actionPendingKey 覆盖确认弹窗等待期以阻止双击。 */
 async function handleFormAction(action: any) {
-  // 确认框本身也是异步窗口，必须先加锁再等待用户选择，避免快速双击进入
-  // 两条执行链并分别生成 requestId。
-  const releaseAction = acquireFormActionExecution(action, actionPendingKey)
-  if (!releaseAction) return
+  const context = launchRuntimeContext.value
+  const isCurrent = () => launchRuntimeContext.value === context
   try {
-    if (!(await confirmAction(action))) return
-    if (action.key === 'close') {
-      if (await confirmDiscardChanges()) dialogVisible.value = false
-      return
-    }
-    actionLoadingKey.value = String(action.runtimeKey || action.key || '')
-    if (action.key === 'reset') {
-      await handleReset()
-      return
-    }
-    if (['save', 'saveAndStart', 'restartProcess'].includes(action.key)) {
-      await handleSubmit(action.key === 'saveAndStart', action.key === 'restartProcess')
-      return
-    }
-    if (action.type !== 'custom') return
-    if (action.validateBeforeExecute && !(await validateRuntimeForms())) {
-      ElMessage.warning('请先完成表单必填项')
-      return
-    }
-    const result = await executeCustomFormAction(
-      action,
-      runtimeForm.value,
-      {
-        entityCode: props.entityCode,
-        listKey: props.listKey,
-        mode: isEdit.value ? 'edit' : 'create',
-        recordId: formData.id || undefined,
-        formData: formData.data,
-        processInstanceId: processInstanceId.value || undefined,
-        viewCompositionTraversalToken:
-          launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
-      }
-    )
-    await applyFormEventResult(result)
-    if (result?.message) {
-      ElMessage.success(result.message)
-    }
+    await runFormAction(action, {
+      loadingState: actionPendingKey,
+      confirm: confirmFormAction,
+      isCurrent,
+      async validate() {
+        if (action.type !== 'custom' || await validateRuntimeForms()) return true
+        ElMessage.warning('请先完成表单必填项')
+        return false
+      },
+      async execute() {
+        if (action.key === 'close') {
+          if (await confirmDiscardChanges()) dialogVisible.value = false
+          return
+        }
+        actionLoadingKey.value = String(action.runtimeKey || action.key || '')
+        if (action.key === 'reset') return handleReset()
+        if (['save', 'saveAndStart', 'restartProcess'].includes(action.key)) {
+          return handleSubmit(action.key === 'saveAndStart', action.key === 'restartProcess')
+        }
+        if (action.type !== 'custom') return
+        return executeCustomFormAction(action, runtimeForm.value, {
+          entityCode: props.entityCode,
+          listKey: props.listKey,
+          mode: isEdit.value ? 'edit' : 'create',
+          recordId: formData.id || undefined,
+          formData: formData.data,
+          processInstanceId: processInstanceId.value || undefined,
+          viewCompositionTraversalToken: context?.viewCompositionTraversalToken || undefined
+        })
+      },
+      async applyResult(result: any) {
+        if (action.type !== 'custom') return
+        await applyFormEventResult(result, isCurrent)
+        if (isCurrent() && result?.message) ElMessage.success(result.message)
+      },
+      settled: () => { actionLoadingKey.value = '' }
+    })
   } catch (error: any) {
     await showServerValidationErrors(error)
     showRequestError(error, '按钮操作执行失败')
-  } finally {
-    actionLoadingKey.value = ''
-    releaseAction()
   }
 }
 
-function resolvePath(source: any, path: string) {
-  return String(path || '')
-    .split('.')
-    .filter(Boolean)
-    .reduce((current, key) => current?.[key], source)
-}
 
-function setPath(target: Record<string, any>, path: string, value: any) {
-  const parts = String(path || '').split('.').filter(Boolean)
-  if (!parts.length) return
-  let current: Record<string, any> = target
-  parts.slice(0, -1).forEach(part => {
-    if (!current[part] || typeof current[part] !== 'object') {
-      current[part] = {}
-    }
-    current = current[part]
-  })
-  current[parts[parts.length - 1]] = value
-}
 
-function emptyValue(value: any) {
-  return value == null
-    || value === ''
-    || (Array.isArray(value) && value.length === 0)
-}
 
-function fieldName(path: string) {
-  const code = String(path || '').split('.')[0]
-  const field = props.entityFields.find((item: any) =>
-    String(item.fieldCode) === code)
-  return field?.fieldName || field?.fieldLabel || code
-}
+
+
+
+
 
 async function handleReset() {
   restoreResetSnapshot()

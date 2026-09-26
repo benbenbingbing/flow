@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { babelParse, parse } from '@vue/compiler-sfc'
+import { createInboxPageLoader, createInboxPageState } from '../home/inboxPageState.js'
 
 const source = await readFile(new URL('../Home.vue', import.meta.url), 'utf8')
 const inboxTemplate = source.slice(source.indexOf('<el-table v-else :data="ccList"'),
@@ -30,7 +31,15 @@ function createPage() {
     ccList: { value: [] }, ccTotal: { value: 0 },
     tabErrors: { cc: '' }, loading: { value: false }
   }
+  const inboxState = createInboxPageState()
+  Object.defineProperty(state.ccList, 'value', { get: () => inboxState.cc.rows })
+  Object.defineProperty(state.ccTotal, 'value', { get: () => inboxState.cc.total })
+  Object.defineProperty(state.loadedTabs, 'cc', { get: () => inboxState.cc.loaded, set: value => { inboxState.cc.loaded = value } })
+  const loader = createInboxPageLoader(inboxState, {
+    cc: async () => { calls.cc++; return { records, total: records.length } }
+  })
   const dependencies = {
+    inbox: { load: key => loader.load(key, { pageNum: state.queryParams.pageNum }) },
     ...state,
     watch: (_ref, callback) => { tabChanged = callback },
     buildQueryParams: () => ({ pageNum: state.queryParams.pageNum }),
@@ -49,7 +58,7 @@ function createPage() {
     async switchTab(value) {
       state.activeTab.value = value
       tabChanged()
-      await Promise.resolve()
+      await new Promise(resolve => setImmediate(resolve))
     }
   }
 }

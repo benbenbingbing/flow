@@ -307,7 +307,7 @@ test('用户组写操作与 system:user:manage 权限保持一致并在 handler 
   )
   assert.match(
     source,
-    /<el-table-column v-if="canManage" label="操作" width="240" fixed="right">/
+    /<el-table-column\b(?=[^>]*v-if="canManage")(?=[^>]*label="操作")(?=[^>]*fixed="right")[^>]*>/
   )
 
   for (const handler of [

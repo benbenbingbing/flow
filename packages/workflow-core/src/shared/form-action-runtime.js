@@ -90,6 +90,37 @@ function acquireFormActionExecution(action, loadingState) {
   }
 }
 
+/**
+ * 执行一次用户动作：先占锁再确认、校验、提交和消费结果，所有宿主共用相同顺序。
+ * confirm/validate 返回 false 表示正常取消；execute/applyResult 异常交给宿主展示。
+ * isCurrent 用于记录切换或关闭后的失效检查，settled 仅由实际持锁者调用。
+ * 返回 status 区分忙碌、取消、校验失败、过期和完成，不将未执行误报为成功。
+ */
+async function runFormAction(action, {
+  loadingState, confirm, validate, execute, applyResult,
+  isCurrent = () => true, settled = () => {}
+}) {
+  const release = acquireFormActionExecution(action, loadingState)
+  if (!release) return { status: 'busy' }
+  try {
+    if (!isCurrent()) return { status: 'stale' }
+    if (action.confirm?.enabled === true && !(await confirm(action))) return { status: 'cancelled' }
+    if (!isCurrent()) return { status: 'stale' }
+    if (action.validateBeforeExecute && validate && !(await validate(action))) return { status: 'invalid' }
+    if (!isCurrent()) return { status: 'stale' }
+    const result = await execute(action)
+    if (!isCurrent()) return { status: 'stale' }
+    await applyResult?.(result)
+    return { status: 'completed', result }
+  } catch (error) {
+    if (!isCurrent()) return { status: 'stale' }
+    throw error
+  } finally {
+    release()
+    settled()
+  }
+}
+
 /** 为一次用户点击生成服务端可接受的幂等 nonce。 */
 function createFormActionRequestId() {
   return `form_action_${createBusinessTraceKey()}`.slice(0, 128)
@@ -172,5 +203,5 @@ function getReleaseVersion(form) {
   return value == null ? undefined : Number(value)
 }
 
-return { resolveRuntimeFormActions, resolveSafeRuntimeActionFallback, acquireFormActionExecution, createFormActionRequestId, buildCustomFormActionExecutionPayload, executeCustomFormAction, getFormId }
+return { resolveRuntimeFormActions, resolveSafeRuntimeActionFallback, acquireFormActionExecution, runFormAction, createFormActionRequestId, buildCustomFormActionExecutionPayload, executeCustomFormAction, getFormId }
 }

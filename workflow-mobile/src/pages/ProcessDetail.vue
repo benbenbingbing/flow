@@ -46,14 +46,14 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch }
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { NavBar as VanNavBar, Tabs as VanTabs, Tab as VanTab, Tag as VanTag, Loading as VanLoading, Empty as VanEmpty, Popup as VanPopup, Button as VanButton, Field as VanField, RadioGroup as VanRadioGroup, Radio as VanRadio, showConfirmDialog, showFailToast, showSuccessToast } from 'vant'
 import { MobileFormRenderer, MobileActionBar, MobileApprovalPanel, MobileProcessProgress, MobileApprovalHistory, MobileUserPicker } from '@flow/workflow-mobile-ui'
-import { createBusinessTraceKey, BUSINESS_TRACE_HEADER } from '@flow/workflow-api'
+import { createBusinessTraceKey, BUSINESS_TRACE_HEADER, notifyRequestError } from '@flow/workflow-api'
 import { useProcessDetail } from '@flow/workflow-core/vue/useProcessDetail'
 import { useNextApproverPreview } from '@flow/workflow-core/vue/useNextApproverPreview'
 import { createFormActionRuntime } from '@flow/workflow-core/form-action-runtime'
 import { createFormDataSourceRuntime, isRuntimeFormReadonly } from '@flow/workflow-core/form-runtime'
 import { footerFormActions } from '@flow/workflow-core/form-actions'
 import { resolveEntityStatusLabel } from '@flow/workflow-core/entity-status-runtime'
-import { applyRuntimeFieldEffects } from '@flow/workflow-core/form-runtime/fieldEvents'
+import { applyRuntimeEventEffects } from '@flow/workflow-core/form-runtime/eventEffects'
 import { getTodoTaskMoreActions, taskApprovalConflictMessage } from '@flow/workflow-core/workflow-task-actions'
 import { isReservedApprovalActionCode, resolveAllowedAddSignTypes } from '@flow/workflow-core/workflow-operation-guards'
 import { normalizeNextApproverPreview } from '@flow/workflow-core/next-approver'
@@ -199,15 +199,46 @@ async function handleAction(item) {
   if (pending.value || submitting.value || item.enabled === false) return
   if (item.key === 'submitApproval') { approvalOpen.value = true; await preview.ensureCurrent(); return }
   if (item.type === 'custom') {
-    const release = actionRuntime.acquireFormActionExecution(item, pending); if (!release) return
+    const current = sequence
+    const isCurrent = () => current === sequence
     try {
-      if (item.confirmMessage) await showConfirmDialog({ title: item.label, message: item.confirmMessage })
-      if (item.validateBeforeExecute && !(await validateForm())) return
-      const result = await actionRuntime.executeCustomFormAction(item, form.value, actionContext())
-      await applyRuntimeFieldEffects(result, { getRecord: () => record.value, setField: (key, value) => { record.value = { ...record.value, [key]: value } }, async confirmOverwrite() { try { await showConfirmDialog({ message: '是否覆盖已有字段？' }); return true } catch { return false } } })
-      showSuccessToast(result?.message || '操作成功'); invalidateInboxes()
-      formActions.value = await actionRuntime.resolveRuntimeFormActions(form.value, actionContext())
-    } catch (cause) { if (cause?.message) showFailToast(cause.message) } finally { release() }
+      await actionRuntime.runFormAction(item, {
+        loadingState: pending,
+        isCurrent,
+        async confirm(action) {
+          try { await showConfirmDialog({ title: action.label, message: action.confirm.message || `确认执行“${action.label}”？` }); return true }
+          catch { return false }
+        },
+        validate: validateForm,
+        execute: () => actionRuntime.executeCustomFormAction(item, form.value, actionContext()),
+        async applyResult(result) {
+          await applyRuntimeEventEffects(result, {
+            getRecord: () => record.value,
+            setField: (key, value) => { record.value = { ...record.value, [key]: value } },
+            isCurrent,
+            async confirmOverwrite() {
+              try { await showConfirmDialog({ message: '是否覆盖已有字段？' }); return true }
+              catch { return false }
+            },
+            message: effect => (['error', 'warning'].includes(effect.level) ? showFailToast : showSuccessToast)(effect.message),
+            async navigate(effect) {
+              // 移动路由未注册的 PC 页面不能被通配重定向静默吞掉。
+              if (!router.resolve(effect.route).name) throw new Error('该跳转页面暂不支持移动端，请在 PC 端打开')
+              await router.push(effect.route)
+            },
+            async close() { completed = true; invalidateInboxes(); await back() },
+            refresh: () => invalidateInboxes(),
+            download: effect => showSuccessToast(effect.message || '下载任务已创建')
+          })
+          if (!isCurrent()) return
+          // 显式消息效果已提示时不立即用通用成功提示覆盖它。
+          if (result?.message || !result?.effects?.some(effect => ['MESSAGE', 'DOWNLOAD_TASK'].includes(String(effect.type).toUpperCase()))) showSuccessToast(result?.message || '操作成功')
+          invalidateInboxes()
+          const actions = await actionRuntime.resolveRuntimeFormActions(form.value, actionContext())
+          if (isCurrent()) formActions.value = actions
+        }
+      })
+    } catch (cause) { notifyRequestError(cause, showFailToast, '按钮操作执行失败') }
     return
   }
   operation.value = item; operationUsers.value = []; operationComment.value = ''; addSignType.value = allowedAddSignTypes.value[0] || ''; operationOpen.value = true

@@ -92,7 +92,7 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
           </CodeCard>
 
           <h4>2.4 注册：让设计器能选到</h4>
-          <p>实现与注册声明分开：组件放在所属模块，JSON 放在 <code>src/extensions/manifests/</code>。平台构建自动发现并注册，新增组件不修改入口。examples 清单仅在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时启用。</p>
+          <p>实现与注册声明分开：组件放在所属模块，JSON 放在 <code>extensions/manifests/</code>。平台构建自动发现并注册，新增组件不修改入口。examples 清单仅在开发环境或 <code>VITE_ENABLE_DEMO_EXTENSIONS=true</code> 时启用。</p>
           <CodeCard title="LIST_CELL JSON 清单" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,

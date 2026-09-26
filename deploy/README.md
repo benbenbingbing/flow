@@ -66,6 +66,22 @@ list only the ingress or load-balancer networks in
 nearest hop toward the client and ignores the header entirely when the direct
 peer is not trusted.
 
+## Form release token lifetime
+
+`UI_RELEASE_RESOLUTION_TTL_SECONDS` configures `ui.release-resolution.ttl-seconds`
+in the server configuration. The default is `600` seconds (10 minutes); valid
+values range from `60` to `86400`. Invalid values fail startup. Restart the server
+after changing this setting; existing signed tokens retain their original expiry.
+
+The web and mobile request runtime renews known form tokens before an operation
+when expiry is within 30 seconds, including the first operation after sleep.
+Renewal repeats the original read-only form/task/list resolution with current
+authorization, and merges concurrent renewal requests. It updates request tokens
+without replacing drafts or replaying writes. Changed task, form release or
+effective hotfix coordinates stop the operation so users can review their input.
+Child forms inherit the renewed parent's expiry. Embed tokens keep their session's
+absolute expiry and cannot use ordinary page renewal to extend that session.
+
 ## Release gates
 
 1. Pin server and web images by real `sha256:` digest. Mutable tags are rejected

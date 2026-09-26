@@ -1,14 +1,14 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { discoverExtensions } from '../workflow-web/build/extensions/discover.mjs'
-import { resolveImplementation } from '../workflow-web/build/extensions/validate.mjs'
+import { discoverExtensions, manifestDirectory } from './extensions/discover.mjs'
+import { resolveImplementation } from './extensions/validate.mjs'
 
 const repository = fileURLToPath(new URL('..', import.meta.url))
 const virtualId = 'virtual:flow-mobile-extensions'
 
 /** 构建时读取身份清单，只生成移动实现的静态导入；缺失实现绝不回退到 PC。 */
 export function generateMobileExtensions() {
-  const entries = discoverExtensions(path.join(repository, 'workflow-web'), { platform: 'mobile', implementationRoot: path.join(repository, 'workflow-mobile') }).filter(entry => entry.enabled !== false && entry.platforms?.mobile)
+  const entries = discoverExtensions(path.join(repository, 'workflow-mobile'), { platform: 'mobile', implementationRoot: path.join(repository, 'workflow-mobile') }).filter(entry => entry.enabled !== false && entry.platforms?.mobile)
   const imports = [], registrations = []
   entries.forEach((entry, index) => {
     const { implementation, capabilities } = entry.platforms.mobile
@@ -33,7 +33,7 @@ export function mobileExtensionsPlugin() {
     resolveId(id) { if (id === virtualId) return '\0' + virtualId },
     load(id) { if (id === '\0' + virtualId) return generateMobileExtensions() },
     configureServer(server) {
-      const manifests = path.join(repository, 'workflow-web/src/extensions/manifests')
+      const manifests = manifestDirectory
       server.watcher.add(manifests)
       server.watcher.on('all', (_, filename) => {
         if (!filename.startsWith(manifests)) return

@@ -146,7 +146,8 @@ import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { showRequestError } from '@/shared/request'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
+import { ElMessage } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
 import FormActionBar from '@/components/FormActionBar.vue'
@@ -171,7 +172,7 @@ import {
   resolveApprovalFormConfig
 } from '@flow/workflow-core/workflow/approval-display'
 import {
-  acquireFormActionExecution,
+  runFormAction,
   executeCustomFormAction,
   resolveRuntimeFormActions
 } from '@/shared/form-action-runtime'
@@ -435,6 +436,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => [
 
 function handleDialogClosed() {
   if (processDialogVisible.value) return // 缓存页暂时隐藏弹窗时不丢弃审批上下文。
+  launchRuntimeContext.value = {} // 已关闭会话的迟到事件不得回填下一次打开的记录。
   runtimeDiagnosticsRef.value?.reset()
   approvalConflictMessage.value = ''
   processRuntimeMetadata.value = {}
@@ -833,167 +835,61 @@ function approvalValidationMessage(result: ApprovalFormValidationResult) {
   return result.tabLabel ? `${result.tabLabel}：${detail}` : detail
 }
 
-async function confirmAction(action: any) {
-  if (action?.confirm?.enabled !== true) return true
-  try {
-    await ElMessageBox.confirm(
-      action.confirm.message || `确认执行“${action.label}”？`,
-      '操作确认',
-      { type: 'warning' }
-    )
-    return true
-  } catch {
-    return false
-  }
-}
-
 async function handleFormAction(action: any) {
-  // 先占用动作锁再等待确认，确保页脚与自定义动作插槽的连续触发都只会
-  // 进入一次业务执行。
-  const releaseAction = acquireFormActionExecution(action, actionPendingKey)
-  if (!releaseAction) return
+  const context = launchRuntimeContext.value
+  const isCurrent = () => launchRuntimeContext.value === context
   try {
-    if (!(await confirmAction(action))) return
-    if (action.key === 'close') {
-      processDialogVisible.value = false
-      return
-    }
-    actionLoadingKey.value = String(action.runtimeKey || action.key || '')
-    if (action.key === 'submitApproval') {
-      await submitApprove()
-      return
-    }
-    if (action.type !== 'custom') return
-    if (action.validateBeforeExecute) {
-      const validation = await validateApprovalForms()
-      if (!validation.valid) {
+    await runFormAction(action, {
+      loadingState: actionPendingKey,
+      confirm: confirmFormAction,
+      isCurrent,
+      async validate() {
+        if (action.type !== 'custom') return true
+        const validation = await validateApprovalForms()
+        if (validation.valid) return true
         ElMessage.warning(approvalValidationMessage(validation))
-        return
-      }
-    }
-    const result = await executeCustomFormAction(
-      action,
-      runtimeForms.value,
-      {
-        entityCode: effectiveEntityCode.value,
-        listKey: props.listKey,
-        mode: approvalRuntimeMode.value,
-        recordId: entityData.value?.id || undefined,
-        taskId: currentTask.value?.taskId || undefined,
-        task: currentTask.value,
-        formData: entityData.value,
-        processInstanceId: currentTask.value?.processInstanceId,
-        viewCompositionTraversalToken:
-          launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
-      }
-    )
-    await applyFormEventResult(result)
-    if (result?.message) {
-      ElMessage.success(result.message)
-    }
+        return false
+      },
+      async execute() {
+        if (action.key === 'close') { processDialogVisible.value = false; return }
+        actionLoadingKey.value = String(action.runtimeKey || action.key || '')
+        if (action.key === 'submitApproval') return submitApprove()
+        if (action.type !== 'custom') return
+        return executeCustomFormAction(action, runtimeForms.value, {
+          entityCode: effectiveEntityCode.value,
+          listKey: props.listKey,
+          mode: approvalRuntimeMode.value,
+          recordId: entityData.value?.id || undefined,
+          taskId: currentTask.value?.taskId || undefined,
+          task: currentTask.value,
+          formData: entityData.value,
+          processInstanceId: currentTask.value?.processInstanceId,
+          viewCompositionTraversalToken: context?.viewCompositionTraversalToken || undefined
+        })
+      },
+      async applyResult(result: any) {
+        if (action.type !== 'custom') return
+        await applyFormEventResult(result, isCurrent)
+        if (isCurrent() && result?.message) ElMessage.success(result.message)
+      },
+      settled: () => { actionLoadingKey.value = '' }
+    })
   } catch (error: any) {
     await showServerValidationErrors(error)
-    ElMessage.error(error.message || '按钮操作执行失败')
-  } finally {
-    actionLoadingKey.value = ''
-    releaseAction()
+    showRequestError(error, '按钮操作执行失败')
   }
 }
 
-async function applyFormEventResult(result: any) {
-  const effects = Array.isArray(result?.effects) ? result.effects : []
-  for (const effect of effects) {
-    const type = String(effect?.type || '').toUpperCase()
-    if (type === 'FIELD_MAPPING') {
-      const mappings = Array.isArray(effect.mappings) ? effect.mappings : []
-      for (const mapping of mappings) {
-        const targetPath = String(mapping?.targetPath || '')
-          .replace(/^form\./, '')
-          .replace(/^data\./, '')
-        if (!targetPath) continue
-        const value = resolvePath(effect.data || {}, mapping?.targetPath)
-        const current = resolvePath(entityData.value, targetPath)
-        const overwrite = String(mapping?.overwrite || 'ALWAYS').toUpperCase()
-        if (overwrite === 'IF_EMPTY' && !emptyValue(current)) continue
-        if (overwrite === 'CONFIRM' && !emptyValue(current) && current !== value) {
-          try {
-            await ElMessageBox.confirm(
-              `字段“${fieldName(targetPath)}”已有值，是否覆盖？`,
-              '确认回填',
-              { type: 'warning' }
-            )
-          } catch {
-            continue
-          }
-        }
-        setPath(entityData.value, targetPath, value)
-      }
-      continue
-    }
-    if (type === 'MESSAGE' && effect.message) {
-      ElMessage({
-        type: effect.level || 'success',
-        message: effect.message
-      })
-      continue
-    }
-    if (type === 'OPEN_ROUTE' && effect.route) {
-      await router.push(effect.route)
-      continue
-    }
-    if (type === 'CLOSE_FORM') {
-      processDialogVisible.value = false
-      continue
-    }
-    if (type === 'REFRESH_PARENT') {
-      emit('success')
-      continue
-    }
-    if (type === 'DOWNLOAD_TASK') {
-      ElMessage.success(effect.message || '下载任务已创建')
-    }
-  }
-  if (!effects.length && result?.data && typeof result.data === 'object') {
-    const patch = result.data.form || result.data.data || result.data
-    Object.entries(patch || {}).forEach(([key, value]) => {
-      entityData.value[key] = value
-    })
-  }
-}
-
-function resolvePath(source: any, path: string) {
-  return String(path || '')
-    .replace(/^form\./, '')
-    .replace(/^data\./, '')
-    .split('.')
-    .filter(Boolean)
-    .reduce((current, key) => current?.[key], source)
-}
-
-function setPath(target: Record<string, any>, path: string, value: any) {
-  const parts = String(path || '').split('.').filter(Boolean)
-  if (!parts.length) return
-  let current: Record<string, any> = target
-  parts.slice(0, -1).forEach(part => {
-    if (!current[part] || typeof current[part] !== 'object') {
-      current[part] = {}
-    }
-    current = current[part]
+async function applyFormEventResult(result: any, isCurrent = () => true) {
+  await applyFormEffects(result, {
+    getRecord: () => entityData.value,
+    setField: (key: string, value: any) => { entityData.value[key] = value },
+    getFields: () => props.entityFields,
+    isCurrent,
+    navigate: (effect: any) => router.push(effect.route),
+    close: () => { processDialogVisible.value = false },
+    refresh: () => emit('success')
   })
-  current[parts[parts.length - 1]] = value
-}
-
-function emptyValue(value: any) {
-  return value == null
-    || value === ''
-    || (Array.isArray(value) && value.length === 0)
-}
-
-function fieldName(path: string) {
-  const code = String(path || '').split('.')[0]
-  const field = props.entityFields.find((item: any) =>
-    String(item.fieldCode) === code)
-  return field?.fieldName || field?.fieldLabel || code
 }
 
 function isNextApprovalScopeChanged(error: any) {

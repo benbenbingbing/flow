@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { parse as parseSfc } from '@vue/compiler-sfc'
-import { baseParse, NodeTypes } from '@vue/compiler-dom'
+import { parse as parseTemplate, NodeTypes } from '@vue/compiler-dom'
 import { listFiles } from './file-tree.mjs'
 
 const files = listFiles(['src/views', 'src/components'], '.vue')
@@ -64,6 +64,10 @@ function recordIssue(file, tag, message) {
   issues.push(`${file}: ${tag} ${message}`)
 }
 
+function hasSlot(node, name) {
+  return (node.children || []).some(child => attrs(child).has(`slot:${name}`))
+}
+
 function auditNode(node, file) {
   if (node.type === NodeTypes.ELEMENT) {
     const tag = node.tag
@@ -72,7 +76,7 @@ function auditNode(node, file) {
 
     if (counts[tag] !== undefined) counts[tag]++
 
-    if (tag === 'el-form-item' && !hasAny(attrMap, ['label', 'bind:label', 'prop', 'bind:prop']) && text === '') {
+    if (tag === 'el-form-item' && !hasAny(attrMap, ['label', 'bind:label', 'prop', 'bind:prop']) && !hasSlot(node, 'label') && text === '') {
       recordIssue(file, tag, '缺少 label/prop 且无可见内容')
     }
 
@@ -87,7 +91,7 @@ function auditNode(node, file) {
       recordIssue(file, tag, '缺少 label/prop/type 且无可见内容')
     }
 
-    if (tag === 'el-dialog' && !hasAny(attrMap, ['title', 'bind:title']) && !text.includes('header')) {
+    if (tag === 'el-dialog' && !hasAny(attrMap, ['title', 'bind:title']) && !hasSlot(node, 'header')) {
       recordIssue(file, tag, '缺少 title 或 header 插槽')
     }
 
@@ -115,7 +119,7 @@ for (const file of files) {
   const source = readFileSync(file, 'utf8')
   const { descriptor } = parseSfc(source, { filename: file })
   if (!descriptor.template) continue
-  const ast = baseParse(descriptor.template.content)
+  const ast = parseTemplate(descriptor.template.content)
   auditNode(ast, file)
 }
 

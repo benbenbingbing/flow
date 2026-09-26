@@ -9,6 +9,15 @@ import {
 const isTemporaryField = (field) =>
   !field?.id || String(field.id).startsWith('temp_')
 
+/** 返回可编辑字段编码的格式错误，供输入提示和两种保存入口共用；空值由必填校验处理。 */
+function getEntityFieldCodeError(field) {
+  // 系统字段和已发布字段的编码不可编辑，保留历史编码，避免阻塞其他属性的保存。
+  if (!field?.fieldCode || field.isSystem || field.isPublished) return ''
+  return /^[a-z][a-zA-Z0-9]*$/.test(field.fieldCode) && field.fieldCode.trim() === field.fieldCode
+    ? ''
+    : '字段编码须为小驼峰：小写字母开头，仅含英文字母和数字，如 endTime'
+}
+
 export function normalizeEntityFieldForEditing(rawField = {}) {
   const field = {
     ...rawField,
@@ -120,9 +129,16 @@ export function useEntityFieldDraftSave({
     return baseline == null || baseline !== fieldFingerprint(field)
   })
 
+  const selectedFieldCodeError = computed(() => getEntityFieldCodeError(selectedField.value))
+
   const validateEntityField = (field, checkDuplicate = false) => {
     if (!field?.fieldName || !field?.fieldCode) {
       ElMessage.warning('请完善字段名称和编码')
+      return false
+    }
+    const fieldCodeError = getEntityFieldCodeError(field)
+    if (fieldCodeError) {
+      ElMessage.warning(`${field.fieldName}：${fieldCodeError}`)
       return false
     }
     if (checkDuplicate) {
@@ -240,6 +256,7 @@ export function useEntityFieldDraftSave({
     normalizeFieldForSave: normalizeEntityFieldForSave,
     rememberAllFieldBaselines,
     savingSelectedField,
+    selectedFieldCodeError,
     validateEntityField
   }
 }

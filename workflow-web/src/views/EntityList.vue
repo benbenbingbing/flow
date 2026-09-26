@@ -644,6 +644,10 @@
   </div>
 </template>
 <script setup>
+import { showRequestError } from '@/shared/request'
+
+import { useEntityPublication } from './entity-list/useEntityPublication.js'
+
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -652,10 +656,10 @@ import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityPublishHistoryApi } from '@/api/entityPublishHistory'
 import { entityVersionDiffApi } from '@/api/entityVersionDiff'
-import { schemaOperationApi } from '@/api/schemaOperation'
+
 import { processApi } from '@/api/process'
 import { getEntityStatusList, saveEntityStatusList } from '@/api/entityStatus'
-import { generateMigrationTag } from '@/utils/migrationTag'
+
 import {
   hasPreviousEntityVersion,
   isEntityHistoryNearBottom,
@@ -760,7 +764,7 @@ const fetchProcessList = async (currentProcessId = null) => {
     processList.value = await processApi.getBindableList(currentProcessId)
   } catch (error) {
     console.error(error)
-    ElMessage.error('获取流程列表失败')
+    showRequestError(error, '获取流程列表失败')
   }
 }
 const getStatusType = (status) => {
@@ -845,7 +849,7 @@ const handleData = async (row) => {
     })
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.error(error?.message || '打开业务数据失败')
+      showRequestError(error, error?.message || '打开业务数据失败')
     }
   }
 }
@@ -915,9 +919,9 @@ const handleConfirmBind = async () => {
     console.error(error)
     // 显示后端返回的错误信息
     if (error.response?.data?.message) {
-      ElMessage.error(error.response.data.message)
+      showRequestError(error, error.response.data.message)
     } else if (error.message) {
-      ElMessage.error(error.message)
+      showRequestError(error, error.message)
     }
   } finally {
     bindLoading.value = false
@@ -941,27 +945,8 @@ let historyRequestGeneration = 0
 const versionDiffDialogVisible = ref(false)
 const versionDiffLoading = ref(false)
 const versionDiffData = ref(null)
-// ========== 发布差异预览相关 ==========
-const publishDiffDialogVisible = ref(false)
-const publishDiffLoading = ref(false)
-const publishDiffData = ref(null)
-const publishTargetEntity = ref(null)
-const schemaRetryLoading = ref(false)
-const publishMigrationForm = ref({
-  versionDescription: '',
-  markForExport: true,
-  migrationTag: generateMigrationTag(),
-  confirmHighRiskSchemaChange: false
-})
-const schemaRiskTag = (risk) => ({ HIGH: 'danger', MEDIUM: 'warning', LOW: 'success' })[risk] || 'info'
-const schemaStatusText = (status) => ({
-  METADATA_SAVED: '元数据已保存',
-  DDL_PENDING: 'DDL 待执行',
-  DDL_RUNNING: 'DDL 执行中',
-  SCHEMA_CONSISTENT: '结构一致',
-  DDL_FAILED: 'DDL 失败',
-  TERMINATED: '已终止'
-})[status] || status
+
+
 // 格式化日期
 const formatDate = (dateStr) => {
   if (!dateStr) return '-'
@@ -1015,91 +1000,23 @@ const formatDbType = (field) => {
       return field.dbType || 'varchar(255)'
   }
 }
-// 发布实体（先显示差异预览）
-const handlePublish = async (row) => {
-  publishTargetEntity.value = row
-  publishMigrationForm.value = {
-    versionDescription: '',
-    markForExport: true,
-    migrationTag: generateMigrationTag(),
-    confirmHighRiskSchemaChange: false
-  }
-  publishDiffDialogVisible.value = true
-  publishDiffLoading.value = true
-  try {
-    const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
-    publishDiffData.value = diff
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('获取发布预览失败')
-  } finally {
-    publishDiffLoading.value = false
-  }
-}
-// 重新发布实体（已发布的实体修改字段后再次发布）
-const handleRepublish = async (row) => {
-  publishTargetEntity.value = row
-  publishMigrationForm.value = {
-    versionDescription: '',
-    markForExport: true,
-    migrationTag: generateMigrationTag(),
-    confirmHighRiskSchemaChange: false
-  }
-  publishDiffDialogVisible.value = true
-  publishDiffLoading.value = true
-  try {
-    const diff = await entityVersionDiffApi.getPendingPublishDiff(row.id)
-    publishDiffData.value = diff
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('获取发布预览失败')
-  } finally {
-    publishDiffLoading.value = false
-  }
-}
-// 确认发布
-const confirmPublish = async () => {
-  if (!publishTargetEntity.value) return
-  if (publishMigrationForm.value.markForExport && !publishMigrationForm.value.migrationTag.trim()) {
-    ElMessage.warning('加入待导出清单时必须填写迁移标记')
-    return
-  }
-  const schemaOperation = publishDiffData.value?.schemaOperation
-  if (schemaOperation?.uniqueConflicts?.length) {
-    ElMessage.error('唯一约束扫描存在冲突，请先清理重复数据')
-    return
-  }
-  if (schemaOperation?.riskLevel === 'HIGH' && !publishMigrationForm.value.confirmHighRiskSchemaChange) {
-    ElMessage.warning('请先确认高风险结构变更')
-    return
-  }
-  publishDiffLoading.value = true
-  try {
-    await entityApi.publish(publishTargetEntity.value.id, { ...publishMigrationForm.value })
-    ElMessage.success(publishDiffData.value?.isFirstPublish ? '发布成功' : '重新发布成功，表结构已更新')
-    publishDiffDialogVisible.value = false
-    fetchData()
-  } catch (error) {
-    console.error(error)
-    ElMessage.error(error.response?.data?.message || '发布失败')
-  } finally {
-    publishDiffLoading.value = false
-  }
-}
-const retrySchemaOperation = async () => {
-  if (!publishTargetEntity.value) return
-  schemaRetryLoading.value = true
-  try {
-    await schemaOperationApi.retry(publishTargetEntity.value.id)
-    publishDiffData.value = await entityVersionDiffApi.getPendingPublishDiff(publishTargetEntity.value.id)
-    ElMessage.success('结构操作已恢复为待重试，请确认后重新发布')
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || error.message || '恢复结构操作失败')
-  } finally {
-    schemaRetryLoading.value = false
-  }
-}
+
+
 // 关闭或切换实体时清空分页状态，避免上一实体的历史短暂残留。
+const {
+  publishDiffDialogVisible,
+  publishDiffLoading,
+  publishDiffData,
+  schemaRetryLoading,
+  publishMigrationForm,
+  schemaRiskTag,
+  schemaStatusText,
+  handlePublish,
+  handleRepublish,
+  confirmPublish,
+  retrySchemaOperation
+} = useEntityPublication({ fetchData })
+
 const resetHistoryPagination = () => {
   // 递增代次使关闭弹窗或切换实体前发出的请求失效，避免迟到响应污染新实体。
   historyRequestGeneration += 1
@@ -1164,7 +1081,7 @@ const handleViewHistory = async (row) => {
     }
   } catch (error) {
     console.error('加载版本历史失败:', error)
-    ElMessage.error('加载版本历史失败')
+    showRequestError(error, '加载版本历史失败')
     resetHistoryPagination()
   } finally {
     historyOpening.value = false
@@ -1203,7 +1120,7 @@ const viewVersionDiff = async (item) => {
     versionDiffData.value = diff
   } catch (error) {
     console.error('获取版本差异失败:', error)
-    ElMessage.error('获取版本差异失败')
+    showRequestError(error, '获取版本差异失败')
   } finally {
     versionDiffLoading.value = false
   }
@@ -1234,7 +1151,7 @@ const handleStatusConfig = async (row) => {
     })
   } catch (error) {
     console.error('加载状态配置失败:', error)
-    ElMessage.error('加载状态配置失败')
+    showRequestError(error, '加载状态配置失败')
   }
 }
 // 拖拽排序实例
@@ -1297,7 +1214,7 @@ const saveStatusConfig = async () => {
     statusDialogVisible.value = false
   } catch (error) {
     console.error('保存状态配置失败:', error)
-    ElMessage.error('保存失败')
+    showRequestError(error, '保存失败')
   } finally {
     statusLoading.value = false
   }

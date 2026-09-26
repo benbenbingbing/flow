@@ -14,6 +14,7 @@ const source = (file, domain, area, patterns) => ({
 
 export const CONFIGURATION_SOURCES = Object.freeze([
   source('src/views/EntityList.vue', '实体配置', '实体基础与状态', [
+    "^publishMigrationForm\\.confirmHighRiskSchemaChange$",
     '^formData\\.(entityName|entityCode|description|lifecycleMode)$',
     '^selectedProcessId$',
     '^row\\.(statusCategory|statusCode|statusName|description)$',
@@ -34,6 +35,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^simulationUserId$'
   ]),
   source('src/views/EntityListConfigDesign.vue', '实体配置', '列表设计', [
+    "^(row\\.width|scopeDefault\\.unboundPolicy|boundPolicyIds|viewConfig)$",
     '^configInfo\\.',
     '^editingColumnConfig\\.',
     '^editingDataSourceConfig$',
@@ -48,6 +50,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^viewConfig\\.'
   ]),
   source('src/components/ListButtonConfigPanel.vue', '实体配置', '列表按钮', [
+    "^row\\.compositionKey$",
     '^advancedButton\\.',
     '^openListForm\\.',
     '^row\\.(customHandler|customMode|enabled|key|label|perm|sort|type)$'
@@ -60,6 +63,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^child\\.(type|relation|operator|value|field)$'
   ]),
   source('src/views/EntityFormList.vue', '实体配置', '表单定义', [
+    "^(formRendererMode|copyFormData\\.(formName|formKey))$",
     '^form\\.'
   ]),
   source('src/views/EntityFormDesignByEntity.vue', '实体配置', '表单设计', [
@@ -68,6 +72,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^viewConfig\\.customComponentProps$'
   ]),
   source('src/components/form-designer/FormDesignerSettingsDrawer.vue', '实体配置', '表单设置', [
+    "^viewConfig$",
     '^form\\.',
     '^viewConfig\\.',
     '^formLabelPosition$'
@@ -76,6 +81,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^row\\.(name|code|type|required|defaultValue|description)$'
   ]),
   source('src/components/form-designer/FormNodeDataSettings.vue', '实体配置', '表单节点数据绑定', [
+    "^selectedSubFormShowTitle$",
     '^selectedField\\.',
     '^selectedParameterContract$',
     '^selectedSubListParameterContract$'
@@ -132,6 +138,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^slaForm\\.',
     '^statusForm\\.'
   ]),
+  source('src/components/node-config/NodeSlaEditor.vue', '流程配置', '流程节点', ['^slaForm\\.']),
   source('src/components/FlowConditionGroupEditor.vue', '流程配置', '流程条件', [
     '^group\\.logic$',
     '^child\\.(property|operator|value)$'
@@ -160,6 +167,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
   ])
 ])
 
+// 聚合组件的 v-model 已由子组件控件或结构化条目逐字段记录；预览输入不进入发布配置。
 export const IGNORED_UI_BINDINGS = Object.freeze({
   'src/views/EntityList.vue': [
     '^queryParams\\.', '^dialogVisible$', '^bindDialogVisible$', '^statusDialogVisible$',
@@ -177,12 +185,15 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^advancedDialogVisible$', '^openListDialogVisible$', '^buttonEventDialogVisible$'
   ],
   'src/components/ActionRuleEditorPanel.vue': [
+    "^expandedBranches$",
     '^(visiblePreset|enabledPreset)$'
   ],
   'src/views/EntityFormList.vue': [
+    "^copyDialogVisible$",
     '^dialogVisible$', '^previewVisible$'
   ],
   'src/views/EntityFormDesignByEntity.vue': [
+    "^regexTestValue$",
     '^fieldSearch$', '^propertyDrawerVisible$', '^activeNodeSettingsTab$',
     '^activeNodeInteractionTab$', '^showFormSettings$', '^showPreview$', '^previewMode$',
     '^showLinkageConfig$', '^showEventConfig$', '^showFormExtensionConfig$', '^publishDialogVisible$'
@@ -194,12 +205,14 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^visible$'
   ],
   'src/components/FormButtonConfigPanel.vue': [
+    "^advancedRule$",
     '^activeMode$', '^advancedVisible$'
   ],
   'src/components/EventConfigPanel.vue': [
     '^dialogVisible$', '^activeTab$', '^showAddEvent$'
   ],
   'src/views/system/EntityVersionManagement.vue': [
+    "^(enabledFilter|pageInfo\\.pageNum)$",
     '^keyword$', '^drawerVisible$', '^activeTab$',
     '^triggerDialogVisible$', '^scopeDialogVisible$', '^previewVisible$',
     '^previewRecordId$'
@@ -210,6 +223,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
     '^versionDetailVisible$', '^publishDialogVisible$'
   ],
   'src/components/NodeConfigPanel.vue': [
+    "^(relativePositionSampleUserId|assigneeForm|slaForm)$",
     '^selectedStatusName$'
   ],
   'src/components/FlowActionConfigPanel.vue': [
@@ -260,7 +274,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   {
     domain: '实体配置',
     area: '表单节点类型',
-    source: 'src/shared/form-node-property-schema.js',
+    source: '../packages/workflow-core/src/shared/form-node-property-schema.js',
     values: [
       ['SECTION', '分组', '组织一组相关字段'],
       ['GRID', '栅格', '按列宽布局子节点'],
@@ -318,16 +332,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
       ['WITHDRAWN', '已撤回', '由发起人撤回的流程数据。']
     ]
   },
-  {
-    domain: '实体配置',
-    area: '团队可见性覆盖级别',
-    source: 'src/views/EntityDesign.vue',
-    values: [
-      ['ADDITIVE', '附加授权', '团队成员获得额外可见数据，但列表收窄和拒绝规则仍然生效。'],
-      ['OVERRIDE_SCOPE', '覆盖普通数据范围', '团队授权可越过普通数据范围，但明确拒绝规则仍然生效。'],
-      ['ABSOLUTE', '绝对参与授权', '团队授权还能覆盖业务拒绝，权限最强，仅用于明确的协作场景。']
-    ]
-  },
+
   {
     domain: '实体配置',
     area: '数据权限规则效果',
@@ -351,9 +356,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
     area: '列表数据范围模式',
     source: 'src/views/EntityListConfigDesign.vue',
     values: [
-      ['INHERIT', '继承实体默认范围', '列表直接使用实体级数据权限；系统实体强制采用此模式。'],
-      ['NARROW', '在实体范围内缩小', '列表只能在实体已允许的数据中进一步收窄，不能扩大权限。'],
-      ['OVERRIDE', '使用列表独立范围', '列表使用独立规则，属于高风险配置，必须单独验证权限边界。']
+      ['INHERIT', '仅使用本列表绑定的规则', '保留兼容字段编码；普通列表仅使用明确绑定的规则，未绑定允许规则时执行安全默认策略。']
     ]
   },
   {
@@ -368,7 +371,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   {
     domain: '实体配置',
     area: '表单运行模式',
-    source: 'src/shared/form-actions.js',
+    source: '../packages/workflow-core/src/shared/form-actions.js',
     values: [
       ['create', '新增', '创建新记录，字段采用新增模式权限，默认有取消、重置和保存。'],
       ['edit', '编辑', '修改已有记录，字段采用编辑模式权限，默认有取消、重置和保存修改。'],
@@ -379,7 +382,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   {
     domain: '实体配置',
     area: '表单内置按钮',
-    source: 'src/shared/form-actions.js',
+    source: '../packages/workflow-core/src/shared/form-actions.js',
     values: [
       ['close', '关闭 / 取消', '新增和编辑时取消操作，查看和审批时关闭窗口。'],
       ['reset', '重置', '把新增或编辑表单恢复到本次打开或初始化后的值。'],
@@ -789,7 +792,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^ruleForm\\.', '流程配置-流程-设计-业务规则任务属性-常用-业务规则'),
   locationRule('src/components/NodeConfigPanel.vue', '^callForm\\.', '流程配置-流程-设计-调用活动属性-常用-调用流程'),
   locationRule('src/components/NodeConfigPanel.vue', '^conditionForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
-  locationRule('src/components/NodeConfigPanel.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
+  locationRule('src/components/node-config/NodeSlaEditor.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
   locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipMode)$', '流程配置-流程-设计-用户任务属性-高级-自动跳过'),
   locationRule('src/components/NodeConfigPanel.vue', '^basicForm\\.', '流程配置-流程-设计-节点属性-常用-标识与备注'),
 
@@ -911,7 +914,7 @@ const formNodeProperty = (
   skipWhen: `沿用节点默认值，或当前节点类型不支持“${label}”时无需配置。`,
   example,
   expectedEffect,
-  source: 'src/shared/form-node-property-schema.js:51',
+  source: '../packages/workflow-core/src/shared/form-node-property-schema.js:51',
   sourceToken: key,
   verification: 'src/shared/__tests__/form-node-property-schema.spec.js'
 })
@@ -951,7 +954,6 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
   formNodeProperty('componentProps', '组件参数', '保存字段组件或容器组件的结构化参数。', '{"clearable":true}', '运行时组件读取受支持参数，未知参数被忽略。', 'FIELD、SUB_FORM、REPEATER 或扩展节点'),
   formNodeProperty('dataSource', '节点扩展接口', '绑定字段选项、默认值、计算、加载后或提交前使用的扩展接口。', '{"usage":"FIELD_OPTIONS","extensionId":"10001"}', '运行时在对应阶段调用已发布扩展接口并应用映射。', 'FIELD、SUB_FORM、REPEATER'),
   formNodeProperty('events', '统一事件绑定', '保存字段或表单标准事件的受管理接口执行链。', '{"ENTITY_SELECTED":{"steps":[]}}', '事件发生时按发布快照执行条件、映射和失败策略。', 'FIELD'),
-  formNodeProperty('template', '组件模板引用', '锁定组件模板及其版本，并保存本地覆盖。', '{"templateId":"tpl-1","templateVersion":2}', '发布版本使用锁定模板快照，升级前不自动漂移。', 'FIELD、SUB_FORM、REPEATER'),
   formNodeProperty('nodeExtension', '节点扩展', '绑定已注册节点扩展及实现、快照版本。', '{"componentName":"ProjectCard","componentVersion":1}', '运行时只加载注册扩展，不允许任意组件路径。', '支持扩展的节点'),
 
   ...[
@@ -1060,7 +1062,7 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
     expectedEffect,
     source: binding.includes('eventBinding')
       ? 'src/components/ui-config/EventBindingEditor.vue:370'
-      : 'src/shared/form-actions.js:1',
+      : '../packages/workflow-core/src/shared/form-actions.js:1',
     sourceToken: binding.includes('eventBinding') ? 'FORM_BUTTON_CLICK' : binding.split('.').at(-1).replace('[]', ''),
     verification: 'src/shared/__tests__/form-actions.spec.js'
   })),
@@ -1111,7 +1113,7 @@ const KEY_GUIDANCE = Object.freeze({
   relationType: ['设置父子或引用关系语义。', 'MANY_TO_ONE', '影响关系保存、反向查询和级联行为。'],
   cascadeDelete: ['控制删除主记录时是否级联删除明细。', false, '开启后主记录删除会连带处理子记录，需谨慎使用。'],
   accessPermissionCode: ['设置进入列表所需的权限码。', 'entity:purchase:list', '无此权限的用户不能访问该列表。'],
-  dataScopeMode: ['设置列表权限与实体权限的组合方式。', 'INHERIT', '决定列表查询继承、收窄或使用独立数据范围。'],
+  dataScopeMode: ['保留列表数据范围的兼容编码，界面固定为本列表规则模式。', 'INHERIT', '数据可见性由本列表绑定和未绑定时的默认策略决定，不继承实体默认范围。'],
   fixedFilterRows: ['选择字段、比较方式和值来配置固定过滤条件，多条条件必须同时满足。', '未添加条件', '不附加条件不等于授予权限；保存并发布后生效，用户筛选和自定义查询不能放宽范围。'],
   fixedFilterConfig: ['访问范围中始终生效的固定过滤约束，与数据权限取交集。', '{"status":"RUNNING","status_op":"EQ"}', '{} 不附加条件；省略 _op 按 EQ；用户筛选和自定义查询不能放宽范围，发布后生效。'],
   selectionMode: ['设置列表是否作为单选或多选选择器。', 'SINGLE', '运行时进入选择场景，并按所选模式返回记录。'],
@@ -1384,6 +1386,258 @@ const KEY_GUIDANCE = Object.freeze({
 })
 
 const CONTROL_OVERRIDES = Object.freeze({
+
+  "publishMigrationForm.confirmHighRiskSchemaChange": {
+    "label": "确认高风险结构变更",
+    "meaning": "确认已经阅读本次发布预览列出的高风险结构操作。",
+    "example": true,
+    "configureWhen": "发布预览提示高风险结构变更并且已核对影响时勾选。",
+    "skipWhen": "没有高风险结构操作时无需勾选。",
+    "expectedEffect": "高风险发布请求携带明确确认，未确认时前端阻止提交。"
+  },
+  "row.width": {
+    "label": "列宽",
+    "meaning": "设置当前列表列的像素宽度；零值使用自动宽度。",
+    "example": 160,
+    "configureWhen": "金额、编号等列需要固定显示宽度时设置。",
+    "skipWhen": "让列表自动分配列宽时保留零值。",
+    "expectedEffect": "运行时按发布配置设置列宽。"
+  },
+  "scopeDefault.unboundPolicy": {
+    "label": "未绑定允许规则时",
+    "meaning": "指定本列表没有启用 ALLOW 规则绑定时的数据范围。",
+    "example": "DENY_ALL",
+    "configureWhen": "列表首次配置或清空允许规则后必须明确安全默认范围。",
+    "skipWhen": "存在启用的允许规则时该默认策略不参与范围计算。",
+    "expectedEffect": "DENY_ALL 拒绝全部，PERSONAL 仅本人创建或提交，EXPLICIT_ALL 需额外确认。"
+  },
+  "boundPolicyIds": {
+    "label": "绑定数据规则",
+    "meaning": "选择直接作用于当前列表的数据规则。",
+    "example": [
+      "rule-own-records"
+    ],
+    "configureWhen": "列表需要按指定规则计算数据可见范围时绑定。",
+    "skipWhen": "不绑定时执行本列表的安全默认策略。",
+    "expectedEffect": "保存后绑定立即生效；列表不会自动继承未绑定的实体规则。"
+  },
+  "viewConfig": {
+    "label": "页面输入参数",
+    "meaning": "声明当前表单或列表接受的页面输入参数。",
+    "example": {
+      "inputParameterSchema": { "type": "object", "properties": { "projectId": { "type": "string", "title": "项目 ID" } } }
+    },
+    "configureWhen": "关联页面需要传入上下文并用于查询或回填时声明。",
+    "skipWhen": "不接收调用方参数时保持为空。",
+    "expectedEffect": "发布后调用方按目标参数契约配置映射，参数不授予额外的数据访问权限。"
+  },
+  "row.compositionKey": {
+    "label": "关联内容标识",
+    "meaning": "指定列表按钮打开的已配置关联内容。",
+    "example": "project-detail",
+    "configureWhen": "按钮使用打开关联内容模式时选择目标。",
+    "skipWhen": "其他按钮模式不使用此标识。",
+    "expectedEffect": "点击按钮按关联内容配置打开目标表单或列表。"
+  },
+  "formRendererMode": {
+    "label": "渲染方式",
+    "meaning": "选择平台默认节点表单或注册的自定义表单。",
+    "example": "CUSTOM",
+    "configureWhen": "需要切换表单整体展示实现时设置。",
+    "skipWhen": "系统实体或无自定义展示需求时保留默认方式。",
+    "expectedEffect": "发布后采用所选渲染实现，切换方式保留原有布局草稿。"
+  },
+  "copyFormData.formName": {
+    "label": "复制后的表单名称",
+    "meaning": "为新复制出的表单设置可识别名称。",
+    "example": "项目审批表单副本",
+    "configureWhen": "复制已有表单并另行配置时输入。",
+    "skipWhen": "不执行复制时无需填写。",
+    "expectedEffect": "生成独立表单草稿，来源表单名称不变。"
+  },
+  "copyFormData.formKey": {
+    "label": "复制后的表单标识",
+    "meaning": "为复制表单指定新的稳定标识。",
+    "example": "approval_copy",
+    "configureWhen": "需要同一实体下的独立表单入口时设置。",
+    "skipWhen": "不执行复制时无需填写。",
+    "expectedEffect": "新表单按新标识绑定流程或页面，原表单绑定保持不变。"
+  },
+  "selectedSubFormShowTitle": {
+    "label": "显示子表单标题",
+    "meaning": "控制子表单节点是否显示自己的标题。",
+    "example": true,
+    "configureWhen": "子表单需要独立标题以区分业务区域时开启。",
+    "skipWhen": "父容器已给出足够说明时可关闭。",
+    "expectedEffect": "只改变子表单标题显示，不改变子表数据和发布版本绑定。"
+  }
+,
+  "assigneeForm.relativePosition.assignmentMode": {
+    "label": "任务分配",
+    "meaning": "决定解析到的任职人直接成为办理人，还是进入候选办理集合。",
+    "example": "DIRECT",
+    "configureWhen": "需要控制单人直接领取与候选人员领取的任务分配方式时选择。",
+    "skipWhen": "不使用相对职务解析时不配置。",
+    "expectedEffect": "DIRECT 直接指定办理人；CANDIDATE 将解析人员加入候选集合。"
+  },
+  "assigneeForm.relativePosition.multipleMatchPolicy": {
+    "label": "多人命中",
+    "meaning": "设置同一目标单位和职务解析到多名有效任职人的处理规则。",
+    "example": "PRIMARY_OR_ERROR",
+    "configureWhen": "目标职务可能同时存在多名任职人时必须明确处理方式。",
+    "skipWhen": "未使用相对职务解析时不配置。",
+    "expectedEffect": "按所选策略优先主岗、选择全部或拒绝不明确结果；实际可选策略受分配模式约束。"
+  },
+  "assigneeForm.multiInstanceNeedAllApprovers": {
+    "label": "是否需要所有人审批",
+    "meaning": "决定会签是否等待所有人员完成后才按通过率判定。",
+    "example": true,
+    "configureWhen": "必须收集全部人员意见，不能提前结束会签时开启。",
+    "skipWhen": "允许达到阈值或确认无法达标时提前结束的会签可关闭。",
+    "expectedEffect": "开启后等待全员完成，再以通过票比例决定结果；驳回票不会计入通过人数。"
+  },
+  "assigneeForm.emptyAssigneeStrategy": {
+    "label": "空办理人策略",
+    "meaning": "配置解析结果为空时的继承、兜底或异常处理策略。",
+    "example": {
+      "policy": "INHERIT"
+    },
+    "configureWhen": "节点需要覆盖流程的空办理人处理约定时配置。",
+    "skipWhen": "采用流程统一策略时保留继承。",
+    "expectedEffect": "运行时人员解析为空后执行所选策略，避免生成无人可办的静默任务。"
+  },
+  "step.strategy": {
+    "label": "事件步骤执行位置",
+    "meaning": "决定步骤在主处理之前、替代主处理或在主处理之后执行。",
+    "example": "BEFORE",
+    "configureWhen": "为事件链加入查询或回填步骤并指定相对执行顺序时选择。",
+    "skipWhen": "仅使用上层继承链、不新增步骤时无需设置。",
+    "expectedEffect": "REPLACE 作为当前链主处理；表单按钮主处理必须无条件且满足数量限制。"
+  },
+  "selectedField.isRequired": {
+    "label": "字段必填",
+    "meaning": "控制当前字段提交时是否允许为空。",
+    "example": true,
+    "configureWhen": "业务办理必须提供此字段值时开启。",
+    "skipWhen": "允许留空的可选字段可以关闭；实体固定必填约束仍不可解除。",
+    "expectedEffect": "提交校验会提示缺少必填值；表单设计不能覆盖实体固定必填规则。"
+  },
+  "selectedField.isReadonly": {
+    "label": "字段只读",
+    "meaning": "决定字段是否允许通过当前表单编辑。",
+    "example": true,
+    "configureWhen": "字段来自系统计算或只允许其他业务入口维护时开启。",
+    "skipWhen": "当前表单需要采集或修改字段值时关闭。",
+    "expectedEffect": "运行时展示现有值并禁止编辑；其他权限和节点字段状态仍继续约束操作。"
+  },
+  "editingColumnConfig.quickCopy": {
+    "label": "快捷复制",
+    "meaning": "为列表单元格提供复制显示值的入口。",
+    "example": true,
+    "configureWhen": "编号或文本经常需要复制给其他业务操作时开启。",
+    "skipWhen": "不需要复制入口的列保持关闭。",
+    "expectedEffect": "单元格显示复制操作，成功后将当前显示内容写入剪贴板。"
+  },
+  "assigneeForm.relativePosition.anchor": {
+    "label": "组织锚点",
+    "meaning": "选择相对职务查找的起点，使用流程启动时冻结的发起人部门或组织。",
+    "example": "DEPARTMENT",
+    "configureWhen": "按部门或组织确定审批责任边界时选择。",
+    "skipWhen": "不使用相对组织职务办理人时无需配置。",
+    "expectedEffect": "运行时从选定锚点出发，按查找方式解析任职人员。"
+  },
+  "assigneeForm.relativePosition.hierarchy.ancestorHops": {
+    "label": "上溯层数",
+    "meaning": "固定父级查找沿原始组织树向上经过的父子边数量。",
+    "example": 1,
+    "configureWhen": "审批人固定来自直接上级或更高指定父级时填写。",
+    "skipWhen": "使用当前单位、就近查找或业务层级模式时不使用此值。",
+    "expectedEffect": "数值 1 定位直接父单位，再按职务编码查找人员。"
+  },
+  "assigneeForm.relativePosition.hierarchy.startLevel": {
+    "label": "起始层级",
+    "meaning": "决定就近查找是否包含锚点本级。",
+    "example": 0,
+    "configureWhen": "使用就近向上查找并需要控制是否允许本级任职人办理时设置。",
+    "skipWhen": "其他层级查找方式不使用此值。",
+    "expectedEffect": "0 先检查本级，1 从直接父级开始查找。"
+  },
+  "assigneeForm.relativePosition.hierarchy.maxHops": {
+    "label": "最大上溯",
+    "meaning": "限制就近任职人查找沿组织树向上搜索的层数。",
+    "example": 5,
+    "configureWhen": "需要限定审批责任范围，防止无限上溯时设置。",
+    "skipWhen": "非就近查找模式不使用此上限。",
+    "expectedEffect": "命中第一个有有效任职人的单位后停止；超出上限不再继续向上查找。"
+  },
+  "assigneeForm.relativePosition.hierarchy.eligibleUnitTypes": {
+    "label": "单位类型",
+    "meaning": "限定就近查找可以接受部门、组织或两者作为任职单位。",
+    "example": [
+      "dept"
+    ],
+    "configureWhen": "组织树混合部门和组织，需限定审批责任单位类型时选择。",
+    "skipWhen": "其他层级查找方式不使用此筛选。",
+    "expectedEffect": "仅符合所选类型的单位可以成为最终任职人查找目标。"
+  },
+  "assigneeForm.multiInstanceDecision": {
+    "label": "办理模式",
+    "meaning": "决定多人任务按会签通过票阈值，还是按或签第一人的结果结束。",
+    "example": "countersign",
+    "configureWhen": "多人共同决策或任一人员代表办理时选择。",
+    "skipWhen": "单人任务无需配置多人决策模式。",
+    "expectedEffect": "会签累计通过票；或签第一人通过或驳回即结束本节点。"
+  },
+  "assigneeForm.multiInstanceCompletionRate": {
+    "label": "通过率阈值（%）",
+    "meaning": "设置会签所需的通过人数占总办理人数比例。",
+    "example": 100,
+    "configureWhen": "会签允许多数通过或要求全员通过时设置。",
+    "skipWhen": "或签不使用通过率阈值。",
+    "expectedEffect": "达到通过票比例才通过；需要所有人审批开启时会等全员完成后判断。"
+  },
+  "advancedButton.parameterMappings": {
+    "label": "表单输入参数映射",
+    "meaning": "将当前记录、选中记录标识或页面参数传入按钮指定表单。",
+    "example": [
+      {
+        "sourceType": "RECORD_ID",
+        "targetCode": "recordId"
+      }
+    ],
+    "configureWhen": "按钮打开的目标表单声明了业务输入参数时配置。",
+    "skipWhen": "目标表单无需额外参数时保持空映射。",
+    "expectedEffect": "打开表单时按映射构建参数；依赖行数据的工具栏按钮要求唯一选中行。"
+  },
+  "openListForm.parameterMappings": {
+    "label": "列表输入参数映射",
+    "meaning": "为按钮打开的目标列表绑定已声明的输入参数。",
+    "example": [
+      {
+        "sourceType": "RECORD_ID",
+        "targetCode": "parentId"
+      }
+    ],
+    "configureWhen": "目标列表需要按当前记录或页面参数筛选时配置。",
+    "skipWhen": "目标列表不需要来源参数时保持空映射。",
+    "expectedEffect": "目标列表按传入参数解析已发布的查询规则，不复制来源列表的授权。"
+  },
+  "cond.sql": {
+    "label": "用户 SQL",
+    "meaning": "以受控 SQL 定义数据权限规则适用的用户范围。",
+    "example": "select id from sys_user where id = #{userId}",
+    "configureWhen": "结构化用户、角色或部门条件不足以表达规则适用人群时填写。",
+    "skipWhen": "选择内置用户范围时无需 SQL。",
+    "expectedEffect": "保存时校验 SQL 约束，规则模拟显示当前用户是否命中该适用范围。"
+  },
+  "permissionForm.filterSql": {
+    "label": "范围 SQL",
+    "meaning": "以受控 SQL 条件定义匹配用户可访问的数据范围。",
+    "example": "biz.create_by = #{userId}",
+    "configureWhen": "内置数据范围和结构化条件无法表达业务筛选时配置。",
+    "skipWhen": "使用本人创建、待办或结构化条件范围时不使用 SQL。",
+    "expectedEffect": "保存规则草稿后参与权限发布和规则模拟，不会通过列表配置草稿直接扩大授权。"
+  },
   'src/views/EntityDesign.vue:item.required': {
     label: '附件项是否必填',
     meaning: '控制当前附件项是否必须上传文件。',

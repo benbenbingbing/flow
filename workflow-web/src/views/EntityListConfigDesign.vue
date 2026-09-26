@@ -923,6 +923,10 @@
   </div>
 </template>
 <script setup>
+import { showRequestError } from '@/shared/request'
+
+import { mergeFieldConfig as mergeListColumns, normalizeFieldForSave as serializeListColumn, isVirtualField } from './list-designer/listColumnModel.js'
+
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
@@ -988,10 +992,7 @@ import {
   uiComponentTemplateApi,
   uiExtensionApi
 } from '@/api/uiConfig'
-import {
-  normalizeInterfaceExtensions,
-  resolveInterfaceExtensionId
-} from '@/components/ui-config/interfaceExtensionModel'
+import { normalizeInterfaceExtensions } from '@/components/ui-config/interfaceExtensionModel'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { useBreadcrumbParents } from '@/composables/useBreadcrumbParents'
 import { applyListColumnTemplateSnapshot } from '@/shared/list-column-template'
@@ -1535,74 +1536,18 @@ async function loadData(options = {}) {
   }
 }
 
+/** 列模型不持有页面状态；草稿和排序由当前设计会话统一更新。 */
 function mergeFieldConfig(savedFields) {
-  // 以实体字段为基准
-  const merged = entityFields.value.map((ef, index) => {
-    const saved = savedFields.find(sf => sf.fieldId === ef.id)
-    return {
-      id: saved?.id,
-      revision: saved?.revision || 0,
-      orderKey: saved?.orderKey || (index + 1) * 1000000,
-      fieldId: ef.id,
-      fieldCode: ef.fieldCode,
-      fieldName: saved?.fieldName || ef.fieldName,
-      fieldType: ef.fieldType,
-      optionsJson: ef.optionsJson,
-      showInList: saved ? saved.showInList : ef.showInList,
-      isQuery: saved ? saved.isQuery : ef.isQuery,
-      queryType: saved?.queryType || 'LIKE',
-      width: saved?.width || 0,
-      align: saved?.align || 'left',
-      dataSourceType: saved?.dataSourceType || 'ENTITY_FIELD',
-      dataSourceConfig: saved?.dataSourceConfig || '',
-      interfaceExtensionId: resolveInterfaceExtensionId({
-        extensionId: saved?.interfaceExtensionId,
-        dataSourceId: saved?.dataSourceId,
-        operationCode: saved?.dataSourceOperationCode
-      }, availableListColumnInterfaces.value),
-      templateId: saved?.templateId,
-      templateVersion: saved?.templateVersion,
-      localOverridesDocument: saved?.localOverridesDocument || '',
-      renderComponent: saved?.renderComponent || '',
-      formatter: saved?.formatter || '',
-      columnConfig: saved?.columnConfig || '',
-      queryConfig: saved?.queryConfig || '',
-      renderConfig: saved?.renderConfig || '',
-      sortOrder: saved?.sortOrder ?? index
-    }
+  fieldConfigList.value = mergeListColumns(savedFields, {
+    entityFields: entityFields.value,
+    availableListColumnInterfaces: availableListColumnInterfaces.value,
+    isSystemEntity: isSystemEntity.value
   })
-  savedFields
-    .filter(() => !isSystemEntity.value)
-    .filter(saved => !entityFields.value.some(entityField => String(entityField.id) === String(saved.fieldId)))
-    .forEach((saved, index) => {
-      merged.push({
-        ...saved,
-        id: saved.id,
-        revision: saved.revision || 0,
-        orderKey: saved.orderKey || (entityFields.value.length + index + 1) * 1000000,
-        fieldId: saved.fieldId || `virtual_${Date.now()}_${index}`,
-        fieldCode: saved.fieldCode || `virtual_${index + 1}`,
-        fieldName: saved.fieldName || '虚拟列',
-        fieldType: saved.fieldType || 'STRING',
-        showInList: saved.showInList !== false,
-        isQuery: saved.isQuery === true,
-        queryType: saved.queryType || 'EQ',
-        width: saved.width || 0,
-        align: saved.align || 'left',
-        dataSourceType: saved.dataSourceType || 'FIELD_TEMPLATE',
-        dataSourceConfig: saved.dataSourceConfig || '',
-        renderComponent: saved.renderComponent || '',
-        formatter: saved.formatter || '',
-        columnConfig: saved.columnConfig || '',
-        queryConfig: saved.queryConfig || '',
-        renderConfig: saved.renderConfig || '',
-        sortOrder: saved.sortOrder ?? entityFields.value.length + index
-      })
-    })
-  // 按 sortOrder 排序
-  merged.sort((a, b) => a.sortOrder - b.sortOrder)
-  fieldConfigList.value = merged
 }
+function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(field)) {
+  return serializeListColumn(field, index)
+}
+
 function mergeViewConfig(saved) {
   const defaults = createDefaultViewConfig()
   return {
@@ -1614,9 +1559,7 @@ function mergeViewConfig(saved) {
     customComponentProps: saved.customComponentProps || {}
   }
 }
-function isVirtualField(field) {
-  return String(field?.fieldId || '').startsWith('virtual_')
-}
+
 function supportsQuery(field) {
   return supportsEntityFieldQuery(field)
 }
@@ -1732,7 +1675,7 @@ async function applyListColumnTemplate(templateId) {
     syncFieldConfigEditors(editingField.value)
     ElMessage.success(`已复制模板“${template?.templateName || '未命名模板'}”，保存后与模板互不影响`)
   } catch (error) {
-    ElMessage.error(error?.message || '复制模板配置失败')
+    showRequestError(error, error?.message || '复制模板配置失败')
   } finally {
     selectedListTemplateId.value = ''
   }
@@ -1987,32 +1930,7 @@ function initSortable() {
     }
   })
 }
-function normalizeFieldForSave(field, index = fieldConfigList.value.indexOf(field)) {
-  return {
-    id: field.id,
-    fieldId: field.fieldId,
-    fieldCode: field.fieldCode,
-    fieldName: field.fieldName,
-    showInList: field.showInList,
-    isQuery: field.isQuery,
-    queryType: field.queryType,
-    width: field.width,
-    align: field.align,
-    dataSourceType: field.dataSourceType || 'ENTITY_FIELD',
-    dataSourceConfig: field.dataSourceConfig || '',
-    interfaceExtensionId: field.interfaceExtensionId || null,
-    renderComponent: field.renderComponent || '',
-    formatter: field.formatter || '',
-    columnConfig: field.columnConfig || '',
-    queryConfig: field.queryConfig || '',
-    renderConfig: field.renderConfig || '',
-    sortOrder: Math.max(0, index),
-    orderKey: field.orderKey || (Math.max(0, index) + 1) * 1000000,
-    templateId: null,
-    templateVersion: null,
-    localOverridesDocument: null
-  }
-}
+
 function fieldConfigSummary(field) {
   const parts = []
   if (field.isQuery) {
@@ -2135,12 +2053,18 @@ async function saveListMetadata(options = {}) {
         ? ''
         : configInfo.value.queryProviderCode || ''
     })
-    if (entityCode.value && configInfo.value.listKey && !isSystemEntity.value) {
-      await saveScopeBindings({ silent: true })
-    }
+    // 元数据已写入时先更新其 revision/基线；规则失败后重试只处理仍未保存的部分。
     configInfo.value.revision = saved.revision
     configInfo.value.fixedFilterConfig = fixedFilterConfig
     rememberMetadataBaseline()
+    if (entityCode.value && configInfo.value.listKey && !isSystemEntity.value) {
+      const scopeSaved = await saveScopeBindings({ silent: true })
+      if (!scopeSaved) {
+        await loadDiff()
+        ElMessage.warning('列表设置已保存，数据规则绑定未完成，请检查后重试')
+        return false
+      }
+    }
     await loadDiff()
     if (!options.silent) {
       ElMessage.success('列表设置已保存。数据规则绑定已立即生效；其余列表配置仍需点「发布生效」')
@@ -2201,7 +2125,7 @@ async function saveScopeBindings(options = {}) {
     }
     return true
   } catch (error) {
-    ElMessage.error(error?.message || '保存数据规则绑定失败')
+    showRequestError(error, error?.message || '保存数据规则绑定失败')
     return false
   }
 }
@@ -2304,7 +2228,7 @@ async function handleDiscardDraft() {
       ElMessage.warning('草稿或发布状态已变化，已重新加载最新配置，请重新确认')
       return
     }
-    ElMessage.error(error?.message || '撤销未发布修改失败')
+    showRequestError(error, error?.message || '撤销未发布修改失败')
   } finally {
     discardDraftLoading.value = false
   }
@@ -2470,7 +2394,7 @@ async function openRuntimeCode() {
     })
   } catch (error) {
     console.error('生成列表最终代码失败:', error)
-    ElMessage.error(error?.message || '生成列表最终代码失败')
+    showRequestError(error, error?.message || '生成列表最终代码失败')
   } finally {
     runtimeCodeLoading.value = false
   }

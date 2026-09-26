@@ -456,7 +456,7 @@ assert.match(
 )
 assert.ok(
   entityDataList.includes("getFormForNewData(entityCode.value, { silentError: true })")
-    && entityDataList.includes("ElMessage.error(e?.message || '加载最新发布表单失败，请稍后重试')"),
+    && entityDataList.includes("showRequestError(e, e?.message || '加载最新发布表单失败，请稍后重试')"),
   '最新发布表单加载失败时不得继续打开旧缓存表单'
 )
 assert.ok(
@@ -552,6 +552,7 @@ const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelect
 })
 
 const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
+  + readFileSync(path.join(root, 'src/views/list-designer/listColumnModel.js'), 'utf8')
 const listDesignerShared = readFileSync(path.join(root, 'src/shared/list-config-design.js'), 'utf8')
 const uiConfigDraftShared = readFileSync(
   path.join(root, 'src/shared/ui-config-draft.js'),
@@ -1671,6 +1672,7 @@ assert.ok(
 })
 
 const entityDesigner = readFileSync(path.join(root, 'src/views/EntityDesign.vue'), 'utf8')
+  + readFileSync(path.join(root, 'src/views/entity-design/useEntityPermissions.js'), 'utf8')
 assert.match(
   entityDesigner,
   /const showSystemFields = ref\(true\)/,
@@ -2274,6 +2276,7 @@ assert.ok(!systemAudit.includes('<h2>系统日志</h2>'), '系统日志页面不
 
 const processList = readFileSync(path.join(root, 'src/views/ProcessList.vue'), 'utf8')
 const entityList = readFileSync(path.join(root, 'src/views/EntityList.vue'), 'utf8')
+  + readFileSync(path.join(root, 'src/views/entity-list/useEntityPublication.js'), 'utf8')
 ;['markForExport', 'migrationTag', 'generateMigrationTag'].forEach((marker) => {
   assert.ok(processList.includes(marker), `流程发布缺少迁移标记能力: ${marker}`)
   assert.ok(entityList.includes(marker), `实体发布缺少迁移标记能力: ${marker}`)
@@ -2443,7 +2446,7 @@ const configurationArchitectureExpectations = {
     'HTTP `409`',
     'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT',
     '最大深度 8 层',
-    'registerFormNodeComponent',
+    '"type": "NODE"',
     '节点级扩展',
     'FORM_INIT',
     'BEFORE_SUBMIT',
@@ -2507,9 +2510,9 @@ for (const file of [
 }
 
 const demoExpectations = {
-  'src/extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
-  'src/extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
-  'src/extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
+  '../extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
+  '../extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
+  '../extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
   'src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
   'src/extensions/examples/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
   'src/extensions/examples/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],
@@ -2687,9 +2690,10 @@ assert.ok(
     ['handleDesign(row)', '设计', 'handlePreview(row)', '预览', 'handleEdit(row)', '编辑', 'handleSetDefault(row)', '默认', 'handleCopy(row)', '复制', 'handleDataConfig(row)', '数据配置', 'handleDelete(row)', '删除']
   ]
 ].forEach(([source, markers]) => {
-  assert.doesNotMatch(source, /<el-dropdown(?:\s|>)/, '列表操作不得继续收纳到更多下拉')
+  // 次要操作可以折叠，但设计、发布等主要入口仍必须直接可用。
+  const directActions = source.replace(/<el-dropdown(?:\s|>)[\s\S]*?<\/el-dropdown>/g, '')
   markers.forEach((marker) => {
-    assert.ok(source.includes(marker), `操作列缺少直接操作或精简文案: ${marker}`)
+    assert.ok(directActions.includes(marker), `操作列缺少直接操作或精简文案: ${marker}`)
   })
 })
 
@@ -2749,7 +2753,7 @@ const processManualSource = readFileSync(
 )
 assert.ok(
   processManualSource.includes('列表配置只允许 STANDARD 发布')
-    && processManualSource.includes('REVIEW 仅作高风险提醒')
+    && /REVIEW\s*(?:修改)?仅作高风险提醒/.test(processManualSource)
     && processManualSource.includes('entity:ui-config:hotfix:rollback'),
   '流程手册应说明表单热修复风险和列表普通发布边界'
 )
@@ -2767,7 +2771,7 @@ assert.doesNotMatch(
 const extensionManagementSource = readFileSync(
   path.join(root, 'src/views/system/ExtensionManagement.vue'),
   'utf8'
-)
+) + readFileSync(path.join(root, 'src/components/ui-config/ExtensionCatalogEditorDialog.vue'), 'utf8')
 ;[
   "path: '/dev/extensions'",
   "requiredPermissions: ['system:extension:list']"
@@ -2788,7 +2792,7 @@ assert.ok(
   'table-toolbar',
   'extensionCatalogApi.manage',
   'personResolverApi.saveConfig',
-  'getManagedExtensionManifest',
+  'localExtensionRows',
   'isPlatformBuiltInUiExtension',
   'InterfaceExtensionEditorDialog',
   'InterfaceExtensionTestDialog',

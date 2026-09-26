@@ -10,7 +10,7 @@ import path from 'node:path'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const fixture = mkdtempSync(path.join(root, '.extension-browser-'))
 const implementationFolder = mkdtempSync(path.join(root, 'src/extensions/examples/.browser-'))
-const manifestFolder = mkdtempSync(path.join(root, 'src/extensions/manifests/common/.browser-'))
+const manifestFolder = mkdtempSync(path.join(root, '../extensions/manifests/common/.browser-'))
 const profile = mkdtempSync(path.join(tmpdir(), 'extension-chrome-'))
 const manifestPath = path.join(manifestFolder, 'temporary.extension.json')
 const relative = filename => path.relative(root, filename).split(path.sep).join('/')
@@ -26,7 +26,7 @@ import { getCellComponent } from '/src/extensions/core/registries/listCellRegist
 import { getFormNodeComponent } from '/src/extensions/core/registries/formNodeRegistry.js'
 import { getListButtonComponent } from '/src/extensions/core/registries/listButtonComponentRegistry.js'
 import { getListToolbarAction, getListRowAction } from '/src/extensions/core/registries/listActionRegistry.js'
-import { getCustomValidator } from '/src/extensions/core/registries/validatorRegistry.js'
+import { getCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
 import { getEntityActionRuleCondition, resolveEntityPermissionOptions } from '/src/extensions/core/registries/entityActionRuleRegistry.js'
 const options = {enableDemo: new URLSearchParams(location.search).has('demo')}
 registerApplicationExtensions(options)
@@ -92,7 +92,7 @@ async function ready(previousBoot) {
   }, '扩展页面启动/刷新超时')
 }
 try {
-  server = await createServer({ root, cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 0 } })
+  server = await createServer({ root, cacheDir: path.join(fixture, 'cache'), optimizeDeps: { include: ['axios'], entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 0 } })
   await server.listen()
   const address = server.httpServer.address()
   const url = `http://127.0.0.1:${address.port}/${path.basename(fixture)}/index.html`

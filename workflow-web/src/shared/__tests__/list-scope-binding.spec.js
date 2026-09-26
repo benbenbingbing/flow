@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const entityDesign = readFileSync(join(root, 'views/EntityDesign.vue'), 'utf8')
+  + readFileSync(join(root, 'views/entity-design/useEntityPermissions.js'), 'utf8')
 const listDesign = readFileSync(join(root, 'views/EntityListConfigDesign.vue'), 'utf8')
 const formDesign = readFileSync(join(root, 'views/EntityFormDesignByEntity.vue'), 'utf8')
 const formSettings = readFileSync(

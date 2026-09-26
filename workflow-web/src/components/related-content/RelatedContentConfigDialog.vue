@@ -60,164 +60,23 @@
       </el-steps>
 
       <div class="step-content">
-        <section v-show="activeStep === 1">
-          <StepHeading
-            number="1"
-            title="显示什么"
-            description="先选择要展示的数据类型和页面位置。目标必须已经发布。"
-          />
-          <el-form label-width="118px" class="related-form">
-            <div class="two-column-form">
-              <el-form-item>
-                <template #label>
-                  <ConfigHelpLabel
-                    label="配置名称"
-                    content="是什么：便于在设计器中识别这项关联内容。何时使用：同一页面配置多个关联内容时。结果：只影响设计态名称，不改变业务数据。"
-                  />
-                </template>
-                <el-input
-                  v-model="editor.config.name"
-                  maxlength="80"
-                  show-word-limit
-                  placeholder="例如：所属项目详情"
-                />
-              </el-form-item>
-              <el-form-item required>
-                <template #label>
-                  <ConfigHelpLabel
-                    label="目标实体"
-                    content="是什么：要查看或操作的数据类型。何时使用：例如从需求查看项目。结果：后续只显示该实体已发布的表单和列表。"
-                  />
-                </template>
-                <span v-if="isRelationBound" class="inherited-target">{{ editor.config.target.entityName || editor.config.target.entityCode }}（由实体关系确定）</span>
-                <EntityDefinitionPicker
-                  v-else
-                  v-model="editor.config.target.entityId"
-                  value-key="id"
-                  title="选择关联内容的目标实体"
-                  :query="{ status: 'PUBLISHED' }"
-                  @selected="handleTargetEntitySelected"
-                />
-              </el-form-item>
-              <el-form-item required>
-                <template #label>
-                  <ConfigHelpLabel
-                    label="显示内容"
-                    content="是什么：目标实体已经发布的表单或列表。何时使用：表单适合一条数据，列表适合多条数据。结果：运行时固定使用发布时确认的内容版本。"
-                  />
-                </template>
-                <div class="stacked-control">
-                  <span v-if="isRelationBound">{{ editor.config.target.contentType === 'FORM' ? '一对一：选择关联实体的表单' : '一对多：选择关联实体的列表' }}</span>
-                  <el-segmented
-                    v-else
-                    v-model="editor.config.target.contentType"
-                    :options="contentTypeOptions"
-                    @change="handleContentTypeChange"
-                  />
-                  <el-select
-                    v-model="editor.config.target.contentId"
-                    filterable
-                    :loading="targetCatalogLoading"
-                    :placeholder="editor.config.target.contentType === 'FORM' ? '选择已发布表单' : '选择已发布列表'"
-                    style="width: 100%"
-                    @change="handleTargetContentChange"
-                  >
-                    <el-option
-                      v-for="option in targetContentOptions"
-                      :key="option.id"
-                      :label="option.displayName"
-                      :value="option.id"
-                      :disabled="option.published === false"
-                    >
-                      <div class="business-option">
-                        <span>{{ option.name }}</span>
-                        <small>{{ option.key || '未提供编码' }} · {{ option.published === false ? '尚未发布' : '已发布' }}</small>
-                      </div>
-                    </el-option>
-                  </el-select>
-                </div>
-              </el-form-item>
-              <el-form-item required>
-                <template #label>
-                  <ConfigHelpLabel
-                    label="显示位置"
-                    content="是什么：关联内容在页面中的打开方式。何时使用：高频内容建议嵌入或 Tab，临时查看建议弹窗或抽屉。结果：只改变呈现方式，不扩大数据权限。"
-                  />
-                </template>
-                <el-select
-                  v-model="editor.config.presentation.position"
-                  style="width: 100%"
-                  @change="handlePositionChange"
-                >
-                  <el-option
-                    v-for="option in positionOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :value="option.value"
-                  >
-                    <div class="business-option">
-                      <span>{{ option.label }}</span>
-                      <small>{{ option.description }}</small>
-                    </div>
-                  </el-option>
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="ownerType === 'FORM' && ['INLINE', 'TAB'].includes(editor.config.presentation.position)"
-              >
-                <template #label>
-                  <ConfigHelpLabel
-                    label="放置位置"
-                    content="是什么：关联内容插入到当前表单的哪个节点之后。何时使用：需要把内容放在某个区块或字段附近时。结果：不选择时放在表单末尾。"
-                  />
-                </template>
-                <el-select
-                  v-model="editor.anchorKey"
-                  clearable
-                  filterable
-                  :placeholder="editor.config.presentation.position === 'TAB'
-                    ? '选择已有 Tab 页'
-                    : '表单末尾（推荐）'"
-                  style="width: 100%"
-                  @change="handleAnchorChange"
-                >
-                  <el-option
-                    v-if="editor.config.presentation.position === 'INLINE'"
-                    label="表单末尾（推荐）"
-                    value=""
-                  />
-                  <el-option
-                    v-for="option in availableAnchorOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="ownerType === 'LIST' && ['DIALOG', 'DRAWER', 'PAGE'].includes(editor.config.presentation.position)"
-              >
-                <template #label>
-                  <span>按钮入口</span>
-                </template>
-                <el-alert type="info" :closable="false" title="保存后，到“工具栏按钮”或“操作列按钮”中添加自定义按钮，执行方式选择“打开关联内容”。" />
-              </el-form-item>
-              <el-form-item required>
-                <template #label>
-                  <ConfigHelpLabel
-                    label="加载方式"
-                    content="是什么：何时请求目标内容。何时使用：少量高频内容可立即加载；列表和复杂页面建议按需加载。结果：按需加载可缩短当前页面首次打开时间。"
-                  />
-                </template>
-                <el-radio-group v-model="editor.config.presentation.loadMode">
-                  <el-radio value="ON_DEMAND">按需加载（推荐）</el-radio>
-                  <el-radio value="IMMEDIATE">立即加载</el-radio>
-                </el-radio-group>
-              </el-form-item>
-            </div>
-          </el-form>
-          <PageParameterMappingEditor v-model="editor.config.parameterMappings" :schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
-        </section>
+        <RelatedContentTargetStep v-show="activeStep === 1"
+          :editor="editor"
+          :isRelationBound="isRelationBound"
+          :contentTypeOptions="contentTypeOptions"
+          :targetCatalogLoading="targetCatalogLoading"
+          :targetContentOptions="targetContentOptions"
+          :positionOptions="positionOptions"
+          :ownerType="ownerType"
+          :availableAnchorOptions="availableAnchorOptions"
+          :target-parameter-schema="targetParameterSchema"
+          :source-readable-field-options="sourceReadableFieldOptions"
+          @handleTargetEntitySelected="handleTargetEntitySelected"
+          @handleContentTypeChange="handleContentTypeChange"
+          @handleTargetContentChange="handleTargetContentChange"
+          @handlePositionChange="handlePositionChange"
+          @handleAnchorChange="handleAnchorChange"
+        />
 
         <section v-if="!isRelationBound" v-show="activeStep === 2">
           <StepHeading
@@ -852,6 +711,13 @@
 </template>
 
 <script setup>
+import { showRequestError } from '@/shared/request'
+
+import StepHeading from './RelatedContentStepHeading.vue'
+
+import RelatedContentTargetStep from './RelatedContentTargetStep.vue'
+import { fieldOptions, contentScopedFieldOptions, schemaFieldOptions, isPublishedAsset, normalizeRows, interfaceScopeLabel } from './relatedContentOptions.js'
+
 import { computed, defineComponent, h, reactive, ref, resolveComponent } from 'vue'
 import { Connection, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -899,20 +765,6 @@ import {
   updateRelatedContentAnchor,
   validateRelatedContent
 } from '@/shared/related-content'
-
-const StepHeading = defineComponent({
-  props: {
-    number: { type: String, required: true },
-    title: { type: String, required: true },
-    description: { type: String, default: '' }
-  },
-  setup(props) {
-    return () => h('div', { class: 'step-heading' }, [
-      h('span', { class: 'step-heading__number' }, props.number),
-      h('div', [h('strong', props.title), h('small', props.description)])
-    ])
-  }
-})
 
 const ServiceMappingEditor = defineComponent({
   props: {
@@ -1206,81 +1058,6 @@ const saveBoundaryDescription = computed(() => boundEntityRelation.value?.owners
   : editor.config.actions.includes('SAVE_WITH_FORM')
   ? '关联内容尚未接入宿主统一提交，该选项不能发布；取消勾选后继续配置。'
   : '在目标表单中的新增或编辑会立即独立保存，取消当前页面不会撤销目标内容。')
-
-function fieldOptions(fields = []) {
-  return (Array.isArray(fields) ? fields : [])
-    .filter(field => field?.uiConfigurable !== false && field?.fieldCode)
-    .map(field => ({
-      value: field.fieldCode,
-      label: field.fieldName || field.fieldLabel || field.fieldCode,
-      raw: field
-    }))
-}
-
-/**
- * 映射下拉只展示宿主或目标内容真实暴露的字段。服务端仍会在发布和执行时
- * 按精确快照复核；这里提前收窄，是为了避免出现“配置能保存、运行却不可用”。
- */
-function contentScopedFieldOptions(entityOptions, contentFields, contentType, editable) {
-  const rows = Array.isArray(contentFields) ? contentFields : []
-  if (!rows.length) return entityOptions
-  const normalizedType = String(contentType || '').toUpperCase()
-  const allowed = new Set(rows.filter(field => {
-    if (normalizedType === 'LIST') {
-      if (field.showInList === false || Number(field.showInList) === 0) return false
-      const sourceType = String(field.dataSourceType || 'ENTITY_FIELD').toUpperCase()
-      return ['ENTITY_FIELD', 'REFERENCE', ''].includes(sourceType)
-    }
-    if (field.isHidden === true || Number(field.isHidden) === 1) return false
-    if (editable && (field.isReadonly === true || Number(field.isReadonly) === 1)) {
-      return false
-    }
-    return true
-  }).map(field => String(
-    field.fieldCode || field.bindingRef || field.field?.fieldCode || ''
-  )).filter(Boolean))
-  return entityOptions.filter(option => allowed.has(String(option.value)))
-}
-
-function schemaFieldOptions(schema) {
-  const document = typeof schema === 'string' ? safeParse(schema) : (schema || {})
-  return Object.entries(document?.properties || {}).map(([key, value]) => ({
-    value: key,
-    label: value?.title || value?.description || key
-  }))
-}
-
-function safeParse(value) {
-  try {
-    return value ? JSON.parse(value) : {}
-  } catch {
-    return {}
-  }
-}
-
-function isPublishedAsset(item = {}) {
-  if (item.activeReleaseId || Number(item.publishedVersion || 0) > 0) return true
-  // status=1 在历史表单/列表中仅表示启用，并不代表已有可钉定的发布快照。
-  // 只有明确的发布信息才允许被关联内容引用，避免保存时才被服务端拒绝。
-  return ['PUBLISHED', 'ACTIVE'].includes(String(item.status || '').toUpperCase())
-}
-
-function normalizeRows(response) {
-  if (Array.isArray(response)) return response
-  if (Array.isArray(response?.records)) return response.records
-  if (Array.isArray(response?.data)) return response.data
-  if (Array.isArray(response?.list)) return response.list
-  return []
-}
-
-function interfaceScopeLabel(item) {
-  return {
-    GLOBAL: '全部页面可用',
-    ENTITY: '指定实体可用',
-    FORM: '指定表单可用',
-    LIST: '指定列表可用'
-  }[item.scopeType] || '受控范围'
-}
 
 async function loadCommonCatalog() {
   catalogLoading.value = true
@@ -1756,7 +1533,7 @@ async function save() {
     ElMessage.success('关联内容已保存，发布页面配置后生效')
     emit('saved', saved)
   } catch (error) {
-    ElMessage.error(error?.message || '保存关联内容失败')
+    showRequestError(error, error?.message || '保存关联内容失败')
   } finally {
     saving.value = false
   }
@@ -1836,7 +1613,6 @@ defineExpose({ open })
 .dialog-heading,
 .dialog-footer,
 .configuration-summary,
-.step-heading,
 .relation-preview,
 .permission-summary,
 .special-config-card__heading,
@@ -1850,7 +1626,6 @@ defineExpose({ open })
 
 .dialog-heading > div,
 .configuration-summary > div,
-.step-heading > div,
 .special-config-card__heading > div,
 .service-mapping__heading > div {
   display: flex;
@@ -1862,7 +1637,6 @@ defineExpose({ open })
 .dialog-heading span,
 .configuration-summary span,
 .configuration-summary small,
-.step-heading small,
 .collapse-heading small,
 .special-config-card__heading span,
 .service-mapping__heading small,
@@ -1908,28 +1682,6 @@ defineExpose({ open })
   padding: 20px 22px;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
-}
-
-.step-heading {
-  justify-content: flex-start;
-  margin-bottom: 20px;
-}
-
-.step-heading__number {
-  display: flex;
-  flex: 0 0 34px;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--el-color-primary);
-  color: #fff;
-  font-weight: 700;
-}
-
-.step-heading strong {
-  font-size: 16px;
 }
 
 .two-column-form {

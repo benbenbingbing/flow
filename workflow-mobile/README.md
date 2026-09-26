@@ -52,7 +52,7 @@ PC 引入移动 UI 会构建失败；产物中的 `module-boundary.json` 可检�
 ## 扩展和能力限制
 
 扩展身份仍使用原 manifest 的 `type + name + version`。在
-`workflow-web/src/extensions/manifests/` 的对应清单中声明移动实现：
+`extensions/manifests/` 的对应清单中声明移动实现：
 
 ```json
 {

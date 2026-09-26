@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { babelParse, parse } from '@vue/compiler-sfc'
 
 const source = await readFile(new URL('../EntityDesign.vue', import.meta.url), 'utf8')
-const script = parse(source).descriptor.scriptSetup.content
+const script = await readFile(new URL('../entity-design/useEntityPermissions.js', import.meta.url), 'utf8')
 const ast = babelParse(script, { sourceType: 'module' })
 const names = new Set([
   'permissionSqlPreview', 'permissionSqlPreviewVisible', 'permissionSqlPreviewTitle',
@@ -11,7 +11,8 @@ const names = new Set([
   'permissionPreviewError', 'permissionPreviewRequestId',
   'handlePreviewPermissionSql', 'loadPermissionPreview'
 ])
-const code = ast.program.body
+const workspaceBody = ast.program.body.find(node => node.type === 'ExportNamedDeclaration' && node.declaration?.id?.name === 'useEntityPermissions').declaration.body.body
+const code = workspaceBody
   .filter(node => node.type === 'VariableDeclaration'
     && node.declarations.some(item => names.has(item.id.name)))
   .map(node => script.slice(node.start, node.end)).join('\n')

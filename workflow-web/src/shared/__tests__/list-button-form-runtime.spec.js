@@ -230,8 +230,8 @@ assert.match(
   )
   assert.match(
     source,
-    /async function handleFormAction\(action[^)]*\)[\s\S]*?acquireFormActionExecution\(action, actionPendingKey\)[\s\S]*?await confirmAction\(action\)/,
-    `${relativePath} 必须在等待确认前占用独立动作锁`
+    /async function handleFormAction\(action[^)]*\)[\s\S]*?runFormAction\(action,[\s\S]*?loadingState: actionPendingKey,[\s\S]*?confirm: confirmFormAction/,
+    `${relativePath} 必须通过共享执行流程传入独立动作锁和确认适配器`
   )
 })
 

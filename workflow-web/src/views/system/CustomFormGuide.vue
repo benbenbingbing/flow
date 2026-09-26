@@ -383,7 +383,7 @@ defineExpose({ validate })
           <h3>13. 可运行 Demo</h3>
           <ul class="check-list">
             <li>`src/extensions/examples/demo/forms/DemoProjectForm.vue`：统一业务字段对象、四种模式、字段级显隐/只读、联动状态和异步 `validate`。</li>
-            <li>`src/extensions/manifests/examples/demo/`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
+            <li>`extensions/manifests/examples/demo/`：以 `DemoProjectForm` 注册整表单组件，并声明副标题、强调色和风险提示参数。</li>
             <li>真实验证流程把该表单同时配置为新增默认表单和审批节点表单，审批后将风险评分从 58 回写为 35。</li>
             <li>执行 `npm run test:demo:real`；实体、流程、表单和数据 ID 记录在 `docs/dynamic-extension-demo/latest.json`。</li>
           </ul>

@@ -67,7 +67,9 @@
     "./related-content-runtime": "./dist/shared/related-content-runtime.js",
     "./form-related-content": "./dist/shared/form-related-content.js",
     "./form-runtime/release": "./dist/shared/form-runtime/release.js",
-    "./mobile-theme": "./dist/shared/mobile-theme.js"
+    "./mobile-theme": "./dist/shared/mobile-theme.js",
+    "./form-runtime/eventEffects": "./dist/shared/form-runtime/eventEffects.js",
+    "./process-progress": "./dist/shared/process-progress.js"
   },
   "scripts": {
     "build": "node ../../scripts/build-module-package.mjs",

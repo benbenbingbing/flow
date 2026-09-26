@@ -5,7 +5,7 @@ const field = (id, parentId, label, extra = {}) => ({ id, parentId, nodeKey: id,
 const simpleForm = () => ({ id: 'form-test', runtimeReleaseId: 'release-pinned', runtimeReleaseVersion: 2, releaseResolutionToken: 'signed-test-only', fields: [], nodes: [field('name', '', '事项名称')] })
 
 /** 所有 API 请求在浏览器内截获；审批写入仅记录到测试数组，绝不请求真实业务服务。 */
-async function fixture(page, { theme = () => DEFAULT_MOBILE_THEME, form = simpleForm(), record = { id: 'record-test', name: '测试流程', entityCode: 'test' }, preview, complete, progress = {}, candidates = [], processOperations = { withdraw: false }, operations = { approve: true, reject: true, manualCc: false }, rejected = { canResubmit: false } } = {}) {
+async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBILE_THEME, form = simpleForm(), record = { id: 'record-test', name: '测试流程', entityCode: 'test' }, preview, complete, progress = {}, candidates = [], processOperations = { withdraw: false }, operations = { approve: true, reject: true, manualCc: false }, rejected = { canResubmit: false } } = {}) {
   const writes = [], requests = [], unexpected = [], errors = []
   page.on('pageerror', error => errors.push(error.message))
   const row = { id: 'record-test', taskId: 'task-test', processInstanceId: 'instance-test', dataName: record.name, processName: '测试流程', startUserName: '测试用户', assigneeName: '另一位办理人', entityCode: 'test', entityStatus: 'FINANCE_REVIEW', entityStatusText: '财务复核中', status: 'RUNNING', statusText: '运行中' }
@@ -23,7 +23,10 @@ async function fixture(page, { theme = () => DEFAULT_MOBILE_THEME, form = simple
     else if (endpoint === '/process-task/detail/task-test') data = { processTask: { taskId: 'task-test', status: 'todo', entityCode: 'test' } }
     else if (endpoint === '/process-instance/instance-test/progress') data = { status: 'RUNNING', processName: '测试流程', entityData: record, formConfig: form, activeNodes: ['review'], ...progress, approvalConfig: { enabled: true, options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] } }
     else if (endpoint === '/entity/code/test') data = { id: 'entity-test', entityCode: 'test', fields: [] }
-    else if (endpoint.startsWith('/ui-runtime/events/')) data = { effects: [] }
+    else if (endpoint.startsWith('/ui-runtime/events/')) {
+      if (endpoint.includes('/FORM_BUTTON_CLICK/')) { writes.push({ endpoint, body }); data = typeof eventResult === 'function' ? await eventResult(body) : eventResult || { effects: [] } }
+      else data = { effects: [] }
+    }
     else if (endpoint === '/process-instance/instance-test/operations') data = typeof processOperations === 'function' ? processOperations() : processOperations
     else if (endpoint.endsWith('/next-approver-options')) data = { records: candidates, total: candidates.length }
     else if (endpoint === '/process-rollback/rejected-status/instance-test') data = rejected
@@ -32,7 +35,7 @@ async function fixture(page, { theme = () => DEFAULT_MOBILE_THEME, form = simple
     else if (endpoint === '/process-task/withdraw') { writes.push({ endpoint, body }); data = {} }
     else if (endpoint === '/process-task/history/instance-test') data = []
     else if (endpoint === '/tasks/task-test/operations') data = operations
-    else if (endpoint === '/ui-runtime/form-actions/resolve') data = [{ key: 'submitApproval', label: '提交审批', type: 'built-in', placement: 'FOOTER', visible: true, enabled: true }]
+    else if (endpoint === '/ui-runtime/form-actions/resolve') data = actions || [{ key: 'submitApproval', label: '提交审批', type: 'built-in', placement: 'FOOTER', visible: true, enabled: true }]
     else if (endpoint.endsWith('/next-approval-preview')) data = preview ? await preview(body) : { status: 'READY', scopeKey: 'scope-test', nextNodes: [] }
     else if (endpoint === '/process-task/complete') {
       writes.push({ body, trace: request.headers()['x-trace-id'] })
@@ -245,6 +248,7 @@ test('360/390/430 宽度：紧凑列表、用户菜单和详情均无横向溢�
       })).toBe(true)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }
+    await page.screenshot({ path: `../.codex-artifacts/frontend-refactor/mobile-inbox-${width}.png`, fullPage: true })
     await page.getByRole('button', { name: '用户菜单' }).click()
     await expect(page.getByText('修改密码', { exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: '取消', exact: true }).click()
@@ -667,9 +671,11 @@ test('流程进度不把连线当节点；完整流程图支持旋转、拖动�
   await expect.poll(async () => Number.parseInt(await page.locator('.diagram-scale').innerText())).toBeGreaterThan(Number.parseInt(initial))
   await expect(rotate).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: '../.codex-artifacts/frontend-refactor/mobile-diagram-landscape.png', fullPage: true })
   await page.setViewportSize({ width: 360, height: 844 })
   await expect(rotate).toBeInViewport()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.screenshot({ path: '../.codex-artifacts/frontend-refactor/mobile-diagram-portrait.png', fullPage: true })
   // 弹层关闭后由 v-show 隐藏，重新挂载画布时不能沿用隐藏阶段的零尺寸。
   for (let attempt = 0; attempt < 3; attempt++) {
     await page.locator('.diagram-page .van-nav-bar__left').click()
@@ -711,4 +717,47 @@ test('登录前也读取系统主题；极浅主色按钮文字仍可读', async
   await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveCSS('background-color', 'rgb(255, 255, 0)')
   await expect(page.getByRole('button', { name: '登录', exact: true })).toHaveCSS('color', 'rgb(0, 0, 0)')
   expect(state.errors).toEqual([])
+})
+
+
+const customAction = () => ({ key: 'calculate', label: '计算并回填', type: 'custom', ownerFormId: 'form-test', placement: 'FOOTER', visible: true, enabled: true, primary: true, confirm: { enabled: true, message: '确认执行这次回填？' } })
+
+test('自定义按钮遵守确认协议：取消不执行，确认后一次回填保留发布坐标', async ({ page }) => {
+  const state = await fixture(page, { actions: [customAction()], eventResult: { effects: [{ type: 'FIELD_MAPPING', data: { form: { name: '确认后的名称' } }, mappings: [{ targetPath: 'form.name', overwrite: 'ALWAYS' }] }] } })
+  await detail(page)
+  const button = page.getByRole('button', { name: '计算并回填', exact: true })
+  await button.click()
+  await expect(page.getByRole('dialog')).toContainText('确认执行这次回填？')
+  await expect(page.locator('.mobile-action-bar .van-button--primary')).toBeDisabled()
+  expect(state.writes).toHaveLength(0)
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(button).toBeEnabled(); expect(state.writes).toHaveLength(0)
+  await button.click()
+  await page.getByRole('button', { name: '确认', exact: true }).click()
+  await expect(page.getByPlaceholder('请输入事项名称')).toHaveValue('确认后的名称')
+  expect(state.writes).toHaveLength(1)
+  expect(state.writes[0].body).toMatchObject({ targetKey: 'calculate', releaseId: 'release-pinned', releaseVersion: 2, taskId: 'task-test' })
+  expect(state.writes[0].body.requestId).toMatch(/^form_action_/)
+  expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
+})
+
+test('移动按钮消费消息、关闭与刷新效果，返回列表正常使用', async ({ page }) => {
+  const action = customAction(); action.confirm.enabled = false
+  const state = await fixture(page, { actions: [action], eventResult: { effects: [{ type: 'MESSAGE', message: '回填完成' }, { type: 'REFRESH_PARENT' }, { type: 'CLOSE_FORM' }] } })
+  await detail(page)
+  await page.getByRole('button', { name: '计算并回填', exact: true }).click()
+  await expect(page).toHaveURL(/inbox\/todo/)
+  await expect(page.getByText('测试流程', { exact: true }).first()).toBeVisible()
+  expect(state.writes).toHaveLength(1)
+  expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
+})
+
+test('移动按钮不将未支持的 PC 路由静默重定向为成功', async ({ page }) => {
+  const action = customAction(); action.confirm.enabled = false
+  const state = await fixture(page, { actions: [action], eventResult: { effects: [{ type: 'OPEN_ROUTE', route: '/entity-list/test/default' }] } })
+  await detail(page)
+  await page.getByRole('button', { name: '计算并回填', exact: true }).click()
+  await expect(page.getByText('该跳转页面暂不支持移动端，请在 PC 端打开', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/process\/instance-test/)
+  expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
 })

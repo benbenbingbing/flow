@@ -96,3 +96,6 @@ workflow-web/build/*
 
 # Vite 预打包缓存，构建时自动重新生成。
 workflow-mobile/.vite/
+
+# Office 编辑临时锁文件，避免把 ~$ 前缀的临时文件提交入库。
+~$*

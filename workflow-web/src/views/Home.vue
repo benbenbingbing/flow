@@ -8,76 +8,7 @@
     </el-alert>
 
     <!-- 统计卡片 -->
-    <el-row :gutter="20" class="statistics-row">
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card
-          class="stat-card stat-card--clickable"
-          shadow="hover"
-          role="button"
-          tabindex="0"
-          aria-label="查看待办任务"
-          @click="activeTab = 'todo'"
-          @keyup.enter="activeTab = 'todo'"
-        >
-          <div class="stat-icon" style="background-color: #f56c6c;">
-            <el-icon><Bell /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ statistics.todoCount }}</div>
-            <div class="stat-label">待办任务</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card
-          class="stat-card stat-card--clickable"
-          shadow="hover"
-          role="button"
-          tabindex="0"
-          aria-label="查看已办任务"
-          @click="activeTab = 'done'"
-          @keyup.enter="activeTab = 'done'"
-        >
-          <div class="stat-icon" style="background-color: #67c23a;">
-            <el-icon><Check /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ statistics.doneCount }}</div>
-            <div class="stat-label">已办任务</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card
-          class="stat-card stat-card--clickable"
-          shadow="hover"
-          role="button"
-          tabindex="0"
-          aria-label="查看我发起的流程"
-          @click="activeTab = 'started'"
-          @keyup.enter="activeTab = 'started'"
-        >
-          <div class="stat-icon" style="background-color: #409eff;">
-            <el-icon><Share /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ statistics.processCount }}</div>
-            <div class="stat-label">我发起的</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :xs="24" :sm="12" :md="6">
-        <el-card class="stat-card stat-card--static" shadow="never">
-          <div class="stat-icon" style="background-color: #e6a23c;">
-            <el-icon><Timer /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ statistics.avgProcessTime }}</div>
-            <div class="stat-label">平均处理时长(小时)</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <InboxStatistics :statistics="statistics" @select="activeTab = $event" />
 
     <!-- 任务列表 -->
     <el-card class="task-card" shadow="never">
@@ -581,9 +512,14 @@
 </template>
 
 <script setup>
+import { showRequestError } from '@/shared/request'
+
+import InboxStatistics from './home/InboxStatistics.vue'
+import { useWorkInbox } from './home/useWorkInbox'
+import { toRef } from 'vue'
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, Check, MoreFilled, Share, Timer } from '@element-plus/icons-vue'
+import { Bell, Check, MoreFilled, Share } from '@element-plus/icons-vue'
 import EntityApprovalDialog from '@/views/entity/components/approval/EntityApprovalDialog.vue'
 import PageState from '@/components/PageState.vue'
 import UserSelector from '@/components/UserSelector.vue'
@@ -633,7 +569,6 @@ const statisticsError = ref('')
 
 // Tab 和分页
 const activeTab = ref('todo')
-const loading = ref(false)
 const queryParams = reactive({
   pageNum: 1,
   pageSize: 10,
@@ -642,9 +577,13 @@ const queryParams = reactive({
   priority: '',
   dateRange: []
 })
-const tabErrors = reactive({ todo: '', done: '', started: '', cc: '' })
-const loadedTabs = reactive({ todo: false, done: false, started: false, cc: false })
-const activeError = computed(() => tabErrors[activeTab.value])
+const inbox = useWorkInbox(activeTab, buildQueryParams, {
+  todo: getTodoList, done: getDoneList, started: getMyStartedList, cc: getMyCcList
+}, async (key, rows) => {
+  if (key === 'todo') await loadTaskOperations(rows)
+  return rows
+})
+const { loading, activeError, loadedTabs } = inbox
 const activeTabLabel = computed(() => ({
   todo: '待办任务',
   done: '已办任务',
@@ -653,15 +592,15 @@ const activeTabLabel = computed(() => ({
 }[activeTab.value]))
 
 // 列表数据
-const todoList = ref([])
-const doneList = ref([])
-const startedList = ref([])
+const todoList = toRef(inbox.state.todo, 'rows')
+const doneList = toRef(inbox.state.done, 'rows')
+const startedList = toRef(inbox.state.started, 'rows')
 const withdrawingInstanceId = ref('')
-const ccList = ref([])
-const todoTotal = ref(0)
-const doneTotal = ref(0)
-const startedTotal = ref(0)
-const ccTotal = ref(0)
+const ccList = toRef(inbox.state.cc, 'rows')
+const todoTotal = toRef(inbox.state.todo, 'total')
+const doneTotal = toRef(inbox.state.done, 'total')
+const startedTotal = toRef(inbox.state.started, 'total')
+const ccTotal = toRef(inbox.state.cc, 'total')
 
 const total = computed(() => {
   if (activeTab.value === 'todo') return todoTotal.value
@@ -799,22 +738,7 @@ async function loadStatistics() {
 }
 
 // 加载待办
-async function loadTodoList() {
-  loading.value = true
-  tabErrors.todo = ''
-  try {
-    const res = await getTodoList(buildQueryParams())
-    todoList.value = res.records || []
-    todoTotal.value = res.total || 0
-    await loadTaskOperations(todoList.value)
-    loadedTabs.todo = true
-  } catch (e) {
-    console.error('加载待办失败:', e)
-    tabErrors.todo = e?.message || '无法读取待办任务，请重试'
-  } finally {
-    loading.value = false
-  }
-}
+function loadTodoList() { return inbox.load('todo') }
 
 async function loadTaskOperations(tasks) {
   await Promise.all(tasks
@@ -881,56 +805,12 @@ async function requireFreshTerminateOperation(row) {
 }
 
 // 加载已办
-async function loadDoneList() {
-  loading.value = true
-  tabErrors.done = ''
-  try {
-    const res = await getDoneList(buildQueryParams())
-    doneList.value = res.records || []
-    doneTotal.value = res.total || 0
-    loadedTabs.done = true
-  } catch (e) {
-    console.error('加载已办失败:', e)
-    tabErrors.done = e?.message || '无法读取已办任务，请重试'
-  } finally {
-    loading.value = false
-  }
-}
+function loadDoneList() { return inbox.load('done') }
 
 // 加载我发起的
-async function loadStartedList() {
-  loading.value = true
-  tabErrors.started = ''
-  try {
-    const res = await getMyStartedList(buildQueryParams())
-    startedList.value = res.records || res.list || []
-    startedTotal.value = res.total || 0
-    loadedTabs.started = true
-  } catch (e) {
-    console.warn('加载我发起的失败:', e)
-    startedList.value = []
-    startedTotal.value = 0
-    tabErrors.started = e?.message || '无法读取我发起的流程，请重试'
-  } finally {
-    loading.value = false
-  }
-}
+function loadStartedList() { return inbox.load('started') }
 
-async function loadCcList() {
-  loading.value = true
-  tabErrors.cc = ''
-  try {
-    const res = await getMyCcList(buildQueryParams())
-    ccList.value = Array.isArray(res) ? res : (res.records || [])
-    ccTotal.value = Array.isArray(res) ? res.length : (res.total || 0)
-    loadedTabs.cc = true
-  } catch (e) {
-    console.error('加载知会列表失败:', e)
-    tabErrors.cc = e?.message || '无法读取知会记录，请重试'
-  } finally {
-    loading.value = false
-  }
-}
+function loadCcList() { return inbox.load('cc') }
 
 async function handleBatchClaim() {
   const tasks = selectedTodoRows.value.filter(isTaskClaimable)
@@ -1164,13 +1044,13 @@ function viewProgress(row) {
 }
 
 // 审批成功回调
-function onApprovalSuccess() {
+async function onApprovalSuccess() {
   // 审批会触发当前节点完成、下一节点创建的知会，不能继续展示此前缓存的收件箱。
   loadedTabs.cc = false
-  if (activeTab.value === 'cc') loadCcList()
-  loadTodoList()
-  loadDoneList()
-  loadStatistics()
+  await Promise.all([
+    activeTab.value === 'cc' ? loadCcList() : Promise.resolve(),
+    loadTodoList(), loadDoneList(), loadStatistics()
+  ])
 }
 
 // 打开转办弹窗
@@ -1386,7 +1266,7 @@ async function submitTransfer() {
     loadStatistics()
   } catch (e) {
     console.error('转办失败:', e)
-    ElMessage.error('转办失败')
+    showRequestError(e, '转办失败')
   } finally {
     transferLoading.value = false
   }
@@ -1421,7 +1301,7 @@ async function handleWithdraw(row) {
     await Promise.all([loadStartedList(), loadStatistics()])
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
-      ElMessage.error(error?.message || '撤回失败，请刷新列表后重试')
+      showRequestError(error, error?.message || '撤回失败，请刷新列表后重试')
       await loadStartedList()
     }
   } finally {
@@ -1453,7 +1333,7 @@ async function handleTerminate(row) {
   } catch (e) {
     if (e !== 'cancel') {
       console.error('终止失败:', e)
-      ElMessage.error('终止失败')
+      showRequestError(e, '终止失败')
     }
   }
 }
@@ -1511,9 +1391,6 @@ function handleCurrentChange(val) {
 }
 
 /* 统计卡片 */
-.statistics-row {
-  margin-bottom: 20px;
-}
 
 .statistics-error {
   margin-bottom: 12px;
@@ -1523,58 +1400,6 @@ function handleCurrentChange(val) {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.stat-card--clickable {
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.stat-card--clickable:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-}
-
-.stat-card--static {
-  cursor: default;
-}
-
-.stat-card :deep(.el-card__body) {
-  display: flex;
-  align-items: center;
-  padding: 20px;
-}
-
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 15px;
-}
-
-.stat-icon .el-icon {
-  font-size: 28px;
-  color: #fff;
-}
-
-.stat-info {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: bold;
-  color: #303133;
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: #909399;
-  margin-top: 5px;
 }
 
 /* 任务卡片 */
@@ -1603,28 +1428,6 @@ function handleCurrentChange(val) {
 @media (max-width: 760px) {
   .home-container {
     padding: 0;
-  }
-
-  .statistics-row {
-    margin: 0 0 8px !important;
-    padding: 8px;
-  }
-
-  .statistics-row .el-col {
-    margin-bottom: 8px;
-  }
-
-  .stat-card :deep(.el-card__body) {
-    padding: 12px;
-  }
-
-  .stat-icon {
-    width: 44px;
-    height: 44px;
-  }
-
-  .stat-value {
-    font-size: 22px;
   }
 
   .task-card {

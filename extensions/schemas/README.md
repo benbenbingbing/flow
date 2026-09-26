@@ -4,7 +4,7 @@
 
 ## 编辑器补全与校验
 
-在清单顶层填写 `$schema`，路径相对该 JSON 文件，而 implementation.path 始终相对 workflow-web。常见路径如下：
+在清单顶层填写 `$schema`，路径相对该 JSON 文件，顶层 implementation.path 相对 workflow-web；platforms.mobile.implementation.path 相对 workflow-mobile。常见路径如下：
 
 | 清单所在目录 | $schema 值 |
 | --- | --- |
@@ -21,4 +21,4 @@ JSON 注释只使用顶层 `$comment`，参数说明使用 `metadata.configSchem
 
 ## 平台维护者修改协议
 
-确需新增协议能力时，同步更新此 Schema、build/extensions/validate.mjs 的业务约束、适配器/消费者、manifests 手册和测试。校验器只实现当前 Schema 用到的关键字，增加新关键字时必须确认 Node 校验器也会执行。已有 schemaVersion=1 清单应继续可读；新增一个已有类型的实现不需要改 schemaVersion。
+确需新增协议能力时，同步更新此 Schema、根目录 scripts/extensions/validate.mjs 的业务约束、适配器/消费者、manifests 手册和测试。校验器只实现当前 Schema 用到的关键字，增加新关键字时必须确认 Node 校验器也会执行。已有 schemaVersion=1 清单应继续可读；新增一个已有类型的实现不需要改 schemaVersion。

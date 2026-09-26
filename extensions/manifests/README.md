@@ -1,13 +1,13 @@
 # 前端扩展注册配置手册
 
-本目录是唯一手工维护的注册声明入口。一个 `*.extension.json` 声明一个类型、名称和版本；构建器递归发现所有子目录，不需要 index.json、import 表或业务注册函数。本手册统一覆盖 platform、common、business 和 examples 各子目录。
+仓库根目录的 `extensions/manifests/` 是唯一手工维护的注册声明入口，供 PC、移动端与共享元数据生成共用。一个 `*.extension.json` 声明一个类型、名称和版本；构建器递归发现所有子目录，不需要 index.json、import 表或业务注册函数。本手册统一覆盖 platform、common、business 和 examples 各子目录。
 
 ## 一、如何注册并使用
 
-1. 完成 Vue 或 JS 实现，遵守 [契约](../contracts/README.md)；可从 [模板](../templates/README.md) 复制。
+1. 完成 Vue 或 JS 实现，遵守 [契约](../../workflow-web/src/extensions/contracts/README.md)；可从 [模板](../../workflow-web/src/extensions/templates/README.md) 复制。
 2. 按归属选择目录，在对应类型目录写 `名称.v1.extension.json`，填写稳定 name 和真实实现路径。
 3. 从 `workflow-web/` 运行 `npm run extensions:check`。修改平台字段映射时先运行 `npm run extensions:generate`。
-4. 运行 `npm run dev`，清单增删改自动刷新。生产部署运行 `npm run build`，重新部署构建产物。
+4. 从仓库根目录运行 `npm run dev:web` 或 `npm run dev:mobile`，同时监听公共包和清单；生产部署运行根目录 `npm run build`，重新部署构建产物。
 5. 在实体表单、列表或按钮设计器选择/填写注册名，再填写实际参数、保存和发布。注册只让实现可用，不会自动为某个实体绑定，也不会生成业务数据。
 
 ## 二、文件夹怎么选
@@ -150,7 +150,7 @@ LIST_BUTTON、LIST_ACTION、ACTION_CONDITION、PERMISSION_PROVIDER 按各自契�
 
 ### 动作 targets
 
-LIST_ACTION 必须写 `"targets":["TOOLBAR"]`、`["ROW"]` 或两者。工具栏处理器不保证有 row，行处理器按当前记录执行；选择回调通过 rows/selectedRows 传入所选记录，参照 [list-action 契约](../contracts/list-action.js)。
+LIST_ACTION 必须写 `"targets":["TOOLBAR"]`、`["ROW"]` 或两者。工具栏处理器不保证有 row，行处理器按当前记录执行；选择回调通过 rows/selectedRows 传入所选记录，参照 [list-action 契约](../../workflow-web/src/extensions/contracts/list-action.js)。
 
 ### 条件 defaultConfig / createDefault
 

@@ -67,7 +67,7 @@ async function clickText(text,selector='button'){
 async function options(){return evaluate(`([...document.querySelectorAll('.el-select-dropdown__item')].filter(${visible})).map(e=>({text:e.textContent.trim(),disabled:e.classList.contains('is-disabled')}))`)}
 async function openEventOptions(){await evaluate(`([...document.querySelectorAll('.el-dialog')].filter(${visible})).at(-1).querySelector('.el-select__wrapper').click()`);await evaluate('eventTest.settle()')}
 try{
- server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3398,strictPort:true}});await server.listen()
+ server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{include:['axios'],entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3398,strictPort:true}});await server.listen()
  browser=spawn(process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=9398',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'})
  let targets
  for(let i=0;i<100;i++){try{targets=await(await fetch('http://127.0.0.1:9398/json/list')).json();break}catch{await sleep(100)}}

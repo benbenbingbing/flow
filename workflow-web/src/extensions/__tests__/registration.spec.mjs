@@ -43,7 +43,7 @@ test('新模块只增加实现和 JSON 就能被发现，具名导出生成明�
     writeFileSync(path.join(fixture, 'src/modules/new/Field.js'), 'export const Field = { name: "new-field" }')
     const manifest = { schemaVersion: 1, type: 'FIELD', name: 'new_field', label: '新字段', version: 1, implementation: { path: 'src/modules/new/Field.js', export: 'Field', kind: 'COMPONENT' } }
     writeFileSync(path.join(fixture, 'src/extensions/manifests/business/new/fields/field.extension.json'), JSON.stringify(manifest))
-    const discovered = discoverExtensions(fixture)
+    const discovered = discoverExtensions(fixture, { manifestDirectory: path.join(fixture, 'src/extensions/manifests') })
     assert.equal(discovered.length, 1)
     assert.equal(discovered[0].module, 'new')
     assert.match(generateExtensionModule(discovered, fixture), /import \{ Field as implementation0 \}/)

@@ -10,6 +10,7 @@
 </template>
 <script setup>
 import { computed } from 'vue'
+import { getProcessNodeStatus } from '@flow/workflow-core/process-progress'
 import { Icon as VanIcon, Empty as VanEmpty } from 'vant'
 const props = defineProps({ progress: { type: Object, default: () => ({}) }, nodes: { type: Array, default: () => [] }, hasDiagram: Boolean })
 defineEmits(['diagram'])
@@ -19,7 +20,8 @@ const groups = computed(() => [ ['activeNodes', '当前办理', 'clock-o'], ['co
   const id = typeof node === 'object' ? node.id || node.nodeId : node, metadata = props.nodes.find(item => item.nodeId === id || item.id === id) || {}
   const people = props.progress.nodeAssigneesMap?.[id] || [props.progress.nodeAssigneeMap?.[id]].filter(Boolean)
   return { id, type: metadata.type, name: metadata.nodeName || metadata.name || node.nodeName || node.name || id, assignees: people.map(user => typeof user === 'object' ? user.displayName || user.name || user.username : user).join('、') }
-}).filter(node => !['sequenceFlow', 'association', 'messageFlow'].includes(node.type)) })).filter(group => group.nodes.length))
+}).filter(node => !['sequenceFlow', 'association', 'messageFlow'].includes(node.type)
+  && getProcessNodeStatus(props.progress, node.id) === ({ activeNodes: 'active', completedNodes: 'completed', terminatedNodes: 'terminated' })[key]) })).filter(group => group.nodes.length))
 </script>
 <style scoped>
 .progress-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--flow-mobile-accent-soft); border-radius: 10px; padding: 12px 14px; margin: 4px 0 24px; }.progress-caption { display: block; font-size: 11px; color: var(--flow-mobile-muted); margin-bottom: 6px; }.progress-summary strong { display: flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 600; }.status-dot { width: 6px; height: 6px; background: var(--flow-mobile-accent); border-radius: 50%; }.progress-diagram-link { display: flex; align-items: center; gap: 6px; border: 0; background: var(--flow-mobile-surface); border-radius: 8px; min-height: 44px; padding: 0 10px; color: var(--flow-mobile-accent-text); font-size: 12px; cursor: pointer; }.progress-diagram-link > .van-icon:first-child { font-size: 17px; }

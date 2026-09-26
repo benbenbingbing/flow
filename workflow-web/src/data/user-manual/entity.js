@@ -248,7 +248,7 @@ export default {
               columns: fieldColumns,
               rows: [
                 { field: '字段名称', meaning: '业务显示名。', defaultLimit: '必填。', effect: '用于表单标签、列表列名和条件选择。', publish: '可改名；建议在版本说明记录语义变化。' },
-                { field: '字段编码', meaning: '实体内唯一技术标识。', defaultLimit: '必填；建议字母开头、字母数字下划线；同一实体内不能重复。系统字段或已发布字段禁改。', effect: '映射数据库列、表单字段、列表字段、表达式和导入导出。', publish: '发布后不可改编码；需要改名时新增字段并迁移数据。' },
+                { field: '字段编码', meaning: '实体内唯一技术标识。', defaultLimit: '必填；前端限制为小驼峰命名：小写英文字母开头，仅含英文字母和数字，如 endTime；同一实体内不能重复。系统字段或已发布字段禁改，保留历史编码。', effect: '映射数据库列、表单字段、列表字段、表达式和导入导出。', publish: '发布后不可改编码；需要改名时新增字段并迁移数据。' },
                 { field: '数据库列名', meaning: '由字段编码自动转为下划线小写。', defaultLimit: '只读，例如 projectName → project_name。', effect: '物理表列名。', publish: '禁止手工在数据库改列名。' },
                 { field: '字段类型', meaning: '决定数据库类型和默认表单组件。', defaultLimit: '必填；系统字段或已发布字段禁改。', effect: '影响校验、查询、渲染和序列化。', publish: '类型变更应通过新增字段实现，避免历史数据不可转换。' },
                 { field: '是否必填', meaning: '业务录入是否必须提供值。', defaultLimit: '默认关闭。', effect: '表单与后端校验会拒绝空值。', publish: '已有空数据时不要直接改为必填，先补数。' },

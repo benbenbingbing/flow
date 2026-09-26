@@ -547,6 +547,9 @@
 </template>
 
 <script setup>
+import { showRequestError } from '@/shared/request'
+
+import { validateEventStepChain, createEventStepEditor, parseEventDocument as parseJson, serializeEventStep as serializeStep } from './eventStepModel'
 import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
@@ -642,7 +645,7 @@ const dialogVisible = ref(false)
 const bindings = ref([])
 const interfaces = ref([])
 const catalog = ref({ events: [] })
-let rowSequence = 0
+const { normalizeStep } = createEventStepEditor()
 let loadSequence = 0
 let interfaceSequence = 0
 
@@ -827,64 +830,6 @@ function resetEditor(value = {}) {
   Object.assign(editor, emptyEditor(), value)
 }
 
-function parseJson(document, fallback) {
-  if (!document) return fallback
-  if (typeof document !== 'string') return document
-  try {
-    return JSON.parse(document)
-  } catch {
-    return fallback
-  }
-}
-
-function normalizeStep(step, index) {
-  const condition = step.condition || {}
-  const operator = ['equals', 'notEquals', 'exists', 'truthy']
-    .find(key => Object.prototype.hasOwnProperty.call(condition, key)) || 'equals'
-  return {
-    ...step,
-    rowKey: `step_${++rowSequence}`,
-    name: step.name || '',
-    strategy: String(step.strategy || 'BEFORE').toUpperCase(),
-    extensionId: step.extensionId || '',
-    // 仅保留到本次编辑会话，用于把迁移前草稿解析到新接口 ID；序列化不会写回。
-    legacyServiceId: step.serviceId || '',
-    legacyOperationCode: step.operationCode || '',
-    order: Number(step.order ?? index * 10),
-    failurePolicy: String(step.failurePolicy || 'STOP').toUpperCase(),
-    inputRows: mappingRows(step.inputMapping, 'input'),
-    outputRows: mappingRows(step.outputMapping, 'output'),
-    conditionPath: condition.path || '',
-    conditionOperator: operator,
-    conditionValue: condition[operator] ?? '',
-    conditionBoolean: Boolean(condition[operator])
-  }
-}
-
-function mappingRows(mapping, mode) {
-  if (Array.isArray(mapping)) {
-    return mapping.map(row => ({
-      rowKey: `mapping_${++rowSequence}`,
-      overwrite: 'ALWAYS',
-      clearOnEmpty: true,
-      transform: 'IDENTITY',
-      separator: ',',
-      ...row
-    }))
-  }
-  if (!mapping || typeof mapping !== 'object') return []
-  return Object.entries(mapping).map(([targetPath, sourcePath]) => ({
-    rowKey: `mapping_${++rowSequence}`,
-    targetPath,
-    sourcePath: typeof sourcePath === 'string' ? sourcePath : '',
-    overwrite: 'ALWAYS',
-    clearOnEmpty: true,
-    transform: 'IDENTITY',
-    separator: ',',
-    mode
-  }))
-}
-
 async function load() {
   const sequence = ++loadSequence
   if (!canEdit.value) {
@@ -912,7 +857,7 @@ async function load() {
       : rows
     catalog.value = bindingCatalog || {}
   } catch (error) {
-    if (sequence === loadSequence) ElMessage.error(error.message || '加载事件绑定失败')
+    if (sequence === loadSequence) showRequestError(error, error.message || '加载事件绑定失败')
   } finally {
     if (sequence === loadSequence) loading.value = false
   }
@@ -1055,40 +1000,6 @@ async function loadAvailableInterfaces(eventCode) {
   if (sequence === interfaceSequence) interfaces.value = interfacesForEvent(rows, eventCode)
 }
 
-function serializeCondition(step) {
-  if (!step.conditionPath) return {}
-  return {
-    path: step.conditionPath,
-    [step.conditionOperator]: ['exists', 'truthy'].includes(step.conditionOperator)
-      ? step.conditionBoolean
-      : step.conditionValue
-  }
-}
-
-function cleanMappings(rows) {
-  return (rows || [])
-    .filter(row => row.targetPath && (row.sourcePath || Object.prototype.hasOwnProperty.call(row, 'literal')))
-    .map(({ rowKey, ...row }) => row)
-}
-
-function serializeStep(step, index) {
-  return {
-    stepCode: step.stepCode || undefined,
-    name: step.name || undefined,
-    strategy: step.strategy,
-    extensionId: step.extensionId || undefined,
-    // 已迁移的历史查询接口仍按原 LIST_QUERY 契约执行，避免旧 Provider 返回事件消息。
-    legacyListQuery: step.legacyListQuery === true || undefined,
-    order: (index + 1) * 10,
-    condition: serializeCondition(step),
-    inputMapping: Object.fromEntries(
-      cleanMappings(step.inputRows).map(row => [row.targetPath, row.sourcePath])
-    ),
-    outputMapping: cleanMappings(step.outputRows),
-    failurePolicy: step.failurePolicy
-  }
-}
-
 async function save() {
   if (!canEdit.value) return
   if (!editor.eventCode) {
@@ -1115,38 +1026,15 @@ async function save() {
   const steps = editor.inheritanceMode === 'DISABLE'
     ? []
     : editor.steps.map(serializeStep)
-  if (formButtonEventSelected.value && steps.some(step =>
-    step.strategy === 'REPLACE'
-    && Object.keys(step.condition || {}).length > 0)) {
-    ElMessage.warning('主处理必须无条件执行，请先清空执行条件')
+  const validationMessage = validateEventStepChain(steps, {
+    inheritanceMode: editor.inheritanceMode,
+    formButtonExactTarget: formButtonExactTarget.value,
+    formButtonEventSelected: formButtonEventSelected.value,
+    interfaces: interfaces.value
+  })
+  if (validationMessage) {
+    ElMessage.warning(validationMessage)
     return
-  }
-  if (formButtonExactTarget.value) {
-    const mainStepCount = steps.filter(step => step.strategy === 'REPLACE').length
-    if (editor.inheritanceMode === 'REPLACE' && mainStepCount !== 1) {
-      ElMessage.warning('仅使用当前层时，必须且只能配置一个主处理步骤')
-      return
-    }
-    if (editor.inheritanceMode === 'INHERIT' && mainStepCount > 1) {
-      ElMessage.warning('当前按钮层最多只能配置一个主处理步骤')
-      return
-    }
-  }
-  for (const step of steps) {
-    if (step.extensionId && !interfaces.value.some(item =>
-      item.extensionId === step.extensionId
-    )) {
-      ElMessage.warning(
-        formButtonEventSelected.value
-          ? '表单自定义按钮事件链仅允许无副作用读接口，请重新选择扩展接口'
-          : '请选择当前事件可用的扩展接口'
-      )
-      return
-    }
-    if (!step.extensionId && !step.outputMapping.length) {
-      ElMessage.warning('未选择扩展接口的步骤必须配置结果回填')
-      return
-    }
   }
   saving.value = true
   try {
@@ -1171,7 +1059,7 @@ async function save() {
     await load()
     emit('changed')
   } catch (error) {
-    ElMessage.error(error.message || '保存事件绑定失败')
+    showRequestError(error, error.message || '保存事件绑定失败')
   } finally {
     saving.value = false
   }

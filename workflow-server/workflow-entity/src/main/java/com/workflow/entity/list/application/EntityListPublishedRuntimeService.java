@@ -359,7 +359,7 @@ public class EntityListPublishedRuntimeService {
             } else {
                 // Embed LIST 中的显式按钮表单来自已校验的固定
                 // List Release。派生表单令牌继承根 elr1 的绝对到期
-                // 时间，既不会中途五分钟失效，也不能滚动延长 Session。
+                // 时间，既不会受普通页面短期时限影响，也不能滚动延长 Session。
                 String token = embedSessionExpiresAt == null
                         ? resolutionTokenService.issue(
                                 UiRuntimeResolutionContext.standalone(),

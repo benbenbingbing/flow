@@ -51,12 +51,21 @@
             <span class="value">{{ tooltip.status === 'completed' ? '已完成' : tooltip.status === 'active' ? '进行中' : tooltip.status === 'terminated' ? cancellationLabel : '未开始' }}</span>
           </div>
         </template>
+        <div v-if="tooltip.assigneeInfo?.action && tooltip.assigneeInfo.action !== 'PROCESSING'" class="info-row">
+          <span class="label">处理结果：</span><span class="value">{{ tooltip.assigneeInfo.actionLabel || ({ APPROVED: '同意', REJECTED: '驳回', TRANSFERRED: '转办' })[tooltip.assigneeInfo.action] || tooltip.assigneeInfo.action }}</span>
+        </div>
+        <template v-if="tooltip.historyInfo">
+          <div v-if="tooltip.historyInfo.startTime && tooltip.historyInfo.startTime !== tooltip.assigneeInfo?.handleTime" class="info-row"><span class="label">开始时间：</span><span class="value">{{ tooltip.historyInfo.startTime }}</span></div>
+          <div v-if="tooltip.historyInfo.endTime" class="info-row"><span class="label">结束时间：</span><span class="value">{{ tooltip.historyInfo.endTime }}</span></div>
+          <div v-if="tooltip.historyInfo.duration" class="info-row"><span class="label">耗时：</span><span class="value">{{ formatProcessDuration(tooltip.historyInfo.duration) }}</span></div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { getProcessNodeStatus, formatProcessDuration } from '@flow/workflow-core/process-progress'
 import { computed, ref, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
 import BpmnViewer from 'bpmn-js/lib/Viewer'
 import BpmnNavigatedViewer from 'bpmn-js/lib/NavigatedViewer'
@@ -310,7 +319,6 @@ const highlightProcess = () => {
     
     if (!canvas || !elementRegistry) return
     
-    const { completedNodes, activeNodes } = props.progressData
     const executedSequenceFlows = toRaw(props.progressData.executedSequenceFlows) || []
     
     const allElements = elementRegistry.getAll()
@@ -332,19 +340,8 @@ const highlightProcess = () => {
         return
       }
       
-      let status = 'pending'
-      const rawCompletedNodes = toRaw(completedNodes) || []
-      const rawActiveNodes = toRaw(activeNodes) || []
-      const rawTerminatedNodes = toRaw(props.progressData?.terminatedNodes) || []
-      // 优先判断活跃：回退后再次经过的节点应显示为进行中
-      if (rawActiveNodes.includes(elementId)) {
-        status = 'active'
-      } else if (rawTerminatedNodes.includes(elementId)) {
-        status = 'terminated'
-      } else if (rawCompletedNodes.includes(elementId)) {
-        status = 'completed'
-      }
-      
+      const status = getProcessNodeStatus(props.progressData, elementId)
+
       setNodeStyle(canvas, element, COLORS[status], status)
     })
   } catch (error) {
@@ -601,18 +598,7 @@ const addMouseEventListeners = () => {
 
         const elementId = element.id
         const { nodeAssigneeMap } = props.progressData
-        const rawCompletedNodes = toRaw(props.progressData.completedNodes) || []
-        const rawActiveNodes = toRaw(props.progressData.activeNodes) || []
-
-        let status = 'pending'
-        const rawTerminatedNodes2 = toRaw(props.progressData?.terminatedNodes) || []
-        if (rawActiveNodes.includes(elementId)) {
-          status = 'active'
-        } else if (rawTerminatedNodes2.includes(elementId)) {
-          status = 'terminated'
-        } else if (rawCompletedNodes.includes(elementId)) {
-          status = 'completed'
-        }
+        const status = getProcessNodeStatus(props.progressData, elementId)
 
         const assigneeInfo = nodeAssigneeMap?.[elementId] || null
         const assigneeList = props.progressData.nodeAssigneesMap?.[elementId] || null
@@ -628,6 +614,7 @@ const addMouseEventListeners = () => {
           status: status,
           assigneeInfo: assigneeInfo,
           assigneeList: assigneeList,
+          historyInfo: props.progressData.nodeHistory?.find(node => node.nodeId === elementId) || null,
           pinned: false
         }
       } catch (err) {

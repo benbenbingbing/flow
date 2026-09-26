@@ -13,15 +13,17 @@
   },
   "scripts": {
     "check:lockfile": "node scripts/check-native-lockfile.mjs",
-    "build:packages": "npm run check:lockfile && npm run extensions:generate --workspace workflow-web && npm run build --workspace @flow/workflow-core && npm run build --workspace @flow/workflow-api && npm run build --workspace @flow/workflow-mobile-ui --if-present",
+    "build:packages": "npm run check:lockfile && npm run extensions:generate && npm run build --workspace @flow/workflow-core && npm run build --workspace @flow/workflow-api && npm run build --workspace @flow/workflow-mobile-ui --if-present",
     "build:web": "npm run build:packages && npm run build --workspace workflow-web",
     "build:mobile": "npm run build:packages && npm run build --workspace workflow-mobile",
     "build": "npm run build:packages && npm run build --workspace workflow-web && npm run build --workspace workflow-mobile",
     "test:web": "npm run build:packages && npm run test --workspace workflow-web",
     "test:packages": "node --test packages/*/tests/*.test.mjs",
     "test:mobile": "npm run test --workspace workflow-mobile",
-    "dev:web": "npm run dev --workspace workflow-web",
-    "dev:mobile": "npm run dev --workspace workflow-mobile"
+    "dev:web": "node scripts/dev-workspace.mjs web",
+    "dev:mobile": "node scripts/dev-workspace.mjs mobile",
+    "extensions:generate": "node scripts/extensions/generate-field-definitions.mjs",
+    "check:frontend-budget": "node scripts/check-frontend-budget.mjs"
   },
   "overrides": {
     "vue": "3.5.29"

@@ -37,7 +37,7 @@
 | `workflow-web/src/composables/useProcessDetail.js` | 流程详情加载及结果整理 | 抽出数据加载、转换；呈现文案及颜色由各端决定 |
 | `workflow-web/src/views/entity/components/approval/EntityApprovalDialog.vue` | 审批编排、Element Plus 弹窗、页签、桌面工作区联动 | PC 视图留在原处，仅逐步提取业务控制逻辑 |
 | `workflow-web/src/extensions/contracts/form-field.js` | 字段值、属性和事件契约 | 提炼共享契约，两端分别实现渲染 |
-| `workflow-web/src/extensions/manifests/` | 扩展元数据及实现入口 | 保持扩展身份；增加平台实现解析机制 |
+| `extensions/manifests/` | 扩展元数据及实现入口 | 保持扩展身份；增加平台实现解析机制 |
 
 目前 PC 审批组件既含业务逻辑，也依赖 `ElMessage`、`ElMessageBox`、`useWorkspacePage`。它不能直接作为移动端公共审批组件。仅给这个组件增加 `mobile` 参数或覆盖 `.el-*` 样式，不能完成架构隔离。
 

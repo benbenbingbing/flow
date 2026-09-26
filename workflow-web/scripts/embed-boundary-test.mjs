@@ -62,7 +62,7 @@ const sharedRequestSource = await source('src/shared/request/index.js') + await 
 const embedMainSource = await source('src/embed/embed-main.js')
 const adminMainSource = await source('src/main.js')
 const extensionEntrySource = await source('src/extensions/register.js')
-const projectFieldManifest = JSON.parse(await source('src/extensions/manifests/business/project/fields/project_acceptance_score.v1.extension.json'))
+const projectFieldManifest = JSON.parse(await source('../extensions/manifests/business/project/fields/project_acceptance_score.v1.extension.json'))
 const entityDialogSource = await source(
   'src/views/entity/components/EntityDataFormDialog.vue'
 )

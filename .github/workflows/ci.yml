@@ -61,6 +61,7 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: 配置 Node.js 构建环境
@@ -75,23 +76,6 @@ jobs:
 
       # - name: 检查依赖安全公告
       #   run: npm audit --registry=https://registry.npmjs.org --audit-level=high
-
-      # - name: 执行功能与配置测试
-      #   run: |
-      #     npm run test:unit
-      #     npm run test:form-node-schema
-      #     npm run test:form-node-drag
-      #     npm run test:runtime-form-tabs
-      #     npm run test:integration
-      #     npm run test:functional
-      #     npm run test:page-config
-      #     npm run test:configuration-reference
-      #     npm run test:ui-config
-      #     npm run test:terminology
-
-      # - name: 检查可维护性预算
-      #   continue-on-error: true
-      #   run: npm run test:maintainability
 
       # - name: 验证 Embed Runtime 与管理端契约
       #   run: |
@@ -110,13 +94,23 @@ jobs:
       - name: 构建公共包与两端生产版本
         run: npm run build
 
+      - name: 执行桌面功能、配置与 Embed 契约回归
+        working-directory: workflow-web
+        run: npm run test:regression
+
+      - name: 检查前端新增文件与历史大文件增长
+        env:
+          FRONTEND_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
+        run: npm run check:frontend-budget
+
       - name: 验证共享协议与移动组件
         run: npm run test:packages && npm run test:mobile
 
-      - name: 安装浏览器并验证移动端交互
+      - name: 安装浏览器并验证 PC 与移动端交互
         run: |
           npx playwright install --with-deps chromium
           npm run test:e2e --workspace workflow-mobile
+          npm run test:e2e:refactor --workspace workflow-web
 
   manifests:
     name: 部署清单校验

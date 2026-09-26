@@ -11,6 +11,7 @@
   </section>
 </template>
 <script setup>
+import { getProcessNodeStatus } from '@flow/workflow-core/process-progress'
 import { computed, nextTick, onMounted, onBeforeUnmount, ref } from 'vue'
 import { Button as VanButton, NavBar as VanNavBar, Loading as VanLoading } from 'vant'
 import Viewer from 'bpmn-js/lib/Viewer'
@@ -35,7 +36,11 @@ onMounted(async () => {
     // 弹层可能在异步导入完成前关闭，销毁后不能再读取画布服务。
     if (disposed) return
     const registry = viewer.get('elementRegistry'), renderer = viewer.get('canvas')
-    for (const [key, marker] of [['completedNodes', 'mobile-node-completed'], ['activeNodes', 'mobile-node-active'], ['terminatedNodes', 'mobile-node-terminated']]) for (const value of props.progress?.[key] || []) { const id = typeof value === 'object' ? value.nodeId || value.id : value; if (registry.get(id)) renderer.addMarker(id, marker) }
+    // 一个节点只保留一种状态标记，回退重审时不叠加历史完成/取消样式。
+    for (const element of registry.getAll()) {
+      const status = getProcessNodeStatus(props.progress, element.id)
+      if (status !== 'pending') renderer.addMarker(element.id, `mobile-node-${status}`)
+    }
     for (const id of props.progress?.executedSequenceFlows || []) if (registry.get(id)) renderer.addMarker(id, 'mobile-flow-executed')
     fit()
   } catch (cause) { if (!disposed) error.value = cause.message || '流程图加载失败' }

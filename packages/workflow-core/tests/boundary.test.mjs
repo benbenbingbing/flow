@@ -4,7 +4,7 @@ import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { parse } from '@babel/parser'
-import { validateManifest } from '../../../workflow-web/build/extensions/validate.mjs'
+import { validateManifest } from '../../../scripts/extensions/validate.mjs'
 import { workflowBoundaryPlugin } from '../../../scripts/workflow-boundary.mjs'
 
 test('核心根入口的传递依赖保持无 Vue、DOM 和平台 UI', () => {
@@ -39,7 +39,7 @@ test('扩展路径仅验证目标平台，且禁止移动实现越界', () => {
   try {
     mkdirSync(path.join(root, 'src'))
     writeFileSync(path.join(root, 'src/Mobile.vue'), '<template />')
-    const manifest = JSON.parse(readFileSync(new URL('../../../workflow-web/src/extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json', import.meta.url)))
+    const manifest = JSON.parse(readFileSync(new URL('../../../extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json', import.meta.url)))
     manifest.implementation.path = 'src/MissingDesktop.vue'
     manifest.platforms.mobile.implementation.path = 'src/Mobile.vue'
     assert.doesNotThrow(() => validateManifest(manifest, root, 'fixture', { platform: 'mobile', implementationRoot: root }))

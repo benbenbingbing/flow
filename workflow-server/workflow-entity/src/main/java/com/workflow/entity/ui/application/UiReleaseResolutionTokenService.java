@@ -29,7 +29,7 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class UiReleaseResolutionTokenService {
 
-    private static final long DEFAULT_TOKEN_TTL_SECONDS = 300L;
+    private static final long DEFAULT_TOKEN_TTL_SECONDS = 600L;
     private static final long MAX_BOUND_TOKEN_TTL_SECONDS = 86_400L;
     private static final int MAX_DEPTH = 8;
     private static final String EMBED_LIST_TOKEN_PREFIX = "elr1";
@@ -38,6 +38,19 @@ public class UiReleaseResolutionTokenService {
 
     @Value("${ui.release-resolution.secret:${jwt.secret}}")
     private String secret;
+
+    /** 普通页面的授权时限；客户端按签发的 expiresAt 续期，子令牌仍继承父级到期时间。 */
+    @Value("${ui.release-resolution.ttl-seconds:600}")
+    private long tokenTtlSeconds = DEFAULT_TOKEN_TTL_SECONDS;
+
+    /** 启动时拒绝无效时限，避免立即过期或超过派生令牌允许的一天上限。 */
+    @jakarta.annotation.PostConstruct
+    void validateTokenTtl() {
+        if (tokenTtlSeconds < 60 || tokenTtlSeconds > MAX_BOUND_TOKEN_TTL_SECONDS) {
+            throw new IllegalArgumentException(
+                    "ui.release-resolution.ttl-seconds 必须在 60 到 86400 秒之间");
+        }
+    }
 
     /**
      * 生成签发文本，供后续匹配或展示。
@@ -63,13 +76,13 @@ public class UiReleaseResolutionTokenService {
                 parentReleaseVersion,
                 depth,
                 now,
-                now + DEFAULT_TOKEN_TTL_SECONDS);
+                now + tokenTtlSeconds);
     }
 
     /**
      * 签发不晚于可信运行会话绝对到期时间失效的解析令牌。
      *
-     * <p>普通 Flow 页面仍使用五分钟默认时限；长驻运行容器可以显式传入其服务端
+     * <p>普通 Flow 页面使用可配置时限，默认十分钟；长驻运行容器可以显式传入其服务端
      * 会话上限。该上限最长一天，且派生令牌必须继续继承父令牌的到期时间，避免
      * 通过嵌套解析滚动延长授权。</p>
      *

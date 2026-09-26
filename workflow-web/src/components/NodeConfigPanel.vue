@@ -1798,106 +1798,9 @@
             />
           </SettingsSection>
 
-          <SettingsSection
-            v-if="isUserTask"
-            title="任务 SLA"
-            description="按已发布策略计算首次响应和办结时限"
-            :default-expanded="slaForm.enabled"
-          >
-            <template #summary>
-              <el-tag :type="slaForm.enabled ? 'success' : 'info'" size="small">
-                {{ slaForm.enabled ? selectedSlaPolicyName || '已启用' : '未启用' }}
-              </el-tag>
-            </template>
-            <el-form-item label="启用 SLA">
-              <el-switch v-model="slaForm.enabled" />
-            </el-form-item>
-            <template v-if="slaForm.enabled">
-              <el-form-item label="SLA 策略" required>
-                <el-select
-                  v-model="slaForm.policyCode"
-                  filterable
-                  placeholder="选择已发布策略"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="policy in slaPolicyOptions"
-                    :key="policy.policyCode"
-                    :label="`${policy.policyName}（v${policy.version}）`"
-                    :value="policy.policyCode"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="日历来源">
-                <template #label>
-                  <ConfigHelpLabel
-                    label="日历来源"
-                    help-key="process.slaCalendarSource"
-                  />
-                </template>
-                <el-select v-model="slaForm.calendarSource" style="width: 100%">
-                  <el-option label="节点指定" value="NODE" />
-                  <el-option label="流程指定" value="PROCESS" />
-                  <el-option label="业务归属部门" value="BUSINESS_DEPT" />
-                  <el-option label="发起人部门" value="STARTER_DEPT" />
-                  <el-option label="系统默认" value="SYSTEM_DEFAULT" />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="slaForm.calendarSource === 'NODE'"
-                label="节点日历"
-                required
-              >
-                <el-select v-model="slaForm.calendarCode" filterable style="width: 100%">
-                  <el-option
-                    v-for="calendar in workCalendarOptions"
-                    :key="calendar.calendarCode"
-                    :label="`${calendar.calendarName}（${calendar.timezoneId}）`"
-                    :value="calendar.calendarCode"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="slaForm.calendarSource === 'PROCESS'"
-                label="流程日历"
-                required
-              >
-                <el-select v-model="slaForm.processCalendarCode" filterable style="width: 100%">
-                  <el-option
-                    v-for="calendar in workCalendarOptions"
-                    :key="calendar.calendarCode"
-                    :label="`${calendar.calendarName}（${calendar.timezoneId}）`"
-                    :value="calendar.calendarCode"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-if="slaForm.calendarSource === 'BUSINESS_DEPT'"
-                label="部门字段"
-                required
-              >
-                <el-select
-                  v-model="slaForm.businessFieldCode"
-                  filterable
-                  placeholder="选择业务数据中的部门字段"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="field in entityFields"
-                    :key="getProcessConditionFieldCode(field)"
-                    :label="field.fieldName || field.fieldLabel || field.fieldCode"
-                    :value="getProcessConditionFieldCode(field)"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-alert
-                type="info"
-                :closable="false"
-                show-icon
-                title="发布时冻结策略与日历快照；转办不会重新计算截止时间。"
-              />
-            </template>
-          </SettingsSection>
+          <NodeSlaEditor v-if="isUserTask" v-model="slaForm"
+            :sla-policy-options="slaPolicyOptions" :work-calendar-options="workCalendarOptions"
+            :entity-fields="entityFields" />
           
           <SettingsSection
             title="标识与备注"
@@ -1927,6 +1830,9 @@
 </template>
 
 <script setup>
+import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
+import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
+
 import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
@@ -2332,10 +2238,7 @@ const slaForm = ref({
 })
 const slaPolicyOptions = ref([])
 const workCalendarOptions = ref([])
-const selectedSlaPolicyName = computed(() => {
-  const policy = slaPolicyOptions.value.find(item => item.policyCode === slaForm.value.policyCode)
-  return policy?.policyName || ''
-})
+
 const organizationOptions = ref([])
 const ccResolverContext = { usage: 'CC' }
 const createCcRule = () => ({
@@ -4074,76 +3977,11 @@ function updateNodeFormBind() {
   return true
 }
 
+/** 领域编辑器只提交配置；所有 BPMN 扩展写入集中走可撤销的适配器。 */
 function updateExtensionProperty(name, value) {
-  if (!props.element) {
-    console.warn('updateExtensionProperty: element 为空')
-    return
-  }
-  const moddle = getModdle()
-  const modeling = getModeling()
-  if (!moddle || !modeling) {
-    console.warn('updateExtensionProperty: moddle 或 modeling 为空')
-    return
-  }
-  const bo = toRaw(props.element).businessObject
-  if (!bo) {
-    console.warn('updateExtensionProperty: businessObject 为空')
-    return
-  }
-  
   try {
-    // 创建或获取 extensionElements
-    let extensionElements = bo.extensionElements
-    if (!extensionElements) {
-      extensionElements = moddle.create('bpmn:ExtensionElements')
-    }
-    
-    // 获取 values 数组
-    let values = extensionElements.get('values')
-    if (!values) {
-      values = []
-    }
-    
-    // 查找或创建 flowable:Properties 元素
-    let propElement = values.find(v => v.$type === 'flowable:Properties')
-    if (!propElement) {
-      console.log('创建新的 flowable:Properties')
-      propElement = moddle.create('flowable:Properties')
-      values.push(propElement)
-    }
-    
-    // 获取或创建 values 数组（flowable:Properties 的 moddle 属性名为 values）
-    let propValues = propElement.get('values') || []
-    if (!propValues || !Array.isArray(propValues)) {
-      propValues = []
-    }
-    
-    // 查找或更新属性
-    let existingProp = propValues.find(p => p.name === name)
-    
-    if (value !== null && value !== undefined && value !== '') {
-      if (!existingProp) {
-        console.log('创建新的 flowable:Property:', name, value)
-        existingProp = moddle.create('flowable:Property', { name: name, value: String(value) })
-        propValues.push(existingProp)
-      } else {
-        console.log('更新现有属性:', name, value)
-        existingProp.value = String(value)
-      }
-    } else if (existingProp) {
-      console.log('清除属性:', name)
-      const idx = propValues.indexOf(existingProp)
-      if (idx > -1) propValues.splice(idx, 1)
-    }
-    
-    // 更新 values（使用 moddle set 方法确保正确序列化）
-    propElement.set('values', propValues)
-    
-    // 关键：使用 modeling.updateProperties 通知 bpmn-js 属性已更改
-    // 注意：使用 toRaw 避免 Vue Proxy 与 BPMN.js 对象冲突
-    modeling.updateProperties(toRaw(props.element), { extensionElements: extensionElements })
-    
-    console.log('扩展属性已保存:', name, value)
+    const saved = updateBpmnExtensionProperty(toRaw(props.element), getModdle(), getModeling(), name, value)
+    if (!saved) console.warn('无法保存扩展属性：节点或模型未初始化', name)
   } catch (error) {
     console.error('updateExtensionProperty 失败:', error)
     ElMessage.error('保存失败: ' + (error.message || '未知错误'))

@@ -8,7 +8,7 @@ README 只保留在本目录和下一层目录，子模块用法合并到对应�
 
 | 说明 | 什么时候看 |
 | --- | --- |
-| [manifests](manifests/README.md) | 注册配置项完整说明、十类类型、填写示例、启用和排错 |
+| [manifests](../../../extensions/manifests/README.md) | 注册配置项完整说明、十类类型、填写示例、启用和排错 |
 | [templates](templates/README.md) | 选择和复制组件模板，完成从模板到注册的步骤 |
 | [contracts](contracts/README.md) | 导入 props/emits、调用校验方法、处理宿主上下文 |
 | [builtin](builtin/README.md) | 使用平台字段和单元格，复用 useFormField |
@@ -16,7 +16,7 @@ README 只保留在本目录和下一层目录，子模块用法合并到对应�
 | [business](business/README.md) | 新增业务模块、使用现有项目组件和动作 |
 | [examples](examples/README.md) | 启用 Demo、使用契约示例、复制成正式业务实现 |
 | [core](core/README.md) | 平台开发者查询目录、调用注册表和维护适配器 |
-| [schemas](schemas/README.md) | 编辑器补全、清单格式校验和协议维护 |
+| [schemas](../../../extensions/schemas/README.md) | 编辑器补全、清单格式校验和协议维护 |
 | [generated](generated/README.md) | 更新和读取平台字段的派生数据 |
 | [__tests__](__tests__/README.md) | 按改动范围选择测试、运行浏览器验收 |
 
@@ -25,11 +25,11 @@ README 只保留在本目录和下一层目录，子模块用法合并到对应�
 以下命令均从 `workflow-web/` 执行。示例使用文本模板真实支持的 suffix 参数。
 
 ```sh
-mkdir -p src/extensions/common/fields src/extensions/manifests/common/fields
+mkdir -p src/extensions/common/fields ../extensions/manifests/common/fields
 cp src/extensions/templates/CustomFieldTemplate.vue src/extensions/common/fields/NoteField.vue
 ```
 
-在 `src/extensions/manifests/common/fields/note_field.v1.extension.json` 写入：
+在仓库根目录 `extensions/manifests/common/fields/note_field.v1.extension.json` 写入：
 
 ```json
 {
@@ -90,4 +90,4 @@ JSON 的 `metadata.configSchema` 是参数定义，上表中的值才是某个�
 - `manifest.js`：应用初始化后读取 `getBundledExtensionManifest()`；需要服务端可治理的四类时使用 `getManagedExtensionManifest()`。
 - `index.js`：对外汇总上述接口；普通组件优先直接导入契约或所需查询模块，避免把启动依赖带入实现。
 
-FORM/LIST 用 usageContexts 区分 PAGE 和 RELATED_CONTENT。支持多版本的类型、清单与数据库启停的区别，以及示例开关详见 [注册配置手册](manifests/README.md)。历史绑定使用稳定名称；制品摘要锁定仍遵守原有检查。
+FORM/LIST 用 usageContexts 区分 PAGE 和 RELATED_CONTENT。支持多版本的类型、清单与数据库启停的区别，以及示例开关详见 [注册配置手册](../../../extensions/manifests/README.md)。历史绑定使用稳定名称；制品摘要锁定仍遵守原有检查。

@@ -76,7 +76,7 @@ class UiReleaseResolutionTokenServiceTest {
                 () -> assertEquals(2, claims.depth()),
                 () -> assertEquals("user-1", claims.userId()),
                 () -> assertEquals(
-                        300L,
+                        600L,
                         claims.expiresAt() - claims.issuedAt()),
                 () -> assertTrue(
                         claims.expiresAt()
@@ -104,8 +104,37 @@ class UiReleaseResolutionTokenServiceTest {
                 sessionAbsoluteExpiry.getEpochSecond(),
                 claims.expiresAt());
         assertTrue(
-                claims.expiresAt() - claims.issuedAt() > 300L,
-                "长驻运行容器不应在默认五分钟后失去发布上下文");
+                claims.expiresAt() - claims.issuedAt() > 600L,
+                "长驻运行容器不应受普通页面默认十分钟时限影响");
+    }
+
+    @Test
+    void configuredTtlOnlyChangesNewOrdinaryTokens() {
+        String previous = tokenService.issue(UiRuntimeResolutionContext.standalone(),
+                "form-parent", "release-parent", 7, 0);
+        ReflectionTestUtils.setField(tokenService, "tokenTtlSeconds", 1200L);
+        ReflectionTestUtils.invokeMethod(tokenService, "validateTokenTtl");
+        var fresh = tokenService.verify(tokenService.issue(UiRuntimeResolutionContext.standalone(),
+                "form-parent", "release-parent", 7, 0));
+        assertEquals(1200L, fresh.expiresAt() - fresh.issuedAt());
+        var old = tokenService.verify(previous);
+        assertEquals(600L, old.expiresAt() - old.issuedAt());
+        var child = tokenService.verify(tokenService.issue(old.context(),
+                "child", "child-release", 1, 1, Instant.ofEpochSecond(old.expiresAt())));
+        assertEquals(old.expiresAt(), child.expiresAt());
+    }
+
+    @Test
+    void rejectsInvalidTtlAtStartup() {
+        for (long invalid : new long[] { -1, 0, 59, 86401 }) {
+            ReflectionTestUtils.setField(tokenService, "tokenTtlSeconds", invalid);
+            assertThrows(IllegalArgumentException.class,
+                    () -> ReflectionTestUtils.invokeMethod(tokenService, "validateTokenTtl"));
+        }
+        for (long valid : new long[] { 60, 600, 86400 }) {
+            ReflectionTestUtils.setField(tokenService, "tokenTtlSeconds", valid);
+            ReflectionTestUtils.invokeMethod(tokenService, "validateTokenTtl");
+        }
     }
 
     @Test

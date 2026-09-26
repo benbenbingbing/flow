@@ -42,8 +42,9 @@ export async function applyRuntimeFieldEffects(result, { getRecord, setField, co
   }
   const effects = Array.isArray(result?.effects) ? result.effects : []
   for (const effect of effects) {
-    if (effect.type !== 'FIELD_MAPPING') continue
-    for (const mapping of effect.mappings || []) {
+    if (String(effect?.type || '').toUpperCase() !== 'FIELD_MAPPING') continue
+    for (const mapping of Array.isArray(effect.mappings) ? effect.mappings : []) {
+      if (!isCurrent()) return
       const target = String(mapping.targetPath || ''), path = target.replace(/^form\./, '').replace(/^data\./, '')
       if (!safePath(pathParts(path))) continue
       const value = resolve(effect.data, target), current = resolve(getRecord(), path), policy = String(mapping.overwrite || 'ALWAYS').toUpperCase()

@@ -36,7 +36,7 @@ app.use(createPinia()).use(ElementPlus,{locale:zhCn}).mount('#app')
 window.eventTest={state,field,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,400));await nextTick()}}
 `
 const fixture = mkdtempSync(path.resolve('.field-event-fixture-'))
-writeFileSync(path.join(fixture,'index.html'), '<html><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
+writeFileSync(path.join(fixture,'index.html'), '<html><head><link rel="icon" href="data:,"></head><body><div id="app"></div><script type="module" src="./main.js"></script></body></html>')
 writeFileSync(path.join(fixture,'main.js'), harness)
 const profile=mkdtempSync(path.join(tmpdir(),'field-event-chrome-'))
 let browser,ws,server,nextId=0
@@ -56,18 +56,18 @@ async function clickText(text,selector='button'){
 async function options(){return evaluate(`([...document.querySelectorAll('.el-select-dropdown__item')].filter(${visible})).map(e=>({text:e.textContent.trim(),disabled:e.classList.contains('is-disabled')}))`)}
 async function openEventOptions(){await evaluate(`([...document.querySelectorAll('.el-dialog')].filter(${visible})).at(-1).querySelector('.el-select__wrapper').click()`);await evaluate('eventTest.settle()')}
 try{
- server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3397,strictPort:true}});await server.listen()
+ server=await createServer({cacheDir:path.join(fixture,'cache'),optimizeDeps:{include:['axios'],entries:[path.join(fixture,'index.html')]},server:{host:'127.0.0.1',port:3397,strictPort:true}});await server.listen()
  browser=spawn(process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=9397',`--user-data-dir=${profile}`,'about:blank'],{stdio:'ignore'})
  let targets
  for(let i=0;i<100;i++){try{targets=await(await fetch('http://127.0.0.1:9397/json/list')).json();break}catch{await sleep(100)}}
  assert.ok(targets?.length,'Chrome failed to start')
  ws=new WebSocket(targets.find(t=>t.type==='page').webSocketDebuggerUrl)
- ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.id&&pending.has(data.id)){const p=pending.get(data.id);pending.delete(data.id);data.error?p.reject(Error(JSON.stringify(data.error))):p.resolve(data.result)}if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.exception?.description||data.params.exceptionDetails.text)})
+ ws.addEventListener('message',event=>{const data=JSON.parse(event.data);if(data.id&&pending.has(data.id)){const p=pending.get(data.id);pending.delete(data.id);data.error?p.reject(Error(JSON.stringify(data.error))):p.resolve(data.result)}if(data.method==='Network.responseReceived'&&data.params.response.status>=400)errors.push(data.params.response.status+' '+data.params.response.url);if(data.method==='Log.entryAdded'&&data.params.entry.level==='error')errors.push(data.params.entry.text);if(data.method==='Runtime.exceptionThrown')errors.push(data.params.exceptionDetails.exception?.description||data.params.exceptionDetails.text)})
  await new Promise((resolve,reject)=>{ws.addEventListener('open',resolve,{once:true});ws.addEventListener('error',reject,{once:true})})
- await send('Runtime.enable');await send('Page.enable');await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false})
+ await send('Runtime.enable');await send('Page.enable');await send('Network.enable');await send('Log.enable');await send('Emulation.setDeviceMetricsOverride',{width:1280,height:900,deviceScaleFactor:1,mobile:false})
  await send('Page.navigate',{url:`http://127.0.0.1:3397/${path.basename(fixture)}/index.html`})
  for(let i=0;i<200;i++){if(await evaluate('Boolean(window.eventTest)'))break;await sleep(100)}
- assert.equal(await evaluate('Boolean(window.eventTest)'),true,errors.join('\n'));await evaluate('eventTest.settle()')
+ assert.equal(await evaluate('Boolean(window.eventTest)'),true,errors.join('\n') || await evaluate('document.documentElement.outerHTML'));await evaluate('eventTest.settle()')
  assert.equal(await evaluate('eventTest.state.reads'),1,'初次挂载只加载一次列表')
  // 单击新增直接进入编辑框，所有字段事件可见但仅两个可选。
  await clickText('新增绑定');await openEventOptions()
