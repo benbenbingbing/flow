@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
-import { resolveFormLabelPosition, resolveFormLabelWidth } from '../form-layout.js'
+import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '../form-layout.js'
 import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
+import { buildEntityConfigKey } from '../entity-config-key.js'
+import { extractSfcFunctions } from '../../../scripts/test-sfc-functions.mjs'
 
 // 历史快照中被布局模式覆盖的 gridSpan 不能因升级而突然生效。
 for (const [layoutType, labelPosition, span] of [
@@ -40,4 +42,51 @@ for (const layout of ['vertical', 'horizontal']) {
 }
 assert.equal(resolveFormNodeLayoutSpan({ nodeType: 'FIELD', props: { gridSpan: 8 } }, 'grid', 12), 8)
 assert.equal(resolveFormNodeLayoutSpan({ nodeType: 'FIELD' }, 'grid', 12), 12, '显式 GRID 继续支持容器默认宽度')
+
+// 从真实创建请求的 JSON 回填设计器，再执行实际添加方法，验证列数跨页面保存后才生效。
+for (const [columns, expectedSpan] of [[1, 24], [2, 12], [3, 8]]) {
+  const form = { formName: '测试表单', formKey: 'detail', layoutType: 'grid', status: 1, defaultColumnCount: columns }
+  const isEdit = { value: false }
+  let created, patched
+  const { handleSubmit } = extractSfcFunctions(new URL('../../views/EntityFormList.vue', import.meta.url), ['handleSubmit'], {
+    form, isEdit, entityId: 'entity-test', entityInfo: { value: { entityCode: 'TEST' } },
+    formRef: { value: { validate: async () => true } }, submitLoading: { value: false },
+    isCustomRendererMode: { value: false }, dialogVisible: { value: true },
+    createForm: async payload => { created = payload },
+    patchFormMetadata: async (_id, payload) => { patched = payload },
+    buildEntityConfigKey, loadForms() {}, ElMessage: { success() {}, error(message) { assert.fail(message) } }
+  })
+  await handleSubmit()
+  assert.equal(JSON.parse(created.viewConfig).defaultColumnCount, columns)
+  assert.equal(created.formKey, 'TEST_detail')
+
+  const existing = { id: 'existing', fieldCode: 'existing', gridSpan: 16 }
+  const formFields = { value: [existing] }
+  const viewConfig = { value: JSON.parse(created.viewConfig) }
+  const { addField } = extractSfcFunctions(new URL('../../views/EntityFormDesignByEntity.vue', import.meta.url), ['addField'], {
+    formFields, viewConfig, formId: 'form-test', isSystemEntity: { value: false },
+    isFieldInForm: field => formFields.value.some(item => item.fieldId === field.id),
+    resolveFormNodeBinding: field => ({ bindingType: 'ENTITY_FIELD', bindingRef: field.fieldCode }),
+    resolveDefaultParentId: () => '', nextNodePlacement: () => ({ orderKey: 1000000, sortOrder: 1 }),
+    getDefaultComponentType: () => 'input', stringifyConfig: JSON.stringify,
+    resolveNewFormFieldGridSpan, isSubFormField: () => false, isSubListField: () => false,
+    selectField() {}, ElMessage: { success() {}, warning() {} }
+  })
+  addField({ id: 'first', fieldCode: 'first', fieldName: '首个属性', fieldType: 'VARCHAR' })
+  assert.equal(formFields.value[1].gridSpan, expectedSpan)
+  formFields.value[1].gridSpan = 18
+  addField({ id: 'second', fieldCode: 'second', fieldName: '第二属性', fieldType: 'VARCHAR' })
+  assert.deepEqual(formFields.value.map(field => field.gridSpan), [16, 18, expectedSpan],
+    '新增属性只能初始化自身，不能重排历史节点或覆盖手动宽度')
+
+  // 外层编辑基本信息不提交 viewConfig，避免清掉设计器维护的列数及其他视图配置。
+  isEdit.value = true
+  form.id = 'form-test'
+  form.revision = 2
+  await handleSubmit()
+  assert.equal(Object.hasOwn(patched, 'viewConfig'), false)
+}
+for (const viewConfig of [undefined, null, '', '{invalid}', {}, { defaultColumnCount: 0 }, { defaultColumnCount: 4 }, { defaultColumnCount: 1.5 }]) {
+  assert.equal(resolveNewFormFieldGridSpan(viewConfig), 24, '旧表单或无效列数保持单列默认宽度')
+}
 console.log('form-layout tests passed')

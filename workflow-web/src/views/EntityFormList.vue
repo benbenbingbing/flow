@@ -124,6 +124,14 @@
               : '实体编码为固定前缀，将与输入内容一起保存，创建后不可修改。' }}
           </div>
         </el-form-item>
+        <el-form-item v-if="!isEdit" label="列数">
+          <el-radio-group v-model="form.defaultColumnCount">
+            <el-radio-button :value="1">1 列</el-radio-button>
+            <el-radio-button :value="2">2 列</el-radio-button>
+            <el-radio-button :value="3">3 列</el-radio-button>
+          </el-radio-group>
+          <div class="field-help">仅设置后续新增实体属性的默认栅格宽度，添加后可单独调整。</div>
+        </el-form-item>
         <el-form-item label="渲染方式">
           <el-segmented
             v-model="formRendererMode"
@@ -278,6 +286,8 @@ const form = reactive({
   formName: '',
   formKey: '',
   layoutType: 'grid',
+  // 创建时写入 viewConfig，设计器仅用它初始化新属性，不参与已有节点的布局计算。
+  defaultColumnCount: 1,
   status: 1,
   description: '',
   revision: null,
@@ -472,7 +482,8 @@ async function handleSubmit() {
       await createForm({
         ...metadata,
         entityId,
-        formKey: buildEntityConfigKey(entityInfo.value.entityCode, form.formKey)
+        formKey: buildEntityConfigKey(entityInfo.value.entityCode, form.formKey),
+        viewConfig: JSON.stringify({ defaultColumnCount: form.defaultColumnCount })
       })
       ElMessage.success('创建成功')
     }
@@ -569,6 +580,7 @@ function resetForm() {
   form.formName = ''
   form.formKey = ''
   form.layoutType = 'grid'
+  form.defaultColumnCount = 1
   form.status = 1
   form.description = ''
   form.revision = null

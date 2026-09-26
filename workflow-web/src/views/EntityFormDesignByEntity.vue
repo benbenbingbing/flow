@@ -1055,7 +1055,7 @@
 </template>
 
 <script setup>
-import { resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
+import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '@/shared/form-layout'
 
 import { ref, computed, watch, onMounted, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -3426,7 +3426,7 @@ async function loadFormFields({ strict = false } = {}) {
   }
 }
 
-// 添加字段到表单
+/** 添加实体属性节点，仅初始化新节点的宽度；已有节点和用户手动设置的栅格不受影响。 */
 function addField(entityField) {
   // 检查是否已存在
   if (isFieldInForm(entityField)) {
@@ -3470,7 +3470,7 @@ function addField(entityField) {
         approve: { editable: false }
       }
     }),
-    gridSpan: 24,
+    gridSpan: resolveNewFormFieldGridSpan(viewConfig.value),
     sortOrder: placement.sortOrder
   }
 
