@@ -15,6 +15,11 @@
         <template #default="{ row }">
           <div class="execution-detail">
             <el-descriptions :column="3" border size="small">
+              <el-descriptions-item v-if="row.failureStrategyCode" label="失败策略">{{ row.failureStrategyCode }} / v{{ row.failureStrategyVersion }}</el-descriptions-item>
+              <el-descriptions-item v-if="row.failureStrategyCode" label="尝试次数">{{ row.attemptNo || 0 }}（首次之外最多重试 {{ row.maxRetries }} 次）</el-descriptions-item>
+              <el-descriptions-item v-if="row.terminationReason" label="处理原因">{{ row.terminationReason }}</el-descriptions-item>
+              <el-descriptions-item v-if="row.failureStrategyCode" label="人工处理">{{ resolutionLabel(row.resolutionStatus) }}</el-descriptions-item>
+              <el-descriptions-item v-if="row.replayOfId" label="原失败记录">{{ row.replayOfId }}</el-descriptions-item>
               <el-descriptions-item label="动作名称">{{ row.actionName || '-' }}</el-descriptions-item>
               <el-descriptions-item label="处理器中文名">{{ row.handlerDisplayName || '-' }}</el-descriptions-item>
               <el-descriptions-item label="处理器 Bean">{{ row.handlerName || '-' }}</el-descriptions-item>
@@ -103,16 +108,18 @@
       <el-table-column prop="createdAt" label="触发时间" min-width="165">
         <template #default="{ row }">{{ formatTime(row.createdAt) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="90" fixed="right">
+      <el-table-column label="操作" width="175" fixed="right">
         <template #default="{ row }">
           <el-button
-            v-if="['FAILED', 'DEAD'].includes(row.status)"
+            v-if="row.failureStrategyCode ? row.status === 'DEAD' && !['REPLAYING', 'RESOLVED'].includes(row.resolutionStatus) : ['FAILED', 'DEAD'].includes(row.status)"
             link
             type="primary"
             @click="retry(row)"
           >
             手工重试
           </el-button>
+          <el-button v-if="row.failureStrategyCode && row.status === 'DEAD' && !row.replayRootId && ['OPEN', 'NONE'].includes(row.resolutionStatus)"
+            link type="primary" @click="resolveFailure(row)">登记已处理</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -167,6 +174,24 @@ async function retry(row) {
   await processActionApi.retryExecution(row.id)
   ElMessage.success('已重新加入执行队列')
   await load()
+}
+
+/** 人工确认不改变原失败事实，说明会随执行轨迹留存。 */
+async function resolveFailure(row) {
+  try {
+    const { value } = await ElMessageBox.prompt('填写处理说明。登记后仍保留原动作失败记录。', '登记已处理', {
+      inputValidator: value => Boolean(value?.trim()) && value.length <= 1000 || '请填写 1~1000 字说明'
+    })
+    await processActionApi.resolveExecution(row.id, value)
+    ElMessage.success('已登记处理结果')
+    await load()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error(error?.message || '登记失败')
+  }
+}
+
+function resolutionLabel(value) {
+  return { NONE: '无需人工处理', OPEN: '待人工处理', RESOLVED: '已处理', REPLAYING: '手工重放中' }[value] || '-'
 }
 
 function pretty(value) {

@@ -4,6 +4,13 @@ import request from '@/utils/request'
  * 流程动作管理API
  */
 export const processActionApi = {
+  /** 已注册策略按流程实体范围返回，能力声明用于设计器兼容性提示。 */
+  failureStrategies(processConfigId) {
+    return request.get('/process-actions/failure-strategies', { params: { processConfigId } })
+  },
+  resolveExecution(executionId, note) {
+    return request.post(`/process-action-executions/${executionId}/resolve`, { note })
+  },
   /**
    * 查询流程配置下所有草稿动作
    */

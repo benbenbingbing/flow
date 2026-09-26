@@ -35,7 +35,8 @@ class FlowActionExecutionServiceTest {
                 mock(FlowActionMapper.class),
                 objectMapper,
                 mock(FlowActionCatalogPort.class),
-                mock(SystemAuditPort.class));
+                mock(SystemAuditPort.class),
+                mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
         FlowActionExecution execution = new FlowActionExecution();
         FlowActionContext context = new FlowActionContext();
         context.setExtraParams(Map.of("key1", "value", "token", "private-value"));
@@ -69,7 +70,8 @@ class FlowActionExecutionServiceTest {
                         mock(FlowActionMapper.class),
                         objectMapper,
                         mock(FlowActionCatalogPort.class),
-                        mock(SystemAuditPort.class));
+                        mock(SystemAuditPort.class),
+                mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
         FlowActionExecution execution =
                 new FlowActionExecution();
         FlowActionContext context =
@@ -121,7 +123,8 @@ class FlowActionExecutionServiceTest {
                         mock(FlowActionMapper.class),
                         new ObjectMapper().findAndRegisterModules(),
                         catalog,
-                        auditPort);
+                        auditPort,
+                mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
         FlowAction action = new FlowAction();
         action.setId("action-1");
         action.setActionName("同步项目状态");

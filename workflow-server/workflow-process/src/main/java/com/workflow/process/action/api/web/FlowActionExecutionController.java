@@ -54,4 +54,11 @@ public class FlowActionExecutionController {
         executionService.retry(id);
         return ApiResponse.success();
     }
+    /** 登记人工处理结果，不更改原动作的失败事实。 */
+    @PostMapping("/{id}/resolve")
+    public ApiResponse<Void> resolve(@PathVariable String id, @org.springframework.web.bind.annotation.RequestBody java.util.Map<String, String> request) {
+        currentUserRoleService.requireSuperAdmin();
+        executionService.resolve(id, request.get("note"));
+        return ApiResponse.success();
+    }
 }

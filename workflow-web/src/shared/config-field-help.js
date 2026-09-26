@@ -82,7 +82,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'process.actionExecutionMode':
     '事务内执行失败时可回滚当前流程操作；提交后执行不阻塞主事务，适合通知和外部接口，但必须依赖幂等与重试。',
   'process.actionFailurePolicy':
-    '事务内可选择回滚或记录后继续；提交后可选择自动重试或记录后忽略。可用策略会随执行方式变化。',
+    '事务内可选择回滚或记录后继续；提交后可选择自动重试或记录后忽略。也可选择已注册的自定义策略，在动作抛出异常后决定处理方式。可用策略会随执行方式变化。',
+  'process.actionFailureStrategy':
+    '实现 FlowActionFailureStrategyProvider 接口（无需继承基类），加 @Component 注册为 Spring Bean。descriptor() 声明唯一编码和版本、支持的执行方式、可能的处理结果及参数定义；decide(context, configuration) 在动作抛异常后返回 FailureDecision，只计算处理决定，不直接写业务数据。可参考 ProjectCustomFailureStrategy。部署后在此选择策略、填写参数，保存并发布流程。灰色项表示执行方式不匹配，或策略可能重试但当前动作处理器的 retryable() 未返回 true；具体原因显示在选项下方。',
   'process.flowActionHandler':
     '后端自定义需实现 FlowActionProvider、加 @Component；Bean 名称即处理器编码。需要类型化参数时可实现 TypedFlowActionProvider。',
   'process.personResolver':

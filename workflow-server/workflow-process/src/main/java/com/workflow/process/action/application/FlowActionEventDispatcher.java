@@ -37,6 +37,7 @@ public class FlowActionEventDispatcher implements FlowActionDispatcher {
     private final FlowActionTimingCatalog timingCatalog;
     private final ProcessVersionHistoryMapper versionHistoryMapper;
     private final RepositoryService repositoryService;
+    private final FlowActionFailureCoordinator failureCoordinator;
 
     /**
      * 分发触发事件：解析版本、查询匹配的已发布动作并逐一执行。
@@ -87,13 +88,35 @@ public class FlowActionEventDispatcher implements FlowActionDispatcher {
             return;
         }
 
+        if (FlowActionFailureStrategyCatalog.custom(action)
+                && !org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("事务内自定义策略必须在业务事务中执行");
+        }
         // 事务内执行：先创建 RUNNING 记录，再调用处理器，按失败策略决定是否抛出回滚
         FlowActionExecution execution = executionService.createInTransactionAudit(
                 action,
                 event,
                 idempotencyKey,
                 FlowActionExecution.Status.RUNNING);
+        if (FlowActionFailureStrategyCatalog.custom(action)
+                && org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            // “继续”只代表调用链继续，主事务是否真正提交要在完成回调中单独记录。
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override public void afterCompletion(int status) {
+                            try {
+                                executionService.recordTransactionOutcome(execution.getId(), status == STATUS_COMMITTED
+                                        ? "COMMITTED" : status == STATUS_ROLLED_BACK ? "ROLLED_BACK" : "UNKNOWN");
+                            } catch (RuntimeException auditError) {
+                                log.warn("主事务结局未能补记，保留 UNKNOWN: executionId={}", execution.getId(), auditError);
+                            }
+                        }
+                    });
+        }
+        boolean ready = false;
         try {
+            if (FlowActionFailureStrategyCatalog.custom(action)) executionService.validateCustomExecution(action, execution, false);
+            ready = true;
             FlowActionContext context = flowActionExecutor.executeAction(
                     action,
                     event,
@@ -101,6 +124,18 @@ public class FlowActionEventDispatcher implements FlowActionDispatcher {
                     execution);
             executionService.markSuccess(execution, context);
         } catch (RuntimeException e) {
+            if (FlowActionFailureStrategyCatalog.custom(action)) {
+                var outcome = ready ? failureCoordinator.decide(action, execution, e, false)
+                        : failureCoordinator.preflightFailure(action, e);
+                try {
+                    executionService.persistCustomFailure(execution, e, outcome);
+                } catch (RuntimeException auditError) {
+                    e.addSuppressed(auditError);
+                    throw e;
+                }
+                if (outcome.effective().disposition() == com.workflow.contracts.process.action.model.FailureDisposition.CONTINUE) return;
+                throw e;
+            }
             executionService.markFinalFailure(execution, e);
             // CONTINUE 策略：仅记录失败，不影响主流程事务
             if (FlowActionFailurePolicy.CONTINUE.name().equals(failurePolicy)) {

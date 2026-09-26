@@ -54,7 +54,7 @@ class FlowActionEventDispatcherTest {
                 executionService,
                 catalog,
                 mock(ProcessVersionHistoryMapper.class),
-                mock(RepositoryService.class));
+                mock(RepositoryService.class), mock(com.workflow.process.action.application.FlowActionFailureCoordinator.class));
     }
 
     /**

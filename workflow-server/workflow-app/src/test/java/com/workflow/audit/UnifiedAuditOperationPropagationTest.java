@@ -116,7 +116,8 @@ public class UnifiedAuditOperationPropagationTest {
                 mock(FlowActionMapper.class),
                 new ObjectMapper().findAndRegisterModules(),
                 mock(FlowActionCatalogPort.class),
-                auditPort);
+                auditPort,
+                mock(com.workflow.process.action.application.FlowActionFailureStrategyCatalog.class));
     }
 
     private EntityMutationCommand mutationCommand() {

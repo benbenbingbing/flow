@@ -226,12 +226,34 @@
             </el-select>
           </el-form-item>
 
+          <template v-if="editingAction.failurePolicy === 'CUSTOM'">
+            <el-form-item label="自定义策略" required>
+              <template #label>
+                <ConfigHelpLabel label="自定义策略" help-key="process.actionFailureStrategy" />
+              </template>
+              <el-select :model-value="selectedStrategyKey" :loading="strategyLoading" placeholder="请选择已注册策略" style="width: 100%" @change="onStrategySelected">
+                <el-option v-if="selectedStrategyKey && !currentStrategy" :value="selectedStrategyKey" :label="`${selectedStrategyKey}（当前不可用）`" disabled />
+                <el-option v-for="strategy in failureStrategyOptions" :key="`${strategy.code}@${strategy.version}`"
+                  class="failure-strategy-option"
+                  :value="`${strategy.code}@${strategy.version}`" :label="`${strategy.displayName}（v${strategy.version}）`"
+                  :title="strategy.unavailableReason" :disabled="Boolean(strategy.unavailableReason)">
+                  <span class="failure-strategy-option__name">{{ strategy.displayName }}（v{{ strategy.version }}）</span>
+                  <span v-if="strategy.unavailableReason" class="failure-strategy-option__reason">{{ strategy.unavailableReason }}</span>
+                </el-option>
+              </el-select>
+              <div class="form-tip">{{ currentStrategy?.description || '动作抛出异常后调用，无需额外配置失败触发条件。' }}</div>
+            </el-form-item>
+            <el-alert v-if="customStrategyProblem" :title="customStrategyProblem" type="warning" :closable="false" show-icon />
+            <el-button v-if="strategyLoadError" link type="primary" @click="loadFailureStrategies">重新加载策略</el-button>
+            <ConfigSchemaEditor v-if="currentStrategy" v-model="strategyConfig" :schema="customStrategySchema" :grouped="false" />
+          </template>
+
           <el-form-item
-            v-if="editingAction.executionMode === 'AFTER_COMMIT' && editingAction.failurePolicy === 'RETRY'"
-            label="最大重试"
+            v-if="editingAction.executionMode === 'AFTER_COMMIT' && ['RETRY', 'CUSTOM'].includes(editingAction.failurePolicy)"
+            :label="editingAction.failurePolicy === 'CUSTOM' ? '额外重试次数' : '最大重试'"
           >
             <el-input-number v-model="retryForm.maxRetries" :min="0" :max="20" />
-            <div class="form-tip">默认指数退避，最多等待 6 小时；超过次数进入死信记录</div>
+            <div class="form-tip">{{ editingAction.failurePolicy === 'CUSTOM' ? '首次执行之外允许重试的次数；策略决定是否重试及等待时间，转人工不会自动暂停流程。' : '默认指数退避，最多等待 6 小时；超过次数进入死信记录' }}</div>
           </el-form-item>
 
           <el-alert
@@ -328,6 +350,8 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import { failurePolicyOptions as buildFailurePolicyOptions, strategyFormSchema, strategyDefaults, strategyProblem, parseStrategyConfig } from '@/shared/flow-action-failure-strategy'
 
 const props = defineProps({
   processId: { type: String, required: true },
@@ -352,6 +376,25 @@ const selectedTemplate = ref('')
 const editingAction = ref({})
 const actionParamList = ref([])
 const retryForm = ref({ maxRetries: 5 })
+const failureStrategies = ref([])
+const strategyConfig = ref({})
+const strategyLoadError = ref('')
+const strategyConfigError = ref('')
+const strategyLoading = ref(false)
+let strategyRequestId = 0
+const currentStrategy = computed(() => failureStrategies.value.find(item =>
+  item.code === editingAction.value.failureStrategyCode && item.version === editingAction.value.failureStrategyVersion))
+const selectedStrategyKey = computed(() => editingAction.value.failureStrategyCode
+  ? `${editingAction.value.failureStrategyCode}@${editingAction.value.failureStrategyVersion}` : '')
+const failureStrategyOptions = computed(() => failureStrategies.value.map(strategy => ({
+  ...strategy,
+  unavailableReason: strategyProblem(strategy, editingAction.value.executionMode, currentHandler.value?.retryable)
+})))
+// 尚未选择时显示占位提示；仅对已有绑定提示版本失效，避免首次打开被误报为配置损坏。
+const customStrategyProblem = computed(() => strategyConfigError.value || strategyLoadError.value
+  || (selectedStrategyKey.value && !strategyLoading.value
+    ? strategyProblem(currentStrategy.value, editingAction.value.executionMode, currentHandler.value?.retryable) : ''))
+const customStrategySchema = computed(() => strategyFormSchema(currentStrategy.value))
 const canOpenExtensionManagement = computed(() => userStore.isSuperAdmin
   || userStore.permissions.includes('*')
   || userStore.permissions.includes('system:extension:list'))
@@ -408,9 +451,7 @@ const availableTemplates = computed(() => templates.filter(template => {
   return true
 }))
 
-const failurePolicyOptions = computed(() => editingAction.value.executionMode === 'AFTER_COMMIT'
-  ? [{ label: '失败自动重试', value: 'RETRY' }, { label: '记录失败后忽略', value: 'IGNORE' }]
-  : [{ label: '失败回滚流程', value: 'ROLLBACK' }, { label: '记录失败后继续', value: 'CONTINUE' }])
+const failurePolicyOptions = computed(() => buildFailurePolicyOptions(editingAction.value.executionMode))
 
 const riskWarnings = computed(() => {
   const warnings = []
@@ -470,9 +511,41 @@ function showActionDialog(action = null) {
   editingAction.value = action ? { ...action } : createEmptyAction()
   actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
   retryForm.value = parseRetryConfig(editingAction.value.retryConfig)
+  strategyConfigError.value = ''
+  try {
+    strategyConfig.value = parseStrategyConfig(editingAction.value.failureStrategyConfig)
+  } catch (error) {
+    strategyConfig.value = {}
+    strategyConfigError.value = error.message
+  }
+  loadFailureStrategies()
   selectedTemplate.value = ''
   actionDialogVisible.value = true
   loadSelectedHandler()
+}
+
+/** 目录请求失败时保留原策略及参数，避免编辑旧配置时静默降级。 */
+async function loadFailureStrategies() {
+  const requestId = ++strategyRequestId
+  strategyLoading.value = true
+  strategyLoadError.value = ''
+  try {
+    const items = await processActionApi.failureStrategies(props.processId)
+    if (requestId === strategyRequestId) failureStrategies.value = items || []
+  } catch {
+    if (requestId === strategyRequestId) strategyLoadError.value = '加载失败策略失败，请重试。'
+  } finally {
+    if (requestId === strategyRequestId) strategyLoading.value = false
+  }
+}
+
+function onStrategySelected(value) {
+  const strategy = failureStrategies.value.find(item => `${item.code}@${item.version}` === value)
+  if (!strategy) return
+  editingAction.value.failureStrategyCode = strategy.code
+  editingAction.value.failureStrategyVersion = strategy.version
+  strategyConfig.value = strategyDefaults(strategy)
+  strategyConfigError.value = ''
 }
 
 function applyTemplate(value) {
@@ -491,11 +564,11 @@ function onTimingChange(value) {
   const timing = timingOptions.value.find(item => item.value === value)
   if (!timing) return
   editingAction.value.executionMode = timing.defaultExecutionMode
-  editingAction.value.failurePolicy = timing.defaultFailurePolicy
+  if (editingAction.value.failurePolicy !== 'CUSTOM') editingAction.value.failurePolicy = timing.defaultFailurePolicy
 }
 
 function onExecutionModeChange(value) {
-  editingAction.value.failurePolicy = value === 'AFTER_COMMIT' ? 'RETRY' : 'ROLLBACK'
+  if (editingAction.value.failurePolicy !== 'CUSTOM') editingAction.value.failurePolicy = value === 'AFTER_COMMIT' ? 'RETRY' : 'ROLLBACK'
 }
 
 function onHandlerSelected(option) {
@@ -545,7 +618,8 @@ function normalizeCatalogHandler(option) {
     supportedExecutionModes: option.supportedExecutionModes || [],
     recommendedExecutionMode: option.recommendedExecutionMode,
     extraParamSchema: option.extraParamSchema || {},
-    dynamicExtraParams: option.dynamicExtraParams === true
+    dynamicExtraParams: option.dynamicExtraParams === true,
+    retryable: option.retryable
   }
 }
 
@@ -569,6 +643,14 @@ async function saveAction() {
     ElMessage.warning('请填写动作名称、执行时机和处理器')
     return
   }
+  if (editingAction.value.failurePolicy === 'CUSTOM' && (strategyLoading.value || customStrategyProblem.value)) {
+    ElMessage.warning(strategyLoading.value ? '正在加载失败策略，请稍后保存' : customStrategyProblem.value)
+    return
+  }
+  if (editingAction.value.failurePolicy === 'CUSTOM' && !selectedStrategyKey.value) {
+    ElMessage.warning('请选择自定义策略')
+    return
+  }
   saving.value = true
   try {
     // 保存请求显式遵循当前契约，避免把查询响应中的只读或历史字段重新透传给后端。
@@ -580,13 +662,16 @@ async function saveAction() {
       triggerTiming: editingAction.value.triggerTiming,
       executionMode: editingAction.value.executionMode,
       failurePolicy: editingAction.value.failurePolicy,
+      failureStrategyCode: editingAction.value.failurePolicy === 'CUSTOM' ? editingAction.value.failureStrategyCode : null,
+      failureStrategyVersion: editingAction.value.failurePolicy === 'CUSTOM' ? editingAction.value.failureStrategyVersion : null,
+      failureStrategyConfig: editingAction.value.failurePolicy === 'CUSTOM' ? JSON.stringify(strategyConfig.value) : null,
       actionName: editingAction.value.actionName,
       description: editingAction.value.description,
       interfaceName: editingAction.value.interfaceName,
       paramsJson: buildParamsJson(),
       enabled: editingAction.value.enabled,
       retryConfig: editingAction.value.executionMode === 'AFTER_COMMIT'
-        ? JSON.stringify({ maxRetries: retryForm.value.maxRetries })
+        ? JSON.stringify({ maxRetries: retryForm.value.maxRetries, ...(editingAction.value.failurePolicy === 'CUSTOM' ? { semanticsVersion: 2 } : {}) })
         : null,
       sortOrder: editingAction.value.id ? editingAction.value.sortOrder : actions.value.length,
       actionDefinitionId: editingAction.value.actionDefinitionId
@@ -699,7 +784,8 @@ function failurePolicyLabel(value) {
     RETRY: '失败自动重试',
     IGNORE: '记录失败后忽略',
     ROLLBACK: '失败回滚流程',
-    CONTINUE: '记录失败后继续'
+    CONTINUE: '记录失败后继续',
+    CUSTOM: '自定义策略'
   }[value] || '未设置失败策略'
 }
 
@@ -785,6 +871,26 @@ function openExtensionManagement() {
 }
 
 .handler-option small {
+  color: var(--el-text-color-secondary);
+}
+
+.failure-strategy-option {
+  height: auto;
+  min-height: 34px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.failure-strategy-option__name,
+.failure-strategy-option__reason {
+  display: block;
+}
+
+.failure-strategy-option__reason {
+  margin-top: 2px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 

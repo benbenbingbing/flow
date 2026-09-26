@@ -164,6 +164,10 @@ public class FlowActionService {
         
         // 2. 复制每个动作到新版本，状态改为已发布
         for (FlowAction draft : draftActions) {
+            // 发布校验与复制可能分别查询草稿，复制前再固化默认参数，覆盖导入配置未填默认值的情况。
+            if (FlowActionFailureStrategyCatalog.custom(draft) && Boolean.TRUE.equals(draft.getEnabled())) {
+                configurationValidator.validate(draft);
+            }
             FlowAction published = new FlowAction();
             published.setProcessConfigId(draft.getProcessConfigId());
             published.setScopeType(draft.getScopeType());
@@ -171,6 +175,9 @@ public class FlowActionService {
             published.setTriggerTiming(draft.getTriggerTiming());
             published.setExecutionMode(draft.getExecutionMode());
             published.setFailurePolicy(draft.getFailurePolicy());
+            published.setFailureStrategyCode(draft.getFailureStrategyCode());
+            published.setFailureStrategyVersion(draft.getFailureStrategyVersion());
+            published.setFailureStrategyConfig(draft.getFailureStrategyConfig());
             published.setRetryConfig(draft.getRetryConfig());
             published.setActionDefinitionId(draft.getActionDefinitionId());
             published.setActionName(draft.getActionName());
@@ -302,6 +309,9 @@ public class FlowActionService {
         action.setTriggerTiming(request.getTriggerTiming());
         action.setExecutionMode(request.getExecutionMode());
         action.setFailurePolicy(request.getFailurePolicy());
+        action.setFailureStrategyCode(request.getFailureStrategyCode());
+        action.setFailureStrategyVersion(request.getFailureStrategyVersion());
+        action.setFailureStrategyConfig(request.getFailureStrategyConfig());
         action.setRetryConfig(request.getRetryConfig());
         action.setActionDefinitionId(request.getActionDefinitionId());
         action.setActionName(request.getActionName());
@@ -334,6 +344,10 @@ public class FlowActionService {
         }
         if (!org.springframework.util.StringUtils.hasText(action.getFailurePolicy())) {
             action.setFailurePolicy(defaultFailurePolicy(action.getTriggerTiming()));
+        }
+        if (FlowActionFailureStrategyCatalog.custom(action)) {
+            action.setFailurePolicy("CUSTOM");
+            action.setExecutionMode(action.getExecutionMode().toUpperCase(java.util.Locale.ROOT));
         }
         if (action.getSortOrder() == null) {
             action.setSortOrder(0);

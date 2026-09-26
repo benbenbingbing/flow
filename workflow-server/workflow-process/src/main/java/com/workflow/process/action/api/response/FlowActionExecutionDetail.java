@@ -13,6 +13,7 @@ import java.util.Map;
  * 执行结果与执行轨迹。</p>
  */
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 public class FlowActionExecutionDetail {
 
     /** 执行记录 ID */
@@ -47,6 +48,19 @@ public class FlowActionExecutionDetail {
     private String idempotencyKey;
     /** 执行状态 */
     private String status;
+    /** 首次执行为 1，自定义策略用它限制额外重试预算。 */
+    private Integer attemptNo;
+    /** 最终处理原因；继续、忽略和人工处理仍保留失败事实。 */
+    private String terminationReason;
+    /** 自定义策略显示身份，不向浏览器返回内部执行快照。 */
+    private String failureStrategyCode;
+    private String failureStrategyVersion;
+    /** NONE/OPEN/RESOLVED/REPLAYING，独立于动作执行成功与否。 */
+    private String resolutionStatus;
+    /** 同一重放链的根记录，用于串行化人工重放请求。 */
+    private String replayRootId;
+    /** 发起本次重放的原失败记录，原记录不会被清空。 */
+    private String replayOfId;
     /** 已重试次数 */
     private Integer retryCount;
     /** 最大重试次数 */

@@ -13,5 +13,7 @@ public enum FlowActionFailurePolicy {
     /** 重试：提交后动作失败时按指数退避自动重试，直至次数耗尽进入死信 */
     RETRY,
     /** 忽略：提交后动作失败时直接标记为死信，不再重试 */
-    IGNORE
+    IGNORE,
+    /** 自定义：动作异常后交由已注册策略决定，平台校验执行边界。 */
+    CUSTOM
 }

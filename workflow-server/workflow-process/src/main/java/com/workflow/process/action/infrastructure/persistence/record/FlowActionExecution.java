@@ -52,6 +52,10 @@ public class FlowActionExecution {
     private String idempotencyKey;
     /** 触发事件序列化 JSON（执行上下文载荷） */
     private String payloadJson;
+    /** CUSTOM 的完整动作发布快照，重试不依赖可变草稿或最新策略。 */
+    private String failureStrategySnapshot;
+    /** 人工重放的下游幂等键；为空时使用本记录 idempotencyKey。 */
+    private String handlerIdempotencyKey;
     /** 解析后的业务参数 JSON（已脱敏） */
     private String resolvedParamsJson;
     /** 处理器执行结果 JSON（已脱敏） */
@@ -60,6 +64,16 @@ public class FlowActionExecution {
     private String executionTraceJson;
     /** 执行状态，对应 {@link Status} */
     private String status;
+    /** 首次执行为 1，自定义策略用它限制额外重试预算。 */
+    private Integer attemptNo;
+    /** 最终处理原因；继续、忽略和人工处理仍保留失败事实。 */
+    private String terminationReason;
+    /** NONE/OPEN/RESOLVED/REPLAYING，独立于动作执行成功与否。 */
+    private String resolutionStatus;
+    /** 同一重放链的根记录，用于串行化人工重放请求。 */
+    private String replayRootId;
+    /** 发起本次重放的原失败记录，原记录不会被清空。 */
+    private String replayOfId;
     /** 当前执行租约所有者 */
     private String ownerId;
     /** 单调递增 fencing token */

@@ -288,6 +288,7 @@ public class FlowActionCatalogService implements FlowActionCatalogPort {
             }
             option.setSupportedTriggerTimings(handler.supportedTriggerTimings());
             option.setSupportedExecutionModes(handler.supportedExecutionModes());
+            option.setRetryable(handler.retryable());
             option.setRecommendedExecutionMode(handler.recommendedExecutionMode());
             option.setExtraParamSchema(handler.extraParamSchema());
             option.setDynamicExtraParams(handler.dynamicExtraParams());

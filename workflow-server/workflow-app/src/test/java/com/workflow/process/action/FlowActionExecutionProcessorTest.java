@@ -47,7 +47,7 @@ class FlowActionExecutionProcessorTest {
                 executionService,
                 actionMapper,
                 executor,
-                scheduler);
+                scheduler, mock(com.workflow.process.action.application.FlowActionFailureCoordinator.class));
 
         FlowActionExecution execution = new FlowActionExecution();
         execution.setId("execution-1");
@@ -123,7 +123,7 @@ class FlowActionExecutionProcessorTest {
                 executionService,
                 actionMapper,
                 executor,
-                scheduler);
+                scheduler, mock(com.workflow.process.action.application.FlowActionFailureCoordinator.class));
         FlowActionExecution execution = new FlowActionExecution();
         execution.setId("execution-1");
         execution.setActionId("action-1");

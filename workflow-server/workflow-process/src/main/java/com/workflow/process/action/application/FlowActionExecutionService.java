@@ -58,6 +58,7 @@ public class FlowActionExecutionService {
     private final ObjectMapper objectMapper;
     private final FlowActionCatalogPort definitionService;
     private final SystemAuditPort auditPort;
+    private final FlowActionFailureStrategyCatalog failureStrategies;
 
     /**
      * 在主事务内创建执行记录。
@@ -128,6 +129,17 @@ public class FlowActionExecutionService {
         execution.setPayloadJson(writePayload(event));
         execution.setStatus(status.name());
         execution.setRetryCount(0);
+        execution.setAttemptNo(status == FlowActionExecution.Status.RUNNING ? 1 : 0);
+        execution.setResolutionStatus("NONE");
+        if (FlowActionFailureStrategyCatalog.custom(action)) {
+            try {
+                FlowAction snapshot = objectMapper.convertValue(action, FlowAction.class);
+                snapshot.setFailureStrategyConfig(action.getFailureStrategyConfig() == null ? "{}" : action.getFailureStrategyConfig());
+                execution.setFailureStrategySnapshot(objectMapper.writeValueAsString(snapshot));
+            } catch (Exception error) {
+                throw new IllegalArgumentException("无法保存自定义失败策略快照", error);
+            }
+        }
         execution.setMaxRetries(resolveMaxRetries(action.getRetryConfig()));
         execution.setCreatedAt(LocalDateTime.now());
         execution.setUpdatedAt(LocalDateTime.now());
@@ -143,6 +155,9 @@ public class FlowActionExecutionService {
                 Map.of(
                         "executionMode", valueOrEmpty(action.getExecutionMode()),
                         "failurePolicy", valueOrEmpty(action.getFailurePolicy())));
+        if (FlowActionFailureStrategyCatalog.custom(action) && "IN_TRANSACTION".equals(action.getExecutionMode())) {
+            appendTrace(execution, "TRANSACTION_PENDING", "主事务尚未结束，最终结局待确认", Map.of("outcome", "UNKNOWN"));
+        }
         executionMapper.insert(execution);
         recordCreatedAudit(execution, event);
         return execution;
@@ -311,12 +326,14 @@ public class FlowActionExecutionService {
                 Map.of("durationMs", execution.getDurationMs()));
         if (hasLease(execution)) {
             if (executionMapper.markLeasedSuccess(execution) == 0) {
+                if (execution.getFailureStrategySnapshot() != null) throw new IllegalStateException("自定义动作成功结果被过期租约拒绝");
                 log.warn("流程动作完成结果被 fencing 拒绝: id={}, owner={}, token={}",
                         execution.getId(), execution.getOwnerId(), execution.getLeaseToken());
             }
         } else {
             executionMapper.updateById(execution);
         }
+        if (execution.getReplayRootId() != null) executionMapper.finishReplay(execution.getReplayRootId(), "RESOLVED");
     }
 
     /**
@@ -391,6 +408,126 @@ public class FlowActionExecutionService {
                         : retryDelaySeconds(retryCount));
     }
 
+    /** 主事务完成后独立补记结局；若进程中断未回调，原轨迹仍明确保留 UNKNOWN。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordTransactionOutcome(String id, String outcome) {
+        FlowActionExecution execution = executionMapper.lockExecution(id);
+        if (execution == null || execution.getFailureStrategySnapshot() == null) return;
+        appendTrace(execution, "TRANSACTION_COMPLETED", "本次主事务已结束", Map.of("outcome", outcome));
+        execution.setUpdatedAt(LocalDateTime.now());
+        executionMapper.updateById(execution);
+    }
+
+    /** 读取创建执行记录时固定的完整动作；自定义快照损坏时不可退回当前动作配置。 */
+    public FlowAction executionAction(FlowActionExecution execution, FlowAction legacy) {
+        if (execution.getFailureStrategySnapshot() == null) {
+            if (FlowActionFailureStrategyCatalog.custom(legacy)) throw new IllegalStateException("自定义策略执行记录缺少发布快照");
+            return legacy;
+        }
+        try {
+            FlowAction action = objectMapper.readValue(execution.getFailureStrategySnapshot(), FlowAction.class);
+            if (!FlowActionFailureStrategyCatalog.custom(action)) throw new IllegalArgumentException("快照不是自定义策略");
+            return action;
+        } catch (Exception error) { throw new IllegalStateException("自定义策略执行快照不可用", error); }
+    }
+
+    /** 在业务副作用发生前确认快照指定的策略仍然可用，缺失版本不能悄悄继续执行。 */
+    public void validateCustomExecution(FlowAction action, FlowActionExecution execution, boolean retryable) {
+        failureStrategies.validateSnapshot(action, execution.getEntityCode(), retryable);
+    }
+
+    /** 在调用业务处理器前登记尝试；条件更新保证过期工作线程不能继续取得执行资格。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void beginCustomAttempt(FlowActionExecution execution) {
+        if (executionMapper.beginCustomAttempt(execution) != 1) {
+            throw new IllegalStateException("执行租约失效或重试预算耗尽");
+        }
+        execution.setAttemptNo((execution.getAttemptNo() == null ? 0 : execution.getAttemptNo()) + 1);
+        execution.setRetryCount(Math.max(0, execution.getAttemptNo() - 1));
+    }
+
+    /**
+     * 持久化已在原事务上下文计算的决定，以一个条件写入原子保存原始错误与执行状态。
+     * 不在独立审计事务中调用策略，避免误读主事务状态；fencing 拒绝时调用者必须停止处理。
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void persistCustomFailure(FlowActionExecution execution, Throwable error,
+            FlowActionFailureCoordinator.Outcome outcome) {
+        var decision = outcome.effective();
+        boolean retry = decision.disposition() == com.workflow.contracts.process.action.model.FailureDisposition.RETRY;
+        execution.setStatus(retry ? "FAILED" : "DEAD");
+        execution.setTerminationReason(decision.reasonCode());
+        execution.setResolutionStatus(decision.disposition() == com.workflow.contracts.process.action.model.FailureDisposition.MANUAL
+                ? "OPEN" : "NONE");
+        execution.setErrorMessage(errorMessage(error));
+        execution.setErrorStack(errorStack(error));
+        execution.setUpdatedAt(LocalDateTime.now());
+        execution.setFinishedAt(retry ? null : LocalDateTime.now());
+        execution.setNextRetryTime(retry ? LocalDateTime.now().plusSeconds(decision.retryDelaySeconds()) : null);
+        execution.setDurationMs(duration(execution));
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("attemptNo", execution.getAttemptNo());
+        details.put("requested", outcome.requested());
+        details.put("effective", decision);
+        details.put("strategyError", outcome.strategyError());
+        appendTrace(execution, "FAILURE_DECISION", decision.reason(), details);
+        if (hasLease(execution)) {
+            if (executionMapper.markLeasedFailure(execution, retry ? decision.retryDelaySeconds() : 0) != 1) {
+                throw new IllegalStateException("失败策略结果被过期租约拒绝");
+            }
+        } else if (executionMapper.updateById(execution) != 1) {
+            throw new IllegalStateException("失败策略结果未保存");
+        }
+        if (!retry && execution.getReplayRootId() != null) {
+            executionMapper.finishReplay(execution.getReplayRootId(), "OPEN");
+        }
+    }
+
+    /** 下游幂等键与执行记录唯一键分离，人工重放仍对外传递原来的键。 */
+    public String handlerIdempotencyKey(FlowActionExecution execution) {
+        return StringUtils.hasText(execution.getHandlerIdempotencyKey())
+                ? execution.getHandlerIdempotencyKey() : execution.getIdempotencyKey();
+    }
+
+    /** 自定义失败不清空原记录；根记录 CAS 保证同一重放链只有一个后台任务。 */
+    private void retryCustom(FlowActionExecution original) {
+        FlowAction action = executionAction(original, null);
+        if (!"DEAD".equals(original.getStatus()) || !"AFTER_COMMIT".equals(action.getExecutionMode())
+                || !failureStrategies.retryable(action)) {
+            throw new IllegalArgumentException("只有支持安全重放的提交后终态动作可手工重试；事务内动作请重新办理原操作");
+        }
+        failureStrategies.descriptor(action);
+        String root = original.getReplayRootId() == null ? original.getId() : original.getReplayRootId();
+        if (executionMapper.reserveReplay(root) != 1) throw new IllegalStateException("已有重放进行中或该失败已处理");
+        FlowActionExecution replay = createRecord(action, readEvent(original), java.util.UUID.randomUUID().toString(),
+                FlowActionExecution.Status.PENDING);
+        replay.setFailureStrategySnapshot(original.getFailureStrategySnapshot());
+        replay.setReplayRootId(root);
+        replay.setReplayOfId(original.getId());
+        replay.setHandlerIdempotencyKey(handlerIdempotencyKey(original));
+        appendTrace(replay, "MANUAL_REPLAY", "超级管理员发起手工重放", Map.of(
+                "sourceExecutionId", original.getId(), "operatorId", valueOrEmpty(com.workflow.admin.security.context.UserContext.getUserId())));
+        executionMapper.updateById(replay);
+    }
+
+    /** 人工处理只更新处理状态，不把失败执行改成成功；与并发重放通过同一根状态互斥。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @SystemAudit(module = AuditModule.ACTION, action = AuditAction.UPDATE, operation = "确认流程动作失败已处理",
+            risk = AuditRiskLevel.HIGH, required = true, targetType = "FLOW_ACTION_EXECUTION", targetIdArg = 0)
+    public void resolve(String id, String note) {
+        if (note == null || note.isBlank() || note.length() > 1000) throw new IllegalArgumentException("请填写 1~1000 字处理说明");
+        FlowActionExecution execution = executionMapper.lockExecution(id);
+        if (execution == null || execution.getFailureStrategySnapshot() == null
+                || execution.getReplayRootId() != null || executionMapper.resolveFailure(id) != 1) {
+            throw new IllegalStateException("仅可处理尚未关闭且没有重放进行中的原始失败记录");
+        }
+        execution.setResolutionStatus("RESOLVED");
+        appendTrace(execution, "MANUAL_RESOLVED", note, Map.of("operatorId",
+                valueOrEmpty(com.workflow.admin.security.context.UserContext.getUserId())));
+        execution.setUpdatedAt(LocalDateTime.now());
+        executionMapper.updateById(execution);
+    }
+
     /**
      * 按主键查询执行记录。
      *
@@ -416,8 +553,19 @@ public class FlowActionExecutionService {
      *
      * @return 恢复的记录条数
      */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public int recoverExpiredLeases() {
-        return executionMapper.recoverExpiredLeases();
+        int count = 0;
+        for (String id : executionMapper.selectExpiredLeaseIds()) {
+            if (executionMapper.recoverExpiredLease(id) == 1) {
+                count++;
+                var recovered = executionMapper.selectById(id);
+                if (recovered != null && "DEAD".equals(recovered.getStatus()) && recovered.getReplayRootId() != null) {
+                    executionMapper.finishReplay(recovered.getReplayRootId(), "OPEN");
+                }
+            }
+        }
+        return count;
     }
 
     /**
@@ -494,7 +642,8 @@ public class FlowActionExecutionService {
     }
 
     /**
-     * 超级管理员手动重试死信/失败记录：清空错误信息并重置为 PENDING 立即可执行。
+     * 超级管理员重试可安全重放的提交后动作。内置策略沿用原记录重置；
+     * 自定义策略创建关联执行并保留原始失败，事务内动作必须重新办理原操作。
      *
      * @param id 执行记录 ID
      * @throws RuntimeException 记录不存在或状态不可重试时抛出
@@ -509,13 +658,22 @@ public class FlowActionExecutionService {
             targetType = "FLOW_ACTION_EXECUTION",
             targetIdArg = 0)
     public void retry(String id) {
-        FlowActionExecution execution = executionMapper.selectById(id);
+        FlowActionExecution execution = executionMapper.lockExecution(id);
         if (execution == null) {
             throw new RuntimeException("流程动作执行记录不存在");
+        }
+        if (execution.getFailureStrategySnapshot() != null) {
+            retryCustom(execution);
+            return;
         }
         if (!FlowActionExecution.Status.DEAD.name().equals(execution.getStatus())
                 && !FlowActionExecution.Status.FAILED.name().equals(execution.getStatus())) {
             throw new RuntimeException("只有失败或死信动作可以重试");
+        }
+        var originalAction = flowActionMapper.selectById(execution.getActionId());
+        if (originalAction == null || !"AFTER_COMMIT".equalsIgnoreCase(originalAction.getExecutionMode())
+                || !failureStrategies.retryable(originalAction)) {
+            throw new IllegalArgumentException("手工重试仅支持可安全重放的提交后动作，事务内动作请重新办理原操作");
         }
         execution.setStatus(FlowActionExecution.Status.PENDING.name());
         execution.setRetryCount(0);
@@ -585,6 +743,14 @@ public class FlowActionExecutionService {
                 }
             }
         }
+        if (execution.getFailureStrategySnapshot() != null) {
+            try {
+                var snapshot = objectMapper.readTree(execution.getFailureStrategySnapshot());
+                detail.setFailureStrategyCode(snapshot.path("failureStrategyCode").asText());
+                detail.setFailureStrategyVersion(snapshot.path("failureStrategyVersion").asText());
+            } catch (Exception ignored) { /* 损坏快照仍允许查询原失败记录，执行时会拒绝。 */ }
+        }
+        detail.setIdempotencyKey(handlerIdempotencyKey(execution));
         detail.setTriggerContext(readSanitizedMap(execution.getPayloadJson()));
         detail.setResolvedParams(readSanitizedMap(execution.getResolvedParamsJson()));
         detail.setResult(readSanitizedObject(execution.getResultJson()));

@@ -31,8 +31,15 @@ public class FlowActionSaveRequest {
     /** 执行方式：IN_TRANSACTION、AFTER_COMMIT */
     private String executionMode;
 
-    /** 失败策略：ROLLBACK、CONTINUE、RETRY、IGNORE */
+    /** 失败策略：ROLLBACK、CONTINUE、RETRY、IGNORE、CUSTOM */
     private String failurePolicy;
+
+    /** 自定义策略稳定编码，与版本共同定位实现，内置策略不使用。 */
+    private String failureStrategyCode;
+    /** 发布后固定版本，防止重试时采用新策略逻辑。 */
+    private String failureStrategyVersion;
+    /** 经过策略参数定义校验的 JSON 对象，随流程版本发布。 */
+    private String failureStrategyConfig;
 
     /** 动作名称 */
     @NotBlank(message = "动作名称不能为空")

@@ -45,9 +45,19 @@ public class FlowAction {
     private String executionMode;
 
     /**
-     * 失败策略：ROLLBACK、CONTINUE、RETRY、IGNORE
+     * 失败策略：ROLLBACK、CONTINUE、RETRY、IGNORE、CUSTOM
      */
     private String failurePolicy;
+
+    /** 自定义策略稳定编码，与版本共同定位实现，内置策略不使用。 */
+    @TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private String failureStrategyCode;
+    /** 发布后固定版本，防止重试时采用新策略逻辑。 */
+    @TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private String failureStrategyVersion;
+    /** 经过策略参数定义校验的 JSON 对象，随流程版本发布。 */
+    @TableField(updateStrategy = com.baomidou.mybatisplus.annotation.FieldStrategy.ALWAYS)
+    private String failureStrategyConfig;
 
     /**
      * 重试配置 JSON

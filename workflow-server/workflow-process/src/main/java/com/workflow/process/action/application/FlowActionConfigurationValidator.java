@@ -38,6 +38,7 @@ public class FlowActionConfigurationValidator {
     private final ApplicationContext applicationContext;
     private final FlowActionTimingCatalog timingCatalog;
     private final ObjectMapper objectMapper;
+    private final FlowActionFailureStrategyCatalog failureStrategies;
 
     /**
      * 校验单条动作配置的完整合法性。
@@ -59,7 +60,18 @@ public class FlowActionConfigurationValidator {
         if (scopeType != FlowActionScopeType.PROCESS && !StringUtils.hasText(action.getElementId())) {
             throw new RuntimeException("节点或连线动作必须配置 BPMN 元素 ID");
         }
-        validatePolicy(executionMode, failurePolicy);
+        if (failurePolicy == FlowActionFailurePolicy.CUSTOM) {
+            failureStrategies.validate(action);
+            try {
+                // 默认参数在保存/发布时固化，避免实现的默认值变化影响旧流程。
+                action.setFailureStrategyConfig(objectMapper.writeValueAsString(failureStrategies.configuration(action)));
+            } catch (java.io.IOException error) {
+                throw new IllegalArgumentException("无法保存失败策略参数", error);
+            }
+            validateCustomRetryConfig(action.getRetryConfig());
+        } else {
+            validatePolicy(executionMode, failurePolicy);
+        }
         validateRetryConfig(action.getRetryConfig());
         validateHandler(action, executionMode);
         validateElement(action, timing);
@@ -209,6 +221,22 @@ public class FlowActionConfigurationValidator {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("重试配置 JSON 不合法", e);
+        }
+    }
+
+    /** 自定义策略使用明确的额外重试预算，拒绝字符串数字和旧次数语义。 */
+    private void validateCustomRetryConfig(String raw) {
+        if (raw == null || raw.isBlank()) return;
+        try {
+            var node = objectMapper.readTree(raw);
+            if (!node.isObject() || !node.path("maxRetries").isIntegralNumber()
+                    || !node.path("maxRetries").canConvertToInt()
+                    || node.path("maxRetries").asInt() < 0 || node.path("maxRetries").asInt() > 20
+                    || node.path("semanticsVersion").asInt() != 2) {
+                throw new IllegalArgumentException("自定义策略须使用额外重试次数 0~20（semanticsVersion=2）");
+            }
+        } catch (java.io.IOException error) {
+            throw new IllegalArgumentException("自定义策略重试配置不合法", error);
         }
     }
 

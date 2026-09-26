@@ -26,6 +26,14 @@ public class FlowActionController {
     
     private final FlowActionService flowActionService;
     private final FlowActionTimingCatalog timingCatalog;
+    private final com.workflow.process.action.application.FlowActionFailureStrategyCatalog failureStrategies;
+
+    /** 返回当前流程实体可见的已注册策略；保存和发布仍由后端重新校验。 */
+    @GetMapping("/failure-strategies")
+    public ApiResponse<List<com.workflow.contracts.process.action.model.FailureStrategyDescriptor>> failureStrategies(
+            @RequestParam String processConfigId) {
+        return ApiResponse.success(failureStrategies.list(processConfigId));
+    }
     
     /**
      * 查询流程配置下所有草稿动作

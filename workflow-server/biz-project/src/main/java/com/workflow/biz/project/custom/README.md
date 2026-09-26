@@ -110,6 +110,37 @@ Spring Bean，方便后续补入口时直接验证：
 | `ProjectCustomBootstrapJobCoordinator` | `BootstrapJobPort` | 多实例启动任务互斥 |
 | `ProjectCustomUiExtensionCatalogAdapter` | `UiExtensionCatalogPort` | 替换 UI 扩展目录读取来源 |
 
+## 流程动作自定义失败策略
+
+保留原有 `ROLLBACK / CONTINUE / RETRY / IGNORE`。设计器选择“自定义策略”后，
+平台在动作抛出异常时调用 `FlowActionFailureStrategyProvider`，无需增加失败触发条件。
+
+| 类 | 策略身份 | 行为 |
+| --- | --- | --- |
+| `ProjectCustomFailureStrategy` | `PROJECT_FAILURE_MANUAL@1` | 事务内回滚本次操作；提交后停止自动执行并转人工，可配置处理说明 |
+| `ProjectTransientFailureStrategy` | `PROJECT_TRANSIENT_RETRY@1` | 提交后连接失败或超时按指数退避重试；其它异常、重试耗尽转人工 |
+
+这些示例仅出现在策略目录，不会自动绑定已有流程。使用前运行新增的 V108 迁移，
+并部署包含策略实现的后端。在流程动作中选择“自定义策略”、具体实现及版本，填写
+参数后保存、发布。网络重试策略只允许绑定 `retryable()` 返回 true 的动作处理器。
+
+项目扩展时实现 `descriptor()` 和 `decide(context, configuration)`，注册为 Spring Bean。
+编码和版本必须唯一；改变语义时增加版本，保留旧流程引用的实现。参数定义支持
+`string / number`（整数）`/ boolean / select`，未知参数或不合法类型会被后端拒绝。
+参数默认值在保存时补齐，并随发布版本和执行记录固定。
+
+`decide` 只返回 `FailureDecision`，例如直接返回
+`FailureDecision.of(FailureDisposition.MANUAL, "MANUAL_REQUIRED", "请核查业务数据")`。
+方法应快速、无副作用；事务、重试和审计由平台实施。正常返回的业务动作仍视为成功，
+处理器自行吞掉异常不会触发失败策略。
+
+自定义策略的次数表示“首次之外的额外重试次数”；配置 3 表示最多执行 4 次。
+管理员可在执行日志登记处理说明或手工重放符合条件的提交后动作。重放创建关联记录，
+原失败记录保留，传给业务处理器的幂等键保持一致。事务内失败应重新办理原业务操作。
+转人工不会自动挂起流程；通知、补偿、退回节点不属于本次实现。
+
+详细约束见仓库 `docs/flow-action-failure-policy-extension-design.md`。
+
 ## 范围说明
 
 本清单不包含 MyBatis Mapper、普通 Service 接口，以及
@@ -117,5 +148,5 @@ Spring Bean，方便后续补入口时直接验证：
 架构端口。这些类型用于隔离模块和基础设施，不按编码/类型向业务配置开放；伪造
 空实现会改变平台核心语义，不属于本次“可配置后端扩展”。
 
-所有没有真实业务场景的实现都会打印结构化 `log.info`，并返回空结果、默认拒绝
-或安全演示数据；不会访问外部网络，也不会写入真实业务数据。
+没有真实业务场景的示例返回空结果、默认拒绝或安全演示数据；不会访问外部网络，
+也不会写入真实业务数据。失败策略只做判断，由平台执行记录统一保存处理过程。

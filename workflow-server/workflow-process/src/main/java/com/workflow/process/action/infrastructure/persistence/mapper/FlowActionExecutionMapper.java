@@ -21,6 +21,47 @@ import java.util.List;
 @Mapper
 public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecution> {
 
+    /** 以主键行锁串行化人工操作和主事务结局补记，避免整条轨迹更新互相覆盖。 */
+    @Select("SELECT * FROM process_action_execution WHERE id = #{id} FOR UPDATE")
+    FlowActionExecution lockExecution(String id);
+
+    /** 登记自定义动作尝试，与租约绑定；线程池拒绝和尚未开始的恢复不会消耗预算。 */
+    @Update("""
+            <script>
+            UPDATE process_action_execution
+             SET retry_count = attempt_no, attempt_no = attempt_no + 1,
+                 attempt_lease_token = lease_token
+             WHERE id = #{id} AND status = 'RUNNING' AND owner_id = #{ownerId}
+             AND lease_token = #{leaseToken}
+             AND lease_until > ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)}
+             AND attempt_no &lt; max_retries + 1
+             AND (attempt_lease_token IS NULL OR attempt_lease_token != lease_token)
+            </script>
+            """)
+    int beginCustomAttempt(FlowActionExecution execution);
+
+    /** 对根失败记录加写锁并预留唯一重放，事务结束前新任务不可见。 */
+    @Update("""
+            UPDATE process_action_execution SET resolution_status = 'REPLAYING'
+             WHERE id = #{id} AND status = 'DEAD' AND failure_strategy_snapshot IS NOT NULL
+             AND resolution_status IN ('NONE', 'OPEN')
+            """)
+    int reserveReplay(String id);
+
+    /** 后台重放结束后只更新人工处理状态，保留原失败状态与错误。 */
+    @Update("""
+            UPDATE process_action_execution SET resolution_status = #{resolution}
+             WHERE id = #{id} AND resolution_status = 'REPLAYING'
+            """)
+    int finishReplay(@Param("id") String id, @Param("resolution") String resolution);
+
+    /** 原失败记录的人工处理与重放互斥，重复确认不再覆盖历史说明。 */
+    @Update("""
+            UPDATE process_action_execution SET resolution_status = 'RESOLVED'
+             WHERE id = #{id} AND status = 'DEAD' AND resolution_status IN ('NONE', 'OPEN')
+            """)
+    int resolveFailure(String id);
+
     /**
      * 查询就绪的执行记录：状态为 PENDING 或已到重试时间的 FAILED。
      *
@@ -185,6 +226,8 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
             UPDATE process_action_execution
              SET status = #{execution.status},
                  retry_count = #{execution.retryCount},
+                 termination_reason = #{execution.terminationReason},
+                 resolution_status = #{execution.resolutionStatus},
                  next_retry_time = CASE WHEN #{execution.status} = 'DEAD' THEN NULL ELSE ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcAfterSeconds(_databaseId, 'retryDelaySeconds')} END,
                  finished_at = CASE WHEN #{execution.status} = 'DEAD' THEN ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)} ELSE NULL END,
                  error_message = #{execution.errorMessage},
@@ -262,7 +305,7 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
             @Param("page") IPage<String> page);
 
     /**
-     * 处理{@code recover}过期租约，并将结果传给后续步骤。
+     * 恢复到期租约；自定义动作若已登记调用，结果未知时转人工，不能假设外部副作用未发生。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @return 处理后的{@code recover}过期租约结果，供调用方继续处理
@@ -270,8 +313,11 @@ public interface FlowActionExecutionMapper extends BaseMapper<FlowActionExecutio
     @Update("""
             <script>
             UPDATE process_action_execution${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@primaryKeyUpdateHint(_databaseId)}
-             SET status = 'FAILED',
-                 next_retry_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)},
+             SET status = CASE WHEN failure_strategy_snapshot IS NOT NULL AND attempt_lease_token = lease_token THEN 'DEAD' ELSE 'FAILED' END,
+                 termination_reason = CASE WHEN failure_strategy_snapshot IS NOT NULL AND attempt_lease_token = lease_token THEN 'EXECUTION_UNCERTAIN' ELSE termination_reason END,
+                 resolution_status = CASE WHEN failure_strategy_snapshot IS NOT NULL AND attempt_lease_token = lease_token THEN 'OPEN' ELSE resolution_status END,
+                 next_retry_time = CASE WHEN failure_strategy_snapshot IS NOT NULL AND attempt_lease_token = lease_token THEN NULL ELSE ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)} END,
+                 finished_at = CASE WHEN failure_strategy_snapshot IS NOT NULL AND attempt_lease_token = lease_token THEN ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@utcNow(_databaseId)} ELSE finished_at END,
                  error_message = 'LEASE_EXPIRED',
                  owner_id = NULL,
                  lease_until = NULL,

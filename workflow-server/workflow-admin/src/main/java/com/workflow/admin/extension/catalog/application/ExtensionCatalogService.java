@@ -205,6 +205,7 @@ public class ExtensionCatalogService {
                 emptySet(source.getSupportedExecutionModes()));
         item.setRecommendedExecutionMode(
                 source.getRecommendedExecutionMode());
+        item.setRetryable(source.getRetryable());
         item.setParameterType(source.getParamType());
         item.setConfigSchema(valueOrEmpty(source.getExtraParamSchema()));
         item.setExtraParamSchema(valueOrEmpty(source.getExtraParamSchema()));

@@ -47,6 +47,8 @@ public class FlowActionHandlerOption {
     private Set<String> supportedTriggerTimings;
     /** 处理器支持的执行方式集合；空集合表示支持全部 */
     private Set<String> supportedExecutionModes;
+    /** 是否允许使用同一幂等键重试，供配置界面解释策略兼容性。 */
+    private Boolean retryable;
     /** 处理器推荐的执行方式 */
     private String recommendedExecutionMode;
     /** extraParams 配置 Schema */

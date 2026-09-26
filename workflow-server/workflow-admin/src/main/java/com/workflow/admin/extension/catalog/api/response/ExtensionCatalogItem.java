@@ -37,6 +37,8 @@ public class ExtensionCatalogItem {
     private Set<String> supportedBindings;
     private Set<String> supportedTriggerTimings;
     private Set<String> supportedExecutionModes;
+    /** 是否允许使用同一幂等键重试，供配置界面解释策略兼容性。 */
+    private Boolean retryable;
     private String recommendedExecutionMode;
     private String parameterType;
     private Object configSchema;

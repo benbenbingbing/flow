@@ -31,6 +31,7 @@ public class FlowActionExecutionProcessor {
     private final FlowActionMapper flowActionMapper;
     private final FlowActionExecutor flowActionExecutor;
     private final TaskScheduler heartbeatScheduler;
+    private final FlowActionFailureCoordinator failureCoordinator;
 
     /**
      * 初始化流程动作执行{@code processor}，保存构造参数供后续方法使用。
@@ -44,11 +45,13 @@ public class FlowActionExecutionProcessor {
             FlowActionExecutionService executionService,
             FlowActionMapper flowActionMapper,
             FlowActionExecutor flowActionExecutor,
-            @Qualifier("flowActionHeartbeatScheduler") TaskScheduler heartbeatScheduler) {
+            @Qualifier("flowActionHeartbeatScheduler") TaskScheduler heartbeatScheduler,
+            FlowActionFailureCoordinator failureCoordinator) {
         this.executionService = executionService;
         this.flowActionMapper = flowActionMapper;
         this.flowActionExecutor = flowActionExecutor;
         this.heartbeatScheduler = heartbeatScheduler;
+        this.failureCoordinator = failureCoordinator;
     }
 
     /**
@@ -81,6 +84,18 @@ public class FlowActionExecutionProcessor {
                 heartbeatPeriod);
         try {
             FlowAction action = flowActionMapper.selectById(execution.getActionId());
+            try {
+                if (execution.getFailureStrategySnapshot() != null || FlowActionFailureStrategyCatalog.custom(action)) {
+                    action = executionService.executionAction(execution, action);
+                }
+            } catch (RuntimeException snapshotError) {
+                executionService.persistCustomFailure(execution, snapshotError,
+                        new FlowActionFailureCoordinator.Outcome(null,
+                                com.workflow.contracts.process.action.model.FailureDecision.of(
+                                        com.workflow.contracts.process.action.model.FailureDisposition.MANUAL,
+                                        "STRATEGY_ERROR", "自定义策略快照不可用"), snapshotError.getMessage()));
+                return;
+            }
             if (action == null) {
                 executionService.markFinalFailure(
                         execution,
@@ -90,17 +105,34 @@ public class FlowActionExecutionProcessor {
             String previousUserId = UserContext.getUserId();
             String previousUsername = UserContext.getUsername();
             boolean retryable = false;
+            boolean attemptStarted = false;
             try {
                 retryable = flowActionExecutor.retryable(action);
                 FlowActionTriggerEvent event = executionService.readEvent(execution);
                 restoreOperatorContext(event);
+                if (FlowActionFailureStrategyCatalog.custom(action)) {
+                    executionService.validateCustomExecution(action, execution, retryable);
+                    executionService.beginCustomAttempt(execution);
+                }
+                attemptStarted = true;
                 FlowActionContext context = flowActionExecutor.executeAction(
                         action,
                         event,
-                        execution.getIdempotencyKey(),
+                        execution.getHandlerIdempotencyKey() == null ? execution.getIdempotencyKey() : execution.getHandlerIdempotencyKey(),
                         execution);
                 executionService.markSuccess(execution, context);
             } catch (Exception e) {
+                if (FlowActionFailureStrategyCatalog.custom(action)) {
+                    var outcome = attemptStarted ? failureCoordinator.decide(action, execution, e, retryable)
+                            : failureCoordinator.preflightFailure(action, e);
+                    try {
+                        executionService.persistCustomFailure(execution, e, outcome);
+                    } catch (RuntimeException auditError) {
+                        e.addSuppressed(auditError);
+                        throw e;
+                    }
+                    return;
+                }
                 boolean retryPolicy =
                         FlowActionFailurePolicy.RETRY.name()
                                 .equalsIgnoreCase(action.getFailurePolicy());
