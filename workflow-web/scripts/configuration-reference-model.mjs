@@ -760,6 +760,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/ListButtonConfigPanel.vue', '^advancedButton\\.', '实体配置-列表-编辑-按钮配置-高级设置'),
   locationRule('src/components/ListButtonConfigPanel.vue', '^openListForm\\.', '实体配置-列表-编辑-按钮配置-打开实体列表'),
 
+  locationRule('src/views/EntityFormList.vue', '^form\\.defaultColumnCount$', '实体配置-表单-新建'),
   locationRule('src/views/EntityFormList.vue', '^form\\.', '实体配置-表单-编辑'),
 
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(fieldLabel|componentType|placeholder|gridSpan|isRequired|isReadonly|isHidden)$', '实体配置-表单-编辑-字段属性-常用'),
@@ -1438,6 +1439,15 @@ const CONTROL_OVERRIDES = Object.freeze({
     "configureWhen": "按钮使用打开关联内容模式时选择目标。",
     "skipWhen": "其他按钮模式不使用此标识。",
     "expectedEffect": "点击按钮按关联内容配置打开目标表单或列表。"
+  },
+  // 列数仅初始化后续新增属性的宽度，不能沿用通用数值约束说明或示例值 10。
+  'src/views/EntityFormList.vue:form.defaultColumnCount': {
+    label: '列数',
+    meaning: '设置后续新增实体属性的默认栅格宽度，可选 1、2、3 列，并保存到表单 viewConfig.defaultColumnCount。',
+    example: 2,
+    configureWhen: '新建表单，希望后续添加的实体属性默认按两列或三列排列时配置。',
+    skipWhen: '新增属性默认占满一行时保留 1 列；编辑已有表单基本信息时不提供此设置。',
+    expectedEffect: '设置为 2 列后，新添加的实体属性默认占 12/24 栅格；已有节点及手动调整的宽度不变，添加后仍可单独调整。'
   },
   "formRendererMode": {
     "label": "渲染方式",
