@@ -9,6 +9,8 @@ COPY packages/workflow-api/package.json packages/workflow-api/package.json
 COPY packages/workflow-mobile-ui/package.json packages/workflow-mobile-ui/package.json
 RUN npm ci
 COPY scripts scripts
+# 字段策略生成及两端扩展编译都依赖根目录下的 Schema 和清单，必须随源码进入构建阶段。
+COPY extensions extensions
 COPY packages packages
 COPY workflow-web workflow-web
 COPY workflow-mobile workflow-mobile
