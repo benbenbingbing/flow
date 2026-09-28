@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { loadIdentity, session, transport } from './adapters/services.js'
+import { resolveLoginRedirect } from './loginRedirect.js'
 
 export const router = createRouter({
   history: createWebHistory('/m/'),
@@ -21,6 +22,7 @@ router.beforeEach(async to => {
       try { await loadIdentity() } catch { session.clearAuth() }
     }
   }
-  if ((!session.token || session.userInfo?.passwordResetRequired) && to.name !== 'login') return { name: 'login' }
-  if (session.token && !session.userInfo?.passwordResetRequired && to.name === 'login') return '/inbox/todo'
+  // 使用 fullPath 保留任务、列表来源和锚点，登录或刷新登录页后仍能回到原单据。
+  if ((!session.token || session.userInfo?.passwordResetRequired) && to.name !== 'login') return { name: 'login', query: { redirect: to.fullPath } }
+  if (session.token && !session.userInfo?.passwordResetRequired && to.name === 'login') return resolveLoginRedirect(to.query.redirect)
 })

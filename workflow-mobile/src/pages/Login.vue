@@ -18,16 +18,23 @@
 </template>
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { Form as VanForm, Field as VanField, Button as VanButton } from 'vant'
 import { login, logout, session } from '../adapters/services.js'
+import { resolveLoginRedirect } from '../loginRedirect.js'
 const router = useRouter()
+const route = useRoute()
 const username = ref(''), password = ref(''), loading = ref(false), error = ref('')
 const pcUrl = import.meta.env.VITE_PC_URL || (import.meta.env.DEV ? `${location.protocol}//${location.hostname}:${import.meta.env.VITE_WEB_PORT || 3000}/` : '/')
+/** 登录与身份加载全部成功后替换登录页，回退操作不会再次落入登录表单。 */
 async function submit() {
   if (loading.value) return
   loading.value = true; error.value = ''
-  try { await login({ username: username.value.trim(), password: password.value }); password.value = ''; if (!session.userInfo?.passwordResetRequired) await router.replace('/inbox/todo') }
+  try {
+    await login({ username: username.value.trim(), password: password.value })
+    password.value = ''
+    if (!session.userInfo?.passwordResetRequired) await router.replace(resolveLoginRedirect(route.query.redirect))
+  }
   catch (cause) { error.value = cause.message || '登录失败，请重试' }
   finally { loading.value = false }
 }

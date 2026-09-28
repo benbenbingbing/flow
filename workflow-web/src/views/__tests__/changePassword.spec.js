@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { babelParse, parse } from '@vue/compiler-sfc'
 import { computed, reactive, ref } from 'vue'
+import { authRouteLocation } from '../../shared/login-redirect.js'
 
 const source = await readFile(new URL('../ChangePassword.vue', import.meta.url), 'utf8')
 const script = parse(source).descriptor.scriptSetup.content
@@ -10,7 +11,7 @@ const code = ast.program.body.filter(node => node.type !== 'ImportDeclaration')
   .map(node => script.slice(node.start, node.end)).join('\n')
 
 /** 执行真实页面提交逻辑，验证改密成功才退出，失败仍保留可重试的登录态。 */
-function createPage({ required = true, validate = async () => true, change = async () => null } = {}) {
+function createPage({ required = true, validate = async () => true, change = async () => null, redirect } = {}) {
   const calls = []
   const userStore = {
     token: 'current-session',
@@ -25,7 +26,8 @@ function createPage({ required = true, validate = async () => true, change = asy
     applySession() { assert.fail('改密成功不得自动保存新登录会话') }
   }
   const dependencies = {
-    computed, reactive, ref,
+    computed, reactive, ref, authRouteLocation,
+    useRoute: () => ({ query: { redirect } }),
     useUserStore: () => userStore,
     useRouter: () => ({ replace: async path => { calls.push(['navigate', path]) } }),
     ElMessage: { success: message => { calls.push(['success', message]) } },
@@ -81,5 +83,14 @@ assert.deepEqual(pending.calls, [])
 releaseValidation(true)
 await first
 assert.equal(pending.calls.filter(call => call[0] === 'change').length, 1)
+
+const target = '/process/progress/instance-1?taskId=task-1#history'
+const returning = createPage({ redirect: target })
+await returning.submit()
+assert.deepEqual(returning.calls.at(-1), ['navigate', { path: '/login', query: { redirect: target } }],
+  '改密并清理会话后原单据仍传递给重新登录页')
+const invalidRedirect = createPage({ redirect: '//example.com' })
+await invalidRedirect.submit()
+assert.deepEqual(invalidRedirect.calls.at(-1), ['navigate', '/login'])
 
 console.log('change password relogin tests passed')

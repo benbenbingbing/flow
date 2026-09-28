@@ -60,13 +60,15 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock, Connection } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { login, getPermissions } from '@/api/auth'
+import { authRouteLocation, resolveLoginRedirect } from '@/shared/login-redirect'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loginFormRef = ref(null)
@@ -94,6 +96,7 @@ function focusPassword() {
   passwordInputRef.value?.focus()
 }
 
+/** 登录成功后回到原业务地址；强制改密时将原目标继续传递，完成改密并重新登录后再进入。 */
 async function handleLogin() {
   if (
     !loginFormRef.value
@@ -126,7 +129,9 @@ async function handleLogin() {
     
     ElMessage.success('登录成功')
     
-    router.push(res.passwordResetRequired ? '/change-password' : '/')
+    await router.replace(res.passwordResetRequired
+      ? authRouteLocation('/change-password', route.query.redirect)
+      : resolveLoginRedirect(route.query.redirect))
   } catch (error) {
     console.error('登录失败:', error)
     ElMessage.error(error.message || '登录失败')

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { babelParse } from '@vue/compiler-sfc'
+import { authReturnTarget, authRouteLocation, resolveLoginRedirect } from '../../shared/login-redirect.js'
 
 const source = await readFile(new URL('../index.js', import.meta.url), 'utf8')
 const ast = babelParse(source, { sourceType: 'module' })
@@ -29,6 +30,7 @@ function createGuard({ refresh = false, loggedIn = true, disabledPaths = [] } = 
     setPermissions(permissions) { this.permissions = permissions }
   }
   const dependencies = {
+    authReturnTarget, authRouteLocation, resolveLoginRedirect,
     useUserStore: () => userStore,
     restoreAuthSession: async () => { calls.restoreSession += 1 },
     getPermissions: async () => {
@@ -48,9 +50,10 @@ function createGuard({ refresh = false, loggedIn = true, disabledPaths = [] } = 
   return {
     calls,
     userStore,
-    async navigate(path, meta = {}) {
+    async navigate(fullPath, meta = {}) {
       const destinations = []
-      await guard({ path, meta }, {}, destination => destinations.push(destination))
+      const url = new URL(fullPath, 'https://workflow.test')
+      await guard({ path: url.pathname, fullPath, query: Object.fromEntries(url.searchParams), meta }, {}, destination => destinations.push(destination))
       assert.equal(destinations.length, 1, '每次导航必须且只能作出一次路由决定')
       return destinations[0]
     }
@@ -75,7 +78,7 @@ for (const [path, meta] of [
   ['/dev/manual', { developerOnly: true }],
   ['/login', { public: true }]
 ]) {
-  assert.equal(await restricted.navigate(path, meta), '/change-password', '待改密用户必须先完成改密')
+  assert.deepEqual(await restricted.navigate(path, meta), authRouteLocation('/change-password', path === '/login' ? undefined : path), '待改密用户必须先完成改密，并保留业务目标')
 }
 assert.equal(await restricted.navigate('/change-password'), undefined, '禁用菜单不能阻断强制改密')
 assert.equal(restricted.calls.permissions, 0)
@@ -86,7 +89,7 @@ assert.equal(await completed.navigate('/change-password'), undefined)
 // 改密后先清理本地会话，必须重新登录才允许恢复业务导航。
 completed.userStore.isLoggedIn = false
 assert.equal(await completed.navigate('/login', { public: true }), undefined)
-assert.equal(await completed.navigate('/entity'), '/login')
+assert.deepEqual(await completed.navigate('/entity'), { path: '/login', query: { redirect: '/entity' } })
 assert.equal(completed.calls.permissions, 0)
 completed.userStore.isLoggedIn = true
 completed.userStore.userInfo.passwordResetRequired = false
@@ -100,5 +103,15 @@ assert.equal(await completed.navigate('/login', { public: true }), '/')
 const anonymous = createGuard({ loggedIn: false })
 assert.equal(await anonymous.navigate('/change-password'), '/login', '改密页仍须登录才能访问')
 assert.equal(anonymous.calls.permissions, 0)
+
+const target = '/process/progress/instance-1?taskId=task-1&kind=todo#history'
+assert.deepEqual(await anonymous.navigate(target), { path: '/login', query: { redirect: target } })
+assert.deepEqual(await restricted.navigate(target), { path: '/change-password', query: { redirect: target } })
+assert.deepEqual(await restricted.navigate(`/login?redirect=${encodeURIComponent(target)}`, { public: true }),
+  { path: '/change-password', query: { redirect: target } })
+assert.equal(await completed.navigate(`/login?redirect=${encodeURIComponent(target)}`, { public: true }), target)
+assert.equal(await completed.navigate('/login?redirect=https%3A%2F%2Fexample.com', { public: true }), '/')
+assert.deepEqual(await anonymous.navigate(`/change-password?redirect=${encodeURIComponent(target)}`),
+  { path: '/login', query: { redirect: target } }, '改密页会话失效也必须传递最初业务地址')
 
 console.log('password reset route guard tests passed')

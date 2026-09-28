@@ -58,6 +58,69 @@ async function submit(page) {
   await expect(confirm).toBeEnabled(); await confirm.click()
 }
 
+test('登录回跳：未登录直达单据，刷新与登录失败后仍保留任务参数和锚点', async ({ page }) => {
+  const state = await fixture(page)
+  await page.route('**/api/auth/refresh', route => route.fulfill({ status: 401, json: { code: 401, message: '请登录' } }))
+  const target = '/process/instance-test?kind=todo&taskId=task-test&source=%E9%80%9A%E7%9F%A5#history'
+  await page.goto(`/m${target}`)
+  await expect(page.getByRole('heading', { name: '登录工作台' })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await page.reload()
+  await page.getByPlaceholder('请输入用户名').fill('fixture')
+  await page.getByPlaceholder('请输入密码').fill('invalid')
+  await page.route('**/api/auth/login', route => route.fulfill({ status: 400, json: { code: 400, message: '用户名或密码错误' } }), { times: 1 })
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('用户名或密码错误')
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await page.getByPlaceholder('请输入密码').fill('fixture-password')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === `/m${target}`)
+  await expect(page.getByRole('tabpanel').first()).toBeVisible()
+  expect(state.requests.some(item => item.endpoint === '/process-task/detail/task-test')).toBe(true)
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
+})
+
+test('登录回跳：已登录访问带目标的登录页直接回原单据', async ({ page }) => {
+  const state = await fixture(page)
+  const target = '/process/instance-test?kind=todo&taskId=task-test#history'
+  await page.goto(`login?redirect=${encodeURIComponent(target)}`)
+  await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === `/m${target}`)
+  await expect(page.getByRole('tabpanel').first()).toBeVisible()
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
+})
+
+test('登录回跳：外部地址和登录页目标回退待办，不产生外跳或循环', async ({ page }) => {
+  const state = await fixture(page)
+  for (const target of ['https://example.com', '//example.com', '/login?redirect=/login']) {
+    await page.goto(`/m/login?redirect=${encodeURIComponent(target)}`)
+    await expect(page).toHaveURL(/\/m\/inbox\/todo$/)
+    await expect(page.locator('.inbox-page')).toBeVisible()
+  }
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
+})
+
+test('登录回跳：加载单据时会话失效，重新登录回到同一任务', async ({ page }) => {
+  const state = await fixture(page)
+  let expired = false
+  await page.route('**/api/auth/refresh', route => expired
+    ? route.fulfill({ status: 401, json: { code: 401, errorCode: 'AUTH_REFRESH_MISSING', message: '请重新登录' } })
+    : route.fallback())
+  await page.route('**/api/process-instance/instance-test/progress*', route => {
+    expired = true
+    return route.fulfill({ status: 401, json: { code: 401, errorCode: 'AUTH_SESSION_REVOKED', message: '登录已过期' } })
+  }, { times: 1 })
+  const target = '/process/instance-test?kind=todo&taskId=task-test#history'
+  await page.goto(`/m${target}`)
+  await expect(page.getByRole('heading', { name: '登录工作台' })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('redirect')).toBe(target)
+  await page.getByPlaceholder('请输入用户名').fill('fixture')
+  await page.getByPlaceholder('请输入密码').fill('fixture-password')
+  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page).toHaveURL(url => `${url.pathname}${url.search}${url.hash}` === `/m${target}`)
+  await expect(page.getByRole('tabpanel').first()).toBeVisible()
+  expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
+})
+
 test('表单停留超过五分钟后编辑和提交自动续期，保留草稿与原发布版本', async ({ page }) => {
   const start = Date.now()
   const makeToken = expiresAt => `${Buffer.from(JSON.stringify({ expiresAt: Math.floor(expiresAt / 1000), purpose: 'ACTIVE_TASK', taskId: 'task-test', processInstanceId: 'instance-test', nodeId: 'review' })).toString('base64url')}.test-signature`

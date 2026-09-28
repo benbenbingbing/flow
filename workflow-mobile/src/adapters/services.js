@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { showFailToast } from 'vant'
+import { buildMobileLoginUrl } from '../loginRedirect.js'
 import {
   createRequestRuntime, createAuthApi, createProcessTaskApi, createEntityApi,
   createFileApi, createUiConfigApi, createUiCompositionRuntimeApi, createFormRuntimeApi,
@@ -27,8 +28,11 @@ export const session = Object.assign(state, {
   }
 })
 
+/** 会话失效和跨窗口退出同样保留当前单据，让重新登录后继续原来的办理入口。 */
 function goToLogin() {
-  if (globalThis.location?.pathname !== '/m/login') globalThis.location?.assign('/m/login')
+  if (!globalThis.location) return
+  const target = buildMobileLoginUrl(globalThis.location)
+  if (target) globalThis.location.assign(target)
 }
 export const transport = createRequestRuntime({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api', getSession: () => session,

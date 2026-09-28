@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getPermissions } from '@/api/auth'
 import { restoreAuthSession } from '@/shared/request'
+import { authReturnTarget, authRouteLocation, resolveLoginRedirect } from '@/shared/login-redirect'
 import Layout from '@/views/Layout.vue'
 
 // 页面采用菜单模块前缀；旧地址只负责重定向，避免历史书签直接失效。
@@ -178,6 +179,12 @@ const routes = [
         name: 'UserManagement',
         component: () => import('@/views/system/User.vue'),
         meta: { title: '用户管理' }
+      },
+      {
+        path: '/system/task-handover',
+        name: 'TaskHandoverManagement',
+        component: () => import('@/views/system/TaskHandoverManagement.vue'),
+        meta: { title: '人员交接', requiredPermissions: ['system:task-handover:view'] }
       },
       {
         path: '/system/role',
@@ -413,21 +420,23 @@ router.beforeEach(async (to, from, next) => {
   const isLoggedIn = userStore.isLoggedIn
   
   if (!isPublic && !isLoggedIn) {
-    // 未登录且访问需要登录的页面，跳转到登录页
-    next('/login')
+    // 完整业务地址随登录 URL 保留，刷新或登录失败重试都不会丢失任务参数。
+    next(authRouteLocation('/login', authReturnTarget(to)))
     return
   }
   
   if (to.path === '/login' && isLoggedIn) {
-    // 已登录但访问登录页，跳转到首页
-    next(userStore.userInfo?.passwordResetRequired ? '/change-password' : '/')
+    next(userStore.userInfo?.passwordResetRequired
+      ? authRouteLocation('/change-password', to.query?.redirect)
+      : resolveLoginRedirect(to.query?.redirect))
     return
   }
 
   if (isLoggedIn && userStore.userInfo?.passwordResetRequired) {
     // 待改密会话不能请求业务权限（后端返回 428）。改密页直接放行，
     // 避免继续加载权限触发整页跳转，也不受业务菜单禁用配置影响。
-    next(to.path === '/change-password' ? undefined : '/change-password')
+    next(to.path === '/change-password' ? undefined
+      : authRouteLocation('/change-password', authReturnTarget(to)))
     return
   }
 

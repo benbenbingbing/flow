@@ -61,13 +61,15 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock } from '@element-plus/icons-vue'
 import { changePassword, logout } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import { authRouteLocation } from '@/shared/login-redirect'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 const formRef = ref()
 const submitting = ref(false)
@@ -115,7 +117,7 @@ const submit = async () => {
     // 服务端已撤销全部会话并清除刷新 Cookie，必须重新验证新密码才能进入系统。
     userStore.logout()
     ElMessage.success('密码已修改，请使用新密码重新登录')
-    await router.replace('/login')
+    await router.replace(authRouteLocation('/login', route.query.redirect))
   } finally {
     submitting.value = false
   }
@@ -128,7 +130,7 @@ const signOut = async () => {
     // 本地退出不依赖服务端响应。
   }
   userStore.logout()
-  await router.replace('/login')
+  await router.replace(authRouteLocation('/login', route.query.redirect))
 }
 </script>
 

@@ -1,6 +1,7 @@
 import { createRequestRuntime, notifyRequestError } from '@flow/workflow-api/request'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
+import { buildAuthRedirectUrl } from '@/shared/login-redirect'
 
 /** PC 与 Embed 的宿主适配；共享 transport 不依赖桌面 UI 或应用 store。 */
 const runtime = createRequestRuntime({
@@ -9,10 +10,12 @@ const runtime = createRequestRuntime({
   notifyError: message => ElMessage.error(message),
   getOrigin: () => globalThis.location?.origin,
   onAuthExpired: () => {
-    if (typeof window !== 'undefined' && window.location.pathname !== '/login') window.location.href = '/login'
+    const target = buildAuthRedirectUrl(globalThis.location)
+    if (target) globalThis.location.href = target
   },
   onPasswordResetRequired: () => {
-    if (typeof window !== 'undefined' && window.location.pathname !== '/change-password') window.location.href = '/change-password'
+    const target = buildAuthRedirectUrl(globalThis.location, '/change-password')
+    if (target) globalThis.location.href = target
   }
 })
 export const { configureEmbedDelegatedRequest, resetEmbedDelegatedRequest, isEmbedDelegatedRequestEnabled, refreshAuthSession, restoreAuthSession } = runtime

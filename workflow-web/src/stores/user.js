@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { buildAuthRedirectUrl } from '../shared/login-redirect.js'
 
 const TOKEN_STORAGE_KEY = 'auth.accessToken'
 const TOKEN_EXPIRES_STORAGE_KEY = 'auth.tokenExpiresAt'
@@ -237,12 +238,8 @@ export const useUserStore = defineStore('user', () => {
 
   function handleRemoteTermination() {
     clearAuth({ broadcast: false })
-    if (
-      typeof window !== 'undefined'
-      && window.location.pathname !== '/login'
-    ) {
-      window.location.href = '/login'
-    }
+    const target = buildAuthRedirectUrl(globalThis.location)
+    if (target) globalThis.location.href = target
   }
 
   let authChannel = null
