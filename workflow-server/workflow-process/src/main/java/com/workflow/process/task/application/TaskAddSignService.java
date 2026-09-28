@@ -475,6 +475,7 @@ public class TaskAddSignService {
             restoreSourceForNextApproverConfirmation(addSign);
             return;
         }
+        restoreSubmittedSourceIdentity(addSign, sourceTask);
         addSign.setStatus("COMPLETED");
         addSign.setCompleteTime(LocalDateTime.now());
         addSignMapper.updateById(addSign);
@@ -489,8 +490,41 @@ public class TaskAddSignService {
     }
 
     /**
+     * 自动执行已经暂存的审批时，历史必须归属于原提交人；交接接收人只负责仍需人工处理的待办。
+     * 本方法仅在确认无需手选下一审批人之后调用，避免把需接收人继续确认的任务交回离职账号。
+     *
+     * @param addSign operatorId 为原暂存审批的提交身份，交接已提交任务时保持不变
+     * @param sourceTask 当前仍存活的原任务，其办理人可能已被管理员交接
+     * @throws IllegalStateException 原提交身份或本地镜像缺失，禁止留下引擎与本地历史归属不一致
+     */
+    private void restoreSubmittedSourceIdentity(ProcessTaskAddSign addSign, Task sourceTask) {
+        String submitter = addSign.getOperatorId();
+        if (!StringUtils.hasText(submitter)) {
+            throw new IllegalStateException("原审批提交身份缺失，无法完成加签任务");
+        }
+        if (submitter.equals(sourceTask.getAssignee())) return;
+
+        ProcessTask mirror = processTaskMapper.selectByTaskIdForUpdate(addSign.getSourceTaskId());
+        if (mirror == null) throw new IllegalStateException("原审批任务镜像缺失，无法恢复历史归属");
+        taskService.setAssignee(addSign.getSourceTaskId(), submitter);
+
+        // 这里只恢复历史身份，不调用认领接口，避免将后台收口误记为接收人的新响应或改写已暂存意见。
+        // 已删除的原提交人可能不再出现在普通目录中，此时用原身份文本展示，不能沿用接收人姓名。
+        SysUser user = userMapper.selectByUsername(submitter);
+        if (user == null) user = userMapper.selectById(submitter);
+        ProcessTask identity = new ProcessTask();
+        identity.setId(mirror.getId());
+        identity.setAssigneeId(submitter);
+        identity.setAssigneeName(user == null ? submitter : displayName(user));
+        identity.setAssigneeType("user");
+        if (processTaskMapper.updateById(identity) != 1) {
+            throw new IllegalStateException("恢复原审批历史归属失败，请刷新后重试");
+        }
+    }
+
+    /**
      * 加签已全部结束，但下一节点需要人工选择且没有默认审批人时，关闭加签编排并
-     * 恢复原 Flowable 任务镜像，交回原办理人从正常审批面板重新确认。
+     * 恢复原 Flowable 任务镜像，保留当前待办办理人从正常审批面板重新确认；已交接时由接收人继续办理。
      *
      * @param addSign 添加签名，作为 {@code processTaskMapper.selectByTaskId} 的输入影响后续处理
      */

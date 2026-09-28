@@ -21,6 +21,7 @@
             link
             aria-label="清除当前选择"
             title="清除当前选择"
+            :disabled="disabled"
             @click.stop="clearSelection"
           >
             <el-icon><Close /></el-icon>
@@ -46,7 +47,7 @@
           <el-tag
             v-for="item in selectedList"
             :key="item.id"
-            closable
+            :closable="!disabled"
             size="small"
             :type="getEntityTypeTag(item.entityType)"
             @close="removeSelection(item)"
@@ -135,14 +136,15 @@
             </el-table-column>
             <el-table-column prop="status" label="状态" width="80">
               <template #default="{ row }">
-                <el-tag v-if="row.status" size="small" :type="getStatusType(row.status)">
+                <el-tag v-if="isDeletedRow(row)" size="small" type="info">已删除</el-tag>
+                <el-tag v-else-if="row.status !== null && row.status !== undefined && row.status !== ''" size="small" :type="getStatusType(row.status)">
                   {{ getStatusLabel(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
             <el-table-column v-if="!multiple" label="操作" width="80">
               <template #default="{ row }">
-                <el-button link type="primary" @click.stop="selectRow(row)">
+                <el-button link type="primary" :disabled="disabled || loading" @click.stop="selectRow(row)">
                   选择
                 </el-button>
               </template>
@@ -173,6 +175,7 @@
               v-if="selectedRows.length"
               link
               type="primary"
+              :disabled="disabled"
               @click="clearDraftSelection"
             >
               清空
@@ -198,6 +201,7 @@
                   circle
                   text
                   title="移除"
+                  :disabled="disabled"
                   @click="removeDraftSelection(item)"
                 >
                   <el-icon><Close /></el-icon>
@@ -211,7 +215,7 @@
       <template v-if="!useUnifiedList" #footer>
         <div class="dialog-footer">
           <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button v-if="multiple" type="primary" @click="confirmSelection">
+          <el-button v-if="multiple" type="primary" :disabled="disabled || loading" @click="confirmSelection">
             确认选择 ({{ selectedRows.length }})
           </el-button>
         </div>
@@ -293,6 +297,11 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  // 专用范围可覆盖通用实体接口；list 返回 { records, total }，batch 返回标准实体记录数组。
+  dataSource: {
+    type: Object,
+    default: null
   }
 })
 
@@ -311,7 +320,8 @@ const effectiveRefEntityId = computed(() =>
   customReference.value.refEntityId
 )
 const useUnifiedList = computed(() =>
-  props.entityType === 'CUSTOM'
+  !props.dataSource
+  && props.entityType === 'CUSTOM'
   && !!effectiveEntityCode.value
   && !!props.listKey
 )
@@ -344,23 +354,54 @@ const selectedList = ref([])
 const selectedRows = ref([])
 const tableRef = ref(null)
 const restoringPageSelection = ref(false)
+// 列表和回显请求分别计数，切换搜索、当前值或数据源后旧响应不能覆盖新的身份范围。
+let listRequestId = 0
+let selectedRequestId = 0
+let openRequestId = 0
+let selectionRestoreId = 0
 
 // 监听值变化
-watch(() => props.modelValue, (val) => {
+watch(() => [props.modelValue, props.dataSource, props.valueKey, props.entityType,
+  effectiveEntityCode.value, effectiveRefEntityId.value], ([val]) => {
   const hasValue = Array.isArray(val)
     ? val.length > 0
     : val !== null && val !== undefined && val !== ''
   if (hasValue) {
     loadSelectedData()
   } else {
+    selectedRequestId += 1
     selectedData.value = null
     selectedList.value = []
     selectedRows.value = []
   }
 }, { immediate: true })
 
+watch(() => props.dataSource, () => {
+  listRequestId += 1
+  tableData.value = []
+  total.value = 0
+  loading.value = false
+  selectedRows.value = []
+  if (dialogVisible.value && !useUnifiedList.value) loadData()
+})
+
+watch(() => props.disabled, (disabled) => {
+  if (disabled) {
+    openRequestId += 1
+    dialogVisible.value = false
+  }
+})
+
+watch(dialogVisible, (visible) => {
+  if (!visible) {
+    listRequestId += 1
+    loading.value = false
+  }
+})
+
 // 加载已选择的数据（用于回显）
 async function loadSelectedData() {
+  const requestId = ++selectedRequestId
   if (!props.entityType) return
 
   // 多选模式：如果 modelValue 已经是对象数组（含 name），直接回显，不去后台
@@ -368,6 +409,7 @@ async function loadSelectedData() {
     const first = props.modelValue[0]
     if (first && typeof first === 'object' && (first.name || first.code)) {
       selectedList.value = props.modelValue.map(item => ({
+        ...item,
         id: item.id || item,
         name: item.name || item.code || item.id,
         code: item.code,
@@ -380,6 +422,7 @@ async function loadSelectedData() {
   // 单选模式：如果 modelValue 已经是对象（含 name），直接回显
   if (!props.multiple && props.modelValue && typeof props.modelValue === 'object') {
     selectedData.value = {
+      ...props.modelValue,
       id: props.modelValue.id,
       name: props.modelValue.name || props.modelValue.code || props.modelValue.id,
       code: props.modelValue.code,
@@ -390,7 +433,8 @@ async function loadSelectedData() {
 
   // 纯 ID 模式：去后台查询详情
   if (
-    props.entityType === 'CUSTOM'
+    !props.dataSource
+    && props.entityType === 'CUSTOM'
     && !effectiveEntityCode.value
     && !effectiveRefEntityId.value
   ) {
@@ -398,14 +442,14 @@ async function loadSelectedData() {
   }
 
   try {
-    const values = props.multiple && Array.isArray(props.modelValue)
-      ? props.modelValue.join(',')
-      : props.modelValue
+    const values = (props.multiple && Array.isArray(props.modelValue)
+      ? props.modelValue : [props.modelValue])
+      .filter(value => value !== null && value !== undefined && value !== '')
 
-    if (!values) return
+    if (!values.length) return
 
     const params = new URLSearchParams({
-      ids: values,
+      ids: values.join(','),
       valueKey: props.valueKey
     })
     if (props.entityType === 'CUSTOM') {
@@ -416,9 +460,11 @@ async function loadSelectedData() {
       }
     }
 
-    const records = await request.get(
-      `/entity-selector/${props.entityType}/batch?${params}`
-    )
+    // 传入专用数据源后不得再回退通用目录，否则离职、禁用等来源身份会被错误过滤。
+    const records = props.dataSource
+      ? await props.dataSource.batch(values, props.valueKey)
+      : await request.get(`/entity-selector/${props.entityType}/batch?${params}`)
+    if (requestId !== selectedRequestId) return
 
     if (props.multiple) {
       selectedList.value = records || []
@@ -426,6 +472,9 @@ async function loadSelectedData() {
       selectedData.value = records?.[0] || null
     }
   } catch (e) {
+    if (requestId !== selectedRequestId) return
+    selectedData.value = null
+    selectedList.value = []
     console.error('加载已选数据失败:', e)
   }
 }
@@ -433,7 +482,9 @@ async function loadSelectedData() {
 // 打开选择器
 async function openSelector() {
   if (props.disabled) return
+  const requestId = ++openRequestId
   await loadSelectedData()
+  if (props.disabled || requestId !== openRequestId) return
   selectedRows.value = normalizeRecordSelection(selectedList.value)
   dialogVisible.value = true
   if (useUnifiedList.value) {
@@ -445,6 +496,7 @@ async function openSelector() {
 }
 
 function handleRuntimeConfirm(rows) {
+  if (props.disabled) return
   const selected = Array.isArray(rows) ? rows : []
   if (props.multiple) {
     selectedList.value = selected
@@ -461,17 +513,23 @@ function handleRuntimeConfirm(rows) {
 
 // 加载数据
 async function loadData() {
+  const requestId = ++listRequestId
+  loading.value = true
+  // 加载和失败期间清空旧可选行，不能让上次查询的人继续作为这次搜索结果被误选。
+  tableData.value = []
+  total.value = 0
   // CUSTOM 类型必须配置 entityCode 或 refEntityId
   if (
-    props.entityType === 'CUSTOM'
+    !props.dataSource
+    && props.entityType === 'CUSTOM'
     && !effectiveEntityCode.value
     && !effectiveRefEntityId.value
   ) {
     ElMessage.warning('该实体引用字段未配置目标实体，请先配置')
+    loading.value = false
     return
   }
 
-  loading.value = true
   try {
     const params = new URLSearchParams({
       pageNum: pageNum.value,
@@ -489,14 +547,20 @@ async function loadData() {
     }
     
     // 默认选择器统一走实体查询；业务筛选范围由已发布的选择列表配置。
-    const result = await request.get(`/entity-selector/${props.entityType}?${params}`)
-    tableData.value = result.records || result.list || []
-    total.value = result.total || 0
-    await restoreCurrentPageSelection()
+    const result = props.dataSource
+      ? await props.dataSource.list({ pageNum: pageNum.value, pageSize: pageSize.value, keyword: searchKeyword.value })
+      : await request.get(`/entity-selector/${props.entityType}?${params}`)
+    if (requestId !== listRequestId) return
+    tableData.value = result?.records || result?.list || []
+    total.value = result?.total || 0
+    await restoreCurrentPageSelection(requestId)
   } catch (e) {
+    if (requestId !== listRequestId) return
+    tableData.value = []
+    total.value = 0
     ElMessage.error('加载数据失败')
   } finally {
-    loading.value = false
+    if (requestId === listRequestId) loading.value = false
   }
 }
 
@@ -519,7 +583,7 @@ function handleCurrentChange(val) {
 
 // 选择变化（多选）
 function handleSelectionChange(rows) {
-  if (restoringPageSelection.value) return
+  if (props.disabled || loading.value || restoringPageSelection.value) return
   selectedRows.value = reconcileRecordPageSelection(
     selectedRows.value,
     tableData.value,
@@ -529,6 +593,7 @@ function handleSelectionChange(rows) {
 
 // 点击行（单选）
 function handleRowClick(row) {
+  if (props.disabled || loading.value) return
   if (props.multiple) {
     tableRef.value?.toggleRowSelection(row)
     return
@@ -538,6 +603,8 @@ function handleRowClick(row) {
 
 // 选择单行
 function selectRow(row) {
+  if (props.disabled || loading.value) return
+  selectedRequestId += 1
   selectedData.value = row
   emit('update:modelValue', selectionValue(row))
   emit('change', row)
@@ -546,6 +613,8 @@ function selectRow(row) {
 
 // 确认选择（多选）
 function confirmSelection() {
+  if (props.disabled || loading.value) return
+  selectedRequestId += 1
   selectedRows.value = normalizeRecordSelection(selectedRows.value)
   const values = recordSelectionValues(selectedRows.value, props.valueKey)
   selectedList.value = selectedRows.value.map(item => ({ ...item }))
@@ -556,6 +625,8 @@ function confirmSelection() {
 
 // 清除选择（单选）
 function clearSelection() {
+  if (props.disabled) return
+  selectedRequestId += 1
   selectedData.value = null
   emit('update:modelValue', null)
   emit('change', null)
@@ -563,6 +634,8 @@ function clearSelection() {
 
 // 移除选择（多选）
 function removeSelection(item) {
+  if (props.disabled) return
+  selectedRequestId += 1
   selectedList.value = removeRecordSelection(selectedList.value, item)
   const values = recordSelectionValues(selectedList.value, props.valueKey)
   emit('update:modelValue', values)
@@ -575,31 +648,33 @@ function selectionValue(item) {
   return value == null || value === '' ? null : String(value)
 }
 
-async function restoreCurrentPageSelection() {
+async function restoreCurrentPageSelection(requestId = listRequestId) {
   if (!props.multiple || !tableRef.value) return
+  const restoreId = ++selectionRestoreId
   restoringPageSelection.value = true
-  await nextTick()
-  selectedRows.value = refreshRecordPageSelection(
-    selectedRows.value,
-    tableData.value
-  )
-  tableRef.value.clearSelection()
-  const selectedIds = new Set(recordSelectionIds(selectedRows.value))
-  tableData.value.forEach(row => {
-    if (selectedIds.has(String(row.id))) {
-      tableRef.value.toggleRowSelection(row, true)
-    }
-  })
-  await nextTick()
-  restoringPageSelection.value = false
+  try {
+    await nextTick()
+    if (requestId !== listRequestId || restoreId !== selectionRestoreId) return
+    selectedRows.value = refreshRecordPageSelection(selectedRows.value, tableData.value)
+    tableRef.value?.clearSelection()
+    const selectedIds = new Set(recordSelectionIds(selectedRows.value))
+    tableData.value.forEach(row => {
+      if (selectedIds.has(String(row.id))) tableRef.value?.toggleRowSelection(row, true)
+    })
+    await nextTick()
+  } finally {
+    if (restoreId === selectionRestoreId) restoringPageSelection.value = false
+  }
 }
 
 async function removeDraftSelection(item) {
+  if (props.disabled) return
   selectedRows.value = removeRecordSelection(selectedRows.value, item)
   await restoreCurrentPageSelection()
 }
 
 async function clearDraftSelection() {
+  if (props.disabled) return
   selectedRows.value = []
   await restoreCurrentPageSelection()
 }
@@ -649,6 +724,11 @@ function getItemSecondary(item) {
   return item?.code || item?.id || ''
 }
 
+/** 删除是独立维度；不篡改原 status，以便业务回调仍能校验真实账号状态。 */
+function isDeletedRow(row) {
+  return row?.deleted === true || row?.deleted === 1 || row?.deleted === '1'
+}
+
 function getStatusLabel(status) {
   const map = {
     '0': '启用',
@@ -677,181 +757,4 @@ function getStatusType(status) {
 }
 </script>
 
-<style scoped>
-.entity-selector {
-  width: 100%;
-}
-
-.selector-input {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 32px;
-  padding: 4px 12px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  cursor: pointer;
-  background: #fff;
-  transition: border-color 0.2s;
-}
-
-.selector-input:hover {
-  border-color: #409eff;
-}
-
-.selector-input.multiple {
-  min-height: 40px;
-  padding: 4px 8px;
-}
-
-.placeholder {
-  color: #a8abb2;
-  font-size: 14px;
-}
-
-.selected-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.item-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.clear-icon {
-  color: #a8abb2;
-  flex: none;
-  margin-left: 2px;
-  padding: 2px;
-}
-
-.clear-icon:hover {
-  color: #409eff;
-}
-
-.selected-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  flex: 1;
-}
-
-.arrow-icon {
-  color: #a8abb2;
-  margin-left: 8px;
-}
-
-.entity-type-bar {
-  margin-bottom: 16px;
-  padding: 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.type-desc {
-  color: #606266;
-  font-size: 13px;
-}
-
-.search-bar {
-  margin-bottom: 16px;
-}
-
-.selector-layout.is-multiple {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 16px;
-}
-
-.selector-body {
-  min-width: 0;
-}
-
-.selected-records {
-  min-width: 0;
-  padding-left: 16px;
-  border-left: 1px solid var(--el-border-color-lighter);
-}
-
-.selected-records-header {
-  display: flex;
-  min-height: 40px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.selected-records-header > div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.selected-records-header span,
-.selected-record-item span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.selected-record-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-right: 8px;
-}
-
-.selected-records-scrollbar {
-  height: 360px;
-  min-height: 0;
-}
-
-.selected-record-item {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 9px 10px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 4px;
-  background: var(--el-fill-color-lighter);
-}
-
-.selected-record-item > div {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.selected-record-item strong,
-.selected-record-item span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pagination {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-:deep(.el-tag) {
-  margin: 2px;
-}
-
-.entity-selector-dialog :deep(.el-dialog__footer) {
-  position: relative;
-  z-index: 1;
-  background: var(--el-bg-color);
-}
-</style>
+<style scoped src="./entity-selector.css"></style>

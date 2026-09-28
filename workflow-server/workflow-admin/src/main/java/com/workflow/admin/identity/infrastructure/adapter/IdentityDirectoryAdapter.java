@@ -2,14 +2,19 @@ package com.workflow.admin.identity.infrastructure.adapter;
 
 import com.workflow.contracts.identity.port.IdentityDirectoryPort;
 import com.workflow.contracts.identity.model.IdentityGroup;
+import com.workflow.contracts.identity.model.IdentityHandoverUser;
 import com.workflow.contracts.identity.model.IdentityUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.record.SysGroup;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.user.application.SysUserService;
+import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +29,7 @@ public class IdentityDirectoryAdapter implements IdentityDirectoryPort {
 
     private final SysUserService userService;
     private final SysGroupMapper groupMapper;
+    private final SysUserMapper userMapper;
 
     /**
      * 查询用户；查询结果供调用方展示或继续处理。
@@ -41,6 +47,37 @@ public class IdentityDirectoryAdapter implements IdentityDirectoryPort {
             user = userService.getById(idOrUsername);
         }
         return Optional.ofNullable(user).map(this::toIdentityUser);
+    }
+
+    /** 交接来源包含历史账号，不能复用普通目录的逻辑删除过滤或用户名回退。 */
+    @Override
+    public Optional<IdentityHandoverUser> findHandoverUser(String id) {
+        return StringUtils.hasText(id)
+                ? Optional.ofNullable(userMapper.selectHandoverUser(id)).map(this::toHandoverUser)
+                : Optional.empty();
+    }
+
+    /** 限制选择器单次最多 200 条，空关键字可列出来源，目标查询必须显式过滤正常状态。 */
+    @Override
+    public List<IdentityHandoverUser> searchHandoverUsers(String keyword, boolean targetOnly) {
+        String normalizedKeyword = StringUtils.hasText(keyword) ? keyword.trim() : null;
+        return userMapper.selectHandoverUsers(new Page<>(1, 200, false), normalizedKeyword, targetOnly)
+                .getRecords().stream().map(this::toHandoverUser).toList();
+    }
+
+    /** 必须加入调用方交接事务，避免查询返回后立即释放锁而失去并发状态校验保障。 */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<IdentityHandoverUser> lockHandoverUser(String id) {
+        return StringUtils.hasText(id)
+                ? Optional.ofNullable(userMapper.selectHandoverUserForUpdate(id)).map(this::toHandoverUser)
+                : Optional.empty();
+    }
+
+    private IdentityHandoverUser toHandoverUser(SysUser user) {
+        // 非零删除值一律按已删除处理；不把异常历史值误判为可接收任务的账号。
+        return new IdentityHandoverUser(user.getId(), user.getUsername(), user.getNickname(),
+                user.getStatus(), user.getDeleted() == null || user.getDeleted() != 0);
     }
 
     /**

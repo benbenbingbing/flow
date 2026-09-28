@@ -493,6 +493,17 @@ public class ProcessTaskService {
     }
     
     /**
+     * 管理交接后刷新业务记录的当前办理摘要；失败必须交由外层交接事务回滚，
+     * 不能出现工作台已换人而业务列表仍保留旧办理人的半成功结果。
+     *
+     * @param processInstanceId 已完成身份同步的流程实例
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void refreshAssignmentSummary(String processInstanceId) {
+        updateEntityCurrentTask(processInstanceId);
+    }
+
+    /**
      * 更新实体数据表的当前任务ID和名称
      *
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录

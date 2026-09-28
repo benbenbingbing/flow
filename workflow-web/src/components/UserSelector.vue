@@ -8,6 +8,7 @@
       :placeholder="placeholder"
       :disabled="disabled"
       :title="title"
+      :data-source="dataSource"
       @update:model-value="handleValueUpdate"
       @change="handleSelectionChange"
     />
@@ -44,6 +45,11 @@ const props = defineProps({
   disabled: {
     type: Boolean,
     default: false
+  },
+  // 业务专用人员范围由调用方提供；不传时保持通用用户目录行为。
+  dataSource: {
+    type: Object,
+    default: null
   }
 })
 

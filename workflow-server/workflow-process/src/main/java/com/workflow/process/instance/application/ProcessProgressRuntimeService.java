@@ -9,6 +9,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.process.instance.api.response.ProcessProgressDTO;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.process.audit.infrastructure.persistence.mapper.ProcessOperationLogMapper;
+import com.workflow.process.audit.application.ProcessTransferLogFormatter;
 import com.workflow.process.task.infrastructure.persistence.mapper.ProcessTaskMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysGroupMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
@@ -331,7 +332,7 @@ public class ProcessProgressRuntimeService {
                 dto.setAssignee(log.getOperatorId());
                 dto.setAssigneeName(log.getOperatorId());
                 dto.setAction("TRANSFERRED");
-                dto.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
+                dto.setComment(ProcessTransferLogFormatter.comment(log));
                 String opTime = log.getOperationTime() != null ? log.getOperationTime().format(DATE_FORMATTER) : null;
                 dto.setStartTime(opTime);
                 dto.setEndTime(opTime);

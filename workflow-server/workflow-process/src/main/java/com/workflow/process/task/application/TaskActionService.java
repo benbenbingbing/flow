@@ -3,6 +3,7 @@ package com.workflow.process.task.application;
 import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.process.audit.application.ProcessTransferLogFormatter;
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener;
 import com.workflow.process.form.application.NodeFormSubmissionService;
@@ -944,7 +945,7 @@ public class TaskActionService {
                 vo.setTaskName(ht != null ? ht.getName() : "任务转办");
                 vo.setAssignee(log.getOperatorId());
                 vo.setResult("transfer");
-                vo.setComment(log.getNewValue() != null ? "转办给: " + log.getNewValue() : log.getOperationComment());
+                vo.setComment(ProcessTransferLogFormatter.comment(log));
                 vo.setCreateTime(log.getOperationTime() != null ? 
                     Date.from(log.getOperationTime().atZone(ZoneId.systemDefault()).toInstant()) : null);
                 

@@ -19,6 +19,50 @@ import java.time.LocalDateTime;
 public interface SysUserMapper extends BaseMapper<SysUser> {
 
     /**
+     * 交接来源需要包括已删除、已禁用用户；显式 SQL 绕过普通目录的逻辑删除过滤，且只读最小身份列。
+     *
+     * @param id 精确用户 ID，禁止将用户名作为备用匹配条件
+     * @return 用户身份与状态；不存在时为空
+     */
+    @Select("SELECT id, username, nickname, status, deleted FROM sys_user WHERE id = #{id}")
+    SysUser selectHandoverUser(@Param("id") String id);
+
+    /**
+     * 查询交接候选人；分页插件负责适配数据库分页语法，来源不能套用普通用户列表的 deleted 过滤。
+     *
+     * @param page 固定第一页与上限，不查询总数
+     * @param keyword ID、用户名、昵称关键字
+     * @param targetOnly 仅接收人需满足正常且未删除
+     * @return 按用户名、ID 排序的最小身份数据
+     */
+    @Select("""
+            <script>
+            <bind name="pattern" value="keyword == null ? null : &quot;%&quot; + keyword + &quot;%&quot;"/>
+            SELECT id, username, nickname, status, deleted FROM sys_user
+            <where>
+              <if test="targetOnly">deleted = 0 AND status = '0'</if>
+              <if test="keyword != null and keyword != ''">
+                AND (id LIKE #{pattern,jdbcType=VARCHAR} OR username LIKE #{pattern,jdbcType=VARCHAR}
+                  OR nickname LIKE #{pattern,jdbcType=VARCHAR})
+              </if>
+            </where>
+            ORDER BY username, id
+            </script>
+            """)
+    Page<SysUser> selectHandoverUsers(Page<SysUser> page,
+                                    @Param("keyword") String keyword,
+                                    @Param("targetOnly") boolean targetOnly);
+
+    /**
+     * 交接提交时锁住接收人行，锁与禁用、删除操作的更新锁互斥；必须在外层交接事务中调用。
+     *
+     * @param id 精确用户 ID
+     * @return 最新身份状态；不预先过滤状态，供调用方说明接收人已失效的原因
+     */
+    @Select("SELECT id, username, nickname, status, deleted FROM sys_user WHERE id = #{id} FOR UPDATE")
+    SysUser selectHandoverUserForUpdate(@Param("id") String id);
+
+    /**
      * 批量读取展示所需列，调用方每批最多 100 个键。比较交给数据库以保持大小写/排序规则，
      * 每个分支都从用户表查询，避免 Oracle 等产品对无 FROM 常量表的方言差异。
      * CONCAT 明确 UNION 输出参数的字符串类型，避免数据库在准备语句时无法推导类型。

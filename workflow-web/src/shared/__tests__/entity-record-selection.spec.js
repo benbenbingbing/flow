@@ -116,9 +116,10 @@ for (const entityType of ['CUSTOM', 'USER', 'DEPT', 'ROLE', 'GROUP']) {
   const total = ref(0)
   let restored = 0
   const dependencies = {
-    props: { entityType, apiUrl: 'https://legacy.example.invalid/query' },
+    props: { entityType, apiUrl: 'https://legacy.example.invalid/query', dataSource: null },
     effectiveEntityCode: ref('project'), effectiveRefEntityId: ref(''),
     loading, tableData, total, pageNum: ref(2), pageSize: ref(20), searchKeyword: ref('项目 & A'),
+    listRequestId: 0, selectionRestoreId: 0,
     request: { get: async url => { calls.push(url); return { records: [projectA], total: 35 } } },
     ElMessage: { warning: assert.fail, error: assert.fail },
     restoreCurrentPageSelection: async () => { restored += 1 }
@@ -154,13 +155,46 @@ let selectedLoads = 0
 const dialogVisible = ref(false)
 const selectedRows = ref([])
 await selectorMethod('openSelector', {
-  props: { disabled: false }, dialogVisible, selectedRows,
-  selectedList: ref([projectA]), normalizeRecordSelection,
-  useUnifiedList: ref(true), loadSelectedData: async () => { selectedLoads += 1 },
+    props: { disabled: false }, dialogVisible, selectedRows,
+    selectedList: ref([projectA]), normalizeRecordSelection,
+    openRequestId: 0,
+    useUnifiedList: ref(true), loadSelectedData: async () => { selectedLoads += 1 },
   loadData: assert.fail, pageNum: ref(2), searchKeyword: ref('')
 })()
 assert.equal(dialogVisible.value, true)
 assert.equal(selectedLoads, 1)
 assert.deepEqual(selectedRows.value, [projectA])
+
+// 专用目录必须驱动人员弹窗列表与身份回显，不能回退到会过滤异常来源的通用 USER 接口。
+const handoverUser = { id: 'former', name: '离职人员', code: 'former-account', entityType: 'USER', status: '1', deleted: true }
+const handoverCalls = []
+const handoverDataSource = {
+  list: async params => { handoverCalls.push(['list', params]); return { records: [handoverUser], total: 1 } },
+  batch: async (values, valueKey) => { handoverCalls.push(['batch', values, valueKey]); return [handoverUser] }
+}
+const dedicatedRows = ref([]), dedicatedTotal = ref(0), dedicatedLoading = ref(false)
+await selectorMethod('loadData', {
+  props: { entityType: 'USER', dataSource: handoverDataSource },
+  effectiveEntityCode: ref(''), effectiveRefEntityId: ref(''),
+  loading: dedicatedLoading, tableData: dedicatedRows, total: dedicatedTotal,
+  pageNum: ref(1), pageSize: ref(10), searchKeyword: ref('former'),
+  listRequestId: 0, selectionRestoreId: 0,
+  request: { get: assert.fail }, ElMessage: { warning: assert.fail, error: assert.fail },
+  restoreCurrentPageSelection: async () => {}
+})()
+assert.deepEqual(handoverCalls, [['list', { pageNum: 1, pageSize: 10, keyword: 'former' }]])
+assert.equal(dedicatedRows.value[0].deleted, true)
+assert.equal(dedicatedTotal.value, 1)
+
+const dedicatedSelected = ref(null), dedicatedSelectedList = ref([])
+await selectorMethod('loadSelectedData', {
+  props: { entityType: 'USER', modelValue: 'former', multiple: false, valueKey: 'id', dataSource: handoverDataSource },
+  effectiveEntityCode: ref(''), effectiveRefEntityId: ref(''),
+  selectedRequestId: 0, selectedData: dedicatedSelected, selectedList: dedicatedSelectedList,
+  request: { get: assert.fail }
+})()
+assert.equal(dedicatedSelected.value.name, '离职人员')
+assert.equal(dedicatedSelected.value.deleted, true)
+assert.deepEqual(handoverCalls.at(-1), ['batch', ['former'], 'id'])
 
 console.log('entity record selection tests passed')

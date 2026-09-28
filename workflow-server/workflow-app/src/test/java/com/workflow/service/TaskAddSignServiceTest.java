@@ -170,6 +170,72 @@ class TaskAddSignServiceTest {
                 "source-task", "admin", "approve", "原任务已提交", null, "通过", null);
     }
 
+    /** 接收人只承担待办责任；自动收口的已提交审批仍归原提交人，包含原账号已删除的情况。 */
+    @Test
+    void transferredWaitingSourceRestoresOriginalSubmitterBeforeAutomaticCompletion() {
+        ProcessTaskAddSign open = addSign("PARALLEL", true);
+        ProcessTask waitingSource = prepareTransferredWaitingSource(open);
+        when(processTaskMapper.selectByTaskIdForUpdate("source-task")).thenReturn(waitingSource);
+        when(processTaskMapper.updateById(any(ProcessTask.class))).thenReturn(1);
+
+        service.completeAddSignTask("child-task", "approve", "同意");
+
+        var order = inOrder(taskService, processTaskMapper, taskActionService);
+        order.verify(taskService).setAssignee("source-task", "admin");
+        order.verify(processTaskMapper).updateById(argThat((ProcessTask value) ->
+                Long.valueOf(1).equals(value.getId()) && "admin".equals(value.getAssigneeId())
+                        && "admin".equals(value.getAssigneeName()) && "user".equals(value.getAssigneeType())
+                        && value.getStatus() == null && value.getAction() == null && value.getComment() == null));
+        order.verify(taskActionService).completeDeferredTask(
+                "source-task", "admin", "approve", "原任务已提交", null, "通过", null);
+        assertEquals("admin", open.getOperatorId());
+    }
+
+    /** 必须重新选择下一审批人时不能把任务交回旧账号，接收人仍应能完成这次人工确认。 */
+    @Test
+    void transferredWaitingSourceKeepsRecipientWhenNextApproverNeedsConfirmation() {
+        ProcessTaskAddSign open = addSign("PARALLEL", true);
+        ProcessTask waitingSource = prepareTransferredWaitingSource(open);
+        when(processTaskMapper.selectByTaskId("source-task")).thenReturn(waitingSource);
+        when(taskActionService.requiresManualNextApproverForDeferredCompletion(
+                "source-task", "approve", "原任务已提交", "通过", null)).thenReturn(true);
+
+        service.completeAddSignTask("child-task", "approve", "同意");
+
+        verify(taskService, never()).setAssignee(anyString(), anyString());
+        verify(taskActionService, never()).completeDeferredTask(any(), any(), any(), any(), any(), any(), any());
+        assertEquals("recipient", waitingSource.getAssigneeId());
+        assertEquals("接收人", waitingSource.getAssigneeName());
+        assertEquals(ProcessTask.STATUS_TODO, waitingSource.getStatus());
+        assertFalse(Boolean.TRUE.equals(open.getSourceCompleted()));
+        assertEquals("COMPLETED", open.getStatus());
+    }
+
+    /** 模拟原审批已提交后交接给 recipient，再由其完成最后一条加签任务的场景。 */
+    private ProcessTask prepareTransferredWaitingSource(ProcessTaskAddSign open) {
+        UserContext.setCurrentUser("recipient-id", "recipient");
+        lenient().when(task.getAssignee()).thenReturn("recipient");
+        ProcessTaskAddSignUser child = new ProcessTaskAddSignUser();
+        child.setAddSignId("add-sign-1");
+        child.setUserId("recipient");
+        child.setGeneratedTaskId("child-task");
+        child.setStatus("TODO");
+        ProcessTask childMirror = sourceMirror();
+        childMirror.setId(2L);
+        childMirror.setTaskId("child-task");
+        childMirror.setAssigneeId("recipient");
+        ProcessTask waitingSource = sourceMirror();
+        waitingSource.setStatus(ProcessTask.STATUS_WAITING);
+        waitingSource.setAssigneeId("recipient");
+        waitingSource.setAssigneeName("接收人");
+        when(addSignUserMapper.findByGeneratedTaskId("child-task")).thenReturn(child);
+        when(addSignUserMapper.findByGeneratedTaskIdForUpdate("child-task")).thenReturn(child);
+        when(processTaskMapper.selectByTaskId("child-task")).thenReturn(childMirror);
+        when(addSignMapper.selectByIdForUpdate("add-sign-1")).thenReturn(open);
+        when(addSignUserMapper.countPending("add-sign-1")).thenReturn(0L);
+        return waitingSource;
+    }
+
     @Test
     void lastChildRestoresSourceWhenNextApproverNeedsConfirmation() {
         ProcessTaskAddSign open = addSign("PARALLEL", true);
