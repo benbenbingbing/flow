@@ -2,7 +2,11 @@
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 187 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
--- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
+-- 导入前须将本文件中的 INIT_SIGNING_KEY_64_HEX_PLACEHOLDER 替换为新生成的 64 位十六进制随机密钥（例如 openssl rand -hex 32）。
+
+-- 本方言没有 ON UPDATE CASCADE；Flowable 实例主键在业务中不可修改。
+
+-- 未替换密钥占位符或密钥格式错误时，签名密钥的 NOT NULL 约束会拒绝导入；本文件不属于 Flyway 迁移。
 
 -- 表结构与表级约束。
 CREATE TABLE "ACT_APP_APPDEF" (
@@ -15,7 +19,7 @@ CREATE TABLE "ACT_APP_APPDEF" (
   "DEPLOYMENT_ID_" varchar2(255),
   "RESOURCE_NAME_" varchar2(4000),
   "DESCRIPTION_" varchar2(4000),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_APP_APPDEF_ACT_561297D9" PRIMARY KEY ("ID_")
 );
 
@@ -25,7 +29,7 @@ CREATE TABLE "ACT_APP_DEPLOYMENT" (
   "CATEGORY_" varchar2(255),
   "KEY_" varchar2(255),
   "DEPLOY_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_APP_DEPLOYMENT_D1A62A5E" PRIMARY KEY ("ID_")
 );
 
@@ -48,7 +52,7 @@ CREATE TABLE "ACT_CMMN_CASEDEF" (
   "RESOURCE_NAME_" varchar2(4000),
   "DESCRIPTION_" varchar2(4000),
   "HAS_GRAPHICAL_NOTATION_" number(1),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "DGRM_RESOURCE_NAME_" varchar2(4000),
   "HAS_START_FORM_KEY_" number(1),
   CONSTRAINT "PK_ACT_CMMN_CASEDEF_A_C4C47D42" PRIMARY KEY ("ID_")
@@ -61,7 +65,7 @@ CREATE TABLE "ACT_CMMN_DEPLOYMENT" (
   "KEY_" varchar2(255),
   "DEPLOY_TIME_" timestamp(3),
   "PARENT_DEPLOYMENT_ID_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_CMMN_DEPLOYMEN_283C7760" PRIMARY KEY ("ID_")
 );
 
@@ -87,7 +91,7 @@ CREATE TABLE "ACT_CMMN_HI_CASE_INST" (
   "START_USER_ID_" varchar2(255),
   "CALLBACK_ID_" varchar2(255),
   "CALLBACK_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "REFERENCE_ID_" varchar2(255),
   "REFERENCE_TYPE_" varchar2(255),
   "LAST_REACTIVATION_TIME_" timestamp(3),
@@ -104,7 +108,7 @@ CREATE TABLE "ACT_CMMN_HI_MIL_INST" (
   "CASE_INST_ID_" varchar2(255) NOT NULL,
   "CASE_DEF_ID_" varchar2(255) NOT NULL,
   "ELEMENT_ID_" varchar2(255) NOT NULL,
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_CMMN_HI_MIL_IN_A758CE97" PRIMARY KEY ("ID_")
 );
 
@@ -135,7 +139,7 @@ CREATE TABLE "ACT_CMMN_HI_PLAN_ITEM_INST" (
   "START_USER_ID_" varchar2(255),
   "REFERENCE_ID_" varchar2(255),
   "REFERENCE_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "ENTRY_CRITERION_ID_" varchar2(255),
   "EXIT_CRITERION_ID_" varchar2(255),
   "SHOW_IN_OVERVIEW_" number(1),
@@ -159,7 +163,7 @@ CREATE TABLE "ACT_CMMN_RU_CASE_INST" (
   "START_USER_ID_" varchar2(255),
   "CALLBACK_ID_" varchar2(255),
   "CALLBACK_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "LOCK_TIME_" timestamp(3),
   "IS_COMPLETEABLE_" number(1),
   "REFERENCE_ID_" varchar2(255),
@@ -178,7 +182,7 @@ CREATE TABLE "ACT_CMMN_RU_MIL_INST" (
   "CASE_INST_ID_" varchar2(255) NOT NULL,
   "CASE_DEF_ID_" varchar2(255) NOT NULL,
   "ELEMENT_ID_" varchar2(255) NOT NULL,
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_CMMN_RU_MIL_IN_D9FC68B8" PRIMARY KEY ("ID_")
 );
 
@@ -196,7 +200,7 @@ CREATE TABLE "ACT_CMMN_RU_PLAN_ITEM_INST" (
   "START_USER_ID_" varchar2(255),
   "REFERENCE_ID_" varchar2(255),
   "REFERENCE_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "ITEM_DEFINITION_ID_" varchar2(255),
   "ITEM_DEFINITION_TYPE_" varchar2(255),
   "IS_COMPLETEABLE_" number(1),
@@ -333,7 +337,7 @@ CREATE TABLE "ACT_HI_ACTINST" (
   "TRANSACTION_ORDER_" number(10),
   "DURATION_" number(19),
   "DELETE_REASON_" varchar2(4000),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "COMPLETED_BY_" varchar2(255),
   CONSTRAINT "PK_ACT_HI_ACTINST_ACT_88A5D05B" PRIMARY KEY ("ID_")
 );
@@ -378,7 +382,7 @@ CREATE TABLE "ACT_HI_DETAIL" (
   "REV_" number(10),
   "TIME_" timestamp(3) NOT NULL,
   "BYTEARRAY_ID_" varchar2(64),
-  "DOUBLE_" binary_double,
+  "DOUBLE_" double,
   "LONG_" number(19),
   "TEXT_" varchar2(4000),
   "TEXT2_" varchar2(4000),
@@ -432,7 +436,7 @@ CREATE TABLE "ACT_HI_PROCINST" (
   "END_ACT_ID_" varchar2(255),
   "SUPER_PROCESS_INSTANCE_ID_" varchar2(64),
   "DELETE_REASON_" varchar2(4000),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "NAME_" varchar2(255),
   "CALLBACK_ID_" varchar2(255),
   "CALLBACK_TYPE_" varchar2(255),
@@ -470,7 +474,7 @@ CREATE TABLE "ACT_HI_TASKINST" (
   "DUE_DATE_" timestamp(3),
   "FORM_KEY_" varchar2(255),
   "CATEGORY_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "LAST_UPDATED_TIME_" timestamp(3),
   "STATE_" varchar2(255),
   "IN_PROGRESS_TIME_" timestamp(3),
@@ -497,7 +501,7 @@ CREATE TABLE "ACT_HI_TSK_LOG" (
   "SCOPE_DEFINITION_ID_" varchar2(255),
   "SUB_SCOPE_ID_" varchar2(255),
   "SCOPE_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_HI_TSK_LOG_ACT_1EEC1BFF" PRIMARY KEY ("ID_")
 );
 
@@ -513,7 +517,7 @@ CREATE TABLE "ACT_HI_VARINST" (
   "SUB_SCOPE_ID_" varchar2(255),
   "SCOPE_TYPE_" varchar2(255),
   "BYTEARRAY_ID_" varchar2(64),
-  "DOUBLE_" binary_double,
+  "DOUBLE_" double,
   "LONG_" number(19),
   "TEXT_" varchar2(4000),
   "TEXT2_" varchar2(4000),
@@ -599,7 +603,7 @@ CREATE TABLE "ACT_ID_USER" (
   "EMAIL_" varchar2(255),
   "PWD_" varchar2(255),
   "PICTURE_ID_" varchar2(64),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_ID_USER_ACT_ID_USER" PRIMARY KEY ("ID_")
 );
 
@@ -616,7 +620,7 @@ CREATE TABLE "ACT_RE_DEPLOYMENT" (
   "NAME_" varchar2(255),
   "CATEGORY_" varchar2(255),
   "KEY_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "DEPLOY_TIME_" timestamp(3),
   "DERIVED_FROM_" varchar2(64),
   "DERIVED_FROM_ROOT_" varchar2(64),
@@ -638,7 +642,7 @@ CREATE TABLE "ACT_RE_MODEL" (
   "DEPLOYMENT_ID_" varchar2(64),
   "EDITOR_SOURCE_VALUE_ID_" varchar2(64),
   "EDITOR_SOURCE_EXTRA_VALUE_ID_" varchar2(64),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RE_MODEL_ACT_RE_MODEL" PRIMARY KEY ("ID_")
 );
 
@@ -656,7 +660,7 @@ CREATE TABLE "ACT_RE_PROCDEF" (
   "HAS_START_FORM_KEY_" number(3),
   "HAS_GRAPHICAL_NOTATION_" number(3),
   "SUSPENSION_STATE_" number(10),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "ENGINE_VERSION_" varchar2(255),
   "DERIVED_FROM_" varchar2(64),
   "DERIVED_FROM_ROOT_" varchar2(64),
@@ -681,7 +685,7 @@ CREATE TABLE "ACT_RU_ACTINST" (
   "DURATION_" number(19),
   "TRANSACTION_ORDER_" number(10),
   "DELETE_REASON_" varchar2(4000),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "COMPLETED_BY_" varchar2(255),
   CONSTRAINT "PK_ACT_RU_ACTINST_ACT_63D654B5" PRIMARY KEY ("ID_")
 );
@@ -710,7 +714,7 @@ CREATE TABLE "ACT_RU_DEADLETTER_JOB" (
   "HANDLER_CFG_" varchar2(4000),
   "CUSTOM_VALUES_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_DEADLETTER__32D43BD7" PRIMARY KEY ("ID_")
 );
 
@@ -750,7 +754,7 @@ CREATE TABLE "ACT_RU_EVENT_SUBSCR" (
   "SCOPE_TYPE_" varchar2(64),
   "LOCK_TIME_" timestamp(3),
   "LOCK_OWNER_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "SCOPE_DEFINITION_KEY_" varchar2(255),
   CONSTRAINT "PK_ACT_RU_EVENT_SUBSC_73AA5CAA" PRIMARY KEY ("ID_")
 );
@@ -772,7 +776,7 @@ CREATE TABLE "ACT_RU_EXECUTION" (
   "IS_MI_ROOT_" number(3),
   "SUSPENSION_STATE_" number(10),
   "CACHED_ENT_STATE_" number(10),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "NAME_" varchar2(255),
   "START_ACT_ID_" varchar2(255),
   "START_TIME_" timestamp(3),
@@ -825,7 +829,7 @@ CREATE TABLE "ACT_RU_EXTERNAL_JOB" (
   "HANDLER_CFG_" varchar2(4000),
   "CUSTOM_VALUES_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_EXTERNAL_JO_D406A02F" PRIMARY KEY ("ID_")
 );
 
@@ -843,7 +847,7 @@ CREATE TABLE "ACT_RU_HISTORY_JOB" (
   "ADV_HANDLER_CFG_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
   "SCOPE_TYPE_" varchar2(255),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_HISTORY_JOB_46775C22" PRIMARY KEY ("ID_")
 );
 
@@ -890,7 +894,7 @@ CREATE TABLE "ACT_RU_JOB" (
   "HANDLER_CFG_" varchar2(4000),
   "CUSTOM_VALUES_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_JOB_ACT_RU_JOB" PRIMARY KEY ("ID_")
 );
 
@@ -919,7 +923,7 @@ CREATE TABLE "ACT_RU_SUSPENDED_JOB" (
   "HANDLER_CFG_" varchar2(4000),
   "CUSTOM_VALUES_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_SUSPENDED_J_BC4C8A8B" PRIMARY KEY ("ID_")
 );
 
@@ -947,7 +951,7 @@ CREATE TABLE "ACT_RU_TASK" (
   "DUE_DATE_" timestamp(3),
   "CATEGORY_" varchar2(255),
   "SUSPENSION_STATE_" number(10),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   "FORM_KEY_" varchar2(255),
   "CLAIM_TIME_" timestamp(3),
   "IS_COUNT_ENABLED_" number(3),
@@ -991,7 +995,7 @@ CREATE TABLE "ACT_RU_TIMER_JOB" (
   "HANDLER_CFG_" varchar2(4000),
   "CUSTOM_VALUES_ID_" varchar2(64),
   "CREATE_TIME_" timestamp(3),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_ACT_RU_TIMER_JOB_A_C0675D77" PRIMARY KEY ("ID_")
 );
 
@@ -1007,7 +1011,7 @@ CREATE TABLE "ACT_RU_VARIABLE" (
   "SUB_SCOPE_ID_" varchar2(255),
   "SCOPE_TYPE_" varchar2(255),
   "BYTEARRAY_ID_" varchar2(64),
-  "DOUBLE_" binary_double,
+  "DOUBLE_" double,
   "LONG_" number(19),
   "TEXT_" varchar2(4000),
   "TEXT2_" varchar2(4000),
@@ -1343,7 +1347,7 @@ CREATE TABLE "EMBED_LAUNCH" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_EMBED_LAUNCH_EMBED_LAUNCH" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_084B2EA8" CHECK ((JSON_VALID("CONTEXT_CIPHERTEXT") = 1 and (length("CONTEXT_CIPHERTEXT") <= 65536) and (char_length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (char_length("CONTEXT_DIGEST_KEY_VERSION") > 0) and (char_length("SUBJECT_DIGEST_KEY_VERSION") > 0))),
+  CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_084B2EA8" CHECK ((JSON_VALID("CONTEXT_CIPHERTEXT") = 1 and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (length("CONTEXT_DIGEST_KEY_VERSION") > 0) and (length("SUBJECT_DIGEST_KEY_VERSION") > 0))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_DEF0F287" CHECK ((((("SOURCE_IP_DIGEST" is null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is null)) or (("SOURCE_IP_DIGEST" is not null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is not null))) and ((("USER_AGENT_DIGEST" is null) and ("USER_AGENT_DIGEST_KEY_VERSION" is null)) or (("USER_AGENT_DIGEST" is not null) and ("USER_AGENT_DIGEST_KEY_VERSION" is not null))))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_02AA23AA" CHECK ((regexp_like("SUBJECT_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CONTEXT_DIGEST",'^[0-9a-f]{64}$') and regexp_like("LAUNCH_CODE_DIGEST",'^[0-9a-f]{64}$') and (("SOURCE_IP_DIGEST" is null) or regexp_like("SOURCE_IP_DIGEST",'^[0-9a-f]{64}$')) and (("USER_AGENT_DIGEST" is null) or regexp_like("USER_AGENT_DIGEST",'^[0-9a-f]{64}$')))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_2A9FC6A6" CHECK (((("ENTRY_MODE" in ('LIST','CREATE')) and ("RECORD_ID" is null)) or (("ENTRY_MODE" in ('VIEW','EDIT')) and ("RECORD_ID" is not null)))),
@@ -1422,7 +1426,7 @@ CREATE TABLE "EMBED_SESSION" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_EMBED_SESSION_EMBED_SESSION" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_EMBED_SESSION_CHK__ACB07F51" CHECK ((JSON_VALID("CONTEXT_CIPHERTEXT") = 1 and JSON_VALID("CAPABILITY_SNAPSHOT_JSON") = 1 and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CAPABILITY_SNAPSHOT_JSON") <= 65536) and (char_length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (char_length("CONTEXT_DIGEST_KEY_VERSION") > 0))),
+  CONSTRAINT "CK_EMBED_SESSION_CHK__ACB07F51" CHECK ((JSON_VALID("CONTEXT_CIPHERTEXT") = 1 and JSON_VALID("CAPABILITY_SNAPSHOT_JSON") = 1 and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CAPABILITY_SNAPSHOT_JSON") <= 65536) and (length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (length("CONTEXT_DIGEST_KEY_VERSION") > 0))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__6B5E76A9" CHECK ((((("SOURCE_IP_DIGEST" is null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is null)) or (("SOURCE_IP_DIGEST" is not null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is not null))) and ((("USER_AGENT_DIGEST" is null) and ("USER_AGENT_DIGEST_KEY_VERSION" is null)) or (("USER_AGENT_DIGEST" is not null) and ("USER_AGENT_DIGEST_KEY_VERSION" is not null))))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__0C8C959D" CHECK ((regexp_like("SESSION_TOKEN_DIGEST",'^[0-9a-f]{64}$') and regexp_like("PARENT_NONCE_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CHILD_NONCE_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CONTEXT_DIGEST",'^[0-9a-f]{64}$') and (("SOURCE_IP_DIGEST" is null) or regexp_like("SOURCE_IP_DIGEST",'^[0-9a-f]{64}$')) and (("USER_AGENT_DIGEST" is null) or regexp_like("USER_AGENT_DIGEST",'^[0-9a-f]{64}$')))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__2E8214C9" CHECK (((("ENTRY_MODE" in ('LIST','CREATE')) and ("RECORD_ID" is null)) or (("ENTRY_MODE" in ('VIEW','EDIT')) and ("RECORD_ID" is not null)))),
@@ -1509,13 +1513,13 @@ CREATE TABLE "EMBED_VIEW_RELEASE" (
 CREATE TABLE "ENTITY_CODE_RULE" (
   "ID" varchar2(64) NOT NULL,
   "ENTITY_CODE" varchar2(100) NOT NULL,
-  "PREFIX" varchar2(20),
+  "PREFIX" varchar2(20) DEFAULT '',
   "DATE_FORMAT" varchar2(20) DEFAULT 'yyyyMMdd',
   "SEQ_LENGTH" number(10) DEFAULT '6',
   "SEQ_TYPE" varchar2(20) DEFAULT 'DAY',
   "CURRENT_SEQ" number(10) DEFAULT '0',
-  "SEQ_DATE" varchar2(20),
-  "EXAMPLE" varchar2(100),
+  "SEQ_DATE" varchar2(20) DEFAULT '',
+  "EXAMPLE" varchar2(100) DEFAULT '',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "GENERATION_MODE" varchar2(20) NOT NULL DEFAULT 'RULE',
@@ -1541,7 +1545,7 @@ CREATE TABLE "ENTITY_DEFINITION" (
   "UPDATED_BY" varchar2(64),
   "TEAM_VISIBILITY_ENABLED" number(3) NOT NULL DEFAULT '0',
   "TEAM_VISIBILITY_LEVEL" varchar2(30) NOT NULL DEFAULT 'ADDITIVE',
-  "ACTIVE_PROCESS_DEFINITION_KEY" number(19) GENERATED ALWAYS AS ((case when ((coalesce("DELETED",0) = 0) and regexp_like(trim("PROCESS_DEFINITION_ID"),'^[0-9]+$') and (nullif(trim(leading '0' from trim("PROCESS_DEFINITION_ID")),'') is not null) and ((char_length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) < 19) or ((char_length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) = 19) and (trim(leading '0' from trim("PROCESS_DEFINITION_ID")) <= '9223372036854775807')))) then cast(trim(leading '0' from trim("PROCESS_DEFINITION_ID")) as number(19)) else NULL end)) VIRTUAL,
+  "ACTIVE_PROCESS_DEFINITION_KEY" number(19) GENERATED ALWAYS AS ((case when ((coalesce("DELETED",0) = 0) and regexp_like(trim("PROCESS_DEFINITION_ID"),'^[0-9]+$') and (nullif(trim(leading '0' from trim("PROCESS_DEFINITION_ID")),'') is not null) and ((length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) < 19) or ((length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) = 19) and (trim(leading '0' from trim("PROCESS_DEFINITION_ID")) <= '9223372036854775807')))) then cast(trim(leading '0' from trim("PROCESS_DEFINITION_ID")) as number(19)) else NULL end)) VIRTUAL,
   CONSTRAINT "PK_ENTITY_DEFINITION__C27B7B72" PRIMARY KEY ("ID")
 );
 
@@ -1615,7 +1619,7 @@ CREATE TABLE "ENTITY_FORM" (
   "ENTITY_ID" varchar2(64) NOT NULL,
   "FORM_NAME" varchar2(100) NOT NULL,
   "FORM_KEY" varchar2(100) NOT NULL,
-  "DESCRIPTION" varchar2(500),
+  "DESCRIPTION" varchar2(500) DEFAULT '',
   "LAYOUT_TYPE" varchar2(20) DEFAULT 'vertical',
   "STATUS" number(3) DEFAULT '1',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -2192,7 +2196,7 @@ CREATE TABLE "FLW_RU_BATCH" (
   "COMPLETE_TIME_" timestamp(3),
   "STATUS_" varchar2(255),
   "BATCH_DOC_ID_" varchar2(64),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_FLW_RU_BATCH_FLW_RU_BATCH" PRIMARY KEY ("ID_")
 );
 
@@ -2210,14 +2214,14 @@ CREATE TABLE "FLW_RU_BATCH_PART" (
   "COMPLETE_TIME_" timestamp(3),
   "STATUS_" varchar2(255),
   "RESULT_DOC_ID_" varchar2(64),
-  "TENANT_ID_" varchar2(255),
+  "TENANT_ID_" varchar2(255) DEFAULT '',
   CONSTRAINT "PK_FLW_RU_BATCH_PART__A4896B0F" PRIMARY KEY ("ID_")
 );
 
 CREATE TABLE "INTEGRATION_API_REQUEST_LEASE" (
   "LEASE_ID" varchar2(64) NOT NULL,
   "APPLICATION_ID" varchar2(64) NOT NULL,
-  "SCOPE_KEY" varchar2(128) NOT NULL,
+  "SCOPE_KEY" varchar2(128) NOT NULL DEFAULT '',
   "EXPIRES_AT" timestamp(6) NOT NULL,
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -2424,7 +2428,7 @@ CREATE TABLE "PROCESS_ASSIGNEE_INCIDENT" (
   "DETAIL_JSON" clob,
   "CREATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "OPEN_SLOT" varchar2(128) GENERATED ALWAYS AS ((case when ("STATUS" in ('OPEN','RETRY_SCHEDULED','MANUAL_REQUIRED')) then concat(coalesce("TASK_ID","PROCESS_INSTANCE_ID",'NO_INSTANCE'),':',"NODE_ID") else NULL end)) VIRTUAL,
+  "OPEN_SLOT" varchar2(128) GENERATED ALWAYS AS ((case when ("STATUS" in ('OPEN','RETRY_SCHEDULED','MANUAL_REQUIRED')) then (coalesce("TASK_ID","PROCESS_INSTANCE_ID",'NO_INSTANCE') || ':' || "NODE_ID") else NULL end)) VIRTUAL,
   CONSTRAINT "PK_PROCESS_ASSIGNEE_I_CE84E08D" PRIMARY KEY ("ID")
 );
 
@@ -2607,7 +2611,7 @@ CREATE TABLE "PROCESS_NODE_FORM" (
   "ID" varchar2(64) NOT NULL,
   "PROCESS_CONFIG_ID" varchar2(64) NOT NULL,
   "NODE_ID" varchar2(100) NOT NULL,
-  "NODE_NAME" varchar2(100),
+  "NODE_NAME" varchar2(100) DEFAULT '',
   "FORM_ID" varchar2(64) NOT NULL,
   "IS_READONLY" number(3) DEFAULT '0',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -2984,9 +2988,9 @@ CREATE TABLE "SYS_GLOBAL_SETTING" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_SYS_GLOBAL_SETTING_98D24A79" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_E61039BF" CHECK ((char_length(trim("SETTING_KEY")) > 0)),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_BA61D3A3" CHECK ((char_length(trim("NAME")) > 0)),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_F91D56C3" CHECK (((("SCOPE_TYPE" = 'SYSTEM') and ("OWNER_ID" = '0')) or (("SCOPE_TYPE" = 'USER') and (char_length(trim("OWNER_ID")) > 0) and ("OWNER_ID" <> '0')))),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_E61039BF" CHECK ((length(trim("SETTING_KEY")) > 0)),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_BA61D3A3" CHECK ((length(trim("NAME")) > 0)),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_F91D56C3" CHECK (((("SCOPE_TYPE" = 'SYSTEM') and ("OWNER_ID" = '0')) or (("SCOPE_TYPE" = 'USER') and (length(trim("OWNER_ID")) > 0) and ("OWNER_ID" <> '0')))),
   CONSTRAINT "CK_SYS_GLOBAL_SETTING_5A3A3811" CHECK (("SETTING_VALUE_TYPE" in ('BOOLEAN','NUMBER','STRING','JSON'))),
   CONSTRAINT "CK_SYS_GLOBAL_SETTING_13E5992C" CHECK (("VERSION" >= 0))
 );
@@ -2995,7 +2999,7 @@ CREATE TABLE "SYS_GROUP" (
   "ID" varchar2(64) NOT NULL,
   "GROUP_NAME" varchar2(50) NOT NULL,
   "GROUP_CODE" varchar2(50) NOT NULL,
-  "DESCRIPTION" varchar2(200),
+  "DESCRIPTION" varchar2(200) DEFAULT '',
   "SORT" number(10) DEFAULT '0',
   "STATUS" char(1) DEFAULT '0',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -3028,7 +3032,7 @@ CREATE TABLE "SYS_MENU" (
   "UPDATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "IS_FRAME" char(1) DEFAULT '0',
   "IS_CACHE" char(1) DEFAULT '0',
-  "QUERY" varchar2(255),
+  "QUERY" varchar2(255) DEFAULT '',
   "ENTITY_CODE" varchar2(100),
   "RESOURCE_TYPE" varchar2(30),
   "LIST_KEY" varchar2(100),
@@ -3122,7 +3126,7 @@ CREATE TABLE "SYS_ROLE" (
   "ID" varchar2(64) NOT NULL,
   "ROLE_NAME" varchar2(50) NOT NULL,
   "ROLE_CODE" varchar2(50) NOT NULL,
-  "DESCRIPTION" varchar2(200),
+  "DESCRIPTION" varchar2(200) DEFAULT '',
   "SORT" number(10) DEFAULT '0',
   "STATUS" char(1) DEFAULT '0',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -3143,11 +3147,11 @@ CREATE TABLE "SYS_ROLE_MENU" (
 CREATE TABLE "SYS_USER" (
   "ID" varchar2(64) NOT NULL,
   "USERNAME" varchar2(50) NOT NULL,
-  "NICKNAME" varchar2(50),
+  "NICKNAME" varchar2(50) DEFAULT '',
   "PASSWORD" varchar2(100) NOT NULL,
-  "EMAIL" varchar2(100),
-  "PHONE" varchar2(20),
-  "AVATAR" varchar2(255),
+  "EMAIL" varchar2(100) DEFAULT '',
+  "PHONE" varchar2(20) DEFAULT '',
+  "AVATAR" varchar2(255) DEFAULT '',
   "STATUS" char(1) DEFAULT '0',
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -3384,7 +3388,7 @@ CREATE TABLE "UI_EVENT_BINDING" (
   "OWNER_TYPE" varchar2(20) NOT NULL,
   "OWNER_ID" varchar2(64) NOT NULL,
   "TARGET_TYPE" varchar2(20) NOT NULL DEFAULT 'OWNER',
-  "TARGET_KEY" varchar2(100) NOT NULL,
+  "TARGET_KEY" varchar2(100) NOT NULL DEFAULT '',
   "EVENT_CODE" varchar2(50) NOT NULL,
   "INHERITANCE_MODE" varchar2(20) NOT NULL DEFAULT 'INHERIT',
   "STEPS_DOCUMENT" clob,
@@ -7365,7 +7369,7 @@ INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES (
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fca60e3e87e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_publish_permission',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fca636d487e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_override_permission',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fffc1112adfbecab7f3f747beab1ad10','1','embed_perm_view',CURRENT_TIMESTAMP);
-INSERT INTO "SYS_GLOBAL_SETTING" ("ID", "SCOPE_TYPE", "OWNER_ID", "SETTING_KEY", "NAME", "SETTING_VALUE_TYPE", "SETTING_VALUE", "REMARK") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', '"' || LOWER(RAWTOHEX(SYS_GUID()) || RAWTOHEX(SYS_GUID())) || '"', '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
+INSERT INTO "SYS_GLOBAL_SETTING" ("ID", "SCOPE_TYPE", "OWNER_ID", "SETTING_KEY", "NAME", "SETTING_VALUE_TYPE", "SETTING_VALUE", "REMARK") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', CASE WHEN REGEXP_LIKE('INIT_SIGNING_KEY_64_HEX_PLACEHOLDER', '^[0-9A-Fa-f]{64}$') THEN '"' || LOWER('INIT_SIGNING_KEY_64_HEX_PLACEHOLDER') || '"' ELSE NULL END, '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
 INSERT INTO "SYS_USER" ("ID", "USERNAME", "NICKNAME", "PASSWORD", "EMAIL", "PHONE", "AVATAR", "STATUS", "CREATE_TIME", "UPDATE_TIME", "DELETED", "ORG_ID", "DEPT_ID", "PASSWORD_RESET_REQUIRED", "TOKEN_VERSION") VALUES ('1', 'admin', '超级管理员', '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6', 'admin@workflow.com', NULL, NULL, '1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL, NULL, 1, 0);
 INSERT INTO "SYS_USER_ROLE" ("ID", "USER_ID", "ROLE_ID", "CREATE_TIME") VALUES ('bootstrap_admin_role_001', '1', '1', CURRENT_TIMESTAMP);
 

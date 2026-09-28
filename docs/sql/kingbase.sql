@@ -4,6 +4,9 @@
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
 
+-- KingbaseES V8 需要 kbcrypto 扩展生成强随机密钥；导入账号需有创建扩展的权限。
+CREATE EXTENSION IF NOT EXISTS kbcrypto;
+
 -- JSON 合法性用于与 MySQL JSON_VALID CHECK 保持一致；错误输入返回 false。
 CREATE OR REPLACE FUNCTION flow_sql_is_json(p_value text) RETURNS boolean
 LANGUAGE plpgsql IMMUTABLE AS $$
@@ -7376,7 +7379,7 @@ INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES (
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('fca60e3e87e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_publish_permission',CURRENT_TIMESTAMP);
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('fca636d487e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_override_permission',CURRENT_TIMESTAMP);
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('fffc1112adfbecab7f3f747beab1ad10','1','embed_perm_view',CURRENT_TIMESTAMP);
-INSERT INTO "sys_global_setting" ("id", "scope_type", "owner_id", "setting_key", "name", "setting_value_type", "setting_value", "remark") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', to_json(replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''))::text, '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
+INSERT INTO "sys_global_setting" ("id", "scope_type", "owner_id", "setting_key", "name", "setting_value_type", "setting_value", "remark") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', to_json(encode(gen_random_bytes(32), 'hex'))::text, '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
 INSERT INTO "sys_user" ("id", "username", "nickname", "password", "email", "phone", "avatar", "status", "create_time", "update_time", "deleted", "org_id", "dept_id", "password_reset_required", "token_version") VALUES ('1', 'admin', '超级管理员', '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6', 'admin@workflow.com', NULL, NULL, '1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL, NULL, 1, 0);
 INSERT INTO "sys_user_role" ("id", "user_id", "role_id", "create_time") VALUES ('bootstrap_admin_role_001', '1', '1', CURRENT_TIMESTAMP);
 

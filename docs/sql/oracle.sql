@@ -4,6 +4,12 @@
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
 
+-- Oracle 兼容模式将空字符串视为 NULL；原库中默认空字符串且非空的字段按可空列建立。
+
+-- 本方言没有 ON UPDATE CASCADE；Flowable 实例主键在业务中不可修改。
+
+-- 导入账号需要 DBMS_CRYPTO 的 EXECUTE 权限，以便为每个新库生成强随机签名密钥。
+
 -- 表结构与表级约束。
 CREATE TABLE "ACT_APP_APPDEF" (
   "ID_" varchar2(255) NOT NULL,
@@ -1343,7 +1349,7 @@ CREATE TABLE "EMBED_LAUNCH" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_EMBED_LAUNCH_EMBED_LAUNCH" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_084B2EA8" CHECK (("CONTEXT_CIPHERTEXT" IS JSON and (length("CONTEXT_CIPHERTEXT") <= 65536) and (char_length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (char_length("CONTEXT_DIGEST_KEY_VERSION") > 0) and (char_length("SUBJECT_DIGEST_KEY_VERSION") > 0))),
+  CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_084B2EA8" CHECK (("CONTEXT_CIPHERTEXT" IS JSON and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (length("CONTEXT_DIGEST_KEY_VERSION") > 0) and (length("SUBJECT_DIGEST_KEY_VERSION") > 0))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_DEF0F287" CHECK ((((("SOURCE_IP_DIGEST" is null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is null)) or (("SOURCE_IP_DIGEST" is not null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is not null))) and ((("USER_AGENT_DIGEST" is null) and ("USER_AGENT_DIGEST_KEY_VERSION" is null)) or (("USER_AGENT_DIGEST" is not null) and ("USER_AGENT_DIGEST_KEY_VERSION" is not null))))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_02AA23AA" CHECK ((regexp_like("SUBJECT_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CONTEXT_DIGEST",'^[0-9a-f]{64}$') and regexp_like("LAUNCH_CODE_DIGEST",'^[0-9a-f]{64}$') and (("SOURCE_IP_DIGEST" is null) or regexp_like("SOURCE_IP_DIGEST",'^[0-9a-f]{64}$')) and (("USER_AGENT_DIGEST" is null) or regexp_like("USER_AGENT_DIGEST",'^[0-9a-f]{64}$')))),
   CONSTRAINT "CK_EMBED_LAUNCH_CHK_E_2A9FC6A6" CHECK (((("ENTRY_MODE" in ('LIST','CREATE')) and ("RECORD_ID" is null)) or (("ENTRY_MODE" in ('VIEW','EDIT')) and ("RECORD_ID" is not null)))),
@@ -1422,7 +1428,7 @@ CREATE TABLE "EMBED_SESSION" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_EMBED_SESSION_EMBED_SESSION" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_EMBED_SESSION_CHK__ACB07F51" CHECK (("CONTEXT_CIPHERTEXT" IS JSON and "CAPABILITY_SNAPSHOT_JSON" IS JSON and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CAPABILITY_SNAPSHOT_JSON") <= 65536) and (char_length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (char_length("CONTEXT_DIGEST_KEY_VERSION") > 0))),
+  CONSTRAINT "CK_EMBED_SESSION_CHK__ACB07F51" CHECK (("CONTEXT_CIPHERTEXT" IS JSON and "CAPABILITY_SNAPSHOT_JSON" IS JSON and (length("CONTEXT_CIPHERTEXT") <= 65536) and (length("CAPABILITY_SNAPSHOT_JSON") <= 65536) and (length("CONTEXT_CIPHER_KEY_VERSION") > 0) and (length("CONTEXT_DIGEST_KEY_VERSION") > 0))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__6B5E76A9" CHECK ((((("SOURCE_IP_DIGEST" is null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is null)) or (("SOURCE_IP_DIGEST" is not null) and ("SOURCE_IP_DIGEST_KEY_VERSION" is not null))) and ((("USER_AGENT_DIGEST" is null) and ("USER_AGENT_DIGEST_KEY_VERSION" is null)) or (("USER_AGENT_DIGEST" is not null) and ("USER_AGENT_DIGEST_KEY_VERSION" is not null))))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__0C8C959D" CHECK ((regexp_like("SESSION_TOKEN_DIGEST",'^[0-9a-f]{64}$') and regexp_like("PARENT_NONCE_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CHILD_NONCE_DIGEST",'^[0-9a-f]{64}$') and regexp_like("CONTEXT_DIGEST",'^[0-9a-f]{64}$') and (("SOURCE_IP_DIGEST" is null) or regexp_like("SOURCE_IP_DIGEST",'^[0-9a-f]{64}$')) and (("USER_AGENT_DIGEST" is null) or regexp_like("USER_AGENT_DIGEST",'^[0-9a-f]{64}$')))),
   CONSTRAINT "CK_EMBED_SESSION_CHK__2E8214C9" CHECK (((("ENTRY_MODE" in ('LIST','CREATE')) and ("RECORD_ID" is null)) or (("ENTRY_MODE" in ('VIEW','EDIT')) and ("RECORD_ID" is not null)))),
@@ -1541,7 +1547,7 @@ CREATE TABLE "ENTITY_DEFINITION" (
   "UPDATED_BY" varchar2(64),
   "TEAM_VISIBILITY_ENABLED" number(3) NOT NULL DEFAULT '0',
   "TEAM_VISIBILITY_LEVEL" varchar2(30) NOT NULL DEFAULT 'ADDITIVE',
-  "ACTIVE_PROCESS_DEFINITION_KEY" number(19) GENERATED ALWAYS AS ((case when ((coalesce("DELETED",0) = 0) and regexp_like(trim("PROCESS_DEFINITION_ID"),'^[0-9]+$') and (nullif(trim(leading '0' from trim("PROCESS_DEFINITION_ID")),'') is not null) and ((char_length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) < 19) or ((char_length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) = 19) and (trim(leading '0' from trim("PROCESS_DEFINITION_ID")) <= '9223372036854775807')))) then cast(trim(leading '0' from trim("PROCESS_DEFINITION_ID")) as number(19)) else NULL end)) VIRTUAL,
+  "ACTIVE_PROCESS_DEFINITION_KEY" number(19) GENERATED ALWAYS AS ((case when ((coalesce("DELETED",0) = 0) and regexp_like(trim("PROCESS_DEFINITION_ID"),'^[0-9]+$') and (nullif(trim(leading '0' from trim("PROCESS_DEFINITION_ID")),'') is not null) and ((length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) < 19) or ((length(trim(leading '0' from trim("PROCESS_DEFINITION_ID"))) = 19) and (trim(leading '0' from trim("PROCESS_DEFINITION_ID")) <= '9223372036854775807')))) then cast(trim(leading '0' from trim("PROCESS_DEFINITION_ID")) as number(19)) else NULL end)) VIRTUAL,
   CONSTRAINT "PK_ENTITY_DEFINITION__C27B7B72" PRIMARY KEY ("ID")
 );
 
@@ -2217,7 +2223,7 @@ CREATE TABLE "FLW_RU_BATCH_PART" (
 CREATE TABLE "INTEGRATION_API_REQUEST_LEASE" (
   "LEASE_ID" varchar2(64) NOT NULL,
   "APPLICATION_ID" varchar2(64) NOT NULL,
-  "SCOPE_KEY" varchar2(128) NOT NULL,
+  "SCOPE_KEY" varchar2(128),
   "EXPIRES_AT" timestamp(6) NOT NULL,
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
@@ -2424,7 +2430,7 @@ CREATE TABLE "PROCESS_ASSIGNEE_INCIDENT" (
   "DETAIL_JSON" clob,
   "CREATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "OPEN_SLOT" varchar2(128) GENERATED ALWAYS AS ((case when ("STATUS" in ('OPEN','RETRY_SCHEDULED','MANUAL_REQUIRED')) then concat(coalesce("TASK_ID","PROCESS_INSTANCE_ID",'NO_INSTANCE'),':',"NODE_ID") else NULL end)) VIRTUAL,
+  "OPEN_SLOT" varchar2(128) GENERATED ALWAYS AS ((case when ("STATUS" in ('OPEN','RETRY_SCHEDULED','MANUAL_REQUIRED')) then (coalesce("TASK_ID","PROCESS_INSTANCE_ID",'NO_INSTANCE') || ':' || "NODE_ID") else NULL end)) VIRTUAL,
   CONSTRAINT "PK_PROCESS_ASSIGNEE_I_CE84E08D" PRIMARY KEY ("ID")
 );
 
@@ -2984,9 +2990,9 @@ CREATE TABLE "SYS_GLOBAL_SETTING" (
   "CREATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   "UPDATE_TIME" timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   CONSTRAINT "PK_SYS_GLOBAL_SETTING_98D24A79" PRIMARY KEY ("ID"),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_E61039BF" CHECK ((char_length(trim("SETTING_KEY")) > 0)),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_BA61D3A3" CHECK ((char_length(trim("NAME")) > 0)),
-  CONSTRAINT "CK_SYS_GLOBAL_SETTING_F91D56C3" CHECK (((("SCOPE_TYPE" = 'SYSTEM') and ("OWNER_ID" = '0')) or (("SCOPE_TYPE" = 'USER') and (char_length(trim("OWNER_ID")) > 0) and ("OWNER_ID" <> '0')))),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_E61039BF" CHECK ((length(trim("SETTING_KEY")) > 0)),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_BA61D3A3" CHECK ((length(trim("NAME")) > 0)),
+  CONSTRAINT "CK_SYS_GLOBAL_SETTING_F91D56C3" CHECK (((("SCOPE_TYPE" = 'SYSTEM') and ("OWNER_ID" = '0')) or (("SCOPE_TYPE" = 'USER') and (length(trim("OWNER_ID")) > 0) and ("OWNER_ID" <> '0')))),
   CONSTRAINT "CK_SYS_GLOBAL_SETTING_5A3A3811" CHECK (("SETTING_VALUE_TYPE" in ('BOOLEAN','NUMBER','STRING','JSON'))),
   CONSTRAINT "CK_SYS_GLOBAL_SETTING_13E5992C" CHECK (("VERSION" >= 0))
 );
@@ -3384,7 +3390,7 @@ CREATE TABLE "UI_EVENT_BINDING" (
   "OWNER_TYPE" varchar2(20) NOT NULL,
   "OWNER_ID" varchar2(64) NOT NULL,
   "TARGET_TYPE" varchar2(20) NOT NULL DEFAULT 'OWNER',
-  "TARGET_KEY" varchar2(100) NOT NULL,
+  "TARGET_KEY" varchar2(100),
   "EVENT_CODE" varchar2(50) NOT NULL,
   "INHERITANCE_MODE" varchar2(20) NOT NULL DEFAULT 'INHERIT',
   "STEPS_DOCUMENT" clob,
@@ -7365,7 +7371,7 @@ INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES (
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fca60e3e87e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_publish_permission',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fca636d487e011f1a02e52aa5ed9252f','1','entity_ui_hotfix_override_permission',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('fffc1112adfbecab7f3f747beab1ad10','1','embed_perm_view',CURRENT_TIMESTAMP);
-INSERT INTO "SYS_GLOBAL_SETTING" ("ID", "SCOPE_TYPE", "OWNER_ID", "SETTING_KEY", "NAME", "SETTING_VALUE_TYPE", "SETTING_VALUE", "REMARK") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', '"' || LOWER(RAWTOHEX(SYS_GUID()) || RAWTOHEX(SYS_GUID())) || '"', '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
+INSERT INTO "SYS_GLOBAL_SETTING" ("ID", "SCOPE_TYPE", "OWNER_ID", "SETTING_KEY", "NAME", "SETTING_VALUE_TYPE", "SETTING_VALUE", "REMARK") VALUES ('setting_migration_signing_key', 'SYSTEM', '0', 'config.migration.signing_key', '配置迁移签名密钥', 'STRING', '"' || LOWER(RAWTOHEX(DBMS_CRYPTO.RANDOMBYTES(32))) || '"', '用于迁移包 HMAC-SHA256 签名与验签；每个新库独立生成，不应跨库复用。');
 INSERT INTO "SYS_USER" ("ID", "USERNAME", "NICKNAME", "PASSWORD", "EMAIL", "PHONE", "AVATAR", "STATUS", "CREATE_TIME", "UPDATE_TIME", "DELETED", "ORG_ID", "DEPT_ID", "PASSWORD_RESET_REQUIRED", "TOKEN_VERSION") VALUES ('1', 'admin', '超级管理员', '$2y$10$VPL8vj30niywnU1gYVZGNOiPqQVACc8gG2n81hbOKQlH/.gxI8ZF6', 'admin@workflow.com', NULL, NULL, '1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL, NULL, 1, 0);
 INSERT INTO "SYS_USER_ROLE" ("ID", "USER_ID", "ROLE_ID", "CREATE_TIME") VALUES ('bootstrap_admin_role_001', '1', '1', CURRENT_TIMESTAMP);
 
