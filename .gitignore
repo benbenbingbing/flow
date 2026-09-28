@@ -99,3 +99,6 @@ workflow-mobile/.vite/
 
 # Office 编辑临时锁文件，避免把 ~$ 前缀的临时文件提交入库。
 ~$*
+
+# 浏览器回归测试（如任务交接）运行时生成的临时 fixture 缓存目录。
+workflow-web/.handover-fixture-*/
