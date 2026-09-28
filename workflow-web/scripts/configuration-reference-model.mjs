@@ -147,6 +147,7 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^editingAction\\.',
     '^param\\.',
     '^retryForm\\.maxRetries$',
+    '^strategyConfig$',
     '^selectedTemplate$'
   ]),
   source('src/components/FlowActionHandlerConfigDialog.vue', '流程配置', '流程动作扩展定义', [
@@ -1448,6 +1449,24 @@ const CONTROL_OVERRIDES = Object.freeze({
     configureWhen: '新建表单，希望后续添加的实体属性默认按两列或三列排列时配置。',
     skipWhen: '新增属性默认占满一行时保留 1 列；编辑已有表单基本信息时不提供此设置。',
     expectedEffect: '设置为 2 列后，新添加的实体属性默认占 12/24 栅格；已有节点及手动调整的宽度不变，添加后仍可单独调整。'
+  },
+  // 最大重试与自定义失败策略共用一个次数控件，标签随所选策略动态切换，模板中无静态 label 可供扫描提取。
+  'src/components/FlowActionConfigPanel.vue:retryForm.maxRetries': {
+    label: '最大重试',
+    meaning: '设置提交后动作失败后允许的最大重试次数；失败策略选择自定义时，表示首次执行之外交由策略决定调度的额外次数。',
+    example: 3,
+    configureWhen: '提交后执行且失败策略为重试或自定义，需要限制失败后的重试上限时配置。',
+    skipWhen: '失败策略为失败回滚、记录后继续或记录后忽略时，该次数不参与调度。',
+    expectedEffect: '重试策略按指数退避自动重试，默认最多等待 6 小时，超过次数进入死信记录；自定义策略由已注册策略决定是否重试及等待时间。'
+  },
+  // 自定义策略参数由所选策略的 Schema 驱动渲染，模板控件无静态 label，需显式说明其序列化去向。
+  'src/components/FlowActionConfigPanel.vue:strategyConfig': {
+    label: '自定义策略参数',
+    meaning: '按所选自定义失败策略声明的参数结构填写配置，保存时序列化为动作配置的 failureStrategyConfig JSON。',
+    example: { notifyAdmin: true },
+    configureWhen: '失败策略选择自定义且所选策略声明了参数结构时，按结构填写。',
+    skipWhen: '失败策略不是自定义时不显示且不保存该配置。',
+    expectedEffect: '动作失败后由对应策略读取该参数决定重试、等待或转人工等处置，参数结构以策略声明的 Schema 为准。'
   },
   "formRendererMode": {
     "label": "渲染方式",
