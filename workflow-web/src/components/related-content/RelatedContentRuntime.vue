@@ -997,11 +997,13 @@ const RuntimeBody = defineComponent({
           viewCompositionTraversalToken:
             resolved.value.traversalContextToken,
           relatedContentActions: Array.from(actions.value),
+          // 列表目标复用其发布工具栏；EntityDataList 仍执行列表按钮权限与能力校验。
+          showTargetListToolbarActions: true,
           selectionMode: runtimeSelectionMode.value,
           selectionActionOptions: selectionActionOptions.value,
           scene: 'EMBEDDED',
           embedded: true,
-          showToolbar: actions.value.has('CREATE'),
+          showToolbar: true,
           showRowActions:
             actions.value.has('VIEW') || actions.value.has('EDIT'),
           showSearch: true,

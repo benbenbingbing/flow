@@ -2,15 +2,21 @@
   <el-card class="search-card">
     <el-form :model="form" inline :label-width="`${searchConfig.labelWidth || 100}px`">
       <el-form-item v-for="field in visibleQueryFields" :key="field.fieldCode" :label="field.fieldName">
-        <!-- BETWEEN 范围查询 -->
+        <!-- BETWEEN 范围查询：与单值查询共用字段渲染链路，查询组件覆盖、字典选项和 DATETIME 时分秒格式均一致生效 -->
         <template v-if="field.queryType === 'BETWEEN' && useListConfig">
-          <el-date-picker v-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'"
-            v-model="form[field.fieldCode + '_start']" type="date" :placeholder="`开始${field.fieldName}`" style="width: 140px" value-format="YYYY-MM-DD" />
-          <el-input v-else v-model="form[field.fieldCode + '_start']" :placeholder="`开始${field.fieldName}`" style="width: 120px" />
-          <span style="margin: 0 4px">~</span>
-          <el-date-picker v-if="field.fieldType === 'DATE' || field.fieldType === 'DATETIME'"
-            v-model="form[field.fieldCode + '_end']" type="date" :placeholder="`结束${field.fieldName}`" style="width: 140px" value-format="YYYY-MM-DD" />
-          <el-input v-else v-model="form[field.fieldCode + '_end']" :placeholder="`结束${field.fieldName}`" style="width: 120px" />
+          <div class="range-query-control">
+            <FormFieldRenderer
+              class="query-field-control"
+              v-model="form[field.fieldCode + '_start']"
+              :field="rangeEndField(field, 'start')"
+            />
+            <span>~</span>
+            <FormFieldRenderer
+              class="query-field-control"
+              v-model="form[field.fieldCode + '_end']"
+              :field="rangeEndField(field, 'end')"
+            />
+          </div>
         </template>
         <!-- 普通查询 -->
         <FormFieldRenderer
@@ -68,6 +74,14 @@ const visibleQueryFields = computed(() => {
   return props.fields.slice(0, visibleCount.value)
 })
 
+// 区间查询起止控件共享字段定义，仅覆盖占位提示；组件解析交给 FormFieldRenderer，保证与单值查询一致。
+function rangeEndField(field: any, position: 'start' | 'end') {
+  return {
+    ...field,
+    placeholder: `${position === 'start' ? '开始' : '结束'}${field.fieldName}`
+  }
+}
+
 const onSearch = () => {
   emit('search')
 }
@@ -85,6 +99,18 @@ const onReset = () => {
 .query-field-control {
   width: 200px;
   min-width: 200px;
+}
+
+/* 区间查询起止两个控件横向排布，宽度与原先写死的日期选择器保持一致。 */
+.range-query-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.range-query-control .form-field-renderer {
+  width: 140px;
+  min-width: 140px;
 }
 
 @media (max-width: 768px) {

@@ -402,8 +402,10 @@ public class EntityListRuntimeService {
                 parameterConfig, safeRequest.getContext() == null ? Map.of() : safeRequest.getContext().getParameters());
         if (safeRequest.getContext() == null) safeRequest.setContext(new EntityListRuntimeContextDTO());
         safeRequest.getContext().setParameters(parameters);
+
         Map<String, Object> parameterFilters = validateUserFilters(config,
                 com.workflow.entity.ui.application.PageParameterPolicy.filters(parameterConfig, parameters));
+
         Map<String, Object> filters = validateUserFilters(
                 config,
                 safeRequest.getFilters());

@@ -118,6 +118,19 @@ class UiViewCompositionConfigValidatorTest {
     }
 
     @Test
+    void acceptsCreateAndEditForListTarget() {
+        // 列表目标下 CREATE/EDIT 表示开放目标列表自带的新增/编辑按钮，配置校验应放行。
+        Map<String, Object> config = frontendDraft();
+        config.put("actions", List.of("VIEW", "CREATE", "EDIT"));
+
+        Map<?, ?> normalized = validator.validate(config).normalizedConfig();
+
+        assertEquals(
+                List.of("VIEW", "CREATE", "EDIT"),
+                normalized.get("actions"));
+    }
+
+    @Test
     void rejectsScriptSqlUrlClassAndBeanFieldsAtEveryDepth() {
         for (String forbidden : List.of(
                 "script", "sql", "url", "className", "beanName")) {

@@ -800,11 +800,9 @@ public class UiViewCompositionConfigValidator {
                 && !"LIST".equals(target.get("contentType"))) {
             throw new IllegalArgumentException("选择记录仅适用于目标列表");
         }
-        if ((actions.contains("CREATE") || actions.contains("EDIT"))
-                && !"FORM".equals(target.get("contentType"))) {
-            throw new IllegalArgumentException(
-                    "新增或编辑记录需要选择目标表单；目标列表只负责查看、选择或关联");
-        }
+        // CREATE/EDIT 对表单和列表目标都开放：表单目标走发布表单提交桥，由动作能力接口
+        // 逐项授权；列表目标表示开放目标列表自带的新增/编辑按钮，实际可见性仍由目标列表
+        // 按钮配置和用户对目标实体的权限决定，此处不再限制目标类型。
         Map<String, Object> select = optionalMap(
                 actionSettings.get("select"), "选择记录设置");
         if (actions.contains("SELECT")) {

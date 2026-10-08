@@ -443,7 +443,7 @@
                     <el-option
                       v-for="tab in designChildrenFor(selectedField.id).filter(item => item.nodeType === 'TAB')"
                       :key="tab.id"
-                      :label="tab.fieldLabel || tab.nodeKey || tab.id"
+                      :label="nodeLabel(tab)"
                       :value="tab.nodeKey || tab.id"
                     />
                   </el-select>
@@ -2768,9 +2768,22 @@ function nodeTypeOf(field) {
   return normalizeFormNodeType(field?.nodeType || legacyNodeType(field))
 }
 
-/** 放置位置使用设计节点的显示名称；未命名节点回退到稳定编码或 ID。 */
-function nodeLabel(node) {
-  return node?.fieldLabel || node?.fieldName || node?.fieldCode || node?.nodeKey || node?.id || ''
+/**
+ * 放置位置与画布标题共用节点显示名称；支持传入节点对象或节点 ID（画布组件按 ID 查询）。
+ * Tab 页优先读取 componentProps 中的页签标题，与运行时标签规则（label/title/nodeKey）保持一致，
+ * 否则页签在设计器里只显示默认的“Tab 页”或 ID，无法区分和切换。
+ */
+function nodeLabel(nodeOrId) {
+  const node = nodeOrId && typeof nodeOrId === 'object'
+    ? nodeOrId
+    : nodeById(nodeOrId)
+  if (!node) return typeof nodeOrId === 'string' ? nodeOrId : ''
+  if (String(node.nodeType || legacyNodeType(node)).toUpperCase() === 'TAB') {
+    const config = safeParseConfig(node.componentProps)
+    if (config.label) return config.label
+    if (config.title) return config.title
+  }
+  return node.fieldLabel || node.fieldName || node.fieldCode || node.nodeKey || node.id || ''
 }
 
 function nodeById(nodeId) {

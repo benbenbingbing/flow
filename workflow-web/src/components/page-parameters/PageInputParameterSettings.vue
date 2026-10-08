@@ -3,6 +3,14 @@
   <section class="parameter-usage">
     <div class="parameter-heading"><strong>参数用途</strong><el-button :disabled="!parameters.length" @click="add">增加用途</el-button></div>
     <p>{{ kind === 'LIST' ? '可作为列表附加查询条件；关系范围和权限仍然生效。' : '可初始化可编辑字段，只填空值、不覆盖已有数据。' }} 参数也可供数据源、接口和事件通过 params 使用。</p>
+    <el-alert
+      v-if="kind !== 'LIST' && !usableFields.length"
+      class="empty-fields-tip"
+      type="info"
+      :closable="false"
+      show-icon
+      title="暂无可初始化字段，请先将可编辑字段添加到表单中。"
+    />
     <div v-for="(row, index) in bindings" :key="index" class="usage-row">
       <el-select :model-value="row.parameter" placeholder="输入参数" @update:model-value="patch(index, { parameter: $event })"><el-option v-for="p in parameters" :key="p.code" :value="p.code" :label="`${p.name} (${p.code})`" /></el-select>
       <span>{{ kind === 'LIST' ? '筛选字段' : '初始化字段' }}</span>
@@ -22,7 +30,17 @@ const config = defineModel({ type: Object, default: () => ({}) })
 const schema = computed({ get: () => config.value.inputParameterSchema || {}, set: value => { config.value = { ...config.value, inputParameterSchema: value } } })
 const bindings = computed({ get: () => config.value.inputParameterBindings || [], set: value => { config.value = { ...config.value, inputParameterBindings: value } } })
 const parameters = computed(() => getInputParameterDefinitions(schema.value))
-const usableFields = computed(() => pageParameterFields(props.fields).filter(f => f.fieldCode && (props.kind === 'LIST' ? f.isQuery : f.fieldCode !== 'id' && !f.isReadonly && !f.readonly && !f.isSystem)))
+// 接口历史数据可能用 0/'0' 表示否；不能直接用 JS truthiness 判定只读或系统字段。
+const enabledFlag = value => value === true || value === 1 || value === '1'
+const usableFields = computed(() => pageParameterFields(props.fields).filter(field => {
+  if (!field.fieldCode) return false
+  if (props.kind === 'LIST') return enabledFlag(field.isQuery)
+  return field.fieldCode !== 'id'
+    && !enabledFlag(field.isReadonly)
+    && !enabledFlag(field.readonly)
+    && !enabledFlag(field.props?.readonly)
+    && !enabledFlag(field.isSystem)
+}))
 function patch(index, value) { bindings.value = bindings.value.map((row, i) => i === index ? { ...row, ...value } : row) }
 function add() { bindings.value = [...bindings.value, { parameter: parameters.value[0]?.code || '', usage: props.kind === 'LIST' ? 'FILTER' : 'INITIALIZE', targetField: '', ...(props.kind === 'LIST' ? { operator: 'EQ' } : {}) }] }
 function renameParameterBindings(previousCode, nextCode) {
@@ -31,6 +49,6 @@ function renameParameterBindings(previousCode, nextCode) {
 }
 </script>
 <style scoped>
-.parameter-usage { margin-top:24px; }.parameter-heading { display:flex; justify-content:space-between; align-items:center; }
+.parameter-usage { margin-top:24px; }.parameter-heading { display:flex; justify-content:space-between; align-items:center; }.empty-fields-tip { margin-top:12px; }
 p { color:var(--el-text-color-secondary); font-size:12px; }.usage-row { display:flex; gap:12px; align-items:center; margin:12px 0; }.el-select { flex:1; }
 </style>

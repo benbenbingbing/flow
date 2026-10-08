@@ -295,6 +295,7 @@ const props = withDefaults(defineProps<{
   viewCompositionContextToken?: string
   viewCompositionTraversalToken?: string
   relatedContentActions?: string[]
+  showTargetListToolbarActions?: boolean
   scene?: string
   context?: Record<string, any>
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
@@ -654,13 +655,17 @@ const toolbarButtons = computed(() => {
     { key: 'batchDelete', type: 'built-in', label: '批量删除', icon: 'Delete', buttonType: 'danger', sort: 4, enabled: true, perm: '' }
   ]
   const config = safeParseConfig(listConfig.value?.toolbarConfig, null)
+  const hasPublishedToolbarConfig = Array.isArray(config) && config.length > 0
   const buttons = (config && config.length > 0 ? config : DEFAULT_TOOLBAR_BUTTONS.map((b: any) => ({ ...b })))
     .map((button: any) => withListButtonTypeDefault(button))
     .filter((b: any) => b.enabled !== false)
     .filter((b: any) => hasButtonPermission(b))
     .filter((b: any) => listConfig.value?.toolbarCapabilities?.[b.key]?.visible !== false)
     .sort((a: any, b: any) => buttonOrder(a) - buttonOrder(b))
-  return hasRelatedContentActionScope.value
+  // 关联内容只有在目标列表发布了明确按钮配置时才绕过关联动作筛选；默认按钮仍受关联动作授权约束。
+  const usePublishedTargetToolbar =
+    props.showTargetListToolbarActions && hasPublishedToolbarConfig
+  return hasRelatedContentActionScope.value && !usePublishedTargetToolbar
     ? filterRelatedContentButtons(
         buttons,
         props.relatedContentActions,

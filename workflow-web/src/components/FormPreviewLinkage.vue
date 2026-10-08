@@ -142,6 +142,25 @@
         @source-patch="applyRelatedContentPatch"
       />
     </template>
+
+    <template v-for="item in tabRelatedContents" :key="`tab-${item.id || item.compositionKey}`">
+      <RelationContentDesignPreview v-if="designPreview" :composition="item" />
+      <RelatedContentRuntime
+        v-else
+        :composition="item"
+        owner-type="FORM"
+        :owner-id="form.id"
+        :release-id="runtimeReleaseId"
+        :release-version="runtimeReleaseVersion"
+        :source-record-id="sourceRecordId"
+        :source-data="formData"
+        :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
+        :host-readonly="readonly"
+        :traversal-context-token="runtimeTraversalContextToken"
+        :release-resolution-token="runtimeReleaseResolutionToken"
+        @source-patch="applyRelatedContentPatch"
+      />
+    </template>
   </div>
 </template>
 
@@ -377,6 +396,20 @@ const ownerRelatedContents = computed(() =>
     ? formRelatedContentsAt(props.form?.viewCompositions, null, { preview: props.designPreview })
     : []
 )
+
+// 弹窗按页签拆分时（nodeRootParentId 指向 TAB 节点）只渲染页签的子节点，
+// TAB 容器节点自身不会实例化，其锚定的关联内容需要在这里补齐；
+// 整体渲染路径走 FormNodeRuntimeItem 的 TAB 分支，不会与此处重复。
+const tabRelatedContents = computed(() => {
+  if (!props.nodeRootParentId) return []
+  if (!props.designPreview
+      && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
+  const tabNode = (props.form?.nodes || [])
+    .find(node => String(node?.id || '') === String(props.nodeRootParentId))
+  if (!tabNode) return []
+  return formRelatedContentsAt(
+    props.form?.viewCompositions, tabNode, { preview: props.designPreview })
+})
 
 // 判断是否为 Tab 模式的子表单
 function isSectionField(field) {

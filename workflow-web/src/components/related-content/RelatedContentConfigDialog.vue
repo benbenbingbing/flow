@@ -282,40 +282,54 @@
             v-if="editor.config.actions.includes('CREATE')"
             class="action-settings-card"
           >
-            <div class="action-settings-card__heading">
-              <strong>新增记录设置</strong>
-              <span>初值由平台根据当前记录生成；保存时会重新取值并覆盖对应目标字段。</span>
-            </div>
-            <el-form label-position="top">
-              <el-form-item>
-                <template #label>
-                    <ConfigHelpLabel
-                      label="新增后自动建立关联"
-                      content="是什么：目标记录新增成功后，同时维护它与当前记录的关系。何时使用：需要创建并关联一次完成时。结果：当前版本尚未接入同一事务，因此不能启用；可新增成功后再使用“建立关联”。"
-                    />
-                </template>
-                <el-switch
-                  v-model="editor.config.actionSettings.create.associateAfterCreate"
-                  :disabled="editor.config.actionSettings.create.associateAfterCreate !== true"
-                />
-              </el-form-item>
-            </el-form>
-            <el-alert
-              title="当前版本不支持新增并自动关联在同一事务完成；请保持关闭，新增后再建立关联。"
-              type="info"
-              :closable="false"
-              show-icon
-            />
-            <ServiceMappingEditor
-              v-model="editor.config.actionSettings.create.initialMappings"
-              title="新增初值"
-              description="把当前记录字段作为目标表单初值；目标保存权限和字段规则仍会再次校验。"
-              left-label="当前记录字段"
-              right-label="目标记录字段"
-              :left-options="sourceReadableFieldOptions"
-              :right-options="targetEditableFieldOptions"
-              empty-text="没有额外新增初值"
-            />
+            <template v-if="editor.config.target.contentType === 'FORM'">
+              <div class="action-settings-card__heading">
+                <strong>新增记录设置</strong>
+                <span>初值由平台根据当前记录生成；保存时会重新取值并覆盖对应目标字段。</span>
+              </div>
+              <el-form label-position="top">
+                <el-form-item>
+                  <template #label>
+                      <ConfigHelpLabel
+                        label="新增后自动建立关联"
+                        content="是什么：目标记录新增成功后，同时维护它与当前记录的关系。何时使用：需要创建并关联一次完成时。结果：当前版本尚未接入同一事务，因此不能启用；可新增成功后再使用“建立关联”。"
+                      />
+                  </template>
+                  <el-switch
+                    v-model="editor.config.actionSettings.create.associateAfterCreate"
+                    :disabled="editor.config.actionSettings.create.associateAfterCreate !== true"
+                  />
+                </el-form-item>
+              </el-form>
+              <el-alert
+                title="当前版本不支持新增并自动关联在同一事务完成；请保持关闭，新增后再建立关联。"
+                type="info"
+                :closable="false"
+                show-icon
+              />
+              <ServiceMappingEditor
+                v-model="editor.config.actionSettings.create.initialMappings"
+                title="新增初值"
+                description="把当前记录字段作为目标表单初值；目标保存权限和字段规则仍会再次校验。"
+                left-label="当前记录字段"
+                right-label="目标记录字段"
+                :left-options="sourceReadableFieldOptions"
+                :right-options="targetEditableFieldOptions"
+                empty-text="没有额外新增初值"
+              />
+            </template>
+            <template v-else>
+              <div class="action-settings-card__heading">
+                <strong>新增记录设置</strong>
+                <span>列表目标直接使用目标列表自带的新增按钮，新增入口和数据范围由目标列表自身配置决定。</span>
+              </div>
+              <el-alert
+                title="新增记录会按第 2 步的参数映射带入关联值；请确保目标表单把关联字段声明为页面输入参数，否则新建记录可能因不满足关联条件而不在列表中显示。"
+                type="warning"
+                :closable="false"
+                show-icon
+              />
+            </template>
           </div>
 
           <el-alert
@@ -1177,6 +1191,10 @@ function handleContentTypeChange() {
     contentName: ''
   })
   targetContentFields.value = []
+  // 新增后自动建立关联只适用于表单提交桥；切到列表目标时强制关闭，避免保存无效配置。
+  if (editor.config.target.contentType === 'LIST') {
+    editor.config.actionSettings.create.associateAfterCreate = false
+  }
   updateRelatedContentAnchor(editor, props.ownerType)
 }
 
@@ -1225,7 +1243,8 @@ function isActionDisabled(action) {
   if (action === 'SELECT') return editor.config.target.contentType !== 'LIST'
   if (action === 'LINK' && editor.config.target.contentType !== 'LIST') return true
   if (['CREATE', 'EDIT'].includes(action)) {
-    return editor.config.target.contentType !== 'FORM'
+    // 表单目标走发布表单提交桥；列表目标表示开放目标列表自带的新增/编辑按钮（仍受列表配置与实体权限过滤）。
+    return !['FORM', 'LIST'].includes(editor.config.target.contentType)
   }
   if (['LINK', 'UNLINK'].includes(action)) return !supportsRelationshipMutation.value
   return false

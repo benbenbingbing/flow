@@ -2556,12 +2556,13 @@ public class UiViewCompositionService {
 
         Map<String, Object> create = requireMap(
                 settings.get("create"), label + "新增记录设置");
-        if (actions.contains("CREATE")) {
-            if (!"FORM".equals(normalize(String.valueOf(
-                    target.get("contentType"))))) {
-                throw new IllegalArgumentException(
-                        label + "新增记录必须使用目标表单，请修改“显示内容”");
-            }
+        // CREATE 对 FORM 与 LIST 目标均开放：FORM 目标走发布表单提交桥，
+        // 需要校验初值映射落在目标表单可编辑字段上；LIST 目标复用目标列表
+        // 自带的新增能力，带入关联值走目标列表的页面输入参数链路，
+        // 因此不涉及发布表单初值映射，跳过 FORM 专属校验。
+        if (actions.contains("CREATE")
+                && "FORM".equals(normalize(String.valueOf(
+                        target.get("contentType"))))) {
             int index = 0;
             for (Map<String, Object> mapping : mappingList(
                     create.get("initialMappings"))) {

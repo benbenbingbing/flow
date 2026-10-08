@@ -1096,7 +1096,15 @@ const selectedCustomListCatalogOption = computed(() => {
       }
     : null
 })
-const queryComponentOptions = getFormFieldComponentOptions()
+// 查询组件选项按当前字段类型过滤：扩展声明 supportedFieldTypes 时只保留兼容项，未声明的视为通用组件全部保留。
+const queryComponentOptions = computed(() => {
+  const originField = entityFields.value.find(item => item.id === editingField.value?.fieldId)
+  const fieldType = String(originField?.fieldType || editingField.value?.fieldType || '').toUpperCase()
+  return getFormFieldComponentOptions().filter(option => {
+    const supported = (option.supportedFieldTypes || []).map(item => String(item).toUpperCase())
+    return supported.length === 0 || supported.includes(fieldType)
+  })
+})
 const queryTypeOptions = [
   { label: '等于', value: 'EQ' },
   { label: '不等于', value: 'NE' },

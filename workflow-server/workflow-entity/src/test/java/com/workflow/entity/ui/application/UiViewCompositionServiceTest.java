@@ -554,6 +554,36 @@ class UiViewCompositionServiceTest {
     }
 
     @Test
+    void releaseSnapshotAllowsCreateForListTarget() {
+        Fixture fixture = fixture();
+        updateTargetRelease(
+                fixture,
+                "LIST",
+                "list-target",
+                targetListReleaseDocument(true));
+        Map<String, Object> config = new LinkedHashMap<>(config());
+        config.put("actions", List.of("VIEW", "CREATE", "EDIT"));
+        config.put("actionSettings", Map.of(
+                "select", Map.of(
+                        "mode", "SINGLE",
+                        "result", "LINK",
+                        "mappings", List.of()),
+                "create", Map.of(
+                        "associateAfterCreate", false,
+                        "initialMappings", List.of())));
+        UiViewComposition composition = existing(fixture.codec, 1);
+        composition.setConfigDocument(fixture.codec.write(config, "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1"))
+                .thenReturn(List.of(composition));
+        Map<String, Object> owner = ownerSnapshot(
+                fixture.service.snapshot("FORM", "form-1"), List.of());
+
+        // LIST 目标走目标列表自带的新增/行编辑能力，不再要求目标必须是表单。
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot(
+                "FORM", "form-1", owner));
+    }
+
+    @Test
     void releaseSnapshotRejectsFormNodeAnchorForFullPageCustomForm() {
         Fixture fixture = fixture();
         UiViewComposition current = existing(fixture.codec, 9);

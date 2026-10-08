@@ -59,8 +59,8 @@ export const RELATED_CONTENT_RELATION_OPTIONS = Object.freeze([
 export const RELATED_CONTENT_ACTION_OPTIONS = Object.freeze([
   { value: 'VIEW', label: '仅查看', description: '只能查看目标内容，不允许修改。' },
   { value: 'SELECT', label: '选择记录', description: '选择目标记录后，可回填当前表单字段或建立关联。' },
-  { value: 'CREATE', label: '新增记录', description: '在目标实体中新增数据，并可带入当前记录的关联值。' },
-  { value: 'EDIT', label: '编辑记录', description: '独立保存目标数据，不随当前表单一起提交。' },
+  { value: 'CREATE', label: '新增记录', description: '在目标实体中新增数据并可带入关联值；目标为表单时直接打开发布表单，目标为列表时开放列表自带的新增按钮。' },
+  { value: 'EDIT', label: '编辑记录', description: '编辑目标数据，独立保存不随当前表单提交；目标为列表时开放列表行内的编辑按钮。' },
   { value: 'LINK', label: '建立关联', description: '只建立两条记录之间的关系，不修改目标记录内容。' },
   { value: 'UNLINK', label: '解除关联', description: '只解除关系，不删除目标记录。' },
   { value: 'SAVE_WITH_FORM', label: '随当前表单一起保存', description: '关联内容暂不提供此能力；组成型数据请继续使用已有子表单或重复器。' }
@@ -439,10 +439,6 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   if (relation.type === 'ENTITY_RELATION' && actions.includes('LINK') && target.contentType !== 'LIST') {
     add(3, 'actions', '建立关联需要候选列表；单条表单请通过实体引用字段选择所属记录')
   }
-  if ((actions.includes('CREATE') || actions.includes('EDIT'))
-    && target.contentType !== 'FORM') {
-    add(3, 'actions', '新增或编辑记录需要选择目标表单；目标列表只负责查看、选择或关联')
-  }
   if (actions.includes('SELECT')) {
     const select = actionSettings.select || {}
     if (!['SINGLE', 'MULTIPLE'].includes(select.mode)) {
@@ -472,7 +468,8 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   if (actions.includes('SAVE_WITH_FORM')) {
     add(3, 'actions', '关联内容尚未接入随当前表单统一提交；组成型数据请使用已有子表单或重复器')
   }
-  if (actions.includes('CREATE')) {
+  // 新增后自动建立关联只作用于表单提交桥；列表目标的新增走目标列表自身按钮，不做此校验。
+  if (actions.includes('CREATE') && target.contentType === 'FORM') {
     const create = actionSettings.create || {}
     if (typeof create.associateAfterCreate !== 'boolean') {
       add(3, 'actionSettings.create.associateAfterCreate', '请选择新增后是否自动建立关联')
