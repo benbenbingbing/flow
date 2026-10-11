@@ -112,7 +112,7 @@ class ProcessPublishHistoryServiceTest {
         assertEquals(3, history.getVersion());
         assertEquals("首版", history.getVersionDescription());
         assertEquals("<xml />", history.getBpmnXml());
-        assertEquals("[{\"nodeId\":\"task-1\",\"nodeName\":\"审批\",\"formId\":\"form-1\",\"formReleaseId\":\"form-release-3\",\"formReleaseVersion\":3,\"isReadonly\":0,\"sortOrder\":0}]",
+        assertEquals("[{\"nodeId\":\"task-1\",\"nodeName\":\"审批\",\"formId\":\"form-1\",\"isReadonly\":0,\"sortOrder\":0}]",
                 history.getNodeFormsSnapshot());
         assertEquals("deployment-1", history.getDeploymentId());
         assertEquals(ProcessVersionHistory.Status.ACTIVE.name(), history.getStatus());

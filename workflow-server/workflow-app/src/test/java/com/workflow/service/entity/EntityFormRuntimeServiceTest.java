@@ -40,7 +40,7 @@ class EntityFormRuntimeServiceTest {
         defaultForm.setId("form-1");
         EntityForm runtimeForm = new EntityForm();
         runtimeForm.setId("form-1");
-        when(formMapper.selectDefaultByEntityId("entity-1"))
+        when(releaseService.currentDefaultForm("entity-1"))
                 .thenReturn(defaultForm);
         when(releaseService.resolveRuntimeFormRelease("form-1"))
                 .thenReturn(new ResolvedEntityFormRelease(
@@ -70,7 +70,7 @@ class EntityFormRuntimeServiceTest {
         runtimeForm.setId("form-1");
         UiRuntimeResolutionContext context = UiRuntimeResolutionContext.activeTask(
                 "history-1", "task-node-1", "task-1", "instance-1", "expense", "record-1");
-        when(formMapper.selectDefaultByEntityId("entity-1"))
+        when(releaseService.currentDefaultForm("entity-1"))
                 .thenReturn(defaultForm);
         when(releaseService.resolveRuntimeFormRelease("form-1"))
                 .thenReturn(new ResolvedEntityFormRelease(runtimeForm, "release-4", 4));
@@ -100,24 +100,12 @@ class EntityFormRuntimeServiceTest {
     }
 
     @Test
-    void newDataRejectsBindingPinnedToOlderRelease() {
+    void newDataAcceptsBindingWithObsoleteReleaseCoordinates() {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
-        EntityFormRuntimeService service = new EntityFormRuntimeService(
-                releaseService,
-                mock(EntityFormMapper.class),
-                mock(UiReleaseResolutionTokenService.class));
-        ProcessNodeForm binding = binding("release-2", 2);
-        when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
-                .thenReturn(release("release-3", 3));
+        EntityFormRuntimeService service = new EntityFormRuntimeService(releaseService, mock(EntityFormMapper.class), mock(UiReleaseResolutionTokenService.class));
+        when(releaseService.active(UiConfigReleaseService.FORM, "form-1")).thenReturn(release("current-hash", 1));
+        assertDoesNotThrow(() -> service.requireCurrentBindingForNewData(binding("old-release", 7)));
 
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> service.requireCurrentBindingForNewData(binding));
-
-        assertEquals("PROCESS_FORM_RELEASE_STALE", exception.getErrorCode());
-        assertEquals(
-                "流程节点表单已发布新版本，请重新发布流程后再新增数据",
-                exception.getMessage());
     }
 
     @Test
@@ -136,30 +124,11 @@ class EntityFormRuntimeServiceTest {
     }
 
     @Test
-    void newDataAcceptsApprovedHotfixForPinnedRelease() {
-        UiConfigReleaseService releaseService =
-                mock(UiConfigReleaseService.class);
-        EntityFormRuntimeService service = new EntityFormRuntimeService(
-                releaseService,
-                mock(EntityFormMapper.class),
-                mock(UiReleaseResolutionTokenService.class));
-        ProcessNodeForm binding = binding("release-2", 2);
-        when(releaseService.active(
-                UiConfigReleaseService.FORM,
-                "form-1"))
-                .thenReturn(release("hotfix-3", 3));
-        when(releaseService.isApprovedHotfix(
-                "form-1",
-                "release-2",
-                2,
-                "history-1",
-                "hotfix-3"))
-                .thenReturn(true);
-
-        assertDoesNotThrow(() ->
-                service.requireCurrentBindingForNewData(
-                        binding,
-                        "history-1"));
+    void newDataRejectsUnpublishedStableForm() {
+        UiConfigReleaseService releases = mock(UiConfigReleaseService.class);
+        EntityFormRuntimeService service = new EntityFormRuntimeService(releases, mock(EntityFormMapper.class), mock(UiReleaseResolutionTokenService.class));
+        assertEquals("PROCESS_NODE_FORM_NOT_PUBLISHED", assertThrows(BusinessConflictException.class,
+                () -> service.requireCurrentBindingForNewData(binding("old-release", 7))).getErrorCode());
     }
 
     private ProcessNodeForm binding(String releaseId, int version) {

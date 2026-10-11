@@ -81,6 +81,11 @@
             />
           </template>
         </el-table-column>
+        <el-table-column label="执行方式" min-width="170">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openAdvanced(row)">{{ FORM_CUSTOM_ACTION_MODES.find(item => item.value === row.customMode)?.label || '业务接口 / 事件链' }}</el-button>
+          </template>
+        </el-table-column>
         <el-table-column label="适用模式" min-width="210">
           <template #default="{ row }">
             <el-select
@@ -140,8 +145,8 @@
         class="custom-button-guide"
       >
         <template #title>
-          先确定按钮在哪些模式和位置出现，再配置权限与显示条件，最后绑定事件链。
-          草稿可先保存按钮样式，点击事件链在发布前配置完整。
+          先确定按钮在哪些模式和位置出现，再配置权限与显示条件，最后选择执行方式。
+          草稿可先保存按钮样式，执行目标在发布前配置完整。
           稳定编码发布后请保持不变。
         </template>
       </el-alert>
@@ -297,13 +302,14 @@
           <template #header>
             <ConfigHelpLabel
               label="配置"
-              content="事件链定义点击后执行什么；更多中统一配置图标、样式、表单校验、二次确认以及显示和启用条件。"
+              content="执行方式决定点击后的动作；更多中统一配置执行目标、图标、样式、表单校验、二次确认以及显示和启用条件。"
             />
           </template>
           <template #default="{ row }">
             <el-button
               link
               type="primary"
+              v-if="row.customMode === 'event' || buttonBindings(row).length"
               :disabled="isEventConfigurationBlocked(row)"
               :title="isLocallyCreatedButton(row)
                 ? '先保存表单草稿，再配置事件链'
@@ -377,6 +383,7 @@
           <header class="advanced-section-heading">
             <h3>基础设置</h3>
             <p>设置按钮的视觉样式和执行前交互。</p>
+          <FormButtonExecutionSettings :button="advancedButton" :fields="entityFields" :related-contents="relatedContents" />
           </header>
           <el-form label-width="110px" class="advanced-settings-form">
             <el-form-item label="图标">
@@ -435,11 +442,11 @@
               <template #label>
                 <ConfigHelpLabel
                   label="执行前校验"
-                  content="开启后先执行当前表单的必填和格式校验；校验通过后才运行按钮事件链。"
+                  content="开启后先执行当前表单的必填和格式校验；校验通过后才执行按钮动作。"
                 />
               </template>
               <el-switch v-model="advancedButton.validateBeforeExecute" />
-              <span class="field-help">开启后先校验当前表单，再执行事件链。</span>
+              <span class="field-help">开启后先校验当前表单，再执行按钮动作。</span>
             </el-form-item>
             <el-form-item label="二次确认">
               <el-switch v-model="advancedButton.confirm.enabled" />
@@ -482,6 +489,7 @@ import { getEntityPermissionOptions } from '@/api/system/menu'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { resolveEntityPermissionOptions } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 import { useFormButtonReferences } from '@/composables/useFormButtonReferences'
+import FormButtonExecutionSettings from './FormButtonExecutionSettings.vue'
 import ActionRuleEditorDialog from '@/components/ActionRuleEditorDialog.vue'
 import ActionRuleEditorPanel from '@/components/ActionRuleEditorPanel.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -494,6 +502,8 @@ import {
 } from '@/shared/action-rules'
 import {
   FORM_ACTION_MODES,
+  FORM_CUSTOM_ACTION_MODES,
+  formButtonExecutionError,
   FORM_ACTION_KEY_PATTERN,
   FORM_ACTION_PERMISSION_PATTERN,
   FORM_BUTTON_ICONS,
@@ -506,6 +516,7 @@ import {
 const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
   entityCode: { type: String, default: '' },
+  relatedContents: { type: Array, default: () => [] },
   entityFields: { type: Array, default: () => [] },
   formId: { type: [String, Number], default: '' },
   activeReleaseId: { type: [String, Number], default: '' },
@@ -727,7 +738,7 @@ function configureBuiltInRule(key) {
 
 /**
  * 新按钮统一放入底部操作栏；如需内嵌，用户再从位置列选择已有动作插槽。
- * 新按钮默认停用，便于先保存样式；启用后的点击事件链在发布阶段校验。
+ * 新按钮默认停用，便于先保存样式；启用后校验执行目标，事件链方式另在发布阶段校验绑定。
  */
 function addCustomButton() {
   const button = normalizeCustomButton({
@@ -741,7 +752,7 @@ function addCustomButton() {
   }, draft.value.customButtons.length)
   markLocallyCreated(button)
   draft.value.customButtons.push(button)
-  ElMessage.success('已添加按钮，请在“位置”列选择显示位置，保存草稿后配置事件链')
+  ElMessage.success('已添加按钮，请在“位置”列选择显示位置，在执行方式中配置按钮动作')
 }
 
 async function removeCustomButton(button) {
@@ -899,6 +910,8 @@ function openAdvanced(button) {
 }
 
 function completeAdvanced() {
+  const executionError = formButtonExecutionError(advancedButton.value)
+  if (advancedButton.value?.enabled && executionError) { ElMessage.warning(executionError); return }
   const appearanceError = buttonAppearanceError(advancedButton.value)
   if (appearanceError) {
     ElMessage.warning(appearanceError)

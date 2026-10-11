@@ -10,6 +10,8 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.io.Serializable;
 
 /**
  * UI 配置发布版本 Mapper
@@ -20,6 +22,34 @@ import java.util.List;
 // LIKE 搜索模式由 Wrapper 绑定参数，保留已有通配符语义。
 @Mapper
 public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
+
+    // 通用运行协议仍需一个配置身份。表单使用内容指纹，常量 1 仅适配旧协议，
+    // 不保存、不递增、不提供版本选择；真实线上配置始终只有 form_id 对应的一行。
+    String CURRENT_FORM_COLUMNS = "content_hash AS id, 'FORM' AS config_type, form_id AS config_id, "
+            + "1 AS version, snapshot_document, content_hash, 'ACTIVE' AS status, "
+            + "NULL AS description, 'STANDARD' AS release_mode, NULL AS base_release_id, "
+            + "'SAFE' AS risk_level, NULL AS rollout_scope, NULL AS patch_document, "
+            + "0 AS override_risk, NULL AS override_reason, published_by, published_at";
+
+    @Select("SELECT " + CURRENT_FORM_COLUMNS + " FROM entity_form_published WHERE form_id = #{formId}")
+    UiConfigRelease findCurrentForm(@Param("formId") String formId);
+
+    @Select("SELECT " + CURRENT_FORM_COLUMNS + " FROM entity_form_published")
+    List<UiConfigRelease> findCurrentForms();
+
+    @Select("SELECT " + CURRENT_FORM_COLUMNS + " FROM entity_form_published WHERE form_id = "
+            + "(SELECT form_id FROM entity_form_current_default WHERE entity_id = #{entityId})")
+    UiConfigRelease findCurrentDefaultForm(String entityId);
+
+    /** 只允许读取当前表单指纹或其他类型的发布记录，历史 FORM 永不进入执行链。 */
+    @Override
+    @Select("SELECT " + CURRENT_FORM_COLUMNS + " FROM entity_form_published WHERE content_hash = #{id} "
+            + "UNION ALL SELECT id, config_type, config_id, version, snapshot_document, content_hash, status, "
+            + "description, release_mode, base_release_id, risk_level, rollout_scope, patch_document, "
+            + "override_risk, override_reason, published_by, published_at "
+            + "FROM ui_config_release WHERE id = #{id} AND config_type <> 'FORM'")
+    UiConfigRelease selectById(@Param("id") Serializable id);
+
 
     /**
      * 查询快照中可能引用指定接口服务的当前激活版本。
@@ -37,9 +67,9 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
         if (compactNeedle == null && spacedNeedle == null) {
             return List.of();
         }
-        return selectList(Wrappers.<UiConfigRelease>lambdaQuery()
+        List<UiConfigRelease> result = new ArrayList<>(selectList(Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getStatus, "ACTIVE")
-                .in(UiConfigRelease::getConfigType, "FORM", "LIST")
+                .eq(UiConfigRelease::getConfigType, "LIST")
                 .isNotNull(UiConfigRelease::getSnapshotDocument)
                 .and(query -> {
                     if (compactNeedle != null) {
@@ -50,7 +80,10 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
                     }
                 })
                 .orderByAsc(UiConfigRelease::getConfigType, UiConfigRelease::getConfigId)
-                .orderByDesc(UiConfigRelease::getVersion));
+                .orderByDesc(UiConfigRelease::getVersion)));
+        // 候选集可宽查，调用方仍解析文档精确判断引用。
+        result.addAll(findCurrentForms());
+        return result;
     }
 
     /**
@@ -65,12 +98,15 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
         if (serviceId == null) {
             return List.of();
         }
-        return selectList(Wrappers.<UiConfigRelease>lambdaQuery()
-                .in(UiConfigRelease::getConfigType, "FORM", "LIST")
+        List<UiConfigRelease> result = new ArrayList<>(selectList(Wrappers.<UiConfigRelease>lambdaQuery()
+                .eq(UiConfigRelease::getConfigType, "LIST")
                 .isNotNull(UiConfigRelease::getSnapshotDocument)
                 .like(UiConfigRelease::getSnapshotDocument, serviceId)
                 .orderByAsc(UiConfigRelease::getConfigType, UiConfigRelease::getConfigId)
-                .orderByDesc(UiConfigRelease::getVersion));
+                .orderByDesc(UiConfigRelease::getVersion)));
+        // 候选集可宽查，调用方仍解析文档精确判断引用。
+        result.addAll(findCurrentForms());
+        return result;
     }
 
     /**
@@ -81,6 +117,7 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
      * @return 发布版本列表
      */
     default List<UiConfigRelease> findReleases(String configType, String configId) {
+        if ("FORM".equals(configType)) return List.of();
         return selectList(Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, configType)
                 .eq(UiConfigRelease::getConfigId, configId)
@@ -114,21 +151,8 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
             + "r.risk_level, r.rollout_scope, r.published_by, "
             + "u.nickname AS published_by_name, "
             + "u.username AS published_by_username, r.published_at, "
-            + "CASE WHEN r.release_mode &lt;> 'HOTFIX' THEN NULL "
-            + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = r.id "
-            + "AND t.status = 'ACTIVE') THEN 'ACTIVE' "
-            + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = r.id "
-            + "AND t.status = 'SUPERSEDED') THEN 'SUPERSEDED' "
-            + "WHEN EXISTS (SELECT 1 FROM ui_config_hotfix_target t "
-            + "WHERE t.hotfix_release_id = r.id "
-            + "AND t.status = 'ROLLED_BACK') "
-            + "OR EXISTS (SELECT 1 FROM ui_config_release_audit a "
-            + "WHERE a.release_id = r.id "
-            + "AND a.operation = 'ROLLBACK_HOTFIX') THEN 'ROLLED_BACK' "
-            + "WHEN r.status = 'ACTIVE' THEN 'ACTIVE' "
-            + "ELSE 'SUPERSEDED' END AS rollout_status "
+            // 热修复表已删除，列表历史摘要只依据自身发布状态，不再关联旧目标快照。
+            + "NULL AS rollout_status "
             + "FROM ui_config_release r "
             + "LEFT JOIN sys_user u ON u.id = r.published_by AND u.deleted = 0 "
             + "WHERE r.config_type = #{configType} AND r.config_id = #{configId} "
@@ -175,6 +199,7 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
      * @return 符合条件的界面配置发布版本结果，供调用方继续处理
      */
     default UiConfigRelease findByVersion(String configType, String configId, Integer version) {
+        if ("FORM".equals(configType)) return null;
         return selectList(new OffsetPage<>(0, 1), Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, configType)
                 .eq(UiConfigRelease::getConfigId, configId)
@@ -190,6 +215,7 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
      * @return 活跃发布版本，无则返回 null
      */
     default UiConfigRelease findActive(String configType, String configId) {
+        if ("FORM".equals(configType)) return findCurrentForm(configId);
         return selectList(new OffsetPage<>(0, 1), Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, configType)
                 .eq(UiConfigRelease::getConfigId, configId)

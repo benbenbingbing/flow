@@ -865,9 +865,9 @@ public class EntityFormNodeService {
          * @param nodeType 节点类型标识，决定后续子级表单属性采用的处理分支
          * @param source 待规范化子级表单属性的原始输入，结果供调用方继续使用
          * @param explicitFormId {@code explicit}表单ID，后续用于规范化子级表单属性时定位或关联目标
-         * @param explicitReleaseId {@code explicit}发布版本ID，后续用于规范化子级表单属性时定位或关联目标
-         * @param explicitReleaseVersion {@code explicit}发布版本，作为 {@code firstInteger} 的输入影响后续处理
-         * @param pinLegacyReference 固定旧版引用，供本方法规范化子级表单属性时使用
+         * @param explicitReleaseId 旧客户端版本坐标，兼容读取但不保存或选择配置
+         * @param explicitReleaseVersion 旧客户端版本号，已忽略
+         * @param pinLegacyReference 旧调用参数，稳定身份模式不再固定版本
          * @return 子级表单属性键值结果，供调用方继续处理
          */
         private Map<String, Object> normalizeSubFormProps(
@@ -878,119 +878,29 @@ public class EntityFormNodeService {
                         Integer explicitReleaseVersion,
                         boolean pinLegacyReference) {
                 Map<String, Object> props = mutableMap(source);
-                if (!Set.of("SUB_FORM", "REPEATER").contains(normalize(nodeType, null))) {
-                        return props;
-                }
+                if (!Set.of("SUB_FORM", "REPEATER").contains(normalize(nodeType, null))) return props;
                 Map<String, Object> componentProps = objectMap(props.get("componentProps"), "子表单组件属性");
-                Map<String, Object> nestedConfig = objectMap(componentProps.get("subFormConfig"), "子表单配置");
-                Map<String, Object> directConfig = objectMap(props.get("subFormConfig"), "子表单配置");
-
-                String formId = firstText(
-                                explicitFormId,
-                                props.get("childFormId"),
-                                props.get("refFormId"),
-                                props.get("publishedFormId"),
-                                directConfig.get("childFormId"),
-                                directConfig.get("refFormId"),
-                                directConfig.get("publishedFormId"),
-                                nestedConfig.get("childFormId"),
-                                nestedConfig.get("refFormId"),
-                                nestedConfig.get("publishedFormId"));
-                String releaseId = firstText(
-                                explicitReleaseId,
-                                props.get("childFormReleaseId"),
-                                props.get("refFormReleaseId"),
-                                props.get("publishedFormReleaseId"),
-                                directConfig.get("childFormReleaseId"),
-                                directConfig.get("refFormReleaseId"),
-                                directConfig.get("publishedFormReleaseId"),
-                                nestedConfig.get("childFormReleaseId"),
-                                nestedConfig.get("refFormReleaseId"),
-                                nestedConfig.get("publishedFormReleaseId"));
-                Integer releaseVersion = firstInteger(
-                                explicitReleaseVersion,
-                                props.get("childFormReleaseVersion"),
-                                props.get("refFormReleaseVersion"),
-                                props.get("publishedFormReleaseVersion"),
-                                directConfig.get("childFormReleaseVersion"),
-                                directConfig.get("refFormReleaseVersion"),
-                                directConfig.get("publishedFormReleaseVersion"),
-                                nestedConfig.get("childFormReleaseVersion"),
-                                nestedConfig.get("refFormReleaseVersion"),
-                                nestedConfig.get("publishedFormReleaseVersion"));
-
-                if (!StringUtils.hasText(formId)
-                                && !StringUtils.hasText(releaseId)
-                                && releaseVersion == null) {
-                        return props;
+                Map<String, Object> nested = objectMap(componentProps.get("subFormConfig"), "子表单配置");
+                Map<String, Object> direct = objectMap(props.get("subFormConfig"), "子表单配置");
+                String formId = firstText(explicitFormId, props.get("childFormId"), props.get("refFormId"), props.get("publishedFormId"),
+                        direct.get("childFormId"), direct.get("refFormId"), direct.get("publishedFormId"),
+                        nested.get("childFormId"), nested.get("refFormId"), nested.get("publishedFormId"));
+                // 兼容旧客户端输入，但不会把旧版本坐标重新保存进活动属性。
+                for (Map<String, Object> config : List.of(props, direct, nested)) {
+                    for (String key : List.of("childFormReleaseId", "childFormReleaseVersion", "refFormReleaseId",
+                            "refFormReleaseVersion", "publishedFormReleaseId", "publishedFormReleaseVersion")) config.remove(key);
                 }
-
-                UiConfigRelease release;
-                if (StringUtils.hasText(releaseId)) {
-                        release = releaseMapper.selectById(releaseId);
-                } else {
-                        if (!pinLegacyReference) {
-                                throw new IllegalArgumentException(
-                                                "子表单必须固定 childFormReleaseId 和 childFormReleaseVersion: "
-                                                                + formId);
-                        }
-                        if (!StringUtils.hasText(formId)) {
-                                throw new IllegalArgumentException(
-                                                "子表单固定发布版本时 childFormId 不能为空");
-                        }
-                        release = releaseVersion == null
-                                        ? releaseMapper.findActive("FORM", formId)
-                                        : releaseMapper.findByVersion(
-                                                        "FORM",
-                                                        formId,
-                                                        releaseVersion);
+                if (StringUtils.hasText(formId)) {
+                    requireReferencedRelease(new FormReleaseReference(formId, null, null));
+                    for (Map<String, Object> config : List.of(props, nested)) {
+                        config.put("childFormId", formId); config.put("refFormId", formId); config.put("publishedFormId", formId);
+                    }
                 }
-                if (release == null) {
-                        throw new IllegalArgumentException(
-                                        "子表单引用的发布版本不存在: "
-                                                        + (StringUtils.hasText(releaseId)
-                                                                        ? releaseId
-                                                                        : formId + "@v" + releaseVersion));
-                }
-                if (!StringUtils.hasText(formId)) {
-                        formId = release.getConfigId();
-                }
-                FormReleaseReference reference = new FormReleaseReference(
-                                formId,
-                                release.getId(),
-                                releaseVersion == null ? release.getVersion() : releaseVersion);
-                release = requireReferencedRelease(reference);
-
-                props.put("childFormId", release.getConfigId());
-                props.put("refFormId", release.getConfigId());
-                props.put("publishedFormId", release.getConfigId());
-                props.put("childFormReleaseId", release.getId());
-                props.put("refFormReleaseId", release.getId());
-                props.put("publishedFormReleaseId", release.getId());
-                props.put("childFormReleaseVersion", release.getVersion());
-                props.put("refFormReleaseVersion", release.getVersion());
-                props.put("publishedFormReleaseVersion", release.getVersion());
-
-                Map<String, Object> normalizedNestedConfig = new LinkedHashMap<>(nestedConfig);
-                normalizedNestedConfig.put("childFormId", release.getConfigId());
-                normalizedNestedConfig.put("refFormId", release.getConfigId());
-                normalizedNestedConfig.put("publishedFormId", release.getConfigId());
-                normalizedNestedConfig.put("childFormReleaseId", release.getId());
-                normalizedNestedConfig.put("refFormReleaseId", release.getId());
-                normalizedNestedConfig.put("publishedFormReleaseId", release.getId());
-                normalizedNestedConfig.put(
-                                "childFormReleaseVersion",
-                                release.getVersion());
-                normalizedNestedConfig.put(
-                                "refFormReleaseVersion",
-                                release.getVersion());
-                normalizedNestedConfig.put(
-                                "publishedFormReleaseVersion",
-                                release.getVersion());
-                componentProps.put("subFormConfig", normalizedNestedConfig);
-                props.put("componentProps", componentProps);
+                if (props.containsKey("subFormConfig")) props.put("subFormConfig", direct);
+                if (!nested.isEmpty() || componentProps.containsKey("subFormConfig")) componentProps.put("subFormConfig", nested);
+                if (!componentProps.isEmpty() || props.containsKey("componentProps")) props.put("componentProps", componentProps);
                 return props;
-        }
+    }
 
         /**
          * 清理子级表单绑定集合；后续读取或执行将使用更新后的状态。
@@ -1217,7 +1127,7 @@ public class EntityFormNodeService {
          * 校验发布快照中的子表单参数契约。
          *
          * <p>
-         * 用于历史版本激活和热修复快照校验，避免只校验当前草稿节点而遗漏
+         * 用于当前发布及反向父子参数契约校验，避免只校验当前草稿节点而遗漏
          * 快照中已经失效的参数或子字段映射。
          * </p>
          *
@@ -1234,6 +1144,11 @@ public class EntityFormNodeService {
          *
          * @return 处理后的子级表单参数契约校验器结果，供调用方继续处理
          */
+        /** 用候选子表单配置校验已发布父表单，避免全局发布后才发现参数映射失效。 */
+        public void validateSnapshotSubFormParameterContracts(EntityForm parentForm, UiConfigRelease candidate) {
+                subFormParameterContractValidator().validateSnapshot(parentForm, candidate);
+        }
+
         private SubFormParameterContractReleaseValidator subFormParameterContractValidator() {
                 return new SubFormParameterContractReleaseValidator(
                                 formMapper,
@@ -1320,33 +1235,12 @@ public class EntityFormNodeService {
         private FormReleaseReference readFormReleaseReference(
                         Map<String, Object> props,
                         String nodeLabel) {
-                if (props == null || props.isEmpty()) {
-                        return null;
-                }
+                if (props == null || props.isEmpty()) return null;
                 FormReleaseReference raw = readRawFormReleaseReference(props);
-                String formId = raw.formId();
-                String releaseId = raw.releaseId();
-                Integer releaseVersion = raw.releaseVersion();
-                if (!StringUtils.hasText(formId)
-                                && !StringUtils.hasText(releaseId)
-                                && releaseVersion == null) {
-                        return null;
-                }
-                if (!StringUtils.hasText(formId)
-                                || !StringUtils.hasText(releaseId)
-                                || releaseVersion == null) {
-                        throw new IllegalArgumentException(
-                                        "子表单节点必须固定 childFormId、childFormReleaseId "
-                                                        + "和 childFormReleaseVersion: "
-                                                        + (StringUtils.hasText(nodeLabel)
-                                                                        ? nodeLabel
-                                                                        : formId));
-                }
-                return new FormReleaseReference(
-                                formId.trim(),
-                                releaseId.trim(),
-                                releaseVersion);
-        }
+                if (!StringUtils.hasText(raw.formId())) return null;
+                // 历史版本字段允许读入，但不影响发布引用和参数契约。
+                return new FormReleaseReference(raw.formId().trim(), null, null);
+    }
 
         /**
          * 校验并获取已引用发布版本；不满足约束时阻止后续处理。
@@ -1357,34 +1251,11 @@ public class EntityFormNodeService {
          */
         private UiConfigRelease requireReferencedRelease(
                         FormReleaseReference reference) {
-                UiConfigRelease release = releaseMapper.selectById(reference.releaseId());
-                if (release == null
-                                || !"FORM".equalsIgnoreCase(release.getConfigType())
-                                || !Objects.equals(reference.formId(), release.getConfigId())) {
-                        throw new IllegalArgumentException(
-                                        "子表单发布版本与表单不匹配: "
-                                                        + reference.formId()
-                                                        + "@"
-                                                        + reference.releaseId());
-                }
-                if (!Objects.equals(reference.releaseVersion(), release.getVersion())) {
-                        throw new IllegalArgumentException(
-                                        "子表单发布版本号不匹配: "
-                                                        + reference.formId()
-                                                        + " 期望 v"
-                                                        + reference.releaseVersion()
-                                                        + "，实际 v"
-                                                        + release.getVersion());
-                }
-                if (!StringUtils.hasText(release.getSnapshotDocument())) {
-                        throw new IllegalArgumentException(
-                                        "子表单发布快照为空: "
-                                                        + reference.formId()
-                                                        + "@v"
-                                                        + reference.releaseVersion());
-                }
-                return release;
-        }
+                UiConfigRelease current = releaseMapper.findActive("FORM", reference.formId());
+                if (current == null || !StringUtils.hasText(current.getSnapshotDocument()))
+                    throw new IllegalArgumentException("子表单尚未发布: " + reference.formId());
+                return current;
+    }
 
         /**
          * 整理可变映射数据，供调用方遍历或继续处理。

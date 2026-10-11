@@ -13,6 +13,7 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import org.junit.jupiter.api.Test;
+import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -42,7 +43,7 @@ class EntityListPublishedRuntimeServiceTest {
                         releaseService,
                         tokenService,
                         codec,
-                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        currentFormMapper(),
                         new ObjectMapper(),
                         mock(EmbedNativeListDependencySnapshotPort.class));
         EntityListConfig draft = new EntityListConfig();
@@ -105,7 +106,7 @@ class EntityListPublishedRuntimeServiceTest {
                         releaseService,
                         tokenService,
                         codec,
-                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        currentFormMapper(),
                         new ObjectMapper(),
                         mock(EmbedNativeListDependencySnapshotPort.class));
         EntityListConfig config = new EntityListConfig();
@@ -123,7 +124,7 @@ class EntityListPublishedRuntimeServiceTest {
                 UiRuntimeResolutionContext.standalone(),
                 "form-1",
                 "release-3",
-                3,
+                1,
                 0)).thenReturn("signed-token");
 
         List<Map<String, Object>> buttons =
@@ -150,7 +151,7 @@ class EntityListPublishedRuntimeServiceTest {
                         releaseService,
                         tokenService,
                         codec,
-                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        currentFormMapper(),
                         new ObjectMapper(),
                         mock(EmbedNativeListDependencySnapshotPort.class));
         EntityListConfig config = new EntityListConfig();
@@ -178,7 +179,7 @@ class EntityListPublishedRuntimeServiceTest {
                 UiRuntimeResolutionContext.standalone(),
                 "form-1",
                 "release-3",
-                3,
+                1,
                 0,
                 Instant.ofEpochSecond(expiresAt)))
                 .thenReturn("session-bound-form-token");
@@ -207,7 +208,7 @@ class EntityListPublishedRuntimeServiceTest {
                         releaseService,
                         tokenService,
                         codec,
-                        mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class),
+                        currentFormMapper(),
                         new ObjectMapper(),
                         dependencySnapshotPort);
         EntityListConfig config = new EntityListConfig();
@@ -300,7 +301,7 @@ class EntityListPublishedRuntimeServiceTest {
                 UiRuntimeResolutionContext.standalone(),
                 "asset-form",
                 "asset-form-release-4",
-                4,
+                1,
                 0,
                 Instant.ofEpochSecond(expiresAt)))
                 .thenReturn("asset-form-session-token");
@@ -325,7 +326,7 @@ class EntityListPublishedRuntimeServiceTest {
                 buttons.get(0).get(
                         "targetDefaultFormReleaseId"));
         assertEquals(
-                4,
+                1,
                 buttons.get(0).get(
                         "targetDefaultFormReleaseVersion"));
         assertEquals(
@@ -355,5 +356,14 @@ class EntityListPublishedRuntimeServiceTest {
         assertThrows(
                 com.workflow.core.error.BusinessForbiddenException.class,
                 () -> service.resolveToolbar(config, List.of()));
+    }    private com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper currentFormMapper() {
+        var mapper = mock(com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper.class);
+        when(mapper.findActive(org.mockito.ArgumentMatchers.eq("FORM"), org.mockito.ArgumentMatchers.anyString())).thenAnswer(call -> {
+            UiConfigRelease row = new UiConfigRelease(); row.setConfigType("FORM"); row.setConfigId(call.getArgument(1));
+            row.setId("asset-form".equals(call.getArgument(1)) ? "asset-form-release-4" : "release-3"); row.setVersion(1);
+            return row;
+        });
+        return mapper;
     }
+
 }

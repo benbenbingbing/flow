@@ -161,7 +161,6 @@ com.workflow.migration.application.ConfigMigrationImportApplyService -> com.work
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.entity.permission.infrastructure.persistence.record.EntityListScopePolicy
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper
-com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.process.action.infrastructure.persistence.mapper.FlowActionMapper
 com.workflow.migration.application.ConfigMigrationImportApplyService -> com.workflow.process.action.infrastructure.persistence.record.FlowAction
@@ -257,13 +256,11 @@ com.workflow.process.definition.application.ProcessCancellationStatusValidator -
 com.workflow.process.definition.application.ProcessDefinitionNodeSyncService -> com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping
 com.workflow.process.definition.application.ProcessDefinitionNodeSyncService -> com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper
 com.workflow.process.definition.application.ProcessDefinitionNodeSyncService -> com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition
-com.workflow.process.definition.application.ProcessPublishHistoryService -> com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease
 com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener -> com.workflow.entity.data.infrastructure.persistence.mapper.EntityFlowStatusMappingMapper
 com.workflow.process.engine.infrastructure.flowable.EntityStatusUpdateListener -> com.workflow.entity.data.infrastructure.persistence.record.EntityFlowStatusMapping
 com.workflow.process.form.api.web.ProcessNodeFormController -> com.workflow.entity.form.infrastructure.persistence.record.EntityForm
 com.workflow.process.form.application.EntityFormRuntimeService -> com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper
 com.workflow.process.form.application.EntityFormRuntimeService -> com.workflow.entity.form.infrastructure.persistence.record.EntityForm
-com.workflow.process.form.application.EntityFormRuntimeService -> com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease
 com.workflow.process.form.application.NodeFormSubmissionService -> com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition
 com.workflow.process.form.application.NodeFormSubmissionService -> com.workflow.entity.form.infrastructure.persistence.record.EntityForm
 com.workflow.process.form.application.NodeFormSubmissionService -> com.workflow.entity.form.infrastructure.persistence.record.EntityFormField

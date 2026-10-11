@@ -410,7 +410,7 @@ export default {
                 { title: '1. Integration Application', text: '在“系统管理 → 开放集成”创建嵌入方专用 Application；交付 Client ID 和一次性展示的 Client Secret，并记录内部 Application ID。测试、生产分别创建。' },
                 { title: '2. Identity Provider', text: '在“系统管理 → 嵌入集成 → Identity Provider 与 Binding”创建 SIGNED_JWT Provider；配置 Subject Namespace、精确 Issuer、Audience=flow-embed-launch、允许算法和公开 JWKS。推荐 RS256 或 ES256，Flow 只保存公钥。' },
                 { title: '3. Identity Binding', text: '按 Application + Provider + external subject 精确绑定到一个已启用 Flow 用户。该用户的角色、字段权限和 DataScope 决定 iframe 内实际可见与可操作内容。' },
-                { title: '4. 嵌入配置', text: '在“配置与 Grant”创建稳定 viewKey，选择 LIST 或 FORM，再选择一个已有 ACTIVE 版本的实体列表或表单；配置入口、Returnable 和必要 Capability。有 Context 时定义 Schema，并用 FIXED_FILTER 或 FORCED_FORM_VALUE 绑定。首次有效保存会自动启用。' },
+                { title: '4. 嵌入配置', text: '在“配置与 Grant”创建稳定 viewKey，选择 LIST 或 FORM，再选择一个已有发布配置的实体列表或表单；配置入口、Returnable 和必要 Capability。有 Context 时定义 Schema，并用 FIXED_FILTER 或 FORCED_FORM_VALUE 绑定。首次有效保存会自动启用。' },
                 { title: '5. Application Grant', text: '关联内部 Application ID、Provider 和嵌入配置；填写不含路径的精确 HTTPS Allowed Origin、Capability Ceiling、Session/并发/限流阈值。SIGNED_JWT 必须关闭 Trusted Subject Assertion，确认后将 Grant 设为 ACTIVE。' }
               ]
             },
@@ -435,7 +435,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '页面内容仍由 Flow 权限决定',
-              text: 'Capability 只控制直接入口和跨 iframe Bridge，不会给映射用户增加权限；人员 JWT 中的角色或权限 Claim 同样不会授予 Flow 权限。列表列、表单字段、按钮、数据和 DataScope 均来自该 Flow 用户及目标最新 ACTIVE 版本；已打开 Session 固定启动时版本。'
+              text: 'Capability 只控制直接入口和跨 iframe Bridge，不会给映射用户增加权限；人员 JWT 中的角色或权限 Claim 同样不会授予 Flow 权限。列表列、表单字段、按钮、数据和 DataScope 均来自该 Flow 用户及目标已发布配置；列表会话保留自己的固定版本，表单按稳定 ID 使用当前配置。'
             }
           ]
         },

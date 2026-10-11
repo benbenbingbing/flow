@@ -606,6 +606,7 @@ class UiViewCompositionRuntimeServiceTest {
                 "target-content-hash");
         when(releaseMapper.selectById("owner-release"))
                 .thenReturn(ownerRelease);
+        when(releaseMapper.findActive(targetContentType, targetContentId)).thenReturn(targetRelease);
         when(releaseMapper.selectById(targetReleaseId))
                 .thenReturn(targetRelease);
         when(releaseService.resolveRuntimeEventSnapshot(

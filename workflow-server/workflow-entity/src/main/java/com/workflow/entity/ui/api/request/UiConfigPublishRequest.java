@@ -10,9 +10,9 @@ public class UiConfigPublishRequest {
 
     /** 发布说明 */
     private String description;
-    /** 发布模式：STANDARD/HOTFIX，旧客户端缺省为 STANDARD */
+    /** 发布模式仅支持 STANDARD；保留字段以明确拒绝旧客户端的 HOTFIX 请求 */
     private String releaseMode;
-    /** 热修复生效范围，首期固定 ACTIVE_AND_FUTURE */
+    /** 旧协议兼容字段，当前统一发布不按流程范围生效 */
     private String rolloutScope;
     /** 预检时看到的当前激活发布ID */
     private String expectedActiveReleaseId;

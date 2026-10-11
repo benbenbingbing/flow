@@ -3,6 +3,7 @@
     v-if="shouldRender"
     class="related-content-runtime"
     :class="{ 'is-compact': compact }"
+    :style="relatedContentLayoutStyle(presentation)"
   >
     <el-alert
       v-if="resolved && actionCapabilityError"
@@ -17,10 +18,10 @@
       <el-card shadow="never" class="related-content-runtime__card">
         <template #header>
           <div class="related-content-runtime__header">
-            <span>{{ displayTitle }}</span>
+            <span v-if="presentation.showTitle !== false">{{ displayTitle }}</span>
             <div class="related-content-runtime__actions">
               <el-button
-                v-if="resolved"
+                v-if="resolved?.targetContentType === 'LIST'"
                 link
                 type="primary"
                 :loading="loading || actionLoading"
@@ -29,22 +30,14 @@
                 刷新
               </el-button>
               <el-button
-                v-if="canEditTarget"
+                v-if="canSaveTarget"
                 link
                 type="primary"
-                :disabled="actionLoading"
-                @click="editTarget"
+                :loading="targetSaveLoading"
+                :disabled="loading || actionLoading"
+                @click="saveTarget"
               >
-                编辑
-              </el-button>
-              <el-button
-                v-if="canCreateTarget"
-                link
-                type="primary"
-                :disabled="actionLoading"
-                @click="createTarget"
-              >
-                新增
+                保存子表单
               </el-button>
               <el-button
                 v-if="canPickLinkCandidate"
@@ -58,7 +51,7 @@
             </div>
           </div>
         </template>
-        <RuntimeBody />
+        <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
       </el-card>
     </template>
 
@@ -76,32 +69,25 @@
     <el-dialog
       v-if="dialogPresentation"
       v-model="presentationVisible"
-      :title="displayTitle"
+      :title="presentation.showTitle === false ? '' : displayTitle"
       :width="pagePresentation ? '96%' : '75%'"
       :fullscreen="pagePresentation"
+      :before-close="beforePresentationClose"
       destroy-on-close
     >
       <div
-        v-if="canEditTarget || canCreateTarget || canPickLinkCandidate"
+        v-if="canSaveTarget || canPickLinkCandidate"
         class="related-content-runtime__presentation-actions"
       >
         <el-button
-          v-if="canEditTarget"
+          v-if="canSaveTarget"
           type="primary"
           link
-          :disabled="actionLoading"
-          @click="editTarget"
+          :loading="targetSaveLoading"
+          :disabled="loading || actionLoading"
+          @click="saveTarget"
         >
-          编辑
-        </el-button>
-        <el-button
-          v-if="canCreateTarget"
-          type="primary"
-          link
-          :disabled="actionLoading"
-          @click="createTarget"
-        >
-          新增
+          保存子表单
         </el-button>
         <el-button
           v-if="canPickLinkCandidate"
@@ -113,37 +99,30 @@
           选择并建立关联
         </el-button>
       </div>
-      <RuntimeBody />
+      <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
     </el-dialog>
 
     <el-drawer
       v-if="drawerPresentation"
       v-model="presentationVisible"
-      :title="displayTitle"
+      :title="presentation.showTitle === false ? '' : displayTitle"
       size="75%"
+      :before-close="beforePresentationClose"
       destroy-on-close
     >
       <div
-        v-if="canEditTarget || canCreateTarget || canPickLinkCandidate"
+        v-if="canSaveTarget || canPickLinkCandidate"
         class="related-content-runtime__presentation-actions"
       >
         <el-button
-          v-if="canEditTarget"
+          v-if="canSaveTarget"
           type="primary"
           link
-          :disabled="actionLoading"
-          @click="editTarget"
+          :loading="targetSaveLoading"
+          :disabled="loading || actionLoading"
+          @click="saveTarget"
         >
-          编辑
-        </el-button>
-        <el-button
-          v-if="canCreateTarget"
-          type="primary"
-          link
-          :disabled="actionLoading"
-          @click="createTarget"
-        >
-          新增
+          保存子表单
         </el-button>
         <el-button
           v-if="canPickLinkCandidate"
@@ -155,19 +134,8 @@
           选择并建立关联
         </el-button>
       </div>
-      <RuntimeBody />
+      <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
     </el-drawer>
-
-    <AsyncEntityDataFormDialog
-      v-if="targetForm && targetEntity"
-      ref="formDialogRef"
-      :entity-code="resolved?.targetEntityCode || ''"
-      :entity-definition="targetEntity"
-      :entity-fields="targetEntity.fields || []"
-      :default-form="targetForm"
-      :entity-status-options="targetEntityStatusOptions"
-      @success="handleTargetSaved"
-    />
 
     <el-dialog
       v-model="candidateVisible"
@@ -217,18 +185,23 @@ import {
   defineAsyncComponent,
   defineComponent,
   h,
+  inject,
+  onBeforeUnmount,
   ref,
   watch
 } from 'vue'
 import { ElAlert, ElButton, ElEmpty, ElMessage, ElSkeleton } from 'element-plus'
+import { relatedContentIsVisible, relatedContentLayoutStyle, relatedContentListProps } from '@/shared/related-content-presentation'
 import { entityApi, entityDataApi } from '@/api/entity'
 import { getFormRuntimeRelease } from '@/api/entityForm'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { uiCompositionRuntimeApi } from '@/api/uiCompositionRuntime'
 import { normalizeRuntimeFormRelease } from '@/shared/list-button-form-runtime'
-import { mapPageParameters, resolvePageParameters } from '@flow/workflow-core/page-parameters'
-import { normalizeEntityRecordForForm, createFormDataSourceRuntime } from '@flow/workflow-core/form-runtime'
+import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields } from '@flow/workflow-core/page-parameters'
+import { normalizeEntityRecordForForm, createFormDataSourceRuntime, applyRuntimeFieldDefaults, filterRuntimeFormSubmissionData } from '@flow/workflow-core/form-runtime'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { relatedFormDraftGuardKey } from '@/shared/related-form-draft-guard'
 import {
   buildEntityStatusMap,
   getEffectiveEntityStatusOptions
@@ -252,10 +225,6 @@ const AsyncEntityDataList = defineAsyncComponent(
 const AsyncFormPreviewLinkage = defineAsyncComponent(
   () => import('@/components/FormPreviewLinkage.vue')
 )
-const AsyncEntityDataFormDialog = defineAsyncComponent(
-  () => import('@/views/entity/components/EntityDataFormDialog.vue')
-)
-
 defineOptions({ name: 'RelatedContentRuntime' })
 
 const props = defineProps({
@@ -268,6 +237,7 @@ const props = defineProps({
   sourceData: { type: Object, default: () => ({}) },
   sourceParameters: { type: Object, default: () => ({}) },
   hostReadonly: { type: Boolean, default: false },
+  mode: { type: String, default: 'view' },
   rowContextToken: { type: String, default: '' },
   traversalContextToken: { type: String, default: '' },
   releaseResolutionToken: { type: String, default: '' },
@@ -293,13 +263,19 @@ const targetForm = ref(null)
 const targetRecord = ref(null)
 const targetParameters = ref({})
 const targetEntityStatusOptions = ref(getEffectiveEntityStatusOptions())
-const formDialogRef = ref(null)
+const targetRendererRef = ref(null)
+const targetSaveLoading = ref(false)
+const targetDraftBaseline = ref('')
+// 运行时闭包持有各自的快照，旧加载/保存的回包不能写入复用组件的新主记录。
+let targetRuntimeState = null
 const resolvedContextFingerprint = ref('')
+const resolvedSourceIdentity = ref('')
 const requestGate = createLatestRequestGate()
 const targetDataSourceRuntime = ref(null)
 
 const config = computed(() => props.composition?.config || {})
 const presentation = computed(() => config.value.presentation || {})
+const visibilityAllows = computed(() => relatedContentIsVisible(presentation.value, props.sourceData, props.mode))
 const specialHandling = computed(() => config.value.specialHandling || {})
 const customComponentConfig = computed(
   () => specialHandling.value.customComponent || {}
@@ -416,17 +392,31 @@ const runtimeSelectionMode = computed(() => {
   return String(config.value.relation?.type || '').toUpperCase()
     === 'REFERENCE_FIELD' ? 'SINGLE' : 'MULTIPLE'
 })
-const canEditTarget = computed(() =>
+const targetSaveAction = computed(() => resolved.value?.targetRecordId ? 'EDIT' : 'CREATE')
+const canSaveTarget = computed(() =>
   resolved.value?.targetContentType === 'FORM'
-    && Boolean(resolved.value?.targetRecordId)
-    && actions.value.has('EDIT')
+    && Boolean(actionContextToken.value)
+    && Boolean(targetForm.value)
+    && ![true, 1, '1'].includes(targetForm.value.isReadonly)
+    && actions.value.has(targetSaveAction.value)
 )
-const canCreateTarget = computed(() =>
-  resolved.value?.targetContentType === 'FORM'
-    && actions.value.has('CREATE')
-)
+const targetMode = computed(() => !canSaveTarget.value ? 'view'
+  : targetSaveAction.value === 'EDIT' ? 'edit' : 'create')
+const targetDraftDirty = computed(() => Boolean(targetDraftBaseline.value)
+  && JSON.stringify(targetRecord.value) !== targetDraftBaseline.value)
+useUnsavedChangesGuard(() => targetDraftDirty.value || targetSaveLoading.value, {
+  message: '子表单有未保存的修改，离开后这些修改将丢失。'
+})
+const registerDraftGuard = inject(relatedFormDraftGuardKey, null)
+const unregisterDraftGuard = registerDraftGuard?.({
+  isDirty: () => targetDraftDirty.value,
+  isBusy: () => targetSaveLoading.value,
+  discard: discardTargetDraft
+})
+onBeforeUnmount(() => unregisterDraftGuard?.())
 const shouldRender = computed(() =>
   config.value.enabled !== false
+    && visibilityAllows.value
     && !(errorMessage.value && failurePolicy.value === 'HIDE')
     && actionFailure.value?.policy !== 'HIDE'
 )
@@ -517,22 +507,34 @@ async function resolveComposition({ force = false } = {}) {
     actionCapabilities.value = capabilityState.capabilities
     actionCapabilityError.value = capabilityState.error
     resolvedContextFingerprint.value = inputFingerprint
+    resolvedSourceIdentity.value = JSON.stringify(input)
     if (value?.targetContentType === 'FORM') {
       targetEntity.value = targetState.entity
       targetForm.value = targetState.form
+      // 缺少目标时仅在服务端允许 CREATE 的情况下建立新增草稿；它不进入宿主的数据模型。
+      const initialValues = JSON.parse(JSON.stringify(capabilityState.capabilities.CREATE?.initialValues || {}))
+      const draft = targetState.record || (canSaveTarget.value
+        ? Object.assign(applyRuntimeFieldDefaults({}, targetState.form, targetState.entity.fields || []), initialValues)
+        : null)
+      targetState.record = draft && initializePageFields(draft, targetState.form.viewConfig,
+        targetParameters.value, pageParameterFields([...(targetState.form.fields || []), ...(targetState.form.nodes || [])]),
+        Object.keys(initialValues), targetMode.value)
       targetRecord.value = targetState.record
+      targetRuntimeState = targetState
       targetEntityStatusOptions.value = targetState.statuses
-      // 独立运行时只持有本次解析快照，切换来源时旧初始化不能写入新目标记录。
+      const runtimeMode = targetMode.value
       const runtime = createFormDataSourceRuntime({
-  executeDataSource: uiExtensionRuntimeApi.execute,
+        executeDataSource: uiExtensionRuntimeApi.execute,
         entityCode: value.targetEntityCode, getForm: () => targetState.form,
         getRecord: () => targetState.record || {}, getRecordId: () => value.targetRecordId,
-        getMode: () => 'view', getEntityDefinition: () => targetState.entity
+        getMode: () => runtimeMode, getEntityDefinition: () => targetState.entity
       }).withContext({ params: targetParameters.value, viewCompositionTraversalToken: value.traversalContextToken, context: { viewCompositionTraversalToken: value.traversalContextToken } })
       targetDataSourceRuntime.value = runtime
       if (targetState.record) await runtime.initialize({ form: targetState.form,
         fields: targetState.form.fields, nodes: targetState.form.nodes,
         record: targetState.record, recordId: value.targetRecordId })
+      if (!requestGate.isCurrent(requestRevision)) return null
+      targetDraftBaseline.value = JSON.stringify(targetRecord.value)
     }
     return value
   } catch (error) {
@@ -583,11 +585,17 @@ async function loadTargetForm(value) {
     ),
     getEntityStatusList(value.targetEntityCode, traversalRuntimeContext)
   ])
-  const form = normalizeRuntimeFormRelease(
-    release,
-    value.targetContentId,
-    release.releaseResolutionToken || value.targetReleaseResolutionToken
-  )
+  // 关联目标只使用本次加载的表单投影，清除其自带关联入口（包括字段和 Tab 挂载点）。
+  // 主表与子表可以相互引用；继续渲染目标的关联内容会出现“子表返回主表再展开子表”的循环。
+  // 不修改发布快照，目标表单独立打开时仍按自己的发布配置展示关联内容。
+  const form = {
+    ...normalizeRuntimeFormRelease(
+      release,
+      value.targetContentId,
+      release.releaseResolutionToken || value.targetReleaseResolutionToken
+    ),
+    viewCompositions: []
+  }
   if (!value.targetRecordId) {
     return {
       entity,
@@ -653,9 +661,13 @@ function currentResolveInput() {
 function clearResolvedState() {
   resolved.value = null
   resolvedContextFingerprint.value = ''
+  resolvedSourceIdentity.value = ''
   targetEntity.value = null
   targetForm.value = null
   targetRecord.value = null
+  targetDraftBaseline.value = ''
+  targetRuntimeState = null
+  targetRendererRef.value = null
   targetParameters.value = {}
   targetDataSourceRuntime.value = null
   targetEntityStatusOptions.value = getEffectiveEntityStatusOptions()
@@ -694,47 +706,84 @@ async function openPresentation() {
 }
 
 async function refresh() {
+  if (targetSaveLoading.value) return
+  if (targetDraftDirty.value) {
+    ElMessage.warning('请先保存子表单，再重新加载')
+    return
+  }
   await resolveComposition({ force: true })
 }
 
-async function editTarget() {
-  if (!actions.value.has('EDIT')
-    || !actionContextToken.value
-    || !targetForm.value
-    || !resolved.value?.targetRecordId) return
-  await formDialogRef.value?.openEdit(
-    { id: resolved.value.targetRecordId },
-    {
-      form: targetForm.value,
-      context: {
-        params: targetParameters.value,
-        parameters: targetParameters.value,
-        viewCompositionActionContextToken: actionContextToken.value,
-        viewCompositionTraversalToken:
-          resolved.value.traversalContextToken
-      }
-    }
-  )
+/** 仅回写当前关联区域的草稿；组成子表单继续由宿主聚合提交。 */
+function updateTargetDraft(value) {
+  if (!canSaveTarget.value || targetSaveLoading.value) return
+  const snapshot = JSON.stringify(value || {})
+  // 原生渲染器会回传模型同步和联动结果；相同值不重新分配，避免父子深监听互相触发。
+  if (snapshot === JSON.stringify(targetRecord.value || {})) return
+  targetRecord.value = JSON.parse(snapshot)
+  if (targetRuntimeState) targetRuntimeState.record = targetRecord.value
 }
 
-async function createTarget() {
-  if (!actions.value.has('CREATE') || !actionContextToken.value) return
-  if (!targetForm.value) {
-    const value = await resolveComposition()
-    if (!value || !targetForm.value) return
-  }
-  await formDialogRef.value?.openCreate({
-    form: targetForm.value,
-    initialData:
-      actionCapabilities.value?.CREATE?.initialValues || {},
-    context: {
-      params: targetParameters.value,
-      parameters: targetParameters.value,
+/** 宿主确认放弃后恢复加载基线，避免隐藏但未卸载的弹窗继续持有已放弃草稿。 */
+function discardTargetDraft() {
+  if (targetSaveLoading.value || !targetDraftBaseline.value) return
+  targetRecord.value = JSON.parse(targetDraftBaseline.value)
+  if (targetRuntimeState) targetRuntimeState.record = targetRecord.value
+}
+
+/**
+ * 创建/更新复用原生发布表单提交接口，携带关联动作与遍历凭证。
+ * 校验或提交失败不重载草稿；提交期间锁定输入，并以来源身份隔离迟到的回包。
+ */
+async function saveTarget() {
+  if (!canSaveTarget.value || loading.value || actionLoading.value || targetSaveLoading.value) return
+  const value = resolved.value
+  const form = targetForm.value
+  const renderer = targetRendererRef.value
+  const runtime = targetDataSourceRuntime.value
+  const identity = JSON.stringify(currentResolveInput())
+  const isCurrent = () => resolved.value === value && JSON.stringify(currentResolveInput()) === identity
+  targetSaveLoading.value = true
+  try {
+    if (!renderer) throw new Error('子表单尚未加载完成，请稍后保存')
+    if (renderer.validate && !(await renderer.validate())) return
+    if (!isCurrent()) return
+    await runtime?.prevalidateBeforeSubmit({ form, fields: form.fields, nodes: form.nodes })
+    if (!isCurrent()) return
+    const data = filterRuntimeFormSubmissionData(renderer.getData?.() || targetRecord.value, form, targetEntity.value?.fields || [])
+    const payload = {
+      data,
+      formId: form.id,
+      formReleaseId: value.targetReleaseId,
+      formReleaseVersion: value.targetReleaseVersion,
+      formReleaseResolutionToken: form.releaseResolutionToken,
       viewCompositionActionContextToken: actionContextToken.value,
-      viewCompositionTraversalToken:
-        resolved.value.traversalContextToken
+      viewCompositionTraversalToken: value.traversalContextToken,
+      startProcess: false
     }
-  })
+    const result = value.targetRecordId
+      ? await entityDataApi.update(value.targetEntityCode, value.targetRecordId, payload)
+      : await entityDataApi.save({ ...payload, entityCode: value.targetEntityCode, name: data.name })
+    if (!isCurrent()) return
+    emit('target-saved', { ...value, result })
+    targetDraftBaseline.value = JSON.stringify(targetRecord.value)
+    ElMessage.success('子表单已保存')
+    // 成功后重新解析关联，取得新记录身份及最新权限；刷新失败也不能重复提交已创建记录。
+    const refreshed = await resolveComposition({ force: true })
+    if (!refreshed) ElMessage.warning('子表单已保存，重新加载失败，请重新打开当前记录')
+  } catch (error) {
+    if (!isCurrent()) return
+    await renderer?.applyServerValidationError?.(error)
+    ElMessage.error(error?.message || '子表单保存失败')
+  } finally {
+    targetSaveLoading.value = false
+  }
+}
+
+/** 关联弹窗关闭后保留本地草稿，真正离开由宿主/工作区的草稿守卫保护。 */
+function beforePresentationClose(done) {
+  if (targetSaveLoading.value) return
+  done()
 }
 
 /**
@@ -760,11 +809,6 @@ async function openLinkCandidates() {
   } finally {
     candidateLoading.value = false
   }
-}
-
-async function handleTargetSaved() {
-  await refresh()
-  emit('target-saved', resolved.value)
 }
 
 function createOperationId(action) {
@@ -943,7 +987,7 @@ const RuntimeBody = defineComponent({
           }, () => '加载关联内容')
         ])
       }
-      if (resolved.value.matchNone) {
+      if (resolved.value.matchNone && !canSaveTarget.value) {
         return h(ElEmpty, {
           description: presentation.value.emptyText || '未找到关联数据'
         })
@@ -956,10 +1000,14 @@ const RuntimeBody = defineComponent({
       }
       if (customComponent.value) {
         return h(customComponent.value, {
+          ref: targetRendererRef,
           form: targetForm.value,
           dataSourceRuntime: targetDataSourceRuntime.value,
           modelValue: targetRecord.value || {},
-          readonly: !actions.value.has('EDIT'),
+          'onUpdate:modelValue': updateTargetDraft,
+          readonly: resolved.value.targetContentType === 'FORM'
+            ? !canSaveTarget.value : !actions.value.has('EDIT'),
+          mode: targetMode.value,
           fields: targetForm.value?.fields || [],
           entityCode: resolved.value.targetEntityCode,
           entityDefinition: targetEntity.value,
@@ -1003,23 +1051,20 @@ const RuntimeBody = defineComponent({
           selectionActionOptions: selectionActionOptions.value,
           scene: 'EMBEDDED',
           embedded: true,
-          showToolbar: true,
-          showRowActions:
-            actions.value.has('VIEW') || actions.value.has('EDIT'),
-          showSearch: true,
-          showPagination: true,
+          ...relatedContentListProps(presentation.value, Array.from(actions.value)),
           onSelectionAction: executeSelectionAction
         })
       }
       if (targetForm.value && targetRecord.value) {
         return h(AsyncFormPreviewLinkage, {
+          ref: targetRendererRef,
           form: targetForm.value,
           dataSourceRuntime: targetDataSourceRuntime.value,
           modelValue: targetRecord.value,
-          // 内嵌表单始终只读；编辑通过独立目标表单保存，避免用户误认为
-          // 目标数据会跟随宿主表单一并提交。
-          readonly: true,
-          mode: 'view',
+          'onUpdate:modelValue': updateTargetDraft,
+          // 表单在当前区域编辑，但只通过“保存子表单”独立提交；主表数据模型不持有这份草稿。
+          readonly: !canSaveTarget.value,
+          mode: targetMode.value,
           showHeader: false,
           height: 'auto',
           entityCode: resolved.value.targetEntityCode,
@@ -1051,6 +1096,9 @@ const RuntimeBody = defineComponent({
 
 watch(
   () => [
+    visibilityAllows.value,
+    presentation.value.position,
+    presentation.value.loadMode,
     props.ownerType,
     props.ownerId,
     props.releaseId,
@@ -1063,7 +1111,11 @@ watch(
     sourceParameterFingerprint()
   ],
   () => {
-    const reloadInline = inlinePresentation.value && (loadImmediately.value || Boolean(resolved.value))
+    // 主表映射参数变化时保留正在编辑的关联草稿；保存后再用最新参数重新加载。
+    // 真正切换主记录或发布身份时仍清理旧上下文，不把旧子记录用于新主记录的保存。
+    if (resolved.value && (targetDraftDirty.value || targetSaveLoading.value)
+      && JSON.stringify(currentResolveInput()) === resolvedSourceIdentity.value) return
+    const reloadInline = visibilityAllows.value && inlinePresentation.value && (loadImmediately.value || Boolean(resolved.value))
     requestGate.invalidate()
     loading.value = false
     errorMessage.value = ''

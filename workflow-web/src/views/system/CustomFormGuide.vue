@@ -184,7 +184,7 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>前端注册只负责提供运行时代码；发布前还必须在设计器“扩展清单”登记同名 `NODE` manifest。</li>
             <li>设计器保存 `componentName + componentVersion + snapshotVersion`，不会自动跟随目标环境的最新版本。</li>
             <li>发布会校验启用状态、实现版本、节点类型、绑定类型和快照协议，任一不兼容都会阻止发布。</li>
-            <li>自定义组件版本变化至少归为 `REVIEW`。未在后端 manifest 声明热修复兼容能力时会显示更强风险说明，但仍只作提示并允许热修复。</li>
+            <li>组件实现版本仍按扩展机制管理；表单发布需确认当前环境已部署对应实现。</li>
           </ul>
           <CodeCard title="RatingField.vue" language="Vue">
             <pre v-pre><code>&lt;script setup&gt;
@@ -337,45 +337,39 @@ defineExpose({ validate })
         </section>
 
         <section id="release-template" class="guide-section">
-          <h3>12. STANDARD/HOTFIX、版本回滚</h3>
+          <h3>12. 草稿与全局发布</h3>
           <el-descriptions :column="1" border>
-            <el-descriptions-item label="/draft">节点设计器与草稿预览读取，包含节点 revision 和未发布状态。</el-descriptions-item>
-            <el-descriptions-item label="/diff">比较草稿与当前激活 release，校验全树、数据源、关系、循环引用和权限；响应同时返回兼容的 `changedSections` 与 `changedItems[]`（section、id、label、changeType、changedFields），按稳定 ID 表示新增、修改、移动、删除。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">后端计算 SAFE/REVIEW、影响流程版本、运行中实例、跳过历史实例、待确认事项和 impactToken；REVIEW 仅显示高风险提醒。</el-descriptions-item>
-            <el-descriptions-item label="/publish">`STANDARD` 默认发布；`HOTFIX` 在确认风险提醒后直接发布，并携带预检状态及固定 `ACTIVE_AND_FUTURE` rolloutScope。</el-descriptions-item>
-            <el-descriptions-item label="/releases">查看历史发布记录及 HOTFIX rolloutStatus：ACTIVE、SUPERSEDED、ROLLED_BACK。</el-descriptions-item>
-            <el-descriptions-item label="/activate">只激活 STANDARD 历史版本；HOTFIX 只能通过 rollback-hotfix 撤回。</el-descriptions-item>
-            <el-descriptions-item label="/rollback-hotfix">只有 rolloutStatus=`ACTIVE` 可从最新热修复开始按发布时间逆序原子恢复上一有效快照。</el-descriptions-item>
+            <el-descriptions-item label="/draft">编辑节点与配置草稿；保存不会改变运行页面。</el-descriptions-item>
+            <el-descriptions-item label="/diff">比较草稿与当前配置；changedItems[] 按稳定 ID 标识新增、修改、移动和删除。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">校验节点、字段、事件、接口、关联内容、子表单参数及引用图，并返回并发前置条件。</el-descriptions-item>
+            <el-descriptions-item label="/publish">覆盖唯一当前配置，事务提交后全局生效。重复发布相同内容不会创建新版本。</el-descriptions-item>
+            <el-descriptions-item label="/runtime">按稳定 formId 读取当前发布配置；未发布表单明确拒绝。</el-descriptions-item>
           </el-descriptions>
           <ul class="check-list">
-            <li>`SAFE` 用于展示型修改；其他所有通过发布校验的表单修改统一为 `REVIEW`，包括节点/字段增删、绑定、权限、数据源、提交映射、关系/子表、写操作和未声明兼容的自定义组件。</li>
-            <li>表单 HOTFIX 只作用于当前可发起流程版本和运行中实例；`HISTORICAL` 模式下已完成、已终止实例始终读取流程发布时的原始钉定 release。</li>
-            <li>HOTFIX 直接发布使用 `entity:ui-config:hotfix`；回滚另需 `entity:ui-config:hotfix:rollback`。</li>
-            <li>`rolloutStatus=ACTIVE` 表示正在生效且可撤回，`SUPERSEDED` 表示已被更新热修复替代，`ROLLED_BACK` 表示已撤回；只有 ACTIVE 接受 rollback-hotfix。</li>
-            <li>预检后草稿、ACTIVE release 或目标流程/实例集合变化时返回 `409 HOTFIX_IMPACT_CHANGED`；客户端必须丢弃旧 impactToken 并重新预检。</li>
+            <li>新建、运行中任务、历史详情、子表单和 Embed 均读取当前配置，不需重发流程或父表单。</li>
+            <li>内容摘要用于完整性、并发和旧页面检测，不提供表单版本选择、历史激活或热修复。</li>
+            <li>旧页面令牌失效后返回 409 FORM_CONFIGURATION_CHANGED；保留填写内容并提示重新加载核对。</li>
           </ul>
-          <CodeCard title="嵌套表单继承发布解析上下文" language="HTTP">
-            <pre v-pre><code>GET /api/entity-forms/frm_child/runtime-release
-    ?releaseId=child_release_3
-    &amp;releaseVersion=3
-    &amp;releaseResolutionToken={tokenFromParent}
+          <CodeCard title="子表单读取当前配置" language="HTTP">
+            <pre v-pre><code>GET /api/entity-forms/frm_child/runtime
+    ?releaseResolutionToken={tokenFromParent}
 
 200 OK
 {
   "code": 200,
   "data": {
-    "id": "child_release_3",
-    "version": 3,
-    "effectiveReleaseId": "hotfix_release_9",
-    "hotfixApplied": true,
+    "formId": "frm_child",
+    "id": "current-content-sha256",
+    "protocolVersion": 1,
+    "contentHash": "current-content-sha256",
     "releaseResolutionToken": "tokenForNextDepth",
     "snapshotDocument": {}
   }
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>父表单令牌由后端签发，5 分钟过期并绑定当前用户、运行目的、流程历史版本、节点、父表单 release 和当前深度；客户端不能提交自选 processVersionHistoryId。</li>
-            <li>后端先验证父表单有效快照确实引用目标子表单 release，再递归解析子表单 HOTFIX；最大深度为 8，缺失引用、伪造、过期或越层令牌均拒绝。</li>
+            <li>父表单令牌绑定当前用户、运行目的、任务、记录、稳定引用和配置依赖摘要；客户端不能自选流程权限上下文。</li>
+            <li>子表单发布会使旧父页面令牌失效。嵌套最大 8 层，缺失引用、伪造、过期或越层令牌均拒绝。</li>
           </ul>
         </section>
 
@@ -408,8 +402,8 @@ defineExpose({ validate })
             <li>旧表单字段幂等转换为一级 FIELD 节点，重复迁移不会再次生成 nodeId。</li>
             <li>未知历史属性写入 `legacyProps` 和迁移报告；报告同时输出节点数、快照哈希和初始 release。启动迁移按单表单/单列表独立事务执行，失败项只输出结构化失败报告，不回滚已成功迁移和发布的其他配置。</li>
             <li>历史节点首次编辑保存时按当前 nodeType Schema 归一化，不兼容配置从活动区域移除并作为非活动兼容数据保留；运行时不得继续读取这些旧规则或旧数据源。</li>
-            <li>V037 为流程表单建立可查询 release 绑定和热修复目标；`workflow.ui-hotfix.binding-backfill-enabled` 控制存量流程快照的幂等启动回填，默认开启。</li>
-            <li>新运行时优先读取激活 release；不存在时仅临时回退旧配置并记录告警。</li>
+            <li>V112/V113 将合法 ACTIVE 表单复制到唯一当前发布表；旧记录只读归档，引用缺失或哈希错误时停止升级。</li>
+            <li>运行时只读取当前发布配置，不存在时拒绝运行；不会临时回退旧配置或启用草稿。</li>
             <li>节点组件通过 `snapshotVersion` 与迁移函数兼容旧发布快照；废弃注册名必须提供替代和过渡期。</li>
             <li>实体迁移包携带递归节点和引用的扩展 manifest；导入时先登记 manifest，再按 `nodeKey / parentNodeKey` 重建节点树。</li>
             <li>manifest 不包含可执行代码，目标环境仍须先部署对应前端组件，再激活发布快照。</li>
@@ -426,8 +420,8 @@ defineExpose({ validate })
             <li>自定义组件异常或未注册时能安全回退。</li>
             <li>修改一个节点后其他节点的 ID、revision、更新时间和内容完全不变。</li>
             <li>循环引用和超过 8 层嵌套被发布校验拒绝。</li>
-            <li>STANDARD 不影响运行中流程；HOTFIX 原子影响当前发起和运行中任务，历史实例仍用原快照。</li>
-            <li>SAFE/REVIEW、节点集合增删补丁、权限拒绝、409 重新预检、逆序回滚和嵌套令牌 8 层限制均有负向测试。</li>
+            <li>发布后立即全局生效；所有流程阶段和 Embed 均读取当前表单。</li>
+            <li>发布失败保持当前配置、子表单反向参数契约、旧页面 409 和嵌套令牌 8 层限制均有负向测试。</li>
           </ul>
         </section>
       </main>

@@ -172,7 +172,19 @@ function buildCustomFormActionExecutionPayload(
   }
 }
 
-function executeCustomFormAction(action, forms, context) {
+async function executeCustomFormAction(action, forms, context) {
+  if (action.customMode && action.customMode !== 'event') {
+    // 客户端打开动作同样重新解析当前权限和条件；执行参数只取服务端发布配置。
+    const candidates = await resolveRuntimeFormActions(forms, context)
+    const current = candidates.find(item => item.type === 'custom' && item.key === action.key && String(item.ownerFormId) === String(action.ownerFormId))
+    if (!current || current.visible === false || current.enabled === false) throw new Error(current?.reason || '当前按钮不可执行')
+    if (current.customMode === 'event' || !current.customMode) throw new Error('按钮配置已变化，请刷新表单')
+    if (!context.executeClientAction) throw new Error('当前宿主尚不支持此按钮执行方式')
+    if (context.isCurrent && !context.isCurrent()) return
+    const owner = (Array.isArray(forms) ? forms : [forms]).find(form => String(getFormId(form)) === String(current.ownerFormId))
+    if (!owner) throw new Error('按钮所属表单已关闭')
+    return context.executeClientAction(current, owner, context)
+  }
   // 每次用户调用只生成一次；axios 对同一请求配置的传输级重试会保持该值。
   const requestId = createFormActionRequestId()
   return uiEventBindingApi.execute(

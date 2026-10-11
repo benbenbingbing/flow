@@ -284,6 +284,18 @@ class UiViewCompositionServiceTest {
     }
 
     @Test
+    void createRejectsStaleOwnerRevisionBeforeWritingAnyDraft() {
+        Fixture fixture = fixture();
+        UiViewCompositionSaveRequest request = request(null);
+        request.setExpectedOwnerRevision(0);
+
+        assertThrows(RevisionConflictException.class,
+                () -> fixture.service.create("FORM", "form-1", request));
+        verify(fixture.mapper, never()).insert(any(UiViewComposition.class));
+        verify(fixture.formMapper, never()).update(isNull(), any());
+    }
+
+    @Test
     void updateRejectsStaleOwnerRevisionAfterDraftRestore() {
         Fixture fixture = fixture();
         UiViewComposition current = existing(fixture.codec, 1);
@@ -1160,6 +1172,28 @@ class UiViewCompositionServiceTest {
         assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", config));
     }
 
+    @Test
+    void existingDependencyRecheckPreservesLegacyRelationButStillChecksItsFields() {
+        Fixture fixture = fixture();
+        UiViewComposition current = existing(fixture.codec, 1);
+        current.setAnchorType("OWNER");
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        Map<String,Object> owner = ownerSnapshot(fixture.service.snapshot("FORM","form-1"),List.of());
+        @SuppressWarnings("unchecked")
+        Map<String,Object> publishedConfig = (Map<String,Object>) ((Map<?,?>)((List<?>)owner.get("viewCompositions")).get(0)).get("config");
+        publishedConfig.put("relation",Map.of("type","FIELD_MATCH","sourceField","id","targetField","projectId"));
+        assertDoesNotThrow(() -> fixture.service.revalidateCurrentFormDependencies("FORM","form-1",owner));
+        verify(fixture.containmentGuard).validate("FORM","form-1",owner);
+        IllegalArgumentException freshPublish = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validateReleaseSnapshot("FORM","form-1",owner));
+        assertTrue(freshPublish.getMessage().contains("页面不再单独定义关联条件"));
+
+        publishedConfig.put("relation",Map.of("type","FIELD_MATCH","sourceField","id","targetField","missingField"));
+        BusinessConflictException invalidField = assertThrows(BusinessConflictException.class,
+                () -> fixture.service.revalidateCurrentFormDependencies("FORM","form-1",owner));
+        assertTrue(invalidField.getMessage().contains("missingField"));
+    }
+
     private Map<String, Object> relationConfig() {
         Map<String, Object> value = new LinkedHashMap<>(config());
         value.put("relation", Map.of("type", "ENTITY_RELATION", "relationCode", "reqRelation"));
@@ -1238,6 +1272,7 @@ class UiViewCompositionServiceTest {
         release.setSnapshotDocument(targetDocument);
         release.setContentHash(sha256(targetDocument));
         when(releaseMapper.selectById("release-target")).thenReturn(release);
+        when(releaseMapper.findActive(org.mockito.ArgumentMatchers.eq("FORM"), org.mockito.ArgumentMatchers.anyString())).thenReturn(release);
         when(mapper.findByOwner("FORM", "form-1")).thenReturn(List.of());
 
         EntityPublishedSnapshot sourceSnapshot = new EntityPublishedSnapshot();

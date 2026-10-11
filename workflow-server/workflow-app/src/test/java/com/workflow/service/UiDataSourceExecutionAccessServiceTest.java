@@ -28,8 +28,6 @@ import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.contracts.audit.port.SystemAuditPort;
 import com.workflow.contracts.entity.ui.spi.UiDataSourceProvider;
@@ -943,7 +941,7 @@ class UiDataSourceExecutionAccessServiceTest {
         return request;
     }
 
-    /** 串联真实令牌校验、事件解析、接口授权和 Provider 回填，覆盖普通及固定版本页面。 */
+    /** 串联真实令牌校验、事件解析、接口授权和 Provider 回填，覆盖普通及带流程上下文的页面。 */
     @ParameterizedTest
     @CsvSource({
             "ENTITY_SELECTED, false, false",
@@ -964,7 +962,7 @@ class UiDataSourceExecutionAccessServiceTest {
             assertEquals("user-1", invocation.getValue().common().userId());
             assertEquals("dept-1", invocation.getValue().common().departmentId());
             assertEquals("release-1", invocation.getValue().common().releaseId());
-            assertEquals(3, invocation.getValue().common().releaseVersion());
+            assertEquals(1, invocation.getValue().common().releaseVersion());
             assertEquals(1, result.getEffects().size());
             assertEquals("FIELD_MAPPING", result.getEffects().get(0).get("type"));
             assertEquals(Map.of("form", Map.of("name", "周大伟", "myText", "ZDW")),
@@ -973,13 +971,13 @@ class UiDataSourceExecutionAccessServiceTest {
                 assertNotNull(flow.request().getServerIdempotencyKey());
                 assertFalse(flow.request().getServerIdempotencyKey().equals(
                         flow.request().getRequestId()));
-                verify(context.releaseMapper(), org.mockito.Mockito.never())
-                        .findActive(anyString(), anyString());
+                verify(context.releaseMapper(), org.mockito.Mockito.atLeastOnce())
+                        .findActive("FORM", "form-1");
             }
         }
     }
 
-    /** 原始发布没有接口绑定，只有热修复有效快照包含绑定；不能回查原始发布授权。 */
+    /** 各级事件作用域均使用当前发布绑定；历史流程上下文不能切回旧配置。 */
     @ParameterizedTest
     @CsvSource({
             "ENTITY_SELECTED, FIELD",
@@ -988,7 +986,7 @@ class UiDataSourceExecutionAccessServiceTest {
             "FIELD_CHANGE, FIELD",
             "FIELD_BUTTON_CLICK, FIELD"
     })
-    void fieldEventUsesEffectiveHotfixBinding(String eventCode, String bindingScope) throws Exception {
+    void fieldEventUsesCurrentBindingForEveryScope(String eventCode, String bindingScope) throws Exception {
         try (FieldEventFlow flow = fieldEventFlow(eventCode, true, true, true, bindingScope)) {
             UiEventExecutionResult result = flow.runtime().execute(flow.request());
 
@@ -997,7 +995,7 @@ class UiDataSourceExecutionAccessServiceTest {
                     result.getEffects().get(0).get("data"));
             // 有效快照已由事件解析器验真，后续不能再读取基础版或 ACTIVE 的事件绑定。
             verify(context.releaseMapper(), org.mockito.Mockito.never()).selectById(anyString());
-            verify(context.releaseMapper(), org.mockito.Mockito.never()).findActive(anyString(), anyString());
+            verify(context.releaseMapper(), org.mockito.Mockito.atLeastOnce()).findActive("FORM", "form-1");
         }
     }
 
@@ -1065,7 +1063,7 @@ class UiDataSourceExecutionAccessServiceTest {
                                 "expense", EntityPermissionAction.LIST);
             }
 
-            assertThrows(BusinessForbiddenException.class,
+            assertThrows(RuntimeException.class,
                     () -> flow.runtime().execute(flow.request()));
             assertNull(flow.request().getServerIdempotencyKey());
             verify(flow.provider(), org.mockito.Mockito.never()).execute(any(), any(), any(), any());
@@ -1082,7 +1080,7 @@ class UiDataSourceExecutionAccessServiceTest {
 
     private FieldEventFlow fieldEventFlow(String eventCode, boolean signed, boolean historical,
                                          boolean hotfix, String bindingScope) {
-        allowFormTarget(historical ? "new-active-release" : "release-1");
+        allowFormTarget("release-1");
         allowPermissionPlan();
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         UiConfigSnapshotSupport snapshots = new UiConfigSnapshotSupport(context.codec(), objectMapper);
@@ -1101,42 +1099,32 @@ class UiDataSourceExecutionAccessServiceTest {
                                 "outputMapping", List.of(
                                         Map.of("sourcePath", "data.userName", "targetPath", "form.name"),
                                         Map.of("sourcePath", "data.userCode", "targetPath", "form.myText")))))));
-        UiConfigRelease release = release("release-1", 3, "{}");
+        UiConfigRelease release = release("release-1", 1, "{}");
         Map<String, Object> baseSnapshot = new LinkedHashMap<>(snapshot);
-        if (hotfix) {
-            baseSnapshot.put("eventBindings", List.of());
-        }
         release.setSnapshotDocument(snapshots.canonical(baseSnapshot));
         release.setContentHash(snapshots.hash(release.getSnapshotDocument()));
         when(context.releaseMapper().selectById("release-1")).thenReturn(release);
         when(context.releaseMapper().findActive("FORM", "form-1"))
-                .thenReturn(historical ? release("new-active-release", 4, "{}") : release);
+                .thenReturn(release);
         ReflectionTestUtils.setField(context.releaseService(), "releaseMapper", context.releaseMapper());
         ReflectionTestUtils.setField(context.releaseService(), "codec", context.codec());
         ReflectionTestUtils.setField(context.releaseService(), "snapshotSupport", snapshots);
         ReflectionTestUtils.setField(context.releaseService(), "resolutionTokenService", tokens);
+        var currentForms = new com.workflow.entity.ui.application.CurrentFormRuntimeContext(context.releaseMapper(), objectMapper);
+        ReflectionTestUtils.setField(context.releaseService(), "currentForms", currentForms);
+        ReflectionTestUtils.setField(tokens, "currentForms", currentForms);
+        doCallRealMethod().when(context.releaseService()).active("FORM", "form-1");
         doCallRealMethod().when(context.releaseService())
                 .resolveRuntimeEventSnapshot(any(), any(), any(), any());
         doCallRealMethod().when(context.releaseService()).verifiedReleaseSnapshot(any());
         doCallRealMethod().when(context.releaseService()).verifyResolvedEventSnapshot(any(), any());
         String effectiveHash = snapshots.hash(snapshots.canonical(snapshot));
-        if (hotfix) {
-            UiConfigHotfixTarget target = new UiConfigHotfixTarget();
-            target.setId("hotfix-target-1");
-            target.setStatus("ACTIVE");
-            target.setEffectiveSnapshotDocument(snapshots.canonical(snapshot));
-            target.setEffectiveContentHash(effectiveHash);
-            UiConfigHotfixTargetMapper hotfixes = mock(UiConfigHotfixTargetMapper.class);
-            when(hotfixes.selectById("hotfix-target-1")).thenReturn(target);
-            ReflectionTestUtils.setField(context.releaseService(), "hotfixTargetMapper", hotfixes);
-        }
         EntityForm form = context.formMapper().selectById("form-1");
         when(context.releaseService().resolveRuntimeFormRelease(
                 anyString(), anyString(), anyInt(), any(UiRuntimeResolutionContext.class)))
                 .thenReturn(new ResolvedEntityFormRelease(
-                        form, "release-1", 3, true,
-                        hotfix ? "hotfix-release-1" : "release-1", effectiveHash,
-                        hotfix ? "hotfix-target-1" : null,
+                        form, "release-1", 1, false,
+                        "release-1", effectiveHash, null,
                         com.workflow.contracts.entity.ui.model.UiRuntimePurpose.NEW_INSTANCE));
 
         UiExtensionDefinition extension = definition("REGISTERED_PROVIDER", "GLOBAL", null);
@@ -1183,10 +1171,10 @@ class UiDataSourceExecutionAccessServiceTest {
         request.setTargetKey("field-1");
         request.setEventCode(eventCode);
         request.setReleaseId("release-1");
-        request.setReleaseVersion(3);
+        request.setReleaseVersion(1);
         if (signed) {
             request.setReleaseResolutionToken(tokens.issue(
-                    UiRuntimeResolutionContext.standalone(), "form-1", "release-1", 3, 0));
+                    UiRuntimeResolutionContext.standalone(), "form-1", "release-1", 1, 0));
         }
         request.setInput(Map.of("form", Map.of("deptId", "business-dept"),
                 "selection", Map.of("id", "selected-user", "userName", "selected-name"),

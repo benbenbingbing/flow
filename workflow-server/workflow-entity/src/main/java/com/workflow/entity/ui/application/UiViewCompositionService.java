@@ -191,6 +191,11 @@ public class UiViewCompositionService {
             String ownerId,
             UiViewCompositionSaveRequest request) {
         OwnerState owner = requireOwner(ownerType, ownerId, true);
+        // 统一属性草稿携带宿主修订号，新增也必须防止覆盖撤销或其他编辑器的变更。
+        // 旧版独立添加入口没有该字段，保留兼容；已提供时不能忽略并发冲突。
+        if (request != null && request.getExpectedOwnerRevision() != null) {
+            requireOwnerRevision(request.getExpectedOwnerRevision(), owner);
+        }
         ValidatedDraft draft = validateDraft(owner, request);
         UiViewComposition duplicate = mapper.findActiveByKey(
                 owner.type(), owner.id(), draft.compositionKey());
@@ -547,16 +552,16 @@ public class UiViewCompositionService {
     /**
      * 在宿主发布或历史版本激活前逐项校验关联内容发布快照。
      *
-     * <p>设计态保存校验只能证明当时选择可用；历史激活和 HOTFIX 合成还必须
-     * 验证快照内固定的目标发布版本、接口操作可执行定义和组件定义哈希。
-     * 接口或组件管理端后续变更不会使旧宿主漂移，也不会仅因当前 revision
-     * 不同就拒绝旧快照。本方法不会重新钉定或修改快照，因此旧宿主版本不会静默漂移
-     * 到依赖的最新版本。缺失 {@code viewCompositions} 仅作为功能上线前历史
+     * <p>设计态保存校验只能证明当时选择可用；发布和列表历史激活还必须验证
+     * 当前目标表单、固定列表快照、接口操作可执行定义和组件定义哈希。
+     * 表单覆盖发布会改变其稳定身份对应的运行配置；列表、实体、接口和组件
+     * 仍按快照固定坐标校验，不因当前 revision 不同而拒绝合法旧快照。
+     * 本方法不重新钉定或修改宿主。缺失 {@code viewCompositions} 仅作为功能上线前历史
      * 快照的空集合兼容；字段存在时必须是完整、无未知字段的数组。</p>
      *
      * @param ownerType FORM 或 LIST
      * @param ownerId 宿主配置 ID
-     * @param ownerSnapshot 待发布、待激活或 HOTFIX 合成后的完整宿主快照
+     * @param ownerSnapshot 待发布或列表待激活的完整宿主快照
      * @throws IllegalArgumentException 快照结构或挂载点无效
      * @throws BusinessConflictException 固定依赖不存在、漂移或不可用
      */
@@ -564,6 +569,26 @@ public class UiViewCompositionService {
             String ownerType,
             String ownerId,
             Map<String, Object> ownerSnapshot) {
+        validateReleaseSnapshot(ownerType, ownerId, ownerSnapshot, true);
+    }
+
+    /**
+     * 表单覆盖发布后复查已生效宿主的依赖，不重新发布或重写宿主。
+     * 保留旧关系的已发布语义，同时严格检查目标当前表单、参数映射、固定资产和包含图。
+     * 新草稿发布及列表历史激活仍必须调用 validateReleaseSnapshot，不能借此绕过统一关系规则。
+     *
+     * @param ownerType 已发布宿主的 FORM/LIST 类型
+     * @param ownerId 已发布宿主稳定身份，须与快照归属一致
+     * @param ownerSnapshot 完整已发布快照，只读检查，不恢复到草稿
+     * @throws IllegalArgumentException 快照结构或挂载点不合法
+     * @throws BusinessConflictException 当前目标或固定依赖、参数及映射失效
+     */
+    public void revalidateCurrentFormDependencies(String ownerType, String ownerId, Map<String, Object> ownerSnapshot) {
+        validateReleaseSnapshot(ownerType, ownerId, ownerSnapshot, false);
+    }
+
+    private void validateReleaseSnapshot(String ownerType, String ownerId,
+                                         Map<String, Object> ownerSnapshot, boolean enforceUnifiedRelation) {
         String type = normalizeOwnerType(ownerType);
         String id = requireOwnerId(ownerId);
         if (ownerSnapshot == null || ownerSnapshot.isEmpty()) {
@@ -636,10 +661,10 @@ public class UiViewCompositionService {
                     type, anchorType, anchorKey, ownerSnapshot, config, label);
             validateSnapshotSource(ownerEntityId, config, label);
             validatePinnedReferences(
-                    type, ownerEntityId, ownerSnapshot, config, label);
+                    type, ownerEntityId, ownerSnapshot, config, label, enforceUnifiedRelation);
         }
-        // 发布、发布预览、历史激活和 HOTFIX 都复用本方法；在逐项身份与
-        // 固定依赖校验通过后，再沿精确发布快照检查完整自动包含子图。
+        // 发布、发布预览和列表历史激活共用本方法；表单依赖读取当前配置，
+        // 列表依赖保持固定快照，再检查完整自动包含子图。
         containmentGuard.validate(type, id, ownerSnapshot);
     }
 
@@ -2010,22 +2035,24 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 校验不可变宿主快照内的所有固定依赖，不读取当前 ACTIVE 指针也不重新钉定。
+     * 校验宿主快照的依赖；表单目标读取当前发布，其他资产保留固定快照，不重新钉定宿主。
      *
      * @param ownerType 归属方类型标识，决定后续固定引用采用的处理分支
      * @param ownerEntityId 归属方实体ID，后续用于校验固定引用时定位或关联目标
      * @param ownerSnapshot 归属方快照，作为 {@code validatePublishedActionMappings} 的输入影响后续处理
      * @param config 配置内容，决定后续固定引用的处理规则
      * @param label 标签，后续用于校验固定引用时匹配或展示
+     * @param enforceUnifiedRelation 新宿主发布/激活时执行统一关系限制，既有依赖复查保留已发布关系语义
      */
     private void validatePinnedReferences(
             String ownerType,
             String ownerEntityId,
             Map<String, Object> ownerSnapshot,
             Map<String, Object> config,
-            String label) {
-        // 导入或重新激活快照也遵循统一规则，不能绕过新草稿的发布入口。
-        UiViewCompositionConfigValidator.requireUnifiedRelation(config);
+            String label,
+            boolean enforceUnifiedRelation) {
+        // 导入、宿主新发布和历史激活遵循统一规则；依赖复查保留已发布旧关系的语义。
+        if (enforceUnifiedRelation) UiViewCompositionConfigValidator.requireUnifiedRelation(config);
         Map<String, Object> target = requireMap(
                 config.get("target"), label + "目标内容");
         UiConfigRelease targetRelease = validatePinnedTarget(target, label);
@@ -2418,6 +2445,14 @@ public class UiViewCompositionService {
                 target.get("contentType")));
         String contentId = requireText(
                 target.get("contentId"), 64, label + "目标表单或列表");
+        if ("FORM".equals(contentType)) {
+            UiConfigRelease current = activeTargetRelease(contentType, contentId);
+            Map<String, Object> published = codec.readObject(current.getSnapshotDocument(), "目标当前表单");
+            if (!Objects.equals(entityId, stringMap((Map<?, ?>) published.get("form")).get("entityId")))
+                throw new BusinessConflictException("UI_VIEW_COMPOSITION_TARGET_FORM_INVALID", label + "目标表单不属于目标实体");
+            verifyReleaseDocumentHash(current, label);
+            return current;
+        }
         String releaseId = requireText(
                 target.get("releaseId"), 64, label + "目标发布版本");
         if (!(target.get("releaseVersion") instanceof Number number)
@@ -3168,9 +3203,13 @@ public class UiViewCompositionService {
         String contentType = String.valueOf(target.get("contentType"));
         String contentId = String.valueOf(target.get("contentId"));
         UiConfigRelease release = activeTargetRelease(contentType, contentId);
-        target.put("releaseId", release.getId());
-        target.put("releaseVersion", release.getVersion());
-        target.put("contentHash", release.getContentHash());
+        if ("FORM".equals(contentType)) {
+            target.remove("releaseId"); target.remove("releaseVersion"); target.remove("contentHash");
+        } else {
+            target.put("releaseId", release.getId());
+            target.put("releaseVersion", release.getVersion());
+            target.put("contentHash", release.getContentHash());
+        }
 
         Map<String, Object> special = requireMutableMap(
                 config.get("specialHandling"), "特殊处理");
@@ -3464,6 +3503,11 @@ public class UiViewCompositionService {
     private UiConfigRelease activeTargetRelease(
             String contentType,
             String contentId) {
+        if ("FORM".equals(contentType)) {
+            UiConfigRelease current = releaseMapper.findActive("FORM", contentId);
+            if (current == null) throw new BusinessConflictException("FORM_NOT_PUBLISHED", "关联内容目标表单尚未发布");
+            return current;
+        }
         String activeReleaseId;
         if ("FORM".equals(contentType)) {
             EntityForm form = formMapper.selectById(contentId);

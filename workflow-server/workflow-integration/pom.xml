@@ -10,5 +10,6 @@
         <module>workflow-outbox</module>
         <module>workflow-http</module>
         <module>workflow-notification</module>
+        <module>workflow-excel</module>
     </modules>
 </project>

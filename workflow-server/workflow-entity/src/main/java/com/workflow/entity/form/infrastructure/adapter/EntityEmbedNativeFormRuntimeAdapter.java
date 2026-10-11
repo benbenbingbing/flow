@@ -54,7 +54,6 @@ public class EntityEmbedNativeFormRuntimeAdapter
         if (target == null
                 || !StringUtils.hasText(target.entityCode())
                 || !StringUtils.hasText(target.formId())
-                || !StringUtils.hasText(target.formReleaseId())
                 || target.formReleaseVersion() < 1
                 || target.sessionAbsoluteExpiresAt() == null) {
             throw new IllegalArgumentException("Embed 原生表单目标不完整");
@@ -114,17 +113,13 @@ public class EntityEmbedNativeFormRuntimeAdapter
             VerificationTarget target) {
         requireSessionBoundClaims(token, target);
         Map<String, Object> resolved = releaseService.runtimeFormRelease(
-                target.formId(), target.formReleaseId(),
-                target.formReleaseVersion(), token);
+                target.formId(), target.formReleaseId(), target.formReleaseVersion(), token);
+        String hash = String.valueOf(resolved.get("id"));
         if (!Objects.equals(target.formId(), resolved.get("configId"))
-                || !Objects.equals(
-                        target.formReleaseId(), resolved.get("id"))
-                || !Objects.equals(
-                        target.formReleaseVersion(), resolved.get("version"))) {
-            throw new IllegalArgumentException(
-                    "Embed 原生表单令牌解析结果与请求坐标不一致");
-        }
-        return verifiedOwnedTarget(target);
+                || target.formReleaseId() != null && !Objects.equals(target.formReleaseId(), hash))
+            throw new IllegalArgumentException("Embed 原生表单配置摘要与请求不一致");
+        return verifiedOwnedTarget(new VerificationTarget(target.entityCode(), target.formId(), hash, 1,
+                target.sessionId(), target.viewReleaseId(), target.sessionAbsoluteExpiresAt()));
     }
 
     /**
@@ -155,7 +150,6 @@ public class EntityEmbedNativeFormRuntimeAdapter
             VerificationTarget target) {
         if (target == null
                 || !StringUtils.hasText(target.formId())
-                || !StringUtils.hasText(target.formReleaseId())
                 || target.formReleaseVersion() < 1
                 || !StringUtils.hasText(target.sessionId())
                 || !StringUtils.hasText(target.viewReleaseId())
@@ -225,4 +219,12 @@ public class EntityEmbedNativeFormRuntimeAdapter
         }
         return definition;
     }
+    /** 读取当前配置并检查实体归属，供已有 Embed Session 重新加载当前表单。 */
+    @Override
+    public VerifiedTarget currentFormTarget(String entityCode, String formId) {
+        ResolvedEntityFormRelease current = releaseService.resolveRuntimeFormRelease(formId);
+        requireOwnedRelease(entityCode, formId, current.releaseId(), current.releaseVersion());
+        return new VerifiedTarget(entityCode, formId, current.releaseId(), current.releaseVersion());
+    }
+
 }

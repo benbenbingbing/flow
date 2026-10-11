@@ -397,7 +397,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { embedManagementApi } from '@/api/system/embedManagement'
 import { entityApi } from '@/api/entity'
 import { entityListConfigApi } from '@/api/entityListConfig'
-import { getFormReleases, getFormsByEntity } from '@/api/entityForm'
+import { getFormRuntimeRelease, getFormsByEntity } from '@/api/entityForm'
 import { getFormForNewData } from '@/api/entityFormResolve'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
@@ -749,14 +749,14 @@ function activeReleaseSnapshot(releases, activeReleaseId, label) {
     : release.snapshotDocument
 }
 
-/** 按 Embed 最终固定的基础发布坐标读取新增表单字段，避免误用流程热修复投影。 */
+/** 按稳定 formId 读取当前已发布的新增表单字段，字段检查随表单发布立即更新。 */
 async function loadContextFormFields(entityCode) {
   const resolvedForm = await getFormForNewData(entityCode, { silentError: true })
   if (!resolvedForm) return []
-  const releases = await getFormReleases(String(resolvedForm.id))
-  const release = resolveContextFormRelease(resolvedForm, releases)
+  const current = await getFormRuntimeRelease(String(resolvedForm.id))
+  const release = resolveContextFormRelease(resolvedForm, current)
   const snapshot = activeReleaseSnapshot(
-    [release], release.id, '新增表单固定版本'
+    [release], release.id, '新增表单当前配置'
   )
   return snapshot?.legacyFields || []
 }
@@ -811,10 +811,11 @@ async function loadPublishedContextTargets() {
       }
     } else {
       const form = activeForms.value.find(item => String(item.id) === formId)
-      if (!form?.activeReleaseId) throw new Error('所选表单没有 ACTIVE 发布版本')
-      const releases = await getFormReleases(formId)
+      if (!form?.activeReleaseId) throw new Error('所选表单尚未发布')
+      const current = await getFormRuntimeRelease(formId)
       if (sequence !== contextTargetSequence) return
-      const snapshot = activeReleaseSnapshot(releases, form.activeReleaseId, '所选表单')
+      const release = resolveContextFormRelease(form, current)
+      const snapshot = activeReleaseSnapshot([release], release.id, '所选表单当前配置')
       targetFields.value = buildContextTargetFields(
         'FORM',
         entityFields.value,

@@ -178,55 +178,16 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
     public void requireCurrentBindingForNewData(
             EntityFormBinding binding,
             String processVersionHistoryId) {
-        if (binding == null || !StringUtils.hasText(binding.formId())) {
-            return;
-        }
-        UiConfigRelease active = releaseService.active(
-                UiConfigReleaseService.FORM,
-                binding.formId());
-        if (active == null) {
-            log.info(
-                    "新增流程数据表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, historyId={}, reason=NO_ACTIVE_RELEASE",
-                    LogValue.safe(binding.formId()),
-                    LogValue.safe(binding.formReleaseId()),
-                    binding.formReleaseVersion(),
-                    LogValue.safe(processVersionHistoryId));
+        if (binding == null || !StringUtils.hasText(binding.formId())) return;
+        // 流程历史仅保存稳定表单身份；新建数据同样读取当前配置，不能再用旧 pin
+        // 判断表单是否过期，也不需要通过已退役的热修复目标表放行。
+        UiConfigRelease current = releaseService.active(UiConfigReleaseService.FORM, binding.formId());
+        if (current == null) {
             throw new BusinessConflictException(
-                    "PROCESS_NODE_FORM_NOT_PUBLISHED",
-                    "流程节点表单当前没有激活发布版本，请先发布表单并重新发布流程");
+                    "PROCESS_NODE_FORM_NOT_PUBLISHED", "流程节点表单尚未发布，请先发布表单");
         }
-        boolean pinned = StringUtils.hasText(binding.formReleaseId())
-                || binding.formReleaseVersion() != null;
-        if (pinned
-                && (!Objects.equals(active.getId(), binding.formReleaseId())
-                || !Objects.equals(
-                        active.getVersion(),
-                        binding.formReleaseVersion()))
-                && !releaseService.isApprovedHotfix(
-                        binding.formId(),
-                        binding.formReleaseId(),
-                        binding.formReleaseVersion(),
-                        processVersionHistoryId,
-                        active.getId())) {
-            log.info(
-                    "新增流程数据表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}, reason=STALE_BINDING",
-                    LogValue.safe(binding.formId()),
-                    LogValue.safe(binding.formReleaseId()),
-                    binding.formReleaseVersion(),
-                    LogValue.safe(active.getId()),
-                    active.getVersion(),
-                    LogValue.safe(processVersionHistoryId));
-            throw new BusinessConflictException(
-                    "PROCESS_FORM_RELEASE_STALE",
-                    "流程节点表单已发布新版本，请重新发布流程后再新增数据");
-        }
-        log.info(
-                "新增流程数据表单校验通过: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}",
-                LogValue.safe(binding.formId()),
-                LogValue.safe(binding.formReleaseId()),
-                binding.formReleaseVersion(),
-                LogValue.safe(active.getId()),
-                active.getVersion(),
+        log.info("新增流程数据使用当前表单配置: formId={}, contentHash={}, historyId={}",
+                LogValue.safe(binding.formId()), LogValue.safe(current.getContentHash()),
                 LogValue.safe(processVersionHistoryId));
     }
 
@@ -237,7 +198,7 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
      * @return 符合条件的实体表单结果，供调用方继续处理
      */
     private EntityForm getDefaultForm(String entityId) {
-        EntityForm form = formMapper.selectDefaultByEntityId(entityId);
+        EntityForm form = releaseService.currentDefaultForm(entityId);
         return form == null
                 ? null
                 : resolveStandaloneForm(form.getId());

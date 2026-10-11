@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import { getFormReleases } from '@/api/entityForm'
+import { getFormRuntimeRelease } from '@/api/entityForm'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { publishedFormButtonKeys } from '@flow/workflow-core/form-actions'
 
@@ -85,21 +85,17 @@ export function useFormButtonReferences(props) {
     referenceLoading.value = true
     referenceLoadFailed.value = false
     try {
-      const [bindings, releases] = await Promise.all([
+      const [bindings, current] = await Promise.all([
         uiEventBindingApi.list('FORM', currentFormId),
         props.activeReleaseId
-          ? getFormReleases(currentFormId)
-          : Promise.resolve([])
+          ? getFormRuntimeRelease(currentFormId)
+          : Promise.resolve(null)
       ])
       if (sequence !== referenceLoadSequence) return
       eventBindings.value = Array.isArray(bindings) ? bindings : []
-      const releaseRows = Array.isArray(releases)
-        ? releases
-        : (Array.isArray(releases?.data)
-            ? releases.data
-            : (Array.isArray(releases?.records) ? releases.records : []))
+      // 当前接口只返回一份已发布配置，按钮引用不能再依赖已删除的 FORM 历史记录。
       publishedButtonKeySet.value = new Set(
-        publishedFormButtonKeys(releaseRows, props.activeReleaseId)
+        publishedFormButtonKeys(current ? [current] : [], current?.id)
       )
     } catch (error) {
       if (sequence !== referenceLoadSequence) return

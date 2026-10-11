@@ -175,6 +175,24 @@ class EntityFormActionServiceTest {
     }
 
     @Test
+    void exposesPublishedCustomExecutionAndDefaultsLegacyToEvent() {
+        EntityForm configured = publishedForm("""
+                {"actionBar":{"version":1,"customButtons":[
+                  {"key":"generate","label":"打开子表单","enabled":true,
+                   "modes":["create"],"perm":"entity:work_order:generate",
+                   "customMode":"open-related-content",
+                   "execution":{"compositionKey":"details"}}]}}
+                """);
+        FormActionRuntimeDTO custom = action(service.resolveTrustedPublishedSnapshot(
+                configured, definition, "create", null), "generate");
+        assertEquals("open-related-content", custom.getCustomMode());
+        assertEquals("details", custom.getExecution().get("compositionKey"));
+        FormActionRuntimeDTO legacy = action(service.resolveTrustedPublishedSnapshot(
+                customButtonForm("create"), definition, "create", null), "generate");
+        assertEquals("event", legacy.getCustomMode());
+    }
+
+    @Test
     void mappedUserCreatePermissionControlsBothMutationButtons() {
         when(capabilityService.evaluateConfiguredAction(
                 eq("work_order"), eq("entity:work_order:create"),

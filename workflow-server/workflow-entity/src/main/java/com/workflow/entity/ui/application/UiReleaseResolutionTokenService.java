@@ -36,6 +36,9 @@ public class UiReleaseResolutionTokenService {
 
     private final ObjectMapper objectMapper;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private CurrentFormRuntimeContext currentForms;
+
     @Value("${ui.release-resolution.secret:${jwt.secret}}")
     private String secret;
 
@@ -181,7 +184,8 @@ public class UiReleaseResolutionTokenService {
                 embedSession == null ? null : embedSession.sessionId(),
                 embedSession == null ? null : embedSession.viewReleaseId(),
                 now,
-                expiresAt);
+                expiresAt,
+                currentForms == null ? null : currentForms.graphHash(parentFormId));
         try {
             String payload = Base64.getUrlEncoder()
                     .withoutPadding()
@@ -267,6 +271,10 @@ public class UiReleaseResolutionTokenService {
                     throw forbidden("表单发布解析令牌不属于当前 Embed 会话");
                 }
             }
+            if (currentForms != null && (!Objects.equals(claims.parentReleaseId(), currentForms.current(claims.parentFormId()).getId())
+                    || !Objects.equals(claims.formGraphHash(), currentForms.graphHash(claims.parentFormId())))) {
+                throw CurrentFormRuntimeContext.changed();
+            }
             log.info(
                     "表单发布解析令牌校验通过: purpose={}, formId={}, releaseId={}, releaseVersion={}, historyId={}, nodeId={}, depth={}, userId={}, expiresAt={}",
                     LogValue.safe(claims.purpose()),
@@ -279,7 +287,7 @@ public class UiReleaseResolutionTokenService {
                     LogValue.safe(claims.userId()),
                     claims.expiresAt());
             return claims;
-        } catch (BusinessForbiddenException exception) {
+        } catch (BusinessForbiddenException | com.workflow.core.error.BusinessConflictException exception) {
             throw exception;
         } catch (Exception exception) {
             throw forbidden("表单发布解析令牌无法解析");
@@ -579,7 +587,18 @@ public class UiReleaseResolutionTokenService {
             String embedSessionId,
             String embedViewReleaseId,
             long issuedAt,
-            long expiresAt) {
+            long expiresAt,
+            String formGraphHash) {
+
+        /** 兼容内部构造；旧格式没有图摘要，上线后必须重新取得运行授权。 */
+        public Claims(UiRuntimePurpose purpose, String processVersionHistoryId, String nodeId,
+                String parentFormId, String parentReleaseId, Integer parentReleaseVersion, int depth,
+                String userId, String taskId, String processInstanceId, String entityCode, String recordId,
+                String embedSessionId, String embedViewReleaseId, long issuedAt, long expiresAt) {
+            this(purpose, processVersionHistoryId, nodeId, parentFormId, parentReleaseId, parentReleaseVersion,
+                    depth, userId, taskId, processInstanceId, entityCode, recordId, embedSessionId,
+                    embedViewReleaseId, issuedAt, expiresAt, null);
+        }
 
         /**
          * 兼容历史令牌与既有测试构造；审批按钮会拒绝这些未绑定任务主体的令牌。

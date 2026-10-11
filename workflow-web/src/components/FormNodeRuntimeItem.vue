@@ -69,7 +69,7 @@
       <div class="node-tab-panel" :class="appearanceClassesFor(tabNode)">
         <el-row :gutter="childGutter" class="node-child-row">
           <el-col
-            v-for="child in childrenFor(tabNode.id)"
+            v-for="child in visibleChildrenFor(tabNode.id)"
             :key="child.id"
             :span="childSpan(child)"
           >
@@ -92,6 +92,7 @@
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
             :host-readonly="readonly"
+        :mode="mode"
             :traversal-context-token="runtimeTraversalContextToken"
             :release-resolution-token="runtimeReleaseResolutionToken"
             @source-patch="applyRelatedContentPatch"
@@ -193,6 +194,7 @@
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
       :host-readonly="readonly"
+        :mode="mode"
       :traversal-context-token="runtimeTraversalContextToken"
       :release-resolution-token="runtimeReleaseResolutionToken"
       @source-patch="applyRelatedContentPatch"
@@ -202,7 +204,7 @@
 
 <script setup>
 import { isSubFormLayoutField } from '@/shared/form-layout'
-import { resolveRuntimeNodeField } from '@flow/workflow-core/form-runtime/nodeProjection'
+import { resolveRuntimeNodeField, isFormNodeVisible } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { computed, defineComponent, defineAsyncComponent, h, inject, ref, watch } from 'vue'
 import FormFieldRendererLinkage from '@/components/FormFieldRendererLinkage.vue'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
@@ -302,7 +304,13 @@ function applyRelatedContentPatch(patch) {
     ...patch
   })
 }
-const children = computed(() => props.childrenFor(props.node.id))
+// 先过滤再分配栅格，隐藏节点不留下空白列；原始 childrenFor 保留子表投影所需的完整树。
+function visibleChildrenFor(parentId) {
+  return props.childrenFor(parentId).filter(node => isFormNodeVisible(node, {
+    data: props.modelValue, mode: props.mode, context: props.context
+  }))
+}
+const children = computed(() => visibleChildrenFor(props.node.id))
 const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
 const containerAppearanceClasses = computed(() =>
   appearanceClasses(props.node.nodeType, props.node.props)
@@ -340,20 +348,7 @@ function appearanceClassesFor(targetNode) {
   return appearanceClasses(targetNode?.nodeType, targetNode?.props)
 }
 const activeTab = ref('')
-const visibleTabs = computed(() => children.value.filter(tab => {
-  if (tab?.props?.hidden === true) return false
-  const modeRule = tab?.props?.modeAccess?.[props.mode]
-  if (String(modeRule || '').toUpperCase() === 'HIDDEN') return false
-  const permissionCode = String(tab?.props?.permissionCode || '').trim()
-  if (!permissionCode) return true
-  if (typeof props.context?.hasPermission === 'function') {
-    return props.context.hasPermission(permissionCode)
-  }
-  const permissions = props.context?.permissions
-  return Array.isArray(permissions)
-    ? (permissions.includes('*') || permissions.includes(permissionCode))
-    : false
-}))
+const visibleTabs = computed(() => children.value)
 const activeCollapseNames = ref([])
 const collapseModelValue = computed(() =>
   props.node.props?.accordion === true

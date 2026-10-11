@@ -8,10 +8,6 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.definition.application.EntitySchemaOperationService;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
-import com.workflow.entity.ui.application.UiConfigurationAccessService;
-import com.workflow.entity.ui.application.UiHotfixGovernanceService;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixRequestMapper;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixRequest;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.query.DatabaseQueryDialects;
 import com.workflow.integration.database.api.DatabaseVendor;
@@ -21,7 +17,6 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.aop.framework.ProxyFactory;
-import org.springframework.dao.DataAccessException;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
 import static com.workflow.entity.data.MySqlIdempotentInsertDatabaseTest.concurrent;
@@ -31,50 +26,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** 启动任务、结构操作与 HOTFIX 计数的真实 MySQL 事务验证；随机表隔离，结构计划只保存而不执行 DDL。 */
+/** 启动任务与结构操作的真实 MySQL 事务验证；随机表隔离，结构计划只保存而不执行 DDL。 */
 @EnabledIfEnvironmentVariable(named = "FLOW_MYSQL_TEST_URL", matches = ".+")
 class MySqlCoordinatedOperationDatabaseTest {
-    @Test
-    void hotfixObservationCountsConcurrentAttemptsAndPreservesLastFailureOnSuccess() throws Exception {
-        try (var f = new Fixture()) {
-            metricTable(f, ""); var h = new Harness(f); var service = hotfix(h);
-            concurrent(6, index -> { service.recordReleaseMetric("release", "FORM_LOAD", index % 2 == 0, "failed-" + index); return true; });
-            assertEquals(1, h.jdbc.queryForObject("SELECT COUNT(*) FROM ui_hotfix_observation_metric", Integer.class));
-            assertEquals(6, h.jdbc.queryForObject("SELECT total_count FROM ui_hotfix_observation_metric", Integer.class));
-            assertEquals(3, h.jdbc.queryForObject("SELECT failure_count FROM ui_hotfix_observation_metric", Integer.class));
-            String id = h.jdbc.queryForObject("SELECT id FROM ui_hotfix_observation_metric", String.class);
-            String error = h.jdbc.queryForObject("SELECT last_error FROM ui_hotfix_observation_metric", String.class);
-            service.recordReleaseMetric("release", "FORM_LOAD", true, null);
-            assertEquals(error, h.jdbc.queryForObject("SELECT last_error FROM ui_hotfix_observation_metric", String.class));
-            assertEquals(id, h.jdbc.queryForObject("SELECT id FROM ui_hotfix_observation_metric", String.class));
-            service.recordReleaseMetric("release", "FORM_LOAD", false, "x".repeat(1500));
-            assertEquals(1000, h.jdbc.queryForObject("SELECT last_error FROM ui_hotfix_observation_metric", String.class).length());
-            assertEquals(8, h.jdbc.queryForObject("SELECT total_count FROM ui_hotfix_observation_metric", Integer.class));
-            assertEquals(4, h.jdbc.queryForObject("SELECT failure_count FROM ui_hotfix_observation_metric", Integer.class));
-            service.recordReleaseMetric("release", "UNKNOWN", false, "ignore");
-            assertEquals(8, h.jdbc.queryForObject("SELECT total_count FROM ui_hotfix_observation_metric", Integer.class));
-        }
-    }
-
-    @Test
-    void hotfixMetricsCommitIndependentlyButAnInvalidIncrementRollsBackItsOwnTransaction() {
-        try (var f = new Fixture()) {
-            metricTable(f, ", CHECK(total_count <= 1)");
-            f.table("metric_business_effect", "id INT PRIMARY KEY"); var h = new Harness(f); var service = hotfix(h);
-            h.tx.executeWithoutResult(status -> {
-                h.jdbc.update("INSERT INTO metric_business_effect VALUES (1)");
-                service.recordReleaseMetric("release", "FORM_LOAD", true, null);
-                status.setRollbackOnly();
-            });
-            assertEquals(0, h.jdbc.queryForObject("SELECT COUNT(*) FROM metric_business_effect", Integer.class));
-            assertEquals(1, h.jdbc.queryForObject("SELECT total_count FROM ui_hotfix_observation_metric", Integer.class));
-            assertThrows(DataAccessException.class, () -> service.recordReleaseMetric("release", "FORM_LOAD", false, "failed"));
-            assertEquals(1, h.jdbc.queryForObject("SELECT total_count FROM ui_hotfix_observation_metric", Integer.class));
-            assertEquals(0, h.jdbc.queryForObject("SELECT failure_count FROM ui_hotfix_observation_metric", Integer.class));
-            assertNull(h.jdbc.queryForObject("SELECT last_error FROM ui_hotfix_observation_metric", String.class));
-        }
-    }
-
     @Test
     void bootstrapRunsEachVersionOnceAcrossNodesAndPreservesCompletedWork() throws Exception {
         try (var f = new Fixture()) {
@@ -207,21 +161,6 @@ class MySqlCoordinatedOperationDatabaseTest {
 
     private static EntityDefinition entity() {
         var entity = new EntityDefinition(); entity.setId("asset-definition"); entity.setEntityCode("asset"); return entity;
-    }
-
-    private static UiHotfixGovernanceService hotfix(Harness h) {
-        var mapper = mock(UiConfigHotfixRequestMapper.class);
-        var request = new UiConfigHotfixRequest(); request.setId("request"); request.setReleaseId("release");
-        request.setStatus("OBSERVING"); request.setObservationEnd(LocalDateTime.now().plusHours(1));
-        when(mapper.selectOne(any())).thenReturn(request);
-        return transactional(new UiHotfixGovernanceService(mapper, h.jdbc, new ObjectMapper(), mock(UiConfigurationAccessService.class),
-                DatabaseQueryDialects.forDatabaseId("MYSQL"), locks(h)), h);
-    }
-
-    private static void metricTable(Fixture f, String constraints) {
-        f.table("ui_hotfix_observation_metric", "id VARCHAR(64) PRIMARY KEY, request_id VARCHAR(64), release_id VARCHAR(64), metric_code VARCHAR(40), "
-                + "total_count BIGINT NOT NULL, failure_count BIGINT NOT NULL, last_error VARCHAR(1000), last_observed_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
-                + "UNIQUE(request_id,metric_code)" + constraints);
     }
 
     private static void bootstrapTables(Fixture f) {

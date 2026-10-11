@@ -91,34 +91,41 @@ assert.equal(parentContent.config.target.contentType, 'FORM')
 assert.equal(buildRelatedContentPayload(parentContent, 'FORM', 'req-form').config.relation.direction, 'REVERSE')
 assert.throws(() => applyEntityRelationBinding(parentContent, { ...reverse, direction: 'FORWARD' }), /不能替换/)
 const composition = { ...relation, ownershipType: 'COMPOSITION' }
+// 当前发布只有内容哈希，没有历史版本号；仍能创建主从节点，且只保留稳定表单引用。
+const currentRelease = { id: 'current-hash', configId: 'child-form', contentHash: 'current-hash', protocolVersion: 1 }
 const requiredEditor = buildRelationEditor({
   relation: { ...composition, required: true },
   content: { id: 'child-form' },
-  release: { id: 'release', version: 3 }
+  release: currentRelease
 })
 assert.equal(requiredEditor.isRequired, 1)
 assert.equal(JSON.parse(requiredEditor.componentProps).subFormConfig.relationRequired, true)
 for (const [type, nodeType] of [['ONE_TO_ONE', 'SUB_FORM'], ['ONE_TO_MANY', 'REPEATER']]) {
-  const node = buildRelationEditor({ relation: { ...composition, relationType: type }, content: { id: 'child-form' }, release: { id: 'release', version: 3 } })
+  const node = buildRelationEditor({ relation: { ...composition, relationType: type }, content: { id: 'child-form' }, release: currentRelease })
   assert.equal(node.nodeType, nodeType)
   assert.equal(node.bindingType, 'RELATION')
   assert.equal(node.bindingRef, relation.relationCode)
   assert.equal(node.fieldCode, relation.dataKey)
-  assert.equal(node.childFormReleaseId, 'release')
+  assert.equal(node.childFormId, 'child-form')
+  assert.equal(node.childFormReleaseId, undefined)
+  assert.equal(node.childFormReleaseVersion, undefined)
   assert.equal(node.childRefFieldCode, relation.childRefFieldCode)
   assert.equal(node.fieldId, undefined, '主从组件无需实体展示字段')
 }
 assert.throws(() => buildRelationEditor({ relation: { ...relation, ownershipType: 'ASSOCIATION' } }), /组成关系/)
 assert.throws(() => buildRelationEditor({ relation: { ...composition, direction: 'REVERSE' } }), /组成关系/)
 assert.throws(() => buildRelationEditor({ relation: composition, content: { id: 'child-form' }, release: null }), /已发布/)
+assert.throws(() => buildRelationEditor({ relation: composition, content: { id: 'child-form' }, release: { id: 'legacy', version: 3 } }), /已发布/, '旧版本身份不能代替当前发布内容')
 
-// 无实体字段的节点保存后重开，基数、外键和发布身份仍保持不变。
+// 无实体字段的节点保存后重开，基数、外键和稳定表单引用仍保持不变。
 for (const relationType of ['ONE_TO_ONE', 'ONE_TO_MANY']) {
-  const node = buildRelationEditor({ relation: { ...composition, relationType }, content: { id: 'child-form' }, release: { id: 'release', version: 3 } })
+  const node = buildRelationEditor({ relation: { ...composition, relationType }, content: { id: 'child-form' }, release: currentRelease })
   const subFormConfig = { relationCode: node.bindingRef, dataKey: node.fieldCode, childEntityId: node.childEntityId, relationType, childRefFieldCode: node.childRefFieldCode }
   const payload = buildFormNodePayload(node, { componentProps: { subFormConfig } })
   assert.equal(payload.bindingType, 'RELATION')
-  assert.equal(payload.childFormReleaseVersion, 3)
+  assert.equal(payload.childFormId, 'child-form')
+  assert.equal(payload.childFormReleaseId, undefined)
+  assert.equal(payload.childFormReleaseVersion, undefined)
   const reopened = restoreRelationEditorMetadata({ nodeType: payload.nodeType, bindingRef: payload.bindingRef }, payload.props.componentProps.subFormConfig)
   assert.equal(reopened.relationType, relationType)
   assert.equal(reopened.childRefFieldCode, relation.childRefFieldCode)

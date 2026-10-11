@@ -653,7 +653,6 @@ const apiExpectations = {
     'publish',
     'delete'
   ],
-  'src/api/uiHotfixGovernance.js': ['get', 'list'],
   'src/api/entityListRuntime.js': ['getSchema', 'query', 'simulate'],
   'src/api/entityListScope.js': ['getConfiguration', 'createPolicy', 'createBinding', 'publish'],
   'src/api/processTask.js': ['getTodoList', 'getDoneList', 'getStatistics', 'completeTask', 'getTaskOperations', 'previewAddSign', 'addSignTask', 'cancelAddSign', 'ccTask', 'getMyCcList', 'markCcRead', 'withdrawProcess', 'terminateProcess'],

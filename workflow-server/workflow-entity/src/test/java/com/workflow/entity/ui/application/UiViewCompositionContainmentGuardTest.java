@@ -259,6 +259,8 @@ class UiViewCompositionContainmentGuardTest {
 
     private void register(Fixture fixture, UiConfigRelease... releases) {
         for (UiConfigRelease release : releases) {
+            if ("FORM".equals(release.getConfigType()))
+                when(fixture.mapper.findActive("FORM", release.getConfigId())).thenReturn(release);
             when(fixture.mapper.selectById(release.getId()))
                     .thenReturn(release);
         }

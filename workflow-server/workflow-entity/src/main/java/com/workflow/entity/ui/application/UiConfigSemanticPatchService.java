@@ -2,7 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.workflow.core.serialization.JsonDocumentCodec;
-import com.workflow.entity.ui.api.response.UiConfigHotfixRiskItemDTO;
+import com.workflow.entity.ui.api.response.UiConfigRiskItemDTO;
 import com.workflow.entity.ui.api.model.UiConfigSemanticPatchOperation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -143,14 +143,14 @@ public class UiConfigSemanticPatchService {
                 mapList(target.get("eventBindings")),
                 List.of("id"),
                 operations);
-        // 关联内容随宿主一起发布、撤销和热修复，不能只比较 FORM/LIST 主配置。
+        // 关联内容随宿主一起发布和撤销草稿，不能只比较 FORM/LIST 主配置。
         diffCollection(
                 "viewCompositions",
                 mapList(source.get("viewCompositions")),
                 mapList(target.get("viewCompositions")),
                 List.of("id", "compositionKey"),
                 operations);
-        normalizeHotfixRisk(operations);
+        normalizePublishRisk(operations);
         operations.sort(Comparator
                 .comparing(UiConfigSemanticPatchOperation::getSection)
                 .thenComparing(UiConfigSemanticPatchOperation::getItemId)
@@ -158,8 +158,8 @@ public class UiConfigSemanticPatchService {
         String riskLevel = operations.stream()
                 .map(UiConfigSemanticPatchOperation::getRiskLevel)
                 .reduce(SAFE, this::maxRisk);
-        List<UiConfigHotfixRiskItemDTO> risks = operations.stream()
-                .map(item -> UiConfigHotfixRiskItemDTO.builder()
+        List<UiConfigRiskItemDTO> risks = operations.stream()
+                .map(item -> UiConfigRiskItemDTO.builder()
                         .section(item.getSection())
                         .itemId(item.getItemId())
                         .path(item.getPath())
@@ -251,11 +251,11 @@ public class UiConfigSemanticPatchService {
     }
 
     /**
-     * 规范化热修复风险；输出作为后续校验或处理的输入。
+     * 将结构性变更标记为发布前需要复核；普通发布不再套用旧热修复的兼容性阻断。
      *
-     * @param operations 操作集合，供本方法规范化热修复风险时使用
+     * @param operations 草稿与已发布配置的差异，用于生成发布风险提示
      */
-    private void normalizeHotfixRisk(
+    private void normalizePublishRisk(
             List<UiConfigSemanticPatchOperation> operations) {
         for (UiConfigSemanticPatchOperation operation : operations) {
             if (!BLOCKED.equals(operation.getRiskLevel())) {
@@ -344,7 +344,7 @@ public class UiConfigSemanticPatchService {
      * @return 写入后的补丁文本，供调用方比较或展示
      */
     public String writePatch(List<UiConfigSemanticPatchOperation> operations) {
-        return codec.write(operations, "UI热修复语义补丁");
+        return codec.write(operations, "UI配置变更补丁");
     }
 
     /**
@@ -360,7 +360,7 @@ public class UiConfigSemanticPatchService {
         return codec.read(
                 document,
                 new TypeReference<List<UiConfigSemanticPatchOperation>>() {},
-                "UI热修复语义补丁");
+                "UI配置变更补丁");
     }
 
     /**
@@ -553,7 +553,7 @@ public class UiConfigSemanticPatchService {
                 && !(after instanceof List<?>)) {
             return new Risk(SAFE, "仅影响展示或稳定布局");
         }
-        return new Risk(REVIEW, "未知配置路径需要复核，但不阻止热修复");
+        return new Risk(REVIEW, "未知配置路径需要复核，但不阻止发布");
     }
 
     /**
@@ -710,7 +710,7 @@ public class UiConfigSemanticPatchService {
                                 finalEmbedded.field(),
                                 codec.write(
                                         finalEmbedded.document(),
-                                        "热修复嵌入配置"));
+                                        "配置变更中的嵌入配置"));
                     }
                 });
     }
@@ -959,7 +959,7 @@ public class UiConfigSemanticPatchService {
     public record PatchAnalysis(
             List<UiConfigSemanticPatchOperation> operations,
             String riskLevel,
-            List<UiConfigHotfixRiskItemDTO> riskItems) {
+            List<UiConfigRiskItemDTO> riskItems) {
     }
 
     /**

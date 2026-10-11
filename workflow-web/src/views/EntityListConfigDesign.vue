@@ -902,7 +902,6 @@
     />
     <UiConfigReleaseHistoryDialog
       ref="releaseHistoryDialogRef"
-      config-type="LIST"
       :config-id="configId"
       config-label="列表"
       @changed="handleReleaseChanged"

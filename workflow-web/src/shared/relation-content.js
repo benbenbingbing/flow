@@ -14,10 +14,14 @@ export function restoreRelationEditorMetadata(field, config = {}) {
   return field
 }
 
-/** 组成型节点绑定关系数据键，子记录留在主表草稿中，由既有聚合提交链路保存。 */
+/**
+ * 组成型节点绑定关系数据键，子记录留在主表草稿中，由既有聚合提交链路保存。
+ * release 必须是已发布表单的当前快照；节点只保存稳定的表单 ID，运行时读取当前发布内容。
+ */
 export function buildRelationEditor({ relation, content, release }) {
   if (!isCompositionEditorRelation(relation) || !relation.dataKey || !relation.childRefFieldCode) throw new Error('主从编辑必须绑定完整的组成关系')
-  if (!release?.id || !release.version || !content?.id) throw new Error('请选择已发布的子表单')
+  // 当前发布接口不再返回历史版本号，不能用 version 判断是否已发布，也不能将子表单锁定到旧版本。
+  if (!release?.contentHash || !content?.id) throw new Error('请选择已发布的子表单')
   const single = relation.relationType === 'ONE_TO_ONE'
   return {
     nodeType: single ? 'SUB_FORM' : 'REPEATER',
@@ -27,7 +31,7 @@ export function buildRelationEditor({ relation, content, release }) {
     childEntityId: relation.childEntityId, refEntityId: relation.childEntityId,
     childRefFieldCode: relation.childRefFieldCode, refFieldCode: relation.childRefFieldCode,
     relationType: relation.relationType, repeatable: !single, layout: single ? 'form' : 'table',
-    childFormId: content.id, refFormId: content.id, childFormReleaseId: release.id, childFormReleaseVersion: release.version,
+    childFormId: content.id, refFormId: content.id,
     // 表单字段的通用 required 属性可能在节点设置中被重建；同时将关系约束
     // 固定在子表单配置里，使发布快照及运行时仍能识别“至少一条子记录”。
     componentProps: JSON.stringify({ subFormConfig: { relationRequired: relation.required === true } }),

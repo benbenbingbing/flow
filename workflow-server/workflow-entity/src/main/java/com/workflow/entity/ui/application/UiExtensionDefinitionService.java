@@ -378,36 +378,6 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
     }
 
     /**
-     * 判断扩展是否显式声明兼容热修复。
-     *
-     * <p>未声明、无法解析或声明为 false 时一律按不兼容处理。</p>
-     *
-     * @param definition 定义，作为 {@code codec.readObject} 的输入影响后续处理
-     * @return 热修复条件成立时为 true，否则为 false
-     */
-    public boolean supportsHotfix(UiExtensionDefinition definition) {
-        if (definition == null
-                || !StringUtils.hasText(
-                        definition.getCapabilitiesDocument())) {
-            return false;
-        }
-        try {
-            Map<String, Object> capabilities = codec.readObject(
-                    definition.getCapabilitiesDocument(),
-                    "扩展能力");
-            if (Boolean.TRUE.equals(
-                    capabilities.get("hotfixCompatible"))) {
-                return true;
-            }
-            Object hotfix = capabilities.get("hotfix");
-            return hotfix instanceof Map<?, ?> values
-                    && Boolean.TRUE.equals(values.get("compatible"));
-        } catch (IllegalArgumentException exception) {
-            return false;
-        }
-    }
-
-    /**
      * 校验界面扩展定义；不满足约束时阻止后续处理。
      *
      * @param request 本次请求，后续经校验后用于校验界面扩展定义

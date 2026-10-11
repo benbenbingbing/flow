@@ -656,10 +656,8 @@ public class UiViewCompositionRuntimeService {
         if (!StringUtils.hasText(entityId)
                 || !OWNER_TYPES.contains(contentType)
                 || !StringUtils.hasText(contentId)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
-                || releaseVersion < 1
-                || !StringUtils.hasText(contentHash)) {
+                || (!FORM.equals(contentType) && (!StringUtils.hasText(releaseId)
+                || releaseVersion == null || releaseVersion < 1 || !StringUtils.hasText(contentHash)))) {
             throw new BusinessConflictException(
                     "VIEW_COMPOSITION_TARGET_RELEASE_REQUIRED",
                     "关联内容发布快照缺少固定的目标表单或列表版本");
@@ -674,8 +672,7 @@ public class UiViewCompositionRuntimeService {
         if (FORM.equals(contentType)) {
             EntityForm form = formMapper.selectById(contentId);
             if (form == null
-                    || !Objects.equals(entityId, form.getEntityId())
-                    || !Integer.valueOf(1).equals(form.getStatus())) {
+                    || !Objects.equals(entityId, form.getEntityId())) {
                 throw new BusinessConflictException(
                         "VIEW_COMPOSITION_TARGET_FORM_INVALID",
                         "关联内容目标表单不存在、未启用或不属于目标实体");
@@ -691,7 +688,11 @@ public class UiViewCompositionRuntimeService {
             }
             contentKey = list.getListKey();
         }
-        UiConfigRelease release = releaseMapper.selectById(releaseId);
+        UiConfigRelease release = FORM.equals(contentType)
+                ? releaseMapper.findActive(FORM, contentId) : releaseMapper.selectById(releaseId);
+        if (FORM.equals(contentType) && release != null) {
+            releaseVersion = release.getVersion(); contentHash = release.getContentHash();
+        }
         if (release == null
                 || !Objects.equals(contentType, release.getConfigType())
                 || !Objects.equals(contentId, release.getConfigId())
@@ -712,6 +713,8 @@ public class UiViewCompositionRuntimeService {
                     "VIEW_COMPOSITION_TARGET_RELEASE_CONFLICT",
                     "关联内容目标发布快照与目标资源归属不一致");
         }
+        if (FORM.equals(contentType) && Integer.valueOf(0).equals(integer(targetOwner.get("status"))))
+            throw new BusinessConflictException("VIEW_COMPOSITION_TARGET_FORM_INVALID", "当前发布的目标表单未启用");
         return new TargetAsset(
                 entity,
                 contentType,

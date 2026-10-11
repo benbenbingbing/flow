@@ -349,15 +349,15 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
           childFormId,
           refFormId: childFormId,
           publishedFormId: childFormId,
-          childFormReleaseId,
-          refFormReleaseId: childFormReleaseId,
-          publishedFormReleaseId: childFormReleaseId,
-          childFormReleaseVersion,
-          refFormReleaseVersion: childFormReleaseVersion,
-          publishedFormReleaseVersion: childFormReleaseVersion,
           repeatable: field.relationType !== 'ONE_TO_ONE',
           relationType: field.relationType || 'ONE_TO_MANY',
           childRefFieldCode: field.childRefFieldCode || field.refFieldCode || ''
+        }
+        // 发布引用只保存稳定表单 ID；旧节点再次保存时清除所有版本别名。
+        for (const key of ['childFormReleaseId', 'refFormReleaseId', 'publishedFormReleaseId',
+          'childFormReleaseVersion', 'refFormReleaseVersion', 'publishedFormReleaseVersion']) {
+          delete compProps[key]
+          delete compProps.subFormConfig[key]
         }
         delete compProps.fields
         delete compProps.subFields

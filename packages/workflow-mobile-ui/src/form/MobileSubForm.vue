@@ -78,7 +78,7 @@ async function loadDefinition() {
     const value = meta.value
     let form, rootId = ''
     if (value.childFormId) {
-      const release = await props.services.getFormRuntimeRelease(value.childFormId, value.childFormReleaseId, value.childFormReleaseVersion, props.context.releaseResolutionToken)
+      const release = await props.services.getFormRuntimeRelease(value.childFormId, null, null, props.context.releaseResolutionToken)
       form = normalizeRuntimeFormRelease(release, value.childFormId)
       form.entityId ||= value.refEntityId
       rootId = ''

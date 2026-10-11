@@ -4,18 +4,18 @@ import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 
 /**
- * 已解析的实体表单发布版本信息。
+ * 本次请求已解析的实体表单当前配置。
  *
- * <p>封装表单定义、发布ID、发布版本号以及是否为钉选发布，
+ * <p>封装当前表单定义与内容摘要；版本和钉选字段仅保留旧 DTO 协议兼容，
  * 供表单运行时解析使用。</p>
  *
  * @param form           表单定义
- * @param releaseId      发布记录ID
- * @param releaseVersion 发布版本号
- * @param pinned         是否为钉选发布
- * @param effectiveReleaseId 实际生效的热修复发布ID；无热修复时等于 releaseId
+ * @param releaseId      当前配置内容摘要，用于提交一致性检查
+ * @param releaseVersion 旧协议占位，当前配置固定为 1
+ * @param pinned         旧协议占位，当前配置固定为 false
+ * @param effectiveReleaseId 当前配置摘要，与 releaseId 相同
  * @param effectiveContentHash 实际生效快照哈希
- * @param hotfixTargetId 热修复目标ID
+ * @param hotfixTargetId 旧协议占位，当前配置始终为 null
  * @param purpose 解析目的
  */
 public record ResolvedEntityFormRelease(
@@ -33,7 +33,7 @@ public record ResolvedEntityFormRelease(
      *
      * @param form 表单，保存在对象中供后续校验、查询或展示
      * @param releaseId 发布版本 ID，后续用于解析固定配置
-     * @param releaseVersion 发布版本号，后续用于校验快照一致性
+     * @param releaseVersion 旧协议占位，当前配置固定为 1，后续用于校验快照一致性
      * @param pinned 固定，保存在对象中供后续校验、查询或展示
      */
     public ResolvedEntityFormRelease(
@@ -58,8 +58,8 @@ public record ResolvedEntityFormRelease(
      * 构造非钉定的发布版本信息。
      *
      * @param form           表单定义
-     * @param releaseId      发布记录ID
-     * @param releaseVersion 发布版本号
+     * @param releaseId      当前配置内容摘要，用于提交一致性检查
+     * @param releaseVersion 旧协议占位，当前配置固定为 1
      */
     public ResolvedEntityFormRelease(
             EntityForm form,
@@ -69,9 +69,9 @@ public record ResolvedEntityFormRelease(
     }
 
     /**
-     * 判断热修复{@code applied}条件是否成立，供调用方选择后续分支。
+     * 读取旧协议标志；当前解析器不会产生热修复目标。
      *
-     * @return 热修复{@code applied}条件成立时为 true，否则为 false
+     * @return 旧对象兼容值，当前配置始终为 false
      */
     public boolean hotfixApplied() {
         return hotfixTargetId != null;

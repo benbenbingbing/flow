@@ -215,7 +215,7 @@ public class FlowActionCustomFailureTransactionTest {
         jdbc.update("INSERT INTO process_action VALUES ('old','ROLLBACK')");
         jdbc.update("INSERT INTO process_action_execution VALUES ('old','DEAD')");
         new org.springframework.jdbc.datasource.init.ResourceDatabasePopulator(
-                new org.springframework.core.io.ClassPathResource("db/migration/V108__flow_action_custom_failure_strategy.sql"))
+                new org.springframework.core.io.FileSystemResource("../workflow-db-migrator/src/main/resources/db/migration/V109__flow_action_custom_failure_strategy.sql"))
                 .execute(source);
         assertEquals("ROLLBACK", jdbc.queryForObject("SELECT failure_policy FROM process_action WHERE id='old'", String.class));
         assertNull(jdbc.queryForObject("SELECT failure_strategy_code FROM process_action WHERE id='old'", String.class));

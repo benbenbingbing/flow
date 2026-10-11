@@ -8,7 +8,6 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationCommand;
 import com.workflow.contracts.entity.mutation.model.EntityMutationContext;
 import com.workflow.contracts.entity.mutation.port.EntityMutationPort;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
-import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
@@ -41,7 +40,7 @@ import java.util.Set;
  * 节点表单提交处理服务。
  *
  * <p>在审批提交时，将节点表单中配置为可编辑的字段保存回实体数据与流程变量，
- * 并执行表单发布版本的提交前处理逻辑（如联动校验、数据加工等）。
+ * 并执行表单当前已发布配置的提交前处理逻辑（如联动校验、数据加工等）。
  * 只读字段不参与保存。</p>
  */
 @Slf4j
@@ -57,23 +56,11 @@ public class NodeFormSubmissionService {
     /** 实体表单运行时解析服务 */
     private final EntityFormRuntimeService entityFormRuntimeService;
     private final EntityMutationPort entityMutationPort;
-    /** 已发布表单提交处理服务（按发布版本执行提交前处理） */
+    /** 已发布表单提交处理服务（按当前已发布配置执行提交前处理） */
     private final PublishedFormSubmissionService formSubmissionService;
     /** 表单提交追踪服务 */
     private final FormSubmissionTraceService formSubmissionTraceService;
     private final ObjectMapper objectMapper;
-    private UiHotfixObservationPort hotfixObservationPort;
-
-    /**
-     * 可选观察端口不参与流程主事务成败判定。
-     *
-     * @param hotfixObservationPort 热修复观察端口，供本方法设置热修复观察端口时使用
-     */
-    @Autowired(required = false)
-    void setHotfixObservationPort(
-            UiHotfixObservationPort hotfixObservationPort) {
-        this.hotfixObservationPort = hotfixObservationPort;
-    }
 
     /**
      * 只读投影审批表单中允许当前节点编辑的提交值。
@@ -252,9 +239,9 @@ public class NodeFormSubmissionService {
     }
 
     /**
-     * 对提交数据执行发布表单的提交前处理（按发布版本逐个应用）。
+     * 对提交数据执行当前表单配置的提交前处理。
      *
-     * <p>有节点表单时按表单发布版本去重后逐个应用；无节点表单时使用实体默认表单处理。</p>
+     * <p>有节点表单时按本次解析出的表单配置去重后逐个应用；无节点表单时使用实体默认表单处理。</p>
      *
      * @param nodeForms        节点绑定的表单列表
      * @param processVersionHistoryId 流程版本历史ID，后续用于应用之前{@code submit}时定位或关联目标
@@ -275,36 +262,9 @@ public class NodeFormSubmissionService {
             Map<String, Object> submittedValues,
             FormSubmissionExecutionContext executionContext,
             boolean sideEffectFreePreview) {
-        if (sideEffectFreePreview) {
-            return applyBeforeSubmitInternal(
-                    nodeForms,
-                    processVersionHistoryId,
-                    task,
-                    entityCode,
-                    entityDataId,
-                    submittedValues,
-                    executionContext,
-                    true);
-        }
-        try {
-            AppliedFormSubmission result = applyBeforeSubmitInternal(
-                    nodeForms,
-                    processVersionHistoryId,
-                    task,
-                    entityCode,
-                    entityDataId,
-                    submittedValues,
-                    executionContext,
-                    false);
-            observeTask(processVersionHistoryId, true, null);
-            return result;
-        } catch (RuntimeException exception) {
-            observeTask(
-                    processVersionHistoryId,
-                    false,
-                    exception.getMessage());
-            throw exception;
-        }
+        return applyBeforeSubmitInternal(
+                nodeForms, processVersionHistoryId, task, entityCode, entityDataId,
+                submittedValues, executionContext, sideEffectFreePreview);
     }
 
     /**
@@ -454,33 +414,6 @@ public class NodeFormSubmissionService {
                         applied.effectiveReleaseId(),
                         applied.effectiveContentHash(),
                         applied.hotfixTargetId())));
-    }
-
-    /**
-     * 处理{@code observe}任务，并将结果传给后续步骤。
-     *
-     * @param processVersionHistoryId 流程版本历史ID，后续用于处理{@code observe}任务时定位或关联目标
-     * @param successful 成功，作为 {@code hotfixObservationPort.recordProcessVersionMetric} 的输入影响后续处理
-     * @param errorMessage 错误消息，作为 {@code hotfixObservationPort.recordProcessVersionMetric} 的输入影响后续处理
-     */
-    private void observeTask(
-            String processVersionHistoryId,
-            boolean successful,
-            String errorMessage) {
-        if (hotfixObservationPort == null) {
-            return;
-        }
-        try {
-            hotfixObservationPort.recordProcessVersionMetric(
-                    processVersionHistoryId,
-                    successful,
-                    errorMessage);
-        } catch (RuntimeException metricException) {
-            log.warn(
-                    "记录 HOTFIX 流程任务观察指标失败: processVersionHistoryId={}, failureType={}",
-                    processVersionHistoryId,
-                    metricException.getClass().getSimpleName());
-        }
     }
 
     /**

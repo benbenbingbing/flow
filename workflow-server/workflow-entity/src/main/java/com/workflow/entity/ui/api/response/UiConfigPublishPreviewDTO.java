@@ -31,8 +31,9 @@ public class UiConfigPublishPreviewDTO {
     long activeInstanceCount;
     long skippedHistoricalInstanceCount;
     List<UiConfigDiffItemDTO> changedItems;
-    List<UiConfigHotfixRiskItemDTO> riskItems;
-    List<UiConfigHotfixTargetPreviewDTO> targets;
+    List<UiConfigRiskItemDTO> riskItems;
+    /** 旧协议兼容空集合；统一发布不再按流程版本划分生效目标。 */
+    List<Map<String, Object>> targets;
     /** 发布后会被精确固定的关联内容依赖，供配置人员发布前确认。 */
     List<Map<String, Object>> dependencies;
     List<String> blockers;

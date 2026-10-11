@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
-import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '../form-layout.js'
+import { resolveFormDefaultColumnCount, resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '../form-layout.js'
 import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { buildEntityConfigKey } from '../entity-config-key.js'
+import { FORM_RENDERER_MODE_DEFAULT, resolveFormRendererMode } from '../form-renderer-mode.js'
 import { extractSfcFunctions } from '../../../scripts/test-sfc-functions.mjs'
 
 // 历史快照中被布局模式覆盖的 gridSpan 不能因升级而突然生效。
@@ -47,11 +49,15 @@ assert.equal(resolveFormNodeLayoutSpan({ nodeType: 'FIELD' }, 'grid', 12), 12, '
 for (const [columns, expectedSpan] of [[1, 24], [2, 12], [3, 8]]) {
   const form = { formName: '测试表单', formKey: 'detail', layoutType: 'grid', status: 1, defaultColumnCount: columns }
   const isEdit = { value: false }
-  let created, patched
-  const { handleSubmit } = extractSfcFunctions(new URL('../../views/EntityFormList.vue', import.meta.url), ['handleSubmit'], {
+  const savedViewConfig = { value: {} }
+  let created, patched, current
+  const { handleSubmit, handleEdit, resetForm } = extractSfcFunctions(new URL('../../views/EntityFormList.vue', import.meta.url), ['handleSubmit', 'handleEdit', 'resetForm'], {
     form, isEdit, entityId: 'entity-test', entityInfo: { value: { entityCode: 'TEST' } },
-    formRef: { value: { validate: async () => true } }, submitLoading: { value: false },
+    formRef: { value: { validate: async () => true, clearValidate() {} } }, submitLoading: { value: false },
     isCustomRendererMode: { value: false }, dialogVisible: { value: true },
+    isSystemEntity: { value: false }, formRendererMode: { value: FORM_RENDERER_MODE_DEFAULT },
+    savedViewConfig, safeParseConfig, resolveFormDefaultColumnCount, FORM_RENDERER_MODE_DEFAULT, resolveFormRendererMode,
+    getFormById: async () => current,
     createForm: async payload => { created = payload },
     patchFormMetadata: async (_id, payload) => { patched = payload },
     buildEntityConfigKey, loadForms() {}, ElMessage: { success() {}, error(message) { assert.fail(message) } }
@@ -79,14 +85,44 @@ for (const [columns, expectedSpan] of [[1, 24], [2, 12], [3, 8]]) {
   assert.deepEqual(formFields.value.map(field => field.gridSpan), [16, 18, expectedSpan],
     '新增属性只能初始化自身，不能重排历史节点或覆盖手动宽度')
 
-  // 外层编辑基本信息不提交 viewConfig，避免清掉设计器维护的列数及其他视图配置。
-  isEdit.value = true
-  form.id = 'form-test'
-  form.revision = 2
+  // 真实编辑入口从 viewConfig 回填列数；仅保存基本信息时不改写视图配置。
+  const designConfig = {
+    ...JSON.parse(created.viewConfig), labelPosition: 'left', labelWidth: 180,
+    actionBar: { customButtons: [{ key: 'submit', label: '提交' }] },
+    customComponentProps: { theme: 'compact' }
+  }
+  current = { ...created, id: 'form-test', revision: 2, viewConfig: JSON.stringify(designConfig) }
+  await handleEdit({ id: current.id })
+  assert.equal(form.defaultColumnCount, columns)
   await handleSubmit()
   assert.equal(Object.hasOwn(patched, 'viewConfig'), false)
+
+  // 调整列数时整块保留设计配置，并携带读取时的 revision，避免覆盖别人的草稿。
+  const editedColumns = columns % 3 + 1
+  form.defaultColumnCount = editedColumns
+  await handleSubmit()
+  assert.deepEqual(patched.viewConfig, { ...designConfig, defaultColumnCount: editedColumns })
+  assert.equal(patched.expectedRevision, 2)
+  assert.equal(Object.hasOwn(patched, 'nodes'), false)
+  assert.equal(Object.hasOwn(patched, 'fields'), false)
+  assert.deepEqual(savedViewConfig.value, designConfig, '保存不能修改读取时的视图快照')
+
+  // 模拟服务端保存后重新打开编辑，再加载设计器，确认新默认宽度只作用于后续新增属性。
+  current = { ...current, revision: 3, viewConfig: JSON.stringify(patched.viewConfig) }
+  await handleEdit({ id: current.id })
+  assert.equal(form.defaultColumnCount, editedColumns)
+  viewConfig.value = JSON.parse(current.viewConfig)
+  addField({ id: 'third', fieldCode: 'third', fieldName: '第三属性', fieldType: 'VARCHAR' })
+  assert.deepEqual(formFields.value.map(field => field.gridSpan), [16, 18, expectedSpan, 24 / editedColumns])
+
+  // 新建面板不能继承上一个编辑表单的列数或其他视图配置。
+  resetForm()
+  assert.equal(form.defaultColumnCount, 1)
+  assert.deepEqual(savedViewConfig.value, {})
 }
 for (const viewConfig of [undefined, null, '', '{invalid}', {}, { defaultColumnCount: 0 }, { defaultColumnCount: 4 }, { defaultColumnCount: 1.5 }]) {
+  assert.equal(resolveFormDefaultColumnCount(viewConfig), 1, '编辑历史表单或无效配置时回退到 1 列')
   assert.equal(resolveNewFormFieldGridSpan(viewConfig), 24, '旧表单或无效列数保持单列默认宽度')
 }
+assert.equal(resolveFormDefaultColumnCount({ defaultColumnCount: '2' }), 2, '兼容已解析配置及字符串列数')
 console.log('form-layout tests passed')

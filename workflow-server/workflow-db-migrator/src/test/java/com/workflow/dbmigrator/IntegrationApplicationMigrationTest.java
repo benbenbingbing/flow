@@ -265,36 +265,14 @@ class IntegrationApplicationMigrationTest {
                 assertTrue(indexExists(
                                 "ui_view_composition",
                                 "uk_ui_view_composition_active_key"));
-                assertTrue(tableExists("ui_config_hotfix_request"));
-                assertTrue(tableExists("ui_hotfix_observation_metric"));
-                for (String reviewHistoryColumn : Set.of(
-                                "review_required",
-                                "reviewer_id",
-                                "reviewer_name",
-                                "review_comment",
-                                "reviewed_at")) {
-                        assertTrue(columnExists(
-                                        "ui_config_hotfix_request",
-                                        reviewHistoryColumn));
-                }
-                assertEquals(0, countRows("""
-                                SELECT COUNT(*)
-                                  FROM sys_menu
-                                 WHERE id = 'entity_ui_hotfix_review_permission'
-                                    OR perm = 'entity:ui-config:hotfix:review'
-                                """));
-                assertEquals(0, countRows("""
-                                SELECT COUNT(*)
-                                  FROM sys_role_menu
-                                 WHERE menu_id = 'entity_ui_hotfix_review_permission'
-                                """));
-                assertEquals(0, countRows("""
-                                SELECT COUNT(*)
-                                  FROM ui_config_hotfix_request
-                                 WHERE status IN ('PENDING_REVIEW', 'APPROVED')
-                                   AND release_id IS NULL
-                                   AND open_slot = 1
-                                """));
+                assertFalse(tableExists("ui_config_hotfix_target"));
+                assertFalse(tableExists("ui_config_hotfix_request"));
+                assertFalse(tableExists("ui_hotfix_observation_metric"));
+                assertTrue(tableExists("entity_form_published"));
+                assertTrue(tableExists("entity_form_current_default"));
+                assertTrue(tableExists("entity_form_publication_lock"));
+                assertEquals(0, countRows("SELECT COUNT(*) FROM ui_config_release WHERE config_type='FORM'"));
+                assertEquals(0, countRows("SELECT COUNT(*) FROM sys_menu WHERE perm LIKE 'entity:ui-config:hotfix%'"));
                 assertTrue(columnExists(
                                 "auth_refresh_session",
                                 "refresh_token_hash"));
@@ -1381,7 +1359,11 @@ class IntegrationApplicationMigrationTest {
                                 )
                                 """);
 
-                flyway().migrate();
+                Flyway.configure()
+                                .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+                                .locations("classpath:db/migration")
+                                .target(MigrationVersion.fromVersion("65"))
+                                .load().migrate();
 
                 assertEquals(0, countRows("""
                                 SELECT COUNT(*)

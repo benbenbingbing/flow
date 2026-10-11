@@ -7,6 +7,10 @@ import java.time.Instant;
  */
 public interface EmbedNativeFormRuntimePort {
 
+    /** 按稳定表单身份恢复当前配置指纹；Embed 页面版本不能固定表单内容。 */
+    VerifiedTarget currentFormTarget(String entityCode, String formId);
+
+
     /**
      * 为固定表单发布目标签发短期解析令牌。
      *

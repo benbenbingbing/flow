@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** 固定子表单按内容定位；不同本地 ID、版本号及重复导入不能产生多余版本。 */
+/** 子表单按实体编码和表单键定位，旧固定版本包被明确拒绝。 */
 class ConfigMigrationPinnedFormReferencesTest {
     private final EntityDefinitionMapper entities = mock(EntityDefinitionMapper.class);
     private final EntityFormMapper forms = mock(EntityFormMapper.class);
@@ -37,60 +37,36 @@ class ConfigMigrationPinnedFormReferencesTest {
     }
 
     @Test
-    void roundTripReusesMatchingTargetReleaseDespiteDifferentIdsAndVersion() {
-        UiConfigRelease source = release("source-r", "source-f", 2);
-        EntityForm sourceForm = form("source-f");
-        when(releases.selectById("source-r")).thenReturn(source);
+    void roundTripUsesStableBusinessIdentityAndNoFormVersion() {
+        EntityForm sourceForm = form("source-f"); sourceForm.setEntityId("source-e");
         when(forms.selectById("source-f")).thenReturn(sourceForm);
-        when(assets.pinnedFormSnapshot(sourceForm, source)).thenReturn(pinnedDocument("source-node", 2));
+        EntityDefinition sourceEntity = new EntityDefinition(); sourceEntity.setId("source-e"); sourceEntity.setEntityCode("expense");
+        when(entities.selectById("source-e")).thenReturn(sourceEntity);
         Map<String, Object> exported = service.exportReferences(Map.of("propsDocument",
-                "{\"componentProps\":{\"subFormConfig\":{\"childFormId\":\"source-f\",\"childFormReleaseId\":\"source-r\"}}}",
-                "dependencies", List.of(Map.of("type", "ENTITY", "key", "expense", "required", true,
-                        "source", "实体引用字段"))));
+                "{\"componentProps\":{\"subFormConfig\":{\"childFormId\":\"source-f\",\"childFormReleaseId\":\"source-r\",\"childFormReleaseVersion\":9}}}",
+                "dependencies", List.of(Map.of("type", "ENTITY", "key", "expense", "required", true, "source", "实体引用字段"))));
         assertFalse(exported.toString().contains("source-r"));
         assertTrue(exported.toString().contains("wf-form://expense/details"));
-        // 固定子表单与普通实体引用共享一个依赖，不能因 source 不同插入两条唯一键相同的记录。
-        var dependencies = ConfigMigrationReferenceService.maps(exported.get("dependencies"));
-        assertEquals(1, dependencies.size());
-        assertEquals(List.of("实体引用字段", "固定子表单所属实体"), dependencies.get(0).get("sources"));
+        assertEquals(1, ConfigMigrationReferenceService.maps(exported.get("dependencies")).size());
         prepareTarget();
-        UiConfigRelease target = release("target-r", "target-f", 37);
-        EntityForm targetForm = form("target-f");
-        when(forms.selectByEntityIdAndFormKey("target-e", "details")).thenReturn(targetForm);
-        when(releases.findReleases("FORM", "target-f")).thenReturn(List.of(target));
-        when(assets.pinnedFormSnapshot(targetForm, target)).thenReturn(pinnedDocument("target-node", 37));
-        clearInvocations(forms, releases);
-        Map<String, Object> imported = service.materialize(exported, (type, key) -> key, pin -> fail("已有同内容版本不应新增"));
+        when(forms.selectByEntityIdAndFormKey("target-e", "details")).thenReturn(form("target-f"));
+        Map<String, Object> imported = service.materialize(exported, (type, key) -> key, pin -> fail("不得恢复隐藏历史配置"));
         String props = text(imported.get("propsDocument"));
-        assertTrue(props.contains("target-f")); assertTrue(props.contains("target-r")); assertTrue(props.contains("37"));
-        assertFalse(props.contains("source-f")); assertFalse(props.contains("childFormReleaseRef"));
-        assertEquals(imported, service.materialize(exported, (type, key) -> key, pin -> fail("重复导入不能新增")));
-        verify(forms, never()).selectById(any()); verify(releases, never()).selectById(any());
+        assertTrue(props.contains("target-f")); assertFalse(props.contains("childFormRelease"));
+        assertFalse(props.contains("source-f")); assertFalse(props.contains("childFormRef"));
+        assertEquals(imported, service.materialize(exported, (type, key) -> key, pin -> fail("不应创建版本")));
+        verifyNoInteractions(releases, assets);
     }
 
     @Test
-    void missingContentIsImportedOnceAndThenReused() {
-        Map<String, Object> pinned = pinnedDocument("source-node", 1);
-        pinned = new java.util.LinkedHashMap<>(pinned);
-        pinned.put("formRef", "wf-form://expense/details");
-        pinned.put("fingerprint", service.fingerprint(object(pinned.get("form"))));
-        Map<String, Object> document = Map.of("childFormReleaseRef", pinned);
+    void missingDependencyRequiresPackageFormOrExistingTarget() {
         prepareTarget();
-        EntityForm targetForm = form("target-f");
-        when(forms.selectByEntityIdAndFormKey("target-e", "details")).thenReturn(targetForm);
-        when(releases.findReleases("FORM", "target-f")).thenReturn(List.of());
-        AtomicInteger created = new AtomicInteger();
-        UiConfigRelease generated = release("new-local-r", "target-f", 8);
-        java.util.function.Function<Map<String, Object>, UiConfigRelease> importer = pin -> {
-            created.incrementAndGet();
-            when(releases.findReleases("FORM", "target-f")).thenReturn(List.of(generated));
-            when(assets.pinnedFormSnapshot(targetForm, generated)).thenReturn(pinnedDocument("target-node", 8));
-            return generated;
-        };
-        Map<String, Object> first = service.materialize(document, (type, key) -> key, importer);
-        assertEquals(first, service.materialize(document, (type, key) -> key, importer));
-        assertEquals(1, created.get());
-        assertEquals("new-local-r", first.get("childFormReleaseId"));
+        Map<String, Object> document = Map.of("childFormRef", "wf-form://expense/details");
+        assertThrows(IllegalArgumentException.class, () -> service.materialize(document,
+                (type, key) -> key, pin -> fail("不得恢复隐藏历史配置")));
+        assertDoesNotThrow(() -> service.validate(document, Set.of("wf-form://expense/details"), (type, key) -> key));
+        assertThrows(IllegalArgumentException.class, () -> service.validate(document, Set.of(), (type, key) -> key));
+        verifyNoInteractions(releases, assets);
     }
 
     @Test

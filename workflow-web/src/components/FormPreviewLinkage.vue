@@ -137,6 +137,7 @@
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
         :host-readonly="readonly"
+        :mode="mode"
         :traversal-context-token="runtimeTraversalContextToken"
         :release-resolution-token="runtimeReleaseResolutionToken"
         @source-patch="applyRelatedContentPatch"
@@ -156,6 +157,7 @@
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
         :host-readonly="readonly"
+        :mode="mode"
         :traversal-context-token="runtimeTraversalContextToken"
         :release-resolution-token="runtimeReleaseResolutionToken"
         @source-patch="applyRelatedContentPatch"
@@ -165,6 +167,7 @@
 </template>
 
 <script setup>
+import { createFormNodeVisibility } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
 import { ref, computed, watch, onMounted, nextTick, provide, defineAsyncComponent } from 'vue'
@@ -406,7 +409,7 @@ const tabRelatedContents = computed(() => {
       && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
   const tabNode = (props.form?.nodes || [])
     .find(node => String(node?.id || '') === String(props.nodeRootParentId))
-  if (!tabNode) return []
+  if (!tabNode || !createFormNodeVisibility(props.form?.nodes || [], { data: formData.value, mode: props.mode, context: props.context })(tabNode)) return []
   return formRelatedContentsAt(
     props.form?.viewCompositions, tabNode, { preview: props.designPreview })
 })
@@ -460,10 +463,17 @@ const processedFields = computed(() => {
     .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
 })
 
+const nodeVisibility = computed(() => createFormNodeVisibility(props.form?.nodes || [], {
+  data: formData.value, mode: props.mode, context: props.context, rootParentId: props.nodeRootParentId
+}))
+const visibleValidationFields = computed(() => processedFields.value.filter(field => {
+  const node = (props.form?.nodes || []).find(node => String(node.id) === String(field.id) || node.bindingRef === field.fieldCode)
+  return !node || nodeVisibility.value(node)
+}))
 const uniquePrecheckFields = computed(() =>
   hasNodeTree.value
     ? filterFormUniquenessFieldsForNodeScope(
-        processedFields.value,
+        visibleValidationFields.value,
         props.form?.nodes || [],
         {
           rootParentId: props.nodeRootParentId,

@@ -10,8 +10,8 @@
       </div>
       <div class="header-right">
         <el-tooltip :content="draftStatus.label" placement="bottom">
-          <el-tag :type="draftStatus.type" effect="plain">
-            {{ draftStatusLabel }}
+          <el-tag :type="hasUnsavedLocalChanges() ? 'warning' : draftStatus.type" effect="plain">
+            {{ hasUnsavedLocalChanges() ? '未保存' : draftStatusLabel }}
           </el-tag>
         </el-tooltip>
         <el-button
@@ -39,7 +39,6 @@
         >
           <el-icon><View /></el-icon>预览
         </el-button>
-        <el-button link @click="showReleaseHistory">版本</el-button>
         <el-divider direction="vertical" />
         <el-button @click="openFormSettings('basic')">
           <el-icon><Setting /></el-icon>设置
@@ -57,8 +56,6 @@
               <el-dropdown-item command="TAB">Tab 页</el-dropdown-item>
               <el-dropdown-item command="COLLAPSE">折叠面板</el-dropdown-item>
               <el-dropdown-item command="TEXT">说明文本</el-dropdown-item>
-              <el-dropdown-item command="RELATED_CONTENT">关联表单／列表</el-dropdown-item>
-              <el-dropdown-item command="RELATION_EDITOR">子表单／明细编辑</el-dropdown-item>
               <el-dropdown-item command="ACTION_SLOT">动作插槽</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -121,9 +118,13 @@
             :source-entity="entityInfo"
             :owner-id="form.id"
             :compositions="relatedContents"
+            draft-mode
+            @draft-added="addRelatedContentDraft"
+            @edit-node-settings="openCompositionProperties"
             :nodes="formFields"
             @saved="handleRelationContentSaved"
             @edit="openRelatedContent"
+            @open-properties="openRelatedContentProperties"
             @add-editor="addRelationEditor"
             @edit-node="openFieldProperties"
           />
@@ -169,6 +170,7 @@
                     :action-buttons="viewConfig.actionBar.customButtons"
                     :related-contents="relatedContents"
                     @edit-related-content="openRelatedContent"
+                    @open-related-properties="openRelatedContentProperties"
                     @remove-related-content="removeRelatedContent"
                     :can-drop-node="canDropNode"
                     :drag-disabled="reorderingNode"
@@ -186,15 +188,48 @@
               :key="item.id || item.compositionKey"
               :composition="item" editable
               @edit="openRelatedContent"
+              @open-properties="openRelatedContentProperties"
               @remove="removeRelatedContent"
             />
           </div>
         </div>
       </div>
 
+
+    </div>
+
+    <FormCustomRendererWorkspace
+      v-else
+      :custom-component="form.customComponent"
+      :custom-component-version="form.customComponentVersion"
+      :custom-component-snapshot-version="form.customComponentSnapshotVersion"
+      :selected-custom-form-catalog-option="selectedCustomFormCatalogOption"
+      :selected-custom-form-schema="selectedCustomFormSchema"
+      :custom-form-available="customFormAvailable"
+      :inactive-node-count="formFields.length"
+      :custom-form-button-count="customFormButtonCount"
+      :form-data-source-binding-count="formDataSourceBindingCount"
+      :preview-form="previewForm"
+      :preview-mode="previewMode"
+      :preview-mode-options="previewModeOptions"
+      :preview-actions="previewActions"
+      :preview-footer-actions="previewFooterActions"
+      :entity-info="entityInfo"
+      :entity-fields="entityFields"
+      :system-entity="isSystemEntity"
+      @update:preview-mode="previewMode = $event"
+      @open-form-settings="openFormSettings"
+      @open-form-extension-config="showFormExtensionConfig = true"
+      @open-extension-management="openExtensionManagement"
+      @refresh-extension-catalog="refreshExtensionCatalog"
+      @preview-action="handlePreviewAction"
+    />
+
+
+
       <el-drawer
         v-model="propertyDrawerVisible"
-        :title="selectedNodeTitle"
+        :title="selectedPropertyTitle"
         direction="rtl"
         size="50vw"
         append-to-body
@@ -205,21 +240,29 @@
             <span
               :id="titleId"
               :class="[titleClass, 'node-property-heading-title']"
-              :title="selectedNodeTitle"
-            >{{ selectedNodeTitle }}</span>
-            <template v-if="selectedField">
-              <el-tag size="small" effect="plain">{{ selectedNodeTypeLabel }}</el-tag>
+              :title="selectedPropertyTitle"
+            >{{ selectedPropertyTitle }}</span>
+            <template v-if="selectedField || selectedRelatedContent">
+              <el-tag size="small" effect="plain">{{ selectedRelatedContent ? (selectedRelatedContent.config.target.contentType === 'LIST' ? '关联列表' : '关联表单') : selectedNodeTypeLabel }}</el-tag>
               <el-tag
                 size="small"
-                :type="selectedNodeDirty ? 'warning' : 'success'"
+                :type="selectedPropertyDirty ? 'warning' : 'success'"
                 effect="plain"
               >
-                {{ selectedNodeDirty ? '未保存' : '已保存' }}
+                {{ selectedPropertyDirty ? '未保存' : '已保存' }}
               </el-tag>
             </template>
           </div>
         </template>
-        <template v-if="selectedField">
+        <template v-if="selectedRelatedContent">
+          <el-tabs v-model="activeNodeSettingsTab" class="node-settings-tabs" stretch>
+            <el-tab-pane v-for="tab in availableNodeSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
+          </el-tabs>
+          <el-scrollbar class="node-property-scrollbar">
+            <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" :composition-editor-available="!isCustomRendererMode && !isSystemEntity" @open-composition-editor="openCompositionEditors" @draft-change="updateRelatedContentDraft" />
+          </el-scrollbar>
+        </template>
+        <template v-else-if="selectedField">
           <el-tabs
             v-model="activeNodeSettingsTab"
             class="node-settings-tabs"
@@ -234,7 +277,7 @@
           </el-tabs>
           
           <el-scrollbar class="node-property-scrollbar">
-            <el-form label-width="90px" size="small" class="property-form">
+            <el-form label-width="90px" size="small" class="property-form" :disabled="saving || savingNode">
               <SettingsSection
                 v-show="activeNodeSettingsTab === 'basic'"
                 title="基础属性"
@@ -314,10 +357,10 @@
 
               <SettingsSection
                 :disabled="!canConfigureSelectedNodeModeAccess"
-                disabled-reason="仅实体字段支持运行模式权限"
+                disabled-reason="当前节点不支持运行模式显示"
                 v-show="activeNodeSettingsTab === 'basic'"
-                title="运行模式权限"
-                description="分别控制新增、编辑、审批和查看模式下的显示与编辑"
+                :title="isFieldNode ? '运行模式权限' : '运行模式显示'"
+                :description="isFieldNode ? '分别控制新增、编辑、审批和查看模式下的显示与编辑' : '控制整个节点及其内部内容在新增、编辑、审批和查看时是否显示'"
               >
                 <template #summary>
                   <el-tag size="small" type="info">4 种运行模式</el-tag>
@@ -331,20 +374,21 @@
                       @change="updateModeAccess(modeOption.value, 'visible', $event)"
                     >显示</el-checkbox>
                     <el-checkbox
+                      v-if="isFieldNode"
                       :disabled="modeOption.editable === false"
                       :model-value="modeOption.editable !== false && getModeAccessValue(modeOption.value, 'editable')"
                       @change="updateModeAccess(modeOption.value, 'editable', $event)"
                     >可编辑</el-checkbox>
                   </div>
                 </div>
-                <div class="mode-access-tip">
+                <div v-if="isFieldNode" class="mode-access-tip">
                   审批可编辑：字段在审批办理时的默认编辑权限，流程节点开启“强制整表只读”后本配置不生效。
                   查看模式固定只读，仅控制字段是否显示。
                 </div>
               </SettingsSection>
 
               <FormNodeStateConditions
-                :disabled="!isFieldNode"
+                :visibility-only="!isFieldNode"
                 v-show="activeNodeSettingsTab === 'basic'"
                 :field="selectedField"
                 :fields="entityFields"
@@ -680,7 +724,7 @@
                   :closable="false"
                   show-icon
                   class="uniqueness-scope-tip"
-                  title="严格按当前表单发布版生效"
+                  title="按当前已发布表单配置生效"
                   description="其他表单未设置时不会发起预检，服务端提交也不会套用本表单规则。"
                 />
 
@@ -908,46 +952,18 @@
           </el-empty>
         </div>
         <template #footer>
-          <div v-if="selectedField" class="node-property-actions">
-            <span>只保存当前节点，其他未保存修改继续保留。</span>
+          <div v-if="selectedField || selectedRelatedContent" class="node-property-actions">
+            <span>只保存当前属性，其他未保存修改继续保留。</span>
             <el-button
               type="primary"
               :loading="savingNode"
-              @click="saveSelectedNode"
+              @click="selectedRelatedContent ? saveSelectedRelatedContent() : saveSelectedNode()"
             >
-              <el-icon><Check /></el-icon>保存当前节点
+              <el-icon><Check /></el-icon>保存当前属性
             </el-button>
           </div>
         </template>
       </el-drawer>
-    </div>
-
-    <FormCustomRendererWorkspace
-      v-else
-      :custom-component="form.customComponent"
-      :custom-component-version="form.customComponentVersion"
-      :custom-component-snapshot-version="form.customComponentSnapshotVersion"
-      :selected-custom-form-catalog-option="selectedCustomFormCatalogOption"
-      :selected-custom-form-schema="selectedCustomFormSchema"
-      :custom-form-available="customFormAvailable"
-      :inactive-node-count="formFields.length"
-      :custom-form-button-count="customFormButtonCount"
-      :form-data-source-binding-count="formDataSourceBindingCount"
-      :preview-form="previewForm"
-      :preview-mode="previewMode"
-      :preview-mode-options="previewModeOptions"
-      :preview-actions="previewActions"
-      :preview-footer-actions="previewFooterActions"
-      :entity-info="entityInfo"
-      :entity-fields="entityFields"
-      :system-entity="isSystemEntity"
-      @update:preview-mode="previewMode = $event"
-      @open-form-settings="openFormSettings"
-      @open-form-extension-config="showFormExtensionConfig = true"
-      @open-extension-management="openExtensionManagement"
-      @refresh-extension-catalog="refreshExtensionCatalog"
-      @preview-action="handlePreviewAction"
-    />
 
     <FormDesignerSettingsDrawer
       v-model="showFormSettings"
@@ -957,16 +973,23 @@
       <template #related-content>
         <RelatedContentPanel
           ref="relatedContentPanelRef"
-          embedded
+          embedded draft-mode
+          :items="relatedContents"
+          @edit-draft="openRelatedContent"
+          @create-draft="createRelatedContentDraft"
+          @delete-draft="deleteRelatedContentDraft"
+          @refresh-drafts="refreshRelatedContentDrafts"
           owner-type="FORM"
           :owner-id="form.id || ''"
           :source-entity="entityInfo"
           :source-fields="entityFields"
           :source-content-fields="formFields"
           :anchor-options="relatedContentAnchorOptions"
+          :composition-editor-available="!isCustomRendererMode && !isSystemEntity"
           @count-change="relatedContentCount = $event"
           @loaded="relatedContents = $event"
           @changed="handleRelatedContentChanged"
+          @open-composition-editor="openCompositionEditors"
         />
       </template>
     </FormDesignerSettingsDrawer>
@@ -1041,13 +1064,6 @@
       :field-options="eventFieldOptions"
       @changed="loadDiff"
     />
-    <UiConfigReleaseHistoryDialog
-      ref="releaseHistoryDialogRef"
-      config-type="FORM"
-      :config-id="form.id || ''"
-      config-label="表单"
-      @changed="handleReleaseChanged"
-    />
     <RuntimeCodeViewerDialog ref="runtimeCodeDialogRef" />
 
   </div>
@@ -1078,7 +1094,6 @@ import { readFieldScripts, writeFieldScripts } from '@flow/workflow-core/browser
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import FormNodeEventBindings from '@/components/form-designer/FormNodeEventBindings.vue'
 import FormDataSourceDialog from '@/components/ui-config/FormDataSourceDialog.vue'
-import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
@@ -1098,11 +1113,13 @@ import { supportsCrossFieldValidation, validateCrossFieldConfiguration } from '@
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { uiCompositionApi } from '@/api/uiComposition'
-import { normalizeRelatedContent } from '@/shared/related-content'
+import { createEmptyRelatedContent, validateRelatedContent, normalizeRelatedContent } from '@/shared/related-content'
 import FormRelationPicker from '@/components/form-designer/FormRelationPicker.vue'
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import { buildRelationEditor } from '@/shared/relation-content'
 import RelationContentDesignPreview from '@/components/form-designer/RelationContentDesignPreview.vue'
+import RelatedContentConfigDialog from '@/components/related-content/RelatedContentConfigDialog.vue'
+import { createRelatedContentDraftState, persistRelatedContentDraft, relatedContentIdentity } from './form-designer/relatedContentDraftModel'
 import { FORM_DESIGNER_CONTEXT_KEY } from '@/components/form-designer/context'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import {
@@ -1199,7 +1216,7 @@ import {
   reorderFormNode,
   replaceFormNodes,
   getFormDiff,
-  getFormReleases
+  getFormRuntimeRelease
 } from '@/api/entityForm'
 import {
   uiConfigDraftApi,
@@ -1248,6 +1265,13 @@ const relatedContentPanelRef = ref(null)
 const relatedContentCount = ref(0)
 const relatedContents = ref([])
 const formRelationPickerRef = ref(null)
+const relatedDraftState = createRelatedContentDraftState()
+const selectedRelatedKey = ref('')
+const selectedRelatedContent = computed(() => relatedContents.value.find(item => relatedContentIdentity(item) === selectedRelatedKey.value) || null)
+const selectedPropertyTitle = computed(() => selectedRelatedContent.value
+  ? `${selectedRelatedContent.value.config.presentation.title || selectedRelatedContent.value.config.name || '关联内容'}属性`
+  : selectedNodeTitle.value)
+const selectedPropertyDirty = computed(() => selectedRelatedContent.value ? relatedDraftState.dirty(selectedRelatedContent.value) : selectedNodeDirty.value)
 const inlineRelationContents = computed(() => formRelatedContentsAt(relatedContents.value, null, { preview: true }))
 const runtimeCodeLoading = ref(false)
 const currentEventField = ref(null)
@@ -1450,12 +1474,15 @@ useBreadcrumbParents(() => [{
     ? `/entity-form/list-by-entity/${encodeURIComponent(form.value.entityId)}`
     : ''
 }])
-const canDiscardDraft = computed(() => canDiscardUiConfigDraft({
+const serverCanDiscardDraft = computed(() => canDiscardUiConfigDraft({
   diffLoadSucceeded: diffLoadSucceeded.value,
   diff: diffInfo.value,
   serverCanDiscardDraft: diffInfo.value.canDiscardDraft === true,
   activeReleaseId: form.value.activeReleaseId
 }))
+// 已发布基线存在时，尚未落库的关联新增/修改/删除也能撤销；纯本地撤销不调用发布回退接口。
+const canDiscardDraft = computed(() => serverCanDiscardDraft.value
+  || (diffLoadSucceeded.value && !!form.value.activeReleaseId && hasUnsavedLocalChanges()))
 const draftStatus = computed(() => resolveUiConfigDraftStatus({
   diffLoadSucceeded: diffLoadSucceeded.value,
   diff: diffInfo.value
@@ -1534,22 +1561,114 @@ function openFormSettings(tab = 'basic', behaviorTab = '') {
   showFormSettings.value = true
 }
 
+/** 所有关联入口定位同一草稿，只有默认页签不同，不能重读服务端覆盖输入。 */
 async function openRelatedContent(item = null) {
-  openFormSettings('related-content')
+  if (!item?.config) return createRelatedContentDraft()
+  return openRelatedContentProperties(item, 'child-pages')
+}
+
+async function openRelatedContentProperties(item, tab = 'basic') {
+  if (!item?.config) return
+  selectedField.value = null
+  selectedRelatedKey.value = relatedContentIdentity(item)
+  activeNodeSettingsTab.value = tab
+  showFormSettings.value = false
+  propertyDrawerVisible.value = true
+}
+
+function createRelatedContentDraft({ extension = false } = {}) {
+  const item = createEmptyRelatedContent({ ownerType: 'FORM', sourceEntity: entityInfo.value })
+  if (extension) item.config.relation = { type: 'INTERFACE_SERVICE' }
+  item.orderKey = Math.max(0, ...relatedContents.value.map(row => Number(row.orderKey) || 0)) + 1000000
+  addRelatedContentDraft(item)
+}
+
+function addRelatedContentDraft(item) {
+  const draft = normalizeRelatedContent(item, { ownerType: 'FORM', sourceEntity: entityInfo.value })
+  relatedContents.value = [...relatedContents.value, draft]
+  relatedContentCount.value = relatedContents.value.length
+  openRelatedContentProperties(draft, 'child-pages')
+}
+
+function updateRelatedContentDraft(item) {
+  if (relatedContentIdentity(item) !== selectedRelatedKey.value) return
+  relatedContents.value = relatedContents.value.map(row => relatedContentIdentity(row) === selectedRelatedKey.value ? item : row)
+}
+
+function deleteRelatedContentDraft(item) {
+  relatedDraftState.remove(item)
+  relatedContents.value = relatedContents.value.filter(row => relatedContentIdentity(row) !== relatedContentIdentity(item))
+  relatedContentCount.value = relatedContents.value.length
+  if (selectedRelatedKey.value === relatedContentIdentity(item)) { selectedRelatedKey.value = ''; propertyDrawerVisible.value = false }
+}
+
+async function refreshRelatedContentDrafts() {
+  if (relatedDraftState.hasChanges(relatedContents.value)) {
+    ElMessage.info('当前关联属性有未保存修改，已保留草稿；保存后可刷新')
+    return
+  }
+  await loadRelatedContents()
+}
+
+/** 节点型组成关系与普通关联使用同一子页面入口，仍按真实节点保存。 */
+function openCompositionProperties(node) {
+  openFieldProperties(node)
+  activeNodeSettingsTab.value = 'child-pages'
+}
+
+/** 保存当前或全部关联草稿，修订号跟随每次成功写入；失败保留未完成项。 */
+async function saveRelatedContentDrafts(onlyKey) {
+  validateRelatedContentDrafts(onlyKey)
+  await persistRelatedContentDraft({
+    state: relatedDraftState, items: relatedContents.value, ownerId: form.value.id, api: uiCompositionApi,
+    getOwnerRevision: () => form.value.revision,
+    onRevision: revision => { if (Number.isInteger(Number(revision))) form.value.revision = Number(revision) },
+    onSaved: item => { relatedContents.value = relatedContents.value.map(row => relatedContentIdentity(row) === relatedContentIdentity(item) ? normalizeRelatedContent(item) : row) },
+    onlyKey
+  })
+}
+
+/** 先检查本地关联草稿，再执行整表写入，避免明显缺项造成部分保存。 */
+function validateRelatedContentDrafts(onlyKey) {
+  for (const item of relatedContents.value) {
+    if (onlyKey && relatedContentIdentity(item) !== onlyKey) continue
+    if (!relatedDraftState.dirty(item)) continue
+    const validation = validateRelatedContent(item, 'FORM')
+    if (!validation.valid) {
+      openRelatedContentProperties(item, 'child-pages')
+      throw new Error(validation.errors[0].message)
+    }
+  }
+
+}
+
+async function saveSelectedRelatedContent() {
+  if (savingNode.value || saving.value) return
+  savingNode.value = true
+  try {
+    await saveRelatedContentDrafts(selectedRelatedKey.value)
+    await loadDiff()
+    ElMessage.success('当前属性已保存，发布后生效')
+  } catch (error) { showRequestError(error, error?.message || '保存属性失败，输入已保留') }
+  finally { savingNode.value = false }
+}
+
+/** 主从数据通过左侧关系创建真实节点；离开展示设置后定位该入口，保留设计器里的其他草稿修改。 */
+async function openCompositionEditors() {
+  showFormSettings.value = false
+  propertyDrawerVisible.value = false
   await nextTick()
-  await relatedContentPanelRef.value?.open(item?.config ? item : null)
+  await formRelationPickerRef.value?.showCompositionEditors()
 }
 
 async function removeRelatedContent(item) {
-  await openRelatedContent()
-  await relatedContentPanelRef.value?.remove(item)
+  try { await ElMessageBox.confirm('从当前草稿删除此关联内容？发布后生效。', '删除关联内容', { type: 'warning' }) } catch { return }
+  deleteRelatedContentDraft(item)
 }
 
 /** 设置抽屉按需挂载；未打开时也要加载关联配置，保证设计画布和快捷入口完整。 */
-async function loadRelatedContents() {
-  if (relatedContentPanelRef.value) {
-    return relatedContentPanelRef.value.load({ silent: true })
-  }
+async function loadRelatedContents({ strict = false } = {}) {
+  if (relatedDraftState.hasChanges(relatedContents.value)) return
   const ownerId = form.value.id
   if (!ownerId) {
     relatedContents.value = []
@@ -1564,11 +1683,13 @@ async function loadRelatedContents() {
       .map(item => normalizeRelatedContent(item, { ownerType: 'FORM', sourceEntity: entityInfo.value }))
       .sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0))
     relatedContentCount.value = relatedContents.value.length
+    relatedDraftState.reset(relatedContents.value)
   } catch (error) {
     if (ownerId !== form.value.id) return
     relatedContents.value = []
     relatedContentCount.value = 0
     showRequestError(error, error?.message || '关联内容加载失败，请在表单设置中刷新')
+    if (strict) throw error
   }
 }
 
@@ -1978,7 +2099,7 @@ const hasEventConfig = computed(() => configuredScriptEvents.value.length > 0)
 provide(FORM_DESIGNER_CONTEXT_KEY, {
   form, isCustomRendererMode,
   viewConfig, isEdit, isSystemEntity,
-  customFormButtonCount, entityInfo, entityFields, formFields,
+  customFormButtonCount, entityInfo, entityFields, formFields, relatedContents,
   formDataSourceBindingCount, eventFieldOptions,
   formActionPersistenceRevision,
   persistedFormButtonKeys,
@@ -1995,7 +2116,6 @@ provide(FORM_DESIGNER_CONTEXT_KEY, {
   clearSelectedNodeDataSourceBinding, canConfigureSelectedNodeRelations,
   isSubFormField, isSubListField, getEntityNameById, formListByEntity,
   handleChildFormChange, childFormReleases, childFormReleaseLoading,
-  handleChildFormReleaseChange, formatChildFormReleaseLabel,
   subListOptions, subListTargetFields, subListTargetFieldsLoading,
   handleSubListChange,
   isReferenceFieldNode, handleReferenceEntitySelected,
@@ -2181,54 +2301,27 @@ function normalizeReleaseList(response) {
 async function fetchChildFormReleases(childFormId) {
   const formId = String(childFormId || '')
   if (!formId) return []
-  return normalizeReleaseList(await getFormReleases(formId))
-    .filter(release =>
-      release?.id
-      && Number.isInteger(Number(release.version))
-      && release.snapshotDocument
-    )
-    .sort((left, right) => Number(right.version) - Number(left.version))
+  const current = await getFormRuntimeRelease(formId)
+  return current?.snapshotDocument ? [current] : []
 }
 
 async function loadChildFormReleases(
   childFormId,
-  targetField = selectedField.value,
-  autoPinLegacy = false
+  targetField = selectedField.value
 ) {
-  if (!childFormId) {
-    childFormReleases.value = []
-    return []
-  }
+  if (!childFormId) { childFormReleases.value = []; return [] }
   childFormReleaseLoading.value = true
   try {
-    const releases = await fetchChildFormReleases(childFormId)
-    if (targetField === selectedField.value) {
-      childFormReleases.value = releases
-    }
-    let selectedRelease = releases.find(
-      release => String(release.id) === String(targetField?.childFormReleaseId)
-    )
-    if (!selectedRelease && autoPinLegacy) {
-      selectedRelease = releases.find(
-        release => String(release.status).toUpperCase() === 'ACTIVE'
-      )
-    }
-    if (selectedRelease && targetField) {
+    const current = await fetchChildFormReleases(childFormId)
+    if (targetField === selectedField.value) childFormReleases.value = current
+    if (targetField) {
       targetField.childFormId = String(childFormId)
       targetField.refFormId = String(childFormId)
-      targetField.childFormReleaseId = selectedRelease.id
-      targetField.childFormReleaseVersion = Number(selectedRelease.version)
+      delete targetField.childFormReleaseId
+      delete targetField.childFormReleaseVersion
     }
-    return releases
-  } catch (error) {
-    if (targetField === selectedField.value) {
-      childFormReleases.value = []
-    }
-    console.error('加载子表单发布版本失败:', error)
-    return []
-  } finally {
-    childFormReleaseLoading.value = false
-  }
+    return current
+  } finally { childFormReleaseLoading.value = false }
 }
 
 async function handleChildFormChange(childFormId) {
@@ -2236,37 +2329,13 @@ async function handleChildFormChange(childFormId) {
   if (!field) return
   field.childFormId = childFormId || ''
   field.refFormId = childFormId || ''
-  field.childFormReleaseId = ''
-  field.childFormReleaseVersion = null
+  delete field.childFormReleaseId
+  delete field.childFormReleaseVersion
   childFormReleases.value = []
-  if (!childFormId) return
-  const releases = await loadChildFormReleases(childFormId, field, true)
-  if (!field.childFormReleaseId) {
-    if (releases.length === 0) {
-      ElMessage.warning('所选子表单尚无可用发布版本，请先发布子表单')
-    } else {
-      ElMessage.warning('请选择子表单发布版本')
-    }
+  if (childFormId) {
+    try { await loadChildFormReleases(childFormId, field) }
+    catch (error) { ElMessage.warning(error?.message || '请先发布所选子表单') }
   }
-}
-
-function handleChildFormReleaseChange(releaseId) {
-  const field = selectedField.value
-  if (!field) return
-  const release = childFormReleases.value.find(
-    item => String(item.id) === String(releaseId)
-  )
-  field.childFormReleaseId = release?.id || ''
-  field.childFormReleaseVersion = release
-    ? Number(release.version)
-    : null
-}
-
-function formatChildFormReleaseLabel(release) {
-  const status = String(release?.status || '').toUpperCase() === 'ACTIVE'
-    ? '当前激活'
-    : '历史版本'
-  return `v${release?.version} · ${status}`
 }
 
 async function loadSubListOptions(
@@ -2540,34 +2609,15 @@ async function ensureSubListBinding(field) {
 }
 
 async function ensureChildFormReleaseBinding(field) {
-  if (!isSubFormField(field)) return
   const childFormId = field.childFormId || field.refFormId
   if (!childFormId) return
-  const releases = await fetchChildFormReleases(childFormId)
-  let release = releases.find(
-    item => String(item.id) === String(field.childFormReleaseId)
-  )
-  if (!release && !field.childFormReleaseId) {
-    release = releases.find(
-      item => String(item.status).toUpperCase() === 'ACTIVE'
-    )
-  }
-  if (!release) {
-    throw new Error(
-      field.childFormReleaseId
-        ? '已选择的子表单发布版本不存在，请重新选择'
-        : '子表单必须选择一个已发布版本'
-    )
-  }
-  if (field.childFormReleaseVersion != null
-      && Number(field.childFormReleaseVersion) !== Number(release.version)) {
-    throw new Error('子表单发布版本号与 release 不匹配，请重新选择')
-  }
+  const current = await fetchChildFormReleases(childFormId)
+  if (!current.length) throw new Error('所选子表单尚未发布')
   field.childFormId = String(childFormId)
   field.refFormId = String(childFormId)
-  field.childFormReleaseId = release.id
-  field.childFormReleaseVersion = Number(release.version)
-}
+  delete field.childFormReleaseId
+  delete field.childFormReleaseVersion
+    }
 
 // 检查字段的 componentProps 中是否已有选项
 function hasOptionsInComponentProps(field) {
@@ -2943,7 +2993,7 @@ function hasUnsavedLocalChanges() {
   if (formBaseline.value && formBaseline.value !== formFingerprint()) {
     return true
   }
-  return hasUnsavedNodeChanges()
+  return hasUnsavedNodeChanges() || relatedDraftState.hasChanges(relatedContents.value)
 }
 
 function hasUnsavedNodeChanges() {
@@ -3153,17 +3203,7 @@ function addSection() {
   })
 }
 
-async function handleAddNodeCommand(command) {
-  if (command === 'RELATED_CONTENT') {
-    await openRelatedContent()
-    relatedContentPanelRef.value?.openCreate()
-    return
-  }
-  if (command === 'RELATION_EDITOR') {
-    document.querySelector('.form-relation-picker')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    ElMessage.info('在左侧实体关系中选择组成关系，添加随主表保存的子表单或明细')
-    return
-  }
+function handleAddNodeCommand(command) {
   if (command === 'SECTION_TITLE') {
     addSection()
     return
@@ -3293,6 +3333,7 @@ function addContainerNode(nodeType, options = {}) {
 
 // 选择字段
 function selectField(field) {
+  selectedRelatedKey.value = ''
   selectedField.value = field
   if (propertyDrawerVisible.value) {
     prepareFieldProperties(field)
@@ -3301,6 +3342,7 @@ function selectField(field) {
 
 // 手动打开节点属性或新增容器节点时展开抽屉；新增实体字段仅选中。
 function openFieldProperties(field) {
+  selectedRelatedKey.value = ''
   selectedField.value = field
   propertyDrawerVisible.value = true
   prepareFieldProperties(field)
@@ -3410,6 +3452,10 @@ function canDropNode(node, targetParentId) {
     && validateFormNodeDrop(formFields.value, node, targetParentId).valid
 }
 
+/**
+ * 校验并更新拖拽节点的父容器与同级顺序；已保存且无本地修改的节点立即写入草稿。
+ * 含新节点或未保存属性时交由“保存全部”一起提交，避免引用服务器尚不存在的容器或丢失编辑。
+ */
 async function handleNodeDrop({ node, newParentId, newIndex }) {
   if (!node || reorderingNode.value) return
   const plan = buildFormNodeDropPlan(
@@ -3431,13 +3477,15 @@ async function handleNodeDrop({ node, newParentId, newIndex }) {
     return
   }
 
+  // 必须在更新位置前检查本地修改，否则当前这次移动本身也会被误判为已有未保存编辑。
+  const hasPendingNodeChanges = hasUnsavedNodeChanges()
   node.parentId = plan.parentId
   plan.orderedSiblings.forEach((item, index) => {
     item.sortOrder = index
   })
   applyLocalSiblingOrder(node, plan.targetIndex, plan.orderedSiblings)
 
-  if (!form.value.id || !node.revision) {
+  if (!form.value.id || !node.revision || hasPendingNodeChanges) {
     ElMessage.success('节点位置已调整，保存草稿后写入服务器')
     return
   }
@@ -3722,6 +3770,10 @@ function handleCompatibleComponentChange() {
 }
 
 function getModeAccessValue(mode, key) {
+  if (!isFieldNode.value) {
+    const access = selectedNodeConfig.value.modeAccess?.[mode]
+    return String(access || '').toUpperCase() !== 'HIDDEN' && access?.visible !== false
+  }
   const extension = safeParseConfig(selectedField.value?.extensionConfig)
   const value = extension?.modes?.[mode]?.[key]
   return value !== false
@@ -3729,6 +3781,13 @@ function getModeAccessValue(mode, key) {
 
 function updateModeAccess(mode, key, value) {
   if (!selectedField.value || !canConfigureSelectedNodeModeAccess.value) return
+  // 非字段节点只保存显示开关，避免把整体只读/必填误施加给所有后代。
+  if (!isFieldNode.value) {
+    if (key === 'visible') updateSelectedNodeConfig('modeAccess', {
+      ...(selectedNodeConfig.value.modeAccess || {}), [mode]: { visible: value }
+    })
+    return
+  }
   if (key === 'editable' && modeOptions.find(item => item.value === mode)?.editable === false) return
   const extension = safeParseConfig(selectedField.value.extensionConfig)
   selectedField.value.extensionConfig = stringifyConfig({
@@ -3852,7 +3911,7 @@ function isRevisionConflict(error) {
 
 function handleRevisionConflict(error, field) {
   if (isRevisionConflict(error)) {
-    ElMessage.warning('配置已被其他人修改，已保留服务器当前版本，请重新确认')
+    ElMessage.warning('配置已被其他人修改，已保留服务器当前配置，请重新确认')
     if (field && error.currentData) {
       const refreshed = nodeToField(error.currentData, field)
       Object.assign(field, refreshed)
@@ -3947,7 +4006,8 @@ async function saveSelectedNode() {
     await loadDiff()
     ElMessage.success('当前节点已保存，尚未发布')
   } catch (error) {
-    handleRevisionConflict(error, selectedField.value)
+    if (isRevisionConflict(error)) ElMessage.warning('配置已被其他人修改，当前输入已保留，请刷新后重新确认')
+    else showRequestError(error, error?.message || '保存节点失败，输入已保留')
   } finally {
     savingNode.value = false
   }
@@ -4018,17 +4078,12 @@ async function handlePublish() {
     return
   }
   if (!validateRendererForPublish()) return
-  const hasRelevantUnsavedChanges =
-    (formBaseline.value && formBaseline.value !== formFingerprint())
-    || (!isCustomRendererMode.value && hasUnsavedNodeChanges())
-  if (hasRelevantUnsavedChanges) {
-    ElMessage.warning('当前渲染配置仍有未保存修改，请先保存草稿后再发布')
-    return
-  }
+  // 发布前统一落库节点与关联属性；任一步失败均停止，不发布旧草稿。
+  if (hasUnsavedLocalChanges() && !await handleSave()) return
   if (!await validateFormActionsForPersistence({ requireEventBindings: true })) return
   const diff = await getFormDiff(form.value.id)
   if (!diff.changed) {
-    ElMessage.info('当前草稿与已发布版本一致')
+    ElMessage.info('当前草稿与已发布配置一致')
     return
   }
   publishDialogVisible.value = true
@@ -4037,14 +4092,8 @@ async function handlePublish() {
 async function handlePublished(release) {
   await loadFormInfo()
   await loadDiff()
-  if (release?.releaseMode === 'STANDARD'
-      && entityInfo.value?.lifecycleMode === 'WORKFLOW') {
-    ElMessage.info({
-      message: '普通发布不会修改运行中实例；请重新发布流程后再新增流程数据；历史实例继续使用原版本。',
-      duration: 7000
-    })
-  }
-}
+  ElMessage.success('表单已发布，所有引用入口立即使用当前配置')
+    }
 
 function describePublishChanges(diff) {
   const labels = (diff.changedItems || [])
@@ -4092,8 +4141,8 @@ async function openRuntimeCode() {
         ? uiEventBindingApi.list('FORM', currentFormId).catch(() => [])
         : Promise.resolve([]),
       currentFormId
-        ? getFormReleases(currentFormId)
-            .then(normalizeReleaseList)
+        ? getFormRuntimeRelease(currentFormId)
+            .then(current => current ? [current] : [])
             .catch(() => [])
         : Promise.resolve([])
     ])
@@ -4109,6 +4158,7 @@ async function openRuntimeCode() {
       nodes: orderedFields.map(field => fieldToNodePayload(field)),
       eventBindings: Array.isArray(eventBindings) ? eventBindings : []
     })
+    draftSnapshot.viewCompositions = JSON.parse(JSON.stringify(relatedContents.value))
     const activeRelease = selectRuntimeRelease(
       releases,
       form.value.activeReleaseId
@@ -4118,7 +4168,6 @@ async function openRuntimeCode() {
           configType: 'FORM',
           configLabel: form.value.formName || form.value.formKey || '表单',
           source: 'PUBLISHED',
-          version: activeRelease.version,
           snapshot: safeParseConfig(activeRelease.snapshotDocument)
         })
       : null
@@ -4151,6 +4200,7 @@ async function handleReleaseChanged() {
 
 // 保存表单
 async function handleSave() {
+  if (saving.value || savingNode.value) return false
   if (!form.value.formName) {
     ElMessage.warning('请输入表单名称')
     return
@@ -4166,6 +4216,7 @@ async function handleSave() {
   }
 
   if (!validateRendererForSave()) return
+  try { validateRelatedContentDrafts() } catch (error) { ElMessage.warning(error.message); return false }
   if (!await validateFormActionsForPersistence({ requireEventBindings: false })) return
 
   const persistNodes = shouldSaveCurrentFormNodes()
@@ -4235,11 +4286,13 @@ async function handleSave() {
       draftChanged = true
     }
     await loadFormInfo()
+    await saveRelatedContentDrafts()
     if (persistNodes) {
       await loadFormFields()
     }
     await loadDiff()
     ElMessage.success('草稿保存成功，发布后运行时生效')
+    return true
   } catch (e) {
     console.error('保存失败:', {
       message: e?.message,
@@ -4248,7 +4301,7 @@ async function handleSave() {
       source: e?.source
     })
     if (draftChanged) {
-      await refreshDraftStateAfterSaveFailure({ preserveNodes: !persistNodes })
+      await refreshDraftStateAfterSaveFailure({ preserveNodes: true })
     }
     handleRevisionConflict(e)
   } finally {
@@ -4266,6 +4319,9 @@ async function reloadFormDesignerData({ resetInteraction = false } = {}) {
   diffLoadSucceeded.value = false
   if (resetInteraction) {
     selectedField.value = null
+    selectedRelatedKey.value = ''
+    relatedContents.value = []
+    relatedDraftState.reset([])
     currentEventField.value = null
     propertyDrawerVisible.value = false
     showEventConfig.value = false
@@ -4280,7 +4336,7 @@ async function reloadFormDesignerData({ resetInteraction = false } = {}) {
     await loadEntityInfo({ strict })
     await loadEntityFields({ strict })
     await loadFormFields({ strict })
-    await loadRelatedContents()
+    await loadRelatedContents({ strict })
     await loadDataSources({ strict })
     await loadExtensionDefinitions({ strict })
     await loadDiff({ strict })
@@ -4295,7 +4351,7 @@ async function handleDiscardDraft() {
   if (discardDraftLoading.value || !canDiscardDraft.value) return
   try {
     await ElMessageBox.confirm(
-      '撤销后将恢复到当前发布版本。自当前发布版本以来所有已保存但未发布的修改，以及当前页面尚未保存的编辑，都会被覆盖且不可恢复。确定继续吗？',
+      '撤销后将恢复到当前已发布配置。自上次发布以来所有已保存但未发布的修改，以及当前页面尚未保存的编辑，都会被覆盖且不可恢复。确定继续吗？',
       '撤销未发布修改',
       {
         type: 'warning',
@@ -4311,6 +4367,11 @@ async function handleDiscardDraft() {
   discardDraftLoading.value = true
   let discardCommitted = false
   try {
+    if (!serverCanDiscardDraft.value) {
+      await reloadFormDesignerData({ resetInteraction: true })
+      ElMessage.success('已撤销当前页面未保存的修改')
+      return
+    }
     const preconditions = buildUiConfigDraftDiscardRequest({
       revision: form.value.revision,
       diffLoadSucceeded: diffLoadSucceeded.value,
@@ -4322,10 +4383,10 @@ async function handleDiscardDraft() {
     discardCommitted = true
     await reloadFormDesignerData({ resetInteraction: true })
     if (diffInfo.value.changed) {
-      ElMessage.warning('本地草稿已撤销，但当前仍存在依赖版本差异，请检查继承事件或引用配置')
+      ElMessage.warning('本地草稿已撤销，但当前仍存在依赖配置差异，请检查继承事件或引用配置')
       return
     }
-    ElMessage.success('已撤销未发布修改，并恢复到当前发布版本')
+    ElMessage.success('已撤销未发布修改，并恢复到当前已发布配置')
   } catch (error) {
     if (discardCommitted) {
       ElMessage.warning('撤销已完成，但页面重新加载失败，请手动刷新')

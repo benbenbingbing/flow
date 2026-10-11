@@ -1,3 +1,4 @@
+import LinkageEngine from '../../utils/linkageEngine.js'
 import { resolveRuntimeNodeFieldRules, safeParseConfig } from '../config-runtime/index.js'
 import { resolveRuntimeFormFieldComponentType } from '../form-field-extension.js'
 
@@ -108,4 +109,40 @@ export function normalizeRuntimeNodes(nodes = []) {
     legacyProps: safeParseConfig(node.legacyPropsDocument || node.legacyProps),
     localOverrides: safeParseConfig(node.localOverridesDocument || node.localOverrides)
   })).sort((a, b) => Number(a.orderKey || 0) - Number(b.orderKey || 0))
+}
+
+/**
+ * 非字段节点的显示规则控制整个区域；不改变内部字段的编辑权限，也不删除已有值。
+ * 兼容旧 Tab 的 HIDDEN 写法。字段本身仍由字段运行时处理显隐和校验。
+ */
+export function isFormNodeVisible(node, { data = {}, mode = 'view', context = {} } = {}) {
+  if (!node || String(node.nodeType || 'FIELD').toUpperCase() === 'FIELD') return true
+  const props = safeParseConfig(node.propsDocument || node.props)
+  const config = { ...safeParseConfig(props.componentProps), ...props }
+  const access = config.modeAccess?.[mode]
+  if (config.hidden === true || String(access || '').toUpperCase() === 'HIDDEN'
+      || access?.visible === false) return false
+  const permission = String(config.permissionCode || '').trim()
+  if (permission && !(typeof context.hasPermission === 'function'
+    ? context.hasPermission(permission)
+    : context.permissions?.includes('*') || context.permissions?.includes(permission))) return false
+  return LinkageEngine.shouldShowField(config, data)
+}
+
+/**
+ * 提升到外层的 Tab 和独立校验没有递归父组件，需显式检查祖先显隐。
+ * rootParentId 是子表行的独立数据作用域，不使用子记录去求值父表条件。
+ */
+export function createFormNodeVisibility(nodes = [], options = {}) {
+  const byId = new Map(nodes.map(node => [String(node.id), node]))
+  return node => {
+    const seen = new Set()
+    let current = node
+    while (current && String(current.id) !== String(options.rootParentId || '')) {
+      if (seen.has(String(current.id)) || !isFormNodeVisible(current, options)) return false
+      seen.add(String(current.id))
+      current = byId.get(String(current.parentId || ''))
+    }
+    return true
+  }
 }

@@ -58,6 +58,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class EntityDataActionService {
+    private final com.workflow.entity.ui.application.UiConfigReleaseService formPublishService;
 
     private static final Set<String> UPDATE_CONTEXT_FIELDS = Set.of(
             "entityCode",
@@ -1380,7 +1381,7 @@ public class EntityDataActionService {
                 .orElse(null);
         if (entity != null) {
             EntityForm form =
-                    formMapper.selectDefaultByEntityId(entity.getId());
+                    formPublishService.currentDefaultForm(entity.getId());
             if (form != null) {
                 return new EventOrigin(
                         "FORM",

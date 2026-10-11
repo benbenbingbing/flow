@@ -38,9 +38,6 @@ import com.workflow.contracts.audit.context.OperationContext;
 import com.workflow.contracts.audit.context.OperationContextHolder;
 import com.workflow.contracts.audit.model.SystemAuditEvent;
 import com.workflow.contracts.audit.port.SystemAuditPort;
-import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
-import com.workflow.contracts.entity.ui.port.UiHotfixProcessImpactPort;
-import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
@@ -52,8 +49,7 @@ import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigDiffItemDTO;
 import com.workflow.entity.ui.api.response.UiConfigDraftDiscardResultDTO;
 import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
-import com.workflow.entity.ui.api.response.UiConfigHotfixRiskItemDTO;
-import com.workflow.entity.ui.api.response.UiConfigHotfixTargetPreviewDTO;
+import com.workflow.entity.ui.api.response.UiConfigRiskItemDTO;
 import com.workflow.entity.ui.api.response.UiConfigPublishPreviewDTO;
 import com.workflow.entity.ui.api.response.UiConfigReleaseSummaryDTO;
 import com.workflow.entity.ui.api.request.UiConfigPublishRequest;
@@ -66,13 +62,11 @@ import com.workflow.entity.list.infrastructure.persistence.record.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplateVersion;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigReleaseAudit;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConfigMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
@@ -106,8 +100,8 @@ import java.util.UUID;
  * UI 配置发布服务，负责表单与列表草稿的快照构建、发布、激活、差异比对与运行时解析。
  *
  * <p>发布时构建草稿快照并校验节点树、模板引用、扩展引用和数据源引用，
- * 计算内容哈希保证完整性；支持版本激活回滚、草稿与发布版本差异比对，
- * 以及运行时表单/列表发布版本的解析与完整性校验。</p>
+ * 计算内容哈希保证完整性；表单发布覆盖当前配置、列表支持历史激活；提供草稿与发布配置差异比对，
+ * 并校验运行时表单当前配置及列表发布版本的完整性。</p>
  */
 @Service
 @Slf4j
@@ -120,17 +114,16 @@ public class UiConfigReleaseService {
     public static final String LIST = "LIST";
     /** 普通发布模式。 */
     public static final String STANDARD = "STANDARD";
-    /** 兼容热修复发布模式。 */
+    /** 旧模式标记，仅用于拒绝旧客户端请求和历史列表激活，不提供发布能力。 */
     public static final String HOTFIX = "HOTFIX";
-    /** 首期热修复固定生效范围。 */
-    public static final String ACTIVE_AND_FUTURE = "ACTIVE_AND_FUTURE";
-    private static final String HOTFIX_PATCH = "PATCH";
-    private static final String HOTFIX_FULL_SNAPSHOT = "FULL_SNAPSHOT";
     private static final int MAX_FORM_DEPTH = FormNodeStructurePolicy.MAX_DEPTH;
     private static final Set<String> FORM_NODE_TYPES = FormNodeStructurePolicy.NODE_TYPES;
     private static final Set<String> FORM_CONTAINER_TYPES = FormNodeStructurePolicy.CONTAINER_TYPES;
     private final UiConfigReleaseMapper releaseMapper;
-    private final UiConfigHotfixTargetMapper hotfixTargetMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper formPublishedMapper;
+    @org.springframework.beans.factory.annotation.Autowired
+    private CurrentFormRuntimeContext currentForms;
     private final UiConfigReleaseAuditMapper releaseAuditMapper;
     private final UiConfigInterfaceReferenceValidator dataSourceValidator;
     private final UiEventBindingSnapshotService eventBindingSnapshotService;
@@ -147,7 +140,6 @@ public class UiConfigReleaseService {
     private final EntityListConfigService listConfigService;
     private final EntityListConfigurationValidator listConfigurationValidator;
     private final UiConfigSemanticPatchService semanticPatchService;
-    private final UiHotfixProcessImpactPort processImpactPort;
     private final UiConfigurationAccessService configurationAccessService;
     private final UiReleaseResolutionTokenService resolutionTokenService;
     private final FormSubmissionTraceService traceService;
@@ -155,21 +147,8 @@ public class UiConfigReleaseService {
     private final ObjectMapper objectMapper;
     private final MigrationAssetPort migrationAssetHandler;
     private EntityListActionConfigService listActionConfigService;
-    private UiHotfixGovernanceService hotfixGovernanceService;
     private UiViewCompositionService viewCompositionService;
     private SystemAuditPort auditPort;
-
-    /**
-     * 治理服务采用 setter 注入，避免改变大量纯单元测试的显式构造签名；
-     * 生产 Spring 容器中该依赖为必需，HOTFIX 发布缺失时会 fail-closed。
-     *
-     * @param hotfixGovernanceService 热修复治理服务，供本方法设置热修复治理服务时使用
-     */
-    @Autowired
-    void setHotfixGovernanceService(
-            UiHotfixGovernanceService hotfixGovernanceService) {
-        this.hotfixGovernanceService = hotfixGovernanceService;
-    }
 
     /**
      * 注入列表按钮规则校验与发布规范化服务。
@@ -216,11 +195,6 @@ public class UiConfigReleaseService {
         requireType(configType);
         List<UiConfigRelease> releases =
                 releaseMapper.findReleases(configType, configId);
-        releases.stream()
-                .filter(release -> HOTFIX.equals(
-                        release.getReleaseMode()))
-                .forEach(release -> release.setRolloutStatus(
-                        resolveRolloutStatus(release)));
         return FORM.equals(normalize(configType))
                 ? releases.stream()
                         .map(this::formManagementRelease)
@@ -329,66 +303,6 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 解析灰度发布状态；输出作为后续校验或处理的输入。
-     *
-     * @param release 发布版本，供本方法解析灰度发布状态时使用
-     * @return 解析后的灰度发布状态文本，供调用方比较或展示
-     */
-    private String resolveRolloutStatus(UiConfigRelease release) {
-        return resolveRolloutStatus(
-                release.getId(),
-                release.getStatus());
-    }
-
-    /**
-     * 解析灰度发布状态；输出作为后续校验或处理的输入。
-     *
-     * @param releaseId 发布版本ID，后续用于解析灰度发布状态时定位或关联目标
-     * @param status 状态标识，决定后续灰度发布状态采用的处理分支
-     * @return 解析后的灰度发布状态文本，供调用方比较或展示
-     */
-    private String resolveRolloutStatus(
-            String releaseId,
-            String status) {
-        List<UiConfigHotfixTarget> targets =
-                hotfixTargetMapper.findByHotfixReleaseId(
-                        releaseId);
-        if (targets.stream().anyMatch(target ->
-                "ACTIVE".equals(target.getStatus()))) {
-            return "ACTIVE";
-        }
-        if (targets.stream().anyMatch(target ->
-                "SUPERSEDED".equals(target.getStatus()))) {
-            return "SUPERSEDED";
-        }
-        if (targets.stream().anyMatch(target ->
-                "ROLLED_BACK".equals(target.getStatus()))
-                || hasRollbackAudit(releaseId)) {
-            return "ROLLED_BACK";
-        }
-        return "ACTIVE".equals(status)
-                ? "ACTIVE" : "SUPERSEDED";
-    }
-
-    /**
-     * 判断是否具有回滚审计；判断结果决定调用方的后续分支。
-     *
-     * @param releaseId 发布版本ID，后续用于判断是否具有回滚审计时定位或关联目标
-     * @return 回滚审计条件成立时为 true，否则为 false
-     */
-    private boolean hasRollbackAudit(String releaseId) {
-        Long count = releaseAuditMapper.selectCount(
-                new LambdaQueryWrapper<UiConfigReleaseAudit>()
-                        .eq(
-                                UiConfigReleaseAudit::getReleaseId,
-                                releaseId)
-                        .eq(
-                                UiConfigReleaseAudit::getOperation,
-                                "ROLLBACK_HOTFIX"));
-        return count != null && count > 0;
-    }
-
-    /**
      * 查询指定配置当前激活的发布记录。
      *
      * @param configType 配置类型
@@ -418,10 +332,10 @@ public class UiConfigReleaseService {
      * 解析表单运行时发布版本，返回发布元信息与已校验快照文档。
      *
      * @param formId          表单ID
-     * @param releaseId       发布记录ID，为空取当前激活版本
-     * @param expectedVersion 期望版本号，为空跳过校验
+     * @param releaseId       旧发布坐标，不参与运行配置选择
+     * @param expectedVersion 旧版本号，不参与运行配置选择
      * @return 包含 id、configId、version、contentHash、snapshotDocument 的 Map
-     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     * @throws IllegalArgumentException 当前已发布配置不存在或内容损坏时抛出
      */
     public Map<String, Object> runtimeFormRelease(
             String formId,
@@ -448,30 +362,7 @@ public class UiConfigReleaseService {
             String releaseId,
             Integer expectedVersion,
             String releaseResolutionToken) {
-        try {
-            Map<String, Object> result = runtimeFormReleaseInternal(
-                    formId,
-                    releaseId,
-                    expectedVersion,
-                    releaseResolutionToken);
-            Object effectiveReleaseId = result.get(
-                    "effectiveReleaseId");
-            recordHotfixMetricSafely(
-                    effectiveReleaseId == null
-                            ? null : String.valueOf(effectiveReleaseId),
-                    "FORM_LOAD",
-                    true,
-                    null);
-            return result;
-        } catch (RuntimeException exception) {
-            recordHotfixConfigMetricSafely(
-                    FORM,
-                    formId,
-                    "FORM_LOAD",
-                    false,
-                    exception.getMessage());
-            throw exception;
-        }
+        return runtimeFormReleaseInternal(formId, releaseId, expectedVersion, releaseResolutionToken);
     }
 
     /**
@@ -498,6 +389,7 @@ public class UiConfigReleaseService {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
+            requireCurrentFormClaims(claims);
             if (matchesAuthorizedFormRelease(
                     claims,
                     formId,
@@ -619,8 +511,8 @@ public class UiConfigReleaseService {
                     expectedVersion,
                     release.getVersion());
             throw new BusinessConflictException(
-                    "FORM_RELEASE_CONFLICT",
-                    "页面表单版本已过期，请刷新后重试");
+                    "FORM_CONFIGURATION_CHANGED",
+                    "表单配置已更新，填写内容已保留，请重新加载后核对");
         }
         ResolvedEntityFormRelease resolved =
                 resolvedRuntimeForm(
@@ -661,6 +553,7 @@ public class UiConfigReleaseService {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
+            requireCurrentFormClaims(claims);
             if (!matchesAuthorizedFormRelease(
                     claims,
                     formId,
@@ -685,8 +578,8 @@ public class UiConfigReleaseService {
                         expectedVersion,
                         active.releaseVersion()))) {
             throw new BusinessConflictException(
-                    "FORM_RELEASE_CONFLICT",
-                    "页面表单版本已过期，请刷新后重试");
+                    "FORM_CONFIGURATION_CHANGED",
+                    "表单配置已更新，填写内容已保留，请重新加载后核对");
         }
         return active;
     }
@@ -845,6 +738,7 @@ public class UiConfigReleaseService {
             UiReleaseResolutionTokenService.Claims claims =
                     resolutionTokenService.verify(
                             releaseResolutionToken);
+            requireCurrentFormClaims(claims);
             if (!Objects.equals(formId, claims.parentFormId())
                     || (StringUtils.hasText(releaseId)
                     && !Objects.equals(
@@ -872,27 +766,8 @@ public class UiConfigReleaseService {
                             claims.parentReleaseId(),
                             claims.parentReleaseVersion(),
                             claims.context());
-            Map<String, Object> snapshot;
-            if (resolved.hotfixApplied()) {
-                UiConfigHotfixTarget target =
-                        hotfixTargetMapper.selectById(
-                                resolved.hotfixTargetId());
-                if (target == null
-                        || !"ACTIVE".equals(target.getStatus())) {
-                    throw new IllegalStateException(
-                            "表单热修复运行时目标不存在或已失效");
-                }
-                snapshot = verifiedEffectiveTargetSnapshot(target);
-            } else {
-                UiConfigRelease base =
-                        releaseMapper.selectById(
-                                resolved.releaseId());
-                if (base == null) {
-                    throw new IllegalArgumentException(
-                            "表单事件发布版本不存在");
-                }
-                snapshot = verifiedSnapshot(base);
-            }
+            UiConfigRelease accepted = requireFormRelease(formId, resolved.releaseId(), resolved.releaseVersion(), "表单配置不存在");
+            Map<String, Object> snapshot = verifiedSnapshot(accepted);
             log.info(
                     "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source=SIGNED_CONTEXT",
                     LogValue.safe(formId),
@@ -909,8 +784,7 @@ public class UiConfigReleaseService {
                     resolved.effectiveContentHash());
         }
 
-        UiConfigRelease release =
-                releaseMapper.findActive(FORM, formId);
+        UiConfigRelease release = currentForms == null ? releaseMapper.findActive(FORM, formId) : currentForms.current(formId);
         if (release == null
                 || !FORM.equals(release.getConfigType())
                 || !Objects.equals(formId, release.getConfigId())) {
@@ -932,8 +806,8 @@ public class UiConfigReleaseService {
                     expectedVersion,
                     release.getVersion());
             throw new BusinessConflictException(
-                    "UI_EVENT_RELEASE_CONFLICT",
-                    "页面配置版本已过期，请刷新后重试");
+                    "FORM_CONFIGURATION_CHANGED",
+                    "表单配置已更新，填写内容已保留，请重新加载后核对");
         }
         if (expectedVersion != null
                 && !Objects.equals(
@@ -947,8 +821,8 @@ public class UiConfigReleaseService {
                     expectedVersion,
                     release.getVersion());
             throw new BusinessConflictException(
-                    "UI_EVENT_RELEASE_CONFLICT",
-                    "页面配置版本已过期，请刷新后重试");
+                    "FORM_CONFIGURATION_CHANGED",
+                    "表单配置已更新，填写内容已保留，请重新加载后核对");
         }
         log.info(
                 "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied=false, source=ACTIVE",
@@ -978,12 +852,10 @@ public class UiConfigReleaseService {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", resolved.releaseId());
         result.put("configId", resolved.form().getId());
-        result.put("version", resolved.releaseVersion());
+        result.put("formId", resolved.form().getId());
+        result.put("protocolVersion", 1);
         result.put("contentHash", resolved.effectiveContentHash());
-        result.put(
-                "effectiveReleaseId",
-                resolved.effectiveReleaseId());
-        result.put("hotfixApplied", resolved.hotfixApplied());
+
         result.put("snapshotDocument", snapshot);
         return result;
     }
@@ -1047,8 +919,7 @@ public class UiConfigReleaseService {
             Integer childReleaseVersion) {
         if (parent == null
                 || !StringUtils.hasText(childFormId)
-                || !StringUtils.hasText(childReleaseId)
-                || childReleaseVersion == null) {
+) {
             return false;
         }
         for (EntityFormNode node : parent.getNodes() == null
@@ -1139,13 +1010,10 @@ public class UiConfigReleaseService {
                     map.get("childFormReleaseVersion"),
                     map.get("refFormReleaseVersion"),
                     map.get("publishedFormReleaseVersion"));
-            if (StringUtils.hasText(formId)
-                    && StringUtils.hasText(releaseId)
-                    && releaseVersion != null) {
-                references.add(new UiPublishedFormReference(
-                        formId,
-                        releaseId,
-                        releaseVersion));
+            if (StringUtils.hasText(formId)) {
+                UiConfigRelease current = active(FORM, formId);
+                if (current == null) throw new IllegalArgumentException("子表单尚未发布: " + formId);
+                references.add(new UiPublishedFormReference(formId, current.getId(), current.getVersion()));
             }
             map.values().forEach(child ->
                     collectChildReferences(child, references));
@@ -1206,13 +1074,7 @@ public class UiConfigReleaseService {
                     map.get("childFormReleaseVersion"),
                     map.get("refFormReleaseVersion"),
                     map.get("publishedFormReleaseVersion"));
-            if (Objects.equals(childFormId, referencedFormId)
-                    && Objects.equals(
-                            childReleaseId,
-                            referencedReleaseId)
-                    && Objects.equals(
-                            childReleaseVersion,
-                            referencedVersion)) {
+            if (Objects.equals(childFormId, referencedFormId)) {
                 return true;
             }
             return map.values().stream().anyMatch(child ->
@@ -1375,6 +1237,7 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             String releaseId) {
+        if (FORM.equals(configType)) throw new IllegalArgumentException("表单不再支持历史版本或热修复操作");
         requireType(configType);
         UiConfigRelease target = releaseMapper.selectById(releaseId);
         if (target == null
@@ -1385,7 +1248,7 @@ public class UiConfigReleaseService {
         if (HOTFIX.equals(target.getReleaseMode())) {
             throw new BusinessConflictException(
                     "HOTFIX_ACTIVATE_NOT_ALLOWED",
-                    "热修复必须通过撤回入口按发布时间逆序回滚");
+                    "热修复已退役，此发布记录不能激活");
         }
         Map<String, Object> targetSnapshot =
                 verifiedSnapshot(target);
@@ -2058,7 +1921,7 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 发布预检。普通发布返回草稿差异；热修复同时执行风险分级、流程影响分析和逐版本试算。
+     * 发布预检，校验完整配置和并发前置条件；表单只覆盖当前发布配置。
      *
      * @param configType 配置类型标识，决定后续预览采用的处理分支
      * @param configId 配置ID，后续用于发布预览时定位或关联目标
@@ -2070,13 +1933,10 @@ public class UiConfigReleaseService {
             String configId,
             UiConfigPublishRequest request) {
         String releaseMode = releaseMode(request);
-        if (HOTFIX.equals(releaseMode)) {
-            requireHotfixSupported(configType);
-            configurationAccessService.requireHotfixAccess(false);
-            return prepareHotfix(configType, configId, request).preview();
-        }
+        if (HOTFIX.equals(releaseMode)) throw new IllegalArgumentException("热修复已取消，请使用统一发布");
         Map<String, Object> draft = buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, draft);
+        if (FORM.equals(configType)) validateCurrentFormDependents(configId, draft);
         String draftHash = snapshotSupport.hash(
                 snapshotSupport.canonical(draft));
         UiConfigRelease current = releaseMapper.findActive(configType, configId);
@@ -2097,7 +1957,7 @@ public class UiConfigReleaseService {
                 .rolloutScope(null)
                 .draftHash(draftHash)
                 .activeReleaseId(current == null ? null : current.getId())
-                .activeVersion(current == null ? null : current.getVersion())
+                .activeVersion(FORM.equals(configType) || current == null ? null : current.getVersion())
                 .targetHash(targetHash)
                 .impactToken(impactToken(
                         configType,
@@ -2119,7 +1979,7 @@ public class UiConfigReleaseService {
                 .targets(List.of())
                 .dependencies(publishDependencies(draft))
                 .blockers(diff.isChanged()
-                        ? List.of() : List.of("当前草稿与已发布版本一致"))
+                        ? List.of() : List.of("当前草稿与已发布配置一致"))
                 .build();
     }
 
@@ -2143,7 +2003,7 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 按发布请求执行普通发布；仅表单支持兼容热修复。
+     * 按发布请求执行统一发布：表单覆盖当前配置，列表保留发布记录。
      *
      * @param configType 配置类型标识，决定后续界面配置发布版本采用的处理分支
      * @param configId 配置ID，后续用于发布界面配置发布版本时定位或关联目标
@@ -2156,6 +2016,7 @@ public class UiConfigReleaseService {
             String configId,
             UiConfigPublishRequest request) {
         String releaseMode = releaseMode(request);
+        if (HOTFIX.equals(releaseMode)) throw new IllegalArgumentException("热修复已取消，请使用统一发布");
         log.info(
                 "开始发布UI配置: configType={}, configId={}, releaseMode={}, expectedDraftHashPresent={}, expectedActiveReleaseId={}, impactTokenPresent={}, operatorId={}",
                 LogValue.safe(configType),
@@ -2172,15 +2033,9 @@ public class UiConfigReleaseService {
                         && StringUtils.hasText(
                                 request.getImpactToken()),
                 LogValue.safe(UserContext.getUserId()));
-        if (HOTFIX.equals(releaseMode)) {
-            requireHotfixSupported(configType);
-            return managementRelease(
-                    configType,
-                    publishHotfix(configType, configId, request));
-        }
-        return managementRelease(
-                configType,
-                publishStandard(configType, configId, request));
+        return managementRelease(configType, FORM.equals(configType)
+                ? publishCurrentForm(configId, request)
+                : publishStandard(configType, configId, request));
     }
 
     /**
@@ -2195,6 +2050,8 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             UiConfigPublishRequest request) {
+        // 列表与当前表单可能组成自动包含图，统一串行发布避免并发造成跨类型环。
+        formPublishedMapper.lockPublication();
         lockOwner(configType, configId);
         Map<String, Object> snapshot = buildDraftSnapshot(configType, configId);
         validateForPublish(configType, configId, snapshot);
@@ -2213,9 +2070,7 @@ public class UiConfigReleaseService {
         verifyExpectedState(
                 request,
                 contentHash,
-                active == null ? null : active.getId(),
-                false,
-                null);
+                active == null ? null : active.getId());
         if (active != null
                 && Objects.equals(contentHash, active.getContentHash())) {
             activateOnOwner(
@@ -2284,668 +2139,25 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 发布热修复；后续由接收方或异步任务继续处理。
-     *
-     * @param configType 配置类型标识，决定后续热修复采用的处理分支
-     * @param configId 配置ID，后续用于发布热修复时定位或关联目标
-     * @param request 本次请求，后续经校验后用于发布热修复
-     * @return 发布后的热修复结果，供调用方继续处理
-     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
-     */
-    private UiConfigRelease publishHotfix(
-            String configType,
-            String configId,
-            UiConfigPublishRequest request) {
-        configurationAccessService.requireHotfixAccess(false);
-        lockOwner(configType, configId);
-        HotfixPreparation preparation =
-                prepareHotfix(configType, configId, request);
-        log.info(
-                "UI配置热发布预检完成: configType={}, configId={}, activeReleaseId={}, activeVersion={}, riskLevel={}, targetCount={}, processVersionCount={}, activeInstanceCount={}, canPublish={}",
-                LogValue.safe(configType),
-                LogValue.safe(configId),
-                LogValue.safe(
-                        preparation.preview()
-                                .getActiveReleaseId()),
-                preparation.preview().getActiveVersion(),
-                LogValue.safe(
-                        preparation.preview().getRiskLevel()),
-                preparation.targets().size(),
-                preparation.preview().getProcessVersionCount(),
-                preparation.preview().getActiveInstanceCount(),
-                preparation.preview().isCanPublish());
-        verifyExpectedState(
-                request,
-                preparation.preview().getDraftHash(),
-                preparation.preview().getActiveReleaseId(),
-                true,
-                preparation.preview().getImpactToken());
-        if (!preparation.preview().isCanPublish()) {
-            throw new BusinessConflictException(
-                    "HOTFIX_NOT_COMPATIBLE",
-                    String.join("；", preparation.preview().getBlockers()));
-        }
-
-        String governanceRequestId =
-                requireHotfixGovernance().beginDirectPublish(
-                        request,
-                        preparation.preview());
-
-        UiConfigRelease active = preparation.active();
-        int nextVersion = Math.max(
-                releaseMapper.findMaxVersion(
-                        configType,
-                        configId),
-                active.getVersion() == null
-                        ? 0 : active.getVersion()) + 1;
-        deactivate(configType, configId);
-
-        UiConfigRelease release = new UiConfigRelease();
-        release.setConfigType(configType);
-        release.setConfigId(configId);
-        release.setVersion(nextVersion);
-        release.setSnapshotDocument(preparation.draftDocument());
-        release.setContentHash(preparation.preview().getDraftHash());
-        release.setStatus("ACTIVE");
-        release.setDescription(blankToNull(request.getDescription()));
-        release.setReleaseMode(HOTFIX);
-        release.setBaseReleaseId(active.getId());
-        release.setRiskLevel(preparation.preview().getRiskLevel());
-        release.setRolloutScope(ACTIVE_AND_FUTURE);
-        release.setPatchDocument(semanticPatchService.writePatch(
-                preparation.patch().operations()));
-        release.setOverrideRisk(0);
-        release.setOverrideReason(null);
-        release.setPublishedBy(UserContext.getUserId());
-        release.setPublishedAt(LocalDateTime.now());
-        releaseMapper.insert(release);
-
-        for (PreparedHotfixTarget prepared : preparation.targets()) {
-            UiConfigHotfixTarget previous = prepared.previous();
-            if (previous != null) {
-                UpdateWrapper<UiConfigHotfixTarget> previousUpdate =
-                        new UpdateWrapper<>();
-                previousUpdate.eq("id", previous.getId())
-                        .eq("status", "ACTIVE")
-                        .set("status", "SUPERSEDED");
-                if (hotfixTargetMapper.update(null, previousUpdate) != 1) {
-                    throw new BusinessConflictException(
-                            "HOTFIX_IMPACT_CHANGED",
-                            "热修复目标已发生变化，请重新预检");
-                }
-            }
-            UiConfigHotfixTarget target = new UiConfigHotfixTarget();
-            target.setHotfixReleaseId(release.getId());
-            target.setConfigType(configType);
-            target.setConfigId(configId);
-            target.setProcessVersionHistoryId(
-                    prepared.target().processVersionHistoryId());
-            target.setPinnedReleaseId(
-                    prepared.target().pinnedReleaseId());
-            target.setPinnedReleaseVersion(
-                    prepared.target().pinnedReleaseVersion());
-            target.setPreviousTargetId(
-                    prepared.restorablePreviousTargetId());
-            target.setEffectiveSnapshotDocument(
-                    prepared.effectiveDocument());
-            target.setEffectiveContentHash(
-                    prepared.effectiveHash());
-            target.setStatus("ACTIVE");
-            target.setActivatedBy(UserContext.getUserId());
-            target.setActivatedAt(LocalDateTime.now());
-            hotfixTargetMapper.insert(target);
-        }
-
-        activateOnOwner(
-                configType,
-                configId,
-                release,
-                preparation.preview().getDraftHash());
-        recordAudit(
-                configType,
-                configId,
-                release.getId(),
-                "PUBLISH_HOTFIX",
-                preparation.preview().getRiskLevel(),
-                request.getDescription(),
-                auditDetail(preparation.preview()));
-        requireHotfixGovernance().markPublished(
-                governanceRequestId,
-                release.getId());
-        log.info(
-                "UI配置热发布完成: configType={}, configId={}, releaseId={}, releaseVersion={}, baseReleaseId={}, riskLevel={}, targetCount={}, operatorId={}",
-                LogValue.safe(configType),
-                LogValue.safe(configId),
-                LogValue.safe(release.getId()),
-                release.getVersion(),
-                LogValue.safe(release.getBaseReleaseId()),
-                LogValue.safe(release.getRiskLevel()),
-                preparation.targets().size(),
-                LogValue.safe(UserContext.getUserId()));
-        return release;
-    }
-
-    /**
-     * 准备热修复；结果供调用方的后续步骤使用。
-     *
-     * @param configType 配置类型标识，决定后续热修复采用的处理分支
-     * @param configId 配置ID，后续用于准备热修复时定位或关联目标
-     * @param request 本次请求，后续经校验后用于准备热修复
-     * @return 准备后的热修复结果，供调用方继续处理
-     */
-    private HotfixPreparation prepareHotfix(
-            String configType,
-            String configId,
-            UiConfigPublishRequest request) {
-        requireType(configType);
-        Map<String, Object> draft =
-                buildDraftSnapshot(configType, configId);
-        validateForPublish(configType, configId, draft);
-        String draftDocument = snapshotSupport.canonical(draft);
-        String draftHash = snapshotSupport.hash(draftDocument);
-        UiConfigRelease active =
-                releaseMapper.findActive(configType, configId);
-        UiConfigDiffDTO diff = diff(configType, configId);
-        List<String> blockers = new ArrayList<>();
-        if (!diff.isChanged()) {
-            blockers.add("当前草稿与已发布版本一致");
-        }
-        if (active == null) {
-            blockers.add("兼容热修复必须存在可追溯的激活基线版本");
-        }
-        Map<String, Object> activeSnapshot = active == null
-                ? Map.of() : verifiedSnapshot(active);
-        UiConfigSemanticPatchService.PatchAnalysis patch =
-                semanticPatchService.build(
-                        configType,
-                        activeSnapshot,
-                        draft);
-        patch = enforceExtensionHotfixCapabilities(draft, patch);
-        String effectiveRisk = patch.riskLevel();
-        UiHotfixProcessImpact impact = FORM.equals(configType)
-                && active != null
-                ? processImpactPort.analyzeFormImpact(configId)
-                : UiHotfixProcessImpact.empty();
-        List<PreparedHotfixTarget> preparedTargets = new ArrayList<>();
-        List<UiConfigHotfixTargetPreviewDTO> targetPreviews =
-                new ArrayList<>();
-        for (UiHotfixProcessTarget target : impact.targets()) {
-            List<String> targetBlockers = new ArrayList<>();
-            List<String> targetReviewNotes = new ArrayList<>();
-            UiConfigHotfixTarget previous = null;
-            String effectiveDocument = null;
-            String effectiveHash = null;
-            String applicationMode = HOTFIX_PATCH;
-            String restorablePreviousTargetId = null;
-            if (!StringUtils.hasText(target.pinnedReleaseId())
-                    || target.pinnedReleaseVersion() == null) {
-                targetBlockers.add(
-                        "同一流程版本引用了不一致或缺失的表单发布版本");
-            } else {
-                previous = hotfixTargetMapper.findActiveTarget(
-                        configType,
-                        configId,
-                        target.processVersionHistoryId());
-                Map<String, Object> baseSnapshot;
-                if (previous == null) {
-                    baseSnapshot = pinnedSnapshot(
-                            configType,
-                            configId,
-                            target.pinnedReleaseId(),
-                            target.pinnedReleaseVersion(),
-                            targetBlockers);
-                } else {
-                    List<String> previousSnapshotProblems =
-                            new ArrayList<>();
-                    baseSnapshot = verifiedTargetSnapshot(
-                            previous,
-                            previousSnapshotProblems);
-                    if (baseSnapshot == null) {
-                        targetReviewNotes.addAll(
-                                previousSnapshotProblems);
-                        applicationMode = HOTFIX_FULL_SNAPSHOT;
-                        effectiveRisk = maxRisk(
-                                effectiveRisk,
-                                UiConfigSemanticPatchService.REVIEW);
-                        // 仍需确认原始钉定版本可用，保证强制发布可安全撤回。
-                        pinnedSnapshot(
-                                configType,
-                                configId,
-                                target.pinnedReleaseId(),
-                                target.pinnedReleaseVersion(),
-                                targetBlockers);
-                    } else {
-                        restorablePreviousTargetId =
-                                previous.getId();
-                    }
-                }
-                if (HOTFIX_FULL_SNAPSHOT.equals(applicationMode)
-                        && targetBlockers.isEmpty()) {
-                    EffectiveHotfixSnapshot effective =
-                            prepareFullSnapshotFallback(
-                                    configType,
-                                    configId,
-                                    draft,
-                                    targetReviewNotes,
-                                    targetBlockers);
-                    if (effective != null) {
-                        effectiveDocument = effective.document();
-                        effectiveHash = effective.hash();
-                    }
-                } else if (baseSnapshot != null
-                        && targetBlockers.isEmpty()) {
-                    UiConfigSemanticPatchService.PatchApplication application =
-                            semanticPatchService.apply(
-                                    baseSnapshot,
-                                    patch.operations(),
-                                    true);
-                    if (application.diverged()) {
-                        effectiveRisk = maxRisk(
-                                effectiveRisk,
-                                UiConfigSemanticPatchService.REVIEW);
-                    }
-                    if (application.compatible()) {
-                        try {
-                            EffectiveHotfixSnapshot effective =
-                                    validatedEffectiveSnapshot(
-                                            configType,
-                                            configId,
-                                            application.snapshot());
-                            effectiveDocument = effective.document();
-                            effectiveHash = effective.hash();
-                        } catch (RuntimeException exception) {
-                            targetReviewNotes.add(
-                                    "增量合成快照校验失败，已改为完整快照覆盖："
-                                            + exception.getMessage());
-                            applicationMode =
-                                    HOTFIX_FULL_SNAPSHOT;
-                        }
-                    } else {
-                        targetReviewNotes.add(
-                                "增量补丁无法对齐旧版本，已改为完整快照覆盖："
-                                        + String.join(
-                                                "；",
-                                                application.blockers()));
-                        applicationMode = HOTFIX_FULL_SNAPSHOT;
-                    }
-                    if (HOTFIX_FULL_SNAPSHOT.equals(applicationMode)) {
-                        effectiveRisk = maxRisk(
-                                effectiveRisk,
-                                UiConfigSemanticPatchService.REVIEW);
-                        EffectiveHotfixSnapshot effective =
-                                prepareFullSnapshotFallback(
-                                        configType,
-                                        configId,
-                                        draft,
-                                        targetReviewNotes,
-                                        targetBlockers);
-                        if (effective != null) {
-                            effectiveDocument = effective.document();
-                            effectiveHash = effective.hash();
-                        }
-                    }
-                }
-            }
-            if (targetBlockers.isEmpty()) {
-                preparedTargets.add(new PreparedHotfixTarget(
-                        target,
-                        previous,
-                        restorablePreviousTargetId,
-                        effectiveDocument,
-                        effectiveHash));
-            } else {
-                targetBlockers.forEach(blocker -> blockers.add(
-                        target.processKey()
-                                + "@v"
-                                + target.processVersion()
-                                + "："
-                                + blocker));
-            }
-            targetPreviews.add(
-                    UiConfigHotfixTargetPreviewDTO.builder()
-                            .processVersionHistoryId(
-                                    target.processVersionHistoryId())
-                            .processConfigId(target.processConfigId())
-                            .processKey(target.processKey())
-                            .processName(target.processName())
-                            .processVersion(target.processVersion())
-                            .pinnedReleaseId(target.pinnedReleaseId())
-                            .pinnedReleaseVersion(
-                                    target.pinnedReleaseVersion())
-                            .nodeIds(target.nodeIds())
-                            .currentStartable(target.currentStartable())
-                            .activeInstanceCount(
-                                    target.activeInstanceCount())
-                            .skippedHistoricalInstanceCount(
-                                    target.completedInstanceCount())
-                            .compatible(targetBlockers.isEmpty())
-                            .applicationMode(applicationMode)
-                            .reviewNotes(List.copyOf(targetReviewNotes))
-                            .blockers(List.copyOf(targetBlockers))
-                            .build());
-        }
-        String targetHash = FORM.equals(configType)
-                ? impact.targetHash()
-                : "GLOBAL_ACTIVE:"
-                        + (active == null ? "NONE" : active.getId());
-        String token = impactToken(
-                configType,
-                configId,
-                HOTFIX,
-                draftHash,
-                active == null ? null : active.getId(),
-                targetHash,
-                effectiveRisk);
-        UiConfigPublishPreviewDTO preview =
-                UiConfigPublishPreviewDTO.builder()
-                        .configType(configType)
-                        .configId(configId)
-                        .releaseMode(HOTFIX)
-                        .rolloutScope(ACTIVE_AND_FUTURE)
-                        .draftHash(draftHash)
-                        .activeReleaseId(
-                                active == null ? null : active.getId())
-                        .activeVersion(
-                                active == null ? null : active.getVersion())
-                        .targetHash(targetHash)
-                        .impactToken(token)
-                        .riskLevel(effectiveRisk)
-                        .changed(diff.isChanged())
-                        .requiresOverride(false)
-                        .canPublish(blockers.isEmpty())
-                        .processVersionCount(impact.processVersionCount())
-                        .activeInstanceCount(impact.activeInstanceCount())
-                        .skippedHistoricalInstanceCount(
-                                impact.skippedHistoricalInstanceCount())
-                        .changedItems(diff.getChangedItems())
-                        .riskItems(patch.riskItems())
-                        .targets(List.copyOf(targetPreviews))
-                        .dependencies(publishDependencies(draft))
-                        .blockers(List.copyOf(blockers))
-                        .build();
-        return new HotfixPreparation(
-                active,
-                draftDocument,
-                patch,
-                List.copyOf(preparedTargets),
-                preview);
-    }
-
-    /**
-     * 准备{@code full}快照兜底；结果供调用方的后续步骤使用。
-     *
-     * @param configType 配置类型标识，决定后续{@code full}快照兜底采用的处理分支
-     * @param configId 配置ID，后续用于准备{@code full}快照兜底时定位或关联目标
-     * @param draft 草稿，作为 {@code validatedEffectiveSnapshot} 的输入影响后续处理
-     * @param reviewNotes {@code review}{@code notes}，供本方法准备{@code full}快照兜底时使用
-     * @param blockers 阻断项，供本方法准备{@code full}快照兜底时使用
-     * @return 准备后的{@code full}快照兜底结果，供调用方继续处理
-     */
-    private EffectiveHotfixSnapshot prepareFullSnapshotFallback(
-            String configType,
-            String configId,
-            Map<String, Object> draft,
-            List<String> reviewNotes,
-            List<String> blockers) {
-        try {
-            EffectiveHotfixSnapshot effective =
-                    validatedEffectiveSnapshot(
-                            configType,
-                            configId,
-                            draft);
-            reviewNotes.add(
-                    "该流程版本将使用当前草稿的完整快照强制覆盖，"
-                            + "发布后不再依赖异常或无法对齐的旧目标快照");
-            return effective;
-        } catch (RuntimeException exception) {
-            blockers.add(
-                    "完整快照覆盖校验失败："
-                            + exception.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 处理已校验有效快照，并将结果传给后续步骤。
-     *
-     * @param configType 配置类型标识，决定后续已校验有效快照采用的处理分支
-     * @param configId 配置ID，后续用于处理已校验有效快照时定位或关联目标
-     * @param snapshot 快照，作为 {@code validateSnapshotForActivation} 的输入影响后续处理
-     * @return 处理后的已校验有效快照结果，供调用方继续处理
-     */
-    private EffectiveHotfixSnapshot validatedEffectiveSnapshot(
-            String configType,
-            String configId,
-            Map<String, Object> snapshot) {
-        validateSnapshotForActivation(
-                configType,
-                configId,
-                snapshot);
-        String document = snapshotSupport.canonical(snapshot);
-        return new EffectiveHotfixSnapshot(
-                document,
-                snapshotSupport.hash(document));
-    }
-
-    /**
-     * 处理{@code enforce}扩展热修复能力集合，并将结果传给后续步骤。
-     *
-     * @param draft 草稿，作为 {@code indexByStableId} 的输入影响后续处理
-     * @param patch 补丁，供本方法处理{@code enforce}扩展热修复能力集合时使用
-     * @return 处理后的{@code enforce}扩展热修复能力集合结果，供调用方继续处理
-     */
-    private UiConfigSemanticPatchService.PatchAnalysis
-            enforceExtensionHotfixCapabilities(
-                    Map<String, Object> draft,
-                    UiConfigSemanticPatchService.PatchAnalysis patch) {
-        Map<String, Map<String, Object>> nodes = indexByStableId(
-                mapList(draft.get("nodes")),
-                List.of("id", "nodeKey"));
-        List<UiConfigSemanticPatchOperation> operations =
-                new ArrayList<>();
-        for (UiConfigSemanticPatchOperation source
-                : patch.operations()) {
-            UiConfigSemanticPatchOperation operation =
-                    objectMapper.convertValue(
-                            source,
-                            UiConfigSemanticPatchOperation.class);
-            if ("form".equals(operation.getSection())
-                    && "/customComponentVersion".equals(
-                            operation.getPath())) {
-                Map<String, Object> form =
-                        mapValue(draft.get("form"));
-                String componentName =
-                        text(form.get("customComponent"));
-                Integer componentVersion = nullableInteger(
-                        form.get("customComponentVersion"));
-                boolean compatible = extensionSupportsHotfix(
-                        "FORM",
-                        componentName,
-                        componentVersion);
-                operation.setRiskLevel(
-                        UiConfigSemanticPatchService.REVIEW);
-                operation.setReason(compatible
-                        ? "自定义表单组件声明兼容热修复，版本变更需要风险确认"
-                        : "自定义表单组件未声明热修复兼容能力，按高风险变更复核");
-            } else if ("nodes".equals(operation.getSection())
-                    && operation.getPath().endsWith(
-                            "/componentVersion")) {
-                Map<String, Object> node =
-                        nodes.get(operation.getItemId());
-                String componentName = node == null
-                        ? null : text(node.get("componentName"));
-                if (StringUtils.hasText(componentName)) {
-                    Integer componentVersion = nullableInteger(
-                            node.get("componentVersion"));
-                    boolean compatible = extensionSupportsHotfix(
-                            nodeExtensionType(node),
-                            componentName,
-                            componentVersion);
-                    if (!compatible) {
-                        operation.setRiskLevel(
-                                UiConfigSemanticPatchService.REVIEW);
-                        operation.setReason(
-                                "自定义组件未声明热修复兼容能力，按高风险变更复核");
-                    }
-                }
-            }
-            operations.add(operation);
-        }
-        String riskLevel = operations.stream()
-                .map(UiConfigSemanticPatchOperation::getRiskLevel)
-                .reduce(
-                        UiConfigSemanticPatchService.SAFE,
-                        this::maxRisk);
-        List<UiConfigHotfixRiskItemDTO> risks = operations.stream()
-                .map(item -> UiConfigHotfixRiskItemDTO.builder()
-                        .section(item.getSection())
-                        .itemId(item.getItemId())
-                        .path(item.getPath())
-                        .riskLevel(item.getRiskLevel())
-                        .reason(item.getReason())
-                        .build())
-                .toList();
-        return new UiConfigSemanticPatchService.PatchAnalysis(
-                List.copyOf(operations),
-                riskLevel,
-                risks);
-    }
-
-    /**
-     * 判断扩展{@code supports}热修复条件是否成立，供调用方选择后续分支。
-     *
-     * @param extensionType 扩展类型标识，决定后续扩展{@code supports}热修复采用的处理分支
-     * @param componentName 组件名称，后续用于处理扩展{@code supports}热修复时匹配或展示
-     * @param componentVersion 组件版本，供本方法处理扩展{@code supports}热修复时使用
-     * @return 扩展{@code supports}热修复条件成立时为 true，否则为 false
-     */
-    private boolean extensionSupportsHotfix(
-            String extensionType,
-            String componentName,
-            Integer componentVersion) {
-        if (!StringUtils.hasText(componentName)) {
-            return false;
-        }
-        try {
-            return extensionDefinitionService.supportsHotfix(
-                    extensionDefinitionService.requireActive(
-                            extensionType,
-                            componentName,
-                            componentVersion));
-        } catch (RuntimeException exception) {
-            return false;
-        }
-    }
-
-    /**
-     * 整理固定快照数据，供调用方遍历或继续处理。
-     *
-     * @param configType 配置类型标识，决定后续固定快照采用的处理分支
-     * @param configId 配置ID，后续用于处理固定快照时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于处理固定快照时定位或关联目标
-     * @param version 版本，供本方法处理固定快照时使用
-     * @param blockers 阻断项，供本方法处理固定快照时使用
-     * @return 固定快照键值结果，供调用方继续处理
-     */
-    private Map<String, Object> pinnedSnapshot(
-            String configType,
-            String configId,
-            String releaseId,
-            Integer version,
-            List<String> blockers) {
-        UiConfigRelease pinned = releaseMapper.selectById(releaseId);
-        if (pinned == null
-                || !Objects.equals(configType, pinned.getConfigType())
-                || !Objects.equals(configId, pinned.getConfigId())
-                || !Objects.equals(version, pinned.getVersion())) {
-            blockers.add("流程钉定的原始发布版本不存在或不属于当前配置");
-            return null;
-        }
-        try {
-            return verifiedSnapshot(pinned);
-        } catch (RuntimeException exception) {
-            blockers.add("原始发布快照完整性校验失败");
-            return null;
-        }
-    }
-
-    /**
-     * 整理已验证目标快照数据，供调用方遍历或继续处理。
-     *
-     * @param target 目标，作为 {@code codec.readObject} 的输入影响后续处理
-     * @param blockers 阻断项，供本方法处理已验证目标快照时使用
-     * @return 已验证目标快照键值结果，供调用方继续处理
-     */
-    private Map<String, Object> verifiedTargetSnapshot(
-            UiConfigHotfixTarget target,
-            List<String> blockers) {
-        try {
-            Map<String, Object> snapshot = codec.readObject(
-                    target.getEffectiveSnapshotDocument(),
-                    "热修复目标有效快照");
-            String actualHash = snapshotSupport.hash(
-                    snapshotSupport.canonical(snapshot));
-            if (!Objects.equals(
-                    actualHash,
-                    target.getEffectiveContentHash())) {
-                blockers.add("上一有效热修复快照完整性校验失败");
-                return null;
-            }
-            return snapshot;
-        } catch (RuntimeException exception) {
-            blockers.add("上一有效热修复快照无法解析");
-            return null;
-        }
-    }
-
-    /**
      * 验证预期状态；不满足约束时阻止后续处理。
      *
      * @param request 本次请求，后续经校验后用于验证预期状态
      * @param actualDraftHash 实际草稿哈希，供本方法验证预期状态时使用
      * @param actualActiveReleaseId 实际活动发布版本ID，后续用于验证预期状态时定位或关联目标
-     * @param requireImpactToken {@code require}影响令牌，后续用于授权校验、关联或幂等去重
-     * @param actualImpactToken 实际影响令牌，后续用于授权校验、关联或幂等去重
      * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
      */
     private void verifyExpectedState(
             UiConfigPublishRequest request,
             String actualDraftHash,
-            String actualActiveReleaseId,
-            boolean requireImpactToken,
-            String actualImpactToken) {
-        if (request == null) {
-            if (requireImpactToken) {
-                throw new BusinessConflictException(
-                        "HOTFIX_PREVIEW_REQUIRED",
-                        "兼容热修复必须先执行发布预检");
-            }
-            return;
-        }
+            String actualActiveReleaseId) {
+        if (request == null) return;
         if (StringUtils.hasText(request.getExpectedDraftHash())
-                && !Objects.equals(
-                        request.getExpectedDraftHash(),
-                        actualDraftHash)) {
-            throw new BusinessConflictException(
-                    "HOTFIX_IMPACT_CHANGED",
-                    "草稿已发生变化，请重新预检");
+                && !Objects.equals(request.getExpectedDraftHash(), actualDraftHash)) {
+            throw new BusinessConflictException("UI_CONFIG_DRAFT_CHANGED", "草稿已发生变化，请重新预检");
         }
         if (StringUtils.hasText(request.getExpectedActiveReleaseId())
-                && !Objects.equals(
-                        request.getExpectedActiveReleaseId(),
-                        actualActiveReleaseId)) {
-            throw new BusinessConflictException(
-                    "HOTFIX_IMPACT_CHANGED",
-                    "当前激活发布版本已变化，请重新预检");
-        }
-        if (requireImpactToken
-                && (!StringUtils.hasText(request.getImpactToken())
-                || !Objects.equals(
-                        request.getImpactToken(),
-                        actualImpactToken))) {
-            throw new BusinessConflictException(
-                    "HOTFIX_IMPACT_CHANGED",
-                    "热修复影响范围已变化，请重新预检");
+                && !Objects.equals(request.getExpectedActiveReleaseId(), actualActiveReleaseId)) {
+            throw new BusinessConflictException("UI_CONFIG_ACTIVE_RELEASE_CHANGED", "当前发布配置已变化，请重新预检");
         }
     }
 
@@ -2994,30 +2206,9 @@ public class UiConfigReleaseService {
             return STANDARD;
         }
         if (!Set.of(STANDARD, HOTFIX).contains(value)) {
-            throw new IllegalArgumentException("发布模式仅支持 STANDARD 或 HOTFIX");
-        }
-        if (HOTFIX.equals(value)
-                && StringUtils.hasText(request.getRolloutScope())
-                && !ACTIVE_AND_FUTURE.equals(
-                        normalize(request.getRolloutScope()))) {
-            throw new IllegalArgumentException(
-                    "热修复生效范围仅支持 ACTIVE_AND_FUTURE");
+            throw new IllegalArgumentException("发布模式仅支持 STANDARD");
         }
         return value;
-    }
-
-    /**
-     * 校验并获取热修复{@code supported}；不满足约束时阻止后续处理。
-     *
-     * @param configType 配置类型标识，决定后续热修复{@code supported}采用的处理分支
-     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
-     */
-    private void requireHotfixSupported(String configType) {
-        if (LIST.equals(configType)) {
-            throw new BusinessConflictException(
-                    "LIST_HOTFIX_NOT_SUPPORTED",
-                    "列表运行时统一使用当前激活版本，请使用普通发布和历史版本激活");
-        }
     }
 
     /**
@@ -3028,240 +2219,6 @@ public class UiConfigReleaseService {
      */
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
-    }
-
-    /**
-     * 校验并获取热修复治理；不满足约束时阻止后续处理。
-     *
-     * @return 校验并获取后的热修复治理结果，供调用方继续处理
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private UiHotfixGovernanceService requireHotfixGovernance() {
-        if (hotfixGovernanceService == null) {
-            throw new IllegalStateException(
-                    "UI HOTFIX 治理服务未初始化，已拒绝发布或回滚");
-        }
-        return hotfixGovernanceService;
-    }
-
-    /**
-     * 记录热修复指标{@code safely}；供后续追溯或审计使用。
-     *
-     * @param releaseId 发布版本ID，后续用于记录热修复指标{@code safely}时定位或关联目标
-     * @param metricCode 指标编码，后续用于记录热修复指标{@code safely}时定位或关联目标
-     * @param successful 成功，作为 {@code hotfixGovernanceService.recordReleaseMetric} 的输入影响后续处理
-     * @param errorMessage 错误消息，作为 {@code hotfixGovernanceService.recordReleaseMetric} 的输入影响后续处理
-     */
-    private void recordHotfixMetricSafely(
-            String releaseId,
-            String metricCode,
-            boolean successful,
-            String errorMessage) {
-        if (hotfixGovernanceService == null) {
-            return;
-        }
-        try {
-            hotfixGovernanceService.recordReleaseMetric(
-                    releaseId,
-                    metricCode,
-                    successful,
-                    errorMessage);
-        } catch (RuntimeException metricException) {
-            log.warn(
-                    "记录 UI HOTFIX 观察指标失败: releaseId={}, metricCode={}, failureType={}",
-                    LogValue.safe(releaseId),
-                    LogValue.safe(metricCode),
-                    LogValue.failureType(metricException));
-        }
-    }
-
-    /**
-     * 记录热修复配置指标{@code safely}；供后续追溯或审计使用。
-     *
-     * @param configType 配置类型标识，决定后续热修复配置指标{@code safely}采用的处理分支
-     * @param configId 配置ID，后续用于记录热修复配置指标{@code safely}时定位或关联目标
-     * @param metricCode 指标编码，后续用于记录热修复配置指标{@code safely}时定位或关联目标
-     * @param successful 成功，作为 {@code hotfixGovernanceService.recordConfigMetric} 的输入影响后续处理
-     * @param errorMessage 错误消息，作为 {@code hotfixGovernanceService.recordConfigMetric} 的输入影响后续处理
-     */
-    private void recordHotfixConfigMetricSafely(
-            String configType,
-            String configId,
-            String metricCode,
-            boolean successful,
-            String errorMessage) {
-        if (hotfixGovernanceService == null) {
-            return;
-        }
-        try {
-            hotfixGovernanceService.recordConfigMetric(
-                    configType,
-                    configId,
-                    metricCode,
-                    successful,
-                    errorMessage);
-        } catch (RuntimeException metricException) {
-            log.warn(
-                    "按配置记录 UI HOTFIX 观察指标失败: configType={}, configId={}, metricCode={}, failureType={}",
-                    LogValue.safe(configType),
-                    LogValue.safe(configId),
-                    LogValue.safe(metricCode),
-                    LogValue.failureType(metricException));
-        }
-    }
-
-    /**
-     * 生成最大风险文本，供后续匹配或展示。
-     *
-     * @param left 左侧，供本方法处理最大风险时使用
-     * @param right 右侧，作为 {@code contains} 的输入影响后续处理
-     * @return 处理后的最大风险文本，供调用方比较或展示
-     */
-    private String maxRisk(String left, String right) {
-        if (Set.of(
-                UiConfigSemanticPatchService.REVIEW,
-                UiConfigSemanticPatchService.BLOCKED).contains(left)
-                || Set.of(
-                        UiConfigSemanticPatchService.REVIEW,
-                        UiConfigSemanticPatchService.BLOCKED).contains(right)) {
-            return UiConfigSemanticPatchService.REVIEW;
-        }
-        return UiConfigSemanticPatchService.SAFE;
-    }
-
-    /**
-     * 按最后发布顺序撤回热修复，不修改不可变发布记录。
-     *
-     * @param configType 配置类型标识，决定后续回滚热修复采用的处理分支
-     * @param configId 配置ID，后续用于处理回滚热修复时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于处理回滚热修复时定位或关联目标
-     * @param reason 原因，供本方法处理回滚热修复时使用
-     * @return 处理后的回滚热修复结果，供调用方继续处理
-     */
-    @Transactional(rollbackFor = Exception.class)
-    public UiConfigRelease rollbackHotfix(
-            String configType,
-            String configId,
-            String releaseId,
-            String reason) {
-        log.info(
-                "开始撤回UI配置热发布: configType={}, configId={}, releaseId={}, reasonPresent={}, operatorId={}",
-                LogValue.safe(configType),
-                LogValue.safe(configId),
-                LogValue.safe(releaseId),
-                StringUtils.hasText(reason),
-                LogValue.safe(UserContext.getUserId()));
-        requireHotfixGovernance().authorizeRollback(
-                releaseId,
-                reason);
-        lockOwner(configType, configId);
-        UiConfigRelease release = releaseMapper.selectById(releaseId);
-        if (release == null
-                || !Objects.equals(configType, release.getConfigType())
-                || !Objects.equals(configId, release.getConfigId())
-                || !HOTFIX.equals(release.getReleaseMode())) {
-            throw new IllegalArgumentException("热修复发布版本不存在");
-        }
-        List<UiConfigHotfixTarget> targets =
-                hotfixTargetMapper.findByHotfixReleaseId(releaseId);
-        UiConfigRelease current = releaseMapper.findActive(
-                configType,
-                configId);
-        if (targets.stream().anyMatch(target ->
-                "SUPERSEDED".equals(target.getStatus()))) {
-            throw new BusinessConflictException(
-                    "HOTFIX_ROLLBACK_ORDER_CONFLICT",
-                    "存在更新的热修复，必须按发布时间逆序撤回");
-        }
-        boolean hasActiveTargets = targets.stream().anyMatch(target ->
-                "ACTIVE".equals(target.getStatus()));
-        if ((!targets.isEmpty() && !hasActiveTargets)
-                || (targets.isEmpty()
-                        && (current == null
-                                || !Objects.equals(
-                                        current.getId(),
-                                        releaseId)))) {
-            throw new BusinessConflictException(
-                    "HOTFIX_ROLLBACK_ORDER_CONFLICT",
-                    "该热修复已失效或存在更新发布，不能重复或越序撤回");
-        }
-        for (UiConfigHotfixTarget target : targets) {
-            if (!"ACTIVE".equals(target.getStatus())) {
-                continue;
-            }
-            UpdateWrapper<UiConfigHotfixTarget> rollback =
-                    new UpdateWrapper<>();
-            rollback.eq("id", target.getId())
-                    .eq("status", "ACTIVE")
-                    .set("status", "ROLLED_BACK")
-                    .set("rolled_back_by", UserContext.getUserId())
-                    .set("rolled_back_at", LocalDateTime.now());
-            if (hotfixTargetMapper.update(null, rollback) != 1) {
-                throw new BusinessConflictException(
-                        "HOTFIX_IMPACT_CHANGED",
-                        "热修复目标已发生变化，请刷新后重试");
-            }
-            if (StringUtils.hasText(target.getPreviousTargetId())) {
-                UpdateWrapper<UiConfigHotfixTarget> restore =
-                        new UpdateWrapper<>();
-                restore.eq("id", target.getPreviousTargetId())
-                        .eq("status", "SUPERSEDED")
-                        .set("status", "ACTIVE");
-                if (hotfixTargetMapper.update(null, restore) != 1) {
-                    throw new BusinessConflictException(
-                            "HOTFIX_ROLLBACK_ORDER_CONFLICT",
-                            "上一热修复目标无法恢复");
-                }
-            }
-        }
-        if (current != null
-                && Objects.equals(current.getId(), releaseId)
-                && StringUtils.hasText(release.getBaseReleaseId())) {
-            UiConfigRelease base =
-                    releaseMapper.selectById(release.getBaseReleaseId());
-            if (base == null
-                    || !Objects.equals(configType, base.getConfigType())
-                    || !Objects.equals(configId, base.getConfigId())) {
-                throw new BusinessConflictException(
-                        "HOTFIX_BASE_RELEASE_MISSING",
-                        "热修复基线版本不存在，无法回滚");
-            }
-            // 只有内容哈希仍可验证的不可变发布快照才允许成为回滚目标。
-            verifiedSnapshot(base);
-            deactivate(configType, configId);
-            UpdateWrapper<UiConfigRelease> activateBase =
-                    new UpdateWrapper<>();
-            activateBase.eq("id", base.getId())
-                    .set("status", "ACTIVE");
-            releaseMapper.update(null, activateBase);
-            base.setStatus("ACTIVE");
-            switchActiveReleaseOnOwner(
-                    configType,
-                    configId,
-                    base);
-            release.setStatus("INACTIVE");
-        }
-        recordAudit(
-                configType,
-                configId,
-                releaseId,
-                "ROLLBACK_HOTFIX",
-                release.getRiskLevel(),
-                reason,
-                Map.of("targetCount", targets.size()));
-        requireHotfixGovernance().markRolledBack(
-                releaseId,
-                reason);
-        log.info(
-                "UI配置热发布撤回完成: configType={}, configId={}, releaseId={}, baseReleaseId={}, targetCount={}, resultingStatus={}, operatorId={}",
-                LogValue.safe(configType),
-                LogValue.safe(configId),
-                LogValue.safe(releaseId),
-                LogValue.safe(release.getBaseReleaseId()),
-                targets.size(),
-                LogValue.safe(release.getStatus()),
-                LogValue.safe(UserContext.getUserId()));
-        return managementRelease(configType, release);
     }
 
     /**
@@ -3357,12 +2314,14 @@ public class UiConfigReleaseService {
             String releaseId,
             String reason,
             String expectedActiveReleaseId) {
+        if (FORM.equals(configType)) throw new IllegalArgumentException("表单不再支持历史版本或热修复操作");
         log.info(
                 "开始激活UI配置历史版本: configType={}, configId={}, releaseId={}, operatorId={}",
                 LogValue.safe(configType),
                 LogValue.safe(configId),
                 LogValue.safe(releaseId),
                 LogValue.safe(UserContext.getUserId()));
+        formPublishedMapper.lockPublication();
         lockOwner(configType, configId);
         UiConfigRelease previous = releaseMapper.findActive(
                 configType,
@@ -3384,7 +2343,7 @@ public class UiConfigReleaseService {
         if (HOTFIX.equals(release.getReleaseMode())) {
             throw new BusinessConflictException(
                     "HOTFIX_ACTIVATE_NOT_ALLOWED",
-                    "热修复必须通过撤回入口按发布时间逆序回滚");
+                    "热修复已退役，此发布记录不能激活");
         }
         Map<String, Object> snapshot = verifiedSnapshot(release);
         validateSnapshotForActivation(configType, configId, snapshot);
@@ -3538,7 +2497,7 @@ public class UiConfigReleaseService {
                     "当前配置尚未发布，不能撤销到发布基线");
         }
         String ownerActiveReleaseId = ownerActiveReleaseId(owner);
-        if (!Objects.equals(ownerActiveReleaseId, active.getId())) {
+        if (!FORM.equals(configType) && !Objects.equals(ownerActiveReleaseId, active.getId())) {
             throw new BusinessConflictException(
                     "UI_CONFIG_RELEASE_STATE_CONFLICT",
                     "当前配置与激活发布状态不一致，请刷新后重试");
@@ -3709,7 +2668,7 @@ public class UiConfigReleaseService {
                 .draftHash(restoredHash)
                 .publishedHash(active.getContentHash())
                 .activeReleaseId(active.getId())
-                .activeVersion(active.getVersion())
+                .activeVersion(FORM.equals(configType) ? null : active.getVersion())
                 .previousRevision(previousRevision)
                 .revision(restoredRevision)
                 .remainingChanged(remainingChanged)
@@ -4056,7 +3015,7 @@ public class UiConfigReleaseService {
      *
      * @param configType 配置类型标识，决定后续实体界面资产采用的处理分支
      * @param configId 配置ID，后续用于记录实体界面资产时定位或关联目标
-     * @param release 发布版本，作为 {@code migrationRequest.setVersionDescription} 的输入影响后续处理
+     * @param release 本次生效配置，表单使用当前内容摘要，列表使用发布记录ID
      * @param request 本次请求，后续经校验后用于记录实体界面资产
      */
     private void recordEntityUiAsset(
@@ -4294,7 +3253,7 @@ public class UiConfigReleaseService {
 
     /**
      * 流程发布读取表单 ACTIVE 版本前锁定同一配置行，
-     * 与热修复发布形成共同的串行化边界。
+     * 与当前表单发布共享 owner 锁，防止流程绑定与配置发布发生竞态。
      *
      * @param formId 表单ID，后续用于锁定表单流程发布时定位或关联目标
      */
@@ -4324,34 +3283,21 @@ public class UiConfigReleaseService {
      */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId) {
-        UiConfigRelease release = active(FORM, formId);
-        if (release == null) {
-            log.info(
-                    "表单运行时使用草稿配置: formId={}, reason=NO_ACTIVE_RELEASE",
-                    LogValue.safe(formId));
-            return new ResolvedEntityFormRelease(
-                    formService.getById(formId),
-                    null,
-                    null);
+        UiConfigRelease current = currentForms == null ? active(FORM, formId) : currentForms.current(formId);
+        if (current == null) {
+            throw new BusinessConflictException("FORM_NOT_PUBLISHED", "表单尚未发布，请先发布表单");
         }
-        ResolvedEntityFormRelease resolved =
-                resolvedRuntimeForm(release, false);
-        log.info(
-                "表单运行时使用激活发布版本: formId={}, releaseId={}, releaseVersion={}",
-                LogValue.safe(formId),
-                LogValue.safe(resolved.releaseId()),
-                resolved.releaseVersion());
-        return resolved;
+        return resolvedRuntimeForm(current, false);
     }
 
     /**
-     * 解析指定发布版本的表单运行时对象，支持版本号一致性校验。
+     * 按稳定表单身份解析当前运行对象；旧版本参数仅为协议兼容输入。
      *
      * @param formId          表单ID
-     * @param releaseId       发布记录ID，为空取当前激活版本
-     * @param expectedVersion 期望版本号，为空跳过校验
+     * @param releaseId       旧发布坐标，不参与运行配置选择
+     * @param expectedVersion 旧版本号，不参与运行配置选择
      * @return 运行时表单对象
-     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     * @throws IllegalArgumentException 当前已发布配置不存在或内容损坏时抛出
      */
     public EntityForm resolveRuntimeForm(
             String formId,
@@ -4364,13 +3310,13 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 解析指定发布版本的表单运行时发布版本信息，支持版本号一致性校验。
+     * 按稳定表单身份解析当前配置；旧版本坐标不能选择历史表单。
      *
      * @param formId          表单ID
-     * @param releaseId       发布记录ID，为空取当前激活版本
-     * @param expectedVersion 期望版本号，为空跳过校验
-     * @return 解析后的表单发布版本信息（钉定发布时 pinned 为 true）
-     * @throws IllegalArgumentException 发布版本不存在或版本号不一致时抛出
+     * @param releaseId       旧发布坐标，不参与运行配置选择
+     * @param expectedVersion 旧版本号，不参与运行配置选择
+     * @return 当前配置摘要，pinned 始终为 false
+     * @throws IllegalArgumentException 当前已发布配置不存在或内容损坏时抛出
      */
     public ResolvedEntityFormRelease resolveRuntimeFormRelease(
             String formId,
@@ -4390,7 +3336,7 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 按服务端可信流程上下文解析原始钉定或有效热修复表单。
+     * 按服务端可信流程上下文解析表单当前配置；历史版本坐标不参与选择。
      *
      * @param formId 表单ID，后续用于解析运行时表单发布版本时定位或关联目标
      * @param releaseId 发布版本ID，后续用于解析运行时表单发布版本时定位或关联目标
@@ -4403,169 +3349,15 @@ public class UiConfigReleaseService {
             String releaseId,
             Integer expectedVersion,
             UiRuntimeResolutionContext context) {
-        UiRuntimePurpose purpose = context == null
-                || context.purpose() == null
-                ? UiRuntimePurpose.STANDALONE
-                : context.purpose();
-        if (!StringUtils.hasText(releaseId)) {
-            return resolveRuntimeFormRelease(formId);
-        }
-        log.info(
-                "开始解析固定表单版本: formId={}, releaseId={}, expectedVersion={}, purpose={}, historyId={}, nodeId={}",
-                LogValue.safe(formId),
-                LogValue.safe(releaseId),
-                expectedVersion,
-                LogValue.safe(purpose),
-                LogValue.safe(
-                        context == null
-                                ? null
-                                : context.processVersionHistoryId()),
-                LogValue.safe(
-                        context == null ? null : context.nodeId()));
-        UiConfigRelease release = releaseMapper.selectById(releaseId);
-        if (release == null
-                || !FORM.equals(release.getConfigType())
-                || !Objects.equals(formId, release.getConfigId())) {
-            log.info(
-                    "固定表单版本解析失败: formId={}, releaseId={}, expectedVersion={}, actualConfigType={}, actualConfigId={}, reason=RELEASE_NOT_FOUND",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    expectedVersion,
-                    LogValue.safe(
-                            release == null
-                                    ? null : release.getConfigType()),
-                    LogValue.safe(
-                            release == null
-                                    ? null : release.getConfigId()));
-            throw new IllegalArgumentException("表单发布版本不存在或不属于当前表单");
-        }
-        if (expectedVersion != null
-                && !Objects.equals(expectedVersion, release.getVersion())) {
-            log.info(
-                    "固定表单版本解析失败: formId={}, releaseId={}, expectedVersion={}, actualVersion={}, reason=VERSION_MISMATCH",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    expectedVersion,
-                    release.getVersion());
-            throw new IllegalArgumentException("表单发布版本号与流程快照不一致");
-        }
-        if (Set.of(
-                        UiRuntimePurpose.NEW_INSTANCE,
-                        UiRuntimePurpose.ACTIVE_TASK)
-                .contains(purpose)
-                && context != null
-                && StringUtils.hasText(
-                        context.processVersionHistoryId())) {
-            UiConfigHotfixTarget target =
-                    hotfixTargetMapper.findActiveTarget(
-                            FORM,
-                            formId,
-                            context.processVersionHistoryId());
-            if (target != null) {
-                if (!Objects.equals(
-                                release.getId(),
-                                target.getPinnedReleaseId())
-                        || !Objects.equals(
-                                release.getVersion(),
-                                target.getPinnedReleaseVersion())) {
-                    log.info(
-                            "热修复表单版本解析失败: formId={}, historyId={}, targetId={}, requestedReleaseId={}, requestedVersion={}, targetPinnedReleaseId={}, targetPinnedVersion={}, reason=PINNED_RELEASE_MISMATCH",
-                            LogValue.safe(formId),
-                            LogValue.safe(
-                                    context.processVersionHistoryId()),
-                            LogValue.safe(target.getId()),
-                            LogValue.safe(release.getId()),
-                            release.getVersion(),
-                            LogValue.safe(target.getPinnedReleaseId()),
-                            target.getPinnedReleaseVersion());
-                    throw new IllegalStateException(
-                            "热修复目标与流程钉定表单版本不一致");
-                }
-                try {
-                    Map<String, Object> snapshot =
-                            verifiedEffectiveTargetSnapshot(target);
-                    ResolvedEntityFormRelease result =
-                            new ResolvedEntityFormRelease(
-                            runtimeForm(snapshot),
-                            release.getId(),
-                            release.getVersion(),
-                            true,
-                            target.getHotfixReleaseId(),
-                            target.getEffectiveContentHash(),
-                            target.getId(),
-                            purpose);
-                    log.info(
-                            "热修复表单版本解析完成: formId={}, pinnedReleaseId={}, pinnedVersion={}, effectiveReleaseId={}, hotfixTargetId={}, historyId={}, nodeId={}, purpose={}",
-                            LogValue.safe(formId),
-                            LogValue.safe(result.releaseId()),
-                            result.releaseVersion(),
-                            LogValue.safe(result.effectiveReleaseId()),
-                            LogValue.safe(target.getId()),
-                            LogValue.safe(
-                                    context.processVersionHistoryId()),
-                            LogValue.safe(context.nodeId()),
-                            LogValue.safe(purpose));
-                    return result;
-                } catch (RuntimeException exception) {
-                    log.error(
-                            "热修复运行时解析失败: "
-                                    + "formId={}, historyId={}, targetId={}, error={}",
-                            LogValue.safe(formId),
-                            LogValue.safe(context.processVersionHistoryId()),
-                            LogValue.safe(target.getId()),
-                            LogValue.failureType(exception));
-                    throw new IllegalStateException(
-                            "热修复运行时快照解析失败",
-                            exception);
-                }
-            }
-        }
-        ResolvedEntityFormRelease pinned =
-                resolvedRuntimeForm(release, true);
-        ResolvedEntityFormRelease result =
-                new ResolvedEntityFormRelease(
-                        pinned.form(),
-                        pinned.releaseId(),
-                        pinned.releaseVersion(),
-                        true,
-                        pinned.releaseId(),
-                        release.getContentHash(),
-                        null,
-                        purpose);
-        log.info(
-                "固定表单版本解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied=false, purpose={}, historyId={}, nodeId={}",
-                LogValue.safe(formId),
-                LogValue.safe(result.releaseId()),
-                result.releaseVersion(),
-                LogValue.safe(result.effectiveReleaseId()),
-                LogValue.safe(purpose),
-                LogValue.safe(
-                        context == null
-                                ? null
-                                : context.processVersionHistoryId()),
-                LogValue.safe(
-                        context == null ? null : context.nodeId()));
-        return result;
+        // 旧流程 JSON 的发布坐标只作兼容输入，不能选取历史表单。
+        ResolvedEntityFormRelease current = resolveRuntimeFormRelease(formId);
+        UiRuntimePurpose purpose = context == null || context.purpose() == null
+                ? UiRuntimePurpose.STANDALONE : context.purpose();
+        return new ResolvedEntityFormRelease(current.form(), current.releaseId(), current.releaseVersion(),
+                false, current.effectiveReleaseId(), current.effectiveContentHash(), null, purpose);
     }
 
-    /**
-     * 按提交阶段已经解析出的可信身份重新读取同一份表单有效快照。
-     *
-     * <p>热修复发布自身的 snapshot/patch 不是某个流程钉定版本应用补丁后的最终快照，
-     * 因此终检不能只凭 {@code effectiveReleaseId} 重新读取发布记录。存在
-     * {@code hotfixTargetId} 时，本方法校验基础发布、热修复发布、目标记录和内容哈希
-     * 的完整关联，并直接读取目标记录中已经固化的 effective snapshot。目标即使在
-     * 表单处理完成后被回滚，也仍按本次提交已经采用的目标快照完成事务终检，避免
-     * 同一次提交前后切换规则。</p>
-     *
-     * @param formId 表单ID
-     * @param releaseId 基础发布ID
-     * @param releaseVersion 基础发布版本
-     * @param effectiveReleaseId 实际生效发布ID；非热修复时等于基础发布ID
-     * @param effectiveContentHash 实际有效快照哈希
-     * @param hotfixTargetId 热修复目标ID；非热修复时为空
-     * @return 与提交处理阶段完全一致的已验证发布表单
-     */
+    /** 事务终检复用本次请求已接受的配置摘要，另一人发布不会改变已受理提交的规则。 */
     public ResolvedEntityFormRelease resolveTrustedEffectiveFormRelease(
             String formId,
             String releaseId,
@@ -4573,105 +3365,14 @@ public class UiConfigReleaseService {
             String effectiveReleaseId,
             String effectiveContentHash,
             String hotfixTargetId) {
-        if (!StringUtils.hasText(formId)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null) {
-            throw new IllegalArgumentException(
-                    "可信表单发布身份不完整");
-        }
-        UiConfigRelease baseRelease = requireFormRelease(
-                formId,
-                releaseId,
-                releaseVersion,
-                "基础表单发布身份无效");
-        if (!StringUtils.hasText(hotfixTargetId)) {
-            String normalizedEffectiveReleaseId =
-                    StringUtils.hasText(effectiveReleaseId)
-                            ? effectiveReleaseId : releaseId;
-            if (!Objects.equals(
-                    releaseId,
-                    normalizedEffectiveReleaseId)) {
-                throw new IllegalArgumentException(
-                        "热修复有效发布身份缺少目标记录");
-            }
-            if (StringUtils.hasText(effectiveContentHash)
-                    && !Objects.equals(
-                            effectiveContentHash,
-                            baseRelease.getContentHash())) {
-                throw new IllegalArgumentException(
-                        "表单有效快照哈希与基础发布不一致");
-            }
-            return new ResolvedEntityFormRelease(
-                    runtimeForm(verifiedSnapshot(baseRelease)),
-                    releaseId,
-                    releaseVersion,
-                    true,
-                    releaseId,
-                    baseRelease.getContentHash(),
-                    null,
-                    UiRuntimePurpose.HISTORICAL);
-        }
-        if (!StringUtils.hasText(effectiveReleaseId)
-                || !StringUtils.hasText(effectiveContentHash)) {
-            throw new IllegalArgumentException(
-                    "热修复表单发布身份缺少有效发布或快照哈希");
-        }
-
-        UiConfigHotfixTarget target =
-                hotfixTargetMapper.selectById(hotfixTargetId);
-        if (target == null
-                || !FORM.equals(target.getConfigType())
-                || !Objects.equals(formId, target.getConfigId())
-                || !Objects.equals(
-                        releaseId,
-                        target.getPinnedReleaseId())
-                || !Objects.equals(
-                        releaseVersion,
-                        target.getPinnedReleaseVersion())
-                || !Objects.equals(
-                        effectiveReleaseId,
-                        target.getHotfixReleaseId())
-                || !Objects.equals(
-                        effectiveContentHash,
-                        target.getEffectiveContentHash())) {
-            throw new IllegalArgumentException(
-                    "热修复目标与可信表单发布身份不一致");
-        }
-        UiConfigRelease hotfixRelease = requireFormRelease(
-                formId,
-                effectiveReleaseId,
-                null,
-                "热修复表单发布身份无效");
-        if (!HOTFIX.equals(hotfixRelease.getReleaseMode())) {
-            throw new IllegalArgumentException(
-                    "有效发布不是表单热修复版本");
-        }
-        // 两条发布记录同样属于不可变审计链；即使最终规则来自 target，也要先验完整性。
-        verifiedSnapshot(baseRelease);
-        verifiedSnapshot(hotfixRelease);
-
-        // 不检查 target.status：提交处理后发生回滚不能改变同一事务终检所用规则。
-        Map<String, Object> effectiveSnapshot =
-                verifiedEffectiveTargetSnapshot(target);
-        EntityForm form = runtimeForm(effectiveSnapshot);
-        if (form == null
-                || !Objects.equals(formId, form.getId())) {
-            throw new IllegalArgumentException(
-                    "热修复有效快照不属于当前表单");
-        }
-        return new ResolvedEntityFormRelease(
-                form,
-                releaseId,
-                releaseVersion,
-                true,
-                effectiveReleaseId,
-                effectiveContentHash,
-                hotfixTargetId,
-                UiRuntimePurpose.HISTORICAL);
+        UiConfigRelease current = requireFormRelease(formId, releaseId, releaseVersion, "表单配置已发生变化");
+        if (StringUtils.hasText(effectiveContentHash) && !Objects.equals(effectiveContentHash, current.getContentHash()))
+            throw new BusinessConflictException("FORM_CONFIGURATION_CHANGED", "表单配置已更新，请重新核对后提交");
+        return resolvedRuntimeForm(current, false);
     }
 
     /**
-     * 校验发布记录确实属于指定表单和基础版本。
+     * 校验本次受理的当前配置确实属于指定表单；内容指纹仅用于过期检测。
      *
      * @param formId 表单ID，后续用于校验并获取表单发布版本时定位或关联目标
      * @param releaseId 发布版本ID，后续用于校验并获取表单发布版本时定位或关联目标
@@ -4684,16 +3385,10 @@ public class UiConfigReleaseService {
             String releaseId,
             Integer expectedVersion,
             String message) {
-        UiConfigRelease release = releaseMapper.selectById(releaseId);
-        if (release == null
-                || !FORM.equals(release.getConfigType())
-                || !Objects.equals(formId, release.getConfigId())
-                || expectedVersion != null
-                && !Objects.equals(
-                        expectedVersion,
-                        release.getVersion())) {
-            throw new IllegalArgumentException(message);
-        }
+        UiConfigRelease release = currentForms == null ? releaseMapper.selectById(releaseId)
+                : currentForms.accepted(formId, releaseId);
+        if (release == null || !FORM.equals(release.getConfigType())
+                || !Objects.equals(formId, release.getConfigId())) throw new IllegalArgumentException(message);
         return release;
     }
 
@@ -4718,67 +3413,6 @@ public class UiConfigReleaseService {
                 pinned
                         ? UiRuntimePurpose.HISTORICAL
                         : UiRuntimePurpose.STANDALONE);
-    }
-
-    /**
-     * 判断当前全局激活发布是否为该流程版本已批准的热修复。
-     *
-     * @param formId 表单ID，后续用于判断是否{@code approved}热修复时定位或关联目标
-     * @param pinnedReleaseId 固定发布版本ID，后续用于判断是否{@code approved}热修复时定位或关联目标
-     * @param pinnedReleaseVersion 固定发布版本，供本方法判断是否{@code approved}热修复时使用
-     * @param processVersionHistoryId 流程版本历史ID，后续用于判断是否{@code approved}热修复时定位或关联目标
-     * @param activeReleaseId 活动发布版本ID，后续用于判断是否{@code approved}热修复时定位或关联目标
-     * @return {@code approved}热修复条件成立时为 true，否则为 false
-     */
-    public boolean isApprovedHotfix(
-            String formId,
-            String pinnedReleaseId,
-            Integer pinnedReleaseVersion,
-            String processVersionHistoryId,
-            String activeReleaseId) {
-        if (!StringUtils.hasText(processVersionHistoryId)
-                || !StringUtils.hasText(activeReleaseId)) {
-            return false;
-        }
-        UiConfigHotfixTarget target =
-                hotfixTargetMapper.findActiveTarget(
-                        FORM,
-                        formId,
-                        processVersionHistoryId);
-        return target != null
-                && Objects.equals(
-                        pinnedReleaseId,
-                        target.getPinnedReleaseId())
-                && Objects.equals(
-                        pinnedReleaseVersion,
-                        target.getPinnedReleaseVersion())
-                && Objects.equals(
-                        activeReleaseId,
-                        target.getHotfixReleaseId());
-    }
-
-    /**
-     * 整理已验证有效目标快照数据，供调用方遍历或继续处理。
-     *
-     * @param target 目标，作为 {@code codec.readObject} 的输入影响后续处理
-     * @return 已验证有效目标快照键值结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private Map<String, Object> verifiedEffectiveTargetSnapshot(
-            UiConfigHotfixTarget target) {
-        Map<String, Object> snapshot = codec.readObject(
-                target.getEffectiveSnapshotDocument(),
-                "热修复运行时有效快照");
-        String actualHash = snapshotSupport.hash(
-                snapshotSupport.canonical(snapshot));
-        if (!StringUtils.hasText(target.getEffectiveContentHash())
-                || !Objects.equals(
-                        target.getEffectiveContentHash(),
-                        actualHash)) {
-            throw new IllegalArgumentException(
-                    "热修复有效快照完整性校验失败");
-        }
-        return snapshot;
     }
 
     /**
@@ -4820,7 +3454,7 @@ public class UiConfigReleaseService {
      *
      * <p>该方法不会回读 ACTIVE 或基础发布记录，专供已经通过
      * {@link #resolveRuntimeEventSnapshot(String, String, Integer, String)}
-     * 得到的表单按钮和字段事件链使用，同时覆盖标准发布与流程热修复的有效快照。</p>
+     * 得到的表单按钮和字段事件链使用，并复用本次请求受理的配置，避免执行中切换规则。</p>
      *
      * @param snapshot 已解析的完整有效快照
      * @param expectedHash 解析时验证过的有效内容哈希
@@ -4851,7 +3485,7 @@ public class UiConfigReleaseService {
      * @param releaseId 发布版本 ID，后续用于解析固定配置
      * @param releaseVersion 发布版本号，后续用于校验快照一致性
      * @param effectiveReleaseId 有效发布版本ID，后续用于处理已解析界面事件快照时定位或关联目标
-     * @param hotfixApplied 热修复{@code applied}，保存在对象中供后续校验、查询或展示
+     * @param hotfixApplied 旧协议占位，当前表单始终为 false
      * @param effectiveContentHash 有效内容哈希，保存在对象中供后续校验、查询或展示
      */
     public record ResolvedUiEventSnapshot(
@@ -4869,7 +3503,7 @@ public class UiConfigReleaseService {
          * @param releaseId 发布版本 ID，后续用于解析固定配置
          * @param releaseVersion 发布版本号，后续用于校验快照一致性
          * @param effectiveReleaseId 有效发布版本ID，后续用于初始化已解析界面事件快照时定位或关联目标
-         * @param hotfixApplied 热修复{@code applied}，保存在对象中供后续校验、查询或展示
+         * @param hotfixApplied 旧协议占位，当前表单始终为 false
          */
         public ResolvedUiEventSnapshot(
                 Map<String, Object> snapshot,
@@ -5366,6 +4000,7 @@ public class UiConfigReleaseService {
                     "viewCompositions",
                     snapshotSupport.stableValue(
                             snapshotViewCompositions(FORM, configId)));
+            stripFormVersionReferences(snapshot);
             return snapshot;
         }
         EntityListConfigDTO list = listConfigService.findById(configId);
@@ -5586,6 +4221,8 @@ public class UiConfigReleaseService {
             Map<String, Object> snapshot) {
         if (FORM.equals(configType)) {
             formNodeService.validateTree(configId);
+            validateFormSnapshotTree(configId, snapshot);
+            formNodeService.validateSnapshotSubFormParameterContracts(runtimeForm(snapshot));
             validateUnifiedRelationComponents(snapshot);
             formConfigurationValidator.validateForm(runtimeForm(snapshot));
             validateSubListReferences(snapshot);
@@ -5666,10 +4303,8 @@ public class UiConfigReleaseService {
                             "列表按钮目标表单没有可用的激活发布版本: "
                                     + targetFormId);
                 }
-                button.put("targetFormReleaseId", release.getId());
-                button.put(
-                        "targetFormReleaseVersion",
-                        release.getVersion());
+                button.remove("targetFormReleaseId");
+                button.remove("targetFormReleaseVersion");
             }
             pinOpenListTargetRelease(button, position);
             pinned.add(button);
@@ -5760,32 +4395,12 @@ public class UiConfigReleaseService {
             EntityListConfigDTO list,
             String position,
             List<Map<String, Object>> buttons) {
-        for (Map<String, Object> button :
-                buttons == null ? List.<Map<String, Object>>of() : buttons) {
-            String targetFormId = text(button.get("targetFormId"));
-            if (StringUtils.hasText(targetFormId)) {
+        for (Map<String, Object> button : buttons == null ? List.<Map<String, Object>>of() : buttons) {
+            String formId = text(button.get("targetFormId"));
+            if (StringUtils.hasText(formId)) {
                 validateTargetFormButtonSemantics(button, position);
-                requireTargetListForm(list, targetFormId);
-                String releaseId = text(button.get("targetFormReleaseId"));
-                Integer releaseVersion =
-                        nullableInteger(button.get("targetFormReleaseVersion"));
-                if (!StringUtils.hasText(releaseId)
-                        || releaseVersion == null) {
-                    throw new IllegalArgumentException(
-                            "列表按钮目标表单未固定发布版本: "
-                                    + targetFormId);
-                }
-                UiConfigRelease release = releaseMapper.selectById(releaseId);
-                if (release == null
-                        || !FORM.equals(release.getConfigType())
-                        || !Objects.equals(
-                                targetFormId, release.getConfigId())
-                        || !Objects.equals(
-                                releaseVersion, release.getVersion())) {
-                    throw new IllegalArgumentException(
-                            "列表按钮目标表单发布版本不存在或不匹配: "
-                                    + targetFormId);
-                }
+                requireTargetListForm(list, formId);
+                if (active(FORM, formId) == null) throw new IllegalArgumentException("列表按钮目标表单尚未发布: " + formId);
             }
             validatePinnedOpenListTarget(button, position);
         }
@@ -6860,8 +5475,7 @@ public class UiConfigReleaseService {
                 && normalized.startsWith("PUBLISH")) {
             return AuditAction.PUBLISH;
         }
-        if ("ROLLBACK_HOTFIX".equals(normalized)
-                || "RESTORE_DRAFT".equals(normalized)
+        if ("RESTORE_DRAFT".equals(normalized)
                 || "DISCARD_DRAFT".equals(normalized)) {
             return AuditAction.ROLLBACK;
         }
@@ -7071,47 +5685,119 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 封装已准备热修复目标的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param target 目标，保存在对象中供后续校验、查询或展示
-     * @param previous 上一项，保存在对象中供后续校验、查询或展示
-     * @param restorablePreviousTargetId {@code restorable}上一项目标ID，后续用于处理已准备热修复目标时定位或关联目标
-     * @param effectiveDocument 有效文档，保存在对象中供后续校验、查询或展示
-     * @param effectiveHash 有效哈希，保存在对象中供后续校验、查询或展示
+     * 覆盖表单唯一线上配置；调用方事务内持有草稿行锁，校验失败不会改变线上内容。
+     * 内容指纹仅检测页面变化，绝不创建可供历史流程选择的表单版本。
      */
-    private record PreparedHotfixTarget(
-            UiHotfixProcessTarget target,
-            UiConfigHotfixTarget previous,
-            String restorablePreviousTargetId,
-            String effectiveDocument,
-            String effectiveHash) {
+    private UiConfigRelease publishCurrentForm(String formId, UiConfigPublishRequest request) {
+        // 全局短事务锁串行化发布，避免跨实体互相引用的并发发布绕过循环/父子契约校验。
+        formPublishedMapper.lockPublication();
+        EntityForm owner = (EntityForm) lockOwner(FORM, formId);
+        Map<String, Object> snapshot = buildDraftSnapshot(FORM, formId);
+        validateForPublish(FORM, formId, snapshot);
+        validateCurrentFormDependents(formId, snapshot);
+        String document = snapshotSupport.canonical(snapshot);
+        String hash = snapshotSupport.hash(document);
+        UiConfigRelease previous = active(FORM, formId);
+        verifyExpectedState(request, hash, previous == null ? null : previous.getId());
+        if (previous != null && Objects.equals(hash, previous.getContentHash())) return previous;
+        var publication = new com.workflow.entity.form.infrastructure.persistence.record.EntityFormPublished();
+        publication.setFormId(formId);
+        publication.setEntityId(owner.getEntityId());
+        publication.setSnapshotDocument(document);
+        publication.setContentHash(hash);
+        publication.setPublishedBy(UserContext.getUserId());
+        publication.setPublishedAt(LocalDateTime.now());
+        if (previous == null) formPublishedMapper.insert(publication);
+        else formPublishedMapper.updateById(publication);
+        validateCurrentCompositionDependents(formId);
+        EntityForm publishedForm = runtimeForm(snapshot);
+        if (Boolean.TRUE.equals(publishedForm.getIsDefault()) && !Integer.valueOf(0).equals(publishedForm.getStatus())) {
+            formPublishedMapper.clearDefault(owner.getEntityId());
+            formPublishedMapper.insertDefault(owner.getEntityId(), formId);
+        } else formPublishedMapper.removeDefaultForm(formId);
+        // 草稿 activeReleaseId 仅为旧客户端并发前置条件的兼容值，不参与运行时选择。
+        UiConfigRelease current = new UiConfigRelease();
+        current.setConfigType(FORM); current.setConfigId(formId); current.setId(hash);
+        current.setVersion(1); current.setContentHash(hash); current.setSnapshotDocument(document);
+        current.setStatus("ACTIVE"); current.setReleaseMode(STANDARD); current.setRiskLevel("SAFE");
+        current.setPublishedBy(publication.getPublishedBy()); current.setPublishedAt(publication.getPublishedAt());
+        activateOnOwner(FORM, formId, current, hash);
+        recordAudit(FORM, formId, hash, "PUBLISH", "SAFE", request == null ? null : request.getDescription(),
+                Map.of("contentHash", hash));
+        recordEntityUiAsset(FORM, formId, current, request);
+        return current;
+    }
+
+    /** 用候选配置校验反向父表单及完整引用图，阻止子表单发布破坏已经生效的参数映射。 */
+    private void validateCurrentFormDependents(String formId, Map<String, Object> snapshot) {
+        UiConfigRelease candidate = new UiConfigRelease();
+        candidate.setConfigType(FORM); candidate.setConfigId(formId);
+        candidate.setSnapshotDocument(snapshotSupport.canonical(snapshot));
+        Map<String, List<String>> graph = new HashMap<>();
+        graph.put(formId, referencedFormIds(snapshotNodes(snapshot)));
+        for (UiConfigRelease row : releaseMapper.findCurrentForms()) {
+            if (Objects.equals(formId, row.getConfigId())) continue;
+            EntityForm parent = runtimeForm(verifiedSnapshot(row));
+            graph.put(parent.getId(), referencedFormIds(parent.getNodes()));
+            formNodeService.validateSnapshotSubFormParameterContracts(parent, candidate);
+        }
+        for (String root : List.copyOf(graph.keySet()))
+            validatePublishedFormGraph(root, 1, new LinkedHashSet<>(), graph);
     }
 
     /**
-     * 封装有效热修复快照的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param document 文档，保存在对象中供后续校验、查询或展示
-     * @param hash 哈希，保存在对象中供后续校验、查询或展示
+     * 当前候选配置写入后，在同一事务内重验受影响的在线关联内容。共享发布锁保证依赖图稳定；
+     * 无关旧配置不属于此次发布的校验对象，已发布关系也不按新草稿重新限制。
+     * 参数或自动包含深度失效时仍抛错回滚候选行，任何外部请求都看不到半发布状态。
      */
-    private record EffectiveHotfixSnapshot(
-            String document,
-            String hash) {
+    private void validateCurrentCompositionDependents(String formId) {
+        List<UiConfigRelease> owners = new ArrayList<>(releaseMapper.findCurrentForms());
+        // 历史列表仍可由签名上下文执行，目标表单已改为当前身份，因此也属于反向依赖。
+        owners.addAll(releaseMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers.<UiConfigRelease>lambdaQuery()
+                .eq(UiConfigRelease::getConfigType, LIST)));
+        for (UiConfigRelease owner : CurrentFormCompositionDependencyIndex.affectedOwners(formId, owners, codec)) {
+            Map<String, Object> snapshot = verifiedSnapshot(owner);
+            if (snapshot.get("viewCompositions") instanceof List<?> items && !items.isEmpty())
+                requireViewCompositionService().revalidateCurrentFormDependencies(owner.getConfigType(), owner.getConfigId(), snapshot);
+        }
     }
 
-    /**
-     * 封装热修复准备的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param active 活动，保存在对象中供后续校验、查询或展示
-     * @param draftDocument 草稿文档，保存在对象中供后续校验、查询或展示
-     * @param patch 补丁，保存在对象中供后续校验、查询或展示
-     * @param targets 目标集合，保存在对象中供后续校验、查询或展示
-     * @param preview 预览，保存在对象中供后续校验、查询或展示
-     */
-    private record HotfixPreparation(
-            UiConfigRelease active,
-            String draftDocument,
-            UiConfigSemanticPatchService.PatchAnalysis patch,
-            List<PreparedHotfixTarget> targets,
-            UiConfigPublishPreviewDTO preview) {
+    /** 签名只能授权用户/任务上下文，不能让页面在新发布后继续执行旧配置。 */
+    private void requireCurrentFormClaims(UiReleaseResolutionTokenService.Claims claims) {
+        UiConfigRelease current = currentForms == null ? active(FORM, claims.parentFormId())
+                : currentForms.current(claims.parentFormId());
+        if (current == null || !Objects.equals(current.getId(), claims.parentReleaseId()))
+            throw CurrentFormRuntimeContext.changed();
     }
+
+    /** 递归清除子表单和目标表单的旧版本坐标，包括 JSON 字符串内的组件属性。 */
+    private void stripFormVersionReferences(Object value) {
+        if (value instanceof Map<?, ?> raw) {
+            @SuppressWarnings("unchecked") Map<String, Object> map = (Map<String, Object>) raw;
+            for (String key : List.of("childFormReleaseId", "childFormReleaseVersion", "refFormReleaseId",
+                    "refFormReleaseVersion", "publishedFormReleaseId", "publishedFormReleaseVersion",
+                    "targetFormReleaseId", "targetFormReleaseVersion")) map.remove(key);
+            for (var entry : map.entrySet()) {
+                Object child = entry.getValue();
+                if (child instanceof String str && (str.trim().startsWith("{") || str.trim().startsWith("["))) {
+                    try {
+                        Object parsed = objectMapper.readValue(str, Object.class);
+                        stripFormVersionReferences(parsed);
+                        entry.setValue(objectMapper.writeValueAsString(parsed));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                        // 非 JSON 表达式及脚本保持原文，合法配置仍由发布校验负责。
+                    }
+                } else stripFormVersionReferences(child);
+            }
+        } else if (value instanceof List<?> list) list.forEach(this::stripFormVersionReferences);
+    }
+
+    /** 默认表单选择来自发布态，设计器保存默认开关不会提前改变业务入口。 */
+    public EntityForm currentDefaultForm(String entityId) {
+        UiConfigRelease current = releaseMapper.findCurrentDefaultForm(entityId);
+        if (current == null) return null;
+        EntityForm form = runtimeForm(verifiedSnapshot(current));
+        return Integer.valueOf(0).equals(form.getStatus()) ? null : form;
+    }
+
 }

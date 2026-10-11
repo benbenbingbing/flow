@@ -399,6 +399,9 @@ public class EntityFormActionService {
         if (Boolean.FALSE.equals(button.get("enabled"))) {
             throw new ForbiddenException("表单按钮未启用");
         }
+        if (!"event".equals(firstText(button.get("customMode"), "event"))) {
+            throw new ForbiddenException("此按钮已配置其他执行方式，不能执行历史事件链");
+        }
         AuthorizedRecord record = loadRow(
                 definition,
                 request.getRecordId(),
@@ -997,6 +1000,10 @@ public class EntityFormActionService {
         dto.setRuntimeKey(custom ? formId + ":" + key : key);
         dto.setKey(key);
         dto.setType(custom ? "custom" : "built-in");
+        if (custom) {
+            dto.setCustomMode(firstText(button.get("customMode"), "event"));
+            dto.setExecution(mapOrNull(button.get("execution")));
+        }
         dto.setLabel(text(button.get("label")));
         dto.setIcon(text(button.get("icon")));
         dto.setButtonType(firstText(

@@ -277,17 +277,13 @@ public class ConfigMigrationImportApplyService {
         for (SystemEntityUiContext context : systemEntityUis) prepareUiOwners(context.entity(), context.snapshot());
         for (EntityContext context : entities) applyEntityConfiguration(context, false, true);
         for (SystemEntityUiContext context : systemEntityUis) applySystemEntityUiConfiguration(context, true);
-        // 固定历史版本先按子依赖顺序恢复；最后再恢复包内当前表单，不能让历史版本成为最终活跃版本。
-        boolean createdPinnedVersion = false;
-        for (EntityContext context : entities) createdPinnedVersion |= preparePinnedForms(context.snapshot());
-        for (SystemEntityUiContext context : systemEntityUis) createdPinnedVersion |= preparePinnedForms(context.snapshot());
-        if (createdPinnedVersion) {
-            // 历史固定版本可能临时使用旧实体事件和接口定义；恢复包内当前定义后再发布当前表单。
-            for (EntityContext context : entities) restoreCurrentUiDependencies(context.entity(), context.snapshot());
-            for (SystemEntityUiContext context : systemEntityUis) restoreCurrentUiDependencies(context.entity(), context.snapshot());
-        }
-        for (EntityContext context : entities) applyFormsAndLists(context.entity(), context.snapshot());
-        for (SystemEntityUiContext context : systemEntityUis) applyFormsAndLists(context.entity(), context.snapshot());
+        // 先按稳定子表单依赖拓扑顺序发布，再处理列表；不恢复或临时激活隐藏历史版本。
+        List<CurrentUiContext> uiContexts = new ArrayList<>();
+        for (EntityContext context : entities) uiContexts.add(new CurrentUiContext(context.entity().getId(), context.entity().getEntityCode(), context.snapshot()));
+        for (SystemEntityUiContext context : systemEntityUis) uiContexts.add(new CurrentUiContext(context.entity().getId(), context.entity().getEntityCode(), context.snapshot()));
+        applyCurrentForms(uiContexts);
+        for (CurrentUiContext context : uiContexts)
+            if (context.snapshot().containsKey("lists")) applyLists(entityMapper.selectById(context.entityId()), mapList(context.snapshot().get("lists")));
 
         // 所有目标表单、列表、数据源和扩展都已落库并产生初始发布版本后，
         // 再统一恢复跨实体关联内容，避免导入顺序导致目标内容尚不存在。
@@ -1329,54 +1325,36 @@ public class ConfigMigrationImportApplyService {
         if (snapshot.containsKey("lists")) applyLists(entity, mapList(snapshot.get("lists")));
     }
 
-    private boolean preparePinnedForms(Map<String, Object> snapshot) {
-        boolean[] created = { false };
-        // 丢弃物化结果，保留正文的编码引用，后续表单落库时再次按指纹取同一个本地版本。
-        subFormReferences.materialize(snapshot, this::mappedKey, pinned -> {
-            created[0] = true;
-            return importPinnedForm(pinned);
-        });
-        return created[0];
-    }
+    private record CurrentUiContext(String entityId, String entityCode, Map<String, Object> snapshot) { }
+    private record CurrentFormImport(String entityId, Map<String, Object> form) { }
 
-    private void restoreCurrentUiDependencies(EntityDefinition entity, Map<String, Object> snapshot) {
-        applyInterfaceExtensions(entity, interfaceExtensionValues(snapshot));
-        if (snapshot.containsKey("eventBindings")) restoreEventBindings("ENTITY", entity.getId(), mapList(snapshot.get("eventBindings")));
-    }
-
-    /** 补齐固定内容，只在缺少相同内容版本时发布；当前表单由外层第二阶段恢复。 */
-    private com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease importPinnedForm(Map<String, Object> pinned) {
-        String[] coordinate = ConfigMigrationSubFormReferences.coordinate(text(pinned.get("formRef"), ""));
-        EntityDefinition entity = entityMapper.findByEntityCode(mappedKey("ENTITY", coordinate[0]))
-                .orElseThrow(() -> new IllegalStateException("固定子表单所属实体不存在: " + coordinate[0]));
-        Map<String, Object> snapshot = referenceService.importReferences(pinned, this::mappedKey);
-        Map<String, Object> form = mapValue(snapshot.get("form"));
-        form.put("formKey", mappedKey("FORM", coordinate[1]));
-        snapshot.put("forms", List.of(form));
-        prepareUiOwners(entity, snapshot);
-        if (snapshot.containsKey("extensions")) applyExtensions(mapList(snapshot.get("extensions")));
-        List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
-        ensureInterfaceScopeOwners(entity, interfaces, mapList(snapshot.get("forms")), List.of());
-        Map<String, String> interfacesByCode = applyInterfaceExtensions(entity, interfaces);
-        snapshot.put("forms", rewriteInterfaceReferences(snapshot.get("forms"), interfacesByCode));
-        rewriteAttachmentItemReferences(entity, snapshot);
-        Map<String, Object> importedForm = mapList(snapshot.get("forms")).get(0);
-        if (importedForm.containsKey("_inheritedEventBindings")) {
-            restoreEventBindings("ENTITY", entity.getId(), mapList(importedForm.get("_inheritedEventBindings")));
+    /** 全部宿主已存在后，按包内依赖顺序保存和发布当前表单；环或缺失依赖整体回滚。 */
+    private void applyCurrentForms(List<CurrentUiContext> contexts) {
+        Map<String, CurrentFormImport> pending = new LinkedHashMap<>();
+        for (CurrentUiContext context : contexts) for (Map<String, Object> form : mapList(context.snapshot().get("forms")))
+            pending.put("wf-form://" + context.entityCode() + "/" + text(form.get("formKey"), ""),
+                    new CurrentFormImport(context.entityId(), form));
+        Set<String> done = new LinkedHashSet<>();
+        while (!pending.isEmpty()) {
+            boolean progressed = false;
+            for (String ref : List.copyOf(pending.keySet())) {
+                CurrentFormImport value = pending.get(ref);
+                boolean blocked = subFormReferences.formReferences(value.form()).stream()
+                        .anyMatch(child -> pending.containsKey(child) && !done.contains(child));
+                if (blocked) continue;
+                applyForms(entityMapper.selectById(value.entityId()), List.of(value.form()));
+                done.add(ref); pending.remove(ref); progressed = true;
+            }
+            if (!progressed) throw new IllegalArgumentException("迁移包子表单引用循环: " + pending.keySet());
         }
-        applyForms(entity, mapList(snapshot.get("forms")));
-        publishImportedViewCompositions(applyImportedViewCompositions(entity, snapshot));
-        var release = subFormReferences.findMatchingRelease(pinned, this::mappedKey);
-        if (release == null) throw new IllegalStateException("固定子表单导入后内容校验不一致: " + pinned.get("formRef"));
-        return release;
     }
 
-    /** 按 formKey/nodeKey 复用表单和节点；固定子表单引用先换成本地版本，再校验和发布。 */
+    /** 按 formKey/nodeKey 复用表单和节点；子表单身份引用先换成本地 ID，再校验并统一发布。 */
     private void applyForms(EntityDefinition entity, List<Map<String, Object>> values) {
         Map<String, EntityField> fields = fieldsByCode(entity.getId());
         List<String> formIds = new ArrayList<>();
         for (Map<String, Object> sourceValue : values) {
-            Map<String, Object> value = subFormReferences.materialize(sourceValue, this::mappedKey, this::importPinnedForm);
+            Map<String, Object> value = subFormReferences.materialize(sourceValue, this::mappedKey, unused -> { throw new IllegalArgumentException("旧表单版本包需要重新导出"); });
             EntityForm form = convert(value, EntityForm.class);
             EntityForm existing = formMapper.selectByEntityIdAndFormKey(entity.getId(), form.getFormKey());
             form.setId(existing == null ? null : existing.getId());

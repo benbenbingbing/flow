@@ -20,9 +20,6 @@ import com.workflow.entity.ui.application.UiViewCompositionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.core.error.BusinessConflictException;
-import com.workflow.contracts.entity.ui.model.UiHotfixProcessImpact;
-import com.workflow.contracts.entity.ui.port.UiHotfixProcessImpactPort;
-import com.workflow.contracts.entity.ui.model.UiHotfixProcessTarget;
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
 import com.workflow.contracts.migration.port.MigrationAssetPort;
@@ -45,7 +42,6 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiComponentTemplate;
-import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigHotfixTarget;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigReleaseAudit;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
@@ -55,10 +51,8 @@ import com.workflow.entity.list.infrastructure.persistence.mapper.EntityListConf
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiComponentTemplateVersionMapper;
-import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigHotfixTargetMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseAuditMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
-import com.workflow.entity.ui.application.UiHotfixGovernanceService;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiExtensionDefinitionMapper;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
@@ -99,9 +93,9 @@ import static org.mockito.Mockito.when;
  */
 class UiConfigReleaseServiceTest {
 
-    /** 已删除字段的坏接口绑定必须在草稿、普通发布和热修复预检中统一排除。 */
+    /** 已删除字段的坏接口绑定必须在草稿、统一发布预检中统一排除。 */
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings = {"STANDARD", "HOTFIX"})
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"STANDARD"})
     void publishPreviewExcludesOrphanFieldInterfaceBeforeResolvingIt(String mode) {
         TestContext context = context();
         EntityForm draft = form();
@@ -112,7 +106,6 @@ class UiConfigReleaseServiceTest {
         active.setStatus("ACTIVE");
         String historicalDocument = active.getSnapshotDocument();
         when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
-        when(context.processImpactPort().analyzeFormImpact("form-1")).thenReturn(UiHotfixProcessImpact.empty());
         // 删除最后一个字段：兼容字段投影和节点树都为空，不能借旧字段补回目标。
         draft.setNodes(List.of());
         draft.setFields(List.of());
@@ -576,6 +569,24 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void publicationOverwritesOneCurrentRowAndDoesNotCreateVersionHistory() {
+        TestContext context = context();
+        EntityForm draft = form(); draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1")).thenReturn(draft);
+        var mapper = (com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper)
+                ReflectionTestUtils.getField(context.service(), "formPublishedMapper");
+        UiConfigRelease first = context.service().publish("FORM", "form-1", (String) null);
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(first);
+        draft.setFormName("新布局名称");
+        UiConfigRelease second = context.service().publish("FORM", "form-1", (String) null);
+        assertFalse(first.getContentHash().equals(second.getContentHash()));
+        assertEquals(first.getConfigId(), second.getConfigId());
+        verify(mapper).insert(any(com.workflow.entity.form.infrastructure.persistence.record.EntityFormPublished.class));
+        verify(mapper).updateById(any(com.workflow.entity.form.infrastructure.persistence.record.EntityFormPublished.class));
+        verify(context.releaseMapper(), never()).insert(any(UiConfigRelease.class));
+    }
+
+    @Test
     void unchangedStandardFormPublishReusesRelease() {
         TestContext context = context();
         EntityForm draft = form();
@@ -746,7 +757,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void activationValidatesViewCompositionsBeforeSwitchingActiveRelease() {
+    void publicationValidatesViewCompositionsBeforeWritingCurrentConfiguration() {
         TestContext context = context();
         UiConfigRelease target = release(
                 context.codec(),
@@ -760,10 +771,7 @@ class UiConfigReleaseServiceTest {
                 "form-1")).thenReturn(null);
         when(context.releaseMapper().update(any(), any()))
                 .thenReturn(1);
-        context.service().activate(
-                UiConfigReleaseService.FORM,
-                "form-1",
-                "release-target");
+        validateCurrentCandidate(context, target);
 
         verify(context.viewCompositionService())
                 .validateReleaseSnapshot(
@@ -774,7 +782,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void activationUsesPinnedFormButtonDefinitionAfterCurrentServiceDrifts() {
+    void publicationUsesPinnedProviderDefinitionAfterCurrentServiceDrifts() {
         TestContext context = context();
         Map<String, Object> snapshot = pinnedFormButtonSnapshot();
         UiConfigRelease target = release(
@@ -793,10 +801,7 @@ class UiConfigReleaseServiceTest {
                 .thenThrow(new AssertionError(
                         "pinned activation reread current service"));
 
-        UiConfigRelease activated = context.service().activate(
-                UiConfigReleaseService.FORM,
-                "form-1",
-                "release-pinned-button");
+        UiConfigRelease activated = validateCurrentCandidate(context, target);
 
         assertEquals("release-pinned-button", activated.getId());
         verify(context.dataSourceDefinitionMapper(), never())
@@ -812,7 +817,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void activationRejectsPartiallyPinnedFormButtonWithoutLegacyFallback() {
+    void publicationRejectsPartiallyPinnedProviderWithoutLegacyFallback() {
         TestContext context = context();
         Map<String, Object> snapshot = pinnedFormButtonSnapshot();
         @SuppressWarnings("unchecked")
@@ -827,10 +832,7 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        "release-damaged-pin"));
+                () -> validateCurrentCandidate(context, target));
 
         assertTrue(error.getMessage().contains("钉版操作版本或字段不完整"));
         verify(context.dataSourceDefinitionMapper(), never())
@@ -841,7 +843,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void invalidViewCompositionStopsActivationBeforeAnyReleaseStateChange() {
+    void invalidCompositionStopsPublicationBeforeStateChange() {
         TestContext context = context();
         UiConfigRelease target = release(
                 context.codec(),
@@ -864,23 +866,20 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        "release-invalid-composition"));
+                () -> validateCurrentCandidate(context, target));
 
         assertTrue(failure.getMessage().contains("挂载的表单节点不存在"));
         verify(context.releaseMapper(), never()).update(any(), any());
     }
 
     @Test
-    void hotfixEffectiveSnapshotUsesTheSameViewCompositionValidation() {
+    void publishedSnapshotUsesTheSameViewCompositionValidation() {
         TestContext context = context();
         Map<String, Object> effective = formSnapshot(List.of());
 
         ReflectionTestUtils.invokeMethod(
                 context.service(),
-                "validatedEffectiveSnapshot",
+                "validateSnapshotForActivation",
                 UiConfigReleaseService.FORM,
                 "form-1",
                 effective);
@@ -1415,9 +1414,8 @@ class UiConfigReleaseServiceTest {
                 (Map<String, Object>) ((List<?>) snapshotList.get(
                         "toolbarConfig")).get(0);
 
-        assertEquals("form-release-3",
-                button.get("targetFormReleaseId"));
-        assertEquals(3, button.get("targetFormReleaseVersion"));
+        assertNull(button.get("targetFormReleaseId"));
+        assertNull(button.get("targetFormReleaseVersion"));
     }
 
     /**
@@ -1437,7 +1435,6 @@ class UiConfigReleaseServiceTest {
                 mock(UiInterfaceExtensionService.class);
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
-                mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
                 new UiConfigInterfaceReferenceValidator(
                         mock(UiExtensionDefinitionMapper.class),
@@ -1460,7 +1457,6 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigService.class),
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
-                mock(UiHotfixProcessImpactPort.class),
                 mock(UiConfigurationAccessService.class),
                 mock(UiReleaseResolutionTokenService.class),
                 mock(FormSubmissionTraceService.class),
@@ -1610,54 +1606,6 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void formStructuralHotfixIsReviewAndPublishableWithoutOverride() {
-        TestContext context = context();
-        EntityForm form = form();
-        form.setDataSourceBindingsDocument("{}");
-        when(context.formService().getById("form-1")).thenReturn(form);
-
-        Map<String, Object> activeSnapshot =
-                context.codec().readObject(
-                        context.codec().write(
-                                context.service().draftSnapshot(
-                                        UiConfigReleaseService.FORM,
-                                        "form-1"),
-                                "测试流程表单热修复基线"),
-                        "测试流程表单热修复基线");
-        activeSnapshot.put("nodes", List.of());
-        UiConfigRelease active = release(
-                context.codec(),
-                "release-1",
-                activeSnapshot);
-        active.setStatus("ACTIVE");
-        when(context.releaseMapper().findActive(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(active);
-        when(context.processImpactPort().analyzeFormImpact("form-1"))
-                .thenReturn(UiHotfixProcessImpact.empty());
-
-        UiConfigPublishRequest request = new UiConfigPublishRequest();
-        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
-
-        UiConfigPublishPreviewDTO preview =
-                context.service().publishPreview(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        request);
-
-        assertEquals(
-                UiConfigSemanticPatchService.REVIEW,
-                preview.getRiskLevel());
-        assertFalse(preview.isRequiresOverride());
-        assertTrue(preview.isCanPublish());
-        assertTrue(preview.getBlockers().isEmpty());
-        assertTrue(preview.getRiskItems().stream().noneMatch(item ->
-                UiConfigSemanticPatchService.BLOCKED.equals(
-                        item.getRiskLevel())));
-    }
-
-    @Test
     void rejectsListHotfixPreview() {
         TestContext context = context();
         EntityListConfigDTO list = listConfig(5);
@@ -1693,231 +1641,16 @@ class UiConfigReleaseServiceTest {
         UiConfigPublishRequest request = new UiConfigPublishRequest();
         request.setReleaseMode(UiConfigReleaseService.HOTFIX);
 
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
                 () -> context.service().publishPreview(
                         UiConfigReleaseService.LIST,
                         "list-1",
                         request));
 
-        assertEquals(
-                "LIST_HOTFIX_NOT_SUPPORTED",
-                exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("热修复已取消"));
     }
 
-    @Test
-    @SuppressWarnings("unchecked")
-    void corruptPreviousHotfixFallsBackToValidatedFullSnapshot() {
-        TestContext context = context();
-        EntityForm draft = form();
-        when(context.formService().getById("form-1"))
-                .thenReturn(draft);
-
-        Map<String, Object> activeSnapshot =
-                context.codec().readObject(
-                        context.codec().write(
-                                context.service().draftSnapshot(
-                                        UiConfigReleaseService.FORM,
-                                        "form-1"),
-                                "测试强制热修复当前基线"),
-                        "测试强制热修复当前基线");
-        Map<String, Object> activeNode =
-                (Map<String, Object>) ((List<?>) activeSnapshot.get(
-                        "nodes")).get(0);
-        Map<String, Object> activeProps =
-                context.codec().readObject(
-                        String.valueOf(activeNode.get("propsDocument")),
-                        "测试强制热修复当前基线节点");
-        activeProps.put("label", "发布前标题");
-        activeNode.put(
-                "propsDocument",
-                context.codec().write(
-                        activeProps,
-                        "测试强制热修复当前基线节点"));
-        UiConfigRelease active = release(
-                context.codec(),
-                "release-2",
-                activeSnapshot);
-        active.setVersion(2);
-        active.setStatus("ACTIVE");
-
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-1",
-                formSnapshot(List.of(labelNode("原始标题"))));
-        UiConfigHotfixTarget previous = target(
-                context.codec(),
-                "target-broken",
-                "hotfix-2",
-                "release-1",
-                1,
-                formSnapshot(List.of(labelNode("旧热修复标题"))));
-        previous.setEffectiveContentHash("tampered");
-
-        when(context.releaseMapper().findActive(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(active);
-        when(context.releaseMapper().findReleases(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(List.of(active));
-        when(context.releaseMapper().selectById("release-1"))
-                .thenReturn(pinned);
-        when(context.hotfixTargetMapper().findActiveTarget(
-                UiConfigReleaseService.FORM,
-                "form-1",
-                "history-1")).thenReturn(previous);
-        when(context.hotfixTargetMapper().update(any(), any()))
-                .thenReturn(1);
-        when(context.processImpactPort().analyzeFormImpact(
-                "form-1")).thenReturn(new UiHotfixProcessImpact(
-                        List.of(processTarget(
-                                "release-1",
-                                1)),
-                        1,
-                        1L,
-                        0L,
-                        "impact-force-1"));
-
-        AtomicReference<UiConfigHotfixTarget> savedTarget =
-                new AtomicReference<>();
-        doAnswer(invocation -> {
-            UiConfigRelease release = invocation.getArgument(0);
-            release.setId("hotfix-3");
-            return 1;
-        }).when(context.releaseMapper()).insert(
-                any(UiConfigRelease.class));
-        doAnswer(invocation -> {
-            UiConfigHotfixTarget target = invocation.getArgument(0);
-            target.setId("target-force-1");
-            savedTarget.set(target);
-            return 1;
-        }).when(context.hotfixTargetMapper()).insert(
-                any(UiConfigHotfixTarget.class));
-
-        UiConfigPublishRequest previewRequest =
-                new UiConfigPublishRequest();
-        previewRequest.setReleaseMode(
-                UiConfigReleaseService.HOTFIX);
-        UiConfigPublishPreviewDTO preview =
-                context.service().publishPreview(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        previewRequest);
-
-        assertTrue(preview.isCanPublish());
-        assertTrue(preview.getBlockers().isEmpty());
-        assertEquals(
-                UiConfigSemanticPatchService.REVIEW,
-                preview.getRiskLevel());
-        assertEquals(
-                "FULL_SNAPSHOT",
-                preview.getTargets().get(0).getApplicationMode());
-        assertTrue(preview.getTargets().get(0)
-                .getReviewNotes().stream().anyMatch(note ->
-                        note.contains("完整性校验失败")));
-
-        context.service().publish(
-                UiConfigReleaseService.FORM,
-                "form-1",
-                hotfixPublishRequest(preview));
-
-        assertNull(savedTarget.get().getPreviousTargetId());
-        Map<String, Object> effective =
-                context.codec().readObject(
-                        savedTarget.get()
-                                .getEffectiveSnapshotDocument(),
-                        "测试强制热修复有效快照");
-        Map<String, Object> effectiveNode =
-                (Map<String, Object>) ((List<?>) effective.get(
-                        "nodes")).get(0);
-        assertEquals(
-                "名称",
-                context.codec().readObject(
-                        String.valueOf(
-                                effectiveNode.get("propsDocument")),
-                        "测试强制热修复有效快照节点").get("label"));
-    }
-
-    @Test
-    @SuppressWarnings("unchecked")
-    void missingStableTargetEntryUsesFullSnapshotFallback() {
-        TestContext context = context();
-        EntityForm draft = form();
-        when(context.formService().getById("form-1"))
-                .thenReturn(draft);
-
-        Map<String, Object> activeSnapshot =
-                context.codec().readObject(
-                        context.codec().write(
-                                context.service().draftSnapshot(
-                                        UiConfigReleaseService.FORM,
-                                        "form-1"),
-                                "测试旧流程稳定条目基线"),
-                        "测试旧流程稳定条目基线");
-        Map<String, Object> activeNode =
-                (Map<String, Object>) ((List<?>) activeSnapshot.get(
-                        "nodes")).get(0);
-        Map<String, Object> activeProps =
-                context.codec().readObject(
-                        String.valueOf(activeNode.get("propsDocument")),
-                        "测试旧流程稳定条目基线节点");
-        activeProps.put("label", "发布前标题");
-        activeNode.put(
-                "propsDocument",
-                context.codec().write(
-                        activeProps,
-                        "测试旧流程稳定条目基线节点"));
-        UiConfigRelease active = release(
-                context.codec(),
-                "release-2",
-                activeSnapshot);
-        active.setVersion(2);
-        active.setStatus("ACTIVE");
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-1",
-                formSnapshot(List.of()));
-
-        when(context.releaseMapper().findActive(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(active);
-        when(context.releaseMapper().selectById("release-1"))
-                .thenReturn(pinned);
-        when(context.processImpactPort().analyzeFormImpact(
-                "form-1")).thenReturn(new UiHotfixProcessImpact(
-                        List.of(processTarget(
-                                "release-1",
-                                1)),
-                        1,
-                        1L,
-                        0L,
-                        "impact-force-2"));
-
-        UiConfigPublishRequest request =
-                new UiConfigPublishRequest();
-        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
-        UiConfigPublishPreviewDTO preview =
-                context.service().publishPreview(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        request);
-
-        assertTrue(preview.isCanPublish());
-        assertTrue(preview.getBlockers().isEmpty());
-        assertTrue(preview.getTargets().get(0).isCompatible());
-        assertEquals(
-                "FULL_SNAPSHOT",
-                preview.getTargets().get(0).getApplicationMode());
-        assertTrue(preview.getTargets().get(0)
-                .getReviewNotes().stream().anyMatch(note ->
-                        note.contains("缺少稳定条目")
-                                && note.contains("完整快照覆盖")));
-    }
-
-    /**
-     * 测试列表首次发布前的差异计算：
-     * 验证没有激活版本时，首次列表设置能够正常生成差异。
-     */
     @Test
     void reportsInitialListDiffWhenNoActiveReleaseExists() {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
@@ -1938,7 +1671,6 @@ class UiConfigReleaseServiceTest {
 
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
-                mock(UiConfigHotfixTargetMapper.class),
                 mock(UiConfigReleaseAuditMapper.class),
                 new UiConfigInterfaceReferenceValidator(
                         mock(UiExtensionDefinitionMapper.class),
@@ -1961,7 +1693,6 @@ class UiConfigReleaseServiceTest {
                 listConfigService,
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
-                mock(UiHotfixProcessImpactPort.class),
                 mock(UiConfigurationAccessService.class),
                 mock(UiReleaseResolutionTokenService.class),
                 mock(FormSubmissionTraceService.class),
@@ -1983,7 +1714,7 @@ class UiConfigReleaseServiceTest {
      * 验证抛出 IllegalArgumentException 且消息包含"完整性校验失败"。
      */
     @Test
-    void rejectsActivationWhenSnapshotHashDoesNotMatch() {
+    void rejectsPublicationWhenSnapshotHashDoesNotMatch() {
         TestContext context = context();
         UiConfigRelease release = release(
                 context.codec(),
@@ -1994,62 +1725,32 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, release));
 
         assertTrue(exception.getMessage().contains("完整性校验失败"));
     }
 
-    /**
-     * 测试解析钉住的未激活表单发布并递归加载其节点：
-     * 验证返回的表单与节点层级、pinned 标志符合预期。
-     */
-    @Test
-    void resolvesPinnedInactiveFormReleaseWithRecursiveNodes() {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(UiRuntimePurpose.class)
+    void everyRuntimePurposeReadsCurrentConfiguration(UiRuntimePurpose purpose) {
         TestContext context = context();
-        UiConfigRelease release = release(
-                context.codec(),
-                "release-7",
-                formSnapshot(List.of(node("section", null, "SECTION"))));
-        release.setVersion(7);
-        when(context.releaseMapper().selectById("release-7"))
-                .thenReturn(release);
-
-        ResolvedEntityFormRelease resolution =
-                context.service().resolveRuntimeFormRelease(
-                "form-1",
-                "release-7",
-                7);
-
-        EntityForm form = resolution.form();
-        assertEquals("form-1", form.getId());
-        assertEquals(1, form.getNodes().size());
-        assertEquals("section", form.getNodes().get(0).getId());
-        assertTrue(resolution.pinned());
+        UiConfigRelease current = release(context.codec(), "current-hash",
+                formSnapshot(List.of(node("current-section", null, "SECTION"))));
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(current);
+        ResolvedEntityFormRelease result = context.service().resolveRuntimeFormRelease("form-1", "old-version-id", 99,
+                new UiRuntimeResolutionContext(purpose, "history-1", "node-1"));
+        assertEquals("current-hash", result.releaseId());
+        assertEquals("current-section", result.form().getNodes().get(0).getId());
+        assertFalse(result.hotfixApplied());
+        verify(context.releaseMapper(), never()).selectById("old-version-id");
     }
 
-    /**
-     * 测试钉住发布的版本号与流程快照版本不一致时拒绝解析：
-     * 验证抛出 IllegalArgumentException 且消息包含"版本号与流程快照不一致"。
-     */
     @Test
-    void rejectsPinnedReleaseVersionMismatch() {
+    void formHistoryActivationAndHotfixAreRetired() {
         TestContext context = context();
-        UiConfigRelease release = release(
-                context.codec(),
-                "release-7",
-                formSnapshot(List.of()));
-        release.setVersion(7);
-        when(context.releaseMapper().selectById("release-7"))
-                .thenReturn(release);
-
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> context.service().resolveRuntimeForm(
-                        "form-1",
-                        "release-7",
-                        8));
-
-        assertTrue(exception.getMessage().contains("版本号与流程快照不一致"));
+        assertThrows(IllegalArgumentException.class, () -> context.service().activate("FORM", "form-1", "old-id"));
+        UiConfigPublishRequest request = new UiConfigPublishRequest(); request.setReleaseMode("HOTFIX");
+        assertThrows(IllegalArgumentException.class, () -> context.service().publish("FORM", "form-1", request));
     }
 
     @Test
@@ -2071,7 +1772,7 @@ class UiConfigReleaseServiceTest {
                         "release-history",
                         1));
 
-        assertEquals("FORM_RELEASE_CONFLICT", exception.getErrorCode());
+        assertEquals("FORM_CONFIGURATION_CHANGED", exception.getErrorCode());
     }
 
     @Test
@@ -2127,6 +1828,7 @@ class UiConfigReleaseServiceTest {
         pinned.setVersion(3);
         when(context.releaseMapper().selectById("release-3"))
                 .thenReturn(pinned);
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(pinned);
         long now = Instant.now().getEpochSecond();
         long sessionExpiresAt = now + 1_800L;
         UiRuntimeResolutionContext runtimeContext =
@@ -2170,49 +1872,6 @@ class UiConfigReleaseServiceTest {
                 eq(3),
                 eq(1),
                 eq(Instant.ofEpochSecond(sessionExpiresAt)));
-    }
-
-    @Test
-    void activeTaskUsesEffectiveHotfixSnapshot() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                formSnapshot(List.of(labelNode("旧标题"))));
-        pinned.setVersion(2);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-        UiConfigHotfixTarget target = target(
-                context.codec(),
-                "target-1",
-                "hotfix-3",
-                "release-2",
-                2,
-                formSnapshot(List.of(labelNode("修复标题"))));
-        when(context.hotfixTargetMapper().findActiveTarget(
-                "FORM",
-                "form-1",
-                "history-1"))
-                .thenReturn(target);
-
-        ResolvedEntityFormRelease resolved =
-                context.service().resolveRuntimeFormRelease(
-                        "form-1",
-                        "release-2",
-                        2,
-                        new UiRuntimeResolutionContext(
-                                UiRuntimePurpose.ACTIVE_TASK,
-                                "history-1",
-                                "task-1"));
-
-        assertTrue(resolved.hotfixApplied());
-        assertEquals("hotfix-3", resolved.effectiveReleaseId());
-        assertEquals(
-                "修复标题",
-                context.codec().readObject(
-                        resolved.form().getNodes().get(0)
-                                .getPropsDocument(),
-                                "测试节点属性").get("label"));
     }
 
     @Test
@@ -2374,373 +2033,7 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void publishedHotfixImmediatelyFeedsNewInstanceAndActiveTaskRuntime() {
-        TestContext context = context();
-        EntityForm draft = form();
-        when(context.formService().getById("form-1"))
-                .thenReturn(draft);
-
-        Map<String, Object> activeSnapshot =
-                context.codec().readObject(
-                        context.codec().write(
-                                context.service().draftSnapshot(
-                                        UiConfigReleaseService.FORM,
-                                        "form-1"),
-                                "测试表单热修复发布基线"),
-                        "测试表单热修复发布基线");
-        Map<String, Object> activeNode =
-                (Map<String, Object>) ((List<?>) activeSnapshot.get(
-                        "nodes")).get(0);
-        Map<String, Object> activeProps =
-                context.codec().readObject(
-                        String.valueOf(activeNode.get(
-                                "propsDocument")),
-                        "测试表单热修复发布基线节点");
-        activeProps.put("label", "发布前标题");
-        activeNode.put(
-                "propsDocument",
-                context.codec().write(
-                        activeProps,
-                        "测试表单热修复发布基线节点"));
-
-        UiConfigRelease active = release(
-                context.codec(),
-                "release-2",
-                activeSnapshot);
-        active.setVersion(2);
-        active.setStatus("ACTIVE");
-        when(context.releaseMapper().findActive(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(active);
-        when(context.releaseMapper().findReleases(
-                UiConfigReleaseService.FORM,
-                "form-1")).thenReturn(List.of(active));
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(active);
-
-        UiHotfixProcessTarget processTarget =
-                new UiHotfixProcessTarget(
-                        "history-1",
-                        "process-1",
-                        "expense-flow",
-                        "费用审批",
-                        2,
-                        "deployment-2",
-                        "release-2",
-                        2,
-                        List.of("Task_Approve"),
-                        true,
-                        1L,
-                        3L);
-        when(context.processImpactPort().analyzeFormImpact(
-                "form-1")).thenReturn(new UiHotfixProcessImpact(
-                        List.of(processTarget),
-                        1,
-                        1L,
-                        3L,
-                        "impact-1"));
-
-        AtomicReference<UiConfigHotfixTarget> savedTarget =
-                new AtomicReference<>();
-        when(context.hotfixTargetMapper().findActiveTarget(
-                UiConfigReleaseService.FORM,
-                "form-1",
-                "history-1"))
-                .thenAnswer(ignored -> savedTarget.get());
-        doAnswer(invocation -> {
-            UiConfigRelease release =
-                    invocation.getArgument(0);
-            release.setId("hotfix-3");
-            return 1;
-        }).when(context.releaseMapper()).insert(
-                any(UiConfigRelease.class));
-        doAnswer(invocation -> {
-            UiConfigHotfixTarget target =
-                    invocation.getArgument(0);
-            target.setId("target-1");
-            savedTarget.set(target);
-            return 1;
-        }).when(context.hotfixTargetMapper()).insert(
-                any(UiConfigHotfixTarget.class));
-
-        UiConfigPublishRequest previewRequest =
-                new UiConfigPublishRequest();
-        previewRequest.setReleaseMode(
-                UiConfigReleaseService.HOTFIX);
-        UiConfigPublishPreviewDTO preview =
-                context.service().publishPreview(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        previewRequest);
-        UiConfigPublishRequest publishRequest =
-                new UiConfigPublishRequest();
-        publishRequest.setReleaseMode(
-                UiConfigReleaseService.HOTFIX);
-        publishRequest.setRolloutScope("ACTIVE_AND_FUTURE");
-        publishRequest.setExpectedActiveReleaseId(
-                preview.getActiveReleaseId());
-        publishRequest.setExpectedDraftHash(
-                preview.getDraftHash());
-        publishRequest.setImpactToken(
-                preview.getImpactToken());
-
-        UiConfigRelease published =
-                context.service().publish(
-                        UiConfigReleaseService.FORM,
-                        "form-1",
-                        publishRequest);
-
-        assertEquals("hotfix-3", published.getId());
-        assertEquals(3, published.getVersion());
-        assertEquals(
-                UiConfigReleaseService.HOTFIX,
-                published.getReleaseMode());
-        assertEquals(
-                "hotfix-3",
-                savedTarget.get().getHotfixReleaseId());
-        assertEquals(
-                "release-2",
-                savedTarget.get().getPinnedReleaseId());
-
-        for (UiRuntimePurpose purpose : List.of(
-                UiRuntimePurpose.NEW_INSTANCE,
-                UiRuntimePurpose.ACTIVE_TASK)) {
-            ResolvedEntityFormRelease resolved =
-                    context.service().resolveRuntimeFormRelease(
-                            "form-1",
-                            "release-2",
-                            2,
-                            new UiRuntimeResolutionContext(
-                                    purpose,
-                                    "history-1",
-                                    "Task_Approve"));
-            assertTrue(resolved.hotfixApplied());
-            assertEquals(
-                    "hotfix-3",
-                    resolved.effectiveReleaseId());
-            assertEquals(
-                    "名称",
-                    context.codec().readObject(
-                            resolved.form().getNodes().get(0)
-                                    .getPropsDocument(),
-                            "测试热修复运行时节点").get("label"));
-        }
-    }
-
-    @Test
-    void historicalPurposeAlwaysUsesOriginalPinnedSnapshot() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                formSnapshot(List.of(labelNode("历史标题"))));
-        pinned.setVersion(2);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-
-        ResolvedEntityFormRelease resolved =
-                context.service().resolveRuntimeFormRelease(
-                        "form-1",
-                        "release-2",
-                        2,
-                        new UiRuntimeResolutionContext(
-                                UiRuntimePurpose.HISTORICAL,
-                                "history-1",
-                                "task-1"));
-
-        assertFalse(resolved.hotfixApplied());
-        assertEquals(
-                "历史标题",
-                context.codec().readObject(
-                        resolved.form().getNodes().get(0)
-                                .getPropsDocument(),
-                        "测试节点属性").get("label"));
-    }
-
-    @Test
-    void trustedEffectiveFormReleaseUsesExactTargetSnapshotAfterRollback() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                formSnapshot(List.of(labelNode("基础版本"))));
-        pinned.setVersion(2);
-        UiConfigRelease genericHotfix = release(
-                context.codec(),
-                "hotfix-3",
-                formSnapshot(List.of(labelNode("热修复发布自身快照"))));
-        genericHotfix.setVersion(3);
-        genericHotfix.setReleaseMode(UiConfigReleaseService.HOTFIX);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-        when(context.releaseMapper().selectById("hotfix-3"))
-                .thenReturn(genericHotfix);
-
-        UiConfigHotfixTarget target = target(
-                context.codec(),
-                "target-1",
-                "hotfix-3",
-                "release-2",
-                2,
-                formSnapshot(List.of(labelNode("目标有效快照"))));
-        // 终检时 target 可能刚被回滚，但同一次提交不能因此切换规则快照。
-        target.setStatus("ROLLED_BACK");
-        when(context.hotfixTargetMapper().selectById("target-1"))
-                .thenReturn(target);
-
-        ResolvedEntityFormRelease resolved = context.service()
-                .resolveTrustedEffectiveFormRelease(
-                        "form-1",
-                        "release-2",
-                        2,
-                        "hotfix-3",
-                        target.getEffectiveContentHash(),
-                        "target-1");
-
-        assertEquals("target-1", resolved.hotfixTargetId());
-        assertEquals(
-                target.getEffectiveContentHash(),
-                resolved.effectiveContentHash());
-        assertEquals(
-                "目标有效快照",
-                context.codec().readObject(
-                        resolved.form().getNodes().get(0)
-                                .getPropsDocument(),
-                        "测试节点属性").get("label"));
-        verify(context.hotfixTargetMapper(), never())
-                .findActiveTarget(any(), any(), any());
-
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> context.service()
-                        .resolveTrustedEffectiveFormRelease(
-                                "form-1",
-                                "release-2",
-                                2,
-                                "hotfix-3",
-                                "wrong-hash",
-                                "target-1"));
-    }
-
-    @Test
-    void corruptHotfixTargetFailsClosedInsteadOfSilentlyUsingPinnedSnapshot() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                formSnapshot(List.of(labelNode("原始标题"))));
-        pinned.setVersion(2);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-        UiConfigHotfixTarget target = target(
-                context.codec(),
-                "target-1",
-                "hotfix-3",
-                "release-2",
-                2,
-                formSnapshot(List.of(labelNode("修复标题"))));
-        target.setEffectiveContentHash("tampered");
-        when(context.hotfixTargetMapper().findActiveTarget(
-                "FORM",
-                "form-1",
-                "history-1"))
-                .thenReturn(target);
-
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> context.service().resolveRuntimeFormRelease(
-                        "form-1",
-                        "release-2",
-                        2,
-                        new UiRuntimeResolutionContext(
-                                UiRuntimePurpose.ACTIVE_TASK,
-                                "history-1",
-                                "task-1")));
-
-        assertTrue(exception.getMessage().contains(
-                "热修复运行时快照解析失败"));
-    }
-
-    @Test
-    void mismatchedHotfixTargetFailsClosed() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                formSnapshot(List.of(labelNode("原始标题"))));
-        pinned.setVersion(2);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-        UiConfigHotfixTarget target = target(
-                context.codec(),
-                "target-1",
-                "hotfix-3",
-                "release-other",
-                8,
-                formSnapshot(List.of(labelNode("修复标题"))));
-        when(context.hotfixTargetMapper().findActiveTarget(
-                "FORM",
-                "form-1",
-                "history-1"))
-                .thenReturn(target);
-
-        IllegalStateException exception = assertThrows(
-                IllegalStateException.class,
-                () -> context.service().resolveRuntimeFormRelease(
-                        "form-1",
-                        "release-2",
-                        2,
-                        new UiRuntimeResolutionContext(
-                                UiRuntimePurpose.NEW_INSTANCE,
-                                "history-1",
-                                "task-1")));
-
-        assertTrue(exception.getMessage().contains(
-                "热修复目标与流程钉定表单版本不一致"));
-    }
-
-    @Test
-    void rejectsTargetlessHotfixRollbackWhenReleaseIsNoLongerActive() {
-        TestContext context = context();
-        UiConfigRelease hotfix = release(
-                context.codec(),
-                "hotfix-2",
-                formSnapshot(List.of(labelNode("修复标题"))));
-        hotfix.setReleaseMode("HOTFIX");
-        hotfix.setBaseReleaseId("release-1");
-        UiConfigRelease current = release(
-                context.codec(),
-                "release-3",
-                formSnapshot(List.of(labelNode("后续标题"))));
-        current.setStatus("ACTIVE");
-        when(context.releaseMapper().selectById("hotfix-2"))
-                .thenReturn(hotfix);
-        when(context.hotfixTargetMapper().findByHotfixReleaseId(
-                "hotfix-2")).thenReturn(List.of());
-        when(context.releaseMapper().findActive(
-                "FORM",
-                "form-1")).thenReturn(current);
-
-        BusinessConflictException exception = assertThrows(
-                BusinessConflictException.class,
-                () -> context.service().rollbackHotfix(
-                        "FORM",
-                        "form-1",
-                        "hotfix-2",
-                        "测试越序回滚"));
-
-        assertEquals(
-                "HOTFIX_ROLLBACK_ORDER_CONFLICT",
-                exception.getErrorCode());
-    }
-
-    /**
-     * 测试激活时 TAB 节点不在 TAB_SET 内被拒绝：
-     * 验证抛出 IllegalArgumentException 且消息包含"TAB 节点只能位于 TAB_SET"。
-     */
-    @Test
-    void rejectsActivationWhenTabIsOutsideTabSet() {
+    void rejectsPublicationWhenTabIsOutsideTabSet() {
         TestContext context = context();
         UiConfigRelease release = release(
                 context.codec(),
@@ -2750,7 +2043,7 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, release));
 
         assertTrue(exception.getMessage().contains("TAB 节点只能位于 TAB_SET"));
     }
@@ -2760,7 +2053,7 @@ class UiConfigReleaseServiceTest {
      * 验证抛出 IllegalArgumentException 且消息包含"不能超过 8 层"。
      */
     @Test
-    void rejectsActivationWhenSnapshotExceedsEightLevels() {
+    void rejectsPublicationWhenSnapshotExceedsEightLevels() {
         TestContext context = context();
         List<Map<String, Object>> nodes = new ArrayList<>();
         String parentId = null;
@@ -2775,7 +2068,7 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, release));
 
         assertTrue(exception.getMessage().contains("不能超过 8 层"));
     }
@@ -2785,7 +2078,7 @@ class UiConfigReleaseServiceTest {
      * 验证抛出 IllegalArgumentException 且消息包含"不能直接包含"。
      */
     @Test
-    void rejectsActivationWhenLeafNodeContainsChild() {
+    void rejectsPublicationWhenLeafNodeContainsChild() {
         TestContext context = context();
         UiConfigRelease release = release(
                 context.codec(),
@@ -2797,7 +2090,7 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, release));
 
         assertTrue(exception.getMessage().contains("不能直接包含"));
     }
@@ -2807,7 +2100,7 @@ class UiConfigReleaseServiceTest {
      * 验证抛出 IllegalArgumentException 且消息包含"存在循环"。
      */
     @Test
-    void rejectsActivationWhenPublishedFormReferencesCycle() {
+    void rejectsPublicationWhenPublishedFormReferencesCycle() {
         TestContext context = context();
         UiConfigRelease target = release(
                 context.codec(),
@@ -2826,7 +2119,7 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, target));
 
         assertTrue(exception.getMessage().contains("存在循环"));
     }
@@ -2836,7 +2129,7 @@ class UiConfigReleaseServiceTest {
      * 验证抛出 IllegalArgumentException 且消息包含"跨表单嵌套层级不能超过 8 层"。
      */
     @Test
-    void rejectsActivationWhenPublishedFormReferencesExceedEightLevels() {
+    void rejectsPublicationWhenPublishedFormReferencesExceedEightLevels() {
         TestContext context = context();
         UiConfigRelease target = release(
                 context.codec(),
@@ -2859,13 +2152,13 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate("FORM", "form-1", "release-1"));
+                () -> validateCurrentCandidate(context, target));
 
         assertTrue(exception.getMessage().contains("跨表单嵌套层级不能超过 8 层"));
     }
 
     @Test
-    void rejectsActivationWhenLegacySubListSnapshotHasNoPinnedRelease() {
+    void rejectsPublicationWhenLegacySubListSnapshotHasNoPinnedRelease() {
         TestContext context = context();
         Map<String, Object> fieldNode =
                 node("embedded-list", null, "FIELD");
@@ -2906,16 +2199,13 @@ class UiConfigReleaseServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> context.service().activate(
-                        "FORM",
-                        "form-1",
-                        "release-sub-list"));
+                () -> validateCurrentCandidate(context, release));
 
-        assertTrue(exception.getMessage().contains("缺少固定列表版本"));
+        assertTrue(exception.getMessage().contains("子列表实体字段已停用"));
     }
 
     @Test
-    void activatesFormWithHistoricalPinnedSubListRelease() {
+    void validatesCurrentFormWithPinnedListRelease() {
         TestContext context = context();
         Map<String, Object> fieldNode =
                 node("embedded-list-history", null, "FIELD");
@@ -2977,13 +2267,12 @@ class UiConfigReleaseServiceTest {
                 "default"))
                 .thenReturn(targetList);
 
-        UiConfigRelease activated = context.service().activate(
-                "FORM",
-                "form-1",
-                "release-sub-list-history");
+        ReflectionTestUtils.invokeMethod(context.service(), "validateSubListReferences",
+                context.codec().readObject(formRelease.getSnapshotDocument(), "测试子列表引用"));
+        UiConfigRelease activated = formRelease;
 
         assertEquals("release-sub-list-history", activated.getId());
-        assertEquals("ACTIVE", activated.getStatus());
+
     }
 
     @Test
@@ -3038,81 +2327,6 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
-    void eventSnapshotTracksHotfixAndRollbackForReusedProcessForm() {
-        TestContext context = context();
-        Map<String, Object> pinnedSnapshot =
-                formSnapshot(List.of(labelNode("原始标题")));
-        pinnedSnapshot.put(
-                "eventBindings",
-                List.of(eventBindingSnapshot("form.originalPhone")));
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-2",
-                pinnedSnapshot);
-        pinned.setVersion(2);
-        when(context.releaseMapper().selectById("release-2"))
-                .thenReturn(pinned);
-
-        Map<String, Object> effectiveSnapshot =
-                formSnapshot(List.of(labelNode("热修复标题")));
-        effectiveSnapshot.put(
-                "eventBindings",
-                List.of(eventBindingSnapshot("form.hotfixPhone")));
-        UiConfigHotfixTarget target = target(
-                context.codec(),
-                "target-1",
-                "hotfix-3",
-                "release-2",
-                2,
-                effectiveSnapshot);
-        when(context.hotfixTargetMapper().selectById("target-1"))
-                .thenReturn(target);
-        when(context.hotfixTargetMapper().findActiveTarget(
-                "FORM",
-                "form-1",
-                "history-1"))
-                .thenReturn(target, target, null);
-        when(context.resolutionTokenService().verify("task-a-token"))
-                .thenReturn(tokenClaims("Task_A"));
-        when(context.resolutionTokenService().verify("task-b-token"))
-                .thenReturn(tokenClaims("Task_B"));
-        when(context.resolutionTokenService().verify("rolled-back-token"))
-                .thenReturn(tokenClaims("Task_A"));
-
-        UiConfigReleaseService.ResolvedUiEventSnapshot taskA =
-                context.service().resolveRuntimeEventSnapshot(
-                        "form-1",
-                        "release-2",
-                        2,
-                        "task-a-token");
-        UiConfigReleaseService.ResolvedUiEventSnapshot taskB =
-                context.service().resolveRuntimeEventSnapshot(
-                        "form-1",
-                        "release-2",
-                        2,
-                        "task-b-token");
-        UiConfigReleaseService.ResolvedUiEventSnapshot rolledBack =
-                context.service().resolveRuntimeEventSnapshot(
-                        "form-1",
-                        "release-2",
-                        2,
-                        "rolled-back-token");
-
-        assertTrue(taskA.hotfixApplied());
-        assertTrue(taskB.hotfixApplied());
-        assertEquals(
-                "form.hotfixPhone",
-                firstSelectionTarget(taskA.snapshot()));
-        assertEquals(
-                firstSelectionTarget(taskA.snapshot()),
-                firstSelectionTarget(taskB.snapshot()));
-        assertFalse(rolledBack.hotfixApplied());
-        assertEquals(
-                "form.originalPhone",
-                firstSelectionTarget(rolledBack.snapshot()));
-    }
-
-    @Test
     void standaloneEventRejectsClientSelectedHistoricalRelease() {
         TestContext context = context();
         UiConfigRelease active = release(
@@ -3135,7 +2349,7 @@ class UiConfigReleaseServiceTest {
                                 null));
 
         assertEquals(
-                "UI_EVENT_RELEASE_CONFLICT",
+                "FORM_CONFIGURATION_CHANGED",
                 exception.getErrorCode());
     }
 
@@ -3186,45 +2400,76 @@ class UiConfigReleaseServiceTest {
         assertNull(event.afterData());
     }
 
-    private UiHotfixProcessTarget processTarget(
-            String pinnedReleaseId,
-            Integer pinnedReleaseVersion) {
-        return new UiHotfixProcessTarget(
-                "history-1",
-                "process-1",
-                "expense-flow",
-                "费用审批",
-                1,
-                "deployment-1",
-                pinnedReleaseId,
-                pinnedReleaseVersion,
-                List.of("Task_Approve"),
-                true,
-                1L,
-                0L);
-    }
-
-    private UiConfigPublishRequest hotfixPublishRequest(
-            UiConfigPublishPreviewDTO preview) {
-        UiConfigPublishRequest request =
-                new UiConfigPublishRequest();
-        request.setReleaseMode(UiConfigReleaseService.HOTFIX);
-        request.setRolloutScope(
-                UiConfigReleaseService.ACTIVE_AND_FUTURE);
-        request.setExpectedActiveReleaseId(
-                preview.getActiveReleaseId());
-        request.setExpectedDraftHash(preview.getDraftHash());
-        request.setImpactToken(preview.getImpactToken());
-        return request;
-    }
-
     /** 构造测试上下文，装配被测服务与各 Mock 依赖 */
+    @Test
+    void revalidatesOnlyAffectedCurrentFormsAndHistoricalListsAfterFormOverwrite() {
+        TestContext context = context();
+        Map<String,Object> formSnapshot = Map.of("configType","FORM", "form",Map.of("id","parent","entityId","entity-1"),
+                "viewCompositions",List.of(Map.of("compositionKey","child","config",Map.of("target",Map.of("contentType","FORM","contentId","child")))));
+        Map<String,Object> listSnapshot = Map.of("configType","LIST", "list",Map.of("id","list-parent","entityId","entity-1"),
+                "viewCompositions",List.of(Map.of("compositionKey","child","config",Map.of("target",Map.of("contentType","FORM","contentId","child")))));
+        Map<String,Object> unrelated = Map.of("configType","FORM", "form",Map.of("id","legacy","entityId","entity-1"),
+                "viewCompositions",List.of(Map.of("compositionKey","old-reference","config",Map.of(
+                        "relation",Map.of("type","REFERENCE_FIELD"),"target",Map.of("contentType","FORM","contentId","other")))));
+        when(context.releaseMapper().findCurrentForms()).thenReturn(List.of(
+                configRelease(context.codec(),"parent-hash","FORM","parent",formSnapshot),
+                configRelease(context.codec(),"legacy-hash","FORM","legacy",unrelated)));
+        when(context.releaseMapper().selectList(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class)))
+                .thenReturn(List.of(configRelease(context.codec(),"old-list","LIST","list-parent",listSnapshot)));
+        ReflectionTestUtils.invokeMethod(context.service(),"validateCurrentCompositionDependents","child");
+        verify(context.viewCompositionService()).revalidateCurrentFormDependencies("FORM","parent",formSnapshot);
+        verify(context.viewCompositionService()).revalidateCurrentFormDependencies("LIST","list-parent",listSnapshot);
+        verify(context.viewCompositionService(),never()).revalidateCurrentFormDependencies(eq("FORM"),eq("legacy"),any());
+        verify(context.viewCompositionService(),never()).validateReleaseSnapshot(any(),any(),any());
+    }
+
+    @Test
+    void dependencyScopeFollowsPinnedListHistoryAndStopsNavigationCycles() {
+        TestContext context = context();
+        Map<String,Object> parent = compositionOwner("FORM","parent",List.of(compositionTarget("LIST","list-parent","old-list")));
+        Map<String,Object> unrelated = compositionOwner("FORM","unrelated",List.of(compositionTarget("LIST","list-parent","new-list")));
+        Map<String,Object> oldList = compositionOwner("LIST","list-parent",List.of(
+                compositionTarget("FORM","child",null),compositionTarget("FORM","parent",null)));
+        Map<String,Object> newList = compositionOwner("LIST","list-parent",List.of(compositionTarget("FORM","other",null)));
+        when(context.releaseMapper().findCurrentForms()).thenReturn(List.of(
+                configRelease(context.codec(),"parent-hash","FORM","parent",parent),
+                configRelease(context.codec(),"unrelated-hash","FORM","unrelated",unrelated)));
+        when(context.releaseMapper().selectList(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class)))
+                .thenReturn(List.of(configRelease(context.codec(),"old-list","LIST","list-parent",oldList),
+                        configRelease(context.codec(),"new-list","LIST","list-parent",newList)));
+        ReflectionTestUtils.invokeMethod(context.service(),"validateCurrentCompositionDependents","child");
+        verify(context.viewCompositionService()).revalidateCurrentFormDependencies("FORM","parent",parent);
+        verify(context.viewCompositionService()).revalidateCurrentFormDependencies("LIST","list-parent",oldList);
+        verify(context.viewCompositionService(),never()).revalidateCurrentFormDependencies("FORM","unrelated",unrelated);
+        verify(context.viewCompositionService(),never()).revalidateCurrentFormDependencies("LIST","list-parent",newList);
+    }
+
+    @Test
+    void affectedDependencyFailureStillAbortsFormPublication() {
+        TestContext context = context();
+        Map<String,Object> parent = compositionOwner("FORM","parent",List.of(compositionTarget("FORM","child",null)));
+        when(context.releaseMapper().findCurrentForms()).thenReturn(List.of(configRelease(context.codec(),"parent-hash","FORM","parent",parent)));
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("目标表单参数映射已失效"))
+                .when(context.viewCompositionService()).revalidateCurrentFormDependencies("FORM","parent",parent);
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(
+                context.service(),"validateCurrentCompositionDependents","child"));
+    }
+
+    private Map<String,Object> compositionOwner(String type,String id,List<Map<String,Object>> items) {
+        return Map.of("configType",type,type.toLowerCase(java.util.Locale.ROOT),Map.of("id",id,"entityId","entity-1"),"viewCompositions",items);
+    }
+
+    private Map<String,Object> compositionTarget(String type,String id,String releaseId) {
+        Map<String,Object> target = new LinkedHashMap<>(Map.of("contentType",type,"contentId",id));
+        if (releaseId != null) target.put("releaseId",releaseId);
+        return Map.of("compositionKey",id,"config",Map.of("target",target));
+    }
+
     private TestContext context() {
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         JsonDocumentCodec codec = new JsonDocumentCodec(objectMapper);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
-        UiConfigHotfixTargetMapper hotfixTargetMapper =
-                mock(UiConfigHotfixTargetMapper.class);
+
         UiComponentTemplateMapper templateMapper =
                 mock(UiComponentTemplateMapper.class);
         UiComponentTemplateVersionMapper templateVersionMapper =
@@ -3237,8 +2482,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigMapper.class);
         EntityDefinitionMapper entityDefinitionMapper =
                 mock(EntityDefinitionMapper.class);
-        UiHotfixProcessImpactPort processImpactPort =
-                mock(UiHotfixProcessImpactPort.class);
+
         UiEventBindingMapper eventBindingMapper =
                 mock(UiEventBindingMapper.class);
         UiExtensionDefinitionMapper dataSourceDefinitionMapper =
@@ -3253,7 +2497,6 @@ class UiConfigReleaseServiceTest {
         when(listConfigMapper.update(any(), any())).thenReturn(1);
         UiConfigReleaseService service = new UiConfigReleaseService(
                 releaseMapper,
-                hotfixTargetMapper,
                 mock(UiConfigReleaseAuditMapper.class),
                 new UiConfigInterfaceReferenceValidator(
                         dataSourceDefinitionMapper,
@@ -3276,23 +2519,16 @@ class UiConfigReleaseServiceTest {
                 listConfigService,
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
-                processImpactPort,
                 mock(UiConfigurationAccessService.class),
                 resolutionTokenService,
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
                 mock(MigrationAssetPort.class));
+        ReflectionTestUtils.setField(service, "formPublishedMapper",
+                mock(com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper.class));
         UiViewCompositionService viewCompositionService =
                 attachViewCompositionService(service);
-        UiHotfixGovernanceService governanceService =
-                mock(UiHotfixGovernanceService.class);
-        when(governanceService.beginDirectPublish(any(), any()))
-                .thenReturn("hotfix-request-1");
-        ReflectionTestUtils.setField(
-                service,
-                "hotfixGovernanceService",
-                governanceService);
         ReflectionTestUtils.setField(
                 service,
                 "listActionConfigService",
@@ -3307,7 +2543,6 @@ class UiConfigReleaseServiceTest {
         return new TestContext(
                 service,
                 releaseMapper,
-                hotfixTargetMapper,
                 templateMapper,
                 templateVersionMapper,
                 formService,
@@ -3315,7 +2550,6 @@ class UiConfigReleaseServiceTest {
                 formMapper,
                 listConfigMapper,
                 entityDefinitionMapper,
-                processImpactPort,
                 eventBindingMapper,
                 dataSourceDefinitionMapper,
                 dataSourceService,
@@ -3481,30 +2715,6 @@ class UiConfigReleaseServiceTest {
         binding.setEnabled(true);
         binding.setDeleted(0);
         return binding;
-    }
-
-    private UiConfigHotfixTarget target(
-            JsonDocumentCodec codec,
-            String targetId,
-            String hotfixReleaseId,
-            String pinnedReleaseId,
-            Integer pinnedReleaseVersion,
-            Map<String, Object> snapshot) {
-        String document = codec.canonicalize(
-                codec.write(snapshot, "测试热修复快照"),
-                "测试热修复快照");
-        UiConfigHotfixTarget target =
-                new UiConfigHotfixTarget();
-        target.setId(targetId);
-        target.setHotfixReleaseId(hotfixReleaseId);
-        target.setConfigType(UiConfigReleaseService.FORM);
-        target.setConfigId("form-1");
-        target.setPinnedReleaseId(pinnedReleaseId);
-        target.setPinnedReleaseVersion(pinnedReleaseVersion);
-        target.setEffectiveSnapshotDocument(document);
-        target.setEffectiveContentHash(sha256(document));
-        target.setStatus("ACTIVE");
-        return target;
     }
 
     /** 构造一个包含表单与指定节点列表的发布快照 Map */
@@ -3687,10 +2897,16 @@ class UiConfigReleaseServiceTest {
     }
 
     /** 测试上下文记录，聚合被测服务与核心 Mock 依赖以便在各用例复用 */
+    /** 发布前执行同样的完整性和结构检查，已取消的历史激活不再作为测试入口。 */
+    private UiConfigRelease validateCurrentCandidate(TestContext context, UiConfigRelease release) {
+        Map<String, Object> snapshot = ReflectionTestUtils.invokeMethod(context.service(), "verifiedSnapshot", release);
+        ReflectionTestUtils.invokeMethod(context.service(), "validateForPublish", "FORM", "form-1", snapshot);
+        return release;
+    }
+
     private record TestContext(
             UiConfigReleaseService service,
             UiConfigReleaseMapper releaseMapper,
-            UiConfigHotfixTargetMapper hotfixTargetMapper,
             UiComponentTemplateMapper templateMapper,
             UiComponentTemplateVersionMapper templateVersionMapper,
             EntityFormService formService,
@@ -3698,7 +2914,6 @@ class UiConfigReleaseServiceTest {
             EntityFormMapper formMapper,
             EntityListConfigMapper listConfigMapper,
             EntityDefinitionMapper entityDefinitionMapper,
-            UiHotfixProcessImpactPort processImpactPort,
             UiEventBindingMapper eventBindingMapper,
             UiExtensionDefinitionMapper dataSourceDefinitionMapper,
             UiInterfaceExtensionService dataSourceService,

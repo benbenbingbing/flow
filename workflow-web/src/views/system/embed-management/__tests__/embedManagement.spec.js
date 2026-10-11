@@ -368,35 +368,23 @@ assert.equal(formTargetByCode.get('tenant_id').queryable, true)
 assert.equal(formTargetByCode.get('system_code').writable, true,
   'FORM 可写性只由发布表单只读状态决定')
 
-const pinnedBaseFormRelease = {
-  id: 'form-release-base',
-  version: 3,
-  snapshotDocument: { legacyFields: [{ fieldCode: 'base_field' }] }
+const currentFormPublication = {
+  id: 'current-hash',
+  formId: 'form-1',
+  snapshotDocument: { legacyFields: [{ fieldCode: 'current_field' }] }
 }
-const effectiveHotfixRelease = {
-  id: 'form-release-hotfix',
-  version: 4,
-  snapshotDocument: { legacyFields: [{ fieldCode: 'hotfix_field' }] }
-}
-const hotfixedNewDataForm = {
-  id: 'form-1',
-  runtimeReleaseId: pinnedBaseFormRelease.id,
-  runtimeReleaseVersion: pinnedBaseFormRelease.version,
-  effectiveReleaseId: effectiveHotfixRelease.id,
-  fields: effectiveHotfixRelease.snapshotDocument.legacyFields
-}
+const previouslyResolvedForm = { id: 'form-1', runtimeReleaseId: 'old-hash', runtimeReleaseVersion: 9 }
 assert.equal(
-  resolveContextFormRelease(
-    hotfixedNewDataForm,
-    [effectiveHotfixRelease, pinnedBaseFormRelease]
-  ),
-  pinnedBaseFormRelease,
-  'LIST Embed 必须按最终固定的基础发布坐标校验，不能误用流程热修复字段投影'
+  resolveContextFormRelease(previouslyResolvedForm, currentFormPublication),
+  currentFormPublication,
+  'Embed 字段检查必须读取当前配置，旧表单版本坐标不再参与选择'
 )
-assert.throws(() => resolveContextFormRelease(
-  hotfixedNewDataForm,
-  [effectiveHotfixRelease]
-), /固定发布快照不可用/)
+assert.throws(() => resolveContextFormRelease(previouslyResolvedForm,
+  { ...currentFormPublication, formId: 'other-form' }
+), /当前已发布配置不可用/)
+assert.throws(() => resolveContextFormRelease(previouslyResolvedForm,
+  { formId: 'form-1' }
+), /当前已发布配置不可用/)
 
 assert.match(contextTargetIssue(listTargetByCode.get('draft_only'), 'FIXED_FILTER'), /不在当前 ACTIVE/)
 assert.doesNotThrow(() => validateContextBindingTargets([

@@ -98,7 +98,7 @@ public class EntityForm {
     private Integer revision;
 
     /**
-     * 当前激活发布快照ID
+     * 当前发布内容指纹的旧字段兼容值；运行选择由 entity_form_published 按 formId 完成
      */
     private String activeReleaseId;
 
@@ -137,19 +137,19 @@ public class EntityForm {
     @TableField(exist = false)
     private EntityDefinition entity;
 
-    /** 流程发布时原始钉定的表单发布ID */
+    /** 本次请求采用的当前配置摘要；供事件和提交验证一致性 */
     @TableField(exist = false)
     private String runtimeReleaseId;
 
-    /** 流程发布时原始钉定的表单版本号 */
+    /** 共享运行协议兼容标记，表单固定为 1，不保存或选择业务版本 */
     @TableField(exist = false)
     private Integer runtimeReleaseVersion;
 
-    /** 实际生效的热修复发布ID */
+    /** 旧协议兼容摘要，与当前配置摘要相同 */
     @TableField(exist = false)
     private String effectiveReleaseId;
 
-    /** 是否应用了兼容热修复 */
+    /** 旧协议兼容标志，当前固定为 false */
     @TableField(exist = false)
     private Boolean hotfixApplied;
 

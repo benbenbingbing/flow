@@ -1,14 +1,26 @@
 <template>
-  <section class="form-relation-picker">
+  <section ref="pickerRoot" class="form-relation-picker">
     <div class="relation-heading">
       <strong>实体关系</strong>
       <el-button link size="small" :loading="loading" @click="load">刷新</el-button>
     </div>
     <p>普通关联独立展示；组成关系添加子表单或明细，随主表保存。</p>
+    <div v-if="compositionOnly" class="composition-filter">
+      <strong>随主表保存的组成关系</strong>
+      <el-button link size="small" type="primary" @click="compositionOnly = false">显示全部关系</el-button>
+    </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-for="relation in relations" :key="relationUsageKey(relation)" class="relation-item">
+    <div v-for="relation in visibleRelations" :key="relationUsageKey(relation)" class="relation-item">
       <div>
-        <strong>{{ relation.relationName }}</strong>
+        <strong
+          class="relation-property-title"
+          role="button"
+          tabindex="0"
+          :aria-disabled="!ownerId || relation.enabled === false"
+          title="双击打开属性"
+          @dblclick.stop="openRelationProperties(relation)"
+          @keydown.enter.stop="openRelationProperties(relation)"
+        >{{ relation.relationName }}</strong>
         <small>{{ relationTarget(relation).entityName }} · {{ isCompositionEditorRelation(relation) ? '随主表保存' : relation.direction === 'REVERSE' ? '所属记录 · 独立展示' : '独立展示' }}</small>
       </div>
       <el-button
@@ -17,7 +29,7 @@
         @click="openRelation(relation)"
       >{{ relation.enabled === false ? '已停用' : (isCompositionEditorRelation(relation) ? existingEditorFor(relation) : existingFor(relation)) ? '已添加 · 配置' : isCompositionEditorRelation(relation) ? '添加主从编辑' : `选择${typeLabel(relation)}` }}</el-button>
     </div>
-    <p v-if="!loading && !error && !relations.length">尚未定义关系，请先配置关联实体及关联字段。</p>
+    <p v-if="!loading && !error && !visibleRelations.length">{{ compositionOnly ? '暂无可用的组成关系。请先在“管理实体关系”中配置组成关系，再刷新此处。' : '尚未定义关系，请先配置关联实体及关联字段。' }}</p>
     <el-button v-if="sourceEntity.id" link type="primary" @click="openRelationManagement">
       管理实体关系
     </el-button>
@@ -48,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { entityRelationApi } from '@/api/entityRelation'
@@ -61,13 +73,18 @@ import { buildRelationContent, isSimpleRelationContent, relationContentOptions }
 
 const props = defineProps({
   sourceEntity: { type: Object, required: true },
+  draftMode: { type: Boolean, default: false },
   ownerId: { type: [String, Number], default: '' },
   compositions: { type: Array, default: () => [] },
   nodes: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['saved', 'edit', 'add-editor', 'edit-node'])
+const emit = defineEmits(['saved', 'edit', 'add-editor', 'edit-node', 'open-properties', 'draft-added', 'edit-node-settings'])
 const router = useRouter()
 const relations = ref([]), loading = ref(false), error = ref('')
+const pickerRoot = ref(null), compositionOnly = ref(false)
+const visibleRelations = computed(() => compositionOnly.value
+  ? relations.value.filter(relation => isCompositionEditorRelation(relation) && relation.enabled !== false && relation.enabled !== 0)
+  : relations.value)
 const visible = ref(false), selectedRelation = ref(null), editing = ref(null)
 const options = ref([]), contentId = ref(''), catalogLoading = ref(false), catalogError = ref(''), saving = ref(false)
 let loadSequence = 0, catalogSequence = 0
@@ -90,6 +107,14 @@ function openRelationManagement() {
   window.open(route.href, '_blank', 'noopener,noreferrer')
 }
 
+/** 从关联展示设置返回主从编辑入口，只筛选正向组成关系，避免把普通关联误当作主表拥有的子数据。 */
+async function showCompositionEditors() {
+  compositionOnly.value = true
+  await load()
+  await nextTick()
+  pickerRoot.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
 /** 关系目录独立于实体字段；失败时保留错误，不能把失败伪装成没有关系。 */
 async function load() {
   const sequence = ++loadSequence
@@ -107,12 +132,26 @@ async function load() {
   }
 }
 
-/** 简单关系只需要选择目标页面；已有高级配置不在此入口被覆盖。 */
-async function openRelation(relation) {
+/** 双击已有关系直接编辑显示属性；尚未添加时仍先选择目标页面，不生成空的展示配置。 */
+function openRelationProperties(relation) {
+  if (!props.ownerId || relation.enabled === false) return
   const existingNode = existingEditorFor(relation)
   if (existingNode) { emit('edit-node', existingNode); return }
+  const existing = existingFor(relation)
+  if (existing && !isCompositionEditorRelation(relation)) {
+    emit('open-properties', existing)
+    return
+  }
+  return openRelation(relation)
+}
+
+/** 简单关系只需要选择目标页面；已有高级配置不在此入口被覆盖。 */
+async function openRelation(relation) {
+  if (!props.ownerId || relation.enabled === false) return
+  const existingNode = existingEditorFor(relation)
+  if (existingNode) { emit(props.draftMode ? 'edit-node-settings' : 'edit-node', existingNode); return }
   const existing = isCompositionEditorRelation(relation) ? null : existingFor(relation)
-  if (existing && !isSimpleRelationContent(existing)) {
+  if (existing && (props.draftMode || !isSimpleRelationContent(existing))) {
     emit('edit', existing)
     return
   }
@@ -161,8 +200,8 @@ async function save() {
     if (isCompositionEditorRelation(selectedRelation.value)) {
       const content = options.value.find(option => option.id === contentId.value)
       if (!content) throw new Error('请选择已发布的子表单')
-      const release = await getFormRuntimeRelease(content.id, content.releaseId)
-      if (!release?.id || !release.version) throw new Error('子表单缺少有效发布版本')
+      const release = await getFormRuntimeRelease(content.id)
+      if (!release?.contentHash) throw new Error('子表单尚未发布')
       emit('add-editor', { relation: selectedRelation.value, content, release })
       visible.value = false
       return
@@ -174,6 +213,11 @@ async function save() {
       existing: editing.value,
       orderKey: Math.max(0, ...props.compositions.map(row => Number(row.orderKey) || 0)) + 1000000
     })
+    if (props.draftMode) {
+      visible.value = false
+      emit('draft-added', item)
+      return
+    }
     const payload = buildRelatedContentPayload(item, 'FORM', props.ownerId)
     const saved = editing.value
       ? await uiCompositionApi.update('FORM', props.ownerId, editing.value.id, payload)
@@ -190,15 +234,18 @@ async function save() {
 
 watch(() => props.sourceEntity.id, load, { immediate: true })
 watch(visible, value => { if (!value) ++catalogSequence })
-defineExpose({ load, openRelation })
+defineExpose({ load, openRelation, showCompositionEditors })
 </script>
 
 <style scoped>
 .form-relation-picker { padding: 16px; border-top: 1px solid var(--el-border-color-lighter); }
 .relation-heading { display: flex; align-items: center; justify-content: space-between; }
+.composition-filter { font-size: 12px; color: var(--el-color-primary); }
 .form-relation-picker p, .help { font-size: 12px; line-height: 1.7; color: var(--el-text-color-secondary); }
 .relation-item { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .relation-item strong, .relation-item small { display: block; overflow-wrap: anywhere; }
 .relation-item small { margin-top: 4px; color: var(--el-text-color-secondary); }
+.relation-property-title { cursor: pointer; }
+.relation-property-title[aria-disabled="true"] { cursor: default; }
 .target-form { margin-top: 20px; }
 </style>

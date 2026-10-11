@@ -3,7 +3,7 @@
     <SettingsCapability :disabled="disabled" reason="仅实体字段支持条件状态">
       <div class="node-state-conditions">
         <LinkageConditionRuleEditor
-          v-for="definition in FIELD_STATE_CONDITIONS"
+          v-for="definition in definitions"
           :key="definition.name"
           :title="definition.title"
           :description="definition.description"
@@ -32,8 +32,14 @@ import { getProcessConditionFieldType } from '@/shared/process-config'
 const props = defineProps({
   field: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
+  visibilityOnly: { type: Boolean, default: false },
   fields: { type: Array, default: () => [] }
 })
+
+// 布局节点只控制整块显示，不附带字段的禁用和必填语义。
+const definitions = computed(() => props.visibilityOnly
+  ? [{ ...FIELD_STATE_CONDITIONS[0], description: '满足条件时显示整个节点及其内部内容；关闭时不附加显示条件。' }]
+  : FIELD_STATE_CONDITIONS)
 
 const availableFields = computed(() => props.fields.filter(field =>
   field.uiConfigurable !== false

@@ -1,12 +1,14 @@
 # Flow 系统数据库设计文档
 
-文档版本：1.7；整理日期：2026-09-23。
+文档版本：1.8；整理日期：2026-10-08。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
 文档收录本机库当前的 133 张表、1,957 个字段，其中七张为历史保留表。`biz` 开头的业务表及其动态附属表、Flowable 引擎表不在范围内；平台自有 `process_*` 表正常收录。
 
 结构已与 2026-09-23 本机 `localhost:3306/workflow` 核对，数据库已执行至 V102。表、字段、类型、可空性、默认值和索引以实际库为准，用途与关联结合 V001—V102 的 SQL、Java 迁移及当前源码说明。
+
+2026-10-08 补录：本文新增 V112/V113 的三张表及表单运行语义；本机库上述统计仍为原核对结果，本次没有执行数据库升级。
 
 字段表中的“NULL（隐式）”表示可空列没有显式 DEFAULT；JSON 格式要求由应用校验或表内 CHECK 约束承担。表间业务关联与物理外键分别说明。
 
@@ -97,9 +99,12 @@
   - [8.4 ui_extension_definition 统一扩展定义目录表](#84-ui_extension_definition-统一扩展定义目录表)
   - [8.5 ui_config_release 表单列表发布快照表](#85-ui_config_release-表单列表发布快照表)
   - [8.6 ui_config_release_audit UI发布审计表](#86-ui_config_release_audit-ui发布审计表)
-  - [8.7 ui_config_hotfix_target UI热修复目标快照表](#87-ui_config_hotfix_target-ui热修复目标快照表)
-  - [8.8 ui_config_hotfix_request UI热修复发布与观察记录表](#88-ui_config_hotfix_request-ui热修复发布与观察记录表)
-  - [8.9 ui_hotfix_observation_metric UI热修复观察指标表](#89-ui_hotfix_observation_metric-ui热修复观察指标表)
+  - [8.7 ui_config_hotfix_target UI热修复目标快照表（V114 删除）](#87-ui_config_hotfix_target-ui热修复目标快照表)
+  - [8.8 ui_config_hotfix_request UI热修复发布与观察记录表（V114 删除）](#88-ui_config_hotfix_request-ui热修复发布与观察记录表)
+  - [8.9 ui_hotfix_observation_metric UI热修复观察指标表（V114 删除）](#89-ui_hotfix_observation_metric-ui热修复观察指标表)
+  - [8.10 entity_form_published 表单当前发布配置表](#810-entity_form_published-表单当前发布配置表)
+  - [8.11 entity_form_publication_lock 配置发布并发锁](#811-entity_form_publication_lock-配置发布并发锁)
+  - [8.12 entity_form_current_default 当前默认表单](#812-entity_form_current_default-当前默认表单)
 - [9. 组织身份与访问控制](#9-组织身份与访问控制)
   - [9.1 sys_organization 组织部门表](#91-sys_organization-组织部门表)
   - [9.2 sys_position 全局职务定义表](#92-sys_position-全局职务定义表)
@@ -784,7 +789,7 @@ operation_id 关联结构发布操作。主表记录操作结果，本表保留�
 | `updated_by` | 修改人 | `varchar(64)` | 是 | `NULL` | 更新人。 | 现存 |
 | `view_config` | 表单视图配置JSON | `longtext` | 是 | `NULL`（隐式） | 表单视图配置JSON：布局、自定义组件参数。 | 现存 |
 | `revision` | 修订号 | `int` | 否 | `'1'` | 草稿元数据修订号。 | 现存 |
-| `active_release_id` | 当前激活发布快照ID | `varchar(64)` | 是 | `NULL` | 当前激活发布快照ID。 | 现存 |
+| `active_release_id` | 当前发布兼容指针 | `varchar(64)` | 是 | `NULL` | 保存当前内容指纹供旧客户端并发前置条件使用；运行入口按 form_id 读取 entity_form_published。 | 兼容使用中 |
 | `draft_hash` | 当前草稿内容哈希 | `varchar(64)` | 是 | `NULL` | 当前草稿内容哈希。 | 现存 |
 | `custom_component_version` | 自定义整页表单组件锁定版本 | `int` | 是 | `NULL` | 自定义整页表单组件锁定版本。 | 现存 |
 | `custom_component_snapshot_version` | 自定义整页表单配置快照版本 | `int` | 是 | `NULL` | 自定义整页表单配置快照版本。 | 现存 |
@@ -803,7 +808,7 @@ operation_id 关联结构发布操作。主表记录操作结果，本表保留�
 业务关联：
 
 - `entity_id` → [entity_definition](#11-entity_definition-实体定义表).`id`；两端物理类型不同。
-- `active_release_id` → [ui_config_release](#85-ui_config_release-表单列表发布快照表).`id`。
+- `active_release_id` 与 `entity_form_published.content_hash` 对应，仅为旧客户端兼容，不选择表单版本。
 
 #### 2.1.4 业务规则
 
@@ -1366,7 +1371,7 @@ revision 用于逐项更新时的并发校验。order_key 为主要排序键，s
 
 #### 2.9.1 业务说明
 
-把其他表单或列表作为关联内容组合到当前配置中，并保存目标发布版本与上下文映射。
+把其他表单或列表作为关联内容组合到当前配置中，并保存身份与上下文映射。目标表单按稳定 ID 读取当前配置；目标列表仍保留固定发布坐标。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
 
@@ -2397,7 +2402,7 @@ approval_config_id 逻辑归属审批配置；显示标签和提交值分别保�
 
 #### 5.8.4 业务规则
 
-当前表名虽含 process，但绑定的是平台实体表单；运行版本由流程与 UI 发布绑定冻结。
+当前表名虽含 process，但绑定的是平台实体表单；流程历史保留节点与稳定表单 ID 的映射，所有运行目的都读取表单当前发布配置。
 
 原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
 
@@ -2687,7 +2692,7 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 #### 5.15.1 业务说明
 
-将具体流程发布版本绑定到表单或列表的不可变 UI 快照。
+索引流程发布历史中节点引用的稳定表单身份，供删除保护与依赖查询使用；新 FORM 绑定不再固定表单内容。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 13 个。
 
@@ -4096,7 +4101,7 @@ owner_type + owner_id 与 target_type + target_key 分别定位归属和目标�
 
 #### 8.5.1 业务说明
 
-保存 FORM 或 LIST 配置的完整不可变运行快照、版本、哈希和激活状态。
+保存 LIST 配置的不可变发布快照。V113 归档旧 FORM 行，V114 删除这些归档行；表单发布只覆盖 entity_form_published，不再生成历史版本。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 18 个。
 
@@ -4152,7 +4157,7 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 #### 8.6.1 业务说明
 
-记录界面配置预检、发布、热修复及回滚等操作的结果与上下文。
+记录界面配置预检、发布等操作。新 FORM 发布的 release_id 为当前内容指纹，审计不保存可选择的表单版本；热修复、回滚记录仅为历史。
 
 物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 12 个。
 
@@ -4184,7 +4189,7 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 业务关联：
 
-- `release_id` → [ui_config_release](#85-ui_config_release-表单列表发布快照表).`id`。
+- LIST 的 `release_id` → [ui_config_release](#85-ui_config_release-表单列表发布快照表).`id`；FORM 保存当次配置内容摘要，旧发布记录清理后审计仍保留，不用于运行配置选择。
 
 #### 8.6.4 业务规则
 
@@ -4198,176 +4203,40 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 ### 8.7 ui_config_hotfix_target UI热修复目标快照表
 
-#### 8.7.1 业务说明
-
-保存一次热修复针对的流程版本、原绑定快照和目标信息。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 16 个。
-
-#### 8.7.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 热修复目标ID。 | 现存 |
-| `hotfix_release_id` | 热修复发布ID | `varchar(64)` | 否 | 无 | 热修复发布ID。 | 现存 |
-| `config_type` | 配置类型 | `varchar(20)` | 否 | 无 | 配置类型。 | 现存 |
-| `config_id` | 配置ID | `varchar(64)` | 否 | 无 | 配置ID。 | 现存 |
-| `process_version_history_id` | 目标流程发布历史ID | `varchar(64)` | 否 | 无 | 目标流程发布历史ID。 | 现存 |
-| `pinned_release_id` | 目标原始钉定发布ID | `varchar(64)` | 否 | 无 | 目标原始钉定发布ID。 | 现存 |
-| `pinned_release_version` | 目标原始钉定版本号 | `int` | 否 | 无 | 目标原始钉定版本号。 | 现存 |
-| `previous_target_id` | 上一有效热修复目标ID | `varchar(64)` | 是 | `NULL` | 上一有效热修复目标ID。 | 现存 |
-| `effective_snapshot_document` | 目标有效完整快照JSON文档 | `longtext` | 否 | 无 | 目标有效完整快照JSON文档。 | 现存 |
-| `effective_content_hash` | 目标有效快照SHA-256 | `varchar(64)` | 否 | 无 | 目标有效快照SHA-256。 | 现存 |
-| `status` | 状态 | `varchar(20)` | 否 | `'ACTIVE'` | 状态。 | 现存 |
-| `active_slot` | 保证同一流程版本只有一个有效目标 | `tinyint` | 是 | 生成列（非默认值） | 保证同一流程版本只有一个有效目标；数据库生成，表达式见本表实现说明。 | 现存 |
-| `activated_by` | 激活人 | `varchar(64)` | 是 | `NULL` | 激活人。 | 现存 |
-| `activated_at` | 激活时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 激活时间。 | 现存 |
-| `rolled_back_by` | 撤回人 | `varchar(64)` | 是 | `NULL` | 撤回人。 | 现存 |
-| `rolled_back_at` | 撤回时间 | `datetime` | 是 | `NULL` | 撤回时间。 | 现存 |
-
-#### 8.7.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_ui_hotfix_target_active` (`config_type`,`config_id`,`process_version_history_id`,`active_slot`)``。
-- ``KEY `idx_ui_hotfix_target_release` (`hotfix_release_id`,`status`)``。
-- ``KEY `idx_ui_hotfix_target_pinned` (`pinned_release_id`,`status`)``。
-- ``KEY `idx_ui_hotfix_target_process` (`process_version_history_id`,`status`)``。
-
-本表未声明物理外键。
-
-#### 8.7.4 业务规则
-
-只修正受控目标范围内的 UI 发布绑定，目标范围与普通激活版本分开保存。
-
-生成列 `active_slot` 的定义：
-
-```sql
-active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE') then 1 else NULL end)) STORED COMMENT '保证同一流程版本只有一个有效目标'
-```
-
-#### 8.7.5 来源与迁移
-
-结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)。
-
-实现定位：[UiConfigHotfixTargetMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiConfigHotfixTargetMapper.java)、[UiHotfixGovernanceService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiHotfixGovernanceService.java)、[ConfigMigrationAssetService.java](../../workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java)。
+执行 V114 后删除。表单按稳定 `formId` 使用当前已发布配置，不再保存流程专属热修复目标或投影快照；对应 Mapper、服务、控制器和流程影响分析适配器已移除。
 
 ### 8.8 ui_config_hotfix_request UI热修复发布与观察记录表
 
-#### 8.8.1 业务说明
-
-现用于直接热修复发布的审计、影响摘要、观察窗口和回滚记录。
-
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 35 个。
-
-#### 8.8.2 字段设计
-
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | HOTFIX申请ID。 | 现存 |
-| `config_type` | 配置类型 | `varchar(20)` | 否 | 无 | 配置类型。 | 现存 |
-| `config_id` | 配置ID | `varchar(64)` | 否 | 无 | 配置ID。 | 现存 |
-| `draft_hash` | 申请时草稿哈希 | `char(64)` | 否 | 无 | 申请时草稿哈希。 | 现存 |
-| `active_release_id` | 申请时激活发布ID | `varchar(64)` | 否 | 无 | 申请时激活发布ID。 | 现存 |
-| `target_hash` | 影响目标摘要 | `varchar(255)` | 否 | 无 | 影响目标摘要。 | 现存 |
-| `impact_token_hash` | 预检令牌摘要 | `char(64)` | 否 | 无 | 预检令牌摘要。 | 现存 |
-| `risk_level` | 风险级别 | `varchar(20)` | 否 | 无 | 风险级别。 | 现存 |
-| `reason` | 变更原因 | `varchar(1000)` | 否 | 无 | 变更原因。 | 现存 |
-| `ticket_ref` | 关联工单 | `varchar(255)` | 否 | 无 | 关联工单。 | 现存 |
-| `impact_document` | 申请时影响预览JSON | `longtext` | 否 | 无 | 申请时影响预览JSON。 | 现存 |
-| `applicant_id` | 申请人ID | `varchar(64)` | 否 | 无 | 申请人ID。 | 现存 |
-| `applicant_name` | 申请人姓名 | `varchar(100)` | 是 | `NULL` | 申请人姓名。 | 现存 |
-| `window_start` | 允许发布时间窗口开始 | `datetime` | 否 | 无 | 允许发布时间窗口开始。 | 现存 |
-| `window_end` | 允许发布时间窗口结束 | `datetime` | 否 | 无 | 允许发布时间窗口结束。 | 现存 |
-| `review_required` | 是否需要人工复核 | `tinyint` | 否 | `0` | 是否需要独立复核；V065 退役独立人工复核流程；字段保留历史审计，新直接发布不再等待审核。 | 人工复核退役 |
-| `status` | 状态 | `varchar(30)` | 否 | 无 | 状态。 | 现存 |
-| `open_slot` | 每个配置仅允许一个开放申请 | `tinyint` | 是 | 生成列（非默认值） | 每个配置仅允许一个开放申请；数据库生成，表达式见本表实现说明。 | 现存 |
-| `reviewer_id` | 复核人ID | `varchar(64)` | 是 | `NULL` | 复核人ID；V065 退役独立人工复核流程；字段保留历史审计，新直接发布不再等待审核。 | 人工复核退役 |
-| `reviewer_name` | 复核人名称 | `varchar(100)` | 是 | `NULL` | 复核人姓名；V065 退役独立人工复核流程；字段保留历史审计，新直接发布不再等待审核。 | 人工复核退役 |
-| `review_comment` | 复核意见 | `varchar(1000)` | 是 | `NULL` | 复核意见；V065 退役独立人工复核流程；字段保留历史审计，新直接发布不再等待审核。 | 人工复核退役 |
-| `reviewed_at` | 复核时间 | `datetime` | 是 | `NULL` | 复核时间；V065 退役独立人工复核流程；字段保留历史审计，新直接发布不再等待审核。 | 人工复核退役 |
-| `release_id` | 实际发布ID | `varchar(64)` | 是 | `NULL` | 实际发布ID。 | 现存 |
-| `published_at` | 发布时间 | `datetime` | 是 | `NULL` | 实际发布时间。 | 现存 |
-| `observation_start` | 观察窗口开始 | `datetime` | 是 | `NULL` | 观察窗口开始。 | 现存 |
-| `observation_end` | 观察窗口结束 | `datetime` | 是 | `NULL` | 观察窗口结束。 | 现存 |
-| `observation_status` | 观察状态 | `varchar(20)` | 是 | `NULL` | 观察状态。 | 现存 |
-| `rolled_back_by` | 回滚人ID | `varchar(64)` | 是 | `NULL` | 回滚人ID。 | 现存 |
-| `rolled_back_at` | 回滚时间 | `datetime` | 是 | `NULL` | 回滚时间。 | 现存 |
-| `rollback_reason` | 回滚原因 | `varchar(1000)` | 是 | `NULL` | 回滚原因。 | 现存 |
-| `cancelled_by` | 取消人ID | `varchar(64)` | 是 | `NULL` | 取消人ID。 | 现存 |
-| `cancelled_at` | 取消时间 | `datetime` | 是 | `NULL` | 取消时间。 | 现存 |
-| `cancel_reason` | 取消原因 | `varchar(1000)` | 是 | `NULL` | 取消原因。 | 现存 |
-| `create_time` | 创建时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
-| `update_time` | 更新时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
-
-#### 8.8.3 索引与关联
-
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_ui_hotfix_request_open` (`config_type`,`config_id`,`open_slot`)``。
-- ``UNIQUE KEY `uk_ui_hotfix_request_release` (`release_id`)``。
-- ``KEY `idx_ui_hotfix_request_status` (`status`,`window_end`)``。
-- ``KEY `idx_ui_hotfix_request_config` (`config_type`,`config_id`,`create_time`)``。
-
-本表未声明物理外键。
-
-#### 8.8.4 业务规则
-
-V065 移除了人工复核流程但没有删除本表；review_required 与复核人、意见、时间列保留历史证据，新发布不再等待人工审核。
-
-生成列 `open_slot` 的定义：
-
-```sql
-open_slot tinyint GENERATED ALWAYS AS ( CASE WHEN `status` IN ('PENDING_REVIEW','APPROVED','PUBLISHING') THEN 1 ELSE NULL END ) STORED COMMENT '每个配置仅允许一个开放申请'
-```
-
-#### 8.8.5 来源与迁移
-
-结构依据：[V051__ui_hotfix_governance.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V051__ui_hotfix_governance.sql)。
-
-实现定位：[UiConfigHotfixRequestMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/infrastructure/persistence/mapper/UiConfigHotfixRequestMapper.java)、[UiHotfixGovernanceService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiHotfixGovernanceService.java)、[UiConfigReleaseService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiConfigReleaseService.java)。
-
-用途变更依据：[V065__remove_ui_hotfix_review_governance.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V065__remove_ui_hotfix_review_governance.sql)。
+执行 V114 后删除。热修复申请、观察和撤回入口均已退役，角色权限关联及菜单权限节点同步清理。
 
 ### 8.9 ui_hotfix_observation_metric UI热修复观察指标表
 
-#### 8.9.1 业务说明
+执行 V114 后删除，因外键引用申请表，迁移先删除本表。提交、任务办理和发布不再写入或读取热修复观察指标。
 
-记录热修复观察窗口内的表单加载、提交和任务等指标，供发布后观察与追溯。
+清理迁移：[V114__remove_retired_form_versions_and_hotfix.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V114__remove_retired_form_versions_and_hotfix.sql)。该迁移同时删除 `ui_config_release` 中旧 FORM 记录；保留 LIST 发布历史、独立发布审计以及流程稳定表单绑定。当前表单配置、默认选择和发布锁继续保存在以下三张表。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 8 个。
+### 8.10 entity_form_published 表单当前发布配置表
 
-#### 8.9.2 字段设计
+每个稳定 `form_id` 最多一行。发布覆盖完整配置，不创建表单历史版本；事务提交后所有新请求读取这行，未发布表单不能回退到草稿。
 
-| 字段名 | 中文名称 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 | 使用状态 |
-| --- | --- | --- | --- | --- | --- | --- |
-| `id` | 主键ID | `varchar(64)` | 否 | 无 | 指标ID。 | 现存 |
-| `request_id` | HOTFIX申请ID | `varchar(64)` | 否 | 无 | HOTFIX申请ID。 | 现存 |
-| `release_id` | HOTFIX发布ID | `varchar(64)` | 否 | 无 | HOTFIX发布ID。 | 现存 |
-| `metric_code` | 指标编码 | `varchar(40)` | 否 | 无 | 指标编码。 | 现存 |
-| `total_count` | 观察总次数 | `bigint` | 否 | `0` | 观察总次数。 | 现存 |
-| `failure_count` | 失败次数 | `bigint` | 否 | `0` | 失败次数。 | 现存 |
-| `last_error` | 最近失败摘要 | `varchar(1000)` | 是 | `NULL` | 最近失败摘要。 | 现存 |
-| `last_observed_at` | 最近观察时间 | `datetime` | 否 | `CURRENT_TIMESTAMP` | 最近观察时间。 | 现存 |
+| 字段 | 类型 | 用途 |
+| --- | --- | --- |
+| form_id | varchar(64)，主键 | 稳定表单身份，覆盖发布的唯一键 |
+| entity_id | varchar(64)，非空 | 所属实体，供运行归属校验和实体查询 |
+| snapshot_document | longtext，非空 | 当前完整节点、设置、事件、接口和关联内容配置 |
+| content_hash | char(64)，唯一非空 | 完整性、并发前置条件及旧页面检查，不是业务版本 |
+| published_by | varchar(64)，可空 | 最近一次发布人 |
+| published_at | datetime，非空 | 最近一次发布成功时间 |
 
-#### 8.9.3 索引与关联
+来源为 V112/V113；V113 只复制合法 ACTIVE FORM 完整配置，校验哈希、实体归属、子表单、流程、列表和 Embed 引用后写入。旧 FORM 历史归档，热修复目标退役。
 
-- ``PRIMARY KEY (`id`)``。
-- ``UNIQUE KEY `uk_ui_hotfix_observation_metric` (`request_id`,`metric_code`)``。
-- ``KEY `idx_ui_hotfix_observation_release` (`release_id`,`metric_code`)``。
-- ``CONSTRAINT `fk_ui_hotfix_metric_request` FOREIGN KEY (`request_id`) REFERENCES `ui_config_hotfix_request` (`id`) ON DELETE CASCADE``。
+### 8.11 entity_form_publication_lock 配置发布并发锁
 
-业务关联：
+仅含 `lock_id tinyint` 主键，固定一行 `1`。表单覆盖、列表发布/激活及表单删除在事务中 `SELECT ... FOR UPDATE`，串行校验跨实体、跨表单列表的引用图，防止并发引入循环或破坏父子参数契约。来源为 V112。
 
-- `request_id` → [ui_config_hotfix_request](#88-ui_config_hotfix_request-ui热修复发布与观察记录表).`id`。
+### 8.12 entity_form_current_default 当前默认表单
 
-#### 8.9.4 业务规则
-
-UiHotfixGovernanceService 仍读取和维护观察指标；人工复核流程退役后，本表继续使用。
-
-#### 8.9.5 来源与迁移
-
-结构依据：[V051__ui_hotfix_governance.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V051__ui_hotfix_governance.sql)。
-
-实现定位：[UiHotfixGovernanceService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiHotfixGovernanceService.java)、[UiHotfixGovernanceController.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/api/web/UiHotfixGovernanceController.java)、[UiConfigReleaseService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/ui/application/UiConfigReleaseService.java)。
+`entity_id varchar(64)` 为主键，`form_id varchar(64)` 为非空稳定表单身份。每个实体最多一个已发布默认选择，发布事务同步更新；保存草稿默认开关不会提前影响线上入口。V113 按旧发布文档中的默认标记初始化，重复默认选择最近发布的有效表单。
 
 ## 9. 组织身份与访问控制
 

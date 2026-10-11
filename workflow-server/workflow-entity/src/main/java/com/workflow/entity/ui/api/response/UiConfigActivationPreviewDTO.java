@@ -19,7 +19,7 @@ public class UiConfigActivationPreviewDTO {
     String targetReleaseId;
     Integer targetVersion;
     String riskLevel;
-    List<UiConfigHotfixRiskItemDTO> riskItems;
+    List<UiConfigRiskItemDTO> riskItems;
     boolean changed;
     List<String> changedSections;
     List<UiConfigDiffItemDTO> changedItems;

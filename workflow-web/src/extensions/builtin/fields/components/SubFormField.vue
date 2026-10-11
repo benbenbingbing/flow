@@ -177,15 +177,10 @@ watch(
       try {
         const release = await getFormRuntimeRelease(
           formId,
-          releaseId,
-          releaseVersion,
+          null,
+          null,
           props.context?.releaseResolutionToken
         )
-        if (!releaseId) {
-          console.warn(
-            `子表单 ${formId} 使用 legacy refFormId，已临时读取 ACTIVE release；请重新保存并发布父表单以固定版本`
-          )
-        }
         const snapshot = parseSnapshot(release.snapshotDocument)
         if (sequence !== releaseLoadSequence) return
         externalFormNodes.value = normalizeExternalNodes(snapshot?.nodes)
@@ -200,7 +195,7 @@ watch(
         childFormDefinition.value.runtimeReleaseId =
           release.id || releaseId || null
         childFormDefinition.value.runtimeReleaseVersion =
-          release.version ?? releaseVersion ?? null
+          release.protocolVersion ?? 1
         childFormDefinition.value.effectiveReleaseId =
           release.effectiveReleaseId || release.id || releaseId || null
         childFormDefinition.value.hotfixApplied =

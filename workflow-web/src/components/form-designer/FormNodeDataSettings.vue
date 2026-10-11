@@ -184,18 +184,15 @@
       </SettingsCapability>
     </SettingsSection>
 
-    <!-- 固定保留三个子页面入口，各卡片独立判断能力并复用统一的折叠、禁用逻辑。 -->
-    <SettingsSection
-      :disabled="!isSubFormField(selectedField)"
-      disabled-reason="仅子表单和明细表节点支持此配置"
-      v-show="activeNodeSettingsTab === 'child-pages'"
-      title="子表单配置"
-      description="配置关联名称、标题显示、子表单布局和发布版本"
-    >
-      <template #summary>
-        <el-tag size="small" type="info">子表关系</el-tag>
-      </template>
-
+    <SettingsSection v-if="isSubFormField(selectedField)" v-show="activeNodeSettingsTab === 'basic'" title="显示属性" :default-expanded="true" primary>
+      <FormContentDisplaySettings
+        :model-value="selectedField.fieldLabel"
+        @update:model-value="isSubFormField(selectedField) && (selectedField.fieldLabel = $event)"
+        v-model:show-title="selectedSubFormShowTitle"
+        :disabled="!isSubFormField(selectedField)"
+      />
+    </SettingsSection>
+    <SettingsSection v-if="isSubFormField(selectedField)" v-show="activeNodeSettingsTab === 'child-pages'" title="关联配置" :default-expanded="true" primary>
       <div class="relation-summary relation-summary--inline">
         <div>
           <span>子实体</span>
@@ -217,29 +214,6 @@
         </div>
       </div>
 
-      <el-form-item label="关联名称">
-        <el-input
-          :model-value="selectedField.fieldLabel"
-          @update:model-value="isSubFormField(selectedField) && (selectedField.fieldLabel = $event)"
-          placeholder="请输入关联名称"
-        />
-      </el-form-item>
-      <el-form-item label="显示名称">
-        <el-switch v-model="selectedSubFormShowTitle" />
-        <div class="form-tip">名称按“节”标题显示；关闭后仅隐藏标题，子表单内容仍显示。</div>
-      </el-form-item>
-      <el-form-item label="布局">
-        <template #label>
-          <ConfigHelpLabel
-            label="布局"
-            help-key="formNode.subFormLayout"
-          />
-        </template>
-        <el-radio-group :model-value="selectedField.layout" @update:model-value="isSubFormField(selectedField) && (selectedField.layout = $event)">
-          <el-radio-button value="form">分行</el-radio-button>
-          <el-radio-button value="table">表格</el-radio-button>
-        </el-radio-group>
-      </el-form-item>
       <el-form-item label="子表表单">
         <el-select
           :model-value="selectedField.refFormId" @update:model-value="isSubFormField(selectedField) && (selectedField.refFormId = $event)"
@@ -256,32 +230,37 @@
           />
         </el-select>
       </el-form-item>
-      <el-form-item label="发布版本">
-        <el-select
-          :model-value="selectedField.childFormReleaseId" @update:model-value="isSubFormField(selectedField) && (selectedField.childFormReleaseId = $event)"
-          placeholder="选择已发布版本"
-          clearable
-          filterable
-          :disabled="!selectedField.refFormId"
-          :loading="childFormReleaseLoading"
-          style="width: 100%"
-          @change="handleChildFormReleaseChange"
-        >
-          <el-option
-            v-for="release in childFormReleases"
-            :key="release.id"
-            :label="formatChildFormReleaseLabel(release)"
-            :value="release.id"
+      <div class="form-tip">运行时使用所选子表单当前已发布配置，子表单发布后所有引用入口同步生效。</div>
+      <div class="form-tip">组成关系的子记录随主表保存，关系定义在实体设计中维护。</div>
+    </SettingsSection>
+    <!-- 子页面只呈现当前对象支持的配置，内部布局与外层栅格分开保存。 -->
+    <SettingsSection
+      v-if="isSubFormField(selectedField)"
+      disabled-reason="仅子表单和明细表节点支持此配置"
+      v-show="activeNodeSettingsTab === 'child-pages'"
+      title="子表单配置"
+      description="配置子表单内部编辑布局"
+    >
+      <template #summary>
+        <el-tag size="small" type="info">子表关系</el-tag>
+      </template>
+
+      <el-form-item label="布局">
+        <template #label>
+          <ConfigHelpLabel
+            label="布局"
+            help-key="formNode.subFormLayout"
           />
-        </el-select>
-        <div class="form-tip">
-          运行时固定读取所选 release 快照；子表单草稿不会影响已发布父表单。
-        </div>
+        </template>
+        <el-radio-group :model-value="selectedField.layout" @update:model-value="isSubFormField(selectedField) && (selectedField.layout = $event)">
+          <el-radio-button value="form">分行</el-radio-button>
+          <el-radio-button value="table">表格</el-radio-button>
+        </el-radio-group>
       </el-form-item>
     </SettingsSection>
 
     <SettingsSection
-      :disabled="!isSubFormField(selectedField)"
+      v-if="isSubFormField(selectedField)"
       disabled-reason="仅子表单和明细表节点支持参数传递"
       v-show="activeNodeSettingsTab === 'child-pages'"
       title="参数传递"
@@ -303,7 +282,7 @@
     </SettingsSection>
 
     <SettingsSection
-      :disabled="!isSubListField(selectedField)"
+      v-if="isSubListField(selectedField)"
       disabled-reason="仅子列表字段支持此配置"
       v-show="activeNodeSettingsTab === 'child-pages'"
       title="子列表配置"
@@ -407,6 +386,7 @@ import SettingsCapability from '@/components/SettingsCapability.vue'
 import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
+import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListParameterContract } from '@/shared/sub-list'
@@ -444,8 +424,6 @@ const {
   handleChildFormChange,
   childFormReleases,
   childFormReleaseLoading,
-  handleChildFormReleaseChange,
-  formatChildFormReleaseLabel,
   subListOptions,
   subListTargetFields,
   subListTargetFieldsLoading,
@@ -460,11 +438,7 @@ const canEditSelectedDataSourceUsage = computed(() =>
   availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
 )
 
-const selectedChildRelease = computed(() =>
-  childFormReleases.value.find(item =>
-    String(item?.id) === String(selectedField.value?.childFormReleaseId)
-  ) || null
-)
+const selectedChildRelease = computed(() => childFormReleases.value[0] || null)
 
 const selectedChildInputParameters = computed(() =>
   getInputParameterDefinitions(
@@ -483,7 +457,7 @@ const selectedChildFieldOptions = computed(() =>
     )
 )
 
-// 名称沿用节点 label；显示开关保存在 subFormConfig，切换时保留发布版本和参数映射。
+// 名称沿用节点 label；显示开关保存在 subFormConfig，切换时保留表单引用和参数映射。
 const selectedSubFormShowTitle = computed({
   get() {
     return safeParseConfig(selectedField.value?.componentProps).subFormConfig?.showTitle !== false

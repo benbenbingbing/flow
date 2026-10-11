@@ -24,8 +24,8 @@ import org.springframework.util.StringUtils;
 /**
  * 原生表单 Embed 的唯一目标与访问授权入口。
  *
- * <p>这里只恢复 Session 固定坐标、上下文绑定、模式能力和 VIEW DataScope；不会
- * 读取或转换字段、组件、布局、选项及弹层配置。浏览器拿到固定目标后直接运行
+ * <p>这里恢复 Session 的稳定表单身份、上下文绑定、模式能力和 VIEW DataScope；不会
+ * 读取或转换字段、组件、布局、选项及弹层配置。表单内容按当前发布解析，浏览器拿到目标后直接运行
  * Flow 自己的 Published Form 页面。</p>
  */
 @Service
@@ -46,20 +46,24 @@ public class EmbedNativeFormTargetResolver {
     private final EmbedRuntimeReleasePort releasePort;
     private final EmbedNativeFormAccessPort accessPort;
     private final ObjectMapper objectMapper;
+    private final com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort formRuntimePort;
 
     /**
      * 初始化嵌入式原生表单目标解析器，保存构造参数供后续方法使用。
      *
      * @param releasePort 发布版本端口依赖，保存到当前对象供后续业务方法调用
      * @param accessPort 访问端口依赖，保存到当前对象供后续业务方法调用
+     * @param formRuntimePort 读取当前表单配置，避免 Embed 会话继续执行旧配置
      * @param objectMapper 对象映射器依赖，保存到当前对象供后续业务方法调用
      */
     public EmbedNativeFormTargetResolver(
             EmbedRuntimeReleasePort releasePort,
             EmbedNativeFormAccessPort accessPort,
+            com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort formRuntimePort,
             ObjectMapper objectMapper) {
         this.releasePort = releasePort;
         this.accessPort = accessPort;
+        this.formRuntimePort = formRuntimePort;
         this.objectMapper = objectMapper;
     }
 
@@ -174,7 +178,7 @@ public class EmbedNativeFormTargetResolver {
     }
 
     /**
-     * 恢复 LIST/FORM Release 共同固定的根坐标。该方法只做不可变快照完整性校验，
+     * 恢复 LIST/FORM View Release 的根身份与当前表单指纹。View 能力仍来自会话快照，
      * 具体 CREATE/VIEW 授权必须调用 {@link #authorize}。
      *
      * @param session 会话，作为 {@code release} 的输入影响后续处理
@@ -215,9 +219,13 @@ public class EmbedNativeFormTargetResolver {
                 throw unavailable(null);
             }
             BoundContext bound = boundContext(release, session.context());
+            // 会话继续约束表单身份、能力和记录；表单内容始终按当前发布读取。
+            var currentForm = StringUtils.hasText(resolvedFormId)
+                    ? formRuntimePort.currentFormTarget(release.entityCode(), resolvedFormId) : null;
             return new EmbedNativeFormTarget(
                     release.entityCode(), resolvedFormId,
-                    release.formReleaseId(), release.formReleaseVersion(),
+                    currentForm == null ? null : currentForm.formReleaseId(),
+                    currentForm == null ? null : currentForm.formReleaseVersion(),
                     release.listKey(), release.listReleaseId(),
                     release.listReleaseVersion(), session.entryMode(),
                     normalizeOptionalId(session.recordId()), null,
@@ -368,12 +376,7 @@ public class EmbedNativeFormTargetResolver {
         String rootFormId = object(release.configJson())
                 .path("resolved").path("defaultFormId").asText(null);
         return Objects.equals(release.entityCode(), target.entityCode())
-                && Objects.equals(rootFormId, target.formId())
-                && Objects.equals(
-                        release.formReleaseId(), target.formReleaseId())
-                && Objects.equals(
-                        release.formReleaseVersion(),
-                        target.formReleaseVersion());
+                && Objects.equals(rootFormId, target.formId());
     }
 
     /**

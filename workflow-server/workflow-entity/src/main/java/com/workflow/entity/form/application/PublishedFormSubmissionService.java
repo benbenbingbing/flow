@@ -14,7 +14,6 @@ import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
-import com.workflow.contracts.entity.ui.port.UiHotfixObservationPort;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.application.EntityPublishedRelationService;
@@ -39,8 +38,8 @@ import java.util.Set;
 /**
  * 已发布表单提交处理服务，在提交前应用表单默认值与 BEFORE_SUBMIT 数据源绑定。
  *
- * <p>解析实体默认表单或指定发布版本，执行字段默认值、计算和前置数据源绑定，
- * 确保提交数据符合发布版本约束，并通过执行上下文保证绑定幂等。</p>
+ * <p>解析实体默认表单或指定表单的当前已发布配置，执行字段默认值、计算和前置数据源绑定，
+ * 确保提交数据符合当前已发布配置约束，并通过执行上下文保证绑定幂等。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -56,7 +55,6 @@ public class PublishedFormSubmissionService {
     private final PublishedFormRequiredValidator requiredValidator;
     private final PublishedFormCrossFieldValidator crossFieldValidator;
     private EntityPublishedRelationService publishedRelationService;
-    private UiHotfixObservationPort hotfixObservationPort;
 
     /**
      * 可选注入发布关系读取能力；缺失时提交阶段回退到关系 Mapper。
@@ -67,17 +65,6 @@ public class PublishedFormSubmissionService {
     void setPublishedRelationService(
             EntityPublishedRelationService publishedRelationService) {
         this.publishedRelationService = publishedRelationService;
-    }
-
-    /**
-     * 可选接入热修复观察能力；缺失时跳过观察记录而继续权威提交。
-     *
-     * @param hotfixObservationPort 观察端口，后续记录实际发布版本的提交结果
-     */
-    @Autowired(required = false)
-    void setHotfixObservationPort(
-            UiHotfixObservationPort hotfixObservationPort) {
-        this.hotfixObservationPort = hotfixObservationPort;
     }
 
     /**
@@ -157,7 +144,7 @@ public class PublishedFormSubmissionService {
                     "实体不存在: " + entityCode);
         }
         EntityForm form =
-                formMapper.selectDefaultByEntityId(definition.getId());
+                releaseService.currentDefaultForm(definition.getId());
         if (form == null) {
             return new DefaultFormApplication(
                     mutable(submittedData),
@@ -188,17 +175,17 @@ public class PublishedFormSubmissionService {
 
     /**
      * 默认表单处理结果。调用方用 data 继续实体写入，用 formId/releaseId/
-     * releaseVersion 绑定事务终检；effectiveReleaseId、内容哈希与热修复目标
-     * 标识本次实际生效配置，供后续一致性检查和观察记录使用。无默认表单时
+     * releaseVersion 绑定事务终检；effectiveReleaseId 与内容哈希
+     * 标识本次使用的当前配置，供事务内一致性检查使用。无默认表单时
      * 发布身份均为空，调用方不得启用表单作用域规则。
      *
      * @param data 默认表单处理结果，后续交给实体写入
      * @param formId 实际默认表单 ID，供事务终检定位表单作用域
      * @param releaseId 已解析的基础发布 ID，供事务终检复用
      * @param releaseVersion 已解析的基础版本号，防止终检时版本漂移
-     * @param effectiveReleaseId 热修复后实际生效的发布 ID
+     * @param effectiveReleaseId 本次使用的当前配置摘要
      * @param effectiveContentHash 实际内容哈希，供一致性检查
-     * @param hotfixTargetId 热修复目标，供观察指标关联
+     * @param hotfixTargetId 旧协议兼容参数，当前表单统一发布始终为空
      */
     public record DefaultFormApplication(
             Map<String, Object> data,
@@ -210,7 +197,7 @@ public class PublishedFormSubmissionService {
             String hotfixTargetId) {
 
         /**
-         * 兼容尚未携带热修复观察坐标的调用方，保留基础发布身份。
+         * 兼容只携带当前配置摘要的调用方；版本字段保留为旧协议常量。
          *
          * @param data 已处理数据，后续交给实体写入
          * @param formId 实际默认表单 ID，供终检限定表单作用域
@@ -417,15 +404,15 @@ public class PublishedFormSubmissionService {
 
     /**
      * 指定表单的权威处理结果。data 用于落库，基础发布坐标用于后续终检；
-     * effectiveReleaseId/内容哈希/热修复目标保留实际生效快照身份，避免
-     * 提交前处理与变更审计分别指向不同版本。
+     * effectiveReleaseId 与内容哈希保留本次受理的配置身份，避免
+     * 发布并发发生时提交处理与变更审计分别使用不同配置。
      *
      * @param data 权威处理后的表单数据，供实体落库
      * @param releaseId 已解析的基础发布 ID，传给事务终检
      * @param releaseVersion 已解析的基础版本号，传给事务终检
      * @param effectiveReleaseId 实际生效发布 ID，供审计
      * @param effectiveContentHash 实际内容哈希，供一致性检查
-     * @param hotfixTargetId 热修复目标，供观察指标关联
+     * @param hotfixTargetId 旧协议兼容参数，当前表单统一发布始终为空
      */
     public record AuthorizedFormApplication(
             Map<String, Object> data,
@@ -436,7 +423,7 @@ public class PublishedFormSubmissionService {
             String hotfixTargetId) {
 
         /**
-         * 兼容无热修复内容哈希的调用方，仍传递基础与有效发布 ID。
+         * 兼容尚未携带内容哈希的调用方，仍传递基础与有效发布 ID。
          *
          * @param data 已处理数据，后续交给实体落库
          * @param releaseId 已解析的基础发布 ID，供事务终检
@@ -622,10 +609,10 @@ public class PublishedFormSubmissionService {
     }
 
     /**
-     * 统一包装预览与正式提交。只有正式提交会上报热修复观察指标；预览结果
-     * 可能被多次丢弃，不应计入实际提交成功率。子表递归沿用同一执行模式。
+     * 统一包装预览与正式提交，子表递归沿用同一执行模式。预览只执行无副作用
+     * 的绑定，正式提交再执行权威写入处理，避免多次预览重复产生外部副作用。
      *
-     * @param resolved 本次解析出的基础与有效发布快照，后续校验和观察指标共用
+     * @param resolved 本次解析出的基础与有效发布快照，供后续校验与执行共用
      * @param entityCode 实体编码，用于定位默认表单或根实体校验范围
      * @param recordId 已有记录 ID；新增时为空，后续参与绑定输入和最终记录校验
      * @param mode 提交模式，决定默认值、校验规则和幂等操作码
@@ -634,8 +621,8 @@ public class PublishedFormSubmissionService {
      * @param resolutionContext 服务端可信流程解析上下文，传入子表递归
      * @param nestedContext 子表行与父记录坐标，参与绑定目标和幂等键
      * @param depth 子表递归深度；根层才执行实体级最终校验
-     * @param executionMode 权威提交或无副作用预览，决定绑定执行范围与观察上报
-     * @return 处理后的提交数据；正式提交还会上报热修复观察结果
+     * @param executionMode 权威提交或无副作用预览，决定绑定执行范围与副作用处理
+     * @return 处理后的提交数据，供后续校验或实体写入
      */
     private Map<String, Object> applyResolvedForm(
             ResolvedEntityFormRelease resolved,
@@ -648,37 +635,9 @@ public class PublishedFormSubmissionService {
             PublishedSubFormSubmissionProcessor.Context nestedContext,
             int depth,
             BindingExecutionMode executionMode) {
-        if (executionMode != BindingExecutionMode.AUTHORITATIVE) {
-            return applyResolvedFormInternal(
-                    resolved,
-                    entityCode,
-                    recordId,
-                    mode,
-                    submittedData,
-                    executionContext,
-                    resolutionContext,
-                    nestedContext,
-                    depth,
-                    executionMode);
-        }
-        try {
-            Map<String, Object> result = applyResolvedFormInternal(
-                    resolved,
-                    entityCode,
-                    recordId,
-                    mode,
-                    submittedData,
-                    executionContext,
-                    resolutionContext,
-                    nestedContext,
-                    depth,
-                    executionMode);
-            observeSubmission(resolved, true, null);
-            return result;
-        } catch (RuntimeException exception) {
-            observeSubmission(resolved, false, exception.getMessage());
-            throw exception;
-        }
+        return applyResolvedFormInternal(
+                resolved, entityCode, recordId, mode, submittedData, executionContext,
+                resolutionContext, nestedContext, depth, executionMode);
     }
 
     /**
@@ -686,7 +645,7 @@ public class PublishedFormSubmissionService {
      * result 是本次提交的可变副本，后续每一步读取前一步映射的输出；depth 和
      * nestedContext 用于限制根实体校验并把子表行坐标传给绑定执行器。
      *
-     * @param resolved 本次解析出的基础与有效发布快照，后续校验和观察指标共用
+     * @param resolved 本次解析出的基础与有效发布快照，供后续校验与执行共用
      * @param entityCode 实体编码，用于定位默认表单或根实体校验范围
      * @param recordId 已有记录 ID；新增时为空，后续参与绑定输入和最终记录校验
      * @param mode 提交模式，决定默认值、校验规则和幂等操作码
@@ -695,7 +654,7 @@ public class PublishedFormSubmissionService {
      * @param resolutionContext 服务端可信流程解析上下文，传入子表递归
      * @param nestedContext 子表行与父记录坐标，参与绑定目标和幂等键
      * @param depth 子表递归深度；根层才执行实体级最终校验
-     * @param executionMode 权威提交或无副作用预览，决定绑定执行范围与观察上报
+     * @param executionMode 权威提交或无副作用预览，决定绑定执行范围与副作用处理
      * @return 完成绑定映射、子表处理和最终校验后的数据
      */
     private Map<String, Object> applyResolvedFormInternal(
@@ -1563,31 +1522,6 @@ public class PublishedFormSubmissionService {
     private enum BindingExecutionMode {
         AUTHORITATIVE,
         SIDE_EFFECT_FREE_PREVIEW
-    }
-
-    /**
-     * 热修复观察属于旁路指标，记录失败不能改变权威表单提交结果。
-     *
-     * @param resolved 本次实际生效的发布身份，作为观察指标坐标
-     * @param successful 权威提交是否成功，用于聚合成功率
-     * @param errorMessage 失败原因；失败时随指标记录供排障
-     */
-    private void observeSubmission(
-            ResolvedEntityFormRelease resolved,
-            boolean successful,
-            String errorMessage) {
-        if (hotfixObservationPort == null || resolved == null) {
-            return;
-        }
-        try {
-            hotfixObservationPort.recordReleaseMetric(
-                    resolved.effectiveReleaseId(),
-                    "FORM_SUBMIT",
-                    successful,
-                    errorMessage);
-        } catch (RuntimeException ignored) {
-            // 观察数据不得改变表单提交结果，告警由治理指标链路自身处理。
-        }
     }
 
 }

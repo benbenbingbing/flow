@@ -379,8 +379,7 @@ public class EmbedDelegatedRuntimePolicy {
         String token = request.getParameter("releaseResolutionToken");
         if (formRuntimePort == null
                 || !StringUtils.hasText(formId)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
+
                 || !StringUtils.hasText(token)) {
             throw denied();
         }
@@ -389,15 +388,14 @@ public class EmbedDelegatedRuntimePolicy {
                     formRuntimePort.verifyRuntimeReleaseRequest(
                             token,
                             new VerificationTarget(
-                                    null, formId, releaseId, releaseVersion,
+                                    null, formId, releaseId, releaseVersion == null ? 1 : releaseVersion,
                                     session.sessionId(),
                                     session.viewReleaseId(),
                                     session.absoluteExpiresAt()));
             if (verified == null
                     || !Objects.equals(formId, verified.formId())
-                    || !Objects.equals(
-                            releaseId, verified.formReleaseId())
-                    || releaseVersion != verified.formReleaseVersion()) {
+                    || releaseId != null && !Objects.equals(releaseId, verified.formReleaseId())
+                    || releaseVersion != null && releaseVersion != verified.formReleaseVersion()) {
                 throw denied();
             }
             return new EmbedNativeFormTarget(

@@ -172,7 +172,7 @@ assert.deepEqual(
 
 Object.entries(expectedSchemas).forEach(([nodeType, expected]) => {
   const actual = getFormNodePropertySchema(nodeType)
-  assert.deepEqual(actual.editable, expected.editable, `${nodeType} editable properties`)
+  assert.deepEqual(actual.editable, nodeType === 'FIELD' ? expected.editable : [...expected.editable, 'modeAccess'], `${nodeType} editable properties`)
   Object.entries({
     fieldProperties: false,
     nodeExtension: false,
@@ -632,8 +632,8 @@ assert.equal(fieldPayload.localOverrides, undefined)
     )
   }
   assert.equal(payload.childFormId, 'child-form-1')
-  assert.equal(payload.childFormReleaseId, 'child-release-3')
-  assert.equal(payload.childFormReleaseVersion, 3)
+  assert.equal(payload.childFormReleaseId, undefined)
+  assert.equal(payload.childFormReleaseVersion, undefined)
   assert.deepEqual(payload.props.componentProps, {
     layout: 'table',
     showPadding: false,

@@ -50,6 +50,11 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class EntityFormService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.contracts.entity.ui.port.FormDeletionReferencePort> deletionReferences;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormPublishedMapper publicationMapper;
+
     /**
      * 定义保存模式的可选值；调用方据此选择对应的处理分支。
      */
@@ -294,18 +299,63 @@ public class EntityFormService {
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(module = AuditModule.ENTITY, action = AuditAction.DELETE, operation = "删除实体表单", risk = AuditRiskLevel.HIGH, targetType = "ENTITY_FORM", targetIdArg = 0)
     public void deleteForm(String id) {
-        EntityForm form = formMapper.selectById(id);
+        if (publicationMapper != null) publicationMapper.lockPublication();
+        EntityForm form = formMapper.selectByIdForUpdate(id);
         if (form == null) {
             throw new RuntimeException("表单不存在");
         }
         requireNoListButtonReference(id);
+        requireNoCurrentFormReference(id);
+        if (publicationMapper != null) {
+            publicationMapper.removeDefaultForm(id);
+            publicationMapper.deleteById(id);
+        }
 
-        // 节点随表单逻辑删除，已发布快照保留原有配置。
+        // 引用检查通过后移除唯一当前配置，防止已删除表单仍可执行。
         formNodeMapper.delete(new LambdaQueryWrapper<com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode>()
                 .eq(com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode::getFormId, id));
         // 逻辑删除表单
         formMapper.deleteById(id);
         log.info("删除实体表单：{}", form.getFormName());
+    }
+
+    /** 稳定身份引用保护涵盖当前子表单、关联内容、固定列表及跨模块的历史流程/Embed。 */
+    private void requireNoCurrentFormReference(String formId) {
+        if (deletionReferences != null) {
+            List<String> references = deletionReferences.orderedStream()
+                    .flatMap(port -> port.references(formId).stream()).toList();
+            if (!references.isEmpty()) throw new IllegalStateException("表单仍被引用: " + String.join("、", references));
+        }
+        for (UiConfigRelease row : uiConfigReleaseMapper.findCurrentForms()) {
+            if (java.util.Objects.equals(formId, row.getConfigId())) continue;
+            if (containsStableFormReference(jsonDocumentCodec.readObject(row.getSnapshotDocument(), "当前发布表单"), formId))
+                throw new IllegalStateException("表单仍被当前已发布表单引用: " + row.getConfigId());
+        }
+        for (UiConfigRelease row : uiConfigReleaseMapper.selectList(new LambdaQueryWrapper<UiConfigRelease>().eq(UiConfigRelease::getConfigType, "LIST"))) {
+            if ("LIST".equals(row.getConfigType()) && containsStableFormReference(
+                    jsonDocumentCodec.readObject(row.getSnapshotDocument(), "已发布列表"), formId))
+                throw new IllegalStateException("表单仍被可执行列表引用: " + row.getConfigId());
+        }
+    }
+
+    private boolean containsStableFormReference(Object value, String formId) {
+        if (value instanceof java.util.Map<?, ?> map) {
+            for (String key : List.of("childFormId", "refFormId", "publishedFormId", "targetFormId"))
+                if (formId.equals(map.get(key))) return true;
+            if ("FORM".equals(map.get("contentType")) && formId.equals(map.get("contentId"))) return true;
+            for (var entry : map.entrySet()) {
+                // legacyProps 仅供设计兼容追溯，不构成当前可执行依赖。
+                if (Set.of("legacyProps", "legacyPropsDocument").contains(String.valueOf(entry.getKey()))) continue;
+                Object child = entry.getValue();
+                String key = String.valueOf(entry.getKey());
+                if (child instanceof String document && (key.endsWith("Document") || "componentProps".equals(key))
+                        && document.stripLeading().startsWith("{")) {
+                    if (containsStableFormReference(jsonDocumentCodec.readObject(document, "表单引用"), formId)) return true;
+                } else if (containsStableFormReference(child, formId)) return true;
+            }
+        } else if (value instanceof Iterable<?> rows) for (Object row : rows)
+            if (containsStableFormReference(row, formId)) return true;
+        return false;
     }
 
     /**

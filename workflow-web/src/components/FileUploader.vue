@@ -25,7 +25,6 @@
 
       <!-- 统一上传区域 -->
       <el-upload
-        ref="uploadRef"
         class="multi-group-uploader"
         :http-request="uploadRequest"
         :disabled="disabled"
@@ -45,6 +44,17 @@
         </div>
       </el-upload>
 
+      <!-- 替换使用独立选择器，避免依赖 el-upload 未公开的内部 ref；取消选择不会改动原附件。 -->
+      <input
+        ref="replacementInputRef"
+        type="file"
+        hidden
+        :accept="replacementAcceptTypes"
+        :disabled="disabled || replacementUploading"
+        @change="handleReplacementChange"
+        @cancel="selectedReplacement = null"
+      />
+
       <!-- 统一的文件列表 -->
       <div class="file-list all-files" v-if="allFiles.length > 0">
         <div class="file-list-header">附件列表</div>
@@ -63,7 +73,7 @@
             <el-button type="success" link size="small" @click="downloadFile(file.url)">
               <el-icon><Download /></el-icon> 下载
             </el-button>
-            <el-button v-if="!disabled" type="warning" link size="small" @click="updateFile(file)">
+            <el-button v-if="!disabled" :disabled="replacementUploading" type="warning" link size="small" @click="updateFile(file)">
               <el-icon><RefreshRight /></el-icon> 更新
             </el-button>
             <el-button v-if="!disabled" type="danger" link size="small" @click="removeFileByIndex(file.groupIndex, file.fileIndex)">
@@ -158,7 +168,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { Plus, Upload, Document, View, Download, RefreshRight, Delete } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
@@ -200,29 +210,29 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue'])
 
-const uploadRef = ref(null)
 const activeGroupIndex = ref(0)
-const pendingGroupIndex = ref(0)
+const replacementInputRef = ref(null)
+const selectedReplacement = ref(null)
+const replacementUploading = ref(false)
+// 每个上传绑定发起时的附件项；切换分组或并发上传不能改变已发出请求的归属。
+const uploadTargets = new Map()
 
-const uploadRequest = async ({ file, onProgress, onSuccess, onError }) => {
-  try {
-    const options = {
-      // 组件负责展示最终错误，避免全局请求层与 el-upload 重复弹出两条消息。
-      silentError: true,
-      onUploadProgress: (event) => {
-        const percent = event.total
-          ? Math.round((event.loaded / event.total) * 100)
-          : 0
-        onProgress({ percent })
-      }
+/** 返回上传结果，由 el-upload 的 Promise 通道统一触发成功/失败，避免重复回调。 */
+const uploadRequest = async ({ file, onProgress }) => {
+  const options = {
+    // 组件负责展示最终错误，避免全局请求层与 el-upload 重复弹出两条消息。
+    silentError: true,
+    onUploadProgress: (event) => {
+      const percent = event.total
+        ? Math.round((event.loaded / event.total) * 100)
+        : 0
+      onProgress({ percent })
     }
-    const response = props.uploadContext
-      ? await fileApi.uploadForEntity(file, props.uploadContext, options)
-      : await fileApi.upload(file, options)
-    onSuccess({ code: 200, data: response })
-  } catch (error) {
-    onError(error)
   }
+  const response = props.uploadContext
+    ? await fileApi.uploadForEntity(file, props.uploadContext, options)
+    : await fileApi.upload(file, options)
+  return { code: 200, data: response }
 }
 
 // ==================== 多组模式 ====================
@@ -270,25 +280,18 @@ const allFiles = computed(() => {
         url: url,
         groupIndex: gIndex,
         groupName: item.itemName || `附件项${gIndex + 1}`,
-        fileIndex: fIndex
+        fileIndex: fIndex,
+        originalFile: itemOrUrl
       })
     })
   })
   return result
 })
 
-const triggerUpload = () => {
-  if (uploadRef.value && uploadRef.value.$refs.input) {
-    uploadRef.value.$refs.input.click()
-  }
-}
-
-const beforeUploadActive = (file) => {
-  pendingGroupIndex.value = activeGroupIndex.value
-  const item = fileItems.value[activeGroupIndex.value]
-  if (!item) return false
-
-  const acceptTypes = activeAcceptTypes.value
+/** 新增和替换共享类型、大小校验；替换不增加附件数量，不能受新增数量上限阻拦。 */
+const validateGroupFile = (file, item) => {
+  if (props.disabled || !item) return false
+  const acceptTypes = attachmentFileTypesToString(item.fileTypes)
   if (acceptTypes && !isAttachmentFileTypeAllowed(file, acceptTypes)) {
     ElMessage.error(`不支持该文件类型，请上传 ${acceptTypes} 格式的文件`)
     return false
@@ -300,6 +303,13 @@ const beforeUploadActive = (file) => {
     return false
   }
 
+  return true
+}
+
+const beforeUploadActive = (file) => {
+  const item = fileItems.value[activeGroupIndex.value]
+  if (!validateGroupFile(file, item)) return false
+
   // 检查数量限制
   const currentUrls = getAttachmentItemValue(item, activeGroupIndex.value, groupModelValue.value) || []
   const currentCount = Array.isArray(currentUrls) ? currentUrls.length : (currentUrls ? 1 : 0)
@@ -308,19 +318,25 @@ const beforeUploadActive = (file) => {
     ElMessage.warning(`【${item.itemName}】最多只能上传 ${maxCount} 个文件`)
     return false
   }
-
+  uploadTargets.set(file.uid, { item, groupIndex: activeGroupIndex.value })
   return true
 }
 
 const handleSuccessActive = (response, file) => {
+  const target = uploadTargets.get(file.uid)
+  uploadTargets.delete(file.uid)
+  if (!target) return
   if (response.code === 200) {
-    const gIndex = pendingGroupIndex.value
-    const item = fileItems.value[gIndex]
-    if (!item) return
+    const { item, groupIndex: gIndex } = target
     const url = response.data?.url || response.data
     const originalName = response.data?.originalName || file.name || getFileNameFromUrl(url)
     const current = getAttachmentItemValue(item, gIndex, groupModelValue.value) || []
     const arr = Array.isArray(current) ? [...current] : (current ? [current] : [])
+    // 请求返回时数量可能已被其他上传占满，再次检查，避免并发新增突破限制。
+    if (arr.length >= (item.maxCount || 5)) {
+      ElMessage.warning(`【${item.itemName}】最多只能上传 ${item.maxCount || 5} 个文件`)
+      return
+    }
     arr.push({ url, name: originalName })
     const newValue = setAttachmentItemValue(
       groupModelValue.value,
@@ -336,6 +352,7 @@ const handleSuccessActive = (response, file) => {
 }
 
 const removeFileByIndex = (groupIndex, fileIndex) => {
+  if (props.disabled) return
   const item = fileItems.value[groupIndex]
   if (!item) return
   const current = getAttachmentItemValue(item, groupIndex, groupModelValue.value) || []
@@ -362,9 +379,51 @@ const downloadFile = (url) => {
 }
 
 const updateFile = (file) => {
-  // 切换到对应分组并触发上传
+  if (props.disabled || replacementUploading.value) return
+  const item = fileItems.value[file.groupIndex]
+  if (!item) return
   activeGroupIndex.value = file.groupIndex
-  triggerUpload()
+  selectedReplacement.value = { item, groupIndex: file.groupIndex, originalFile: file.originalFile }
+  const input = replacementInputRef.value
+  if (input) {
+    input.value = ''
+    // accept 需要在打开选择器前同步，不能等待分组切换后的 Vue 渲染。
+    input.accept = attachmentFileTypesToString(item.fileTypes)
+    input.click()
+  }
+}
+
+const replacementAcceptTypes = computed(() =>
+  attachmentFileTypesToString(selectedReplacement.value?.item.fileTypes)
+)
+
+/**
+ * 上传成功后替换选中的附件，并保留同组其他文件。用原附件定位，避免上传等待期间
+ * 删除其他文件导致索引偏移；目标已被删除时不回填，防止附件被迟到响应恢复。
+ */
+const handleReplacementChange = async (event) => {
+  const target = selectedReplacement.value
+  const file = event.target.files?.[0]
+  selectedReplacement.value = null
+  event.target.value = ''
+  if (!target || !file || !validateGroupFile(file, target.item)) return
+  replacementUploading.value = true
+  try {
+    const response = await uploadRequest({ file, onProgress: () => {} })
+    await nextTick()
+    const current = getAttachmentItemValue(target.item, target.groupIndex, groupModelValue.value) || []
+    const files = Array.isArray(current) ? [...current] : (current ? [current] : [])
+    const index = files.indexOf(target.originalFile)
+    if (index < 0) return
+    const url = response.data?.url || response.data
+    files[index] = { url, name: response.data?.originalName || file.name || getFileNameFromUrl(url) }
+    emit('update:modelValue', setAttachmentItemValue(groupModelValue.value, target.item, target.groupIndex, files))
+    ElMessage.success('更新成功')
+  } catch (error) {
+    handleError(error, file)
+  } finally {
+    replacementUploading.value = false
+  }
 }
 
 const getGroupTagType = (index) => {
@@ -441,16 +500,22 @@ const initFileList = () => {
     fileList.value = [{
       name: getFileNameFromUrl(value),
       url: value,
+      status: 'success',
       response: { data: { url: value } }
     }]
     return
   }
   if (Array.isArray(value)) {
-    fileList.value = value.map(url => ({
-      name: getFileNameFromUrl(url),
-      url: url,
-      response: { data: { url: url } }
-    }))
+    // 已保存附件不是本次上传队列；显式标记成功，删除时不能把其他历史文件过滤掉。
+    fileList.value = value.map(item => {
+      const url = typeof item === 'object' ? (item?.url || item?.path || item?.fileUrl || '') : item
+      return {
+        name: typeof item === 'object' ? (item?.name || item?.originalName || getFileNameFromUrl(url)) : getFileNameFromUrl(url),
+        url,
+        status: 'success',
+        response: { data: { url } }
+      }
+    })
     return
   }
   fileList.value = []
@@ -486,6 +551,7 @@ const handleSuccess = (response, file, uploadFiles) => {
 }
 
 const handleError = (error, file) => {
+  uploadTargets.delete(file?.uid)
   console.error('上传失败:', error)
   ElMessage.error(error?.message || '文件上传失败，请重试')
 }
@@ -499,6 +565,7 @@ const handleRemove = (file, uploadFiles) => {
 }
 
 const removeFile = (index) => {
+  if (props.disabled) return
   fileList.value.splice(index, 1)
   updateModelValue(fileList.value)
 }

@@ -288,11 +288,7 @@ public class EntityEmbedNativeListRuntimeAdapter
         if (resolved.form() == null
                 || !Objects.equals(form.formId(), resolved.form().getId())
                 || !Objects.equals(
-                definition.getId(), resolved.form().getEntityId())
-                || !Objects.equals(
-                form.formReleaseId(), resolved.releaseId())
-                || !Objects.equals(
-                form.formReleaseVersion(), resolved.releaseVersion())) {
+                definition.getId(), resolved.form().getEntityId())) {
             throw new IllegalArgumentException(
                     "Embed LIST 默认表单 Release 归属不一致");
         }

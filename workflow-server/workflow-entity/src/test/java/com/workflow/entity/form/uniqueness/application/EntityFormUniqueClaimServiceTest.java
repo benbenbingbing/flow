@@ -154,7 +154,7 @@ class EntityFormUniqueClaimServiceTest {
                 captor.capture());
         EntityFormUniqueClaim claim = captor.getValue().get(0);
         assertEquals(
-                "FORM:form-1:release-1:uq_name",
+                "FORM:form-1:c4d6535f40ae99f1967dc9d255b1fa75c8d35d72103afe178e39ac027cf825b4:uq_name",
                 claim.getConstraintKey());
         assertEquals(
                 EntityFormUniqueClaimService.sha256("项目a"),
@@ -399,8 +399,8 @@ class EntityFormUniqueClaimServiceTest {
         assertEquals(2, captor.getValue().size());
         assertEquals(
                 List.of(
-                        "FORM:form-1:target-1:uq_name",
-                        "FORM:form-2:release-2:uq_code"),
+                        "FORM:form-1:c4d6535f40ae99f1967dc9d255b1fa75c8d35d72103afe178e39ac027cf825b4:uq_name",
+                        "FORM:form-2:976c2dc178291d5bd3362ec94dcefa7f0193b869ec9745875e3752d41aa01388:uq_code"),
                 captor.getValue().stream()
                         .map(EntityFormUniqueClaim::getConstraintKey)
                         .toList());
@@ -576,8 +576,8 @@ class EntityFormUniqueClaimServiceTest {
                 eq("project"), eq("record-1"), captor.capture());
         assertEquals(
                 List.of(
-                        "FORM:form-1:release-1:uq_name",
-                        "FORM:form-2:release-2:uq_name_from_form_2"),
+                        "FORM:form-1:c4d6535f40ae99f1967dc9d255b1fa75c8d35d72103afe178e39ac027cf825b4:uq_name",
+                        "FORM:form-2:c4d6535f40ae99f1967dc9d255b1fa75c8d35d72103afe178e39ac027cf825b4:uq_name_from_form_2"),
                 captor.getValue().stream()
                         .map(EntityFormUniqueClaim::getConstraintKey)
                         .toList());
@@ -1139,6 +1139,20 @@ class EntityFormUniqueClaimServiceTest {
                 "release-1",
                 FormUniqueMutationContext.FORM_RELEASE_VERSION,
                 3);
+    }
+
+    @Test
+    void uniqueNamespaceIgnoresPresentationButChangesWithRuleSemantics() {
+        FormUniqueRule rule = rule();
+        FormUniqueRule presentation = new FormUniqueRule(rule.version(),rule.ruleId(),rule.fieldCode(),"新显示名称",rule.fieldType(),
+                rule.mode(),rule.ignoreBlank(),rule.normalization(),rule.condition(),"新提示",new FormUniqueRule.Precheck(false,FormUniqueRule.Trigger.BLUR,100,true));
+        FormUniqueRule changed = new FormUniqueRule(rule.version(),rule.ruleId(),rule.fieldCode(),rule.fieldLabel(),rule.fieldType(),
+                FormUniqueRule.Mode.GLOBAL,rule.ignoreBlank(),rule.normalization(),Map.of(),rule.message(),rule.precheck());
+        String first = org.springframework.test.util.ReflectionTestUtils.invokeMethod(EntityFormUniqueClaimService.class,"ruleFingerprint",rule);
+        String same = org.springframework.test.util.ReflectionTestUtils.invokeMethod(EntityFormUniqueClaimService.class,"ruleFingerprint",presentation);
+        String different = org.springframework.test.util.ReflectionTestUtils.invokeMethod(EntityFormUniqueClaimService.class,"ruleFingerprint",changed);
+        assertEquals(first,same);
+        org.junit.jupiter.api.Assertions.assertNotEquals(first,different);
     }
 
     private FormUniqueRule rule() {

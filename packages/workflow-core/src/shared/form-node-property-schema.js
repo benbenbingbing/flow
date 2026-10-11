@@ -55,8 +55,8 @@ const schema = ({
   gridSpan = false,
   containerAppearance = false
 }) => Object.freeze({
-  editable: Object.freeze(editable),
-  configKeys: Object.freeze(configKeys),
+  editable: Object.freeze(fieldProperties || !editable.length ? editable : [...editable, 'modeAccess']),
+  configKeys: Object.freeze(fieldProperties || !editable.length ? configKeys : [...configKeys, 'modeAccess', 'linkageRules']),
   fieldProperties,
   nodeExtension,
   rules,
@@ -385,7 +385,7 @@ export function extractFormNodeComponentConfig(value, propsValue) {
       ?? nested.text
       ?? nested.content
     const textStyle = props.textStyle ?? nested.textStyle
-    return cleanObject({ text, textStyle })
+    return cleanObject({ text, textStyle, modeAccess: props.modeAccess ?? nested.modeAccess, linkageRules: props.linkageRules ?? nested.linkageRules })
   }
   const config = nodeSchema.configKeys.reduce((result, key) => {
     if (props[key] !== undefined) {
@@ -493,21 +493,7 @@ function buildSubFormProps(field, componentProps) {
           refFormId: childFormId,
           publishedFormId: childFormId
         }
-      : {}),
-    ...(childFormReleaseId
-      ? {
-          childFormReleaseId,
-          refFormReleaseId: childFormReleaseId,
-          publishedFormReleaseId: childFormReleaseId
-        }
-      : {}),
-    ...(childFormReleaseVersion == null
-      ? {}
-      : {
-          childFormReleaseVersion,
-          refFormReleaseVersion: childFormReleaseVersion,
-          publishedFormReleaseVersion: childFormReleaseVersion
-        })
+      : {})
   })
 }
 
@@ -516,6 +502,13 @@ function buildSubFormProps(field, componentProps) {
  * 仅处理平台拥有的配置层级，保留扩展组件的业务参数，并且不修改输入草稿。
  */
 function omitRetiredFieldApiConfig(componentProps) {
+  for (const key of ['childFormReleaseId', 'childFormReleaseVersion', 'refFormReleaseId', 'refFormReleaseVersion', 'publishedFormReleaseId', 'publishedFormReleaseVersion']) {
+    delete componentProps[key]
+    if (componentProps.subFormConfig) {
+      componentProps.subFormConfig = { ...componentProps.subFormConfig }
+      delete componentProps.subFormConfig[key]
+    }
+  }
   if (componentProps.refConfig && typeof componentProps.refConfig === 'object') {
     componentProps.refConfig = { ...componentProps.refConfig }
     delete componentProps.refConfig.apiUrl
@@ -527,7 +520,7 @@ function omitRetiredFieldApiConfig(componentProps) {
     delete componentProps.linkageRules.valueApi
   }
   return componentProps
-}
+    }
 
 export function buildFormNodeProps(field, componentPropsValue = {}) {
   const nodeType = normalizeFormNodeType(field?.nodeType || field?.fieldType)
@@ -739,12 +732,6 @@ export function buildFormNodePayload(
   }
   if (nodeSchema.childForm && childFormId) {
     payload.childFormId = childFormId
-  }
-  if (nodeSchema.childForm && childFormReleaseId) {
-    payload.childFormReleaseId = childFormReleaseId
-    if (childFormReleaseVersion != null) {
-      payload.childFormReleaseVersion = childFormReleaseVersion
-    }
   }
   if (forPatch) {
     payload.clearFields = buildClearFields(

@@ -21,6 +21,13 @@
   </component>
 </template>
 
+<script>
+// Sortable 的 onStart 在来源容器触发，onAdd 在目标容器触发。
+// 必须在模块作用域共享当前节点；放在 setup 中会让目标实例只移动 DOM，无法更新草稿父容器。
+let activeDragNode = null
+let activeDragPosition = null
+</script>
+
 <script setup>
 import {
   nextTick,
@@ -31,8 +38,6 @@ import {
   watch
 } from 'vue'
 import Sortable from 'sortablejs'
-
-let activeDragNode = null
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -176,6 +181,9 @@ function eventIndex(event, key) {
 function handleStart(event) {
   const sourceIndex = eventIndex(event, 'old')
   activeDragNode = localItems.value[sourceIndex] || null
+  activeDragPosition = event?.item
+    ? { parent: event.item.parentNode, nextSibling: event.item.nextSibling }
+    : null
   dragging.value = Boolean(activeDragNode)
 }
 
@@ -187,12 +195,29 @@ function handleMove(event) {
 }
 
 function emitDrop(event) {
+  // Sortable 先移动真实 DOM，但节点归属和顺序由 Vue 草稿管理。
+  // 发出更新前恢复来源位置，让 Vue 自己移除旧节点、创建目标节点，避免跨容器留下重复节点。
+  restoreDraggedElement(event)
   if (!activeDragNode) return
   emit('drop', {
     node: activeDragNode,
     newParentId: props.parentId || '',
     newIndex: eventIndex(event, 'new')
   })
+}
+
+/**
+ * 恢复拖拽前的 DOM 锚点，而非仅按元素索引插入。
+ * v-for 插槽有 Vue Fragment 注释边界，节点必须回到原边界内，后续虚拟 DOM 才能正确移除。
+ */
+function restoreDraggedElement(event) {
+  const item = event?.item
+  const position = activeDragPosition
+  if (!item || !position?.parent) return
+  const anchor = position.nextSibling?.parentNode === position.parent
+    ? position.nextSibling
+    : null
+  position.parent.insertBefore(item, anchor)
 }
 
 function handleAdd(event) {
@@ -206,6 +231,7 @@ function handleUpdate(event) {
 async function handleEnd() {
   dragging.value = false
   activeDragNode = null
+  activeDragPosition = null
   await nextTick()
   localItems.value = Array.isArray(props.items) ? [...props.items] : []
   await nextTick()

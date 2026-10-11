@@ -7,13 +7,21 @@ export const FORM_LABEL_POSITION_OPTIONS = [
 ]
 
 /**
- * 将创建表单时保存的列数转换为新增实体属性的栅格初值。
- * 接受已解析配置或持久化 JSON；历史表单、无效列数均沿用 24 格。
+ * 读取新建/编辑面板与设计器共用的默认列数，接受配置对象或持久化 JSON。
+ * 历史表单或无效值显示为 1 列，只读取、不补写配置，避免产生无意义的草稿修改。
+ */
+export function resolveFormDefaultColumnCount(viewConfig) {
+  const columns = Number(safeParseConfig(viewConfig).defaultColumnCount)
+  return [1, 2, 3].includes(columns) ? columns : 1
+}
+
+/**
+ * 将表单保存的默认列数转换为新增实体属性的栅格初值。
+ * 历史表单、无效列数均沿用 24 格。
  * 仅在添加入口调用，不在节点读取或渲染时套用，避免覆盖已有及手动调整的宽度。
  */
 export function resolveNewFormFieldGridSpan(viewConfig) {
-  const columns = Number(safeParseConfig(viewConfig).defaultColumnCount)
-  return [1, 2, 3].includes(columns) ? 24 / columns : 24
+  return 24 / resolveFormDefaultColumnCount(viewConfig)
 }
 
 /** 子表单的名称在内容区作为节标题展示，外层 FormItem 不再占用标签列；兼容旧字段配置。 */

@@ -1,8 +1,8 @@
-/** 表单运行接口只接受已发布坐标；编辑器草稿接口留在 PC。 */
+/** 表单运行接口读取当前配置；参数中的旧发布坐标仅兼容内容指纹检查。 */
 export function createFormRuntimeApi(request) {
   return {
     getFormRuntimeRelease(id, releaseId, version, releaseResolutionToken) {
-      return request.get(`/entity-forms/${id}/runtime-release`, {
+      return request.get(`/entity-forms/${id}/runtime`, {
         params: { releaseId: releaseId || undefined, version: version ?? undefined, releaseResolutionToken: releaseResolutionToken || undefined }
       })
     },

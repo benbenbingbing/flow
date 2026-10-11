@@ -14,6 +14,7 @@ import com.workflow.contracts.audit.annotation.SystemAudit;
 import com.workflow.contracts.migration.port.MigrationAssetPort;
 import com.workflow.migration.api.request.ConfigMigrationAssetQuery;
 import com.workflow.migration.api.request.ConfigMigrationMarkRequest;
+import com.workflow.migration.infrastructure.crypto.WfpackIntegrity;
 import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictItemMapper;
 import com.workflow.admin.dictionary.infrastructure.persistence.mapper.SysDictMapper;
@@ -312,10 +313,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
     }
 
     /**
-     * 记录实体界面；供后续追溯或审计使用。
+     * 表单或列表发布后登记完整实体迁移快照，供后续导出使用。
+     * 迁移资产序号独立于表单当前配置，不用于运行时选择表单。
      *
      * @param entityId 实体ID，后续用于记录实体界面时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于记录实体界面时定位或关联目标
+     * @param releaseId 当前表单内容摘要或列表发布ID，用于定位本次生效配置
      * @param request 本次请求，后续经校验后用于记录实体界面
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
@@ -350,7 +352,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
                 ENTITY,
                 entity.getEntityCode(),
                 entity.getEntityName(),
-                release.getId() + ":v" + nextVersion,
+                entityUiAssetSourceKey(release.getId(), nextVersion),
                 nextVersion,
                 effectiveDescription(
                         request, release.getDescription()),
@@ -361,6 +363,24 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
                 castList(snapshot.get("dependencies")),
                 release.getPublishedAt(),
                 release.getPublishedBy());
+    }
+
+    /**
+     * 构造实体 UI 迁移资产的幂等来源键，最大 64 字符。
+     *
+     * <p>保留旧列表等短 ID 的来源键，避免改变已有去重坐标。表单内容摘要本身
+     * 已有 64 字符，因此长组合键取完整 SHA-256；不能截断，否则同一配置再次
+     * 出现在不同实体迁移快照中时，会丢失资产序号并错误复用旧导出内容。</p>
+     *
+     * @param publicationId 当前表单内容摘要或列表发布ID
+     * @param assetVersion 实体迁移资产序号，区分同一 UI 内容触发的不同完整快照
+     * @return 可写入 source_history_id 并参与资产唯一约束的来源键
+     */
+    static String entityUiAssetSourceKey(String publicationId, int assetVersion) {
+        String sourceKey = publicationId + ":v" + assetVersion;
+        return sourceKey.length() <= 64 ? sourceKey
+                : WfpackIntegrity.sha256(
+                        sourceKey.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -465,7 +485,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
      * 记录系统实体界面；供后续追溯或审计使用。
      *
      * @param entityId 实体ID，后续用于记录系统实体界面时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于记录系统实体界面时定位或关联目标
+     * @param releaseId 当前表单内容摘要或列表发布ID，用于定位本次生效配置
      * @param request 本次请求，后续经校验后用于记录系统实体界面
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
@@ -503,7 +523,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
                 SYSTEM_ENTITY_UI,
                 entity.getEntityCode(),
                 entity.getEntityName() + " UI",
-                release.getId(),
+                // 当前表单允许 A -> B -> A；仅凭摘要会复用第一次 A 的资产，
+                // 丢失同实体其他 UI 在这期间发生的变化。列表仍保留旧发布ID去重规则。
+                "FORM".equals(release.getConfigType())
+                        ? entityUiAssetSourceKey(release.getId(), nextVersion)
+                        : release.getId(),
                 nextVersion,
                 effectiveDescription(
                         request, release.getDescription()),

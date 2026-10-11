@@ -85,7 +85,7 @@
           <div class="content-card__main">
             <div class="content-card__heading">
               <div>
-                <strong>{{ item.config.name || item.config.target.contentName || '未命名关联内容' }}</strong>
+                <strong>{{ item.config.presentation.title || item.config.name || item.config.target.contentName || '未命名关联内容' }}</strong>
                 <el-tag
                   size="small"
                   :type="item.config.enabled === false ? 'info' : 'success'"
@@ -134,7 +134,9 @@
       :source-content-fields="sourceContentFields"
       :anchor-options="anchorOptions"
       :existing-count="rows.length"
+      :composition-editor-available="compositionEditorAvailable"
       @saved="handleSaved"
+      @open-composition-editor="openCompositionEditor"
     />
   </component>
 </template>
@@ -155,15 +157,18 @@ import {
 
 const props = defineProps({
   embedded: { type: Boolean, default: false },
+  draftMode: { type: Boolean, default: false },
+  items: { type: Array, default: () => [] },
   ownerType: { type: String, required: true },
   ownerId: { type: [String, Number], default: '' },
   sourceEntity: { type: Object, default: () => ({}) },
   sourceFields: { type: Array, default: () => [] },
   sourceContentFields: { type: Array, default: () => [] },
-  anchorOptions: { type: Array, default: () => [] }
+  anchorOptions: { type: Array, default: () => [] },
+  compositionEditorAvailable: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons'])
+const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons', 'open-composition-editor', 'edit-draft', 'create-draft', 'delete-draft', 'refresh-drafts'])
 const visible = ref(false)
 // 表单设置直接承载面板；列表仍使用独立抽屉，共用同一套配置与保存逻辑。
 const drawerProps = computed(() => ({
@@ -176,12 +181,18 @@ const drawerProps = computed(() => ({
 const loading = ref(false)
 const deletingId = ref('')
 const loadError = ref('')
-const rows = ref([])
+const localRows = ref([])
+const rows = computed(() => props.draftMode ? props.items : localRows.value)
 const dialogRef = ref(null)
 
 function configureButtons(tab) {
   visible.value = false
   emit('configure-buttons', tab)
+}
+
+function openCompositionEditor() {
+  visible.value = false
+  emit('open-composition-editor')
 }
 
 function normalizeRows(response) {
@@ -197,8 +208,9 @@ function normalizeRows(response) {
  * 避免编辑或删除时覆盖其他管理员刚保存的变更。
  */
 async function load({ silent = false } = {}) {
+  if (props.draftMode) return emit('refresh-drafts')
   if (!props.ownerId) {
-    rows.value = []
+    localRows.value = []
     emit('count-change', 0)
     emit('loaded', [])
     return
@@ -207,7 +219,7 @@ async function load({ silent = false } = {}) {
   loadError.value = ''
   try {
     const response = await uiCompositionApi.list(props.ownerType, props.ownerId)
-    rows.value = normalizeRows(response)
+    localRows.value = normalizeRows(response)
       .map(item => normalizeRelatedContent(item, {
         ownerType: props.ownerType,
         sourceEntity: props.sourceEntity
@@ -216,7 +228,7 @@ async function load({ silent = false } = {}) {
     emit('count-change', rows.value.length)
     emit('loaded', rows.value)
   } catch (error) {
-    rows.value = []
+    localRows.value = []
     emit('count-change', 0)
     emit('loaded', [])
     loadError.value = error?.message || '关联内容加载失败，请重试'
@@ -227,20 +239,24 @@ async function load({ silent = false } = {}) {
 }
 
 async function open(item = null) {
+  if (props.draftMode) { if (item) openEdit(item); return }
   if (!props.embedded) visible.value = true
   await load({ silent: true })
   if (item) openEdit(rows.value.find(row => row.id === item.id) || item)
 }
 
 function openCreate() {
+  if (props.draftMode) return emit('create-draft', { extension: false })
   dialogRef.value?.open()
 }
 
 function openExtension() {
+  if (props.draftMode) return emit('create-draft', { extension: true })
   dialogRef.value?.open(null, { extension: true })
 }
 
 function openEdit(item) {
+  if (props.draftMode) return emit('edit-draft', item)
   dialogRef.value?.open(item)
 }
 
@@ -258,6 +274,7 @@ async function remove(item) {
   } catch {
     return
   }
+  if (props.draftMode) return emit('delete-draft', item)
   deletingId.value = item.id
   try {
     const result = await uiCompositionApi.remove(
@@ -295,7 +312,7 @@ async function handleSaved(saved) {
 
 watch(
   () => props.ownerId,
-  () => load({ silent: true }),
+  () => { if (!props.draftMode) load({ silent: true }) },
   { immediate: true }
 )
 

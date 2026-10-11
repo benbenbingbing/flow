@@ -1,4 +1,4 @@
-import { normalizeRuntimeNodes } from '@flow/workflow-core/form-runtime/nodeProjection'
+import { normalizeRuntimeNodes, isFormNodeVisible } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { runtimeFieldState } from '@flow/workflow-core/form-runtime/formModel'
 import { resolveFormFieldExtensionName } from '@flow/workflow-core/form-field-extension'
 import { resolveRuntimeFormTabLayout } from '@flow/workflow-core/form-runtime/runtimeFormTabs'
@@ -12,7 +12,7 @@ export function buildMobileFormTree(form, fields, options, linkage = {}) {
   const visit = parent => nodes.filter(node => String(node.parentId || '') === String(parent)).flatMap(node => {
     if (seen.has(String(node.id))) throw new Error('表单分组存在循环引用')
     seen.add(String(node.id))
-    if (!visible(node)) return []
+    if (!visible(node) || !isFormNodeVisible(node, { data: options.record, mode: options.mode, context: options.context })) return []
     if (node.componentName && !resolveFormFieldExtensionName(node)) return [{ kind: 'extension', id: String(node.id), node }]
     const field = byId.get(String(node.id))
     if (field) return runtimeFieldState(field, options, linkage).visible ? [{ kind: 'field', id: String(node.id), field, extensionName: resolveFormFieldExtensionName(node) }] : []
@@ -47,10 +47,10 @@ export function groupsContainingField(tree, fieldCode) {
 }
 
 /** 复用 PC 的根级 Tab 布局，只移除被提升 Tab 的折叠外壳；嵌套 Tab 和区块保持原树结构。 */
-export function buildMobileFormPages(form, tree, relatedContents = [], tabbed = false) {
+export function buildMobileFormPages(form, tree, relatedContents = [], tabbed = false, visibilityOptions = {}) {
   const basic = { name: 'basic', label: '基本信息', items: tree, relatedContents: [] }
   if (!tabbed) return { pages: [{ ...basic, relatedContents }], defaultActiveTabName: 'basic' }
-  const layout = resolveRuntimeFormTabLayout(form)
+  const layout = resolveRuntimeFormTabLayout(form, visibilityOptions)
   const tabIds = new Set(layout.tabs.map(tab => String(tab.id)))
   basic.items = tree.filter(item => !tabIds.has(item.id))
   const pages = layout.tabs.map(tab => ({ ...tab, id: String(tab.id), items: tree.find(item => item.id === String(tab.id))?.children || [], relatedContents: [] }))

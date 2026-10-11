@@ -19,6 +19,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class EntityFormNodePropertyPolicyTest {
 
+    @Test
+    void containerVisibilitySurvivesNormalization() {
+        Map<String, Object> props = Map.of("label", "显示区域", "modeAccess", Map.of("edit", Map.of("visible", false)),
+                "linkageRules", Map.of("visibilityRule", "status == 'ACTIVE'"));
+        for (String type : Set.of("SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE", "TEXT", "ACTION_SLOT")) {
+            assertEquals(props, EntityFormNodePropertyPolicy.normalizeProps(type, props, false).active());
+        }
+        assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(
+                "SECTION", Map.of("modeAccess", Map.of("edit", Map.of("visible", "false"))), false));
+    }
+
+
     /**
      * 验证属性矩阵覆盖全部十种节点类型，且合法属性归一化后全部保留为 active、inactive 为空。
      */

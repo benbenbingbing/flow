@@ -49,7 +49,7 @@ const relatedContents = computed(() => (props.form.viewCompositions || []).filte
   const node = projection.value.nodes.find(node => [node.id, node.nodeKey].map(String).includes(String(item.anchorKey)))
   return node && runtimeFieldState({ id: node.id, fieldCode: node.nodeKey }, runtimeOptions.value, linkage.value).visible
 }).sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0)))
-const pageLayout = computed(() => buildMobileFormPages(props.form, tree.value, relatedContents.value, props.tabbed && !props.rootParentId))
+const pageLayout = computed(() => buildMobileFormPages(props.form, tree.value, relatedContents.value, props.tabbed && !props.rootParentId, { data: record.value, mode: props.mode, context: props.context }))
 function setSectionsRef(name, value) { if (value) sectionRefs.set(name, value); else sectionRefs.delete(name) }
 const customForm = computed(() => getMobileExtension('FORM', props.form.customComponent, props.form.customComponentVersion || 1))
 const formActionSlots = computed(() => createCustomFormActionSlotContract(props.actions, action => emit('action', action)))
@@ -83,6 +83,10 @@ watch(() => [record.value, fields.value], () => {
   } catch (cause) { modelError.value = cause.message }
 }, { deep: true, immediate: true })
 function defaultGroups(items) { return items.flatMap(item => item.children ? [...(item.defaultExpanded ? [item.id] : []), ...defaultGroups(item.children)] : []) }
+// 条件隐藏当前页签时切换到可见页签，保留仍有效的用户选择。
+watch(() => pageLayout.value.pages.map(page => page.name), names => {
+  if (props.tabbed && !names.includes(props.activeTab)) emit('update:activeTab', pageLayout.value.defaultActiveTabName)
+})
 watch(() => [props.form.id, props.form.runtimeReleaseId || props.form.formReleaseId, props.context.initializationKey], () => {
   expanded.value = defaultGroups(tree.value); baseErrors.value = {}; unique.reset(record.value); initialize()
   if (props.tabbed) emit('update:activeTab', pageLayout.value.defaultActiveTabName)

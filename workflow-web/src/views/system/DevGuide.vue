@@ -319,139 +319,21 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
         </section>
 
         <section id="release-api" class="guide-section">
-          <h3>10. 草稿、STANDARD/HOTFIX、回滚</h3>
+          <h3>10. 草稿与发布接口</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="/draft">返回可编辑草稿、稳定项目 ID、revision 和未发布状态。</el-descriptions-item>
-            <el-descriptions-item label="/diff">按稳定 ID 比较草稿与激活快照，并返回树、数据源、权限和兼容校验；`changedItems[]` 使用 section、id、label、changeType、changedFields 标识新增、修改、移动、删除，`changedSections` 仅保留兼容用途。</el-descriptions-item>
-            <el-descriptions-item label="/publish-preview">POST 表单或列表发布预检；两者返回 draftHash、activeReleaseId 和 SAFE/REVIEW 风险项，只有表单 HOTFIX 返回 impactToken、流程版本和影响实例。</el-descriptions-item>
-            <el-descriptions-item label="/publish">`releaseMode` 缺省为 `STANDARD`；只有表单接受 `HOTFIX` 并要求回传预检状态，列表传 HOTFIX 返回冲突。</el-descriptions-item>
-            <el-descriptions-item label="/release-summaries">分页列出不含快照文档的历史摘要；完整 `/releases` 保留给需要版本内容的设计能力。</el-descriptions-item>
-            <el-descriptions-item label="/activate">先预览与当前 ACTIVE 的差异，再填写原因激活 STANDARD 历史版本；当前草稿不变。</el-descriptions-item>
-            <el-descriptions-item label="/restore-draft">列表可把指定历史快照及本地事件绑定恢复到草稿，不切换线上 ACTIVE。</el-descriptions-item>
-            <el-descriptions-item label="/rollback-hotfix">表单 HOTFIX 按 rollout 顺序撤回；列表仅保留升级前存量记录的兼容撤回。</el-descriptions-item>
+            <el-descriptions-item label="/diff">按稳定 ID 比较草稿与当前发布，changedItems[] 描述新增、修改、移动、删除。</el-descriptions-item>
+            <el-descriptions-item label="/publish-preview">校验完整配置、权限、引用和参数契约，返回 draftHash 和 activeReleaseId 并发前置条件。</el-descriptions-item>
+            <el-descriptions-item label="/publish">表单覆盖唯一当前配置，发布后立即全局生效；列表按自己的版本机制发布。</el-descriptions-item>
+            <el-descriptions-item label="/runtime">表单按稳定 ID 读取当前配置。内容摘要和 protocolVersion 是运行协议字段，不是表单业务版本。</el-descriptions-item>
+            <el-descriptions-item label="/releases、/release-summaries">仅列表提供发布历史查询。</el-descriptions-item>
+            <el-descriptions-item label="/activate、/restore-draft">仅列表提供带原因的历史激活和恢复历史到草稿。</el-descriptions-item>
           </el-descriptions>
-          <el-table :data="hotfixRiskRows" border size="small" style="margin-top: 16px">
-            <el-table-column prop="risk" label="风险级别" width="110" />
-            <el-table-column prop="changes" label="典型变更" min-width="300" />
-            <el-table-column prop="policy" label="发布策略" min-width="280" />
-          </el-table>
-          <CodeCard title="STANDARD 发布（旧客户端兼容）" language="HTTP">
-            <pre v-pre><code>POST /api/entity-forms/frm_order/publish
-Content-Type: application/json
-
-{
-  "description": "订单表单金额区块升级",
-  "releaseMode": "STANDARD"
-}
-
-200 OK
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "id": "fr_20260718_001",
-    "version": 4,
-    "contentHash": "8f1c...",
-    "status": "ACTIVE",
-    "publishedAt": "2026-07-18T10:45:00"
-  }
-}</code></pre>
-          </CodeCard>
-          <CodeCard title="HOTFIX 影响预检" language="HTTP">
-            <pre v-pre><code>POST /api/entity-forms/frm_order/publish-preview
-Content-Type: application/json
-
-{
-  "releaseMode": "HOTFIX",
-  "rolloutScope": "ACTIVE_AND_FUTURE"
-}
-
-200 OK
-{
-  "code": 200,
-  "data": {
-    "releaseMode": "HOTFIX",
-    "draftHash": "draft-sha256",
-    "activeReleaseId": "fr_20260718_001",
-    "impactToken": "impact-sha256",
-    "riskLevel": "SAFE",
-    "canPublish": true,
-    "processVersionCount": 2,
-    "activeInstanceCount": 37,
-    "skippedHistoricalInstanceCount": 421,
-    "riskItems": [],
-    "targets": [
-      {
-        "processKey": "order_approval",
-        "processVersion": 6,
-        "currentStartable": true,
-        "activeInstanceCount": 29,
-        "compatible": true,
-        "blockers": []
-      }
-    ],
-    "blockers": []
-  }
-}</code></pre>
-          </CodeCard>
-          <CodeCard title="HOTFIX 发布" language="HTTP">
-            <pre v-pre><code>POST /api/entity-forms/frm_order/publish
-Content-Type: application/json
-
-{
-  "description": "修正运行中审批页帮助文案",
-  "releaseMode": "HOTFIX",
-  "rolloutScope": "ACTIVE_AND_FUTURE",
-  "expectedActiveReleaseId": "fr_20260718_001",
-  "expectedDraftHash": "draft-sha256",
-  "impactToken": "impact-sha256"
-}
-
-// 列表和表单除 SAFE 外统一为 REVIEW；
-// REVIEW 仅提示风险，不需要额外确认字段，也不阻止发布。</code></pre>
-          </CodeCard>
-          <CodeCard title="HOTFIX 409：影响范围已变化" language="HTTP">
-            <pre v-pre><code>409 Conflict
-{
-  "code": 409,
-  "errorCode": "HOTFIX_IMPACT_CHANGED",
-  "message": "热修复影响范围已变化，请重新预检"
-}
-
-// 其他冲突：
-// HOTFIX_PREVIEW_REQUIRED        未先预检
-// HOTFIX_NOT_COMPATIBLE         存在阻断项
-// HOTFIX_ROLLBACK_ORDER_CONFLICT 未按发布时间逆序撤回
-// HOTFIX_ACTIVATE_NOT_ALLOWED   尝试通过 activate 激活热修复</code></pre>
-          </CodeCard>
-          <CodeCard title="嵌套表单运行时解析" language="HTTP">
-            <pre v-pre><code>GET /api/entity-forms/frm_order_line/runtime-release
-    ?releaseId=fr_line_v3
-    &amp;releaseVersion=3
-    &amp;releaseResolutionToken={serverSignedToken}
-
-200 OK
-{
-  "code": 200,
-  "data": {
-    "id": "fr_line_v3",
-    "version": 3,
-    "effectiveReleaseId": "hotfix_release_9",
-    "hotfixApplied": true,
-    "contentHash": "effective-sha256",
-    "releaseResolutionToken": "next-level-token",
-    "snapshotDocument": {}
-  }
-}</code></pre>
-          </CodeCard>
           <ul class="check-list">
-            <li>`STANDARD` 是默认模式。流程表单发布后仍由流程 release 钉定；未重新发布流程时新增入口可返回 `409 PROCESS_FORM_RELEASE_STALE`，运行中和历史实例继续使用原快照。</li>
-            <li>`HOTFIX` 表单只影响当前可发起流程版本和仍有运行实例的历史版本；已完成、已终止实例明确使用 `HISTORICAL`，始终读取原始钉定快照。</li>
-            <li>普通列表页面读取 `ACTIVE` release；发布表单中的子列表由服务端签名上下文固定到父表单引用的列表 release，历史流程不再被列表后续发布静默改写。</li>
-            <li>列表只允许 STANDARD；表单 HOTFIX 在风险提醒和影响预检通过后直接发布，回滚使用专用权限。</li>
-            <li>发布历史聚合 `rolloutStatus`：`ACTIVE` 正在生效且可撤回，`SUPERSEDED` 已被更新热修复替代，`ROLLED_BACK` 已撤回；只有 ACTIVE 显示或接受撤回操作。</li>
-            <li>`impactToken` 绑定 configType/configId、releaseMode、draftHash、activeReleaseId、targetHash 和 riskLevel；任一输入变化必须重新预检。</li>
-            <li>`releaseResolutionToken` 是服务端 HMAC 签发的 5 分钟短期令牌，绑定用户、运行目的、流程历史版本、节点、父表单 release 和深度；嵌套最大 8 层，前端不得自行拼接流程版本上下文。</li>
+            <li>表单草稿保存不生效，成功发布后新建、任务、历史详情、子表单、列表表单按钮与 Embed 全部采用当前配置。</li>
+            <li>旧页面提交返回 409 FORM_CONFIGURATION_CHANGED，提示保留填写内容并重新加载核对。</li>
+            <li>releaseResolutionToken 绑定用户、运行目的、任务、记录、父子引用和配置依赖摘要；子表单单独发布也会使旧令牌失效。</li>
+            <li>列表仍可在父表单、Embed 的签名上下文中读取固定列表版本，表单配置不再固定到流程版本。</li>
           </ul>
         </section>
 
@@ -461,11 +343,11 @@ Content-Type: application/json
             <li>迁移必须幂等：旧表单字段转一级 FIELD 节点，列表项目保留已有 ID，缺失 ID 只生成一次。</li>
             <li>历史子表、引用、事件和选项迁入显式属性，未知内容进入 `legacyProps` 并写入迁移报告。</li>
             <li>历史节点首次按新 Schema 编辑保存时，不兼容配置从活动文档移除并保留为非活动兼容数据；后续 diff、发布和运行时不得再次把它提升为有效属性。</li>
-            <li>已有表单和列表生成初始不可变 release；报告节点数、未知属性、快照哈希和版本。启动迁移必须按单个配置的 `REQUIRES_NEW` 事务执行并输出结构化失败报告，禁止一个坏配置回滚已成功项或阻塞应用启动。</li>
-            <li>`V037__add_ui_config_hotfix_rollout.sql` 为既有 release 补 `STANDARD` 元数据，并创建 `process_ui_release_binding`、`ui_config_hotfix_target`、`ui_config_release_audit` 及热修复权限。</li>
+            <li>列表生成初始不可变 release；表单仅保留唯一当前发布配置。报告节点数、未知属性和快照哈希。启动迁移必须按单个配置的 `REQUIRES_NEW` 事务执行并输出结构化失败报告，禁止一个坏配置回滚已成功项或阻塞应用启动。</li>
+            <li>V112/V113 建立当前表单发布表，校验合法 ACTIVE 内容及稳定引用后复制；旧 FORM 记录只读归档。</li>
             <li>存量 `process_version_history.node_forms_snapshot` 由启动回填器分页 200 条幂等解析；配置 `workflow.ui-hotfix.binding-backfill-enabled=false` 可暂时关闭，缺省为开启。</li>
             <li>生产升级应核对回填日志中的 `histories`、`inserted`、`updated`、`missingRelease`、`invalidSnapshot`、`skippedExisting`；关闭回填只适合受控迁移窗口，完成核对后应重新开启。</li>
-            <li>新运行时优先读取激活 release；不存在时仅临时回退旧配置并记录告警，生成初始 release 后停止依赖回退。</li>
+            <li>运行时只读取已发布配置，不存在时拒绝运行；不会临时回退旧配置或启用草稿。</li>
             <li>扩展废弃必须保留快照读取和配置迁移路径，不得因为 Provider 或组件升级导致历史 release 无法渲染。</li>
           </ul>
         </section>
@@ -578,7 +460,7 @@ const toc = [
   { id: 'provider-context', label: '上下文与约束' },
   { id: 'unified-data-source', label: '统一数据源' },
   { id: 'data-source-spi', label: 'Provider SPI' },
-  { id: 'release-api', label: '发布与热修复' },
+  { id: 'release-api', label: '草稿与发布' },
   { id: 'migration-compatibility', label: '迁移兼容' },
   { id: 'cell', label: '单元格组件' },
   { id: 'built-in', label: '内置能力' },
@@ -634,10 +516,7 @@ const dataSourceBindings = [
   { binding: 'AFTER_LOAD / BEFORE_SUBMIT', meaning: 'FIELD、SUB_FORM、REPEATER：加载后转换与提交前校验/映射' }
 ]
 
-const hotfixRiskRows = [
-  { risk: 'SAFE', changes: '表单文案、帮助说明和占位符等纯展示修改。', policy: '具备 HOTFIX 权限且预检无阻断时可直接发布。' },
-  { risk: 'REVIEW', changes: '除 SAFE 外的全部有效表单变更，包括增删、绑定和类型、权限、数据源、提交映射、关系/子表、写操作和自定义组件。', policy: '仅提示风险，不要求额外权限或确认原因，不阻止热修复发布；列表仅使用 STANDARD。' }
-]
+
 
 const providerContext = [
   { key: 'entityCode', meaning: '当前实体编码' },

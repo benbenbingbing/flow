@@ -130,12 +130,15 @@
       />
     </template>
   </el-dialog>
+  <FormButtonActionHost v-if="dialogVisible" ref="buttonActionHostRef" />
 </template>
 
 <script setup lang="ts">
+import FormButtonActionHost from '@/components/FormButtonActionHost.vue'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '@flow/workflow-core/page-parameters'
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, provide } from 'vue'
+import { relatedFormDraftGuardKey } from '@/shared/related-form-draft-guard'
 import { useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
 import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
@@ -168,6 +171,7 @@ import { isEmbedDelegatedRequestEnabled } from '@/shared/request'
 import { createRuntimeFormDiscardGuard } from '@/shared/runtime-form-discard'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 
+const buttonActionHostRef = ref<any>()
 const props = withDefaults(defineProps<{
   entityCode: string
   entityDefinition: any
@@ -267,11 +271,30 @@ const discardGuard = createRuntimeFormDiscardGuard({
     }
   )
 })
-workspacePage.registerGuard(discardGuard.isDirty)
+// 普通关联区域独立保存，主表关闭、Embed 刷新和工作区退出也需保护它的未保存输入。
+const relatedFormGuards = new Set<any>()
+provide(relatedFormDraftGuardKey, (guard: any) => {
+  relatedFormGuards.add(guard)
+  return () => relatedFormGuards.delete(guard)
+})
+const hasUnsavedRelatedForms = () => [...relatedFormGuards].some(guard => guard.isDirty() || guard.isBusy())
+workspacePage.registerGuard(() => discardGuard.isDirty() || hasUnsavedRelatedForms())
 
 /** 供原生关闭和 Embed 刷新共同检查；提交中的表单不能被重新初始化。 */
 async function confirmDiscardChanges() {
   if (props.reloadPending || (isEmbedDelegatedRequestEnabled() && actionLoadingKey.value)) return false
+  if ([...relatedFormGuards].some(guard => guard.isBusy())) return false
+  if (hasUnsavedRelatedForms()) {
+    try {
+      await ElMessageBox.confirm('子表单有未保存的修改，关闭或刷新后这些修改将丢失。', '确认放弃修改？', {
+        type: 'warning', confirmButtonText: '放弃修改', cancelButtonText: '继续填写',
+        closeOnClickModal: false, closeOnPressEscape: false
+      })
+      // 同次确认覆盖整个弹窗的输入，避免主表和子表分别重复询问。
+      relatedFormGuards.forEach(guard => guard.discard())
+      return true
+    } catch { return false }
+  }
   return discardGuard.confirmDiscard()
 }
 
@@ -386,7 +409,7 @@ function handleDialogClosed() {
   emit('closed')
 }
 
-const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(runtimeForm.value))
+const runtimeTabLayout = computed(() => resolveRuntimeFormTabLayout(runtimeForm.value, { data: formData.data, mode: isEdit.value ? 'edit' : 'create', context: launchRuntimeContext.value }))
 const runtimeNodeTabs = computed(() => runtimeTabLayout.value.tabs)
 const liftedRootNodeIds = computed(() => runtimeTabLayout.value.liftedRootNodeIds)
 const hasRuntimeFormTabs = computed(() => runtimeNodeTabs.value.length > 0)
@@ -400,6 +423,14 @@ const firstFormTabName = computed(() => {
   if (showBasicTab.value) return 'basic'
   if (runtimeNodeTabs.value.length > 0) return runtimeNodeTabs.value[0].name
   return 'form'
+})
+
+// 当前页签被条件隐藏时回到可见页签，流程信息页不受节点条件影响。
+watch([runtimeNodeTabs, showBasicTab], () => {
+  if ((activeTab.value === 'basic' && !showBasicTab.value)
+    || (String(activeTab.value).startsWith('form_tab_') && !runtimeNodeTabs.value.some(tab => tab.name === activeTab.value))) {
+    activeTab.value = firstFormTabName.value
+  }
 })
 
 function setNodeFormFieldsRef(
@@ -568,6 +599,12 @@ async function handleFormAction(action: any) {
         }
         if (action.type !== 'custom') return
         return executeCustomFormAction(action, runtimeForm.value, {
+          isCurrent,
+          executeClientAction: (...args: any[]) => buttonActionHostRef.value.execute(...args),
+          entityDefinition: props.entityDefinition,
+          entityFields: props.entityFields,
+          parameters: context?.parameters || {},
+          updateFormData: (value: any) => { if (isCurrent()) formData.data = value },
           entityCode: props.entityCode,
           listKey: props.listKey,
           mode: isEdit.value ? 'edit' : 'create',
@@ -881,7 +918,13 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
       ElMessage.success('创建成功')
     }
 
-    dialogVisible.value = false
+    // 保存主表不会提交普通关联草稿；保留弹窗，让用户继续独立保存子表单。
+    if (hasUnsavedRelatedForms()) {
+      captureResetSnapshot()
+      ElMessage.info('主表已保存，子表单仍有未保存的修改')
+    } else {
+      dialogVisible.value = false
+    }
     emit('success', result)
   } catch (error: any) {
     await showServerValidationErrors(error)

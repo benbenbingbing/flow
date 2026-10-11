@@ -28,8 +28,7 @@ import static com.workflow.migration.application.ConfigMigrationReferenceSupport
 import static com.workflow.migration.application.ConfigMigrationReferenceService.maps;
 
 /**
- * 子表单通过实体编码/表单键和可移植内容指纹定位固定版本。
- * 源版本号与源 ID 均不参与目标匹配；完整固定内容随包携带，避免改绑目标最新版本。
+ * 子表单通过实体编码/表单键定位稳定身份，运行时统一使用当前配置。
  */
 @Service
 @RequiredArgsConstructor
@@ -48,107 +47,76 @@ public class ConfigMigrationSubFormReferences {
     private final ObjectProvider<ConfigMigrationAssetService> assetService;
     private final ObjectMapper json;
 
-    /** 递归收集固定内容及依赖，检测循环和过深嵌套；不修改源发布历史。 */
+    /** 导出稳定的实体编码/表单键引用；子表单内容由包内自己的表单资产携带。 */
     Map<String, Object> exportReferences(Map<String, Object> snapshot) {
         List<Map<String, Object>> dependencies = new ArrayList<>(maps(snapshot.get("dependencies")));
-        Map<String, Object> result = exportDocument(snapshot, new LinkedHashSet<>(), dependencies);
+        Map<String, Object> result = rewrite(snapshot, (type, value) -> value, config -> {
+            if (config.containsKey("childFormReleaseRef")) throw new IllegalArgumentException("旧固定子表单包必须重新导出");
+            String formId = first(config, FORM_IDS);
+            if (formId.isBlank()) return config;
+            EntityForm form = formMapper.selectById(formId);
+            if (form == null) throw new IllegalArgumentException("源子表单不存在: " + formId);
+            var entity = entityMapper.selectById(form.getEntityId());
+            if (entity == null) throw new IllegalArgumentException("源子表单所属实体不存在: " + formId);
+            clearIds(config);
+            config.put("childFormRef", "wf-form://" + entity.getEntityCode() + "/" + form.getFormKey());
+            dependencies.add(Map.of("type", "ENTITY", "key", entity.getEntityCode(), "required", true,
+                    "source", "子表单当前配置依赖"));
+            return config;
+        });
         result.put("dependencies", ConfigMigrationAssignmentSupport.mergeDependencies(dependencies));
         return result;
     }
 
-    private Map<String, Object> exportDocument(Map<String, Object> document, Set<String> path,
-            List<Map<String, Object>> dependencies) {
-        return rewrite(document, (type, value) -> value, config -> {
-            if (config.containsKey("childFormReleaseRef")) return config;
-            String releaseId = first(config, RELEASE_IDS);
-            String formId = first(config, FORM_IDS);
-            if (releaseId.isBlank() && formId.isBlank()) return config;
-            if (releaseId.isBlank()) throw new IllegalArgumentException("子表单缺少固定发布版本: " + formId);
-            if (path.size() >= 8 || !path.add(releaseId)) throw new IllegalArgumentException("子表单固定版本引用循环或超过 8 层");
-            try {
-                UiConfigRelease release = releaseMapper.selectById(releaseId);
-                if (release == null || !"FORM".equals(release.getConfigType())) throw new IllegalArgumentException("源子表单发布版本不存在: " + releaseId);
-                if (!formId.isBlank() && !formId.equals(release.getConfigId())) throw new IllegalArgumentException("源子表单与发布版本归属不一致");
-                EntityForm form = formMapper.selectById(release.getConfigId());
-                if (form == null) throw new IllegalArgumentException("源子表单不存在: " + release.getConfigId());
-                Map<String, Object> pinned = assetService.getObject().pinnedFormSnapshot(form, release);
-                pinned = references.exportReferences(pinned);
-                pinned = exportDocument(pinned, path, dependencies);
-                String entityCode = text(pinned.get("entityCode"));
-                dependencies.addAll(maps(pinned.remove("dependencies")));
-                dependencies.add(Map.of("type", "ENTITY", "key", entityCode,
-                        "required", true, "source", "固定子表单所属实体"));
-                pinned.put("formRef", "wf-form://" + entityCode + "/" + form.getFormKey());
-                pinned.put("fingerprint", fingerprint(object(pinned.get("form"))));
-                clearIds(config);
-                config.put("childFormReleaseRef", pinned);
-                return config;
-            } finally {
-                path.remove(releaseId);
-            }
-        });
-    }
-
-    /** 分析阶段校验固定快照自身及所属实体，基础目录由同一个身份解析器验证。 */
-    void validate(Map<String, Object> snapshot, Set<String> packageForms,
-            BiFunction<String, String, String> mapping) {
-        validate(snapshot, packageForms, mapping, 0);
-    }
-
-    private void validate(Map<String, Object> snapshot, Set<String> packageForms,
-            BiFunction<String, String, String> mapping, int depth) {
-        if (depth > 8) throw new IllegalArgumentException("子表单固定版本引用超过 8 层");
+    /** 新包只接受稳定身份；目标未包含该表单时必须已存在，不能暗中恢复历史版本。 */
+    void validate(Map<String, Object> snapshot, Set<String> packageForms, BiFunction<String, String, String> mapping) {
         rewrite(snapshot, (type, value) -> value, config -> {
             requirePortable(config);
-            if (config.get("childFormReleaseRef") instanceof Map<?, ?> raw) {
-                Map<String, Object> pinned = object(raw);
-                verifyFingerprint(pinned);
-                String[] coordinate = coordinate(text(pinned.get("formRef")));
-                if (!packageForms.contains(text(pinned.get("formRef"))) && findMatchingRelease(pinned, mapping) == null) {
-                    throw new IllegalArgumentException("固定子表单目标版本不存在，包内需包含该表单以恢复当前配置: " + coordinate[0]);
-                }
-                references.importReferences(pinned, mapping);
-                validate(object(pinned.get("form")), packageForms, mapping, depth + 1);
-            }
+            String ref = text(config.get("childFormRef"));
+            if (ref.isBlank()) return config;
+            coordinate(ref);
+            if (!packageForms.contains(ref) && targetForm(ref, mapping) == null)
+                throw new IllegalArgumentException("子表单依赖不存在，请把对应实体表单加入迁移包: " + ref);
             return config;
         });
     }
 
-    /** 落库前把固定引用解析为目标本地表单与版本 ID，缺失内容由同事务内导入器补齐。 */
+    /** 所有 UI 宿主已按业务键建立后，把身份引用换成目标本地 formId，无发布版本坐标。 */
     Map<String, Object> materialize(Map<String, Object> document,
-            BiFunction<String, String, String> mapping, Function<Map<String, Object>, UiConfigRelease> importer) {
+            BiFunction<String, String, String> mapping, Function<Map<String, Object>, UiConfigRelease> unusedImporter) {
         return rewrite(document, (type, value) -> value, config -> {
             requirePortable(config);
-            if (!(config.get("childFormReleaseRef") instanceof Map<?, ?> raw)) return config;
-            Map<String, Object> pinned = object(raw);
-            verifyFingerprint(pinned);
-            UiConfigRelease release = findMatchingRelease(pinned, mapping);
-            if (release == null) release = importer.apply(pinned);
-            if (release == null) throw new IllegalStateException("子表单固定版本导入后未生成发布记录");
-            config.remove("childFormReleaseRef");
-            config.put("childFormId", release.getConfigId());
-            config.put("childFormReleaseId", release.getId());
-            config.put("childFormReleaseVersion", release.getVersion());
+            String ref = text(config.get("childFormRef"));
+            if (ref.isBlank()) return config;
+            EntityForm form = targetForm(ref, mapping);
+            if (form == null) throw new IllegalArgumentException("目标子表单不存在: " + ref);
+            config.remove("childFormRef");
+            clearIds(config);
+            config.put("childFormId", form.getId());
             return config;
         });
     }
 
-    /** 内容相同的历史或活跃版本均可复用，版本号不同不影响匹配。 */
-    UiConfigRelease findMatchingRelease(Map<String, Object> pinned, BiFunction<String, String, String> mapping) {
-        String[] coordinate = coordinate(text(pinned.get("formRef")));
+    private EntityForm targetForm(String ref, BiFunction<String, String, String> mapping) {
+        String[] coordinate = coordinate(ref);
         var entity = entityMapper.findByEntityCode(mapping.apply("ENTITY", coordinate[0])).orElse(null);
-        if (entity == null) return null;
-        EntityForm form = formMapper.selectByEntityIdAndFormKey(entity.getId(), mapping.apply("FORM", coordinate[1]));
-        if (form == null) return null;
-        // 先把源身份编码映射成目标编码再比较，禁止用源 ID 或同版本号判定相同内容。
-        Map<String, Object> expected = remapPortable(object(pinned.get("form")), mapping);
-        String expectedHash = fingerprint(expected);
-        for (UiConfigRelease release : releaseMapper.findReleases("FORM", form.getId())) {
-            Map<String, Object> candidate = assetService.getObject().pinnedFormSnapshot(form, release);
-            candidate = exportReferences(references.exportReferences(candidate));
-            if (expectedHash.equals(fingerprint(object(candidate.get("form"))))) return release;
-        }
-        return null;
+        return entity == null ? null : formMapper.selectByEntityIdAndFormKey(entity.getId(), mapping.apply("FORM", coordinate[1]));
+    }
+
+    /** 导入发布先处理子依赖；只遍历平台配置，不依赖包内实体排列顺序。 */
+    Set<String> formReferences(Map<String, Object> document) {
+        Set<String> result = new LinkedHashSet<>();
+        rewrite(document, (type, value) -> value, config -> {
+            if (config.containsKey("childFormRef")) result.add(text(config.get("childFormRef")));
+            return config;
+        });
+        return result;
+    }
+
+    /** 仅供旧内部调用检查当前配置，永不搜索历史。 */
+    UiConfigRelease findMatchingRelease(Map<String, Object> source, BiFunction<String, String, String> mapping) {
+        EntityForm form = targetForm(text(source.get("formRef")), mapping);
+        return form == null ? null : releaseMapper.findActive("FORM", form.getId());
     }
 
     /** 忽略本地技术元数据，保留业务内容并规范 JSON 键序；指纹只用于内容复用。 */
@@ -257,6 +225,7 @@ public class ConfigMigrationSubFormReferences {
     }
 
     private static void requirePortable(Map<String, Object> config) {
+        if (config.containsKey("childFormReleaseRef")) throw new IllegalArgumentException("旧固定子表单包必须重新导出");
         if (!first(config, FORM_IDS).isBlank() || !first(config, RELEASE_IDS).isBlank()) {
             throw new IllegalArgumentException("新包不能包含源子表单 ID，请重新导出");
         }

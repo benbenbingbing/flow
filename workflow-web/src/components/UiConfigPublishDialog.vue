@@ -8,38 +8,12 @@
     @opened="initialize"
   >
     <el-form label-width="96px">
-      <el-form-item label="发布方式">
-        <template #label>
-          <ConfigHelpLabel
-            label="发布方式"
-            help-key="uiConfig.releaseMode"
-          />
-        </template>
-        <el-radio-group
-          v-if="configType === 'FORM'"
-          v-model="form.releaseMode"
-          @change="loadPreview"
-        >
-          <el-radio-button value="STANDARD">普通发布</el-radio-button>
-          <el-radio-button value="HOTFIX" :disabled="!canHotfix">
-            兼容热修复
-          </el-radio-button>
-        </el-radio-group>
-        <el-tag v-else type="primary">普通发布</el-tag>
-        <div class="publish-mode-help">
-          <template v-if="form.releaseMode === 'STANDARD'">
-            <span v-if="configType === 'FORM'">
-              表单需要重新发布流程后生效；运行中实例继续使用原始版本。
-            </span>
-            <span v-else>
-              列表发布后立即切换当前全局生效版本，所有列表页面同步生效。
-            </span>
-          </template>
-          <template v-else>
-            HOTFIX 会先展示风险、影响目标和阻断项；确认后直接作用于当前可发起版本和运行中实例。
-          </template>
-        </div>
-      </el-form-item>
+      <el-alert
+        :title="configType === 'FORM'
+          ? '发布后所有引用入口使用当前表单配置，包括运行中任务与历史详情，无需重新发布流程。'
+          : '列表发布后立即全局生效。'"
+        type="info" :closable="false" show-icon
+      />
 
       <el-form-item label="发布说明">
         <el-input
@@ -69,15 +43,6 @@
             {{ riskLabel(preview.riskLevel) }}
           </el-tag>
           <span>变更 {{ preview.changedItems?.length || 0 }} 项</span>
-          <span v-if="configType === 'FORM'">
-            影响流程版本 {{ preview.processVersionCount || 0 }} 个
-          </span>
-          <span v-if="configType === 'FORM'">
-            运行中实例 {{ preview.activeInstanceCount || 0 }} 个
-          </span>
-          <span v-if="configType === 'FORM'">
-            跳过历史实例 {{ preview.skippedHistoricalInstanceCount || 0 }} 个
-          </span>
         </div>
 
         <section
@@ -87,7 +52,7 @@
           <div class="dependency-card__heading">
             <div>
               <strong>关联内容发布依赖</strong>
-              <span>发布后会固定以下目标内容和特殊处理版本；后续更新不会自动改变本版本。</span>
+              <span>目标表单始终使用其当前已发布配置，其他依赖按各自发布规则生效。</span>
             </div>
             <el-tag type="info" effect="plain">
               {{ preview.dependencies.length }} 项
@@ -105,7 +70,7 @@
             </el-table-column>
             <el-table-column prop="name" label="业务名称" min-width="170" />
             <el-table-column prop="key" label="编码 / 操作" min-width="150" />
-            <el-table-column label="固定版本" width="110">
+            <el-table-column label="依赖状态" width="110">
               <template #default="{ row }">
                 {{ dependencyVersionLabel(row) }}
               </template>
@@ -123,14 +88,6 @@
           class="publish-alert"
         />
 
-        <el-alert
-          v-if="hasForcedTargets"
-          :title="forceRiskText"
-          type="warning"
-          :closable="false"
-          show-icon
-          class="publish-alert"
-        />
 
         <el-table
           v-if="preview.riskItems?.length"
@@ -156,38 +113,6 @@
           <el-table-column prop="reason" label="说明" min-width="260" />
         </el-table>
 
-        <el-table
-          v-if="preview.targets?.length"
-          :data="preview.targets"
-          size="small"
-          max-height="220"
-          class="target-table"
-        >
-          <el-table-column prop="processName" label="流程" min-width="150" />
-          <el-table-column prop="processVersion" label="版本" width="70" />
-          <el-table-column prop="activeInstanceCount" label="运行中" width="80" />
-          <el-table-column
-            prop="skippedHistoricalInstanceCount"
-            label="跳过历史"
-            width="90"
-          />
-          <el-table-column label="应用方式" width="100">
-            <template #default="{ row }">
-              <el-tag :type="targetModeTagType(row)" size="small">
-                {{ targetModeLabel(row) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="说明" min-width="220">
-            <template #default="{ row }">
-              {{
-                row.blockers?.join('；')
-                  || row.reviewNotes?.join('；')
-                  || '可原子应用'
-              }}
-            </template>
-          </el-table-column>
-        </el-table>
       </template>
     </div>
 
@@ -207,14 +132,12 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import { ElMessage } from 'element-plus'
 import {
   previewFormPublish,
   publishForm
 } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
-import { useUserStore } from '@/stores/user'
 
 const props = defineProps({
   modelValue: Boolean,
@@ -224,53 +147,26 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'published'])
-const userStore = useUserStore()
 const preview = ref(null)
 const previewLoading = ref(false)
 const publishing = ref(false)
 const form = reactive({
-  releaseMode: 'STANDARD',
   description: ''
 })
 
-const canHotfix = computed(() =>
-  props.configType === 'FORM'
-  && (userStore.isSuperAdmin
-    || userStore.permissions.includes('entity:ui-config:hotfix'))
-)
 const canSubmit = computed(() =>
   Boolean(preview.value?.changed
     && preview.value?.canPublish)
 )
-const forcedTargets = computed(() =>
-  (preview.value?.targets || []).filter(target =>
-    target.compatible && target.applicationMode === 'FULL_SNAPSHOT'
-  )
-)
-const hasForcedTargets = computed(() =>
-  form.releaseMode === 'HOTFIX' && forcedTargets.value.length > 0
-)
-const forceRiskText = computed(() =>
-  `${forcedTargets.value.length} 个流程版本无法安全增量对齐，`
-    + '将使用当前草稿的完整快照强制覆盖；新快照仍会完整校验并原子生效。'
-)
-const submitLabel = computed(() => {
-  if (form.releaseMode !== 'HOTFIX') return '普通发布'
-  return '直接发布热修复'
-})
+const submitLabel = computed(() => '发布')
 
 function requestPayload(includePreviewState = false) {
   return {
-    releaseMode: form.releaseMode,
-    rolloutScope: form.releaseMode === 'HOTFIX'
-      ? 'ACTIVE_AND_FUTURE'
-      : undefined,
     description: form.description,
     ...(includePreviewState && preview.value
       ? {
           expectedActiveReleaseId: preview.value.activeReleaseId,
-          expectedDraftHash: preview.value.draftHash,
-          impactToken: preview.value.impactToken
+          expectedDraftHash: preview.value.draftHash
         }
       : {})
   }
@@ -288,6 +184,7 @@ function dependencyTypeLabel(type) {
 }
 
 function dependencyVersionLabel(row = {}) {
+  if (row.type === 'FORM') return '当前已发布配置'
   const version = row.version
   if (version === null || version === undefined || version === '') return '-'
   return row.type === 'INTERFACE_SERVICE'
@@ -296,7 +193,6 @@ function dependencyVersionLabel(row = {}) {
 }
 
 async function initialize() {
-  form.releaseMode = 'STANDARD'
   form.description = ''
   await loadPreview()
 }
@@ -319,46 +215,20 @@ async function loadPreview() {
 }
 
 async function submit() {
-  if (form.releaseMode === 'HOTFIX') {
-    await loadPreview()
-  }
   if (!canSubmit.value) return
-  if (form.releaseMode === 'HOTFIX') {
-    try {
-      await ElMessageBox.confirm(
-        '当前热修复会立即作用于当前可发起流程版本和运行中实例。请确认已核对风险项、影响目标和阻断提示。',
-        '确认直接发布热修复',
-        {
-          type: 'warning',
-          confirmButtonText: '确认直接发布',
-          cancelButtonText: '取消'
-        }
-      )
-    } catch {
-      return
-    }
-  }
   publishing.value = true
   try {
     const payload = requestPayload(true)
-    const release = props.configType === 'FORM'
+    const current = props.configType === 'FORM'
       ? await publishForm(props.configId, payload)
       : await entityListConfigApi.publish(props.configId, payload)
-    ElMessage.success(
-      form.releaseMode === 'HOTFIX'
-        ? '热修复已直接发布，进入运行观察窗口'
-        : '普通发布成功'
-    )
-    emit('published', release)
+    ElMessage.success('发布成功，已全局生效')
+    emit('published', current)
     emit('update:modelValue', false)
   } catch (error) {
     ElMessage.error(error?.message || '发布失败')
-    if (error?.response?.status === 409 || error?.status === 409) {
-      await loadPreview()
-    }
-  } finally {
-    publishing.value = false
-  }
+    if (error?.response?.status === 409 || error?.status === 409) await loadPreview()
+  } finally { publishing.value = false }
 }
 
 function riskTagType(risk) {
@@ -375,20 +245,6 @@ function riskLabel(risk) {
     REVIEW: '高风险提醒',
     BLOCKED: '不可发布'
   }[risk] || '待评估'
-}
-
-function targetModeTagType(target) {
-  if (!target?.compatible) return 'danger'
-  return target.applicationMode === 'FULL_SNAPSHOT'
-    ? 'warning'
-    : 'success'
-}
-
-function targetModeLabel(target) {
-  if (!target?.compatible) return '不可应用'
-  return target.applicationMode === 'FULL_SNAPSHOT'
-    ? '强制覆盖'
-    : '增量'
 }
 
 function publishPathLabel(path) {

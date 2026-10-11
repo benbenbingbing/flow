@@ -120,11 +120,11 @@
           </el-input>
           <div class="field-help">
             {{ isEdit
-              ? '用于流程节点绑定和发布版本识别，创建后不可修改。'
+              ? '用于流程节点和页面引用，创建后不可修改。'
               : '实体编码为固定前缀，将与输入内容一起保存，创建后不可修改。' }}
           </div>
         </el-form-item>
-        <el-form-item v-if="!isEdit" label="列数">
+        <el-form-item label="列数">
           <el-radio-group v-model="form.defaultColumnCount">
             <el-radio-button :value="1">1 列</el-radio-button>
             <el-radio-button :value="2">2 列</el-radio-button>
@@ -189,7 +189,7 @@
             maxlength="100"
             placeholder="请输入新表单标识"
           />
-          <div class="field-help">复制后将作为流程和发布引用的稳定标识，请在创建前确认。</div>
+          <div class="field-help">复制后将作为流程和页面引用的稳定标识，请在创建前确认。</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -233,6 +233,8 @@ import {
   totalFormDataSourceBindings
 } from '@flow/workflow-core/form-runtime'
 import { formatDateValue } from '@/shared/list-runtime'
+import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { resolveFormDefaultColumnCount } from '@/shared/form-layout'
 import PageState from '@/components/PageState.vue'
 import {
   buildEntityConfigKey,
@@ -273,6 +275,8 @@ const selectedCustomFormCatalogOption = computed(() => {
 })
 const formList = ref([])
 const previewForm = ref(null)
+// 编辑列数时保留设计器维护的其他视图配置，供保存时合并；重置面板时清空该快照。
+const savedViewConfig = ref({})
 const formKeyPrefix = computed(() =>
   getEntityConfigKeyPrefix(entityInfo.value.entityCode)
 )
@@ -286,7 +290,7 @@ const form = reactive({
   formName: '',
   formKey: '',
   layoutType: 'grid',
-  // 创建时写入 viewConfig，设计器仅用它初始化新属性，不参与已有节点的布局计算。
+  // 写入 viewConfig，设计器仅用它初始化新属性，不参与已有节点的布局计算。
   defaultColumnCount: 1,
   status: 1,
   description: '',
@@ -377,6 +381,8 @@ async function handleEdit(row) {
     }
     // 编辑历史配置时不能继承新建表单的 grid 默认值。
     form.layoutType = current.layoutType || 'vertical'
+    savedViewConfig.value = safeParseConfig(current.viewConfig)
+    form.defaultColumnCount = resolveFormDefaultColumnCount(savedViewConfig.value)
     formRendererMode.value = isSystemEntity.value
       ? FORM_RENDERER_MODE_DEFAULT
       : resolveFormRendererMode(form.customComponent)
@@ -451,7 +457,7 @@ async function handlePreview(row) {
   }
 }
 
-/** 只更新基本信息和渲染配置，布局节点、组件参数及数据源继续由设计页维护。 */
+/** 更新基本信息、默认列数和渲染配置；列数只影响后续新增属性，不重排已有节点。 */
 async function handleSubmit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -468,6 +474,14 @@ async function handleSubmit() {
       customComponentSnapshotVersion: isCustomRendererMode.value ? form.customComponentSnapshotVersion : null
     }
     if (isEdit.value) {
+      // 补丁接口整块替换 viewConfig，因此只在列数改变时合并提交，保留按钮、标签及组件参数。
+      // 未调整列数的历史表单不补写默认值；expectedRevision 防止覆盖并发保存的设计配置。
+      if (form.defaultColumnCount !== resolveFormDefaultColumnCount(savedViewConfig.value)) {
+        metadata.viewConfig = {
+          ...savedViewConfig.value,
+          defaultColumnCount: form.defaultColumnCount
+        }
+      }
       await patchFormMetadata(form.id, {
         ...metadata,
         expectedRevision: form.revision,
@@ -552,7 +566,7 @@ async function submitCopy() {
 async function handleDelete(row) {
   try {
     const { value } = await ElMessageBox.prompt(
-      `删除前系统会校验流程节点、子表单引用和发布版本。该操作不可恢复，请输入表单名称“${row.formName}”确认。`,
+      `删除前系统会校验流程节点、子表单和已发布页面引用。该操作不可恢复，请输入表单名称“${row.formName}”确认。`,
       '删除表单',
       {
         confirmButtonText: '确认删除',
@@ -581,6 +595,7 @@ function resetForm() {
   form.formKey = ''
   form.layoutType = 'grid'
   form.defaultColumnCount = 1
+  savedViewConfig.value = {}
   form.status = 1
   form.description = ''
   form.revision = null

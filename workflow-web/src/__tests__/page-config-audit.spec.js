@@ -553,6 +553,9 @@ const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelect
 
 const listDesigner = readFileSync(path.join(root, 'src/views/EntityListConfigDesign.vue'), 'utf8')
   + readFileSync(path.join(root, 'src/views/list-designer/listColumnModel.js'), 'utf8')
+assert.match(listDesigner,
+  /<UiConfigPublishDialog[\s\S]*?config-type="LIST"[\s\S]*?\/>/,
+  '列表发布必须显式传入 LIST，不能套用表单当前配置的发布入口')
 const listDesignerShared = readFileSync(path.join(root, 'src/shared/list-config-design.js'), 'utf8')
 const uiConfigDraftShared = readFileSync(
   path.join(root, 'src/shared/ui-config-draft.js'),
@@ -989,7 +992,7 @@ assert.match(
 )
 assert.match(
   formDesigner,
-  /:type="draftStatus\.type"[\s\S]*?\{\{\s*draftStatusLabel\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
+  /:type="hasUnsavedLocalChanges\(\) \? 'warning' : draftStatus\.type"[\s\S]*?\{\{\s*hasUnsavedLocalChanges\(\) \? '未保存' : draftStatusLabel\s*\}\}[\s\S]*?<\/el-tag>[\s\S]*?v-if="canDiscardDraft"[\s\S]*?\blink(?:\s|>)[\s\S]*?>\s*撤销\s*<\/el-button>/,
   '表单撤销入口必须紧邻未发布状态，并使用 link 按钮'
 )
 ;[
@@ -998,7 +1001,7 @@ assert.match(
   'resolveUiConfigDraftStatus',
   'discardDraftLoading',
   'handleDiscardDraft',
-  '自当前发布版本以来所有已保存但未发布的修改',
+  '自上次发布以来所有已保存但未发布的修改',
   '当前页面尚未保存的编辑',
   '不可恢复'
 ].forEach((marker) => {
@@ -1253,22 +1256,18 @@ assert.ok(
   textFieldSource.includes('resolveTextFieldMaxLength(props.field, parsedComponentProps.value)'),
   '文本运行时必须优先使用数据校验中的最大长度'
 )
+// 子表单按稳定身份引用当前配置，发布后不要求重发父表单或流程。
 ;[
-  'childFormReleaseId',
-  'childFormReleaseVersion',
-  'handleChildFormReleaseChange',
+  'handleChildFormChange',
   'ensureChildFormReleaseBinding',
-  'getFormReleases'
-].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `子表单设计器缺少固定发布版本能力: ${marker}`)
-})
-;[
+  'getFormRuntimeRelease',
   'hasUnsavedLocalChanges',
-  '当前渲染配置仍有未保存修改，请先保存草稿后再发布',
-  '重新发布流程后再新增流程数据',
-  '历史实例继续使用原版本'
+  'if (hasUnsavedLocalChanges() && !await handleSave()) return'
 ].forEach((marker) => {
-  assert.ok(formDesigner.includes(marker), `表单发布缺少版本生效提示或本地草稿保护: ${marker}`)
+  assert.ok(formDesigner.includes(marker), `表单设计器缺少当前配置读取或草稿保护: ${marker}`)
+})
+;['getFormReleases', 'handleChildFormReleaseChange', '历史实例继续使用原版本'].forEach((marker) => {
+  assert.equal(formDesigner.includes(marker), false, `表单设计器仍包含版本固定逻辑: ${marker}`)
 })
 ;[
   'v-if="!isCustomRendererMode" class="design-body"',
@@ -1344,8 +1343,8 @@ assert.ok(
 )
 assert.ok(
   nodePropertyDrawer.includes('class="node-property-actions"')
-    && nodePropertyDrawer.includes('@click="saveSelectedNode"')
-    && nodePropertyDrawer.includes('保存当前节点'),
+    && nodePropertyDrawer.includes('saveSelectedRelatedContent() : saveSelectedNode()')
+    && nodePropertyDrawer.includes('保存当前属性'),
   '保存当前节点必须位于节点属性抽屉内部'
 )
 assert.equal(
@@ -2373,14 +2372,14 @@ const configurationArchitectureExpectations = {
     '/draft',
     '/diff',
     '/publish',
-    '/releases',
-    '/activate',
+    '/runtime',
+    '发布立即全局生效',
     'FORM_INIT',
     'BEFORE_SUBMIT',
     'DataScopePlan',
     'legacyProps',
     '配置迁移幂等与兼容',
-    '运行时回退',
+    '未发布表单不能回退',
     '常用配置优先',
     '基础与布局、数据校验、联动与事件、子页面、数据与扩展',
     '访问范围、选择行为、扩展渲染',
@@ -2454,8 +2453,8 @@ const configurationArchitectureExpectations = {
     '/draft',
     '/diff',
     '/publish',
-    '/releases',
-    '/activate',
+    '/runtime',
+    '事务提交后全局生效',
     'legacyProps',
     '幂等转换',
     '临时回退旧配置'
@@ -2580,18 +2579,13 @@ const uiConfigPublishDialog = readFileSync(
   'utf8'
 )
 assert.ok(
-  uiConfigPublishDialog.includes('HOTFIX 会先展示风险、影响目标和阻断项')
-    && uiConfigPublishDialog.includes('ElMessageBox.confirm')
-    && uiConfigPublishDialog.includes('确认直接发布热修复')
-    && uiConfigPublishDialog.includes('热修复已直接发布')
-    && uiConfigPublishDialog.includes('expectedActiveReleaseId: preview.value.activeReleaseId')
+  uiConfigPublishDialog.includes('expectedActiveReleaseId: preview.value.activeReleaseId')
     && uiConfigPublishDialog.includes('expectedDraftHash: preview.value.draftHash')
-    && uiConfigPublishDialog.includes('impactToken: preview.value.impactToken')
-    && uiConfigPublishDialog.includes('FULL_SNAPSHOT')
-    && uiConfigPublishDialog.includes('完整快照强制覆盖')
-    && uiConfigPublishDialog.includes('v-if="configType === \'FORM\'"')
-    && uiConfigPublishDialog.includes('列表发布后立即切换当前全局生效版本'),
-  '表单热修复应提示风险后直接发布，列表应固定使用普通发布'
+    && uiConfigPublishDialog.includes('全局')
+    && !uiConfigPublishDialog.includes('HOTFIX')
+    && !uiConfigPublishDialog.includes('rolloutScope')
+    && !uiConfigPublishDialog.includes('impactToken:'),
+  '表单发布应覆盖当前配置全局生效，并保留并发前置条件'
 )
 ;[
   '提交热修复申请',
@@ -2610,29 +2604,23 @@ assert.ok(
     `热修复发布界面不得保留申请或独立复核阻断逻辑: ${marker}`
   )
 })
-const uiHotfixGovernanceSource = readFileSync(
-  path.join(root, 'src/api/uiHotfixGovernance.js'),
-  'utf8'
-)
-assert.ok(
-  uiHotfixGovernanceSource.includes('get(id)')
-    && uiHotfixGovernanceSource.includes('list(configType, configId)'),
-  'HOTFIX 历史观察 API 必须保留 get/list'
-)
-assert.doesNotMatch(
-  uiHotfixGovernanceSource,
-  /\b(?:apply|review|cancel)\s*\(/,
-  'HOTFIX 治理 API 不得保留申请、审核或取消接口'
+assert.equal(
+  existsSync(path.join(root, 'src/api/uiHotfixGovernance.js')),
+  false,
+  '热修复观察 API 已随数据库结构一并退役'
 )
 const uiConfigReleaseHistoryDialog = readFileSync(
   path.join(root, 'src/components/ui-config/UiConfigReleaseHistoryDialog.vue'),
   'utf8'
 )
 assert.ok(
-  uiConfigReleaseHistoryDialog.includes('label="热修复状态"')
-    && uiConfigReleaseHistoryDialog.includes('观察详情')
-    && uiConfigReleaseHistoryDialog.includes('撤回热修复'),
-  '发布历史必须保留热修复观察和回滚能力'
+  uiConfigReleaseHistoryDialog.includes('entityListConfigApi.getReleaseSummaries')
+    && uiConfigReleaseHistoryDialog.includes('entityListConfigApi.activateRelease')
+    && uiConfigReleaseHistoryDialog.includes('恢复为草稿')
+    && !uiConfigReleaseHistoryDialog.includes('uiHotfixGovernanceApi')
+    && !uiConfigReleaseHistoryDialog.includes('观察详情')
+    && !uiConfigReleaseHistoryDialog.includes('撤回热修复'),
+  '列表保留分页、历史激活及草稿恢复，删除热修复观察与撤回入口'
 )
 ;['治理状态', '独立复核人', '关联工单'].forEach((marker) => {
   assert.ok(
@@ -2752,10 +2740,10 @@ const processManualSource = readFileSync(
   'utf8'
 )
 assert.ok(
-  processManualSource.includes('列表配置只允许 STANDARD 发布')
-    && /REVIEW\s*(?:修改)?仅作高风险提醒/.test(processManualSource)
-    && processManualSource.includes('entity:ui-config:hotfix:rollback'),
-  '流程手册应说明表单热修复风险和列表普通发布边界'
+  processManualSource.includes('当前发布配置')
+    && processManualSource.includes('全局生效')
+    && !processManualSource.includes('entity:ui-config:hotfix:rollback'),
+  '流程手册应说明表单按稳定身份读取当前配置并全局生效'
 )
 assert.doesNotMatch(
   processManualSource,

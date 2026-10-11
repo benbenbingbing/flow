@@ -137,27 +137,8 @@ export const previewFormPublish = (id: string, data: any) => {
   return request.post(`/entity-forms/${id}/publish-preview`, data)
 }
 
-export const rollbackFormHotfix = (
-  id: string,
-  releaseId: string,
-  reason = ''
-) => {
-  return request.post(
-    `/entity-forms/${id}/releases/${releaseId}/rollback-hotfix`,
-    { reason }
-  )
-}
 
-export const getFormReleases = (id: string) => {
-  return request.get(`/entity-forms/${id}/releases`)
-}
 
-export const getFormReleaseSummaries = (
-  id: string,
-  params: { pageNum?: number; pageSize?: number } = {}
-) => {
-  return request.get(`/entity-forms/${id}/release-summaries`, { params })
-}
 
 export const getFormRuntimeRelease = runtimeApi.getFormRuntimeRelease
 
@@ -188,21 +169,3 @@ export const precheckFormFieldUnique = (
   formId: string,
   data: FormFieldUniquePrecheckRequest
 ): Promise<FormFieldUniquePrecheckResponse> => runtimeApi.precheckFormFieldUnique(formId, data)
-
-export const previewFormActivation = (id: string, releaseId: string) => {
-  return request.get(
-    `/entity-forms/${id}/releases/${releaseId}/activation-preview`
-  )
-}
-
-export const activateFormRelease = (
-  id: string,
-  releaseId: string,
-  reason: string,
-  expectedActiveReleaseId?: string | null
-) => {
-  return request.post(
-    `/entity-forms/${id}/releases/${releaseId}/activate`,
-    { reason, expectedActiveReleaseId: expectedActiveReleaseId || undefined }
-  )
-}

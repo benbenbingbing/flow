@@ -13,6 +13,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EntityFormActionConfigPolicyTest {
+    @Test
+    void supportsDeclaredActionsWithoutRequiringEventBindings() {
+        Map<String, Map<String, Object>> cases = Map.of(
+                "handler", Map.of("name", "registered"),
+                "component", Map.of("name", "registered"),
+                "open-form", Map.of("entityCode", "ITEM", "formId", "child", "formMode", "edit"),
+                "open-list", Map.of("entityCode", "ITEM", "listKey", "items"),
+                "open-related-content", Map.of("compositionKey", "child"));
+        cases.forEach((mode, execution) -> {
+            Map<String, Object> button = new LinkedHashMap<>(Map.of(
+                    "key", "open_child", "label", "子页面", "modes", List.of("edit"),
+                    "perm", "entity:item:view", "customMode", mode, "execution", execution));
+            Map<String, Object> config = Map.of("actionBar", Map.of("customButtons", List.of(button)));
+            assertDoesNotThrow(() -> policy.validate(config, false, Set.of(), true, Set.of(), true));
+            button.put("execution", Map.of());
+            assertThrows(IllegalArgumentException.class, () -> policy.validate(config, false, Set.of(), true, Set.of(), true));
+        });
+    }
 
     private final EntityFormActionConfigPolicy policy =
             new EntityFormActionConfigPolicy();

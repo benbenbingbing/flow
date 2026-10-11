@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -119,7 +120,7 @@ class UiConfigReleaseControllerTest {
     }
 
     @Test
-    void formPublishPreviewMapsHotfixRequest() throws Exception {
+    void formPublishPreviewMapsCurrentPublishRequest() throws Exception {
         when(releaseService.publishPreview(
                 eq(UiConfigReleaseService.FORM),
                 eq("form-1"),
@@ -132,7 +133,7 @@ class UiConfigReleaseControllerTest {
                         "/api/entity-forms/{id}/publish-preview",
                         "form-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(hotfixRequestJson("表单热修复预检")))
+                        .content(publishRequestJson("表单发布预检")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.configType")
@@ -147,13 +148,13 @@ class UiConfigReleaseControllerTest {
                 eq(UiConfigReleaseService.FORM),
                 eq("form-1"),
                 requestCaptor.capture());
-        assertHotfixRequest(
+        assertPublishRequest(
                 requestCaptor.getValue(),
-                "表单热修复预检");
+                "表单发布预检");
     }
 
     @Test
-    void listPublishPreviewMapsHotfixRequest() throws Exception {
+    void listPublishPreviewMapsStandardPublishRequest() throws Exception {
         when(releaseService.publishPreview(
                 eq(UiConfigReleaseService.LIST),
                 eq("list-1"),
@@ -166,7 +167,7 @@ class UiConfigReleaseControllerTest {
                         "/api/entity-list-config/{id}/publish-preview",
                         "list-1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(hotfixRequestJson("列表热修复预检")))
+                        .content(publishRequestJson("列表发布预检")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.configType")
@@ -181,13 +182,13 @@ class UiConfigReleaseControllerTest {
                 eq(UiConfigReleaseService.LIST),
                 eq("list-1"),
                 requestCaptor.capture());
-        assertHotfixRequest(
+        assertPublishRequest(
                 requestCaptor.getValue(),
-                "列表热修复预检");
+                "列表发布预检");
     }
 
     @Test
-    void formPublishMapsHotfixRequest() throws Exception {
+    void formPublishReturnsCurrentMetadataWithoutVersion() throws Exception {
         when(releaseService.publish(
                 eq(UiConfigReleaseService.FORM),
                 eq("form-2"),
@@ -201,13 +202,13 @@ class UiConfigReleaseControllerTest {
                         "/api/entity-forms/{id}/publish",
                         "form-2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(hotfixRequestJson("表单热修复发布")))
+                        .content(publishRequestJson("表单发布")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id")
-                        .value("form-release-2"))
-                .andExpect(jsonPath("$.data.releaseMode")
-                        .value("HOTFIX"));
+                .andExpect(jsonPath("$.data.formId").value("form-2"))
+                .andExpect(jsonPath("$.data.contentHash").exists())
+                .andExpect(jsonPath("$.data.version").doesNotExist())
+                .andExpect(jsonPath("$.data.releaseMode").doesNotExist());
 
         ArgumentCaptor<UiConfigPublishRequest> requestCaptor =
                 ArgumentCaptor.forClass(UiConfigPublishRequest.class);
@@ -216,13 +217,13 @@ class UiConfigReleaseControllerTest {
                 eq(UiConfigReleaseService.FORM),
                 eq("form-2"),
                 requestCaptor.capture());
-        assertHotfixRequest(
+        assertPublishRequest(
                 requestCaptor.getValue(),
-                "表单热修复发布");
+                "表单发布");
     }
 
     @Test
-    void listPublishMapsHotfixRequest() throws Exception {
+    void listPublishMapsStandardPublishRequest() throws Exception {
         when(releaseService.publish(
                 eq(UiConfigReleaseService.LIST),
                 eq("list-2"),
@@ -236,13 +237,13 @@ class UiConfigReleaseControllerTest {
                         "/api/entity-list-config/{id}/publish",
                         "list-2")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(hotfixRequestJson("列表热修复发布")))
+                        .content(publishRequestJson("列表发布")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.configType")
                         .value(UiConfigReleaseService.LIST))
                 .andExpect(jsonPath("$.data.releaseMode")
-                        .value("HOTFIX"));
+                        .value("STANDARD"));
 
         ArgumentCaptor<UiConfigPublishRequest> requestCaptor =
                 ArgumentCaptor.forClass(UiConfigPublishRequest.class);
@@ -251,75 +252,31 @@ class UiConfigReleaseControllerTest {
                 eq(UiConfigReleaseService.LIST),
                 eq("list-2"),
                 requestCaptor.capture());
-        assertHotfixRequest(
+        assertPublishRequest(
                 requestCaptor.getValue(),
-                "列表热修复发布");
+                "列表发布");
     }
 
     @Test
-    void formRollbackMapsReleaseAndReason() throws Exception {
-        when(releaseService.rollbackHotfix(
-                UiConfigReleaseService.FORM,
-                "form-3",
-                "release-3",
-                "回滚表单热修复"))
-                .thenReturn(release(
-                        "release-3",
-                        UiConfigReleaseService.FORM,
-                        "form-3"));
-
-        mockMvc.perform(post(
-                        "/api/entity-forms/{id}/releases/{releaseId}"
-                                + "/rollback-hotfix",
-                        "form-3",
-                        "release-3")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"回滚表单热修复\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("release-3"));
-
-        verify(accessService).requireFormAccess("form-3");
-        verify(releaseService).rollbackHotfix(
-                UiConfigReleaseService.FORM,
-                "form-3",
-                "release-3",
-                "回滚表单热修复");
+    void formRollbackEndpointIsRetired() throws Exception {
+        mockMvc.perform(post("/api/entity-forms/form-3/releases/release-3/rollback-hotfix")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"old\"}"))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(releaseService);
     }
 
     @Test
-    void listRollbackMapsReleaseAndReason() throws Exception {
-        when(releaseService.rollbackHotfix(
-                UiConfigReleaseService.LIST,
-                "list-3",
-                "release-4",
-                "回滚列表热修复"))
-                .thenReturn(release(
-                        "release-4",
-                        UiConfigReleaseService.LIST,
-                        "list-3"));
-
-        mockMvc.perform(post(
-                        "/api/entity-list-config/{id}/releases/{releaseId}"
-                                + "/rollback-hotfix",
-                        "list-3",
-                        "release-4")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"reason\":\"回滚列表热修复\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(200))
-                .andExpect(jsonPath("$.data.id").value("release-4"));
-
-        verify(accessService).requireListAccess("list-3");
-        verify(releaseService).rollbackHotfix(
-                UiConfigReleaseService.LIST,
-                "list-3",
-                "release-4",
-                "回滚列表热修复");
+    void hotfixRollbackEndpointIsRetiredForLists() throws Exception {
+        mockMvc.perform(post("/api/entity-list-config/list-3/releases/release-4/rollback-hotfix")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"old\"}"))
+                .andExpect(status().isNotFound());
+        verifyNoInteractions(releaseService);
     }
 
     @Test
     void legacyPublishRequestsRemainAccepted() throws Exception {
+        when(releaseService.publish(eq("FORM"),eq("legacy-form"),any(UiConfigPublishRequest.class)))
+                .thenReturn(release("current-hash","FORM","legacy-form"));
         mockMvc.perform(post(
                         "/api/entity-forms/{id}/publish",
                         "legacy-form")
@@ -351,15 +308,15 @@ class UiConfigReleaseControllerTest {
                 isNull(UiConfigPublishRequest.class));
     }
 
-    private String hotfixRequestJson(String description)
+    private String publishRequestJson(String description)
             throws Exception {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("description", description);
-        request.put("releaseMode", "HOTFIX");
-        request.put("rolloutScope", "ACTIVE_AND_FUTURE");
+
+
         request.put("expectedActiveReleaseId", "active-release");
         request.put("expectedDraftHash", "draft-hash");
-        request.put("impactToken", "impact-token");
+
         return objectMapper.writeValueAsString(request);
     }
 
@@ -402,30 +359,15 @@ class UiConfigReleaseControllerTest {
                 .build();
     }
 
-    private void assertHotfixRequest(
+    private void assertPublishRequest(
             UiConfigPublishRequest request,
             String description) {
         assertAll(
-                () -> assertEquals(
-                        description,
-                        request.getDescription()),
-                () -> assertEquals(
-                        "HOTFIX",
-                        request.getReleaseMode()),
-                () -> assertEquals(
-                        "ACTIVE_AND_FUTURE",
-                        request.getRolloutScope()),
-                () -> assertEquals(
-                        "active-release",
-                        request.getExpectedActiveReleaseId()),
-                () -> assertEquals(
-                        "draft-hash",
-                        request.getExpectedDraftHash()),
-                () -> assertEquals(
-                        "impact-token",
-                        request.getImpactToken()),
-                () -> assertNull(request.getOverrideRisk()),
-                () -> assertNull(request.getOverrideReason()));
+                () -> assertEquals(description, request.getDescription()),
+                () -> assertNull(request.getReleaseMode()),
+                () -> assertNull(request.getImpactToken()),
+                () -> assertEquals("active-release", request.getExpectedActiveReleaseId()),
+                () -> assertEquals("draft-hash", request.getExpectedDraftHash()));
     }
 
     private UiConfigPublishPreviewDTO preview(
@@ -464,7 +406,8 @@ class UiConfigReleaseControllerTest {
         release.setConfigType(configType);
         release.setConfigId(configId);
         release.setVersion(4);
-        release.setReleaseMode("HOTFIX");
+        release.setReleaseMode("STANDARD");
+        release.setContentHash("a".repeat(64));
         release.setStatus("ACTIVE");
         return release;
     }

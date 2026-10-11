@@ -117,6 +117,9 @@ class EntityDataActionServiceTest {
         @Spy
         private ObjectMapper objectMapper = new ObjectMapper();
 
+        @Mock
+        private com.workflow.entity.ui.application.UiConfigReleaseService formPublishService;
+
         @InjectMocks
         private EntityDataActionService service;
 

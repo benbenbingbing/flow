@@ -203,7 +203,6 @@ function remove(row) {
             <el-descriptions-item label="/releases">按需读取包含完整不可变快照的历史 release，仅供设计与审计能力使用。</el-descriptions-item>
             <el-descriptions-item label="/activate">预览差异并填写原因后激活 STANDARD 历史 release；当前草稿保持不变。</el-descriptions-item>
             <el-descriptions-item label="/restore-draft">把历史快照恢复到草稿并记录原因，不切换线上 ACTIVE。</el-descriptions-item>
-            <el-descriptions-item label="/rollback-hotfix">只兼容撤回升级前已经存在的列表 HOTFIX，新列表发布不再创建 HOTFIX。</el-descriptions-item>
           </el-descriptions>
           <el-alert
             title="普通列表页面读取全局 ACTIVE；发布表单中的子列表由签名上下文固定到父表单发布时引用的精确列表 release。任何路径都不会回退草稿。"
@@ -283,7 +282,7 @@ emit('pageChange', 2)</code></pre>
           <ul class="check-list">
             <li>迁移保留已有列和按钮 ID；缺失 ID 时只生成一次，重复执行结果幂等。</li>
             <li>升级时为既有列表生成初始 release，并核对列数、查询结果、按钮能力和快照哈希。</li>
-            <li>V037 将既有 UI release 标记为 STANDARD，并创建热修复审计与目标结构；流程绑定回填开关 `workflow.ui-hotfix.binding-backfill-enabled` 主要服务表单流程目标，不改变列表全局 ACTIVE 语义。</li>
+            <li>列表沿用自己的发布历史；表单通过稳定身份读取唯一当前发布配置。</li>
             <li>新运行时只读取当前激活 release；父表单携带签名上下文时读取其固定的列表 release，不存在有效发布时直接拒绝运行，绝不回退草稿。</li>
             <li>整页自定义组件必须兼容旧快照参数；废弃字段通过版本迁移函数处理，不能直接破坏历史 release。</li>
           </ul>
@@ -300,7 +299,7 @@ emit('pageChange', 2)</code></pre>
             <li>表单选择器只显示选择能力，不出现新增、编辑、审批、删除等业务操作。</li>
             <li>修改一个列或按钮后，其他项目的 ID、revision、更新时间和内容不变。</li>
             <li>草稿预览不影响线上；列表只允许 STANDARD 发布，并原子切换全局 ACTIVE。已发布父表单仍按签名上下文读取其固定列表版本。</li>
-            <li>SAFE/REVIEW 风险提示、权限拒绝、带原因的历史版本激活、恢复历史快照到草稿和存量 HOTFIX 兼容撤回均已验证。</li>
+            <li>SAFE/REVIEW 风险提示、权限拒绝、带原因的历史版本激活、恢复历史快照到草稿均已验证。</li>
             <li>模板不会自动级联，三方升级保留 localOverrides。</li>
           </ul>
         </section>

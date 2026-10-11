@@ -20,6 +20,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 
 class EmbedNativeFormTargetResolverTest {
 
@@ -27,9 +29,29 @@ class EmbedNativeFormTargetResolverTest {
             EmbedRuntimeReleasePort.class);
     private final EmbedNativeFormAccessPort accessPort = mock(
             EmbedNativeFormAccessPort.class);
+    private final EmbedNativeFormRuntimePort formRuntimePort = mock(EmbedNativeFormRuntimePort.class);
     private final EmbedNativeFormTargetResolver resolver =
             new EmbedNativeFormTargetResolver(
-                    releasePort, accessPort, new ObjectMapper());
+                    releasePort, accessPort, formRuntimePort, new ObjectMapper());
+
+    @BeforeEach
+    void currentForm() {
+        when(formRuntimePort.currentFormTarget("work_order", "form-1"))
+                .thenReturn(new EmbedNativeFormRuntimePort.VerifiedTarget("work_order", "form-1", "current-form-hash", 1));
+    }
+
+    @Test
+    void existingSessionReadsRepublishedFormWithoutRepublishingView() {
+        AuthenticatedEmbedSession session = listSession();
+        when(releasePort.find("session-1", "view-1", "view-release-1")).thenReturn(listRelease());
+        assertEquals("current-form-hash", resolver.resolveRoot(session).formReleaseId());
+        when(formRuntimePort.currentFormTarget("work_order", "form-1"))
+                .thenReturn(new EmbedNativeFormRuntimePort.VerifiedTarget("work_order", "form-1", "new-form-hash", 1));
+        EmbedNativeFormTarget refreshed = resolver.resolveRoot(session);
+        assertEquals("new-form-hash", refreshed.formReleaseId());
+        assertEquals(1, refreshed.formReleaseVersion());
+        assertEquals("list-release-7", refreshed.listReleaseId());
+    }
 
     @Test
     void listOnlySessionAllowsNativeCreateWithoutEmbedCapabilityCeiling() {
@@ -55,7 +77,7 @@ class EmbedNativeFormTargetResolverTest {
                 .thenReturn(listRelease());
         when(accessPort.authorizeView(
                 new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
-                        "work_order", "form-1", "form-release-4", 4,
+                        "work_order", "form-1", "current-form-hash", 1,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of()))
                 .thenReturn(Optional.of(
@@ -70,7 +92,7 @@ class EmbedNativeFormTargetResolverTest {
         assertEquals("process-9", target.processInstanceId());
         verify(accessPort).authorizeView(
                 new com.workflow.contracts.embed.runtime.port.EmbedNativeFormAccessPort.Target(
-                        "work_order", "form-1", "form-release-4", 4,
+                        "work_order", "form-1", "current-form-hash", 1,
                         "list-1", "list-release-7", 7),
                 "record-9", Map.of());
     }

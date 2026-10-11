@@ -78,13 +78,6 @@ export const entityListConfigApi = {
     return request.post(`/entity-list-config/${id}/publish-preview`, data)
   },
 
-  rollbackHotfix(id, releaseId, reason = '') {
-    return request.post(
-      `/entity-list-config/${id}/releases/${releaseId}/rollback-hotfix`,
-      { reason }
-    )
-  },
-
   getReleases(id) {
     return request.get(`/entity-list-config/${id}/releases`)
   },

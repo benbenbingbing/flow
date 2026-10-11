@@ -298,11 +298,7 @@ public class EmbedRuntimeReadFacade {
         if (!root.defaultFormResolved()
                 || targetHasForm != closureHasForm
                 || closureHasForm
-                && (!Objects.equals(target.formId(), form.formId())
-                || !Objects.equals(
-                target.formReleaseId(), form.formReleaseId())
-                || target.formReleaseVersion()
-                != form.formReleaseVersion())) {
+                && !Objects.equals(target.formId(), form.formId())) {
             throw runtimeUnavailable(null);
         }
         return root;

@@ -394,15 +394,6 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
   },
   {
     domain: '实体配置',
-    area: '表单与列表发布方式',
-    source: 'src/components/UiConfigPublishDialog.vue',
-    values: [
-      ['STANDARD', '普通发布', '表单需重新发布流程才进入新的流程快照；列表会切换全局生效版本。'],
-      ['HOTFIX', '兼容热修复', '经过影响预检后兼容修复可作用于允许的活动和未来范围，并保留撤回审计。']
-    ]
-  },
-  {
-    domain: '实体配置',
     area: '统一事件继承方式（非按钮目标）',
     source: 'src/components/ui-config/EventBindingEditor.vue',
     values: [
@@ -761,7 +752,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/ListButtonConfigPanel.vue', '^advancedButton\\.', '实体配置-列表-编辑-按钮配置-高级设置'),
   locationRule('src/components/ListButtonConfigPanel.vue', '^openListForm\\.', '实体配置-列表-编辑-按钮配置-打开实体列表'),
 
-  locationRule('src/views/EntityFormList.vue', '^form\\.defaultColumnCount$', '实体配置-表单-新建'),
+  locationRule('src/views/EntityFormList.vue', '^form\\.defaultColumnCount$', '实体配置-表单-新建或编辑'),
   locationRule('src/views/EntityFormList.vue', '^form\\.', '实体配置-表单-编辑'),
 
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(fieldLabel|componentType|placeholder|gridSpan|isRequired|isReadonly|isHidden)$', '实体配置-表单-编辑-字段属性-常用'),
@@ -1362,7 +1353,7 @@ const KEY_GUIDANCE = Object.freeze({
   conditionPath: ['设置统一事件步骤条件从上下文读取值的数据路径。', 'input.status', '执行步骤前从该路径取值并按条件运算符比较。'],
   responsePath: ['设置表单初始化 API 响应中作为来源对象的数据路径。', 'data.record', '接口成功后先定位该对象，再执行字段映射。'],
   refFormId: ['选择子表单节点引用的表单定义。', '20001', '运行时在父表单中加载该子表单结构。'],
-  childFormReleaseId: ['锁定子表单节点使用的已发布版本 ID。', '30001', '父表单发布快照持续使用该版本，直到显式升级。'],
+  childFormReleaseId: ['旧版本坐标已退役，节点仅保存子表单稳定身份。', '30001', '子表单发布后全部引用入口读取当前配置。'],
   templateId: ['选择当前字段、列表列或按钮继承的组件模板。', 'template-10001', '发布时锁定模板版本，并合并允许的本地覆盖。'],
   sourceField: ['选择值联动读取的当前表单来源字段。', 'project_id', '来源字段变化时重新计算或加载目标字段值。'],
   optionsDependField: ['选择选项联动依赖的来源字段。', 'request_type', '该字段变化时重新匹配允许选项规则。'],
@@ -1446,8 +1437,8 @@ const CONTROL_OVERRIDES = Object.freeze({
     label: '列数',
     meaning: '设置后续新增实体属性的默认栅格宽度，可选 1、2、3 列，并保存到表单 viewConfig.defaultColumnCount。',
     example: 2,
-    configureWhen: '新建表单，希望后续添加的实体属性默认按两列或三列排列时配置。',
-    skipWhen: '新增属性默认占满一行时保留 1 列；编辑已有表单基本信息时不提供此设置。',
+    configureWhen: '新建或编辑表单，希望后续添加的实体属性默认按两列或三列排列时配置。',
+    skipWhen: '新增属性默认占满一行时保留 1 列；只调整已有字段宽度时到设计器单独修改。',
     expectedEffect: '设置为 2 列后，新添加的实体属性默认占 12/24 栅格；已有节点及手动调整的宽度不变，添加后仍可单独调整。'
   },
   // 最大重试与自定义失败策略共用一个次数控件，标签随所选策略动态切换，模板中无静态 label 可供扫描提取。
@@ -1498,7 +1489,7 @@ const CONTROL_OVERRIDES = Object.freeze({
     "example": true,
     "configureWhen": "子表单需要独立标题以区分业务区域时开启。",
     "skipWhen": "父容器已给出足够说明时可关闭。",
-    "expectedEffect": "只改变子表单标题显示，不改变子表数据和发布版本绑定。"
+    "expectedEffect": "只改变子表单标题显示，不改变子表数据和稳定表单身份。"
   }
 ,
   "assigneeForm.relativePosition.assignmentMode": {
@@ -1908,13 +1899,7 @@ const CONTROL_OVERRIDES = Object.freeze({
     label: '默认表单',
     meaning: '指定当前表单为实体在未明确指定其他表单时的首选表单。',
     example: true,
-    expectedEffect: '新增、编辑或查看入口没有指定表单时优先解析该表单的已发布版本。'
-  },
-  'src/components/UiConfigPublishDialog.vue:form.releaseMode': {
-    label: '发布方式',
-    meaning: '选择普通发布形成新快照，或在兼容校验后对允许范围执行热修复。',
-    example: 'STANDARD',
-    expectedEffect: '普通表单发布等待流程重新发布后生效；兼容热修复可按预检范围作用于活动版本。'
+    expectedEffect: '新增、编辑或查看入口没有指定表单时优先解析该表单的当前已发布配置。'
   },
   'src/components/form-designer/FormNodeValueLinkage.vue:model.valueEnabled': {
     label: '启用值联动',
@@ -2374,7 +2359,7 @@ const USAGE_CONTEXT_BY_AREA = Object.freeze({
     '当前表单沿用平台表单约定且没有表单级扩展时'
   ],
   '表单节点数据绑定': [
-    '容器、子表单、重复器或动作插槽需要绑定特定实体、表单版本或数据路径时',
+    '容器、子表单、重复器或动作插槽需要绑定特定实体、表单身份或数据路径时',
     '节点只展示静态内容，或使用当前表单的直接字段绑定时'
   ],
   '初始化与数据处理': [

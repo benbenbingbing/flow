@@ -5,8 +5,8 @@ package com.workflow.contracts.entity.form.model;
  *
  * @param nodeId             流程节点 ID
  * @param formId             表单 ID
- * @param formReleaseId      流程发布时固定的表单发布 ID
- * @param formReleaseVersion 流程发布时固定的表单版本
+ * @param formReleaseId      旧流程 JSON 兼容字段；当前配置按 formId 解析，不使用此坐标
+ * @param formReleaseVersion 旧流程 JSON 兼容字段；新流程不保存表单版本
  */
 public record EntityFormBinding(
         String nodeId,

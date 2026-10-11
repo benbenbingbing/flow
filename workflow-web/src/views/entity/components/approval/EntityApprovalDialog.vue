@@ -137,9 +137,11 @@
       </div>
     </template>
   </el-dialog>
+  <FormButtonActionHost v-if="processDialogVisible" ref="buttonActionHostRef" />
 </template>
 
 <script setup lang="ts">
+import FormButtonActionHost from '@/components/FormButtonActionHost.vue'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
@@ -192,6 +194,7 @@ import { formatRuntimeCodeVersion } from '@/shared/runtime-diagnostics'
 import { isReservedApprovalActionCode } from '@flow/workflow-core/workflow-operation-guards'
 import { taskApprovalConflictMessage } from '@flow/workflow-core/workflow-task-actions'
 
+const buttonActionHostRef = ref<any>()
 const props = withDefaults(defineProps<{
   entityCode?: string
   defaultForm?: any
@@ -443,7 +446,7 @@ function handleDialogClosed() {
   emit('closed')
 }
 const approvalTabLayout = computed(() =>
-  resolveRuntimeFormTabLayout(approvalNormalForm.value)
+  resolveRuntimeFormTabLayout(approvalNormalForm.value, { data: entityData.value || {}, mode: approvalRuntimeMode.value, context: approvalRuntimeContext.value })
 )
 const approvalNodeTabs = computed(() => approvalTabLayout.value.tabs)
 const approvalLiftedRootNodeIds = computed(() =>
@@ -460,6 +463,11 @@ const approvalFormTabNames = computed(() => [
 const firstApprovalFormTabName = computed(() =>
   approvalFormTabNames.value[0] || 'basic'
 )
+watch(approvalFormTabNames, names => {
+  if ((activeDialogTab.value === 'basic' || String(activeDialogTab.value).startsWith('form_tab_')) && !names.includes(activeDialogTab.value)) {
+    activeDialogTab.value = firstApprovalFormTabName.value
+  }
+})
 const isApprovalFormTab = computed(() =>
   approvalFormTabNames.value.includes(activeDialogTab.value)
 )
@@ -856,6 +864,14 @@ async function handleFormAction(action: any) {
         if (action.key === 'submitApproval') return submitApprove()
         if (action.type !== 'custom') return
         return executeCustomFormAction(action, runtimeForms.value, {
+          isCurrent,
+          executeClientAction: (...args: any[]) => buttonActionHostRef.value.execute(...args),
+          entityDefinition: props.entityDefinition,
+          entityFields: props.entityFields,
+          parameters: context?.parameters || {},
+          updateFormData: (value: any) => {
+            if (isCurrent() && approvalRuntimeMode.value !== 'view') entityData.value = value
+          },
           entityCode: effectiveEntityCode.value,
           listKey: props.listKey,
           mode: approvalRuntimeMode.value,

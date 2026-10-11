@@ -24,7 +24,7 @@ public class ConfigMigrationAsset {
     private String assetType;                   // 资产类型(ENTITY/PROCESS)
     private String businessKey;                 // 资产业务编码(实体编码或流程Key)
     private String assetName;                   // 资产名称
-    private String sourceHistoryId;             // 关联的源发布历史ID
+    private String sourceHistoryId;             // 来源历史ID或UI派生幂等键；用于资产去重，不是表单版本坐标
     private Integer sourceVersion;              // 源版本号
     private String versionDescription;          // 版本描述
     private String migrationTag;                // 迁移标签

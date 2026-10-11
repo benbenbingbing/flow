@@ -1,6 +1,8 @@
 package com.workflow.entity.ui.application.validation;
 
 import com.workflow.entity.ui.application.PageParameterPolicy;
+import com.workflow.entity.form.application.PublishedFormConditionEvaluator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -18,7 +20,7 @@ import java.util.regex.Pattern;
 /**
  * “关联内容”配置文档白名单校验器。
  *
- * <p>配置只允许四步引导能够生成的声明式字段。接口扩展和组件必须使用注册
+ * <p>配置只允许属性编辑器能够生成的声明式字段。接口扩展和组件必须使用注册
  * 标识，不接受脚本、SQL、动态 URL、类名或 Bean 名；配置缺失或特殊处理失败
  * 时由调用方按显式失败策略终止，不存在隐式回退。</p>
  */
@@ -36,7 +38,11 @@ public class UiViewCompositionConfigValidator {
             "contentType", "contentId", "contentKey", "contentName",
             "releaseId", "releaseVersion", "contentHash");
     private static final Set<String> PRESENTATION_KEYS = Set.of(
-            "position", "loadMode", "title", "emptyText");
+            "position", "loadMode", "title", "showTitle", "emptyText",
+            "listOptions", "layout", "visibleModes", "visibilityCondition");
+    // 仅复用结构化条件方言；输入已经是 Map，不依赖应用 ObjectMapper 的序列化扩展。
+    private static final PublishedFormConditionEvaluator PRESENTATION_CONDITIONS =
+            new PublishedFormConditionEvaluator(new ObjectMapper());
     private static final Set<String> RELATION_KEYS = Set.of(
             "type", "relationCode", "relationName", "direction",
             "sourceField", "sourceFieldName",
@@ -134,6 +140,9 @@ public class UiViewCompositionConfigValidator {
                 requireMap(config.get("target"), "显示什么"));
         Map<String, Object> presentation = normalizePresentation(
                 requireMap(config.get("presentation"), "显示方式"));
+        if (presentation.containsKey("listOptions") && !"LIST".equals(target.get("contentType"))) {
+            throw new IllegalArgumentException("子列表选项只能用于列表目标");
+        }
         Map<String, Object> relation = normalizeRelation(
                 requireMap(config.get("relation"), "数据关联"));
         List<String> actions = normalizeActions(config.get("actions"));
@@ -211,6 +220,8 @@ public class UiViewCompositionConfigValidator {
                 "目标表单或列表");
         putOptionalText(target, "contentKey", value.get("contentKey"), 100);
         putOptionalText(target, "contentName", value.get("contentName"), 200);
+        // 表单目标是稳定引用；不保存旧表单版本或内容指纹，运行时解析当前配置。
+        if ("FORM".equals(target.get("contentType"))) return target;
         putOptionalText(target, "releaseId", value.get("releaseId"), 64);
         if (value.get("releaseVersion") != null) {
             int version = requirePositiveInteger(
@@ -256,8 +267,58 @@ public class UiViewCompositionConfigValidator {
                 LOAD_MODES,
                 "加载方式"));
         putOptionalText(result, "title", value.get("title"), 200);
+        // 显示开关对所有关系通用，只控制标题。历史配置缺少此键时沿用显示标题，不改变业务动作权限。
+        if (value.containsKey("showTitle")) {
+            result.put("showTitle", requireBoolean(value.get("showTitle"), "显示标题"));
+        }
         putOptionalText(result, "emptyText", value.get("emptyText"), 500);
+        if (value.containsKey("layout")) {
+            Map<String, Object> layout = requireMap(value.get("layout"), "外层布局");
+            requireAllowedKeys(layout, Set.of("width", "height", "padding"), "外层布局");
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            putBoundedInteger(normalized, layout, "width", 10, 100);
+            putBoundedInteger(normalized, layout, "height", 120, 3000);
+            putBoundedInteger(normalized, layout, "padding", 0, 80);
+            result.put("layout", normalized);
+        }
+        if (value.containsKey("listOptions")) {
+            Map<String, Object> options = requireMap(value.get("listOptions"), "子列表配置");
+            requireAllowedKeys(options, Set.of("showSearch", "showPagination", "showToolbar",
+                    "showRowActions", "pageSize", "maxHeight"), "子列表配置");
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            for (String key : List.of("showSearch", "showPagination", "showToolbar", "showRowActions")) {
+                if (options.containsKey(key)) normalized.put(key, requireBoolean(options.get(key), key));
+            }
+            putBoundedInteger(normalized, options, "pageSize", 1, 200);
+            putBoundedInteger(normalized, options, "maxHeight", 120, 2000);
+            result.put("listOptions", normalized);
+        }
+        if (value.containsKey("visibleModes")) {
+            Map<String, Object> modes = requireMap(value.get("visibleModes"), "运行模式显示");
+            requireAllowedKeys(modes, Set.of("create", "edit", "view", "approve"), "运行模式显示");
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            modes.forEach((mode, visible) -> normalized.put(mode, requireBoolean(visible, "运行模式显示")));
+            result.put("visibleModes", normalized);
+        }
+        if (value.containsKey("visibilityCondition")) {
+            Map<String, Object> condition = requireMap(value.get("visibilityCondition"), "关联区域显示条件");
+            // 仅影响页面显隐，保存时校验完整结构；不能使用显示条件扩大目标查询或动作权限。
+            PRESENTATION_CONDITIONS.validateStructured(condition, Set.of(), "关联区域显示条件");
+            result.put("visibilityCondition", condition);
+        }
         return result;
+    }
+
+    /** 保留省略值所代表的宿主默认设置；明确配置时只接受范围内整数，禁止任意样式或分页大小。 */
+    private void putBoundedInteger(Map<String, Object> result, Map<String, Object> source,
+                                   String key, int min, int max) {
+        if (!source.containsKey(key)) return;
+        Object raw = source.get(key);
+        if (!(raw instanceof Number number) || number.doubleValue() != number.intValue()
+                || number.intValue() < min || number.intValue() > max) {
+            throw new IllegalArgumentException(key + "必须为 " + min + " 到 " + max + " 之间的整数");
+        }
+        result.put(key, number.intValue());
     }
 
     /**

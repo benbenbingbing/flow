@@ -27,6 +27,23 @@ test('表单 Tab 转折叠分组保留默认项与错误祖先路径', () => {
   assert.deepEqual(groupsContainingField(tree, 'last'), ['b'])
 })
 
+test('节点模式与条件控制移动端整个区域及提升后的页签', () => {
+  const form = { nodes: [
+    { id: 'tabs', nodeType: 'TAB_SET', props: { modeAccess: { edit: { visible: false } } } },
+    { id: 'tab', nodeType: 'TAB', parentId: 'tabs', props: { linkageRules: { visibilityRule: "status == 'ACTIVE'" } } },
+    { id: 'field', nodeType: 'FIELD', parentId: 'tab' }
+  ] }
+  const fields = [{ id: 'field', fieldCode: 'name' }]
+  for (const [mode, status, visible] of [['create', 'ACTIVE', true], ['edit', 'ACTIVE', false], ['view', 'DRAFT', false], ['approve', 'ACTIVE', true]]) {
+    const record = { status, name: '保留的值' }
+    const tree = buildMobileFormTree(form, fields, { form, mode, record })
+    const layout = buildMobileFormPages(form, tree, [], true, { mode, data: record })
+    assert.equal(tree.length, visible ? 1 : 0)
+    assert.deepEqual(layout.pages.map(page => page.name), visible ? ['form_tab_tab'] : ['basic'])
+    assert.equal(record.name, '保留的值')
+  }
+})
+
 test('仅提升根级 Tab，区块内的 Tab 保留；关联内容跟随所属页签且只出现一次', () => {
   const nodes = [
     { id: 'root-tabs', nodeType: 'TAB_SET' }, { id: 'a', nodeType: 'TAB', parentId: 'root-tabs', props: { label: '第一页' } },

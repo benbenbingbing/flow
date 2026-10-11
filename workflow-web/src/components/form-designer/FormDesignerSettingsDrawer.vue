@@ -89,6 +89,7 @@
             v-model="viewConfig.actionBar"
             :entity-code="entityInfo.entityCode || ''"
             :entity-fields="entityFields"
+            :related-contents="relatedContents"
             :form-id="form.id || ''"
             :active-release-id="form.activeReleaseId || ''"
             :event-binding-revision="eventBindingRevision"
@@ -220,6 +221,7 @@ const {
   isSystemEntity,
   customFormButtonCount,
   entityInfo,
+  relatedContents,
   entityFields,
   formFields,
   formDataSourceBindingCount,

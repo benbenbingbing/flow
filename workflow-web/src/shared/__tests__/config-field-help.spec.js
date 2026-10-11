@@ -52,7 +52,6 @@ for (const key of usedKeys) {
 
 for (const required of [
   'entityList.dataScopeMode',
-  'uiConfig.releaseMode',
   'process.allowManualCc',
   'process.personResolver',
   'process.flowActionHandler',

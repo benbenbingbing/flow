@@ -25,32 +25,18 @@ function indexFields(fields) {
     .filter(([code]) => code))
 }
 
-function releaseRows(result) {
-  return Array.isArray(result) ? result
-    : result?.records || result?.list || result?.items || []
-}
-
 /**
- * 新增数据表单可能渲染了流程专属热修复，但 Embed Session 固定并独立解析的是
- * runtimeReleaseId/runtimeReleaseVersion 指向的基础发布；这里必须选择同一份快照。
+ * Embed 字段检查按稳定表单身份读取当前配置，发布期间摘要变化不会选择旧版本。
+ * 仍验证返回内容所属表单，防止资源选择切换时套用其他表单的字段能力。
  */
-export function resolveContextFormRelease(resolvedForm, releases) {
+export function resolveContextFormRelease(resolvedForm, current) {
   if (!resolvedForm) return null
-  const releaseId = String(resolvedForm.runtimeReleaseId || '').trim()
-  const releaseVersion = Number(resolvedForm.runtimeReleaseVersion)
-  if (!String(resolvedForm.id || '').trim()
-      || !releaseId
-      || !Number.isInteger(releaseVersion)
-      || releaseVersion < 1) {
-    throw new Error('新增表单缺少精确发布坐标')
+  const formId = String(resolvedForm.id || '').trim()
+  if (!formId || String(current?.formId || current?.configId || '') !== formId
+      || !current?.snapshotDocument) {
+    throw new Error('新增表单的当前已发布配置不可用')
   }
-  const release = releaseRows(releases).find(item =>
-    String(item?.id || '') === releaseId
-      && Number(item?.version) === releaseVersion)
-  if (!release?.snapshotDocument) {
-    throw new Error('新增表单的固定发布快照不可用')
-  }
-  return release
+  return current
 }
 
 /**

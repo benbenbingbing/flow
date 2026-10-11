@@ -122,6 +122,20 @@ const configured = normalizeRelatedContent({
 }, { ownerType: 'FORM', sourceEntity })
 
 assert.equal(validateRelatedContent(configured, 'FORM').valid, true)
+
+// 普通引用也可以使用显示属性，保存时不能把独立编辑动作改成随主表提交。
+const displayConfigured = normalizeRelatedContent(configured, { ownerType: 'FORM', sourceEntity })
+displayConfigured.config.presentation = { ...displayConfigured.config.presentation, title: '项目概览', showTitle: false }
+displayConfigured.config.actions = ['EDIT']
+const displayPayload = buildRelatedContentPayload(displayConfigured, 'FORM', 'form-1')
+assert.equal(validateRelatedContent(displayConfigured, 'FORM').valid, true)
+assert.equal(displayPayload.config.presentation.title, '项目概览')
+assert.equal(displayPayload.config.presentation.showTitle, false)
+assert.deepEqual(displayPayload.config.actions, ['EDIT'])
+const displayReopened = normalizeRelatedContent(displayPayload, { ownerType: 'FORM', sourceEntity })
+assert.equal(displayReopened.config.presentation.showTitle, false)
+displayReopened.config.presentation.showTitle = 'false'
+assert.equal(validateRelatedContent(displayReopened, 'FORM').valid, false)
 assert.equal(
   describeRelatedContent(configured),
   '在需求中，以抽屉方式显示“项目详情表单”。'

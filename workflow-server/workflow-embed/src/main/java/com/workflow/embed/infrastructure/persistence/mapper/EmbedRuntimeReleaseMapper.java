@@ -10,6 +10,10 @@ import org.apache.ibatis.annotations.Select;
 /** Reads only the exact release coordinates already pinned into the authenticated session. */
 @Mapper
 public interface EmbedRuntimeReleaseMapper {
+    /** 已发布视图和现存会话仍可按该稳定表单打开，删除前必须保护。 */
+    @Select("SELECT DISTINCT view_id FROM embed_view_release WHERE default_form_id = #{formId}")
+    List<String> findFormReferences(String formId);
+
 
     /**
      * 原查询仅取首行；保留数据库中的过滤语义，返回数量由分页插件限制。

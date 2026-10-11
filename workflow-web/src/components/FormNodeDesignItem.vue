@@ -67,6 +67,7 @@
             @remove="$emit('remove', $event)"
             @drop="$emit('drop', $event)"
             @edit-related-content="$emit('edit-related-content', $event)"
+            @open-related-properties="$emit('open-related-properties', $event)"
             @remove-related-content="$emit('remove-related-content', $event)"
           />
         </template>
@@ -116,6 +117,7 @@
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
               @edit-related-content="$emit('edit-related-content', $event)"
+              @open-related-properties="$emit('open-related-properties', $event)"
               @remove-related-content="$emit('remove-related-content', $event)"
             />
           </el-col>
@@ -258,6 +260,7 @@
                   @remove="$emit('remove', $event)"
                   @drop="$emit('drop', $event)"
                   @edit-related-content="$emit('edit-related-content', $event)"
+                  @open-related-properties="$emit('open-related-properties', $event)"
                   @remove-related-content="$emit('remove-related-content', $event)"
                 />
               </template>
@@ -276,6 +279,7 @@
               :composition="item" editable
               @click.stop @dblclick.stop
               @edit="$emit('edit-related-content', $event)"
+              @open-properties="$emit('open-related-properties', $event)"
               @remove="$emit('remove-related-content', $event)"
             />
           </div>
@@ -310,6 +314,7 @@
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
               @edit-related-content="$emit('edit-related-content', $event)"
+              @open-related-properties="$emit('open-related-properties', $event)"
               @remove-related-content="$emit('remove-related-content', $event)"
             />
           </template>
@@ -396,6 +401,7 @@
               @remove="$emit('remove', $event)"
               @drop="$emit('drop', $event)"
               @edit-related-content="$emit('edit-related-content', $event)"
+              @open-related-properties="$emit('open-related-properties', $event)"
               @remove-related-content="$emit('remove-related-content', $event)"
             />
           </template>
@@ -426,6 +432,7 @@
           @remove="$emit('remove', $event)"
           @drop="$emit('drop', $event)"
           @edit-related-content="$emit('edit-related-content', $event)"
+          @open-related-properties="$emit('open-related-properties', $event)"
           @remove-related-content="$emit('remove-related-content', $event)"
         />
       </template>
@@ -436,6 +443,7 @@
       :composition="item" editable
       @click.stop @dblclick.stop
       @edit="$emit('edit-related-content', $event)"
+      @open-properties="$emit('open-related-properties', $event)"
       @remove="$emit('remove-related-content', $event)"
     />
   </div>
@@ -483,7 +491,7 @@ const props = defineProps({
   dragDisabled: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop', 'edit-related-content', 'remove-related-content'])
+const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop', 'edit-related-content', 'remove-related-content', 'open-related-properties'])
 const relatedContentsAt = node => formRelatedContentsAt(props.relatedContents, node, { preview: true })
 
 const containerTypes = new Set([

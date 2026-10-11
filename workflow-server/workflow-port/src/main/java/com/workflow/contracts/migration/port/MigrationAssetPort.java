@@ -21,7 +21,7 @@ public interface MigrationAssetPort {
      * 登记自定义实体表单或列表发布后的完整迁移快照。
      *
      * @param entityId 实体ID，后续用于记录实体界面时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于记录实体界面时定位或关联目标
+     * @param releaseId 当前表单内容摘要或列表发布ID，用于定位本次生效配置
      * @param request 本次请求，后续经校验后用于记录实体界面
      */
     void recordEntityUi(
@@ -45,7 +45,7 @@ public interface MigrationAssetPort {
      * 登记系统实体 UI 发布资产。
      *
      * @param entityId 实体ID，后续用于记录系统实体界面时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于记录系统实体界面时定位或关联目标
+     * @param releaseId 当前表单内容摘要或列表发布ID，用于定位本次生效配置
      * @param request 本次请求，后续经校验后用于记录系统实体界面
      */
     void recordSystemEntityUi(

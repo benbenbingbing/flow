@@ -14,6 +14,10 @@ public class FormActionRuntimeDTO {
     private String runtimeKey;
     private String key;
     private String type;
+    /** 发布配置中的执行方式；缺省 event 保持历史按钮的事件链行为。 */
+    private String customMode;
+    /** 仅由已鉴权的发布按钮提供目标，客户端不从设计草稿补充执行参数。 */
+    private Map<String, Object> execution;
     private String label;
     private String icon;
     private String buttonType;

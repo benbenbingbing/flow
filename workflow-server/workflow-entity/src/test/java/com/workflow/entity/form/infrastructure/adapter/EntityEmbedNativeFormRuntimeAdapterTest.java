@@ -137,10 +137,10 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
         child.setId("child-form");
         child.setEntityId("entity-2");
         when(releaseService.resolveRuntimeFormRelease(
-                "child-form", "child-release", 7,
+                "child-form", "child-release", 1,
                 UiRuntimeResolutionContext.standalone()))
                 .thenReturn(new ResolvedEntityFormRelease(
-                        child, "child-release", 7, true));
+                        child, "child-release", 1, true));
         EntityEmbedNativeFormRuntimeAdapter adapter =
                 new EntityEmbedNativeFormRuntimeAdapter(
                         definitionMapper, releaseService, tokenService);
@@ -154,20 +154,20 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                     UiRuntimeResolutionContext.standalone(),
                     "parent-form", "parent-release", 3, 0);
             when(releaseService.runtimeFormRelease(
-                    "child-form", "child-release", 7, parentToken))
+                    "child-form", "child-release", 1, parentToken))
                     .thenReturn(Map.of(
                             "configId", "child-form",
                             "id", "child-release",
-                            "version", 7));
+                            "protocolVersion", 1));
 
             assertEquals(
                     new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
-                            "customer", "child-form", "child-release", 7),
+                            "customer", "child-form", "child-release", 1),
                     adapter.verifyRuntimeReleaseRequest(
                             parentToken,
                             new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
-                                    "child-release", 7,
+                                    "child-release", 1,
                                     "session-1", "view-release-1", expiry)));
             assertThrows(
                     IllegalArgumentException.class,
@@ -175,7 +175,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                             parentToken,
                             new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
-                                    "child-release", 7,
+                                    "child-release", 1,
                                     "session-1", "view-release-1", expiry)),
                     "按钮/事件不能直接使用父表单 token");
             assertThrows(
@@ -184,7 +184,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                             parentToken,
                             new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
-                                    "child-release", 7,
+                                    "child-release", 1,
                                     "session-1", "view-release-1",
                                     Instant.now().plusSeconds(60))),
                     "token 到期时间不能越过 Session 上限");
@@ -194,7 +194,7 @@ class EntityEmbedNativeFormRuntimeAdapterTest {
                             parentToken,
                             new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget(
                                     "customer", "child-form",
-                                    "child-release", 7,
+                                    "child-release", 1,
                                     "session-2", "view-release-1", expiry)),
                     "父子表单解析也必须绑定当前 Embed Session");
 

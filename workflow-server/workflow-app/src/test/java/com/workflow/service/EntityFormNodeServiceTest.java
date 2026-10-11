@@ -36,6 +36,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -550,7 +551,7 @@ class EntityFormNodeServiceTest {
                         "form-2",
                         "release-2",
                         2)));
-        when(releaseMapper.selectById("release-2"))
+        when(releaseMapper.findActive("FORM", "form-2"))
                 .thenReturn(release(
                         "release-2",
                         "form-2",
@@ -558,7 +559,7 @@ class EntityFormNodeServiceTest {
                         "form-3",
                         "release-3",
                         4));
-        when(releaseMapper.selectById("release-3"))
+        when(releaseMapper.findActive("FORM", "form-3"))
                 .thenReturn(release(
                         "release-3",
                         "form-3",
@@ -601,7 +602,7 @@ class EntityFormNodeServiceTest {
                         "release-2",
                         1)));
         for (int index = 2; index <= 8; index++) {
-            when(releaseMapper.selectById("release-" + index))
+            when(releaseMapper.findActive("FORM", "form-" + index))
                     .thenReturn(release(
                             "release-" + index,
                             "form-" + index,
@@ -628,7 +629,7 @@ class EntityFormNodeServiceTest {
                         "release-2",
                         1)));
         for (int index = 2; index < 8; index++) {
-            when(releaseMapper.selectById("release-" + index))
+            when(releaseMapper.findActive("FORM", "form-" + index))
                     .thenReturn(release(
                             "release-" + index,
                             "form-" + index,
@@ -637,7 +638,7 @@ class EntityFormNodeServiceTest {
                             "release-" + (index + 1),
                             1));
         }
-        when(releaseMapper.selectById("release-8"))
+        when(releaseMapper.findActive("FORM", "form-8"))
                 .thenReturn(releaseWithoutReferences(
                         "release-8",
                         "form-8",
@@ -649,7 +650,7 @@ class EntityFormNodeServiceTest {
 
     /** 测试遗留设计器 refFormId 钉到激活发布并保留遗留属性：验证创建节点时 childFormRelease 等字段被填充且遗留属性被保留 */
     @Test
-    void pinsLegacyDesignerRefFormIdToActiveReleaseAndPreservesLegacyProps() {
+    void normalizesLegacyDesignerToStableIdentityAndPreservesLegacyProps() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
         UiConfigRelease active = releaseWithoutReferences(
@@ -657,7 +658,7 @@ class EntityFormNodeServiceTest {
                 "form-2",
                 6);
         when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
-        when(releaseMapper.selectById("release-2")).thenReturn(active);
+        when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
 
         EntityFormNodeCreateRequest request = new EntityFormNodeCreateRequest();
         request.setNodeKey("details");
@@ -683,11 +684,11 @@ class EntityFormNodeServiceTest {
                 map(componentProps.get("subFormConfig"));
 
         assertEquals("form-2", props.get("childFormId"));
-        assertEquals("release-2", props.get("childFormReleaseId"));
-        assertEquals(6, props.get("childFormReleaseVersion"));
+        assertNull(props.get("childFormReleaseId"));
+        assertNull(props.get("childFormReleaseVersion"));
         assertEquals("form-2", subFormConfig.get("refFormId"));
         assertEquals("embedded", subFormConfig.get("legacyMode"));
-        assertEquals("release-2", subFormConfig.get("childFormReleaseId"));
+        assertNull(subFormConfig.get("childFormReleaseId"));
         assertTrue(codec().readObject(
                 created.getLegacyPropsDocument(),
                 "测试历史属性").containsKey("unknownLegacyFlag"));
@@ -695,7 +696,7 @@ class EntityFormNodeServiceTest {
 
     /** 测试为 Repeater 节点钉住遗留 publishedFormId：验证创建后 refFormReleaseId/Version 被填充 */
     @Test
-    void pinsLegacyPublishedFormIdForRepeater() {
+    void keepsStablePublishedFormIdForRepeater() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
         UiConfigRelease active = releaseWithoutReferences(
@@ -703,7 +704,7 @@ class EntityFormNodeServiceTest {
                 "form-2",
                 3);
         when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
-        when(releaseMapper.selectById("release-2")).thenReturn(active);
+        when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
 
         EntityFormNodeCreateRequest request = new EntityFormNodeCreateRequest();
         request.setNodeKey("lines");
@@ -718,20 +719,20 @@ class EntityFormNodeServiceTest {
                 created.getPropsDocument(),
                 "测试节点属性");
 
-        assertEquals("release-2", props.get("refFormReleaseId"));
-        assertEquals(3, props.get("refFormReleaseVersion"));
+        assertNull(props.get("refFormReleaseId"));
+        assertNull(props.get("refFormReleaseVersion"));
     }
 
     /** 测试接受显式子发布字段且不依赖嵌套 props：验证直接传入 childFormReleaseId/Version 时被正确持久化 */
     @Test
-    void acceptsExplicitChildReleaseFieldsWithoutNestedProps() {
+    void ignoresExplicitChildReleaseFieldsWithoutNestedProps() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
         UiConfigRelease published = releaseWithoutReferences(
                 "release-2",
                 "form-2",
                 5);
-        when(releaseMapper.selectById("release-2")).thenReturn(published);
+        when(releaseMapper.findActive("FORM", "form-2")).thenReturn(published);
 
         EntityFormNodeCreateRequest request = new EntityFormNodeCreateRequest();
         request.setNodeKey("details");
@@ -749,13 +750,13 @@ class EntityFormNodeServiceTest {
                 "测试节点属性");
 
         assertEquals("form-2", props.get("childFormId"));
-        assertEquals("release-2", props.get("childFormReleaseId"));
-        assertEquals(5, props.get("childFormReleaseVersion"));
+        assertNull(props.get("childFormReleaseId"));
+        assertNull(props.get("childFormReleaseVersion"));
     }
 
-    /** 测试拒绝设计器 release 版本不匹配：验证引用 release-2 的版本号与实际不一致时校验抛出异常 */
+    /** 旧设计器版本坐标不影响当前配置的引用校验 */
     @Test
-    void rejectsDesignerReleaseVersionMismatch() {
+    void ignoresObsoleteDesignerReleaseVersion() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
         UiConfigReleaseMapper releaseMapper = mock(UiConfigReleaseMapper.class);
         when(nodeMapper.findByFormId("form-1"))
@@ -764,14 +765,13 @@ class EntityFormNodeServiceTest {
                         "form-2",
                         "release-2",
                         8)));
-        when(releaseMapper.selectById("release-2"))
+        when(releaseMapper.findActive("FORM", "form-2"))
                 .thenReturn(releaseWithoutReferences(
                         "release-2",
                         "form-2",
                         9));
 
-        assertThrows(
-                IllegalArgumentException.class,
+        assertDoesNotThrow(
                 () -> service(nodeMapper, releaseMapper).validateTree("form-1"));
     }
 
@@ -786,7 +786,7 @@ class EntityFormNodeServiceTest {
                         "form-2",
                         "release-3",
                         1)));
-        when(releaseMapper.selectById("release-3"))
+        when(releaseMapper.findActive("FORM", "form-3"))
                 .thenReturn(releaseWithoutReferences(
                         "release-3",
                         "form-3",
@@ -808,7 +808,7 @@ class EntityFormNodeServiceTest {
                         "form-2",
                         "release-2",
                         1)));
-        when(releaseMapper.selectById("release-2"))
+        when(releaseMapper.findActive("FORM", "form-2"))
                 .thenReturn(legacyRelease(
                         "release-2",
                         "form-2",
@@ -1031,7 +1031,7 @@ class EntityFormNodeServiceTest {
         when(nodeMapper.selectCount(any())).thenReturn(0L);
         when(nodeMapper.update(isNull(), any())).thenReturn(1);
         when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
-        when(releaseMapper.selectById("release-2")).thenReturn(active);
+        when(releaseMapper.findActive("FORM", "form-2")).thenReturn(active);
 
         assertDoesNotThrow(() ->
                 service(nodeMapper, releaseMapper)

@@ -17,6 +17,52 @@ class UiViewCompositionConfigValidatorTest {
             new UiViewCompositionConfigValidator();
 
     @Test
+    void childListSettingsKeepOuterLayoutSeparateAndRejectInvalidOptions() {
+        Map<String, Object> config = frontendDraft();
+        Map<String, Object> presentation = mutableChild(config, "presentation");
+        presentation.put("layout", Map.of("height", 600, "width", 75, "padding", 0));
+        presentation.put("listOptions", Map.of("showSearch", false, "showPagination", false,
+                "showToolbar", false, "showRowActions", true, "pageSize", 37, "maxHeight", 240));
+        presentation.put("visibleModes", Map.of("create", false, "view", true));
+        presentation.put("visibilityCondition", Map.of("version", 1, "root", Map.of("type", "GROUP",
+                "logic", "AND", "children", List.of(Map.of("type", "CONDITION", "property", "name",
+                "operator", "==", "value", "可见")))));
+        Map<?, ?> normalized = (Map<?, ?>) validator.validate(config).normalizedConfig().get("presentation");
+        assertEquals(600, ((Map<?, ?>) normalized.get("layout")).get("height"));
+        assertEquals(240, ((Map<?, ?>) normalized.get("listOptions")).get("maxHeight"));
+        assertEquals(37, ((Map<?, ?>) normalized.get("listOptions")).get("pageSize"));
+        assertEquals(false, ((Map<?, ?>) normalized.get("listOptions")).get("showSearch"));
+        for (Map<String, Object> invalid : List.<Map<String, Object>>of(Map.of("pageSize", 201),
+                Map.of("pageSize", 1.5), Map.of("maxHeight", 0), Map.of("showToolbar", "false"), Map.of("sql", "select"))) {
+            presentation.put("listOptions", invalid);
+            assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+        }
+        presentation.remove("listOptions");
+        presentation.put("visibilityCondition", Map.of("version", 1, "root", Map.of("type", "GROUP", "logic", "AND", "children", List.of())));
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+    }
+
+    @Test
+    void displayTitleSettingsPreserveIndependentSaveActions() {
+        Map<String, Object> config = frontendDraft();
+        config.put("actions", List.of("EDIT"));
+        Map<String, Object> presentation = mutableChild(config, "presentation");
+        presentation.put("title", "需求详情");
+        presentation.put("showTitle", false);
+
+        Map<String, Object> normalized = validator.validate(config).normalizedConfig();
+        assertEquals("需求详情", ((Map<?, ?>) normalized.get("presentation")).get("title"));
+        assertEquals(false, ((Map<?, ?>) normalized.get("presentation")).get("showTitle"));
+        assertEquals(List.of("EDIT"), normalized.get("actions"));
+
+        presentation.put("showTitle", true);
+        assertEquals(true, ((Map<?, ?>) validator.validate(config).normalizedConfig()
+                .get("presentation")).get("showTitle"));
+        presentation.put("showTitle", "false");
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+    }
+
+    @Test
     void acceptsFrontendDraftShapeAndDropsInactiveFallbackSkeletons() {
         Map<String, Object> config = frontendDraft();
 

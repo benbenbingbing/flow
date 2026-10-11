@@ -264,6 +264,8 @@ public class EntityFormActionConfigPolicy {
                 }
             }
             boolean enabled = !Boolean.FALSE.equals(button.get("enabled"));
+            String customMode = text(button.getOrDefault("customMode", "event"));
+            validateExecution(button, customMode, enabled);
             String permission = text(button.get("perm"));
             if (enabled && (!StringUtils.hasText(permission)
                     || permission.length() > 200
@@ -277,7 +279,7 @@ public class EntityFormActionConfigPolicy {
                     "自定义按钮执行前校验");
             validateConfirm(button.get("confirm"));
             normalizeAvailabilityRule(button);
-            if (enabled && requireBindings
+            if (enabled && requireBindings && "event".equals(customMode)
                     && !boundButtonKeys.contains(key)) {
                 throw new IllegalArgumentException(
                         "启用的自定义按钮必须绑定 FORM_BUTTON_CLICK 事件: "
@@ -285,6 +287,31 @@ public class EntityFormActionConfigPolicy {
             }
         }
         return buttons;
+    }
+
+    /** 快捷动作只保存声明式目标，不接受脚本；打开后的读写仍经过目标实体权限校验。 */
+    private void validateExecution(Map<String, Object> button, String mode, boolean enabled) {
+        if (!Set.of("event", "handler", "component", "open-list", "open-form", "open-related-content").contains(mode)) {
+            throw new IllegalArgumentException("不支持的表单按钮执行方式: " + mode);
+        }
+        button.put("customMode", mode);
+        Object raw = button.get("execution");
+        if (raw != null && !(raw instanceof Map<?, ?>)) throw new IllegalArgumentException("按钮执行配置必须为对象");
+        Map<?, ?> config = raw instanceof Map<?, ?> map ? map : Map.of();
+        for (var entry : config.entrySet()) {
+            if (!Set.of("name", "entityId", "entityCode", "formId", "listKey", "formMode", "recordIdField", "presentation", "compositionKey", "componentVersion", "artifactDigest").contains(String.valueOf(entry.getKey()))
+                    || !(entry.getValue() instanceof String) || text(entry.getValue()).length() > 200) {
+                throw new IllegalArgumentException("按钮执行配置字段无效: " + entry.getKey());
+            }
+        }
+        if (config.containsKey("presentation") && !Set.of("DIALOG", "DRAWER", "PAGE").contains(text(config.get("presentation")))) throw new IllegalArgumentException("按钮打开方式无效");
+        if (config.containsKey("formMode") && !Set.of("create", "edit", "view").contains(text(config.get("formMode")))) throw new IllegalArgumentException("按钮表单模式无效");
+        if (!enabled) return;
+        if (Set.of("handler", "component").contains(mode)) requireText(config.get("name"), 200, "请选择已注册的执行器");
+        if ("open-related-content".equals(mode)) requireText(config.get("compositionKey"), 200, "请选择关联内容");
+        if (Set.of("open-form", "open-list").contains(mode)) requireText(config.get("entityCode"), 200, "请选择目标实体");
+        if ("open-form".equals(mode)) requireText(config.get("formId"), 200, "请选择目标表单");
+        if ("open-list".equals(mode)) requireText(config.get("listKey"), 200, "请选择目标列表");
     }
 
     /**

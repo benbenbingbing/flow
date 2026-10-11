@@ -76,4 +76,18 @@ const customComponentLayout = resolveRuntimeFormTabLayout({
 assert.equal(customComponentLayout.tabs.length, 0)
 assert.equal(customComponentLayout.hasBaseContent, true)
 
+// 改成独立窗口会把关系锚点移到 OWNER，不能因仅有 Tab 节点而丢失打开入口。
+for (const position of ['DIALOG', 'DRAWER', 'PAGE', 'INLINE']) {
+  const tabForm = {
+    nodes: [{ id: 'tabs', nodeType: 'TAB_SET' }, { id: 'tab', nodeType: 'TAB', parentId: 'tabs' }],
+    viewCompositions: [{ anchorType: 'OWNER', config: { enabled: true, presentation: { position } } }]
+  }
+  assert.equal(resolveRuntimeFormTabLayout(tabForm).hasBaseContent, true, position)
+  tabForm.viewCompositions[0].config.enabled = false
+  assert.equal(resolveRuntimeFormTabLayout(tabForm).hasBaseContent, false, '停用的入口不要求额外基本信息区')
+  tabForm.viewCompositions[0] = { anchorType: 'FORM_NODE', anchorKey: 'tab', config: { presentation: { position: 'TAB' } } }
+  assert.equal(resolveRuntimeFormTabLayout(tabForm).hasBaseContent, false, '已有页签内的关系不重复添加基本信息区')
+}
+assert.equal(resolveRuntimeFormTabLayout({ viewCompositions: [{ anchorType: 'OWNER', config: {} }] }).hasBaseContent, true)
+
 console.log('runtime-form-tabs tests passed')

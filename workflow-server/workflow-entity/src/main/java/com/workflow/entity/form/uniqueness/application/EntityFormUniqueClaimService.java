@@ -458,8 +458,7 @@ public class EntityFormUniqueClaimService {
                 RuleEvaluation evaluation = new RuleEvaluation(
                         reference,
                         effectiveReleaseId,
-                        snapshotIdentity(reference,
-                                effectiveReleaseId),
+                        ruleFingerprint(rule),
                         rule,
                         candidate);
                 evaluations.add(evaluation);
@@ -1392,4 +1391,19 @@ public class EntityFormUniqueClaimService {
             PreparedUniqueClaims prepared,
             RuleEvaluation evaluation) {
     }
+    /** 唯一占位仅随规则语义变化，布局或发布操作不应清空同一规则的命名空间。 */
+    private static String ruleFingerprint(FormUniqueRule rule) {
+        Map<String, Object> semantic = new java.util.TreeMap<>();
+        semantic.put("fieldCode", rule.fieldCode()); semantic.put("fieldType", rule.fieldType());
+        semantic.put("mode", rule.mode()); semantic.put("ignoreBlank", rule.ignoreBlank());
+        semantic.put("normalization", rule.normalization()); semantic.put("condition", rule.condition());
+        try {
+            return sha256(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .configure(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
+                    .writeValueAsString(semantic));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalArgumentException("无法计算唯一规则语义指纹", error);
+        }
+    }
+
 }

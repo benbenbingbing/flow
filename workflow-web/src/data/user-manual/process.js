@@ -667,7 +667,7 @@ export default {
               type: 'callout',
               tone: 'info',
               title: '默认表单与指定表单',
-              text: '选择 DEFAULT 后，应用节点配置时按 isDefault 解析当前默认表单并写入 entityFormId；未设置默认表单会阻止应用，默认表单尚未发布不会阻止应用，但会由流程发布校验拒绝。选择 SPECIFIC 时写入所选表单 ID。两种方式成功发布后都固定到流程表单快照，更换实体默认表单不会自动改变已发布节点。旧流程缺少显式使用方式或绑定时，运行时仍保留默认表单及部分链路首个可用表单的历史兼容回退。'
+              text: '选择 DEFAULT 后，应用节点配置时按 isDefault 解析当前默认表单并写入 entityFormId；未设置默认表单会阻止应用，默认表单尚未发布不会阻止应用，但会由流程发布校验拒绝。选择 SPECIFIC 时写入所选表单 ID。两种方式成功发布后都固定节点绑定的表单 ID，更换实体默认表单不会自动改变已发布节点。旧流程缺少显式使用方式或绑定时，运行时仍保留默认表单及部分链路首个可用表单的历史兼容回退。'
             },
             {
               type: 'callout',
@@ -678,21 +678,17 @@ export default {
             {
               type: 'callout',
               tone: 'warning',
-              title: '普通发布与兼容热修复',
-              text: '流程发布快照会固定节点表单的 release ID 和版本。STANDARD 普通发布仍要求重新发布流程：未重发时新增流程数据返回 409 PROCESS_FORM_RELEASE_STALE；重发后新实例使用新版本，运行中实例继续使用原版本。流程表单的任意有效修改都可选择 HOTFIX：展示修改为 SAFE，其余高风险修改统一为 REVIEW，确认风险提示后直接作用于当前可发起版本和运行中实例。'
+              title: '表单统一发布',
+              text: '流程发布只固定节点与表单 ID 的映射。表单发布后，新实例、运行中任务和历史详情都使用该表单当前配置，无需重发流程。流程节点、办理人和 BPMN 的变更仍需发布流程。'
             },
             {
               type: 'table',
-              columns: [
-                { key: 'purpose', label: '运行目的' },
-                { key: 'release', label: '读取版本' },
-                { key: 'hotfix', label: '热修复行为' }
-              ],
+              columns: [{ key: 'purpose', label: '运行目的' }, { key: 'configuration', label: '读取配置' }],
               rows: [
-                { purpose: 'NEW_INSTANCE 新增/发起', release: '当前流程版本钉定的表单 release。', hotfix: '存在该流程版本的有效 HOTFIX 时读取完整有效快照；否则仍执行普通发布过期检查。' },
-                { purpose: 'ACTIVE_TASK 运行中任务', release: '任务所属流程历史版本钉定的表单 release。', hotfix: '优先读取该流程版本的有效 HOTFIX，解析失败降级原钉定版本并记录告警。' },
-                { purpose: 'HISTORICAL 历史详情', release: '流程发布时的原始钉定 release。', hotfix: '已完成、已终止实例明确不应用 HOTFIX，保证审批回放可复现。' },
-                { purpose: 'STANDALONE 独立表单', release: '表单当前 ACTIVE release。', hotfix: '不携带流程版本目标上下文。' }
+                { purpose: '新增/发起', configuration: '节点绑定表单的当前已发布配置。' },
+                { purpose: '运行中任务', configuration: '原流程节点绑定的稳定表单 ID，读取当前已发布配置。' },
+                { purpose: '历史详情', configuration: '原流程节点绑定的稳定表单 ID，使用当前布局展示历史业务数据。' },
+                { purpose: '独立表单', configuration: '该表单当前已发布配置。' }
               ]
             }
           ]
@@ -1017,37 +1013,14 @@ export default {
           ]
         },
         {
-          id: 'process-form-hotfix',
-          title: '流程表单兼容热修复',
-          blocks: [
-            {
-              type: 'steps',
-              items: [
-                { title: '保存草稿', text: '保存需要热修复的表单节点或字段，所有通过发布校验的表单修改都可以进入 HOTFIX 预检。' },
-                { title: '选择 HOTFIX 预检', text: '核对 SAFE/REVIEW、当前可发起流程版本、仍有运行实例的历史版本、运行中实例数量和跳过的已完成实例。列表配置只允许 STANDARD 发布。' },
-                { title: '风险提示与原子发布', text: '节点增删、绑定、权限、数据源、提交映射、关系/子表和写操作等 REVIEW 修改仅作高风险提醒。确认后请求回传 expectedActiveReleaseId、expectedDraftHash 和 impactToken；任一目标或预检快照变化时整次失败。' },
-                { title: '观察与回滚', text: '观察表单加载、提交和流程任务指标；出现异常时，拥有专用回滚权限的人员从最新版本开始按发布时间逆序原子回滚。' }
-              ]
-            },
-            {
-              type: 'callout',
-              tone: 'info',
-              title: '当前流程的范围',
-              text: '“当前流程”包括当前仍可发起的最新流程版本，以及仍有运行实例的历史流程版本。已完成或已终止实例只计入 skippedHistoricalInstanceCount，不进入 rollout 目标。'
-            },
-            {
-              type: 'callout',
-              tone: 'info',
-              title: '权限与 rolloutStatus',
-              text: 'HOTFIX 直接发布需要 entity:ui-config:hotfix；回滚需要 entity:ui-config:hotfix:rollback。发布历史同时展示观察状态和三类运行指标。'
-            },
-            {
-              type: 'callout',
-              tone: 'warning',
-              title: '嵌套表单上下文不能由前端伪造',
-              text: '父表单运行时会签发短期 releaseResolutionToken，子表单必须携带该令牌继承同一流程版本和运行目的。令牌绑定当前用户、父表单 release 和嵌套深度，最长递归 8 层；缺失、过期、签名错误或越层请求都会被拒绝。'
-            }
-          ]
+          id: 'process-form-global-publish',
+          title: '流程表单全局生效',
+          blocks: [{ type: 'bullets', items: [
+            '表单只保留草稿和唯一当前发布配置，发布前的修改不会影响正式运行。',
+            '发布成功后所有引用该表单的入口使用当前配置；不区分普通发布与热修复。',
+            '已有页面继续保留填写内容，提交时发现配置更新会要求重载并核对。',
+            '父子表单授权继承同一用户和业务上下文，依赖图摘要识别子表单单独更新；最长嵌套 8 层。'
+          ]}]
         },
         {
           id: 'process-version-history',

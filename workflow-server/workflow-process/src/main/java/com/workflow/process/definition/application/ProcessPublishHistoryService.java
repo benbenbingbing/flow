@@ -121,7 +121,7 @@ public class ProcessPublishHistoryService {
     /**
      * 生成节点表单绑定快照（JSON）。
      * <p>
-     * 查询流程下所有节点表单绑定，逐一关联当前生效的表单发布版本，序列化为快照。
+     * 查询流程下所有节点表单绑定，校验当前表单已经发布，仅将稳定表单身份序列化为绑定快照。
      *
      * @param processConfigId 流程定义配置ID
      * @return 节点表单快照 JSON 字符串
@@ -209,8 +209,7 @@ public class ProcessPublishHistoryService {
                 nodeForm.getNodeId(),
                 nodeForm.getNodeName(),
                 nodeForm.getFormId(),
-                release.getId(),
-                release.getVersion(),
+
                 nodeForm.getIsReadonly(),
                 nodeForm.getSortOrder());
     }
@@ -226,8 +225,7 @@ public class ProcessPublishHistoryService {
         binding.setNodeId(snapshot.nodeId());
         binding.setNodeName(snapshot.nodeName());
         binding.setFormId(snapshot.formId());
-        binding.setFormReleaseId(snapshot.formReleaseId());
-        binding.setFormReleaseVersion(snapshot.formReleaseVersion());
+
         binding.setIsReadonly(snapshot.isReadonly());
         binding.setSortOrder(snapshot.sortOrder());
         return binding;
@@ -250,16 +248,13 @@ public class ProcessPublishHistoryService {
      * @param nodeId 节点ID，后续用于处理节点表单快照时定位或关联目标
      * @param nodeName 节点名称，后续用于处理节点表单快照时匹配或展示
      * @param formId 表单 ID，后续用于定位已发布表单
-     * @param formReleaseId 表单发布版本ID，后续用于处理节点表单快照时定位或关联目标
-     * @param formReleaseVersion 表单发布版本，保存在对象中供后续校验、查询或展示
      * @param isReadonly 是否{@code readonly}，保存在对象中供后续校验、查询或展示
      * @param sortOrder 排序权重，后续用于稳定展示顺序
      */
     private record NodeFormSnapshot(String nodeId,
                                     String nodeName,
                                     String formId,
-                                    String formReleaseId,
-                                    Integer formReleaseVersion,
+
                                     Integer isReadonly,
                                     Integer sortOrder) {
     }

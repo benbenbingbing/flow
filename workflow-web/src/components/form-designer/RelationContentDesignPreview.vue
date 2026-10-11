@@ -1,8 +1,15 @@
 <template>
-  <section class="relation-design-preview">
+  <section class="relation-design-preview" :style="relatedContentLayoutStyle(config.presentation)">
     <header>
-      <div>
-        <strong>{{ config.name || target.contentName }}</strong>
+      <div
+        :class="{ 'relation-property-title': editable }"
+        :role="editable ? 'button' : undefined"
+        :tabindex="editable ? 0 : undefined"
+        :title="editable ? '双击打开属性' : undefined"
+        @dblclick.stop="openProperties"
+        @keydown.enter.stop="openProperties"
+      >
+        <strong v-if="config.presentation?.showTitle !== false">{{ config.presentation?.title || config.name || target.contentName }}</strong>
         <el-tag size="small" effect="plain">{{ target.contentType === 'FORM' ? '关联表单 · 一对一' : '关联列表 · 一对多' }}</el-tag>
       </div>
       <div v-if="editable">
@@ -27,6 +34,7 @@
 </template>
 
 <script setup>
+import { relatedContentLayoutStyle } from '@/shared/related-content-presentation'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
@@ -35,7 +43,11 @@ import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
 const FormPreviewLinkage = defineAsyncComponent(() => import('@/components/FormPreviewLinkage.vue'))
 const props = defineProps({ composition: { type: Object, required: true }, editable: Boolean })
-defineEmits(['edit', 'remove'])
+const emit = defineEmits(['edit', 'remove', 'open-properties'])
+// 标题事件独立于目标表单预览，避免嵌套在 Tab/区块时误打开外层容器的属性。
+function openProperties() {
+  if (props.editable) emit('open-properties', props.composition)
+}
 const config = computed(() => props.composition.config || {})
 const target = computed(() => config.value.target || {})
 const previewForm = ref(null), columns = ref([]), loading = ref(false), error = ref('')
@@ -43,7 +55,7 @@ let sequence = 0
 
 /**
  * 设计态只读取发布布局，不执行关联数据查询。目标表单的嵌套关联不在空记录预览中展开，
- * 防止递归加载；真正的数据和嵌套权限由发布运行时统一解析。
+ * 防止递归加载；发布运行时采用同样的关联隔离，并通过签名上下文解析当前目标的数据与权限。
  */
 async function load() {
   const request = ++sequence
@@ -83,5 +95,6 @@ watch(() => [target.value.contentId, target.value.contentType, target.value.rele
 .relation-design-preview { margin: 20px 0; padding: 16px; border: 1px solid var(--el-border-color); border-radius: 6px; background: var(--el-bg-color); }
 header, header > div { display: flex; align-items: center; gap: 10px; }
 header { justify-content: space-between; }
+.relation-property-title { cursor: pointer; }
 p { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; margin: 10px 0 18px; }
 </style>

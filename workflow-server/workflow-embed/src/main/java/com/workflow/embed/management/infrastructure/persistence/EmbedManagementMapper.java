@@ -420,17 +420,14 @@ interface EmbedManagementMapper {
     @Select("""
             <script>
             SELECT f.id AS form_id, ${@com.workflow.integration.database.api.query.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} AS entity_id,
-                   r.id AS release_id, r.version AS release_version,
+                   r.content_hash AS release_id, 1 AS release_version,
                    r.snapshot_document, r.content_hash
               FROM entity_form f
               JOIN entity_definition e
                 ON ${@com.workflow.integration.database.api.query.DatabaseQuerySql@integerIdentifierText(_databaseId, 'e.id')} = f.entity_id
-              JOIN ui_config_release r
-                ON r.id = COALESCE(#{releaseId,jdbcType=VARCHAR}, f.active_release_id)
-               AND r.config_type = 'FORM'
-               AND r.config_id = f.id
+              JOIN entity_form_published r ON r.form_id = f.id
              WHERE f.id = #{formId} AND e.entity_code = #{entityCode}
-               AND f.deleted = 0 AND f.status = 1
+               AND f.deleted = 0
                AND e.deleted = 0 AND e.status = 'PUBLISHED'
 
             </script>

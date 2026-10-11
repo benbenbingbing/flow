@@ -12,7 +12,6 @@ import com.workflow.core.result.Result;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.ui.api.response.UiConfigDiffDTO;
 import com.workflow.entity.ui.api.response.UiConfigActivationPreviewDTO;
-import com.workflow.entity.ui.api.request.UiConfigHotfixRollbackRequest;
 import com.workflow.entity.ui.api.request.UiConfigReleaseOperationRequest;
 import com.workflow.entity.ui.api.request.UiConfigDraftDiscardRequest;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
@@ -33,11 +32,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * UI 配置发布管理控制器。
  * <p>统一管理表单（FORM）与列表（LIST）两类配置的发布生命周期：
- * 运行态发布获取、草稿快照、差异对比、发布、历史版本列表及激活指定版本。
+ * 运行配置获取、草稿快照、差异对比与发布；历史版本列表及激活仅用于列表。
  */
 @AuthenticatedApi(objectAuthorization = true)
 @RestController
@@ -49,7 +49,7 @@ public class UiConfigReleaseController {
     private final UiConfigurationAccessService accessService;
 
     /**
-     * 获取表单运行态发布快照（按 releaseId/version 或默认活跃版本）。GET /api/entity-forms/{formId}/runtime-release
+     * 获取表单当前运行配置（旧坐标仅兼容摘要校验）。GET /api/entity-forms/{formId}/runtime-release
      *
      * @param formId    表单ID
      * @param releaseId 指定发布ID（可选）
@@ -57,7 +57,7 @@ public class UiConfigReleaseController {
      * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 运行态发布快照
      */
-    @GetMapping("/entity-forms/{formId}/runtime-release")
+    @GetMapping({"/entity-forms/{formId}/runtime", "/entity-forms/{formId}/runtime-release"})
     @EmbedDelegatedRuntimeApi(
             value = EmbedDelegatedRuntimeApi.Scope.FORM_RELEASE,
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
@@ -120,11 +120,11 @@ public class UiConfigReleaseController {
     }
 
     /**
-     * 发布表单草稿为新版本。POST /api/entity-forms/{id}/publish
+     * 覆盖表单唯一当前配置，事务提交后全局生效。POST /api/entity-forms/{id}/publish
      *
      * @param id      表单ID
      * @param request 发布请求（可选描述）
-     * @return 新建的发布记录
+     * @return 当前内容摘要和最近发布时间、发布人，不返回表单版本
      */
     @PostMapping("/entity-forms/{id}/publish")
     @SystemAudit(
@@ -133,18 +133,19 @@ public class UiConfigReleaseController {
             operation = "发布表单配置",
             risk = AuditRiskLevel.HIGH,
             targetType = "UI_CONFIG_RELEASE")
-    public Result<UiConfigRelease> publishForm(
+    public Result<Map<String, Object>> publishForm(
             @PathVariable String id,
             @RequestBody(required = false) UiConfigPublishRequest request) {
         accessService.requireFormAccess(id);
-        return Result.success(releaseService.publish(
-                UiConfigReleaseService.FORM,
-                id,
-                request));
+        UiConfigRelease current = releaseService.publish(UiConfigReleaseService.FORM, id, request);
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("formId", id); result.put("contentHash", current.getContentHash());
+        result.put("publishedBy", current.getPublishedBy()); result.put("publishedAt", current.getPublishedAt());
+        return Result.success(result);
     }
 
     /**
-     * 预检表单普通发布或兼容热修复影响范围。
+     * 预检当前表单草稿及全局依赖，不创建表单版本。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param request 本次请求，后续经校验后用于处理预览表单发布
@@ -159,106 +160,6 @@ public class UiConfigReleaseController {
                 UiConfigReleaseService.FORM,
                 id,
                 request));
-    }
-
-    /**
-     * 查询表单发布历史版本列表。GET /api/entity-forms/{id}/releases
-     *
-     * @param id 表单ID
-     * @return 发布记录列表
-     */
-    @GetMapping("/entity-forms/{id}/releases")
-    public Result<List<UiConfigRelease>> formReleases(@PathVariable String id) {
-        accessService.requireFormAccess(id);
-        return Result.success(
-                releaseService.releases(UiConfigReleaseService.FORM, id));
-    }
-
-    /**
-     * 处理表单发布版本{@code summaries}，并将结果传给后续步骤。
-     *
-     * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param pageNum 分页数量参数，用于限制后续查询范围和返回数量
-     * @param pageSize 分页大小参数，用于限制后续查询范围和返回数量
-     * @return 处理后的表单发布版本{@code summaries}结果，供调用方继续处理
-     */
-    @GetMapping("/entity-forms/{id}/release-summaries")
-    public Result<PageResult<UiConfigReleaseSummaryDTO>> formReleaseSummaries(
-            @PathVariable String id,
-            @RequestParam(defaultValue = "1") long pageNum,
-            @RequestParam(defaultValue = "20") int pageSize) {
-        accessService.requireFormAccess(id);
-        return Result.success(releaseService.releaseSummaries(
-                UiConfigReleaseService.FORM,
-                id,
-                pageNum,
-                pageSize));
-    }
-
-    /**
-     * 激活表单的指定历史发布版本。POST /api/entity-forms/{id}/releases/{releaseId}/activate
-     *
-     * @param id        表单ID
-     * @param releaseId 发布记录ID
-     * @param request 本次请求，后续经校验后用于激活表单
-     * @return 激活后的发布记录
-     */
-    @PostMapping("/entity-forms/{id}/releases/{releaseId}/activate")
-    public Result<UiConfigRelease> activateForm(
-            @PathVariable String id,
-            @PathVariable String releaseId,
-            @RequestBody(required = false)
-            UiConfigReleaseOperationRequest request) {
-        accessService.requireFormAccess(id);
-        return Result.success(releaseService.activate(
-                UiConfigReleaseService.FORM,
-                id,
-                releaseId,
-                request == null ? null : request.getReason(),
-                request == null
-                        ? null
-                        : request.getExpectedActiveReleaseId()));
-    }
-
-    /**
-     * 处理预览表单{@code activation}，并将结果传给后续步骤。
-     *
-     * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param releaseId 发布版本ID，后续用于处理预览表单{@code activation}时定位或关联目标
-     * @return 处理后的预览表单{@code activation}结果，供调用方继续处理
-     */
-    @GetMapping("/entity-forms/{id}/releases/{releaseId}/activation-preview")
-    public Result<UiConfigActivationPreviewDTO> previewFormActivation(
-            @PathVariable String id,
-            @PathVariable String releaseId) {
-        accessService.requireFormAccess(id);
-        return Result.success(releaseService.activationPreview(
-                UiConfigReleaseService.FORM,
-                id,
-                releaseId));
-    }
-
-    /**
-     * 按发布顺序撤回表单热修复 rollout。
-     *
-     * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param releaseId 发布版本ID，后续用于处理回滚表单热修复时定位或关联目标
-     * @param request 本次请求，后续经校验后用于处理回滚表单热修复
-     * @return 处理后的回滚表单热修复结果，供调用方继续处理
-     */
-    @PostMapping("/entity-forms/{id}/releases/{releaseId}/rollback-hotfix")
-    @RequiresPermission("entity:ui-config:hotfix:rollback")
-    public Result<UiConfigRelease> rollbackFormHotfix(
-            @PathVariable String id,
-            @PathVariable String releaseId,
-            @RequestBody(required = false)
-            UiConfigHotfixRollbackRequest request) {
-        accessService.requireFormAccess(id);
-        return Result.success(releaseService.rollbackHotfix(
-                UiConfigReleaseService.FORM,
-                id,
-                releaseId,
-                request == null ? null : request.getReason()));
     }
 
     /**
@@ -309,7 +210,7 @@ public class UiConfigReleaseController {
      *
      * @param id      列表配置ID
      * @param request 发布请求（可选描述）
-     * @return 新建的发布记录
+     * @return 当前内容摘要和最近发布时间、发布人，不返回表单版本
      */
     @PostMapping("/entity-list-config/{id}/publish")
     @SystemAudit(
@@ -446,27 +347,4 @@ public class UiConfigReleaseController {
                 request == null ? null : request.getReason()));
     }
 
-    /**
-     * 兼容撤回升级前已经存在的列表热修复。
-     *
-     * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param releaseId 发布版本ID，后续用于处理回滚列表热修复时定位或关联目标
-     * @param request 本次请求，后续经校验后用于处理回滚列表热修复
-     * @return 处理后的回滚列表热修复结果，供调用方继续处理
-     */
-    @PostMapping(
-            "/entity-list-config/{id}/releases/{releaseId}/rollback-hotfix")
-    @RequiresPermission("entity:ui-config:hotfix:rollback")
-    public Result<UiConfigRelease> rollbackListHotfix(
-            @PathVariable String id,
-            @PathVariable String releaseId,
-            @RequestBody(required = false)
-            UiConfigHotfixRollbackRequest request) {
-        accessService.requireListAccess(id);
-        return Result.success(releaseService.rollbackHotfix(
-                UiConfigReleaseService.LIST,
-                id,
-                releaseId,
-                request == null ? null : request.getReason()));
-    }
 }

@@ -21,7 +21,7 @@ import java.util.Objects;
 /**
  * 实体表单运行时服务。
  *
- * <p>根据表单ID或节点绑定关系解析出运行时使用的表单（按发布版本解析），
+ * <p>根据表单ID或节点绑定关系解析出运行时使用的表单（按当前发布配置解析），
  * 供审批办理、详情展示等场景获取实际生效的表单配置。</p>
  */
 @Service
@@ -93,7 +93,7 @@ public class EntityFormRuntimeService {
     }
 
     /**
-     * 返回包含原始钉版与有效热修复身份的解析结果。
+     * 返回包含当前配置指纹和可信流程上下文的解析结果。
      *
      * @param nodeForm 节点表单，供本方法解析绑定时使用
      * @param processVersionHistoryId 流程版本历史ID，后续用于解析绑定时定位或关联目标
@@ -184,22 +184,19 @@ public class EntityFormRuntimeService {
     }
 
     /**
-     * 校验流程发布快照中的节点表单版本仍是当前激活版本。
+     * 校验流程节点绑定的稳定表单已发布。
      *
-     * <p>新增流程数据尚未创建流程实例，应使用最新发布流程快照。若表单已经单独发布了
-     * 新版本而流程尚未重新发布，则拒绝继续展示旧表单，避免创建数据时的表单与即将启动
-     * 的流程版本不一致。历史流程实例仍通过 {@link #getByBinding(ProcessNodeForm)}
-     * 精确读取原发布版本。</p>
+     * <p>新建、活动任务和历史详情统一读取当前已发布表单；流程发布历史仅决定节点绑定身份。</p>
      *
      * @param nodeForm 流程发布快照中的节点表单绑定
-     * @throws BusinessConflictException 表单没有激活版本或流程快照版本已经过期时抛出
+     * @throws BusinessConflictException 表单尚未发布时抛出
      */
     public void requireCurrentBindingForNewData(ProcessNodeForm nodeForm) {
         requireCurrentBindingForNewData(nodeForm, null);
     }
 
     /**
-     * 校验最新流程版本的表单钉版，已批准热修复不视为过期。
+     * 校验节点表单当前发布配置存在，无需因表单更新重新部署流程。
      *
      * @param nodeForm 节点表单，作为 {@code releaseService.active} 的输入影响后续处理
      * @param processVersionHistoryId 流程版本历史ID，后续用于校验并获取当前绑定新数据时定位或关联目标
@@ -207,58 +204,14 @@ public class EntityFormRuntimeService {
     public void requireCurrentBindingForNewData(
             ProcessNodeForm nodeForm,
             String processVersionHistoryId) {
-        if (nodeForm == null || !StringUtils.hasText(nodeForm.getFormId())) {
-            return;
-        }
-        UiConfigRelease active = releaseService.active(
-                UiConfigReleaseService.FORM,
-                nodeForm.getFormId());
-        if (active == null) {
-            log.info(
-                    "新增流程数据节点表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, historyId={}, reason=NO_ACTIVE_RELEASE",
-                    LogValue.safe(nodeForm.getFormId()),
-                    LogValue.safe(nodeForm.getFormReleaseId()),
-                    nodeForm.getFormReleaseVersion(),
-                    LogValue.safe(processVersionHistoryId));
-            throw new BusinessConflictException(
-                    "PROCESS_NODE_FORM_NOT_PUBLISHED",
-                    "流程节点表单当前没有激活发布版本，请先发布表单并重新发布流程");
-        }
-        boolean pinned = StringUtils.hasText(nodeForm.getFormReleaseId())
-                || nodeForm.getFormReleaseVersion() != null;
-        if (pinned
-                && (!Objects.equals(active.getId(), nodeForm.getFormReleaseId())
-                || !Objects.equals(active.getVersion(), nodeForm.getFormReleaseVersion()))
-                && !releaseService.isApprovedHotfix(
-                        nodeForm.getFormId(),
-                        nodeForm.getFormReleaseId(),
-                        nodeForm.getFormReleaseVersion(),
-                        processVersionHistoryId,
-                        active.getId())) {
-            log.info(
-                    "新增流程数据节点表单校验失败: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}, reason=STALE_BINDING",
-                    LogValue.safe(nodeForm.getFormId()),
-                    LogValue.safe(nodeForm.getFormReleaseId()),
-                    nodeForm.getFormReleaseVersion(),
-                    LogValue.safe(active.getId()),
-                    active.getVersion(),
-                    LogValue.safe(processVersionHistoryId));
-            throw new BusinessConflictException(
-                    "PROCESS_FORM_RELEASE_STALE",
-                    "流程节点表单已发布新版本，请重新发布流程后再新增数据");
-        }
-        log.info(
-                "新增流程数据节点表单校验通过: formId={}, pinnedReleaseId={}, pinnedVersion={}, activeReleaseId={}, activeVersion={}, historyId={}",
-                LogValue.safe(nodeForm.getFormId()),
-                LogValue.safe(nodeForm.getFormReleaseId()),
-                nodeForm.getFormReleaseVersion(),
-                LogValue.safe(active.getId()),
-                active.getVersion(),
-                LogValue.safe(processVersionHistoryId));
+        if (nodeForm == null || !StringUtils.hasText(nodeForm.getFormId())) return;
+        // 流程只绑定稳定表单身份。表单发布后不再要求重发流程。
+        if (releaseService.active(UiConfigReleaseService.FORM, nodeForm.getFormId()) == null)
+            throw new BusinessConflictException("PROCESS_NODE_FORM_NOT_PUBLISHED", "流程节点表单尚未发布，请先发布表单");
     }
 
     /**
-     * 获取实体的默认表单（按发布版本解析）。
+     * 获取实体的默认表单（按当前发布配置解析）。
      *
      * @param entityId 实体ID
      * @return 运行时默认表单，不存在时返回 null
@@ -278,7 +231,7 @@ public class EntityFormRuntimeService {
     public EntityForm getDefaultForm(
             String entityId,
             UiRuntimeResolutionContext context) {
-        EntityForm form = formMapper.selectDefaultByEntityId(entityId);
+        EntityForm form = releaseService.currentDefaultForm(entityId);
         if (form == null) {
             return null;
         }

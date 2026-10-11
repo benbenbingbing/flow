@@ -24,7 +24,7 @@ import java.util.Set;
  * 校验关联内容自动嵌入形成的跨表单/列表包含图。
  *
  * <p>INLINE、TAB 和 ROW_EXPAND 会把目标内容继续渲染在当前页面结构中，
- * 因此必须在发布、预览和历史激活共用的快照校验阶段阻断资产循环，并将
+ * 因此必须在发布、预览和列表历史激活共用的快照校验阶段阻断资产循环，并将
  * 当前宿主计为第一层，最多允许八层。弹窗、抽屉和新页面由用户显式触发，
  * 不属于自动包含图；它们可以形成业务导航环，由运行时签名链另行限制重入。</p>
  */
@@ -138,6 +138,11 @@ public class UiViewCompositionContainmentGuard {
                 continue;
             }
             Map<String, Object> target = map(config.get("target"));
+            boolean formTarget = "FORM".equals(normalize(text(target.get("contentType"))));
+            UiConfigRelease currentForm = formTarget
+                    ? releaseMapper.findActive("FORM", text(target.get("contentId"))) : null;
+            if (formTarget && currentForm == null)
+                throw new BusinessConflictException("FORM_NOT_PUBLISHED", "关联目标表单尚未发布");
             result.add(new ContainmentEdge(
                     requireText(item.get("compositionKey"), "关联内容编码"),
                     new AssetKey(
@@ -147,22 +152,16 @@ public class UiViewCompositionContainmentGuard {
                             requireText(
                                     target.get("contentId"),
                                     "目标表单或列表")),
-                    requireText(
-                            target.get("releaseId"),
-                            "目标发布版本"),
-                    positiveInteger(
-                            target.get("releaseVersion"),
-                            "目标发布版本号"),
-                    normalizeHash(requireText(
-                            target.get("contentHash"),
-                            "目标发布内容哈希"))));
+                    formTarget ? currentForm.getId() : requireText(target.get("releaseId"), "目标发布版本"),
+                    formTarget ? currentForm.getVersion() : positiveInteger(target.get("releaseVersion"), "目标发布版本号"),
+                    formTarget ? currentForm.getContentHash() : normalizeHash(requireText(target.get("contentHash"), "目标发布内容哈希"))));
         }
         return List.copyOf(result);
     }
 
     /**
-     * 传递遍历只接受边上精确固定且哈希完整的发布记录，避免包含图检查因读取
-     * 当前 ACTIVE 版本而漏掉旧宿主真正会渲染的子图。
+     * 传递遍历对表单读取当前发布，对列表读取固定且哈希完整的发布记录，
+     * 保证包含图与实际渲染采用相同配置。
      *
      * @param edge 边，作为 {@code releaseCache.get} 的输入影响后续处理
      * @param releaseCache 发布版本缓存，供本方法加载目标时使用

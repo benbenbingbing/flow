@@ -22,7 +22,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * 校验已发布子表单参数契约及其固定发布版本。
+ * 校验当前已发布子表单参数契约；发布子表单时同时校验反向父表单。
  */
 @RequiredArgsConstructor
 final class SubFormParameterContractReleaseValidator {
@@ -80,7 +80,10 @@ final class SubFormParameterContractReleaseValidator {
      * @param parentForm 父级表单，作为 {@code validateRelationReleaseEntity} 的输入影响后续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    void validateSnapshot(EntityForm parentForm) {
+    void validateSnapshot(EntityForm parentForm) { validateSnapshot(parentForm, null); }
+
+    /** 候选子表单尚未覆盖线上行时，用它检查父表单仍然兼容。 */
+    void validateSnapshot(EntityForm parentForm, UiConfigRelease candidate) {
         if (parentForm == null) {
             throw new IllegalArgumentException(
                     "发布快照表单不能为空");
@@ -100,7 +103,8 @@ final class SubFormParameterContractReleaseValidator {
             if (!hasReleaseReference(reference)) {
                 continue;
             }
-            UiConfigRelease release = requireRelease(reference);
+            UiConfigRelease release = candidate != null && Objects.equals(reference.childFormId(), candidate.getConfigId())
+                    ? candidate : requireRelease(reference);
             validateRelationReleaseEntity(parentForm, node, release);
             validateNode(parentForm, node, release);
         }
@@ -189,61 +193,23 @@ final class SubFormParameterContractReleaseValidator {
      * 校验并获取发布版本；不满足约束时阻止后续处理。
      *
      * @param reference 引用，作为 {@code releaseMapper.selectById} 的输入影响后续处理
-     * @return 校验并获取后的发布版本结果，供调用方继续处理
+     * @return 校验并获取后的当前发布配置结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private UiConfigRelease requireRelease(
             SubFormParameterContractPolicy.RelationConfig reference) {
-        if (!StringUtils.hasText(reference.childFormId())
-                || !StringUtils.hasText(
-                        reference.childFormReleaseId())
-                || reference.childFormReleaseVersion() == null) {
-            throw new IllegalArgumentException(
-                    "子表单节点必须固定 childFormId、"
-                            + "childFormReleaseId 和 "
-                            + "childFormReleaseVersion: "
-                            + reference.fieldCode());
-        }
-        UiConfigRelease release =
-                releaseMapper.selectById(
-                        reference.childFormReleaseId());
-        if (release == null
-                || !"FORM".equalsIgnoreCase(
-                        release.getConfigType())
-                || !Objects.equals(
-                        reference.childFormId(),
-                        release.getConfigId())) {
-            throw new IllegalArgumentException(
-                    "子表单发布版本与表单不匹配: "
-                            + reference.childFormId()
-                            + "@"
-                            + reference.childFormReleaseId());
-        }
-        if (!Objects.equals(
-                reference.childFormReleaseVersion(),
-                release.getVersion())) {
-            throw new IllegalArgumentException(
-                    "子表单发布版本号不匹配: "
-                            + reference.childFormId()
-                            + " 期望 v"
-                            + reference.childFormReleaseVersion()
-                            + "，实际 v"
-                            + release.getVersion());
-        }
-        if (!StringUtils.hasText(release.getSnapshotDocument())) {
-            throw new IllegalArgumentException(
-                    "子表单发布快照为空: "
-                            + reference.childFormId()
-                            + "@v"
-                            + reference.childFormReleaseVersion());
-        }
-        return release;
+        if (!StringUtils.hasText(reference.childFormId()))
+            throw new IllegalArgumentException("子表单节点必须配置 childFormId: " + reference.fieldCode());
+        UiConfigRelease current = releaseMapper.findActive("FORM", reference.childFormId());
+        if (current == null || !StringUtils.hasText(current.getSnapshotDocument()))
+            throw new IllegalArgumentException("子表单尚未发布: " + reference.childFormId());
+        return current;
     }
 
     /**
-     * 判断是否具有发布版本引用；判断结果决定调用方的后续分支。
+     * 判断是否配置子表单引用；判断结果决定调用方的后续分支。
      *
-     * @param reference 引用，供本方法判断是否具有发布版本引用时使用
+     * @param reference 引用，供本方法判断是否配置子表单引用时使用
      * @return 发布版本引用条件成立时为 true，否则为 false
      */
     private boolean hasReleaseReference(

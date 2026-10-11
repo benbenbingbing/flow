@@ -43,7 +43,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
-import { normalizeRuntimeNodes } from '@flow/workflow-core/form-runtime/nodeProjection'
+import { normalizeRuntimeNodes, createFormNodeVisibility } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
 
 const props = defineProps({
@@ -85,6 +85,7 @@ const excludedNodeIdSet = computed(() =>
 const rootNodes = computed(() =>
   childrenFor(props.rootParentId || '')
     .filter(node => !excludedNodeIdSet.value.has(String(node.id)))
+    .filter(createFormNodeVisibility(normalizedNodes.value, { data: props.modelValue, mode: props.mode, context: props.context, rootParentId: props.rootParentId }))
 )
 
 function childrenFor(parentId) {

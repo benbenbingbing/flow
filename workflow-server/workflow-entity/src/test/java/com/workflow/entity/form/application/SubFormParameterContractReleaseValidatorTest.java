@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 class SubFormParameterContractReleaseValidatorTest {
 
     @Test
-    void validatesContractAgainstPinnedChildReleaseSnapshot() {
+    void validatesContractAgainstCurrentChildConfiguration() {
         Fixture fixture = fixture(3);
 
         assertDoesNotThrow(() ->
@@ -30,13 +30,19 @@ class SubFormParameterContractReleaseValidatorTest {
     }
 
     @Test
-    void rejectsPinnedChildReleaseVersionMismatch() {
+    void ignoresLegacyVersionCoordinatesAndReadsCurrentConfiguration() {
         Fixture fixture = fixture(4);
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> fixture.validator().validateSnapshot(
-                        fixture.parentForm()));
+        assertDoesNotThrow(() -> fixture.validator().validateSnapshot(fixture.parentForm()));
+    }
+
+    @Test
+    void candidateChildPublicationCannotBreakPublishedParentParameterMapping() {
+        Fixture fixture = fixture(1);
+        UiConfigRelease candidate = new UiConfigRelease(); candidate.setConfigId("child-form");
+        candidate.setSnapshotDocument("{\"form\":{\"viewConfig\":{\"inputParameterSchema\":{\"type\":\"object\",\"properties\":{},\"required\":[]}}}}");
+        assertThrows(IllegalArgumentException.class,
+                () -> fixture.validator().validateSnapshot(fixture.parentForm(), candidate));
     }
 
     private Fixture fixture(int actualReleaseVersion) {
@@ -118,7 +124,7 @@ class SubFormParameterContractReleaseValidatorTest {
                   ]
                 }
                 """);
-        when(releaseMapper.selectById("release-3"))
+        when(releaseMapper.findActive("FORM", "child-form"))
                 .thenReturn(release);
         when(fieldMapper.findByEntityId("parent-entity"))
                 .thenReturn(List.of());

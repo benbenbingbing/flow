@@ -1,3 +1,4 @@
+import { isFormNodeVisible } from './form-runtime/nodeProjection.js'
 import { getFieldModeAccess, isFieldReadonlyForMode, resolveRuntimeNodeFieldRules, safeParseConfig } from './config-runtime/index.js'
 import LinkageEngine from '../utils/linkageEngine.js'
 import { buildCrossFieldDependencyIndex, evaluateCrossField, getCrossFieldConfig } from './form-cross-field-validation.js'
@@ -72,7 +73,8 @@ export function resolveCrossFieldRuntimeState(field, {
     const key = String(node.id)
     if (seen.has(key) || excluded.has(key)) return { visible: false, editable: false }
     seen.add(key)
-    if (key === String(rootParentId)) inScope = true
+    if (key === String(rootParentId)) { inScope = true; break }
+    if (!isFormNodeVisible(node, { data: record, mode, context })) visible = false
     const props = nodeProps(node)
     if (flag(props.hidden) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'HIDDEN') visible = false
     if (flag(props.readonly) || flag(props.disabled) || String(props.modeAccess?.[mode] || '').toUpperCase() === 'READONLY') editable = false

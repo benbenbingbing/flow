@@ -1,3 +1,4 @@
+import { relatedContentPresentationError } from './related-content-presentation.js'
 const SUPPORTED_ACTIONS = new Set([
   'VIEW',
   'SELECT',
@@ -59,8 +60,8 @@ export const RELATED_CONTENT_RELATION_OPTIONS = Object.freeze([
 export const RELATED_CONTENT_ACTION_OPTIONS = Object.freeze([
   { value: 'VIEW', label: '仅查看', description: '只能查看目标内容，不允许修改。' },
   { value: 'SELECT', label: '选择记录', description: '选择目标记录后，可回填当前表单字段或建立关联。' },
-  { value: 'CREATE', label: '新增记录', description: '在目标实体中新增数据并可带入关联值；目标为表单时直接打开发布表单，目标为列表时开放列表自带的新增按钮。' },
-  { value: 'EDIT', label: '编辑记录', description: '编辑目标数据，独立保存不随当前表单提交；目标为列表时开放列表行内的编辑按钮。' },
+  { value: 'CREATE', label: '新增记录', description: '目标为表单且尚无关联记录时，在当前区域填写并保存子表单，可带入已配置的关联初值；目标为列表时开放列表自带的新增按钮。' },
+  { value: 'EDIT', label: '编辑记录', description: '目标为表单时在当前区域编辑并保存子表单，独立保存不随主表提交；目标为列表时开放列表行内的编辑按钮。' },
   { value: 'LINK', label: '建立关联', description: '只建立两条记录之间的关系，不修改目标记录内容。' },
   { value: 'UNLINK', label: '解除关联', description: '只解除关系，不删除目标记录。' },
   { value: 'SAVE_WITH_FORM', label: '随当前表单一起保存', description: '关联内容暂不提供此能力；组成型数据请继续使用已有子表单或重复器。' }
@@ -407,8 +408,13 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   if (!target.entityId) add(1, 'target.entityId', '请选择目标实体')
   if (!target.contentType) add(1, 'target.contentType', '请选择显示表单还是列表')
   if (!target.contentId) add(1, 'target.contentId', '请选择一个已发布的表单或列表')
+  const presentationError = relatedContentPresentationError(presentation, target.contentType)
+  if (presentationError) add(1, 'presentation', presentationError)
   if (!presentation.position) add(1, 'presentation.position', '请选择显示位置')
   if (!presentation.loadMode) add(1, 'presentation.loadMode', '请选择加载方式')
+  if (Object.hasOwn(presentation, 'showTitle') && typeof presentation.showTitle !== 'boolean') {
+    add(1, 'presentation.showTitle', '显示标题必须为开关值')
+  }
   if (String(ownerType).toUpperCase() === 'LIST' && presentation.position === 'TAB') {
     add(1, 'presentation.position', '列表设计暂不支持 Tab 位置，请改用页面区块、行展开、弹窗或抽屉')
   }

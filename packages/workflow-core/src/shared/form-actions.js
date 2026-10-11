@@ -6,6 +6,29 @@ export const FORM_ACTION_MODES = Object.freeze([
 ])
 
 export const FORM_ACTION_KEY_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/
+export const FORM_CUSTOM_ACTION_MODES = Object.freeze([
+  { value: 'event', label: '业务接口 / 事件链' },
+  { value: 'handler', label: '函数' },
+  { value: 'component', label: '组件' },
+  { value: 'open-list', label: '打开列表' },
+  { value: 'open-form', label: '打开表单' },
+  { value: 'open-related-content', label: '打开关联内容' }
+])
+
+/** 执行配置独立于外观；缺省仍为事件链，旧按钮不会改变行为。 */
+export function formButtonExecutionError(button) {
+  const mode = button.customMode || 'event'
+  const config = button.execution || {}
+  if (!FORM_CUSTOM_ACTION_MODES.some(option => option.value === mode)) return '执行方式无效'
+  if (['handler', 'component'].includes(mode) && !String(config.name || '').trim()) return '请选择或填写已注册的执行器名称'
+  if (mode === 'open-related-content' && !config.compositionKey) return '请选择关联内容'
+  if (['open-list', 'open-form'].includes(mode) && !config.entityCode) return '请选择目标实体'
+  if (mode === 'open-list' && !config.listKey) return '请选择目标列表'
+  if (mode === 'open-form' && !config.formId) return '请选择目标表单'
+  if (mode === 'open-form' && !['create', 'edit', 'view'].includes(config.formMode || 'create')) return '打开表单的模式无效'
+  if (config.presentation && !['DIALOG', 'DRAWER', 'PAGE'].includes(config.presentation)) return '打开方式无效'
+  return ''
+}
 export const FORM_ACTION_PERMISSION_PATTERN = /^[A-Za-z0-9_.-]+(?::[A-Za-z0-9_.-]+)+$/
 export const FORM_BUTTON_APPEARANCES = Object.freeze([
   'DEFAULT',
@@ -152,6 +175,8 @@ export function normalizeCustomButton(value = {}, index = 0) {
   return {
     key: source.key || `custom_${Date.now()}_${index}`,
     type: 'custom',
+    customMode: source.customMode || 'event',
+    execution: { ...objectValue(source.execution) },
     label: source.label || '自定义按钮',
     icon: source.icon || '',
     buttonType: source.buttonType || 'default',
@@ -390,6 +415,8 @@ export function validateFormActionConfiguration({
   buttons.forEach(button => {
     const key = String(button.key || '').trim()
     const label = String(button.label || key || '未命名按钮')
+    const executionError = formButtonExecutionError(button)
+    if (button.enabled !== false && executionError) errors.push(validationError('INVALID_EXECUTION', key, `按钮“${label}”：${executionError}`))
     if (!FORM_ACTION_KEY_PATTERN.test(key)) {
       errors.push(validationError(
         'INVALID_KEY',
@@ -486,6 +513,7 @@ export function validateFormActionConfiguration({
     }
 
     if (button.enabled !== false
+        && button.customMode === 'event'
         && requireEventBindings
         && key
         && !bindings.some(binding =>

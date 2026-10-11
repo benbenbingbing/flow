@@ -344,9 +344,13 @@ public class EntityListPublishedRuntimeService {
             String formId = text(button.get("targetFormId"));
             String releaseId =
                     text(button.get("targetFormReleaseId"));
-            Integer releaseVersion =
-                    integer(button.get(
-                            "targetFormReleaseVersion"));
+            Integer releaseVersion = 1;
+            if (StringUtils.hasText(formId)) {
+                UiConfigRelease current = releaseMapper.findActive("FORM", formId);
+                releaseId = current == null ? null : current.getId();
+                button.put("targetFormReleaseId", releaseId);
+                button.put("targetFormReleaseVersion", releaseVersion);
+            }
             if (StringUtils.hasText(formId)) {
                 explicitFormCount++;
             }
@@ -485,7 +489,7 @@ public class EntityListPublishedRuntimeService {
         }
         button.put("targetListReleaseResolutionToken", token);
 
-        // 默认表单只能来自 Launch-time closure。这里不再读取 ACTIVE；
+        // 默认表单身份来自会话闭包，配置按当前发布内容解析；
         // resolved=true + null 是权威“没有新增表单”，前端必须禁用回退。
         ListNode targetNode = requireListNode(closure, target, true);
         button.put(
@@ -495,11 +499,13 @@ public class EntityListPublishedRuntimeService {
         if (defaultForm == null) {
             return;
         }
+        UiConfigRelease currentForm = releaseMapper.findActive("FORM", defaultForm.formId());
+        if (currentForm == null) throw new BusinessConflictException("FORM_NOT_PUBLISHED", "目标默认表单尚未发布");
         String formToken = resolutionTokenService.issue(
                 UiRuntimeResolutionContext.standalone(),
                 defaultForm.formId(),
-                defaultForm.formReleaseId(),
-                defaultForm.formReleaseVersion(),
+                currentForm.getId(),
+                1,
                 0,
                 sessionExpiresAt);
         if (!StringUtils.hasText(formToken)) {
@@ -510,10 +516,10 @@ public class EntityListPublishedRuntimeService {
         button.put("targetDefaultFormId", defaultForm.formId());
         button.put(
                 "targetDefaultFormReleaseId",
-                defaultForm.formReleaseId());
+                currentForm.getId());
         button.put(
                 "targetDefaultFormReleaseVersion",
-                defaultForm.formReleaseVersion());
+                1);
         button.put(
                 "targetDefaultFormReleaseResolutionToken",
                 formToken);

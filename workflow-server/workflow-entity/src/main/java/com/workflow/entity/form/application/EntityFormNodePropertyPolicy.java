@@ -92,8 +92,9 @@ final class EntityFormNodePropertyPolicy {
                             "sub_list",
                             Set.of("SUB_LIST")));
 
+    // 显示规则存入节点 props，作为整块区域的显示条件，不混用实体字段的校验规则。
     private static final Set<String> COMMON_CONTAINER_PROPS =
-            Set.of("label");
+            Set.of("label", "modeAccess", "linkageRules");
     private static final Set<String> CONTAINER_APPEARANCE_PROPS =
             Set.of("showPadding", "showBorder");
     private static final Set<String> CONTAINER_APPEARANCE_NODE_TYPES =
@@ -560,7 +561,7 @@ final class EntityFormNodePropertyPolicy {
         result.put("FIELD", FIELD_PROPS);
         result.put("SUB_FORM", SUB_FORM_PROPS);
         result.put("REPEATER", SUB_FORM_PROPS);
-        result.put("ACTION_SLOT", Set.of("label", "gridSpan"));
+        result.put("ACTION_SLOT", union(COMMON_CONTAINER_PROPS, Set.of("gridSpan")));
         return Map.copyOf(result);
     }
 
@@ -589,6 +590,10 @@ final class EntityFormNodePropertyPolicy {
             String nodeType,
             Map<String, Object> props) {
         requireText(props, "label", 500);
+        if (!"FIELD".equals(nodeType)) {
+            validateNodeVisibility(props);
+            validateNodeVisibility(objectMap(props.get("componentProps")));
+        }
         requireEnum(props, "textStyle", Set.of("PLAIN", "SECTION_TITLE"));
         // 外观开关是可选属性；缺省配置继续沿用历史展示，仅在显式传值时校验类型。
         if (CONTAINER_APPEARANCE_NODE_TYPES.contains(nodeType)) {
@@ -622,6 +627,30 @@ final class EntityFormNodePropertyPolicy {
             }
         }
         rejectArbitraryUrl(props.get("componentProps"), "componentProps");
+    }
+
+    /** 显示配置不授予数据权限；只接受四种模式的显示开关与条件规则对象。 */
+    private static void validateNodeVisibility(Map<String, Object> props) {
+        Object modes = props.get("modeAccess");
+        if (modes != null) {
+            if (!(modes instanceof Map<?, ?> entries)) {
+                throw new IllegalArgumentException("modeAccess 必须为对象");
+            }
+            for (Map.Entry<?, ?> entry : entries.entrySet()) {
+                if (!Set.of("create", "edit", "view", "approve").contains(String.valueOf(entry.getKey()))) {
+                    throw new IllegalArgumentException("不支持的运行模式");
+                }
+                Object access = entry.getValue();
+                // 保留旧 Tab 的字符串显示规则，编辑后使用 visible 布尔开关。
+                if (access instanceof String value && Set.of("HIDDEN", "READONLY", "EDITABLE").contains(value)) continue;
+                if (!(access instanceof Map<?, ?> value) || value.get("visible") != null && !(value.get("visible") instanceof Boolean)) {
+                    throw new IllegalArgumentException("运行模式显示必须为布尔值");
+                }
+            }
+        }
+        if (props.containsKey("linkageRules") && !(props.get("linkageRules") instanceof Map<?, ?>)) {
+            throw new IllegalArgumentException("linkageRules 必须为对象");
+        }
     }
 
     /**

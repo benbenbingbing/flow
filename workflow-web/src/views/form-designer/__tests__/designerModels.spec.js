@@ -21,14 +21,15 @@ test('节点读取、序列化往返保留身份、实体必填约束和显式 f
   const restored = model.nodeToField({ ...node, propsDocument: JSON.stringify(payload.props), rulesDocument: JSON.stringify(payload.rules), dataSourceBindingsDocument: JSON.stringify(payload.dataSourceBindings) })
   assert.deepEqual(model.fieldToNodePayload(restored), payload)
 })
-test('子表单和子列表保持固定发布身份，序列化不修改当前草稿', () => {
+test('子表单保持稳定身份，子列表保留自己的发布身份，序列化不修改当前草稿', () => {
   const model = editor()
   const field = { nodeType: 'SUB_FORM', fieldType: 'SUB_FORM', relationType: 'ONE_TO_ONE', childEntityId: 'child', childFormId: 'form-v1', childFormReleaseId: 'release-v1', childFormReleaseVersion: 1, componentProps: JSON.stringify({ extra: 'keep', subFormConfig: { relationCode: 'items' } }) }
   const before = structuredClone(field)
   const props = model.fieldToNodePayload(field).props.componentProps
   assert.equal(props.subFormConfig.repeatable, false)
-  assert.equal(props.subFormConfig.childFormReleaseId, 'release-v1')
-  assert.equal(props.subFormConfig.publishedFormReleaseVersion, 1)
+  assert.equal(props.subFormConfig.childFormId, 'form-v1')
+  assert.equal(props.subFormConfig.childFormReleaseId, undefined)
+  assert.equal(props.subFormConfig.publishedFormReleaseVersion, undefined)
   assert.equal(props.extra, 'keep'); assert.deepEqual(field, before)
   const list = model.fieldToNodePayload({ fieldType: 'SUB_LIST', refListId: 'list', refListReleaseId: 'snapshot', refListReleaseVersion: 4, subListShowToolbar: false }).props.componentProps
   assert.equal(list.subListConfig.listReleaseId, 'snapshot')

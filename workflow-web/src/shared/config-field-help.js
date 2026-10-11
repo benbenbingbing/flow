@@ -40,7 +40,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.renderComponent':
     '只改变单元格如何展示，例如文本、状态标签、日期或已注册扩展组件，不改变原始字段值。',
   'uiConfig.releaseMode':
-    '普通发布遵循标准版本切换；兼容热修复会先做影响预检并显示风险提醒，确认后按允许范围作用于当前可发起版本和运行中实例。历史完成实例仍使用原快照。',
+    '表单统一发布覆盖当前配置，所有引用入口立即使用当前内容，无需重新发布流程。列表保留自己的发布机制。',
   'form.inputParameterSchema':
     '声明当前页面接收的参数。来源表单、列表按钮或父表单可传入业务值，数据源和接口通过 params.参数编码 读取；在参数用途中配置字段初始化或列表查询，保存并发布后生效。',
   'formNode.subFormLayout':
