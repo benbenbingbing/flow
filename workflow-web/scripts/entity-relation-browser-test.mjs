@@ -16,6 +16,7 @@ import Management from '/src/views/entity/components/EntityRelationManagement.vu
 import Picker from '/src/components/form-designer/FormRelationPicker.vue'
 import Preview from '/src/components/form-designer/RelationContentDesignPreview.vue'
 import Runtime from '/src/components/FormPreviewLinkage.vue'
+import PageSettings from '/src/components/related-content/RelatedContentPageSettings.vue'
 import FormButtonExecutionSettings from '/src/components/FormButtonExecutionSettings.vue'
 import { registerListRowAction } from '/src/extensions/core/registries/listActionRegistry.js'
 import { registerCustomFormComponent } from '/src/extensions/core/registries/customComponentRegistry.js'
@@ -169,7 +170,7 @@ const hostDialog=ref(null)
 const hostFields=[{id:'main-name',fieldCode:'name',fieldName:'主表名称',fieldType:'STRING',componentType:'input'}]
 // 编辑弹窗会提升根 Tab 并只渲染子节点；关联内容锚定空 Tab 时也必须挂载。
 const hostTabNodes=[{id:'host-tabs',nodeType:'TAB_SET',props:{}},{id:'host-basic',parentId:'host-tabs',nodeType:'TAB',props:{label:'基本信息'}},{id:'host-child',nodeKey:'host-child-key',parentId:'host-tabs',nodeType:'TAB',props:{label:'子表单'}}]
-const hostForm=()=>({id:'owner',viewConfig:{actionBar:{customButtons:state.formButtonsTest?[{...state.testButton,key:'quick',label:'运行测试按钮',perm:'entity:all:view',modes:['edit']}]:[]}},formName:'主表',fields:hostFields,nodes:state.immediateTabsTest?hostTabNodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:[state.compositions[0]]})
+const hostForm=()=>({id:'owner',viewConfig:{actionBar:{customButtons:state.formButtonsTest?[{...state.testButton,key:'quick',label:'运行测试按钮',perm:'entity:all:view',modes:['edit']}]:[]}},formName:'主表',fields:hostFields,nodes:state.spacingPlacement?state.designerNodes.map(n=>({...n,props:JSON.parse(n.propsDocument||'{}')})):state.immediateTabsTest?hostTabNodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:[state.compositions[0]]})
 // 节点显隐使用实际递归渲染器，不用 CSS 或替身组件模拟整块隐藏。
 const visibilityRenderer=ref(null)
 const visibilityNodes=['SECTION','GRID','COLLAPSE','TEXT','ACTION_SLOT','TAB_SET'].flatMap((nodeType,index)=>{
@@ -183,6 +184,7 @@ const visibilityNodes=['SECTION','GRID','COLLAPSE','TEXT','ACTION_SLOT','TAB_SET
  return result
 })
 const app=createApp({setup(){return()=>h('main',{style:'width:1080px;margin:20px auto'},[
+ state.borderTest?h('section',{id:'border-settings'},[h(PageSettings,{editor:state.compositions[0]})]):null,
  state.executionSettingsTest?h('section',{id:'execution-settings'},[h(FormButtonExecutionSettings,{button:state.executionDraft,relatedContents:state.compositions,fields:hostFields})]):null,
  state.visibilityTest?h('section',{id:'node-visibility-runtime'},[h(Runtime,{ref:visibilityRenderer,form:{id:'visibility-form',nodes:visibilityNodes,fields:[]},modelValue:state.visibilityData,'onUpdate:modelValue':value=>state.visibilityData=value,mode:state.visibilityMode,showHeader:false})]):null,
  state.viewHostTest?h('section',{id:'view-host'},[h(ViewFormFields,{entityData:{name:'主表名称'},approvalNormalForm:hostForm(),formReadonly:true,mode:'view',nodeRootParentId:'host-child',context:{record:{id:'all-3'}},entityCode:'ALL',entityDefinition:source,entityFields:hostFields})]):null,
@@ -316,6 +318,54 @@ try {
     assert.equal(await evaluate(`${conditionInput}.value`),'新条件')
     assert.deepEqual(errors, [])
     console.log('node visibility browser acceptance passed: all container kinds, mode/condition changes, preserved values, hidden validation and designer save/reload')
+  } else if (process.argv.includes('--subform-spacing-placement')) {
+    await evaluate(`relationTest.state.compositions=[{id:'c1',revision:1,compositionKey:'child',anchorType:'FORM_NODE',anchorKey:'child-tab',config:{enabled:true,name:'关联子表单',target:{contentType:'FORM',contentId:'req-form',entityId:'req'},relation:{type:'ENTITY_RELATION',relationCode:'reqRelation'},presentation:{position:'TAB',loadMode:'IMMEDIATE',showBorder:false,showTitle:false}}}];relationTest.state.designerNodes=[{id:'tabs',nodeKey:'tabs',nodeType:'TAB_SET',propsDocument:'{}'},{id:'child-tab',nodeKey:'child-tab',parentId:'tabs',nodeType:'TAB',propsDocument:'{"label":"子表单"}'},{id:'following',nodeKey:'following',nodeType:'FIELD',bindingType:'ENTITY_FIELD',bindingRef:'reqName',propsDocument:'{"fieldCode":"reqName","label":"后续字段","componentType":"input","span":24}'}];relationTest.state.designerTest=true;relationTest.settle()`)
+    await until("[...document.querySelectorAll('#real-designer .design-container-empty')].some(e=>e.textContent.includes('拖拽节点到子表单下方'))")
+    // 从真实末尾投放组件发出 Sortable 完成事件，覆盖设计器父容器、锚点和保存逻辑。
+    await evaluate(`(()=>{const zone=[...document.querySelectorAll('#real-designer .design-container-empty')].find(e=>e.textContent.includes('拖拽节点到子表单下方')).parentElement;let vm=zone.__vueParentComponent;while(vm&&!vm.props.canDrop)vm=vm.parent;const element=document.querySelector('#real-designer .form-node-design-item[data-node-id=following]');let source=element.__vueParentComponent;while(source&&!source.props.node)source=source.parent;vm.emit('drop',{node:source.props.node,newParentId:'child-tab',newIndex:0})})();relationTest.settle()`)
+    await until("document.querySelector('#real-designer .design-tab-panel .form-node-design-entry:has(> .form-node-design-item[data-node-id=following]) > .relation-design-preview')")
+    assert.equal(await evaluate("document.querySelector('#real-designer .form-node-design-item[data-node-id=following]').contains(document.querySelector('#real-designer .relation-design-preview'))"),false,'主表字段选框不能包含子表单预览')
+    assert.equal(await evaluate("(()=>{const f=document.querySelector('#real-designer .form-node-design-item[data-node-id=following]');return f.previousElementSibling?.classList.contains('relation-design-preview')})()"),true,'子表单与主表字段必须为独立的同级显示区域')
+    await click('保存全部',"document.getElementById('real-designer')")
+    await until("relationTest.state.designerNodes.find(n=>n.id==='following')?.parentId==='child-tab' && relationTest.state.compositions[0].config.presentation.anchorSide==='BEFORE'")
+    assert.equal(await evaluate('relationTest.state.compositions[0].anchorKey'),'following')
+    await evaluate('relationTest.state.designerRemount=1;relationTest.settle()')
+    await until("document.querySelector('#real-designer .design-tab-panel .form-node-design-entry:has(> .form-node-design-item[data-node-id=following]) > .relation-design-preview')")
+    await evaluate('relationTest.state.designerTest=false;relationTest.state.spacingPlacement=true;relationTest.state.nativeHostTest=true;relationTest.settle()')
+    await evaluate("relationTest.hostDialog.value.openEdit({id:'all-3'},{form:relationTest.hostForm()});relationTest.settle()")
+    await until("document.querySelector('.entity-data-form-dialog .related-content-runtime__card input')")
+    assert.equal(await evaluate("(()=>{const c=document.querySelector('.entity-data-form-dialog .related-content-runtime__card');const input=[...document.querySelectorAll('.entity-data-form-dialog input')].find(e=>!e.closest('.related-content-runtime'));return !!(c.compareDocumentPosition(input)&Node.DOCUMENT_POSITION_FOLLOWING)})()"),true,'运行时子表单必须位于新字段之前')
+    await evaluate('relationTest.state.spacingPlacement=false;relationTest.state.nativeHostTest=false;relationTest.settle()')
+    await evaluate("relationTest.state.designerTest=false;relationTest.state.compositions[0].anchorType='OWNER';relationTest.state.compositions[0].anchorKey='';delete relationTest.state.compositions[0].config.presentation.anchorSide;relationTest.state.compositions[0].config.presentation.position='INLINE';relationTest.state.nativeHostTest=true;relationTest.settle()")
+    await evaluate("relationTest.hostDialog.value.openEdit({id:'all-3'},{form:relationTest.hostForm()});relationTest.settle()")
+    await until("document.querySelector('.entity-data-form-dialog .related-content-runtime__card input')")
+    const spacing = await evaluate("(()=>{const card=document.querySelector('.entity-data-form-dialog .related-content-runtime__card');return {header:!!card.querySelector('.el-card__header'),margin:getComputedStyle(card).marginTop,padding:getComputedStyle(card.querySelector('.el-card__body')).paddingTop}})()")
+    assert.deepEqual(spacing,{header:false,margin:'0px',padding:'0px'})
+    assert.deepEqual(errors, [])
+    await evaluate('relationTest.state.nativeHostTest=false;relationTest.state.designerTest=true;relationTest.state.designerRemount=2;relationTest.settle()')
+    await until("[...document.querySelectorAll('#real-designer .design-container-empty')].some(e=>e.textContent.includes('拖拽节点到子表单下方'))")
+    await evaluate(`(()=>{const zone=[...document.querySelectorAll('#real-designer .design-container-empty')].find(e=>e.textContent.includes('拖拽节点到子表单下方')).parentElement;let vm=zone.__vueParentComponent;while(vm&&!vm.props.canDrop)vm=vm.parent;let source=document.querySelector('#real-designer .form-node-design-item[data-node-id=following]').__vueParentComponent;while(source&&!source.props.node)source=source.parent;vm.emit('drop',{node:source.props.node,newParentId:'',newIndex:0})})();relationTest.settle()`)
+    await click('保存全部',"document.getElementById('real-designer')")
+    await until("!relationTest.state.designerNodes.find(n=>n.id==='following')?.parentId && relationTest.state.compositions[0].config.presentation.anchorSide==='BEFORE'")
+    assert.deepEqual(errors, [])
+    console.log('subform spacing and placement passed: no empty header/padding, append within Tab and root, save and reload')
+  } else if (process.argv.includes('--subform-border')) {
+    await evaluate(`relationTest.state.compositions=[{id:'c1',compositionKey:'child',anchorType:'OWNER',config:{enabled:true,name:'关联子表单',target:{contentType:'FORM',contentId:'req-form',entityId:'req'},relation:{type:'ENTITY_RELATION',relationCode:'reqRelation'},presentation:{position:'INLINE',loadMode:'IMMEDIATE'}}}];relationTest.state.borderTest=true;relationTest.state.nativeHostTest=true;relationTest.settle()`)
+    const borders = () => evaluate("(()=>{const c=document.querySelector('.entity-data-form-dialog .related-content-runtime__card');return [getComputedStyle(c).borderTopWidth,getComputedStyle(c.querySelector('.el-card__header')).borderBottomWidth]})()")
+    for (const visible of [true,false,true]) {
+      if (visible !== true || await evaluate('relationTest.state.compositions[0].config.presentation.showBorder===false')) {
+        await evaluate("document.querySelector('#border-settings .el-switch').click();relationTest.settle()")
+        assert.equal(await evaluate('relationTest.state.compositions[0].config.presentation.showBorder'),visible)
+      }
+      // 保存回读后重新挂载宿主，验证运行时而非仅检查属性草稿。
+      await evaluate('relationTest.state.compositions=JSON.parse(JSON.stringify(relationTest.state.compositions));relationTest.state.nativeHostTest=false;relationTest.settle()')
+      await evaluate('relationTest.state.nativeHostTest=true;relationTest.settle()')
+      await evaluate("relationTest.hostDialog.value.openEdit({id:'all-3'},{form:relationTest.hostForm()});relationTest.settle()")
+      await until("document.querySelector('.entity-data-form-dialog .related-content-runtime__card')")
+      assert.deepEqual(await borders(),visible?['1px','1px']:['0px','0px'])
+    }
+    assert.deepEqual(errors, [])
+    console.log('subform border passed: default, settings switch, JSON reload, outer/header borders and re-enable')
   } else if (process.argv.includes('--form-buttons')) {
     await evaluate(`relationTest.state.compositions=[{id:'c1',compositionKey:'child',anchorType:'OWNER',config:{enabled:true,name:'关联子表单',target:{contentType:'FORM',contentId:'req-form',entityId:'req'},relation:{type:'ENTITY_RELATION',relationCode:'reqRelation'},presentation:{position:'DRAWER',loadMode:'ON_DEMAND'}}}];relationTest.state.executionDraft={customMode:'event',execution:{}};relationTest.state.executionSettingsTest=true;relationTest.settle()`)
     await evaluate("document.querySelector('#execution-settings .el-select__wrapper').click();relationTest.settle()")

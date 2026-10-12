@@ -1,4 +1,14 @@
 <template>
+  <div class="form-node-design-entry" :style="hasAttachedContents ? { width: '100%' } : outerStyle">
+    <RelationContentDesignPreview
+      v-for="item in relatedContentsAt(node, 'BEFORE')"
+      :key="item.id || item.compositionKey"
+      :composition="item" editable
+      @click.stop @dblclick.stop
+      @edit="$emit('edit-related-content', $event)"
+      @open-properties="$emit('open-related-properties', $event)"
+      @remove="$emit('remove-related-content', $event)"
+    />
   <div
     class="form-node-design-item"
     :data-node-id="node.id"
@@ -8,7 +18,7 @@
       'is-container': containerNode,
       'is-grid-child': withinGrid
     }"
-    :style="outerStyle"
+    :style="hasAttachedContents ? outerStyle : { width: '100%' }"
     @click.stop="$emit('select', node)"
     @dblclick.stop="$emit('open-properties', node)"
   >
@@ -282,6 +292,14 @@
               @open-properties="$emit('open-related-properties', $event)"
               @remove="$emit('remove-related-content', $event)"
             />
+            <FormNodeDraggableList
+              v-if="relatedContentsAt(tabNode).length"
+              :items="[]" :parent-id="tabNode.id" :can-drop="canDropNode" :disabled="dragDisabled"
+              zone-class="design-node-children"
+              @drop="$emit('drop', { ...$event, newIndex: childrenFor(tabNode.id).length, afterRelatedContents: relatedContentsAt(tabNode) })"
+            >
+              <template #footer><div class="design-container-empty">拖拽节点到子表单下方</div></template>
+            </FormNodeDraggableList>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -437,6 +455,7 @@
         />
       </template>
     </FormNodeDraggableList>
+  </div>
     <RelationContentDesignPreview
       v-for="item in relatedContentsAt(node)"
       :key="item.id || item.compositionKey"
@@ -492,7 +511,9 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['select', 'open-properties', 'move', 'remove', 'drop', 'edit-related-content', 'remove-related-content', 'open-related-properties'])
-const relatedContentsAt = node => formRelatedContentsAt(props.relatedContents, node, { preview: true })
+const relatedContentsAt = (node, side = 'AFTER') => formRelatedContentsAt(props.relatedContents, node, { preview: true, side })
+// 关联预览与主表字段共享排序占位，但不能共享选框、鼠标事件或属性操作栏。
+const hasAttachedContents = computed(() => relatedContentsAt(props.node).length > 0 || relatedContentsAt(props.node, 'BEFORE').length > 0)
 
 const containerTypes = new Set([
   'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE', 'ACTION_SLOT'

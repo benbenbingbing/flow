@@ -1,4 +1,23 @@
 <template>
+  <template v-for="item in relatedContentsForNode(node, 'BEFORE')" :key="item.id || item.compositionKey">
+    <RelationContentDesignPreview v-if="context.formDesignPreview" :composition="item" />
+    <RelatedContentRuntime
+      v-else
+      :composition="item"
+      owner-type="FORM"
+      :owner-id="runtimeForm.id"
+      :release-id="runtimeReleaseId"
+      :release-version="runtimeReleaseVersion"
+      :source-record-id="sourceRecordId"
+        :source-data="(context.getFormData?.() || context.record?.data || {})"
+        :source-parameters="context.params || context.parameters || {}"
+      :host-readonly="readonly"
+        :mode="mode"
+      :traversal-context-token="runtimeTraversalContextToken"
+      :release-resolution-token="runtimeReleaseResolutionToken"
+      @source-patch="applyRelatedContentPatch"
+    />
+  </template>
   <component
     v-if="customDescriptor"
     :is="customDescriptor.component"
@@ -288,9 +307,9 @@ const runtimeReleaseResolutionToken = computed(() => String(
 ))
 
 /** 草稿预览复用节点位置，运行时仍要求宿主发布版本，不能回退到草稿查询。 */
-function relatedContentsForNode(targetNode) {
+function relatedContentsForNode(targetNode, side = 'AFTER') {
   if (!props.context.formDesignPreview && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
-  return formRelatedContentsAt(runtimeForm.value.viewCompositions, targetNode, { preview: props.context.formDesignPreview })
+  return formRelatedContentsAt(runtimeForm.value.viewCompositions, targetNode, { preview: props.context.formDesignPreview, side })
 }
 
 /**

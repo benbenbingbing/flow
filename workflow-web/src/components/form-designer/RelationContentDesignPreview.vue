@@ -1,5 +1,5 @@
 <template>
-  <section class="relation-design-preview" :style="relatedContentLayoutStyle(config.presentation)">
+  <section class="relation-design-preview" :class="{ 'is-borderless': config.presentation?.showBorder === false }" :style="relatedContentLayoutStyle(config.presentation)">
     <header>
       <div
         :class="{ 'relation-property-title': editable }"
@@ -97,4 +97,5 @@ header, header > div { display: flex; align-items: center; gap: 10px; }
 header { justify-content: space-between; }
 .relation-property-title { cursor: pointer; }
 p { color: var(--el-text-color-secondary); font-size: 12px; line-height: 1.6; margin: 10px 0 18px; }
+.relation-design-preview.is-borderless { border: 0; margin: 0; padding: 0; }
 </style>

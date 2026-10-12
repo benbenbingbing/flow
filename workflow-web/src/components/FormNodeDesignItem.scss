@@ -1,3 +1,8 @@
+.form-node-design-entry {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
 .form-node-design-item {
   position: relative;
   // 栅格百分比必须包含节点描边，否则两项合计 24 格时会被挤到下一行。

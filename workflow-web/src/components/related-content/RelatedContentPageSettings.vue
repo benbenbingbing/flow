@@ -9,6 +9,9 @@
         <el-form-item label="每页条数"><el-input-number :model-value="listOptions.pageSize || 20" :min="1" :max="200" @update:model-value="updateList('pageSize', $event)" /></el-form-item>
         <el-form-item label="列表最大高度"><el-input-number :model-value="listOptions.maxHeight" :min="120" :max="2000" :step="20" @update:model-value="updateList('maxHeight', $event)" /><span>px</span></el-form-item>
       </template>
+      <el-form-item v-if="editor.config.target.contentType === 'FORM'" label="显示边框">
+        <el-switch :model-value="editor.config.presentation.showBorder !== false" @update:model-value="editor.config.presentation.showBorder = $event" />
+      </el-form-item>
       <el-form-item label="加载方式"><el-radio-group v-model="editor.config.presentation.loadMode"><el-radio value="ON_DEMAND">按需加载</el-radio><el-radio value="IMMEDIATE">立即加载</el-radio></el-radio-group></el-form-item>
       <el-form-item label="空状态提示"><el-input v-model="editor.config.presentation.emptyText" placeholder="未找到关联数据" maxlength="500" /></el-form-item>
     </el-form>

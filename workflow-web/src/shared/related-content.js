@@ -340,6 +340,7 @@ export function updateRelatedContentAnchor(value, ownerType) {
     } else {
       value.anchorType = 'OWNER'
       value.anchorKey = ''
+      delete value.config.presentation.anchorSide
     }
   }
   return value
@@ -412,6 +413,12 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   if (presentationError) add(1, 'presentation', presentationError)
   if (!presentation.position) add(1, 'presentation.position', '请选择显示位置')
   if (!presentation.loadMode) add(1, 'presentation.loadMode', '请选择加载方式')
+  if (presentation.anchorSide != null && !['BEFORE', 'AFTER'].includes(presentation.anchorSide)) {
+    add(1, 'presentation.anchorSide', '节点相对位置无效')
+  }
+  if (Object.hasOwn(presentation, 'showBorder') && typeof presentation.showBorder !== 'boolean') {
+    add(1, 'presentation.showBorder', '显示边框必须为开关值')
+  }
   if (Object.hasOwn(presentation, 'showTitle') && typeof presentation.showTitle !== 'boolean') {
     add(1, 'presentation.showTitle', '显示标题必须为开关值')
   }

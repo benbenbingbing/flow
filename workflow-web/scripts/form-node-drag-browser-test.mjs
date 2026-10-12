@@ -147,7 +147,7 @@ try {
   await dragNode('moving', 'tab-a')
   assert.equal(await evaluate(`dragTest.state.nodes.find(n=>n.id==='moving').parentId`), 'tab-a', '跨容器拖拽必须持久化父容器，不能只移动 DOM')
   assert.equal(await evaluate(`dragTest.state.orders.at(-1).parentId`), 'tab-a')
-  await waitFor(`document.querySelectorAll('.form-node-design-item[data-node-id="moving"]').length===1&&document.querySelector('.form-node-design-item[data-node-id="moving"]').parentElement.dataset.formNodeParentId==='tab-a'`, 'Moved node DOM did not reconcile')
+  await waitFor(`document.querySelectorAll('.form-node-design-item[data-node-id="moving"]').length===1&&document.querySelector('.form-node-design-item[data-node-id="moving"]').closest('.form-node-drop-zone').dataset.formNodeParentId==='tab-a'`, 'Moved node DOM did not reconcile')
   assert.equal(await evaluate('dragTest.changed()'), true, '移动父容器必须成为待发布修改')
 
   // 属性抽屉与真实草稿必须一致，防止画布看似嵌套但父容器仍然是根节点。
@@ -199,7 +199,7 @@ try {
   const orderCount = await evaluate('dragTest.state.orders.length')
   await dragNode('moving', newTabId)
   assert.equal(await evaluate('dragTest.state.orders.length'), orderCount, '未保存的子页面不能调用服务器节点移动接口')
-  assert.equal(await evaluate(`document.querySelector('.form-node-design-item[data-node-id="moving"]').parentElement.dataset.formNodeParentId`), newTabId)
+  assert.equal(await evaluate(`document.querySelector('.form-node-design-item[data-node-id="moving"]').closest('.form-node-drop-zone').dataset.formNodeParentId`), newTabId)
   await clickButton('保存全部')
   await waitFor('dragTest.state.saves.length===2', 'New tab hierarchy was not saved')
   assert.equal(await evaluate(`dragTest.state.saves[1].find(n=>n.id==='moving').parentId`), newTabId)
@@ -214,7 +214,7 @@ try {
   console.log('form node drag browser acceptance passed: parent property, save/reload, publish, nested transfers, root reset, sibling reorder and unsaved new tab')
 } catch (error) {
   if (ws?.readyState === WebSocket.OPEN) {
-    console.error(await evaluate(`JSON.stringify({orders:window.dragTest?.state.orders,parentLabels:[...document.querySelectorAll('.el-form-item')].filter(e=>e.querySelector('.el-form-item__label')?.textContent.includes('父容器')).map(e=>e.querySelector('.el-select__placeholder')?.textContent),nodes:[...document.querySelectorAll('.form-node-design-item[data-node-id="moving"]')].map(e=>({parent:e.parentElement.dataset.formNodeParentId}))})`))
+    console.error(await evaluate(`JSON.stringify({orders:window.dragTest?.state.orders,parentLabels:[...document.querySelectorAll('.el-form-item')].filter(e=>e.querySelector('.el-form-item__label')?.textContent.includes('父容器')).map(e=>e.querySelector('.el-select__placeholder')?.textContent),nodes:[...document.querySelectorAll('.form-node-design-item[data-node-id="moving"]')].map(e=>({parent:e.closest('.form-node-drop-zone').dataset.formNodeParentId}))})`))
     const screenshot = await send('Page.captureScreenshot', { format: 'png' })
     writeFileSync('/tmp/flow-form-node-drag-failure.png', Buffer.from(screenshot.data, 'base64'))
   }

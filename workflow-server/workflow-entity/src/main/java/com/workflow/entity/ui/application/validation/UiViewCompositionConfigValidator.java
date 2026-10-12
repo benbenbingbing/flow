@@ -38,7 +38,7 @@ public class UiViewCompositionConfigValidator {
             "contentType", "contentId", "contentKey", "contentName",
             "releaseId", "releaseVersion", "contentHash");
     private static final Set<String> PRESENTATION_KEYS = Set.of(
-            "position", "loadMode", "title", "showTitle", "emptyText",
+            "position", "loadMode", "title", "showTitle", "showBorder", "anchorSide", "emptyText",
             "listOptions", "layout", "visibleModes", "visibilityCondition");
     // 仅复用结构化条件方言；输入已经是 Map，不依赖应用 ObjectMapper 的序列化扩展。
     private static final PublishedFormConditionEvaluator PRESENTATION_CONDITIONS =
@@ -270,6 +270,13 @@ public class UiViewCompositionConfigValidator {
         // 显示开关对所有关系通用，只控制标题。历史配置缺少此键时沿用显示标题，不改变业务动作权限。
         if (value.containsKey("showTitle")) {
             result.put("showTitle", requireBoolean(value.get("showTitle"), "显示标题"));
+        }
+        // 只保存显式开关，缺省沿用显示边框；不会改变子表单内部字段或操作权限。
+        if (value.containsKey("showBorder")) {
+            result.put("showBorder", requireBoolean(value.get("showBorder"), "显示边框"));
+        }
+        if (value.containsKey("anchorSide")) {
+            result.put("anchorSide", requireEnum(value.get("anchorSide"), Set.of("BEFORE", "AFTER"), "节点相对位置"));
         }
         putOptionalText(result, "emptyText", value.get("emptyText"), 500);
         if (value.containsKey("layout")) {

@@ -43,6 +43,23 @@ class UiViewCompositionConfigValidatorTest {
     }
 
     @Test
+    void borderVisibilitySurvivesSaveAndRejectsNonBooleanValues() {
+        Map<String, Object> config = frontendDraft();
+        Map<String, Object> presentation = mutableChild(config, "presentation");
+        assertFalse(((Map<?, ?>) validator.validate(config).normalizedConfig()
+                .get("presentation")).containsKey("showBorder"));
+        for (boolean visible : List.of(false, true)) {
+            presentation.put("showBorder", visible);
+            assertEquals(visible, ((Map<?, ?>) validator.validate(config).normalizedConfig()
+                    .get("presentation")).get("showBorder"));
+        }
+        presentation.put("anchorSide", "BEFORE");
+        assertEquals("BEFORE", ((Map<?, ?>) validator.validate(config).normalizedConfig().get("presentation")).get("anchorSide"));
+        presentation.put("showBorder", "false");
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+    }
+
+    @Test
     void displayTitleSettingsPreserveIndependentSaveActions() {
         Map<String, Object> config = frontendDraft();
         config.put("actions", List.of("EDIT"));

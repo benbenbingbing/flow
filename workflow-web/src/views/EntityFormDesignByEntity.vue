@@ -191,6 +191,14 @@
               @open-properties="openRelatedContentProperties"
               @remove="removeRelatedContent"
             />
+            <FormNodeDraggableList
+              v-if="inlineRelationContents.length" :items="[]" parent-id=""
+              :can-drop="canDropNode" :disabled="reorderingNode"
+              zone-class="root-design-drop-zone"
+              @drop="handleNodeDrop({ ...$event, newIndex: designChildrenFor('').length, afterRelatedContents: inlineRelationContents })"
+            >
+              <template #footer><div class="design-container-empty">拖拽节点到子表单下方</div></template>
+            </FormNodeDraggableList>
           </div>
         </div>
       </div>
@@ -3456,7 +3464,7 @@ function canDropNode(node, targetParentId) {
  * 校验并更新拖拽节点的父容器与同级顺序；已保存且无本地修改的节点立即写入草稿。
  * 含新节点或未保存属性时交由“保存全部”一起提交，避免引用服务器尚不存在的容器或丢失编辑。
  */
-async function handleNodeDrop({ node, newParentId, newIndex }) {
+async function handleNodeDrop({ node, newParentId, newIndex, afterRelatedContents = [] }) {
   if (!node || reorderingNode.value) return
   const plan = buildFormNodeDropPlan(
     formFields.value,
@@ -3473,19 +3481,26 @@ async function handleNodeDrop({ node, newParentId, newIndex }) {
     String(item.id) === String(node.id)
   )
   if (String(node.parentId || '') === String(plan.parentId)
-      && currentIndex === plan.targetIndex) {
+      && currentIndex === plan.targetIndex && !afterRelatedContents.length) {
     return
   }
 
   // 必须在更新位置前检查本地修改，否则当前这次移动本身也会被误判为已有未保存编辑。
   const hasPendingNodeChanges = hasUnsavedNodeChanges()
+  // 关联原来位于容器尾部。下方插入字段后改为该字段的前锚点，保证保存和运行顺序一致。
+  afterRelatedContents.forEach(item => {
+    item.anchorType = 'FORM_NODE'
+    item.anchorKey = String(node.nodeKey || node.id)
+    item.config.presentation.anchorSide = 'BEFORE'
+    item.config.presentation.position = 'INLINE'
+  })
   node.parentId = plan.parentId
   plan.orderedSiblings.forEach((item, index) => {
     item.sortOrder = index
   })
   applyLocalSiblingOrder(node, plan.targetIndex, plan.orderedSiblings)
 
-  if (!form.value.id || !node.revision || hasPendingNodeChanges) {
+  if (!form.value.id || !node.revision || hasPendingNodeChanges || afterRelatedContents.length) {
     ElMessage.success('节点位置已调整，保存草稿后写入服务器')
     return
   }

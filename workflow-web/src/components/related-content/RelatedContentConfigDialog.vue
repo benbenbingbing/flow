@@ -1239,6 +1239,7 @@ function handlePositionChange() {
 
 function handleAnchorChange(value) {
   editor.anchorKey = value || ''
+  delete editor.config.presentation.anchorSide
   editor.anchorType = value ? 'FORM_NODE' : 'OWNER'
 }
 

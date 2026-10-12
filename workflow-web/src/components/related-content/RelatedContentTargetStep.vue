@@ -38,7 +38,7 @@ const emit = defineEmits(['handleTargetEntitySelected', 'handleContentTypeChange
         </el-form-item>
         <el-form-item v-if="ownerType === 'FORM' && ['INLINE', 'TAB'].includes(editor.config.presentation.position)" label="放置位置">
           <el-select v-model="editor.anchorKey" clearable filterable :placeholder="editor.config.presentation.position === 'TAB' ? '选择已有 Tab 页' : '表单末尾'" style="width:100%" @change="emit('handleAnchorChange', $event)">
-            <el-option v-for="option in availableAnchorOptions" :key="option.value" :value="option.value" :label="option.label" />
+            <el-option v-for="option in availableAnchorOptions" :key="option.value" :value="option.value" :label="editor.config.presentation.anchorSide === 'BEFORE' ? option.label.replace(/之后/g, '之前') : option.label" />
           </el-select>
         </el-form-item>
         <el-form-item label="顺序"><el-input-number v-model="editor.orderKey" :min="0" :max="2147483647" :step="1000000" /></el-form-item>

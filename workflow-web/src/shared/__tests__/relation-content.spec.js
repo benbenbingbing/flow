@@ -154,3 +154,7 @@ assert.deepEqual(formRelatedContentsAt(placements, { nodeKey: 'tab-key' }, { pre
 assert.deepEqual(formRelatedContentsAt(placements, { id: 'missing' }, { preview: true }), [])
 assert.equal(placements[0].id, 'by-id', '定位时不能修改原配置顺序')
 console.log('form related content placement tests passed')
+
+const beforeItem = { id: 'before', anchorType: 'FORM_NODE', anchorKey: 'next-field', config: { presentation: { position: 'INLINE', anchorSide: 'BEFORE' } } }
+assert.equal(formRelatedContentsAt([beforeItem], {nodeKey:'next-field'}).length, 0)
+assert.equal(formRelatedContentsAt(JSON.parse(JSON.stringify([beforeItem])), {nodeKey:'next-field'}, {side:'BEFORE'}).length, 1)

@@ -15,8 +15,8 @@
       class="related-content-runtime__action-warning"
     />
     <template v-if="inlinePresentation">
-      <el-card shadow="never" class="related-content-runtime__card">
-        <template #header>
+      <el-card shadow="never" class="related-content-runtime__card" :class="{ 'is-borderless': presentation.showBorder === false }">
+        <template v-if="presentation.showTitle !== false || resolved?.targetContentType === 'LIST' || canSaveTarget || canPickLinkCandidate" #header>
           <div class="related-content-runtime__header">
             <span v-if="presentation.showTitle !== false">{{ displayTitle }}</span>
             <div class="related-content-runtime__actions">
@@ -1137,6 +1137,18 @@ defineExpose({ open: openPresentation })
 
 .related-content-runtime__card {
   margin: 12px 0;
+}
+
+/* 仅显式关闭时移除子页面外框和标题分隔线；旧配置保留默认边框，内部字段样式不变。 */
+.related-content-runtime__card.is-borderless {
+  border: 0;
+  margin: 0;
+}
+.related-content-runtime__card.is-borderless :deep(> .el-card__body) {
+  padding: 0;
+}
+.related-content-runtime__card.is-borderless :deep(> .el-card__header) {
+  border-bottom: 0;
 }
 
 .related-content-runtime__action-warning {

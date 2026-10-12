@@ -125,7 +125,7 @@ assert.equal(validateRelatedContent(configured, 'FORM').valid, true)
 
 // 普通引用也可以使用显示属性，保存时不能把独立编辑动作改成随主表提交。
 const displayConfigured = normalizeRelatedContent(configured, { ownerType: 'FORM', sourceEntity })
-displayConfigured.config.presentation = { ...displayConfigured.config.presentation, title: '项目概览', showTitle: false }
+displayConfigured.config.presentation = { ...displayConfigured.config.presentation, title: '项目概览', showTitle: false, showBorder: false }
 displayConfigured.config.actions = ['EDIT']
 const displayPayload = buildRelatedContentPayload(displayConfigured, 'FORM', 'form-1')
 assert.equal(validateRelatedContent(displayConfigured, 'FORM').valid, true)
@@ -134,6 +134,11 @@ assert.equal(displayPayload.config.presentation.showTitle, false)
 assert.deepEqual(displayPayload.config.actions, ['EDIT'])
 const displayReopened = normalizeRelatedContent(displayPayload, { ownerType: 'FORM', sourceEntity })
 assert.equal(displayReopened.config.presentation.showTitle, false)
+assert.equal(displayReopened.config.presentation.showBorder, false)
+displayReopened.config.presentation.showBorder = 'false'
+assert.equal(validateRelatedContent(displayReopened, 'FORM').valid, false)
+displayReopened.config.presentation.showBorder = true
+assert.equal(validateRelatedContent(displayReopened, 'FORM').valid, true)
 displayReopened.config.presentation.showTitle = 'false'
 assert.equal(validateRelatedContent(displayReopened, 'FORM').valid, false)
 assert.equal(
