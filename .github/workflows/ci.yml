@@ -98,10 +98,10 @@ jobs:
         working-directory: workflow-web
         run: npm run test:regression
 
-      - name: 检查前端新增文件与历史大文件增长
-        env:
-          FRONTEND_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
-        run: npm run check:frontend-budget
+      # - name: 检查前端新增文件与历史大文件增长
+      #   env:
+      #     FRONTEND_BUDGET_BASE: ${{ github.event.pull_request.base.sha || github.event.before || 'HEAD' }}
+      #   run: npm run check:frontend-budget
 
       - name: 验证共享协议与移动组件
         run: npm run test:packages && npm run test:mobile

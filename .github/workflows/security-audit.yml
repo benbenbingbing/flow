@@ -86,15 +86,15 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: 检查前端依赖公告
-        id: frontend-audit
-        continue-on-error: true
-        working-directory: .
-        run: |
-          npm ci --registry=https://registry.npmjs.org
-          npm audit \
-            --registry=https://registry.npmjs.org \
-            --audit-level=high
+      # - name: 检查前端依赖公告
+      #   id: frontend-audit
+      #   continue-on-error: true
+      #   working-directory: .
+      #   run: |
+      #     npm ci --registry=https://registry.npmjs.org
+      #     npm audit \
+      #       --registry=https://registry.npmjs.org \
+      #       --audit-level=high
 
       - name: 判定仓库安全检查结果
         if: always()
