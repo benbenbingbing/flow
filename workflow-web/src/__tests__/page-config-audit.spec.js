@@ -1285,7 +1285,7 @@ assert.ok(
   'title="布局与层级"',
   'title="数据源绑定"',
   'title="校验规则"',
-  'title="运行模式权限"',
+  ":title=\"isFieldNode ? '运行模式权限' : '运行模式显示'\"",
   'title="子表单配置"',
   'title="参数传递"',
   'title="子列表配置"',
@@ -1428,7 +1428,7 @@ assert.equal(
 )
 assert.match(
   formDesigner,
-  /async function handleAddNodeCommand\(command\)[\s\S]{0,500}command === 'SECTION_TITLE'[\s\S]{0,200}addSection\(\)/,
+  /(?:async )?function handleAddNodeCommand\(command\)[\s\S]{0,500}command === 'SECTION_TITLE'[\s\S]{0,200}addSection\(\)/,
   '添加节点菜单中的“节”应复用标准节标题创建逻辑'
 )
 assert.match(
