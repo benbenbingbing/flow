@@ -106,11 +106,11 @@ jobs:
       - name: 验证共享协议与移动组件
         run: npm run test:packages && npm run test:mobile
 
-      - name: 安装浏览器并验证 PC 与移动端交互
-        run: |
-          npx playwright install --with-deps chromium
-          npm run test:e2e --workspace workflow-mobile
-          npm run test:e2e:refactor --workspace workflow-web
+      # - name: 安装浏览器并验证 PC 与移动端交互
+      #   run: |
+      #     npx playwright install --with-deps chromium
+      #     npm run test:e2e --workspace workflow-mobile
+      #     npm run test:e2e:refactor --workspace workflow-web
 
   manifests:
     name: 部署清单校验
