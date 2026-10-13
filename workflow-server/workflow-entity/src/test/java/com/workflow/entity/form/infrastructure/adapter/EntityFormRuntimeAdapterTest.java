@@ -6,7 +6,6 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +17,7 @@ class EntityFormRuntimeAdapterTest {
     private final UiConfigReleaseService releases = mock(UiConfigReleaseService.class);
     private final EntityFormRuntimeAdapter adapter = new EntityFormRuntimeAdapter(
             mock(EntityDefinitionMapper.class), mock(EntityFormMapper.class), releases,
-            mock(UiReleaseResolutionTokenService.class), new ObjectMapper());
+            new ObjectMapper());
 
     @Test
     void newDataAcceptsOldProcessCoordinatesWhenCurrentFormExists() {

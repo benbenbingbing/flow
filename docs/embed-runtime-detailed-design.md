@@ -1399,8 +1399,8 @@ Queryable、Visible、列表动作或 datasource 白名单。页内工具栏和�
 FORM 不再提供 `GET /api/embed/v1/runtime/form*` 字段投影接口。直接 FORM 的 Bootstrap 向
 `NativeEmbeddedFormPage` 提供 Session 固定目标；LIST→CREATE/VIEW 由 Shell 内部调用
 `GET /api/embed/v1/runtime/native-form-target?mode=...&recordId=...`，服务端再从同一 Session 和
-Session 不可变运行快照派生目标。两者都只返回 `entityCode/formId/formReleaseId`、版本、发布解析
-Token、入口模式以及 VIEW 固定记录 ID。这是 iframe 内部实现接口，不是宿主/第三方契约；宿主
+Session 不可变运行快照派生目标。两者都只返回业务入口、`formConfigHash/listConfigHash`、
+普通 `runtimeContext`、入口模式以及 VIEW 固定记录 ID。这是 iframe 内部实现接口，不是宿主/第三方契约；宿主
 不能调用、保存或通过 Launch/消息修改这些坐标。
 
 薄页面直接挂载 Flow 原生 `EntityDataFormDialog` / `EntityApprovalDialog`。因此字段、布局、
@@ -1431,7 +1431,7 @@ template/body/query 中的 entity/list/form/release/record 与 Session 固定目
 | 用途 | 原生端点 | Embed 约束 |
 | --- | --- | --- |
 | 实体元数据 | `GET /api/entity/code/{entityCode}` | `entityCode` 必须等于 Session 固定目标 |
-| 固定表单 Release | `GET /api/entity-forms/{formId}/runtime-release` | `releaseId/version/releaseResolutionToken` 必须来自 Bootstrap |
+| 固定表单 Release | `GET /api/entity-forms/{formId}/runtime-release` | `formId/runtimeContext` 由 Bootstrap 提供业务入口，服务端依据会话重新授权 |
 | 操作栏 | `POST /api/ui-runtime/form-actions/resolve` | 按映射用户、模式、记录/流程状态实时解析 |
 | 字典树 | `GET /api/system/dict/item/tree/code/{dictCode}` | 使用原生字段声明的数据源与原权限检查 |
 | 唯一性预检 | `POST /api/entity-form/{formId}/unique-precheck` | 固定 Form，结果只作交互提示，最终提交再次校验 |
@@ -1909,7 +1909,7 @@ Flow 权限、组织、数据范围和行级动作继续生效。宿主前端没
 4. Session 服务校验固定 List/Form Release、记录与依赖闭包；页内导航不要求
    `RECORD_VIEW/RECORD_CREATE` 或 entryModes，能否操作完全由映射用户原生权限与 DataScope 决定。
 5. Shell 切换到 `NativeEmbeddedFormPage`；页面从 Bootstrap 取得固定
-   `formReleaseId/formReleaseVersion/releaseResolutionToken`，宿主和第三方请求不传这些坐标。
+   `formId/configHash/runtimeContext`，固定列表配置和权限从服务端会话恢复。
 6. 原生 `EntityDataFormDialog` / `EntityApprovalDialog` 通过请求委托调用 Flow 原生 API；字段、
    弹层、按钮与状态由固定 Form Release、映射 Flow 用户权限、DataScope、记录/流程状态和 Context
    共同决定。Embed 不存在 EXPLICIT 字段策略，`returnable` 仅约束跨域回传。

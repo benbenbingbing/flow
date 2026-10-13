@@ -373,7 +373,7 @@ const currentFormPublication = {
   formId: 'form-1',
   snapshotDocument: { legacyFields: [{ fieldCode: 'current_field' }] }
 }
-const previouslyResolvedForm = { id: 'form-1', runtimeReleaseId: 'old-hash', runtimeReleaseVersion: 9 }
+const previouslyResolvedForm = { id: 'form-1', configHash: 'old-hash' }
 assert.equal(
   resolveContextFormRelease(previouslyResolvedForm, currentFormPublication),
   currentFormPublication,

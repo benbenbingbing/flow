@@ -18,9 +18,13 @@ public class UiEventExecuteRequest {
     private String eventCode;
     private String configType;
     private String configId;
+    private String configHash;
+    private Map<String, Object> runtimeContext;
+    /** 仅供已受理的内部事件链复用快照；JSON 不能指定历史配置。 */
+    @JsonIgnore
     private String releaseId;
+    @JsonIgnore
     private Integer releaseVersion;
-    private String releaseResolutionToken;
     private String entityCode;
     private String listKey;
     private String targetType;
@@ -50,6 +54,10 @@ public class UiEventExecuteRequest {
     @JsonIgnore
     private boolean serverPinnedRelease;
 
+    /** 来源只授予流程读取能力时，任何写接口都必须在产生副作用前拒绝。 */
+    @JsonIgnore
+    private boolean serverReadOnly;
+
     /** 列表入口合并的固定条件与可信关联条件，每个事件步骤执行时重新应用。 */
     @JsonIgnore
     private Map<String, Object> serverListFilters;
@@ -69,7 +77,23 @@ public class UiEventExecuteRequest {
     @JsonIgnore
     private String serverTaskId;
 
+    /** 服务端已核实的字段事件记录，嵌套表单必须先通过实际父子关系校验。 */
+    @JsonIgnore
+    private String serverRecordId;
+
     /** 服务端从已鉴权记录/任务核验出的流程实例 ID。 */
     @JsonIgnore
     private String serverProcessInstanceId;
+    /** 顶层任务/记录坐标与嵌套来源一起交由后端核实，不从客户端接收授权结论。 */
+    public java.util.Map<String, Object> getRuntimeContext() {
+        var result = new java.util.LinkedHashMap<String, Object>(runtimeContext == null ? java.util.Map.of() : runtimeContext);
+        if (taskId != null && !taskId.isBlank()) result.put("taskId", taskId);
+        if (recordId != null && !recordId.isBlank()) {
+            if (result.containsKey("rootFormId") && result.get("componentPath") instanceof java.util.List<?> path && !path.isEmpty())
+                result.put("childRecordId", recordId);
+            else result.put("recordId", recordId);
+        }
+        if (entityCode != null && !entityCode.isBlank()) result.put("entityCode", entityCode);
+        return result;
+    }
 }

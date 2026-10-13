@@ -40,9 +40,9 @@ public class EntityListConfigController {
     private final UiConfigurationAccessService accessService;
 
     /**
-     * 查询列表字段数据源扩展选项（可用数据源提供方）。GET /api/entity-list-config/extension-options
+     * 查询列表列的三种取值方式及字段组合参数。GET /api/entity-list-config/extension-options
      *
-     * @param entityCode 当前实体编码，传入后只返回该实体可用的数据源
+     * @param entityCode 当前实体编码；具体接口的可用范围由扩展接口选项接口过滤
      * @return 扩展选项列表
      */
     @GetMapping("/extension-options")

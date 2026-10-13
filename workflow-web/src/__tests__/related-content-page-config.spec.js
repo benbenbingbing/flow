@@ -72,9 +72,8 @@ assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions/capabilitie
 assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions/link-candidates'), '缺少建立关联专用候选列表 API')
 assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions'), '缺少关联内容权威动作执行 API')
 ;[
-  'viewCompositionContextToken',
-  'traversalContextToken',
-  'targetReleaseResolutionToken',
+  'compositionContext',
+  'targetContentHash',
   'failurePolicy',
   '未找到关联数据',
   '请先保存当前记录'
@@ -82,30 +81,30 @@ assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions'), '缺少�
   assert.ok(runtime.includes(marker), `关联内容运行时缺少安全语义：${marker}`)
 })
 assert.ok(formRuntime.includes('ownerRelatedContents'), '表单运行时未渲染宿主级关联内容')
-assert.ok(formRuntime.includes('runtimeTraversalContextToken'), '表单嵌套关联内容未透传安全导航链')
-assert.ok(formRuntime.includes(':release-resolution-token="runtimeReleaseResolutionToken"'), '表单关联内容未透传历史钉定发布令牌')
+assert.ok(formRuntime.includes('runtimeCompositionContext'), '表单嵌套关联内容未透传安全导航链')
+assert.ok(formRuntime.includes(':config-hash="runtimeConfigHash"'), '表单关联内容未透传配置摘要')
 assert.ok(nodeRuntime.includes('relatedContentsForNode'), '表单节点未渲染节点级关联内容')
-assert.ok(nodeRuntime.includes('runtimeTraversalContextToken'), '表单节点关联内容未透传安全导航链')
-assert.ok(nodeRuntime.includes(':release-resolution-token="runtimeReleaseResolutionToken"'), '表单节点关联内容未透传历史钉定发布令牌')
+assert.ok(nodeRuntime.includes('runtimeCompositionContext'), '表单节点关联内容未透传安全导航链')
+assert.ok(nodeRuntime.includes(':config-hash="runtimeConfigHash"'), '表单节点关联内容未透传配置摘要')
 assert.ok(listRuntime.includes('rowExpandCompositions'), '列表运行时未接入行展开关联内容')
-assert.ok(listRuntime.includes('viewCompositionContextToken'), '列表查询未携带可信关联上下文')
-assert.ok(listRuntime.includes('viewCompositionTraversalToken'), '列表嵌套关联内容未透传安全导航链')
+assert.ok(listRuntime.includes('compositionContext'), '列表查询未携带可信关联上下文')
+assert.ok(listRuntime.includes('compositionContext'), '列表嵌套关联内容未透传安全导航链')
 assert.ok(listRuntime.includes('runtimeSelectionMode'), '列表页级关联内容未启用单选主从联动')
 assert.ok(listRuntime.includes('selectedRows.value[0]?.id'), '列表当前选择未成为关联内容来源记录')
 assert.ok(listTable.includes('openRelatedContent(btn, row)'), '列表行按钮未接入关联内容')
-assert.ok(listTable.includes('viewCompositionTraversalToken'), '列表行级关联内容未透传安全导航链')
+assert.ok(listTable.includes('compositionContext'), '列表行级关联内容未透传安全导航链')
 assert.ok(runtime.includes('createLatestRequestGate'), '来源切换时未防止旧解析请求覆盖新上下文')
-assert.ok(runtime.includes('buildRelatedContentResolveInput'), '关联内容解析未使用统一的发布令牌请求契约')
-assert.ok(runtime.includes('props.releaseResolutionToken'), '关联内容解析请求未携带宿主发布令牌')
-assert.ok(runtime.includes('assertRelatedContentResolveContract'), '关联列表缺少可信令牌时未失败关闭')
+assert.ok(runtime.includes('buildRelatedContentResolveInput'), '关联内容解析未使用统一的配置摘要请求契约')
+assert.ok(runtime.includes('props.configHash'), '关联内容解析请求未携带宿主配置摘要')
+assert.ok(runtime.includes('assertRelatedContentResolveContract'), '关联列表缺少来源上下文时未失败关闭')
 assert.ok(runtime.includes('relatedContentActions'), '关联动作未传递给目标列表做精确限制')
-assert.ok(runtime.includes('actionContextToken'), '关联动作未使用服务端签名上下文')
+assert.ok(runtime.includes('compositionContext'), '关联动作未使用业务来源上下文')
 assert.ok(runtime.includes('initialValues'), '关联新增未使用服务端解析的可信初值')
-assert.ok(formDialog.includes('viewCompositionActionContextToken'), '目标表单提交未携带关联内容动作上下文')
+assert.ok(formDialog.includes('compositionContext'), '目标表单提交未携带关联内容动作上下文')
 assert.ok(dialog.includes('当前版本不支持新增并自动关联在同一事务完成'), '设计器未明确禁用非原子的新增后关联')
 assert.ok(dialog.includes('已有组成型子表单或重复器'), '设计器未引导组成型数据使用现有能力')
 assert.ok(runtime.includes('selectionActionOptions'), '目标列表未展示权威选择/关联动作')
-assert.ok(runtime.includes('candidateListContextToken'), '建立关联没有使用服务端候选范围令牌')
+assert.ok(runtime.includes('compositionContext'), '建立关联没有使用候选范围来源上下文')
 assert.ok(runtime.includes('openLinkCandidates'), '目标列表缺少“选择并建立关联”入口')
 assert.ok(runtime.includes('executeCandidateSelectionAction'), '候选记录未通过专用动作桥提交目标 ID')
 assert.ok(runtime.includes('!props.hostReadonly'), '只读宿主仍可能展示字段回填动作')

@@ -46,3 +46,32 @@ test('按钮主步骤数量、无条件执行和接口范围继续阻断非法�
   assert.match(validateEventStepChain([{ ...step, extensionId: 'write' }], context), /无副作用/)
   assert.match(validateEventStepChain([{ ...step, extensionId: '' }], context), /结果回填/)
 })
+
+test('内置 Excel 主动作编辑往返保留独立参数，不生成接口坐标或字段映射', async () => {
+  const { isBuiltinExcelStep, builtinExcelSummary, validateEventStepChain } = await import('../eventStepModel.js')
+  const { normalizeStep } = createEventStepEditor()
+  const original = { stepCode: 'excel_action', strategy: 'REPLACE', actionType: 'ENTITY_EXCEL', actionConfig: { operation: 'EXPORT', schemeRef: { mode: 'EXPLICIT', schemeCode: 'finance' }, dataScope: 'SELECTED', listKey: 'employees', selectionSource: { type: 'LIST_DIALOG' } }, failurePolicy: 'STOP' }
+  const edited = normalizeStep(original, 0)
+  assert.equal(isBuiltinExcelStep(edited), true)
+  const saved = serializeEventStep(edited, 1)
+  assert.equal(saved.order, 20)
+  assert.deepEqual(saved.actionConfig, original.actionConfig)
+  for (const key of ['extensionId', 'serviceId', 'inputMapping', 'outputMapping', 'rowKey']) assert.equal(key in saved, false)
+  assert.match(builtinExcelSummary(saved), /导出.*finance.*选中记录/)
+  edited.actionConfig.schemeRef.schemeCode = 'another'
+  assert.equal(original.actionConfig.schemeRef.schemeCode, 'finance')
+  assert.equal(saved.actionConfig.schemeRef.schemeCode, 'finance')
+  assert.equal(validateEventStepChain([saved], { inheritanceMode: 'REPLACE', formButtonExactTarget: true, formButtonEventSelected: true, interfaces: [] }), '')
+})
+
+test('内置 Excel 动作不能作为前置或缺失必需配置保存，普通无接口步骤仍须回填', async () => {
+  const { validateEventStepChain } = await import('../eventStepModel.js')
+  const options = { inheritanceMode: 'REPLACE', interfaces: [] }
+  const step = { strategy: 'REPLACE', actionType: 'ENTITY_EXCEL', actionConfig: { operation: 'TEMPLATE', schemeRef: { mode: 'DEFAULT' } }, failurePolicy: 'STOP' }
+  assert.equal(validateEventStepChain([step], options), '')
+  assert.match(validateEventStepChain([{ ...step, strategy: 'BEFORE' }], options), /必须为主处理/)
+  assert.match(validateEventStepChain([{ ...step, failurePolicy: 'CONTINUE' }], options), /失败时停止/)
+  assert.match(validateEventStepChain([{ ...step, actionConfig: {} }], options), /补全操作和方案/)
+  assert.match(validateEventStepChain([{ ...step, actionConfig: { operation: 'EXPORT', schemeRef: { mode: 'EXPLICIT' } } }], options), /补全操作和方案/)
+  assert.match(validateEventStepChain([{ strategy: 'AFTER' }], options), /结果回填/)
+})

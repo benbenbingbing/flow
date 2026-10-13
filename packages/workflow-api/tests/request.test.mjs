@@ -40,7 +40,7 @@ test('Embed 不调用普通登录刷新，不携带 Cookie', async () => {
 test('任务、发布坐标和上传幂等协议跨宿主一致', async () => {
   const seen = [], request = { post: async (...args) => seen.push(args) }
   const tasks = createProcessTaskApi(request)
-  const body = { taskId: 'task', action: 'approve', formData: { amount: 0 }, formReleaseId: 'release-old', nextApprovalScopeKey: 'scope' }
+  const body = { taskId: 'task', action: 'approve', formData: { amount: 0 }, formConfigHash: 'graph-old', nextApprovalScopeKey: 'scope' }
   await tasks.completeTask(body); assert.equal(seen[0][0], '/process-task/complete'); assert.equal(seen[0][1], body)
   const file = new File(['test'], 'test.txt'), api = createFileApi(request).fileApi
   await api.uploadForEntity(file, { entityCode: 'demo', action: 'approve', fieldCode: 'files' })
@@ -72,4 +72,25 @@ test('同一次接口失败在 transport 和页面只提示一次，独立失败
     notifyRequestError(new Error('本地运行失败'), notify)
     assert.equal(notifications.at(-1), '本地运行失败')
   }
+})
+
+test('配置摘要冲突不刷新配置、不重放写请求，保留调用方草稿', async () => {
+  const seen = [], draft = { name: '未保存内容', configHash: '业务字段' }
+  const runtime = createRequestRuntime({ getSession: () => session('valid-login'), adapter: async config => {
+    seen.push(config)
+    return { config, status: 409, headers: {}, data: { code: 409, errorCode: 'FORM_CONFIGURATION_CHANGED', message: '配置已变化，请核对' } }
+  } })
+  await assert.rejects(runtime.request.post('/entity-data', { formConfigHash: 'old-config', data: draft }), error => error.errorCode === 'FORM_CONFIGURATION_CHANGED')
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].url, '/entity-data')
+  assert.deepEqual(draft, { name: '未保存内容', configHash: '业务字段' })
+})
+
+test('嵌套业务来源使用 JSON 查询参数，保留数组路径和行 ID', async () => {
+  const seen = [], context = { taskId: 'task', componentPath: [{ nodeKey: 'details', recordId: 'row' }] }
+  const runtime = createRequestRuntime({ getSession: () => session('valid-login'), adapter: async config => { seen.push(config); return response(config, {}) } })
+  await runtime.request.get('/entity-lists/demo/items/schema', { params: { runtimeContext: context, compositionContext: { ownerType: 'FORM', ownerId: 'root', compositionKey: 'items' } } })
+  assert.deepEqual(JSON.parse(seen[0].params.runtimeContext), context)
+  assert.equal(JSON.parse(seen[0].params.compositionContext).compositionKey, 'items')
+  assert.equal(seen.length, 1)
 })

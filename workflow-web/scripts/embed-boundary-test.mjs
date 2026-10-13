@@ -102,7 +102,7 @@ assertDoesNotContain(shellSource, [
 assert.doesNotMatch(shellSource, /EmbedListRuntime/)
 
 assert.match(nativeListPageSource, /EntityDataList/)
-assert.match(nativeListPageSource, /target\.listReleaseResolutionToken/)
+assert.match(nativeListPageSource, /target\.listConfigHash/)
 assert.doesNotMatch(nativeListPageSource, /runtime-capabilities/,
   'View/Grant capability 只约束入口与 Bridge，不得重写原生页按钮')
 assert.doesNotMatch(
@@ -171,9 +171,9 @@ assert.match(nativePageSource, /entityApi\.getByCode/)
 assert.match(nativePageSource, /submit-transport="submitNativeRecord"/)
 assert.match(nativePageSource, /target\.entityCode/)
 assert.match(nativePageSource, /target\.formId/)
-assert.match(nativePageSource, /target\.formReleaseId/)
-assert.match(nativePageSource, /target\.formReleaseVersion/)
-assert.match(nativePageSource, /target\.formReleaseResolutionToken/)
+assert.match(nativePageSource, /target\.runtimeContext/)
+assert.doesNotMatch(nativePageSource, /target\.formReleaseVersion/)
+assert.match(nativePageSource, /target\.formConfigHash/)
 assert.match(nativePageSource, /bootstrap\.ui\?\.formPresentation/)
 assert.match(nativePageSource, /:form-presentation="formPresentation"/)
 assertDoesNotContain(nativePageSource, [
@@ -194,19 +194,17 @@ assert.match(entityListSource, /embedded\.value && props\.formPresentation === '
 assert.match(entityListSource, /:form-presentation="embeddedFormPresentation"/)
 assert.match(entityListSource, /当前固定列表版本没有可用的默认表单/)
 for (const marker of [
-  'targetListReleaseId',
-  'targetListReleaseVersion',
-  'targetListReleaseResolutionToken',
+  'targetListConfigHash',
   'targetDefaultFormResolved',
-  'targetDefaultFormReleaseResolutionToken'
+  'targetDefaultFormConfigHash'
 ]) {
   assert.match(entityDataTableSource, new RegExp(marker))
 }
-assert.match(entityListLauncherSource, /:release-id="releaseId"/)
-assert.match(entityListLauncherSource, /:release-version="releaseVersion"/)
+assert.doesNotMatch(entityListLauncherSource, /:release-id=/)
+assert.doesNotMatch(entityListLauncherSource, /:release-version=/)
 assert.match(
   entityListLauncherSource,
-  /:release-resolution-token="releaseResolutionToken"/
+  /:config-hash="configHash"/
 )
 assert.match(entityListLauncherSource, /allow-default-form-resolve/)
 assert.match(entityListLauncherSource, /getFormRuntimeRelease/)
@@ -222,9 +220,9 @@ assert.match(shellSource, /resetEmbedDelegatedRequest/)
 assert.match(shellSource, /getAccessToken/)
 assert.match(
   bootstrapNormalizerSource,
-  /formReleaseResolutionToken/
+  /formConfigHash/
 )
-assert.match(bootstrapNormalizerSource, /nativeRuntimeUrl|formReleaseId/)
+assert.match(bootstrapNormalizerSource, /nativeRuntimeUrl|formConfigHash/)
 
 // 主应用与 Embed 入口只调用同一个扩展注册入口。项目 canary 字段由同一个
 // form-fields registry 注册；新组件不会要求在 src/embed 下再登记一次。

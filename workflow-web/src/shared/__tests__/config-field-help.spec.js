@@ -41,8 +41,10 @@ for (const [key, content] of Object.entries(CONFIG_FIELD_HELP)) {
 const usedKeys = new Set()
 for (const file of files) {
   const source = readFileSync(path.join(root, file), 'utf8')
-  for (const match of source.matchAll(/<ConfigHelpLabel[\s\S]*?help-key="([^"]+)"[\s\S]*?\/>/g)) {
-    usedKeys.add(match[1])
+  // 先限定单个组件标签，避免 content-only 帮助跨到后面的 JSON 帮助并误读其键。
+  for (const match of source.matchAll(/<ConfigHelpLabel\b(?:[^"'<>]|"[^"]*"|'[^']*')*\/>/g)) {
+    const helpKey = match[0].match(/\bhelp-key="([^"]+)"/)?.[1]
+    if (helpKey) usedKeys.add(helpKey)
   }
 }
 

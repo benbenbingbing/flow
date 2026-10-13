@@ -30,8 +30,9 @@ const TRUSTED_CONTEXT_KEYS = new Set([
   'sourcerecordid',
   'releaseid',
   'releaseversion',
-  'releaseresolutiontoken',
-  'viewcompositiontraversaltoken',
+  'confighash',
+  'runtimecontext',
+  'compositioncontext',
   'publishedreleaseid'
 ])
 

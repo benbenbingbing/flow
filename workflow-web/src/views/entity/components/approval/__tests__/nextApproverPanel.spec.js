@@ -125,9 +125,7 @@ assert.match(
   'entityCode: effectiveEntityCode.value',
   'recordId: entityData.value?.id',
   'formId: approvalActionFormContext.value.formId',
-  'formReleaseId: approvalActionFormContext.value.releaseId',
-  'formReleaseVersion: approvalActionFormContext.value.releaseVersion',
-  'formReleaseResolutionToken:'
+  'formConfigHash:'
 ].forEach(marker => {
   assert.ok(
     dialog.includes(marker),

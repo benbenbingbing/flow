@@ -783,7 +783,7 @@ export default {
                 { option: '下拉、单选、复选', meaning: 'select、select_multiple、radio、checkbox 使用实体选项。', notes: '值联动和选项联动依赖稳定 value。' },
                 { option: '开关 switch', meaning: 'BOOLEAN；activeText、inactiveText 可选。', notes: '显示文本不改变实际布尔值。' },
                 { option: '文件 / 图片', meaning: 'FILE/IMAGE 使用上传组件。', notes: '限制来自实体附件项配置。' },
-                { option: '级联 cascader', meaning: 'STRING/MULTI_SELECT；cascaderOptions 为 JSON。', notes: '不要依赖组件内示例数据，生产必须配置真实选项。' },
+                { option: '级联 cascader', meaning: 'STRING/MULTI_SELECT；支持静态树、接口全量与逐级加载，PC/移动端统一。', notes: '组件参数设置数据来源与加载方式；接口使用 FIELD_OPTIONS 绑定，选择结果为完整路径数组。' },
                 { option: '实体引用 / 子表单 / 分组标题', meaning: 'reference、multi_reference、sub_form、section。', notes: '详细参数见对应主题。' }
               ]
             }
@@ -855,6 +855,23 @@ export default {
               tone: 'warning',
               title: '统一安全边界',
               text: '禁止配置任意 SQL、脚本和外网 URL。自定义数据能力必须引用后端已注册的 Provider；预览、发布和运行时都执行相同 Schema 校验、超时、缓存、失败策略和数据权限计划。'
+            }
+          ]
+        },
+        {
+          id: 'entity-cascader-data',
+          title: '级联选择：静态与接口数据',
+          blocks: [
+            {
+              type: 'table',
+              columns: optionColumns,
+              rows: [
+                { option: '配置入口', meaning: '选中字段，在“基础与布局”把组件类型设为级联选择；在“数据与扩展 → 复用与扩展 → 组件参数”设置数据来源。', notes: 'PC 和移动端使用相同配置，保存单条完整路径编码数组。' },
+                { option: '静态选项', meaning: '级联选项填写 value、label、children 组成的 JSON 树。', notes: 'value 为非空字符串或数字，同一级唯一；disabled=true 禁用节点。未配置时为空，不自动填充地区示例。' },
+                { option: '一次加载全部数据', meaning: '数据来源选“数据接口”，接口加载方式选“一次加载全部数据”。', notes: '在同页“数据源绑定 → 字段选项”选择只读接口；返回完整树。' },
+                { option: '逐级加载下一级', meaning: '只加载根节点和用户展开节点的直接下级；请求 input.cascader 携带 loadMode、parentValue、path、level。', notes: '每项须有 leaf 布尔值且不携带 children。根请求 parentValue=null、path=[]、level=0；下级请求带完整父路径。' },
+                { option: '回显与失败重试', meaning: '编辑与只读页面按已保存路径加载名称；加载失败提供重试并保留原值。', notes: '取消弹窗不修改值，明确选择末级后才更新；接口变化导致原路径不存在时提示重新核对。' }
+              ]
             }
           ]
         },

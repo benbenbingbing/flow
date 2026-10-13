@@ -37,6 +37,13 @@
       </div>
     </div>
 
+    <ExcelButtonBinding
+      v-if="canEdit && ['FORM', 'LIST'].includes(ownerType) && (targetType === 'BUTTON' || (ownerType === 'LIST' && buttonOptions.length))"
+      :key="`${ownerType}:${ownerId}:${targetType}:${targetKey}`"
+      :owner-type="ownerType" :owner-id="ownerId" :target-type="targetType" :target-key="targetKey"
+      :target-name="targetName" :button-options="buttonOptions" :allowed-events="allowedEvents" @changed="load(); emit('changed')"
+    />
+
     <el-alert
       v-if="listOwnerContext"
       title="多个按钮可分别绑定：新增时选择点击事件和具体按钮。公共默认绑定由同类按钮继承，每个按钮可追加步骤或替换上级。按钮执行方式需设为“自定义 / 业务接口”，保存按钮并发布列表后生效。"
@@ -391,7 +398,7 @@
                     :content="formButtonStepStrategyHelp"
                   />
                 </template>
-                <el-select v-model="step.strategy" @change="normalizeReplace(step)">
+                <el-select v-model="step.strategy" :disabled="isBuiltinExcelStep(step)" @change="normalizeReplace(step)">
                   <el-option
                     v-for="option in stepStrategyOptions"
                     :key="option.value"
@@ -400,7 +407,10 @@
                   />
                 </el-select>
               </el-form-item>
-              <el-form-item label="扩展接口">
+              <el-form-item v-if="isBuiltinExcelStep(step)" label="内置动作">
+                <el-tag>内置 Excel 操作</el-tag>
+              </el-form-item>
+              <el-form-item v-else label="扩展接口">
                 <template #label>
                   <ConfigHelpLabel
                     label="扩展接口"
@@ -442,7 +452,7 @@
                     help-key="uiEvent.failurePolicy"
                   />
                 </template>
-                <el-select v-model="step.failurePolicy">
+                <el-select v-model="step.failurePolicy" :disabled="isBuiltinExcelStep(step)">
                   <el-option label="停止执行" value="STOP" />
                   <el-option label="记录后继续" value="CONTINUE" />
                   <el-option label="按空结果继续" value="EMPTY" />
@@ -450,7 +460,13 @@
               </el-form-item>
             </div>
 
-            <el-collapse>
+            <el-alert
+              v-if="isBuiltinExcelStep(step)"
+              :title="builtinExcelSummary(step)"
+              description="操作、方案和数据范围请在上方“Excel 操作快捷配置”中修改。此动作共用平台内置能力，不生成扩展接口。"
+              type="info" :closable="false" show-icon
+            />
+            <el-collapse v-else>
               <el-collapse-item name="input">
                 <template #title>
                   <ConfigHelpLabel
@@ -547,9 +563,10 @@
 </template>
 
 <script setup>
+import ExcelButtonBinding from '@/components/excel/ExcelButtonBinding.vue'
 import { showRequestError } from '@/shared/request'
 
-import { validateEventStepChain, createEventStepEditor, parseEventDocument as parseJson, serializeEventStep as serializeStep } from './eventStepModel'
+import { isBuiltinExcelStep, builtinExcelSummary, validateEventStepChain, createEventStepEditor, parseEventDocument as parseJson, serializeEventStep as serializeStep } from './eventStepModel'
 import { computed, reactive, ref, watch } from 'vue'
 import {
   ArrowDown,
@@ -893,6 +910,7 @@ async function openEdit(row) {
   await loadAvailableInterfaces(editor.eventCode)
   if (sequence !== loadSequence) return
   editor.steps.forEach(step => {
+    if (isBuiltinExcelStep(step)) return
     step.extensionId = resolveInterfaceExtensionId({
       extensionId: step.extensionId,
       serviceId: step.legacyServiceId,
@@ -941,6 +959,12 @@ function normalizeReplace(current) {
     && !formButtonEventSelected.value) return
   editor.steps.forEach(step => {
     if (step !== current && step.strategy === 'REPLACE') {
+      // 内置 Excel 动作只能承担主处理，不能在另选主处理时静默降为前置步骤。
+      if (isBuiltinExcelStep(step)) {
+        current.strategy = 'BEFORE'
+        ElMessage.warning('请先移除内置 Excel 主处理，再配置其他主处理')
+        return
+      }
       step.strategy = 'BEFORE'
       step.legacyListQuery = false
     }
@@ -1213,6 +1237,7 @@ function chainItems(row) {
   const replace = steps.filter(step => step.strategy === 'REPLACE')
   const after = steps.filter(step => step.strategy === 'AFTER')
   const label = step => {
+    if (isBuiltinExcelStep(step)) return `内置 Excel 操作 · ${builtinExcelSummary(step)}`
     const item = interfaces.value.find(option =>
       option.extensionId === step.extensionId)
     return step.name || item?.displayName || '字段映射'

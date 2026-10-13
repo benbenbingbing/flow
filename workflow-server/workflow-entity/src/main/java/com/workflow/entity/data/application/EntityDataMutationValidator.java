@@ -35,6 +35,8 @@ public class EntityDataMutationValidator {
     private final ObjectMapper objectMapper;
     @Autowired(required = false)
     private EntityUniqueValueService uniqueValueService;
+    @Autowired(required = false)
+    private EntityUniqueBatchPrecheckService uniqueBatchPrecheckService;
 
     /**
      * 校验流程启动；不满足约束时阻止后续处理。
@@ -88,6 +90,54 @@ public class EntityDataMutationValidator {
                 snapshot,
                 storageData,
                 excludeId);
+    }
+
+    /**
+     * 批量只读预检新增数据；调用方先完成可信默认值和表单前置处理，再传存储列映射。
+     * 返回的 rowIndex 为输入列表零基索引，null 行表示之前处理已失败并跳过。
+     * 不预留唯一值、不发号、不写记录；检查通过后仍须在正式事务中执行原有权威终检。
+     */
+    public List<BatchFieldError> validatePublishedFieldsBatch(String entityCode, List<Map<String, Object>> storageRows) {
+        if (storageRows == null || storageRows.size() > 1000) throw new IllegalArgumentException("批量字段预检最多支持1000行");
+        EntityPublishedSnapshot snapshot = snapshotService.getLatestByEntityCode(entityCode);
+        List<BatchFieldError> errors = new ArrayList<>();
+        if (snapshot.getFields() == null || snapshot.getFields().isEmpty() || storageRows.isEmpty()) return errors;
+        // 复用原有必填和规则处理，逐字段收集错误，不因第一项失败漏掉其余列。
+        for (EntityField field : snapshot.getFields()) {
+            if (isRelationField(field) || "code".equals(field.getFieldCode())) continue;
+            EntityPublishedSnapshot oneField = new EntityPublishedSnapshot(); oneField.setFields(List.of(field));
+            String column = recordMapper.toColumnName(field.getFieldCode());
+            for (int index = 0; index < storageRows.size(); index++) {
+                Map<String, Object> row = storageRows.get(index);
+                if (row == null) continue;
+                try {
+                    validateRequired(oneField, row);
+                    fieldValidationRuleService.validateValue(field, row.get(column));
+                } catch (RuntimeException failure) {
+                    if (!addBatchError(errors, new BatchFieldError(index, field.getFieldCode(), "FIELD_VALIDATION", failure.getMessage()))) return List.copyOf(errors);
+                }
+            }
+        }
+        if (uniqueBatchPrecheckService == null) throw new IllegalStateException("批量唯一性预检服务不可用");
+        java.util.Set<String> failedCells = new java.util.HashSet<>();
+        for (BatchFieldError error : errors) failedCells.add(error.rowIndex() + ":" + error.fieldCode());
+        for (BatchFieldError error : uniqueBatchPrecheckService.validate(entityCode, snapshot, storageRows)) {
+            if (failedCells.add(error.rowIndex() + ":" + error.fieldCode()) && !addBatchError(errors, error)) break;
+        }
+        return List.copyOf(errors);
+    }
+
+    /** 只返回输入坐标和规则结果；ERROR_LIMIT 的 rowIndex=-1 表示文件级截断，不能含冲突记录内容。 */
+    public record BatchFieldError(int rowIndex, String fieldCode, String code, String message) { }
+
+    /** 错误报告有界：最多一万条单元格错误，额外保留一条文件级哨兵，不静默丢弃校验结果。 */
+    static boolean addBatchError(List<BatchFieldError> errors, BatchFieldError error) {
+        if (errors.size() >= 10_000 || "ERROR_LIMIT".equals(error.code())) {
+            errors.add(new BatchFieldError(-1, "", "ERROR_LIMIT", "错误数量超过10000条，请修正文件后重新导入"));
+            return false;
+        }
+        errors.add(error);
+        return true;
     }
 
     /** 子行取号前校验普通业务字段；code 尚未生成，拿到最终值后再校验它的字段规则。 */

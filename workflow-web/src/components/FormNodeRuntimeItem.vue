@@ -6,15 +6,16 @@
       :composition="item"
       owner-type="FORM"
       :owner-id="runtimeForm.id"
-      :release-id="runtimeReleaseId"
-      :release-version="runtimeReleaseVersion"
+
+
       :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
       :host-readonly="readonly"
         :mode="mode"
-      :traversal-context-token="runtimeTraversalContextToken"
-      :release-resolution-token="runtimeReleaseResolutionToken"
+      :composition-context="runtimeCompositionContext"
+      :config-hash="runtimeConfigHash"
+      :runtime-context="context"
       @source-patch="applyRelatedContentPatch"
     />
   </template>
@@ -105,15 +106,16 @@
             :composition="item"
             owner-type="FORM"
             :owner-id="runtimeForm.id"
-            :release-id="runtimeReleaseId"
-            :release-version="runtimeReleaseVersion"
+
+
             :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
             :host-readonly="readonly"
         :mode="mode"
-            :traversal-context-token="runtimeTraversalContextToken"
-            :release-resolution-token="runtimeReleaseResolutionToken"
+            :composition-context="runtimeCompositionContext"
+            :config-hash="runtimeConfigHash"
+      :runtime-context="context"
             @source-patch="applyRelatedContentPatch"
           />
         </template>
@@ -207,15 +209,16 @@
       :composition="item"
       owner-type="FORM"
       :owner-id="runtimeForm.id"
-      :release-id="runtimeReleaseId"
-      :release-version="runtimeReleaseVersion"
+
+
       :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
       :host-readonly="readonly"
         :mode="mode"
-      :traversal-context-token="runtimeTraversalContextToken"
-      :release-resolution-token="runtimeReleaseResolutionToken"
+      :composition-context="runtimeCompositionContext"
+      :config-hash="runtimeConfigHash"
+      :runtime-context="context"
       @source-patch="applyRelatedContentPatch"
     />
   </template>
@@ -282,33 +285,27 @@ const emit = defineEmits(['update:modelValue'])
 const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
 const fieldRendererRef = ref(null)
 const runtimeForm = computed(() => props.context?.form || {})
-const runtimeReleaseId = computed(() =>
-  runtimeForm.value.runtimeReleaseId
-  || runtimeForm.value.formReleaseId
+const configHash = computed(() =>
+  runtimeForm.value.configHash
   || ''
 )
-const runtimeReleaseVersion = computed(() => Number(
-  runtimeForm.value.runtimeReleaseVersion
-  ?? runtimeForm.value.formReleaseVersion
-  ?? 0
-))
 const sourceRecordId = computed(() => String(
   props.context?.record?.id
   || props.context?.recordId
   || ''
 ))
-const runtimeTraversalContextToken = computed(() => String(
-  props.context?.viewCompositionTraversalToken || ''
+const runtimeCompositionContext = computed(() => (
+  props.context?.compositionContext || ''
 ))
-const runtimeReleaseResolutionToken = computed(() => String(
-  runtimeForm.value.releaseResolutionToken
-  || props.context?.releaseResolutionToken
+const runtimeConfigHash = computed(() => String(
+  runtimeForm.value.configHash
+  || props.context?.configHash
   || ''
 ))
 
 /** 草稿预览复用节点位置，运行时仍要求宿主发布版本，不能回退到草稿查询。 */
 function relatedContentsForNode(targetNode, side = 'AFTER') {
-  if (!props.context.formDesignPreview && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
+  if (!props.context.formDesignPreview && !configHash.value) return []
   return formRelatedContentsAt(runtimeForm.value.viewCompositions, targetNode, { preview: props.context.formDesignPreview, side })
 }
 

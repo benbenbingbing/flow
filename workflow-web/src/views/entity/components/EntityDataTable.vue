@@ -66,12 +66,11 @@
             :composition="item"
             owner-type="LIST"
             :owner-id="listOwnerId"
-            :release-id="listReleaseId"
-            :release-version="listReleaseVersion"
             :source-record-id="row.id"
             :source-data="row"
             :source-parameters="runtimeContext?.params || runtimeContext?.parameters || {}"
-            :traversal-context-token="viewCompositionTraversalToken"
+            :composition-context="compositionContext"
+            :runtime-context="runtimeContext"
             @target-saved="refresh"
           />
         </template>
@@ -107,7 +106,7 @@
               >
                 <!-- 自定义渲染组件 -->
                 <ListCellRenderer
-                  v-if="field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
+                  v-if="isListCellMaskingEnabled(field) || field.renderComponent || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')"
                   :row="row"
                   :field="field"
                   :context="{
@@ -233,13 +232,12 @@
       :composition="activeRelatedContent.composition"
       owner-type="LIST"
       :owner-id="listOwnerId"
-      :release-id="listReleaseId"
-      :release-version="listReleaseVersion"
-      :release-resolution-token="listReleaseResolutionToken || ''"
+      :config-hash="listConfigHash || ''"
       :source-record-id="activeRelatedContent.recordId"
       :source-data="activeRelatedContent.data"
       :source-parameters="runtimeContext?.params || runtimeContext?.parameters || {}"
-      :traversal-context-token="viewCompositionTraversalToken"
+      :composition-context="compositionContext"
+            :runtime-context="runtimeContext"
       :show-trigger="false"
       @target-saved="refresh"
     />
@@ -249,14 +247,10 @@
       ref="entityListLauncherRef"
       :entity-code="openListState.targetEntityCode"
       :list-key="openListState.targetListKey"
-      :release-id="openListState.targetListReleaseId"
-      :release-version="openListState.targetListReleaseVersion"
-      :release-resolution-token="openListState.targetListReleaseResolutionToken"
+      :config-hash="openListState.targetListConfigHash"
       :default-form-resolved="openListState.targetDefaultFormResolved"
       :default-form-id="openListState.targetDefaultFormId"
-      :default-form-release-id="openListState.targetDefaultFormReleaseId"
-      :default-form-release-version="openListState.targetDefaultFormReleaseVersion"
-      :default-form-release-resolution-token="openListState.targetDefaultFormReleaseResolutionToken"
+      :default-form-config-hash="openListState.targetDefaultFormConfigHash"
       :presentation="openListState.presentation"
       :selection-mode="openListState.selectionMode"
       :context="openListState.context"
@@ -284,6 +278,7 @@ import { hasListButtonComponent, getListButtonComponent } from '@/extensions/cor
 import { getListToolbarAction, getListRowAction } from '@/extensions/core/registries/listActionRegistry.js'
 import { getFieldModelPath } from '@flow/workflow-core/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
+import { formatMaskedListCellValue, isListCellMaskingEnabled } from '@/shared/list-cell-masking'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import ListCellAction from '@/components/ListCellAction.vue'
 import { buildCellActionMap, hidesMappedRowButton } from '@/shared/list-cell-action'
@@ -325,17 +320,13 @@ const props = defineProps<{
   rowExpandCompositions?: any[]
   buttonCompositions?: any[]
   listOwnerId?: string
-  listReleaseId?: string
-  listReleaseVersion?: number
-  listReleaseResolutionToken?: string
+  listConfigHash?: string
 }>()
 
 const rowExpandCompositions = computed(() => props.rowExpandCompositions || [])
 const listOwnerId = computed(() => props.listOwnerId || '')
-const listReleaseId = computed(() => props.listReleaseId || '')
-const listReleaseVersion = computed(() => Number(props.listReleaseVersion || 0))
-const viewCompositionTraversalToken = computed(() => String(
-  props.runtimeContext?.viewCompositionTraversalToken || ''
+const compositionContext = computed(() => (
+  props.runtimeContext?.compositionContext || ''
 ))
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
@@ -343,6 +334,7 @@ const paginationConfig = computed(() => props.viewConfig?.pagination || {})
 
 const emit = defineEmits<{
   create: [btn?: any]
+  'import-excel': [btn: any]
   'export-selected': [btn: any]
   'export-all': [btn: any]
   'batch-delete': []
@@ -387,6 +379,10 @@ const getCellAction = (field: any, row: any) => {
 }
 
 const getFieldDisplayValue = (row: any, field: any) => {
+  // 复制兜底和动作 aria-label 也必须使用同一份脱敏文本，不能从其他展示分支露出原值。
+  if (isListCellMaskingEnabled(field)) {
+    return formatMaskedListCellValue(row, field, props.refEntityNameMap, props.entityStatusMap)
+  }
   if (field?.fieldCode === 'currentTaskName' || field?.fieldCode === 'current_task_name') {
     const approve = row?.actionCapabilities?.approve
     const targetName = approve?.actionableTaskName
@@ -468,6 +464,7 @@ const handleSelectionChange = (selection: any[]) => {
 // 内置工具栏动作映射
 const BUILTIN_TOOLBAR_ACTIONS: Record<string, Function> = {
   create: (btn: any) => emit('create', btn),
+  import: (btn: any) => emit('import-excel', btn),
   exportSelected: (btn: any) => emit('export-selected', btn),
   exportAll: (btn: any) => emit('export-all', btn),
   batchDelete: () => emit('batch-delete')
@@ -600,14 +597,10 @@ const pendingOpenListAction = ref<{ button: any, row?: any } | null>(null)
 const openListState = reactive({
   targetEntityCode: '',
   targetListKey: '',
-  targetListReleaseId: '',
-  targetListReleaseVersion: null as number | null,
-  targetListReleaseResolutionToken: '',
+  targetListConfigHash: '',
   targetDefaultFormResolved: false,
   targetDefaultFormId: '',
-  targetDefaultFormReleaseId: '',
-  targetDefaultFormReleaseVersion: null as number | null,
-  targetDefaultFormReleaseResolutionToken: '',
+  targetDefaultFormConfigHash: '',
   presentation: 'DIALOG' as 'DIALOG' | 'DRAWER',
   selectionMode: 'NONE' as 'NONE' | 'SINGLE' | 'MULTIPLE',
   title: '选择数据',
@@ -659,32 +652,14 @@ async function openConfiguredList(button: any, row?: any) {
   pendingOpenListAction.value = { button, row }
   openListState.targetEntityCode = button.targetEntityCode
   openListState.targetListKey = button.targetListKey
-  // Embed 根列表返回的 open-list 坐标已经绑定同一个 Session；原样
-  // 传给嵌套原生列表，禁止弹窗/抽屉再次解析当前 ACTIVE 而发生漂移。
-  openListState.targetListReleaseId = button.targetListReleaseId || ''
-  const targetListReleaseVersion = Number(button.targetListReleaseVersion)
-  openListState.targetListReleaseVersion = Number.isInteger(
-    targetListReleaseVersion
-  ) && targetListReleaseVersion > 0
-    ? targetListReleaseVersion
-    : null
-  openListState.targetListReleaseResolutionToken =
-    button.targetListReleaseResolutionToken || ''
+  // 目标选择由 Embed 会话的入口关系推导，浏览器只携带配置摘要检测变更。
+  openListState.targetListConfigHash =
+    button.targetListConfigHash || ''
   openListState.targetDefaultFormResolved =
     button.targetDefaultFormResolved === true
   openListState.targetDefaultFormId = button.targetDefaultFormId || ''
-  openListState.targetDefaultFormReleaseId =
-    button.targetDefaultFormReleaseId || ''
-  const targetDefaultFormReleaseVersion = Number(
-    button.targetDefaultFormReleaseVersion
-  )
-  openListState.targetDefaultFormReleaseVersion = Number.isInteger(
-    targetDefaultFormReleaseVersion
-  ) && targetDefaultFormReleaseVersion > 0
-    ? targetDefaultFormReleaseVersion
-    : null
-  openListState.targetDefaultFormReleaseResolutionToken =
-    button.targetDefaultFormReleaseResolutionToken || ''
+  openListState.targetDefaultFormConfigHash =
+    button.targetDefaultFormConfigHash || ''
   openListState.presentation = button.presentation === 'DRAWER' ? 'DRAWER' : 'DIALOG'
   openListState.selectionMode = ['SINGLE', 'MULTIPLE'].includes(button.selectionMode)
     ? button.selectionMode

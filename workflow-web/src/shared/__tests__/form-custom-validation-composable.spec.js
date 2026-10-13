@@ -10,7 +10,7 @@ const config = { version: 1, rules: [{ name: 'amount', version: 1, params: { max
 const fields = [{ fieldCode: 'amount', fieldType: 'DECIMAL', validationRules: { customValidators: config } }]
 const record = ref({ amount: 20 })
 const context = ref({ entityCode: 'expense', initializationKey: 'create:1' })
-const form = ref({ id: 'f1', runtimeReleaseId: 'r1', fields })
+const form = ref({ id: 'f1', configHash: 'r1', fields })
 const scope = effectScope()
 const validation = scope.run(() => useFormCustomValidation({ getForm: () => form.value, getRecord: () => record.value, getMode: () => 'edit', getContext: () => context.value }))
 const settle = async () => { await nextTick(); await new Promise(resolve => setTimeout(resolve, 0)) }

@@ -15,7 +15,7 @@ export async function applyRuntimeEventEffects(result, handlers) {
   }
   const actions = {
     MESSAGE: 'message', OPEN_ROUTE: 'navigate', CLOSE_FORM: 'close',
-    REFRESH_PARENT: 'refresh', DOWNLOAD_TASK: 'download'
+    REFRESH_PARENT: 'refresh', REFRESH_LIST: 'refresh', DOWNLOAD_TASK: 'download', EXCEL_ACTION: 'excel'
   }
   for (const effect of effects) {
     if (!isCurrent()) return

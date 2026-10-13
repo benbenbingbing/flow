@@ -158,20 +158,19 @@ public class TaskDetailDTO {
      * 表单配置DTO（任务详情中展示的表单信息）
      */
     public static class FormConfigDTO {
+        /** 页面加载时的依赖摘要，仅用于提交前检查配置变更，不代表访问权限。 */
+        private String configHash;
+        /** 下次请求重新鉴权的任务/实例定位信息，不保存客户端授权结果。 */
+        private Map<String, Object> runtimeContext;
+        public String getConfigHash() { return configHash; }
+        public void setConfigHash(String configHash) { this.configHash = configHash; }
+        public Map<String, Object> getRuntimeContext() { return runtimeContext; }
+        public void setRuntimeContext(Map<String, Object> runtimeContext) { this.runtimeContext = runtimeContext; }
+
         /** 表单Key */
         private String formKey;
         /** 实体表单ID */
         private String entityFormId;
-        /** 表单发布版本ID */
-        private String formReleaseId;
-        /** 表单发布版本号 */
-        private Integer formReleaseVersion;
-        /** 实际生效的热修复发布ID */
-        private String effectiveFormReleaseId;
-        /** 是否应用兼容热修复 */
-        private Boolean hotfixApplied;
-        /** 嵌套表单解析上下文令牌 */
-        private String releaseResolutionToken;
         /** 表单名称 */
         private String formName;
         /** 布局类型 */
@@ -219,98 +218,6 @@ public class TaskDetailDTO {
          */
         public void setEntityFormId(String entityFormId) {
             this.entityFormId = entityFormId;
-        }
-
-        /**
-         * 读取表单发布版本ID；查询结果供调用方展示或继续处理。
-         *
-         * @return 读取后的表单发布版本ID文本，供调用方比较或展示
-         */
-        public String getFormReleaseId() {
-            return formReleaseId;
-        }
-
-        /**
-         * 设置表单发布版本ID；后续读取或执行将使用更新后的状态。
-         *
-         * @param formReleaseId 表单发布版本ID，后续用于设置表单发布版本ID时定位或关联目标
-         */
-        public void setFormReleaseId(String formReleaseId) {
-            this.formReleaseId = formReleaseId;
-        }
-
-        /**
-         * 读取表单发布版本；查询结果供调用方展示或继续处理。
-         *
-         * @return 符合条件的表单配置DTO结果，供调用方继续处理
-         */
-        public Integer getFormReleaseVersion() {
-            return formReleaseVersion;
-        }
-
-        /**
-         * 设置表单发布版本；后续读取或执行将使用更新后的状态。
-         *
-         * @param formReleaseVersion 表单发布版本，供本方法设置表单发布版本时使用
-         */
-        public void setFormReleaseVersion(Integer formReleaseVersion) {
-            this.formReleaseVersion = formReleaseVersion;
-        }
-
-        /**
-         * 读取有效表单发布版本ID；查询结果供调用方展示或继续处理。
-         *
-         * @return 读取后的有效表单发布版本ID文本，供调用方比较或展示
-         */
-        public String getEffectiveFormReleaseId() {
-            return effectiveFormReleaseId;
-        }
-
-        /**
-         * 设置有效表单发布版本ID；后续读取或执行将使用更新后的状态。
-         *
-         * @param effectiveFormReleaseId 有效表单发布版本ID，后续用于设置有效表单发布版本ID时定位或关联目标
-         */
-        public void setEffectiveFormReleaseId(
-                String effectiveFormReleaseId) {
-            this.effectiveFormReleaseId = effectiveFormReleaseId;
-        }
-
-        /**
-         * 读取热修复{@code applied}；查询结果供调用方展示或继续处理。
-         *
-         * @return 符合条件的表单配置DTO结果，供调用方继续处理
-         */
-        public Boolean getHotfixApplied() {
-            return hotfixApplied;
-        }
-
-        /**
-         * 设置热修复{@code applied}；后续读取或执行将使用更新后的状态。
-         *
-         * @param hotfixApplied 热修复{@code applied}，供本方法设置热修复{@code applied}时使用
-         */
-        public void setHotfixApplied(Boolean hotfixApplied) {
-            this.hotfixApplied = hotfixApplied;
-        }
-
-        /**
-         * 读取发布版本解析令牌；查询结果供调用方展示或继续处理。
-         *
-         * @return 读取后的发布版本解析令牌文本，供调用方比较或展示
-         */
-        public String getReleaseResolutionToken() {
-            return releaseResolutionToken;
-        }
-
-        /**
-         * 设置发布版本解析令牌；后续读取或执行将使用更新后的状态。
-         *
-         * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-         */
-        public void setReleaseResolutionToken(
-                String releaseResolutionToken) {
-            this.releaseResolutionToken = releaseResolutionToken;
         }
         
         /**

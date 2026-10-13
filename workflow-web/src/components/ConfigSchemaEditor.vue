@@ -27,6 +27,7 @@
           v-for="item in group.items"
           :key="item.key"
           :required="item.required"
+          :for="showFieldHelp ? '' : undefined"
         >
           <template #label>
             <JsonConfigLabel
@@ -34,6 +35,12 @@
               :label="item.label"
               :help-key="item.helpKey || ''"
               :help="schemaJsonHelp(item)"
+            />
+            <ConfigHelpLabel
+              v-else-if="showFieldHelp && (item.helpKey || item.description)"
+              :label="item.label"
+              :help-key="item.helpKey || ''"
+              :content="item.helpKey ? '' : item.description"
             />
             <span v-else>{{ item.label }}</span>
           </template>
@@ -48,6 +55,7 @@
             :min="item.min"
             :max="item.max"
             :step="item.step || 1"
+            :precision="item.precision"
             controls-position="right"
             style="width: 100%"
             @update:model-value="updateValue(item, $event)"
@@ -103,7 +111,9 @@ import { computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
-import { applySchemaDefaults, sanitizeConfigObject } from '@flow/workflow-core/config-runtime'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import { applySchemaDefaults } from '@flow/workflow-core/config-runtime'
+import { sanitizeComponentConfig } from '@/shared/component-config'
 import {
   buildSchemaJsonHelp,
   getJsonConfigHelp
@@ -114,7 +124,9 @@ const props = defineProps({
   modelValue: { type: Object, default: () => ({}) },
   schema: { type: Array, default: () => [] },
   // 内嵌参数可直接展示全部可见配置项，省去分组标题、边框和折叠层级。
-  grouped: { type: Boolean, default: true }
+  grouped: { type: Boolean, default: true },
+  // 内嵌列参数提供问号说明；显式帮助键优先于简短 description，保持业务限制完整。
+  showFieldHelp: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue'])
@@ -338,10 +350,15 @@ function valuesEqual(left, right) {
 }
 
 function updateValue(item, value) {
-  emit('update:modelValue', sanitizeConfigObject({
-    ...currentValue.value,
-    [item.key]: value
-  }))
+  try {
+    emit('update:modelValue', sanitizeComponentConfig(props.schema, {
+      ...currentValue.value,
+      [item.key]: value
+    }))
+  } catch (error) {
+    // 超限或格式错误应保留用户原配置并提示，不能静默裁剪后保存。
+    ElMessage.warning(error.message)
+  }
 }
 
 function formatJsonValue(value) {

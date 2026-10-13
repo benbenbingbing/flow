@@ -21,14 +21,15 @@ import org.xml.sax.XMLReader;
 import org.xml.sax.helpers.DefaultHandler;
 
 /** 仅读取工作簿日期基准元数据，不创建完整 POI Workbook，避免大文件退回全量内存解析。 */
-final class DateWorkbookSupport {
+public final class DateWorkbookSupport {
     // 使用生命周期随 reader 结束的容器作为弱键，值不反向引用容器，避免缓存保留已完成的上传文件。
     private static final Map<Object, Boolean> DATE_SYSTEMS = Collections.synchronizedMap(new WeakHashMap<>());
 
     private DateWorkbookSupport() {
     }
 
-    static boolean use1904(ReadWorkbookHolder holder) {
+    /** 动态读取与 DTO 转换共用实际工作簿日期基准，不依赖调用方手动猜测。 */
+    public static boolean use1904(ReadWorkbookHolder holder) {
         Object container;
         if (holder instanceof XlsxReadWorkbookHolder xlsx) {
             container = xlsx.getOpcPackage();

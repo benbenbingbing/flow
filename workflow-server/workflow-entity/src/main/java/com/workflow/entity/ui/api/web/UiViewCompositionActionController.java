@@ -19,9 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 /** 已发布“关联内容”的权威业务动作入口。 */
 @AuthenticatedApi(objectAuthorization = true)
 @EmbedDelegatedRuntimeApi(
-        value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+        value = EmbedDelegatedRuntimeApi.Scope.RUNTIME_CONTEXT,
         targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
-                .SIGNED_RUNTIME_CONTEXT)
+                .RUNTIME_CONTEXT)
 @RestController
 @RequestMapping("/api/ui-runtime/view-compositions/actions")
 @RequiredArgsConstructor
@@ -30,16 +30,16 @@ public class UiViewCompositionActionController {
     private final UiViewCompositionActionService actionService;
 
     /**
-     * 执行 SELECT、LINK 或 UNLINK。实体、字段和筛选条件只从签名发布上下文恢复。
+     * 执行 SELECT、LINK 或 UNLINK。实体、字段和筛选条件均由服务端重新校验已发布关联配置后恢复。
      *
      * @param request 本次请求，后续经校验后用于执行界面视图组合动作
      * @return 执行后的界面视图组合动作结果，供调用方继续处理
      */
     @PostMapping
     @EmbedDelegatedRuntimeApi(
-            value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+            value = EmbedDelegatedRuntimeApi.Scope.RUNTIME_CONTEXT,
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
-                    .SIGNED_RUNTIME_CONTEXT)
+                    .RUNTIME_CONTEXT)
     public Result<UiViewCompositionActionResponse> execute(
             @RequestBody UiViewCompositionActionRequest request) {
         return Result.success(actionService.execute(request));
@@ -66,9 +66,9 @@ public class UiViewCompositionActionController {
      */
     @PostMapping("/link-candidates")
     @EmbedDelegatedRuntimeApi(
-            value = EmbedDelegatedRuntimeApi.Scope.SIGNED_RUNTIME_CONTEXT,
+            value = EmbedDelegatedRuntimeApi.Scope.RUNTIME_CONTEXT,
             targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
-                    .SIGNED_RUNTIME_CONTEXT)
+                    .RUNTIME_CONTEXT)
     public Result<UiViewCompositionLinkCandidatesResponse> linkCandidates(
             @RequestBody UiViewCompositionLinkCandidatesRequest request) {
         return Result.success(actionService.linkCandidates(request));

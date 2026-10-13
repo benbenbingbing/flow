@@ -480,8 +480,8 @@ public class EntityListActionConfigService {
             Map<String, Object> button = new LinkedHashMap<>(original);
             String key = asString(button.get("key"));
             String type = asString(button.get("type"));
-            // 重新发起属于主动开放的能力，旧配置缺省或 null 均不能自动启用。
-            boolean enabled = "restartProcess".equals(key)
+            // 导入与重新发起均须主动开放，旧配置缺省或 null 不能自动变为可用操作。
+            boolean enabled = List.of("restartProcess", "import").contains(key)
                     ? Boolean.TRUE.equals(button.get("enabled"))
                     : !Boolean.FALSE.equals(button.get("enabled"));
             button.put("enabled", enabled);
@@ -593,7 +593,7 @@ public class EntityListActionConfigService {
      * @return {@code toolbar}键条件成立时为 true，否则为 false
      */
     private boolean isToolbarKey(String key) {
-        return List.of("create", "exportSelected", "exportAll", "batchDelete").contains(key);
+        return List.of("create", "import", "exportSelected", "exportAll", "batchDelete").contains(key);
     }
 
     /**
@@ -607,7 +607,8 @@ public class EntityListActionConfigService {
                 button("create", "新增数据", 1),
                 button("exportSelected", "导出选中", 2),
                 button("exportAll", "导出全部", 3),
-                button("batchDelete", "批量删除", 4)
+                button("batchDelete", "批量删除", 4),
+                button("import", "导入", 5)
         ) : List.of(
                 button("view", "查看", 1),
                 button("edit", "编辑", 2),
@@ -632,7 +633,8 @@ public class EntityListActionConfigService {
         button.put("label", label);
         button.put("buttonType", defaultButtonType(key));
         button.put("sort", sort);
-        button.put("enabled", !"restartProcess".equals(key));
+        // 新导入入口必须由设计者显式启用，升级不能改变历史列表的可用操作。
+        button.put("enabled", !List.of("restartProcess", "import").contains(key));
         return button;
     }
 

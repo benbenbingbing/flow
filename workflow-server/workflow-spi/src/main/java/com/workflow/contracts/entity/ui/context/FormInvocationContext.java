@@ -39,9 +39,9 @@ public record FormInvocationContext(
         String parentRecordId,
         /** 子表单或明细行的稳定行标识。 */
         String rowKey,
-        /** 审批按钮经服务端核验的活动任务 ID；其他表单调用为空。 */
+        /** 表单调用经服务端核验的活动任务 ID；普通实体页面为空。 */
         String taskId,
-        /** 审批按钮经服务端核验的流程实例 ID；其他表单调用为空。 */
+        /** 表单调用经服务端核验的流程实例 ID；流程详情也保留该只读来源。 */
         String processInstanceId) implements UiInvocationContext {
 
     /**

@@ -8,7 +8,7 @@ import java.util.Map;
 
 /** 关联内容解析后的可信运行时描述。 */
 @Value
-@Builder
+@Builder(toBuilder = true)
 public class UiViewCompositionResolveResponse {
 
     String ownerType;
@@ -46,17 +46,10 @@ public class UiViewCompositionResolveResponse {
     /** 特殊处理失败时的安全展示策略。 */
     String failurePolicy;
 
-    /** 重新解析同一来源行时可使用的短期签名令牌。 */
-    String rowContextToken;
-    /**
-     * 执行权威 SELECT/LINK/UNLINK 时提交的动作上下文。
-     * 当前与 rowContextToken 同值，独立命名避免前端把整行数据当作动作依据。
-     */
-    String actionContextToken;
-    /** FORM 目标精确钉定发布版本的解析令牌。 */
-    String targetReleaseResolutionToken;
-    /** LIST 条件的短期签名凭证，供后续可信列表查询链路消费。 */
-    String listContextToken;
-    /** 已追加当前节点的短期遍历令牌，供嵌套关联内容继续执行循环和深度保护。 */
-    String traversalContextToken;
+    /** 普通业务定位路径，不携带签名、有效期或授权结论。 */
+    com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest compositionContext;
+    /** 已解析宿主配置摘要，用于写入前检查配置变化。 */
+    String configHash;
+    /** 沿路径继承的只读限制，由服务端实时计算。 */
+    boolean readonlyContext;
 }

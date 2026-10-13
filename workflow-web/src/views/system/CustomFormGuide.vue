@@ -348,11 +348,11 @@ defineExpose({ validate })
           <ul class="check-list">
             <li>新建、运行中任务、历史详情、子表单和 Embed 均读取当前配置，不需重发流程或父表单。</li>
             <li>内容摘要用于完整性、并发和旧页面检测，不提供表单版本选择、历史激活或热修复。</li>
-            <li>旧页面令牌失效后返回 409 FORM_CONFIGURATION_CHANGED；保留填写内容并提示重新加载核对。</li>
+            <li>旧页面配置摘要不一致时返回 409 FORM_CONFIGURATION_CHANGED；保留填写内容并提示重新加载核对。</li>
           </ul>
           <CodeCard title="子表单读取当前配置" language="HTTP">
             <pre v-pre><code>GET /api/entity-forms/frm_child/runtime
-    ?releaseResolutionToken={tokenFromParent}
+    ?runtimeContext={"rootFormId":"frm_parent","componentPath":["detailList"],"recordId":"record_1"}
 
 200 OK
 {
@@ -360,16 +360,16 @@ defineExpose({ validate })
   "data": {
     "formId": "frm_child",
     "id": "current-content-sha256",
-    "protocolVersion": 1,
     "contentHash": "current-content-sha256",
-    "releaseResolutionToken": "tokenForNextDepth",
+    "configHash": "current-dependency-sha256",
+    "runtimeContext": {"rootFormId":"frm_parent","componentPath":["detailList"],"recordId":"record_1"},
     "snapshotDocument": {}
   }
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>父表单令牌绑定当前用户、运行目的、任务、记录、稳定引用和配置依赖摘要；客户端不能自选流程权限上下文。</li>
-            <li>子表单发布会使旧父页面令牌失效。嵌套最大 8 层，缺失引用、伪造、过期或越层令牌均拒绝。</li>
+            <li>runtimeContext 仅传任务、实例、根表单和组件路径等业务定位信息；服务端逐层核验来源、记录和当前权限。</li>
+            <li>子表单发布也会改变父页面依赖摘要。嵌套最大 8 层，未声明引用、越权记录和循环路径均被拒绝。</li>
           </ul>
         </section>
 
@@ -421,7 +421,7 @@ defineExpose({ validate })
             <li>修改一个节点后其他节点的 ID、revision、更新时间和内容完全不变。</li>
             <li>循环引用和超过 8 层嵌套被发布校验拒绝。</li>
             <li>发布后立即全局生效；所有流程阶段和 Embed 均读取当前表单。</li>
-            <li>发布失败保持当前配置、子表单反向参数契约、旧页面 409 和嵌套令牌 8 层限制均有负向测试。</li>
+            <li>发布失败保持当前配置、子表单反向参数契约、旧页面 409 和嵌套来源路径 8 层限制均有负向测试。</li>
           </ul>
         </section>
       </main>

@@ -256,8 +256,8 @@ class EmbedRuntimeReadFacadeTest {
                         "LIST", null, null, Map.of(), Map.of(), Map.of()));
         EmbedNativeListRuntimePort listRuntime = mock(
                 EmbedNativeListRuntimePort.class);
-        when(listRuntime.issueReleaseResolutionToken(any()))
-                .thenReturn("elr1.fixed.signature");
+        when(listRuntime.configHash(any()))
+                .thenReturn("list-config-hash");
         facade = new EmbedRuntimeReadFacade(
                 (sessionId, viewId, releaseId) -> release,
                 entityPort,
@@ -271,13 +271,13 @@ class EmbedRuntimeReadFacadeTest {
         var target = facade.bootstrap().target();
 
         assertNull(target.formId());
-        assertNull(target.formReleaseId());
-        assertNull(target.formReleaseVersion());
-        assertEquals("elr1.fixed.signature",
-                target.listReleaseResolutionToken());
+        assertEquals("list-config-hash",
+                target.listConfigHash());
         String serialized = new ObjectMapper().findAndRegisterModules()
                 .writeValueAsString(target);
         assertFalse(serialized.contains("formReleaseVersion"));
+        assertFalse(serialized.contains("Token"));
+        assertEquals("supplier_open", target.runtimeContext().get("listKey"));
     }
 
     @Test

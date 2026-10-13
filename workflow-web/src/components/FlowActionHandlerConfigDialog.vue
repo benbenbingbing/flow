@@ -7,13 +7,14 @@
     destroy-on-close
     :close-on-click-modal="false"
   >
-    <el-alert
-      title="技术处理器需在后端实现 FlowActionProvider 并加 @Component；这里仅配置中文名称、启用状态和可见范围。"
-      type="info"
-      :closable="false"
-      show-icon
-      class="catalog-alert"
-    />
+    <template #header="{ titleId, titleClass }">
+      <div :id="titleId" :class="titleClass">
+        <ConfigHelpLabel
+          label="流程动作处理器目录"
+          content="技术处理器需在后端实现 FlowActionProvider 并加 @Component；这里仅配置中文名称、启用状态和可见范围。"
+        />
+      </div>
+    </template>
 
     <el-table :data="rows" border size="small" v-loading="loading">
       <el-table-column label="处理器" min-width="210">
@@ -81,6 +82,7 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { processActionApi } from '@/api/processAction'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 
 const emit = defineEmits(['changed'])
 const visible = ref(false)
@@ -146,10 +148,6 @@ defineExpose({ open })
 </script>
 
 <style scoped>
-.catalog-alert {
-  margin-bottom: 14px;
-}
-
 .handler-cell {
   display: flex;
   flex-direction: column;

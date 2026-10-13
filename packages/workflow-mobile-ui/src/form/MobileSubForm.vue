@@ -17,6 +17,7 @@
   </section>
 </template>
 <script setup>
+import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed, nextTick, onBeforeUnmount, ref, watch, toRaw } from 'vue'
 import { Button as VanButton, Cell as VanCell, Empty as VanEmpty, Loading as VanLoading, NavBar as VanNavBar, Popup as VanPopup, showConfirmDialog } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
@@ -32,8 +33,6 @@ const meta = computed(() => {
   const field = props.field, cfg = config.value
   return {
     childFormId: field.childFormId || field.refFormId || field.publishedFormId || cfg.childFormId || cfg.refFormId || cfg.publishedFormId,
-    childFormReleaseId: field.childFormReleaseId || field.refFormReleaseId || field.publishedFormReleaseId || cfg.childFormReleaseId || cfg.refFormReleaseId || cfg.publishedFormReleaseId,
-    childFormReleaseVersion: field.childFormReleaseVersion ?? field.refFormReleaseVersion ?? field.publishedFormReleaseVersion ?? cfg.childFormReleaseVersion ?? cfg.refFormReleaseVersion ?? cfg.publishedFormReleaseVersion,
     refEntityId: field.childEntityId || field.refEntityId || cfg.refEntityId,
     childRefFieldCode: field.childRefFieldCode || field.refFieldCode || cfg.childRefFieldCode,
     relationType: field.relationType || field.relation?.type || cfg.relationType || 'ONE_TO_MANY'
@@ -60,7 +59,7 @@ function updateRow(row, value) {
 function rowTitle(row, index) { return row.dataName || row.name || `明细 ${index + 1}` }
 function rowSummary(row) { return Object.entries(row).filter(([key, value]) => key !== 'id' && value !== '' && value != null && typeof value !== 'object').slice(0, 3).map(([, value]) => String(value)).join(' · ') || '查看明细' }
 function rowContext(row, index) {
-  return { ...props.context, form: definition.value, entityId: definition.value?.entityId || meta.value.refEntityId, entityCode: entityCode.value, recordId: row.id || null, record: { id: row.id || null, data: row }, parent: parent.value, params: parameters.value, parameterErrors: validateSubFormParameters(parameters.value, schema.value), row: { index, id: row.id || null, isNew: !row.id, data: row }, relation: meta.value, parentField: props.field, subFormRowIndex: index, initializationKey: `${props.context.initializationKey || parent.value.recordId}:${props.field.fieldCode}:${rowKey(row)}`, releaseResolutionToken: definition.value?.releaseResolutionToken || props.context.releaseResolutionToken }
+  return { ...props.context, form: definition.value, entityId: definition.value?.entityId || meta.value.refEntityId, entityCode: entityCode.value, recordId: row.id || null, record: { id: row.id || null, data: row }, parent: parent.value, params: parameters.value, parameterErrors: validateSubFormParameters(parameters.value, schema.value), row: { index, id: row.id || null, isNew: !row.id, data: row }, relation: meta.value, parentField: props.field, subFormRowIndex: index, initializationKey: `${props.context.initializationKey || parent.value.recordId}:${props.field.fieldCode}:${rowKey(row)}`, configHash: definition.value?.configHash || props.context.configHash }
 }
 function rowRuntime(row) {
   const key = rowKey(row)
@@ -78,7 +77,7 @@ async function loadDefinition() {
     const value = meta.value
     let form, rootId = ''
     if (value.childFormId) {
-      const release = await props.services.getFormRuntimeRelease(value.childFormId, null, null, props.context.releaseResolutionToken)
+      const release = await props.services.getFormRuntimeRelease(value.childFormId, childFormRuntimeContext(props.context, props.field))
       form = normalizeRuntimeFormRelease(release, value.childFormId)
       form.entityId ||= value.refEntityId
       rootId = ''
@@ -105,7 +104,7 @@ async function loadDefinition() {
   } catch (cause) { if (current === sequence) error.value = loadError.value = cause.message || '明细加载失败' }
   finally { if (current === sequence) loading.value = false }
 }
-watch(() => [meta.value.childFormId, meta.value.childFormReleaseId, meta.value.childFormReleaseVersion, meta.value.refEntityId, props.context.initializationKey], loadDefinition, { immediate: true })
+watch(() => [meta.value.childFormId, meta.value.refEntityId, props.context.initializationKey], loadDefinition, { immediate: true })
 watch(() => [rows.value, parameters.value], () => {
   if (props.disabled) return
   for (const row of rows.value) applySubFormFieldInitialization(row, contract.value, { parent: parent.value, context: props.context, params: parameters.value, row: { index: rows.value.indexOf(row), id: row.id, data: row } }, ['id', meta.value.childRefFieldCode])

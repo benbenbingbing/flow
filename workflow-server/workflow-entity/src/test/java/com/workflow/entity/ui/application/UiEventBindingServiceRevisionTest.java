@@ -305,8 +305,7 @@ class UiEventBindingServiceRevisionTest {
                                 "eventCode", "FORM_BUTTON_CLICK",
                                 "inheritanceMode", "INHERIT",
                                 "steps", List.of())));
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "form-1", null, null, null))
+        when(releaseService.resolveRuntimeEventSnapshot(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new UiConfigReleaseService
                         .ResolvedUiEventSnapshot(
                                 snapshot,

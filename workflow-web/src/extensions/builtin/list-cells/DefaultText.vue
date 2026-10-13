@@ -4,6 +4,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { formatDefaultCellValue } from '@/shared/list-cell-masking'
 
 const props = defineProps({
   value: { type: [String, Number, Boolean, Object, Array], default: '' },
@@ -12,23 +13,6 @@ const props = defineProps({
   config: { type: Object, default: () => ({}) }
 })
 
-const displayValue = computed(() => {
-  if (props.value === null || props.value === undefined || props.value === '') {
-    return props.config?.emptyText || '-'
-  }
-  const labelMap = props.config?.labelMap || {}
-  if (labelMap[String(props.value)]) {
-    return labelMap[String(props.value)]
-  }
-  // 如果配置了 formatter（简单数值格式化），尝试应用
-  const formatter = props.field?.formatter
-  if (formatter && typeof props.value === 'number') {
-    try {
-      return props.value.toFixed(parseInt(formatter.replace(/[^0-9]/g, '')) || 2)
-    } catch (e) {
-      return props.value
-    }
-  }
-  return props.value
-})
+// 与脱敏入口共用格式化，确保保留位数针对最终展示文本。
+const displayValue = computed(() => formatDefaultCellValue(props.value, props.field, props.config))
 </script>

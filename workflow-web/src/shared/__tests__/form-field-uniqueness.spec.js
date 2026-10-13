@@ -222,10 +222,8 @@ const controller = createFormUniquePrecheckController({
   },
   getIdentity: () => ({
     formId: 'form-project',
-    releaseId: 'release-v2',
-    releaseVersion: 2,
-    releaseResolutionToken: 'signed-token',
-    viewCompositionTraversalToken: 'signed-traversal-token',
+    configHash: 'graph-config',
+    runtimeContext: { recordId: 'record-1', compositionContext: { ownerType: 'FORM', ownerId: 'form-root', recordId: 'root-record', compositionKey: 'project', path: [] } },
     recordId: 'record-1',
     published: true
   }),
@@ -239,10 +237,8 @@ assert.equal(controller.errorFor('name'), '项目名称在当前状态下已存�
 assert.deepEqual(calls[0], {
   formId: 'form-project',
   payload: {
-    releaseId: 'release-v2',
-    releaseVersion: 2,
-    releaseResolutionToken: 'signed-token',
-    viewCompositionTraversalToken: 'signed-traversal-token',
+    configHash: 'graph-config',
+    runtimeContext: { recordId: 'record-1', compositionContext: { ownerType: 'FORM', ownerId: 'form-root', recordId: 'root-record', compositionKey: 'project', path: [] } },
     ruleId: 'uq_name',
     fieldCode: 'name',
     recordId: 'record-1',

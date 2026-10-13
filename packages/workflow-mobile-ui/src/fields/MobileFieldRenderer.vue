@@ -4,6 +4,7 @@
   <MobileSubForm v-else-if="type === 'sub_form'" ref="subFormRef" v-bind="fieldProps" :services="services" :registry="registry" @update:model-value="handleChange" />
   <MobileSubList v-else-if="type === 'sub_list'" :field="field" :context="context" :services="services" />
   <MobileFileField v-else-if="['file', 'image'].includes(type)" ref="fileRef" v-bind="fieldProps" :services="services" @update:model-value="handleChange" />
+  <MobileCascaderField v-else-if="type === 'cascader'" ref="cascaderRef" v-bind="fieldProps" :required="required" @update:model-value="handleChange" @focus="handleFocus" @blur="handleBlur" />
   <MobileReadonlyField v-else-if="disabled" :field="field" :model-value="modelValue" :options="choices" :context="context" :services="services" />
   <h3 v-else-if="type === 'section'" class="field-section">{{ fieldLabel }}</h3>
   <MobileRichTextEditor v-else-if="type === 'rich_text'" :label="fieldLabel" :model-value="fieldValue" @update:model-value="input" @blur="blur" @focus="handleFocus" />
@@ -16,13 +17,12 @@
   <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="type === 'number' ? numberDraft ?? fieldValue : fieldValue" :type="type === 'textarea' ? 'textarea' : type === 'number' ? 'number' : 'text'" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
   <p v-if="optionError" class="field-unsupported" role="alert">{{ optionError }}<button @click="loadOptions">重试</button></p>
   <MobileEntityPicker v-if="entityType" v-model:show="pickerOpen" :title="`选择${fieldLabel}`" :model-value="selectedRecords" :multiple="multiple" :load-options="loadEntityOptions" :identity="`${context.form?.id || ''}:${field.fieldCode}`" @confirm="selectRecords" />
-  <VanPopup v-else v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
+  <VanPopup v-else-if="type !== 'cascader'" v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
     <template v-if="dateType">
       <VanNavBar :title="`选择${fieldLabel}`" left-text="取消" right-text="确定" @click-left="pickerOpen = false" @click-right="confirmDate" />
       <VanDatePicker v-if="type !== 'time'" v-model="dateParts" :show-toolbar="false" :min-date="minDate" :max-date="maxDate" />
       <VanTimePicker v-if="type !== 'date'" v-model="timeParts" :show-toolbar="false" :columns-type="['hour', 'minute', 'second']" />
     </template>
-    <VanCascader v-else-if="type === 'cascader'" :title="fieldLabel" :model-value="Array.isArray(fieldValue) ? fieldValue.at(-1) : fieldValue" :options="choices" @close="pickerOpen = false" @finish="finishCascade" />
     <template v-else-if="multiple">
       <VanNavBar :title="`选择${fieldLabel}`" left-text="取消" right-text="确定" @click-left="pickerOpen = false" @click-right="confirmMultiple" />
       <div class="multi-options">
@@ -37,11 +37,12 @@
 </template>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cascader as VanCascader, Cell as VanCell } from 'vant'
+import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import MobileReadonlyField from './MobileReadonlyField.vue'
+import MobileCascaderField from './MobileCascaderField.vue'
 import MobileFileField from './MobileFileField.vue'
 import MobileRichTextEditor from './MobileRichTextEditor.vue'
 import MobileSubForm from '../form/MobileSubForm.vue'
@@ -60,10 +61,10 @@ const capability = computed(() => mobileFieldCapability(props.field, props.exten
 const fieldProps = computed(() => ({ field: props.field, modelValue: props.modelValue, disabled: props.disabled, options: props.options, context: props.context, services: props.services, dataSourceRuntime: props.dataSourceRuntime, attachmentItemRequiredState: props.attachmentItemRequiredState }))
 const entityType = computed(() => ['user', 'dept', 'role', 'group', 'entity', 'sub_list'].includes(type.value))
 const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value))
-const selectionType = computed(() => entityType.value || ['select', 'select_multiple', 'cascader'].includes(type.value))
+const selectionType = computed(() => entityType.value || ['select', 'select_multiple'].includes(type.value))
 const multiple = computed(() => type.value === 'select_multiple' || parsedComponentProps.value.multiple === true || ['MULTI_REFERENCE', 'MULTI_SELECT'].includes(String(props.field.fieldType).toUpperCase()))
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
-const customRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
+const customRef = ref(), cascaderRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
 const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : staticOptions.value)))
 const selectionLabel = computed(() => {
@@ -75,6 +76,8 @@ let optionGeneration = 0, committed = JSON.stringify(props.modelValue)
 /** 先使用已发布的动态选项绑定，否则读取实体字段代码表；两者都没有时保留内嵌选项。 */
 async function loadOptions() {
   const generation = ++optionGeneration; optionError.value = ''; remoteOptions.value = null
+  // 级联字段有独立的逐级加载、回显与重试流程，不能被通用选项加载重复调用。
+  if (type.value === 'cascader') return
   try {
     let result
     if (props.dataSourceRuntime && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) {
@@ -89,7 +92,7 @@ async function loadOptions() {
   catch (cause) { if (generation === optionGeneration) optionError.value = cause.message }
 }
 // 仅在选项来源身份变化时重载；输入其它字段造成 context 重建时不重复请求代码表。
-watch([() => props.field.id, () => props.field.dictType, () => props.context.form?.runtimeReleaseId], loadOptions, { immediate: true })
+watch([type, () => props.field.id, () => props.field.dictType, () => props.context.form?.configHash], loadOptions, { immediate: true })
 onBeforeUnmount(() => { optionGeneration++ })
 function input(value) {
   if (type.value === 'number') {
@@ -131,7 +134,6 @@ function confirmChoice({ selectedValues }) {
 }
 function toggleChoice({ value, disabled }) { if (disabled) return; selectionDraft.value = selectionDraft.value.includes(value) ? selectionDraft.value.filter(item => item !== value) : [...selectionDraft.value, value] }
 function confirmMultiple() { handleChange([...selectionDraft.value]); pickerOpen.value = false }
-function finishCascade({ selectedOptions, value }) { handleChange(parsedComponentProps.value.emitPath === false ? value : selectedOptions.map(item => item.value)); pickerOpen.value = false }
 async function loadEntityOptions(query) {
   if (!props.services.loadEntityOptions) throw new Error('当前表单未提供选择能力')
   return props.services.loadEntityOptions(props.field, query, props.context)
@@ -152,7 +154,7 @@ function initializeDate() {
   timeParts.value = time ? [time[1], time[2], time[3] || '00'] : ['00', '00', '00']
 }
 function confirmDate() { handleChange(type.value === 'date' ? dateParts.value.join('-') : type.value === 'time' ? timeParts.value.join(':') : `${dateParts.value.join('-')} ${timeParts.value.join(':')}`); pickerOpen.value = false }
-defineExpose({ validate: async () => !optionError.value && (await customRef.value?.validate?.()) !== false && (await subFormRef.value?.validate?.()) !== false && (await fileRef.value?.validate?.()) !== false })
+defineExpose({ validate: async () => !optionError.value && (await customRef.value?.validate?.()) !== false && (await subFormRef.value?.validate?.()) !== false && (await fileRef.value?.validate?.()) !== false && (await cascaderRef.value?.validate?.()) !== false })
 </script>
 <style scoped>
 /* 字段本身是多根模板中的根节点，显式类才能命中根上的 Vant 单元格，且不会影响选择弹层的搜索框。

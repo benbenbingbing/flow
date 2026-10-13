@@ -17,7 +17,8 @@
     "./uiCompositionRuntime": "./dist/uiCompositionRuntime.js",
     "./formRuntime": "./dist/formRuntime.js",
     "./memberChange": "./dist/memberChange.js",
-    "./entityListRuntime": "./dist/entityListRuntime.js"
+    "./entityListRuntime": "./dist/entityListRuntime.js",
+    "./entityExcel": "./dist/entityExcel.js"
   },
   "scripts": {
     "build": "node ../../scripts/build-module-package.mjs",

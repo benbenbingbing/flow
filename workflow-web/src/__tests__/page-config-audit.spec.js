@@ -527,21 +527,19 @@ const listButtonConfig = readFileSync(path.join(root, 'src/components/ListButton
 })
 
 ;[
-  'targetListReleaseId',
-  'targetListReleaseVersion',
-  'targetListReleaseResolutionToken',
+  'targetListConfigHash',
   'targetDefaultFormResolved',
-  'targetDefaultFormReleaseResolutionToken'
+  'targetDefaultFormConfigHash'
 ].forEach((marker) => {
   assert.ok(
     entityDataTableSource.includes(marker),
-    `列表 open-list 必须透传固定发布坐标：${marker}`
+    `列表 open-list 必须透传稳定入口和配置摘要：${marker}`
   )
 })
-assert.ok(entityListLauncherSource.includes(':release-id="releaseId"'))
-assert.ok(entityListLauncherSource.includes(':release-version="releaseVersion"'))
+assert.ok(!entityListLauncherSource.includes(':release-id='))
+assert.ok(!entityListLauncherSource.includes(':release-version='))
 assert.ok(entityListLauncherSource.includes(
-  ':release-resolution-token="releaseResolutionToken"'
+  ':config-hash="configHash"'
 ))
 const entitySelector = readFileSync(path.join(root, 'src/components/EntitySelector.vue'), 'utf8')
 ;['FORM_PICKER', 'runtimeEntityCode', 'listKey'].forEach((marker) => {
@@ -1651,8 +1649,8 @@ assert.ok(
   'Element Plus 复选框选项值应使用 value，避免 label 兼容警告'
 )
 ;[
-  'childFormReleaseId',
-  'childFormReleaseVersion',
+  'childFormId',
+  'childFormRuntimeContext',
   'snapshotDocument',
   'getFormRuntimeRelease',
   'resolveSnapshotFields',
@@ -2174,9 +2172,16 @@ assert.ok(
   listDesigner.includes('.field-config-table {') && listDesigner.includes('width: 100%;'),
   '列表字段主表应铺满配置面板'
 )
-;['label="查询方式"', 'label="字段数据源"', 'label="渲染组件"', 'label="列宽"', 'label="对齐"'].forEach((marker) => {
+;['label="查询方式"', 'label="取值方式"', 'label="渲染组件"', 'label="列宽"', 'label="对齐"'].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表字段设置弹窗缺少迁移后的配置项: ${marker}`)
 })
+assert.ok(listDesigner.includes('v-for="option in listColumnSourceOptions"'), '列取值方式必须使用三种固定选项')
+assert.ok(
+  listDesigner.includes('v-if="editingField.dataSourceType === \'INTERFACE\'" label="扩展接口" required'),
+  '具体扩展接口仅在接口取值模式显示，并且必须选择'
+)
+assert.ok(listDesigner.includes('getListColumnSourceSchema('), '来源参数应按取值方式显示，只有字段组合需要列级参数')
+assert.ok(listDesigner.includes('validateListColumnSource(field, listColumnInterfaces.value)'), '列保存必须校验当前取值方式及接口候选')
 assert.ok(listButtonConfig.includes('title="高级映射"'), '打开列表按钮应折叠可信上下文关系与选择回调')
 
 const configSchemaEditor = readFileSync(path.join(root, 'src/components/ConfigSchemaEditor.vue'), 'utf8')
@@ -2290,10 +2295,12 @@ assert.ok(formFieldRegistry.includes('fieldDefinitions'), '字段注册表必须
 assert.ok(formFieldRegistry.includes("'text'"), '文本字段的通用别名必须保留')
 
 const guideExpectations = {
-  'src/views/system/DevGuide.vue': ['ListFieldDataProvider', 'FIELD_TEMPLATE', 'LIST_CELL', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
+  'src/views/system/DevGuide.vue': ['UiDataSourceProvider', 'LIST_COLUMN', 'INTERFACE', 'FIELD_TEMPLATE', 'LIST_CELL', 'DemoRiskProgressCell', 'test:demo:real', 'SettingsSection'],
   'src/views/system/ListFieldExtensionGuide.vue': [
     'LIST_CELL',
-    'ListFieldDataProvider',
+    'UiDataSourceProvider',
+    'PROJECT_CUSTOM_UI_LIST',
+    'LIST_COLUMN',
     'FIELD_TEMPLATE',
     'DemoRiskProgressCell',
     'extData',

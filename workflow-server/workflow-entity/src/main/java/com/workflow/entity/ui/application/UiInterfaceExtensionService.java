@@ -106,6 +106,9 @@ public class UiInterfaceExtensionService {
                         UiDataSourceUsages.RELATED_CONTENT_RESOLVE,
                         UiDataSourceUsages.RELATED_CONTENT_ACTION);
         /** 统一扩展定义持久化入口；本服务只访问 INTERFACE 类型。 */
+        @org.springframework.beans.factory.annotation.Autowired
+        private org.springframework.beans.factory.ObjectProvider<UiConfigReleaseService> runtimeReleases;
+
         private final UiExtensionDefinitionMapper mapper;
         /** 表单作用域对象查询入口。 */
         private final EntityFormMapper formMapper;
@@ -557,6 +560,31 @@ public class UiInterfaceExtensionService {
                 UiExtensionDefinition definition = requireExecutableDefinition(
                                 bindingPoint.extensionId(), request.getLegacyOperationCode());
                 UiExtensionExecuteRequest internal = new UiExtensionExecuteRequest();
+                if (runtimeReleases != null && "FORM".equals(bindingPoint.ownerType())) {
+                        var releases = runtimeReleases.getObject();
+                        var context = releases.authorizeRuntimeContext(bindingPoint.ownerId(), request.getRuntimeContext());
+                        releases.resolveAuthorizedRuntimeFormRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
+                        internal.setServerReadOnly(context != null && context.purpose()
+                                == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL);
+                        if (context != null && StringUtils.hasText(context.processInstanceId())) {
+                                Map<String, Object> source = request.getRuntimeContext();
+                                boolean nested = source.containsKey("rootFormId")
+                                        && source.get("componentPath") instanceof List<?> path && !path.isEmpty();
+                                String scopedRecord = nested ? text(source.get("childRecordId")) : context.recordId();
+                                if (StringUtils.hasText(request.getRecordId()) && !Objects.equals(request.getRecordId(), scopedRecord))
+                                        throw new BusinessForbiddenException("FORM_DATA_SOURCE_RECORD_CONTEXT_MISMATCH", "数据源记录与已授权流程来源不一致");
+                                // Provider 的任务/记录身份只来自实时授权结果，input 中同名业务值不能覆盖它。
+                                internal.setServerRecordId(scopedRecord);
+                                internal.setServerTaskId(context.taskId());
+                                internal.setServerProcessInstanceId(context.processInstanceId());
+                                internal.setServerFormMode(internal.isServerReadOnly() ? "view" : "approve");
+                        }
+                } else if (runtimeReleases != null && "LIST".equals(bindingPoint.ownerType()) && !pinned) {
+                        runtimeReleases.getObject().resolveRuntimeListRelease(bindingPoint.ownerId(), request.getConfigHash(), request.getRuntimeContext());
+                }
+                if ("WRITE".equals(normalize(definition.getInterfaceKind())) && !StringUtils.hasText(request.getConfigHash())) {
+                        throw new BusinessForbiddenException("CONFIGURATION_HASH_REQUIRED", "写接口缺少页面配置摘要，请重新加载后核对");
+                }
                 internal.setUsage(bindingPoint.bindingCode());
                 internal.setOperationCode(
                                 definition.getProviderOperationCode());
@@ -1933,6 +1961,20 @@ public class UiInterfaceExtensionService {
                         UiExtensionDefinition definition,
                         UiExtensionExecuteRequest request,
                         UiDataSourceExecutionAuthorization authorization) {
+                // 只读流程上下文不能通过字段事件或通用绑定接口变为写能力。
+                if (request != null && request.isServerReadOnly() && "WRITE".equals(normalize(definition.getInterfaceKind()))) {
+                        throw new BusinessForbiddenException("PROCESS_FORM_READ_ONLY", "流程查看页面不能执行写接口");
+                }
+                // 字段选项可能在挂载、逐级展开和只读回显时自动请求；接口定义发布后变更
+                // 也不能把这些读取转换成写操作，必须在实际调用当前 Provider 前重新检查。
+                if (request != null && UiDataSourceUsages.FIELD_OPTIONS.equals(normalize(request.getUsage()))
+                                && !"READ".equals(normalize(definition.getInterfaceKind()))) {
+                        throw new BusinessForbiddenException("FIELD_OPTIONS_READ_REQUIRED", "字段选项接口必须为 READ");
+                }
+
+                // 与实际执行共用当前内存定义，堵住导入资格检查之后 READ 被改为 WRITE 的窗口。
+                com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext.requireRead(
+                                definition.getOperationKind(), read(definition.getExecutionPolicyDocument(), "数据源执行策略"));
                 Map<String, Object> config = read(
                                 definition.getConfigDocument(), "数据源配置");
                 Map<String, Object> input = request == null || request.getInput() == null
@@ -2007,9 +2049,15 @@ public class UiInterfaceExtensionService {
                         Map<String, Object> input, Map<String, Object> outputSchema, Map<String, Object> policy) throws Exception {
                 int timeoutMs = Math.max(1, Math.min(120_000, integer(policy.get("timeoutMs"), 3000)));
                 // 预算在入队前创建；取消 FutureTask 会中断正在运行的线程，过期排队任务不会执行。
+                var trustedOrigin = UiEventOriginContext.current();
+                boolean atomicExcel = com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext.active();
                 try (ExecutionDeadline deadline = ExecutionDeadline.afterMillis(timeoutMs)) {
                         FutureTask<Object> work = new FutureTask<>(() -> {
-                                try (var scope = deadline.attach()) {
+                                // Provider 在池线程执行，显式传递受信来源与导入限制，并在退出时清理。
+                                try (var scope = deadline.attach();
+                                                var excelScope = com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext.openIf(atomicExcel);
+                                                var originScope = trustedOrigin == null ? null
+                                                                : UiEventOriginContext.open(trustedOrigin.request(), trustedOrigin.chain())) {
                                         deadline.check();
                                         UserContext.setCurrentUser(authorization.user().getId(), authorization.user().getUsername());
                                         try {

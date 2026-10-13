@@ -17,7 +17,8 @@ import com.workflow.entity.permission.api.response.PermissionPreviewDTO;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
-import com.workflow.entity.ui.application.UiViewCompositionTokenService;
+import com.workflow.entity.ui.application.UiViewCompositionActionService;
+import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -77,93 +78,24 @@ public class EntityListRuntimeService {
     private final EntityListPageResultNormalizer pageResultNormalizer;
     private final UiEventRuntimeService uiEventRuntimeService;
     private final CurrentUserRoleService currentUserRoleService;
-    private final UiViewCompositionTokenService viewCompositionTokenService;
+    private final UiViewCompositionActionService viewCompositionActionService;
     private final List<EntityListContextResolverProvider> contextResolvers;
     private final List<EntityListDataProvider> dataProviders;
     private final List<EntityListSchemaProvider> schemaProviders;
 
-    /**
-     * 处理结构，并将结果传给后续步骤。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param requestedScene 请求{@code scene}，供本方法处理结构时使用
-     * @return 处理后的结构结果，供调用方继续处理
-     */
+    /** 加载普通列表或关联列表；来源仅用于定位，固定范围由服务端重新计算。 */
     @Transactional(readOnly = true)
-    public EntityListSchemaDTO schema(
-            String entityCode,
-            String listKey,
-            String requestedScene) {
-        return schema(
-                entityCode,
-                listKey,
-                requestedScene,
-                null,
-                null,
-                null);
+    public EntityListSchemaDTO schema(String entityCode, String listKey, String requestedScene) {
+        return schema(entityCode, listKey, requestedScene, null, Map.of(), null, null);
     }
 
-    /**
-     * 处理结构，并将结果传给后续步骤。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param requestedScene 请求{@code scene}，供本方法处理结构时使用
-     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法处理结构时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 处理后的结构结果，供调用方继续处理
-     */
     @Transactional(readOnly = true)
-    public EntityListSchemaDTO schema(
-            String entityCode,
-            String listKey,
-            String requestedScene,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken) {
-        return schema(
-                entityCode,
-                listKey,
-                requestedScene,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken,
-                null);
-    }
-
-    /**
-     * 处理结构，并将结果传给后续步骤。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param requestedScene 请求{@code scene}，作为 {@code schemaResolved} 的输入影响后续处理
-     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
-     * @param releaseVersion 发布版本，作为 {@code requireList} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param viewCompositionContextToken 视图组合上下文令牌，后续用于授权校验、关联或幂等去重
-     * @return 处理后的结构结果，供调用方继续处理
-     */
-    @Transactional(readOnly = true)
-    public EntityListSchemaDTO schema(
-            String entityCode,
-            String listKey,
-            String requestedScene,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken,
-            String viewCompositionContextToken) {
-        UiViewCompositionTokenService.Claims compositionContext =
-                verifyViewCompositionContext(
-                        viewCompositionContextToken);
-        EntityListConfig config = requireList(
-                entityCode,
-                listKey,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken,
-                compositionContext);
+    public EntityListSchemaDTO schema(String entityCode, String listKey, String requestedScene,
+            String configHash, Map<String, Object> runtimeContext,
+            UiViewCompositionResolveRequest compositionContext, String candidateAction) {
+        var resolved = compositionContext == null ? null
+                : viewCompositionActionService.resolveListContext(compositionContext, candidateAction);
+        EntityListConfig config = requireList(entityCode, listKey, configHash, runtimeContext, resolved);
         return schemaResolved(entityCode, listKey, requestedScene, config);
     }
 
@@ -171,7 +103,7 @@ public class EntityListRuntimeService {
      * 按服务端已经认证并固定的发布坐标解析列表 Schema。
      *
      * <p>该入口仅供 Embed 等可信适配器使用，不能映射为允许浏览器提交 releaseId 的接口。
-     * 它绕过的是“历史版本必须带浏览器解析令牌”的传输约束，不绕过列表访问权限、发布快照
+     * 固定坐标仅可从已认证服务端会话恢复，不绕过列表访问权限、发布快照
      * 完整性或系统实体权限。</p>
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
@@ -228,8 +160,8 @@ public class EntityListRuntimeService {
         schema.setScene(scene);
         schema.setAccessPermissionCode(resolveAccessPermission(config));
         schema.setDataScopeMode(normalized(config.getDataScopeMode(), "INHERIT"));
-        schema.setPublishedVersion(config.getPublishedVersion());
-        schema.setReleaseId(config.getActiveReleaseId());
+        schema.setConfigHash(config.getConfigHash());
+        schema.setRuntimeContext(config.getRuntimeContext());
         schema.setSelectionConfig(readObject(
                 config.getSelectionConfig(), "选择模式配置"));
         schema.setViewConfig(readObject(config.getViewConfig(), "列表视图配置"));
@@ -314,15 +246,13 @@ public class EntityListRuntimeService {
             EntityListQueryRequest request) {
         EntityListQueryRequest safeRequest = request == null
                 ? new EntityListQueryRequest() : request;
-        UiViewCompositionTokenService.Claims compositionContext =
-                verifyViewCompositionContext(
-                        safeRequest.getViewCompositionContextToken());
+        var compositionContext = safeRequest.getCompositionContext() == null ? null
+                : viewCompositionActionService.resolveListContext(safeRequest.getCompositionContext(), safeRequest.getCandidateAction());
         EntityListConfig config = requireList(
                 entityCode,
                 listKey,
-                safeRequest.getReleaseId(),
-                safeRequest.getReleaseVersion(),
-                safeRequest.getReleaseResolutionToken(),
+                safeRequest.getConfigHash(),
+                safeRequest.getRuntimeContext(),
                 compositionContext);
         return queryResolved(
                 entityCode,
@@ -391,7 +321,7 @@ public class EntityListRuntimeService {
             String entityCode,
             String listKey,
             EntityListQueryRequest safeRequest,
-            UiViewCompositionTokenService.Claims compositionContext,
+            UiViewCompositionActionService.ResolvedListContext compositionContext,
             EntityListConfig config,
             Map<String, Object> trustedContextFilters,
             boolean serverPinnedEntry) {
@@ -439,8 +369,8 @@ public class EntityListRuntimeService {
         event.setConfigId(config.getId());
         event.setReleaseId(config.getActiveReleaseId());
         event.setReleaseVersion(config.getPublishedVersion());
-        event.setReleaseResolutionToken(
-                config.getReleaseResolutionToken());
+        event.setConfigHash(config.getConfigHash());
+        event.setRuntimeContext(config.getRuntimeContext());
         event.setEntityCode(entityCode);
         event.setListKey(listKey);
         event.setContext(safeRequest.getContext() == null
@@ -618,7 +548,7 @@ public class EntityListRuntimeService {
      * 对自定义查询结果执行固定条件、关联条件和数据权限的二次校验。
      *
      * <p>Provider 或接口连接器只负责给出候选记录 ID 与顺序，不能成为
-     * 目标实体数据范围的权威来源。平台会把本页 ID 与已签名关联条件合并，
+     * 目标实体数据范围的权威来源。平台会把本页 ID 与服务端解析的关联条件合并，
      * 再走标准实体列表查询链；任一候选记录不存在、越权或不满足关联条件时，
      * 整页拒绝，避免静默过滤造成跨页补位和数量侧信道。返回行也只投影目标
      * 列表已经发布的展示字段，连接器附带的其它字段不会透传。</p>
@@ -1226,60 +1156,12 @@ public class EntityListRuntimeService {
      * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
      */
     private EntityListConfig requireList(String entityCode, String listKey) {
-        return requireList(
-                entityCode,
-                listKey,
-                null,
-                null,
-                null);
+        return requireList(entityCode, listKey, null, Map.of(), null);
     }
 
-    /**
-     * 校验并获取实体列表运行时列表；不满足约束时阻止后续处理。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于校验并获取实体列表运行时列表时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法校验并获取实体列表运行时列表时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
-     */
-    private EntityListConfig requireList(
-            String entityCode,
-            String listKey,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken) {
-        return requireList(
-                entityCode,
-                listKey,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken,
-                null);
-    }
-
-    /**
-     * 校验并获取实体列表运行时列表；不满足约束时阻止后续处理。
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于校验并获取实体列表运行时列表时定位或关联目标
-     * @param releaseVersion 发布版本，作为 {@code dataListService.findListConfig} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param compositionContext 执行上下文，向后续实体列表运行时列表步骤传递身份、配置或状态
-     * @return 校验并获取后的实体列表运行时列表结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private EntityListConfig requireList(
-            String entityCode,
-            String listKey,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken,
-            UiViewCompositionTokenService.Claims compositionContext) {
+    /** 普通来源按当前配置解析；关联来源只采用重新鉴权得到的服务端目标与固定条件。 */
+    private EntityListConfig requireList(String entityCode, String listKey, String configHash,
+            Map<String, Object> runtimeContext, UiViewCompositionActionService.ResolvedListContext compositionContext) {
         if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) {
             throw new IllegalArgumentException("entityCode 和 listKey 不能为空");
         }
@@ -1288,15 +1170,12 @@ public class EntityListRuntimeService {
             config = dataListService.findListConfig(
                     entityCode,
                     listKey,
-                    releaseId,
-                    releaseVersion,
-                    releaseResolutionToken);
+                    configHash,
+                    runtimeContext);
         } else {
             requireCompositionTarget(
                     compositionContext,
-                    entityCode,
-                    releaseId,
-                    releaseVersion);
+                    entityCode, null, null);
             EntityDefinition definition = definitionMapper
                     .findByEntityCode(entityCode)
                     .orElseThrow(() -> new IllegalArgumentException(
@@ -1377,19 +1256,6 @@ public class EntityListRuntimeService {
     }
 
     /**
-     * 验证视图组合上下文；不满足约束时阻止后续处理。
-     *
-     * @param token 令牌，后续用于授权校验、关联或幂等去重
-     * @return 验证后的视图组合上下文结果，供调用方继续处理
-     */
-    private UiViewCompositionTokenService.Claims
-            verifyViewCompositionContext(String token) {
-        return StringUtils.hasText(token)
-                ? viewCompositionTokenService.verifyListContext(token)
-                : null;
-    }
-
-    /**
      * 校验并获取组合目标；不满足约束时阻止后续处理。
      *
      * @param context 执行上下文，向后续组合目标步骤传递身份、配置或状态
@@ -1399,7 +1265,7 @@ public class EntityListRuntimeService {
      * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
      */
     private void requireCompositionTarget(
-            UiViewCompositionTokenService.Claims context,
+            UiViewCompositionActionService.ResolvedListContext context,
             String entityCode,
             String requestedReleaseId,
             Integer requestedReleaseVersion) {

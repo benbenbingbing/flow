@@ -1,11 +1,9 @@
 <template>
   <div class="person-scope-rule-editor">
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      title="候选人员只会从下列范围的并集中加载；如需全员，必须显式添加“全部启用用户”规则。"
-      class="person-scope-rule-editor__alert"
+    <ConfigHelpLabel
+      label="人员范围"
+      content="候选人员只会从下列范围的并集中加载；如需全员，必须显式添加“全部启用用户”规则。"
+      class="person-scope-rule-editor__help"
     />
 
     <div
@@ -26,9 +24,18 @@
         </el-button>
       </div>
 
-      <el-form-item label="范围类型" required>
+      <el-form-item label="范围类型" for="" required>
+        <template #label>
+          <ConfigHelpLabel
+            label="范围类型"
+            :content="rule.type === 'ALL_USERS'
+              ? '该规则允许从全部启用且未删除的用户中选择。'
+              : '通过指定用户、组织部门、角色或用户组限定候选人员；多个范围按并集合并。'"
+          />
+        </template>
         <el-select
           :model-value="rule.type"
+          aria-label="范围类型"
           :disabled="disabled"
           style="width: 100%"
           @update:model-value="changeRuleType(rule, $event)"
@@ -78,14 +85,6 @@
           :disabled="disabled"
         />
       </el-form-item>
-
-      <el-alert
-        v-if="rule.type === 'ALL_USERS'"
-        type="warning"
-        :closable="false"
-        show-icon
-        title="该规则允许从全部启用且未删除的用户中选择。"
-      />
     </div>
 
     <el-button
@@ -102,6 +101,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import {
   normalizeNextApproverScope,
@@ -221,8 +221,8 @@ defineExpose({ validate })
 </script>
 
 <style scoped>
-.person-scope-rule-editor__alert {
-  margin-bottom: 14px;
+.person-scope-rule-editor__help {
+  margin-bottom: 12px;
 }
 
 .person-scope-rule-editor__rule {

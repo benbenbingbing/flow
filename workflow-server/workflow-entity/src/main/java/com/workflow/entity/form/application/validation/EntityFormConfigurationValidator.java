@@ -9,6 +9,7 @@ import com.workflow.entity.form.application.FormCrossFieldRulePolicy;
 import com.workflow.entity.form.application.FormCustomValidatorRulePolicy;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.data.infrastructure.persistence.mapper.EntityFieldFileItemMapper;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityFieldFileItem;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
@@ -144,9 +145,9 @@ public class EntityFormConfigurationValidator {
         validateFields(form.getFields());
         List<EntityField> entityFields = entityFieldMapper.findByEntityId(
                 form.getEntityId());
-        // 用途字段至少必须属于目标实体；是否在当前模式可编辑由运行时再次约束。
+        // 输入参数也可初始化独立表单字段；节点只读状态不限制初值，记录身份与已有值由运行时保护。
         com.workflow.entity.ui.application.PageParameterPolicy.validate(viewConfig, "FORM",
-                validEntityProperties(form, entityFields == null ? List.of() : entityFields));
+                parameterInitializationFields(form, entityFields));
         validateConditionalRules(
                 form.getFields(),
                 validEntityProperties(form, entityFields),
@@ -626,6 +627,41 @@ public class EntityFormConfigurationValidator {
                             && StringUtils.hasText(field.getFieldCode()))
                     .map(EntityField::getFieldCode)
                     .forEach(result::add);
+        }
+        return result;
+    }
+
+    /**
+     * 收集参数初始化目标，补充独立表单字段及子表单值节点，不将布局节点视为数据字段。
+     * 元数据补丁不携带字段投影，必须从保留的节点读取与运行时一致的字段编码。
+     * 该集合只用于参数用途，不扩大条件、唯一性或跨字段校验允许访问的属性范围。
+     *
+     * @param form 当前草稿或发布快照；节点编码不会回查其它版本
+     * @param entityFields 兼容旧表单的实体字段集合
+     * @return 可供参数初始化引用的字段编码
+     */
+    private Set<String> parameterInitializationFields(
+            EntityForm form,
+            List<EntityField> entityFields) {
+        Set<String> result = validEntityProperties(form, entityFields);
+        for (EntityFormNode node : form.getNodes() == null
+                ? List.<EntityFormNode>of() : form.getNodes()) {
+            if (node == null || Integer.valueOf(1).equals(node.getDeleted())) {
+                continue;
+            }
+            // 旧节点未存 nodeType 时，和前端运行时一致按 FIELD 处理。
+            String nodeType = StringUtils.hasText(node.getNodeType())
+                    ? node.getNodeType().toUpperCase(Locale.ROOT) : "FIELD";
+            if (!Set.of("FIELD", "SUB_FORM", "REPEATER").contains(nodeType)) {
+                continue;
+            }
+            Map<String, Object> props = structuredConfigValidator.parseObject(
+                    node.getPropsDocument(), "参数初始化字段节点属性");
+            String fieldCode = props.get("fieldCode") instanceof String code
+                    && StringUtils.hasText(code) ? code : node.getNodeKey();
+            if (StringUtils.hasText(fieldCode)) {
+                result.add(fieldCode);
+            }
         }
         return result;
     }

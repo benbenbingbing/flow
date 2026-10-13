@@ -51,6 +51,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EntityDefinitionService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.EntityExcelConfigurationService> excelConfigurations;
     private static final String ORGANIZATION_ENTITY_CODE = "sys_organization";
     private final EntityDefinitionMapper entityMapper;
     @org.springframework.beans.factory.annotation.Autowired
@@ -683,6 +685,9 @@ public class EntityDefinitionService {
         }
         requireBindingMutable(
                 canonicalProcessId, processStates, "删除实体");
+        if (excelConfigurations != null) {
+            excelConfigurations.getObject().requireEntityUnreferenced(entity.getEntityCode());
+        }
         relationMapper.deleteByParentEntityId(id);
         fieldMapper.deleteByEntityId(id);
         entityMapper.deleteById(id);
@@ -768,6 +773,10 @@ public class EntityDefinitionService {
         List<EntityField> fields = fieldMapper.findByEntityId(id);
         attachFileItems(fields);
         entity.setFields(fields);
+        // 字段草稿可以迭代，但正式结构发布不能破坏仍在线上的 Excel 列映射。
+        if (excelConfigurations != null) {
+            excelConfigurations.getObject().requireCompatibleFields(entity.getEntityCode(), fields);
+        }
         ConfigMigrationPublishRequest publishRequest = request == null
                 ? new ConfigMigrationPublishRequest()
                 : request;

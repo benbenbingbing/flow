@@ -48,7 +48,7 @@ public final class PageParameterPolicy {
                 if (!"FILTER".equals(binding.get("usage")) || !OPS.contains(binding.getOrDefault("operator", "EQ")))
                     throw new IllegalArgumentException("列表参数只能用于附加查询条件");
             } else if (!"INITIALIZE".equals(binding.get("usage")) || "id".equals(field)) {
-                throw new IllegalArgumentException("表单参数只能初始化可编辑字段");
+                throw new IllegalArgumentException("表单参数只能初始化非记录身份字段");
             }
         }
     }

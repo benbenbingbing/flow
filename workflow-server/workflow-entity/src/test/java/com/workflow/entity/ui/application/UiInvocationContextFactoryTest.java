@@ -127,6 +127,18 @@ class UiInvocationContextFactoryTest {
         assertNotEquals(
                 "forged-request",
                 context.common().requestId());
+
+        // 同一字段数据源进入待办后，Provider 的记录与运行模式只能来自服务端授权结果。
+        request.setServerProcessInstanceId("instance-a");
+        request.setServerTaskId("task-a");
+        request.setServerRecordId("authorized-record");
+        request.setServerFormMode("approve");
+        FormInvocationContext taskContext = (FormInvocationContext) factory.create(definition, authorization, request);
+        assertEquals("authorized-record", taskContext.recordId());
+        assertEquals("approve", taskContext.mode());
+        assertEquals("task-a", taskContext.taskId());
+        assertEquals("instance-a", taskContext.processInstanceId());
+        assertEquals("approverId", taskContext.fieldCode());
     }
 
     @Test

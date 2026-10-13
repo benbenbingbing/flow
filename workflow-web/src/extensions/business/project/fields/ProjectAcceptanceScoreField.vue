@@ -24,6 +24,7 @@
 </template>
 
 <script setup>
+import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
@@ -99,17 +100,10 @@ async function executeFieldButtonEvent() {
       {
         configType: 'FORM',
         configId: String(formId),
-        releaseId:
-          form.runtimeReleaseId
-          || form.activeReleaseId
-          || undefined,
-        releaseVersion:
-          form.runtimeReleaseVersion
-          || form.activeReleaseVersion
-          || undefined,
-        releaseResolutionToken:
-          form.releaseResolutionToken
-          || props.context?.releaseResolutionToken
+        runtimeContext: buildRuntimeContext(props.context, form),
+        configHash:
+          form.configHash
+          || props.context?.configHash
           || undefined,
         entityCode: props.context?.entityCode,
         targetType: 'FIELD',

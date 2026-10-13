@@ -14,7 +14,6 @@ import com.workflow.entity.ui.application.UiConfigSemanticPatchService;
 import com.workflow.entity.ui.application.UiConfigurationAccessService;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiExtensionDefinitionService;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.ui.application.UiViewCompositionService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1458,7 +1457,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
                 mock(UiConfigurationAccessService.class),
-                mock(UiReleaseResolutionTokenService.class),
+
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
@@ -1694,7 +1693,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
                 mock(UiConfigurationAccessService.class),
-                mock(UiReleaseResolutionTokenService.class),
+
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
@@ -1767,10 +1766,7 @@ class UiConfigReleaseServiceTest {
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,
-                () -> context.service().runtimeFormRelease(
-                        "form-1",
-                        "release-history",
-                        1));
+                () -> context.service().resolveAuthorizedRuntimeFormRelease("form-1", "stale-hash", Map.of()));
 
         assertEquals("FORM_CONFIGURATION_CHANGED", exception.getErrorCode());
     }
@@ -1804,7 +1800,7 @@ class UiConfigReleaseServiceTest {
                 .thenReturn(active);
 
         Map<String, Object> result = context.service().runtimeFormRelease(
-                "form-1", "release-active", 2);
+                "form-1", Map.of());
 
         Map<?, ?> runtimeSnapshot = (Map<?, ?>)
                 result.get("snapshotDocument");
@@ -1818,219 +1814,19 @@ class UiConfigReleaseServiceTest {
                 "api-token-secret"));
     }
 
-    @Test
-    void signedRuntimeReleaseKeepsParentTokenExpiryForDerivedContext() {
-        TestContext context = context();
-        UiConfigRelease pinned = release(
-                context.codec(),
-                "release-3",
-                formSnapshot(List.of()));
-        pinned.setVersion(3);
-        when(context.releaseMapper().selectById("release-3"))
-                .thenReturn(pinned);
-        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(pinned);
-        long now = Instant.now().getEpochSecond();
-        long sessionExpiresAt = now + 1_800L;
-        UiRuntimeResolutionContext runtimeContext =
-                UiRuntimeResolutionContext.standalone();
-        when(context.resolutionTokenService().verify("session-bound-token"))
-                .thenReturn(new UiReleaseResolutionTokenService.Claims(
-                        runtimeContext.purpose(),
-                        null,
-                        null,
-                        "form-1",
-                        "release-3",
-                        3,
-                        0,
-                        "user-1",
-                        "session-1",
-                        "view-release-1",
-                        now,
-                        sessionExpiresAt));
-        when(context.resolutionTokenService().issue(
-                runtimeContext,
-                "form-1",
-                "release-3",
-                3,
-                1,
-                Instant.ofEpochSecond(sessionExpiresAt)))
-                .thenReturn("derived-session-bound-token");
 
-        Map<String, Object> result = context.service().runtimeFormRelease(
-                "form-1",
-                "release-3",
-                3,
-                "session-bound-token");
 
-        assertEquals(
-                "derived-session-bound-token",
-                result.get("releaseResolutionToken"));
-        verify(context.resolutionTokenService()).issue(
-                eq(runtimeContext),
-                eq("form-1"),
-                eq("release-3"),
-                eq(3),
-                eq(1),
-                eq(Instant.ofEpochSecond(sessionExpiresAt)));
-    }
 
-    @Test
-    void processReadContextAcceptsHistoricalAndActiveTaskTokens() {
-        TestContext context = context();
-        long now = Instant.now().getEpochSecond();
-        for (UiRuntimePurpose purpose : List.of(UiRuntimePurpose.HISTORICAL, UiRuntimePurpose.ACTIVE_TASK)) {
-            when(context.resolutionTokenService().verify("process-read-token"))
-                    .thenReturn(new UiReleaseResolutionTokenService.Claims(purpose, "history-1", "node-1",
-                            "form-1", "release-2", 2, 0, "user-1", null, null, now, now + 300));
 
-            assertEquals(new UiRuntimeResolutionContext(purpose, "history-1", "node-1"),
-                    context.service().findProcessReadContext("process-read-token", "form-1", "release-2", 2)
-                            .orElseThrow());
-        }
-    }
 
-    @Test
-    void standaloneNewAndUnboundHistoricalTokensCannotGrantProcessReadAccess() {
-        TestContext context = context();
-        assertTrue(context.service().findProcessReadContext(null, "form-1", "release-2", 2).isEmpty());
-        long now = Instant.now().getEpochSecond();
-        for (UiRuntimePurpose purpose : List.of(
-                UiRuntimePurpose.STANDALONE, UiRuntimePurpose.NEW_INSTANCE, UiRuntimePurpose.HISTORICAL)) {
-            when(context.resolutionTokenService().verify("plain-token"))
-                    .thenReturn(new UiReleaseResolutionTokenService.Claims(purpose, null, null,
-                            "form-1", "release-2", 2, 0, "user-1", null, null, now, now + 300));
 
-            assertTrue(context.service().findProcessReadContext("plain-token", "form-1", "release-2", 2).isEmpty());
-        }
-    }
 
-    @Test
-    void processReadTokenMustMatchTheResolvedFormRelease() {
-        TestContext context = context();
-        when(context.resolutionTokenService().verify("read-token")).thenReturn(tokenClaims("node-1"));
-        for (int mismatch : List.of(0, 1, 2)) {
-            assertThrows(com.workflow.core.error.BusinessForbiddenException.class,
-                    () -> context.service().findProcessReadContext("read-token",
-                            mismatch == 0 ? "other-form" : "form-1",
-                            mismatch == 1 ? "other-release" : "release-2", mismatch == 2 ? 99 : 2));
-        }
-    }
 
-    @Test
-    void approvalButtonTokenMustMatchActiveTaskProcessRelease() {
-        TestContext context = context();
-        when(context.resolutionTokenService().verify("active-task-token"))
-                .thenReturn(tokenClaims("approve-node"));
 
-        context.service().requireActiveTaskReleaseToken(
-                "active-task-token",
-                "form-1",
-                "release-2",
-                2,
-                "history-1",
-                "approve-node",
-                "task-r1",
-                "process-r1",
-                "expense",
-                "record-r1");
 
-        com.workflow.core.error.BusinessForbiddenException missing =
-                assertThrows(
-                        com.workflow.core.error.BusinessForbiddenException.class,
-                        () -> context.service()
-                                .requireActiveTaskReleaseToken(
-                                        null,
-                                        "form-1",
-                                        "release-2",
-                                        2,
-                                        "history-1",
-                                        "approve-node",
-                                        "task-r1",
-                                        "process-r1",
-                                        "expense",
-                                        "record-r1"));
-        assertEquals("UI_EVENT_APPROVAL_RELEASE_CONTEXT_REQUIRED",
-                missing.getErrorCode());
-    }
 
-    @Test
-    void approvalButtonRejectsTokenTransferredToAnotherTaskOrRecord() {
-        TestContext context = context();
-        when(context.resolutionTokenService().verify("task-a-token"))
-                .thenReturn(tokenClaims("approve-node"));
 
-        for (List<String> subject : List.of(
-                List.of("task-r2", "record-r1"),
-                List.of("task-r1", "record-r2"))) {
-            com.workflow.core.error.BusinessForbiddenException error =
-                    assertThrows(
-                            com.workflow.core.error.BusinessForbiddenException.class,
-                            () -> context.service()
-                                    .requireActiveTaskReleaseToken(
-                                            "task-a-token",
-                                            "form-1",
-                                            "release-2",
-                                            2,
-                                            "history-1",
-                                            "approve-node",
-                                            subject.get(0),
-                                            "process-r1",
-                                            "expense",
-                                            subject.get(1)));
-            assertEquals(
-                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
-                    error.getErrorCode());
-        }
-    }
 
-    @Test
-    void approvalButtonRejectsNewInstanceOrAnotherProcessVersionToken() {
-        TestContext context = context();
-        UiReleaseResolutionTokenService.Claims active =
-                tokenClaims("approve-node");
-        when(context.resolutionTokenService().verify("other-history-token"))
-                .thenReturn(active);
-        when(context.resolutionTokenService().verify("new-instance-token"))
-                .thenReturn(new UiReleaseResolutionTokenService.Claims(
-                        UiRuntimePurpose.NEW_INSTANCE,
-                        "history-1",
-                        "approve-node",
-                        "form-1",
-                        "release-2",
-                        2,
-                        0,
-                        "user-1",
-                        "task-r1",
-                        "process-r1",
-                        "expense",
-                        "record-r1",
-                        null,
-                        null,
-                        1L,
-                        Long.MAX_VALUE));
-
-        for (String token : List.of(
-                "other-history-token", "new-instance-token")) {
-            com.workflow.core.error.BusinessForbiddenException error =
-                    assertThrows(
-                            com.workflow.core.error.BusinessForbiddenException.class,
-                            () -> context.service()
-                                    .requireActiveTaskReleaseToken(
-                                            token,
-                                            "form-1",
-                                            "release-2",
-                                            2,
-                                            "history-r2",
-                                            "approve-node",
-                                            "task-r1",
-                                            "process-r1",
-                                            "expense",
-                                            "record-r1"));
-            assertEquals(
-                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
-                    error.getErrorCode());
-        }
-    }
 
     @Test
     void rejectsPublicationWhenTabIsOutsideTabSet() {
@@ -2343,10 +2139,7 @@ class UiConfigReleaseServiceTest {
                 BusinessConflictException.class,
                 () -> context.service()
                         .resolveRuntimeEventSnapshot(
-                                "form-1",
-                                "release-history",
-                                1,
-                                null));
+                                "form-1", "stale-hash", Map.of()));
 
         assertEquals(
                 "FORM_CONFIGURATION_CHANGED",
@@ -2487,8 +2280,6 @@ class UiConfigReleaseServiceTest {
                 mock(UiEventBindingMapper.class);
         UiExtensionDefinitionMapper dataSourceDefinitionMapper =
                 mock(UiExtensionDefinitionMapper.class);
-        UiReleaseResolutionTokenService resolutionTokenService =
-                mock(UiReleaseResolutionTokenService.class);
         UiInterfaceExtensionService dataSourceService =
                 mock(UiInterfaceExtensionService.class);
         when(formMapper.selectByIdForUpdate("form-1"))
@@ -2520,7 +2311,7 @@ class UiConfigReleaseServiceTest {
                 mock(EntityListConfigurationValidator.class),
                 new UiConfigSemanticPatchService(codec),
                 mock(UiConfigurationAccessService.class),
-                resolutionTokenService,
+
                 mock(FormSubmissionTraceService.class),
                 codec,
                 objectMapper,
@@ -2553,7 +2344,7 @@ class UiConfigReleaseServiceTest {
                 eventBindingMapper,
                 dataSourceDefinitionMapper,
                 dataSourceService,
-                resolutionTokenService,
+
                 viewCompositionService,
                 codec);
     }
@@ -2620,26 +2411,7 @@ class UiConfigReleaseServiceTest {
         return String.valueOf(mapping.get("targetPath"));
     }
 
-    private UiReleaseResolutionTokenService.Claims tokenClaims(
-            String nodeId) {
-        return new UiReleaseResolutionTokenService.Claims(
-                UiRuntimePurpose.ACTIVE_TASK,
-                "history-1",
-                nodeId,
-                "form-1",
-                "release-2",
-                2,
-                0,
-                "user-1",
-                "task-r1",
-                "process-r1",
-                "expense",
-                "record-r1",
-                null,
-                null,
-                1L,
-                Long.MAX_VALUE);
-    }
+
 
     /** 构造一个带完整性哈希的发布记录用于激活/解析测试 */
     private UiConfigRelease release(
@@ -2917,7 +2689,7 @@ class UiConfigReleaseServiceTest {
             UiEventBindingMapper eventBindingMapper,
             UiExtensionDefinitionMapper dataSourceDefinitionMapper,
             UiInterfaceExtensionService dataSourceService,
-            UiReleaseResolutionTokenService resolutionTokenService,
+
             UiViewCompositionService viewCompositionService,
             JsonDocumentCodec codec) {
     }

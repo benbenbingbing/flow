@@ -191,11 +191,14 @@ public class EntityListConfig {
     @TableField(exist = false)
     private List<Map<String, Object>> viewCompositions;
 
-    /** 是否由父表单签名上下文固定到历史发布版本 */
+    /** 是否由已授权宿主配置固定到历史发布版本 */
     @TableField(exist = false)
     private Boolean pinnedRelease;
 
-    /** 父表单签发的发布解析令牌 */
+    /** 当前受理列表的配置摘要，用于页面变更冲突检查 */
     @TableField(exist = false)
-    private String releaseResolutionToken;
+    private String configHash;
+
+    @TableField(exist = false)
+    private java.util.Map<String, Object> runtimeContext;
 }

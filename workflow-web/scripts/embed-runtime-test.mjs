@@ -78,7 +78,7 @@ const bootstrap = {
     listKey: 'supplier_work_orders',
     listReleaseId: 'list-release-001',
     listReleaseVersion: 7,
-    listReleaseResolutionToken: 'list_resolution_token_0123456789',
+    listConfigHash: 'list_resolution_token_0123456789',
     context: { source: 'partner' }
   },
   ui: {
@@ -301,7 +301,7 @@ assert.equal(Buffer.from(calls[0].request.parentNonce, 'base64url').length, 32)
 assert.equal(Buffer.from(calls[0].request.childNonce, 'base64url').length, 32)
 assert.equal(controller.getSnapshot().state, EMBED_RUNTIME_STATES.READY)
 assert.equal(controller.getSnapshot().nativeListTarget.listKey, 'supplier_work_orders')
-assert.equal(controller.getSnapshot().nativeListTarget.listReleaseVersion, 7)
+assert.equal(controller.getSnapshot().nativeListTarget.listReleaseVersion, undefined)
 assert.ok(states.includes('EXCHANGING:exchange'))
 assert.ok(states.includes('BOOTSTRAPPING:bootstrap'))
 assert.ok(states.includes('BOOTSTRAPPING:native-list'))
@@ -399,9 +399,7 @@ assert.equal(delayedController.getSnapshot().state, EMBED_RUNTIME_STATES.DESTROY
 const nativeTarget = Object.freeze({
   entityCode: 'work_order',
   formId: 'form-001',
-  formReleaseId: 'form-release-001',
-  formReleaseVersion: 3,
-  formReleaseResolutionToken: 'resolution_token_0123456789',
+  formConfigHash: 'resolution_token_0123456789',
   entryMode: 'CREATE',
   recordId: null,
   initialData: { supplierId: 'supplier-1' },
@@ -475,8 +473,8 @@ const nativeSnapshot = nativeController.getSnapshot()
 assert.equal(nativeSnapshot.state, EMBED_RUNTIME_STATES.READY)
 assert.equal(nativeSnapshot.navigation.surfaceType, 'FORM')
 assert.equal(nativeSnapshot.nativeFormTarget.formId, 'form-001')
-assert.equal(nativeSnapshot.nativeFormTarget.formReleaseId, 'form-release-001')
-assert.equal(nativeSnapshot.nativeFormTarget.formReleaseVersion, 3)
+assert.equal(nativeSnapshot.nativeFormTarget.formReleaseId, undefined)
+assert.equal(nativeSnapshot.nativeFormTarget.formReleaseVersion, undefined)
 assert.equal(nativeSnapshot.nativeFormTarget.mode, 'CREATE')
 assert.deepEqual(nativeSnapshot.nativeFormTarget.initialData, { supplierId: 'supplier-1' })
 assert.deepEqual(nativeSnapshot.nativeFormTarget.parameters, { source: 'partner' })

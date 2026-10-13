@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 public class UiViewCompositionLinkCandidatesRequest {
 
-    /** resolve 接口签发并绑定当前用户、宿主发布和来源记录的动作令牌。 */
-    private String actionContextToken;
+    /** 从业务根入口逐层重新校验的关联路径。 */
+    private UiViewCompositionResolveRequest compositionContext;
     /** LINK，或已发布配置中结果为 LINK 的 SELECT。 */
     private String action;
 }

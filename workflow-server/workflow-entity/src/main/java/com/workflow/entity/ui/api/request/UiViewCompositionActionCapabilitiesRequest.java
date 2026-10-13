@@ -6,6 +6,6 @@ import lombok.Data;
 @Data
 public class UiViewCompositionActionCapabilitiesRequest {
 
-    /** resolve 接口签发的短期动作上下文。 */
-    private String actionContextToken;
+    /** 从业务根入口逐层重新校验的关联路径。 */
+    private UiViewCompositionResolveRequest compositionContext;
 }

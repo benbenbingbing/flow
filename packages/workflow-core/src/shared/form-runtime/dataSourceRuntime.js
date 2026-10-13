@@ -1,3 +1,4 @@
+import { buildRuntimeContext } from './context.js'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '../page-parameters.js'
 import { safeParseConfig } from '../config-runtime/index.js'
 
@@ -135,20 +136,11 @@ function firstRuntimeText(...values) {
   return ''
 }
 
-function firstRuntimeVersion(...values) {
-  for (const value of values) {
-    const normalized = Number(value)
-    if (Number.isInteger(normalized) && normalized > 0) return normalized
-  }
-  return undefined
-}
 
 /**
  * 构造 FORM datasource 原生请求的固定目标信封。
  *
- * Release 坐标只有在 id/version/token 三项齐全时才透传：坐标本身来自浏览器内存，
- * 不能作为授权依据；服务端只会相信 token 验签后恢复出的 exact target。缺少签名的
- * 草稿或历史表单继续使用普通 Flow 登录权限，Embed 下的非根目标则会安全拒绝。
+ * configHash 只检查配置变化；业务入口交给服务端实时鉴权。
  */
 export function buildFormDataSourceExecutionRequest({
   options = {},
@@ -163,29 +155,13 @@ export function buildFormDataSourceExecutionRequest({
 }) {
   const contextualForm = runtimeContext.form
   const fallbackForm = options.getForm?.()
-  const releaseId = firstRuntimeText(
-    contextualForm?.runtimeReleaseId,
-    contextualForm?.formReleaseId,
-    runtimeContext.formReleaseId,
-    fallbackForm?.runtimeReleaseId,
-    fallbackForm?.formReleaseId,
-    runtimeContext.releaseId
-  )
-  const releaseVersion = firstRuntimeVersion(
-    contextualForm?.runtimeReleaseVersion,
-    contextualForm?.formReleaseVersion,
-    runtimeContext.formReleaseVersion,
-    fallbackForm?.runtimeReleaseVersion,
-    fallbackForm?.formReleaseVersion,
-    runtimeContext.releaseVersion
-  )
-  const releaseResolutionToken = firstRuntimeText(
-    contextualForm?.releaseResolutionToken,
-    contextualForm?.formReleaseResolutionToken,
-    runtimeContext.formReleaseResolutionToken,
-    fallbackForm?.releaseResolutionToken,
-    fallbackForm?.formReleaseResolutionToken,
-    runtimeContext.releaseResolutionToken
+  const configHash = firstRuntimeText(
+    contextualForm?.configHash,
+    contextualForm?.formConfigHash,
+    runtimeContext.formConfigHash,
+    fallbackForm?.configHash,
+    fallbackForm?.formConfigHash,
+    runtimeContext.configHash
   )
   const entityCode = firstRuntimeText(
     contextualForm?.entityCode,
@@ -203,16 +179,14 @@ export function buildFormDataSourceExecutionRequest({
     fallbackForm?.listKey,
     options.getListKey?.()
   )
-  const recordId = firstRuntimeText(
+  const recordId = runtimeContext.row?.isNew ? '' : firstRuntimeText(
     runtimeContext.recordId,
     runtimeContext.record?.id,
     options.getRecordId?.()
   )
-  const traversalToken = firstRuntimeText(
-    runtimeContext.viewCompositionTraversalToken
-  )
   const request = {
     ownerType: 'FORM',
+    runtimeContext: buildRuntimeContext(runtimeContext, contextualForm || fallbackForm),
     ownerId,
     bindingCode,
     targetType,
@@ -222,17 +196,10 @@ export function buildFormDataSourceExecutionRequest({
   }
   if (legacyOperationCode) request.legacyOperationCode = legacyOperationCode
 
-  if (releaseId && releaseVersion && releaseResolutionToken) {
-    request.releaseId = releaseId
-    request.releaseVersion = releaseVersion
-    request.releaseResolutionToken = releaseResolutionToken
-  }
+  if (configHash) request.configHash = configHash
   if (entityCode) request.entityCode = entityCode
   if (listKey) request.listKey = listKey
   if (recordId) request.recordId = recordId
-  if (traversalToken) {
-    request.viewCompositionTraversalToken = traversalToken
-  }
   return request
 }
 
@@ -312,6 +279,10 @@ export function createFormDataSourceRuntime(options) {
       mappingSource,
       rawInput
     )
+    // 级联协议坐标由组件生成，映射仅处理业务参数，不能丢弃/改写加载层级。
+    if (usage === 'FIELD_OPTIONS' && runtimeContext.input?.cascader) {
+      input.cascader = runtimeContext.input.cascader
+    }
     const executeDataSource = options.executeDataSource
     if (typeof executeDataSource !== 'function') throw new Error('宿主未提供数据源执行能力')
     const response = await executeDataSource(buildFormDataSourceExecutionRequest({
@@ -444,6 +415,13 @@ export function createFormDataSourceRuntime(options) {
   }
 
   async function loadOptions(field, runtimeContext = {}) {
+    if (runtimeContext.input?.cascader) {
+      const bindings = bindingsFor(field, 'FIELD_OPTIONS')
+      if (bindings.length !== 1) throw new Error('级联字段必须配置一个 FIELD_OPTIONS 数据接口')
+      if (bindings[0].modes?.length && !bindings[0].modes.includes(runtimeContext.mode || options.getMode?.() || 'view')) {
+        throw new Error('当前表单模式未启用级联数据接口')
+      }
+    }
     const record = runtimeContext.record || currentRecord()
     const [result] = await executeOwnerUsage(field, 'FIELD_OPTIONS', {
       ...runtimeContext,
@@ -454,6 +432,9 @@ export function createFormDataSourceRuntime(options) {
       }
     })
     const value = result?.data ?? result
+    if (runtimeContext.input?.cascader && !Array.isArray(value)) {
+      throw new Error('级联接口必须返回节点数组')
+    }
     return Array.isArray(value) ? value : []
   }
 

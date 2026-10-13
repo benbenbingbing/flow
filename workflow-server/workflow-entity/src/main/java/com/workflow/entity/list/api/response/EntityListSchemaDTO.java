@@ -29,10 +29,9 @@ public class EntityListSchemaDTO {
     private String accessPermissionCode;
     /** 数据范围模式 */
     private String dataScopeMode;
-    /** 已发布版本号 */
-    private Integer publishedVersion;
-    /** 当前运行时发布ID */
-    private String releaseId;
+    /** 当前依赖配置摘要，不提供历史配置选择能力。 */
+    private String configHash;
+    private Map<String, Object> runtimeContext;
     /** 选择配置 */
     private Map<String, Object> selectionConfig;
     /** 视图配置 */

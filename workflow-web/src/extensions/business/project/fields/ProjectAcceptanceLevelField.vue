@@ -67,7 +67,7 @@ watch(
   () => [
     getFormId(props.context?.form),
     props.context?.node?.id,
-    props.context?.form?.runtimeReleaseId,
+    props.context?.form?.configHash,
     props.context?.form?.activeReleaseId
   ],
   loadRuntimeData,

@@ -2,9 +2,12 @@ package com.workflow.process.task.application;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
+import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.process.definition.infrastructure.persistence.record.ProcessVersionHistory;
@@ -24,9 +27,12 @@ import org.junit.jupiter.api.Test;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +45,7 @@ class TaskDetailServiceLocalAddSignTest {
     private final ProcessTaskMapper taskMapper = mock(ProcessTaskMapper.class);
     private final RuntimeService runtimeService = mock(RuntimeService.class);
     private final EntityDataDynamicService dataService = mock(EntityDataDynamicService.class);
+    private final EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
     private final ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
     private final EntityFormRuntimeService formRuntimeService = mock(EntityFormRuntimeService.class);
     private final LocalAddSignTaskAccessService accessService = mock(LocalAddSignTaskAccessService.class);
@@ -47,7 +54,7 @@ class TaskDetailServiceLocalAddSignTest {
 
     @BeforeEach
     void setUp() {
-        service = new TaskDetailService(taskMapper, dataService, mock(EntityDefinitionMapper.class),
+        service = new TaskDetailService(taskMapper, dataService, definitionMapper,
                 mock(EntityFormMapper.class), mock(EntityFieldMapper.class), runtimeService,
                 mock(HistoryService.class), snapshotService, formRuntimeService, new ObjectMapper(), accessService);
         local.setTaskId("addsign-1");
@@ -86,6 +93,11 @@ class TaskDetailServiceLocalAddSignTest {
         EntityForm form = new EntityForm();
         form.setId("published-form");
         form.setFormName("源节点发布表单");
+        // 源节点旧绑定仍为版本 2，详情事件应使用当前配置摘要。
+        form.setRuntimeReleaseId("current-form-hash");
+        form.setRuntimeReleaseVersion(1);
+        form.setEffectiveReleaseId("current-form-hash");
+        form.setConfigHash("current-form-graph-hash");
         when(formRuntimeService.getByBinding(
                 org.mockito.ArgumentMatchers.same(binding),
                 org.mockito.ArgumentMatchers.any(
@@ -97,8 +109,50 @@ class TaskDetailServiceLocalAddSignTest {
         assertEquals("addsign-1", detail.getProcessTask().getTaskId());
         assertEquals("published-form", detail.getFormConfig().getEntityFormId());
         assertEquals("source-form", detail.getFormConfig().getFormKey());
-        assertEquals("release-2", detail.getFormConfig().getFormReleaseId());
+        assertEquals("current-form-graph-hash", detail.getFormConfig().getConfigHash());
         verify(snapshotService, never()).getNodeFormsContextByProcessDefinitionId("stale-definition", "stale-node");
+    }
+
+    /** 无节点绑定时，默认表单也必须连同活动任务令牌返回实际解析的发布坐标。 */
+    @Test
+    void defaultFormDetailCarriesResolvedReleaseAndActiveTaskContext() {
+        local.setNodeType("USER_TASK");
+        local.setEntityCode("expense");
+        local.setEntityDataId("record-1");
+        ProcessInstanceQuery query = mock(ProcessInstanceQuery.class);
+        ProcessInstance instance = mock(ProcessInstance.class);
+        when(runtimeService.createProcessInstanceQuery()).thenReturn(query);
+        when(query.processInstanceId("process-1")).thenReturn(query);
+        when(query.singleResult()).thenReturn(instance);
+        when(instance.getStartTime()).thenReturn(new Date());
+        when(runtimeService.getVariables("process-1")).thenReturn(new HashMap<>());
+        EntityDefinition definition = new EntityDefinition();
+        definition.setId("entity-1");
+        when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(definition));
+        ProcessVersionHistory history = new ProcessVersionHistory();
+        history.setId("history-1");
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId("stale-definition", "stale-node"))
+                .thenReturn(new ProcessPublishedSnapshotService.PublishedNodeForms(history, List.of()));
+        EntityForm form = new EntityForm();
+        form.setId("default-form");
+        form.setRuntimeReleaseId("default-form-hash");
+        form.setRuntimeReleaseVersion(1);
+        form.setConfigHash("default-form-graph-hash");
+        when(formRuntimeService.getDefaultForm(eq("entity-1"),
+                org.mockito.ArgumentMatchers.any(UiRuntimeResolutionContext.class))).thenReturn(form);
+
+        var detail = service.getTaskDetail("addsign-1");
+
+        assertEquals("default-form", detail.getFormConfig().getEntityFormId());
+        assertEquals("default-form-graph-hash", detail.getFormConfig().getConfigHash());
+        verify(formRuntimeService).getDefaultForm(eq("entity-1"),
+                argThat(context -> context.purpose() == UiRuntimePurpose.ACTIVE_TASK
+                        && "history-1".equals(context.processVersionHistoryId())
+                        && "stale-node".equals(context.nodeId())
+                        && "addsign-1".equals(context.taskId())
+                        && "process-1".equals(context.processInstanceId())
+                        && "expense".equals(context.entityCode())
+                        && "record-1".equals(context.recordId())));
     }
 
     @Test

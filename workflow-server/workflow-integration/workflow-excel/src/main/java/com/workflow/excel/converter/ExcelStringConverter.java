@@ -7,6 +7,8 @@ import com.alibaba.excel.metadata.data.ReadCellData;
 import com.alibaba.excel.metadata.data.WriteCellData;
 import com.alibaba.excel.metadata.property.ExcelContentProperty;
 import com.workflow.excel.annotation.converter.ExcelStringFormat;
+import com.workflow.excel.dynamic.ExcelValueCodec;
+import com.workflow.excel.dynamic.ExcelRawCell;
 
 /**
  * 文本清理转换器，通过 ExcelProperty.converter 绑定到 String 字段。
@@ -27,6 +29,7 @@ public final class ExcelStringConverter implements Converter<String> {
     /** 将文本、数值或布尔单元格转换成清理后的文本，不能恢复源文件已经丢失的数值精度。 */
     @Override
     public String convertToJavaData(ReadCellData<?> cell, ExcelContentProperty property, GlobalConfiguration global) {
+        ExcelValueCodec.requireLiteral(ExcelRawCell.from(cell, 0, false));
         return normalize(ConverterSupport.text(cell, property, global), property);
     }
 
@@ -41,7 +44,6 @@ public final class ExcelStringConverter implements Converter<String> {
             return null;
         }
         ExcelStringFormat format = ConverterSupport.annotation(property, ExcelStringFormat.class);
-        String result = format == null || format.trim() ? value.strip() : value;
-        return result.isEmpty() && (format == null || format.emptyToNull()) ? null : result;
+        return ExcelValueCodec.writeString(value, format == null || format.trim(), format == null || format.emptyToNull());
     }
 }

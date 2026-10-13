@@ -25,15 +25,9 @@ public class EntityDataExportRequest {
      * 列表标识
      */
     private String listKey;
-
-    /** 请求使用的列表发布 ID */
-    private String releaseId;
-
-    /** 请求使用的列表发布版本 */
-    private Integer releaseVersion;
-
-    /** 父表单签发的历史列表版本解析令牌 */
-    private String releaseResolutionToken;
+    /** 页面配置摘要与业务定位信息；权限由后端实时校验。 */
+    private String configHash;
+    private java.util.Map<String, Object> runtimeContext;
 
     /**
      * 查询条件

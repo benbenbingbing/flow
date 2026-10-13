@@ -8,8 +8,9 @@ export function createEntityStatusApi(request) {
 function getEntityStatusList(entityCode, runtimeContext = {}) {
   return request.get(`/entity-status/list/${entityCode}`, {
     params: {
-      viewCompositionTraversalToken:
-        runtimeContext.viewCompositionTraversalToken || undefined
+      runtimeContext,
+      compositionContext:
+        runtimeContext.compositionContext || undefined
     }
   })
 }
@@ -24,8 +25,9 @@ function getEntityStatusByCategory(
 ) {
   return request.get(`/entity-status/list/${entityCode}/${category}`, {
     params: {
-      viewCompositionTraversalToken:
-        runtimeContext.viewCompositionTraversalToken || undefined
+      runtimeContext,
+      compositionContext:
+        runtimeContext.compositionContext || undefined
     }
   })
 }

@@ -17,7 +17,8 @@ import java.util.regex.Pattern;
  * 列表字段数据提供者注册中心
  * 
  * 在构造时收集所有 {@link ListFieldDataProvider} 实现，按数据源类型（大写）注册并提供查询。
- * 负责提供数据源选项清单、校验列表字段的数据源配置及必填项，是列表字段自定义数据能力的核心调度入口。
+ * 列配置只使用内置 FIELD_TEMPLATE 的 schema 与执行能力；业务列统一通过 UiDataSourceProvider 接口扩展接入，
+ * 不再从这里暴露或调度自定义 Provider。保留的注册表供内部模板能力复用。
  */
 @Slf4j
 @Component
@@ -73,52 +74,47 @@ public class ListFieldDataProviderRegistry {
         return providers.containsKey(normalize(dataSourceType));
     }
 
-    /**
-     * 构造可用于前端下拉选择的数据源选项清单。
-     * 首项固定为内置的 ENTITY_FIELD（实体字段），其余按注册顺序追加各提供者的展示信息。
-     *
-     * @return 数据源选项列表
-     */
+    /** 返回固定的列取值方式，具体业务接口由扩展管理提供。 */
     public List<ListFieldDataSourceOptionDTO> getOptions() {
         return getOptions(null);
     }
 
     /**
-     * 按实体编码过滤数据源下拉。空编码不过滤；已声明范围的提供者只对命中实体出现。
+     * 返回三种互斥取值方式。字段组合保留模板 schema，业务 Provider 不再成为独立取值方式。
      *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 列表字段数据来源选项集合，供调用方遍历或展示
+     * @param entityCode 当前实体编码；接口的实体/列表适用范围在接口选项查询中校验
+     * @return 固定顺序的实体字段、字段组合和扩展接口选项
      */
     public List<ListFieldDataSourceOptionDTO> getOptions(String entityCode) {
-        List<ListFieldDataSourceOptionDTO> options = new ArrayList<>();
-        options.add(ListFieldDataSourceOptionDTO.builder()
-                .value("ENTITY_FIELD")
-                .label("实体字段")
-                .description("直接读取实体系统字段或自定义字段。")
-                .supportsVirtualField(false)
-                .supportsQuery(true)
-                .supportedEntityCodes(List.of())
-                .configSchema(List.of())
-                .build());
-        for (Map.Entry<String, ListFieldDataProvider> entry : providers.entrySet()) {
-            ListFieldDataProvider provider = entry.getValue();
-            List<String> supportedEntityCodes =
-                    normalizeSupportedEntityCodes(provider.getSupportedEntityCodes());
-            if (!matchesEntity(supportedEntityCodes, entityCode)) {
-                continue;
-            }
-            options.add(ListFieldDataSourceOptionDTO.builder()
-                    .value(entry.getKey())
-                    .label(provider.getDisplayName())
-                    .description(provider.getDescription())
-                    .supportsVirtualField(provider.supportsVirtualField())
-                    // 扩展提供者仅补充展示值，平台不再接受其内存筛选能力声明。
-                    .supportsQuery(false)
-                    .supportedEntityCodes(supportedEntityCodes)
-                    .configSchema(provider.getConfigSchema())
-                    .build());
-        }
-        return options;
+        ListFieldDataProvider template = providers.get("FIELD_TEMPLATE");
+        return List.of(
+                ListFieldDataSourceOptionDTO.builder()
+                        .value("ENTITY_FIELD")
+                        .label("实体字段")
+                        .description("直接读取当前列对应的实体字段，可用于查询和排序。")
+                        .supportsVirtualField(false)
+                        .supportsQuery(true)
+                        .supportedEntityCodes(List.of())
+                        .configSchema(List.of())
+                        .build(),
+                ListFieldDataSourceOptionDTO.builder()
+                        .value("FIELD_TEMPLATE")
+                        .label("字段组合")
+                        .description("使用 ${fieldCode} 组合当前行字段，仅生成展示文本，不执行脚本或写回数据。")
+                        .supportsVirtualField(true)
+                        .supportsQuery(false)
+                        .supportedEntityCodes(List.of())
+                        .configSchema(template == null ? List.of() : template.getConfigSchema())
+                        .build(),
+                ListFieldDataSourceOptionDTO.builder()
+                        .value("INTERFACE")
+                        .label("扩展接口")
+                        .description("选择扩展管理中的 LIST_COLUMN 接口，计算当前页列值；结果只用于展示，不参与查询和排序。")
+                        .supportsVirtualField(true)
+                        .supportsQuery(false)
+                        .supportedEntityCodes(List.of())
+                        .configSchema(List.of())
+                        .build());
     }
 
     /**
@@ -203,43 +199,4 @@ public class ListFieldDataProviderRegistry {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
-    /**
-     * 空范围或包含 * 表示全部实体。当前实体为空时也不过滤。
-     *
-     * @param supportedEntityCodes {@code supported}实体编码集合，作为 {@code normalizeSupportedEntityCodes} 的输入影响后续处理
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @return 实体条件成立时为 true，否则为 false
-     */
-    boolean matchesEntity(List<String> supportedEntityCodes, String entityCode) {
-        List<String> codes = normalizeSupportedEntityCodes(supportedEntityCodes);
-        if (codes.isEmpty() || !StringUtils.hasText(entityCode)) {
-            return true;
-        }
-        String current = entityCode.trim();
-        return codes.stream().anyMatch(code -> code.equalsIgnoreCase(current));
-    }
-
-    /**
-     * 规范化{@code supported}实体编码集合；输出作为后续校验或处理的输入。
-     *
-     * @param value 待规范化{@code supported}实体编码集合的原始输入，结果供调用方继续使用
-     * @return 列表字段数据提供者{@code registry}集合，供调用方遍历或展示
-     */
-    private List<String> normalizeSupportedEntityCodes(List<String> value) {
-        if (value == null || value.isEmpty()) {
-            return List.of();
-        }
-        LinkedHashSet<String> codes = new LinkedHashSet<>();
-        for (String item : value) {
-            if (!StringUtils.hasText(item)) {
-                continue;
-            }
-            String code = item.trim();
-            if ("*".equals(code)) {
-                return List.of();
-            }
-            codes.add(code);
-        }
-        return List.copyOf(codes);
-    }
 }

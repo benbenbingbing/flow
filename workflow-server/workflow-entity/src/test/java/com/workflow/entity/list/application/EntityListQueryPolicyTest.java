@@ -36,6 +36,22 @@ class EntityListQueryPolicyTest {
         assertFalse(EntityListQueryPolicy.isEntityField(field));
     }
 
+    /** 接口列即使复用了真实字段身份，也不能把计算后的值用于数据库筛选或排序。 */
+    @Test
+    void interfaceSourceCannotQueryOrSortPhysicalFieldIdentity() {
+        var field = virtualField();
+        field.setFieldId("real-field");
+        field.setDataSourceType("INTERFACE");
+        field.setInterfaceExtensionId("extension");
+        field.setIsQuery(true);
+        assertThrows(IllegalArgumentException.class,
+                () -> EntityListQueryPolicy.validateConfiguration(List.of(field)));
+        assertThrows(IllegalArgumentException.class,
+                () -> EntityListQueryPolicy.validateFilters(List.of(field), Map.of("summary", "value")));
+        assertThrows(IllegalArgumentException.class,
+                () -> EntityListQueryPolicy.validateSort(List.of(field), "summary"));
+    }
+
     @Test
     void realFieldWithSuffixInItsNameRemainsQueryable() {
         var real = new EntityListField();

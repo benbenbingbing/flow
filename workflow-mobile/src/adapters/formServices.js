@@ -50,16 +50,16 @@ export const formServices = {
   },
   async loadPublishedList({ entityCode, listKey, scene, pageNum = 1, pageSize = 20, filters = {}, context = {}, ...release }) {
     const schema = await lists.getSchema(entityCode, listKey, scene, release)
-    const result = await lists.query(entityCode, listKey, { ...release, releaseId: release.releaseId || schema.releaseId, releaseVersion: release.releaseVersion ?? schema.publishedVersion, scene, pageNum, pageSize, filters, context })
+    const result = await lists.query(entityCode, listKey, { ...release, configHash: schema.configHash, scene, pageNum, pageSize, filters, context })
     const records = Array.isArray(result) ? result : result.records || result.list || result.rows || []
     return { records, total: result.total ?? records.length, columns: schema.columns || [] }
   },
   async resolveRelatedContent(input, parameters) {
     const resolved = assertRelatedContentResolveContract(await compositions.resolve(input))
     if (resolved.matchNone || resolved.targetContentType !== 'FORM') return { resolved, parameters }
-    const release = await forms.getFormRuntimeRelease(resolved.targetContentId, resolved.targetReleaseId, resolved.targetReleaseVersion, resolved.targetReleaseResolutionToken)
-    const form = normalizeRuntimeFormRelease(release, resolved.targetContentId, release.releaseResolutionToken || resolved.targetReleaseResolutionToken)
-    const record = resolved.targetRecordId ? normalizeEntityRecordForForm(await entities.entityDataApi.getDetail(resolved.targetEntityCode, resolved.targetRecordId, null, resolved.targetContentId, {}, { releaseId: resolved.targetReleaseId, releaseVersion: resolved.targetReleaseVersion, releaseResolutionToken: form.releaseResolutionToken, viewCompositionTraversalToken: resolved.traversalContextToken })) : null
+    const release = await forms.getFormRuntimeRelease(resolved.targetContentId, { compositionContext: resolved.compositionContext })
+    const form = normalizeRuntimeFormRelease(release, resolved.targetContentId, release.configHash || resolved.targetContentHash)
+    const record = resolved.targetRecordId ? normalizeEntityRecordForForm(await entities.entityDataApi.getDetail(resolved.targetEntityCode, resolved.targetRecordId, null, resolved.targetContentId, {}, { configHash: form.configHash, compositionContext: resolved.compositionContext })) : null
     return { resolved, form, record, parameters: resolvePageParameters(form.viewConfig, parameters) }
   },
   uploadFile(file, field, context, progress) {

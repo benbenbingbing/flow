@@ -424,7 +424,7 @@ import EventBindingEditor from '@/components/ui-config/EventBindingEditor.vue'
 import { resolveEntityPermissionOptions } from '@/extensions/core/registries/entityActionRuleRegistry.js'
 import { ACTION_RULE_VERSION, summarizeActionRule } from '@/shared/action-rules'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
-import { resolveListButtonType } from '@/shared/list-config-design'
+import { LIST_IMPORT_BUTTON_PRESET, resolveListButtonType } from '@/shared/list-config-design'
 import { mappedFieldCode, supportsCellAction } from '@/shared/list-cell-action'
 import { isButtonRelatedContent } from '@/shared/list-related-content'
 import { TOOLBAR_SELECTION_OPTIONS, requiresSingleSourceRecord, toolbarSelectionRequirement } from '@/shared/list-selection'
@@ -524,6 +524,7 @@ const availableFormOptions = computed(() =>
 )
 
 const TOOLBAR_BUILTIN = {
+  import: LIST_IMPORT_BUTTON_PRESET,
   create: { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true },
   exportSelected: { key: 'exportSelected', type: 'built-in', label: '导出选中', icon: 'Download', buttonType: 'default', sort: 2, enabled: true },
   exportAll: { key: 'exportAll', type: 'built-in', label: '导出全部', icon: 'Download', buttonType: 'default', sort: 3, enabled: true },
@@ -817,6 +818,7 @@ onBeforeUnmount(() => {
 function standardPermission(key) {
   const actionMap = {
     create: 'create',
+    import: 'import',
     exportSelected: 'export',
     exportAll: 'export-all',
     batchDelete: 'batch-delete',

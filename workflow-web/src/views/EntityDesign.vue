@@ -16,6 +16,7 @@
         class="design-tabs"
       >
         <el-tab-pane label="字段设计" name="fields" />
+        <el-tab-pane v-if="!isSystemEntity" label="Excel 导入导出" name="excel" />
         <el-tab-pane v-if="!isSystemEntity" label="数据权限" name="permissions" />
         <el-tab-pane
           :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
@@ -509,6 +510,11 @@
       @count-change="relationCount = $event"
     />
 
+    <EntityExcelSettings
+      v-if="!loadError && !isSystemEntity && entityData.id && activeDesignTab === 'excel'"
+      :entity-code="entityData.entityCode" :entity-id="entityData.id" :fields="fields"
+    />
+
     <EntityDefaultEventPanel
       v-if="!loadError && canConfigureEntityDefaultEvents && activeDesignTab === 'events'"
       :entity-id="String(entityData.id || entityId)"
@@ -954,6 +960,7 @@ import EntityFieldTypePanel from '@/views/entity/components/EntityFieldTypePanel
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import EntityExcelSettings from '@/components/excel/EntityExcelSettings.vue'
 import EntityDefaultEventPanel from '@/views/entity/components/EntityDefaultEventPanel.vue'
 import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
 import QuickDictDialog from '@/views/entity/components/QuickDictDialog.vue'
@@ -976,7 +983,7 @@ const entityId = route.params.id
  */
 function normalizeEntityDesignTab(value) {
   const tab = String(value || '').trim().toLowerCase()
-  return ['fields', 'relations', 'events', 'permissions'].includes(tab) ? tab : 'fields'
+  return ['fields', 'relations', 'events', 'permissions', 'excel'].includes(tab) ? tab : 'fields'
 }
 
 const activeDesignTab = ref(normalizeEntityDesignTab(route.query.tab))

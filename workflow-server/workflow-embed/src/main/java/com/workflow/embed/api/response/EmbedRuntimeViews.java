@@ -56,47 +56,24 @@ public final class EmbedRuntimeViews {
     }
 
     /**
-     * 供 iframe 原生 Flow 页面启动的只读固定目标。
-     *
-     * <p>所有值均由 Session + immutable Release 恢复；浏览器只能消费，后续 API
-     * 仍会在服务端重新比对。解析令牌仅授权同一发布快照及其声明的嵌套表单。</p>
-     *
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param formId 表单 ID，后续用于定位已发布表单
-     * @param formReleaseId 表单发布版本ID，后续用于处理目标时定位或关联目标
-     * @param formReleaseVersion 表单发布版本，保存在对象中供后续校验、查询或展示
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param listReleaseId 列表发布版本ID，后续用于处理目标时定位或关联目标
-     * @param listReleaseVersion 列表发布版本，保存在对象中供后续校验、查询或展示
-     * @param entryMode 入口模式标识，决定后续目标采用的处理分支
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @param formReleaseResolutionToken 表单发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param defaultFormResolved 默认表单已解析，保存在对象中供后续校验、查询或展示
-     * @param listReleaseResolutionToken 列表发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param initialData 初始数据，保存在对象中供后续校验、查询或展示
-     * @param parameters 参数集合，保存在对象中供后续校验、查询或展示
-     * @param context 执行上下文，向后续目标步骤传递身份、配置或状态
+     * 原生页面只接收稳定业务入口和配置摘要，实际发布配置由 Embed 会话授权选择。
+     * configHash 用于写入前检测页面配置变化，不授予访问权限；runtimeContext
+     * 仅定位根表单、记录和列表来源，后续 API 每次重新检查会话及映射用户权限。
      */
     public record Target(
             String entityCode,
             @JsonInclude(JsonInclude.Include.NON_NULL) String formId,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String formReleaseId,
-            @JsonInclude(JsonInclude.Include.NON_NULL) Integer formReleaseVersion,
             @JsonInclude(JsonInclude.Include.NON_NULL) String listKey,
-            @JsonInclude(JsonInclude.Include.NON_NULL) String listReleaseId,
-            @JsonInclude(JsonInclude.Include.NON_NULL) Integer listReleaseVersion,
             String entryMode,
             @JsonInclude(JsonInclude.Include.NON_NULL) String recordId,
             @JsonInclude(JsonInclude.Include.NON_NULL) String processInstanceId,
-            @JsonInclude(JsonInclude.Include.NON_NULL)
-            String formReleaseResolutionToken,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String formConfigHash,
             boolean defaultFormResolved,
-            @JsonInclude(JsonInclude.Include.NON_NULL)
-            String listReleaseResolutionToken,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String listConfigHash,
             Map<String, Object> initialData,
             Map<String, Object> parameters,
-            Map<String, Object> context) {
+            Map<String, Object> context,
+            Map<String, Object> runtimeContext) {
     }
 
     /**

@@ -148,8 +148,6 @@ const progressRuntimeForm = computed(() =>
 )
 const processRuntimeDiagnosticEntries = computed(() => {
   const form = progressRuntimeForm.value
-  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
-  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
   return [
     {
       label: '流程',
@@ -161,7 +159,7 @@ const processRuntimeDiagnosticEntries = computed(() => {
     {
       label: '表单',
       value: form
-        ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+        ? form.formKey || form.name || '未记录运行表单'
         : '未记录运行表单'
     }
   ]

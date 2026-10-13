@@ -3,7 +3,6 @@ package com.workflow.embed.api.web;
 import com.workflow.embed.api.response.EmbedApiEnvelope;
 import com.workflow.embed.api.response.EmbedRuntimeViews;
 
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.Target;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort;
 import com.workflow.core.web.CorrelationContext;
 import com.workflow.embed.application.runtime.EmbedNativeFormTargetResolver;
@@ -20,8 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * LIST 的 LOCAL_FORM 操作转换为 Flow 原生 Published Form 固定目标。
  *
- * <p>浏览器只声明 CREATE/VIEW 与 VIEW recordId；实体、表单和发布版本始终从
- * Session 固定 Release 恢复。VIEW 在返回前已执行映射用户对象权限和 DataScope。</p>
+ * <p>浏览器只声明 CREATE/VIEW 与 VIEW recordId；实体、表单和来源范围始终从
+ * 已认证 Session 恢复。VIEW 在返回前已执行映射用户对象权限和 DataScope。</p>
  */
 @RestController
 @RequestMapping("/api/embed/v1/runtime")
@@ -58,19 +57,16 @@ public class EmbedNativeFormTargetController {
             HttpServletRequest request) {
         EmbedNativeFormTarget fixed = targetResolver.authorize(
                 EmbedContextHolder.require(), mode, recordId);
-        String token = nativeRuntimePort.issueReleaseResolutionToken(
-                new Target(
-                        fixed.entityCode(), fixed.formId(),
-                        fixed.formReleaseId(), fixed.formReleaseVersion(),
-                        EmbedContextHolder.require().absoluteExpiresAt()));
+        // 表单配置始终读取当前发布内容，原生页面只保留摘要用于提交时检查变化。
+        String configHash = nativeRuntimePort.configHash(fixed.formId());
+        java.util.Map<String, Object> runtimeContext = new java.util.LinkedHashMap<>();
+        runtimeContext.put("rootFormId", fixed.formId());
+        if (fixed.recordId() != null) runtimeContext.put("recordId", fixed.recordId());
+        if (fixed.listKey() != null) runtimeContext.put("listKey", fixed.listKey());
         EmbedRuntimeViews.Target result = new EmbedRuntimeViews.Target(
-                fixed.entityCode(), fixed.formId(),
-                fixed.formReleaseId(), fixed.formReleaseVersion(),
-                fixed.listKey(), fixed.listReleaseId(),
-                fixed.listReleaseVersion(), fixed.entryMode(),
-                fixed.recordId(), fixed.processInstanceId(), token, true, null,
-                fixed.initialData(),
-                fixed.parameters(), fixed.context());
+                fixed.entityCode(), fixed.formId(), fixed.listKey(), fixed.entryMode(),
+                fixed.recordId(), fixed.processInstanceId(), configHash, true, null,
+                fixed.initialData(), fixed.parameters(), fixed.context(), runtimeContext);
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(EmbedApiEnvelope.ok(

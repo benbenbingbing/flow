@@ -1,4 +1,5 @@
 <template>
+  <ExcelActionDialog ref="excelActionDialog" @imported="emit('success')" />
   <el-dialog
     v-model="presentedDialogVisible"
     width="75%"
@@ -134,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import FormButtonActionHost from '@/components/FormButtonActionHost.vue'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { resolvePageParameters, initializePageFields, pageParameterFields } from '@flow/workflow-core/page-parameters'
@@ -142,6 +144,8 @@ import { relatedFormDraftGuardKey } from '@/shared/related-form-draft-guard'
 import { useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
 import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
+import ExcelActionDialog from '@/components/excel/ExcelActionDialog.vue'
+const excelActionDialog = ref(null)
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { uiEventBindingApi } from '@/api/uiConfig'
@@ -178,9 +182,7 @@ const props = withDefaults(defineProps<{
   entityFields: any[]
   defaultForm: any
   listKey?: string
-  listReleaseId?: string
-  listReleaseVersion?: number | null
-  listReleaseResolutionToken?: string
+  listConfigHash?: string
   entityStatusOptions?: any[]
   submitTransport?: (submission: any) => Promise<any>
   reloadPending?: boolean
@@ -226,26 +228,17 @@ let launchSequence = 0
 const runtimeForm = computed(() => activeForm.value || props.defaultForm)
 // 列表发布身份用于校验入口权限；表单发布身份用于提交字段及绑定，不能相互代替。
 const listReleaseContext = computed(() => ({
-  releaseId: props.listReleaseId || undefined,
-  releaseVersion: props.listReleaseVersion ?? undefined,
-  releaseResolutionToken:
-    props.listReleaseResolutionToken || undefined,
-  viewCompositionTraversalToken:
-    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+  configHash:
+    props.listConfigHash || undefined,
+  compositionContext:
+    launchRuntimeContext.value?.compositionContext || undefined
 }))
 const formReleaseContext = computed(() => ({
-  releaseId:
-    runtimeForm.value?.runtimeReleaseId
-    || runtimeForm.value?.formReleaseId
-    || undefined,
-  releaseVersion:
-    runtimeForm.value?.runtimeReleaseVersion
-    ?? runtimeForm.value?.formReleaseVersion
-    ?? undefined,
-  releaseResolutionToken:
-    runtimeForm.value?.releaseResolutionToken || undefined,
-  viewCompositionTraversalToken:
-    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+  runtimeContext: buildRuntimeContext(launchRuntimeContext.value, runtimeForm.value || {}),
+  configHash:
+    runtimeForm.value?.configHash || undefined,
+  compositionContext:
+    launchRuntimeContext.value?.compositionContext || undefined
 }))
 
 const formData = reactive({
@@ -347,8 +340,6 @@ const dialogRuntimeDiagnosticEntries = computed(() => {
   const diagnosticProcessInstanceId =
     process.processInstanceId || processInstanceId.value
   const form = runtimeForm.value
-  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
-  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
   return [
     ...(diagnosticProcessInstanceId
       ? [{
@@ -362,7 +353,7 @@ const dialogRuntimeDiagnosticEntries = computed(() => {
     {
       label: '表单',
       value: form
-        ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+        ? form.formKey || form.name || '未记录运行表单'
         : '未记录运行表单'
     }
   ]
@@ -371,10 +362,7 @@ const dialogRuntimeDiagnosticCopyEntries = computed(() => [
   ...(props.listKey
     ? [{
         label: '列表',
-        value: formatRuntimeCodeVersion(
-          props.listKey,
-          props.listReleaseVersion
-        )
+        value: props.listKey
       }]
     : []),
   { label: '操作模式', value: isEdit.value ? '编辑' : '新增' },
@@ -396,8 +384,7 @@ const dialogRuntimeDiagnosticResetKey = computed(() => {
     processRuntimeMetadata.value?.processInstanceId
       || processInstanceId.value
       || '',
-    form?.runtimeReleaseId || form?.formReleaseId || '',
-    form?.runtimeReleaseVersion ?? form?.formReleaseVersion ?? ''
+    form?.configHash || '',
   ].join(':')
 })
 
@@ -502,8 +489,8 @@ async function loadFormActions() {
     workflowReady: isWorkflowReady(props.entityDefinition),
     hasProcessInstance: hasProcessInfo.value,
     systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
-    viewCompositionTraversalToken:
-      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+    compositionContext:
+      launchRuntimeContext.value?.compositionContext || undefined
   })
 }
 
@@ -518,20 +505,13 @@ async function executeFormEvent(eventCode: string) {
   const result = await uiEventBindingApi.execute(eventCode, {
     configType: 'FORM',
     configId: String(runtimeForm.value.id),
-    releaseId:
-      runtimeForm.value.runtimeReleaseId
-      || runtimeForm.value.formReleaseId
+    runtimeContext: formReleaseContext.value.runtimeContext,
+    configHash:
+      runtimeForm.value.configHash
+      || launchRuntimeContext.value?.configHash
       || undefined,
-    releaseVersion:
-      runtimeForm.value.runtimeReleaseVersion
-      ?? runtimeForm.value.formReleaseVersion
-      ?? undefined,
-    releaseResolutionToken:
-      runtimeForm.value.releaseResolutionToken
-      || launchRuntimeContext.value?.releaseResolutionToken
-      || undefined,
-    viewCompositionTraversalToken:
-      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined,
+    compositionContext:
+      launchRuntimeContext.value?.compositionContext || undefined,
     entityCode: props.entityCode,
     listKey: props.listKey,
     targetType: 'OWNER',
@@ -561,6 +541,7 @@ async function executeFormEvent(eventCode: string) {
 /** 按服务端效果顺序回填或导航；FIELD_MAPPING 的覆盖策略决定是否保留用户现有值。 */
 async function applyFormEventResult(result: any, isCurrent = () => true) {
   await applyFormEffects(result, {
+    excel: (effect: any) => excelActionDialog.value.open(effect),
     getRecord: () => formData.data,
     setField: (key: string, value: any) => { formData.data[key] = value },
     getFields: () => props.entityFields,
@@ -611,7 +592,7 @@ async function handleFormAction(action: any) {
           recordId: formData.id || undefined,
           formData: formData.data,
           processInstanceId: processInstanceId.value || undefined,
-          viewCompositionTraversalToken: context?.viewCompositionTraversalToken || undefined
+          compositionContext: context?.compositionContext || undefined
         })
       },
       async applyResult(result: any) {
@@ -645,7 +626,7 @@ async function handleReset() {
   nextTick(() => refreshFormLinkage())
 }
 
-/** 参数初始化先于打开事件，且只填可编辑空字段，可信关联初值和已有记录均优先。 */
+/** 参数初始化先于打开事件，各类业务字段仅填空值，可信关联初值和已有记录均优先。 */
 function initializeParameterFields() {
   if ([true, 1, '1'].includes(runtimeForm.value?.isReadonly)) return
   formData.data = initializePageFields(formData.data, runtimeForm.value?.viewConfig,
@@ -836,7 +817,7 @@ async function validateRuntimeForms() {
 
 /**
  * 提交当前表单。startProcess 控制保存后是否发起流程；提交体只包含发布表单
- * 允许的字段，并带上发布解析令牌供服务端定位、校验本次使用的表单快照。
+ * 允许的字段，并带上配置摘要及业务来源供服务端实时鉴权、校验配置是否变化。
  */
 const handleSubmit = async (startProcess = false, restartProcess = false) => {
   try {
@@ -852,15 +833,13 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
       entityCode: props.entityCode,
       listKey: props.listKey,
       formId: runtimeForm.value?.id,
-      formReleaseId: formReleaseContext.value.releaseId,
-      formReleaseVersion: formReleaseContext.value.releaseVersion,
-      formReleaseResolutionToken:
-        formReleaseContext.value.releaseResolutionToken,
-      viewCompositionActionContextToken:
-        launchRuntimeContext.value?.viewCompositionActionContextToken
-        || undefined,
-      viewCompositionTraversalToken:
-        launchRuntimeContext.value?.viewCompositionTraversalToken
+
+
+      runtimeContext: formReleaseContext.value.runtimeContext,
+      formConfigHash:
+        formReleaseContext.value.configHash,
+      compositionContext:
+        launchRuntimeContext.value?.compositionContext
         || undefined,
       id: formData.id,
       name: submittedData?.name || formData.name,
@@ -878,10 +857,11 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
         data: submittedData,
         entityCode: props.entityCode,
         formId: runtimeForm.value?.id,
-        formReleaseId: formReleaseContext.value.releaseId,
-        formReleaseVersion: formReleaseContext.value.releaseVersion,
-        formReleaseResolutionToken:
-          formReleaseContext.value.releaseResolutionToken
+
+
+        runtimeContext: formReleaseContext.value.runtimeContext,
+      formConfigHash:
+          formReleaseContext.value.configHash
       })
     } else if (formData.id) {
       result = await entityDataApi.update(
@@ -890,15 +870,13 @@ const handleSubmit = async (startProcess = false, restartProcess = false) => {
         {
           data: submittedData,
           formId: runtimeForm.value?.id,
-          formReleaseId: formReleaseContext.value.releaseId,
-          formReleaseVersion: formReleaseContext.value.releaseVersion,
-          formReleaseResolutionToken:
-            formReleaseContext.value.releaseResolutionToken,
-          viewCompositionActionContextToken:
-            launchRuntimeContext.value?.viewCompositionActionContextToken
-            || undefined,
-          viewCompositionTraversalToken:
-            launchRuntimeContext.value?.viewCompositionTraversalToken
+
+
+          runtimeContext: formReleaseContext.value.runtimeContext,
+      formConfigHash:
+            formReleaseContext.value.configHash,
+          compositionContext:
+            launchRuntimeContext.value?.compositionContext
             || undefined,
           startProcess: formData.startProcess,
           restartProcess,

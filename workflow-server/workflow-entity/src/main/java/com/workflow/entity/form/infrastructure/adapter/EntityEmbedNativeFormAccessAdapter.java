@@ -14,7 +14,7 @@ import com.workflow.entity.form.api.response.FormActionRuntimeDTO;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
-import com.workflow.entity.list.application.EntityListReleaseContext;
+import com.workflow.entity.list.application.EntityListRuntimeContext;
 import com.workflow.entity.list.application.EntityListRuntimeService;
 import com.workflow.entity.permission.api.response.EntityActionCapabilityDTO;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
@@ -270,17 +270,21 @@ public class EntityEmbedNativeFormAccessAdapter
     /**
      * 处理固定列表发布版本上下文，并将结果传给后续步骤。
      *
-     * @param target 目标，作为 {@code EntityListReleaseContext} 的输入影响后续处理
+     * @param target 目标，作为 {@code EntityListRuntimeContext} 的输入影响后续处理
      * @return 处理后的固定列表发布版本上下文结果，供调用方继续处理
      */
-    private static EntityListReleaseContext pinnedListReleaseContext(
+    private static EntityListRuntimeContext pinnedListReleaseContext(
             Target target) {
         if (!StringUtils.hasText(target.listReleaseId())
                 || target.listReleaseVersion() == null) {
             return null;
         }
-        return new EntityListReleaseContext(
-                target.listReleaseId(), target.listReleaseVersion(), null);
+        // Target 由 Embed 认证会话及发布快照恢复；这里的历史列表坐标不会接收浏览器输入。
+        if (com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.currentSession().isPresent()) {
+            com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.authorizeListTarget(
+                    target.entityCode(),target.listKey(),target.listReleaseId(),target.listReleaseVersion());
+        }
+        return new EntityListRuntimeContext(null, Map.of());
     }
 
     /**

@@ -106,6 +106,7 @@ public class UiConfigInterfaceReferenceValidator {
             String path,
             Owner owner) {
         if (value instanceof Map<?, ?> map) {
+            validateCascader(map, path, owner);
             validateReference(
                     map,
                     "extensionId",
@@ -165,6 +166,44 @@ public class UiConfigInterfaceReferenceValidator {
                         owner);
             }
         }
+    }
+
+    /**
+     * 级联接口必须在字段自己的 FIELD_OPTIONS 中声明，不能借用同页其他接口。
+     * 节点持久化文档与导入后的结构化快照均在此检查，避免绕过设计器发布非法配置。
+     */
+    private void validateCascader(Map<?, ?> node, String path, Owner owner) {
+        // 配置中的任意业务对象也可能含 componentType；仅处理真实字段节点/旧字段投影。
+        if (!node.containsKey("componentName") && !node.containsKey("nodeType")
+                && !(node.containsKey("componentType")
+                && path.matches(".*\\.(?:nodes|legacyFields|fields)\\[\\d+\\]"))) return;
+        Map<String, Object> props = configurationMap(
+                node.containsKey("props") ? node.get("props") : node.get("propsDocument"),
+                "级联字段属性");
+        String component = text(props.get("componentType"));
+        if (!StringUtils.hasText(component)) component = text(node.get("componentName"));
+        if (!StringUtils.hasText(component)) component = text(node.get("componentType"));
+        if (!"CASCADER".equals(normalize(component))) return;
+        Map<String, Object> componentProps = configurationMap(
+                props.containsKey("componentProps") ? props.get("componentProps") : node.get("componentProps"),
+                "级联组件参数");
+        Map<String, Object> bindings = configurationMap(
+                node.containsKey("dataSourceBindings") ? node.get("dataSourceBindings")
+                        : node.get("dataSourceBindingsDocument"), "级联接口绑定");
+        Map<?, ?> binding = CascaderFieldConfigurationPolicy.validate(componentProps, bindings, path);
+        if (binding.isEmpty()) return;
+        boolean direct = StringUtils.hasText(text(binding.get("extensionId")));
+        validateReference(binding, direct ? "extensionId" : "serviceId",
+                direct ? null : "operationCode", UiDataSourceUsages.FIELD_OPTIONS, path, owner);
+    }
+
+    private Map<String, Object> configurationMap(Object value, String label) {
+        if (value == null) return Map.of();
+        if (value instanceof Map<?, ?>) return stringMap(value);
+        if (value instanceof String document) {
+            return StringUtils.hasText(document) ? codec.readObject(document, label) : Map.of();
+        }
+        throw new IllegalArgumentException(label + "必须为 JSON 对象");
     }
 
     /**
@@ -284,13 +323,14 @@ public class UiConfigInterfaceReferenceValidator {
             UiExtensionDefinition definition,
             String extensionId) {
         if (!UiDataSourceUsages.LIST_QUERY.equals(bindingCode)
-                && !UiDataSourceUsages.LIST_COLUMN.equals(bindingCode)) {
+                && !UiDataSourceUsages.LIST_COLUMN.equals(bindingCode)
+                && !UiDataSourceUsages.FIELD_OPTIONS.equals(bindingCode)) {
             return;
         }
         if (!"READ".equals(normalize(
                 definition.getInterfaceKind()))) {
             throw new IllegalArgumentException(
-                    "列表查询和列接口必须为 READ: " + extensionId);
+                    "选项、列表查询和列接口必须为 READ: " + extensionId);
         }
         Map<String, Object> outputSchema = StringUtils.hasText(
                 definition.getOutputSchemaDocument())
@@ -298,6 +338,12 @@ public class UiConfigInterfaceReferenceValidator {
                         definition.getOutputSchemaDocument(),
                         "接口输出Schema")
                 : Map.of();
+        if (UiDataSourceUsages.FIELD_OPTIONS.equals(bindingCode)) {
+            if (!"ARRAY".equals(normalize(text(outputSchema.get("type"))))) {
+                throw new IllegalArgumentException("级联选项接口输出 Schema 必须为 array: " + extensionId);
+            }
+            return;
+        }
         if (UiDataSourceUsages.LIST_COLUMN.equals(bindingCode)) {
             if (!"OBJECT".equals(normalize(text(
                     outputSchema.get("type"))))) {

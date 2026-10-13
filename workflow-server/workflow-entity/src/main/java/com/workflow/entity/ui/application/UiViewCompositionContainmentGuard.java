@@ -26,7 +26,7 @@ import java.util.Set;
  * <p>INLINE、TAB 和 ROW_EXPAND 会把目标内容继续渲染在当前页面结构中，
  * 因此必须在发布、预览和列表历史激活共用的快照校验阶段阻断资产循环，并将
  * 当前宿主计为第一层，最多允许八层。弹窗、抽屉和新页面由用户显式触发，
- * 不属于自动包含图；它们可以形成业务导航环，由运行时签名链另行限制重入。</p>
+ * 不属于自动包含图；它们可以形成业务导航环，由运行时业务路径逐层校验并限制重入。</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -361,7 +361,7 @@ public class UiViewCompositionContainmentGuard {
     }
 
     /**
-     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     * 计算输入内容的 SHA-256 摘要，供配置完整性校验或幂等去重使用。
      *
      * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
      * @return 处理后的{@code sha256}文本，供调用方比较或展示

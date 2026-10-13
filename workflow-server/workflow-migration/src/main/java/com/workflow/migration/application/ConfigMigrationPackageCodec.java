@@ -253,6 +253,7 @@ public class ConfigMigrationPackageCodec {
         if (requireSelectedKeys) {
             validateSelectedKeys(snapshot, selected, sections, formKeys, listKeys);
         }
+        ConfigMigrationExcelSupport.includeSelected(snapshot, selected, sections, objectMapper);
         addSelectedSupportSections(snapshot, selected, sections);
         selected.put("dependencies", selectDependencies(snapshot, selected, sections));
         selected.put(SELECTION_METADATA, selection);
@@ -675,6 +676,7 @@ public class ConfigMigrationPackageCodec {
                         new LinkedHashMap<String, Object>(dependency))
                 .toList();
         List<Map<String, Object>> result = new ArrayList<>(dependencies);
+        result.addAll(ConfigMigrationExcelSupport.dependencies(source, selected));
         String assetType = String.valueOf(source.get("assetType"));
         String businessKey = String.valueOf(source.get("businessKey"));
         if (ConfigMigrationAssetService.ENTITY.equals(assetType)

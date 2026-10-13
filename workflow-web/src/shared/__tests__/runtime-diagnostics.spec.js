@@ -77,8 +77,8 @@ assert.match(
 )
 assert.match(
   listPage,
-  /listConfig\.value\?\.listKey[\s\S]*listConfig\.value\?\.publishedVersion/,
-  '列表诊断必须使用服务端实际解析的列表编码与发布版本'
+  /listConfig\.value\?\.listKey/,
+  '列表诊断必须使用服务端实际解析的列表编码'
 )
 assert.doesNotMatch(
   listPage,
@@ -125,14 +125,10 @@ assert.doesNotMatch(
 )
 assert.match(
   approvalDialog,
-  /runtimeReleaseVersion\s*\?\?\s*form\?\.formReleaseVersion/,
-  '查看弹窗应兼容独立表单与流程节点表单的实际运行版本字段'
+  /form\.formKey \|\| form\.name/,
+  '查看弹窗应显示实际运行表单的稳定编码'
 )
-assert.match(
-  approvalDialog,
-  /hotfixApplied === true \? '（已应用热修复）'/,
-  '兼容热修复只能作为基础版本的附加状态展示'
-)
+assert.doesNotMatch(approvalDialog, /hotfixApplied|formReleaseVersion/)
 assert.match(
   approvalDialog,
   /openApprove[\s\S]*runtimeDiagnosticsRef\.value\?\.reset\(\)[\s\S]*processRuntimeMetadata\.value = \{\}/,
@@ -151,8 +147,8 @@ assert.match(
 )
 assert.match(
   formDialog,
-  /runtimeForm\.value[\s\S]*runtimeReleaseVersion\s*\?\?\s*form\?\.formReleaseVersion/,
-  '新增和编辑诊断必须使用当前实际渲染表单的发布版本'
+  /runtimeForm\.value[\s\S]*form\.formKey \|\| form\.name/,
+  '新增和编辑诊断必须使用当前实际渲染表单的编码'
 )
 assert.match(
   formDialog,

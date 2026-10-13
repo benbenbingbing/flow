@@ -88,7 +88,7 @@ public interface UiConfigReleaseMapper extends BaseMapper<UiConfigRelease> {
 
     /**
      * 查询可能引用接口服务的全部 FORM/LIST 发布版本，供删除保护使用。
-     * 历史版本仍可能被签名运行上下文或 Embed 固定；LIKE 只按原始 ID 缩小
+     * 历史版本仍可能被已发布宿主或 Embed 固定；LIKE 只按原始 ID 缩小
      * 候选，以覆盖嵌套 JSON 字符串中的转义键，调用方仍须递归精确解析。
      *
      * @param serviceId 服务ID，后续用于查询{@code executable}数据来源引用候选集合时定位或关联目标

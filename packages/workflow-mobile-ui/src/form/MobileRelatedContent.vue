@@ -14,6 +14,7 @@
 <script setup>
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { Cell as VanCell, Loading as VanLoading, Empty as VanEmpty, Button as VanButton } from 'vant'
+import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { buildRelatedContentResolveInput } from '@flow/workflow-core/related-content-runtime'
 import { mapPageParameters } from '@flow/workflow-core/page-parameters'
 import MobileFormRenderer from './MobileFormRenderer.vue'
@@ -23,12 +24,12 @@ const title = computed(() => props.composition.config?.presentation?.title || pr
 const requiresWrite = computed(() => (Array.isArray(props.composition.config?.actions) ? props.composition.config.actions : []).some(action => !['VIEW', 'SELECT'].includes(action)))
 const opened = ref(false), result = ref(null), loading = ref(false), error = ref('')
 let revision = 0
-const input = computed(() => buildRelatedContentResolveInput({ ownerType: 'FORM', ownerId: props.form.id, releaseId: props.form.runtimeReleaseId, releaseVersion: props.form.runtimeReleaseVersion, compositionKey: props.composition.compositionKey, sourceRecordId: props.context.recordId || props.context.record?.id, traversalContextToken: props.context.viewCompositionTraversalToken, releaseResolutionToken: props.form.releaseResolutionToken || props.context.releaseResolutionToken }))
+const input = computed(() => buildRelatedContentResolveInput({ ownerType: 'FORM', ownerId: props.form.id, compositionKey: props.composition.compositionKey, sourceRecordId: props.context.recordId || props.context.record?.id, compositionContext: props.context.compositionContext, configHash: props.form.configHash || props.context.configHash, runtimeContext: buildRuntimeContext(props.context, props.form) }))
 const parameters = computed(() => mapPageParameters(props.composition.config?.parameterMappings, { data: props.context.getFormData?.() || props.context.record, recordId: input.value.recordId, params: props.context.params || props.context.parameters }))
 const identity = computed(() => JSON.stringify([input.value, parameters.value]))
-const targetContext = computed(() => ({ mode: 'view', readonly: true, form: result.value.form, entityCode: result.value.resolved.targetEntityCode, record: result.value.record, recordId: result.value.record?.id, parameters: result.value.parameters, params: result.value.parameters, releaseResolutionToken: result.value.form?.releaseResolutionToken, viewCompositionTraversalToken: result.value.resolved.traversalContextToken, relatedDepth: Number(props.context.relatedDepth || 0) + 1 }))
+const targetContext = computed(() => ({ mode: 'view', readonly: true, form: result.value.form, entityCode: result.value.resolved.targetEntityCode, record: result.value.record, recordId: result.value.record?.id, parameters: result.value.parameters, params: result.value.parameters, configHash: result.value.form?.configHash, compositionContext: result.value.resolved.compositionContext, relatedDepth: Number(props.context.relatedDepth || 0) + 1 }))
 const targetRuntime = computed(() => props.dataSourceRuntime?.withContext(() => ({ ...targetContext.value, record: result.value.record, context: targetContext.value })))
-/** 关联查询由服务端解析关系和签名凭证；失败不降级为普通实体查询。 */
+/** 关联查询由服务端重新核验根入口和逐层关系；失败不降级为普通实体查询。 */
 async function load() {
   const current = ++revision; result.value = null; error.value = ''
   if (!opened.value || !input.value.recordId) return
@@ -43,7 +44,7 @@ async function load() {
 }
 function loadList(pagination) {
   const resolved = result.value.resolved
-  return props.services.loadPublishedList({ entityCode: resolved.targetEntityCode, listKey: resolved.targetContentKey, releaseId: resolved.targetReleaseId, releaseVersion: resolved.targetReleaseVersion, viewCompositionContextToken: resolved.listContextToken, scene: 'EMBEDDED', context: { parameters: parameters.value }, ...pagination })
+  return props.services.loadPublishedList({ entityCode: resolved.targetEntityCode, listKey: resolved.targetContentKey, compositionContext: resolved.compositionContext, scene: 'EMBEDDED', context: { parameters: parameters.value }, ...pagination })
 }
 watch(() => [opened.value, identity.value], load)
 onBeforeUnmount(() => revision++)

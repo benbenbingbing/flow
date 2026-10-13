@@ -32,6 +32,12 @@ import org.springframework.web.servlet.HandlerMapping;
 
 class EmbedDelegatedRuntimePolicyTest {
 
+    private com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.Scope sessionScope;
+    @org.junit.jupiter.api.BeforeEach
+    void openSession() { sessionScope=com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.openSession("session-1","release-1"); }
+    @org.junit.jupiter.api.AfterEach
+    void closeSession() {sessionScope.close();}
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final EmbedNativeFormTargetResolver targetResolver = mock(
             EmbedNativeFormTargetResolver.class);
@@ -99,7 +105,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void detailRequiresEveryPinnedCoordinateButNotEmbedCapabilityCeiling() {
+    void detailRequiresStableFormAndRecordBinding() {
         AuthenticatedEmbedSession withoutView = session(Set.of("ACTION_EXECUTE"));
         EmbedDelegatedRuntimePolicy policy = policy(null, null);
         when(targetResolver.resolveRoot(withoutView)).thenReturn(root);
@@ -112,7 +118,7 @@ class EmbedDelegatedRuntimePolicyTest {
                 exact, withoutView, null, declaration("recordDetail")));
 
         MockHttpServletRequest tampered = detail("record-1");
-        tampered.setParameter("formReleaseId", "new-active-release");
+        tampered.setParameter("formId", "other-form");
         assertThrows(EmbedException.class, () -> policy.authorize(
                 tampered, withoutView, null, declaration("recordDetail")));
     }
@@ -188,7 +194,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void signedTraversalAllowsOnlyServerResolvedChildEntityAndRecord()
+    void businessTraversalAllowsOnlyServerResolvedChildEntityAndRecord()
             throws Exception {
         AuthenticatedEmbedSession session = session(Set.of("RECORD_VIEW"));
         when(targetResolver.resolveRoot(session)).thenReturn(root);
@@ -196,7 +202,7 @@ class EmbedDelegatedRuntimePolicyTest {
                 .thenReturn(root);
         EmbedNativeTraversalRuntimePort traversal = mock(
                 EmbedNativeTraversalRuntimePort.class);
-        when(traversal.resolve("signed-child")).thenReturn(
+        when(traversal.resolve(any())).thenReturn(
                 new com.workflow.contracts.embed.runtime.port.EmbedNativeTraversalRuntimePort.TraversalTarget(
                         "FORM", "form-1", "form-release-1", 3,
                         "record-1", "FORM", "child-form",
@@ -206,7 +212,7 @@ class EmbedDelegatedRuntimePolicyTest {
         MockHttpServletRequest metadata = get("/any/new/metadata/route");
         pathVariables(metadata, Map.of("entityCode", "customer"));
         metadata.setParameter(
-                "viewCompositionTraversalToken", "signed-child");
+                "compositionContext", "{\"ownerType\":\"FORM\",\"ownerId\":\"form-1\",\"recordId\":\"record-1\",\"compositionKey\":\"child\"}");
 
         EmbedNativeFormTarget child = policy.authorize(
                 metadata, session, null, declaration("rootEntity"));
@@ -219,27 +225,20 @@ class EmbedDelegatedRuntimePolicyTest {
         pathVariables(detail, Map.of(
                 "entityCode", "customer", "recordId", "child-record"));
         detail.setParameter("formId", "child-form");
-        detail.setParameter("formReleaseId", "child-release");
-        detail.setParameter("formReleaseVersion", "7");
         detail.setParameter(
-                "formReleaseResolutionToken", "signed-release");
-        detail.setParameter(
-                "viewCompositionTraversalToken", "signed-child");
+                "compositionContext", "{\"ownerType\":\"FORM\",\"ownerId\":\"form-1\",\"recordId\":\"record-1\",\"compositionKey\":\"child\"}");
         assertEquals("child-record", policy.authorize(
                 detail, session, objectMapper.readTree("{}"),
                 declaration("recordDetail")).recordId());
     }
 
     @Test
-    void everyUiEventUsesPinnedCoordinatesWithoutEmbedCapabilityCeiling()
+    void everyUiEventUsesAuthorizedBusinessCoordinates()
             throws Exception {
         JsonNode body = objectMapper.readTree("""
                 {
                   "configType":"FORM",
                   "configId":"form-1",
-                  "releaseId":"form-release-1",
-                  "releaseVersion":3,
-                  "releaseResolutionToken":"signed-release",
                   "entityCode":"order",
                   "recordId":"record-1"
                 }
@@ -261,7 +260,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void nonRootRuntimeReleaseRequiresSessionBoundExactFormToken() {
+    void nonRootRuntimeReleaseUsesPublishedTargetWithinSession() {
         AuthenticatedEmbedSession session = listSession();
         EmbedNativeFormTarget listRoot = listRoot();
         when(targetResolver.resolveRoot(session)).thenReturn(listRoot);
@@ -269,10 +268,6 @@ class EmbedDelegatedRuntimePolicyTest {
         MockHttpServletRequest request = get(
                 "/api/entity-forms/child-form/runtime-release");
         pathVariables(request, Map.of("formId", "child-form"));
-        request.setParameter("releaseId", "child-release");
-        request.setParameter("version", "7");
-        request.setParameter(
-                "releaseResolutionToken", "signed-child-form");
 
         EmbedNativeFormTarget target = policy.authorize(
                 request, session, null, declaration("formRelease"));
@@ -280,9 +275,7 @@ class EmbedDelegatedRuntimePolicyTest {
         assertEquals("customer", target.entityCode());
         assertEquals("child-form", target.formId());
         assertEquals("child-release", target.formReleaseId());
-        verify(formRuntimePort).verifyRuntimeReleaseRequest(
-                eq("signed-child-form"),
-                any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget.class));
+        verify(formRuntimePort).authorizeTarget(eq("child-form"),eq("child-form"),any());
     }
 
     @Test
@@ -300,9 +293,6 @@ class EmbedDelegatedRuntimePolicyTest {
         JsonNode body = objectMapper.readTree("""
                 {
                   "formId":"child-form",
-                  "releaseId":"child-release",
-                  "releaseVersion":7,
-                  "releaseResolutionToken":"signed-child-form",
                   "entityCode":"customer",
                   "mode":"edit",
                   "recordId":"child-record"
@@ -315,7 +305,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void nonRootApprovalActionKeepsApproveModeAndUsesSignedPinnedTarget()
+    void nonRootApprovalActionKeepsApproveModeAndUsesAuthorizedTarget()
             throws Exception {
         AuthenticatedEmbedSession session = listSession();
         EmbedNativeFormTarget listRoot = listRoot();
@@ -333,9 +323,6 @@ class EmbedDelegatedRuntimePolicyTest {
         JsonNode body = objectMapper.readTree("""
                 {
                   "formId":"child-form",
-                  "releaseId":"child-release",
-                  "releaseVersion":7,
-                  "releaseResolutionToken":"signed-child-form",
                   "entityCode":"customer",
                   "mode":"approve",
                   "recordId":"child-record",
@@ -349,7 +336,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void nonRootEventUsesSameSignedPinnedTargetChain()
+    void nonRootEventUsesSameBusinessTargetChain()
             throws Exception {
         AuthenticatedEmbedSession session = listSession();
         EmbedNativeFormTarget child = childTarget();
@@ -366,9 +353,6 @@ class EmbedDelegatedRuntimePolicyTest {
                 {
                   "configType":"FORM",
                   "configId":"child-form",
-                  "releaseId":"child-release",
-                  "releaseVersion":7,
-                  "releaseResolutionToken":"signed-child-form",
                   "entityCode":"customer",
                   "recordId":"child-record"
                 }
@@ -394,10 +378,6 @@ class EmbedDelegatedRuntimePolicyTest {
         pathVariables(request, Map.of(
                 "entityCode", "customer", "recordId", "child-record"));
         request.setParameter("formId", "child-form");
-        request.setParameter("formReleaseId", "child-release");
-        request.setParameter("formReleaseVersion", "7");
-        request.setParameter(
-                "formReleaseResolutionToken", "signed-child-form");
 
         assertEquals(child, policy.authorize(
                 request, session, objectMapper.readTree("{}"),
@@ -408,7 +388,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void nonRootFormOwnerUsesSignedTargetInsteadOfRootFallback()
+    void nonRootFormOwnerUsesDeclaredTargetInsteadOfRootFallback()
             throws Exception {
         AuthenticatedEmbedSession session = listSession();
         EmbedNativeFormTarget child = childTarget();
@@ -422,9 +402,6 @@ class EmbedDelegatedRuntimePolicyTest {
                 {
                   "ownerType":"FORM",
                   "ownerId":"child-form",
-                  "releaseId":"child-release",
-                  "releaseVersion":7,
-                  "releaseResolutionToken":"signed-child-form",
                   "entityCode":"customer",
                   "recordId":"child-record"
                 }
@@ -436,7 +413,7 @@ class EmbedDelegatedRuntimePolicyTest {
     }
 
     @Test
-    void nonRootUniquePrecheckUsesSignedTarget()
+    void nonRootUniquePrecheckUsesDeclaredTarget()
             throws Exception {
         AuthenticatedEmbedSession session = listSession();
         EmbedNativeFormTarget child = childTarget();
@@ -451,15 +428,79 @@ class EmbedDelegatedRuntimePolicyTest {
         pathVariables(request, Map.of("formId", "child-form"));
         JsonNode body = objectMapper.readTree("""
                 {
-                  "releaseId":"child-release",
-                  "releaseVersion":7,
-                  "releaseResolutionToken":"signed-child-form",
                   "recordId":"child-record"
                 }
                 """);
 
         assertEquals(child, policy.authorize(
                 request, session, body, declaration("formUnique")));
+    }
+
+    @Test
+    void compositionFromAnotherRootIsRejectedBeforeResolvingChild() throws Exception {
+        AuthenticatedEmbedSession session=session(Set.of("RECORD_VIEW"));
+        when(targetResolver.resolveRoot(session)).thenReturn(root);
+        EmbedNativeTraversalRuntimePort traversal=mock(EmbedNativeTraversalRuntimePort.class);
+        var policy=policy(null,traversal);
+        var request=get("/metadata/customer"); pathVariables(request,Map.of("entityCode","customer"));
+        request.setParameter("compositionContext","{\"ownerType\":\"FORM\",\"ownerId\":\"other-root\",\"recordId\":\"record-1\",\"compositionKey\":\"child\"}");
+        assertThrows(EmbedException.class,()->policy.authorize(request,session,null,declaration("rootEntity")));
+        verifyNoInteractions(traversal);
+    }
+
+    @Test
+    void formChildCannotReplaceFixedSessionParentRecord() throws Exception {
+        AuthenticatedEmbedSession session = session(Set.of("RECORD_VIEW"));
+        when(targetResolver.resolveRoot(session)).thenReturn(root);
+        var policy = policy(null, null);
+        when(targetResolver.authorize(session, "VIEW", "other-record"))
+                .thenThrow(new IllegalArgumentException("记录不属于当前会话"));
+        var request = get("/form/child-form/runtime-release");
+        pathVariables(request, Map.of("formId", "child-form"));
+        request.setParameter("runtimeContext", objectMapper.writeValueAsString(Map.of(
+                "rootFormId", "form-1", "rootRecordId", "other-record",
+                "componentPath", java.util.List.of("customer-form"))));
+
+        assertThrows(IllegalArgumentException.class, () -> policy.authorize(request, session, null, declaration("formRelease")));
+        verify(formRuntimePort, org.mockito.Mockito.never()).authorizeTarget(any(), any(), any());
+    }
+
+    @Test
+    void formChildListMetadataUsesPublishedPathAndTrustedRootRecord() throws Exception {
+        AuthenticatedEmbedSession session = session(Set.of("RECORD_VIEW"));
+        when(targetResolver.resolveRoot(session)).thenReturn(root);
+        var policy = policy(null, null);
+        Map<String, Object> context = Map.of("rootFormId", "form-1", "rootRecordId", "record-1",
+                "componentPath", java.util.List.of("customer-list"), "listKey", "customers");
+        when(listRuntimePort.authorizeFormList("form-1", "customer", "customers", context))
+                .thenReturn(new EmbedNativeListRuntimePort.ReferencedList("customer", "customers", "child-list-release", 2));
+        var request = get("/metadata/customer");
+        pathVariables(request, Map.of("entityCode", "customer"));
+        request.setParameter("runtimeContext", objectMapper.writeValueAsString(context));
+
+        var target = policy.authorize(request, session, null, declaration("rootEntity"));
+        assertEquals("customer", target.entityCode());
+        assertEquals("child-list-release", target.listReleaseId());
+        verify(targetResolver).authorize(session, "VIEW", "record-1");
+        assertEquals("customers", com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext
+                .authorizedListTarget().orElseThrow().listKey());
+    }
+
+    @Test
+    void formChildListCannotChangeEmbedSourceRecord() throws Exception {
+        AuthenticatedEmbedSession session = session(Set.of("RECORD_VIEW"));
+        when(targetResolver.resolveRoot(session)).thenReturn(root);
+        var policy = policy(null, null);
+        when(targetResolver.authorize(session, "VIEW", "other-record"))
+                .thenThrow(new IllegalArgumentException("记录不属于当前会话"));
+        var request = get("/metadata/customer");
+        pathVariables(request, Map.of("entityCode", "customer"));
+        request.setParameter("runtimeContext", objectMapper.writeValueAsString(Map.of(
+                "rootFormId", "form-1", "rootRecordId", "other-record",
+                "componentPath", java.util.List.of("customer-list"), "listKey", "customers")));
+
+        assertThrows(IllegalArgumentException.class, () -> policy.authorize(request, session, null, declaration("rootEntity")));
+        verify(listRuntimePort, org.mockito.Mockito.never()).authorizeFormList(any(), any(), any(), any());
     }
 
     @SuppressWarnings("unchecked")
@@ -478,36 +519,13 @@ class EmbedDelegatedRuntimePolicyTest {
         when(traversalProvider.getIfAvailable()).thenReturn(traversal);
         when(listProvider.getIfAvailable()).thenReturn(listRuntimePort);
         when(formProvider.getIfAvailable()).thenReturn(formRuntimePort);
-        when(formRuntimePort.verifyReleaseResolutionToken(
-                anyString(), any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort
-                        .VerificationTarget.class)))
-                .thenAnswer(invocation -> {
-                    com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget target =
-                            invocation.getArgument(1);
-                    String entityCode = target.entityCode() == null
-                            ? ("child-form".equals(target.formId())
-                                    ? "customer" : root.entityCode())
-                            : target.entityCode();
-                    return new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
-                            entityCode, target.formId(),
-                            target.formReleaseId(),
-                            target.formReleaseVersion());
-                });
-        when(formRuntimePort.verifyRuntimeReleaseRequest(
-                anyString(), any(com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort
-                        .VerificationTarget.class)))
-                .thenAnswer(invocation -> {
-                    com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget target =
-                            invocation.getArgument(1);
-                    String entityCode = target.entityCode() == null
-                            ? ("child-form".equals(target.formId())
-                                    ? "customer" : root.entityCode())
-                            : target.entityCode();
-                    return new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget(
-                            entityCode, target.formId(),
-                            target.formReleaseId(),
-                            target.formReleaseVersion());
-                });
+        when(formRuntimePort.authorizeTarget(anyString(),anyString(),any())).thenAnswer(invocation -> {
+            String formId=invocation.getArgument(1);
+            boolean child="child-form".equals(formId);
+            return new EmbedNativeFormRuntimePort.VerifiedTarget(child?"customer":"order",formId,child?"child-release":"form-release-1",child?7:3);
+        });
+        when(listRuntimePort.authorizeTarget(any(),anyString(),anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(listRuntimePort.authorizeForm(any(),anyString(),anyString(),anyString(),any())).thenAnswer(invocation -> invocation.getArgument(3));
         return new EmbedDelegatedRuntimePolicy(
                 targetResolver, processProvider, traversalProvider,
                 listProvider, formProvider);
@@ -520,15 +538,7 @@ class EmbedDelegatedRuntimePolicyTest {
         pathVariables(request, Map.of(
                 "entityCode", "order", "recordId", recordId));
         request.setParameter("formId", "form-1");
-        request.setParameter("formReleaseId", "form-release-1");
-        request.setParameter("formReleaseVersion", "3");
-        request.setParameter(
-                "formReleaseResolutionToken", "signed-release");
         request.setParameter("listKey", "default");
-        request.setParameter("releaseId", "list-release-1");
-        request.setParameter("releaseVersion", "2");
-        request.setParameter(
-                "releaseResolutionToken", "signed-list-release");
         return request;
     }
 

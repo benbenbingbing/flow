@@ -52,6 +52,7 @@ export function listMetadataDetailEntries(config, viewConfig) {
 
 const LIST_BUTTON_DEFAULT_TYPES = Object.freeze({
   create: 'primary',
+  import: 'default',
   exportSelected: 'default',
   exportAll: 'default',
   batchDelete: 'danger',
@@ -60,6 +61,29 @@ const LIST_BUTTON_DEFAULT_TYPES = Object.freeze({
   approve: 'warning',
   delete: 'danger'
 })
+
+// 导入按实体默认 Excel 方案执行；模板只提供入口，必须由列表设计者主动启用。
+export const LIST_IMPORT_BUTTON_PRESET = Object.freeze({
+  key: 'import', type: 'built-in', label: '导入', icon: 'Upload',
+  buttonType: 'default', sort: 5, enabled: false, perm: ''
+})
+
+/**
+ * 仅在列表设计器中补齐历史草稿缺少的导入入口，不修改已发布列表的运行时按钮。
+ * 保留已有按钮的启用状态、权限、顺序和稳定 ID，新增入口追加到末尾避免打乱用户排序。
+ */
+export function ensureListToolbarImportButton(buttons = []) {
+  const result = buttons.map(button => ({ ...button }))
+  if (!result.some(button => button.key === 'import')) {
+    const maxSort = Math.max(0, ...result.map(button => Number(button.sort) || 0))
+    result.push({
+      ...LIST_IMPORT_BUTTON_PRESET,
+      sort: maxSort + 1,
+      orderKey: calculateListActionOrderKey(result, result.length)
+    })
+  }
+  return result
+}
 
 export function getListButtonDefaultType(buttonOrKey) {
   const key = typeof buttonOrKey === 'string'

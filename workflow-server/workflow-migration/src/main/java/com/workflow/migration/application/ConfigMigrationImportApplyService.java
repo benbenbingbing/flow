@@ -175,6 +175,8 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationSubFormReferences subFormReferences;
     private final ObjectMapper objectMapper;
     private final DatabaseQueryDialect queryDialect;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
 
     /**
      * 发布完整导入批次，将包内全部资产配置原子应用到目标环境。
@@ -244,6 +246,9 @@ public class ConfigMigrationImportApplyService {
         // 普通实体绑定统一采用“流程行 -> 实体行”锁序。迁移也必须在任何
         // entity_definition 写入前先锁流程、再锁并校验实体，避免反向死锁
         // 和过期绑定写入。
+        // Excel 的表单/方案双向引用只在本事务预检计划内延期；结束后必须正常发布并复核。
+        var excelScope = openExcelPublicationScope(actionableItems);
+        try {
         processLockCoordinator.lockAffectedExistingProcesses(actionableItems);
 
         List<ConfigImportItem> dictionaries = itemsOfType(
@@ -325,8 +330,10 @@ public class ConfigMigrationImportApplyService {
             applyProcessConfiguration(context, importPackage);
             markPublished(context.item());
         }
+        for (EntityContext context : entities) publishEntity(context, importPackage);
+        excelScope.close();
         for (EntityContext context : entities) {
-            publishEntity(context, importPackage);
+            applyExcelConfiguration(context);
             markPublished(context.item());
         }
         for (ConfigImportItem item : items.stream()
@@ -348,6 +355,31 @@ public class ConfigMigrationImportApplyService {
         log.info("配置迁移包原子发布完成，importId={}，packageNo={}，itemCount={}",
                 importId, importPackage.getPackageNo(), items.size());
         return publishResult(importPackage, items);
+        } finally {
+            // 异常路径也必须清除线程上下文，防止线程池复用把迁移权限带到下一次请求。
+            excelScope.close();
+        }
+    }
+
+    /** 只提交已预检、实际需要应用的 ENTITY 分区，避免把一致复用资产扩大成延期校验。 */
+    private com.workflow.contracts.migration.port.EntityExcelMigrationPort.PublicationScope openExcelPublicationScope(List<ConfigImportItem> items) {
+        Map<String, Map<String, Object>> snapshots = new LinkedHashMap<>();
+        for (ConfigImportItem item : items) {
+            Map<String, Object> snapshot = readMap(item.getSnapshotJson());
+            if (ConfigMigrationAssetService.ENTITY.equals(item.getAssetType())
+                    && snapshot.containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION))
+                snapshots.put(item.getBusinessKey(), snapshot);
+        }
+        if (snapshots.isEmpty()) return com.workflow.contracts.migration.port.EntityExcelMigrationPort.PublicationScope.NONE;
+        if (excelConfigurations == null) throw new IllegalStateException("Excel 配置迁移适配器不可用");
+        return excelConfigurations.openPublicationScope(snapshots);
+    }
+
+    /** 目标实体、字段、表单已完成普通发布后，Excel 用本地身份重建并刷新最终迁移基线。 */
+    private void applyExcelConfiguration(EntityContext context) {
+        if (!context.snapshot().containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) return;
+        excelConfigurations.applyPublished(context.entity().getEntityCode(), context.snapshot());
+        assetService.recordPublished(context.entity().getId());
     }
 
     /**
@@ -608,12 +640,16 @@ public class ConfigMigrationImportApplyService {
                             packageCodec.selectionOf(importedSnapshot));
             markRemovedViewCompositionsForRollback(
                     rollbackSnapshot, importedSnapshot);
+            ConfigMigrationExcelSupport.prepareRollback(rollbackSnapshot, importedSnapshot);
             rollbackItem.setSnapshotJson(writeJson(rollbackSnapshot));
             rollbackPlans.add(new RollbackItemPlan(item, rollbackItem));
         }
 
         // 回滚必须使用“上一版本恢复快照”而非本次导入快照计算目标流程。
         // 先完成纯计划并统一取得 P→E 锁，之后才允许停用或恢复任何实体。
+        var excelScope = openExcelPublicationScope(rollbackPlans.stream()
+                .map(RollbackItemPlan::rollbackItem).filter(Objects::nonNull).toList());
+        try {
         processLockCoordinator.lockAffectedExistingProcesses(
                 rollbackLockItems(rollbackPlans));
         for (RollbackItemPlan plan : rollbackPlans) {
@@ -703,6 +739,15 @@ public class ConfigMigrationImportApplyService {
                     rollback.context().snapshot());
             publishEntity(rollback.context(), rollbackPackage);
         }
+        excelScope.close();
+        for (EntityRollbackContext rollback : entityRollbacks) {
+            applyExcelConfiguration(rollback.context());
+            if (rollback.context().snapshot().containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) {
+                excelConfigurations.removeAddedSchemes(rollback.context().entity().getEntityCode(),
+                        rollback.context().snapshot(), readMap(rollback.originalItem().getSnapshotJson()));
+                assetService.recordPublished(rollback.context().entity().getId());
+            }
+        }
 
         for (ConfigImportItem item : items) {
             item.setPublishStatus("ROLLED_BACK");
@@ -735,6 +780,9 @@ public class ConfigMigrationImportApplyService {
         importPackage.setPublishedAt(LocalDateTime.now());
         importPackageMapper.updateById(importPackage);
         return publishResult(importPackage, items);
+        } finally {
+            excelScope.close();
+        }
     }
 
     /**

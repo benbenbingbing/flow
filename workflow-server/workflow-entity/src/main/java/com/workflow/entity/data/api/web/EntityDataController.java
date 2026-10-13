@@ -10,9 +10,9 @@ import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.api.request.EntityDataExportRequest;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityDataExportService;
-import com.workflow.entity.form.application.context.EntityFormReleaseContext;
+import com.workflow.entity.form.application.context.EntityFormRuntimeContext;
 import com.workflow.entity.list.application.EntityDataListConfigService;
-import com.workflow.entity.list.application.EntityListReleaseContext;
+import com.workflow.entity.list.application.EntityListRuntimeContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -151,9 +151,6 @@ public class EntityDataController {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于读取ID时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法读取ID时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 符合条件的API{@code response<entity}数据{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/entity/{entityCode}/detail/{id}")
@@ -161,18 +158,16 @@ public class EntityDataController {
             @PathVariable String entityCode,
             @PathVariable String id,
             @RequestParam(required = false) String listKey,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false) String configHash,
             @RequestParam(required = false)
-            String releaseResolutionToken) {
+            String runtimeContext) {
         return ApiResponse.success(entityDataActionService.getDetailReadOnly(
                 entityCode,
                 id,
                 listKey,
-                releaseContext(
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken)));
+                runtimeContext(
+                        configHash,
+                        runtimeContext)));
     }
 
     /**
@@ -182,12 +177,6 @@ public class EntityDataController {
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param formId 表单ID，后续用于加载ID时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于加载ID时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法加载ID时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param formReleaseId 表单发布版本ID，后续用于加载ID时定位或关联目标
-     * @param formReleaseVersion 表单发布版本，作为 {@code EntityFormReleaseContext} 的输入影响后续处理
-     * @param formReleaseResolutionToken 表单发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 符合条件的API{@code response<entity}数据{@code dto>}结果，供调用方继续处理
      */
     @PostMapping("/entity/{entityCode}/detail/{recordId}/load")
@@ -200,27 +189,20 @@ public class EntityDataController {
             @PathVariable String recordId,
             @RequestParam(required = false) String listKey,
             @RequestParam(required = false) String formId,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false) String configHash,
             @RequestParam(required = false)
-            String releaseResolutionToken,
-            @RequestParam(required = false) String formReleaseId,
-            @RequestParam(required = false) Integer formReleaseVersion,
-            @RequestParam(required = false)
-            String formReleaseResolutionToken) {
+            String runtimeContext,
+            @RequestParam(required = false) String formConfigHash) {
         return ApiResponse.success(entityDataActionService.getDetail(
                 entityCode,
                 recordId,
                 listKey,
                 formId,
-                releaseContext(
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken),
-                new EntityFormReleaseContext(
-                        formReleaseId,
-                        formReleaseVersion,
-                        formReleaseResolutionToken)));
+                runtimeContext(
+                        configHash,
+                        runtimeContext),
+                new EntityFormRuntimeContext(formConfigHash,
+                        com.workflow.entity.ui.application.RuntimeRequestContext.map(runtimeContext))));
     }
     
     /**
@@ -229,9 +211,6 @@ public class EntityDataController {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于读取流程实例时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法读取流程实例时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 符合条件的API{@code response<entity}数据{@code dto>}结果，供调用方继续处理
      */
     @GetMapping("/entity/{entityCode}/process/{processInstanceId}")
@@ -239,10 +218,9 @@ public class EntityDataController {
             @PathVariable String entityCode, 
             @PathVariable String processInstanceId,
             @RequestParam(required = false) String listKey,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false) String configHash,
             @RequestParam(required = false)
-            String releaseResolutionToken) {
+            String runtimeContext) {
         actionCapabilityService.requireAnyStandardPermission(
                 entityCode,
                 com.workflow.entity.permission.application.EntityPermissionAction.VIEW,
@@ -251,10 +229,9 @@ public class EntityDataController {
                 entityCode,
                 processInstanceId,
                 listKey,
-                releaseContext(
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken)));
+                runtimeContext(
+                        configHash,
+                        runtimeContext)));
     }
     
     /**
@@ -266,12 +243,11 @@ public class EntityDataController {
      */
     @PostMapping
     public ApiResponse<EntityDataDTO> save(@RequestBody EntityDataDTO dto) {
+        requireListConfigHash(dto.getListKey(), dto.getListConfigHash());
         return ApiResponse.success(entityDataActionService.create(
                 dto,
-                releaseContext(
-                        dto.getListReleaseId(),
-                        dto.getListReleaseVersion(),
-                        dto.getListReleaseResolutionToken())));
+                runtimeContext(
+                        dto.getListConfigHash(), dto.getRuntimeContext())));
     }
     
     /**
@@ -280,9 +256,6 @@ public class EntityDataController {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于更新实体数据时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法更新实体数据时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @param formData 表单数据，作为 {@code ApiResponse.success} 的输入影响后续处理
      * @return 更新后的实体数据结果，供调用方继续处理
      */
@@ -291,20 +264,19 @@ public class EntityDataController {
             @PathVariable String entityCode, 
             @PathVariable String id, 
             @RequestParam(required = false) String listKey,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false) String configHash,
             @RequestParam(required = false)
-            String releaseResolutionToken,
+            String runtimeContext,
             @RequestBody Map<String, Object> formData) {
+        requireListConfigHash(listKey, configHash);
         return ApiResponse.success(entityDataActionService.update(
                 entityCode,
                 id,
                 listKey,
                 formData,
-                releaseContext(
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken)));
+                runtimeContext(
+                        configHash,
+                        runtimeContext)));
     }
     
     /**
@@ -313,9 +285,6 @@ public class EntityDataController {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于删除实体数据时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法删除实体数据时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 删除后的实体数据结果，供调用方继续处理
      */
     @PostMapping("/entity/{entityCode}/detail/{id}/delete")
@@ -323,18 +292,17 @@ public class EntityDataController {
             @PathVariable String entityCode,
             @PathVariable String id,
             @RequestParam(required = false) String listKey,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
+            @RequestParam(required = false) String configHash,
             @RequestParam(required = false)
-            String releaseResolutionToken) {
+            String runtimeContext) {
+        requireListConfigHash(listKey, configHash);
         entityDataActionService.delete(
                 entityCode,
                 id,
                 listKey,
-                releaseContext(
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken));
+                runtimeContext(
+                        configHash,
+                        runtimeContext));
         return ApiResponse.success();
     }
 
@@ -349,14 +317,13 @@ public class EntityDataController {
     public ApiResponse<Void> batchDelete(
             @PathVariable String entityCode,
             @RequestBody EntityBatchDeleteRequest request) {
+        requireListConfigHash(request.getListKey(), request.getConfigHash());
         entityDataActionService.batchDelete(
                 entityCode,
                 request.getIds(),
                 request.getListKey(),
-                releaseContext(
-                        request.getReleaseId(),
-                        request.getReleaseVersion(),
-                        request.getReleaseResolutionToken()));
+                runtimeContext(
+                        request.getConfigHash(), request.getRuntimeContext()));
         return ApiResponse.success();
     }
     
@@ -403,6 +370,7 @@ public class EntityDataController {
             @PathVariable String entityCode,
             @RequestBody EntityDataExportRequest request,
             HttpServletResponse response) {
+        requireListConfigHash(request.getListKey(), request.getConfigHash());
         entityDataExportService.export(entityCode, request, response);
     }
 
@@ -421,21 +389,16 @@ public class EntityDataController {
     }
 
     /**
-     * 处理发布版本上下文，并将结果传给后续步骤。
+     * 解码列表配置摘要和业务定位信息，交给服务层重新校验权限。
      *
-     * @param releaseId 发布版本ID，后续用于处理发布版本上下文时定位或关联目标
-     * @param releaseVersion 发布版本，作为 {@code EntityListReleaseContext} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 处理后的发布版本上下文结果，供调用方继续处理
+     * @return 列表运行时上下文；其中的业务坐标不作为授权凭证
      */
-    private EntityListReleaseContext releaseContext(
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken) {
-        return new EntityListReleaseContext(
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken);
+    private EntityListRuntimeContext runtimeContext(
+            String configHash,
+            Object runtimeContext) {
+        return new EntityListRuntimeContext(
+                configHash,
+                com.workflow.entity.ui.application.RuntimeRequestContext.map(runtimeContext));
     }
 
     /**
@@ -467,6 +430,13 @@ public class EntityDataController {
             return Math.max(1, Long.parseLong(value));
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException(primaryKey + " 必须是正整数");
+        }
+    }
+    /** 浏览器从列表发起有副作用的操作必须携带加载时摘要，不能静默按更新后的按钮规则执行。 */
+    private void requireListConfigHash(String listKey, String configHash) {
+        if (org.springframework.util.StringUtils.hasText(listKey)
+                && !org.springframework.util.StringUtils.hasText(configHash)) {
+            throw new com.workflow.core.error.BusinessConflictException("LIST_CONFIGURATION_REQUIRED", "请重新加载列表后再操作");
         }
     }
 }

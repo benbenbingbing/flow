@@ -6,12 +6,12 @@ const entityListRuntimeApi = {
     return request.get(`/entity-lists/${entityCode}/${listKey}/schema`, {
       params: {
         scene,
-        releaseId: release.releaseId || undefined,
-        releaseVersion: release.releaseVersion ?? undefined,
-        releaseResolutionToken:
-          release.releaseResolutionToken || undefined,
-        viewCompositionContextToken:
-          release.viewCompositionContextToken || undefined
+        configHash:
+          release.configHash || undefined,
+        compositionContext:
+          release.compositionContext || undefined,
+        runtimeContext: release.runtimeContext || undefined,
+        candidateAction: release.candidateAction || undefined
       }
     })
   },

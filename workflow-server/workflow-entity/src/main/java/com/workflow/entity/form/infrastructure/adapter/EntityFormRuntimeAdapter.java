@@ -16,7 +16,6 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -40,7 +39,6 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFormMapper formMapper;
     private final UiConfigReleaseService releaseService;
-    private final UiReleaseResolutionTokenService resolutionTokenService;
     private final ObjectMapper objectMapper;
 
     /**
@@ -148,12 +146,16 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         form.setRuntimeReleaseVersion(resolved.releaseVersion());
         form.setEffectiveReleaseId(resolved.effectiveReleaseId());
         form.setHotfixApplied(resolved.hotfixApplied());
-        form.setReleaseResolutionToken(resolutionTokenService.issue(
-                effectiveContext,
-                form.getId(),
-                resolved.releaseId(),
-                resolved.releaseVersion(),
-                0));
+        form.setConfigHash(releaseService.formConfigHash(form.getId()));
+        Map<String, Object> runtime = new java.util.LinkedHashMap<>();
+        if (StringUtils.hasText(effectiveContext.taskId())) runtime.put("taskId", effectiveContext.taskId());
+        if (StringUtils.hasText(effectiveContext.processInstanceId())) {
+            runtime.put("processInstanceId", effectiveContext.processInstanceId());
+            runtime.put("nodeId", effectiveContext.nodeId());
+            runtime.put("recordId", effectiveContext.recordId());
+            runtime.put("entityCode", effectiveContext.entityCode());
+        }
+        form.setRuntimeContext(runtime);
         log.info(
                 "流程表单绑定解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, historyId={}, nodeId={}, purpose={}",
                 LogValue.safe(form.getId()),
@@ -225,13 +227,8 @@ public class EntityFormRuntimeAdapter implements EntityFormRuntimePort {
         form.setRuntimeReleaseVersion(resolved.releaseVersion());
         form.setEffectiveReleaseId(resolved.effectiveReleaseId());
         form.setHotfixApplied(resolved.hotfixApplied());
-        form.setReleaseResolutionToken(
-                resolutionTokenService.issue(
-                        context,
-                        form.getId(),
-                        resolved.releaseId(),
-                        resolved.releaseVersion(),
-                        0));
+        form.setConfigHash(releaseService.formConfigHash(form.getId()));
+        form.setRuntimeContext(Map.of());
         log.info(
                 "独立表单运行时解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}",
                 LogValue.safe(form.getId()),

@@ -33,7 +33,7 @@ class UiListLoadBindingTest {
     void oldPublishedQuerySlotBecomesReplacementWithoutChangingSnapshot() {
         Map<String, Object> snapshot = snapshot(List.of());
         UiEventExecuteRequest request = request();
-        when(releases.resolveRuntimeListRelease("list-1", "old-release", 3, null)).thenReturn(release(snapshot));
+        when(releases.resolveRuntimeListRelease("list-1", null, Map.of())).thenReturn(release(snapshot));
 
         var chain = service.resolvePublished(request);
 
@@ -51,7 +51,7 @@ class UiListLoadBindingTest {
         Map<String, Object> snapshot = snapshot(List.of(Map.of("ownerType", "LIST", "ownerId", "list-1",
                 "targetType", "OWNER", "eventCode", "LIST_LOAD", "inheritanceMode", "REPLACE",
                 "steps", List.of(Map.of("strategy", "REPLACE", "extensionId", "new-query")))));
-        when(releases.resolveRuntimeListRelease("list-1", "old-release", 3, null)).thenReturn(release(snapshot));
+        when(releases.resolveRuntimeListRelease("list-1", null, Map.of())).thenReturn(release(snapshot));
 
         var chain = service.resolvePublished(request);
 
@@ -71,7 +71,7 @@ class UiListLoadBindingTest {
 
         assertEquals("old-release", chain.releaseId());
         assertEquals(3, chain.releaseVersion());
-        verify(releases, never()).resolveRuntimeListRelease(any(), any(), any(), any());
+        verify(releases, never()).resolveRuntimeListRelease(any(), any(), any());
     }
 
     private UiConfigReleaseService.ResolvedEntityListRelease release(Map<String, Object> snapshot) {

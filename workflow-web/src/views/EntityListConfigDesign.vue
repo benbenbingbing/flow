@@ -586,12 +586,12 @@
               <template #default="{ row }">
                 <ListQuickCopyCell
                   :enabled="safeParseConfig(field.columnConfig).quickCopy === true"
-                  :value="row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-'"
+                  :value="getPreviewCellValue(row, field)"
                   :field-name="field.fieldName"
                 >
                   <ListCellRenderer
                     v-if="
-                      field.renderComponent
+                      isListCellMaskingEnabled(field) || field.renderComponent
                       || (field.dataSourceType && field.dataSourceType !== 'ENTITY_FIELD')
                     "
                     :row="row"
@@ -759,41 +759,29 @@
           >
             <div class="field-config-subsection">
               <div class="field-config-subsection__title">数据来源</div>
-              <el-alert
-                :title="selectedDataSourceOption?.description || '实体字段无需额外配置'"
-                type="info"
-                :closable="false"
-                style="margin-bottom: 12px"
-              />
-              <ConfigSchemaEditor
-                v-model="editingDataSourceConfig"
-                :schema="selectedDataSourceOption?.configSchema || []"
-              />
               <el-form label-width="110px" size="small">
-                <el-form-item label="字段数据源">
+                <el-form-item label="取值方式" for="">
                   <template #label>
                     <ConfigHelpLabel
-                      label="字段数据源"
+                      label="取值方式"
                       help-key="entityList.dataSourceType"
                     />
                   </template>
                   <el-select
                     v-model="editingField.dataSourceType"
-                    :disabled="!isVirtualField(editingField)"
                     style="width: 100%"
                     @change="handleDataSourceChange(editingField)"
                   >
                     <el-option
-                      v-for="option in selectableDataSourceOptions"
+                      v-for="option in listColumnSourceOptions"
                       :key="option.value"
                       :label="option.label"
                       :value="option.value"
-                      :disabled="isVirtualField(editingField) && option.supportsVirtualField === false"
+                      :disabled="(isVirtualField(editingField) && option.value === 'ENTITY_FIELD') || (isSystemEntity && option.value !== 'ENTITY_FIELD')"
                     />
                   </el-select>
-                  <div class="form-tip">只列出当前实体可用的数据源。没写适用范围的数据源对全部实体可见。</div>
                 </el-form-item>
-                <el-form-item label="扩展接口">
+                <el-form-item v-if="editingField.dataSourceType === 'INTERFACE'" label="扩展接口" required for="">
                   <template #label>
                     <ConfigHelpLabel
                       label="扩展接口"
@@ -804,7 +792,7 @@
                     v-model="editingField.interfaceExtensionId"
                     clearable
                     filterable
-                    placeholder="可选：LIST_COLUMN 扩展接口"
+                    placeholder="请选择用于计算本列的接口"
                     style="width: 100%"
                   >
                     <el-option
@@ -816,11 +804,18 @@
                   </el-select>
                 </el-form-item>
               </el-form>
+              <ConfigSchemaEditor
+                v-if="editingSourceSchema.length"
+                v-model="editingDataSourceConfig"
+                :schema="editingSourceSchema"
+                :grouped="false"
+                show-field-help
+              />
             </div>
             <div class="field-config-subsection">
               <div class="field-config-subsection__title">单元格显示</div>
               <el-form label-width="110px" size="small">
-                <el-form-item label="渲染组件">
+                <el-form-item label="渲染组件" for="">
                   <template #label>
                     <ConfigHelpLabel
                       label="渲染组件"
@@ -845,7 +840,9 @@
               </el-form>
               <ConfigSchemaEditor
                 v-model="editingRenderConfig"
-                :schema="selectedCellDescriptor?.configSchema || []"
+                :schema="editingRenderSchema"
+                :grouped="false"
+                show-field-help
               />
             </div>
           </SettingsSection>
@@ -938,6 +935,7 @@ import { entityApi } from '@/api/entity'
 import { entityListRuntimeApi } from '@/api/entityListRuntime'
 import { entityListScopeRuleApi } from '@/api/entityListScopeRule'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
+import { formatMaskedListCellValue, isListCellMaskingEnabled, listCellMaskingSchema } from '@/shared/list-cell-masking'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import ListFixedFilterEditor from '@/components/ListFixedFilterEditor.vue'
 import SelectionReturnMappingEditor from '@/components/SelectionReturnMappingEditor.vue'
@@ -953,6 +951,7 @@ import SettingsSection from '@/components/SettingsSection.vue'
 import UiConfigPublishDialog from '@/components/UiConfigPublishDialog.vue'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import { listButtonEventOptions } from '@/components/ui-config/listButtonEventTargets'
+import { listColumnSourceOptions, getListColumnSourceSchema, changeListColumnSource, validateListColumnSource } from '@/shared/list-column-source'
 import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigReleaseHistoryDialog.vue'
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
@@ -971,6 +970,7 @@ import { filterEntityFieldsByLifecycle } from '@/shared/entity-design'
 import {
   calculateListActionOrderKey as localActionOrderKey,
   describeListPublishChanges as describePublishChanges,
+  ensureListToolbarImportButton,
   listActionBaselineKey as actionBaselineKey,
   listActionFingerprint as actionFingerprint,
   listMetadataDetailEntries,
@@ -1178,13 +1178,6 @@ const fieldConfigDialogVisible = ref(false)
 const activeFieldConfigTab = ref('common')
 const editingField = ref(null)
 // 下拉按 supportedEntityCodes 收窄到当前实体；当前已选值始终保留
-const selectableDataSourceOptions = computed(() =>
-  filterOptionsByEntity(
-    dataSourceOptions.value,
-    entityCode.value,
-    editingField.value?.dataSourceType
-  )
-)
 const selectableCellComponentOptions = computed(() =>
   filterOptionsByEntity(
     cellComponentOptions,
@@ -1194,14 +1187,25 @@ const selectableCellComponentOptions = computed(() =>
 )
 const editingDataSourceConfig = ref({})
 const editingRenderConfig = ref({})
+/** 预览复制的兜底与单元格共用脱敏规则，不能在无可见文本时退回原始值。 */
+function getPreviewCellValue(row, field) {
+  return isListCellMaskingEnabled(field)
+    ? formatMaskedListCellValue(row, field)
+    : (row.data?.[field.fieldCode] ?? row[field.fieldCode] ?? '-')
+}
 const editingQueryConfig = ref({})
 const editingColumnConfig = ref({})
-const selectedDataSourceOption = computed(() =>
-  dataSourceOptions.value.find(option => option.value === editingField.value?.dataSourceType)
+const editingSourceSchema = computed(() =>
+  getListColumnSourceSchema(editingField.value?.dataSourceType, dataSourceOptions.value)
 )
 const selectedCellDescriptor = computed(() =>
   getCellDescriptor(editingField.value?.renderComponent || 'DefaultText')
 )
+// 脱敏是列级显示策略，自动匹配或切换渲染组件时都应保留其配置入口。
+const editingRenderSchema = computed(() => [
+  ...listCellMaskingSchema,
+  ...(selectedCellDescriptor.value?.configSchema || [])
+])
 const listColumnInterfaces = computed(() =>
   normalizeInterfaceExtensions(availableListColumnInterfaces.value)
 )
@@ -1513,7 +1517,7 @@ async function loadData(options = {}) {
         configInfo.value.customComponent = ''
         configInfo.value.queryProviderCode = ''
         dataSourceOptions.value = dataSourceOptions.value.filter(option =>
-          ['ENTITY_FIELD', 'REFERENCE'].includes(option.value)
+          option.value === 'ENTITY_FIELD'
         )
       }
     }
@@ -1573,7 +1577,7 @@ function supportsQuery(field) {
 function addVirtualField() {
   const timestamp = Date.now()
   const defaultSource = filterOptionsByEntity(dataSourceOptions.value, entityCode.value)
-    .find(option => option.supportsVirtualField !== false)
+    .find(option => option.value === 'FIELD_TEMPLATE')
   fieldConfigList.value.push({
     fieldId: `virtual_${timestamp}`,
     fieldCode: `virtual_${timestamp}`,
@@ -1628,16 +1632,11 @@ async function removeVirtualField(field) {
   await refreshConfigRevision()
   await loadDiff()
 }
+/** 切换取值方式时同步清空旧绑定与参数，避免隐藏的扩展接口覆盖当前选择。 */
 function handleDataSourceChange(field) {
-  const option = dataSourceOptions.value.find(item => item.value === field.dataSourceType)
-  if (!supportsQuery(field)) {
-    field.isQuery = false
-  }
-  const schema = option?.configSchema || []
-  field.dataSourceConfig = stringifyConfig(applySchemaDefaults(
-    schema,
-    safeParseConfig(field.dataSourceConfig)
-  ))
+  changeListColumnSource(field, field.dataSourceType, dataSourceOptions.value)
+  editingDataSourceConfig.value = field.dataSourceConfig
+  field.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
 }
 function openFieldConfig(field) {
   editingField.value = field
@@ -1648,11 +1647,11 @@ function openFieldConfig(field) {
 }
 function syncFieldConfigEditors(field) {
   editingDataSourceConfig.value = applySchemaDefaults(
-    dataSourceOptions.value.find(item => item.value === field.dataSourceType)?.configSchema || [],
+    getListColumnSourceSchema(field.dataSourceType, dataSourceOptions.value),
     safeParseConfig(field.dataSourceConfig)
   )
   editingRenderConfig.value = applySchemaDefaults(
-    getCellDescriptor(field.renderComponent || 'DefaultText')?.configSchema || [],
+    [...listCellMaskingSchema, ...(getCellDescriptor(field.renderComponent || 'DefaultText')?.configSchema || [])],
     safeParseConfig(field.renderConfig)
   )
   editingQueryConfig.value = {
@@ -1693,8 +1692,7 @@ async function saveFieldAdvancedConfig() {
   editingField.value.renderConfig = stringifyConfig(editingRenderConfig.value)
   editingField.value.queryConfig = stringifyConfig(editingQueryConfig.value)
   editingField.value.columnConfig = stringifyConfig(editingColumnConfig.value)
-  await saveCurrentField(editingField.value)
-  fieldConfigDialogVisible.value = false
+  if (await saveCurrentField(editingField.value)) fieldConfigDialogVisible.value = false
 }
 const DEFAULT_TOOLBAR_BUTTONS = [
   { key: 'create', type: 'built-in', label: '新增数据', icon: 'Plus', buttonType: 'primary', sort: 1, enabled: true, perm: '' },
@@ -1735,9 +1733,9 @@ function parseButtonConfig(configRes) {
     return
   }
   const toolbar = safeJsonParse(configRes?.toolbarConfig)
-  toolbarButtons.value = toolbar && toolbar.length > 0
+  toolbarButtons.value = ensureListToolbarImportButton(toolbar && toolbar.length > 0
     ? toolbar.map(withListButtonTypeDefault)
-    : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b }))
+    : DEFAULT_TOOLBAR_BUTTONS.map(b => ({ ...b })))
   const rowActions = safeJsonParse(configRes?.rowActionConfig)
   rowActionButtons.value = rowActions && rowActions.length > 0
     ? rowActions.map(withListButtonTypeDefault)
@@ -1971,7 +1969,7 @@ function fieldConfigSummary(field) {
     }
   }
   if (isVirtualField(field)) {
-    const source = dataSourceOptions.value.find(option => option.value === field.dataSourceType)?.label
+    const source = listColumnSourceOptions.find(option => option.value === field.dataSourceType)?.label
     if (source) parts.push(source)
   }
   return parts.join(' · ') || '未启用'
@@ -1993,10 +1991,9 @@ function handleRevisionConflict(error, target) {
 }
 async function saveCurrentField(field, options = {}) {
   if (!field) return
-  if (field.interfaceExtensionId && !listColumnInterfaces.value.some(item =>
-    item.extensionId === field.interfaceExtensionId
-  )) {
-    ElMessage.warning('请选择当前列表可用的扩展接口')
+  const sourceError = validateListColumnSource(field, listColumnInterfaces.value)
+  if (sourceError) {
+    ElMessage.warning(sourceError)
     return false
   }
   field._saving = true

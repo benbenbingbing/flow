@@ -3171,7 +3171,7 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     * 计算输入内容的 SHA-256 摘要，供配置完整性校验或幂等去重使用。
      *
      * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
      * @return 处理后的{@code sha256}文本，供调用方比较或展示
@@ -3358,7 +3358,7 @@ public class UiViewCompositionService {
         EntityPublishedSnapshot targetSnapshot = targetPinned.snapshot();
 
         // 来源身份必须以宿主归属为准，目标也以发布历史为准，
-        // 避免伪造的 entityCode 进入签名令牌或权限检查。
+        // 实体编码从已发布资产恢复，避免客户端改写目标实体后绕过权限检查。
         source.put("entityId", sourceSnapshot.getEntityId());
         source.put("entityCode", sourceSnapshot.getEntityCode());
         source.put("entityName", sourceSnapshot.getEntityName());

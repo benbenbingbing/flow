@@ -342,14 +342,15 @@ public class EntityDataListConfigService {
                     config,
                     allFields,
                     records);
-            // 扩展列只补充当前查询结果中需要展示的值，不能再影响页边界或总数。
+            // 仅内置字段组合保留 Provider 执行路径；业务计算必须通过 INTERFACE 接入统一扩展接口。
+            // 两种计算都只补充当前页展示值，不能影响页边界或总数。
             List<EntityListField> customFields = allFields.stream()
                     .filter(f -> Boolean.TRUE.equals(f.getShowInList()))
                     .filter(f -> !StringUtils.hasText(f.getInterfaceExtensionId()))
-                    .filter(f -> !"ENTITY_FIELD".equals(f.getDataSourceType()) && f.getDataSourceType() != null)
+                    .filter(f -> "FIELD_TEMPLATE".equals(f.getDataSourceType()))
                     .collect(Collectors.toList());
 
-            // 4. 按数据源类型分组，调用对应的数据提供者
+            // 字段组合仍按同一批记录计算，避免逐列重复创建展示快照。
             Map<String, List<EntityListField>> fieldsByType = customFields.stream()
                     .collect(Collectors.groupingBy(EntityListField::getDataSourceType));
 
@@ -412,7 +413,8 @@ public class EntityDataListConfigService {
             List<EntityListField> fields,
             List<EntityDataDTO> records) {
         for (EntityListField field : fields) {
-            if (!StringUtils.hasText(field.getInterfaceExtensionId())
+            if (!"INTERFACE".equals(field.getDataSourceType())
+                    || !StringUtils.hasText(field.getInterfaceExtensionId())
                     || !Boolean.TRUE.equals(field.getShowInList())) {
                 continue;
             }
@@ -555,10 +557,7 @@ public class EntityDataListConfigService {
     public EntityListConfig findListConfig(String entityCode, String listKey) {
         return findListConfig(
                 entityCode,
-                listKey,
-                null,
-                null,
-                null);
+                listKey, null, java.util.Map.of());
     }
 
     /**
@@ -568,15 +567,13 @@ public class EntityDataListConfigService {
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param releaseId 发布版本ID，后续用于查询列表配置时定位或关联目标
      * @param releaseVersion 发布版本，作为 {@code publishedRuntimeService.resolveConfig} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 符合条件的实体列表配置结果，供调用方继续处理
      */
     public EntityListConfig findListConfig(
             String entityCode,
             String listKey,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken) {
+            String configHash,
+            java.util.Map<String, Object> runtimeContext) {
         EntityDefinition definition = definitionMapper.findByEntityCode(entityCode).orElse(null);
         if (definition == null) {
             return null;
@@ -594,9 +591,6 @@ public class EntityDataListConfigService {
                     .orElse(configs.isEmpty() ? null : configs.get(0));
         }
         return publishedRuntimeService.resolveConfig(
-                config,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken);
+                config, configHash, runtimeContext);
     }
 }

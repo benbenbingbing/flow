@@ -49,6 +49,8 @@ import java.util.Set;
 @Slf4j
 @RequiredArgsConstructor
 public class EntityFormActionService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.ExcelButtonAvailabilityService> excelAvailability;
 
     private static final TypeReference<List<Map<String, Object>>> MAP_LIST =
             new TypeReference<>() {};
@@ -82,22 +84,10 @@ public class EntityFormActionService {
      */
     public List<FormActionRuntimeDTO> resolve(
             FormActionResolveRequest request) {
-        log.info(
-                "开始解析表单操作栏: formId={}, releaseId={}, releaseVersion={}, tokenPresent={}, mode={}, entityCode={}, recordId={}, listKey={}",
-                LogValue.safe(request.getFormId()),
-                LogValue.safe(request.getReleaseId()),
-                request.getReleaseVersion(),
-                StringUtils.hasText(
-                        request.getReleaseResolutionToken()),
-                LogValue.safe(request.getMode()),
-                LogValue.safe(request.getEntityCode()),
-                LogValue.safe(request.getRecordId()),
-                LogValue.safe(request.getListKey()));
         RuntimeSource source = loadSource(
                 request.getFormId(),
-                request.getReleaseId(),
-                request.getReleaseVersion(),
-                request.getReleaseResolutionToken());
+                request.getConfigHash(),
+                request.getRuntimeContext());
         EntityDefinition definition =
                 requireDefinition(source.form());
         requireEntityCode(request.getEntityCode(), definition);
@@ -106,18 +96,17 @@ public class EntityFormActionService {
                 definition,
                 request.getRecordId(),
                 request.getListKey(), mode, request.getTaskId(),
-                request.getReleaseResolutionToken(), source).row();
+                request.getRuntimeContext(), source).row();
         return resolveTrustedPublishedSnapshot(
                 source.form(), definition, mode, row);
     }
 
     /**
-     * 在内置表单动作产生业务副作用前，使用客户端会话携带的固定发布令牌
+     * 在内置表单动作产生业务副作用前，使用客户端会话携带的配置摘要和业务来源
      * 重新解析同一快照并校验按钮能力。
      *
      * <p>该入口只接受会触发服务端变更的 save/saveAndStart/restartProcess/submitApproval。
-     * 发布 ID、版本和签名令牌必须完整，防止调用方省略表单坐标后退回草稿或
-     * 最新 ACTIVE，从而绕过用户实际看到的按钮条件。</p>
+     * 配置摘要必须完整；摘要变化时停止提交，避免按用户未见过的按钮条件执行。</p>
      *
      * @param request 由服务端组装的表单、实体、记录及任务上下文
      * @param actionKey 待执行的内置按钮 key
@@ -131,14 +120,8 @@ public class EntityFormActionService {
                 .contains(actionKey)) {
             throw new IllegalArgumentException("不支持的表单内置变更动作");
         }
-        if (!StringUtils.hasText(request.getFormId())
-                || !StringUtils.hasText(request.getReleaseId())
-                || request.getReleaseVersion() == null
-                || !StringUtils.hasText(
-                request.getReleaseResolutionToken())) {
-            throw new BusinessForbiddenException(
-                    "FORM_ACTION_RELEASE_CONTEXT_REQUIRED",
-                    "表单操作缺少完整的固定发布上下文，请刷新后重试");
+        if (!StringUtils.hasText(request.getFormId()) || !StringUtils.hasText(request.getConfigHash())) {
+            throw new BusinessForbiddenException("FORM_CONFIGURATION_HASH_REQUIRED", "表单操作缺少配置摘要，请重新加载后核对");
         }
         FormActionRuntimeDTO action = resolve(request).stream()
                 .filter(item -> actionKey.equals(item.getKey()))
@@ -162,7 +145,7 @@ public class EntityFormActionService {
      * <p>该入口供同一服务进程内的受信任运行时适配器使用，避免再次按 ACTIVE 指针
      * 解析表单而让历史会话漂移。{@code authorizedRow} 必须已经过当前 Flow 用户的
      * 普通模式的对象权限/DataScope、流程查看模式的实例读取权限与发布绑定，
-     * 或审批模式的真实待办与发布令牌绑定，
+     * 或审批模式的真实待办与配置来源绑定，
      * 以及调用方固定上下文校验；本方法只复用平台统一的按钮
      * 配置、权限和可用性规则求值。</p>
      *
@@ -270,12 +253,16 @@ public class EntityFormActionService {
                             permission,
                             readRule(button),
                             authorizedRow);
+            EntityActionCapabilityDTO combined = intersectCapabilities(modeCapability, configuredCapability);
+            if (excelAvailability != null && combined.isVisible() && combined.isEnabled()) {
+                String excelReason = excelAvailability.getObject().formReason(definition.getEntityCode(), source.form(), button,
+                        authorizedRow == null ? null : authorizedRow.getId());
+                if (StringUtils.hasText(excelReason)) combined = EntityActionCapabilityDTO.disabled(excelReason);
+            }
             result.add(toRuntime(
                     source.form().getId(),
                     normalizeCustom(button),
-                    intersectCapabilities(
-                            modeCapability,
-                            configuredCapability),
+                    combined,
                     true));
         }
         result.sort(Comparator.comparingInt(
@@ -301,9 +288,8 @@ public class EntityFormActionService {
     public String requireCustomButton(UiEventExecuteRequest request) {
         RuntimeSource source = loadSource(
                 request.getConfigId(),
-                request.getReleaseId(),
-                request.getReleaseVersion(),
-                request.getReleaseResolutionToken());
+                request.getConfigHash(),
+                request.getRuntimeContext());
         return requireCustomButton(request, source);
     }
 
@@ -313,7 +299,7 @@ public class EntityFormActionService {
      * <p>调用方必须传入 {@code resolveRuntimeEventSnapshot} 的原始结果；本方法
      * 不再读取 ACTIVE 或热修复目标，避免权限按钮与随后执行的事件链来自不同制品。
      * 普通模式继续执行对象权限和 DataScope 校验；流程查看复用实例读取权限；审批模式以当前用户的真实
-     * 待办和固定发布令牌授权记录访问，自定义按钮权限仍独立校验。</p>
+     * 待办和配置摘要和业务来源授权记录访问，自定义按钮权限仍独立校验。</p>
      *
      * @param request 表单按钮执行请求
      * @param verifiedSnapshot 已校验的完整有效发布快照
@@ -406,7 +392,7 @@ public class EntityFormActionService {
                 definition,
                 request.getRecordId(),
                 request.getListKey(), requestedMode(request), request.getTaskId(),
-                request.getReleaseResolutionToken(), source);
+                request.getRuntimeContext(), source);
         String mode = authorizedRequestMode(
                 request, definition, record);
         EntityDataDTO row = record.row();
@@ -441,64 +427,16 @@ public class EntityFormActionService {
      * @param formId 表单ID，后续用于加载来源时定位或关联目标
      * @param releaseId 发布版本ID，后续用于加载来源时定位或关联目标
      * @param releaseVersion 发布版本，作为 {@code releaseService.resolveRuntimeEventSnapshot} 的输入影响后续处理
-     * @param resolutionToken 解析令牌，后续用于授权校验、关联或幂等去重
      * @return 符合条件的运行时来源结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
-    private RuntimeSource loadSource(
-            String formId,
-            String releaseId,
-            Integer releaseVersion,
-            String resolutionToken) {
-        if (!StringUtils.hasText(formId)) {
-            throw new IllegalArgumentException("表单ID不能为空");
-        }
-        EntityForm form = formMapper.selectById(formId);
-        if (form == null) {
-            throw new IllegalArgumentException("表单不存在");
-        }
-        boolean published = StringUtils.hasText(releaseId)
-                || releaseVersion != null
-                || StringUtils.hasText(resolutionToken)
-                || StringUtils.hasText(form.getActiveReleaseId());
-        if (published) {
-            UiConfigReleaseService.ResolvedUiEventSnapshot resolved =
-                    releaseService.resolveRuntimeEventSnapshot(
-                            formId,
-                            releaseId,
-                            releaseVersion,
-                            resolutionToken);
-            Map<String, Object> snapshot = resolved.snapshot();
-            EntityForm runtimeForm = objectMapper.convertValue(
-                    snapshot.get("form"),
-                    EntityForm.class);
-            log.info(
-                    "表单操作栏使用发布快照: formId={}, requestedReleaseId={}, requestedVersion={}, resolvedReleaseId={}, resolvedVersion={}, effectiveReleaseId={}, hotfixApplied={}",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    releaseVersion,
-                    LogValue.safe(resolved.releaseId()),
-                    resolved.releaseVersion(),
-                    LogValue.safe(resolved.effectiveReleaseId()),
-                    resolved.hotfixApplied());
-            return new RuntimeSource(
-                    runtimeForm,
-                    readViewConfig(runtimeForm.getViewConfig()),
-                    snapshotNodes(snapshot),
-                    snapshotBindings(snapshot),
-                    resolved.releaseId(),
-                    resolved.releaseVersion());
-        }
-        log.info(
-                "表单操作栏使用草稿配置: formId={}, reason=NO_PUBLISHED_CONTEXT",
-                LogValue.safe(formId));
-        return new RuntimeSource(
-                form,
-                readViewConfig(form.getViewConfig()),
-                formNodeMapper.findByFormId(formId),
-                List.of(),
-                null,
-                null);
+    private RuntimeSource loadSource(String formId, String configHash, Map<String, Object> runtimeContext) {
+        if (!StringUtils.hasText(formId)) throw new IllegalArgumentException("表单ID不能为空");
+        var resolved = releaseService.resolveRuntimeEventSnapshot(formId, configHash, runtimeContext);
+        Map<String, Object> snapshot = resolved.snapshot();
+        EntityForm form = objectMapper.convertValue(snapshot.get("form"), EntityForm.class);
+        return new RuntimeSource(form, readViewConfig(form.getViewConfig()), snapshotNodes(snapshot),
+                snapshotBindings(snapshot), resolved.releaseId(), resolved.releaseVersion());
     }
 
     /**
@@ -566,7 +504,7 @@ public class EntityFormActionService {
      * 不要求办理人另有实体列表权限或命中列表 DataScope。
      *
      * <p>审批分支读取的记录仅用于服务端联合校验；只有当前用户、确切任务、
-     * 记录、流程实例和发布令牌全部匹配后才返回，不能仅凭 mode/taskId 放行。
+     * 记录、流程实例和配置来源全部匹配后才返回，不能仅凭 mode/taskId 放行。
      * 流程查看以实例只读权限和实际记录/版本绑定鉴权，其余模式保持原有实体数据权限。</p>
      *
      * @param definition 定义，作为 {@code dataService.findById} 的输入影响后续处理
@@ -574,7 +512,6 @@ public class EntityFormActionService {
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param mode 已归一化的表单运行模式
      * @param taskId 审批请求声明的确切任务 ID，不能用实体任务摘要替代
-     * @param releaseResolutionToken 绑定当前用户、任务及发布版本的签名令牌
      * @param source 待加载行的原始输入，结果供调用方继续使用
      * @return 已鉴权记录及审批任务上下文；新增模式的记录为空
      * @throws BusinessForbiddenException 审批上下文缺失、失效或与记录不匹配
@@ -585,7 +522,7 @@ public class EntityFormActionService {
             String listKey,
             String mode,
             String taskId,
-            String releaseResolutionToken,
+            Map<String, Object> runtimeContext,
             RuntimeSource source) {
         if ("approve".equals(mode)) {
             if (!StringUtils.hasText(recordId)
@@ -603,7 +540,7 @@ public class EntityFormActionService {
                             definition.getEntityCode(), row,
                             approvalRule(), null);
             ActionableTaskContext task = requireApprovalTaskBinding(
-                    taskId, releaseResolutionToken, source, definition, row, approval);
+                    taskId, runtimeContext, source, definition, row, approval);
             return new AuthorizedRecord(row, task);
         }
         if (!StringUtils.hasText(recordId)
@@ -613,12 +550,11 @@ public class EntityFormActionService {
         }
         if ("view".equals(mode)) {
             var processContext = releaseService.findProcessReadContext(
-                    releaseResolutionToken, source.form().getId(), source.releaseId(), source.releaseVersion());
+                    runtimeContext, source.form().getId());
             if (processContext.isPresent()) {
                 var context = processContext.get();
                 EntityDataDTO row = dataService.findById(definition.getEntityCode(), recordId);
-                // 历史进度令牌可能没有任务/记录坐标；此时仍由流程端口回查实例实际绑定。
-                // 带有这些坐标的活动任务令牌必须保持精确匹配，不能跨记录复用。
+                // 流程端口已回查实例实际绑定；记录仍需一致，不能把读取来源跨记录复用。
                 if (row == null
                         || StringUtils.hasText(context.processInstanceId())
                         && !Objects.equals(context.processInstanceId(), row.getProcessInstanceId())
@@ -641,7 +577,7 @@ public class EntityFormActionService {
     }
 
     /**
-     * 审批任务上下文仅在记录和发布令牌联合校验通过后附加。
+     * 审批任务上下文仅在记录和配置来源联合校验通过后附加。
      *
      * @param row 行，保存在对象中供后续校验、查询或展示
      * @param task 任务，保存在对象中供后续校验、查询或展示
@@ -1102,12 +1038,9 @@ public class EntityFormActionService {
      * 将审批模式绑定到当前用户真实待办、业务记录和流程发布版。
      *
      * <p>taskId 是公开请求坐标，只有通过能力判断并经流程端口精确联合回查后
-     * 才可信；会签时不能要求它等于能力摘要中的另一待办。发布令牌必须为该任务的
-     * ACTIVE_TASK 历史/节点，不能省略后回退
-     * 当前 ACTIVE，也不能用 NEW_INSTANCE 或另一流程版本的令牌替代。</p>
+     * 才可信；会签时不能要求它等于能力摘要中的另一待办。运行来源必须由服务端重新核实任务、记录及节点表单绑定。</p>
      *
      * @param requestedTaskId 请求任务ID，后续用于校验并获取审批任务绑定时定位或关联目标
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @param source 待校验并获取审批任务绑定的原始输入，结果供调用方继续使用
      * @param definition 定义，供本方法校验并获取审批任务绑定时使用
      * @param row 行，作为 {@code findActionableApprovalTaskContext} 的输入影响后续处理
@@ -1116,7 +1049,7 @@ public class EntityFormActionService {
      */
     private ActionableTaskContext requireApprovalTaskBinding(
             String requestedTaskId,
-            String releaseResolutionToken,
+            Map<String, Object> runtimeContext,
             RuntimeSource source,
             EntityDefinition definition,
             EntityDataDTO row,
@@ -1148,17 +1081,11 @@ public class EntityFormActionService {
                     "UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH",
                     "审批表单按钮与当前业务记录不一致");
         }
-        releaseService.requireActiveTaskReleaseToken(
-                releaseResolutionToken,
-                source.form().getId(),
-                source.releaseId(),
-                source.releaseVersion(),
-                task.processVersionHistoryId(),
-                task.nodeId(),
-                task.taskId(),
-                task.processInstanceId(),
-                task.entityCode(),
-                task.entityDataId());
+        // 真实待办已完成用户/记录联合校验；再核实该表单确为当前节点允许的表单。
+        Map<String, Object> context = new LinkedHashMap<>(runtimeContext == null ? Map.of() : runtimeContext);
+        context.put("taskId", task.taskId());
+        context.put("processInstanceId", task.processInstanceId());
+        releaseService.authorizeRuntimeContext(source.form().getId(), context);
         return task;
     }
 

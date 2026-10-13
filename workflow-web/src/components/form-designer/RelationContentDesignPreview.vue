@@ -67,7 +67,7 @@ async function load() {
   loading.value = true
   try {
     if (selection.contentType === 'FORM') {
-      const release = await getFormRuntimeRelease(selection.contentId, selection.releaseId, selection.releaseVersion)
+      const release = await getFormRuntimeRelease(selection.contentId)
       if (request !== sequence) return
       const form = normalizeRuntimeFormRelease(release, selection.contentId)
       previewForm.value = { ...form, viewCompositions: [] }

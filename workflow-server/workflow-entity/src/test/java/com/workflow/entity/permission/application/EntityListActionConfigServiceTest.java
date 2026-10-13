@@ -37,6 +37,41 @@ class EntityListActionConfigServiceTest {
     private final EntityActionRuleEvaluator evaluator = new EntityActionRuleEvaluator(List.of());
 
     @Test
+    void importDefaultsOffAndRequiresAnExplicitBooleanTrue() throws Exception {
+        var defaults = service.resolveToolbarButtons(null, "expense");
+        var defaultImport = defaults.stream().filter(button -> "import".equals(button.get("key")))
+                .findFirst().orElseThrow();
+        assertEquals(false, defaultImport.get("enabled"));
+        assertEquals("导入", defaultImport.get("label"));
+        assertEquals("entity:expense:import", defaultImport.get("perm"));
+        assertTrue(service.resolveRowButtons(null, "expense").stream()
+                .noneMatch(button -> "import".equals(button.get("key"))));
+
+        for (String enabled : List.of("", ",\"enabled\":null", ",\"enabled\":false", ",\"enabled\":true")) {
+            EntityListConfig config = new EntityListConfig();
+            config.setEntityCode("expense");
+            config.setPublishedSnapshot(true);
+            config.setToolbarConfig("[{\"key\":\"import\",\"type\":\"built-in\"" + enabled + "}]");
+            service.normalizeForSave(config);
+            Map<?, ?> button = (Map<?, ?>) objectMapper.readValue(config.getToolbarConfig(), List.class).get(0);
+            assertEquals(enabled.endsWith("true"), button.get("enabled"));
+            assertEquals("entity:expense:import", button.get("perm"));
+        }
+    }
+
+    @Test
+    void historicalPublishedToolbarDoesNotAcquireAnImportActionAtRuntime() {
+        EntityListConfig config = new EntityListConfig();
+        config.setEntityCode("expense");
+        config.setPublishedSnapshot(true);
+        config.setToolbarConfig("[{\"key\":\"create\",\"type\":\"built-in\",\"enabled\":true}]");
+
+        assertEquals(List.of("create"), service.resolveToolbarButtons(config, "expense").stream()
+                .map(button -> button.get("key")).toList());
+        assertNull(service.resolveButton(config, "expense", "import"));
+    }
+
+    @Test
     void restartDefaultsOffAndRequiresAnExplicitBooleanTrue() throws Exception {
         var defaults = service.resolveRowButtons(null, "expense");
         assertEquals(false, defaults.stream().filter(button -> "restartProcess".equals(button.get("key")))

@@ -34,7 +34,7 @@ function nativeForm({ confirm = async () => true, entity, openCreate = async () 
   const state = {
     ...moduleState,
     globalThis: { document: { body: { children: bodyChildren } } },
-    target: { entityCode: 'order', formId: 'form-order', formReleaseId: 'fixed-release', formReleaseVersion: 1 },
+    target: { entityCode: 'order', formId: 'form-order', formReleaseVersion: 1 },
     mode: ref('CREATE'),
     loading: ref(false),
     error: ref(''),
@@ -231,8 +231,7 @@ async function controllerFor(form) {
           view: { key: 'order-create', name: '订单', surfaceType: 'FORM', entryMode: 'CREATE' },
           capabilities: ['RECORD_CREATE'],
           target: {
-            entityCode: 'order', formId: 'form-order', formReleaseId: 'fixed-release',
-            formReleaseVersion: 1, formReleaseResolutionToken: 'resolution_token_0123456789',
+            entityCode: 'order', formId: 'form-order', formConfigHash: 'resolution_token_0123456789',
             entryMode: 'CREATE', recordId: null, initialData: {}, parameters: {}, context: {}
           },
           ui: { locale: 'zh-CN', theme: 'light', pageSize: 20 },

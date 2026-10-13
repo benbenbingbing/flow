@@ -134,8 +134,7 @@ class EntityDataActionServiceTest {
                 lenient().when(publishedListRuntimeService.resolveConfig(
                                 any(EntityListConfig.class),
                                 isNull(),
-                                isNull(),
-                                isNull()))
+                                eq(Map.of())))
                                 .thenAnswer(invocation ->
                                         invocation.getArgument(0));
         }
@@ -170,7 +169,7 @@ class EntityDataActionServiceTest {
                 verify(capabilityService).requireRowActionForConfig(
                                 "asset", config, "view", row);
                 verify(publishedListRuntimeService).resolveConfig(
-                                config, null, null, null);
+                                config, null, Map.of());
                 verify(eventRuntimeService, never()).execute(any(), any());
         }
 
@@ -446,7 +445,7 @@ class EntityDataActionServiceTest {
                 EntityDataDTO dto = new EntityDataDTO();
                 dto.setEntityCode("asset");
                 dto.setFormId("form-1");
-                dto.setFormReleaseResolutionToken("signed-form-token");
+                dto.setFormConfigHash("form-graph-hash");
                 dto.setStartProcess(false);
                 dto.setData(Map.of("name", "Laptop"));
                 EntityForm form = form("form-1", "entity-asset");
@@ -461,16 +460,7 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_CREATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyAuthorizedFormWithRelease(
-                                "form-1",
-                                null,
-                                null,
-                                "signed-form-token",
-                                "asset",
-                                null,
-                                "create",
-                                Map.of("name", "Laptop"),
-                                context)).thenReturn(
+                when(formSubmissionService.applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", Map.of("name", "Laptop"), context)).thenReturn(
                                                 new PublishedFormSubmissionService.AuthorizedFormApplication(
                                                         Map.of(
                                                                 "name",
@@ -507,16 +497,7 @@ class EntityDataActionServiceTest {
 
                 service.create(dto);
 
-                verify(formSubmissionService).applyAuthorizedFormWithRelease(
-                                "form-1",
-                                null,
-                                null,
-                                "signed-form-token",
-                                "asset",
-                                null,
-                                "create",
-                                Map.of("name", "Laptop"),
-                                context);
+                verify(formSubmissionService).applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", Map.of("name", "Laptop"), context);
                 verify(formSubmissionService, never())
                                 .applyDefaultFormWithRelease(
                                                 anyString(),
@@ -533,9 +514,9 @@ class EntityDataActionServiceTest {
                                 actionRequest.capture(), eq("saveAndStart"));
                 assertEquals("form-1",
                                 actionRequest.getAllValues().get(0).getFormId());
-                assertEquals("signed-form-token",
+                assertEquals("form-graph-hash",
                                 actionRequest.getAllValues().get(1)
-                                                .getReleaseResolutionToken());
+                                                .getConfigHash());
                 ArgumentCaptor<EntityMutationCommand> commandCaptor =
                                 ArgumentCaptor.forClass(EntityMutationCommand.class);
                 verify(mutationPort).execute(commandCaptor.capture());
@@ -562,7 +543,7 @@ class EntityDataActionServiceTest {
                 assertEquals(
                                 false,
                                 commandCaptor.getValue().context().extraParams().containsValue(
-                                                "signed-form-token"));
+                                                "form-graph-hash"));
         }
 
         @Test
@@ -570,10 +551,8 @@ class EntityDataActionServiceTest {
                 EntityDataDTO dto = new EntityDataDTO();
                 dto.setEntityCode("asset");
                 dto.setFormId("form-1");
-                dto.setFormReleaseId("form-release-1");
-                dto.setFormReleaseVersion(2);
-                dto.setFormReleaseResolutionToken("form-release-token");
-                dto.setViewCompositionActionContextToken("composition-token");
+                dto.setFormConfigHash("form-graph-hash");
+                dto.setCompositionContext(compositionContext());
                 dto.setData(Map.of(
                                 "displayName", "浏览器篡改值",
                                 "note", "保留值"));
@@ -584,15 +563,7 @@ class EntityDataActionServiceTest {
                 when(formMapper.selectById("form-1")).thenReturn(form);
                 when(definitionMapper.selectById("entity-asset"))
                                 .thenReturn(asset);
-                when(viewCompositionActionService.authorizeFormSubmission(
-                                "composition-token",
-                                "CREATE",
-                                "asset",
-                                null,
-                                "form-1",
-                                "form-release-1",
-                                2,
-                                "form-release-token"))
+                when(viewCompositionActionService.authorizeFormSubmission(compositionContext(), "CREATE", "asset", null, "form-1", "form-graph-hash"))
                                 .thenReturn(Map.of(
                                                 "displayName",
                                                 "服务端来源值"));
@@ -606,16 +577,7 @@ class EntityDataActionServiceTest {
                 Map<String, Object> trustedSubmission = Map.of(
                                 "displayName", "服务端来源值",
                                 "note", "保留值");
-                when(formSubmissionService.applyAuthorizedFormWithRelease(
-                                "form-1",
-                                "form-release-1",
-                                2,
-                                "form-release-token",
-                                "asset",
-                                null,
-                                "create",
-                                trustedSubmission,
-                                context)).thenReturn(
+                when(formSubmissionService.applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", trustedSubmission, context)).thenReturn(
                                         new PublishedFormSubmissionService.AuthorizedFormApplication(
                                                 trustedSubmission,
                                                 "form-release-1",
@@ -630,25 +592,8 @@ class EntityDataActionServiceTest {
                 service.create(dto);
 
                 verify(viewCompositionActionService)
-                                .authorizeFormSubmission(
-                                                "composition-token",
-                                                "CREATE",
-                                                "asset",
-                                                null,
-                                                "form-1",
-                                                "form-release-1",
-                                                2,
-                                                "form-release-token");
-                verify(formSubmissionService).applyAuthorizedFormWithRelease(
-                                "form-1",
-                                "form-release-1",
-                                2,
-                                "form-release-token",
-                                "asset",
-                                null,
-                                "create",
-                                trustedSubmission,
-                                context);
+                                .authorizeFormSubmission(compositionContext(), "CREATE", "asset", null, "form-1", "form-graph-hash");
+                verify(formSubmissionService).applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", trustedSubmission, context);
                 verify(actionConfigService, never())
                                 .resolveListConfig(anyString(), any());
         }
@@ -790,16 +735,7 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_UPDATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                when(formSubmissionService.applyAuthorizedFormWithRelease(
-                                "form-1",
-                                null,
-                                null,
-                                null,
-                                "asset",
-                                "1",
-                                "edit",
-                                Map.of("name", "Laptop"),
-                                context)).thenReturn(
+                when(formSubmissionService.applyAuthorizedFormWithRelease("form-1", null, Map.of(), "asset", "1", "edit", Map.of("name", "Laptop"), context)).thenReturn(
                                                 new PublishedFormSubmissionService.AuthorizedFormApplication(
                                                         Map.of(
                                                                 "name",
@@ -832,16 +768,7 @@ class EntityDataActionServiceTest {
                                                                 "name",
                                                                 "Laptop")));
 
-                verify(formSubmissionService).applyAuthorizedFormWithRelease(
-                                "form-1",
-                                null,
-                                null,
-                                null,
-                                "asset",
-                                "1",
-                                "edit",
-                                Map.of("name", "Laptop"),
-                                context);
+                verify(formSubmissionService).applyAuthorizedFormWithRelease("form-1", null, Map.of(), "asset", "1", "edit", Map.of("name", "Laptop"), context);
                 verify(formSubmissionService, never())
                                 .applyDefaultFormWithRelease(
                                                 anyString(),
@@ -926,5 +853,11 @@ class EntityDataActionServiceTest {
                                 null,
                                 true,
                                 false);
+        }
+        private com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest compositionContext() {
+                var context = new com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest();
+                context.setOwnerType("FORM"); context.setOwnerId("source-form");
+                context.setCompositionKey("related-assets"); context.setRecordId("source-record");
+                return context;
         }
 }

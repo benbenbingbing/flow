@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 import { DEFAULT_MOBILE_THEME } from '@flow/workflow-core/mobile-theme'
 
 const field = (id, parentId, label, extra = {}) => ({ id, parentId, nodeKey: id, nodeType: 'FIELD', bindingType: 'ENTITY_FIELD', bindingRef: id, props: { fieldCode: id, label, fieldType: 'STRING', componentType: 'input', ...extra } })
-const simpleForm = () => ({ id: 'form-test', runtimeReleaseId: 'release-pinned', runtimeReleaseVersion: 2, releaseResolutionToken: 'signed-test-only', fields: [], nodes: [field('name', '', '事项名称')] })
+const simpleForm = () => ({ id: 'form-test', configHash: 'graph-test', fields: [], nodes: [field('name', '', '事项名称')] })
 
 /** 所有 API 请求在浏览器内截获；审批写入仅记录到测试数组，绝不请求真实业务服务。 */
 async function fixture(page, { actions, eventResult, theme = () => DEFAULT_MOBILE_THEME, form = simpleForm(), record = { id: 'record-test', name: '测试流程', entityCode: 'test' }, preview, complete, progress = {}, candidates = [], processOperations = { withdraw: false }, operations = { approve: true, reject: true, manualCc: false }, rejected = { canResubmit: false } } = {}) {
@@ -125,7 +125,7 @@ test('表单停留超过五分钟后编辑和提交自动续期，保留草稿�
   const start = Date.now()
   const makeToken = expiresAt => `${Buffer.from(JSON.stringify({ expiresAt: Math.floor(expiresAt / 1000), purpose: 'ACTIVE_TASK', taskId: 'task-test', processInstanceId: 'instance-test', nodeId: 'review' })).toString('base64url')}.test-signature`
   const initialToken = makeToken(start + 300_000)
-  const form = { ...simpleForm(), releaseResolutionToken: initialToken, nodes: [field('name', '', '事项名称'), field('rich', '', '我是富文本', { componentType: 'rich_text', fieldType: 'RICH_TEXT' })] }
+  const form = { ...simpleForm(), configHash: initialToken, nodes: [field('name', '', '事项名称'), field('rich', '', '我是富文本', { componentType: 'rich_text', fieldType: 'RICH_TEXT' })] }
   const state = await fixture(page, { form, record: { id: 'record-test', name: '服务端原名称', rich: '<p>服务端原内容</p>' } })
   await page.clock.setFixedTime(start)
   await detail(page)
@@ -135,18 +135,18 @@ test('表单停留超过五分钟后编辑和提交自动续期，保留草稿�
 
   // 模拟手机休眠后恢复；不依赖后台定时器继续运行，也不重新加载整份表单草稿。
   await page.clock.setFixedTime(start + 360_000)
-  form.releaseResolutionToken = makeToken(start + 660_000)
+  form.configHash = makeToken(start + 660_000)
   await rich.fill('休眠后继续编辑的富文本'); await name.click()
-  await expect.poll(() => state.requests.filter(item => item.endpoint.includes('/events/FIELD_CHANGE/') && item.body?.targetKey === 'rich').at(-1)?.body?.releaseResolutionToken).toBe(form.releaseResolutionToken)
+  await expect.poll(() => state.requests.filter(item => item.endpoint.includes('/events/FIELD_CHANGE/') && item.body?.targetKey === 'rich').at(-1)?.body?.configHash).toBe(form.configHash)
   await expect(name).toHaveValue('未提交的名称'); await expect(rich).toHaveText('休眠后继续编辑的富文本')
   expect(state.requests.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(2)
 
   // 再次停留至到期，直接提交也必须更新令牌，并且只发送一次审批写请求。
   await page.clock.setFixedTime(start + 720_000)
-  form.releaseResolutionToken = makeToken(start + 1_020_000)
+  form.configHash = makeToken(start + 1_020_000)
   await submit(page); await expect(page).toHaveURL(/inbox\/todo/)
   expect(state.writes).toHaveLength(1)
-  expect(state.writes[0].body).toMatchObject({ formReleaseId: 'release-pinned', formReleaseVersion: 2, formReleaseResolutionToken: form.releaseResolutionToken, formData: { name: '未提交的名称', rich: '<p>休眠后继续编辑的富文本</p>' } })
+  expect(state.writes[0].body).toMatchObject({ formConfigHash: form.configHash, formData: { name: '未提交的名称', rich: '<p>休眠后继续编辑的富文本</p>' } })
   expect(state.requests.filter(item => item.endpoint.endsWith('/progress'))).toHaveLength(3)
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
@@ -194,12 +194,12 @@ test('代码表单选、多选加载候选项，回显名称并按编码提交',
 })
 
 test('流程表单未返回实体 ID 时按实体编码补齐单选、多选代码表配置', async ({ page }) => {
-  // 对齐进度接口：只有 formId/formReleaseId，代码表在实体字段元数据中，不在表单字段中。
+  // 对齐进度接口：只有 formId/configHash，代码表在实体字段元数据中，不在表单字段中。
   const fields = [
     { id: 'form-single', fieldId: 'entity-single', fieldCode: 'single', fieldLabel: '我是选择', fieldType: 'SELECT', componentType: 'select', optionsJson: '[]' },
     { id: 'form-multiple', fieldId: 'entity-multiple', fieldCode: 'multiple', fieldLabel: '我是多选', fieldType: 'MULTI_SELECT', componentType: 'select_multiple', optionsJson: '[]' }
   ]
-  const form = { formId: 'form-test', formReleaseId: 'release-pinned', formReleaseVersion: 2, releaseResolutionToken: 'signed-test-only', fields, nodes: fields.map(item => ({
+  const form = { formId: 'form-test', configHash: 'graph-test', fields, nodes: fields.map(item => ({
     id: `node-${item.fieldCode}`, parentId: '', nodeKey: item.fieldCode, nodeType: 'FIELD', bindingType: 'ENTITY_FIELD', bindingRef: item.fieldId,
     propsDocument: JSON.stringify({ fieldCode: item.fieldCode, label: item.fieldLabel, fieldType: item.fieldType, componentType: item.componentType })
   })) }
@@ -228,7 +228,7 @@ test('流程表单未返回实体 ID 时按实体编码补齐单选、多选代�
   await popup.getByText('多选第二个', { exact: true }).click(); await popup.getByText('确定', { exact: true }).click()
   await expect(multiple).toHaveValue('多选第一个、多选第二个')
   await submit(page); await expect(page).toHaveURL(/inbox\/todo/)
-  expect(state.writes[0].body).toMatchObject({ formReleaseId: 'release-pinned', formReleaseVersion: 2, formData: { single: 'second', multiple: ['first', 'second'] } })
+  expect(state.writes[0].body).toMatchObject({ formData: { single: 'second', multiple: ['first', 'second'] } })
   await detail(page, 'done')
   await expect(page.locator('.readonly-value')).toHaveText(['第一个', '多选第一个'])
   expect(metadataRequests).toBe(2); expect(dictionaryRequests).toBe(4)
@@ -464,7 +464,7 @@ test('第一层 Tab 与流程页签并列，嵌套 Tab 保留折叠；跨页签�
   await submit(page)
   await expect(page).toHaveURL(/inbox\/todo/)
   expect(state.writes).toHaveLength(1)
-  expect(state.writes[0].body).toMatchObject({ formReleaseId: 'release-pinned', formReleaseVersion: 2, formReleaseResolutionToken: 'signed-test-only', formData: { name: '跨页签保留的名称', required: '已核对' } })
+  expect(state.writes[0].body).toMatchObject({ formConfigHash: 'graph-test', formData: { name: '跨页签保留的名称', required: '已核对' } })
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([])
 })
 
@@ -799,7 +799,7 @@ test('自定义按钮遵守确认协议：取消不执行，确认后一次回�
   await page.getByRole('button', { name: '确认', exact: true }).click()
   await expect(page.getByPlaceholder('请输入事项名称')).toHaveValue('确认后的名称')
   expect(state.writes).toHaveLength(1)
-  expect(state.writes[0].body).toMatchObject({ targetKey: 'calculate', releaseId: 'release-pinned', releaseVersion: 2, taskId: 'task-test' })
+  expect(state.writes[0].body).toMatchObject({ targetKey: 'calculate', configHash: 'graph-test', taskId: 'task-test' })
   expect(state.writes[0].body.requestId).toMatch(/^form_action_/)
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
 })

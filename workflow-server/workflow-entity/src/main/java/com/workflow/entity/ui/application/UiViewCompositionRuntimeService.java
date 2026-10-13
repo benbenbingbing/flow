@@ -86,21 +86,92 @@ public class UiViewCompositionRuntimeService {
     private final SystemEntityReadService systemEntityReadService;
     private final EntityActionCapabilityService capabilityService;
     private final UiInterfaceExtensionService dataSourceService;
-    private final UiReleaseResolutionTokenService releaseTokenService;
-    private final UiViewCompositionTokenService compositionTokenService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
 
     /**
      * 解析指定关联内容。
      *
-     * @param request 仅包含宿主发布身份、compositionKey 和 recordId/签名行令牌
+     * @param request 业务根入口、来源记录和逐层关联路径，任何授权均由服务端重算
      * @return 钉定目标发布、唯一目标记录或可信列表固定条件
      */
     public UiViewCompositionResolveResponse resolve(
             UiViewCompositionResolveRequest request) {
+        if (request == null) throw new IllegalArgumentException("关联内容上下文不能为空");
+        if (request.getCompositionContext() != null) {
+            if (request.getCompositionContext().getCompositionContext() != null)
+                throw new IllegalArgumentException("关联路径必须使用展开后的业务根和 path");
+            UiViewCompositionResolveResponse parent = resolve(request.getCompositionContext());
+            if (!Objects.equals(normalize(request.getOwnerType()), parent.getTargetContentType())
+                    || !Objects.equals(request.getOwnerId(), parent.getTargetContentId()))
+                throw new BusinessForbiddenException("VIEW_COMPOSITION_PATH_MISMATCH", "关联路径目标与当前宿主不一致");
+            UiViewCompositionResolveRequest expanded = objectMapper.convertValue(request.getCompositionContext(), UiViewCompositionResolveRequest.class);
+            List<UiViewCompositionResolveRequest.PathEntry> nextPath = new ArrayList<>(expanded.getPath() == null ? List.of() : expanded.getPath());
+            UiViewCompositionResolveRequest.PathEntry next = new UiViewCompositionResolveRequest.PathEntry();
+            next.setCompositionKey(request.getCompositionKey()); next.setRecordId(request.getRecordId()); nextPath.add(next);
+            expanded.setPath(nextPath); expanded.setConfigHash(null); expanded.setCompositionContext(null);
+            return resolve(expanded);
+        }
+        List<UiViewCompositionResolveRequest.PathEntry> path = request.getPath() == null ? List.of() : request.getPath();
+        if (path.size() >= 8) throw new BusinessConflictException("VIEW_COMPOSITION_RUNTIME_DEPTH_EXCEEDED", "关联内容最多允许八层导航");
+        // 在读取接口型关系（可能触发外部调用）之前先检查根页面配置摘要。
+        ValidatedRequest root = validateRequest(request);
+        OwnerRelease rootRelease = resolveOwnerRelease(root, null);
+        String configHash = FORM.equals(root.ownerType()) ? releaseService.formConfigHash(root.ownerId()) : rootRelease.release().getContentHash();
+        if (StringUtils.hasText(request.getConfigHash()) && !Objects.equals(request.getConfigHash(), configHash))
+            throw new BusinessConflictException("VIEW_COMPOSITION_CONFIG_CHANGED", "关联内容配置已变化，请保留输入并刷新后重试");
+        java.util.Set<String> visited = new java.util.HashSet<>();
+        UiViewCompositionResolveRequest current = new UiViewCompositionResolveRequest();
+        current.setOwnerType(request.getOwnerType()); current.setOwnerId(request.getOwnerId());
+        current.setCompositionKey(request.getCompositionKey()); current.setRecordId(request.getRecordId());
+        current.setRuntimeContext(request.getRuntimeContext());
+        UiConfigRelease inheritedRelease = null;
+        boolean readonly = false;
+        UiViewCompositionResolveResponse result = null;
+        for (int index = 0; index <= path.size(); index++) {
+            String identity = current.getOwnerType() + ":" + current.getOwnerId() + ":" + current.getCompositionKey() + ":" + current.getRecordId();
+            if (!visited.add(identity)) throw new BusinessConflictException("VIEW_COMPOSITION_RUNTIME_REENTRY_BLOCKED", "关联内容不能循环进入同一内容和记录");
+            result = resolveSingle(current, inheritedRelease);
+            readonly |= result.isReadonlyContext();
+            if (index == path.size()) break;
+            UiViewCompositionResolveRequest.PathEntry hop = path.get(index);
+            if (hop == null) throw new IllegalArgumentException("关联路径节点不能为空");
+            // 来源行必须属于上一跳的真实关系。任何客户端路径都不能跳过固定筛选或改换实体。
+            requireTargetMembership(result, hop.getRecordId());
+            current.setOwnerType(result.getTargetContentType()); current.setOwnerId(result.getTargetContentId());
+            current.setCompositionKey(hop.getCompositionKey()); current.setRecordId(hop.getRecordId());
+            current.setRuntimeContext(Map.of());
+            inheritedRelease = "LIST".equals(result.getTargetContentType()) ? releaseMapper.selectById(result.getTargetReleaseId()) : null;
+        }
+        UiViewCompositionResolveRequest context = objectMapper.convertValue(request, UiViewCompositionResolveRequest.class);
+        context.setConfigHash(configHash);
+        return result.toBuilder().compositionContext(context).configHash(configHash).readonlyContext(readonly).build();
+    }
+
+    /** 校验目标行同时满足关系约束和当前数据权限；也用于后续表单、列表入口复核。 */
+    public void requireTargetMembership(UiViewCompositionResolveResponse result, String recordId) {
+        if (result.isMatchNone() || !StringUtils.hasText(recordId)) throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "来源记录不属于关联范围");
+        EntityDefinition entity = entityMapper.selectById(result.getTargetEntityId());
+        EntityDataDTO row = LIST.equals(result.getTargetContentType()) && entity.getStorageMode()==EntityDefinition.StorageMode.DYNAMIC
+                ? dynamicDataService.findAccessibleById(entity.getEntityCode(),recordId,result.getTargetContentKey())
+                : readAccessibleRecord(entity, recordId);
+        if (row == null || !Objects.equals(row.getId(), recordId)) throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "关联来源记录不可访问");
+        if (FORM.equals(result.getTargetContentType())) {
+            if (!Objects.equals(result.getTargetRecordId(), recordId)) throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "来源记录不属于关联范围");
+            return;
+        }
+        // 固定条件逐项检查而不覆盖相同字段，避免客户端 id 或列表条件放宽关系范围。
+        Map<String,Object> snapshot = releaseService.verifiedReleaseSnapshot(releaseMapper.selectById(result.getTargetReleaseId()));
+        Map<String,Object> list = map(snapshot.get("list"));
+        if (!matchesFilters(row, result.getFixedFilters()) || !matchesFilters(row, publishedFilters(list.get("fixedFilterConfig"))))
+            throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "来源记录不满足关联列表固定范围");
+    }
+
+    /** 单层解析只使用服务端选出的当前表单或宿主明确引用的列表发布。 */
+    private UiViewCompositionResolveResponse resolveSingle(UiViewCompositionResolveRequest request, UiConfigRelease inheritedRelease) {
         ValidatedRequest validated = validateRequest(request);
-        OwnerRelease owner = resolveOwnerRelease(validated);
+
+        OwnerRelease owner = resolveOwnerRelease(validated, inheritedRelease);
         Map<String, Object> composition = requireComposition(
                 owner.snapshot(), validated.compositionKey());
         Map<String, Object> config = map(composition.get("config"));
@@ -119,10 +190,25 @@ public class UiViewCompositionRuntimeService {
 
         EntityDefinition sourceEntity = requireOwnerEntity(
                 owner.snapshot(), validated.ownerType());
-        requireOwnerRuntimeAccess(
-                validated.ownerType(), owner.snapshot(), sourceEntity);
-        EntityDataDTO sourceRecord = readAccessibleRecord(
-                sourceEntity, validated.recordId());
+        UiRuntimeResolutionContext trusted = FORM.equals(validated.ownerType())
+                ? releaseService.authorizeRuntimeContext(validated.ownerId(), request.getRuntimeContext()) : null;
+        boolean delegatedRecord = trusted != null && StringUtils.hasText(trusted.processInstanceId());
+        if (delegatedRecord && (!Objects.equals(trusted.recordId(), validated.recordId())
+                || !Objects.equals(trusted.entityCode(), sourceEntity.getEntityCode())))
+            throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "关联来源记录与当前任务不一致");
+        if (!delegatedRecord) requireOwnerRuntimeAccess(validated.ownerType(), owner.snapshot(), sourceEntity);
+        // 流程参与人可能没有独立实体权限；只有已复核任务/实例且精确绑定的来源行使用流程读取权。
+        EntityDataDTO sourceRecord = delegatedRecord && sourceEntity.getStorageMode() == EntityDefinition.StorageMode.DYNAMIC
+                ? dynamicDataService.findById(sourceEntity.getEntityCode(), validated.recordId())
+                : LIST.equals(validated.ownerType()) && sourceEntity.getStorageMode()==EntityDefinition.StorageMode.DYNAMIC
+                ? dynamicDataService.findAccessibleById(sourceEntity.getEntityCode(),validated.recordId(),text(map(owner.snapshot().get("list")).get("listKey")))
+                : readAccessibleRecord(sourceEntity, validated.recordId());
+        if (sourceRecord == null || !Objects.equals(sourceRecord.getId(), validated.recordId()))
+            throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "关联来源记录不可访问");
+        if (LIST.equals(validated.ownerType()) && !matchesFilters(sourceRecord, publishedFilters(map(owner.snapshot().get("list")).get("fixedFilterConfig"))))
+            throw new BusinessForbiddenException("VIEW_COMPOSITION_ROW_OUT_OF_SCOPE", "来源记录不属于宿主列表固定范围");
+        boolean readonly = trusted != null && trusted.purpose() == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL
+                || Boolean.TRUE.equals(map(config.get("presentation")).get("readonly"));
 
         TargetAsset target = requireTargetAsset(targetConfig);
         requireTargetRuntimeAccess(target);
@@ -161,62 +247,11 @@ public class UiViewCompositionRuntimeService {
             fixedFilters = Map.of();
         }
 
-        // 没有目标时不签发下一跳权限；响应仍以 matchNone 明确告知前端展示
-        // 空状态，避免空匹配令牌被重用于目标历史版本中的任意记录。
-        String traversalContextToken = matchNone
-                ? null : compositionTokenService.advanceTraversal(
-                        validated.previousTraversalContextToken(),
-                        validated.ownerType(),
-                        validated.ownerId(),
-                        validated.releaseId(),
-                        validated.releaseVersion(),
-                        validated.compositionKey(),
-                        validated.recordId(),
-                        target.contentType(),
-                        target.contentId(),
-                        target.release().getId(),
-                        target.release().getVersion(),
-                        FORM.equals(target.contentType())
-                                ? targetRecordId : null);
-
-        String rowToken = compositionTokenService.issueSourceRow(
-                validated.ownerType(),
-                validated.ownerId(),
-                validated.releaseId(),
-                validated.releaseVersion(),
-                validated.compositionKey(),
-                sourceEntity.getEntityCode(),
-                validated.recordId());
-        String targetReleaseToken = FORM.equals(target.contentType())
-                ? releaseTokenService.issue(
-                        UiRuntimeResolutionContext.standalone(),
-                        target.contentId(),
-                        target.release().getId(),
-                        target.release().getVersion(),
-                        0)
-                : null;
-        String listContextToken = LIST.equals(target.contentType())
-                ? compositionTokenService.issueTargetList(
-                        validated.ownerType(),
-                        validated.ownerId(),
-                        validated.releaseId(),
-                        validated.releaseVersion(),
-                        validated.compositionKey(),
-                        sourceEntity.getEntityCode(),
-                        validated.recordId(),
-                        target.entity().getEntityCode(),
-                        target.contentId(),
-                        target.release().getId(),
-                        target.release().getVersion(),
-                        fixedFilters,
-                        matchNone)
-                : null;
-
         return UiViewCompositionResolveResponse.builder()
                 .ownerType(validated.ownerType())
                 .ownerId(validated.ownerId())
-                .releaseId(validated.releaseId())
-                .releaseVersion(validated.releaseVersion())
+                .releaseId(owner.release().getId())
+                .releaseVersion(owner.release().getVersion())
                 .compositionKey(validated.compositionKey())
                 .sourceEntityCode(sourceEntity.getEntityCode())
                 .sourceRecordId(validated.recordId())
@@ -227,220 +262,51 @@ public class UiViewCompositionRuntimeService {
                 .targetContentKey(target.contentKey())
                 .targetReleaseId(target.release().getId())
                 .targetReleaseVersion(target.release().getVersion())
-                .targetContentHash(target.release().getContentHash())
+                .targetContentHash(FORM.equals(target.contentType()) ? releaseService.formConfigHash(target.contentId()) : target.release().getContentHash())
                 .targetRecordId(targetRecordId)
                 .fixedFilters(unmodifiable(fixedFilters))
                 .matchNone(matchNone)
                 .presentation(unmodifiable(map(config.get("presentation"))))
                 .actions(stringList(config.get("actions")))
                 .failurePolicy(failurePolicy(specialConfig))
-                .rowContextToken(rowToken)
-                .actionContextToken(rowToken)
-                .targetReleaseResolutionToken(targetReleaseToken)
-                .listContextToken(listContextToken)
-                .traversalContextToken(traversalContextToken)
+                .configHash(FORM.equals(validated.ownerType()) ? releaseService.formConfigHash(validated.ownerId()) : owner.release().getContentHash())
+                .readonlyContext(readonly)
                 .build();
     }
 
-    /**
-     * 校验请求；不满足约束时阻止后续处理。
-     *
-     * @param request 本次请求，后续经校验后用于校验请求
-     * @return 校验后的请求结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private ValidatedRequest validateRequest(
-            UiViewCompositionResolveRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("关联内容解析请求不能为空");
-        }
-        String ownerType = normalize(request.getOwnerType());
-        if (!OWNER_TYPES.contains(ownerType)
-                || !StringUtils.hasText(request.getOwnerId())
-                || !StringUtils.hasText(request.getReleaseId())
-                || request.getReleaseVersion() == null
-                || request.getReleaseVersion() < 1
-                || !StringUtils.hasText(request.getCompositionKey())) {
-            throw new IllegalArgumentException(
-                    "关联内容解析缺少有效的宿主类型、宿主ID、发布版本或关联内容编码");
-        }
-        UiViewCompositionTokenService.Claims claims = null;
-        String recordId = trim(request.getRecordId());
-        if (StringUtils.hasText(request.getRowContextToken())) {
-            claims = compositionTokenService.verifySourceRow(
-                    request.getRowContextToken());
-            requireTokenContext(
-                    claims,
-                    ownerType,
-                    request.getOwnerId(),
-                    request.getReleaseId(),
-                    request.getReleaseVersion(),
-                    request.getCompositionKey());
-            if (StringUtils.hasText(recordId)
-                    && !Objects.equals(
-                    recordId, claims.sourceRecordId())) {
-                throw new BusinessForbiddenException(
-                        "VIEW_COMPOSITION_ROW_CONTEXT_MISMATCH",
-                        "来源记录ID与签名行上下文不一致");
-            }
-            recordId = claims.sourceRecordId();
-        }
-        if (!StringUtils.hasText(recordId)) {
-            throw new IllegalArgumentException(
-                    "关联内容解析必须提供来源记录ID或签名行上下文");
-        }
-        boolean traversalAuthorized = StringUtils.hasText(
-                request.getTraversalContextToken());
-        if (traversalAuthorized) {
-            // 父层令牌只允许进入它已经固定的目标资产、发布版本和（FORM）
-            // 唯一记录；实体与数据权限仍在后续服务链重新校验。
-            compositionTokenService.verifyTraversalEntry(
-                    request.getTraversalContextToken(),
-                    ownerType,
-                    request.getOwnerId().trim(),
-                    request.getReleaseId().trim(),
-                    request.getReleaseVersion(),
-                    request.getCompositionKey().trim(),
-                    recordId);
-        }
-        return new ValidatedRequest(
-                ownerType,
-                request.getOwnerId().trim(),
-                request.getReleaseId().trim(),
-                request.getReleaseVersion(),
-                request.getCompositionKey().trim(),
-                recordId,
-                claims != null || traversalAuthorized,
-                trim(request.getReleaseResolutionToken()),
-                trim(request.getTraversalContextToken()));
+    /** 校验根定位参数；不接受客户端指定的发布版本或授权结论。 */
+    private ValidatedRequest validateRequest(UiViewCompositionResolveRequest request) {
+        if (request == null || !OWNER_TYPES.contains(normalize(request.getOwnerType()))
+                || !StringUtils.hasText(request.getOwnerId()) || !StringUtils.hasText(request.getCompositionKey())
+                || !StringUtils.hasText(request.getRecordId())) throw new IllegalArgumentException("关联内容需要宿主、关联编码和来源记录");
+        return new ValidatedRequest(normalize(request.getOwnerType()), request.getOwnerId().trim(), request.getCompositionKey().trim(), request.getRecordId().trim());
     }
 
-    /**
-     * 校验并获取令牌上下文；不满足约束时阻止后续处理。
-     *
-     * @param claims 声明集合，供本方法校验并获取令牌上下文时使用
-     * @param ownerType 归属方类型标识，决定后续令牌上下文采用的处理分支
-     * @param ownerId 归属方ID，后续用于校验并获取令牌上下文时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于校验并获取令牌上下文时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法校验并获取令牌上下文时使用
-     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
-     */
-    private void requireTokenContext(
-            UiViewCompositionTokenService.Claims claims,
-            String ownerType,
-            String ownerId,
-            String releaseId,
-            Integer releaseVersion,
-            String compositionKey) {
-        if (claims == null
-                || !Objects.equals(ownerType, claims.ownerType())
-                || !Objects.equals(ownerId, claims.ownerId())
-                || !Objects.equals(releaseId, claims.releaseId())
-                || !Objects.equals(releaseVersion, claims.releaseVersion())
-                || !Objects.equals(compositionKey, claims.compositionKey())) {
-            throw new BusinessForbiddenException(
-                    "VIEW_COMPOSITION_ROW_CONTEXT_MISMATCH",
-                    "签名行上下文与关联内容请求不一致");
+    /** 根列表可使用已认证 Embed 会话的固定配置；其余根使用当前发布，子层只接受已验证父配置。 */
+    private OwnerRelease resolveOwnerRelease(ValidatedRequest request, UiConfigRelease inheritedRelease) {
+        var embedList = com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext.authorizedListTarget().orElse(null);
+        UiConfigRelease release = FORM.equals(request.ownerType())
+                ? currentFormRelease(request.ownerId())
+                : inheritedRelease != null ? inheritedRelease
+                : embedList != null ? releaseMapper.selectById(embedList.releaseId())
+                : releaseMapper.findActive(LIST, request.ownerId());
+        if (release == null || !Objects.equals(request.ownerId(), release.getConfigId()) || !Objects.equals(request.ownerType(), release.getConfigType()))
+            throw new BusinessConflictException("VIEW_COMPOSITION_RELEASE_CONFLICT", "关联内容宿主尚未发布或已不可用");
+        Map<String, Object> snapshot = releaseService.verifiedReleaseSnapshot(release);
+        if (LIST.equals(request.ownerType()) && inheritedRelease == null && embedList != null) {
+            Map<String, Object> list = map(snapshot.get("list"));
+            // 认证过滤器保存的坐标不能被另一列表复用，版本、实体和稳定列表键必须同时匹配。
+            if (!Objects.equals(embedList.releaseVersion(), release.getVersion())
+                    || !Objects.equals(embedList.entityCode(), text(list.get("entityCode")))
+                    || !Objects.equals(embedList.listKey(), text(list.get("listKey"))))
+                throw new BusinessForbiddenException("VIEW_COMPOSITION_EMBED_LIST_MISMATCH", "关联内容与嵌入会话列表范围不一致");
         }
+        return new OwnerRelease(release, snapshot);
     }
 
-    /**
-     * 解析归属方发布版本；输出作为后续校验或处理的输入。
-     *
-     * @param request 本次请求，后续经校验后用于解析归属方发布版本
-     * @return 解析后的归属方发布版本结果，供调用方继续处理
-     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
-     */
-    private OwnerRelease resolveOwnerRelease(ValidatedRequest request) {
-        if (FORM.equals(request.ownerType())
-                && StringUtils.hasText(
-                        request.releaseResolutionToken())) {
-            // 列表按钮等已发布入口会固定一个表单发布版本。必须复用同一份
-            // 服务端签名上下文解析历史快照，不能因表单后来重新发布而退回
-            // 当前 ACTIVE，也不能仅凭客户端提交的 releaseId 放开历史版本。
-            UiConfigReleaseService.ResolvedUiEventSnapshot resolved =
-                    releaseService.resolveRuntimeEventSnapshot(
-                            request.ownerId(),
-                            request.releaseId(),
-                            request.releaseVersion(),
-                            request.releaseResolutionToken());
-            return new OwnerRelease(
-                    requireReleaseRecord(request),
-                    resolved.snapshot());
-        }
-        if (!request.tokenAuthorized() && FORM.equals(request.ownerType())) {
-            UiConfigReleaseService.ResolvedUiEventSnapshot resolved =
-                    releaseService.resolveRuntimeEventSnapshot(
-                            request.ownerId(),
-                            request.releaseId(),
-                            request.releaseVersion(),
-                            null);
-            return new OwnerRelease(
-                    requireReleaseRecord(request),
-                    resolved.snapshot());
-        }
-        UiConfigRelease release = requireReleaseRecord(request);
-        if (!request.tokenAuthorized()) {
-            String activeReleaseId = FORM.equals(request.ownerType())
-                    ? activeFormRelease(request.ownerId())
-                    : activeListRelease(request.ownerId());
-            if (!Objects.equals(activeReleaseId, release.getId())
-                    || !"ACTIVE".equalsIgnoreCase(release.getStatus())) {
-                throw new BusinessConflictException(
-                        "VIEW_COMPOSITION_RELEASE_CONFLICT",
-                        "关联内容宿主版本已变化，请刷新页面后重试");
-            }
-        }
-        return new OwnerRelease(
-                release,
-                releaseService.verifiedReleaseSnapshot(release));
-    }
-
-    /**
-     * 校验并获取发布版本记录；不满足约束时阻止后续处理。
-     *
-     * @param request 本次请求，后续经校验后用于校验并获取发布版本记录
-     * @return 校验并获取后的发布版本记录结果，供调用方继续处理
-     * @throws BusinessConflictException 目标状态已被其他操作改变时抛出
-     */
-    private UiConfigRelease requireReleaseRecord(
-            ValidatedRequest request) {
-        UiConfigRelease release = releaseMapper.selectById(
-                request.releaseId());
-        if (release == null
-                || !Objects.equals(
-                request.ownerType(), release.getConfigType())
-                || !Objects.equals(
-                request.ownerId(), release.getConfigId())
-                || !Objects.equals(
-                request.releaseVersion(), release.getVersion())) {
-            throw new BusinessConflictException(
-                    "VIEW_COMPOSITION_RELEASE_CONFLICT",
-                    "关联内容宿主发布版本不存在或不一致");
-        }
-        return release;
-    }
-
-    /**
-     * 生成活动表单发布版本文本，供后续匹配或展示。
-     *
-     * @param ownerId 归属方ID，后续用于处理活动表单发布版本时定位或关联目标
-     * @return 处理后的活动表单发布版本文本，供调用方比较或展示
-     */
-    private String activeFormRelease(String ownerId) {
-        EntityForm form = formMapper.selectById(ownerId);
-        return form == null ? null : form.getActiveReleaseId();
-    }
-
-    /**
-     * 生成活动列表发布版本文本，供后续匹配或展示。
-     *
-     * @param ownerId 归属方ID，后续用于处理活动列表发布版本时定位或关联目标
-     * @return 处理后的活动列表发布版本文本，供调用方比较或展示
-     */
-    private String activeListRelease(String ownerId) {
-        EntityListConfig list = listMapper.selectById(ownerId);
-        return list == null ? null : list.getActiveReleaseId();
+    /** 表单已无历史版本，统一使用当前发布适配记录。 */
+    private UiConfigRelease currentFormRelease(String formId) {
+        return releaseMapper.findActive(FORM, formId);
     }
 
     /**
@@ -1015,7 +881,7 @@ public class UiViewCompositionRuntimeService {
     }
 
     /**
-     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     * 计算输入内容的 SHA-256 摘要，供配置完整性校验或幂等去重使用。
      *
      * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
      * @return 处理后的{@code sha256}文本，供调用方比较或展示
@@ -1080,13 +946,13 @@ public class UiViewCompositionRuntimeService {
         executeRequest.setOperationCode(operationCode);
         executeRequest.setConfigType(request.ownerType());
         executeRequest.setConfigId(request.ownerId());
-        executeRequest.setReleaseId(request.releaseId());
-        executeRequest.setReleaseVersion(request.releaseVersion());
+        executeRequest.setReleaseId(owner.release().getId());
+        executeRequest.setReleaseVersion(owner.release().getVersion());
         executeRequest.setEntityCode(sourceEntity.getEntityCode());
         executeRequest.setTargetType("COMPOSITION");
         executeRequest.setTargetKey(request.compositionKey());
         executeRequest.setInput(input);
-        if (request.tokenAuthorized()) {
+        {
             executeRequest.setServerPinnedRelease(true);
             executeRequest.setServerIdempotencyKey(
                     "view-composition:"
@@ -1918,30 +1784,81 @@ public class UiViewCompositionRuntimeService {
         }
     }
 
-    /**
-     * 封装已校验的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param ownerType 归属方类型标识，决定后续已校验请求采用的处理分支
-     * @param ownerId 归属方ID，后续用于处理已校验请求时定位或关联目标
-     * @param releaseId 发布版本 ID，后续用于解析固定配置
-     * @param releaseVersion 发布版本号，后续用于校验快照一致性
-     * @param compositionKey 组合键，后续用于授权校验、关联或幂等去重
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     * @param tokenAuthorized 令牌已授权，保存在对象中供后续校验、查询或展示
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param previousTraversalContextToken 上一项遍历上下文令牌，后续用于授权校验、关联或幂等去重
-     */
-    private record ValidatedRequest(
-            String ownerType,
-            String ownerId,
-            String releaseId,
-            Integer releaseVersion,
-            String compositionKey,
-            String recordId,
-            boolean tokenAuthorized,
-            String releaseResolutionToken,
-            String previousTraversalContextToken) {
+    /** 历史列表快照允许对象或 JSON 文本；解析失败时拒绝，不能退化为无固定条件。 */
+    private Map<String,Object> publishedFilters(Object raw) {
+        if(raw==null)return Map.of();
+        if(raw instanceof Map<?,?>)return map(raw);
+        if(raw instanceof String text && StringUtils.hasText(text)) {
+            try { return objectMapper.readValue(text,new TypeReference<Map<String,Object>>(){}); }
+            catch(Exception failure) {throw new BusinessConflictException("VIEW_COMPOSITION_FILTER_INVALID","已发布列表固定条件无法解析");}
+        }
+        throw new BusinessConflictException("VIEW_COMPOSITION_FILTER_INVALID","已发布列表固定条件格式错误");
     }
+
+    private boolean matchesFilters(
+            EntityDataDTO record,
+            Map<String, Object> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return true;
+        }
+        Set<String> bases = new java.util.LinkedHashSet<>();
+        filters.keySet().forEach(key ->
+                bases.add(key.replaceFirst("_(op|start|end)$", "")));
+        for (String base : bases) {
+            Object actual = recordValue(record, base);
+            Object expected = filters.get(base);
+            String operator = normalize(text(filters.getOrDefault(base + "_op", "EQ")));
+            boolean matches = switch (operator) {
+                case "IS_NULL" -> actual == null
+                        || actual instanceof String text && text.isBlank();
+                case "EQ" -> Objects.equals(text(actual), text(expected));
+                case "NE" -> !Objects.equals(text(actual), text(expected));
+                case "LIKE" -> actual != null && expected != null
+                        && text(actual).contains(text(expected));
+                case "IN" -> expected instanceof Collection<?> values
+                        && values.stream().anyMatch(value ->
+                        Objects.equals(text(actual), text(value)));
+                case "BETWEEN" -> compareFilterValues(
+                        actual, filters.get(base + "_start")) >= 0
+                        && compareFilterValues(
+                        actual, filters.get(base + "_end")) <= 0;
+                case "GT" -> compareFilterValues(actual, expected) > 0;
+                case "GE" -> compareFilterValues(actual, expected) >= 0;
+                case "LT" -> compareFilterValues(actual, expected) < 0;
+                case "LE" -> compareFilterValues(actual, expected) <= 0;
+                default -> false;
+            };
+            if (!matches) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 比较过滤值集合；结果供调用方的后续步骤使用。
+     *
+     * @param left 左侧，作为 {@code java.math.BigDecimal} 的输入影响后续处理
+     * @param right 右侧，供本方法比较过滤值集合时使用
+     * @return 比较后的过滤值集合结果，供调用方继续处理
+     */
+    private int compareFilterValues(Object left, Object right) {
+        if (left == null || right == null) {
+            return left == right ? 0 : left == null ? -1 : 1;
+        }
+        if (left instanceof Number || right instanceof Number) {
+            try {
+                return new java.math.BigDecimal(text(left))
+                        .compareTo(new java.math.BigDecimal(text(right)));
+            } catch (NumberFormatException ignored) {
+                // 非标准数值按数据库字符串字段常见的字典序进行安全比较。
+            }
+        }
+        return text(left).compareTo(text(right));
+    }
+
+
+    private record ValidatedRequest(String ownerType, String ownerId, String compositionKey, String recordId) {}
 
     /**
      * 封装归属方发布版本的不可变数据；各分量供后续校验、传递或结果展示使用。

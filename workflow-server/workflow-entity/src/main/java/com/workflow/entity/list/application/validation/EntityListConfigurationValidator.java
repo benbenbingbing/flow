@@ -9,7 +9,6 @@ import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
-import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -155,7 +154,7 @@ public class EntityListConfigurationValidator {
     }
 
     /**
-     * 校验单个列表字段：编码格式与唯一性、数据源类型与提供者能力、查询方式、列对齐、各类配置 JSON。
+     * 校验单个列表字段：编码格式与唯一性、互斥的取值方式、查询方式、列对齐和配置 JSON。
      *
      * @param field           列表字段配置
      * @param entityFieldIds  实体已有的字段 ID 集合（用于校验实体字段来源）
@@ -178,18 +177,26 @@ public class EntityListConfigurationValidator {
                 ? field.getDataSourceType().trim().toUpperCase(Locale.ROOT)
                 : "ENTITY_FIELD";
         field.setDataSourceType(dataSourceType);
-        if ("ENTITY_FIELD".equals(dataSourceType)) {
-            if (!StringUtils.hasText(field.getFieldId())
-                    || !entityFieldIds.contains(String.valueOf(field.getFieldId()))) {
-                throw new IllegalArgumentException("实体字段不存在: " + field.getFieldCode());
+        // 取值方式互斥，不能依赖接口覆盖另一种来源的隐式优先级。
+        boolean hasInterface = StringUtils.hasText(field.getInterfaceExtensionId());
+        if (!"INTERFACE".equals(dataSourceType) && hasInterface) {
+            throw new IllegalArgumentException("只有扩展接口取值方式可以绑定接口: " + field.getFieldCode());
+        }
+        switch (dataSourceType) {
+            case "ENTITY_FIELD" -> {
+                if (!StringUtils.hasText(field.getFieldId())
+                        || !entityFieldIds.contains(String.valueOf(field.getFieldId()))) {
+                    throw new IllegalArgumentException("实体字段不存在: " + field.getFieldCode());
+                }
             }
-        } else {
-            providerRegistry.validate(field);
-            ListFieldDataProvider provider = providerRegistry.getProvider(dataSourceType);
-            if (!provider.supportsVirtualField()
-                    && String.valueOf(field.getFieldId()).startsWith("virtual_")) {
-                throw new IllegalArgumentException("数据源不支持虚拟字段: " + dataSourceType);
+            case "FIELD_TEMPLATE" -> providerRegistry.validate(field);
+            case "INTERFACE" -> {
+                // 接口列既可覆盖实体字段的展示，也可作为虚拟列；引用契约由 validateListDraft 统一校验。
+                if (!hasInterface) {
+                    throw new IllegalArgumentException("扩展接口取值方式必须选择接口: " + field.getFieldCode());
+                }
             }
+            default -> throw new IllegalArgumentException("不支持的列取值方式: " + dataSourceType);
         }
 
         String queryType = StringUtils.hasText(field.getQueryType())

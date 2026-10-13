@@ -28,9 +28,13 @@ const selectedSlaPolicyName = computed(() => props.slaPolicyOptions.find(
       <el-switch v-model="slaForm.enabled" />
     </el-form-item>
     <template v-if="slaForm.enabled">
-      <el-form-item label="SLA 策略" required>
+      <el-form-item label="SLA 策略" for="" required>
+        <template #label>
+          <ConfigHelpLabel label="SLA 策略" content="发布时冻结策略与日历快照；转办不会重新计算截止时间。" />
+        </template>
         <el-select
           v-model="slaForm.policyCode"
+          aria-label="SLA 策略"
           filterable
           placeholder="选择已发布策略"
           style="width: 100%"
@@ -105,12 +109,6 @@ const selectedSlaPolicyName = computed(() => props.slaPolicyOptions.find(
           />
         </el-select>
       </el-form-item>
-      <el-alert
-        type="info"
-        :closable="false"
-        show-icon
-        title="发布时冻结策略与日历快照；转办不会重新计算截止时间。"
-      />
     </template>
   </SettingsSection>
 </template>

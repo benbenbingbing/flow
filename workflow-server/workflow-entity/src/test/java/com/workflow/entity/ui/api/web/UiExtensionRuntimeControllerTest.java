@@ -16,25 +16,22 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class UiExtensionRuntimeControllerTest {
 
     @Test
-    void requestAcceptsPinnedEmbedOwnerCoordinates() throws Exception {
+    void requestAcceptsBusinessContextWithoutConfigTokens() throws Exception {
         UiBoundExtensionExecuteRequest body = new ObjectMapper()
                 .readValue("""
                         {
                           "ownerType":"FORM",
                           "ownerId":"child-form",
-                          "releaseId":"child-release",
-                          "releaseVersion":7,
-                          "releaseResolutionToken":"signed-child",
+                          "configHash":"child-config-hash",
+                          "runtimeContext":{"rootFormId":"root-form","componentPath":["child-node"]},
                           "entityCode":"customer",
                           "listKey":"customers",
-                          "recordId":"record-7",
-                          "viewCompositionTraversalToken":"traversal-1"
+                          "recordId":"record-7"
                         }
                         """, UiBoundExtensionExecuteRequest.class);
 
-        assertEquals("child-release", body.getReleaseId());
-        assertEquals(7, body.getReleaseVersion());
-        assertEquals("signed-child", body.getReleaseResolutionToken());
+        assertEquals("child-config-hash", body.getConfigHash());
+        assertEquals("root-form", body.getRuntimeContext().get("rootFormId"));
         assertEquals("record-7", body.getRecordId());
     }
 

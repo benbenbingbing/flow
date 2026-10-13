@@ -70,7 +70,7 @@ import java.util.Set;
 /**
  * 已发布“关联内容”的权威动作执行服务。
  *
- * <p>动作上下文由短期签名令牌恢复，随后重新执行宿主、目标发布、实体和数据
+ * <p>动作上下文从业务入口和已发布关联路径恢复，随后重新执行宿主、目标发布、实体和数据
  * 权限校验。SELECT 的字段映射、LINK/UNLINK 的关系字段均只读取不可变发布
  * 快照；客户端行对象、实体编码、字段名和筛选条件不会进入权威执行链。</p>
  */
@@ -91,7 +91,6 @@ public class UiViewCompositionActionService {
     private static final int MAX_ACTION_MUTATIONS = 100;
 
     private final UiViewCompositionRuntimeService runtimeService;
-    private final UiViewCompositionTokenService tokenService;
     private final UiConfigReleaseMapper releaseMapper;
     private final UiConfigReleaseService releaseService;
     private final EntityPublishedSnapshotService entitySnapshotService;
@@ -106,7 +105,7 @@ public class UiViewCompositionActionService {
     private final ObjectMapper objectMapper;
 
     /**
-     * 计算当前签名上下文下的权威动作能力。
+     * 计算当前业务上下文下的权威动作能力。
      *
      * <p>该结果同时考虑发布声明、关系类型、已固定字段以及当前用户标准权限。
      * CREATE/EDIT 仅在精确发布表单提交桥可用时开放；SELECT/LINK/UNLINK 则要求
@@ -119,11 +118,11 @@ public class UiViewCompositionActionService {
     public UiViewCompositionActionCapabilitiesResponse capabilities(
             UiViewCompositionActionCapabilitiesRequest request) {
         if (request == null
-                || !StringUtils.hasText(request.getActionContextToken())) {
+                || request.getCompositionContext() == null) {
             throw new IllegalArgumentException("关联内容动作上下文不能为空");
         }
         ActionContext context = resolveContext(
-                request.getActionContextToken());
+                request.getCompositionContext());
         return UiViewCompositionActionCapabilitiesResponse.builder()
                 .sourceRecordId(context.claims().sourceRecordId())
                 .actionCapabilities(capabilities(context))
@@ -135,7 +134,7 @@ public class UiViewCompositionActionService {
      *
      * <p>候选目标、列表精确发布版本和关系条件均从宿主发布快照恢复。普通关联
      * 列表的“当前已关联”条件不会被复用：反向引用和普通实体关系只查询引用字段
-     * 为空的记录；单值正向引用可排除当前引用。候选令牌仍由列表运行时叠加目标
+     * 为空的记录；单值正向引用可排除当前引用。候选范围仍由列表运行时叠加目标
      * 列表固定条件和当前用户数据范围。</p>
      *
      * @param request 本次请求，后续经校验后用于处理链接候选集合
@@ -145,7 +144,7 @@ public class UiViewCompositionActionService {
     public UiViewCompositionLinkCandidatesResponse linkCandidates(
             UiViewCompositionLinkCandidatesRequest request) {
         if (request == null
-                || !StringUtils.hasText(request.getActionContextToken())) {
+                || request.getCompositionContext() == null) {
             throw new IllegalArgumentException("关联内容动作上下文不能为空");
         }
         String action = normalize(request.getAction());
@@ -154,7 +153,7 @@ public class UiViewCompositionActionService {
                     "关联候选只支持建立关联或选择后建立关联");
         }
         ActionContext context = resolveContext(
-                request.getActionContextToken().trim());
+                request.getCompositionContext());
         if (!LIST.equals(context.resolved().getTargetContentType())) {
             throw conflict(
                     "VIEW_COMPOSITION_LINK_CANDIDATE_LIST_REQUIRED",
@@ -177,20 +176,6 @@ public class UiViewCompositionActionService {
 
         CandidatePlan plan = candidatePlan(context);
         UiViewCompositionResolveResponse target = context.resolved();
-        String token = tokenService.issueCandidateList(
-                context.claims().ownerType(),
-                context.claims().ownerId(),
-                context.claims().releaseId(),
-                context.claims().releaseVersion(),
-                context.claims().compositionKey(),
-                context.sourceEntity().getEntityCode(),
-                context.claims().sourceRecordId(),
-                context.targetEntity().getEntityCode(),
-                target.getTargetContentId(),
-                target.getTargetReleaseId(),
-                target.getTargetReleaseVersion(),
-                plan.filters(),
-                plan.matchNone());
         return UiViewCompositionLinkCandidatesResponse.builder()
                 .action(action)
                 .targetEntityCode(target.getTargetEntityCode())
@@ -198,40 +183,63 @@ public class UiViewCompositionActionService {
                 .targetContentKey(target.getTargetContentKey())
                 .targetReleaseId(target.getTargetReleaseId())
                 .targetReleaseVersion(target.getTargetReleaseVersion())
-                .candidateListContextToken(token)
+                .compositionContext(request.getCompositionContext())
                 .matchNone(plan.matchNone())
                 .build();
     }
 
+    /** 为列表查询重算普通关系范围或候选范围；调用方必须与用户查询、列表固定条件取交集。 */
+    public ResolvedListContext resolveListContext(UiViewCompositionResolveRequest request, String candidateAction) {
+        ActionContext context = resolveContext(request);
+        UiViewCompositionResolveResponse target = context.resolved();
+        if (!LIST.equals(target.getTargetContentType())) throw new IllegalArgumentException("关联目标不是列表");
+        Map<String,Object> filters = target.getFixedFilters();
+        boolean matchNone = target.isMatchNone();
+        if (StringUtils.hasText(candidateAction)) {
+            UiViewCompositionLinkCandidatesRequest candidate = new UiViewCompositionLinkCandidatesRequest();
+            candidate.setCompositionContext(request); candidate.setAction(candidateAction);
+            linkCandidates(candidate); // 同时检查 LINK/SELECT 能力，客户端模式只能收窄到已发布动作。
+            CandidatePlan plan = candidatePlan(context);
+            filters = plan.filters(); matchNone = plan.matchNone();
+        }
+        return new ResolvedListContext(target.getOwnerType(),target.getOwnerId(),target.getReleaseId(),target.getReleaseVersion(),
+                target.getCompositionKey(),target.getSourceEntityCode(),target.getSourceRecordId(),target.getTargetEntityCode(),
+                target.getTargetContentId(),target.getTargetReleaseId(),target.getTargetReleaseVersion(),filters,matchNone);
+    }
+
+    /** 本次请求重新校验后的内部结果，不可从客户端反序列化后直接使用。 */
+    public record ResolvedListContext(String ownerType,String ownerId,String releaseId,Integer releaseVersion,
+            String compositionKey,String sourceEntityCode,String sourceRecordId,String targetEntityCode,
+            String targetContentId,String targetReleaseId,Integer targetReleaseVersion,Map<String,Object> fixedFilters,boolean matchNone) {}
+
+    private record ResolvedCoordinates(String ownerType,String ownerId,String releaseId,Integer releaseVersion,
+            String compositionKey,String sourceEntityCode,String sourceRecordId) {}
+
     /**
      * 校验关联内容打开的目标表单提交，并返回服务端必须覆盖的新增初值。
      *
-     * <p>普通表单提交不会调用本方法。携带关联内容动作令牌时，目标实体、表单、
+     * <p>普通表单提交不会调用本方法。携带关联内容业务上下文时，目标实体、表单、
      * 精确发布版本以及 EDIT 记录 ID 均从不可变宿主快照重新解析；来源行和目标行
      * 会先加锁再复核，避免关系在校验与写入之间变化。CREATE 的初值同样在锁后
      * 从来源记录重新计算，浏览器提交的同名字段不能覆盖它们。</p>
      *
-     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param compositionContext 业务入口和关联路径，服务端重新校验后才能执行动作
      * @param action 动作标识，决定后续授权表单提交采用的处理分支
      * @param targetEntityCode 目标实体编码，后续用于处理授权表单提交时定位或关联目标
      * @param targetRecordId 目标记录ID，后续用于处理授权表单提交时定位或关联目标
      * @param targetFormId 目标表单ID，后续用于处理授权表单提交时定位或关联目标
-     * @param targetReleaseId 目标发布版本ID，后续用于处理授权表单提交时定位或关联目标
-     * @param targetReleaseVersion 目标发布版本，供本方法处理授权表单提交时使用
-     * @param targetReleaseResolutionToken 目标发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param targetConfigHash 目标表单页面配置摘要，变更时拒绝写入并保留输入
      * @return CREATE 时必须合并到目标数据的可信初值；EDIT 时为空
      */
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> authorizeFormSubmission(
-            String actionContextToken,
+            UiViewCompositionResolveRequest compositionContext,
             String action,
             String targetEntityCode,
             String targetRecordId,
             String targetFormId,
-            String targetReleaseId,
-            Integer targetReleaseVersion,
-            String targetReleaseResolutionToken) {
-        if (!StringUtils.hasText(actionContextToken)) {
+            String targetConfigHash) {
+        if (compositionContext == null) {
             throw new IllegalArgumentException("关联内容动作上下文不能为空");
         }
         String normalizedAction = normalize(action);
@@ -240,7 +248,7 @@ public class UiViewCompositionActionService {
                     "关联内容表单提交只支持新增或编辑");
         }
 
-        ActionContext initial = resolveContext(actionContextToken.trim());
+        ActionContext initial = resolveContext(compositionContext);
         EntityDataDTO source = readAccessible(
                 initial.sourceEntity(), initial.claims().sourceRecordId(), null);
         List<EntityDataDTO> targets = "EDIT".equals(normalizedAction)
@@ -254,7 +262,7 @@ public class UiViewCompositionActionService {
 
         // 锁等待期间来源关系可能已经变化，因此必须重新解析一次，而不是继续使用
         // 加锁前得到的 targetRecordId 或初值。
-        ActionContext context = resolveContext(actionContextToken.trim());
+        ActionContext context = resolveContext(compositionContext);
         Map<String, UiViewCompositionActionCapabilityDTO> actionCapabilities =
                 capabilities(context);
         requireAvailable(actionCapabilities, normalizedAction);
@@ -264,9 +272,7 @@ public class UiViewCompositionActionService {
                 targetEntityCode,
                 targetRecordId,
                 targetFormId,
-                targetReleaseId,
-                targetReleaseVersion,
-                targetReleaseResolutionToken);
+                targetConfigHash);
         return "CREATE".equals(normalizedAction)
                 ? actionCapabilities.get("CREATE").getInitialValues()
                 : Map.of();
@@ -289,7 +295,7 @@ public class UiViewCompositionActionService {
             UiViewCompositionActionRequest request) {
         ValidatedAction action = validateRequest(request);
         ActionContext context = resolveContext(
-                action.actionContextToken());
+                action.compositionContext());
         Map<String, UiViewCompositionActionCapabilityDTO> capabilities =
                 capabilities(context);
         requireAvailable(capabilities, action.action());
@@ -347,10 +353,6 @@ public class UiViewCompositionActionService {
                     action, context, true, false, "SELECT", capabilities,
                     actionResult);
         }
-        if (StringUtils.hasText(action.candidateListContextToken())) {
-            throw new IllegalArgumentException(
-                    "普通选择回填不能携带建立关联候选令牌");
-        }
         if (!"FILL_FIELDS".equals(result)) {
             throw conflict(
                     "VIEW_COMPOSITION_SELECT_RESULT_INVALID",
@@ -400,7 +402,7 @@ public class UiViewCompositionActionService {
                     "VIEW_COMPOSITION_RELATION_ACTION_UNSUPPORTED",
                     "当前数据关联方式不支持建立或解除关系");
         }
-        UiViewCompositionTokenService.Claims candidateContext = link
+        CandidatePlan candidateContext = link
                 ? requireCandidateContext(action, context)
                 : requireNoCandidateContext(action);
         UiViewCompositionActionReceiptService.AcquireResult receipt =
@@ -514,7 +516,7 @@ public class UiViewCompositionActionService {
      * 执行宿主发布快照中显式钉定的接口动作。
      *
      * <p>客户端只提交 actionKey、记录 ID 和 operationId。服务、操作、映射与
-     * 可执行快照都从签名宿主版本恢复；READ 只返回映射后的界面结果，WRITE
+     * 可执行快照都从已发布宿主配置恢复；READ 只返回映射后的界面结果，WRITE
      * 则先取得持久批次回执，再通过受控计划和 EntityMutationPort 原子执行。</p>
      *
      * @param action 动作标识，决定后续接口动作采用的处理分支
@@ -581,7 +583,7 @@ public class UiViewCompositionActionService {
         // 目标，再重新解析固定筛选、重读输入并生成计划；否则等待业务行锁期间
         // 关系变化后，Provider 可能依据锁前的陈旧上下文修改已脱离关联的记录。
         lockMutationRows(context, source, targets);
-        context = resolveContext(action.actionContextToken());
+        context = resolveContext(action.compositionContext());
         binding = requireActionService(context, action.action());
         validateActionBinding(context, binding);
         source = readAccessible(
@@ -656,7 +658,7 @@ public class UiViewCompositionActionService {
                 map(context.config().get("actionSettings"))
                         .get("select")).get("result"))));
         if (candidateSelection) {
-            UiViewCompositionTokenService.Claims candidate =
+            CandidatePlan candidate =
                     requireCandidateContext(action, context);
             targets = readCandidateTargets(
                     context, action.targetRecordIds(), candidate);
@@ -1094,7 +1096,7 @@ public class UiViewCompositionActionService {
                 throw new IllegalArgumentException(
                         "更新或删除命令必须指定目标记录ID");
             }
-            // Provider 只能处理本次动作令牌已解析并由平台重读授权的目标集合。
+            // Provider 只能处理本次业务上下文已解析并由平台重读授权的目标集合。
             // 不能把 Provider 返回的 recordId 当作新的授权来源，否则它可越过
             // 关联内容固定筛选去修改同实体中其它虽可见但与当前内容无关的记录。
             if (item.operationType() != EntityMutationOperationType.CREATE
@@ -1634,69 +1636,29 @@ public class UiViewCompositionActionService {
      * @param context 执行上下文，向后续候选人上下文步骤传递身份、配置或状态
      * @return 校验并获取后的候选人上下文结果，供调用方继续处理
      */
-    private UiViewCompositionTokenService.Claims requireCandidateContext(
-            ValidatedAction action,
-            ActionContext context) {
-        if (!StringUtils.hasText(action.candidateListContextToken())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_CONTEXT_REQUIRED",
-                    "建立关联必须先从服务端候选列表选择记录");
-        }
-        UiViewCompositionTokenService.Claims candidate =
-                tokenService.verifyCandidateList(
-                        action.candidateListContextToken());
-        UiViewCompositionResolveResponse target = context.resolved();
-        if (!Objects.equals(candidate.ownerType(), context.claims().ownerType())
-                || !Objects.equals(candidate.ownerId(), context.claims().ownerId())
-                || !Objects.equals(candidate.releaseId(), context.claims().releaseId())
-                || !Objects.equals(candidate.releaseVersion(), context.claims().releaseVersion())
-                || !Objects.equals(candidate.compositionKey(), context.claims().compositionKey())
-                || !Objects.equals(candidate.sourceEntityCode(), context.sourceEntity().getEntityCode())
-                || !Objects.equals(candidate.sourceRecordId(), context.claims().sourceRecordId())
-                || !Objects.equals(candidate.targetEntityCode(), target.getTargetEntityCode())
-                || !Objects.equals(candidate.targetContentId(), target.getTargetContentId())
-                || !Objects.equals(candidate.targetReleaseId(), target.getTargetReleaseId())
-                || !Objects.equals(candidate.targetReleaseVersion(), target.getTargetReleaseVersion())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_CONTEXT_MISMATCH",
-                    "候选列表与当前宿主、关联内容或固定目标版本不一致");
-        }
-        // 此处只校验候选令牌的用途和固定身份。候选关系范围会在首次执行的
-        // 锁前、锁后各复核一次；不能在批次回执之前复核，因为单值 LINK 成功
-        // 后来源引用必然变化，完全相同的幂等重放仍应恢复整批历史结果。
-        return candidate;
+    private CandidatePlan requireCandidateContext(ValidatedAction action, ActionContext context) {
+        // LINK 的候选边界不再由浏览器凭证提供，每次从当前发布配置与来源行推导。
+        return candidatePlan(context);
     }
 
-    /**
-     * 校验并获取无候选人上下文；不满足约束时阻止后续处理。
-     *
-     * @param action 动作标识，决定后续无候选人上下文采用的处理分支
-     * @return 校验并获取后的无候选人上下文结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private UiViewCompositionTokenService.Claims requireNoCandidateContext(
-            ValidatedAction action) {
-        if (StringUtils.hasText(action.candidateListContextToken())) {
-            throw new IllegalArgumentException(
-                    "解除关联不能携带建立关联候选令牌");
-        }
+    private CandidatePlan requireNoCandidateContext(ValidatedAction action) {
         return null;
     }
 
     /**
      * 锁前和锁后都重新计算候选计划。来源引用或固定关系在等待锁期间变化时，旧
-     * 候选令牌立即失效，调用方必须重新打开候选列表，不能依据陈旧范围写入。
+     * 候选范围立即失效，调用方必须重新打开候选列表，不能依据陈旧范围写入。
      *
      * @param context 执行上下文，向后续候选人作用域{@code still}当前步骤传递身份、配置或状态
      * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
      */
     private void requireCandidateScopeStillCurrent(
             ActionContext context,
-            UiViewCompositionTokenService.Claims candidate) {
+            CandidatePlan candidate) {
         CandidatePlan expected = candidatePlan(context);
         if (candidate.matchNone() != expected.matchNone()
                 || !Objects.equals(
-                candidate.fixedFilters(), expected.filters())) {
+                candidate.filters(), expected.filters())) {
             throw conflict(
                     "VIEW_COMPOSITION_LINK_CANDIDATE_STALE",
                     "关联关系已变化，请重新打开候选列表后再选择");
@@ -1714,7 +1676,7 @@ public class UiViewCompositionActionService {
     private List<EntityDataDTO> readCandidateTargets(
             ActionContext context,
             List<String> ids,
-            UiViewCompositionTokenService.Claims candidate) {
+            CandidatePlan candidate) {
         requireCandidateScopeStillCurrent(context, candidate);
         if (candidate.matchNone()) {
             throw conflict(
@@ -1750,12 +1712,12 @@ public class UiViewCompositionActionService {
      */
     private void requireCandidateMembership(
             ActionContext context,
-            UiViewCompositionTokenService.Claims candidate,
+            CandidatePlan candidate,
             EntityDataDTO record,
             String recordId) {
         if (record == null
                 || !Objects.equals(recordId, record.getId())
-                || !matchesFilters(record, candidate.fixedFilters())) {
+                || !matchesFilters(record, candidate.filters())) {
             throw forbidden(
                     "VIEW_COMPOSITION_LINK_CANDIDATE_OUT_OF_SCOPE",
                     "所选记录不属于当前关联候选范围");
@@ -1773,7 +1735,7 @@ public class UiViewCompositionActionService {
             }
             removeFilterBase(condition, "id");
         }
-        candidate.fixedFilters().forEach((key, value) -> {
+        candidate.filters().forEach((key, value) -> {
             String base = stripFilterSuffix(key);
             if (!"id".equals(base)) {
                 condition.put(key, value);
@@ -1851,7 +1813,7 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 只用于已签名候选条件和固定列表的 id 条件，不接收浏览器任意表达式。
+     * 只用于服务端计算的候选条件和固定列表的 id 条件，不接收浏览器任意表达式。
      *
      * @param record 记录，作为 {@code recordValue} 的输入影响后续处理
      * @param filters 过滤条件，作为 {@code filterOperator} 的输入影响后续处理
@@ -2218,6 +2180,10 @@ public class UiViewCompositionActionService {
                 result.put(actionKey, denied(exception.getMessage()));
             }
         }
+        if (context.resolved().isReadonlyContext()) {
+            // 只读流程入口或父层声明不得被子内容的动作配置重新开放。
+            result.replaceAll((action, capability) -> "VIEW".equals(action) ? capability : denied("当前关联路径只允许查看"));
+        }
         return Collections.unmodifiableMap(result);
     }
 
@@ -2474,9 +2440,7 @@ public class UiViewCompositionActionService {
      * @param targetEntityCode 目标实体编码，后续用于校验并获取精确目标表单时定位或关联目标
      * @param targetRecordId 目标记录ID，后续用于校验并获取精确目标表单时定位或关联目标
      * @param targetFormId 目标表单ID，后续用于校验并获取精确目标表单时定位或关联目标
-     * @param targetReleaseId 目标发布版本ID，后续用于校验并获取精确目标表单时定位或关联目标
-     * @param targetReleaseVersion 目标发布版本，作为 {@code releaseService.resolveAuthorizedRuntimeFormRelease} 的输入影响后续处理
-     * @param targetReleaseResolutionToken 目标发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param targetConfigHash 目标表单页面配置摘要，变更时拒绝写入并保留输入
      */
     private void requireExactTargetForm(
             ActionContext context,
@@ -2484,35 +2448,20 @@ public class UiViewCompositionActionService {
             String targetEntityCode,
             String targetRecordId,
             String targetFormId,
-            String targetReleaseId,
-            Integer targetReleaseVersion,
-            String targetReleaseResolutionToken) {
+            String targetConfigHash) {
         UiViewCompositionResolveResponse resolved = context.resolved();
         if (!FORM.equals(resolved.getTargetContentType())
                 || !Objects.equals(
                 resolved.getTargetEntityCode(), trim(targetEntityCode))
                 || !Objects.equals(
-                resolved.getTargetContentId(), trim(targetFormId))
-                || !Objects.equals(
-                resolved.getTargetReleaseId(), trim(targetReleaseId))
-                || !Objects.equals(
-                resolved.getTargetReleaseVersion(), targetReleaseVersion)) {
+                resolved.getTargetContentId(), trim(targetFormId))) {
             throw forbidden(
                     "VIEW_COMPOSITION_FORM_CONTEXT_MISMATCH",
                     "提交的目标实体或表单发布版本与关联内容不一致");
         }
-        if (!StringUtils.hasText(targetReleaseResolutionToken)) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_FORM_CONTEXT_REQUIRED",
-                    "目标表单缺少精确发布版本授权，已停止提交");
-        }
-        // 复用现有表单发布授权校验；后续正式提交还会在
-        // PublishedFormSubmissionService 中再次校验并应用该快照。
-        releaseService.resolveAuthorizedRuntimeFormRelease(
-                targetFormId,
-                targetReleaseId,
-                targetReleaseVersion,
-                targetReleaseResolutionToken);
+        // 配置摘要只防止旧页面按新规则写入；关联权限已经从来源行和发布路径重算。
+        if (!StringUtils.hasText(targetConfigHash) || !Objects.equals(targetConfigHash, resolved.getTargetContentHash()))
+            throw conflict("VIEW_COMPOSITION_CONFIG_CHANGED", "目标表单配置已变化，请保留输入并刷新后重试");
         if ("CREATE".equals(action)) {
             if (StringUtils.hasText(targetRecordId)) {
                 throw forbidden(
@@ -2678,7 +2627,7 @@ public class UiViewCompositionActionService {
                 matchNone = true;
             }
             if (!matchNone) {
-                // 即使目标列表本身已配置 IS_NULL，也仍在候选令牌中显式签入
+                // 即使目标列表本身已配置 IS_NULL，也仍在候选范围中显式保留
                 // 关系条件。这样候选安全边界不依赖列表过滤器是否携带占位值，
                 // 更不会因某种运行时忽略仅含 _op 的条件而退化为全量查询。
                 candidate.put(targetField, true);
@@ -2834,23 +2783,14 @@ public class UiViewCompositionActionService {
     /**
      * 解析上下文；输出作为后续校验或处理的输入。
      *
-     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param compositionContext 业务入口和关联路径，服务端重新校验后才能执行动作
      * @return 解析后的上下文结果，供调用方继续处理
      */
-    private ActionContext resolveContext(String actionContextToken) {
-        UiViewCompositionTokenService.Claims claims =
-                tokenService.verifySourceRow(actionContextToken);
-        UiViewCompositionResolveRequest resolveRequest =
-                new UiViewCompositionResolveRequest();
-        resolveRequest.setOwnerType(claims.ownerType());
-        resolveRequest.setOwnerId(claims.ownerId());
-        resolveRequest.setReleaseId(claims.releaseId());
-        resolveRequest.setReleaseVersion(claims.releaseVersion());
-        resolveRequest.setCompositionKey(claims.compositionKey());
-        resolveRequest.setRowContextToken(actionContextToken);
-        UiViewCompositionResolveResponse resolved =
-                runtimeService.resolve(resolveRequest);
-
+    private ActionContext resolveContext(UiViewCompositionResolveRequest compositionContext) {
+        UiViewCompositionResolveResponse resolved = runtimeService.resolve(compositionContext);
+        ResolvedCoordinates claims = new ResolvedCoordinates(resolved.getOwnerType(), resolved.getOwnerId(),
+                resolved.getReleaseId(), resolved.getReleaseVersion(), resolved.getCompositionKey(),
+                resolved.getSourceEntityCode(), resolved.getSourceRecordId());
         UiConfigRelease ownerRelease = releaseMapper.selectById(
                 claims.releaseId());
         if (ownerRelease == null
@@ -2872,7 +2812,7 @@ public class UiViewCompositionActionService {
                 .findFirst()
                 .orElseThrow(() -> conflict(
                         "VIEW_COMPOSITION_NOT_PUBLISHED",
-                        "关联内容不存在于签名宿主发布版本"));
+                        "关联内容不存在于宿主发布配置"));
         Map<String, Object> config = map(composition.get("config"));
         if (Boolean.FALSE.equals(config.get("enabled"))) {
             throw conflict(
@@ -2983,7 +2923,7 @@ public class UiViewCompositionActionService {
     private ValidatedAction validateRequest(
             UiViewCompositionActionRequest request) {
         if (request == null
-                || !StringUtils.hasText(request.getActionContextToken())) {
+                || request.getCompositionContext() == null) {
             throw new IllegalArgumentException("关联内容动作上下文不能为空");
         }
         String action = normalize(request.getAction());
@@ -3017,8 +2957,7 @@ public class UiViewCompositionActionService {
             throw new IllegalArgumentException("请选择至少一条目标记录");
         }
         return new ValidatedAction(
-                request.getActionContextToken().trim(),
-                trim(request.getCandidateListContextToken()),
+                request.getCompositionContext(),
                 action,
                 ids,
                 operationId);
@@ -3208,7 +3147,7 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 计算输入内容的 SHA-256 摘要，供后续签名或幂等键使用。
+     * 计算输入内容的 SHA-256 摘要，供配置完整性校验或幂等去重使用。
      *
      * @param value 待处理{@code sha256}的原始输入，结果供调用方继续使用
      * @return 处理后的{@code sha256}文本，供调用方比较或展示
@@ -3389,7 +3328,7 @@ public class UiViewCompositionActionService {
      * @param targetSchema 目标结构，保存在对象中供后续校验、查询或展示
      */
     private record ActionContext(
-            UiViewCompositionTokenService.Claims claims,
+            ResolvedCoordinates claims,
             UiViewCompositionResolveResponse resolved,
             Map<String, Object> ownerSnapshot,
             Map<String, Object> targetSnapshot,
@@ -3404,15 +3343,13 @@ public class UiViewCompositionActionService {
     /**
      * 封装已校验动作的不可变数据；各分量供后续校验、传递或结果展示使用。
      *
-     * @param actionContextToken 动作上下文令牌，后续用于授权校验、关联或幂等去重
-     * @param candidateListContextToken 候选人列表上下文令牌，后续用于授权校验、关联或幂等去重
+     * @param compositionContext 业务入口和关联路径，服务端重新校验后才能执行动作
      * @param action 动作标识，决定后续已校验动作采用的处理分支
      * @param targetRecordIds 目标记录ID 集合，保存在对象中供后续校验、查询或展示
      * @param operationId 操作ID，后续用于处理已校验动作时定位或关联目标
      */
     private record ValidatedAction(
-            String actionContextToken,
-            String candidateListContextToken,
+            UiViewCompositionResolveRequest compositionContext,
             String action,
             List<String> targetRecordIds,
             String operationId) {

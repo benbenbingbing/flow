@@ -105,6 +105,9 @@ public class UiDataSourceExecutionAccessService {
     private final UiConfigurationAccessService configurationAccessService;
     private final UiConfigReleaseService releaseService;
     private final ObjectMapper objectMapper;
+    /** 同一请求的校验和 Provider 执行使用同一配置，避免中途发布造成二次解析切换。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    private CurrentFormRuntimeContext currentRuntime;
 
     /**
      * 授权草稿预览执行，要求来源为当前管理员可维护的 FORM/LIST/ENTITY 草稿绑定。
@@ -425,6 +428,12 @@ public class UiDataSourceExecutionAccessService {
             Origin origin,
             ConfigTarget target,
             UiExtensionExecuteRequest request) {
+        if (FORM.equals(origin.configType()) && currentRuntime != null) {
+            UiConfigRelease accepted = currentRuntime.current(origin.configId());
+            if (StringUtils.hasText(request.getReleaseId()) && !Objects.equals(request.getReleaseId(), accepted.getId()))
+                throw CurrentFormRuntimeContext.changed();
+            return accepted;
+        }
         if (request.isServerPinnedRelease()) {
             if (!StringUtils.hasText(request.getServerIdempotencyKey())) {
                 throw new BusinessForbiddenException(
@@ -459,9 +468,13 @@ public class UiDataSourceExecutionAccessService {
             return release;
         }
 
-        UiConfigRelease release = releaseMapper.findActive(
-                origin.configType(),
-                origin.configId());
+        java.util.function.Supplier<UiConfigRelease> loader = () -> {
+            UiConfigRelease row = releaseMapper.findActive(origin.configType(), origin.configId());
+            if (row != null) requireActiveOwnerRelease(origin, target, row);
+            return row;
+        };
+        UiConfigRelease release = currentRuntime != null && LIST.equals(origin.configType())
+                ? currentRuntime.currentList(origin.configId(), loader) : loader.get();
         if (release == null
                 || !StringUtils.hasText(
                 release.getSnapshotDocument())) {
@@ -469,7 +482,6 @@ public class UiDataSourceExecutionAccessService {
                     "UI_DATA_SOURCE_RELEASE_REQUIRED",
                     "运行时数据源只能来自已发布并激活的 FORM/LIST 配置");
         }
-        requireActiveOwnerRelease(origin, target, release);
         if (StringUtils.hasText(request.getReleaseId())
                 && !Objects.equals(
                 request.getReleaseId(),
@@ -1097,6 +1109,12 @@ public class UiDataSourceExecutionAccessService {
                         UiDataSourceUsages.ENTITY_SELECTED,
                         UiDataSourceUsages.FIELD_BUTTON_CLICK)
                 .contains(normalize(eventCode));
+    }
+
+    /** 流程表单加载仅复用已验证任务/实例的读取权限，不包含保存或按钮操作。 */
+    static boolean isFormReadEvent(String configType, String eventCode) {
+        return FORM.equals(normalize(configType)) && Set.of(UiDataSourceUsages.FORM_OPEN,
+                UiDataSourceUsages.DETAIL_LOAD, UiDataSourceUsages.SUBFORM_LOAD).contains(normalize(eventCode));
     }
 
     /**

@@ -107,10 +107,10 @@ public class EmbedNativeFormTargetResolver {
     }
 
     /**
-     * 授权已由服务端签名 token 精确固定的表单目标。
+     * 授权已由服务端发布路径校验得到的表单目标。
      *
-     * <p>该入口专供原生页面内部导航：token 已经证明目标
-     * Form Release 属于当前 Embed Session/View Release，因此这里只
+     * <p>该入口专供原生页面内部导航：上游已验证目标
+     * 表单属于当前 Embed Session 的根页面或发布组件路径，因此这里只
      * 执行 mapped user 的平台权限和 DataScope，不重复套用 Embed
      * entryModes/capability ceiling。EDIT 是原生表单的 VIEW 记录模式别名；
      * APPROVE 只复用 VIEW 的记录读取与 DataScope，真正的任务审批权限仍由

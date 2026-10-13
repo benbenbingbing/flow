@@ -1,3 +1,4 @@
+import { buildRuntimeContext } from './form-runtime/context.js'
 import {
   mergeResolvedFormActions,
   resolveLocalFormActions
@@ -15,17 +16,15 @@ async function resolveRuntimeFormActions(forms, context) {
     try {
       const result = await formActionRuntimeApi.resolve({
         formId,
-        releaseId: getReleaseId(form) || undefined,
-        releaseVersion: getReleaseVersion(form),
-        releaseResolutionToken:
-          form.releaseResolutionToken || undefined,
+        configHash: form.configHash || undefined,
+        runtimeContext: buildRuntimeContext(context, form),
         entityCode: context.entityCode,
         listKey: context.listKey || undefined,
         mode: context.mode,
         recordId: context.recordId || undefined,
         taskId: context.taskId || undefined,
-        viewCompositionTraversalToken:
-          context.viewCompositionTraversalToken || undefined
+        compositionContext:
+          context.compositionContext || undefined
       })
       return Array.isArray(result)
         ? result
@@ -147,12 +146,10 @@ function buildCustomFormActionExecutionPayload(
   return {
     configType: 'FORM',
     configId: String(formId),
-    releaseId: getReleaseId(ownerForm) || undefined,
-    releaseVersion: getReleaseVersion(ownerForm),
-    releaseResolutionToken:
-      ownerForm?.releaseResolutionToken || undefined,
-    viewCompositionTraversalToken:
-      context.viewCompositionTraversalToken || undefined,
+    configHash: ownerForm?.configHash || undefined,
+    runtimeContext: buildRuntimeContext(context, ownerForm),
+    compositionContext:
+      context.compositionContext || undefined,
     entityCode: context.entityCode,
     listKey: context.listKey || undefined,
     targetType: 'BUTTON',
@@ -202,18 +199,6 @@ function getFormId(form) {
   return form?.id || form?.formId || form?.entityFormId || ''
 }
 
-function getReleaseId(form) {
-  return form?.runtimeReleaseId
-    || form?.formReleaseId
-    || form?.effectiveFormReleaseId
-    || ''
-}
-
-function getReleaseVersion(form) {
-  const value = form?.runtimeReleaseVersion
-    ?? form?.formReleaseVersion
-  return value == null ? undefined : Number(value)
-}
 
 return { resolveRuntimeFormActions, resolveSafeRuntimeActionFallback, acquireFormActionExecution, runFormAction, createFormActionRequestId, buildCustomFormActionExecutionPayload, executeCustomFormAction, getFormId }
 }

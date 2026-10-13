@@ -48,8 +48,7 @@ export function useFormCustomValidation(options) {
   if (getCurrentInstance()) provide(CUSTOM_VALIDATION_CONTEXT_KEY, runtime)
   watch([
     () => options.getForm()?.id,
-    () => options.getForm()?.runtimeReleaseId || options.getForm()?.formReleaseId,
-    () => options.getForm()?.runtimeReleaseVersion || options.getForm()?.formReleaseVersion,
+    () => options.getForm()?.configHash,
     () => context().entityCode,
     () => options.getContext?.()?.recordId || options.getContext?.()?.record?.id,
     () => options.getContext?.()?.initializationKey

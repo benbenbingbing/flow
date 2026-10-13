@@ -539,9 +539,7 @@ const signedChildViewDataSourceRequest = buildFormDataSourceExecutionRequest({
     getRecordId: () => 'record-from-options',
     getForm: () => ({
       id: 'root-form',
-      runtimeReleaseId: 'root-release',
-      runtimeReleaseVersion: 1,
-      releaseResolutionToken: 'signed-root-release'
+      configHash: 'signed-root-release'
     })
   },
   runtimeContext: {
@@ -550,16 +548,16 @@ const signedChildViewDataSourceRequest = buildFormDataSourceExecutionRequest({
       id: 'child-form',
       entityCode: 'child-entity',
       listKey: 'child-list',
-      runtimeReleaseId: 'child-release',
-      runtimeReleaseVersion: 7,
-      releaseResolutionToken: 'signed-child-release'
+      configHash: 'child-release',
+
+      configHash: 'signed-child-release'
     },
     recordId: 'child-record',
-    viewCompositionTraversalToken: 'signed-traversal',
+    compositionContext: { ownerType: 'FORM', ownerId: 'root-form', compositionKey: 'child', recordId: 'root-record' },
     // 业务 context/input 中的同名值不属于安全信封，不能覆盖当前 runtime form。
     context: {
-      releaseId: 'forged-context-release',
-      releaseResolutionToken: 'forged-context-token'
+
+      configHash: 'forged-context-token'
     },
     input: {
       entityCode: 'forged-input-entity'
@@ -580,13 +578,13 @@ assert.deepEqual(signedChildViewDataSourceRequest, {
   targetKey: 'priority',
   extensionId: 'priority-options-interface',
   input: { fieldCode: 'priority', mode: 'view' },
-  releaseId: 'child-release',
-  releaseVersion: 7,
-  releaseResolutionToken: 'signed-child-release',
+
+
+  configHash: 'signed-child-release',
   entityCode: 'child-entity',
   listKey: 'child-list',
   recordId: 'child-record',
-  viewCompositionTraversalToken: 'signed-traversal'
+  runtimeContext: { recordId: 'child-record', compositionContext: { ownerType: 'FORM', ownerId: 'root-form', compositionKey: 'child', recordId: 'root-record' } }
 })
 
 const unsignedDataSourceRequest = buildFormDataSourceExecutionRequest({
@@ -595,13 +593,13 @@ const unsignedDataSourceRequest = buildFormDataSourceExecutionRequest({
     getListKey: () => 'expense-list',
     getForm: () => ({
       id: 'draft-form',
-      runtimeReleaseId: 'unsigned-release',
-      runtimeReleaseVersion: 3
+      configHash: 'unsigned-release',
+
     })
   },
   runtimeContext: {
     context: {
-      releaseResolutionToken: 'forged-nested-token',
+      configHash: 'forged-nested-token',
       recordId: 'forged-nested-record'
     }
   },
@@ -614,7 +612,7 @@ const unsignedDataSourceRequest = buildFormDataSourceExecutionRequest({
 })
 assert.equal(unsignedDataSourceRequest.releaseId, undefined)
 assert.equal(unsignedDataSourceRequest.releaseVersion, undefined)
-assert.equal(unsignedDataSourceRequest.releaseResolutionToken, undefined)
+assert.equal(unsignedDataSourceRequest.configHash, 'unsigned-release')
 assert.equal(unsignedDataSourceRequest.recordId, undefined)
 assert.equal(unsignedDataSourceRequest.entityCode, 'expense')
 assert.equal(unsignedDataSourceRequest.listKey, 'expense-list')
@@ -625,16 +623,12 @@ const contextBoundDataSourceRequest = buildFormDataSourceExecutionRequest({
     getListKey: () => 'root-list',
     getForm: () => ({
       id: 'root-form',
-      runtimeReleaseId: 'root-release',
-      runtimeReleaseVersion: 2,
-      releaseResolutionToken: 'signed-root-release'
+      configHash: 'signed-root-release'
     })
   },
   runtimeContext: {
     formId: 'context-child-form',
-    formReleaseId: 'context-child-release',
-    formReleaseVersion: 9,
-    formReleaseResolutionToken: 'signed-context-child-release',
+    formConfigHash: 'signed-context-child-release',
     entityCode: 'context-child-entity',
     listKey: 'context-child-list',
     recordId: 'context-child-record'
@@ -646,10 +640,10 @@ const contextBoundDataSourceRequest = buildFormDataSourceExecutionRequest({
   extensionId: 'context-child-load-interface',
   input: { mode: 'edit' }
 })
-assert.equal(contextBoundDataSourceRequest.releaseId, 'context-child-release')
-assert.equal(contextBoundDataSourceRequest.releaseVersion, 9)
+assert.equal(contextBoundDataSourceRequest.releaseId, undefined)
+assert.equal(contextBoundDataSourceRequest.releaseVersion, undefined)
 assert.equal(
-  contextBoundDataSourceRequest.releaseResolutionToken,
+  contextBoundDataSourceRequest.configHash,
   'signed-context-child-release'
 )
 assert.equal(contextBoundDataSourceRequest.entityCode, 'context-child-entity')
@@ -662,9 +656,9 @@ const initializationForm = {
   formId: 'form-1',
   entityCode: 'expense',
   listKey: 'expense-list',
-  runtimeReleaseId: 'form-release-1',
-  runtimeReleaseVersion: 5,
-  releaseResolutionToken: 'signed-form-release-1',
+  configHash: 'form-release-1',
+
+  configHash: 'signed-form-release-1',
   dataSourceBindingsDocument: JSON.stringify({
     FORM_INIT: {
       extensionId: 'form-init-interface'
@@ -703,9 +697,9 @@ assert.deepEqual(
   initializationExecutions.map(request => ({
     ownerType: request.ownerType,
     ownerId: request.ownerId,
-    releaseId: request.releaseId,
-    releaseVersion: request.releaseVersion,
-    releaseResolutionToken: request.releaseResolutionToken,
+
+
+    configHash: request.configHash,
     entityCode: request.entityCode,
     listKey: request.listKey,
     recordId: request.recordId,
@@ -715,9 +709,9 @@ assert.deepEqual(
     {
       ownerType: 'FORM',
       ownerId: 'form-1',
-      releaseId: 'form-release-1',
-      releaseVersion: 5,
-      releaseResolutionToken: 'signed-form-release-1',
+
+
+      configHash: 'signed-form-release-1',
       entityCode: 'expense',
       listKey: 'expense-list',
       recordId: undefined,
@@ -726,9 +720,9 @@ assert.deepEqual(
     {
       ownerType: 'FORM',
       ownerId: 'form-1',
-      releaseId: 'form-release-1',
-      releaseVersion: 5,
-      releaseResolutionToken: 'signed-form-release-1',
+
+
+      configHash: 'signed-form-release-1',
       entityCode: 'expense',
       listKey: 'expense-list',
       recordId: undefined,
@@ -841,9 +835,9 @@ const nestedForm = {
   entityId: 'child-entity-1',
   entityCode: 'child-entity',
   listKey: 'child-list',
-  runtimeReleaseId: 'child-form-release-1',
-  runtimeReleaseVersion: 4,
-  releaseResolutionToken: 'signed-child-form-release-1',
+  configHash: 'child-form-release-1',
+
+  configHash: 'signed-child-form-release-1',
   dataSourceBindings: {
     FORM_INIT: {
       extensionId: 'child-form-init-interface'
@@ -897,10 +891,10 @@ assert.equal(nestedInitializationExecutions[0].ownerId, 'child-form-1')
 assert.equal(nestedInitializationExecutions[0].ownerType, 'FORM')
 assert.equal(nestedInitializationExecutions[0].input.recordId, 'parent-1:lines:0')
 assert.equal(nestedInitializationExecutions[0].input.mode, 'edit')
-assert.equal(nestedInitializationExecutions[0].releaseId, 'child-form-release-1')
-assert.equal(nestedInitializationExecutions[0].releaseVersion, 4)
+assert.equal(nestedInitializationExecutions[0].releaseId, undefined)
+assert.equal(nestedInitializationExecutions[0].releaseVersion, undefined)
 assert.equal(
-  nestedInitializationExecutions[0].releaseResolutionToken,
+  nestedInitializationExecutions[0].configHash,
   'signed-child-form-release-1'
 )
 assert.equal(nestedInitializationExecutions[0].entityCode, 'child-entity')

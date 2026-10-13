@@ -28,6 +28,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -42,7 +44,7 @@ class EntityDataListConfigServiceTest {
 
     /** 真实补数入口只接受展示结果，Provider 无法替换行身份、分页或保存的列配置。 */
     @Test
-    void providerSnapshotsPreserveHostIdentityAndApplyDisplayValues() {
+    void templateSnapshotsPreserveHostIdentityAndApplyDisplayValues() {
         var dynamicService = mock(EntityDataDynamicService.class);
         var configMapper = mock(EntityListConfigMapper.class);
         var fieldMapper = mock(EntityListFieldMapper.class);
@@ -62,22 +64,22 @@ class EntityDataListConfigServiceTest {
         var field = new EntityListField();
         field.setFieldCode("summary");
         field.setShowInList(true);
-        field.setDataSourceType("CUSTOM_SUMMARY");
+        field.setDataSourceType("FIELD_TEMPLATE");
         var source = row("record-1", "张三");
         source.setStatus("OPEN");
-        source.setFormReleaseResolutionToken("host-only");
+        source.setFormConfigHash("host-only");
         source.setCreateBy("creator");
         source.setCreateTime(java.time.LocalDateTime.of(2026, 9, 26, 12, 0));
 
         when(definitionMapper.findByEntityCode("expense")).thenReturn(Optional.of(entity));
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
-        when(published.resolveConfig(config, null, null, null)).thenReturn(config);
+        when(published.resolveConfig(config, null, java.util.Map.of())).thenReturn(config);
         when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of(field));
         when(published.resolveFields(config, List.of(field))).thenReturn(List.of(field));
         when(dynamicService.findPage("expense", "default", Map.of(), 2, 10, null, null))
                 .thenReturn(new PageResult<>(List.of(source), 21, 2, 10));
-        when(registry.getProvider("CUSTOM_SUMMARY")).thenReturn(new ListFieldDataProvider() {
-            public String getDataSourceType() { return "CUSTOM_SUMMARY"; }
+        when(registry.getProvider("FIELD_TEMPLATE")).thenReturn(new ListFieldDataProvider() {
+            public String getDataSourceType() { return "FIELD_TEMPLATE"; }
 
             public void enrich(
                     List<com.workflow.contracts.entity.list.model.ListFieldDataRecord> records,
@@ -101,11 +103,66 @@ class EntityDataListConfigServiceTest {
         assertEquals(List.of(source), result.getRecords());
         assertEquals("record-1", source.getId());
         assertEquals("OPEN", source.getStatus());
-        assertEquals("host-only", source.getFormReleaseResolutionToken());
+        assertEquals("host-only", source.getFormConfigHash());
         assertEquals("李四", source.getData().get("owner"));
         assertEquals("计算结果", source.getExtData().get("summary"));
         assertEquals("summary", field.getFieldCode());
         verify(capabilities).enrichRows("expense", config, List.of(source));
+    }
+
+    /** 只有明确的 INTERFACE 来源会调用接口，不再隐式覆盖实体值或调度自定义列 Provider。 */
+    @Test
+    void routesInterfaceColumnsWithoutCallingCustomProviders() {
+        var dynamic = mock(EntityDataDynamicService.class);
+        var configs = mock(EntityListConfigMapper.class);
+        var fields = mock(EntityListFieldMapper.class);
+        var definitions = mock(EntityDefinitionMapper.class);
+        var registry = mock(ListFieldDataProviderRegistry.class);
+        var published = mock(EntityListPublishedRuntimeService.class);
+        var interfaces = mock(UiInterfaceExtensionService.class);
+        var service = new EntityDataListConfigService(dynamic, configs, fields, definitions,
+                registry, mock(EntityActionCapabilityService.class), published, interfaces,
+                new JsonDocumentCodec(new ObjectMapper()));
+        var entity = new EntityDefinition();
+        entity.setId("entity-1");
+        var config = new EntityListConfig();
+        config.setId("list-1");
+        config.setListKey("default");
+        var calculated = new EntityListField();
+        calculated.setListConfigId("list-1");
+        calculated.setFieldId("virtual_summary");
+        calculated.setFieldCode("summary");
+        calculated.setShowInList(true);
+        calculated.setDataSourceType("INTERFACE");
+        calculated.setInterfaceExtensionId("column-interface");
+        var custom = new EntityListField();
+        custom.setFieldCode("oldCustom");
+        custom.setShowInList(true);
+        custom.setDataSourceType("CUSTOM_SUMMARY");
+        var implicit = new EntityListField();
+        implicit.setFieldCode("name");
+        implicit.setShowInList(true);
+        implicit.setDataSourceType("ENTITY_FIELD");
+        implicit.setInterfaceExtensionId("implicit-interface");
+        var columns = List.of(calculated, custom, implicit);
+        var source = row("record-1", "张三");
+        when(definitions.findByEntityCode("expense")).thenReturn(Optional.of(entity));
+        when(configs.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
+        when(published.resolveConfig(config, null, java.util.Map.of())).thenReturn(config);
+        when(fields.findByListConfigId("list-1")).thenReturn(columns);
+        when(published.resolveFields(config, columns)).thenReturn(columns);
+        when(dynamic.findPage("expense", "default", Map.of(), 1, 10, null, null))
+                .thenReturn(new PageResult<>(List.of(source), 1, 1, 10));
+        when(interfaces.execute(eq("column-interface"), any())).thenReturn(Map.of("record-1", "接口计算值"));
+
+        var result = service.findPageWithConfig("expense", "default", Map.of(), 1, 10);
+
+        assertEquals(1, result.getTotal());
+        assertEquals("接口计算值", source.getExtData().get("summary"));
+        assertEquals("张三", source.getSubmitterName());
+        verify(interfaces).execute(eq("column-interface"), any());
+        org.mockito.Mockito.verifyNoMoreInteractions(interfaces);
+        verifyNoInteractions(registry);
     }
 
     /** 直接请求虚拟条件也必须在读取实体数据之前失败，不能依赖前端是否展示查询项 */
@@ -139,7 +196,7 @@ class EntityDataListConfigServiceTest {
         config.setId("list-1");
         config.setListKey("default");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
-        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+        when(publishedRuntimeService.resolveConfig(config, null, java.util.Map.of()))
                 .thenReturn(config);
 
         EntityListField virtualField = new EntityListField();
@@ -189,7 +246,7 @@ class EntityDataListConfigServiceTest {
         config.setListKey("default");
         config.setViewConfig("{\"table\":{\"defaultSortField\":\"amount\",\"defaultSortDirection\":\"DESC\"}}");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default")).thenReturn(config);
-        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+        when(publishedRuntimeService.resolveConfig(config, null, java.util.Map.of()))
                 .thenReturn(config);
         when(fieldMapper.findByListConfigId("list-1")).thenReturn(List.of());
         when(publishedRuntimeService.resolveFields(config, List.of())).thenReturn(List.of());
@@ -249,7 +306,7 @@ class EntityDataListConfigServiceTest {
         config.setViewConfig("{\"table\":{\"defaultSortField\":\"amount\",\"defaultSortDirection\":\"DESC\"}}");
         when(configMapper.findByEntityIdAndListKey("entity-1", "default"))
                 .thenReturn(config);
-        when(publishedRuntimeService.resolveConfig(config, null, null, null))
+        when(publishedRuntimeService.resolveConfig(config, null, java.util.Map.of()))
                 .thenReturn(config);
 
         EntityListField virtualField = new EntityListField();

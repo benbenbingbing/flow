@@ -11,6 +11,7 @@ SCHEMA_WORKER_LOG="$ROOT_DIR/workflow-server/schema-worker.log"
 WEB_LOG="$ROOT_DIR/workflow-web/web.log"
 SERVER_JAR="$ROOT_DIR/workflow-server/workflow-app/target/workflow-server-1.0.0.jar"
 MIGRATOR_JAR="$ROOT_DIR/workflow-server/workflow-db-migrator/target/workflow-db-migrator-1.0.0-exec.jar"
+RUNTIME_DIR="$ROOT_DIR/workflow-server/.runtime"
 WEB_EXECUTABLE="$ROOT_DIR/node_modules/.bin/vite"
 MOBILE_PID_FILE="$ROOT_DIR/workflow-mobile/mobile.pid"
 MOBILE_LOG="$ROOT_DIR/workflow-mobile/mobile.log"
@@ -22,10 +23,11 @@ environment_file="${FLOW_ENV_FILE:-$ROOT_DIR/.env}"
 
 usage() {
     cat <<'EOF'
-Usage: ./start.sh [start|restart|stop|pause|status]
+Usage: ./start.sh [start|restart|restart-backend|stop|pause|status]
 
   start   Build, migrate, and restart the local application (default)
   restart Build and restart backend, PC, mobile and shared package watchers
+  restart-backend Restart only the backend using its existing build; no build or migrations
   pause   Alias for stop
   stop    Stop application processes started by this script
   status  Show local process and endpoint status
@@ -55,7 +57,7 @@ load_environment() {
         # shellcheck disable=SC1090
         source "$environment_file"
         set +a
-    elif [[ "$action" == "start" || "$action" == "restart" ]]; then
+    elif [[ "$action" == "start" || "$action" == "restart" || "$action" == "restart-backend" ]]; then
         fail "Missing $environment_file. Copy .env.example and replace every placeholder."
     fi
 
@@ -247,6 +249,13 @@ wait_for_port_release() {
     fail "$service_name port $port was not released within 10 seconds"
 }
 
+# 独立后端恢复和完整停止共用身份核验，避免误停其他目录或占用同一端口的进程。
+stop_server() {
+    stop_pid_file "$SERVER_PID_FILE" "server" "workflow-server-1.0.0.jar" "$ROOT_DIR"
+    stop_owned_listener "$SERVER_PORT" "server" "workflow-server-1.0.0.jar" "$ROOT_DIR"
+    wait_for_port_release "$SERVER_PORT" "server"
+}
+
 stop_application() {
     local package pattern
     stop_pid_file "$MOBILE_PID_FILE" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
@@ -258,22 +267,16 @@ stop_application() {
     stop_pid_file \
         "$WEB_PID_FILE" "web" \
         "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
-    stop_pid_file \
-        "$SERVER_PID_FILE" "server" \
-        "workflow-server-1.0.0.jar" "$ROOT_DIR"
+    stop_server
     stop_pid_file \
         "$SCHEMA_WORKER_PID_FILE" "schema worker" \
         "workflow-db-migrator-1.0.0-exec.jar" "$ROOT_DIR"
     stop_owned_listener \
         "$WEB_PORT" "web" \
         "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
-    stop_owned_listener \
-        "$SERVER_PORT" "server" \
-        "workflow-server-1.0.0.jar" "$ROOT_DIR"
     stop_owned_listener "$MOBILE_PORT" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
     wait_for_port_release "$MOBILE_PORT" "mobile"
     wait_for_port_release "$WEB_PORT" "web"
-    wait_for_port_release "$SERVER_PORT" "server"
 }
 
 process_status() {
@@ -395,7 +398,27 @@ child.unref();
 ' "$pid_file" "$log_file" "$working_directory" "$@"
 }
 
+# 为每次启动复制独立 JAR，并通过标准输出返回路径。Spring Boot 会延迟加载嵌套依赖；
+# 直接运行 target 中的文件时，再次 mvn package/clean 会破坏旧进程的类加载。
+# 唯一目录避免覆盖其他仍在退出或运行中的副本，不能使用符号链接或硬链接代替复制。
+prepare_runtime_jar() {
+    local source_jar="$1"
+    local service_name="$2"
+    local run_directory runtime_jar
+    [[ -s "$source_jar" ]] || fail "$service_name artifact is missing; build it before starting"
+    mkdir -p "$RUNTIME_DIR"
+    run_directory="$(mktemp -d "$RUNTIME_DIR/${service_name}.XXXXXX")" || return 1
+    runtime_jar="$run_directory/$(basename "$source_jar")"
+    if ! cp "$source_jar" "$runtime_jar"; then
+        rm -rf "$run_directory"
+        fail "Unable to prepare $service_name runtime artifact"
+    fi
+    printf '%s\n' "$runtime_jar"
+}
+
 start_schema_worker() {
+    local runtime_jar
+    runtime_jar="$(prepare_runtime_jar "$MIGRATOR_JAR" "schema-worker")" || return 1
     log "Starting schema worker"
     start_detached \
         "$SCHEMA_WORKER_PID_FILE" \
@@ -404,10 +427,12 @@ start_schema_worker() {
         env \
         MIGRATION_COMMAND=schema-worker \
         SCHEMA_WORKER_ID="local-$(hostname)-$$" \
-        java -jar "$MIGRATOR_JAR"
+        java -jar "$runtime_jar"
 }
 
 start_server() {
+    local runtime_jar
+    runtime_jar="$(prepare_runtime_jar "$SERVER_JAR" "server")" || return 1
     log "Starting server"
     (
         unset SCHEMA_DATASOURCE_URL SCHEMA_DB_USERNAME SCHEMA_DB_PASSWORD
@@ -418,7 +443,7 @@ start_server() {
             "$SERVER_PID_FILE" \
             "$SERVER_LOG" \
             "$ROOT_DIR" \
-            java -jar "$SERVER_JAR"
+            java -jar "$runtime_jar"
     )
 }
 
@@ -537,11 +562,40 @@ start_application() {
     trap - EXIT
 }
 
-load_environment
+# 已构建且数据库结构兼容时，只恢复后端；失败清理也只作用于本次后端，
+# 避免影响仍在运行的前端、schema worker 和数据库。
+cleanup_failed_backend_start() {
+    local startup_status=$?
+    trap - EXIT
+    set +e
+    log "Backend startup failed; stopping the backend started during this run." >&2
+    stop_server
+    exit "$startup_status"
+}
 
-case "$action" in
+restart_backend() {
+    validate_start_environment
+    local command
+    for command in java node curl lsof ps; do
+        require_command "$command"
+    done
+    [[ -s "$SERVER_JAR" ]] || fail "Backend artifact is missing; build it before restarting"
+    stop_server
+    trap cleanup_failed_backend_start EXIT
+    start_server
+    wait_for_process "server" "$SERVER_PID_FILE" "http://127.0.0.1:${SERVER_PORT}/healthz" "$SERVER_LOG"
+    trap - EXIT
+}
+
+main() {
+    load_environment
+
+    case "$action" in
     start|restart)
         start_application
+        ;;
+    restart-backend)
+        restart_backend
         ;;
     stop|pause)
         require_command lsof
@@ -560,4 +614,10 @@ case "$action" in
         usage >&2
         exit 2
         ;;
-esac
+    esac
+}
+
+# 测试可加载函数并替换外部进程操作，无需读取真实 .env 或启动应用。
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main
+fi

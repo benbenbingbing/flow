@@ -2,14 +2,14 @@
   <FormInputParameterEditor v-model="schema" @code-change="renameParameterBindings" />
   <section class="parameter-usage">
     <div class="parameter-heading"><strong>参数用途</strong><el-button :disabled="!parameters.length" @click="add">增加用途</el-button></div>
-    <p>{{ kind === 'LIST' ? '可作为列表附加查询条件；关系范围和权限仍然生效。' : '可初始化可编辑字段，只填空值、不覆盖已有数据。' }} 参数也可供数据源、接口和事件通过 params 使用。</p>
+    <p>{{ kind === 'LIST' ? '可作为列表附加查询条件；关系范围和权限仍然生效。' : '可初始化表单中的各类业务字段（含只读字段），只填空值、不覆盖已有数据。' }} 参数也可供数据源、接口和事件通过 params 使用。</p>
     <el-alert
       v-if="kind !== 'LIST' && !usableFields.length"
       class="empty-fields-tip"
       type="info"
       :closable="false"
       show-icon
-      title="暂无可初始化字段，请先将可编辑字段添加到表单中。"
+      title="暂无可初始化字段，请先将业务字段添加到表单中。"
     />
     <div v-for="(row, index) in bindings" :key="index" class="usage-row">
       <el-select :model-value="row.parameter" placeholder="输入参数" @update:model-value="patch(index, { parameter: $event })"><el-option v-for="p in parameters" :key="p.code" :value="p.code" :label="`${p.name} (${p.code})`" /></el-select>
@@ -22,7 +22,7 @@
 </template>
 <script setup>
 import { computed } from 'vue'
-import { pageParameterFields } from '@flow/workflow-core/page-parameters'
+import { pageParameterFields, pageParameterInitializationFields } from '@flow/workflow-core/page-parameters'
 import FormInputParameterEditor from '@/components/form-designer/FormInputParameterEditor.vue'
 import { getInputParameterDefinitions } from '@flow/workflow-core/subform-parameter-contract'
 const props = defineProps({ kind: { type: String, default: 'FORM' }, fields: { type: Array, default: () => [] } })
@@ -30,17 +30,11 @@ const config = defineModel({ type: Object, default: () => ({}) })
 const schema = computed({ get: () => config.value.inputParameterSchema || {}, set: value => { config.value = { ...config.value, inputParameterSchema: value } } })
 const bindings = computed({ get: () => config.value.inputParameterBindings || [], set: value => { config.value = { ...config.value, inputParameterBindings: value } } })
 const parameters = computed(() => getInputParameterDefinitions(schema.value))
-// 接口历史数据可能用 0/'0' 表示否；不能直接用 JS truthiness 判定只读或系统字段。
+// 接口历史数据可能用 0/'0' 表示否；不能直接用 JS truthiness 判定查询开关。
 const enabledFlag = value => value === true || value === 1 || value === '1'
-const usableFields = computed(() => pageParameterFields(props.fields).filter(field => {
-  if (!field.fieldCode) return false
-  if (props.kind === 'LIST') return enabledFlag(field.isQuery)
-  return field.fieldCode !== 'id'
-    && !enabledFlag(field.isReadonly)
-    && !enabledFlag(field.readonly)
-    && !enabledFlag(field.props?.readonly)
-    && !enabledFlag(field.isSystem)
-}))
+const usableFields = computed(() => props.kind === 'LIST'
+  ? pageParameterFields(props.fields).filter(field => enabledFlag(field.isQuery))
+  : pageParameterInitializationFields(props.fields))
 function patch(index, value) { bindings.value = bindings.value.map((row, i) => i === index ? { ...row, ...value } : row) }
 function add() { bindings.value = [...bindings.value, { parameter: parameters.value[0]?.code || '', usage: props.kind === 'LIST' ? 'FILTER' : 'INITIALIZE', targetField: '', ...(props.kind === 'LIST' ? { operator: 'EQ' } : {}) }] }
 function renameParameterBindings(previousCode, nextCode) {

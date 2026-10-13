@@ -14,6 +14,8 @@
     "./extensions/core/registries/validatorRegistry": "./dist/extensions/core/registries/validatorRegistry.js",
     "./extensions/generated/field-definitions": "./dist/extensions/generated/field-definitions.js",
     "./auth-session": "./dist/shared/auth-session.js",
+    "./cascader-runtime": "./dist/shared/cascader-runtime.js",
+    "./vue/useCascaderFieldRuntime": "./dist/composables/useCascaderFieldRuntime.js",
     "./config-runtime": "./dist/shared/config-runtime/index.js",
     "./entity-file-upload-context": "./dist/shared/entity-file-upload-context.js",
     "./entity-record-selection": "./dist/shared/entity-record-selection.js",
@@ -69,7 +71,8 @@
     "./form-runtime/release": "./dist/shared/form-runtime/release.js",
     "./mobile-theme": "./dist/shared/mobile-theme.js",
     "./form-runtime/eventEffects": "./dist/shared/form-runtime/eventEffects.js",
-    "./process-progress": "./dist/shared/process-progress.js"
+    "./process-progress": "./dist/shared/process-progress.js",
+    "./form-runtime/context": "./dist/shared/form-runtime/context.js"
   },
   "scripts": {
     "build": "node ../../scripts/build-module-package.mjs",

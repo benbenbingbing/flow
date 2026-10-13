@@ -18,6 +18,43 @@
     ],
     "configSchema": [
       {
+        "key": "cascaderSource",
+        "label": "数据来源",
+        "type": "select",
+        "options": [
+          {
+            "value": "STATIC",
+            "label": "静态选项"
+          },
+          {
+            "value": "INTERFACE",
+            "label": "数据接口"
+          }
+        ],
+        "description": "选择数据接口后，在同页“数据源绑定 → 字段选项”中选择级联数据接口。PC 和移动端使用同一配置。",
+        "defaultValue": "STATIC"
+      },
+      {
+        "key": "cascaderLoadMode",
+        "label": "接口加载方式",
+        "type": "select",
+        "visibleWhen": {
+          "cascaderSource": "INTERFACE"
+        },
+        "options": [
+          {
+            "value": "ALL",
+            "label": "一次加载全部数据"
+          },
+          {
+            "value": "CHILDREN",
+            "label": "逐级加载下一级"
+          }
+        ],
+        "description": "全部加载返回完整树；逐级加载根据当前路径请求直接下级，每个节点须返回 leaf 表明是否末级。编辑已保存值时自动沿路径补齐名称。",
+        "defaultValue": "ALL"
+      },
+      {
         "key": "cascaderOptions",
         "label": "级联选项",
         "type": "json",
@@ -35,7 +72,10 @@
             ]
           }
         ],
-        "description": "value、label、children 组成的树形选项数组。"
+        "description": "静态树形数组，使用 value、label、children；可用 disabled 禁用节点。未配置时显示空列表。选择结果为完整路径编码数组。",
+        "visibleWhen": {
+          "cascaderSource": "STATIC"
+        }
       }
     ]
   },

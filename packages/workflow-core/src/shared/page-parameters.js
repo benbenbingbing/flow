@@ -1,9 +1,16 @@
-import { safeParseConfig, isFieldReadonlyForMode } from './config-runtime/index.js'
+import { safeParseConfig } from './config-runtime/index.js'
 import { normalizeInputParameterSchema, normalizeInputParameterDefaultValue, validateSubFormParameters, isEmptySubFormValue } from './subform-parameter-contract.js'
 
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key)
 const clone = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value))
 const blocked = new Set(['__proto__', 'constructor', 'prototype'])
+// 旧发布字段只带 readonly、不带 isSystem；与后端 PublishedFormRecordView 的系统维护范围一致，
+// 放开业务只读字段时仍保护审计和流程状态。name/code/deptId 等业务初值不在此范围内。
+const systemManagedFields = new Set([
+  'id', 'status', 'processStatus', 'processInstanceId', 'processStartTime', 'processEndTime',
+  'currentTaskId', 'currentTaskName', 'currentTaskAssignee', 'submitterId', 'submitterName',
+  'submitTime', 'create_time', 'update_time', 'create_by', 'update_by', 'deleted'
+])
 
 /** 仅复制声明的来源字段；表单调用方传最新编辑值，列表调用方传当前行，均不改变记录身份或授权。 */
 export function mapPageParameters(mappings = [], source = {}) {
@@ -47,15 +54,18 @@ export function resolvePageParameters(viewConfig, supplied = {}) {
   return clone(result)
 }
 
-/** 目标页面决定如何使用参数。初始化只填可编辑空字段，不覆盖记录身份、关联外键或已有值。 */
+/**
+ * 按目标表单配置为各类字段填充初值，包含只读展示字段；参数值按原类型复制。
+ * 仅新增/编辑时填空值，blockedFields 用于保护入口指定的关联字段，不覆盖身份或已有值。
+ */
 export function initializePageFields(record, viewConfig, parameters, fields = [], blockedFields = [], mode = 'create') {
   const result = clone(record || {})
+  if (!['create', 'edit'].includes(mode)) return result
   const denied = new Set(['id', ...blocked, ...blockedFields])
+  const availableFields = new Set(pageParameterInitializationFields(fields).map(field => field.fieldCode))
   for (const binding of safeParseConfig(viewConfig).inputParameterBindings || []) {
     if (binding.usage !== 'INITIALIZE' || denied.has(binding.targetField)) continue
-    const field = fields.find(item => (item.fieldCode || item.fieldKey) === binding.targetField)
-    if (!field || isFieldReadonlyForMode(field, mode) || field.isReadonly === '1' || field.isReadonly === true || field.isReadonly === 1 || field.readonly === true
-      || field.isSystem === true || field.isSystem === 1 || field.isSystem === '1' || field.props?.readonly === true) continue
+    if (!availableFields.has(binding.targetField)) continue
     if (isEmptySubFormValue(result[binding.targetField]) && parameters?.[binding.parameter] !== undefined) {
       result[binding.targetField] = clone(parameters[binding.parameter])
     }
@@ -77,11 +87,38 @@ export function validatePageParameterMappings(mappings = [], schemaValue, source
   return ''
 }
 
-/** 将字段和实体绑定节点统一成参数用途可选字段，保留节点的只读限制。 */
+/**
+ * 将表单/列表字段与发布节点统一成参数用途字段，不按字段类型或是否绑定实体筛选。
+ * 自定义字段使用运行时同样的 nodeKey；布局节点仅递归收集其字段，不成为赋值目标。
+ */
 export function pageParameterFields(fields = []) {
   return fields.flatMap(field => {
     const props = safeParseConfig(field.propsDocument || field.props || field.legacyPropsDocument)
-    const code = field.fieldCode || props.fieldCode || (field.bindingType === 'ENTITY_FIELD' ? field.bindingRef : '')
-    return [...(code ? [{ ...field, ...props, fieldCode: code }] : []), ...pageParameterFields(field.children || [])]
+    const isValueNode = !field.nodeType || ['FIELD', 'SUB_FORM', 'REPEATER'].includes(String(field.nodeType).toUpperCase())
+    const code = field.fieldCode || props.fieldCode || field.fieldKey
+      || (field.bindingType === 'ENTITY_FIELD' ? field.bindingRef : '') || field.nodeKey
+    return [...(isValueNode && code ? [{
+      ...field, ...props, fieldCode: code,
+      fieldLabel: field.fieldLabel || props.label || props.fieldLabel || field.fieldName || props.fieldName || code
+    }] : []), ...pageParameterFields(field.children || [])]
+  })
+}
+
+/**
+ * 设计器候选和运行时赋值共用同一范围：只读影响手工编辑，不阻止参数提供初值。
+ * 身份和系统维护字段仍由服务端管理；同一字段的元数据与节点投影只展示一次。
+ */
+export function pageParameterInitializationFields(fields = []) {
+  const normalized = pageParameterFields(fields)
+  // name/code/deptId 也标记为 isSystem，但实体明确允许编辑，属于可初始化的业务字段。
+  // 发布节点可能省略系统标记，不能用重复的节点投影绕过其余系统维护字段的保护。
+  const systemFields = new Set(normalized.filter(field => [true, 1, '1'].includes(field.isSystem)
+    && ![true, 1, '1'].includes(field.editable)).map(field => field.fieldCode))
+  const seen = new Set()
+  return normalized.filter(field => {
+    if (systemManagedFields.has(field.fieldCode) || blocked.has(field.fieldCode)
+      || systemFields.has(field.fieldCode) || seen.has(field.fieldCode)) return false
+    seen.add(field.fieldCode)
+    return true
   })
 }

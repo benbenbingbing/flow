@@ -10,7 +10,6 @@ import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeFo
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -34,8 +33,7 @@ class EntityFormRuntimeServiceTest {
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                formMapper,
-                mock(UiReleaseResolutionTokenService.class));
+                formMapper);
         EntityForm defaultForm = new EntityForm();
         defaultForm.setId("form-1");
         EntityForm runtimeForm = new EntityForm();
@@ -55,15 +53,13 @@ class EntityFormRuntimeServiceTest {
         assertEquals(4, result.getRuntimeReleaseVersion());
     }
 
-    /** 默认表单用于活动审批时，应按实际发布坐标签发与任务绑定的令牌。 */
+    /** 默认审批表单携带页面摘要与任务定位，提交时由后端重新校验权限。 */
     @Test
-    void defaultFormSignsActiveTaskReleaseContext() {
+    void defaultFormCarriesTaskLocatorAndConfigurationHash() {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormMapper formMapper = mock(EntityFormMapper.class);
-        UiReleaseResolutionTokenService tokenService =
-                mock(UiReleaseResolutionTokenService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
-                releaseService, formMapper, tokenService);
+                releaseService, formMapper);
         EntityForm defaultForm = new EntityForm();
         defaultForm.setId("form-1");
         EntityForm runtimeForm = new EntityForm();
@@ -74,15 +70,14 @@ class EntityFormRuntimeServiceTest {
                 .thenReturn(defaultForm);
         when(releaseService.resolveRuntimeFormRelease("form-1"))
                 .thenReturn(new ResolvedEntityFormRelease(runtimeForm, "release-4", 4));
-        when(tokenService.issue(
-                same(context), eq("form-1"), eq("release-4"), eq(4), eq(0)))
-                .thenReturn("active-task-token");
+        when(releaseService.formConfigHash("form-1")).thenReturn("graph-hash");
 
         EntityForm result = service.getDefaultForm("entity-1", context);
 
         assertEquals("release-4", result.getRuntimeReleaseId());
         assertEquals(4, result.getRuntimeReleaseVersion());
-        assertEquals("active-task-token", result.getReleaseResolutionToken());
+        assertEquals("graph-hash", result.getConfigHash());
+        assertEquals("task-1", result.getRuntimeContext().get("taskId"));
     }
 
     @Test
@@ -90,8 +85,7 @@ class EntityFormRuntimeServiceTest {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                mock(EntityFormMapper.class),
-                mock(UiReleaseResolutionTokenService.class));
+                mock(EntityFormMapper.class));
         ProcessNodeForm binding = binding("release-3", 3);
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(release("release-3", 3));
@@ -102,7 +96,7 @@ class EntityFormRuntimeServiceTest {
     @Test
     void newDataAcceptsBindingWithObsoleteReleaseCoordinates() {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
-        EntityFormRuntimeService service = new EntityFormRuntimeService(releaseService, mock(EntityFormMapper.class), mock(UiReleaseResolutionTokenService.class));
+        EntityFormRuntimeService service = new EntityFormRuntimeService(releaseService, mock(EntityFormMapper.class));
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1")).thenReturn(release("current-hash", 1));
         assertDoesNotThrow(() -> service.requireCurrentBindingForNewData(binding("old-release", 7)));
 
@@ -113,8 +107,7 @@ class EntityFormRuntimeServiceTest {
         UiConfigReleaseService releaseService = mock(UiConfigReleaseService.class);
         EntityFormRuntimeService service = new EntityFormRuntimeService(
                 releaseService,
-                mock(EntityFormMapper.class),
-                mock(UiReleaseResolutionTokenService.class));
+                mock(EntityFormMapper.class));
         ProcessNodeForm binding = new ProcessNodeForm();
         binding.setFormId("form-1");
         when(releaseService.active(UiConfigReleaseService.FORM, "form-1"))
@@ -126,7 +119,7 @@ class EntityFormRuntimeServiceTest {
     @Test
     void newDataRejectsUnpublishedStableForm() {
         UiConfigReleaseService releases = mock(UiConfigReleaseService.class);
-        EntityFormRuntimeService service = new EntityFormRuntimeService(releases, mock(EntityFormMapper.class), mock(UiReleaseResolutionTokenService.class));
+        EntityFormRuntimeService service = new EntityFormRuntimeService(releases, mock(EntityFormMapper.class));
         assertEquals("PROCESS_NODE_FORM_NOT_PUBLISHED", assertThrows(BusinessConflictException.class,
                 () -> service.requireCurrentBindingForNewData(binding("old-release", 7))).getErrorCode());
     }

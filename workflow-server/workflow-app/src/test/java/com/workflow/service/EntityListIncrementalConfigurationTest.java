@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -64,7 +65,7 @@ class EntityListIncrementalConfigurationTest {
     }
 
     @Test
-    void systemListRejectsUnsupportedQueryOperator() {
+    void systemListRejectsUnsupportedQueryOperatorAndCalculatedSources() {
         EntityDefinitionMapper definitionMapper =
                 mock(EntityDefinitionMapper.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
@@ -115,6 +116,19 @@ class EntityListIncrementalConfigurationTest {
                         config));
 
         assertTrue(error.getMessage().contains("不支持查询方式"));
+
+        // 系统实体的专用读取链路只返回目录字段，模板和接口取值不能绕过该限制。
+        configured.setIsQuery(false);
+        for (String source : List.of("FIELD_TEMPLATE", "INTERFACE", "REFERENCE")) {
+            configured.setDataSourceType(source);
+            assertTrue(assertThrows(IllegalArgumentException.class,
+                    () -> ReflectionTestUtils.invokeMethod(service,
+                            "validateSystemListConfiguration", config))
+                    .getMessage().contains("只能使用实体字段"));
+        }
+        configured.setDataSourceType("ENTITY_FIELD");
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service,
+                "validateSystemListConfiguration", config));
     }
 
     /**

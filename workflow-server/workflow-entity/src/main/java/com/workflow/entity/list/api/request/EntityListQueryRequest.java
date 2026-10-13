@@ -18,14 +18,13 @@ public class EntityListQueryRequest {
     private long pageSize = 10;
     /** 场景（PAGE/EXPORT 等），默认 PAGE */
     private String scene = "PAGE";
-    /** 请求使用的发布ID；无签名上下文时必须与当前 ACTIVE 一致 */
-    private String releaseId;
-    /** 请求使用的发布版本 */
-    private Integer releaseVersion;
-    /** 父表单签发的列表版本解析令牌 */
-    private String releaseResolutionToken;
-    /** 关联内容解析接口签发的目标列表上下文令牌。 */
-    private String viewCompositionContextToken;
+    /** 页面配置摘要用于变更提示，不能指定历史发布版本。 */
+    private String configHash;
+    private Map<String, Object> runtimeContext = Map.of();
+    /** 关联范围每次都从已发布关系与来源记录重新计算。 */
+    private com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest compositionContext;
+    /** LINK/UNLINK 候选查询仍须核验对应按钮能力，不能凭此字段扩大范围。 */
+    private String candidateAction;
     /** 查询过滤条件 */
     private Map<String, Object> filters = new LinkedHashMap<>();
     /** 列表运行时上下文（关联来源、参数等） */

@@ -23,7 +23,7 @@
           <ol class="check-list">
             <li>字段已经有值，只想换样子 → 第 2 节，只写一个单元格组件。</li>
             <li>要把已有字段拼成一列展示文本 → 第 3 节，设计器里配模板，不用写代码。</li>
-            <li>这一列的值库里没有 → 第 4 节，写 Provider 往 <code>extData</code> 里补。</li>
+            <li>这一列的值库里没有 → 第 4 节，使用统一扩展接口计算列值。</li>
             <li>自己出数，还要画进度条 → 第 5 节，把 2 和 4 叠在同一列；查询使用实体字段。</li>
             <li>设计器每一项都填了、组件里要把 props 用全 → 第 6 节，看一次请求里实际长什么样。</li>
           </ol>
@@ -152,12 +152,12 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
           <p>组件没注册时，格子会静默走内置 <code>DefaultText</code>，页面不会报红。自己测的时候先看下拉里有没有你的显示名。</p>
 
           <h4 id="scope">2.5 限定用在哪个实体</h4>
-          <p>扩展多了，每个实体的「渲染组件」「字段数据源」下拉都会很长。注册时用 <code>supportedEntityCodes</code> 收窄范围：</p>
+          <p>扩展多了，每个实体的「渲染组件」下拉都会很长。注册时用 <code>supportedEntityCodes</code> 收窄范围：</p>
           <el-table :data="entityScopeRows" border size="small">
             <el-table-column prop="write" label="怎么写" min-width="220" />
             <el-table-column prop="effect" label="设计器里怎样" min-width="280" />
           </el-table>
-          <p>这只过滤下拉。已经保存到列上的组件和数据源，换实体后仍会渲染、仍会补数；打开该列时，当前选中项即使不在范围内也会留在下拉里，避免配置丢了。</p>
+          <p>这只过滤下拉。已经保存到列上的渲染组件，换实体后仍会渲染；打开该列时，当前选中项即使不在范围内也会留在下拉里，避免配置丢了。</p>
           <CodeCard title="三种范围写法" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,
@@ -215,11 +215,11 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
 
         <section id="template" class="guide-section">
           <h3>3. 拼一列：不用写代码</h3>
-          <p>只要把当前行已有字段拼成一段文本，用内置数据源 <code>FIELD_TEMPLATE</code>（设计器里叫「字段组合模板」）。</p>
+          <p>只要把当前行已有字段拼成一段文本，用内置数据源 <code>FIELD_TEMPLATE</code>（设计器里叫「字段组合」）。</p>
           <ol class="check-list">
             <li>实体 → 列表设计 → 字段配置 → <strong>添加虚拟列</strong>。</li>
             <li>改名称，比如「摘要」。编码预填 <code>virtual_时间戳</code>，可改成 <code>summary</code>。</li>
-            <li>「设置」→「数据与显示」→ 字段数据源选「字段组合模板」。</li>
+            <li>「设置」→「数据与显示」→ 取值方式选「字段组合」。</li>
             <li>组合模板填 <code v-pre>${code} - ${name}</code>。占位符是 <code v-pre>${字段编码}</code>，字段编码以字母开头，只做替换，不跑脚本。</li>
             <li>空值文本配在单元格 <code>renderConfig.emptyText</code>，默认 <code>-</code>。</li>
             <li>保存当前列，发布列表。</li>
@@ -229,102 +229,84 @@ const dangerAt = computed(() => Number(props.config.dangerAt ?? 70))
         </section>
 
         <section id="provider" class="guide-section">
-          <h3>4. 自己出数：写一个 Provider</h3>
-          <p>这一列的值不是实体字段，也不只是拼接，就实现 <code>ListFieldDataProvider</code>。类上加 <code>@Component</code>，启动时 <code>ListFieldDataProviderRegistry</code> 会按 <code>getDataSourceType()</code> 收走。</p>
-          <p>仓库对照：<code>ProjectCustomListFieldDataProvider</code>，类型 <code>PROJECT_CUSTOM_FIELD</code>，设计器显示名「项目自定义日志字段」。</p>
+          <h3>4. 自己出数：统一扩展接口</h3>
+          <p>关联查询、汇总或业务计算统一通过 <code>UiDataSourceProvider</code> 接入。在扩展管理中创建接口，列配置只选「取值方式：扩展接口」并绑定接口，不再单独注册列数据源类型。</p>
+          <p>仓库对照：<code>ProjectCustomListUiDataSourceProvider</code>，Provider 编码 <code>PROJECT_CUSTOM_UI_LIST</code>；其 <code>LIST_COLUMN</code> 分支使用 <code>columnPrefix</code> 参数，为当前页返回记录 ID 到列值的 Map。</p>
 
           <h4>4.1 要做什么</h4>
           <ol class="check-list">
-            <li>实现接口，<code>getDataSourceType()</code> 用大写编码，规则是 <code>[A-Z][A-Z0-9_]{1,63}</code>，重复会启动失败。</li>
-            <li>只给部分实体用时，覆盖 <code>getSupportedEntityCodes()</code>，例如 <code>List.of("expense")</code>。不覆盖则全部实体都能选。</li>
-            <li>在 <code>enrich</code> 里对当前页批量补数，写入 <code>record.getExtData().put(列编码, 值)</code>。</li>
-            <li>需要管理员可配的参数，用 <code>getConfigSchema()</code>，保存时进这一列的 <code>dataSourceConfig</code>。</li>
-            <li>重启后端后，列表设计里添加虚拟列，字段数据源选你的显示名，填参数，保存并发布。</li>
+            <li>实现 <code>UiDataSourceProvider</code> 并加 <code>@Component</code>，用 <code>getCode()</code> 声明稳定且唯一的编码。</li>
+            <li>在「扩展管理」创建扩展接口，后端实现选「已注册 Provider」，选择该编码；上下文为列表（<code>LIST</code>），接口类型为只读（<code>READ</code>）。</li>
+            <li>实现参数在接口中维护。例如选择 <code>PROJECT_CUSTOM_UI_LIST</code> 后填写 <code>{"columnPrefix":"项目状态"}</code>，列上不重复填写参数。</li>
+            <li>接口启用后，列表设计添加虚拟列，取值方式选「扩展接口」，选择这个接口，再保存当前列并发布。</li>
+            <li>平台以 <code>LIST_COLUMN</code> 调用，每次传入当前页 <code>records</code> 和当前列 <code>field</code>；返回 <code>recordId → 值</code> 的 Map，由平台合并进 <code>extData[字段编码]</code>。</li>
           </ol>
-          <p>实体字段的数据源锁死为 <code>ENTITY_FIELD</code>。要自己出数必须「添加虚拟列」。渲染组件实体字段和虚拟列都能选。</p>
+          <p>业务实体的实体字段和虚拟列都可选择扩展接口；系统实体仅支持实体字段取值。接口列只负责展示，不参与数据库查询或排序，不写回记录原值。</p>
 
           <h4>4.2 带注释的最小实现</h4>
-          <CodeCard title="ListFieldDataProvider（对照 ProjectCustomListFieldDataProvider）" language="Java">
+          <CodeCard title="UiDataSourceProvider：按记录 ID 返回展示值" language="Java">
             <pre v-pre><code>@Component
-public class CustomerLevelProvider implements ListFieldDataProvider {
+@RequiredArgsConstructor
+public class CustomerLevelProvider implements UiDataSourceProvider {
+    private final ObjectMapper objectMapper;
 
-    // 设计器保存的是这个编码，改名后旧列会找不到数据源
     @Override
-    public String getDataSourceType() {
-        return "CUSTOMER_LEVEL";
+    public String getCode() { return "CUSTOMER_LEVEL"; }
+
+    @Override
+    public String getDisplayName() { return "客户等级"; }
+
+    // 参数保存在扩展接口中，不保存在每列 dataSourceConfig 中。
+    @Override
+    public Map&lt;String, Object&gt; configurationSchema() {
+        return Map.of("type", "object", "properties", Map.of(
+            "columnPrefix", Map.of("type", "string", "title", "展示前缀")));
     }
 
+    /** 当前示例只生成展示文本；业务查询须批量处理，并执行 dataScopePlan 权限约束。 */
     @Override
-    public String getDisplayName() {
-        return "客户等级"; // 下拉里看到的名字
-    }
-
-    // 空或不写 = 全部实体；只给报销单用就返回 List.of("expense")
-    @Override
-    public List&lt;String&gt; getSupportedEntityCodes() {
-        return List.of("expense");
-    }
-
-    // 扩展值只用于展示；平台统一禁止虚拟列参与查询和排序
-    @Override
-    public boolean supportsQuery() {
-        return false;
-    }
-
-    // 每一项出现在列的「数据来源」表单里，保存进 dataSourceConfig
-    @Override
-    public List&lt;Map&lt;String, Object&gt;&gt; getConfigSchema() {
-        return List.of(Map.of(
-            "key", "customerField",
-            "label", "客户字段",
-            "type", "text",
-            "required", true
-        ));
-    }
-
-    /**
-     * records 是已经按数据权限查出来的当前页。
-     * fields 只包含数据源类型等于本 Provider 的列。
-     * 失败会让整次列表查询失败，不要吞掉异常后返回半截数据。
-     */
-    @Override
-    public void enrich(
-            List&lt;EntityDataDTO&gt; records,
-            List&lt;EntityListField&gt; fields,
-            Map&lt;String, Object&gt; context) {
-        // 先抽出本页要用的 ID，一次查完，不要在 for 记录里打远程
-        // 值写 extData。列表读格子时优先看 extData，不要改 record.data
-        for (EntityListField field : fields) {
-            for (EntityDataDTO record : records) {
-                if (record.getExtData() == null) {
-                    record.setExtData(new HashMap&lt;&gt;());
-                }
-                record.getExtData().put(field.getFieldCode(), "VIP");
-            }
+    public Object execute(UiInvocationContext context,
+                          DataScopePlan dataScopePlan,
+                          Map&lt;String, Object&gt; configuration,
+                          Map&lt;String, Object&gt; input) {
+        if (!(context instanceof ListInvocationContext)
+                || !"LIST_COLUMN".equals(context.usage())) {
+            throw new IllegalArgumentException("仅支持列表扩展列");
         }
+        // 同时接受运行时 DTO 和调试界面的 JSON 对象，避免依赖宿主实体 DTO 类型。
+        List&lt;Map&lt;String, Object&gt;&gt; records = objectMapper.convertValue(
+            input.get("records"), new TypeReference&lt;List&lt;Map&lt;String, Object&gt;&gt;&gt;() {});
+        String prefix = String.valueOf(configuration.getOrDefault("columnPrefix", "客户"));
+        Map&lt;String, Object&gt; values = new LinkedHashMap&lt;&gt;();
+        for (Map&lt;String, Object&gt; record : records) {
+            // 返回键必须是记录 ID，平台按 ID 定位行，不能使用列表下标。
+            values.put(String.valueOf(record.get("id")), prefix + " VIP");
+        }
+        return values;
     }
 }</code></pre>
           </CodeCard>
+          <p>示例依赖 <code>com.workflow.contracts.entity.ui.spi.UiDataSourceProvider</code>、<code>entity.ui.context.UiInvocationContext / ListInvocationContext</code> 和 <code>entity.list.model.DataScopePlan</code>；JSON 转换使用 Jackson 的 <code>ObjectMapper / TypeReference</code>。</p>
 
-          <h4>4.3 enrich 的 context</h4>
-          <p>目前放入的键如下。列表已经查完再调用你，你处理的是当前页记录。</p>
+          <h4>4.3 输入与可信上下文</h4>
+          <p>用户身份、实体和列表配置由服务端生成；不要从 input 中的同名字段推断登录身份。需要查询关联数据时，同样遵守 dataScopePlan。</p>
           <el-table :data="contextRows" border size="small">
-            <el-table-column prop="key" label="key" width="160" />
+            <el-table-column prop="key" label="参数" width="220" />
             <el-table-column prop="meaning" label="含义" />
           </el-table>
-          <p>设计器下拉来自 <code>GET /api/entity-list-config/extension-options</code>。没出现你的显示名，先看后端有没有启动起来、编码是否合法。</p>
+          <p><code>GET /api/entity-list-config/extension-options</code> 只提供三种固定取值方式和字段组合参数；具体接口来自扩展接口目录。接口未出现在下拉时，检查是否启用、是否为 LIST / READ。</p>
         </section>
 
         <section id="combine" class="guide-section">
           <h3>5. 同一列：出数 + 显示</h3>
-          <p>出数和显示是同一列上的两个配置，不是两条规则。虚拟列选你的 Provider，渲染组件选你的单元格，阈值进 <code>renderConfig</code>，数据参数进 <code>dataSourceConfig</code>。</p>
-          <p>查询和默认排序仅允许 <code>ENTITY_FIELD</code> 实体字段。虚拟列和接口补充列仅展示，Provider 的 <code>supportsQuery()</code> 声明不再启用内存过滤。</p>
-          <p>已有虚拟查询配置需要在设计器取消「查询」，修正关联的固定条件、页面参数及排序后重新发布。后端会明确拒绝旧配置，不会静默忽略条件或读取全量数据。</p>
+          <p>出数和显示是同一列上的两个配置，不是两条规则。列的取值方式选「扩展接口」并绑定接口，渲染组件选你的单元格；阈值进 <code>renderConfig</code>，接口实现参数在扩展管理中维护。</p>
+          <p>查询和默认排序仅允许 <code>ENTITY_FIELD</code> 实体字段。字段组合和扩展接口仅用于展示。</p>
+          <p>固定查询条件、页面查询参数和默认排序也只能引用实体字段。</p>
         </section>
 
         <section id="deep" class="guide-section">
           <h3>6. 深一层：每个属性都填上之后</h3>
-          <p>前面几节可以只碰 <code>value</code> 和两三个配置项。管理员把列配满、Provider 也把 <code>extData</code> 写满时，五个 props 会同时带齐。下面按一次真实渲染拆开。</p>
+          <p>前面几节可以只碰 <code>value</code> 和两三个配置项。管理员把列配满、扩展接口结果合并到 <code>extData</code> 后，五个 props 会同时带齐。下面按一次真实渲染拆开。</p>
 
           <h4>6.1 格子实际收到的一份快照</h4>
           <p>假设虚拟列编码 <code>riskScore</code>，数据源补了 82，渲染组件选了风险进度，展示阈值已配置。组件入参就是这样（JSON 里的函数写成了说明）：</p>
@@ -344,12 +326,13 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
     "fieldCode": "riskScore",
     "fieldName": "风险",
     "showInList": true,
-    "isQuery": true,
+    "isQuery": false,
     "queryType": "GE",
     "width": 180,
     "align": "left",
-    "dataSourceType": "CUSTOMER_LEVEL",
-    "dataSourceConfig": "{\"customerField\":\"customerId\"}",
+    "dataSourceType": "INTERFACE",
+    "interfaceExtensionId": "interface_risk_score",
+    "dataSourceConfig": "",
     "renderComponent": "RiskProgressCell",
     "renderConfig": "{\"warningAt\":40,\"dangerAt\":70,\"showText\":true,\"showLevel\":true}",
     "queryConfig": "{\"componentType\":\"number\",\"placeholder\":\"最低风险\",\"defaultValue\":\"\"}",
@@ -389,7 +372,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <li><code>value</code> 不是你在组件里算的，是 <code>ListCellRenderer</code> 先跑 <code>formatListFieldValue(row, field)</code> 再传进来。取值顺序 <code>extData &gt; data &gt; 行顶层</code>；字段编码是下划线时还会试驼峰，比如 <code>customer_name</code> 能读到 <code>data.customerName</code>。</li>
             <li>如果 <code>extData</code> 里同时有 <code>riskScore_display</code>，<code>value</code> 会变成那串展示文本，不再是 82。进度条这类组件不要写 <code>riskScore_display</code>，数字会丢。</li>
             <li>引用、多选的选项名在 <code>row.extData.字段Options</code> 或 <code>context.refEntityNameMap</code>。默认文本组件会用它们；你自己画格子时也可以直接读。</li>
-            <li><code>field.dataSourceConfig</code> 仍是字符串。出数参数在后端 Provider 里解析，单元格一般不用动它。</li>
+            <li><code>field.dataSourceConfig</code> 仍是字符串。它只用于 FIELD_TEMPLATE 的组合模板；接口实现参数由扩展管理维护，单元格一般不用动它。</li>
           </ul>
 
           <h4>6.2 五个 props 用全的组件</h4>
@@ -529,7 +512,9 @@ function reloadList() {
           </el-table>
           <CodeCard title="列配置示例（queryConfig 仅用于实体字段）" language="JSON">
             <pre v-pre><code>{
-  "dataSourceConfig": { "customerField": "customerId", "labelPrefix": "等级" },
+  "dataSourceType": "INTERFACE",
+  "interfaceExtensionId": "interface_risk_score",
+  "dataSourceConfig": {},
   "renderConfig": { "warningAt": 40, "dangerAt": 70, "showText": true, "showLevel": true, "dangerText": "高风险" },
   "queryConfig": { "componentType": "number", "placeholder": "最低风险", "defaultValue": "" },
   "columnConfig": { "fixed": "left", "minWidth": 180, "showOverflowTooltip": true, "quickCopy": true }
@@ -569,7 +554,7 @@ function reloadList() {
             <el-table-column prop="file" label="在哪" min-width="240" />
             <el-table-column prop="note" label="做什么" min-width="240" />
           </el-table>
-          <h4>ListFieldDataProvider</h4>
+          <h4>UiDataSourceProvider</h4>
           <el-table :data="providerMethods" border size="small">
             <el-table-column prop="method" label="方法" width="260" />
             <el-table-column prop="note" label="默认和约束" />
@@ -580,11 +565,11 @@ function reloadList() {
           <h3>9. 做完自己过一遍</h3>
           <ul class="check-list">
             <li>只保存列、不发布，运行时还是旧快照。</li>
-            <li>值写进 <code>extData</code>，不要改 <code>record.data</code>。</li>
-            <li><code>enrich</code> 里先收齐 ID 再查，不要按行打远程。</li>
-            <li>显示参数进 <code>renderConfig</code>，出数参数进 <code>dataSourceConfig</code>。</li>
+            <li>接口返回记录 ID 到列值的 Map，平台写入 <code>extData</code>；不要改 <code>record.data</code>。</li>
+            <li><code>execute</code> 里先收齐 ID 再查，不要按行打远程。</li>
+            <li>显示参数进 <code>renderConfig</code>，组合模板进 <code>dataSourceConfig</code>，接口参数在扩展管理中维护。</li>
             <li>业务注册跟应用启动走，不要只挂在 Demo 开关后面。</li>
-            <li>组件名、数据源编码保存后会被列配置引用，不要轻易改。</li>
+            <li>组件名、扩展接口 ID 保存后会被列配置引用，不要轻易改。</li>
             <li>进度、计算类组件不要写 <code>字段_display</code>，否则 <code>value</code> 会变成文案。</li>
           </ul>
         </section>
@@ -615,7 +600,7 @@ const toc = [
 ]
 
 const overviewRows = [
-  { part: '出数', what: '这一列每个格子的值从哪来', how: '实体字段直接读；模板拼；或 Provider 写入 extData' },
+  { part: '出数', what: '这一列每个格子的值从哪来', how: '实体字段直接读；字段组合拼接；扩展接口返回列值' },
   { part: '显示', what: '这个值在表格里长什么样', how: 'LIST_CELL JSON 清单声明 Vue 组件，列上选渲染组件' }
 ]
 
@@ -634,17 +619,20 @@ const cellProps = [
 ]
 
 const contextRows = [
-  { key: 'entityCode', meaning: '当前实体编码' },
-  { key: 'listKey', meaning: '当前列表 key' },
-  { key: 'listConfigId', meaning: '当前列表配置 ID' },
-  { key: 'userId', meaning: '当前登录用户 ID' },
-  { key: 'userName', meaning: '当前登录用户名' }
+  { key: 'context.entityCode()', meaning: '当前实体编码' },
+  { key: 'context.listKey() / configId()', meaning: '当前列表编码和配置 ID' },
+  { key: 'context.userId() / userName()', meaning: '服务端认证的用户身份' },
+  { key: 'context.usage()', meaning: '当前调用用途，此处为 LIST_COLUMN' },
+  { key: 'input.records / input.field', meaning: '当前页记录与当前列配置，用于计算列值' },
+  { key: 'configuration', meaning: '扩展管理中保存的接口实现参数' },
+  { key: 'dataScopePlan', meaning: '不可绕过的数据权限计划，关联查询也须遵守' }
 ]
 
 const designerRows = [
-  { place: '添加虚拟列', field: 'fieldId 以 virtual_ 开头', note: '自己出数用虚拟列；实体字段数据源不能改' },
+  { place: '添加虚拟列', field: 'fieldId 以 virtual_ 开头', note: '无实体字段的展示列；使用字段组合或扩展接口' },
   { place: '用途：列表 / 查询', field: 'showInList / isQuery', note: '仅 ENTITY_FIELD 可查询；虚拟列仅展示' },
-  { place: '字段数据源 + 参数表单', field: 'dataSourceType / dataSourceConfig', note: '选项来自 extension-options' },
+  { place: '取值方式 + 组合模板', field: 'dataSourceType / dataSourceConfig', note: '固定三种方式；仅 FIELD_TEMPLATE 配置模板参数' },
+  { place: '扩展接口', field: 'interfaceExtensionId', note: '仅 INTERFACE 显示且必选，接口参数在扩展管理维护' },
   { place: '渲染组件 + 参数表单', field: 'renderComponent / renderConfig', note: '选项来自 getCellComponentOptions()' },
   { place: '保存当前列', field: 'PATCH .../fields/{id}/patch', note: '带 expectedRevision；还要再发布列表' }
 ]
@@ -660,12 +648,11 @@ const frontApis = [
 ]
 
 const backApis = [
-  { api: 'ListFieldDataProvider', file: 'list/extension/ListFieldDataProvider.java', note: '列数据接口' },
-  { api: 'ListFieldDataProviderRegistry', file: 'list/extension/ListFieldDataProviderRegistry.java', note: '收集 Bean、校验编码、给出下拉' },
-  { api: 'TemplateListFieldDataProvider', file: 'list/extension/TemplateListFieldDataProvider.java', note: '内置 FIELD_TEMPLATE' },
-  { api: 'ProjectCustomListFieldDataProvider', file: 'project/custom/ProjectCustomListFieldDataProvider.java', note: '项目模块示例，类型 PROJECT_CUSTOM_FIELD' },
-  { api: 'EntityListQueryPolicy', file: 'list/application/EntityListQueryPolicy.java', note: '拒绝虚拟查询与排序' },
-  { api: 'GET /api/entity-list-config/extension-options', file: 'EntityListConfigController', note: '设计器拉数据源选项' }
+  { api: 'UiDataSourceProvider', file: 'workflow-spi/.../entity/ui/spi/UiDataSourceProvider.java', note: '统一扩展接口 SPI，列以 LIST_COLUMN 调用' },
+  { api: 'ProjectCustomListUiDataSourceProvider', file: 'biz-project/.../project/custom/ProjectCustomListUiDataSourceProvider.java', note: '项目示例：PROJECT_CUSTOM_UI_LIST，配置 columnPrefix' },
+  { api: 'TemplateListFieldDataProvider', file: 'list/extension/TemplateListFieldDataProvider.java', note: '内置 FIELD_TEMPLATE 实现，不用于业务扩展注册' },
+  { api: 'EntityListQueryPolicy', file: 'list/application/EntityListQueryPolicy.java', note: '只允许实体字段参与查询与排序' },
+  { api: 'GET /api/entity-list-config/extension-options', file: 'EntityListConfigController', note: '三种固定取值方式及字段组合参数' }
 ]
 
 const schemaItemRows = [
@@ -673,38 +660,32 @@ const schemaItemRows = [
   { key: 'required / defaultValue', note: '保存时校验必填；打开设计器时用 defaultValue 补空' },
   { key: 'min / max / step', note: '仅 number' },
   { key: 'options / multiple / placeholder / rows', note: 'select 的选项和多选；textarea/json 的行数和占位' },
-  { key: 'description / helpKey', note: '项下方说明；json 项可挂帮助' },
+  { key: 'description / helpKey', note: '项下方说明；列参数问号优先使用 helpKey，未设置时使用 description' },
   { key: 'group / advanced / order / priority', note: 'common 首屏，advanced 默认折叠；order 管组内顺序' },
   { key: 'visibleWhen', note: '按当前配置显隐，例如 { field: \'showLevel\', equals: true }' }
 ]
 
 const jsonBagRows = [
-  { bag: 'dataSourceConfig', who: '数据来源表单', shape: 'Provider 的 configSchema。如 { customerField, labelPrefix }' },
+  { bag: 'dataSourceConfig', who: '字段组合表单', shape: '仅字段组合使用，如 { template: ${code}-${name} }；扩展接口参数在扩展管理中维护' },
   { bag: 'renderConfig', who: '单元格参数表单', shape: '组件的 configSchema。如 { warningAt, dangerAt, showText, showLevel }' },
   { bag: 'queryConfig', who: '查询项', shape: '{ componentType, placeholder, defaultValue }。查询方式在 queryType' },
   { bag: 'columnConfig', who: '列展示与高级列布局', shape: '{ fixed: left|right|空, minWidth, showOverflowTooltip, quickCopy }。列宽/对齐在 width、align' }
 ]
 
 const providerFullRows = [
-  { method: 'getDataSourceType()', whenSet: '设计器保存这个编码；改名后旧列找不到数据源' },
-  { method: 'getDisplayName() / getDescription()', whenSet: '下拉显示名和说明，出现在 extension-options' },
-  { method: 'getSupportedEntityCodes()', whenSet: '只出现在这些实体的数据源下拉；运行时已保存列不受影响' },
-  { method: 'supportsVirtualField() = false', whenSet: '虚拟列下拉里禁用；只能绑在实体字段上（一般不要这么做）' },
-  { method: 'supportsQuery() = false', whenSet: '扩展列只展示；查询、排序及分页由实体 SQL 完成' },
-  { method: 'getConfigSchema()', whenSet: '数据来源表单；required 的 key 没填会拒保存' },
-  { method: 'validateConfig(field, config)', whenSet: '必填过了之后再跑；用来拦业务上不合法的组合' },
-  { method: 'enrich(...)', whenSet: '给当前页每条记录的 extData[fieldCode] 赋值' }
+  { method: 'getCode() / getDisplayName()', whenSet: '扩展管理中的 Provider 编码及展示名称' },
+  { method: 'getVersion() / getArtifactDigest()', whenSet: '发布时固定具体实现；逻辑变更须提升版本' },
+  { method: 'configurationSchema()', whenSet: '声明扩展接口实现参数的 JSON Schema' },
+  { method: 'execute(context, dataScopePlan, configuration, input)', whenSet: '只读计算当前页的列值，返回记录 ID 到值的 Map' }
 ]
 
 const providerMethods = [
-  { method: 'getDataSourceType()', note: '必填。转大写后必须匹配 [A-Z][A-Z0-9_]{1,63}' },
-  { method: 'getDisplayName() / getDescription()', note: '默认等于类型 / 空串。下拉用显示名' },
-  { method: 'getSupportedEntityCodes()', note: '默认空=全部实体。只影响设计器下拉' },
-  { method: 'supportsVirtualField()', note: '默认 true。false 时虚拟列不能选它' },
-  { method: 'supportsQuery()', note: '已弃用；扩展列统一不可查询' },
-  { method: 'getConfigSchema()', note: '默认空。项用 key/label/type/required/defaultValue' },
-  { method: 'validateConfig(field, config)', note: '默认空。保存列时先校验必填再调它' },
-  { method: 'enrich(records, fields, context)', note: '批量补数。fields 已按类型过滤。抛错则整次查询失败' }
+  { method: 'getCode()', note: '必填且全局唯一，供扩展管理选择实现' },
+  { method: 'getDisplayName()', note: '必填，Provider 的可读名称' },
+  { method: 'getVersion()', note: '默认 1；已发布实现发生变化时提升版本' },
+  { method: 'getArtifactDigest()', note: '默认对类字节码求摘要；有额外依赖时覆盖完整受审制品' },
+  { method: 'configurationSchema()', note: '默认空；使用 JSON Schema 声明接口实现参数' },
+  { method: 'execute(...)', note: '读取可信 context 和 dataScopePlan，批量计算，不修改实体数据' }
 ]
 </script>
 

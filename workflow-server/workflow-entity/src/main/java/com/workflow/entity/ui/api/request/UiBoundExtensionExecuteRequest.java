@@ -14,17 +14,12 @@ public class UiBoundExtensionExecuteRequest {
     private String ownerType;
     /** 绑定所有者 ID。 */
     private String ownerId;
-    /**
-     * 原生 Embed 中由中央策略验证的精确 owner 发布坐标。
-     * 业务服务不相信这些字段，只使用拦截器写入的已验证目标。
-     */
-    private String releaseId;
-    private Integer releaseVersion;
-    private String releaseResolutionToken;
+    /** 当前页面配置摘要，仅检测配置变更；业务权限仍由运行来源重新核验。 */
+    private String configHash;
+    private Map<String, Object> runtimeContext = Map.of();
     private String entityCode;
     private String listKey;
     private String recordId;
-    private String viewCompositionTraversalToken;
     /** 绑定位置编码，例如 FIELD_OPTIONS、LIST_COLUMN。 */
     private String bindingCode;
     /** 精确目标类型，例如 FIELD、COLUMN、BUTTON 或 OWNER。 */
@@ -40,4 +35,15 @@ public class UiBoundExtensionExecuteRequest {
     private String legacyOperationCode;
     /** 客户端业务输入；同名用户/部门字段不构成身份声明，不能覆盖服务端授权上下文。 */
     private Map<String, Object> input;
+
+    /** 顶层记录只是业务定位，合并后由流程与父子关系授权服务重新验证。 */
+    public Map<String, Object> getRuntimeContext() {
+        Map<String, Object> result = new java.util.LinkedHashMap<>(runtimeContext == null ? Map.of() : runtimeContext);
+        if (recordId != null && !recordId.isBlank()) {
+            boolean nested = result.containsKey("rootFormId")
+                    && result.get("componentPath") instanceof java.util.List<?> path && !path.isEmpty();
+            result.put(nested ? "childRecordId" : "recordId", recordId);
+        }
+        return result;
+    }
 }

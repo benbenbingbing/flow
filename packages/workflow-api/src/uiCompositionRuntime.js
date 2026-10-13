@@ -10,14 +10,14 @@ const uiCompositionRuntimeApi = {
   resolve(data = {}) {
     return request.post('/ui-runtime/view-compositions/resolve', data)
   },
-  capabilities(actionContextToken) {
+  capabilities(compositionContext) {
     return request.post('/ui-runtime/view-compositions/actions/capabilities', {
-      actionContextToken
+      compositionContext
     })
   },
-  linkCandidates(actionContextToken, action) {
+  linkCandidates(compositionContext, action) {
     return request.post('/ui-runtime/view-compositions/actions/link-candidates', {
-      actionContextToken,
+      compositionContext,
       action
     })
   },

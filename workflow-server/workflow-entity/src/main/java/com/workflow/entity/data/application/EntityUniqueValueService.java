@@ -78,7 +78,7 @@ public class EntityUniqueValueService {
      * @param value 待规范化实体唯一值的原始输入，结果供调用方继续使用
      * @return 规范化后的实体唯一值文本，供调用方比较或展示
      */
-    static String normalize(Object value) {
+    public static String normalize(Object value) {
         if (value == null) {
             return null;
         }
@@ -106,7 +106,7 @@ public class EntityUniqueValueService {
      * @return 处理后的{@code sha256}文本，供调用方比较或展示
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
-    private static String sha256(String value) {
+    static String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));

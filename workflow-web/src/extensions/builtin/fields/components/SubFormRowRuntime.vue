@@ -96,9 +96,8 @@ watch(
 watch(
   () => [
     props.form?.id,
-    props.form?.runtimeReleaseId || props.form?.formReleaseId,
-    props.form?.runtimeReleaseVersion ?? props.form?.formReleaseVersion,
-    props.form?.releaseResolutionToken,
+    props.form?.configHash,
+    props.form?.configHash,
     props.row?.id
   ],
   () => uniquePrecheckController.reset(props.row)

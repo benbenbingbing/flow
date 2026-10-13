@@ -145,8 +145,8 @@ export const getFormRuntimeRelease = runtimeApi.getFormRuntimeRelease
 export interface FormFieldUniquePrecheckRequest {
   releaseId?: string
   releaseVersion?: number
-  releaseResolutionToken?: string
-  viewCompositionTraversalToken?: string
+  configHash?: string
+  compositionContext?: Record<string, unknown>
   ruleId?: string
   fieldCode?: string
   recordId?: string

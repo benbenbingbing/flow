@@ -41,19 +41,24 @@ class CurrentFormRuntimeContextTest {
                 "{\"nodes\":[{\"propsDocument\":\"{\\\"childFormId\\\":\\\"child\\\"}\"}]}"));
         AtomicReference<UiConfigRelease> child = new AtomicReference<>(row("child", "child-before", "{}"));
         when(mapper.findActive("FORM", "child")).thenAnswer(call -> child.get());
-        UiReleaseResolutionTokenService tokens = new UiReleaseResolutionTokenService(json);
-        ReflectionTestUtils.setField(tokens, "secret", "test-secret");
-        ReflectionTestUtils.setField(tokens, "currentForms", context);
         request();
-        String token = tokens.issue(UiRuntimeResolutionContext.standalone(), "root", "root-hash", 1, 0);
-        assertNotNull(token);
-        assertDoesNotThrow(() -> tokens.verify(token));
+        String original = context.graphHash("root");
         child.set(row("child", "child-after", "{}"));
+        // 同一请求继续使用已受理的配置；新请求才看到变更。
+        assertEquals(original, context.graphHash("root"));
         request();
-        assertEquals("FORM_CONFIGURATION_CHANGED", assertThrows(BusinessConflictException.class,
-                () -> tokens.verify(token)).getErrorCode());
-        String fresh = tokens.issue(UiRuntimeResolutionContext.standalone(), "root", "root-hash", 1, 0);
-        assertDoesNotThrow(() -> tokens.verify(fresh));
+        assertNotEquals(original, context.graphHash("root"));
+
+    }
+
+    @Test void acceptedListSnapshotRemainsStableForTheRequest() {
+        request();
+        var before = row("list", "list-before", "{}");
+        var after = row("list", "list-after", "{}");
+        assertSame(before, context.currentList("list", () -> before));
+        assertSame(before, context.currentList("list", () -> after));
+        request();
+        assertSame(after, context.currentList("list", () -> after));
     }
 
     @Test void unpublishedFormNeverFallsBackToHistoricalRecordOrDraft() {

@@ -157,7 +157,8 @@ async function submitApproval(error) {
     approvalNormalForm: { value: null },
     effectiveEntityCode: { value: 'expense' },
     props: { listKey: 'expense_list' },
-    approvalActionFormContext: { value: {} },
+    approvalActionFormContext: { value: { formId: 'form-expense', configHash: 'graph-expense' } },
+    formReleaseContext: { value: { runtimeContext: { taskId: 'task-1', processInstanceId: 'process-1' } } },
     ensureNextApproverPreviewCurrent: async () => {},
     approvalDecisionRef: { value: null },
     selectedApprovalOption: { value: { label: '通过' } },
@@ -176,6 +177,8 @@ async function submitApproval(error) {
     'const submitApprove = async () =>', 'defineExpose({', 'submitApprove', dependencies, true)
   await submit()
   assert.equal(calls.length, 1, '候选任务直接提交一次审批，认领由后端与审批原子处理')
+  assert.equal(calls[0].formConfigHash, 'graph-expense')
+  assert.deepEqual(calls[0].runtimeContext, { taskId: 'task-1', processInstanceId: 'process-1' })
   assert.equal(approveSubmitLoading.value, false)
   assert.equal(approveForm.comment, '已填写的审批意见')
   assert.deepEqual(entityData.value, { amount: 42, detail: { note: '未提交的修改' } })

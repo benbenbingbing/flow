@@ -14,7 +14,7 @@ import ApprovalDialog from '/src/views/entity/components/approval/EntityApproval
 
 // 浏览器测试挂载生产页面/弹窗及真实控件；所有 API 由 Playwright 拦截。
 export const field = { id: 'amount-field', fieldId: 'amount-field', fieldCode: 'amount', fieldLabel: '金额', fieldName: '金额', fieldType: 'DECIMAL', componentType: 'number', isReadonly: 0 }
-export const form = { id: 'form-test', formKey: 'test', formName: '测试表单', runtimeReleaseId: 'release-pinned', runtimeReleaseVersion: 2, releaseResolutionToken: 'test-signed-token', fields: [field], nodes: [{ id: 'amount-node', nodeKey: 'amount', nodeType: 'FIELD', bindingType: 'ENTITY_FIELD', bindingRef: 'amount', props: field }] }
+export const form = { id: 'form-test', formKey: 'test', formName: '测试表单', configHash: 'graph-test', fields: [field], nodes: [{ id: 'amount-node', nodeKey: 'amount', nodeType: 'FIELD', bindingType: 'ENTITY_FIELD', bindingRef: 'amount', props: field }] }
 const entity = { id: 'entity-test', entityCode: 'test', entityName: '测试实体', storageMode: 'DYNAMIC', lifecycleMode: 'WORKFLOW', fields: [field] }
 const Dialogs = { setup() {
   const edit = ref(), approval = ref(), refreshed = ref(0)

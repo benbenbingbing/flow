@@ -105,6 +105,9 @@
           </el-form-item>
           
           <el-form-item label="实体状态">
+            <template #label>
+              <ConfigHelpLabel label="实体状态" content="从实体预定义的状态中选择" />
+            </template>
             <el-select
               v-model="statusForm.entityStatusCode"
               placeholder="请选择实体状态"
@@ -145,7 +148,6 @@
                 />
               </el-option-group>
             </el-select>
-            <div class="form-tip">从实体预定义的状态中选择</div>
           </el-form-item>
           
           <el-form-item label="状态名称" v-if="selectedStatusName">
@@ -153,8 +155,10 @@
           </el-form-item>
           
           <el-form-item label="条件表达式" v-if="hasCondition">
+            <template #label>
+              <ConfigHelpLabel label="条件表达式" content="网关连线的判断条件" />
+            </template>
             <el-input v-model="statusForm.conditionExpression" type="textarea" :rows="2" disabled />
-            <div class="form-tip">网关连线的判断条件</div>
           </el-form-item>
           
           <el-form-item label="说明">
@@ -175,6 +179,12 @@
           <el-form :model="assigneeForm" label-width="100px" size="small">
           <!-- 执行人选择类型 -->
           <el-form-item label="指定方式">
+            <template #label>
+              <ConfigHelpLabel
+                label="指定方式"
+                :content="assigneeForm.isMultiInstance ? '多人办理直接复用本区审批人配置，不需要在会签设置中再次选择人员' : ''"
+              />
+            </template>
             <el-select v-model="assigneeForm.assigneeType" @change="onAssigneeTypeChange" style="width: 100%">
               <el-option label="固定人员" value="user" />
               <el-option label="用户组" value="group" />
@@ -196,10 +206,6 @@
             class="legacy-assignment-alert"
           />
 
-          <div v-if="assigneeForm.isMultiInstance" class="form-tip assignment-reuse-tip">
-            多人办理直接复用本区审批人配置，不需要在会签设置中再次选择人员
-          </div>
-          
           <!-- 固定人员选择 -->
           <template v-if="assigneeForm.assigneeType === 'user'">
             <el-form-item
@@ -207,6 +213,9 @@
               label="审批人"
               :required="!canLeaveMultiInstanceAssignmentEmpty"
             >
+              <template #label>
+                <ConfigHelpLabel label="审批人" content="按选择顺序生成任务，首人同时作为基础执行人保存" />
+              </template>
               <UserSelector
                 v-model="assigneeForm.candidateUserIds"
                 multiple
@@ -215,10 +224,12 @@
                 title="选择多人办理参与人员"
                 @change="updateMultiInstanceAssigneeUsers"
               />
-              <div class="form-tip">按选择顺序生成任务，首人同时作为基础执行人保存</div>
             </el-form-item>
 
             <el-form-item v-else label="执行人">
+              <template #label>
+                <ConfigHelpLabel label="执行人" content="指定一个固定用户处理此任务" />
+              </template>
               <UserSelector
                 v-model="assigneeForm.assignee"
                 value-key="code"
@@ -226,10 +237,12 @@
                 title="选择执行人"
                 @change="updateAssignee"
               />
-              <div class="form-tip">指定一个固定用户处理此任务</div>
             </el-form-item>
 
             <el-form-item v-if="!assigneeForm.isMultiInstance" label="候选人">
+              <template #label>
+                <ConfigHelpLabel label="候选人" content="任意候选人可直接审批，也可先认领任务后稍后处理" />
+              </template>
               <UserSelector
                 v-model="assigneeForm.candidateUserIds"
                 multiple
@@ -238,13 +251,18 @@
                 title="选择候选人"
                 @change="updateCandidateUsers"
               />
-              <div class="form-tip">任意候选人可直接审批，也可先认领任务后稍后处理</div>
             </el-form-item>
           </template>
           
           <!-- 用户组选择 -->
           <template v-if="assigneeForm.assigneeType === 'group'">
             <el-form-item label="用户组">
+              <template #label>
+                <ConfigHelpLabel
+                  label="用户组"
+                  :content="assigneeForm.isMultiInstance ? '组内启用用户会展开为多人办理参与人并分别生成任务' : '组内任意成员可直接审批，也可先认领任务后稍后处理'"
+                />
+              </template>
               <el-select-v2
                 v-model="assigneeForm.candidateGroupIds"
                 :options="groupOptions"
@@ -260,17 +278,18 @@
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
                 </template>
               </el-select-v2>
-              <div class="form-tip">
-                {{ assigneeForm.isMultiInstance
-                  ? '组内启用用户会展开为多人办理参与人并分别生成任务'
-                  : '组内任意成员可直接审批，也可先认领任务后稍后处理' }}
-              </div>
             </el-form-item>
           </template>
           
           <!-- 角色选择 -->
           <template v-if="assigneeForm.assigneeType === 'role'">
             <el-form-item label="角色">
+              <template #label>
+                <ConfigHelpLabel
+                  label="角色"
+                  :content="assigneeForm.isMultiInstance ? '拥有该角色的启用用户会展开为多人办理参与人并分别生成任务' : '拥有该角色的任意用户可直接审批，也可先认领任务后稍后处理'"
+                />
+              </template>
               <el-select-v2
                 v-model="assigneeForm.candidateRoleIds"
                 :options="roleOptions"
@@ -286,11 +305,6 @@
                   <span style="color: #909399; margin-left: 8px; font-size: 12px">({{ item.code }})</span>
                 </template>
               </el-select-v2>
-              <div class="form-tip">
-                {{ assigneeForm.isMultiInstance
-                  ? '拥有该角色的启用用户会展开为多人办理参与人并分别生成任务'
-                  : '拥有该角色的任意用户可直接审批，也可先认领任务后稍后处理' }}
-              </div>
             </el-form-item>
           </template>
 
@@ -298,15 +312,10 @@
           <template v-if="assigneeForm.assigneeType === 'node_reference'">
             <el-form-item required>
               <template #label>
-                <span class="assignee-reference-label">
-                  引用节点
-                  <el-tooltip
-                    content="直接引用所选节点的审批人规则，规则修改后同步生效且不复制人员名单；多人办理时按所选节点规则展开参与人。引用链最多 16 层且不能成环。"
-                    placement="top"
-                  >
-                    <el-icon class="assignee-reference-help"><QuestionFilled /></el-icon>
-                  </el-tooltip>
-                </span>
+                <ConfigHelpLabel
+                  label="引用节点"
+                  content="直接引用所选节点的审批人规则，规则修改后同步生效且不复制人员名单；多人办理时按所选节点规则展开参与人。引用链最多 16 层且不能成环。"
+                />
               </template>
               <el-select
                 v-model="assigneeForm.referencedNodeId"
@@ -332,15 +341,10 @@
 
           <!-- 实体字段是设计器语义类型，保存时投影为受控人员解析器。 -->
           <template v-if="assigneeForm.assigneeType === 'entity_user_reference'">
-            <el-alert
-              title="运行时读取流程绑定实体的最新记录值，不依赖该字段是否出现在当前节点表单中。"
-              type="info"
-              :closable="false"
-              show-icon
-              class="relative-position-notice"
-            />
-
             <el-form-item label="用户字段" required>
+              <template #label>
+                <ConfigHelpLabel label="用户字段" content="候选项来自绑定实体的全部已发布字段；运行时读取实体的最新记录值，不依赖该字段是否出现在当前节点表单中。当前表单或其他表单保存该字段后都能参与解析。" />
+              </template>
               <el-select
                 v-model="assigneeForm.entityUserReference.fieldCode"
                 filterable
@@ -362,9 +366,6 @@
                   </span>
                 </el-option>
               </el-select>
-              <div class="form-tip">
-                候选项来自绑定实体的全部已发布字段；当前表单或其他表单保存该字段后都能参与解析
-              </div>
             </el-form-item>
 
             <el-form-item label="分配方式">
@@ -380,15 +381,10 @@
 
           <!-- 相对组织职务是设计器语义类型，保存时投影为受控人员解析器。 -->
           <template v-if="assigneeForm.assigneeType === 'relative_position'">
-            <el-alert
-              title="按流程发起人的组织快照定位职务任职人；任职变化只影响尚未创建的后续任务。"
-              type="info"
-              :closable="false"
-              show-icon
-              class="relative-position-notice"
-            />
-
             <el-form-item label="职务" required>
+              <template #label>
+                <ConfigHelpLabel label="职务" content="按流程发起人的组织快照定位职务任职人；任职变化只影响尚未创建的后续任务。流程仅保存稳定编码，不保存职务数据库 ID 或名称。" />
+              </template>
               <el-select
                 v-model="assigneeForm.relativePosition.positionCode"
                 filterable
@@ -407,12 +403,13 @@
                   <span class="reference-node-id">{{ position.positionCode }}</span>
                 </el-option>
               </el-select>
-              <div class="form-tip">流程仅保存稳定编码，不保存职务数据库 ID 或名称</div>
             </el-form-item>
 
             <el-form-item label="相对人员">
+              <template #label>
+                <ConfigHelpLabel label="相对人员" content="V1 固定使用发起人，运行时读取流程启动时冻结的组织快照" />
+              </template>
               <el-input model-value="流程发起人" disabled />
-              <div class="form-tip">V1 固定使用发起人，运行时读取流程启动时冻结的组织快照</div>
             </el-form-item>
 
             <el-form-item label="组织锚点" required>
@@ -443,6 +440,9 @@
               label="上溯层数"
               required
             >
+              <template #label>
+                <ConfigHelpLabel label="上溯层数" content="1 表示直接父节点，按原始组织树父子边计数" />
+              </template>
               <el-input-number
                 v-model="assigneeForm.relativePosition.hierarchy.ancestorHops"
                 :min="1"
@@ -451,7 +451,6 @@
                 style="width: 100%"
                 @change="onRelativePositionChanged"
               />
-              <div class="form-tip">1 表示直接父节点，按原始组织树父子边计数</div>
             </el-form-item>
 
             <template v-if="assigneeForm.relativePosition.hierarchy.mode === 'NEAREST_WITH_HOLDER'">
@@ -465,6 +464,9 @@
                 </el-radio-group>
               </el-form-item>
               <el-form-item label="最大上溯" required>
+                <template #label>
+                  <ConfigHelpLabel label="最大上溯" content="命中第一个存在有效任职人的单位后立即停止" />
+                </template>
                 <el-input-number
                   v-model="assigneeForm.relativePosition.hierarchy.maxHops"
                   :min="1"
@@ -473,7 +475,6 @@
                   style="width: 100%"
                   @change="onRelativePositionChanged"
                 />
-                <div class="form-tip">命中第一个存在有效任职人的单位后立即停止</div>
               </el-form-item>
               <el-form-item label="单位类型" required>
                 <el-checkbox-group
@@ -624,15 +625,20 @@
           <!-- 表达式 -->
           <template v-if="assigneeForm.assigneeType === 'expression'">
             <el-form-item label="执行人表达式">
+              <template #label>
+                <ConfigHelpLabel label="执行人表达式" content="使用流程变量动态指定执行人" />
+              </template>
               <el-input 
                 v-model="assigneeForm.assignee" 
                 placeholder="如：${submitUser} 或 ${initiator}"
                 @input="markAssignmentConfigDirty"
               />
-              <div class="form-tip">使用流程变量动态指定执行人</div>
             </el-form-item>
             
             <el-form-item label="候选人表达式">
+              <template #label>
+                <ConfigHelpLabel label="候选人表达式" content="返回用户ID列表的表达式" />
+              </template>
               <el-input 
                 v-model="assigneeForm.candidateUsers" 
                 type="textarea"
@@ -640,10 +646,12 @@
                 placeholder="如：${deptManagers}"
                 @input="markAssignmentConfigDirty"
               />
-              <div class="form-tip">返回用户ID列表的表达式</div>
             </el-form-item>
             
             <el-form-item label="候选组表达式">
+              <template #label>
+                <ConfigHelpLabel label="候选组表达式" content="返回组编码的表达式" />
+              </template>
               <el-input 
                 v-model="assigneeForm.candidateGroups" 
                 type="textarea"
@@ -651,7 +659,6 @@
                 placeholder="如：${deptCode}_manager"
                 @input="markAssignmentConfigDirty"
               />
-              <div class="form-tip">返回组编码的表达式</div>
             </el-form-item>
           </template>
           
@@ -662,6 +669,7 @@
                 <ConfigHelpLabel
                   label="人员接口"
                   help-key="process.personResolver"
+                  :content="`${getConfigFieldHelp('process.personResolver')}平台固定传入流程、节点、实体和操作人上下文。`"
                 />
               </template>
               <ExtensionCapabilityPicker
@@ -674,7 +682,6 @@
                 :current-option="assigneeResolverCurrentOption"
                 @selected="onAssigneeResolverSelected"
               />
-              <div class="form-tip">平台固定传入流程、节点、实体和操作人上下文</div>
             </el-form-item>
 
             <el-form-item>
@@ -691,7 +698,6 @@
                 placeholder='JSON 对象，例如 {"level": 2}'
                 @input="markAssignmentConfigDirty"
               />
-              <div class="form-tip">仅填写此人员接口声明的扩展参数</div>
             </el-form-item>
           </template>
           
@@ -766,10 +772,10 @@
                   <ConfigHelpLabel
                     label="是否需要所有人审批"
                     help-key="process.multiInstanceCompletionCondition"
+                    content="开启后无论通过还是驳回都等全部人办完，再按通过率判定；关闭则达标立即通过，剩下的人全通过也凑不够立即拒绝。驳回不计入通过人数。"
                   />
                 </template>
                 <el-switch v-model="assigneeForm.multiInstanceNeedAllApprovers" />
-                <div class="form-tip">开启后无论通过还是驳回都等全部人办完，再按通过率判定；关闭则达标立即通过，剩下的人全通过也凑不够立即拒绝</div>
               </el-form-item>
 
               <el-form-item label="集合变量">
@@ -869,18 +875,22 @@
             </el-form-item>
             
             <el-form-item label="请求URL">
+              <template #label>
+                <ConfigHelpLabel label="请求URL" content="支持流程变量表达式，如：${userId}" />
+              </template>
               <el-input 
                 v-model="restForm.url" 
                 placeholder="如：https://api.example.com/users/${userId}"
               />
-              <div class="form-tip">支持流程变量表达式，如：${userId}</div>
             </el-form-item>
             
             <el-form-item label="Content-Type">
+              <template #label>
+                <ConfigHelpLabel label="Content-Type" content="当前运行时仅支持 application/json" />
+              </template>
               <el-select v-model="restForm.contentType">
                 <el-option label="application/json" value="application/json" />
               </el-select>
-              <div class="form-tip">当前运行时仅支持 application/json</div>
             </el-form-item>
             
             <el-form-item>
@@ -896,7 +906,6 @@
                 :rows="3"
                 placeholder='{"X-Business-Ref":"${businessRef}","X-Client-Type":"workflow"}'
               />
-              <div class="form-tip">JSON 对象，支持精确的 ${流程变量} 模板</div>
             </el-form-item>
             
             <el-form-item v-if="restForm.method !== 'GET'">
@@ -913,7 +922,6 @@
                 :placeholder="getRestBodyPlaceholder()"
                 class="code-input"
               />
-              <div class="form-tip">JSON 对象或数组，支持精确的 ${流程变量} 模板</div>
             </el-form-item>
             
             <el-form-item>
@@ -929,7 +937,6 @@
                 :rows="2"
                 placeholder='{"page": "${page}", "size": "10"}'
               />
-              <div class="form-tip">URL查询参数，JSON格式，支持流程变量</div>
             </el-form-item>
             
             <SettingsSection
@@ -946,8 +953,10 @@
               <el-row :gutter="10">
                 <el-col :span="12">
                   <el-form-item label="总超时(秒)">
+                    <template #label>
+                      <ConfigHelpLabel label="总超时(秒)" content="全部重试与等待共用此时间，实际执行受系统超时上限限制。" />
+                    </template>
                     <el-input-number v-model="restForm.timeout" :min="1" :max="120" style="width: 100%" />
-                    <div class="form-tip">全部重试与等待共用此时间，实际执行受系统超时上限限制。</div>
                   </el-form-item>
                 </el-col>
                 <el-col :span="12">
@@ -978,7 +987,6 @@
                   :rows="3"
                   placeholder='{"data.id": "userId", "data.status": "status", "code": "resultCode"}'
                 />
-                <div class="form-tip">将响应结果映射到流程变量，JSON格式：响应路径 -> 变量名</div>
               </el-form-item>
             </SettingsSection>
           </template>
@@ -1003,10 +1011,12 @@
         >
           <el-form :model="sendForm" label-width="100px" size="small">
           <el-form-item label="发送渠道">
+            <template #label>
+              <ConfigHelpLabel label="发送渠道" content="当前运行时仅支持站内信" />
+            </template>
             <el-checkbox-group v-model="sendForm.channels">
               <el-checkbox label="message">站内信</el-checkbox>
             </el-checkbox-group>
-            <div class="form-tip">当前运行时仅支持站内信</div>
           </el-form-item>
           
           <el-form-item label="接收人">
@@ -1053,11 +1063,13 @@
         >
           <el-form :model="receiveForm" label-width="100px" size="small">
           <el-form-item label="消息名称">
+            <template #label>
+              <ConfigHelpLabel label="消息名称" content="外部系统需要发送此名称的消息来触发流程继续" />
+            </template>
             <el-input 
               v-model="receiveForm.messageRef" 
               placeholder="如：paymentCallback"
             />
-            <div class="form-tip">外部系统需要发送此名称的消息来触发流程继续</div>
           </el-form-item>
           
           <el-form-item label="超时设置">
@@ -1113,11 +1125,13 @@
           </el-form-item>
           
           <el-form-item label="负责人">
+            <template #label>
+              <ConfigHelpLabel label="负责人" content="仅作记录，不发送待办" />
+            </template>
             <el-input 
               v-model="manualForm.responsible" 
               placeholder="负责完成此任务的人员"
             />
-            <div class="form-tip">仅作记录，不发送待办</div>
           </el-form-item>
           
           <el-form-item label="预计工时">
@@ -1138,11 +1152,13 @@
         >
           <el-form :model="ruleForm" label-width="100px" size="small">
           <el-form-item label="决策表Key">
+            <template #label>
+              <ConfigHelpLabel label="决策表Key" content="关联的DMN决策表定义Key" />
+            </template>
             <el-input 
               v-model="ruleForm.decisionRef" 
               placeholder="如：approvalLevelDecision"
             />
-            <div class="form-tip">关联的DMN决策表定义Key</div>
           </el-form-item>
           
           <el-form-item>
@@ -1158,20 +1174,23 @@
               :rows="3"
               placeholder='{"amount": "${amount}", "dept": "${department}"}'
             />
-            <div class="form-tip">传递给决策表的输入变量映射</div>
           </el-form-item>
           
           <el-form-item label="结果变量">
+            <template #label>
+              <ConfigHelpLabel label="结果变量" content="存储决策结果的变量名" />
+            </template>
             <el-input 
               v-model="ruleForm.resultVariable" 
               placeholder="如：decisionResult"
             />
-            <div class="form-tip">存储决策结果的变量名</div>
           </el-form-item>
           
           <el-form-item label="映射结果">
+            <template #label>
+              <ConfigHelpLabel label="映射结果" content="是否将决策结果映射到流程变量" />
+            </template>
             <el-switch v-model="ruleForm.mapDecisionResult" />
-            <div class="form-tip">是否将决策结果映射到流程变量</div>
           </el-form-item>
           </el-form>
         </SettingsSection>
@@ -1198,6 +1217,9 @@
         >
           <el-form :model="callForm" label-width="100px" size="small">
           <el-form-item label="子流程Key">
+            <template #label>
+              <ConfigHelpLabel label="子流程Key" content="被调用的子流程定义Key" />
+            </template>
             <el-select 
               v-model="callForm.calledElement" 
               placeholder="选择要调用的子流程"
@@ -1214,7 +1236,6 @@
                 :value="process.key" 
               />
             </el-select>
-            <div class="form-tip">被调用的子流程定义Key</div>
           </el-form-item>
           
           <el-form-item label="调用方式">
@@ -1248,7 +1269,6 @@
                 :rows="3"
                 placeholder='{"subProcessVar": "${parentVar}"}'
               />
-              <div class="form-tip">传递给子流程的变量映射</div>
             </el-form-item>
 
             <el-form-item>
@@ -1264,7 +1284,6 @@
                 :rows="3"
                 placeholder='{"parentResult": "${subProcessResult}"}'
               />
-              <div class="form-tip">子流程返回后映射到主流程的变量</div>
             </el-form-item>
 
             <el-form-item label="业务Key">
@@ -1292,6 +1311,7 @@
               <ConfigHelpLabel
                 label="条件类型"
                 help-key="process.sequenceConditionType"
+                content="无条件：此连线在任何情况下都会执行。表达式：计算为真时通过，每个条件组可选择全部满足或任一满足，组内可继续添加子条件组。默认流：其他条件都不满足时执行，一个排他网关只能有一条默认流；建议其他分支都设置条件表达式，最后一个分支设为默认流。"
               />
             </template>
             <el-radio-group v-model="conditionForm.type" @change="onConditionTypeChange">
@@ -1327,13 +1347,6 @@
             </el-alert>
 
             <div v-else class="condition-group-editor">
-              <el-alert
-                title="每个条件组可选择“全部满足”或“任一满足”，组内还可以继续添加子条件组。"
-                type="info"
-                :closable="false"
-                show-icon
-                class="condition-group-tip"
-              />
               <!-- 仅上游用户任务提供审批选项时才展示 approved，避免出现无法选择值的空下拉框。 -->
               <FlowConditionGroupEditor
                 :group="conditionRoot"
@@ -1354,30 +1367,6 @@
               />
             </el-form-item>
           </template>
-          
-          <el-alert 
-            v-if="conditionForm.type === 'default'" 
-            type="warning" 
-            :closable="false"
-          >
-            <template #title>
-              <div>
-                <strong>默认流</strong>：当其他条件都不满足时执行
-              </div>
-            </template>
-            <div class="default-flow-tip">
-              <p>⚠️ 一个排他网关只能有一个默认流</p>
-              <p>💡 建议在其他分支都设置条件表达式，最后一个分支设为默认流</p>
-            </div>
-          </el-alert>
-          
-          <el-alert 
-            v-if="conditionForm.type === ''" 
-            type="info" 
-            :closable="false"
-          >
-            无条件：此连线在任何情况下都会执行
-          </el-alert>
           </el-form>
         </SettingsSection>
       </section>
@@ -1411,6 +1400,9 @@
           </el-alert>
 
           <el-form-item label="节点表单">
+              <template #label>
+                <ConfigHelpLabel label="节点表单" content="默认模式应用时绑定当前默认表单，发布时锁定其版本快照。自定义组件表单仍通过实体表单定义统一绑定。" />
+              </template>
               <el-select
                 v-model="formConfig.entityFormId"
                 placeholder="请选择节点表单"
@@ -1450,32 +1442,29 @@
                   </div>
                 </el-option>
               </el-select>
-              <div class="form-tip">
-                默认模式应用时绑定当前默认表单，发布时锁定其版本快照。
-              </div>
               <div
                 v-if="boundEntity && !entityFormsLoading && entityFormOptions.length === 0"
-                class="form-tip"
+                class="form-status"
               >
                 暂无可用表单，请先
                 <el-button type="primary" link size="small" @click="goToFormDesign">创建表单</el-button>
               </div>
-              <div class="form-tip" v-if="!boundEntity">
+              <div class="form-status" v-if="!boundEntity">
                 当前流程未绑定实体，无法指定实体表单
               </div>
-              <div v-if="selectedEntityForm?.customComponent" class="custom-component-form-tip">
+              <div v-if="selectedEntityForm?.customComponent" class="custom-component-form-status">
                 <el-tag size="small" type="warning">自定义组件表单</el-tag>
                 <span>
-                  该实体表单由 {{ selectedEntityForm.customComponent }} 渲染，节点仍通过实体表单定义统一绑定。
+                  渲染组件：{{ selectedEntityForm.customComponent }}
                 </span>
               </div>
           </el-form-item>
 
           <el-form-item v-if="hasResolvedEntityFormSelection" label="强制整表只读">
+            <template #label>
+              <ConfigHelpLabel label="强制整表只读" content="开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。" />
+            </template>
             <el-switch v-model="formConfig.isReadonly" />
-            <div class="form-tip">
-              开启后，本节点所有办理表单均不可编辑，并覆盖表单字段的“审批可编辑”配置。
-            </div>
           </el-form-item>
           </el-form>
         </SettingsSection>
@@ -1576,22 +1565,31 @@
           </el-form-item>
           <template v-if="ccForm.enabled">
             <el-form-item label="触发时机">
+              <template #label>
+                <ConfigHelpLabel
+                  label="触发时机"
+                  :content="isUserTask ? '流程实际到达此节点并创建任务、或完成此节点任务时触发知会。' : '流程执行到此知会节点时触发知会。'"
+                />
+              </template>
               <el-select v-model="ccForm.timings" multiple style="width:100%">
                 <el-option v-if="isUserTask" label="任务创建时" value="TASK_CREATE" />
                 <el-option v-if="isUserTask" label="任务完成时" value="TASK_COMPLETE" />
                 <el-option v-if="isServiceTask || isSendTask" label="执行到知会节点" value="EXPLICIT" />
               </el-select>
-              <div v-if="isUserTask" class="form-tip">流程实际到达此节点并创建任务、或完成此节点任务时触发知会。</div>
             </el-form-item>
             <el-form-item label="通知渠道">
+              <template #label>
+                <ConfigHelpLabel label="通知渠道" content="邮件、短信通过后端注册通知渠道扩展，不在流程事务内直接发送" />
+              </template>
               <el-checkbox-group v-model="ccForm.channels">
                 <el-checkbox label="IN_APP">站内知会</el-checkbox>
               </el-checkbox-group>
-              <div class="form-tip">邮件、短信通过后端注册通知渠道扩展，不在流程事务内直接发送</div>
             </el-form-item>
             <el-form-item label="包含当前办理人">
+              <template #label>
+                <ConfigHelpLabel label="包含当前办理人" content="关闭时，收件人规则中的当前办理人也会被排除；需要本人接收知会时请开启。" />
+              </template>
               <el-switch v-model="ccForm.includeOperator" />
-              <div class="form-tip">关闭时，收件人规则中的当前办理人也会被排除；需要本人接收知会时请开启。</div>
             </el-form-item>
             <el-form-item v-if="isUserTask" label="允许手工知会">
               <template #label>
@@ -1601,9 +1599,6 @@
                 />
               </template>
               <el-switch v-model="ccForm.allowManualCc" />
-              <div class="form-tip">
-                关闭后，办理人不能临时添加知会对象，只执行节点预配置的收件人规则。
-              </div>
             </el-form-item>
             <SettingsSection
               title="收件人与展示"
@@ -1730,6 +1725,12 @@
             </template>
 
             <el-form-item label="跳过方式">
+              <template #label>
+                <ConfigHelpLabel
+                  label="跳过方式"
+                  content="始终跳过会直接进入后续流转，不创建待办，也不写入当前节点审批结果或意见。条件跳过在表达式为 true 时跳过，为 false 时正常等待办理。条件组可选择实体字段并组合条件；为保证发布安全，仅提供比较操作符。"
+                />
+              </template>
               <el-radio-group
                 :model-value="advancedForm.skipMode"
                 @update:model-value="onAutoSkipModeChange"
@@ -1756,13 +1757,6 @@
               </el-alert>
 
               <div v-else class="condition-group-editor">
-                <el-alert
-                  title="选择实体字段并组合条件；为保证发布安全，仅提供比较操作符。"
-                  type="info"
-                  :closable="false"
-                  show-icon
-                  class="condition-group-tip"
-                />
                 <FlowConditionGroupEditor
                   :group="skipConditionRoot"
                   :entity-fields="entityFields"
@@ -1781,21 +1775,6 @@
                 />
               </el-form-item>
             </template>
-
-            <el-alert
-              v-if="advancedForm.skipMode === AUTO_SKIP_MODE.ALWAYS"
-              type="warning"
-              :closable="false"
-              show-icon
-              title="将直接进入后续流转：不创建待办，也不会写入当前节点审批结果或意见。"
-            />
-            <el-alert
-              v-else-if="advancedForm.skipMode === AUTO_SKIP_MODE.CONDITIONAL"
-              type="info"
-              :closable="false"
-              show-icon
-              title="表达式为 true 时不创建待办或审批结果；为 false 时正常等待办理。"
-            />
           </SettingsSection>
 
           <NodeSlaEditor v-if="isUserTask" v-model="slaForm"
@@ -1836,7 +1815,7 @@ import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperti
 import EmptyAssigneePolicyEditor from "./EmptyAssigneePolicyEditor.vue"
 import { ref, computed, watch, onMounted, onBeforeUnmount, toRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Delete, View, WarningFilled, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import { processApi } from '@/api/process'
@@ -1878,6 +1857,7 @@ import FlowActionConfigPanel from '@/components/FlowActionConfigPanel.vue'
 import FlowConditionGroupEditor from '@/components/FlowConditionGroupEditor.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import { getConfigFieldHelp } from '@/shared/config-field-help'
 import NodeOperationPermissions from '@/components/NodeOperationPermissions.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import UserSelector from '@/components/UserSelector.vue'
@@ -4887,9 +4867,9 @@ async function saveStatusConfig() {
 .config-section--actions {
   min-height: 100%;
 }
-.form-tip { font-size: 12px; color: #909399; margin-top: 5px; }
+.form-status { font-size: 12px; color: #909399; margin-top: 5px; }
 .legacy-form-binding-alert { margin-bottom: 12px; }
-.custom-component-form-tip {
+.custom-component-form-status {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4897,12 +4877,8 @@ async function saveStatusConfig() {
   color: #606266;
   font-size: 12px;
 }
-.assignment-reuse-tip { margin: -2px 0 12px 100px; }
 .legacy-assignment-alert { margin-bottom: 12px; }
-.assignee-reference-label { display: inline-flex; align-items: center; gap: 4px; }
-.assignee-reference-help { color: #909399; cursor: help; }
 .reference-node-id { float: right; margin-left: 12px; color: #909399; font-size: 12px; }
-.relative-position-notice,
 .relative-position-summary { margin-bottom: 12px; }
 .relative-position-preview { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 .relative-position-holder + .relative-position-holder { margin-left: 6px; }
@@ -5007,21 +4983,10 @@ async function saveStatusConfig() {
   margin-left: 8px;
 }
 
-.default-flow-tip {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.default-flow-tip p {
-  margin: 0;
-}
-
 .condition-group-editor {
   margin-bottom: 15px;
 }
 
-.condition-group-tip,
 .condition-parse-warning {
   margin-bottom: 12px;
 }

@@ -1,6 +1,7 @@
 package com.workflow.migration.application;
 
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
+import com.workflow.admin.security.context.UserContext;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -107,7 +108,7 @@ import java.util.regex.Pattern;
  */
 @Service
 @RequiredArgsConstructor
-public class ConfigMigrationAssetService implements MigrationAssetPort {
+public class ConfigMigrationAssetService implements MigrationAssetPort, com.workflow.contracts.migration.port.ExcelConfigurationPublicationPort {
     public static final String ENTITY = "ENTITY";
     public static final String PROCESS = "PROCESS";
     public static final String DICTIONARY = "DICTIONARY";
@@ -173,6 +174,36 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
     private final ObjectMapper objectMapper;
     private final DatabaseQueryDialect queryDialect;
     private final ConfigMigrationAssetDependencyService assetDependencyService;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
+
+    /** Excel 独立发布也形成完整 ENTITY 资产，避免默认指针变化漏过导出及本地冲突检测。 */
+    @Override
+    @Transactional
+    public void recordPublished(String entityId) {
+        EntityDefinition entity = entityMapper.selectById(entityId);
+        if (entity == null || entity.getStorageMode() == EntityDefinition.StorageMode.SYSTEM)
+            throw new IllegalArgumentException("Excel 迁移资产所属实体不存在或不可配置");
+        if (excelConfigurations.isPublicationPending()) return;
+        ConfigMigrationAsset latest = findLatest(ENTITY, entity.getEntityCode());
+        if (latest == null || !COMPLETE.equals(latest.getSnapshotCompleteness()))
+            throw new IllegalStateException("请先发布实体并生成完整迁移资产，再发布 Excel 配置");
+        // Excel 独立发布不能顺带发布实体/表单草稿；保留已发布资产的其他分区，只覆盖本次 Excel 配置。
+        Map<String, Object> snapshot = mapValue(parseJson(latest.getSnapshotJson(), Map.of()));
+        snapshot.put(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION,
+                excelConfigurations.exportPublished(entity.getEntityCode()));
+        List<Map<String, Object>> dependencies = new ArrayList<>(castList(snapshot.get("dependencies")).stream()
+                .filter(value -> !String.valueOf(value.get("source")).startsWith("Excel ")).toList());
+        dependencies.addAll(ConfigMigrationExcelSupport.dependencies(snapshot));
+        snapshot.put("dependencies", deduplicateDependencies(dependencies));
+        if (sameSnapshot(latest, snapshot)) return;
+        int version = latest == null || latest.getSourceVersion() == null ? 1 : latest.getSourceVersion() + 1;
+        ConfigMigrationPublishRequest request = new ConfigMigrationPublishRequest();
+        saveAsset(ENTITY, entity.getEntityCode(), entity.getEntityName(),
+                "EXCEL_" + version + "_" + packageCodec.hashSnapshot(snapshot).substring(0, 40), version,
+                "Excel 方案或默认设置发布", effectiveTag(request), effectiveMark(request), COMPLETE,
+                snapshot, castList(snapshot.get("dependencies")), LocalDateTime.now(), UserContext.getUsername());
+    }
 
     /**
      * 查询配置迁移资产；查询结果供调用方展示或继续处理。
@@ -1423,6 +1454,12 @@ public class ConfigMigrationAssetService implements MigrationAssetPort {
         }
         collectExtensionDependencies(snapshot, dependencies);
         collectViewCompositionDependencies(snapshot, dependencies);
+        if (excelConfigurations != null) {
+            snapshot.put(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION,
+                    excelConfigurations.exportPublished(entity.getEntityCode()));
+            ConfigMigrationExcelSupport.sanitizeInterfaces(snapshot, objectMapper);
+            dependencies.addAll(ConfigMigrationExcelSupport.dependencies(snapshot));
+        }
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
     }

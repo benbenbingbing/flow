@@ -1,4 +1,5 @@
 <template>
+  <ExcelActionDialog ref="excelActionDialog" @imported="emit('success')" />
   <el-dialog
     v-model="presentedDialogVisible"
     width="75%"
@@ -141,6 +142,7 @@
 </template>
 
 <script setup lang="ts">
+import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import FormButtonActionHost from '@/components/FormButtonActionHost.vue'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import { resolvePageParameters } from '@flow/workflow-core/page-parameters'
@@ -149,6 +151,8 @@ import { useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'
 import { showRequestError } from '@/shared/request'
 import { applyFormEffects, confirmFormAction } from '@/shared/form-event-effects'
+import ExcelActionDialog from '@/components/excel/ExcelActionDialog.vue'
+const excelActionDialog = ref(null)
 import { ElMessage } from 'element-plus'
 import { entityDataApi } from '@/api/entity'
 import { completeTask } from '@/api/processTask'
@@ -201,9 +205,7 @@ const props = withDefaults(defineProps<{
   entityDefinition?: any
   entityFields?: any[]
   listKey?: string
-  listReleaseId?: string
-  listReleaseVersion?: number | null
-  listReleaseResolutionToken?: string
+  listConfigHash?: string
   entityStatusOptions?: any[]
   formPresentation?: 'seamless' | 'dialog'
 }>(), {
@@ -212,9 +214,7 @@ const props = withDefaults(defineProps<{
   entityDefinition: () => ({}),
   entityFields: () => [],
   listKey: '',
-  listReleaseId: '',
-  listReleaseVersion: null,
-  listReleaseResolutionToken: '',
+  listConfigHash: '',
   entityStatusOptions: () => [],
   formPresentation: 'dialog'
 })
@@ -227,12 +227,10 @@ const userStore = useUserStore()
 const router = useRouter()
 const launchRuntimeContext = ref<Record<string, any>>({})
 const listReleaseContext = computed(() => ({
-  releaseId: props.listReleaseId || undefined,
-  releaseVersion: props.listReleaseVersion ?? undefined,
-  releaseResolutionToken:
-    props.listReleaseResolutionToken || undefined,
-  viewCompositionTraversalToken:
-    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+  configHash:
+    props.listConfigHash || undefined,
+  compositionContext:
+    launchRuntimeContext.value?.compositionContext || undefined
 }))
 
 const processDialogVisible = ref(false)
@@ -250,18 +248,11 @@ const isViewMode = ref(false)
 const overrideForm = ref<any>(null)
 const runtimeDiagnosticsRef = ref<InstanceType<typeof RuntimeVersionDiagnostics>>()
 const formReleaseContext = computed(() => ({
-  releaseId:
-    overrideForm.value?.runtimeReleaseId
-    || overrideForm.value?.formReleaseId
-    || undefined,
-  releaseVersion:
-    overrideForm.value?.runtimeReleaseVersion
-    ?? overrideForm.value?.formReleaseVersion
-    ?? undefined,
-  releaseResolutionToken:
-    overrideForm.value?.releaseResolutionToken || undefined,
-  viewCompositionTraversalToken:
-    launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+  runtimeContext: buildRuntimeContext(launchRuntimeContext.value, overrideForm.value || {}),
+  configHash:
+    overrideForm.value?.configHash || undefined,
+  compositionContext:
+    launchRuntimeContext.value?.compositionContext || undefined
 }))
 const basicInfoRef = ref<any>()
 const nodeTabRefs = ref<Record<string, any>>({})
@@ -346,10 +337,12 @@ const approvalRuntimeContext = computed(() => ({
   mode: approvalRuntimeMode.value,
   record: entityData.value,
   task: currentTask.value,
+  taskId: currentTask.value?.taskId,
+  runtimeContext: effectiveFormConfig.value?.runtimeContext,
   processInstanceId: currentTask.value?.processInstanceId,
   entityStatusMap: buildEntityStatusMap(props.entityStatusOptions),
   entityStatusOptions: props.entityStatusOptions,
-  releaseResolutionToken: effectiveFormConfig.value?.releaseResolutionToken
+  configHash: effectiveFormConfig.value?.configHash
 }))
 const dataSourceRuntime = createFormDataSourceRuntime({
   executeDataSource: uiExtensionRuntimeApi.execute,
@@ -374,18 +367,9 @@ const approvalActionFormContext = computed(() => {
   const form = approvalNormalForm.value || effectiveFormConfig.value || {}
   return {
     formId: form.id || form.formId || undefined,
-    releaseId:
-      form.runtimeReleaseId
-      || form.formReleaseId
-      || form.effectiveFormReleaseId
-      || formReleaseContext.value.releaseId,
-    releaseVersion:
-      form.runtimeReleaseVersion
-      ?? form.formReleaseVersion
-      ?? formReleaseContext.value.releaseVersion,
-    releaseResolutionToken:
-      form.releaseResolutionToken
-      || formReleaseContext.value.releaseResolutionToken
+    configHash:
+      form.configHash
+      || formReleaseContext.value.configHash
   }
 })
 const resolvedDiagnosticForm = computed(() =>
@@ -397,10 +381,8 @@ const dialogRuntimeDiagnosticEntries = computed(() => {
   const processValue = process.processInstanceId
     ? formatRuntimeCodeVersion(process.processKey, process.processVersion)
     : '未关联流程'
-  const formVersion = form?.runtimeReleaseVersion ?? form?.formReleaseVersion
-  const hotfixSuffix = form?.hotfixApplied === true ? '（已应用热修复）' : ''
   const formValue = form
-    ? `${formatRuntimeCodeVersion(form.formKey, formVersion)}${hotfixSuffix}`
+    ? form.formKey || form.name || '未记录运行表单'
     : '未记录运行表单'
   return [
     ...(process.processInstanceId
@@ -413,10 +395,7 @@ const dialogRuntimeDiagnosticCopyEntries = computed(() => {
   const process = processRuntimeMetadata.value || {}
   return [
     ...(props.listKey
-      ? [{ label: '列表', value: formatRuntimeCodeVersion(
-        props.listKey,
-        props.listReleaseVersion
-      ) }]
+      ? [{ label: '列表', value: props.listKey }]
       : []),
     ...dialogRuntimeDiagnosticEntries.value,
     { label: '记录 ID', value: entityData.value?.id },
@@ -429,12 +408,8 @@ const dialogRuntimeDiagnosticResetKey = computed(() => [
   currentTask.value?.taskId || '',
   entityData.value?.id || '',
   processRuntimeMetadata.value?.processInstanceId || '',
-  resolvedDiagnosticForm.value?.runtimeReleaseId
-    || resolvedDiagnosticForm.value?.formReleaseId
+  resolvedDiagnosticForm.value?.configHash
     || '',
-  resolvedDiagnosticForm.value?.runtimeReleaseVersion
-    ?? resolvedDiagnosticForm.value?.formReleaseVersion
-    ?? ''
 ].join(':'))
 
 function handleDialogClosed() {
@@ -541,8 +516,8 @@ async function loadFormActions() {
     hasProcessInstance: Boolean(currentTask.value?.processInstanceId),
     canApprove: !isViewMode.value && Boolean(currentTask.value?.taskId),
     systemEntity: props.entityDefinition?.storageMode === 'SYSTEM',
-    viewCompositionTraversalToken:
-      launchRuntimeContext.value?.viewCompositionTraversalToken || undefined
+    compositionContext:
+      launchRuntimeContext.value?.compositionContext || undefined
   })
 }
 
@@ -878,9 +853,11 @@ async function handleFormAction(action: any) {
           recordId: entityData.value?.id || undefined,
           taskId: currentTask.value?.taskId || undefined,
           task: currentTask.value,
+  taskId: currentTask.value?.taskId,
+  runtimeContext: effectiveFormConfig.value?.runtimeContext,
           formData: entityData.value,
           processInstanceId: currentTask.value?.processInstanceId,
-          viewCompositionTraversalToken: context?.viewCompositionTraversalToken || undefined
+          compositionContext: context?.compositionContext || undefined
         })
       },
       async applyResult(result: any) {
@@ -898,6 +875,7 @@ async function handleFormAction(action: any) {
 
 async function applyFormEventResult(result: any, isCurrent = () => true) {
   await applyFormEffects(result, {
+    excel: (effect: any) => excelActionDialog.value.open(effect),
     getRecord: () => entityData.value,
     setField: (key: string, value: any) => { entityData.value[key] = value },
     getFields: () => props.entityFields,
@@ -971,10 +949,11 @@ const submitApprove = async () => {
       recordId: entityData.value?.id,
       listKey: props.listKey || undefined,
       formId: approvalActionFormContext.value.formId,
-      formReleaseId: approvalActionFormContext.value.releaseId,
-      formReleaseVersion: approvalActionFormContext.value.releaseVersion,
-      formReleaseResolutionToken:
-        approvalActionFormContext.value.releaseResolutionToken
+
+
+      runtimeContext: formReleaseContext.value.runtimeContext,
+      formConfigHash:
+        approvalActionFormContext.value.configHash
     }
     if (changedSelections.length > 0) {
       completePayload.nextApprovalScopeKey = nextApproverPreview.value.scopeKey

@@ -76,11 +76,8 @@ public class TaskActionController {
         Map<String, Object> source = values == null ? Map.of() : values;
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId(text(source.get("formId")));
-        request.setReleaseId(text(source.get("formReleaseId")));
-        request.setReleaseVersion(integer(source.get(
-                "formReleaseVersion")));
-        request.setReleaseResolutionToken(text(source.get(
-                "formReleaseResolutionToken")));
+        request.setConfigHash(text(source.get(
+                "formConfigHash")));
         request.setEntityCode(text(source.get("entityCode")));
         request.setListKey(text(source.get("listKey")));
         request.setMode("approve");

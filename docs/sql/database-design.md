@@ -952,7 +952,7 @@ active_node_key varchar(100) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS ((ca
 
 `published_version` 在 V001 的初始默认值为 `1`，V041 已调整为 `0`，当前创建代码也显式设置为 `0`。文档采用迁移后的值。
 
-Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`pinnedRelease`、`releaseResolutionToken` 标记为 `exist = false`，属于运行时数据，不计入上述 33 个数据库字段。本表也没有独立的创建人、修改人字段。
+Java 对象中的 `publishedSnapshot`、`runtimeFields`、`viewCompositions`、`pinnedRelease`、`configHash`、`runtimeContext` 标记为 `exist = false`，属于运行时数据，不计入上述 33 个数据库字段。本表也没有独立的创建人、修改人字段。
 
 #### 2.3.4 枚举与业务规则
 

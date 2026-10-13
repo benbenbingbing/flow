@@ -113,6 +113,63 @@ class UiConfigInterfaceReferenceValidatorTest {
                         "list-a", "entity-a", null, List.of(field)));
     }
 
+    @Test
+    void acceptsCascaderInterfaceFromPersistedNodeJsonDocuments() {
+        TestContext context = cascaderContext();
+        assertDoesNotThrow(() -> context.validator().validate(cascaderSnapshot(true)));
+    }
+
+    @Test
+    void acceptsCascaderInterfaceFromStructuredNodeWithoutRevalidatingItsPropsAsANode() {
+        TestContext context = cascaderContext();
+        assertDoesNotThrow(() -> context.validator().validate(cascaderSnapshot(false)));
+    }
+
+    @Test
+    void rejectsCascaderWriteInterface() {
+        TestContext context = cascaderContext();
+        context.definition().setInterfaceKind("WRITE");
+        assertThrows(IllegalArgumentException.class, () -> context.validator().validate(cascaderSnapshot(true)));
+    }
+
+    @Test
+    void rejectsCascaderInterfaceWithWrongScopeOrOutput() {
+        TestContext context = cascaderContext();
+        context.definition().setScopeId("other-form");
+        assertThrows(IllegalArgumentException.class, () -> context.validator().validate(cascaderSnapshot(true)));
+        context.definition().setScopeId("form-a");
+        context.definition().setOutputSchemaDocument("{\"type\":\"object\"}");
+        assertThrows(IllegalArgumentException.class, () -> context.validator().validate(cascaderSnapshot(true)));
+    }
+
+    @Test
+    void rejectsMalformedStaticOptionsInPersistedNode() {
+        TestContext context = cascaderContext();
+        Map<String, Object> snapshot = Map.of("configType", "FORM",
+                "form", Map.of("id", "form-a", "entityId", "entity-a"),
+                "nodes", List.of(Map.of("nodeType", "FIELD", "componentName", "cascader",
+                        "propsDocument", "{\"componentProps\":{\"cascaderOptions\":[{\"label\":\"无编码\"}]}}")));
+        assertThrows(IllegalArgumentException.class, () -> context.validator().validate(snapshot));
+    }
+
+    private TestContext cascaderContext() {
+        TestContext context = context("FORM", "FORM", "form-a");
+        context.definition().setOutputSchemaDocument("{\"type\":\"array\"}");
+        return context;
+    }
+
+    private Map<String, Object> cascaderSnapshot(boolean documents) {
+        Map<String, Object> props = Map.of("componentType", "cascader", "componentProps",
+                Map.of("cascaderSource", "INTERFACE", "cascaderLoadMode", "CHILDREN"));
+        Map<String, Object> bindings = Map.of("FIELD_OPTIONS", Map.of("extensionId", "service-a"));
+        JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
+        return Map.of("configType", "FORM", "form", Map.of("id", "form-a", "entityId", "entity-a"),
+                "nodes", List.of(Map.of("nodeType", "FIELD", "componentName", "cascader",
+                        documents ? "propsDocument" : "props", documents ? codec.write(props, "test") : props,
+                        documents ? "dataSourceBindingsDocument" : "dataSourceBindings",
+                        documents ? codec.write(bindings, "test") : bindings)));
+    }
+
     private TestContext context(
             String contextType,
             String scopeType,

@@ -296,12 +296,13 @@ const rules = computed(() => {
   return result
 })
 const fieldContext = computed(() => ({
+  ...props.context,
   entityCode: props.entityCode,
   entityDefinition: props.entityDefinition,
   form: props.form,
   mode: props.mode,
   record: props.context?.record || { data: localValue },
-  releaseResolutionToken: props.form?.releaseResolutionToken
+  configHash: props.form?.configHash
 }))
 const modeText = computed(() => ({
   create: '新增',

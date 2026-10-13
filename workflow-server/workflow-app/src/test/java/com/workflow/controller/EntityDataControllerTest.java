@@ -8,9 +8,9 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.EntityDataActionService;
 import com.workflow.entity.data.application.EntityDataExportService;
-import com.workflow.entity.form.application.context.EntityFormReleaseContext;
+import com.workflow.entity.form.application.context.EntityFormRuntimeContext;
 import com.workflow.entity.list.application.EntityDataListConfigService;
-import com.workflow.entity.list.application.EntityListReleaseContext;
+import com.workflow.entity.list.application.EntityListRuntimeContext;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -141,7 +141,7 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("1"),
                 isNull(),
-                any(EntityListReleaseContext.class)))
+                any(EntityListRuntimeContext.class)))
                 .thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/detail/1"))
@@ -154,7 +154,7 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("1"),
                 isNull(),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
         verify(entityDataActionService, never()).getDetail(
                 anyString(), anyString(), any(), any());
     }
@@ -167,17 +167,15 @@ public class EntityDataControllerTest {
                 eq("1"),
                 eq("default"),
                 eq("form-1"),
-                any(EntityListReleaseContext.class),
-                any(EntityFormReleaseContext.class)))
+                any(EntityListRuntimeContext.class),
+                any(EntityFormRuntimeContext.class)))
                 .thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/load")
                         .param("listKey", "default")
                         .param("formId", "form-1")
-                        .param("releaseId", "list-release-2")
-                        .param("releaseVersion", "2")
-                        .param("formReleaseId", "form-release-3")
-                        .param("formReleaseVersion", "3")
+                        .param("configHash", "list-hash")
+                        .param("formConfigHash", "form-hash")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isOk())
@@ -189,13 +187,9 @@ public class EntityDataControllerTest {
                 eq("default"),
                 eq("form-1"),
                 argThat(context ->
-                        "list-release-2".equals(context.releaseId())
-                                && Integer.valueOf(2).equals(
-                                context.releaseVersion())),
+                        "list-hash".equals(context.configHash())),
                 argThat(context ->
-                        "form-release-3".equals(context.releaseId())
-                                && Integer.valueOf(3).equals(
-                                context.releaseVersion())));
+                        "form-hash".equals(context.configHash())));
     }
 
     /** 测试按流程实例查询实体数据详情接口，断言返回 200 且 ID 正确 */
@@ -205,7 +199,7 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("proc-1"),
                 isNull(),
-                any(EntityListReleaseContext.class))).thenReturn(testData);
+                any(EntityListRuntimeContext.class))).thenReturn(testData);
 
         mockMvc.perform(get("/api/entity-data/entity/test_entity/process/proc-1"))
                 .andExpect(status().isOk())
@@ -216,7 +210,7 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("proc-1"),
                 isNull(),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
     }
 
     /** 测试新增实体数据接口，断言返回 200 且数据编号正确 */
@@ -224,7 +218,7 @@ public class EntityDataControllerTest {
     void testSave() throws Exception {
         when(entityDataActionService.create(
                 any(EntityDataDTO.class),
-                any(EntityListReleaseContext.class))).thenReturn(testData);
+                any(EntityListRuntimeContext.class))).thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -235,7 +229,7 @@ public class EntityDataControllerTest {
 
         verify(entityDataActionService, times(1)).create(
                 any(EntityDataDTO.class),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
     }
 
     /** 测试更新实体数据接口，断言返回 200 且 update 方法被正确调用 */
@@ -246,7 +240,7 @@ public class EntityDataControllerTest {
                 eq("1"),
                 isNull(),
                 anyMap(),
-                any(EntityListReleaseContext.class))).thenReturn(testData);
+                any(EntityListRuntimeContext.class))).thenReturn(testData);
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/update")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -260,7 +254,7 @@ public class EntityDataControllerTest {
                 eq("1"),
                 isNull(),
                 anyMap(),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
     }
 
     /** 测试删除实体数据接口，断言返回 200 且 delete 方法被正确调用 */
@@ -270,7 +264,7 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("1"),
                 isNull(),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
 
         mockMvc.perform(post("/api/entity-data/entity/test_entity/detail/1/delete"))
                 .andExpect(status().isOk())
@@ -280,6 +274,6 @@ public class EntityDataControllerTest {
                 eq("test_entity"),
                 eq("1"),
                 isNull(),
-                any(EntityListReleaseContext.class));
+                any(EntityListRuntimeContext.class));
     }
 }

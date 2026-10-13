@@ -182,26 +182,15 @@ public class ProcessProgressDTO {
      */
     @Data
     public static class FormConfigDTO {
+        /** 页面加载时的依赖摘要，仅用于提交前检查配置变更，不代表访问权限。 */
+        private String configHash;
+        /** 下次请求重新鉴权的任务/实例定位信息，不保存客户端授权结果。 */
+        private Map<String, Object> runtimeContext;
+
         /**
          * 表单ID
          */
         private String formId;
-
-        /**
-         * 流程发布时固定的表单发布版本ID。
-         */
-        private String formReleaseId;
-
-        /**
-         * 流程发布时固定的表单发布版本号。
-         */
-        private Integer formReleaseVersion;
-        /** 实际生效的热修复发布ID */
-        private String effectiveFormReleaseId;
-        /** 是否应用兼容热修复 */
-        private Boolean hotfixApplied;
-        /** 嵌套表单解析上下文令牌 */
-        private String releaseResolutionToken;
         
         /**
          * 表单名称

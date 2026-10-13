@@ -7,6 +7,7 @@
   </section>
 </template>
 <script setup>
+import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed } from 'vue'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListDisplayConfig, normalizeSubListParameterContract, resolveSubListParameterContract } from '@flow/workflow-core/sub-list'
@@ -18,10 +19,10 @@ const missing = computed(() => resolution.value.missingRequired)
 const entityCode = computed(() => config.value.targetEntityCode || props.field.refEntityCode)
 const listKey = computed(() => config.value.listKey || props.field.refListKey)
 const queryContext = computed(() => ({ ...config.value.context, ...props.context.listContext, sourceEntityCode: props.context.entityCode, sourceRecordId: props.context.recordId || props.context.record?.id, relationKey: config.value.relationKey, parameters: { ...config.value.context?.parameters, ...props.context.listContext?.parameters, ...resolution.value.parameters } }))
-const identity = computed(() => JSON.stringify([entityCode.value, listKey.value, config.value.listReleaseId, resolution.value.queryFilters, queryContext.value]))
+const identity = computed(() => JSON.stringify([entityCode.value, listKey.value, resolution.value.queryFilters, queryContext.value]))
 function loadPage(pagination) {
   if (missing.value.length || !props.services?.loadPublishedList) throw new Error('子列表参数或查询能力尚未就绪')
-  return props.services.loadPublishedList({ entityCode: entityCode.value, listKey: listKey.value, scene: 'EMBEDDED', releaseId: config.value.listReleaseId, releaseVersion: config.value.listReleaseVersion, releaseResolutionToken: props.context.releaseResolutionToken, context: queryContext.value, filters: resolution.value.queryFilters, ...pagination })
+  return props.services.loadPublishedList({ entityCode: entityCode.value, listKey: listKey.value, scene: 'EMBEDDED', runtimeContext: childFormRuntimeContext(props.context, props.field), context: queryContext.value, filters: resolution.value.queryFilters, ...pagination })
 }
 </script>
 <style scoped>.mobile-sublist h3 { font-size: 15px; margin: 12px 0; }.sublist-message { color: var(--flow-mobile-muted); font-size: 12px; line-height: 1.6; }</style>

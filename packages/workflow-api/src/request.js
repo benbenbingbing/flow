@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { createReleaseTokenRenewal } from './releaseTokenRenewal.js'
 import {
   createSingleFlight,
   isAccessTokenExpired,
@@ -118,13 +117,11 @@ function configureEmbedDelegatedRequest({ getAccessToken } = {}) {
   if (typeof getAccessToken !== 'function') {
     throw new TypeError('Embed 委托请求缺少 token getter')
   }
-  releaseTokenRenewal.reset()
   embedDelegatedRequestContext = Object.freeze({ getAccessToken })
 }
 
 /** 清除 iframe 当前的委托会话；不会读取或修改任何浏览器认证存储。 */
 function resetEmbedDelegatedRequest() {
-  releaseTokenRenewal.reset()
   embedDelegatedRequestContext = null
 }
 
@@ -216,7 +213,6 @@ function terminateAuthSession(
     broadcast,
     reason: 'invalidated'
   })
-  releaseTokenRenewal.reset()
   if (authTerminationHandled) return
 
   authTerminationHandled = true
@@ -316,16 +312,14 @@ const request = axios.create({
   }
 })
 
-const releaseTokenRenewal = createReleaseTokenRenewal({
-  request: config => request(config),
-  getIdentity: () => {
-    const session = getSession()
-    return session.token ? String(session.userInfo?.id || session.userInfo?.username || 'authenticated') : ''
-  }
-})
-
 request.interceptors.request.use(
   async (config) => {
+    // 查询参数使用 JSON 对象表达业务来源，不能让 Axios 将路径展开成方括号参数。
+    for (const key of ['runtimeContext', 'compositionContext']) {
+      if (config.params?.[key] && typeof config.params[key] === 'object') {
+        config.params = { ...config.params, [key]: JSON.stringify(config.params[key]) }
+      }
+    }
     ensureBusinessTraceHeader(config)
     const trustedApiRequest = isTrustedApiRequest(config)
 
@@ -394,17 +388,7 @@ request.interceptors.request.use(
     }
 
     setAuthorizationHeader(config, userStore.token)
-    if (isAuthLifecycleRequest(config)) {
-      if (!String(config.url).endsWith('/auth/refresh')) releaseTokenRenewal.reset()
-      return config
-    }
-    try {
-      return await releaseTokenRenewal.prepare(config)
-    } catch (error) {
-      // 让原业务请求的统一错误出口负责提示；内部只读续期不重复弹错。
-      error.config = config
-      throw error
-    }
+    return config
   },
   (error) => Promise.reject(error)
 )
@@ -443,9 +427,6 @@ async function handleApiPayload(
 
   if (API_SUCCESS_CODES.has(payload.code)) {
     const result = normalizeApiResponse(payload)
-    if (!embedDelegatedRequestContext && isTrustedApiRequest(config)) {
-      releaseTokenRenewal.observe(result, config)
-    }
     return result
   }
 

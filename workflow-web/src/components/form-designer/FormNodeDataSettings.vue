@@ -85,6 +85,14 @@
         </el-tag>
       </template>
 
+      <div v-if="isCascader" class="form-tip" role="note">
+        {{ cascaderUsesInterface
+          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“复用与扩展 → 组件参数”设置。'
+          : '当前级联选择使用静态选项。如需接口数据，请先在“复用与扩展 → 组件参数”将数据来源改为“数据接口”。' }}
+        <el-button v-if="cascaderUsesInterface && selectedField.dataSourceUsage !== 'FIELD_OPTIONS'"
+          link type="primary" @click="selectNodeDataSourceUsage('FIELD_OPTIONS')">配置级联数据接口</el-button>
+      </div>
+
       <div class="data-source-usage-list">
         <button
           v-for="usage in nodeDataSourceUsageOptions"
@@ -119,11 +127,12 @@
           清除当前绑定
         </el-button>
       </div>
-      <el-form-item label="扩展接口">
+      <el-form-item :label="isCascaderOptions ? '级联数据接口' : '扩展接口'">
         <template #label>
           <ConfigHelpLabel
-            label="扩展接口"
-            help-key="entityForm.interfaceExtension"
+            :label="isCascaderOptions ? '级联数据接口' : '扩展接口'"
+            :help-key="isCascaderOptions ? '' : 'entityForm.interfaceExtension'"
+            :content="isCascaderOptions ? '选择已注册且支持字段选项的只读接口。请求通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级；接口返回 value、label、children 或 leaf 节点数组。' : ''"
           />
         </template>
         <el-select
@@ -141,6 +150,9 @@
           />
         </el-select>
         <div class="form-tip">仅显示当前用途和表单范围可用的完整接口。</div>
+        <div v-if="isCascaderOptions" class="form-tip">
+          接口返回节点数组；逐级模式须提供 leaf。保持完整路径数组存值，选项加载不会自动修改已填写数据。
+        </div>
       </el-form-item>
       <details class="property-advanced">
         <summary>输入与输出映射</summary>
@@ -437,6 +449,10 @@ const {
 const canEditSelectedDataSourceUsage = computed(() =>
   availableNodeDataSourceUsages.value.some(usage => usage.value === selectedField.value?.dataSourceUsage)
 )
+
+const isCascader = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'cascader')
+const cascaderUsesInterface = computed(() => safeParseConfig(selectedField.value?.componentProps).cascaderSource === 'INTERFACE')
+const isCascaderOptions = computed(() => isCascader.value && selectedField.value?.dataSourceUsage === 'FIELD_OPTIONS')
 
 const selectedChildRelease = computed(() => childFormReleases.value[0] || null)
 

@@ -77,11 +77,36 @@ class UiViewCompositionRuntimeServiceTest {
     private EntityActionCapabilityService capabilityService;
     @Mock
     private UiInterfaceExtensionService dataSourceService;
-    @Mock
-    private UiReleaseResolutionTokenService releaseTokenService;
-    @Mock
-    private UiViewCompositionTokenService compositionTokenService;
     private UiViewCompositionRuntimeService service;
+
+    @Test
+    void changedConfigHashRejectsOldPage() {
+        Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
+        fixture.request().setConfigHash("old-config");
+        assertEquals("VIEW_COMPOSITION_CONFIG_CHANGED", assertThrows(BusinessConflictException.class,
+                () -> service.resolve(fixture.request())).getErrorCode());
+        org.mockito.Mockito.verifyNoInteractions(dataSourceService);
+    }
+
+    @Test
+    void excessivePathIsRejectedBeforeReadingRecords() {
+        UiViewCompositionResolveRequest request = new UiViewCompositionResolveRequest();
+        request.setPath(java.util.Collections.nCopies(8, new UiViewCompositionResolveRequest.PathEntry()));
+        assertEquals("VIEW_COMPOSITION_RUNTIME_DEPTH_EXCEEDED", assertThrows(BusinessConflictException.class,
+                () -> service.resolve(request)).getErrorCode());
+        verify(dynamicDataService, never()).findAccessibleById(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void tamperedPathRecordCannotLeaveParentRelationScope() {
+        Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
+        when(dynamicDataService.findAccessibleById("target_entity", "other-record", "target-list-key"))
+                .thenReturn(record("other-record", Map.of("sourceRef", "other-source")));
+        UiViewCompositionResolveRequest.PathEntry hop = new UiViewCompositionResolveRequest.PathEntry();
+        hop.setCompositionKey("nested"); hop.setRecordId("other-record");
+        fixture.request().setPath(List.of(hop));
+        assertThrows(BusinessForbiddenException.class, () -> service.resolve(fixture.request()));
+    }
 
     @Test
     void actionOnlySpecialHandlingDoesNotReplaceStandardDataResolution() {
@@ -120,8 +145,6 @@ class UiViewCompositionRuntimeServiceTest {
                 systemEntityReadService,
                 capabilityService,
                 dataSourceService,
-                releaseTokenService,
-                compositionTokenService,
                 new JsonDocumentCodec(objectMapper),
                 objectMapper);
     }
@@ -150,15 +173,8 @@ class UiViewCompositionRuntimeServiceTest {
                 fixture.expectedFilters(),
                 response.getFixedFilters());
         assertEquals("target-list-release", response.getTargetReleaseId());
-        assertEquals("list-context-token", response.getListContextToken());
-        assertEquals(
-                "traversal-context-token",
-                response.getTraversalContextToken());
+        assertEquals(fixture.request().getOwnerId(), response.getCompositionContext().getOwnerId());
         assertEquals("source-record", response.getSourceRecordId());
-        assertEquals("row-context-token", response.getRowContextToken());
-        assertEquals(
-                response.getRowContextToken(),
-                response.getActionContextToken());
         verify(entitySnapshotService, never())
                 .getLatestByEntityCode(org.mockito.ArgumentMatchers.anyString());
     }
@@ -203,71 +219,9 @@ class UiViewCompositionRuntimeServiceTest {
         assertThrows(BusinessConflictException.class, () -> service.resolve(fixture.request()));
     }
 
-    @Test
-    void signedPinnedFormOwnerReleaseRemainsResolvableAfterRepublish() {
-        Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
-        fixture.request().setReleaseResolutionToken(
-                "signed-old-release-token");
-        fixture.ownerRelease().setStatus("INACTIVE");
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "owner-form",
-                "owner-release",
-                4,
-                "signed-old-release-token"))
-                .thenReturn(new UiConfigReleaseService
-                        .ResolvedUiEventSnapshot(
-                                fixture.ownerSnapshot(),
-                                "owner-release",
-                                4,
-                                "owner-release",
-                                false));
 
-        UiViewCompositionResolveResponse response =
-                service.resolve(fixture.request());
 
-        assertEquals("owner-release", response.getReleaseId());
-        assertEquals(
-                fixture.expectedFilters(),
-                response.getFixedFilters());
-        verify(releaseService).resolveRuntimeEventSnapshot(
-                "owner-form",
-                "owner-release",
-                4,
-                "signed-old-release-token");
-        verify(releaseService, never()).resolveRuntimeEventSnapshot(
-                "owner-form", "owner-release", 4, null);
-    }
 
-    @ParameterizedTest
-    @ValueSource(strings = {
-            "tampered-release-token",
-            "expired-release-token"
-    })
-    void invalidPinnedFormOwnerReleaseTokenFailsClosed(String token) {
-        Fixture fixture = fixture("REVERSE_REFERENCE", "LIST", true);
-        fixture.request().setReleaseResolutionToken(token);
-        String reason = token.startsWith("tampered")
-                ? "表单发布解析令牌签名无效"
-                : "表单发布解析令牌已过期";
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "owner-form", "owner-release", 4, token))
-                .thenThrow(new BusinessForbiddenException(
-                        "INVALID_RELEASE_RESOLUTION_TOKEN",
-                        reason));
-
-        BusinessForbiddenException exception = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.resolve(fixture.request()));
-
-        assertEquals(
-                "INVALID_RELEASE_RESOLUTION_TOKEN",
-                exception.getErrorCode());
-        assertEquals(reason, exception.getMessage());
-        verify(dynamicDataService, never()).findAccessibleById(
-                "source_entity", "source-record", null);
-        verify(releaseService, never()).resolveRuntimeEventSnapshot(
-                "owner-form", "owner-release", 4, null);
-    }
 
     @Test
     void disabledPublishedCompositionCannotBeResolvedDirectly() {
@@ -609,14 +563,9 @@ class UiViewCompositionRuntimeServiceTest {
         when(releaseMapper.findActive(targetContentType, targetContentId)).thenReturn(targetRelease);
         when(releaseMapper.selectById(targetReleaseId))
                 .thenReturn(targetRelease);
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "owner-form", "owner-release", 4, null))
-                .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(
-                        ownerSnapshot,
-                        "owner-release",
-                        4,
-                        "owner-release",
-                        false));
+        when(releaseMapper.findActive("FORM", "owner-form")).thenReturn(ownerRelease);
+        when(releaseService.verifiedReleaseSnapshot(ownerRelease)).thenReturn(ownerSnapshot);
+        when(releaseService.formConfigHash("owner-form")).thenReturn("owner-content-hash");
 
         Map<String, Object> targetSnapshot;
         if ("FORM".equals(targetContentType)) {
@@ -644,51 +593,10 @@ class UiViewCompositionRuntimeServiceTest {
         }
         when(releaseService.verifiedReleaseSnapshot(targetRelease))
                 .thenReturn(targetSnapshot);
-        when(compositionTokenService.issueSourceRow(
-                "FORM",
-                "owner-form",
-                "owner-release",
-                4,
-                "related-content",
-                "source_entity",
-                "source-record"))
-                .thenReturn("row-context-token");
-        if ("LIST".equals(targetContentType)) {
-            when(compositionTokenService.advanceTraversal(
-                    null,
-                    "FORM",
-                    "owner-form",
-                    "owner-release",
-                    4,
-                    "related-content",
-                    "source-record",
-                    "LIST",
-                    targetContentId,
-                    targetReleaseId,
-                    2,
-                    null)).thenReturn("traversal-context-token");
-            when(compositionTokenService.issueTargetList(
-                    "FORM",
-                    "owner-form",
-                    "owner-release",
-                    4,
-                    "related-content",
-                    "source_entity",
-                    "source-record",
-                    targetEntityCode,
-                    targetContentId,
-                    targetReleaseId,
-                    2,
-                    expectedFilters(relationType),
-                    false)).thenReturn("list-context-token");
-        }
-
         UiViewCompositionResolveRequest request =
                 new UiViewCompositionResolveRequest();
         request.setOwnerType("FORM");
         request.setOwnerId("owner-form");
-        request.setReleaseId("owner-release");
-        request.setReleaseVersion(4);
         request.setCompositionKey("related-content");
         request.setRecordId("source-record");
         return new Fixture(

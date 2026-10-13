@@ -11,10 +11,7 @@ import {
 
 function releaseWithSnapshot(snapshotDocument) {
   return {
-    id: 'release-form-v5',
-    version: 5,
-    effectiveReleaseId: 'release-form-v5-hotfix',
-    hotfixApplied: true,
+    configHash: 'graph-form',
     snapshotDocument
   }
 }
@@ -36,13 +33,12 @@ function releaseWithSnapshot(snapshotDocument) {
       viewCompositions
     }),
     'fallback-form-id',
-    'resolution-token'
+    'graph-hash'
   )
 
   assert.deepEqual(runtimeForm.viewCompositions, viewCompositions)
-  assert.equal(runtimeForm.runtimeReleaseId, 'release-form-v5')
-  assert.equal(runtimeForm.runtimeReleaseVersion, 5)
-  assert.equal(runtimeForm.releaseResolutionToken, 'resolution-token')
+  assert.equal(runtimeForm.runtimeReleaseVersion, undefined)
+  assert.equal(runtimeForm.configHash, 'graph-hash')
 }
 
 {
@@ -73,8 +69,7 @@ const customActionPayload = buildCustomFormActionExecutionPayload(
   { key: 'generate_report', ownerFormId: 'form-1' },
   [{
     id: 'form-1',
-    runtimeReleaseId: 'release-1',
-    runtimeReleaseVersion: 3
+    configHash: 'graph-1'
   }],
   {
     entityCode: 'report',
@@ -95,8 +90,7 @@ const approvalActionPayload = buildCustomFormActionExecutionPayload(
   { key: 'recalculate_approval', ownerFormId: 'form-1' },
   [{
     id: 'form-1',
-    runtimeReleaseId: 'release-1',
-    runtimeReleaseVersion: 3
+    configHash: 'graph-1'
   }],
   {
     entityCode: 'request',

@@ -5,8 +5,7 @@ import java.util.List;
 /**
  * 一次 Embed Launch 固定的原生列表依赖闭包。
  *
- * <p>闭包从根 List Release 的 open-list 边递归生成，并随 Runtime Snapshot 和
- * {@code elr1} 令牌一起固定。运行时只能在闭包声明的精确坐标间导航，不能重新解析
+ * <p>闭包从根 List Release 的 open-list 边递归生成，并随服务端 Runtime Snapshot 固定。运行时只能在闭包声明的精确坐标间导航，不能重新解析
  * ACTIVE，也不能把浏览器提交的坐标当作授权依据。</p>
  *
  * @param version 版本，保存在对象中供后续校验、查询或展示

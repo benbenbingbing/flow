@@ -10,23 +10,32 @@
       </el-tag>
     </template>
 
-    <el-form-item label="审批时展示">
+    <el-form-item label="审批时展示" for="">
+      <template #label>
+        <ConfigHelpLabel label="审批时展示" content="标签使用本节点名称，审批人由流程条件命中的目标节点动态解析" />
+      </template>
       <el-switch
         v-model="localConfig.visible"
+        aria-label="审批时展示"
         @change="onVisibleChange"
       />
-      <div class="form-tip">标签使用本节点名称，审批人由流程条件命中的目标节点动态解析</div>
     </el-form-item>
 
     <template v-if="localConfig.visible">
-      <el-form-item label="允许修改">
-        <el-switch v-model="localConfig.editable" />
-        <div class="form-tip">关闭后仅展示系统解析的审批人，不允许当前审批人调整</div>
+      <el-form-item label="允许修改" for="">
+        <template #label>
+          <ConfigHelpLabel label="允许修改" content="关闭后仅展示系统解析的审批人，不允许当前审批人调整" />
+        </template>
+        <el-switch v-model="localConfig.editable" aria-label="允许修改" />
       </el-form-item>
 
-      <el-form-item label="人员来源" required>
+      <el-form-item label="人员来源" for="" required>
+        <template #label>
+          <ConfigHelpLabel label="人员来源" :content="sourceTypeHelp" />
+        </template>
         <el-radio-group
           :model-value="localConfig.source.type"
+          aria-label="人员来源"
           @update:model-value="changeSourceType"
         >
           <el-radio-button value="NODE_ASSIGNMENT">使用本节点审批人</el-radio-button>
@@ -34,13 +43,6 @@
           <el-radio-button value="RESOLVER">人员接口</el-radio-button>
         </el-radio-group>
       </el-form-item>
-
-      <div
-        v-if="localConfig.source.type === 'NODE_ASSIGNMENT'"
-        class="form-tip next-approver-config__assignment-tip"
-      >
-        直接引用本节点已配置的审批人规则；规则修改后同步生效，不复制人员名单
-      </div>
 
       <template v-if="localConfig.source.type === 'SCOPE'">
         <PersonScopeRuleEditor
@@ -52,11 +54,12 @@
       </template>
 
       <template v-else-if="localConfig.source.type === 'RESOLVER'">
-        <el-form-item label="人员接口" required>
+        <el-form-item label="人员接口" for="" required>
           <template #label>
             <ConfigHelpLabel
               label="人员接口"
               help-key="process.personResolver"
+              :content="personResolverHelp"
             />
           </template>
           <ExtensionCapabilityPicker
@@ -66,12 +69,15 @@
             :context-params="resolverContext"
             :current-option="resolverCurrentOption"
           />
-          <div class="form-tip">候选人员由平台受控人员解析器返回，不支持填写任意 URL</div>
         </el-form-item>
 
-        <el-form-item label="extraParams">
+        <el-form-item label="extraParams" for="">
+          <template #label>
+            <ConfigHelpLabel label="extraParams" content="仅填写该人员接口声明的扩展参数" />
+          </template>
           <el-input
             v-model="extraParamsText"
+            aria-label="extraParams"
             type="textarea"
             :rows="4"
             placeholder='JSON 对象，例如 {"level": 2}'
@@ -80,7 +86,6 @@
           <div v-if="extraParamsError" class="next-approver-config__error">
             {{ extraParamsError }}
           </div>
-          <div v-else class="form-tip">仅填写该人员接口声明的扩展参数</div>
         </el-form-item>
       </template>
     </template>
@@ -93,6 +98,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import PersonScopeRuleEditor from '@/components/PersonScopeRuleEditor.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
+import { getConfigFieldHelp } from '@/shared/config-field-help'
 import {
   createNextApproverSelectionConfig,
   validateNextApproverSelectionConfig
@@ -129,6 +135,14 @@ const extraParamsText = ref(JSON.stringify(
 const extraParamsError = ref('')
 const resolverContext = { usage: 'CANDIDATE' }
 let syncingFromProps = false
+
+// 来源切换后同步展示对应规则，避免隐藏正文后仍显示上一种来源的说明。
+const sourceTypeHelp = computed(() => ({
+  NODE_ASSIGNMENT: '直接引用本节点已配置的审批人规则；规则修改后同步生效，不复制人员名单',
+  SCOPE: '候选人员只会从配置范围的并集中加载；如需全员，必须显式添加“全部启用用户”规则。',
+  RESOLVER: '候选人员由平台受控人员解析器返回，不支持填写任意 URL。'
+}[localConfig.value.source.type] || '选择本节点审批人规则、人员范围或受控人员接口作为候选人员来源。'))
+const personResolverHelp = `候选人员由平台受控人员解析器返回，不支持填写任意 URL。${getConfigFieldHelp('process.personResolver')}`
 
 const resolverCurrentOption = computed(() => {
   const code = localConfig.value.source?.resolverCode
@@ -230,9 +244,5 @@ defineExpose({ validate })
   color: var(--el-color-danger);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.next-approver-config__assignment-tip {
-  margin: -4px 0 12px 100px;
 }
 </style>

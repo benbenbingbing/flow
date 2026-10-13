@@ -22,9 +22,7 @@
       :entity-fields="entityFields"
       :default-form="runtimeForm"
       :list-key="target.listKey || undefined"
-      :list-release-id="target.listReleaseId || undefined"
-      :list-release-version="target.listReleaseVersion"
-      :list-release-resolution-token="target.listReleaseResolutionToken || undefined"
+      :list-config-hash="target.listConfigHash || undefined"
       :entity-status-options="entityStatusOptions"
       :submit-transport="submitNativeRecord"
       :reload-pending="loading"
@@ -41,9 +39,7 @@
       :entity-fields="entityFields"
       :default-form="runtimeForm"
       :list-key="target.listKey || undefined"
-      :list-release-id="target.listReleaseId || undefined"
-      :list-release-version="target.listReleaseVersion"
-      :list-release-resolution-token="target.listReleaseResolutionToken || undefined"
+      :list-config-hash="target.listConfigHash || undefined"
       :entity-status-options="entityStatusOptions"
       :form-presentation="formPresentation"
       @closed="handleClosed"
@@ -150,12 +146,7 @@ async function loadRuntime() {
   try {
     const [entity, release, statuses] = await Promise.all([
       entityApi.getByCode(target.entityCode, target.runtimeContext),
-      getFormRuntimeRelease(
-        target.formId,
-        target.formReleaseId,
-        target.formReleaseVersion,
-        target.formReleaseResolutionToken || undefined
-      ),
+      getFormRuntimeRelease(target.formId, target.runtimeContext || {}),
       loadEntityStatuses(
         target.entityCode,
         target.runtimeContext
@@ -168,8 +159,8 @@ async function loadRuntime() {
     runtimeForm.value = normalizeRuntimeFormRelease(
       release,
       target.formId,
-      release?.releaseResolutionToken
-        || target.formReleaseResolutionToken
+      release?.configHash
+        || target.formConfigHash
         || null
     )
     await nextTick()
@@ -187,11 +178,13 @@ async function loadRuntime() {
         initialData: target.initialData,
         parameters: target.parameters,
         context: {
+          ...target.context,
           ...target.runtimeContext,
+          runtimeContext: target.runtimeContext || {},
           params: target.parameters,
           parameters: target.parameters,
-          releaseResolutionToken:
-            runtimeForm.value.releaseResolutionToken || undefined
+          configHash:
+            runtimeForm.value.configHash || undefined
         }
       })
       if (sequence !== loadSequence) return false
@@ -205,7 +198,7 @@ async function loadRuntime() {
       name: props.bootstrap.view?.name || '数据详情'
     }, {
       form: runtimeForm.value,
-      context: target.runtimeContext
+      context: { ...target.context, ...target.runtimeContext, runtimeContext: target.runtimeContext || {} }
     })
     if (opened === false) {
       throw new Error('Flow 记录详情暂时无法加载，请稍后重试')

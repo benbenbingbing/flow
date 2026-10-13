@@ -59,7 +59,7 @@ const nestedTargetRelations=[['OWNER','','查看最终改造名次'],['FORM_NODE
  compositionKey:'back-to-owner-'+index,anchorType,anchorKey,config:{enabled:true,name:title,
  target:{contentType:'FORM',contentId:'owner',entityId:'all'},relation:{type:'ENTITY_RELATION',relationCode:'ownedDetails',direction:'REVERSE'},
  actions:['VIEW'],presentation:{position:'DRAWER',title,loadMode:'ON_DEMAND'}}}))
-const formRelease={id:'req-release',configId:'req-form',formId:'req-form',protocolVersion:1,contentHash:'req-release',releaseResolutionToken:'req-release-token',snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes})}
+const formRelease={id:'req-release',configId:'req-form',formId:'req-form',protocolVersion:1,contentHash:'req-release',configHash:'req-graph',snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes})}
 const listFields=[{id:'name-col',fieldCode:'reqName',fieldName:'需求名称',fieldLabel:'需求名称',fieldType:'STRING',showInList:true}]
 const list={id:'req-list',entityId:'req',listName:'需求明细列表',listKey:'requirements',activeReleaseId:'list-release',publishedVersion:1,fields:listFields,viewConfig:{inputParameterSchema:{type:'object',properties:{sourceName:{type:'string'}}}}}
 const listRelease={id:'list-release',version:1,status:'ACTIVE',snapshotDocument:JSON.stringify({list})}
@@ -114,18 +114,18 @@ request.defaults.adapter=async config=>{
  else if(url==='/ui-runtime/view-compositions/resolve'){
    const item=state.compositions.find(i=>i.compositionKey===body.compositionKey),t=item.config.target
    const missing=body.recordId==='missing'&&!state.childRecords?.[body.recordId]
-   data={compositionKey:item.compositionKey,targetContentType:t.contentType,targetContentId:t.contentId,targetContentKey:t.contentKey,targetEntityCode:'ZDWREQ',targetEntityId:'req',targetReleaseId:t.contentType==='FORM'?'req-release':'list-release',targetReleaseVersion:1,targetRecordId:missing?null:'child-'+body.recordId,matchNone:missing,actions:['VIEW'],traversalContextToken:'traversal',listContextToken:'list-'+body.recordId,actionContextToken:state.inlineSaveTest?'actions:'+body.recordId:'actions'}
+   data={compositionKey:item.compositionKey,targetContentType:t.contentType,targetContentId:t.contentId,targetContentKey:t.contentKey,targetEntityCode:'ZDWREQ',targetEntityId:'req',targetContentHash:t.contentType==='FORM'?'req-graph':'list-graph',targetRecordId:missing?null:'child-'+body.recordId,matchNone:missing,actions:['VIEW'],compositionContext:{ownerType:body.ownerType,ownerId:body.ownerId,recordId:body.recordId,compositionKey:body.compositionKey,path:[],configHash:body.configHash}}
  }
  else if(url==='/ui-runtime/view-compositions/actions/capabilities')data={actionCapabilities:state.inlineSaveTest
-   ?{EDIT:{available:!state.inlineViewOnly},CREATE:{available:!state.inlineViewOnly,initialValues:{acceptance_id:body.actionContextToken.slice(8)}}}:{}}
- // 独立提交内存落库，检查发布及关联凭证；延迟/失败用于验证重复点击与回包隔离。
+   ?{EDIT:{available:!state.inlineViewOnly},CREATE:{available:!state.inlineViewOnly,initialValues:{acceptance_id:body.compositionContext.recordId}}}:{}}
+ // 独立提交内存落库，检查配置摘要及关联来源；延迟/失败用于验证重复点击与回包隔离。
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/load')data={id:'all-3',data:{name:'主表名称',childId:'child-all-3'}}
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/update'){state.mainSavedData=body.data;data={id:'all-3',data:body.data}}
  else if(state.nativeHostTest&&url==='/ui-runtime/form-actions/resolve')data=state.formButtonsTest&&body.formId==='owner'?[{...state.testButton,ownerFormId:'owner',runtimeKey:'owner:quick',type:'custom',key:'quick',label:'运行测试按钮',visible:true,enabled:true,placement:'FOOTER'}]:[]
  else if(state.nativeHostTest&&url.startsWith('/ui-runtime/events/'))data={success:true,results:[],patch:{}}
  else if(state.inlineSaveTest&&(url==='/entity-data'||url.endsWith('/update'))){
-   if(body.viewCompositionTraversalToken!=='traversal'||body.formReleaseResolutionToken!=='req-release-token'||body.formId!=='req-form')throw Error('独立保存未携带可信发布上下文')
-   const recordId=body.viewCompositionActionContextToken.slice(8)
+   if(!body.runtimeContext?.compositionContext||body.formConfigHash!=='req-graph'||body.formId!=='req-form')throw Error('独立保存未携带可信发布上下文')
+   const recordId=body.runtimeContext.compositionContext.recordId
    if(state.inlineSaveDelay)await new Promise(resolve=>setTimeout(resolve,state.inlineSaveDelay))
    if(state.inlineSaveFailure)throw Error('模拟子表单提交失败')
    state.childRecords[recordId]={...body.data};data={id:'child-'+recordId,data:body.data}
@@ -136,7 +136,7 @@ request.defaults.adapter=async config=>{
  }
  else if(url==='/entity-lists/ZDWREQ/requirements/schema')data={...list,entityCode:'ZDWREQ',releaseId:'list-release',scene:'EMBEDDED',toolbarConfig:[],rowActionConfig:[]}
  else if(url==='/entity-lists/ZDWREQ/requirements/query'){
-   if(!state.parameterTest&&!state.formButtonsTest&&body.viewCompositionContextToken!=='list-'+state.sourceRecordId)throw Error('列表未携带当前记录的关联凭证')
+   if(!state.parameterTest&&!state.formButtonsTest&&body.compositionContext?.recordId!==state.sourceRecordId)throw Error('列表未携带当前记录的关联来源')
    data={records:[{id:'row-'+state.sourceRecordId,data:{reqName:'明细需求 '+state.sourceRecordId},reqName:'明细需求 '+state.sourceRecordId}],total:1}
  }
  else if(url==='/ui-runtime/extensions/execute')data={data:{reqName:body.input.params.sourceName}}
@@ -170,7 +170,7 @@ const hostDialog=ref(null)
 const hostFields=[{id:'main-name',fieldCode:'name',fieldName:'主表名称',fieldType:'STRING',componentType:'input'}]
 // 编辑弹窗会提升根 Tab 并只渲染子节点；关联内容锚定空 Tab 时也必须挂载。
 const hostTabNodes=[{id:'host-tabs',nodeType:'TAB_SET',props:{}},{id:'host-basic',parentId:'host-tabs',nodeType:'TAB',props:{label:'基本信息'}},{id:'host-child',nodeKey:'host-child-key',parentId:'host-tabs',nodeType:'TAB',props:{label:'子表单'}}]
-const hostForm=()=>({id:'owner',viewConfig:{actionBar:{customButtons:state.formButtonsTest?[{...state.testButton,key:'quick',label:'运行测试按钮',perm:'entity:all:view',modes:['edit']}]:[]}},formName:'主表',fields:hostFields,nodes:state.spacingPlacement?state.designerNodes.map(n=>({...n,props:JSON.parse(n.propsDocument||'{}')})):state.immediateTabsTest?hostTabNodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:[state.compositions[0]]})
+const hostForm=()=>({id:'owner',viewConfig:{actionBar:{customButtons:state.formButtonsTest?[{...state.testButton,key:'quick',label:'运行测试按钮',perm:'entity:all:view',modes:['edit']}]:[]}},formName:'主表',fields:hostFields,nodes:state.spacingPlacement?state.designerNodes.map(n=>({...n,props:JSON.parse(n.propsDocument||'{}')})):state.immediateTabsTest?hostTabNodes:[],configHash:'owner-release',viewCompositions:[state.compositions[0]]})
 // 节点显隐使用实际递归渲染器，不用 CSS 或替身组件模拟整块隐藏。
 const visibilityRenderer=ref(null)
 const visibilityNodes=['SECTION','GRID','COLLAPSE','TEXT','ACTION_SLOT','TAB_SET'].flatMap((nodeType,index)=>{
@@ -200,10 +200,10 @@ const app=createApp({setup(){return()=>h('main',{style:'width:1080px;margin:20px
  h('div',{style:'display:grid;grid-template-columns:260px 1fr;gap:20px'},[
  h('aside',{id:'picker'},[h(Picker,{ref:picker,sourceEntity:source,ownerId:'owner',compositions:state.compositions,nodes:state.editorNodes,onAddEditor:selection=>state.editorNodes.push(buildRelationEditor(selection)),onEdit:item=>relatedPanel.value.open(item)})]),
  h('section',{id:'design'},[h('h3','设计画布'),...state.compositions.map(item=>h(Preview,{key:item.id,composition:item}))])]),
- state.published?h('section',{id:'runtime'},[h('h3','发布运行时'),h(Runtime,{form:{id:'owner',formName:'验收',fields:[],nodes:[],runtimeReleaseId:'owner-release',runtimeReleaseVersion:1,viewCompositions:state.compositions},modelValue:state.sourceData,context:{record:{id:state.sourceRecordId}},readonly:true,mode:'view',showHeader:false})]):null,
- state.standaloneTargetTest?h('section',{id:'standalone-target'},[h(Runtime,{form:{...form,fields:formFields,nodes:nestedTargetNodes,runtimeReleaseId:'req-release',runtimeReleaseVersion:1,viewCompositions:nestedTargetRelations},modelValue:{reqName:'独立目标表单'},context:{record:{id:'req-standalone'}},readonly:true,mode:'view',showHeader:false})]):null,
+ state.published?h('section',{id:'runtime'},[h('h3','发布运行时'),h(Runtime,{form:{id:'owner',formName:'验收',fields:[],nodes:[],configHash:'owner-release',viewCompositions:state.compositions},modelValue:state.sourceData,context:{record:{id:state.sourceRecordId}},readonly:true,mode:'view',showHeader:false})]):null,
+ state.standaloneTargetTest?h('section',{id:'standalone-target'},[h(Runtime,{form:{...form,fields:formFields,nodes:nestedTargetNodes,configHash:'req-release',viewCompositions:nestedTargetRelations},modelValue:{reqName:'独立目标表单'},context:{record:{id:'req-standalone'}},readonly:true,mode:'view',showHeader:false})]):null,
  state.listButtonTest?h('section',{id:'button-config'},[h('h3','关联内容使用标准列表按钮'),h(ButtonConfig,{type:'row',modelValue:state.buttons,relatedContents:buttonCompositions(),onSave:button=>{state.savedButton=normalizeListActionForSave(button,'ROW')}})]):null,
- state.listButtonTest?h('section',{id:'button-runtime'},[h(DataTable,{dataList:state.tableRows,loading:false,total:2,pageNum:1,pageSize:10,listFields:[{fieldCode:'name',fieldLabel:'验收名称',fieldName:'验收名称'}],useListConfig:false,toolbarButtons:state.buttons.map(b=>({...b,label:'打开需求'})),toolbarCapabilities:{requirements:{visible:true,enabled:true}},rowActionButtons:state.buttons,showSelectionColumn:true,selectedRows:state.selectedRows,'onUpdate:selectedRows':rows=>state.selectedRows=rows,entityCode:'ALL',entityDefinition:source,entityStatusMap:{},refEntityNameMap:{},refresh:()=>{},buttonCompositions:buttonCompositions(),listOwnerId:'list-owner',listReleaseId:'list-release',listReleaseVersion:1,listReleaseResolutionToken:'pinned-list-token'})]):null
+ state.listButtonTest?h('section',{id:'button-runtime'},[h(DataTable,{dataList:state.tableRows,loading:false,total:2,pageNum:1,pageSize:10,listFields:[{fieldCode:'name',fieldLabel:'验收名称',fieldName:'验收名称'}],useListConfig:false,toolbarButtons:state.buttons.map(b=>({...b,label:'打开需求'})),toolbarCapabilities:{requirements:{visible:true,enabled:true}},rowActionButtons:state.buttons,showSelectionColumn:true,selectedRows:state.selectedRows,'onUpdate:selectedRows':rows=>state.selectedRows=rows,entityCode:'ALL',entityDefinition:source,entityStatusMap:{},refEntityNameMap:{},refresh:()=>{},buttonCompositions:buttonCompositions(),listOwnerId:'list-owner',listConfigHash:'list-graph'})]):null
 ])}})
 const router=createRouter({history:createMemoryHistory(),routes:[{path:'/entity-form/design/:id',component:Designer}]})
 await router.push('/entity-form/design/owner?entityId=all')
@@ -537,7 +537,7 @@ try {
   assert.equal(rowRequest.ownerType, 'LIST')
   assert.equal(rowRequest.ownerId, 'list-owner')
   assert.equal(rowRequest.recordId, 'all-1')
-  assert.equal(rowRequest.releaseResolutionToken, 'pinned-list-token')
+  assert.equal(rowRequest.configHash, 'list-graph')
   await evaluate("[...document.querySelectorAll('.el-drawer__close-btn')].find(e=>e.getClientRects().length).click();relationTest.settle()")
   await evaluate('relationTest.state.selectedRows=[...relationTest.state.tableRows];relationTest.settle()')
   assert.equal(await evaluate("[...document.querySelectorAll('#button-runtime .table-toolbar button')].find(b=>b.textContent.trim()==='打开需求').disabled"), true)
@@ -601,7 +601,7 @@ try {
   // 普通关联在当前区域独立保存；组成子表单后续回归仍只更新主表草稿。
   const inlineForm = "document.querySelector('#runtime .related-content-runtime:has(.linkage-form-preview)')"
   const inlineInput = `${inlineForm}.querySelector('input')`
-  const inlineWrites = "relationTest.state.calls.filter(c=>c.method==='post'&&(c.url==='/entity-data'||c.url.endsWith('/update'))&&c.body.viewCompositionActionContextToken?.startsWith('actions:'))"
+  const inlineWrites = "relationTest.state.calls.filter(c=>c.method==='post'&&(c.url==='/entity-data'||c.url.endsWith('/update'))&&c.body.runtimeContext?.compositionContext?.recordId)"
   async function fillInline(value) {
     await evaluate(`(()=>{const input=${inlineInput};input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur()})()`)
     await evaluate('relationTest.settle()')
@@ -625,9 +625,8 @@ try {
   await until(`relationTest.state.childRecords['all-2']?.reqName==='当前页面修改的需求' && !${inlineForm}.querySelector('.el-loading-mask')`)
   const updateCall = await evaluate(`JSON.parse(JSON.stringify(${inlineWrites}.at(-1)))`)
   assert.equal(updateCall.url,'/entity-data/entity/ZDWREQ/detail/child-all-2/update')
-  assert.equal(updateCall.body.viewCompositionActionContextToken,'actions:all-2')
-  assert.equal(updateCall.body.formReleaseId,'req-release')
-  assert.equal(updateCall.body.formReleaseVersion,1)
+  assert.equal(updateCall.body.runtimeContext.compositionContext.recordId,'all-2')
+  assert.equal(updateCall.body.formConfigHash,'req-graph')
   assert.equal(updateCall.body.startProcess,false)
 
   // 新关联第一次保存创建；再保存更新同一条记录，不再重复创建。

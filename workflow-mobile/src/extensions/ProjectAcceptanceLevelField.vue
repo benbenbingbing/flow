@@ -31,7 +31,7 @@ async function load() {
   } catch (cause) { if (version === generation) error.value = cause.message }
   finally { if (version === generation) loading.value = false }
 }
-watch(() => [props.context.form?.id, props.context.form?.runtimeReleaseId, props.context.node?.id], load, { immediate: true })
+watch(() => [props.context.form?.id, props.context.form?.configHash, props.context.node?.id], load, { immediate: true })
 onBeforeUnmount(() => generation++)
 defineExpose({ validate: async () => props.disabled || (!loading.value && !error.value && await fieldRef.value?.validate()) })
 </script>

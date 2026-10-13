@@ -4,6 +4,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { formatDateCellValue } from '@/shared/list-cell-masking'
 
 const props = defineProps({
   value: { type: [String, Number, Date], default: '' },
@@ -12,22 +13,6 @@ const props = defineProps({
   config: { type: Object, default: () => ({}) }
 })
 
-const displayValue = computed(() => {
-  if (!props.value) return '-'
-  const pattern = props.config?.pattern || props.field?.formatter || 'yyyy-MM-dd HH:mm:ss'
-  try {
-    const date = new Date(props.value)
-    if (isNaN(date.getTime())) return props.value
-    const pad = (n) => String(n).padStart(2, '0')
-    return pattern
-      .replace('yyyy', date.getFullYear())
-      .replace('MM', pad(date.getMonth() + 1))
-      .replace('dd', pad(date.getDate()))
-      .replace('HH', pad(date.getHours()))
-      .replace('mm', pad(date.getMinutes()))
-      .replace('ss', pad(date.getSeconds()))
-  } catch (e) {
-    return props.value
-  }
-})
+// 日期格式化先于脱敏；两条展示路径共享同一规则。
+const displayValue = computed(() => formatDateCellValue(props.value, props.field, props.config))
 </script>

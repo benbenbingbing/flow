@@ -14,6 +14,8 @@ public interface EmbedNativeListDependencySnapshotPort {
      * @return 读取后的嵌入式原生列表依赖快照结果，供调用方继续处理
      */
     EmbedNativeListDependencyClosure read(Reference reference);
+    /** 参数必须来自已认证会话，摘要由快照自身校验而不由浏览器携带。 */
+    EmbedNativeListDependencyClosure readForSession(String sessionId, String viewId, String viewReleaseId);
 
     /**
      * 指向已固定 Embed Runtime Snapshot 中依赖闭包的不可变引用。

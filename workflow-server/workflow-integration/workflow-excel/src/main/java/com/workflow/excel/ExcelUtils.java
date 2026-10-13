@@ -11,7 +11,10 @@ import com.alibaba.excel.write.handler.WriteHandler;
 import com.alibaba.excel.write.metadata.WriteSheet;
 import com.workflow.excel.listener.ExcelReadListener;
 import com.workflow.excel.listener.ExcelWriteListener;
+import com.workflow.excel.listener.ExcelRawReadListener;
+import com.workflow.excel.dynamic.ExcelRawRow;
 import java.io.InputStream;
+import java.io.FilterInputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -151,6 +154,44 @@ public final class ExcelUtils {
     }
 
     /**
+     * 分批读取原始单元格，保留类型、数值格式、公式标记、实际行号及工作簿日期基准。
+     * 此入口固定保留文本空白，不使用 options.autoTrim；清理规则由后续字段转换决定。
+     * 表头单独逐行回调，中间空行交给业务判定是否跳过；不执行 DTO 注解校验。
+     *
+     * @param maxRows 数据行回调上限，含中间空行但不含表头；超限立即中止，已回调数据不自动回滚
+     * @param headers 每个表头行的同步回调，headRowNumber 为 0 时不调用
+     * @param batches 不可变的独立批次，调用方应及时消费以维持有界内存
+     * @return 已读取的数据行数；文件异常、超限或回调异常时抛出异常
+     */
+    public static long readRawRows(InputStream inputStream, ExcelReadOptions options, long maxRows,
+            Consumer<ExcelRawRow> headers, Consumer<List<ExcelRawRow>> batches) {
+        Objects.requireNonNull(options, "读取配置不能为空");
+        ExcelRawReadListener listener = new ExcelRawReadListener(options.batchSize(), maxRows, headers, batches);
+        readSheet(reader(inputStream, options).autoTrim(false).ignoreEmptyRow(false)
+                .useDefaultListener(false).registerReadListener(listener), options,
+                excelReader -> listener.initialize(excelReader.analysisContext().readWorkbookHolder(), options));
+        return listener.getRowCount();
+    }
+
+    /** 按配置 Sheet 名称读取，避免说明页或用户调整 Sheet 顺序后误将另一张表导入。 */
+    public static long readRawRows(InputStream inputStream, String sheetName, ExcelReadOptions options, long maxRows,
+            Consumer<ExcelRawRow> headers, Consumer<List<ExcelRawRow>> batches) {
+        Objects.requireNonNull(sheetName, "Sheet 名称不能为空");
+        Objects.requireNonNull(options, "读取配置不能为空");
+        ExcelRawReadListener listener = new ExcelRawReadListener(options.batchSize(), maxRows, headers, batches);
+        try (ExcelReader excelReader = reader(inputStream, options).autoTrim(false).ignoreEmptyRow(false)
+                .useDefaultListener(false).registerReadListener(listener).build()) {
+            var sheet = excelReader.excelExecutor().sheetList().stream()
+                    .filter(item -> sheetName.equals(item.getSheetName())).findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException("指定的 Sheet 不存在：" + sheetName));
+            var resolved = new ExcelReadOptions(sheet.getSheetNo(), options.headRowNumber(), options.batchSize(), false);
+            listener.initialize(excelReader.analysisContext().readWorkbookHolder(), resolved);
+            excelReader.read(EasyExcel.readSheet(sheet.getSheetNo()).build());
+        }
+        return listener.getRowCount();
+    }
+
+    /**
      * 将 DTO 数据导出到名为 Sheet1 的 XLSX 工作表。
      *
      * @param outputStream 文件或下载响应的输出流，不由本方法关闭
@@ -276,16 +317,49 @@ public final class ExcelUtils {
         return builder;
     }
 
+    /**
+     * 动态表头的惰性批写，复用同一 writer/Sheet，空结果仍输出表头。
+     * 每批处理完再请求下一批，可直接对接数据库游标；内部不累积所有记录。
+     * 输出流由调用方关闭；迭代、转换或写入失败时需丢弃已经生成的部分文件。
+     */
+    public static void writeRowsBatches(OutputStream outputStream, List<List<String>> head,
+            Iterable<? extends Collection<? extends List<?>>> batches, String sheetName,
+            WriteHandler... handlers) {
+        Objects.requireNonNull(outputStream, "输出流不能为空");
+        Objects.requireNonNull(head, "动态表头不能为空");
+        Objects.requireNonNull(batches, "导出批次不能为空");
+        if (head.isEmpty() || head.stream().anyMatch(column -> column == null || column.isEmpty())) {
+            throw new IllegalArgumentException("动态表头必须包含列，且每列至少有一级标题");
+        }
+        WorkbookUtil.validateSheetName(sheetName);
+        try (ExcelWriter writer = writer(outputStream, handlers).head(head).build()) {
+            WriteSheet sheet = EasyExcel.writerSheet(sheetName).build();
+            writer.write(List.of(), sheet);
+            for (Collection<? extends List<?>> batch : batches) {
+                writer.write(Objects.requireNonNull(batch, "导出批次数据不能为空"), sheet);
+            }
+        }
+    }
+
     private static ExcelReaderBuilder reader(InputStream inputStream, ExcelReadOptions options) {
         Objects.requireNonNull(inputStream, "输入流不能为空");
         Objects.requireNonNull(options, "读取配置不能为空");
         // 读取器可释放自己的缓存和临时文件，但上传文件流的生命周期仍由调用方管理。
-        return EasyExcel.read(inputStream).autoCloseStream(false).headRowNumber(options.headRowNumber())
+        // XLS 的 POIFS 解析即使 autoCloseStream=false 仍会关闭传入流；只屏蔽底层 close，保持统一生命周期约定。
+        InputStream callerOwned = new FilterInputStream(inputStream) {
+            @Override
+            public void close() { }
+        };
+        return EasyExcel.read(callerOwned).autoCloseStream(false).headRowNumber(options.headRowNumber())
                 .autoTrim(options.autoTrim());
     }
 
     /** 校验工作表存在后再读取，避免错误 Sheet 索引被当作一次成功的空数据导入。 */
     private static void readSheet(ExcelReaderBuilder builder, ExcelReadOptions options) {
+        readSheet(builder, options, ignored -> { });
+    }
+
+    private static void readSheet(ExcelReaderBuilder builder, ExcelReadOptions options, Consumer<ExcelReader> beforeRead) {
         try (ExcelReader excelReader = builder.build()) {
             // EasyExcel 会跳过不匹配的 Sheet；显式检查使配置错误和真正的空表可以区分。
             boolean sheetExists = excelReader.excelExecutor().sheetList().stream()
@@ -293,6 +367,7 @@ public final class ExcelUtils {
             if (!sheetExists) {
                 throw new IllegalArgumentException("指定的 Sheet 不存在，索引：" + options.sheetNo());
             }
+            beforeRead.accept(excelReader);
             excelReader.read(EasyExcel.readSheet(options.sheetNo()).build());
         }
     }

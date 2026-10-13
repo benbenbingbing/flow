@@ -10,7 +10,6 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.StringUtils;
@@ -31,7 +30,6 @@ public class EntityFormRuntimeService {
 
     private final UiConfigReleaseService releaseService;
     private final EntityFormMapper formMapper;
-    private final UiReleaseResolutionTokenService resolutionTokenService;
 
     /**
      * 根据表单ID解析运行时表单。
@@ -78,7 +76,7 @@ public class EntityFormRuntimeService {
 
     /**
      * 使用包含可选活动任务主体的可信解析上下文读取节点表单。
-     * ACTIVE_TASK 页面必须传 task/process/record 坐标，签发的令牌才可用于审批按钮。
+     * ACTIVE_TASK 页面返回 task/process/record 定位信息，下次调用仍须重新鉴权。
      *
      * @param nodeForm 节点表单，作为 {@code resolveByBinding} 的输入影响后续处理
      * @param context 执行上下文，向后续绑定步骤传递身份、配置或状态
@@ -113,7 +111,7 @@ public class EntityFormRuntimeService {
     }
 
     /**
-     * 使用调用方已从流程引擎/待办读取的可信上下文解析并签发令牌。
+     * 使用调用方已从流程引擎/待办读取的可信上下文解析，并返回后续请求所需的业务定位信息。
      *
      * @param nodeForm 节点表单，作为 {@code LogValue.safe} 的输入影响后续处理
      * @param context 执行上下文，向后续绑定步骤传递身份、配置或状态
@@ -161,13 +159,8 @@ public class EntityFormRuntimeService {
             form.setEffectiveReleaseId(
                     resolved.effectiveReleaseId());
             form.setHotfixApplied(resolved.hotfixApplied());
-            form.setReleaseResolutionToken(
-                    resolutionTokenService.issue(
-                            effectiveContext,
-                            form.getId(),
-                            resolved.releaseId(),
-                            resolved.releaseVersion(),
-                            0));
+            form.setConfigHash(releaseService.formConfigHash(form.getId()));
+            form.setRuntimeContext(businessContext(effectiveContext));
         }
         log.info(
                 "流程节点表单运行时解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, historyId={}, nodeId={}, purpose={}, formPresent={}",
@@ -221,8 +214,8 @@ public class EntityFormRuntimeService {
     }
 
     /**
-     * 按当前默认发布版本加载表单，并在审批任务上下文完整时签发与任务绑定的解析令牌。
-     * 默认表单没有节点钉版，但审批按钮仍必须证明本次展示与提交使用同一发布快照。
+     * 按当前发布配置加载默认表单，并提供任务业务定位信息。
+     * 配置摘要用于识别加载与提交期间的配置变更；办理权限由后端实时复核。
      *
      * @param entityId 实体 ID
      * @param context 已由流程进度校验的发布历史、节点和任务上下文；普通独立查看可为空
@@ -243,16 +236,23 @@ public class EntityFormRuntimeService {
             runtimeForm.setRuntimeReleaseId(resolved.releaseId());
             runtimeForm.setRuntimeReleaseVersion(
                     resolved.releaseVersion());
+            runtimeForm.setConfigHash(releaseService.formConfigHash(runtimeForm.getId()));
             if (context != null) {
-                runtimeForm.setReleaseResolutionToken(
-                        resolutionTokenService.issue(
-                                context,
-                                runtimeForm.getId(),
-                                resolved.releaseId(),
-                                resolved.releaseVersion(),
-                                0));
+                runtimeForm.setRuntimeContext(businessContext(context));
             }
         }
         return runtimeForm;
+    }
+    /** 只向页面提供稳定业务坐标；流程版本和用户权限不交由浏览器维护。 */
+    private java.util.Map<String, Object> businessContext(UiRuntimeResolutionContext context) {
+        var values = new java.util.LinkedHashMap<String, Object>();
+        if (context != null) {
+            if (context.taskId() != null) values.put("taskId", context.taskId());
+            if (context.processInstanceId() != null) values.put("processInstanceId", context.processInstanceId());
+            if (context.processInstanceId() != null && context.nodeId() != null) values.put("nodeId", context.nodeId());
+            if (context.entityCode() != null) values.put("entityCode", context.entityCode());
+            if (context.recordId() != null) values.put("recordId", context.recordId());
+        }
+        return values;
     }
 }

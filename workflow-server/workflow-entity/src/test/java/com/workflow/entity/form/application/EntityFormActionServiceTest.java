@@ -302,7 +302,7 @@ class EntityFormActionServiceTest {
                         com.workflow.core.error.BusinessForbiddenException.class,
                         () -> service.requireBuiltInMutationAction(
                                 incomplete, "save"));
-        assertEquals("FORM_ACTION_RELEASE_CONTEXT_REQUIRED",
+        assertEquals("FORM_CONFIGURATION_HASH_REQUIRED",
                 missing.getErrorCode());
 
         EntityForm stored = publishedForm("""
@@ -317,8 +317,7 @@ class EntityFormActionServiceTest {
         when(formMapper.selectById("form-1")).thenReturn(stored);
         when(definitionMapper.selectById("entity-1"))
                 .thenReturn(definition);
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "form-1", "release-1", 1, "signed-token"))
+        when(releaseService.resolveRuntimeEventSnapshot(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(
                         snapshot(stored),
                         "release-1",
@@ -333,9 +332,9 @@ class EntityFormActionServiceTest {
                         "当前数据不满足显示条件"));
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId("form-1");
-        request.setReleaseId("release-1");
-        request.setReleaseVersion(1);
-        request.setReleaseResolutionToken("signed-token");
+        request.setConfigHash("release-1");
+
+
         request.setEntityCode("work_order");
         request.setMode("create");
 
@@ -615,7 +614,7 @@ class EntityFormActionServiceTest {
         UiEventExecuteRequest request = buttonRequest(
                 "approve", "record-1");
         request.setTaskId("task-r1");
-        request.setReleaseResolutionToken("active-task-token-r1");
+
 
         String mode = service.requireCustomButton(
                 request,
@@ -627,17 +626,7 @@ class EntityFormActionServiceTest {
         assertEquals("task-r1", request.getServerTaskId());
         assertEquals("process-r1",
                 request.getServerProcessInstanceId());
-        verify(releaseService).requireActiveTaskReleaseToken(
-                "active-task-token-r1",
-                "form-1",
-                "form-release-r1",
-                1,
-                "process-history-r1",
-                "approve-node",
-                "task-r1",
-                "process-r1",
-                "work_order",
-                "record-1");
+        verify(releaseService).authorizeRuntimeContext(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.argThat(ctx -> ctx != null && ctx.containsKey("taskId")));
     }
 
     @Test
@@ -662,7 +651,7 @@ class EntityFormActionServiceTest {
         UiEventExecuteRequest request = buttonRequest(
                 "approve", "record-1");
         request.setTaskId("task-older");
-        request.setReleaseResolutionToken("active-task-token-older");
+
 
         assertEquals("approve", service.requireCustomButton(
                 request,
@@ -671,17 +660,7 @@ class EntityFormActionServiceTest {
                 1));
 
         assertEquals("task-older", request.getServerTaskId());
-        verify(releaseService).requireActiveTaskReleaseToken(
-                "active-task-token-older",
-                "form-1",
-                "form-release-r1",
-                1,
-                "process-history-r1",
-                "approve-node",
-                "task-older",
-                "process-r1",
-                "work_order",
-                "record-1");
+        verify(releaseService).authorizeRuntimeContext(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.argThat(ctx -> ctx != null && ctx.containsKey("taskId")));
     }
 
     @Test
@@ -702,7 +681,7 @@ class EntityFormActionServiceTest {
         UiEventExecuteRequest request = buttonRequest(
                 "approve", "record-1");
         request.setTaskId("task-transferred");
-        request.setReleaseResolutionToken("old-task-token");
+
 
         com.workflow.core.error.BusinessForbiddenException error =
                 assertThrows(
@@ -730,8 +709,7 @@ class EntityFormActionServiceTest {
         when(dataService.findById(
                 "work_order", "record-1"))
                 .thenReturn(row);
-        when(releaseService.resolveRuntimeEventSnapshot(
-                "form-1", null, null, null))
+        when(releaseService.resolveRuntimeEventSnapshot(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(
                         snapshot(stored),
                         "current-r2",
@@ -752,11 +730,7 @@ class EntityFormActionServiceTest {
                                 "UI_EVENT_APPROVAL_RELEASE_CONTEXT_REQUIRED",
                                 "missing token"))
                 .when(releaseService)
-                .requireActiveTaskReleaseToken(
-                        isNull(), eq("form-1"), eq("current-r2"), eq(2),
-                        eq("process-history-r1"), eq("approve-node"),
-                        eq("task-r1"), eq("process-r1"),
-                        eq("work_order"), eq("record-1"));
+                .authorizeRuntimeContext(eq("form-1"), org.mockito.ArgumentMatchers.argThat(ctx -> ctx != null && ctx.containsKey("taskId")));
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId("form-1");
         request.setEntityCode("work_order");

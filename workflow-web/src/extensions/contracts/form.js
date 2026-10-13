@@ -30,7 +30,8 @@
  * @property {{errors: Object, onFieldBlur: Function, checkField: Function, errorFor: Function}} [formCustomValidation]
  *   已绑定规则由宿主在提交时统一校验；自绘输入调用 onFieldBlur(fieldCode)，
  *   errorFor(fieldCode) 读取错误文本。emit 新的 modelValue 触发 CHANGE。
- * @property {string} [releaseResolutionToken] 宿主发布上下文，只透传，不自行构造。
+ * @property {string} [configHash] 宿主配置摘要，仅用于提交时检测配置变化。
+ * @property {object} [runtimeContext] 任务、根表单和组件路径等业务定位值；服务端实时核验权限。
  */
 export const customFormProps = {
   // 宿主选定的表单配置及发布上下文。

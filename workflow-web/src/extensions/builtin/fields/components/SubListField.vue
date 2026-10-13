@@ -19,9 +19,6 @@
       embedded
       :entity-code="targetEntityCode"
       :list-key="targetListKey"
-      :release-id="config.listReleaseId"
-      :release-version="config.listReleaseVersion"
-      :release-resolution-token="context.releaseResolutionToken"
       :scene="SUB_LIST_RUNTIME_SCENE"
       :context="runtimeContext"
       :fixed-filters="parameterResolution.queryFilters"
@@ -38,6 +35,7 @@
 </template>
 
 <script setup>
+import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed } from 'vue'
 import EntityDataList from '@/views/entity/EntityDataList.vue'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
@@ -110,6 +108,7 @@ const runtimeContext = computed(() => {
     : record
   return {
     ...(config.value.context || {}),
+    runtimeContext: childFormRuntimeContext(props.context, props.field),
     ...(props.context?.listContext || {}),
     sourceEntityCode: props.context?.entityCode || '',
     sourceRecordId:

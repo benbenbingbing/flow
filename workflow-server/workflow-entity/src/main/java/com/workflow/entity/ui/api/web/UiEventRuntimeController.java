@@ -38,6 +38,11 @@ public class UiEventRuntimeController {
     public Result<UiEventExecutionResult> execute(
             @PathVariable String eventCode,
             @RequestBody UiEventExecuteRequest request) {
+        // 公开事件可绑定写接口，必须在执行链和任何副作用之前携带已展示配置摘要。
+        if (!org.springframework.util.StringUtils.hasText(request.getConfigHash())) {
+            throw new com.workflow.core.error.BusinessConflictException(
+                    "CONFIGURATION_HASH_REQUIRED", "页面缺少配置摘要，请重新加载后核对");
+        }
         request.setEventCode(eventCode);
         return Result.success(runtimeService.execute(request));
     }

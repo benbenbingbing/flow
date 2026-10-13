@@ -1,7 +1,7 @@
 package com.workflow.entity.data.application;
 
 import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
-import com.workflow.entity.form.application.context.EntityFormReleaseContext;
+import com.workflow.entity.form.application.context.EntityFormRuntimeContext;
 import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.entity.form.application.FormSubmissionTraceService;
 import com.workflow.entity.form.application.PublishedFormSubmissionService;
@@ -9,6 +9,7 @@ import com.workflow.entity.form.api.request.FormActionResolveRequest;
 import com.workflow.entity.ui.api.request.UiEventExecuteRequest;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
+import com.workflow.entity.excel.runtime.ExcelAtomicExecutionContext;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.PermissionUtil;
@@ -29,7 +30,7 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.list.application.EntityListPublishedRuntimeService;
-import com.workflow.entity.list.application.EntityListReleaseContext;
+import com.workflow.entity.list.application.EntityListRuntimeContext;
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListConfig;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
@@ -43,6 +44,7 @@ import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapp
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -72,20 +74,14 @@ public class EntityDataActionService {
             "processVariables",
             "extData",
             "actionCapabilities",
-            "listReleaseId",
-            "listReleaseVersion",
-            "listReleaseResolutionToken",
-            "formReleaseId",
-            "formReleaseVersion",
-            "formReleaseResolutionToken",
-            "viewCompositionActionContextToken");
-    private static final Set<String> LIST_RELEASE_CONTEXT_FIELDS = Set.of(
-            "listReleaseId",
-            "listReleaseVersion",
-            "listReleaseResolutionToken",
-            "formReleaseId",
-            "formReleaseVersion",
-            "formReleaseResolutionToken");
+            "listConfigHash",
+            "formConfigHash",
+            "runtimeContext",
+            "compositionContext");
+    private static final Set<String> LIST_RUNTIME_CONTEXT_FIELDS = Set.of(
+            "listConfigHash",
+            "formConfigHash",
+            "runtimeContext");
 
     private final EntityDataDynamicService dynamicService;
     private final EntityMutationPort mutationPort;
@@ -139,7 +135,7 @@ public class EntityDataActionService {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseContext 执行上下文，向后续详情读取仅步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续详情读取仅步骤传递身份、配置或状态
      * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
@@ -147,11 +143,11 @@ public class EntityDataActionService {
             String entityCode,
             String id,
             String listKey,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
-                releaseContext);
+                runtimeContext);
         capabilityService.requireStandardPermission(
                 entityCode,
                 EntityPermissionAction.VIEW);
@@ -188,7 +184,7 @@ public class EntityDataActionService {
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param formId 表单ID，后续用于读取详情时定位或关联目标
-     * @param releaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续详情步骤传递身份、配置或状态
      * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
@@ -197,13 +193,13 @@ public class EntityDataActionService {
             String id,
             String listKey,
             String formId,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         return getDetail(
                 entityCode,
                 id,
                 listKey,
                 formId,
-                releaseContext,
+                runtimeContext,
                 null);
     }
 
@@ -214,7 +210,7 @@ public class EntityDataActionService {
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param formId 表单ID，后续用于读取详情时定位或关联目标
-     * @param releaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续详情步骤传递身份、配置或状态
      * @param formReleaseContext 执行上下文，向后续详情步骤传递身份、配置或状态
      * @return 符合条件的实体数据结果，供调用方继续处理
      */
@@ -224,13 +220,13 @@ public class EntityDataActionService {
             String id,
             String listKey,
             String formId,
-            EntityListReleaseContext releaseContext,
-            EntityFormReleaseContext formReleaseContext) {
+            EntityListRuntimeContext runtimeContext,
+            EntityFormRuntimeContext formReleaseContext) {
         EntityDefinition definition = requireEntity(entityCode);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
-                releaseContext);
+                runtimeContext);
         if (definition.getStorageMode()
                 == EntityDefinition.StorageMode.SYSTEM) {
             systemEntityReadService.requirePermissions(entityCode);
@@ -312,7 +308,7 @@ public class EntityDataActionService {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseContext 执行上下文，向后续详情流程实例步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续详情流程实例步骤传递身份、配置或状态
      * @return 符合条件的实体数据结果，供调用方继续处理
      */
     @Transactional(readOnly = true)
@@ -320,12 +316,12 @@ public class EntityDataActionService {
             String entityCode,
             String processInstanceId,
             String listKey,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         requireDynamicRuntime(entityCode);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
-                releaseContext);
+                runtimeContext);
         return dynamicService.findAccessibleByProcessInstanceId(
                 entityCode,
                 processInstanceId,
@@ -356,7 +352,7 @@ public class EntityDataActionService {
      * 创建实体数据动作；结果供后续流程传递或持久化。
      *
      * @param dto DTO，作为 {@code requireDynamicRuntime} 的输入影响后续处理
-     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
      * @return 创建后的实体数据动作结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
@@ -370,30 +366,63 @@ public class EntityDataActionService {
             captureResult = true)
     public EntityDataDTO create(
             EntityDataDTO dto,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
+        return createInternal(dto, runtimeContext, null);
+    }
+
+    /**
+     * Excel 导入的一行新增。调用方须先验明真实导入入口并持有原子或分批导入的当前批次事务；
+     * 这里复用标准提交、事件、唯一性与变更管道，仅将普通列表新增按钮替换为导入权限。
+     * rowTraceKey 由任务 ID 和文件坐标派生，不能复用 HTTP 请求追踪键。
+     */
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public EntityDataDTO createExcelRow(EntityDataDTO dto, String rowTraceKey) {
+        if (dto == null || !StringUtils.hasText(dto.getEntityCode())
+                || !StringUtils.hasText(rowTraceKey) || !rowTraceKey.startsWith("excel_")) {
+            throw new IllegalArgumentException("Excel新增缺少实体或行级上下文");
+        }
+        // 导入方案固定写入表单，不能回退到实体默认表单，也不能被改为更新或发起流程。
+        if (!StringUtils.hasText(dto.getFormId()) || !StringUtils.hasText(dto.getFormConfigHash())
+                ) {
+            throw new IllegalArgumentException("Excel新增缺少已发布写入表单上下文");
+        }
+        if (StringUtils.hasText(dto.getId()) || Boolean.TRUE.equals(dto.getStartProcess())) {
+            throw new IllegalArgumentException("Excel导入仅允许新增且不能发起流程");
+        }
+        requireExcelDataIdentity(dto.getData(), dto.getEntityCode());
+        capabilityService.requireStandardPermission(dto.getEntityCode(), EntityPermissionAction.IMPORT);
+        capabilityService.requireStandardPermission(dto.getEntityCode(), EntityPermissionAction.CREATE);
+        dto.setStartProcess(false);
+        dto.setListKey(null);
+        dto.setCompositionContext(null);
+        try (var ignored = ExcelAtomicExecutionContext.open()) {
+            return createInternal(dto, null, new FormSubmissionExecutionContext(rowTraceKey,
+                    "EXCEL_CREATE", Map.of("entityCode", dto.getEntityCode(), "mode", "create")));
+        }
+    }
+
+    private EntityDataDTO createInternal(EntityDataDTO dto, EntityListRuntimeContext runtimeContext,
+            FormSubmissionExecutionContext excelContext) {
         if (dto == null || !StringUtils.hasText(dto.getEntityCode())) {
             throw new IllegalArgumentException("实体编码不能为空");
         }
         requireDynamicRuntime(dto.getEntityCode());
-        boolean compositionSubmission = StringUtils.hasText(
-                dto.getViewCompositionActionContextToken());
-        EntityListConfig config = compositionSubmission
+        boolean compositionSubmission = (dto.getCompositionContext() != null);
+        EntityListConfig config = (compositionSubmission || excelContext != null)
                 ? null
                 : resolveListConfig(
                         dto.getEntityCode(),
                         dto.getListKey(),
-                        releaseContext);
+                        runtimeContext);
         if (compositionSubmission) {
             Map<String, Object> trustedInitialValues =
                     viewCompositionActionService.authorizeFormSubmission(
-                            dto.getViewCompositionActionContextToken(),
+                            dto.getCompositionContext(),
                             "CREATE",
                             dto.getEntityCode(),
                             null,
                             dto.getFormId(),
-                            dto.getFormReleaseId(),
-                            dto.getFormReleaseVersion(),
-                            dto.getFormReleaseResolutionToken());
+                            dto.getFormConfigHash());
             // 发布映射生成的初值属于服务端约束。即使浏览器提交了同名字段，
             // 也必须以锁后重新读取来源记录得到的值为准。
             Map<String, Object> safeData = new LinkedHashMap<>(
@@ -402,12 +431,11 @@ public class EntityDataActionService {
             dto.setData(safeData);
             dto.setListKey(null);
         }
-        capabilityService.requireToolbarActionForConfig(
-                dto.getEntityCode(),
-                config,
-                "create");
+        if (excelContext == null) {
+            capabilityService.requireToolbarActionForConfig(dto.getEntityCode(), config, "create");
+        }
         FormSubmissionExecutionContext executionContext =
-                formSubmissionTraceService.current(
+                excelContext != null ? excelContext : formSubmissionTraceService.current(
                         "ENTITY_CREATE",
                         null,
                         Map.of(
@@ -419,10 +447,9 @@ public class EntityDataActionService {
                 dto.getEntityCode(),
                 config,
                 dto.getFormId(),
-                new EntityFormReleaseContext(
-                        dto.getFormReleaseId(),
-                        dto.getFormReleaseVersion(),
-                        dto.getFormReleaseResolutionToken()));
+                new EntityFormRuntimeContext(
+                        dto.getFormConfigHash(),
+                        dto.getRuntimeContext()));
         requireFormMutationAction(
                 origin,
                 dto.getEntityCode(),
@@ -453,9 +480,20 @@ public class EntityDataActionService {
                 createInput(dto));
         event.setServerIdempotencyKey(
                 executionContext.businessTraceKey());
-        Object value = eventRuntimeService.execute(
+        // 以平台新增结果作为唯一权威结果；AFTER 不能用另一条记录冒充本行已保存。
+        java.util.concurrent.atomic.AtomicReference<EntityDataDTO> excelSaved = new java.util.concurrent.atomic.AtomicReference<>();
+        var eventResult = eventRuntimeService.execute(
                 event,
                 input -> {
+                    if (excelContext != null) {
+                        if (excelSaved.get() != null) throw new IllegalArgumentException("Excel行新增不能重复执行");
+                        requireExcelDataIdentity(input, dto.getEntityCode());
+                        if (input.containsKey("startProcess") && input.get("startProcess") != null
+                                && !"false".equalsIgnoreCase(String.valueOf(input.get("startProcess")))) {
+                            throw new IllegalArgumentException("Excel导入不允许事件改变流程启动意图");
+                        }
+                        requireExcelDataIdentity(map(input.get("data")), dto.getEntityCode());
+                    }
                     AppliedSubmissionForm applied = applySubmissionForm(
                             origin,
                             dto.getEntityCode(),
@@ -464,7 +502,15 @@ public class EntityDataActionService {
                             map(input.get("data")),
                             executionContext);
                     dto.setData(applied.data());
+                    if (excelContext != null) {
+                        requireExcelDataIdentity(dto.getData(), dto.getEntityCode());
+                        // name 是 DTO 系统字段，单放在 data 中会被存储映射忽略，必须采用表单处理后的值。
+                        dto.setName(text(dto.getData().get("name")));
+                    }
                     if (input.containsKey("startProcess")) {
+                        if (excelContext != null && Boolean.parseBoolean(String.valueOf(input.get("startProcess")))) {
+                            throw new IllegalArgumentException("Excel导入第一版不允许事件发起流程");
+                        }
                         dto.setStartProcess(
                                 Boolean.valueOf(String.valueOf(
                                         input.get("startProcess"))));
@@ -477,12 +523,33 @@ public class EntityDataActionService {
                             null,
                             "create",
                             actionKey(dto.getStartProcess()));
-                    return mutateCreate(
+                    EntityDataDTO saved = mutateCreate(
                             dto,
                             applied.origin(),
                             executionContext.businessTraceKey());
-                }).getData();
-        return entityData(value, dto.getEntityCode(), null);
+                    if (excelContext != null) excelSaved.set(saved);
+                    return saved;
+                });
+        if (excelContext != null) {
+            if (!eventResult.isDefaultExecuted() || eventResult.isReplaced() || excelSaved.get() == null) {
+                throw new IllegalArgumentException("Excel导入必须保留标准新增及其真实保存结果");
+            }
+            EntityDataDTO saved = excelSaved.get();
+            if (!Objects.equals(dto.getEntityCode(), saved.getEntityCode()) || !StringUtils.hasText(saved.getId())) {
+                throw new IllegalArgumentException("Excel新增返回的实体或主键无效");
+            }
+            return saved;
+        }
+        return entityData(eventResult.getData(), dto.getEntityCode(), null);
+    }
+
+    /** 主键与实体身份只能由服务端新增管道确定；事件与表单处理仅能调整业务字段。 */
+    private void requireExcelDataIdentity(Map<String, Object> values, String entityCode) {
+        if (values == null) return;
+        if (StringUtils.hasText(text(values.get("id"))) || StringUtils.hasText(text(values.get("recordId")))
+                || (values.get("entityCode") != null && !Objects.equals(entityCode, values.get("entityCode")))) {
+            throw new IllegalArgumentException("Excel导入不允许指定主键或改变目标实体");
+        }
     }
 
     /**
@@ -523,7 +590,7 @@ public class EntityDataActionService {
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
      * @param formData 表单数据，作为 {@code text} 的输入影响后续处理
-     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
      * @return 更新后的实体数据动作结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
@@ -539,29 +606,27 @@ public class EntityDataActionService {
             String id,
             String listKey,
             Map<String, Object> formData,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         requireDynamicRuntime(entityCode);
-        String compositionToken = text(formData == null
+        var compositionContext = com.workflow.entity.ui.application.RuntimeRequestContext.composition(formData == null
                 ? null : formData.get(
-                        "viewCompositionActionContextToken"));
-        boolean compositionSubmission = StringUtils.hasText(compositionToken);
+                        "compositionContext"));
+        boolean compositionSubmission = compositionContext != null;
         String effectiveListKey = compositionSubmission ? null : listKey;
         EntityListConfig config = compositionSubmission
                 ? null
                 : resolveListConfig(
                         entityCode,
                         effectiveListKey,
-                        releaseContext);
+                        runtimeContext);
         if (compositionSubmission) {
             viewCompositionActionService.authorizeFormSubmission(
-                    compositionToken,
+                    compositionContext,
                     "EDIT",
                     entityCode,
                     id,
                     text(formData.get("formId")),
-                    text(formData.get("formReleaseId")),
-                    nullableInteger(formData.get("formReleaseVersion")),
-                    text(formData.get("formReleaseResolutionToken")));
+                    text(formData.get("formConfigHash")));
         }
         capabilityService.requireStandardPermission(
                 entityCode,
@@ -725,26 +790,17 @@ public class EntityDataActionService {
             PublishedFormSubmissionService.AuthorizedFormApplication applied =
                     formSubmissionService.applyAuthorizedFormWithRelease(
                     origin.configId(),
-                    origin.releaseId(),
-                    origin.releaseVersion(),
-                    origin.releaseResolutionToken(),
+                    origin.configHash(),
+                    origin.runtimeContext(),
                     entityCode,
                     recordId,
                     mode,
                     submittedData,
                     executionContext);
-            // 授权 token 只用于本次解析；统一变更上下文保存正式发布身份，不能持久化 token。
+            // 审计记录本次实际使用的配置身份；业务来源仍在后续事件调用前重新校验。
             return new AppliedSubmissionForm(
                     applied.data(),
-                    new EventOrigin(
-                            "FORM",
-                            origin.configId(),
-                            applied.releaseId(),
-                            applied.releaseVersion(),
-                            applied.effectiveReleaseId(),
-                            applied.effectiveContentHash(),
-                            applied.hotfixTargetId(),
-                            null));
+                    new EventOrigin("FORM", origin.configId(), applied.releaseId(), applied.releaseVersion(), applied.effectiveReleaseId(), applied.effectiveContentHash(), applied.hotfixTargetId(), origin.configHash(), origin.runtimeContext()));
         }
         PublishedFormSubmissionService.DefaultFormApplication applied =
                 formSubmissionService.applyDefaultFormWithRelease(
@@ -755,15 +811,7 @@ public class EntityDataActionService {
                         executionContext);
         EventOrigin appliedOrigin = StringUtils.hasText(
                 applied.formId())
-                ? new EventOrigin(
-                        "FORM",
-                        applied.formId(),
-                        applied.releaseId(),
-                        applied.releaseVersion(),
-                        applied.effectiveReleaseId(),
-                        applied.effectiveContentHash(),
-                        applied.hotfixTargetId(),
-                        null)
+                ? new EventOrigin("FORM", applied.formId(), applied.releaseId(), applied.releaseVersion(), applied.effectiveReleaseId(), applied.effectiveContentHash(), applied.hotfixTargetId(), null, null)
                 : origin;
         return new AppliedSubmissionForm(
                 applied.data(),
@@ -796,7 +844,7 @@ public class EntityDataActionService {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续实体数据动作步骤传递身份、配置或状态
      */
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(
@@ -810,12 +858,12 @@ public class EntityDataActionService {
             String entityCode,
             String id,
             String listKey,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         requireDynamicRuntime(entityCode);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
-                releaseContext);
+                runtimeContext);
         EntityDataDTO row = findAccessible(entityCode, id, config);
         capabilityService.requireRowActionForConfig(
                 entityCode,
@@ -878,7 +926,7 @@ public class EntityDataActionService {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param ids ID 集合，供本方法处理批次删除时使用
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseContext 执行上下文，向后续批次删除步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续批次删除步骤传递身份、配置或状态
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
      */
@@ -893,12 +941,12 @@ public class EntityDataActionService {
             String entityCode,
             List<String> ids,
             String listKey,
-            EntityListReleaseContext releaseContext) {
+            EntityListRuntimeContext runtimeContext) {
         requireDynamicRuntime(entityCode);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
-                releaseContext);
+                runtimeContext);
         if (ids == null || ids.isEmpty()) {
             throw new IllegalArgumentException("请选择需要删除的数据");
         }
@@ -993,7 +1041,7 @@ public class EntityDataActionService {
         if (dto.getData() != null) {
             createRequest.put("data", dto.getData());
         }
-        LIST_RELEASE_CONTEXT_FIELDS.forEach(createRequest::remove);
+        LIST_RUNTIME_CONTEXT_FIELDS.forEach(createRequest::remove);
         EntityMutationResult result = mutationPort.execute(
                 EntityMutationCommand.create(
                         dto.getEntityCode(),
@@ -1221,28 +1269,26 @@ public class EntityDataActionService {
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseContext 执行上下文，向后续列表配置步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续列表配置步骤传递身份、配置或状态
      * @return 解析后的列表配置结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private EntityListConfig resolveListConfig(
             String entityCode,
             String listKey,
-            EntityListReleaseContext releaseContext) {
-        EntityListReleaseContext effectiveContext =
-                releaseContext == null
-                        ? EntityListReleaseContext.current()
-                        : releaseContext;
+            EntityListRuntimeContext runtimeContext) {
+        EntityListRuntimeContext effectiveContext =
+                runtimeContext == null
+                        ? EntityListRuntimeContext.current()
+                        : runtimeContext;
         EntityListConfig draft = actionConfigService.resolveListConfig(
                 entityCode,
                 listKey);
         if (draft == null) {
             if (StringUtils.hasText(listKey)
                     || StringUtils.hasText(
-                            effectiveContext.releaseId())
-                    || effectiveContext.releaseVersion() != null
-                    || StringUtils.hasText(
-                            effectiveContext.releaseResolutionToken())) {
+                            effectiveContext.configHash())
+                    || (effectiveContext.runtimeContext() != null && !effectiveContext.runtimeContext().isEmpty())) {
                 throw new IllegalArgumentException(
                         "列表不存在或尚未发布: " + listKey);
             }
@@ -1250,9 +1296,8 @@ public class EntityDataActionService {
         }
         return publishedListRuntimeService.resolveConfig(
                 draft,
-                effectiveContext.releaseId(),
-                effectiveContext.releaseVersion(),
-                effectiveContext.releaseResolutionToken());
+                effectiveContext.configHash(),
+                effectiveContext.runtimeContext());
     }
 
     /**
@@ -1338,7 +1383,7 @@ public class EntityDataActionService {
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
      * @param list 列表，作为 {@code listEventOrigin} 的输入影响后续处理
      * @param requestedFormId 请求表单ID，后续用于处理事件来源时定位或关联目标
-     * @param releaseContext 执行上下文，向后续事件来源步骤传递身份、配置或状态
+     * @param runtimeContext 执行上下文，向后续事件来源步骤传递身份、配置或状态
      * @return 处理后的事件来源结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
@@ -1346,7 +1391,7 @@ public class EntityDataActionService {
             String entityCode,
             EntityListConfig list,
             String requestedFormId,
-            EntityFormReleaseContext releaseContext) {
+            EntityFormRuntimeContext runtimeContext) {
         if (StringUtils.hasText(requestedFormId)) {
             EntityForm form = formMapper.selectById(requestedFormId);
             if (form == null) {
@@ -1362,19 +1407,9 @@ public class EntityDataActionService {
                 throw new IllegalArgumentException(
                         "表单与实体不匹配");
             }
-            return new EventOrigin(
-                    "FORM",
-                    form.getId(),
-                    releaseContext == null
-                            ? null : releaseContext.releaseId(),
-                    releaseContext == null
-                            ? null : releaseContext.releaseVersion(),
-                    null,
-                    null,
-                    null,
-                    releaseContext == null
+            return new EventOrigin("FORM", form.getId(), null, null, null, null, null, runtimeContext == null ? null : runtimeContext.configHash(), runtimeContext == null
                             ? null
-                            : releaseContext.releaseResolutionToken());
+                            : runtimeContext.runtimeContext());
         }
         EntityDefinition entity = definitionMapper
                 .findByEntityCode(entityCode)
@@ -1383,19 +1418,9 @@ public class EntityDataActionService {
             EntityForm form =
                     formPublishService.currentDefaultForm(entity.getId());
             if (form != null) {
-                return new EventOrigin(
-                        "FORM",
-                        form.getId(),
-                        releaseContext == null
-                                ? null : releaseContext.releaseId(),
-                        releaseContext == null
-                                ? null : releaseContext.releaseVersion(),
-                        null,
-                        null,
-                        null,
-                        releaseContext == null
+                return new EventOrigin("FORM", form.getId(), null, null, null, null, null, runtimeContext == null ? null : runtimeContext.configHash(), runtimeContext == null
                                 ? null
-                                : releaseContext.releaseResolutionToken());
+                                : runtimeContext.runtimeContext());
             }
         }
         return listEventOrigin(list);
@@ -1428,10 +1453,8 @@ public class EntityDataActionService {
         }
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId(origin.configId());
-        request.setReleaseId(origin.releaseId());
-        request.setReleaseVersion(origin.releaseVersion());
-        request.setReleaseResolutionToken(
-                origin.releaseResolutionToken());
+        request.setConfigHash(origin.configHash());
+        request.setRuntimeContext(origin.runtimeContext());
         request.setEntityCode(entityCode);
         request.setListKey(listKey);
         request.setMode(mode);
@@ -1489,15 +1512,7 @@ public class EntityDataActionService {
      */
     private EventOrigin listEventOrigin(EntityListConfig list) {
         return list == null
-                ? null : new EventOrigin(
-                        "LIST",
-                        list.getId(),
-                        list.getActiveReleaseId(),
-                        list.getPublishedVersion(),
-                        null,
-                        null,
-                        null,
-                        list.getReleaseResolutionToken());
+                ? null : new EventOrigin("LIST", list.getId(), list.getActiveReleaseId(), list.getPublishedVersion(), null, null, null, list.getConfigHash(), list.getRuntimeContext());
     }
 
     /**
@@ -1525,8 +1540,8 @@ public class EntityDataActionService {
         event.setConfigId(origin.configId());
         event.setReleaseId(origin.releaseId());
         event.setReleaseVersion(origin.releaseVersion());
-        event.setReleaseResolutionToken(
-                origin.releaseResolutionToken());
+        event.setConfigHash(origin.configHash());
+        event.setRuntimeContext(origin.runtimeContext());
         event.setEntityCode(entityCode);
         event.setListKey(listKey);
         event.setRecordId(recordId);
@@ -1642,20 +1657,13 @@ public class EntityDataActionService {
     /**
      * 处理表单发布版本上下文，并将结果传给后续步骤。
      *
-     * @param formData 表单数据，作为 {@code EntityFormReleaseContext} 的输入影响后续处理
+     * @param formData 表单数据，作为 {@code EntityFormRuntimeContext} 的输入影响后续处理
      * @return 处理后的表单发布版本上下文结果，供调用方继续处理
      */
-    private EntityFormReleaseContext formReleaseContext(
+    private EntityFormRuntimeContext formReleaseContext(
             Map<String, Object> formData) {
-        return new EntityFormReleaseContext(
-                text(formData == null
-                        ? null : formData.get("formReleaseId")),
-                nullableInteger(formData == null
-                        ? null : formData.get("formReleaseVersion")),
-                text(formData == null
-                        ? null
-                        : formData.get(
-                                "formReleaseResolutionToken")));
+        return new EntityFormRuntimeContext(text(formData == null ? null : formData.get("formConfigHash")),
+                runtimeContext(formData == null ? null : formData.get("runtimeContext")));
     }
 
     /**
@@ -1686,7 +1694,8 @@ public class EntityDataActionService {
      * @param effectiveReleaseId 有效发布版本ID，后续用于处理事件来源时定位或关联目标
      * @param effectiveContentHash 有效内容哈希，保存在对象中供后续校验、查询或展示
      * @param hotfixTargetId 热修复目标ID，后续用于处理事件来源时定位或关联目标
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param configHash 页面配置摘要，用于副作用前发现配置变更
+     * @param runtimeContext 业务来源，每次请求重新鉴权
      */
     private record EventOrigin(
             String configType,
@@ -1696,7 +1705,8 @@ public class EntityDataActionService {
             String effectiveReleaseId,
             String effectiveContentHash,
             String hotfixTargetId,
-            String releaseResolutionToken) {
+            String configHash,
+            Map<String, Object> runtimeContext) {
     }
 
     /**
@@ -1708,5 +1718,8 @@ public class EntityDataActionService {
     private record AppliedSubmissionForm(
             Map<String, Object> data,
             EventOrigin origin) {
+    }
+    private Map<String, Object> runtimeContext(Object value) {
+        return com.workflow.entity.ui.application.RuntimeRequestContext.map(value);
     }
 }

@@ -185,7 +185,7 @@ class EntityFormCandidateApprovalActionTest {
         request.setMode("view");
         request.setTaskId(null);
         for (UiRuntimePurpose purpose : List.of(UiRuntimePurpose.HISTORICAL, UiRuntimePurpose.ACTIVE_TASK)) {
-            when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+            when(releaseService.findProcessReadContext(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.eq(form.getId())))
                     .thenReturn(Optional.of(new UiRuntimeResolutionContext(purpose, "history-1", "node-1")));
 
             List<FormActionRuntimeDTO> actions = formActionService.resolve(request);
@@ -202,7 +202,7 @@ class EntityFormCandidateApprovalActionTest {
     void signedProcessContextCannotReplaceActualInstanceReadPermission() {
         FormActionResolveRequest request = pinnedApprovalRequest();
         request.setMode("view");
-        when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+        when(releaseService.findProcessReadContext(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.eq(form.getId())))
                 .thenReturn(Optional.of(UiRuntimeResolutionContext.historical("history-1", "node-1")));
         doThrow(new ForbiddenException("无权访问该流程实例")).when(processReadAccess)
                 .requireReadAccess(ENTITY_CODE, "record-1", "process-1", "history-1");
@@ -216,7 +216,7 @@ class EntityFormCandidateApprovalActionTest {
         FormActionResolveRequest request = pinnedApprovalRequest();
         request.setMode("view");
         for (int mismatch : List.of(0, 1, 2)) {
-            when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+            when(releaseService.findProcessReadContext(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.eq(form.getId())))
                     .thenReturn(Optional.of(UiRuntimeResolutionContext.activeTask("history-1", "node-1", "task-1",
                             mismatch == 0 ? "other-process" : "process-1",
                             mismatch == 1 ? "other_entity" : ENTITY_CODE,
@@ -238,7 +238,7 @@ class EntityFormCandidateApprovalActionTest {
                 """);
         FormActionResolveRequest request = pinnedApprovalRequest();
         request.setMode("view");
-        when(releaseService.findProcessReadContext("task-token", form.getId(), "release-1", 1))
+        when(releaseService.findProcessReadContext(org.mockito.ArgumentMatchers.anyMap(), org.mockito.ArgumentMatchers.eq(form.getId())))
                 .thenReturn(Optional.of(UiRuntimeResolutionContext.historical("history-1", "node-1")));
 
         FormActionRuntimeDTO custom = formActionService.resolve(request).stream()
@@ -266,9 +266,9 @@ class EntityFormCandidateApprovalActionTest {
         execute.setEntityCode(ENTITY_CODE);
         execute.setRecordId(row.getId());
         execute.setTaskId(request.getTaskId());
-        execute.setReleaseId(request.getReleaseId());
-        execute.setReleaseVersion(request.getReleaseVersion());
-        execute.setReleaseResolutionToken(request.getReleaseResolutionToken());
+        execute.setConfigHash(request.getConfigHash());
+
+
         execute.setTargetKey("generate");
         execute.setContext(Map.of("mode", "approve"));
         assertThrows(ForbiddenException.class, () -> formActionService.requireCustomButton(execute));
@@ -285,8 +285,7 @@ class EntityFormCandidateApprovalActionTest {
                 () -> formActionService.resolve(request));
 
         assertEquals("UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH", error.getErrorCode());
-        verify(releaseService, never()).requireActiveTaskReleaseToken(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(releaseService, never()).authorizeRuntimeContext(any(), org.mockito.ArgumentMatchers.argThat(ctx -> ctx != null && ctx.containsKey("taskId")));
     }
 
     @Test
@@ -306,8 +305,7 @@ class EntityFormCandidateApprovalActionTest {
                     () -> formActionService.resolve(request));
             assertEquals("UI_EVENT_APPROVAL_TASK_CONTEXT_MISMATCH", error.getErrorCode());
         }
-        verify(releaseService, never()).requireActiveTaskReleaseToken(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(releaseService, never()).authorizeRuntimeContext(any(), org.mockito.ArgumentMatchers.argThat(ctx -> ctx != null && ctx.containsKey("taskId")));
     }
 
     @Test
@@ -327,7 +325,7 @@ class EntityFormCandidateApprovalActionTest {
         when(dataService.findAccessibleById(ENTITY_CODE, row.getId(), null))
                 .thenThrow(new ForbiddenException("数据不存在或无权访问"));
         when(dataService.findById(ENTITY_CODE, row.getId())).thenReturn(row);
-        when(releaseService.resolveRuntimeEventSnapshot(form.getId(), "release-1", 1, "task-token"))
+        when(releaseService.resolveRuntimeEventSnapshot(org.mockito.ArgumentMatchers.eq(form.getId()), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new UiConfigReleaseService.ResolvedUiEventSnapshot(
                         Map.of("form", objectMapper.convertValue(form, Map.class),
                                 "nodes", List.of(), "eventBindings", List.of()),
@@ -343,9 +341,9 @@ class EntityFormCandidateApprovalActionTest {
         request.setRecordId(row.getId());
         request.setTaskId("candidate-task");
         request.setMode("approve");
-        request.setReleaseId("release-1");
-        request.setReleaseVersion(1);
-        request.setReleaseResolutionToken("task-token");
+        request.setConfigHash("release-1");
+
+
         return request;
     }
 

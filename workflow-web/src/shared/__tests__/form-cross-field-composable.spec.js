@@ -6,7 +6,7 @@ import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCros
 const config = { version: 1, rules: [{
   id: 'range', operator: 'GE', targetFieldCode: 'processStartTime', message: '结束时间不能早于开始时间'
 }] }
-const form = ref({ id: 'form-1', runtimeReleaseId: 'release-1', fields: [
+const form = ref({ id: 'form-1', configHash: 'release-1', fields: [
   { fieldCode: 'processStartTime', fieldType: 'DATETIME' },
   { fieldCode: 'processEndTime', fieldType: 'DATETIME', validationRules: { crossField: config } }
 ] })
@@ -42,7 +42,7 @@ try {
   for (const switchIdentity of [
     () => { context.value = { ...context.value, initializationKey: 'create:2' } },
     () => { context.value = { ...context.value, record: { id: 'record-2' } } },
-    () => { form.value = { ...form.value, runtimeReleaseId: 'release-2' } },
+    () => { form.value = { ...form.value, configHash: 'release-2' } },
     () => { form.value = { ...form.value, id: 'form-2' } }
   ]) {
     assert.equal((await validation.validate()).valid, false)

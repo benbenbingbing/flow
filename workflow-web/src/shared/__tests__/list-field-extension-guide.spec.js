@@ -21,11 +21,7 @@ const listConfigApi = readFileSync(join(srcRoot, 'api/entityListConfig.js'), 'ut
 const router = readFileSync(join(srcRoot, 'router/index.js'), 'utf8')
 
 const provider = readFileSync(
-  join(backendRoot, 'workflow-spi/src/main/java/com/workflow/contracts/entity/list/spi/ListFieldDataProvider.java'),
-  'utf8'
-)
-const registry = readFileSync(
-  join(backendRoot, 'workflow-entity/src/main/java/com/workflow/entity/list/extension/ListFieldDataProviderRegistry.java'),
+  join(backendRoot, 'workflow-spi/src/main/java/com/workflow/contracts/entity/ui/spi/UiDataSourceProvider.java'),
   'utf8'
 )
 const templateProvider = readFileSync(
@@ -41,7 +37,7 @@ const enrichService = readFileSync(
   'utf8'
 )
 const projectProvider = readFileSync(
-  join(backendRoot, 'biz-project/src/main/java/com/workflow/biz/project/custom/ProjectCustomListFieldDataProvider.java'),
+  join(backendRoot, 'biz-project/src/main/java/com/workflow/biz/project/custom/ProjectCustomListUiDataSourceProvider.java'),
   'utf8'
 )
 const controller = readFileSync(
@@ -85,39 +81,36 @@ assert.match(installer, /enableDemo/)
 assert.match(mainJs, /registerApplicationExtensions/)
 assert.ok(existsSync(join(srcRoot, 'extensions/examples/demo/list-fields/DemoRiskProgressCell.vue')))
 
-assert.match(provider, /void enrich\(/)
-assert.match(provider, /boolean supportsQuery/)
-assert.match(provider, /boolean supportsVirtualField/)
-assert.match(registry, /\[A-Z\]\[A-Z0-9_\]\{1,63\}/)
-assert.match(guide, /\[A-Z\]\[A-Z0-9_\]\{1,63\}/)
+assert.match(provider, /Object execute\(/)
+assert.match(provider, /String getCode\(/)
+assert.match(provider, /configurationSchema\(/)
+assert.match(guide, /implements UiDataSourceProvider/)
+assert.doesNotMatch(guide, /implements ListFieldDataProvider/)
+assert.doesNotMatch(guide, /PROJECT_CUSTOM_FIELD|getDataSourceType\(\)/)
 
 assert.match(templateProvider, /return "FIELD_TEMPLATE"/)
 assert.match(templateProvider, /\$\{fieldCode\}/)
 assert.match(guide, /FIELD_TEMPLATE/)
 assert.match(guide, /\$\{code\} - \$\{name\}/)
 
-assert.match(projectProvider, /PROJECT_CUSTOM_FIELD/)
-assert.match(projectProvider, /record.getExtData\(\)\.put/)
-assert.match(guide, /PROJECT_CUSTOM_FIELD/)
-
-for (const key of ['entityCode', 'listKey', 'listConfigId', 'userId', 'userName']) {
-  assert.match(enrichService, new RegExp(`context\\.put\\("${key}"`))
+assert.match(projectProvider, /PROJECT_CUSTOM_UI_LIST/)
+assert.match(projectProvider, /columnValues\(/)
+assert.match(guide, /PROJECT_CUSTOM_UI_LIST/)
+assert.match(guide, /columnPrefix/)
+assert.match(guide, /LIST_COLUMN/)
+assert.match(guide, /LIST.*READ/)
+assert.match(guide, /recordId → 值/)
+assert.match(guide, /interfaceExtensionId/)
+assert.match(guide, /dataScopePlan/)
+assert.match(enrichService, /request.setUsage\(UiDataSourceUsages.LIST_COLUMN\)/)
+assert.match(enrichService, /\"INTERFACE\".equals\(field.getDataSourceType\(\)\)/)
+for (const key of ['entityCode', 'listKey', 'userId', 'userName']) {
   assert.match(guide, new RegExp(`\\b${key}\\b`))
 }
 
-assert.doesNotMatch(
-  enrichService,
-  /context\.put\("scene"/,
-  '字段 Provider context 实际没有 scene'
-)
-assert.doesNotMatch(
-  enrichService,
-  /context\.put\("DataScopePlan"/,
-  '字段 Provider context 实际没有 DataScopePlan'
-)
 assert.match(guide, /五个入参|五个 props|五个名字/)
 assert.match(guide, /不要改名/)
-assert.match(guide, /getExtData\(\)\.put/)
+assert.match(guide, /values.put\(String.valueOf\(record.get\("id"\)\)/)
 assert.doesNotMatch(guide, /自定义列表组件|自定义表单组件|旧版「列表字段扩展」|另一本手册/)
 
 assert.match(conditionEvaluator, /\{fieldCode\}_op/)
@@ -142,7 +135,6 @@ assert.match(guide, /visibleWhen/)
 assert.match(guide, /showOverflowTooltip/)
 assert.match(guide, /quickCopy/)
 assert.match(guide, /supportedEntityCodes/)
-assert.match(guide, /getSupportedEntityCodes/)
 assert.match(guide, /filterOptionsByEntity/)
 assert.match(listDesigner, /selectableCellComponentOptions/)
 assert.match(listDesigner, /filterOptionsByEntity/)

@@ -104,6 +104,8 @@ public class ConfigMigrationPackageService {
     private final ConfigMigrationPackageDocumentSupport documents;
     private final ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
     private final DatabaseQueryDialect queryDialect;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
     /**
      * 生成配置导出包。
      *
@@ -397,6 +399,7 @@ public class ConfigMigrationPackageService {
                 referenceService.importReferences(snapshot, this::mappedKey);
                 referenceService.validateAssignments(snapshot, this::mappedKey);
                 subFormReferences.validate(snapshot, packageFormReferences(items), this::mappedKey);
+                validateExcelSnapshot(item, snapshot);
             } catch (RuntimeException exception) {
                 risks.add(Map.of("level", "BLOCKING", "code", "REFERENCE_INVALID",
                         "message", String.valueOf(exception.getMessage())));
@@ -935,11 +938,15 @@ public class ConfigMigrationPackageService {
         return new DependencyResolution(missing.isEmpty(), missing);
     }
 
-    /**
-     * 发布前重查目标依赖，防止分析通过后账号、目录或映射已被删除或修改。
-     *
-     * @param items 条目，供本方法校验并获取已解析依赖集合时使用
-     */
+    /** 包内 Excel 预检与其他引用一起形成阻断报告，实际写入前再次校验。 */
+    private void validateExcelSnapshot(ConfigImportItem item, Map<String, Object> snapshot) {
+        if (!snapshot.containsKey(com.workflow.contracts.migration.port.EntityExcelMigrationPort.SECTION)) return;
+        if (!ConfigMigrationAssetService.ENTITY.equals(item.getAssetType()) || excelConfigurations == null)
+            throw new IllegalArgumentException("Excel 配置只能随普通实体资产迁移");
+        excelConfigurations.validate(item.getBusinessKey(), snapshot);
+    }
+
+    /** 发布前重查目标依赖，防止分析通过后账号、目录、映射或 Excel 方案被删除或修改。 */
     @Transactional(readOnly = true)
     public void requireResolvedDependencies(List<ConfigImportItem> items) {
         Map<String, PackageAsset> assets = items.stream().collect(java.util.stream.Collectors.toMap(
@@ -952,6 +959,7 @@ public class ConfigMigrationPackageService {
                 referenceService.importReferences(snapshot, this::mappedKey);
                 referenceService.validateAssignments(snapshot, this::mappedKey);
                 subFormReferences.validate(snapshot, packageFormReferences(items), this::mappedKey);
+                validateExcelSnapshot(item, snapshot);
             } catch (RuntimeException exception) {
                 throw new IllegalStateException("迁移引用校验失败: " + exception.getMessage(), exception);
             }

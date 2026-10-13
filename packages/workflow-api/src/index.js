@@ -8,3 +8,5 @@ export * from './entityFormResolve.js'
 export * from './entityStatus.js'
 export * from './uiCompositionRuntime.js'
 export * from './formRuntime.js'
+
+export { createEntityExcelApi } from './entityExcel.js'

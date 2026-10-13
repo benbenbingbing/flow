@@ -14,8 +14,8 @@ const source = {
   'Source-Record-Id': 'parent-record-1',
   taskId: 'forged-task',
   process_instance_id: 'forged-process',
-  releaseResolutionToken: 'signed-release-token',
-  viewCompositionTraversalToken: 'signed-traversal-token',
+  configHash: 'graph-config',
+  compositionContext: { ownerType: 'FORM', ownerId: 'form-root', recordId: 'root-record', compositionKey: 'project', path: [] },
   mode: 'edit',
   scene: 'PAGE',
   params: {
@@ -69,7 +69,7 @@ assert.deepEqual(
       configId: 'list-1',
       entityCode: 'expense',
       listKey: 'default',
-      viewCompositionTraversalToken: 'signed-traversal-token',
+      compositionContext: { ownerType: 'FORM', ownerId: 'form-root', recordId: 'root-record', compositionKey: 'project', path: [] },
       context: source
     }, 'ROW_BUTTON_CLICK'),
   {
@@ -77,7 +77,7 @@ assert.deepEqual(
     configId: 'list-1',
     entityCode: 'expense',
     listKey: 'default',
-    viewCompositionTraversalToken: 'signed-traversal-token',
+    compositionContext: { ownerType: 'FORM', ownerId: 'form-root', recordId: 'root-record', compositionKey: 'project', path: [] },
     context: {
       taskId: 'forged-task',
       process_instance_id: 'forged-process',

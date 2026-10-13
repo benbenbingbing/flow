@@ -217,27 +217,19 @@ public class EmbedRuntimeReadFacade {
         ListNode rootListNode = listSurface
                 ? requireRootListNode(listDependency.closure(), target)
                 : null;
-        String formToken = null;
-        if (StringUtils.hasText(target.formId())
-                && StringUtils.hasText(target.formReleaseId())
-                && target.formReleaseVersion() != null) {
-            if (nativeFormRuntimePort == null) {
-                throw runtimeUnavailable(null);
-            }
-            formToken = nativeFormRuntimePort.issueReleaseResolutionToken(
-                    new com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.Target(
-                            target.entityCode(), target.formId(),
-                            target.formReleaseId(), target.formReleaseVersion(),
-                            runtime.session().absoluteExpiresAt()));
+        String formConfigHash = null;
+        if (StringUtils.hasText(target.formId())) {
+            if (nativeFormRuntimePort == null) throw runtimeUnavailable(null);
+            formConfigHash = nativeFormRuntimePort.configHash(target.formId());
         }
-        String listToken = null;
+        String listConfigHash = null;
         if (StringUtils.hasText(target.listKey())
                 && StringUtils.hasText(target.listReleaseId())
                 && target.listReleaseVersion() != null) {
             if (nativeListRuntimePort == null) {
                 throw runtimeUnavailable(null);
             }
-            listToken = nativeListRuntimePort.issueReleaseResolutionToken(
+            listConfigHash = nativeListRuntimePort.configHash(
                     new com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target(
                             target.entityCode(), target.listKey(),
                             target.listReleaseId(), target.listReleaseVersion(),
@@ -249,15 +241,16 @@ public class EmbedRuntimeReadFacade {
                             listDependency.hash(),
                             listDependency.closure()));
         }
+        // 业务来源无需签名或续期；下次访问仍由委托会话恢复并核实目标。
+        Map<String, Object> runtimeContext = new java.util.LinkedHashMap<>();
+        if (StringUtils.hasText(target.formId())) runtimeContext.put("rootFormId", target.formId());
+        if (StringUtils.hasText(target.recordId())) runtimeContext.put("recordId", target.recordId());
+        if (StringUtils.hasText(target.listKey())) runtimeContext.put("listKey", target.listKey());
         return new EmbedRuntimeViews.Target(
-                target.entityCode(), target.formId(),
-                target.formReleaseId(), target.formReleaseVersion(),
-                target.listKey(), target.listReleaseId(),
-                target.listReleaseVersion(), target.entryMode(),
-                target.recordId(), target.processInstanceId(), formToken,
-                formSurface || rootListNode.defaultFormResolved(), listToken,
-                target.initialData(),
-                target.parameters(), target.context());
+                target.entityCode(), target.formId(), target.listKey(), target.entryMode(),
+                target.recordId(), target.processInstanceId(), formConfigHash,
+                formSurface || rootListNode.defaultFormResolved(), listConfigHash,
+                target.initialData(), target.parameters(), target.context(), runtimeContext);
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.workflow.entity.ui.application;
 
+import com.workflow.entity.excel.model.ExcelEventAction;
+
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -343,11 +345,12 @@ public class UiEventBindingService {
     }
 
     /**
-     * 删除界面事件绑定；后续读取或执行将使用更新后的状态。
+     * 删除界面事件绑定草稿；重新发布后运行态才会采用更新后的执行链。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param expectedRevision 预期修订版本，作为 {@code requireRevision} 的输入影响后续处理
+     * @param expectedRevision 用户读取的修订版本，阻止删除已被并发修改的草稿
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @throws RevisionConflictException 修订号过期，或检查后草稿再次变化时抛出
      */
     @Transactional(rollbackFor = Exception.class)
     public void delete(
@@ -359,14 +362,9 @@ public class UiEventBindingService {
         }
         requireOwnerAccess(current.getOwnerType(), current.getOwnerId());
         requireRevision(expectedRevision, current);
-        UpdateWrapper<UiEventBinding> update = new UpdateWrapper<>();
-        update.eq("id", id)
-                .eq("revision", current.getRevision())
-                .eq("deleted", 0)
-                .set("deleted", 1)
-                .setSql("revision = revision + 1")
-                .set("update_time", LocalDateTime.now());
-        if (mapper.update(null, update) != 1) {
+        // 发布快照独立保存事件内容，草稿可直接清理；避免重复删除/重建时
+        // deleted=1 的旧草稿占用唯一键。删除 SQL 同时校验修订号，保留 CAS 保护。
+        if (mapper.deleteDraftByIdAndRevision(id, current.getRevision()) != 1) {
             throw new RevisionConflictException(
                     "事件绑定已被其他人修改，请刷新后重试",
                     mapper.selectById(id));
@@ -399,13 +397,13 @@ public class UiEventBindingService {
             UiEventExecuteRequest request) {
         String configType = normalize(request.getConfigType());
         log.info(
-                "开始解析UI事件链: configType={}, configId={}, releaseId={}, releaseVersion={}, tokenPresent={}, eventCode={}, targetType={}, targetKey={}",
+                "开始解析UI事件链: configType={}, configId={}, releaseId={}, releaseVersion={}, configHashPresent={}, eventCode={}, targetType={}, targetKey={}",
                 LogValue.safe(configType),
                 LogValue.safe(request.getConfigId()),
                 LogValue.safe(request.getReleaseId()),
                 request.getReleaseVersion(),
                 StringUtils.hasText(
-                        request.getReleaseResolutionToken()),
+                        request.getConfigHash()),
                 LogValue.safe(request.getEventCode()),
                 LogValue.safe(request.getTargetType()),
                 LogValue.safe(request.getTargetKey()));
@@ -435,12 +433,30 @@ public class UiEventBindingService {
         }
         validateEventScope(configType, targetType, eventCode);
         if ("FORM".equals(configType)) {
+            var authorizedContext = releaseService.authorizeRuntimeContext(request.getConfigId(), request.getRuntimeContext());
+            request.setServerReadOnly(authorizedContext != null && authorizedContext.purpose()
+                    == com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL);
+            if (authorizedContext != null && StringUtils.hasText(authorizedContext.processInstanceId())
+                    && (UiDataSourceExecutionAccessService.isFormFieldEvent(configType, targetType, eventCode)
+                        || UiDataSourceExecutionAccessService.isFormReadEvent(configType, eventCode))) {
+                Map<String, Object> source = request.getRuntimeContext();
+                boolean nested = source.containsKey("rootFormId")
+                        && source.get("componentPath") instanceof List<?> path && !path.isEmpty();
+                String scopedRecordId = nested ? text(source.get("childRecordId")) : authorizedContext.recordId();
+                if (StringUtils.hasText(request.getRecordId()) && !Objects.equals(request.getRecordId(), scopedRecordId)) {
+                    throw new com.workflow.core.error.BusinessForbiddenException(
+                            "FORM_FIELD_RECORD_CONTEXT_MISMATCH", "字段事件与已授权流程记录不一致");
+                }
+                // 字段初始化和页面加载复用真实流程权限；浏览器不能提交这些 server-only 字段。
+                request.setServerRecordId(scopedRecordId);
+                request.setServerTaskId(authorizedContext.taskId());
+                request.setServerProcessInstanceId(authorizedContext.processInstanceId());
+                request.setServerAuthorizedMode(request.isServerReadOnly() ? "view" : "approve");
+            }
             UiConfigReleaseService.ResolvedUiEventSnapshot resolved =
                     releaseService.resolveRuntimeEventSnapshot(
                             request.getConfigId(),
-                            request.getReleaseId(),
-                            request.getReleaseVersion(),
-                            request.getReleaseResolutionToken());
+                            request.getConfigHash(), request.getRuntimeContext());
             Map<String, Object> snapshot = resolved.snapshot();
             ConfigIdentity identity = identity(
                     configType,
@@ -463,9 +479,7 @@ public class UiEventBindingService {
                                 request.getConfigId(), request.getReleaseId(), request.getReleaseVersion())
                         : releaseService.resolveRuntimeListRelease(
                         request.getConfigId(),
-                        request.getReleaseId(),
-                        request.getReleaseVersion(),
-                        request.getReleaseResolutionToken());
+                        request.getConfigHash(), request.getRuntimeContext());
         Map<String, Object> snapshot = resolved.snapshot();
         List<Map<String, Object>> bindings =
                 mapList(snapshot.get("eventBindings"));
@@ -532,18 +546,21 @@ public class UiEventBindingService {
     }
 
     /**
-     * 解析界面事件绑定；输出作为后续校验或处理的输入。
-     *
-     * @param bindings 绑定集合，作为 {@code applyLevel} 的输入影响后续处理
-     * @param identity 身份，作为 {@code applyLevel} 的输入影响后续处理
-     * @param request 本次请求，后续经校验后用于解析界面事件绑定
-     * @param releaseId 发布版本ID，后续用于解析界面事件绑定时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法解析界面事件绑定时使用
-     * @param snapshot 快照，供本方法解析界面事件绑定时使用
-     * @param effectiveReleaseId 有效发布版本ID，后续用于解析界面事件绑定时定位或关联目标
-     * @param effectiveContentHash 有效内容哈希，供本方法解析界面事件绑定时使用
-     * @return 解析后的界面事件绑定结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * 服务端发布/引用保护复用真实继承算法解析给定快照，不回读当前页面版本或执行接口。
+     * snapshot 和实体/页面身份必须来自发布服务或已验真的持久化快照，不能直接接收客户端请求。
+     */
+    public List<Map<String, Object>> resolveSnapshotButtonSteps(String configType, String configId, String entityId,
+            String eventCode, String buttonKey, Map<String, Object> snapshot) {
+        UiEventExecuteRequest request = new UiEventExecuteRequest();
+        request.setConfigType(configType); request.setConfigId(configId); request.setEventCode(eventCode);
+        request.setTargetType("BUTTON"); request.setTargetKey(buttonKey);
+        return resolve(mapList(snapshot.get("eventBindings")), new ConfigIdentity(entityId, null, null), request,
+                null, null, snapshot, null, null).steps();
+    }
+
+    /**
+     * 按实体、页面、目标三级应用继承，生成执行与发布引用检查共用的有效步骤。
+     * identity 必须为服务端确认的归属，返回链保留发布坐标与有效内容摘要供执行阶段核验。
      */
     private ResolvedEventChain resolve(
             List<Map<String, Object>> bindings,
@@ -675,6 +692,10 @@ public class UiEventBindingService {
         for (Map<String, Object> step : mapList(binding.get("steps"))) {
             Map<String, Object> executable = new LinkedHashMap<>(step);
             String eventCode = normalize(text(binding.get("eventCode")));
+            // 内置动作的参数随所属发布快照保存；解析时仍校验来源，防止历史损坏
+            // 快照把动作挂到 OWNER、字段或实体默认链而绕过按钮授权。
+            validateBuiltinAction(executable, normalize(text(binding.get("ownerType"))),
+                    normalize(text(binding.get("targetType"))), eventCode);
             if (UiDataSourceUsages.FORM_BUTTON_CLICK.equals(eventCode)
                     || FORM_FIELD_EVENTS.contains(eventCode)) {
                 attachTrustedBindingIdentity(executable, binding);
@@ -853,7 +874,10 @@ public class UiEventBindingService {
             String extensionId = firstText(
                     step.get("extensionId"), step.get("serviceId"));
             String operationContext = "";
-            if (StringUtils.hasText(extensionId)) {
+            validateBuiltinAction(step, ownerType, targetType, eventCode);
+            if (ExcelEventAction.isExcelStep(step)) {
+                operationContext = ownerType;
+            } else if (StringUtils.hasText(extensionId)) {
                 String operationCode = firstText(
                         step.get("operationCode"));
                 UiExtensionDefinition definition = dataSourceService
@@ -921,6 +945,18 @@ public class UiEventBindingService {
                                 + " 后最多只能有一个 REPLACE 步骤");
             }
         });
+    }
+
+    /** 校验内置动作契约；接口步骤仍沿用既有引用模型，不允许未知动作降级为纯映射。 */
+    private void validateBuiltinAction(Map<String, Object> step, String ownerType,
+            String targetType, String eventCode) {
+        if (!step.containsKey("actionType")) {
+            return;
+        }
+        if (!ExcelEventAction.isExcelStep(step)) {
+            throw new IllegalArgumentException("不支持的内置事件动作: " + text(step.get("actionType")));
+        }
+        ExcelEventAction.validateStep(step, ownerType, targetType, eventCode);
     }
 
     /**

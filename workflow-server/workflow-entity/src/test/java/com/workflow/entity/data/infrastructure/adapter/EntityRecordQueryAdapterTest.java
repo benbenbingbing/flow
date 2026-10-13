@@ -23,7 +23,7 @@ class EntityRecordQueryAdapterTest {
         host.setCreateBy("creator-1");
         host.setData(new LinkedHashMap<>(Map.of("amount", 100)));
         host.setExtData(new LinkedHashMap<>(Map.of("total", 200)));
-        host.setFormReleaseResolutionToken("host-only-token");
+        host.setRuntimeContext(Map.of("taskId", "host-only-context"));
         when(records.findById("project", "project-1")).thenReturn(host);
 
         var result = adapter.findById("project", "project-1");

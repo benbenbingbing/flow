@@ -1,6 +1,9 @@
 package com.workflow.entity.ui.application;
 
 import com.workflow.entity.list.application.validation.ListButtonSelectionPolicy;
+import com.workflow.entity.excel.model.ExcelEventAction;
+import com.workflow.entity.excel.runtime.EntityExcelRuntimeResolver;
+import org.springframework.beans.factory.ObjectProvider;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -84,7 +87,8 @@ public class UiEventRuntimeService {
             "CLOSE_FORM",
             "REFRESH_PARENT",
             "REFRESH_LIST",
-            "DOWNLOAD_TASK");
+            "DOWNLOAD_TASK",
+            "EXCEL_ACTION");
     private static final Set<String> FORM_BUTTON_AUTHORIZATION_ERRORS = Set.of(
             "UI_DATA_SOURCE_DATA_SCOPE_DENIED",
             "UI_DATA_SOURCE_USER_DISABLED",
@@ -118,6 +122,8 @@ public class UiEventRuntimeService {
     private final UiEventExecutionReceiptService executionReceiptService;
     private final EntityDataDynamicService entityDataService;
     private final ObjectMapper objectMapper;
+    // Excel 解析器需要回调事件授权；延迟获取避免事件运行时与 Excel 运行时互相构造。
+    private final ObjectProvider<EntityExcelRuntimeResolver> excelRuntimeResolver;
 
     /**
      * 执行已发布事件。按钮和字段事件可直接调用此入口。
@@ -155,7 +161,10 @@ public class UiEventRuntimeService {
             bindListFixedFilters(request, chain);
             canonicalizeFormButtonRequest(request);
             bindTrustedPinnedExecution(request, chain);
-            UiEventExecutionResult result =
+            UiEventExecutionResult result;
+            // Excel 准备 Provider 使用已鉴权的原始来源，不依赖可改写的接口输入。
+            try (UiEventOriginContext ignored = UiEventOriginContext.open(request, chain)) {
+                result =
                     UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
                             normalize(request.getEventCode()))
                             ? executionReceiptService.execute(
@@ -167,6 +176,7 @@ public class UiEventRuntimeService {
                                             chain))
                             : executeChain(
                                     request, defaultHandler, chain);
+            }
             recordExecution(
                     request,
                     result,
@@ -212,6 +222,27 @@ public class UiEventRuntimeService {
                     (System.nanoTime() - startedAt) / 1_000_000);
             throw exception;
         }
+    }
+
+    /**
+     * 在文件请求受理时重新鉴权按钮及发布配置，不执行事件步骤或其副作用。
+     * 返回同一份已验证事件链，供 Excel 核对签发时固定的配置摘要。
+     */
+    public UiEventBindingService.ResolvedEventChain authorizeExcelOrigin(UiEventExecuteRequest request) {
+        if (request == null || !Set.of("FORM_BUTTON_CLICK", "TOOLBAR_BUTTON_CLICK", "ROW_BUTTON_CLICK")
+                .contains(request.getEventCode())) {
+            throw new IllegalArgumentException("Excel入口必须为已发布按钮事件");
+        }
+        UiDataSourceExecutionAccessService.validateBusinessInput(request.getInput());
+        UiDataSourceExecutionAccessService.validateBusinessInput(request.getContext());
+        requireFormButtonRequestShape(request);
+        var chain = bindingService.resolvePublished(request);
+        requireExecutableFormButtonChain(request, chain);
+        requireExecutionPermission(request, chain);
+        bindListFixedFilters(request, chain);
+        canonicalizeFormButtonRequest(request);
+        bindTrustedPinnedExecution(request, chain);
+        return chain;
     }
 
     /**
@@ -332,6 +363,16 @@ public class UiEventRuntimeService {
             throw new IllegalArgumentException("UI 事件未关联有效实体");
         }
         String eventCode = normalize(request.getEventCode());
+        if ((UiDataSourceExecutionAccessService.isFormFieldEvent(request.getConfigType(), request.getTargetType(), eventCode)
+                || UiDataSourceExecutionAccessService.isFormReadEvent(request.getConfigType(), eventCode))
+                && StringUtils.hasText(request.getServerProcessInstanceId())
+                && Set.of("view", "approve").contains(request.getServerAuthorizedMode())) {
+            // 字段和加载调用已由当前待办/流程实例及发布引用授权，不再强加普通实体列表权限。
+            // 历史详情的 WRITE Provider 在统一执行入口继续被拒绝。
+            if (StringUtils.hasText(request.getRecordId()) && !Objects.equals(request.getRecordId(), request.getServerRecordId()))
+                throw new BusinessForbiddenException("FORM_FIELD_RECORD_CONTEXT_MISMATCH", "字段事件记录来源不一致");
+            return;
+        }
         EntityPermissionAction action = switch (eventCode) {
             case UiDataSourceUsages.DATA_CREATE ->
                     EntityPermissionAction.CREATE;
@@ -354,6 +395,9 @@ public class UiEventRuntimeService {
                             "表单按钮缺少已验证的运行模式");
                 }
                 request.setServerAuthorizedMode(authorizedMode);
+                // 表单请求允许省略实体编码或使用不同大小写；鉴权成功后使用发布链
+                // 已确认的实体身份，后续内置动作不能依赖客户端同名字段。
+                request.setEntityCode(chain.entityCode());
                 yield null;
             }
             case UiDataSourceUsages.DATA_DELETE ->
@@ -518,7 +562,7 @@ public class UiEventRuntimeService {
     /**
      * 给列表按钮 Provider 调用生成服务端可信幂等种子。
      *
-     * <p>历史发布通过 releaseResolutionToken 固定后，Provider 访问层要求内部
+     * <p>服务端已解析有效发布配置后，Provider 访问层要求内部
      * 调用携带可信种子。客户端 requestId 只参与服务端绑定后的摘要；无合法
      * requestId 时使用随机 nonce，避免任何客户端字段被直接当作可信标识。</p>
      *
@@ -559,7 +603,7 @@ public class UiEventRuntimeService {
      * <p>字段回填等事件同样可能固定表单版本，Provider 授权层要求钉版标记与
      * 服务端种子同时存在。字段事件即使来自 ACTIVE，也使用同次解析快照授权。
      * 必须在 resolvePublished 和权限检查之后调用；不能
-     * 仅凭客户端带了令牌就授予钉版执行权。按钮回执和内部提交已有的种子保持原值，
+     * 仅凭客户端定位信息就授予固定配置执行权。按钮回执和内部提交已有的种子保持原值，
      * 无稳定 requestId 的交互使用随机 nonce，避免不同次字段选择共享执行标识。</p>
      *
      * @param request 本次请求，后续经校验后用于处理绑定可信固定执行
@@ -568,8 +612,7 @@ public class UiEventRuntimeService {
     private void bindTrustedPinnedExecution(
             UiEventExecuteRequest request,
             UiEventBindingService.ResolvedEventChain chain) {
-        if ((!StringUtils.hasText(request.getReleaseResolutionToken())
-                && !UiDataSourceExecutionAccessService.isFormFieldEvent(
+        if ((!UiDataSourceExecutionAccessService.isFormFieldEvent(
                         request.getConfigType(), request.getTargetType(), request.getEventCode()))
                 || StringUtils.hasText(request.getServerIdempotencyKey())
                 || UiDataSourceUsages.FORM_BUTTON_CLICK.equals(
@@ -663,7 +706,7 @@ public class UiEventRuntimeService {
                 "selectedrows", "records", "selection",
                 "recordid", "selectedids", "entitycode", "listkey",
                 "eventcode", "targettype", "targetkey", "configid",
-                "releaseid", "releaseversion", "releaseresolutiontoken")
+                "releaseid", "releaseversion")
                 .contains(normalized);
     }
 
@@ -1044,6 +1087,14 @@ public class UiEventRuntimeService {
             Map<String, Object> state,
             UiEventExecutionResult result) {
         restoreListFilters(request, state);
+        if (step.containsKey("actionType")) {
+            if (!ExcelEventAction.isExcelStep(step)) {
+                throw new IllegalArgumentException("不支持的内置事件动作: " + step.get("actionType"));
+            }
+            // 校验必须早于条件判断，非法带条件的主动作不能被静默跳过。
+            ExcelEventAction.validateStep(step, normalize(request.getConfigType()),
+                    normalize(request.getTargetType()), normalize(request.getEventCode()));
+        }
         if (!valueMapper.matches(step.get("condition"), state)) {
             trace(result, stepLabel(step), "SKIPPED", null);
             return null;
@@ -1054,7 +1105,12 @@ public class UiEventRuntimeService {
             Object raw;
             String extensionId = firstText(
                     step.get("extensionId"), step.get("serviceId"));
-            if (StringUtils.hasText(extensionId)) {
+            if (ExcelEventAction.isExcelStep(step)) {
+                // 仅使用已鉴权来源及发布链中的静态参数准备动作；此处不直接执行
+                // 导入写入，后续文件请求仍由 Excel token 受理链重新授权。
+                raw = Map.of("effects", List.of(
+                        excelRuntimeResolver.getObject().prepareBoundAction(step)));
+            } else if (StringUtils.hasText(extensionId)) {
                 Object mappedInput = valueMapper.apply(
                         step.get("inputMapping"),
                         state,
@@ -1081,6 +1137,13 @@ public class UiEventRuntimeService {
                 }
                 execute.setConfigType(normalize(request.getConfigType()));
                 execute.setConfigId(request.getConfigId());
+                execute.setServerReadOnly(request.isServerReadOnly());
+                if (StringUtils.hasText(request.getServerProcessInstanceId())) {
+                    execute.setServerRecordId(request.getServerRecordId());
+                    execute.setServerFormMode(request.getServerAuthorizedMode());
+                    execute.setServerTaskId(request.getServerTaskId());
+                    execute.setServerProcessInstanceId(request.getServerProcessInstanceId());
+                }
                 execute.setTargetType(
                         StringUtils.hasText(request.getTargetType())
                                 ? normalize(request.getTargetType())
@@ -1126,8 +1189,7 @@ public class UiEventRuntimeService {
                 execute.setServerIdempotencyKey(
                         request.getServerIdempotencyKey());
                 execute.setServerPinnedRelease(
-                        request.isServerPinnedRelease() || StringUtils.hasText(
-                                request.getReleaseResolutionToken()));
+                        request.isServerPinnedRelease() || listButton);
                 if (formButton || formField) {
                     // 字段与按钮都按本次已验真的有效快照授权，并保留 OWNER 默认绑定的来源身份。
                     execute.setServerPinnedRelease(true);
@@ -1148,6 +1210,10 @@ public class UiEventRuntimeService {
                     raw = executeProviderStep(
                             step, request, chain, extensionId, execute);
                 } else if (formField) {
+                    execute.setServerRecordId(request.getServerRecordId());
+                    execute.setServerFormMode(request.getServerAuthorizedMode());
+                    execute.setServerTaskId(request.getServerTaskId());
+                    execute.setServerProcessInstanceId(request.getServerProcessInstanceId());
                     raw = dataSourceService.executeResolvedFormFieldOperation(
                             extensionId, execute.getOperationCode(), execute,
                             chain.snapshot(), chain.effectiveContentHash());
@@ -1519,7 +1585,7 @@ public class UiEventRuntimeService {
                 step.get("extensionId"),
                 step.get("operationCode"),
                 step.get("serviceId"),
-                "MAPPING");
+                ExcelEventAction.isExcelStep(step) ? "ENTITY_EXCEL" : "MAPPING");
     }
 
     /**

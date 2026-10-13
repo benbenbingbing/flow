@@ -1,4 +1,5 @@
 <template>
+  <ExcelActionDialog ref="excelActionDialog" @imported="loadDataList" />
   <div class="entity-data-list" :class="{ embedded }">
     <div v-if="loading" class="loading-container">
       <el-skeleton :rows="5" animated />
@@ -53,12 +54,12 @@
           :composition="item"
           owner-type="LIST"
           :owner-id="listConfig.id"
-          :release-id="listConfig.releaseId"
-          :release-version="listConfig.publishedVersion"
           :source-record-id="listSourceRecordId"
           :source-data="selectedRows.length === 1 ? selectedRows[0] : (context.record?.data || {})"
           :source-parameters="relatedContentRuntimeContext.params || {}"
-          :traversal-context-token="viewCompositionTraversalToken"
+          :composition-context="compositionContext"
+          :config-hash="listConfig.configHash || configHash"
+          :runtime-context="relatedContentRuntimeContext"
           @target-saved="loadDataList"
         />
       </template>
@@ -125,7 +126,7 @@
           :entityDefinition="entityDefinition"
           :entityStatusMap="entityStatusMap"
           :refEntityNameMap="refEntityNameMap"
-          :refresh="loadDataList"
+          :refresh="reload"
           :viewConfig="viewConfig"
           :showVersionAction="showVersionAction"
           :show-pagination="!embedded || showPagination"
@@ -135,9 +136,7 @@
           :row-expand-compositions="rowExpandCompositions"
           :button-compositions="relatedButtonCompositions"
           :list-owner-id="listConfig?.id || ''"
-          :list-release-id="listConfig?.releaseId || ''"
-          :list-release-version="listConfig?.publishedVersion || 0"
-          :list-release-resolution-token="releaseResolutionToken || ''"
+          :list-config-hash="listConfig?.configHash || configHash || ''"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -146,6 +145,7 @@
           @approve="handleApprove"
           @versions="handleVersions"
           @batch-delete="handleBatchDelete"
+          @import-excel="() => handleExcelAction('import')"
           @export-selected="() => handleExport('SELECTED')"
           @export-all="() => handleExport('ALL')"
           @event-action="handleEventAction"
@@ -169,7 +169,7 @@
           </template>
         </EntityDataTable>
       </template>
-      <div v-if="selectionScene" class="selection-footer">
+      <div v-if="selectionScene && showSelectionFooter" class="selection-footer">
         <span>已选择 {{ selectedRows.length }} 条</span>
         <div>
           <el-button @click="emit('cancel')">取消</el-button>
@@ -200,9 +200,7 @@
       :entityFields="entityFields"
       :defaultForm="runtimeDefaultForm"
       :listKey="listConfig?.listKey"
-      :list-release-id="listConfig?.releaseId"
-      :list-release-version="listConfig?.publishedVersion"
-      :list-release-resolution-token="releaseResolutionToken"
+      :list-config-hash="listConfig?.configHash || configHash"
       :entity-status-options="entityStatusOptions"
       :form-presentation="embeddedFormPresentation"
       @success="loadDataList"
@@ -214,9 +212,7 @@
       :entityDefinition="entityDefinition"
       :entityFields="entityFields"
       :listKey="listConfig?.listKey"
-      :list-release-id="listConfig?.releaseId"
-      :list-release-version="listConfig?.publishedVersion"
-      :list-release-resolution-token="releaseResolutionToken"
+      :list-config-hash="listConfig?.configHash || configHash"
       :entity-status-options="entityStatusOptions"
       :form-presentation="embeddedFormPresentation"
       @success="loadDataList"
@@ -230,6 +226,9 @@
   </div>
 </template>
 <script setup lang="ts">
+import ExcelActionDialog from '@/components/excel/ExcelActionDialog.vue'
+import { entityExcelApi } from '@/api/entityExcel'
+import { applyRuntimeEventEffects } from '@flow/workflow-core/form-runtime/eventEffects'
 import { useEntityVersionCapabilities } from './list/useEntityVersionCapabilities.js'
 
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
@@ -289,15 +288,14 @@ const userStore = useUserStore()
 const props = withDefaults(defineProps<{
   entityCode?: string
   listKey?: string
-  releaseId?: string
-  releaseVersion?: number | null
-  releaseResolutionToken?: string
-  viewCompositionContextToken?: string
-  viewCompositionTraversalToken?: string
+  configHash?: string
+  compositionContext?: Record<string, unknown>
+  candidateAction?: string
   relatedContentActions?: string[]
   showTargetListToolbarActions?: boolean
   scene?: string
   context?: Record<string, any>
+  showSelectionFooter?: boolean
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
   selectionActionOptions?: Array<{
     action: string
@@ -321,12 +319,11 @@ const props = withDefaults(defineProps<{
 }>(), {
   entityCode: '',
   listKey: '',
-  releaseId: '',
-  releaseVersion: null,
-  releaseResolutionToken: '',
-  viewCompositionContextToken: '',
-  viewCompositionTraversalToken: '',
+  configHash: '',
+  compositionContext: null,
+  candidateAction: '',
   context: () => ({}),
+  showSelectionFooter: true,
   selectionMode: 'NONE',
   selectionActionOptions: () => [],
   initialSelectedRows: () => [],
@@ -398,9 +395,9 @@ const rowExpandCompositions = computed(() =>
 )
 const relatedButtonCompositions = computed(() =>
   publishedRelatedContents.value.filter(isButtonRelatedContent))
-const viewCompositionTraversalToken = computed(() => String(
-  props.viewCompositionTraversalToken
-  || props.context?.viewCompositionTraversalToken
+const compositionContext = computed(() => (
+  props.compositionContext
+  || props.context?.compositionContext
   || ''
 ))
 const resolvedInputParameters = ref({})
@@ -408,8 +405,8 @@ const relatedContentRuntimeContext = computed(() => ({
   ...props.context,
   params: resolvedInputParameters.value,
   parameters: resolvedInputParameters.value,
-  viewCompositionTraversalToken:
-    viewCompositionTraversalToken.value
+  compositionContext:
+    compositionContext.value
 }))
 const { effectiveSelectionMode, selectionScene, selectedRows } =
   useEntityDataSelectionState(props, runtimeScene, listConfig)
@@ -473,18 +470,14 @@ const showPageRuntimeDiagnostics = computed(() =>
 )
 const listRuntimeDiagnosticEntries = computed(() => [{
   label: '列表',
-  value: formatRuntimeCodeVersion(
-    listConfig.value?.listKey,
-    listConfig.value?.publishedVersion
-  )
+  value: listConfig.value?.listKey || '未记录运行列表'
 }])
 const listRuntimeDiagnosticCopyEntries = computed(() => [
   ...listRuntimeDiagnosticEntries.value
 ])
 const listRuntimeDiagnosticResetKey = computed(() => [
   listConfig.value?.listKey || '',
-  listConfig.value?.publishedVersion ?? '',
-  listConfig.value?.releaseId || ''
+  listConfig.value?.configHash || ''
 ].join(':'))
 const isSystemEntity = computed(() => entityDefinition.value?.storageMode === 'SYSTEM')
 function hasVersionViewPermission(entityCodeValue: string) {
@@ -614,7 +607,7 @@ const usesCustomListComponent = computed(() => Boolean(
 const customListRuntime = computed(() => ({
   version: 2,
   viewConfig: viewConfig.value,
-  reload: loadDataList,
+  reload,
   search: handleSearch,
   reset: handleReset,
   create: handleCreate,
@@ -633,9 +626,10 @@ const customListRuntime = computed(() => ({
   getStatusText
 }))
 const listReleaseContext = computed(() => ({
-  releaseId: listConfig.value?.releaseId,
-  releaseVersion: listConfig.value?.publishedVersion,
-  releaseResolutionToken: props.releaseResolutionToken || undefined
+  configHash: listConfig.value?.configHash || props.configHash || undefined,
+  runtimeContext: props.context?.runtimeContext || {},
+  compositionContext: compositionContext.value || undefined,
+  candidateAction: props.candidateAction || undefined
 }))
 function buttonOrder(button: any) {
   const orderKey = Number(button?.orderKey)
@@ -821,15 +815,17 @@ async function loadEntityStatusMap() {
   if (!entityCode.value) return
   try {
     const list = await getEntityStatusList(entityCode.value, {
-      viewCompositionTraversalToken:
-        viewCompositionTraversalToken.value || undefined
+      ...(props.context?.runtimeContext || {}),
+      listKey: runtimeListKey.value,
+      compositionContext:
+        compositionContext.value || undefined
     })
     entityStatusOptions.value = getEffectiveEntityStatusOptions(list || [])
     entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   } catch (e) {
     // 已签名的关联目标必须完整读取它自己的状态定义；
     // 不能回退根实体默认值，否则会与 Flow 原生界面不一致。
-    if (viewCompositionTraversalToken.value) throw e
+    if (compositionContext.value) throw e
     entityStatusOptions.value = getEffectiveEntityStatusOptions()
     entityStatusMap.value = buildEntityStatusMap(entityStatusOptions.value)
   }
@@ -883,13 +879,15 @@ const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {})
   clearQueryForm()
   try {
     const res = await entityApi.getByCode(entityCode.value, {
-      viewCompositionTraversalToken:
-        viewCompositionTraversalToken.value || undefined
+      ...(props.context?.runtimeContext || {}),
+      listKey: runtimeListKey.value,
+      compositionContext:
+        compositionContext.value || undefined
     })
     entityDefinition.value = res || {}
     entityFields.value = res?.fields || []
     await Promise.all([
-      loadListConfig(),
+      loadListConfig({ refreshConfig: true }),
       loadVersionCapabilities(requestedEntityCode, capabilitiesGeneration)
     ])
     if (!props.embedded
@@ -911,7 +909,7 @@ const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {})
   }
 }
 // 加载列表配置
-const loadListConfig = async () => {
+const loadListConfig = async (options: { refreshConfig?: boolean } = {}) => {
   if (!entityDefinition.value?.id || !runtimeListKey.value) return
   try {
     const schema = await entityListRuntimeApi.getSchema(
@@ -919,10 +917,11 @@ const loadListConfig = async () => {
       runtimeListKey.value,
       runtimeScene.value,
       {
-        releaseId: props.releaseId,
-        releaseVersion: props.releaseVersion,
-        releaseResolutionToken: props.releaseResolutionToken,
-        viewCompositionContextToken: props.viewCompositionContextToken
+        // 初始化和用户显式刷新先读取当前配置；普通操作仍校验页面已加载的摘要。
+        configHash: options.refreshConfig ? undefined : listConfig.value?.configHash || props.configHash,
+        runtimeContext: props.context?.runtimeContext || {},
+        compositionContext: props.compositionContext,
+        candidateAction: props.candidateAction
       }
     )
     listConfig.value = schema || null
@@ -935,8 +934,11 @@ const loadListConfig = async () => {
     }
   } catch (e) {
     console.error('加载列表配置失败:', e)
-    listConfig.value = null
-    listConfigFields.value = []
+    // 刷新失败保留原配置与用户筛选，允许再次刷新；首次加载由外层显示初始化错误。
+    if (!options.refreshConfig || !listConfig.value) {
+      listConfig.value = null
+      listConfigFields.value = []
+    }
     // 保留请求层的 errorCode、traceId 和 HTTP 状态，供嵌入宿主诊断与恢复判断。
     throw e || new Error('列表不存在、尚未发布，或当前账号没有访问权限。')
   }
@@ -986,10 +988,10 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
         pageNum: pageNum.value,
         pageSize: pageSize.value,
         scene: runtimeScene.value,
-        releaseId: listConfig.value?.releaseId,
-        releaseVersion: listConfig.value?.publishedVersion,
-        releaseResolutionToken: props.releaseResolutionToken,
-        viewCompositionContextToken: props.viewCompositionContextToken,
+        configHash: listConfig.value?.configHash || props.configHash,
+        runtimeContext: props.context?.runtimeContext || {},
+        compositionContext: props.compositionContext,
+        candidateAction: props.candidateAction,
         filters: params,
         context: relatedContentRuntimeContext.value
       }
@@ -1090,29 +1092,26 @@ const handleBatchDelete = async () => {
   }
 }
 // 导出数据
-const handleExport = async (exportType: string) => {
+const excelActionDialog = ref(null)
+const excelPreparing = ref(false)
+/** 默认入口只提交发布来源和标准按钮，方案始终由服务端解析当前默认设置。 */
+async function handleExcelAction(buttonCode: string) {
+  if (excelPreparing.value) return
+  excelPreparing.value = true
   try {
-    const condition = buildRequestFilters()
-    const ids = exportType === 'SELECTED' ? selectedRows.value.map(r => r.id) : []
-    const res = await entityDataApi.exportData(entityCode.value, {
-      exportType,
-      ids,
-      listKey: listConfig.value?.listKey,
-      ...listReleaseContext.value,
-      condition
+    const recordIds = buttonCode === 'exportSelected' ? selectedRows.value.map(r => r.id) : []
+    const filters = buildRequestFilters()
+    const prepared = await entityExcelApi.prepare({
+      ownerType: 'LIST', ownerId: String(listConfig.value?.id || ''), entityCode: entityCode.value,
+      buttonCode, listKey: listConfig.value?.listKey, ...listReleaseContext.value,
+      compositionContext: compositionContext.value || undefined, recordIds, filters
     })
-    const blob = new Blob([res], { type: 'text/csv;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${entityCode.value}_${exportType}_${Date.now()}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-  } catch (error: any) {
-    showRequestError(error, error.message || '导出失败')
-  }
+    await excelActionDialog.value.open(prepared, { recordIds, filters })
+  } catch (error: any) { showRequestError(error, error.message || 'Excel 操作失败') }
+  finally { excelPreparing.value = false }
+}
+const handleExport = async (exportType: string) => {
+  return handleExcelAction(exportType === 'SELECTED' ? 'exportSelected' : 'exportAll')
 }
 const handleEventAction = async ({
   button,
@@ -1128,30 +1127,32 @@ const handleEventAction = async ({
     return
   }
   const eventCode = row ? 'ROW_BUTTON_CLICK' : 'TOOLBAR_BUTTON_CLICK'
+  // 事件准备和实际导出使用同一份选择及筛选，避免等待响应时页面条件变化。
+  const recordIds = actionRows.map(item => item.id).filter(Boolean)
+  const filters = buildRequestFilters()
   try {
     const result = await uiEventBindingApi.execute(eventCode, {
       configType: 'LIST',
       configId: String(listConfig.value.id),
-      releaseId: listConfig.value.releaseId,
-      releaseVersion: listConfig.value.publishedVersion,
-      releaseResolutionToken: props.releaseResolutionToken,
-      viewCompositionTraversalToken:
-        viewCompositionTraversalToken.value || undefined,
+      configHash: listConfig.value?.configHash || props.configHash,
+      runtimeContext: props.context?.runtimeContext || {},
+      compositionContext:
+        compositionContext.value || undefined,
       entityCode: entityCode.value,
       listKey: listConfig.value.listKey,
       targetType: 'BUTTON',
       targetKey: String(button.key),
       recordId: row?.id,
-      selectedIds: actionRows.map(item => item.id).filter(Boolean),
+      selectedIds: recordIds,
       // 按钮、记录与选择集由服务端按发布快照和 ID 重建；客户端不提交可伪造副本。
-      input: {},
+      input: { filters },
       context: {
         ...(props.context || {}),
         listId: String(listConfig.value.id),
         scene: runtimeScene.value
       }
     })
-    await applyButtonEffects(result?.effects || [])
+    await applyButtonEffects(result?.effects || [], { recordIds, recordId: row?.id, filters })
     if (result?.message) {
       ElMessage.success(result.message)
     }
@@ -1159,28 +1160,15 @@ const handleEventAction = async ({
     showRequestError(error, '按钮操作执行失败')
   }
 }
-async function applyButtonEffects(effects: any[]) {
-  for (const effect of effects) {
-    const type = String(effect?.type || '').toUpperCase()
-    if (type === 'REFRESH_LIST') {
-      await loadDataList()
-      continue
-    }
-    if (type === 'MESSAGE' && effect.message) {
-      ElMessage({
-        type: effect.level || 'success',
-        message: effect.message
-      })
-      continue
-    }
-    if (type === 'OPEN_ROUTE' && effect.route) {
-      await router.push(effect.route)
-      continue
-    }
-    if (type === 'DOWNLOAD_TASK') {
-      ElMessage.success(effect.message || '下载任务已创建')
-    }
-  }
+/** 与表单共用严格效果分发，未知能力明确报错，避免按钮点击被静默吞掉。 */
+async function applyButtonEffects(effects: any[], context: any = {}) {
+  await applyRuntimeEventEffects({ effects }, {
+    excel: (effect: any) => excelActionDialog.value.open(effect, context),
+    refresh: () => loadDataList(),
+    message: (effect: any) => ElMessage({ type: effect.level || 'success', message: effect.message }),
+    navigate: (effect: any) => router.push(effect.route),
+    download: (effect: any) => ElMessage.success(effect.message || '下载任务已创建')
+  })
 }
 // 判断是否可审批
 const canAction = (row: any, buttonKey: string) => {
@@ -1243,7 +1231,7 @@ const handleEdit = async (row: any, button?: any) => {
       if (!loaded) return
     }
     // 无论使用默认表单还是按钮固定表单，都等 props/context 完成同一轮更新后再打开；
-    // 这样关联子列表不会把上一次的发布快照或 traversal token 带进新弹窗。
+    // 这样关联子列表不会把上一次的配置或关联来源 带进新弹窗。
     await nextTick()
     await formDialogRef.value?.openEdit(row, {
       form,
@@ -1288,7 +1276,7 @@ async function loadRuntimeButtonForm(
   placement: 'TOOLBAR' | 'ROW'
 ) {
   if (!button?.targetFormId) {
-    return loadExplicitListButtonForm(button)
+    return loadExplicitListButtonForm(button, { ...props.context?.runtimeContext, listKey: runtimeListKey.value, buttonId: button.key, compositionContext: compositionContext.value || undefined })
   }
   await loadListConfig()
   const buttons = placement === 'TOOLBAR'
@@ -1302,7 +1290,7 @@ async function loadRuntimeButtonForm(
   if (!runtimeButton) {
     throw new Error('列表按钮运行时配置已更新，请刷新页面后重试')
   }
-  return loadExplicitListButtonForm(runtimeButton)
+  return loadExplicitListButtonForm(runtimeButton, { ...props.context?.runtimeContext, listKey: runtimeListKey.value, buttonId: runtimeButton.key, compositionContext: compositionContext.value || undefined })
 }
 
 const handleVersions = (row: any) => {
@@ -1334,9 +1322,7 @@ const confirmRelatedContentAction = (action: string) => {
 watch(() => [
   entityCode.value,
   runtimeListKey.value,
-  props.releaseId,
-  props.releaseVersion,
-  props.releaseResolutionToken
+  props.configHash
 ], () => {
   if (entityCode.value && runtimeListKey.value) {
     loadEntityDefinition()
@@ -1419,10 +1405,22 @@ async function reload(options: { throwOnError?: boolean } = {}) {
   if (loadError.value || !entityDefinition.value?.id || !listConfig.value) {
     return loadEntityDefinition(options)
   }
-  return loadDataList(options)
+  try {
+    await loadListConfig({ refreshConfig: true })
+    return loadDataList(options)
+  } catch (error) {
+    dataError.value = error?.message || '刷新列表配置失败，请稍后重试'
+    if (options.throwOnError) throw error
+  }
 }
 
-defineExpose({ focus, reload })
+/** Excel 的表单批量入口只读取当前选择器的参数，不复用页面之外的残留选中状态。 */
+function getExcelSelection() {
+  if (loadError.value || dataError.value || tableLoading.value || !listConfig.value?.id) throw new Error('列表尚未准备就绪，请完成加载后重试')
+  return { recordIds: selectedRows.value.map(row => row.id), filters: buildRequestFilters() }
+}
+
+defineExpose({ focus, reload, getExcelSelection })
 </script>
 <style scoped lang="scss">
 .entity-data-list {

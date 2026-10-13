@@ -22,37 +22,17 @@ public class EntityListRuntimeController {
 
     private final EntityListRuntimeService runtimeService;
 
-    /**
-     * 获取列表运行态 schema（字段、动作、场景等）。GET /api/entity-lists/{entityCode}/{listKey}/schema
-     *
-     * @param entityCode 实体编码
-     * @param listKey    列表标识
-     * @param scene      场景标识（可选）
-     * @param releaseId 发布版本ID，后续用于处理结构时定位或关联目标
-     * @param releaseVersion 发布版本，作为 {@code Result.success} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param viewCompositionContextToken 视图组合上下文令牌，后续用于授权校验、关联或幂等去重
-     * @return 列表 schema 结构
-     */
+    /** 列表加载只接受业务定位信息；JSON 查询参数在解码后仍由运行时服务逐层授权。 */
     @GetMapping("/{entityCode}/{listKey}/schema")
-    public Result<EntityListSchemaDTO> schema(
-            @PathVariable String entityCode,
-            @PathVariable String listKey,
+    public Result<EntityListSchemaDTO> schema(@PathVariable String entityCode, @PathVariable String listKey,
             @RequestParam(required = false) String scene,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer releaseVersion,
-            @RequestParam(required = false)
-            String releaseResolutionToken,
-            @RequestParam(required = false)
-            String viewCompositionContextToken) {
-        return Result.success(runtimeService.schema(
-                entityCode,
-                listKey,
-                scene,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken,
-                viewCompositionContextToken));
+            @RequestParam(required = false) String configHash,
+            @RequestParam(required = false) String runtimeContext,
+            @RequestParam(required = false) String compositionContext,
+            @RequestParam(required = false) String candidateAction) {
+        return Result.success(runtimeService.schema(entityCode, listKey, scene, configHash,
+                com.workflow.entity.ui.application.RuntimeRequestContext.map(runtimeContext),
+                com.workflow.entity.ui.application.RuntimeRequestContext.composition(compositionContext), candidateAction));
     }
 
     /**

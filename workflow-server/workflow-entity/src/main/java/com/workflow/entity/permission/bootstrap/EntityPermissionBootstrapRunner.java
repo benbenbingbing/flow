@@ -43,5 +43,10 @@ public class EntityPermissionBootstrapRunner implements ApplicationRunner {
             catalogService.synchronizeRestartPermissions();
             return true;
         });
+        // 旧库已完成目录 v1，升级不能依赖重跑该任务；只补导入资源，保留原有按钮和普通角色授权。
+        bootstrapJobCoordinator.executeOnce("entity-excel-import-permission", 1, () -> {
+            catalogService.synchronizeImportPermissions();
+            return true;
+        });
     }
 }

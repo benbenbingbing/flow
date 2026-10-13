@@ -23,10 +23,8 @@
       scene="PAGE"
       :entity-code="target.entityCode"
       :list-key="target.listKey"
-      :release-id="target.listReleaseId"
-      :release-version="target.listReleaseVersion"
-      :release-resolution-token="target.listReleaseResolutionToken"
-      :context="target.runtimeContext"
+      :config-hash="target.listConfigHash"
+      :context="runtimePageContext"
       :create-initial-data="target.initialData"
       :create-context="createContext"
       :default-form="defaultForm"
@@ -62,27 +60,28 @@ const formPresentation = computed(() =>
   props.bootstrap.ui?.formPresentation === 'dialog' ? 'dialog' : 'seamless'
 )
 
-const createContext = computed(() => ({
+// 第三方业务参数供字段使用，运行定位独立传递给服务端重新鉴权。
+const runtimePageContext = computed(() => ({
+  ...(target.context || {}),
   ...(target.runtimeContext || {}),
+  runtimeContext: target.runtimeContext || {}
+}))
+
+const createContext = computed(() => ({
+  ...runtimePageContext.value,
   parameters: {
-    ...(target.runtimeContext?.parameters || {}),
+    ...(target.context?.parameters || {}),
     ...(target.parameters || {})
   }
 }))
 
 function hasFixedDefaultForm() {
-  return Boolean(
-    target.formId
-      && target.formReleaseId
-      && target.formReleaseVersion
-      && target.formReleaseResolutionToken
-  )
+  return Boolean(target.formId)
 }
 
 /**
- * 列表本体由 EntityDataList 读取 exact LIST Release；如果 Session 同时固定了
- * 默认表单，这里预先读取该 exact FORM Release 并注入原生列表弹窗，
- * 避免已打开 Session 在管理员激活新表单后中途漂移。
+ * 列表配置由服务端根据 Embed 会话选择；默认表单读取当前发布配置，
+ * 后续提交通过 configHash 检测打开后发生的配置变化。
  */
 async function prepareRuntime(options = {}) {
   const sequence = ++loadSequence
@@ -91,18 +90,13 @@ async function prepareRuntime(options = {}) {
   defaultForm.value = null
   try {
     if (hasFixedDefaultForm()) {
-      const release = await getFormRuntimeRelease(
-        target.formId,
-        target.formReleaseId,
-        target.formReleaseVersion,
-        target.formReleaseResolutionToken
-      )
+      const release = await getFormRuntimeRelease(target.formId, target.runtimeContext || {})
       if (sequence !== loadSequence) return
       defaultForm.value = normalizeRuntimeFormRelease(
         release,
         target.formId,
-        release?.releaseResolutionToken
-          || target.formReleaseResolutionToken
+        release?.configHash
+          || target.formConfigHash
       )
     }
     if (sequence !== loadSequence) return

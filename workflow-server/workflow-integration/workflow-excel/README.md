@@ -309,3 +309,48 @@ mvn -f workflow-server/pom.xml -pl workflow-integration/workflow-excel -am test
 以及日期、文本、金额、代码值转换器的实际文件往返和错误边界。
 
 本模块不涉及数据库迁移。
+
+
+## 配置驱动的动态导入与批量导出
+
+`ExcelUtils.readRawRows` 为实体配置等动态模型提供原始单元格读取：
+
+```java
+ExcelUtils.readRawRows(inputStream, new ExcelReadOptions(0, 1, 200), 1000,
+    header -> checkHeaders(header.cells()),
+    batch -> {
+        for (ExcelRawRow row : batch) {
+            if (row.isBlank()) continue;
+            String code = ExcelValueCodec.readString(row.cells().get(0), true, true);
+            BigDecimal amount = ExcelValueCodec.readAmount(row.cells().get(1),
+                2, RoundingMode.UNNECESSARY, true, "￥");
+            // row.rowNumber() 是真实 Excel 行号；业务层在这里收集逐格错误并校验动态字段。
+        }
+    });
+```
+
+`ExcelRawRow`、`ExcelRawCell`、`ExcelCellType` 和 `ExcelValueCodec` 位于 `com.workflow.excel.dynamic`。
+读取固定保留原文本，不使用 `options.autoTrim()`；清理由字段 codec 控制。表头逐行回调，数据批次及单元格映射不可变；缺失列可能没有键，codec 接收 null 作为空值。`rowIndex` 从 0 开始，`rowNumber()` 从 1 开始。数值为原始 `BigDecimal`，保留显示格式与 1900/1904 日期基准。
+
+原始读取不执行 Bean Validation。公式与错误单元格分别标记为 `FORMULA`、`ERROR`，不会读取其缓存结果冒充普通值；各 codec 拒绝这些类型，调用方可以捕获错误继续收集同一文件的其他错误。EasyExcel 对部分格式存在类型丢失，因此读取会先流式预扫选中 Sheet 的公式/错误元数据，再分批读取数据；该预扫不创建完整 Workbook、不计算公式。公式/错误单元格最多 100,000 个，累计公式/错误文本最多 2,000,000 字符，所记录的公式/错误文本上限 32,767 字符，超限整体拒绝。公式无法重建表达式时使用 `[公式]` 标记，仍拒绝作为输入。
+
+`maxRows` 限制数据行（包含中间空行，不包含表头）；纯空行是否跳过由业务决定。超过上限、工作表不存在、结构损坏或回调失败均终止读取。回调不能直接做不可回滚的业务提交；需要整批原子导入时，先完成预检，再调用业务事务保存。输入流始终由调用方关闭。
+
+按列编译一次不可变格式器和字典，可避免逐单元格重建：
+
+```java
+var dates = ExcelValueCodec.dateFormat("yyyy-MM-dd", List.of("yyyy/MM/dd"), true);
+var codes = new ExcelValueCodec.CodeMapping(Map.of("01", "在职", "02", "离职"), true, true);
+LocalDateTime date = dates.read(cell);
+String code = codes.read(cell);
+```
+
+日期、金额、文本清理和代码映射规则与 DTO Converter 共用核心；动态字典由业务层批量查询后传入。`writeAmount` 返回文本或 `BigDecimal`，数值方式拒绝超过 Excel 15 位有效数字的金额；`writeDate`/`writeDateTime`/`writeString`/`writeCode` 返回文本。日期序号按工作簿基准转换；日期文本严格解析，不静默丢弃时区信息。
+
+```java
+// batches 是按需获取数据库分页结果的 Iterable，每次只持有当前批次。
+ExcelUtils.writeRowsBatches(outputStream, List.of(List.of("编码"), List.of("金额")),
+    batches, "数据");
+```
+
+动态批写只生成一次表头；无数据仍可生成模板；文本值（包括以 `=` 开头的文本）始终写成字符串单元格。输出流由调用方关闭，批次获取或写入失败时应丢弃部分文件。旧 `readRows` 文本接口和 DTO 接口保留。

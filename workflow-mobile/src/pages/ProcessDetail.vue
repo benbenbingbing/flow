@@ -60,7 +60,6 @@ import { normalizeNextApproverPreview } from '@flow/workflow-core/next-approver'
 import { tasks, forms, entities, request, ui, session } from '../adapters/services.js'
 import { formServices } from '../adapters/formServices.js'
 import { invalidateInboxes } from '../inbox.js'
-import { createFormReleaseSession } from '../formReleaseSession.js'
 const ProcessDiagram = defineAsyncComponent(() => import('../components/ProcessDiagram.vue'))
 const router = useRouter(), route = useRoute(), taskId = computed(() => String(route.query.taskId || ''))
 const snapshot = ref(history.state.row || {}), detail = useProcessDetail({ request, getProcessHistory: tasks.getProcessHistory })
@@ -73,15 +72,6 @@ const canWithdraw = computed(() => detail.progressData.value?.status === 'RUNNIN
 const moreActionsTarget = ref(null)
 const operation = ref(null), operationOpen = ref(false), operationUsers = ref([]), operationComment = ref(''), operationPicker = ref(false), addSignType = ref('')
 let sequence = 0, savedFingerprint = '', completed = false
-const releaseSession = createFormReleaseSession({
-  getForm: () => form.value,
-  async loadForm() {
-    const result = await forms.getProgress(route.params.instanceId, route.query.kind === 'todo' ? taskId.value : '')
-    return result.formConfigs?.[0] || result.formConfig
-  }
-})
-// 统一覆盖字段事件、校验、动作解析和审批提交；休眠恢复后第一次操作也会先续期。
-const releaseInterceptor = request.interceptors.request.use(releaseSession.prepare)
 const canApprove = computed(() => Boolean(task.value && String(task.value.status).toLowerCase() === 'todo' && operations.value.approve === true && !conflict.value))
 const isStarter = computed(() => [session.userInfo?.username, session.userInfo?.id].filter(Boolean).map(String).includes(String(record.value.submitterId || snapshot.value.startUserId || '')))
 const canResubmit = computed(() => isStarter.value && rejected.value?.canResubmit === true)
@@ -90,7 +80,7 @@ const formReadonly = computed(() => mode.value === 'view' || isRuntimeFormReadon
 const entityCode = computed(() => record.value.entityCode || task.value?.entityCode || snapshot.value.entityCode || '')
 // 详情标签读取最新实体状态及配置名称，不使用流程进度状态或列表中的旧状态。
 const entityStatusText = computed(() => record.value._statusText || resolveEntityStatusLabel(record.value.status) || '—')
-const runtimeContext = computed(() => ({ form: form.value, permissions: session.permissions, entityCode: entityCode.value, entityId: form.value?.entityId, recordId: record.value.id, record: record.value, mode: mode.value, taskId: taskId.value, processInstanceId: route.params.instanceId, releaseResolutionToken: form.value?.releaseResolutionToken, initializationKey: `${route.params.instanceId}:${taskId.value}` }))
+const runtimeContext = computed(() => ({ form: form.value, permissions: session.permissions, entityCode: entityCode.value, entityId: form.value?.entityId, recordId: record.value.id, record: record.value, mode: mode.value, taskId: taskId.value, processInstanceId: route.params.instanceId, configHash: form.value?.configHash, runtimeContext: form.value?.runtimeContext, initializationKey: `${route.params.instanceId}:${taskId.value}` }))
 const approvalConfig = computed(() => detail.approvalConfig.value || { enabled: true, commentLabel: '审批意见', options: [{ value: 'approve', label: '通过' }, { value: 'reject', label: '驳回' }] })
 const selectedOption = computed(() => approvalConfig.value.options?.find(option => option.value === action.value))
 const allowedAddSignTypes = computed(() => resolveAllowedAddSignTypes(operations.value))
@@ -135,7 +125,6 @@ async function loadFormEntityFields() {
 }
 /** 审批入口必须经过任务详情鉴权和服务端能力确认；URL 中的 todo 类型不能授予办理权。 */
 async function load() {
-  releaseSession.reset()
   const current = ++sequence; loading.value = true; loaded.value = false; error.value = ''; conflict.value = false; task.value = null; operations.value = {}; preview.reset()
   try {
     let authorizedTask = null
@@ -146,7 +135,7 @@ async function load() {
     if (current !== sequence) return
     record.value = { ...(detail.entityData.value || authorizedTask?.entityData || {}) }
     const source = detail.formConfig.value || authorizedTask?.formConfig
-    form.value = source ? { ...source, id: source.id || source.formId || source.entityFormId, runtimeReleaseId: source.runtimeReleaseId || source.formReleaseId, runtimeReleaseVersion: source.runtimeReleaseVersion ?? source.formReleaseVersion } : null
+    form.value = source ? { ...source, id: source.id || source.formId || source.entityFormId, configHash: source.configHash } : null
     task.value = authorizedTask?.processTask || null
     if (authorizedTask?.processInstance) snapshot.value = { ...snapshot.value, ...authorizedTask.processInstance }
     if (task.value) operations.value = await tasks.getTaskOperations(taskId.value)
@@ -181,7 +170,7 @@ async function submitApproval() {
     await preview.ensureCurrent()
     if (!approvalRef.value.validate().valid) return
     const selections = approvalRef.value.getChangedSelections(), current = form.value
-    const payload = { taskId: taskId.value, action: action.value, actionLabel: selectedOption.value.label, comment: comment.value, formData: record.value, entityCode: entityCode.value, recordId: record.value.id, formId: current.id, formReleaseId: current.runtimeReleaseId, formReleaseVersion: current.runtimeReleaseVersion, formReleaseResolutionToken: current.releaseResolutionToken }
+    const payload = { taskId: taskId.value, action: action.value, actionLabel: selectedOption.value.label, comment: comment.value, formData: record.value, entityCode: entityCode.value, recordId: record.value.id, formId: current.id, formConfigHash: current.configHash }
     if (selections.length) { payload.nextApproverSelections = selections; payload.nextApprovalScopeKey = preview.preview.value.scopeKey }
     const trace = preview.getCurrentTraceKey()
     await tasks.completeTask(payload, { silentError: true, ...(trace ? { headers: { [BUSINESS_TRACE_HEADER]: trace } } : {}) })
@@ -275,7 +264,7 @@ async function finish(message) { completed = true; approvalOpen.value = false; o
 function back() { if (/^\/(?:m\/)?inbox\//.test(history.state.back || '')) router.back(); else return router.replace(`/inbox/${route.query.kind || 'todo'}`) }
 onBeforeRouteLeave(async () => { if (submitting.value && !completed) return false; if (!completed && mode.value !== 'view' && savedFingerprint && (JSON.stringify(record.value) !== savedFingerprint || comment.value)) { try { await showConfirmDialog({ title: '离开详情', message: '填写的内容尚未提交，确定离开？' }) } catch { return false } } })
 watch(() => [route.params.instanceId, route.query.taskId], load, { immediate: true })
-onBeforeUnmount(() => { sequence++; preview.reset(); releaseSession.reset(); request.interceptors.request.eject(releaseInterceptor) })
+onBeforeUnmount(() => { sequence++; preview.reset() })
 </script>
 <style scoped>
 .detail-more-target { display: flex; align-items: center; }

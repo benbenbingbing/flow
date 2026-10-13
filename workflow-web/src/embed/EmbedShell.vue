@@ -20,7 +20,7 @@
       v-else-if="runtime.state === EMBED_RUNTIME_STATES.READY
         && runtime.navigation.surfaceType === 'LIST'
         && runtime.nativeListTarget"
-      :key="`${runtime.nativeListTarget.listKey}:${runtime.nativeListTarget.listReleaseId}`"
+      :key="`${runtime.nativeListTarget.listKey}:${runtime.nativeListTarget.listConfigHash}`"
       ref="nativeListPageRef"
       :bootstrap="runtime.bootstrap"
       :target="runtime.nativeListTarget"
@@ -31,7 +31,7 @@
       v-else-if="runtime.state === EMBED_RUNTIME_STATES.READY
         && runtime.navigation.surfaceType === 'FORM'
         && runtime.nativeFormTarget"
-      :key="`${runtime.nativeFormTarget.formId}:${runtime.nativeFormTarget.formReleaseId}:${runtime.navigation.mode}:${runtime.navigation.recordId || ''}`"
+      :key="`${runtime.nativeFormTarget.formId}:${runtime.nativeFormTarget.formConfigHash}:${runtime.navigation.mode}:${runtime.navigation.recordId || ''}`"
       ref="nativeFormPageRef"
       :bootstrap="runtime.bootstrap"
       :target="runtime.nativeFormTarget"

@@ -161,13 +161,14 @@
     </div>
   </div>
 <el-dialog v-model="presentedEmptyAssigneeDialogVisible" title="流程空办理人默认策略" width="600px" append-to-body destroy-on-close>
-  <el-alert
-    title="该配置会固化到 BPMN 版本快照，节点可选择继承或覆盖。"
-    type="info"
-    :closable="false"
-    show-icon
-    style="margin-bottom: 16px"
-  />
+  <template #header="{ titleId, titleClass }">
+    <div :id="titleId" :class="titleClass">
+      <ConfigHelpLabel
+        label="流程空办理人默认策略"
+        content="该配置会固化到 BPMN 版本快照，节点可选择继承或覆盖。"
+      />
+    </div>
+  </template>
   <el-form label-position="top">
     <EmptyAssigneePolicyEditor v-model="emptyAssigneeDefault" :allow-inherit="false" />
   </el-form>
@@ -180,6 +181,7 @@
 
 <script setup>
 import EmptyAssigneePolicyEditor from '@/components/EmptyAssigneePolicyEditor.vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { computed, ref, onMounted, onUnmounted, nextTick, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWorkspacePage } from '@/composables/useWorkspacePage'

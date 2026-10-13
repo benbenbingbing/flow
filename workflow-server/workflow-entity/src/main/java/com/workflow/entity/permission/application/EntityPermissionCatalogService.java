@@ -169,6 +169,28 @@ public class EntityPermissionCatalogService {
     }
 
     /**
+     * Excel 升级仅补动态实体的 IMPORT 菜单资源及管理员授权。
+     * 旧的全量初始化任务已经完成时仍可独立执行；不重写按钮、不重建状态，也不自动给普通角色开放导入。
+     * 资源和角色关联均按既有稳定权限码幂等，失败由外层升级任务重试。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void synchronizeImportPermissions() {
+        List<EntityDefinition> entities = definitionMapper.selectList(
+                new LambdaQueryWrapper<EntityDefinition>().orderByAsc(EntityDefinition::getCreatedAt)).stream()
+                .filter(entity -> entity.getStorageMode() != EntityDefinition.StorageMode.SYSTEM)
+                .toList();
+        if (entities.isEmpty()) return;
+        List<SysRole> administrators = roleMapper.selectAdministratorRoles();
+        if (administrators == null || administrators.isEmpty())
+            throw new IllegalStateException("Excel导入权限初始化失败：系统缺少管理员角色");
+        SysMenu root = ensureRootMenu();
+        for (EntityDefinition entity : entities) {
+            SysMenu permission = ensurePermissionMenu(ensureEntityContainer(root, entity), entity, EntityPermissionAction.IMPORT);
+            grantToAdministrators(permission.getId(), administrators);
+        }
+    }
+
+    /**
      * 同步单个实体的标准权限菜单与初始状态。
      *
      * @param entity 实体定义，为空或系统实体直接返回

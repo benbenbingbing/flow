@@ -1,3 +1,4 @@
+import { buildRuntimeContext } from './context.js'
 const empty = value => value == null || value === '' || (Array.isArray(value) && !value.length)
 const pathParts = path => String(path || '').split('.').filter(Boolean)
 const safePath = parts => parts.length && !parts.some(part => ['__proto__', 'prototype', 'constructor'].includes(part))
@@ -16,9 +17,8 @@ export function buildFieldEventPayload(field, value, context, selection = null) 
   const form = context.form || {}, id = form.id || form.formId || form.entityFormId
   if (!id) return null
   return {
-    configType: 'FORM', configId: String(id), releaseId: form.runtimeReleaseId || form.activeReleaseId || undefined,
-    releaseVersion: form.runtimeReleaseVersion || undefined, releaseResolutionToken: form.releaseResolutionToken || context.releaseResolutionToken || undefined,
-    entityCode: context.entityCode, targetType: 'FIELD', targetKey: String(field.fieldCode || field.fieldKey || field.id), recordId: context.record?.id,
+    configType: 'FORM', configId: String(id), runtimeContext: buildRuntimeContext(context, form), configHash: form.configHash || context.configHash || undefined,
+    entityCode: context.entityCode, targetType: 'FIELD', targetKey: String(field.fieldCode || field.fieldKey || field.id), recordId: context.row?.isNew ? undefined : context.record?.id,
     selection, input: { value: (context.getFormData && Object.hasOwn(context.getFormData(), field.fieldCode) ? context.getFormData()[field.fieldCode] : value), form: context.getFormData?.() || context.record?.data || context.record || {}, selection: value }, context: { formId: String(id), mode: context.mode || '' }
   }
 }

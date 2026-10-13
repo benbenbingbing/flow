@@ -164,6 +164,52 @@ class UiInterfaceExtensionServiceTest {
         verify(context.mapper(), never()).selectOne(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"FORM_INIT", "AFTER_LOAD", "FIELD_OPTIONS"})
+    void boundFormInitializersUseVerifiedTaskContext(String usage) {
+        TestContext fixture = context(List.of());
+        UiExtensionDefinition definition = definition(fixture.codec(), "STATIC_OPTIONS", null,
+                Map.of(), Map.of(), Map.of("options", List.of("ok")));
+        setOperation(definition, fixture.codec(), "query", "FORM", "READ", Map.of(), Map.of());
+        when(fixture.mapper().selectById("source-1")).thenReturn(definition);
+        var releases = mock(com.workflow.entity.ui.application.UiConfigReleaseService.class);
+        org.springframework.beans.factory.ObjectProvider<com.workflow.entity.ui.application.UiConfigReleaseService> provider =
+                mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(provider.getObject()).thenReturn(releases);
+        org.springframework.test.util.ReflectionTestUtils.setField(fixture.service(), "runtimeReleases", provider);
+        when(releases.authorizeRuntimeContext(eq("form-1"), anyMap())).thenReturn(
+                com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.activeTask(
+                        "history", "node", "task-1", "instance-1", "expense", "record-1"));
+        when(fixture.executionAccessService().authorizePublished(any(), any())).thenReturn(
+                new UiDataSourceExecutionAuthorization(false, "FORM", "form-1", "release-1", 1,
+                        "$.form", usage, "entity-1", "expense", null, fixture.user(), plan("1=1", 1), Map.of(), null));
+        UiBoundExtensionExecuteRequest request = new UiBoundExtensionExecuteRequest();
+        request.setOwnerType("FORM"); request.setOwnerId("form-1"); request.setBindingCode(usage);
+        request.setTargetType("OWNER"); request.setExtensionId("source-1");
+        request.setRuntimeContext(Map.of("taskId", "task-1")); request.setRecordId("record-1");
+        request.setInput(Map.of("recordId", "untrusted-business-value", "mode", "create"));
+        assertEquals(List.of("ok"), fixture.service().executeBoundOperation(request));
+        ArgumentCaptor<UiExtensionExecuteRequest> internal = ArgumentCaptor.forClass(UiExtensionExecuteRequest.class);
+        verify(fixture.executionAccessService()).authorizePublished(eq(definition), internal.capture());
+        assertEquals("task-1", internal.getValue().getServerTaskId());
+        assertEquals("record-1", internal.getValue().getServerRecordId());
+        assertEquals("approve", internal.getValue().getServerFormMode());
+
+        request.setRecordId("different-record");
+        assertEquals("FORM_DATA_SOURCE_RECORD_CONTEXT_MISMATCH", assertThrows(BusinessForbiddenException.class,
+                () -> fixture.service().executeBoundOperation(request)).getErrorCode());
+
+        // 历史流程仅可读取，同一绑定不能因接口配置改为 WRITE 而获得写权限。
+        request.setRecordId("record-1"); request.setConfigHash("page-hash");
+        when(releases.authorizeRuntimeContext(eq("form-1"), anyMap())).thenReturn(
+                new com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext(
+                        com.workflow.contracts.entity.ui.model.UiRuntimePurpose.HISTORICAL,
+                        "history", "node", null, "instance-1", "expense", "record-1"));
+        definition.setInterfaceKind("WRITE");
+        assertEquals("PROCESS_FORM_READ_ONLY", assertThrows(BusinessForbiddenException.class,
+                () -> fixture.service().executeBoundOperation(request)).getErrorCode());
+    }
+
     /** 测试保存时拒绝畸形 schema：验证 required 非字符串数组时抛出 IllegalArgumentException */
     @Test
     void rejectsMalformedSchemaWhenSaving() {

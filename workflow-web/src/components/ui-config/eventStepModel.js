@@ -1,3 +1,17 @@
+/** 内置动作参数属于事件绑定，不能当作无接口的字段映射步骤处理。 */
+export function isBuiltinExcelStep(step) {
+  return step?.actionType === 'ENTITY_EXCEL'
+}
+
+/** 面向配置人员的摘要；操作参数统一通过 Excel 快捷配置维护。 */
+export function builtinExcelSummary(step) {
+  const config = step?.actionConfig || {}
+  const operation = { IMPORT: '导入', EXPORT: '导出', TEMPLATE: '下载导入模板' }[config.operation] || '未设置操作'
+  const scheme = config.schemeRef?.mode === 'EXPLICIT' ? `方案：${config.schemeRef.schemeCode}` : '跟随实体默认方案'
+  const scope = { CURRENT_RECORD: '当前已保存记录', SELECTED: '选中记录', FILTERED: '当前筛选结果' }[config.dataScope]
+  return [operation, scheme, config.operation === 'EXPORT' ? scope : ''].filter(Boolean).join(' · ')
+}
+
 /** 事件步骤的持久化/编辑模型转换，不依赖 Vue、接口或当前 owner。 */
 export function parseEventDocument(document, fallback) {
   if (!document) return fallback
@@ -21,6 +35,8 @@ export function createEventStepEditor() {
       .find(key => Object.prototype.hasOwnProperty.call(condition, key)) || 'equals'
     return {
       ...step,
+      // 深拷贝内置参数，事件编辑草稿不能修改列表中原绑定或其他按钮的数据。
+      ...(isBuiltinExcelStep(step) ? { actionConfig: JSON.parse(JSON.stringify(step.actionConfig || {})) } : {}),
       rowKey: `step_${++rowSequence}`,
       name: step.name || '',
       strategy: String(step.strategy || 'BEFORE').toUpperCase(),
@@ -83,6 +99,14 @@ function cleanMappings(rows) {
 
 /** 将当前顺序转换为持久化步骤；保留继承策略、兼容标记及输出覆盖/空值规则。 */
 export function serializeEventStep(step, index) {
+  if (isBuiltinExcelStep(step)) {
+    return {
+      stepCode: step.stepCode || 'excel_action', name: step.name || undefined,
+      strategy: step.strategy, actionType: 'ENTITY_EXCEL',
+      actionConfig: JSON.parse(JSON.stringify(step.actionConfig || {})),
+      order: (index + 1) * 10, failurePolicy: step.failurePolicy
+    }
+  }
   return {
     stepCode: step.stepCode || undefined,
     name: step.name || undefined,
@@ -117,6 +141,15 @@ export function validateEventStepChain(steps, { inheritanceMode, formButtonExact
     }
   }
   for (const step of steps) {
+    if (isBuiltinExcelStep(step)) {
+      if (step.strategy !== 'REPLACE' || step.failurePolicy !== 'STOP') return '内置 Excel 操作必须为主处理，失败时停止执行'
+      if (!['IMPORT', 'EXPORT', 'TEMPLATE'].includes(step.actionConfig?.operation)
+        || !['DEFAULT', 'EXPLICIT'].includes(step.actionConfig?.schemeRef?.mode)
+        || step.actionConfig.schemeRef.mode === 'EXPLICIT' && !step.actionConfig.schemeRef.schemeCode) {
+        return '请通过 Excel 操作快捷配置补全操作和方案'
+      }
+      continue
+    }
     if (step.extensionId && !interfaces.some(item =>
       item.extensionId === step.extensionId
     )) {
@@ -124,7 +157,7 @@ export function validateEventStepChain(steps, { inheritanceMode, formButtonExact
           ? '表单自定义按钮事件链仅允许无副作用读接口，请重新选择扩展接口'
           : '请选择当前事件可用的扩展接口'
     }
-    if (!step.extensionId && !step.outputMapping.length) {
+    if (!step.extensionId && !step.outputMapping?.length) {
       return '未选择扩展接口的步骤必须配置结果回填'
     }
   }

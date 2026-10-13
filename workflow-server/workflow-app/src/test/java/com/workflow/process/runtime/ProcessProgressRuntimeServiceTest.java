@@ -216,13 +216,13 @@ class ProcessProgressRuntimeServiceTest {
     }
 
     /**
-     * 查询进度时应从发布快照加载节点表单配置。
+     * 流程历史决定节点表单身份，审批页面的发布坐标必须与当前表单和令牌一致。
      *
-     * <p>场景：mock 实体变量、实体定义、实体数据与发布快照节点表单，
-     * 断言进度含表单配置且 snapshotService.getNodeFormsByProcessDefinitionId 被调用。</p>
+     * <p>旧节点绑定仍保存版本 2，当前表单已使用版本 1 的新指纹；返回旧版本
+     * 会使打开审批时的事件请求与当前令牌不匹配。</p>
      */
     @Test
-    void getProcessProgressLoadsFormsFromPublishedSnapshot() {
+    void getProcessProgressUsesResolvedReleaseInsteadOfHistoricalBinding() {
         Fixture fixture = new Fixture();
         ProcessProgressRuntimeService service = fixture.service();
         fixture.runningInstance();
@@ -236,32 +236,26 @@ class ProcessProgressRuntimeServiceTest {
         fixture.entityData();
         fixture.publishedNodeForms();
 
-        ProcessProgressDTO progress = service.getProcessProgress("pi-1");
+        ProcessProgressDTO progress = service.getProcessProgress("pi-1", "task-1-runtime");
 
         assertEquals(1, progress.getFormConfigs().size());
         assertEquals("form-1", progress.getFormConfig().getFormId());
         assertEquals("审批表单", progress.getFormConfig().getFormName());
         assertEquals("approval-form", progress.getFormConfig().getFormKey());
-        assertEquals("release-2", progress.getFormConfig().getFormReleaseId());
-        assertEquals(2, progress.getFormConfig().getFormReleaseVersion());
         assertEquals(
-                "hotfix-3",
-                progress.getFormConfig().getEffectiveFormReleaseId());
-        assertEquals(true, progress.getFormConfig().getHotfixApplied());
-        assertEquals(
-                "resolution-token",
-                progress.getFormConfig().getReleaseResolutionToken());
+                "current-form-graph-hash",
+                progress.getFormConfig().getConfigHash());
         assertEquals(
                 "{\"AFTER_LOAD\":{\"serviceId\":\"service-1\","
                         + "\"operationCode\":\"query\"}}",
                 progress.getFormConfig()
                         .getDataSourceBindingsDocument());
         assertEquals(
-                "热修复标题",
+                "当前表单标题",
                 progress.getFormConfig().getFields().get(0)
                         .get("fieldLabel"));
         assertEquals(
-                "{\"fieldCode\":\"name\",\"label\":\"热修复标题\"}",
+                "{\"fieldCode\":\"name\",\"label\":\"当前表单标题\"}",
                 progress.getFormConfig().getNodes().get(0)
                         .get("propsDocument"));
         assertEquals("data-1", progress.getEntityData().get("id"));
@@ -283,6 +277,11 @@ class ProcessProgressRuntimeServiceTest {
                 .getNodeFormsContextByProcessDefinitionId(
                         "pd-1",
                         "task-1");
+        verify(fixture.entityFormRuntimeService).getByBinding(any(ProcessNodeForm.class),
+                argThat(context -> context.purpose() == UiRuntimePurpose.ACTIVE_TASK
+                        && "task-1-runtime".equals(context.taskId())
+                        && "pi-1".equals(context.processInstanceId())
+                        && "data-1".equals(context.recordId())));
     }
 
     /**
@@ -307,10 +306,6 @@ class ProcessProgressRuntimeServiceTest {
         ProcessProgressDTO progress = service.getProcessProgress("pi-1");
 
         assertEquals("default-form", progress.getFormConfig().getFormKey());
-        assertEquals(
-                "default-release-4",
-                progress.getFormConfig().getFormReleaseId());
-        assertEquals(4, progress.getFormConfig().getFormReleaseVersion());
     }
 
     /** 未显式绑表单的活动任务，也必须拿到绑定该任务和业务记录的默认表单令牌。 */
@@ -332,8 +327,8 @@ class ProcessProgressRuntimeServiceTest {
         ProcessProgressDTO progress = fixture.service()
                 .getProcessProgress("pi-1", "task-1-runtime");
 
-        assertEquals("default-active-task-token",
-                progress.getFormConfig().getReleaseResolutionToken());
+        assertEquals("default-form-graph-hash",
+                progress.getFormConfig().getConfigHash());
         verify(fixture.entityFormRuntimeService).getDefaultForm(
                 eq("entity-1"),
                 argThat(context -> context.purpose() == UiRuntimePurpose.ACTIVE_TASK
@@ -691,12 +686,12 @@ class ProcessProgressRuntimeServiceTest {
             form.setFormName("审批表单");
             form.setFormKey("approval-form");
             form.setLayoutType("vertical");
-            // 节点钉定版本必须优先，不能被解析后表单对象上的坐标覆盖。
-            form.setRuntimeReleaseId("runtime-release-99");
-            form.setRuntimeReleaseVersion(99);
-            form.setEffectiveReleaseId("hotfix-3");
-            form.setHotfixApplied(true);
-            form.setReleaseResolutionToken("resolution-token");
+            // 新发布配置使用当前指纹，故意与流程历史里的 release-2 / v2 不同。
+            form.setRuntimeReleaseId("current-form-hash");
+            form.setRuntimeReleaseVersion(1);
+            form.setEffectiveReleaseId("current-form-hash");
+            form.setHotfixApplied(false);
+            form.setConfigHash("current-form-graph-hash");
             form.setDataSourceBindingsDocument(
                     "{\"AFTER_LOAD\":{\"serviceId\":\"service-1\","
                             + "\"operationCode\":\"query\"}}");
@@ -704,7 +699,7 @@ class ProcessProgressRuntimeServiceTest {
             field.setId("field-1");
             field.setFieldCode("name");
             field.setFieldName("名称");
-            field.setFieldLabel("热修复标题");
+            field.setFieldLabel("当前表单标题");
             field.setFieldType("STRING");
             field.setComponentType("input");
             form.setFields(List.of(field));
@@ -714,7 +709,7 @@ class ProcessProgressRuntimeServiceTest {
             node.setNodeType("FIELD");
             node.setPropsDocument(
                     "{\"fieldCode\":\"name\","
-                            + "\"label\":\"热修复标题\"}");
+                            + "\"label\":\"当前表单标题\"}");
             form.setNodes(List.of(node));
             when(entityFormRuntimeService.getByBinding(
                     org.mockito.ArgumentMatchers.same(nodeForm),
@@ -744,7 +739,7 @@ class ProcessProgressRuntimeServiceTest {
             form.setFormKey("default-form");
             form.setRuntimeReleaseId("default-release-4");
             form.setRuntimeReleaseVersion(4);
-            form.setReleaseResolutionToken("default-active-task-token");
+            form.setConfigHash("default-form-graph-hash");
             when(entityFormRuntimeService.getDefaultForm(
                     eq("entity-1"),
                     any(com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.class)))

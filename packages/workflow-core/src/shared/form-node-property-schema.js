@@ -469,10 +469,6 @@ function buildFieldProps(field, componentProps) {
 function buildSubFormProps(field, componentProps) {
   const nodeType = normalizeFormNodeType(field?.nodeType || field?.fieldType)
   const childFormId = field.childFormId || field.refFormId || ''
-  const childFormReleaseId = field.childFormReleaseId || ''
-  const childFormReleaseVersion = field.childFormReleaseVersion == null
-    ? null
-    : Number(field.childFormReleaseVersion)
   const source = {
     fieldId: field.fieldId,
     fieldCode: field.fieldCode,
@@ -680,13 +676,6 @@ export function buildFormNodePayload(
   const childFormId = nodeSchema.childForm
     ? (field.childFormId || field.refFormId || '')
     : ''
-  const childFormReleaseId = nodeSchema.childForm
-    ? (field.childFormReleaseId || '')
-    : ''
-  const childFormReleaseVersion =
-    nodeSchema.childForm && field.childFormReleaseVersion != null
-      ? Number(field.childFormReleaseVersion)
-      : null
   const dataSourceBindings = buildDataSourceBindings(
     field,
     nodeSchema.dataSourceUsages

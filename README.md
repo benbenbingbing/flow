@@ -123,6 +123,16 @@ schema worker、后端、共享包 watch、PC Vite 和移动端 Vite：
 ./start.sh status
 ```
 
+后端和 schema worker 从 `workflow-server/.runtime/` 中每次启动的独立 JAR 副本运行，
+后续 Maven 构建不会覆盖正在运行的包。已有构建且不涉及数据库迁移时，可以只重启后端：
+
+```bash
+./start.sh restart-backend
+```
+
+该命令使用最近一次后端构建，不重新构建、不执行迁移，也不重启前端或 schema worker。
+涉及数据库结构变化时仍使用完整的 `./start.sh restart`。所有应用停止后可以清理 `.runtime/`。
+
 停止应用进程：
 
 ```bash

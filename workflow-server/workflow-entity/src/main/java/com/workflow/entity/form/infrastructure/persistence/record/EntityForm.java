@@ -139,21 +139,28 @@ public class EntityForm {
 
     /** 本次请求采用的当前配置摘要；供事件和提交验证一致性 */
     @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String runtimeReleaseId;
 
     /** 共享运行协议兼容标记，表单固定为 1，不保存或选择业务版本 */
     @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Integer runtimeReleaseVersion;
 
     /** 旧协议兼容摘要，与当前配置摘要相同 */
     @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String effectiveReleaseId;
 
     /** 旧协议兼容标志，当前固定为 false */
     @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Boolean hotfixApplied;
 
-    /** 嵌套表单继承解析上下文的短期签名令牌 */
+    /** 当前表单及子表单依赖摘要，用于提交前识别配置变化 */
     @TableField(exist = false)
-    private String releaseResolutionToken;
+    private String configHash;
+
+    @TableField(exist = false)
+    private java.util.Map<String, Object> runtimeContext = java.util.Map.of();
 }

@@ -108,7 +108,7 @@ public final class FormUniqueMutationContext {
 
     /**
      * 将服务端已经应用的 1..N 个发布表单编码到审批变更上下文。
-     * 返回内容只包含稳定发布身份，不包含短期 resolution token。
+     * 返回内容仅包含本次实际采用的配置身份，供事务终检复用。
      *
      * @param references 引用，供本方法编码引用时使用
      * @return 引用键值结果，供调用方继续处理

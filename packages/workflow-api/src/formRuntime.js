@@ -1,9 +1,9 @@
-/** 表单运行接口读取当前配置；参数中的旧发布坐标仅兼容内容指纹检查。 */
+/** 按业务入口读取当前表单；所有定位信息仍由服务端重新鉴权。 */
 export function createFormRuntimeApi(request) {
   return {
-    getFormRuntimeRelease(id, releaseId, version, releaseResolutionToken) {
+    getFormRuntimeRelease(id, runtimeContext = {}) {
       return request.get(`/entity-forms/${id}/runtime`, {
-        params: { releaseId: releaseId || undefined, version: version ?? undefined, releaseResolutionToken: releaseResolutionToken || undefined }
+        params: { runtimeContext: JSON.stringify(runtimeContext) }
       })
     },
     precheckFormFieldUnique(formId, data) {

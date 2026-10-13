@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 const field = { id: 'amount-field', fieldCode: 'amount', fieldName: '金额', fieldLabel: '金额', fieldType: 'DECIMAL', componentType: 'number', showInList: true, isQuery: true, sortOrder: 0 }
 const entity = { id: 'entity-test', entityCode: 'test', entityName: '测试实体', storageMode: 'DYNAMIC', lifecycleMode: 'WORKFLOW', status: 'DRAFT', fields: [field] }
-const form = { id: 'form-test', formName: '测试表单', formKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, fields: [field], viewConfig: '{}', rendererMode: 'DEFAULT', runtimeReleaseId: 'form-release', runtimeReleaseVersion: 1 }
+const form = { id: 'form-test', formName: '测试表单', formKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, fields: [field], viewConfig: '{}', rendererMode: 'DEFAULT', configHash: 'form-release' }
 const column = { ...field, id: 'column-amount', fieldId: field.id, revision: 1, orderKey: 1000000 }
 const config = { id: 'list-test', listName: '测试列表', listKey: 'main', entityId: 'entity-test', entityCode: 'test', revision: 3, viewConfig: '{}', fields: [column], releaseId: 'list-release', publishedVersion: 1 }
 async function mock(page, { failScope = false } = {}) {

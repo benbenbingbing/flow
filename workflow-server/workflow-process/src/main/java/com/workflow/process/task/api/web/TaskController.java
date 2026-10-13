@@ -119,11 +119,8 @@ public class TaskController {
             String taskId) {
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId(text(params.get("formId")));
-        request.setReleaseId(text(params.get("formReleaseId")));
-        request.setReleaseVersion(integer(params.get(
-                "formReleaseVersion")));
-        request.setReleaseResolutionToken(text(params.get(
-                "formReleaseResolutionToken")));
+        request.setConfigHash(text(params.get(
+                "formConfigHash")));
         request.setEntityCode(text(params.get("entityCode")));
         request.setListKey(text(params.get("listKey")));
         request.setMode("approve");

@@ -12,6 +12,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+import com.workflow.entity.list.extension.TemplateListFieldDataProvider;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -148,6 +149,83 @@ class EntityListConfigurationValidatorTest {
                         EntityListField.class));
     }
 
+    /** 扩展接口为独立来源，虚拟列无需伪造实体字段或模板参数。 */
+    @Test
+    void acceptsInterfaceVirtualColumnAndValidatesReference() {
+        var references = mock(UiConfigInterfaceReferenceValidator.class);
+        var validator = validator(mock(EntityFieldMapper.class), references);
+        var field = column("INTERFACE");
+        field.setInterfaceExtensionId("column-extension");
+        var dto = listWith(field);
+
+        assertDoesNotThrow(() -> validator.validate(dto));
+        verify(references).validateListDraft(null, "entity-1", null, List.of(field));
+    }
+
+    /** 来源与接口绑定必须一致，直接 API 请求也不能恢复旧的隐式覆盖行为。 */
+    @Test
+    void rejectsMissingInterfaceConflictingSourceAndCustomProviderType() {
+        var validator = validator(mock(EntityFieldMapper.class));
+        var field = column("INTERFACE");
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(listWith(field))).getMessage().contains("必须选择接口"));
+
+        field.setInterfaceExtensionId("column-extension");
+        for (String type : List.of("ENTITY_FIELD", "FIELD_TEMPLATE")) {
+            field.setDataSourceType(type);
+            assertTrue(assertThrows(IllegalArgumentException.class,
+                    () -> validator.validate(listWith(field))).getMessage().contains("只有扩展接口"));
+        }
+        field.setInterfaceExtensionId(null);
+        field.setDataSourceType("PROJECT_CUSTOM_FIELD");
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(listWith(field))).getMessage().contains("不支持的列取值方式"));
+    }
+
+    /** 实体列和虚拟列都可组合文本，但必须填写模板且不能把结果用于查询或排序。 */
+    @Test
+    void validatesTemplateForBothPhysicalAndVirtualColumns() {
+        var mapper = mock(EntityFieldMapper.class);
+        var physical = new EntityField();
+        physical.setId("field-1");
+        physical.setFieldCode("summary");
+        when(mapper.findByEntityId("entity-1")).thenReturn(List.of(physical));
+        var validator = validator(mapper);
+        var field = column("FIELD_TEMPLATE");
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validate(listWith(field))).getMessage().contains("template"));
+
+        field.setDataSourceConfig("{\"template\":\"${code} - ${name}\"}");
+        assertDoesNotThrow(() -> validator.validate(listWith(field)));
+        field.setFieldId("field-1");
+        assertDoesNotThrow(() -> validator.validate(listWith(field)));
+
+        field.setIsQuery(true);
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(listWith(field)));
+        field.setIsQuery(false);
+        var dto = listWith(field);
+        dto.setViewConfig(Map.of("table", Map.of("defaultSortField", "summary")));
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(dto));
+    }
+
+    private EntityListField column(String type) {
+        var field = new EntityListField();
+        field.setFieldId("virtual_summary");
+        field.setFieldCode("summary");
+        field.setDataSourceType(type);
+        field.setIsQuery(false);
+        return field;
+    }
+
+    private EntityListConfigDTO listWith(EntityListField field) {
+        var dto = new EntityListConfigDTO();
+        dto.setEntityId("entity-1");
+        dto.setEntityCode("expense");
+        dto.setListKey("default");
+        dto.setFields(List.of(field));
+        return dto;
+    }
+
     /** 创建列表配置校验器测试实例。 */
     private EntityListConfigurationValidator validator(
             EntityFieldMapper entityFieldMapper) {
@@ -165,7 +243,7 @@ class EntityListConfigurationValidatorTest {
                 new JsonDocumentCodec(
                         new ObjectMapper()),
                 new ListFieldDataProviderRegistry(
-                        List.of(),
+                        List.of(new TemplateListFieldDataProvider(new ObjectMapper())),
                         new ObjectMapper()),
                 entityFieldMapper,
                 referenceValidator);

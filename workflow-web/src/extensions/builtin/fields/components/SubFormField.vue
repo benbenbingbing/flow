@@ -35,6 +35,7 @@
 </template>
 
 <script setup>
+import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import { formContextKey } from 'element-plus'
 import SubFormRenderer from '@/components/SubFormRenderer.vue'
@@ -113,26 +114,10 @@ const subFormMeta = computed(() => {
     || config.refFormId
     || config.publishedFormId
     || null
-  const childFormReleaseId = field?.childFormReleaseId
-    || field?.refFormReleaseId
-    || field?.publishedFormReleaseId
-    || config.childFormReleaseId
-    || config.refFormReleaseId
-    || config.publishedFormReleaseId
-    || null
-  const childFormReleaseVersion = field?.childFormReleaseVersion
-    ?? field?.refFormReleaseVersion
-    ?? field?.publishedFormReleaseVersion
-    ?? config.childFormReleaseVersion
-    ?? config.refFormReleaseVersion
-    ?? config.publishedFormReleaseVersion
-    ?? null
 
   return {
     childFormId,
     refFormId: childFormId,
-    childFormReleaseId,
-    childFormReleaseVersion,
     refEntityId,
     relationType,
     childRefFieldCode
@@ -164,8 +149,6 @@ let childRuntimeCache = new WeakMap()
 watch(
   () => [
     subFormMeta.value.childFormId,
-    subFormMeta.value.childFormReleaseId,
-    subFormMeta.value.childFormReleaseVersion,
     subFormMeta.value.refEntityId
   ],
   async ([formId, releaseId, releaseVersion, refEntityId]) => {
@@ -175,12 +158,7 @@ watch(
     childReleaseIdentity.value = ''
     if (formId) {
       try {
-        const release = await getFormRuntimeRelease(
-          formId,
-          null,
-          null,
-          props.context?.releaseResolutionToken
-        )
+        const release = await getFormRuntimeRelease(formId, childFormRuntimeContext(props.context, props.field))
         const snapshot = parseSnapshot(release.snapshotDocument)
         if (sequence !== releaseLoadSequence) return
         externalFormNodes.value = normalizeExternalNodes(snapshot?.nodes)
@@ -192,17 +170,10 @@ watch(
           id: snapshot?.form?.id || formId,
           entityId: snapshot?.form?.entityId || refEntityId
         }
-        childFormDefinition.value.runtimeReleaseId =
-          release.id || releaseId || null
-        childFormDefinition.value.runtimeReleaseVersion =
-          release.protocolVersion ?? 1
-        childFormDefinition.value.effectiveReleaseId =
-          release.effectiveReleaseId || release.id || releaseId || null
-        childFormDefinition.value.hotfixApplied =
-          release.hotfixApplied === true
-        childFormDefinition.value.releaseResolutionToken =
-          release.releaseResolutionToken || null
-        childReleaseIdentity.value = `${formId}:${release.id || releaseId || 'active'}:${release.version || releaseVersion || 'latest'}`
+        childFormDefinition.value.runtimeContext = release.runtimeContext || childFormRuntimeContext(props.context, props.field)
+        childFormDefinition.value.configHash =
+          release.configHash || null
+        childReleaseIdentity.value = `${formId}:${release.configHash || 'current'}`
         const layout = snapshot?.form?.layoutType
         if (layout) refFormLayoutType.value = layout
       } catch (error) {
@@ -557,9 +528,9 @@ function childRenderContext(row, index) {
       id: row?.id || null,
       data: row
     },
-    releaseResolutionToken:
-      childFormDefinition.value?.releaseResolutionToken
-        || props.context?.releaseResolutionToken,
+    configHash:
+      childFormDefinition.value?.configHash
+        || props.context?.configHash,
     parent: parentContext.value,
     params: resolvedParameters.value,
     parameterErrors,
@@ -646,14 +617,6 @@ function deriveNodeRuntimeFields(nodes, sourceFields) {
         refEntityId: props.refEntityId || source.refEntityId || subFormConfig.refEntityId,
         childRefFieldCode: props.childRefFieldCode || source.childRefFieldCode || subFormConfig.childRefFieldCode || subFormConfig.refFieldCode,
         childFormId: props.childFormId || props.refFormId || props.publishedFormId || source.childFormId || subFormConfig.childFormId || subFormConfig.refFormId || subFormConfig.publishedFormId,
-        childFormReleaseId: props.childFormReleaseId || props.refFormReleaseId || props.publishedFormReleaseId || source.childFormReleaseId || subFormConfig.childFormReleaseId || subFormConfig.refFormReleaseId || subFormConfig.publishedFormReleaseId,
-        childFormReleaseVersion: props.childFormReleaseVersion
-          ?? props.refFormReleaseVersion
-          ?? props.publishedFormReleaseVersion
-          ?? source.childFormReleaseVersion
-          ?? subFormConfig.childFormReleaseVersion
-          ?? subFormConfig.refFormReleaseVersion
-          ?? subFormConfig.publishedFormReleaseVersion
       }
     })
 }
@@ -820,12 +783,9 @@ function legacyControllerScopeKey(fields, row) {
   const form = childFormDefinition.value || {}
   return JSON.stringify({
     formId: form.id || '',
-    releaseId: form.runtimeReleaseId || form.formReleaseId || '',
-    releaseVersion:
-      form.runtimeReleaseVersion ?? form.formReleaseVersion ?? null,
-    releaseResolutionToken:
-      form.releaseResolutionToken
-      || props.context?.releaseResolutionToken
+    configHash:
+      form.configHash
+      || props.context?.configHash
       || '',
     recordId: row?.id || '',
     rules: fields.map(field => ({
@@ -983,10 +943,8 @@ watch(
     () => subFormConfig.value.fields,
     () => hasNodeTree.value,
     () => childFormDefinition.value?.id,
-    () => childFormDefinition.value?.runtimeReleaseId,
-    () => childFormDefinition.value?.runtimeReleaseVersion,
-    () => childFormDefinition.value?.releaseResolutionToken,
-    () => props.context?.releaseResolutionToken
+    () => childFormDefinition.value?.configHash,
+    () => props.context?.configHash
   ],
   syncLegacyRowControllers,
   { deep: true, immediate: true, flush: 'post' }

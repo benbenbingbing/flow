@@ -1,7 +1,10 @@
 <template>
   <div class="policy-editor">
-    <el-form-item label="空办理人策略">
-      <el-select :model-value="policy.policy" style="width: 100%" @update:model-value="update('policy', $event)">
+    <el-form-item label="空办理人策略" for="">
+      <template #label>
+        <ConfigHelpLabel label="空办理人策略" :content="policyHint" />
+      </template>
+      <el-select :model-value="policy.policy" aria-label="空办理人策略" style="width: 100%" @update:model-value="update('policy', $event)">
         <el-option v-if="allowInherit" label="继承流程默认策略" value="INHERIT" />
         <el-option label="阻断发布 / 启动" value="BLOCK_PUBLISH" />
         <el-option label="创建运维事件" value="CREATE_INCIDENT" />
@@ -9,7 +12,6 @@
         <el-option label="兜底用户" value="FALLBACK_USER" />
         <el-option label="等待并自动重试" value="WAIT_AND_RETRY" />
       </el-select>
-      <div class="policy-hint">{{ policyHint }}</div>
     </el-form-item>
     <el-form-item v-if="policy.policy === 'FALLBACK_USER'" label="兜底用户" required>
       <EmptyAssigneeIdentitySelector entity-type="USER" :model-value="policy.fallbackUser" title="选择兜底用户" placeholder="请选择兜底用户" @update:model-value="update('fallbackUser', $event)" />
@@ -28,9 +30,12 @@
         <el-input-number :model-value="policy.backoffMultiplier" :min="1" :max="10" :step="0.5" controls-position="right" @update:model-value="update('backoffMultiplier', $event)" />
       </el-form-item>
     </div>
-    <el-form-item v-if="policy.policy !== 'INHERIT' && policy.policy !== 'BLOCK_PUBLISH'" label="责任人 / 值班组" required>
+    <el-form-item v-if="policy.policy !== 'INHERIT' && policy.policy !== 'BLOCK_PUBLISH'" label="责任人 / 值班组" for="" required>
+      <template #label>
+        <ConfigHelpLabel label="责任人 / 值班组" content="用于事件归属和告警升级。" />
+      </template>
       <div class="owner-selector">
-        <el-radio-group :model-value="ownerType" @update:model-value="changeOwnerType">
+        <el-radio-group :model-value="ownerType" aria-label="责任主体类型" @update:model-value="changeOwnerType">
           <el-radio-button value="USER">责任人</el-radio-button>
           <el-radio-button value="GROUP">值班组</el-radio-button>
         </el-radio-group>
@@ -42,7 +47,6 @@
           :placeholder="ownerType === 'USER' ? '请选择责任人' : '请选择值班组'"
           @update:model-value="updateOwner"
         />
-        <div class="policy-hint">用于事件归属和告警升级。</div>
       </div>
     </el-form-item>
   </div>
@@ -50,6 +54,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EmptyAssigneeIdentitySelector from '@/components/EmptyAssigneeIdentitySelector.vue'
 import request from '@/utils/request'
 import { normalizeEmptyAssigneeStrategy } from '@/shared/process-config'
@@ -112,7 +117,6 @@ function updateOwner(value) {
 
 <style scoped>
 .policy-editor { padding: 14px 14px 2px; border: 1px solid #dfe7e1; border-radius: 12px; background: linear-gradient(145deg, #f7faf7, #fff); }
-.policy-hint { margin-top: 7px; color: #718079; font-size: 12px; line-height: 1.55; }
 .retry-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .retry-grid :deep(.el-input-number) { width: 100%; }
 .owner-selector { display: grid; gap: 10px; width: 100%; }

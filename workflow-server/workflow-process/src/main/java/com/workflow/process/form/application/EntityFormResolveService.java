@@ -397,8 +397,8 @@ public class EntityFormResolveService {
     }
 
     /**
-     * 活动任务解析额外携带服务端 Flowable task/instance/record 主体，签发的
-     * 发布令牌因此不能移植到同节点的另一业务实例。
+     * 活动任务解析额外携带服务端 Flowable task/instance/record 主体。
+     * 后续请求据此重新校验任务与记录，不能借同一节点访问另一业务实例。
      *
      * @param processKey 流程键，后续用于授权校验、关联或幂等去重
      * @param processDefinitionId 流程定义 ID，用于读取对应的已发布流程配置

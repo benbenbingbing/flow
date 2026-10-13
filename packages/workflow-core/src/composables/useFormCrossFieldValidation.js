@@ -24,7 +24,7 @@ export function useFormCrossFieldValidation(options) {
   // getter 每次返回的新数组不能代表一次初始化，否则刚产生的校验提示会被清空。
   watch([
     () => options.getForm()?.id,
-    () => options.getForm()?.runtimeReleaseId || options.getForm()?.formReleaseId,
+    () => options.getForm()?.configHash,
     () => options.getContext?.()?.recordId || options.getContext?.()?.record?.id,
     () => options.getContext?.()?.initializationKey
   ],

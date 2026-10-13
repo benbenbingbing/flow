@@ -66,6 +66,7 @@ Thumbs.db
 *.log
 logs/
 uploads/
+workflow-server/.runtime/
 .claude/
 *.pid
 *.seed

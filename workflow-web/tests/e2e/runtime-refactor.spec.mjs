@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 const xml = `<?xml version="1.0" encoding="UTF-8"?><bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" id="Defs" targetNamespace="http://test"><bpmn:process id="process" isExecutable="true"><bpmn:userTask id="review" name="再次审批"/></bpmn:process><bpmndi:BPMNDiagram id="diagram"><bpmndi:BPMNPlane id="plane" bpmnElement="process"><bpmndi:BPMNShape id="shape" bpmnElement="review"><dc:Bounds x="100" y="100" width="100" height="80"/></bpmndi:BPMNShape></bpmndi:BPMNPlane></bpmndi:BPMNDiagram></bpmn:definitions>`
-const form = { id: 'form-test', formKey: 'test', runtimeReleaseId: 'release-pinned', runtimeReleaseVersion: 2, releaseResolutionToken: 'test-signed-token', fields: [{ id: 'amount-field', fieldId: 'amount-field', fieldCode: 'amount', fieldLabel: '金额', fieldName: '金额', fieldType: 'DECIMAL', componentType: 'number', isReadonly: 0 }], nodes: [] }
+const form = { id: 'form-test', formKey: 'test', configHash: 'graph-test', fields: [{ id: 'amount-field', fieldId: 'amount-field', fieldCode: 'amount', fieldLabel: '金额', fieldName: '金额', fieldType: 'DECIMAL', componentType: 'number', isReadonly: 0 }], nodes: [] }
 const action = { key: 'calculate', label: '计算并回填', type: 'custom', ownerFormId: 'form-test', placement: 'FOOTER', visible: true, enabled: true, confirm: { enabled: true, message: '确认执行这次回填？' } }
 async function fixture(page, { result, done } = {}) {
   const errors = [], unexpected = [], writes = []
@@ -39,7 +39,7 @@ for (const mode of ['编辑', '审批']) test(`PC ${mode}真实弹窗：取消�
   await expect(amount).toHaveValue('100.00')
   await expect(page.getByText('确认执行这次回填？', { exact: true })).toBeHidden()
   expect(state.writes).toHaveLength(1)
-  expect(state.writes[0]).toMatchObject({ releaseId: 'release-pinned', releaseVersion: 2, targetKey: 'calculate' })
+  expect(state.writes[0]).toMatchObject({ configHash: 'graph-test', targetKey: 'calculate' })
   expect(state.errors).toEqual([]); expect(state.unexpected).toEqual([])
   await page.screenshot({ path: `../.codex-artifacts/frontend-refactor/pc-${mode}-mapping.png`, fullPage: true, animations: 'disabled' })
 })

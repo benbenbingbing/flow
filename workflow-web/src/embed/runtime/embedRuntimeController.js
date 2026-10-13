@@ -709,7 +709,7 @@ export function createEmbedRuntimeController({
       phase: 'native-form-target'
     })
     try {
-      // 浏览器只提交模式和已投影行 ID；实体、表单、Release 与解析令牌均由
+      // 浏览器只提交模式和已投影行 ID；实体、表单与当前配置摘要均由
       // 服务端从当前 Session 固定的目标资源快照恢复。
       const raw = await api.getNativeFormTarget({ mode, recordId })
       if (sequence !== querySequence || TERMINAL_STATES.has(current.state)) return null

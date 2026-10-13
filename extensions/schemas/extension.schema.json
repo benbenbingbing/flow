@@ -192,6 +192,10 @@
                 ]
               },
               "defaultValue": {},
+              "visibleWhen": {
+                "type": "object",
+                "description": "参数显示条件，由配置编辑器按字段值匹配；仅控制编辑界面，不删除已保存值，也不代替运行时校验。"
+              },
               "description": {
                 "type": "string"
               },

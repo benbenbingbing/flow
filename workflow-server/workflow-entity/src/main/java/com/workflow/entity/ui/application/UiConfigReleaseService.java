@@ -107,6 +107,8 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class UiConfigReleaseService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.EntityExcelConfigurationService> excelConfigurations;
 
     /** 表单配置类型。 */
     public static final String FORM = "FORM";
@@ -141,7 +143,12 @@ public class UiConfigReleaseService {
     private final EntityListConfigurationValidator listConfigurationValidator;
     private final UiConfigSemanticPatchService semanticPatchService;
     private final UiConfigurationAccessService configurationAccessService;
-    private final UiReleaseResolutionTokenService resolutionTokenService;
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.contracts.entity.ui.port.UiRuntimeAccessPort> runtimeAccessPort;
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<UiViewCompositionRuntimeService> compositionRuntime;
+    @Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.form.application.FormRuntimeRelationAccessService> relationRuntime;
     private final FormSubmissionTraceService traceService;
     private final JsonDocumentCodec codec;
     private final ObjectMapper objectMapper;
@@ -329,514 +336,121 @@ public class UiConfigReleaseService {
     }
 
     /**
-     * 解析表单运行时发布版本，返回发布元信息与已校验快照文档。
-     *
-     * @param formId          表单ID
-     * @param releaseId       旧发布坐标，不参与运行配置选择
-     * @param expectedVersion 旧版本号，不参与运行配置选择
-     * @return 包含 id、configId、version、contentHash、snapshotDocument 的 Map
-     * @throws IllegalArgumentException 当前已发布配置不存在或内容损坏时抛出
+     * 浏览器仅提供业务定位信息；任务和流程权限每次由流程模块重新校验。
+     * 配置摘要只检测页面变化，绝不参与授权或选择历史配置。
      */
-    public Map<String, Object> runtimeFormRelease(
-            String formId,
-            String releaseId,
-            Integer expectedVersion) {
-        return runtimeFormRelease(
-                formId,
-                releaseId,
-                expectedVersion,
-                null);
-    }
-
-    /**
-     * 使用签名上下文令牌解析嵌套表单的有效发布快照。
-     *
-     * @param formId 表单ID，后续用于处理运行时表单发布版本时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于处理运行时表单发布版本时定位或关联目标
-     * @param expectedVersion 预期版本，作为 {@code runtimeFormReleaseInternal} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 运行时表单发布版本键值结果，供调用方继续处理
-     */
-    public Map<String, Object> runtimeFormRelease(
-            String formId,
-            String releaseId,
-            Integer expectedVersion,
-            String releaseResolutionToken) {
-        return runtimeFormReleaseInternal(formId, releaseId, expectedVersion, releaseResolutionToken);
-    }
-
-    /**
-     * 整理运行时表单发布版本内部数据，供调用方遍历或继续处理。
-     *
-     * @param formId 表单ID，后续用于处理运行时表单发布版本内部时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于处理运行时表单发布版本内部时定位或关联目标
-     * @param expectedVersion 预期版本，作为 {@code resolveRuntimeFormRelease} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 运行时表单发布版本内部键值结果，供调用方继续处理
-     */
-    private Map<String, Object> runtimeFormReleaseInternal(
-            String formId,
-            String releaseId,
-            Integer expectedVersion,
-            String releaseResolutionToken) {
-        log.info(
-                "开始解析表单运行时快照: formId={}, requestedReleaseId={}, requestedVersion={}, tokenPresent={}",
-                LogValue.safe(formId),
-                LogValue.safe(releaseId),
-                expectedVersion,
-                StringUtils.hasText(releaseResolutionToken));
-        if (StringUtils.hasText(releaseResolutionToken)) {
-            UiReleaseResolutionTokenService.Claims claims =
-                    resolutionTokenService.verify(
-                            releaseResolutionToken);
-            requireCurrentFormClaims(claims);
-            if (matchesAuthorizedFormRelease(
-                    claims,
-                    formId,
-                    releaseId,
-                    expectedVersion)) {
-                ResolvedEntityFormRelease authorized =
-                        resolveRuntimeFormRelease(
-                                claims.parentFormId(),
-                                claims.parentReleaseId(),
-                                claims.parentReleaseVersion(),
-                                claims.context());
-                Map<String, Object> result = runtimeReleaseResult(
-                        authorized,
-                        runtimeSnapshot(authorized.form()));
-                result.put(
-                        "releaseResolutionToken",
-                        resolutionTokenService.issue(
-                                claims.context(),
-                                formId,
-                                authorized.releaseId(),
-                                authorized.releaseVersion(),
-                                claims.depth() + 1,
-                                Instant.ofEpochSecond(
-                                        claims.expiresAt())));
-                return result;
-            }
-            log.info(
-                    "使用签名上下文解析子表单: parentFormId={}, parentReleaseId={}, parentVersion={}, childFormId={}, childReleaseId={}, childVersion={}, purpose={}, historyId={}, nodeId={}, depth={}",
-                    LogValue.safe(claims.parentFormId()),
-                    LogValue.safe(claims.parentReleaseId()),
-                    claims.parentReleaseVersion(),
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    expectedVersion,
-                    LogValue.safe(claims.purpose()),
-                    LogValue.safe(claims.processVersionHistoryId()),
-                    LogValue.safe(claims.nodeId()),
-                    claims.depth());
-            ResolvedEntityFormRelease parent =
-                    resolveRuntimeFormRelease(
-                            claims.parentFormId(),
-                            claims.parentReleaseId(),
-                            claims.parentReleaseVersion(),
-                            claims.context());
-            if (!referencesChildRelease(
-                    parent.form(),
-                    formId,
-                    releaseId,
-                    expectedVersion)) {
-                log.info(
-                        "子表单发布引用校验失败: parentFormId={}, parentReleaseId={}, parentVersion={}, childFormId={}, childReleaseId={}, childVersion={}, reason=NOT_REFERENCED",
-                        LogValue.safe(claims.parentFormId()),
-                        LogValue.safe(parent.releaseId()),
-                        parent.releaseVersion(),
-                        LogValue.safe(formId),
-                        LogValue.safe(releaseId),
-                        expectedVersion);
-                throw new BusinessForbiddenException(
-                        "CHILD_FORM_RELEASE_NOT_REFERENCED",
-                        "请求的子表单发布版本不属于父表单有效快照");
-            }
-            ResolvedEntityFormRelease child =
-                    resolveRuntimeFormRelease(
-                            formId,
-                            releaseId,
-                            expectedVersion,
-                            claims.context());
-            Map<String, Object> result = runtimeReleaseResult(
-                    child,
-                    runtimeSnapshot(child.form()));
-            result.put(
-                    "releaseResolutionToken",
-                    resolutionTokenService.issue(
-                            claims.context(),
-                            formId,
-                            child.releaseId(),
-                            child.releaseVersion(),
-                            claims.depth() + 1,
-                            Instant.ofEpochSecond(
-                                    claims.expiresAt())));
-            log.info(
-                    "子表单运行时快照解析完成: parentFormId={}, parentReleaseId={}, childFormId={}, childReleaseId={}, childVersion={}, effectiveReleaseId={}, hotfixApplied={}, depth={}",
-                    LogValue.safe(claims.parentFormId()),
-                    LogValue.safe(parent.releaseId()),
-                    LogValue.safe(formId),
-                    LogValue.safe(child.releaseId()),
-                    child.releaseVersion(),
-                    LogValue.safe(child.effectiveReleaseId()),
-                    child.hotfixApplied(),
-                    claims.depth() + 1);
-            return result;
-        }
-        UiConfigRelease release = releaseMapper.findActive(FORM, formId);
-        if (release == null
-                || !FORM.equals(release.getConfigType())
-                || !Objects.equals(formId, release.getConfigId())) {
-            log.info(
-                    "表单运行时快照解析失败: formId={}, requestedReleaseId={}, requestedVersion={}, actualConfigType={}, actualConfigId={}, reason=RELEASE_NOT_FOUND",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    expectedVersion,
-                    LogValue.safe(
-                            release == null
-                                    ? null : release.getConfigType()),
-                    LogValue.safe(
-                            release == null
-                                    ? null : release.getConfigId()));
-            throw new IllegalArgumentException("表单运行时发布版本不存在");
-        }
-        if ((StringUtils.hasText(releaseId)
-                && !Objects.equals(releaseId, release.getId()))
-                || (expectedVersion != null
-                && !Objects.equals(expectedVersion, release.getVersion()))) {
-            log.info(
-                    "表单运行时快照解析失败: formId={}, requestedReleaseId={}, actualReleaseId={}, expectedVersion={}, actualVersion={}, reason=ACTIVE_RELEASE_MISMATCH",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    LogValue.safe(release.getId()),
-                    expectedVersion,
-                    release.getVersion());
-            throw new BusinessConflictException(
-                    "FORM_CONFIGURATION_CHANGED",
-                    "表单配置已更新，填写内容已保留，请重新加载后核对");
-        }
-        ResolvedEntityFormRelease resolved =
-                resolvedRuntimeForm(
-                        release,
-                        false);
-        Map<String, Object> result = runtimeReleaseResult(
-                resolved,
-                // 运行端只需要渲染态表单；完整发布制品中的事件步骤现已包含
-                // Provider 配置与策略快照，绝不能返回给普通页面调用方。
-                runtimeSnapshot(resolved.form()));
-        log.info(
-                "表单运行时快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source={}",
-                LogValue.safe(formId),
-                LogValue.safe(resolved.releaseId()),
-                resolved.releaseVersion(),
-                LogValue.safe(resolved.effectiveReleaseId()),
-                resolved.hotfixApplied(),
-                "ACTIVE");
+    public Map<String, Object> runtimeFormRelease(String formId, Map<String, Object> runtimeContext) {
+        authorizeRuntimeContext(formId, runtimeContext);
+        ResolvedEntityFormRelease resolved = resolveRuntimeFormRelease(formId);
+        Map<String, Object> result = runtimeReleaseResult(resolved, runtimeSnapshot(resolved.form()));
+        result.put("configHash", formConfigHash(formId));
+        result.put("runtimeContext", runtimeContext == null ? Map.of() : runtimeContext);
         return result;
     }
 
-    /**
-     * 解析客户端运行时表单提交使用的版本。签名令牌可读取精确固定版本，
-     * 无令牌时只能使用当前 ACTIVE 版本。
-     *
-     * @param formId 表单ID，后续用于解析已授权运行时表单发布版本时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于解析已授权运行时表单发布版本时定位或关联目标
-     * @param expectedVersion 预期版本，供本方法解析已授权运行时表单发布版本时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 解析后的已授权运行时表单发布版本结果，供调用方继续处理
-     */
+    /** 配置摘要覆盖子表单，供页面在提交前检测未见过的配置变更。 */
+    public String formConfigHash(String formId) {
+        return currentForms == null ? active(FORM, formId).getContentHash() : currentForms.graphHash(formId);
+    }
+
+    /** 解析并校验本次表单请求，所有副作用必须在该方法成功之后执行。 */
     public ResolvedEntityFormRelease resolveAuthorizedRuntimeFormRelease(
-            String formId,
-            String releaseId,
-            Integer expectedVersion,
-            String releaseResolutionToken) {
-        if (StringUtils.hasText(releaseResolutionToken)) {
-            UiReleaseResolutionTokenService.Claims claims =
-                    resolutionTokenService.verify(
-                            releaseResolutionToken);
-            requireCurrentFormClaims(claims);
-            if (!matchesAuthorizedFormRelease(
-                    claims,
-                    formId,
-                    releaseId,
-                    expectedVersion)) {
-                throw new BusinessForbiddenException(
-                        "FORM_RELEASE_CONTEXT_MISMATCH",
-                        "提交的表单发布版本与运行时授权不一致");
+            String formId, String configHash, Map<String, Object> runtimeContext) {
+        authorizeRuntimeContext(formId, runtimeContext);
+        if (StringUtils.hasText(configHash) && !Objects.equals(configHash, formConfigHash(formId))) {
+            throw CurrentFormRuntimeContext.changed();
+        }
+        return resolveRuntimeFormRelease(formId);
+    }
+
+    /**
+     * 从已发布关联配置或真实流程任务恢复权限来源。客户端路径只能定位，不能赋予权限。
+     * 普通记录和字段权限仍由操作入口校验，不会因为摘要相同而放行。
+     */
+    public UiRuntimeResolutionContext authorizeRuntimeContext(String formId, Map<String, Object> runtimeContext) {
+        Map<String, Object> context = runtimeContext == null ? Map.of() : runtimeContext;
+        if (context.get("compositionContext") instanceof Map<?, ?> composition) {
+            var request = objectMapper.convertValue(composition,
+                    com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest.class);
+            var resolved = compositionRuntime.getObject().resolve(request);
+            if (!FORM.equals(resolved.getTargetContentType())
+                    || !Objects.equals(formId, resolved.getTargetContentId())
+                    || context.get("recordId") != null && !Objects.equals(
+                            String.valueOf(context.get("recordId")), resolved.getTargetRecordId())) {
+                throw new BusinessForbiddenException("FORM_RUNTIME_CONTEXT_MISMATCH", "表单与关联内容来源不一致");
             }
-            return resolveRuntimeFormRelease(
-                    claims.parentFormId(),
-                    claims.parentReleaseId(),
-                    claims.parentReleaseVersion(),
-                    claims.context());
         }
-        ResolvedEntityFormRelease active =
-                resolveRuntimeFormRelease(formId);
-        if ((StringUtils.hasText(releaseId)
-                && !Objects.equals(releaseId, active.releaseId()))
-                || (expectedVersion != null
-                && !Objects.equals(
-                        expectedVersion,
-                        active.releaseVersion()))) {
-            throw new BusinessConflictException(
-                    "FORM_CONFIGURATION_CHANGED",
-                    "表单配置已更新，填写内容已保留，请重新加载后核对");
+        String rootFormId = StringUtils.hasText(text(context.get("rootFormId")))
+                ? text(context.get("rootFormId")) : formId;
+        Object path = context.get("componentPath");
+        if (!Objects.equals(rootFormId, formId) || path instanceof List<?> nodes && !nodes.isEmpty()) {
+            requireComponentPath(rootFormId, formId, path);
         }
-        return active;
+        // 该端口只接收定位值，返回前会验证实时任务/实例权限及根表单绑定。
+        if (runtimeAccessPort == null) {
+            if (context.containsKey("taskId") || context.containsKey("processInstanceId"))
+                throw new IllegalStateException("流程运行时权限服务未装配");
+            return UiRuntimeResolutionContext.standalone();
+        }
+        Map<String, Object> rootContext = new LinkedHashMap<>(context);
+        boolean nested = !Objects.equals(rootFormId, formId);
+        if (nested) {
+            rootContext.put("recordId", context.get("rootRecordId"));
+            EntityForm root = resolveRuntimeFormRelease(rootFormId).form();
+            var definition = entityDefinitionMapper.selectById(root.getEntityId());
+            rootContext.put("entityCode", definition == null ? null : definition.getEntityCode());
+        }
+        UiRuntimeResolutionContext authorized = runtimeAccessPort.getObject().resolve(rootFormId, rootContext);
+        if (nested && relationRuntime != null) {
+            String rootRecord = authorized != null && StringUtils.hasText(authorized.recordId())
+                    ? authorized.recordId() : text(context.get("rootRecordId"));
+            String childRecord = text(context.get("childRecordId"));
+            relationRuntime.getObject().requireRecords(rootFormId, rootRecord, path, childRecord,
+                    authorized != null && StringUtils.hasText(authorized.processInstanceId()));
+        }
+        return authorized;
     }
 
-    /**
-     * 判断是否匹配已授权表单发布版本；判断结果决定调用方的后续分支。
-     *
-     * @param claims 声明集合，供本方法判断是否匹配已授权表单发布版本时使用
-     * @param formId 表单ID，后续用于判断是否匹配已授权表单发布版本时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于判断是否匹配已授权表单发布版本时定位或关联目标
-     * @param expectedVersion 预期版本，供本方法判断是否匹配已授权表单发布版本时使用
-     * @return 已授权表单发布版本条件成立时为 true，否则为 false
-     */
-    private boolean matchesAuthorizedFormRelease(
-            UiReleaseResolutionTokenService.Claims claims,
-            String formId,
-            String releaseId,
-            Integer expectedVersion) {
-        return claims != null
-                && Objects.equals(formId, claims.parentFormId())
-                && (!StringUtils.hasText(releaseId)
-                || Objects.equals(
-                        releaseId,
-                        claims.parentReleaseId()))
-                && (expectedVersion == null
-                || Objects.equals(
-                        expectedVersion,
-                        claims.parentReleaseVersion()));
+    /** 从根表单逐层核实稳定组件路径，拒绝跳层、环路和未发布的任意目标。 */
+    public void requireComponentPath(String rootFormId, String targetFormId, Object rawPath) {
+        if (!(rawPath instanceof List<?> path) || path.isEmpty() || path.size() > MAX_FORM_DEPTH) {
+            throw new BusinessForbiddenException("CHILD_FORM_CONTEXT_REQUIRED", "子表单缺少有效的组件来源路径");
+        }
+        String current = rootFormId;
+        Set<String> visited = new LinkedHashSet<>();
+        visited.add(current);
+        for (Object key : path) {
+            EntityForm form = resolveRuntimeFormRelease(current).form();
+            String componentKey = key instanceof Map<?, ?> map ? text(map.get("nodeKey")) : text(key);
+            EntityFormNode node = (form.getNodes() == null ? List.<EntityFormNode>of() : form.getNodes()).stream()
+                    .filter(item -> componentKey.equals(item.getNodeKey()) || componentKey.equals(item.getBindingRef()))
+                    .findFirst().orElseThrow(() -> new BusinessForbiddenException(
+                            "CHILD_FORM_NOT_REFERENCED", "子表单组件不属于当前发布配置"));
+            Set<UiPublishedFormReference> children = new LinkedHashSet<>();
+            collectChildReferences(documentValue(node.getPropsDocument()), children);
+            if (children.size() != 1) throw new BusinessForbiddenException("CHILD_FORM_NOT_REFERENCED", "组件未声明唯一子表单");
+            current = children.iterator().next().formId();
+            if (!visited.add(current)) throw new BusinessForbiddenException("CHILD_FORM_CYCLE", "子表单来源存在循环");
+        }
+        if (!Objects.equals(current, targetFormId))
+            throw new BusinessForbiddenException("CHILD_FORM_NOT_REFERENCED", "请求表单与组件来源路径不一致");
     }
 
-    /**
-     * 校验审批按钮使用的表单发布令牌确实属于服务端回查到的活动待办。
-     *
-     * <p>普通表单解析令牌只负责固定发布版本；审批执行额外要求 ACTIVE_TASK、
-     * 精确流程历史与节点均和当前待办一致。这样 NEW_INSTANCE 令牌或历史任务
-     * 携带当前 ACTIVE 表单坐标都不能执行审批按钮。</p>
-     *
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param formId 表单ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法校验并获取活动任务发布版本令牌时使用
-     * @param processVersionHistoryId 流程版本历史ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
-     * @param nodeId 节点ID，后续用于校验并获取活动任务发布版本令牌时定位或关联目标
-     * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     */
-    public void requireActiveTaskReleaseToken(
-            String releaseResolutionToken,
-            String formId,
-            String releaseId,
-            Integer releaseVersion,
-            String processVersionHistoryId,
-            String nodeId,
-            String taskId,
-            String processInstanceId,
-            String entityCode,
-            String recordId) {
-        if (!StringUtils.hasText(releaseResolutionToken)
-                || !StringUtils.hasText(formId)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
-                || !StringUtils.hasText(processVersionHistoryId)
-                || !StringUtils.hasText(nodeId)
-                || !StringUtils.hasText(taskId)
-                || !StringUtils.hasText(processInstanceId)
-                || !StringUtils.hasText(entityCode)
-                || !StringUtils.hasText(recordId)) {
-            throw new BusinessForbiddenException(
-                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_REQUIRED",
-                    "审批表单按钮缺少完整的活动任务发布上下文");
-        }
-        UiReleaseResolutionTokenService.Claims claims =
-                resolutionTokenService.verify(releaseResolutionToken);
-        if (claims.purpose() != UiRuntimePurpose.ACTIVE_TASK
-                || !Objects.equals(formId, claims.parentFormId())
-                || !Objects.equals(releaseId, claims.parentReleaseId())
-                || !Objects.equals(
-                        releaseVersion,
-                        claims.parentReleaseVersion())
-                || !Objects.equals(
-                        processVersionHistoryId,
-                        claims.processVersionHistoryId())
-                || !Objects.equals(nodeId, claims.nodeId())
-                || !Objects.equals(taskId, claims.taskId())
-                || !Objects.equals(
-                        processInstanceId,
-                        claims.processInstanceId())
-                || !Objects.equals(entityCode, claims.entityCode())
-                || !Objects.equals(recordId, claims.recordId())) {
-            throw new BusinessForbiddenException(
-                    "UI_EVENT_APPROVAL_RELEASE_CONTEXT_MISMATCH",
-                    "审批表单按钮与当前活动任务的发布上下文不一致");
-        }
-    }
-
-    /**
-     * 提取已验签且与本次发布快照一致的流程只读上下文。
-     *
-     * <p>没有流程历史/节点绑定的普通表单仍走实体权限。返回上下文仅证明表单来源，
-     * 调用方必须继续校验当前用户的实例读取权限及记录绑定，不能将发布令牌视为数据权限。</p>
-     *
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @param formId 表单ID，后续用于查询流程读取上下文时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于查询流程读取上下文时定位或关联目标
-     * @param releaseVersion 发布版本，供本方法查询流程读取上下文时使用
-     * @return 流程表单上下文；无令牌或普通独立/新建表单返回空
-     * @throws BusinessForbiddenException 令牌无效或发布坐标不匹配
-     */
+    /** 只读流程入口仍使用实例读取权限，而不是要求参与人拥有实体列表权限。 */
     public java.util.Optional<UiRuntimeResolutionContext> findProcessReadContext(
-            String releaseResolutionToken, String formId, String releaseId, Integer releaseVersion) {
-        if (!StringUtils.hasText(releaseResolutionToken)) {
-            return java.util.Optional.empty();
-        }
-        var claims = resolutionTokenService.verify(releaseResolutionToken);
-        if (!Objects.equals(formId, claims.parentFormId())
-                || !Objects.equals(releaseId, claims.parentReleaseId())
-                || !Objects.equals(releaseVersion, claims.parentReleaseVersion())) {
-            throw new BusinessForbiddenException("UI_EVENT_RELEASE_CONTEXT_MISMATCH",
-                    "查看表单的发布版本与运行时上下文不一致");
-        }
-        if ((claims.purpose() != UiRuntimePurpose.HISTORICAL
-                && claims.purpose() != UiRuntimePurpose.ACTIVE_TASK)
-                || !StringUtils.hasText(claims.processVersionHistoryId())
-                || !StringUtils.hasText(claims.nodeId())) {
-            return java.util.Optional.empty();
-        }
-        return java.util.Optional.of(claims.context());
+            Map<String, Object> runtimeContext, String formId) {
+        UiRuntimeResolutionContext context = authorizeRuntimeContext(formId, runtimeContext);
+        return context != null && StringUtils.hasText(context.processInstanceId())
+                ? java.util.Optional.of(context) : java.util.Optional.empty();
     }
 
-    /**
-     * 解析表单事件运行时必须使用的精确发布快照。
-     *
-     * <p>流程表单携带服务端签名令牌时，事件绑定与字段定义必须从流程当前
-     * 有效快照读取，不能退回全局 ACTIVE 版本。</p>
-     *
-     * @param formId 表单ID，后续用于解析运行时事件快照时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于解析运行时事件快照时定位或关联目标
-     * @param expectedVersion 预期版本，供本方法解析运行时事件快照时使用
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
-     * @return 解析后的运行时事件快照结果，供调用方继续处理
-     */
+    /** 从本次受理的当前配置读取事件声明；不会回退草稿或接受客户端历史坐标。 */
     public ResolvedUiEventSnapshot resolveRuntimeEventSnapshot(
-            String formId,
-            String releaseId,
-            Integer expectedVersion,
-            String releaseResolutionToken) {
-        log.info(
-                "开始解析表单事件快照: formId={}, requestedReleaseId={}, requestedVersion={}, tokenPresent={}",
-                LogValue.safe(formId),
-                LogValue.safe(releaseId),
-                expectedVersion,
-                StringUtils.hasText(releaseResolutionToken));
-        if (StringUtils.hasText(releaseResolutionToken)) {
-            UiReleaseResolutionTokenService.Claims claims =
-                    resolutionTokenService.verify(
-                            releaseResolutionToken);
-            requireCurrentFormClaims(claims);
-            if (!Objects.equals(formId, claims.parentFormId())
-                    || (StringUtils.hasText(releaseId)
-                    && !Objects.equals(
-                            releaseId,
-                            claims.parentReleaseId()))
-                    || (expectedVersion != null
-                    && !Objects.equals(
-                            expectedVersion,
-                            claims.parentReleaseVersion()))) {
-                log.info(
-                        "表单事件上下文校验失败: formId={}, requestedReleaseId={}, requestedVersion={}, tokenFormId={}, tokenReleaseId={}, tokenVersion={}, reason=CONTEXT_MISMATCH",
-                        LogValue.safe(formId),
-                        LogValue.safe(releaseId),
-                        expectedVersion,
-                        LogValue.safe(claims.parentFormId()),
-                        LogValue.safe(claims.parentReleaseId()),
-                        claims.parentReleaseVersion());
-                throw new BusinessForbiddenException(
-                        "UI_EVENT_RELEASE_CONTEXT_MISMATCH",
-                        "事件请求的表单发布版本与运行时上下文不一致");
-            }
-            ResolvedEntityFormRelease resolved =
-                    resolveRuntimeFormRelease(
-                            claims.parentFormId(),
-                            claims.parentReleaseId(),
-                            claims.parentReleaseVersion(),
-                            claims.context());
-            UiConfigRelease accepted = requireFormRelease(formId, resolved.releaseId(), resolved.releaseVersion(), "表单配置不存在");
-            Map<String, Object> snapshot = verifiedSnapshot(accepted);
-            log.info(
-                    "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied={}, source=SIGNED_CONTEXT",
-                    LogValue.safe(formId),
-                    LogValue.safe(resolved.releaseId()),
-                    resolved.releaseVersion(),
-                    LogValue.safe(resolved.effectiveReleaseId()),
-                    resolved.hotfixApplied());
-            return new ResolvedUiEventSnapshot(
-                    snapshot,
-                    resolved.releaseId(),
-                    resolved.releaseVersion(),
-                    resolved.effectiveReleaseId(),
-                    resolved.hotfixApplied(),
-                    resolved.effectiveContentHash());
-        }
-
-        UiConfigRelease release = currentForms == null ? releaseMapper.findActive(FORM, formId) : currentForms.current(formId);
-        if (release == null
-                || !FORM.equals(release.getConfigType())
-                || !Objects.equals(formId, release.getConfigId())) {
-            log.info(
-                    "表单事件快照解析失败: formId={}, requestedReleaseId={}, requestedVersion={}, reason=ACTIVE_RELEASE_NOT_FOUND",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    expectedVersion);
-            throw new IllegalArgumentException(
-                    "表单事件运行时发布版本不存在");
-        }
-        if (StringUtils.hasText(releaseId)
-                && !Objects.equals(releaseId, release.getId())) {
-            log.info(
-                    "表单事件快照版本冲突: formId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, reason=RELEASE_ID_MISMATCH",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    LogValue.safe(release.getId()),
-                    expectedVersion,
-                    release.getVersion());
-            throw new BusinessConflictException(
-                    "FORM_CONFIGURATION_CHANGED",
-                    "表单配置已更新，填写内容已保留，请重新加载后核对");
-        }
-        if (expectedVersion != null
-                && !Objects.equals(
-                        expectedVersion,
-                        release.getVersion())) {
-            log.info(
-                    "表单事件快照版本冲突: formId={}, requestedReleaseId={}, activeReleaseId={}, requestedVersion={}, activeVersion={}, reason=RELEASE_VERSION_MISMATCH",
-                    LogValue.safe(formId),
-                    LogValue.safe(releaseId),
-                    LogValue.safe(release.getId()),
-                    expectedVersion,
-                    release.getVersion());
-            throw new BusinessConflictException(
-                    "FORM_CONFIGURATION_CHANGED",
-                    "表单配置已更新，填写内容已保留，请重新加载后核对");
-        }
-        log.info(
-                "表单事件快照解析完成: formId={}, releaseId={}, releaseVersion={}, effectiveReleaseId={}, hotfixApplied=false, source=ACTIVE",
-                LogValue.safe(formId),
-                LogValue.safe(release.getId()),
-                release.getVersion(),
-                LogValue.safe(release.getId()));
-        return new ResolvedUiEventSnapshot(
-                verifiedSnapshot(release),
-                release.getId(),
-                release.getVersion(),
-                release.getId(),
-                false,
-                release.getContentHash());
+            String formId, String configHash, Map<String, Object> runtimeContext) {
+        ResolvedEntityFormRelease resolved = resolveAuthorizedRuntimeFormRelease(formId, configHash, runtimeContext);
+        UiConfigRelease accepted = requireFormRelease(formId, resolved.releaseId(), resolved.releaseVersion(), "表单配置不存在");
+        return new ResolvedUiEventSnapshot(verifiedSnapshot(accepted), resolved.releaseId(), resolved.releaseVersion(),
+                resolved.effectiveReleaseId(), false, resolved.effectiveContentHash());
     }
 
     /**
@@ -853,7 +467,7 @@ public class UiConfigReleaseService {
         result.put("id", resolved.releaseId());
         result.put("configId", resolved.form().getId());
         result.put("formId", resolved.form().getId());
-        result.put("protocolVersion", 1);
+        result.put("configHash", formConfigHash(resolved.form().getId()));
         result.put("contentHash", resolved.effectiveContentHash());
 
         result.put("snapshotDocument", snapshot);
@@ -878,7 +492,7 @@ public class UiConfigReleaseService {
         formDocument.remove("runtimeReleaseVersion");
         formDocument.remove("effectiveReleaseId");
         formDocument.remove("hotfixApplied");
-        formDocument.remove("releaseResolutionToken");
+        formDocument.remove("runtimeContext");
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("configType", FORM);
         snapshot.put("form", formDocument);
@@ -903,49 +517,6 @@ public class UiConfigReleaseService {
         return outbound;
     }
 
-    /**
-     * 判断引用子级发布版本条件是否成立，供调用方选择后续分支。
-     *
-     * @param parent 父级，供本方法处理引用子级发布版本时使用
-     * @param childFormId 子级表单ID，后续用于处理引用子级发布版本时定位或关联目标
-     * @param childReleaseId 子级发布版本ID，后续用于处理引用子级发布版本时定位或关联目标
-     * @param childReleaseVersion 子级发布版本，供本方法处理引用子级发布版本时使用
-     * @return 引用子级发布版本条件成立时为 true，否则为 false
-     */
-    private boolean referencesChildRelease(
-            EntityForm parent,
-            String childFormId,
-            String childReleaseId,
-            Integer childReleaseVersion) {
-        if (parent == null
-                || !StringUtils.hasText(childFormId)
-) {
-            return false;
-        }
-        for (EntityFormNode node : parent.getNodes() == null
-                ? List.<EntityFormNode>of()
-                : parent.getNodes()) {
-            if (matchesChildReference(
-                    documentValue(node.getPropsDocument()),
-                    childFormId,
-                    childReleaseId,
-                    childReleaseVersion)) {
-                return true;
-            }
-        }
-        for (EntityFormField field : parent.getFields() == null
-                ? List.<EntityFormField>of()
-                : parent.getFields()) {
-            if (matchesChildReference(
-                    documentValue(field.getComponentProps()),
-                    childFormId,
-                    childReleaseId,
-                    childReleaseVersion)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
     /**
      * 读取指定不可变表单发布中固定的直接子表单引用。
@@ -1044,56 +615,6 @@ public class UiConfigReleaseService {
         }
     }
 
-    /**
-     * 判断是否匹配子级引用；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否匹配子级引用的原始输入，结果供调用方继续使用
-     * @param childFormId 子级表单ID，后续用于判断是否匹配子级引用时定位或关联目标
-     * @param childReleaseId 子级发布版本ID，后续用于判断是否匹配子级引用时定位或关联目标
-     * @param childReleaseVersion 子级发布版本，供本方法判断是否匹配子级引用时使用
-     * @return 子级引用条件成立时为 true，否则为 false
-     */
-    private boolean matchesChildReference(
-            Object value,
-            String childFormId,
-            String childReleaseId,
-            Integer childReleaseVersion) {
-        if (value instanceof Map<?, ?> source) {
-            Map<String, Object> map = new LinkedHashMap<>();
-            source.forEach((key, child) ->
-                    map.put(String.valueOf(key), child));
-            String referencedFormId = firstOptionalText(
-                    map.get("childFormId"),
-                    map.get("refFormId"),
-                    map.get("publishedFormId"));
-            String referencedReleaseId = firstOptionalText(
-                    map.get("childFormReleaseId"),
-                    map.get("refFormReleaseId"),
-                    map.get("publishedFormReleaseId"));
-            Integer referencedVersion = firstOptionalInteger(
-                    map.get("childFormReleaseVersion"),
-                    map.get("refFormReleaseVersion"),
-                    map.get("publishedFormReleaseVersion"));
-            if (Objects.equals(childFormId, referencedFormId)) {
-                return true;
-            }
-            return map.values().stream().anyMatch(child ->
-                    matchesChildReference(
-                            child,
-                            childFormId,
-                            childReleaseId,
-                            childReleaseVersion));
-        }
-        if (value instanceof List<?> list) {
-            return list.stream().anyMatch(child ->
-                    matchesChildReference(
-                            child,
-                            childFormId,
-                            childReleaseId,
-                            childReleaseVersion));
-        }
-        return false;
-    }
 
     /**
      * 生成首个可选文本文本，供后续匹配或展示。
@@ -3453,7 +2974,7 @@ public class UiConfigReleaseService {
      * 校验同一次运行时解析得到的有效快照仍与其可信内容哈希一致。
      *
      * <p>该方法不会回读 ACTIVE 或基础发布记录，专供已经通过
-     * {@link #resolveRuntimeEventSnapshot(String, String, Integer, String)}
+     * {@link #resolveRuntimeEventSnapshot(String, String, Map)}
      * 得到的表单按钮和字段事件链使用，并复用本次请求受理的配置，避免执行中切换规则。</p>
      *
      * @param snapshot 已解析的完整有效快照
@@ -3563,154 +3084,44 @@ public class UiConfigReleaseService {
      * @return 运行时列表配置 DTO，无激活版本时返回 null
      */
     public EntityListConfigDTO resolveRuntimeList(String listConfigId) {
-        return resolveRuntimeListRelease(
-                listConfigId,
-                null,
-                null,
-                null).list();
+        return resolveRuntimeListRelease(listConfigId, null, Map.of()).list();
     }
 
     /**
-     * 解析列表运行时发布版本。无签名上下文时只能读取当前 ACTIVE；
-     * 携带父表单签名上下文时，允许读取父表单快照中精确固定的列表版本。
+     * 解析列表运行时发布版本。普通请求读取当前 ACTIVE；
+     * 可信宿主固定的列表配置由独立的服务端入口读取。
      *
      * @param listConfigId 列表配置ID，后续用于解析运行时列表发布版本时定位或关联目标
-     * @param releaseId 发布版本ID，后续用于解析运行时列表发布版本时定位或关联目标
-     * @param expectedVersion 预期版本，作为 {@code requireListRelease} 的输入影响后续处理
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
+     * @param configHash 页面配置摘要，存在时须与本次受理的配置一致
+     * @param runtimeContext 业务来源定位，子列表路径须由已发布宿主逐层证明
      * @return 解析后的运行时列表发布版本结果，供调用方继续处理
      */
     public ResolvedEntityListRelease resolveRuntimeListRelease(
-            String listConfigId,
-            String releaseId,
-            Integer expectedVersion,
-            String releaseResolutionToken) {
-        if (!StringUtils.hasText(listConfigId)) {
-            throw new IllegalArgumentException("列表配置ID不能为空");
+            String listConfigId, String configHash, Map<String, Object> runtimeContext) {
+        if (!StringUtils.hasText(listConfigId)) throw new IllegalArgumentException("列表配置ID不能为空");
+        var embedTarget = EmbedDelegatedRequestContext.authorizedListTarget().orElse(null);
+        if (embedTarget != null) {
+            var pinned = resolveServerPinnedRuntimeListRelease(listConfigId, embedTarget.releaseId(), embedTarget.releaseVersion());
+            if (!Objects.equals(embedTarget.entityCode(), pinned.list().getEntityCode())
+                    || !Objects.equals(embedTarget.listKey(), pinned.list().getListKey())) {
+                throw new BusinessForbiddenException("EMBED_LIST_CONTEXT_MISMATCH", "列表与当前会话授权范围不一致");
+            }
+            UiConfigRelease accepted = releaseMapper.selectById(pinned.releaseId());
+            if (StringUtils.hasText(configHash) && !Objects.equals(configHash, accepted.getContentHash()))
+                throw new BusinessConflictException("LIST_CONFIGURATION_CHANGED", "列表配置已更新，请重新加载后核对");
+            return pinned;
         }
-        boolean pinned = StringUtils.hasText(releaseResolutionToken);
         UiConfigRelease release;
-        if (pinned) {
-            if (!StringUtils.hasText(releaseId)
-                    || expectedVersion == null) {
-                throw new BusinessForbiddenException(
-                        "LIST_RELEASE_CONTEXT_REQUIRED",
-                        "父表单固定列表版本时必须提供完整的发布标识");
-            }
-            release = requireListRelease(
-                    listConfigId,
-                    releaseId,
-                    expectedVersion);
-            Map<String, Object> snapshot =
-                    verifiedSnapshot(release);
-            EntityListConfigDTO list = runtimeList(
-                    snapshot,
-                    listConfigId);
-            if (resolutionTokenService.isEmbedListToken(
-                    releaseResolutionToken)) {
-                UiReleaseResolutionTokenService.EmbedListClaims claims =
-                        resolutionTokenService.verifyEmbedList(
-                                releaseResolutionToken);
-                EmbedDelegatedRequestContext.SessionCoordinates current =
-                        EmbedDelegatedRequestContext.currentSession()
-                                .orElse(null);
-                if (!Objects.equals(
-                        claims.listConfigId(), listConfigId)
-                        || !Objects.equals(claims.releaseId(), releaseId)
-                        || !Objects.equals(
-                        claims.releaseVersion(), expectedVersion)
-                        || !Objects.equals(
-                        claims.entityCode(), list.getEntityCode())
-                        || current == null
-                        || !Objects.equals(
-                                claims.sessionId(),
-                                current.sessionId())
-                        || !Objects.equals(
-                                claims.viewReleaseId(),
-                                current.viewReleaseId())) {
-                    throw new BusinessForbiddenException(
-                            "EMBED_LIST_RELEASE_CONTEXT_MISMATCH",
-                            "Embed 列表发布版本与当前会话固定坐标不一致");
-                }
-                log.info(
-                        "Embed 列表固定发布快照解析完成: entityCode={}, listId={}, listKey={}, releaseId={}, releaseVersion={}, source=EMBED_SESSION",
-                        LogValue.safe(claims.entityCode()),
-                        LogValue.safe(listConfigId),
-                        LogValue.safe(list.getListKey()),
-                        LogValue.safe(release.getId()),
-                        release.getVersion());
-                return new ResolvedEntityListRelease(
-                        list,
-                        release.getId(),
-                        release.getVersion(),
-                        true,
-                        snapshot);
-            }
-            UiReleaseResolutionTokenService.Claims claims =
-                    resolutionTokenService.verify(
-                            releaseResolutionToken);
-            ResolvedEntityFormRelease parent =
-                    resolveRuntimeFormRelease(
-                            claims.parentFormId(),
-                            claims.parentReleaseId(),
-                            claims.parentReleaseVersion(),
-                            claims.context());
-            if (!referencesListRelease(
-                    parent.form(),
-                    listConfigId,
-                    releaseId,
-                    expectedVersion)) {
-                throw new BusinessForbiddenException(
-                        "CHILD_LIST_RELEASE_NOT_REFERENCED",
-                        "请求的列表发布版本不属于父表单有效快照");
-            }
-            log.info(
-                    "列表钉定发布快照解析完成: parentFormId={}, parentReleaseId={}, listId={}, listKey={}, releaseId={}, releaseVersion={}, source=SIGNED_CONTEXT",
-                    LogValue.safe(claims.parentFormId()),
-                    LogValue.safe(parent.releaseId()),
-                    LogValue.safe(listConfigId),
-                    LogValue.safe(list.getListKey()),
-                    LogValue.safe(release.getId()),
-                    release.getVersion());
-            return new ResolvedEntityListRelease(
-                    list,
-                    release.getId(),
-                    release.getVersion(),
-                    true,
-                    snapshot);
+        UiConfigRelease hostPinned = resolveHostListReference(listConfigId, runtimeContext);
+        if (hostPinned != null) {
+            if (StringUtils.hasText(configHash) && !Objects.equals(configHash, hostPinned.getContentHash()))
+                throw new BusinessConflictException("LIST_CONFIGURATION_CHANGED", "列表配置已更新，请重新加载后核对");
+            return resolveServerPinnedRuntimeListRelease(listConfigId, hostPinned.getId(), hostPinned.getVersion());
         }
-
-        release = releaseMapper.findActive(LIST, listConfigId);
-        if (release == null) {
-            throw new BusinessConflictException(
-                    "LIST_RELEASE_REQUIRED",
-                    "列表尚未发布或没有激活版本");
-        }
-        EntityListConfig owner = listConfigMapper.selectById(
-                listConfigId);
-        if (owner == null
-                || !Objects.equals(
-                        owner.getActiveReleaseId(),
-                        release.getId())) {
-            throw new BusinessConflictException(
-                    "LIST_RELEASE_STATE_CONFLICT",
-                    "列表发布状态不一致，请重新发布或激活版本");
-        }
-        // schema 等读路径是只读事务，不能在这里回写 published_version。
-        // 该字段若曾被数据范围发布误改，以激活的界面发布为准，不拦截加载。
-        if (StringUtils.hasText(releaseId)
-                && !Objects.equals(releaseId, release.getId())) {
-            throw new BusinessConflictException(
-                    "LIST_RELEASE_CONFLICT",
-                    "页面列表版本已过期，请刷新后重试");
-        }
-        if (expectedVersion != null
-                && !Objects.equals(
-                        expectedVersion,
-                        release.getVersion())) {
-            throw new BusinessConflictException(
-                    "LIST_RELEASE_CONFLICT",
-                    "页面列表版本已过期，请刷新后重试");
+        release = currentForms == null ? requireActiveListRelease(listConfigId)
+                : currentForms.currentList(listConfigId, () -> requireActiveListRelease(listConfigId));
+        if (StringUtils.hasText(configHash) && !Objects.equals(configHash, release.getContentHash())) {
+            throw new BusinessConflictException("LIST_CONFIGURATION_CHANGED", "列表配置已更新，请重新加载后核对");
         }
         Map<String, Object> snapshot = verifiedSnapshot(release);
         EntityListConfigDTO list = runtimeList(
@@ -3730,10 +3141,20 @@ public class UiConfigReleaseService {
                 snapshot);
     }
 
+    /** 首次受理时一起核实列表发布行与 ACTIVE 指针，之后只缓存配置，不缓存用户授权。 */
+    private UiConfigRelease requireActiveListRelease(String listConfigId) {
+        UiConfigRelease release = releaseMapper.findActive(LIST, listConfigId);
+        if (release == null) throw new BusinessConflictException("LIST_RELEASE_REQUIRED", "列表尚未发布或没有激活版本");
+        EntityListConfig owner = listConfigMapper.selectById(listConfigId);
+        if (owner == null || !Objects.equals(owner.getActiveReleaseId(), release.getId()))
+            throw new BusinessConflictException("LIST_RELEASE_STATE_CONFLICT", "列表发布状态不一致，请重新发布或激活版本");
+        return release;
+    }
+
     /**
      * 使用服务端已认证的坐标解析精确 LIST Release。
      *
-     * <p>只供 Embed 等内部适配器在签发浏览器令牌前使用；公开 Controller
+     * <p>只供 Embed 等内部适配器在核验会话授权后使用；公开 Controller
      * 不得把该方法映射为任意历史版本读取接口。</p>
      *
      * @param listConfigId 列表配置ID，后续用于解析{@code server}固定运行时列表发布版本时定位或关联目标
@@ -3760,6 +3181,58 @@ public class UiConfigReleaseService {
                 release.getVersion(),
                 true,
                 snapshot);
+    }
+
+    /**
+     * 原生嵌入会话先确定可信根表单，再以此解析它声明的子列表。
+     * 客户端根表单会被覆盖，缺少路径或目标未被最终组件引用时拒绝；不会回退到任意当前列表。
+     */
+    public ResolvedEntityListRelease resolveReferencedRuntimeListRelease(
+            String trustedRootFormId, String listId, Map<String, Object> runtimeContext) {
+        if (!StringUtils.hasText(trustedRootFormId))
+            throw new BusinessForbiddenException("CHILD_LIST_CONTEXT_REQUIRED", "子列表缺少可信宿主来源");
+        Map<String, Object> context = new LinkedHashMap<>(runtimeContext == null ? Map.of() : runtimeContext);
+        context.put("rootFormId", trustedRootFormId);
+        UiConfigRelease release = resolveHostListReference(listId, context);
+        return resolveServerPinnedRuntimeListRelease(listId, release.getId(), release.getVersion());
+    }
+
+    /** 子列表的固定发布身份从已授权宿主节点取得，浏览器仅提供稳定组件路径。 */
+    private UiConfigRelease resolveHostListReference(String listId, Map<String, Object> runtimeContext) {
+        if (runtimeContext == null || !StringUtils.hasText(text(runtimeContext.get("rootFormId")))) return null;
+        Object rawPath = runtimeContext.get("componentPath");
+        if (!(rawPath instanceof List<?> path) || path.isEmpty() || path.size() > MAX_FORM_DEPTH)
+            throw new BusinessForbiddenException("CHILD_LIST_CONTEXT_REQUIRED", "子列表缺少宿主组件来源");
+        String parentId = text(runtimeContext.get("rootFormId"));
+        Set<String> visited = new LinkedHashSet<>(); visited.add(parentId);
+        for (int index = 0; index < path.size() - 1; index++) {
+            Object step = path.get(index);
+            EntityFormNode node = runtimeNode(parentId, step);
+            Set<UiPublishedFormReference> children = new LinkedHashSet<>();
+            collectChildReferences(documentValue(node.getPropsDocument()), children);
+            if (children.size() != 1) throw new BusinessForbiddenException("CHILD_LIST_NOT_REFERENCED", "子列表宿主路径无效");
+            parentId = children.iterator().next().formId();
+            if (!visited.add(parentId)) throw new BusinessForbiddenException("CHILD_LIST_CONTEXT_CYCLE", "子列表宿主路径存在循环");
+        }
+        Map<String, Object> parentContext = new LinkedHashMap<>(runtimeContext);
+        parentContext.put("componentPath", path.subList(0, path.size() - 1));
+        authorizeRuntimeContext(parentId, parentContext);
+        EntityFormNode node = runtimeNode(parentId, path.get(path.size() - 1));
+        Map<String, Object> props = mapValue(documentValue(node.getPropsDocument()));
+        Map<String, Object> component = mapValue(props.get("componentProps"));
+        Map<String, Object> reference = mapValue(component.get("subListConfig"));
+        if (!Objects.equals(listId, text(reference.get("listId"))))
+            throw new BusinessForbiddenException("CHILD_LIST_NOT_REFERENCED", "列表不属于当前发布宿主组件");
+        return requireListRelease(listId, text(reference.get("listReleaseId")),
+                firstOptionalInteger(reference.get("listReleaseVersion")));
+    }
+
+    private EntityFormNode runtimeNode(String formId, Object step) {
+        String key = step instanceof Map<?, ?> map ? text(map.get("nodeKey")) : text(step);
+        EntityForm form = resolveRuntimeFormRelease(formId).form();
+        return (form.getNodes() == null ? List.<EntityFormNode>of() : form.getNodes()).stream()
+                .filter(node -> key.equals(node.getNodeKey()) || key.equals(node.getBindingRef()))
+                .findFirst().orElseThrow(() -> new BusinessForbiddenException("RUNTIME_COMPONENT_NOT_FOUND", "运行来源组件不存在"));
     }
 
     /**
@@ -3822,104 +3295,7 @@ public class UiConfigReleaseService {
         return list;
     }
 
-    /**
-     * 判断引用列表发布版本条件是否成立，供调用方选择后续分支。
-     *
-     * @param parent 父级，供本方法处理引用列表发布版本时使用
-     * @param listConfigId 列表配置ID，后续用于处理引用列表发布版本时定位或关联目标
-     * @param listReleaseId 列表发布版本ID，后续用于处理引用列表发布版本时定位或关联目标
-     * @param listReleaseVersion 列表发布版本，供本方法处理引用列表发布版本时使用
-     * @return 引用列表发布版本条件成立时为 true，否则为 false
-     */
-    private boolean referencesListRelease(
-            EntityForm parent,
-            String listConfigId,
-            String listReleaseId,
-            Integer listReleaseVersion) {
-        if (parent == null) {
-            return false;
-        }
-        for (EntityFormNode node : parent.getNodes() == null
-                ? List.<EntityFormNode>of()
-                : parent.getNodes()) {
-            if (matchesListReference(
-                    documentValue(node.getPropsDocument()),
-                    listConfigId,
-                    listReleaseId,
-                    listReleaseVersion)) {
-                return true;
-            }
-        }
-        for (EntityFormField field : parent.getFields() == null
-                ? List.<EntityFormField>of()
-                : parent.getFields()) {
-            if (matchesListReference(
-                    documentValue(field.getComponentProps()),
-                    listConfigId,
-                    listReleaseId,
-                    listReleaseVersion)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
-    /**
-     * 判断是否匹配列表引用；判断结果决定调用方的后续分支。
-     *
-     * @param value 待判断是否匹配列表引用的原始输入，结果供调用方继续使用
-     * @param listConfigId 列表配置ID，后续用于判断是否匹配列表引用时定位或关联目标
-     * @param listReleaseId 列表发布版本ID，后续用于判断是否匹配列表引用时定位或关联目标
-     * @param listReleaseVersion 列表发布版本，作为 {@code firstOptionalInteger} 的输入影响后续处理
-     * @return 列表引用条件成立时为 true，否则为 false
-     */
-    private boolean matchesListReference(
-            Object value,
-            String listConfigId,
-            String listReleaseId,
-            Integer listReleaseVersion) {
-        if (value instanceof Map<?, ?> source) {
-            Map<String, Object> map = new LinkedHashMap<>();
-            source.forEach((key, child) ->
-                    map.put(String.valueOf(key), child));
-            String referencedListId = firstOptionalText(
-                    map.get("listId"),
-                    map.get("refListId"),
-                    map.get("publishedListId"));
-            String referencedReleaseId = firstOptionalText(
-                    map.get("listReleaseId"),
-                    map.get("refListReleaseId"),
-                    map.get("publishedListReleaseId"));
-            Integer referencedVersion = firstOptionalInteger(
-                    map.get("listReleaseVersion"),
-                    map.get("refListReleaseVersion"),
-                    map.get("publishedListReleaseVersion"));
-            if (Objects.equals(listConfigId, referencedListId)
-                    && Objects.equals(
-                            listReleaseId,
-                            referencedReleaseId)
-                    && Objects.equals(
-                            listReleaseVersion,
-                            referencedVersion)) {
-                return true;
-            }
-            return map.values().stream().anyMatch(child ->
-                    matchesListReference(
-                            child,
-                            listConfigId,
-                            listReleaseId,
-                            listReleaseVersion));
-        }
-        if (value instanceof List<?> list) {
-            return list.stream().anyMatch(child ->
-                    matchesListReference(
-                            child,
-                            listConfigId,
-                            listReleaseId,
-                            listReleaseVersion));
-        }
-        return false;
-    }
 
     /**
      * 封装已解析实体列表发布版本的不可变数据；各分量供后续校验、传递或结果展示使用。
@@ -4169,11 +3545,7 @@ public class UiConfigReleaseService {
                     listKey,
                     nodeLabel(node));
             ResolvedEntityListRelease resolved =
-                    resolveRuntimeListRelease(
-                            list.getId(),
-                            null,
-                            null,
-                            null);
+                    resolveRuntimeListRelease(list.getId(), null, Map.of());
             config.put("listId", list.getId());
             config.put("listReleaseId", resolved.releaseId());
             config.put(
@@ -4219,7 +3591,19 @@ public class UiConfigReleaseService {
             String configType,
             String configId,
             Map<String, Object> snapshot) {
+        // Excel 引用在所属页面发布时验证；运行仍解析实体当前默认，不把指针复制进页面快照。
+        if (excelConfigurations != null) {
+            String entityId = FORM.equals(configType)
+                    ? formMapper.selectById(configId).getEntityId()
+                    : listConfigMapper.selectById(configId).getEntityId();
+            EntityDefinition excelEntity = entityDefinitionMapper.selectById(entityId);
+            if (excelEntity == null) throw new IllegalArgumentException("Excel 按钮所属实体不存在");
+            excelConfigurations.getObject().validateButtonReferences(excelEntity.getEntityCode(), snapshot);
+        }
         if (FORM.equals(configType)) {
+            if (excelConfigurations != null && Integer.valueOf(0).equals(runtimeForm(snapshot).getStatus())) {
+                excelConfigurations.getObject().requireFormUnreferenced(configId);
+            }
             formNodeService.validateTree(configId);
             validateFormSnapshotTree(configId, snapshot);
             formNodeService.validateSnapshotSubFormParameterContracts(runtimeForm(snapshot));
@@ -5752,7 +5136,7 @@ public class UiConfigReleaseService {
      */
     private void validateCurrentCompositionDependents(String formId) {
         List<UiConfigRelease> owners = new ArrayList<>(releaseMapper.findCurrentForms());
-        // 历史列表仍可由签名上下文执行，目标表单已改为当前身份，因此也属于反向依赖。
+        // 历史列表仍可由已授权宿主上下文执行，目标表单已改为当前身份，因此也属于反向依赖。
         owners.addAll(releaseMapper.selectList(com.baomidou.mybatisplus.core.toolkit.Wrappers.<UiConfigRelease>lambdaQuery()
                 .eq(UiConfigRelease::getConfigType, LIST)));
         for (UiConfigRelease owner : CurrentFormCompositionDependencyIndex.affectedOwners(formId, owners, codec)) {
@@ -5760,14 +5144,6 @@ public class UiConfigReleaseService {
             if (snapshot.get("viewCompositions") instanceof List<?> items && !items.isEmpty())
                 requireViewCompositionService().revalidateCurrentFormDependencies(owner.getConfigType(), owner.getConfigId(), snapshot);
         }
-    }
-
-    /** 签名只能授权用户/任务上下文，不能让页面在新发布后继续执行旧配置。 */
-    private void requireCurrentFormClaims(UiReleaseResolutionTokenService.Claims claims) {
-        UiConfigRelease current = currentForms == null ? active(FORM, claims.parentFormId())
-                : currentForms.current(claims.parentFormId());
-        if (current == null || !Objects.equals(current.getId(), claims.parentReleaseId()))
-            throw CurrentFormRuntimeContext.changed();
     }
 
     /** 递归清除子表单和目标表单的旧版本坐标，包括 JSON 字符串内的组件属性。 */

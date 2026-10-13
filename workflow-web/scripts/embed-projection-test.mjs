@@ -44,9 +44,9 @@ const bootstrap = normalizeEmbedBootstrap({
   target: {
     entityCode: 'work_order',
     listKey: 'supplier_work_orders',
-    listReleaseId: 'list-release-007',
-    listReleaseVersion: 7,
-    listReleaseResolutionToken: 'list_resolution_token_0123456789',
+
+
+    listConfigHash: 'list_resolution_token_0123456789',
     context: { source: 'partner' }
   },
   ui: {
@@ -100,27 +100,28 @@ assert.equal(normalizeEmbedBootstrap({
   target: {
     entityCode: 'work_order',
     listKey: 'supplier_work_orders',
-    listReleaseId: 'list-release-007',
-    listReleaseVersion: 7,
-    listReleaseResolutionToken: 'list_resolution_token_0123456789'
+
+
+    listConfigHash: 'list_resolution_token_0123456789'
   }
 }).ui.formPresentation, 'seamless')
 assert.deepEqual(bootstrap.target, {
   entityCode: 'work_order',
   listKey: 'supplier_work_orders',
-  listReleaseId: 'list-release-007',
-  listReleaseVersion: 7,
-  listReleaseResolutionToken: 'list_resolution_token_0123456789',
+
+
+  listConfigHash: 'list_resolution_token_0123456789',
   mode: 'LIST',
   nativeRuntimeUrl: null,
   initialData: {},
   parameters: {},
-  runtimeContext: { source: 'partner' },
+  context: { source: 'partner' },
+  runtimeContext: {},
   defaultFormResolved: false,
   formId: null,
-  formReleaseId: null,
-  formReleaseVersion: null,
-  formReleaseResolutionToken: null
+
+
+  formConfigHash: null
 })
 
 const rawSchema = {

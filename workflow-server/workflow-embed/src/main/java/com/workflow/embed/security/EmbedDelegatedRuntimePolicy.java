@@ -3,7 +3,6 @@ package com.workflow.embed.security;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
-import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerificationTarget;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeFormRuntimePort.VerifiedTarget;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeListRuntimePort.Target;
 import com.workflow.contracts.embed.runtime.port.EmbedNativeProcessRuntimePort.RecordTarget;
@@ -74,7 +73,7 @@ public class EmbedDelegatedRuntimePolicy {
     }
 
     /**
-     * 兼容旧单元测试构造；根 LIST 令牌校验会失败关闭。
+     * 兼容旧单元测试构造；根 LIST 上下文校验会失败关闭。
      *
      * @param targetResolver 目标解析器依赖，保存到当前对象供后续业务方法调用
      * @param processPortProvider 流程端口提供者，保存在对象中供后续校验、查询或展示
@@ -165,16 +164,18 @@ public class EmbedDelegatedRuntimePolicy {
                     request, body, root, session);
             case FORM_OWNER_BODY -> authorizeFormOwner(
                     request, body, root, session);
-            case SIGNED_RUNTIME_CONTEXT -> {
-                if (declaration.requiredCapability()
-                        == EmbedDelegatedRuntimeApi.Capability.LIST_QUERY
-                        && "LIST".equals(root.entryMode())) {
-                    authorizeRootListRequest(request, body, root, session);
-                } else if (!hasSignedRuntimeContext(request, body)) {
-                    throw denied();
+            case RUNTIME_CONTEXT -> {
+                EmbedNativeFormTarget related = authorizeTraversalTarget(request, body, root, session);
+                if (related != null) yield related;
+                if (declaration.requiredCapability() == EmbedDelegatedRuntimeApi.Capability.LIST_QUERY) {
+                    if ("LIST".equals(root.entryMode())) {
+                        authorizeRootListRequest(request, body, root, session);
+                        yield root;
+                    }
+                    EmbedNativeFormTarget childList = authorizeReferencedList(request, body, root, session);
+                    if (childList != null) yield childList;
                 }
-                // 具体服务再次验证签名、当前用户、发布归属、目标记录及 DataScope。
-                yield root;
+                throw denied();
             }
             case FILE_READ -> {
                 if (!StringUtils.hasText(request.getParameter("url"))) {
@@ -194,53 +195,22 @@ public class EmbedDelegatedRuntimePolicy {
         };
     }
 
-    /**
-     * 根 LIST schema/query 必须同时匹配 Session 固定坐标和专用签名令牌。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权根列表请求
-     * @param body 请求体，后续用于处理授权根列表请求并传递处理结果
-     * @param root 根，供本方法处理授权根列表请求时使用
-     * @param session 会话，供本方法处理授权根列表请求时使用
-     */
-    private void authorizeRootListRequest(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        String entityCode = uriVariable(request, "entityCode");
-        String listKey = uriVariable(request, "listKey");
-        String releaseId = firstText(
-                request.getParameter("releaseId"), text(body, "releaseId"));
-        Integer releaseVersion = firstPositiveInt(
-                request.getParameter("releaseVersion"),
-                body == null ? null : body.get("releaseVersion"));
-        String token = firstText(
-                request.getParameter("releaseResolutionToken"),
-                text(body, "releaseResolutionToken"));
-        if (listRuntimePort == null
-                || !StringUtils.hasText(entityCode)
-                || !StringUtils.hasText(listKey)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
-                || !StringUtils.hasText(token)) {
-            throw denied();
-        }
-        try {
-            // 根列表与 open-list 派生列表使用同一验证链；
-            // 后者的 token 只能由固定 List Release 中的按钮坐标
-            // 派生，并继续绑定当前 Session/View Release。
-            listRuntimePort.verifyReleaseResolutionToken(
-                    token,
-                    new Target(
-                            entityCode, listKey,
-                            releaseId, releaseVersion,
-                            session.sessionId(), session.viewId(),
-                            session.viewReleaseId(),
-                            session.absoluteExpiresAt()));
-        } catch (RuntimeException error) {
-            throw denied();
-        }
+    /** 列表目标只能来自认证会话的发布闭包；请求不能选择发布版本。 */
+    private void authorizeRootListRequest(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        String entityCode = firstText(uriVariable(request,"entityCode"), text(body,"entityCode"));
+        String listKey = firstText(uriVariable(request,"listKey"), text(body,"listKey"));
+        authorizeList(root, session, entityCode, listKey);
     }
+
+    private Target authorizeList(EmbedNativeFormTarget root, AuthenticatedEmbedSession session, String entityCode, String listKey) {
+        if (listRuntimePort == null || !StringUtils.hasText(root.listKey()) || root.listReleaseVersion() == null) throw denied();
+        Target target = listRuntimePort.authorizeTarget(new Target(root.entityCode(), root.listKey(), root.listReleaseId(),root.listReleaseVersion(),
+                session.sessionId(),session.viewId(),session.viewReleaseId(),session.absoluteExpiresAt()), entityCode, listKey);
+        if (target == null) throw denied();
+        EmbedDelegatedRequestContext.authorizeListTarget(target.entityCode(),target.listKey(),target.listReleaseId(),target.listReleaseVersion());
+        return target;
+    }
+
 
     /**
      * 校验稳定的请求形状，不依赖 endpoint path，因此新增原生端点无需修改中央清单。
@@ -278,9 +248,9 @@ public class EmbedDelegatedRuntimePolicy {
             case FORM_OWNER_RUNTIME ->
                     binding == EmbedDelegatedRuntimeApi.TargetBinding
                             .FORM_OWNER_BODY && post;
-            case SIGNED_RUNTIME_CONTEXT ->
+            case RUNTIME_CONTEXT ->
                     binding == EmbedDelegatedRuntimeApi.TargetBinding
-                            .SIGNED_RUNTIME_CONTEXT && (get || post);
+                            .RUNTIME_CONTEXT && (get || post);
             case FILE_RUNTIME ->
                     (binding == EmbedDelegatedRuntimeApi.TargetBinding
                             .FILE_READ && get)
@@ -312,471 +282,152 @@ public class EmbedDelegatedRuntimePolicy {
         EmbedNativeFormTarget traversal = authorizeTraversalTarget(
                 request, body, root, session);
         EmbedNativeFormTarget target = traversal == null ? root : traversal;
-        if (!Objects.equals(
-                target.entityCode(), uriVariable(request, "entityCode"))) {
-            throw denied();
+        String entityCode = uriVariable(request, "entityCode");
+        if (traversal == null && !Objects.equals(root.entityCode(), entityCode)) {
+            Map<String, Object> context = runtimeContext(request, body);
+            if ("LIST".equals(root.entryMode()) && StringUtils.hasText(string(context.get("listKey")))) {
+                Target list = authorizeList(root, session, entityCode, string(context.get("listKey")));
+                target = listTarget(root, list.entityCode(), list.listKey(), list.listReleaseId(), list.listReleaseVersion());
+            } else {
+                target = authorizeReferencedList(request, body, root, session);
+            }
         }
+        if (target == null || !Objects.equals(target.entityCode(), entityCode)) throw denied();
         return target;
     }
 
-    /**
-     * 处理授权表单目标，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权表单目标
-     * @param body 请求体，后续用于处理授权表单目标并传递处理结果
-     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @param mode 模式标识，决定后续授权表单目标采用的处理分支
-     * @return 处理后的授权表单目标结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeFormTarget(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session,
-            String mode) {
-        EmbedNativeFormTarget traversal = authorizeTraversalTarget(
-                request, body, root, session);
+    /** 表单内子列表必须在当前根表单的已发布路径上，且根记录仍满足 Embed 固定数据范围。 */
+    private EmbedNativeFormTarget authorizeReferencedList(HttpServletRequest request, JsonNode body,
+            EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        Map<String, Object> context = runtimeContext(request, body);
+        if (!(context.get("componentPath") instanceof java.util.List<?> path) || path.isEmpty()) return null;
+        if (listRuntimePort == null || !StringUtils.hasText(root.formId())) throw denied();
+        String entityCode = firstText(uriVariable(request, "entityCode"), text(body, "entityCode"));
+        String listKey = firstText(firstText(uriVariable(request, "listKey"), text(body, "listKey")), string(context.get("listKey")));
+        if (!StringUtils.hasText(entityCode) || !StringUtils.hasText(listKey)) throw denied();
+        String rootRecordId = string(context.get("rootRecordId"));
+        targetResolver.authorize(session, StringUtils.hasText(rootRecordId) ? "VIEW" : root.entryMode(), rootRecordId);
+        var list = listRuntimePort.authorizeFormList(root.formId(), entityCode, listKey, context);
+        if (list == null || !Objects.equals(entityCode, list.entityCode()) || !Objects.equals(listKey, list.listKey())) throw denied();
+        EmbedDelegatedRequestContext.authorizeListTarget(list.entityCode(), list.listKey(), list.releaseId(), list.releaseVersion());
+        return listTarget(root, list.entityCode(), list.listKey(), list.releaseId(), list.releaseVersion());
+    }
+
+    /** 子列表审计坐标由授权端口恢复，不能用根实体替代真正读取的目标。 */
+    private static EmbedNativeFormTarget listTarget(EmbedNativeFormTarget root, String entityCode, String listKey,
+            String releaseId, int releaseVersion) {
+        return new EmbedNativeFormTarget(entityCode, root.formId(), root.formReleaseId(), root.formReleaseVersion(),
+                listKey, releaseId, releaseVersion, "LIST", null, null, Map.of(), Map.of(), Map.of());
+    }
+
+    private EmbedNativeFormTarget authorizeFormTarget(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session, String mode) {
+        EmbedNativeFormTarget traversal = authorizeTraversalTarget(request,body,root,session);
+        if (traversal != null) return traversal;
+        String formId = firstText(firstText(text(body,"formId"), text(body,"configId")),uriVariable(request,"formId"));
+        return authorizeBusinessForm(session,root,formId,runtimeContext(request,body),mode,text(body,"recordId"));
+    }
+
+
+    private EmbedNativeFormTarget authorizeRuntimeRelease(HttpServletRequest request, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        String formId = uriVariable(request,"formId");
+        Map<String,Object> context = runtimeContext(request,null);
+        EmbedNativeFormTarget traversal = authorizeTraversalTarget(request,null,root,session);
         if (traversal != null) {
+            if (!Objects.equals(formId,traversal.formId())) throw denied();
             return traversal;
         }
-        String formId = firstText(
-                text(body, "formId"), text(body, "configId"));
-        if (!StringUtils.hasText(formId)) {
-            formId = uriVariable(request, "formId");
-        }
-        return authorizeSignedForm(
-                session,
-                root,
-                text(body, "entityCode"),
-                formId,
-                text(body, "releaseId"),
-                positiveInt(body == null ? null
-                        : body.get("releaseVersion")),
-                text(body, "releaseResolutionToken"),
-                text(body, "listKey"),
-                null, null, null,
-                mode,
-                text(body, "recordId"));
+        return configurationForm(session,root,formId,context);
     }
 
-    /**
-     * 处理授权运行时发布版本，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权运行时发布版本
-     * @param root 根，供本方法处理授权运行时发布版本时使用
-     * @param session 会话，供本方法处理授权运行时发布版本时使用
-     * @return 处理后的授权运行时发布版本结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeRuntimeRelease(
-            HttpServletRequest request,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        String formId = uriVariable(request, "formId");
-        String releaseId = request.getParameter("releaseId");
-        Integer releaseVersion = positiveInt(
-                request.getParameter("version"));
-        String token = request.getParameter("releaseResolutionToken");
-        if (formRuntimePort == null
-                || !StringUtils.hasText(formId)
 
-                || !StringUtils.hasText(token)) {
-            throw denied();
-        }
-        try {
-            VerifiedTarget verified =
-                    formRuntimePort.verifyRuntimeReleaseRequest(
-                            token,
-                            new VerificationTarget(
-                                    null, formId, releaseId, releaseVersion == null ? 1 : releaseVersion,
-                                    session.sessionId(),
-                                    session.viewReleaseId(),
-                                    session.absoluteExpiresAt()));
-            if (verified == null
-                    || !Objects.equals(formId, verified.formId())
-                    || releaseId != null && !Objects.equals(releaseId, verified.formReleaseId())
-                    || releaseVersion != null && releaseVersion != verified.formReleaseVersion()) {
-                throw denied();
-            }
-            return new EmbedNativeFormTarget(
-                    verified.entityCode(), verified.formId(),
-                    verified.formReleaseId(), verified.formReleaseVersion(),
-                    null, null, null, root.entryMode(), null, null,
-                    Map.of(), Map.of(), Map.of());
-        } catch (EmbedException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw denied();
-        }
+    /** 根来自认证会话；子表单由发布组件路径或服务端列表按钮决定。 */
+    private EmbedNativeFormTarget authorizeBusinessForm(AuthenticatedEmbedSession session, EmbedNativeFormTarget root, String formId,
+            Map<String,Object> runtimeContext, String mode, String recordId) {
+        EmbedNativeFormTarget configured = configurationForm(session,root,formId,runtimeContext);
+        return targetResolver.authorizePinnedForm(session,configured,mode,recordId);
     }
 
-    /**
-     * 将签名 Form Release 目标恢复为原生表单访问，并继续执行
-     * mapped user 的对象权限与 DataScope。
-     *
-     * @param session 会话，作为 {@code verifySignedForm} 的输入影响后续处理
-     * @param root 根，作为 {@code verifySignedForm} 的输入影响后续处理
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param formId 表单ID，后续用于处理授权已签名表单时定位或关联目标
-     * @param formReleaseId 表单发布版本ID，后续用于处理授权已签名表单时定位或关联目标
-     * @param formReleaseVersion 表单发布版本，作为 {@code verifySignedForm} 的输入影响后续处理
-     * @param formReleaseToken 表单发布版本令牌，后续用于授权校验、关联或幂等去重
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param listReleaseId 列表发布版本ID，后续用于处理授权已签名表单时定位或关联目标
-     * @param listReleaseVersion 列表发布版本，供本方法处理授权已签名表单时使用
-     * @param listReleaseToken 列表发布版本令牌，后续用于授权校验、关联或幂等去重
-     * @param mode 模式标识，决定后续授权已签名表单采用的处理分支
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     * @return 处理后的授权已签名表单结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeSignedForm(
-            AuthenticatedEmbedSession session,
-            EmbedNativeFormTarget root,
-            String entityCode,
-            String formId,
-            String formReleaseId,
-            Integer formReleaseVersion,
-            String formReleaseToken,
-            String listKey,
-            String listReleaseId,
-            Integer listReleaseVersion,
-            String listReleaseToken,
-            String mode,
-            String recordId) {
-        EmbedNativeFormTarget pinned = verifySignedForm(
-                session, root, entityCode, formId,
-                formReleaseId, formReleaseVersion, formReleaseToken,
-                listKey, listReleaseId, listReleaseVersion, listReleaseToken);
-        return targetResolver.authorizePinnedForm(
-                session, pinned, mode, recordId);
+    private EmbedNativeFormTarget configurationForm(AuthenticatedEmbedSession session, EmbedNativeFormTarget root, String formId, Map<String,Object> context) {
+        if (formRuntimePort == null || !StringUtils.hasText(formId)) throw denied();
+        String rootFormId = root.formId();
+        String listKey = null, listReleaseId = null; Integer listVersion = null;
+        if ("LIST".equals(root.entryMode())) {
+            String entity = firstText(string(context.get("entityCode")),root.entityCode());
+            listKey = firstText(string(context.get("listKey")),root.listKey());
+            Target list = authorizeList(root,session,entity,listKey);
+            rootFormId = firstText(string(context.get("rootFormId")),formId);
+            listRuntimePort.authorizeForm(new Target(root.entityCode(),root.listKey(),root.listReleaseId(),root.listReleaseVersion(),
+                    session.sessionId(),session.viewId(),session.viewReleaseId(),session.absoluteExpiresAt()),entity,listKey,rootFormId,context);
+            listReleaseId=list.listReleaseId();listVersion=list.listReleaseVersion();
+        } else if (!Objects.equals(rootFormId, formId)) {
+            // 子表单可跨实体，但不能借组件路径把固定父记录替换为另一个可访问记录。
+            // 后续实体边界还会根据这个父记录验证实际父子关系。
+            String rootRecordId = firstText(string(context.get("rootRecordId")), root.recordId());
+            targetResolver.authorize(session, StringUtils.hasText(rootRecordId) ? "VIEW" : root.entryMode(), rootRecordId);
+        }
+        VerifiedTarget verified = formRuntimePort.authorizeTarget(rootFormId,formId,context);
+        if (verified == null || !Objects.equals(formId,verified.formId())) throw denied();
+        return new EmbedNativeFormTarget(verified.entityCode(),formId,verified.formReleaseId(),verified.formReleaseVersion(),
+                listKey,listReleaseId,listVersion,root.entryMode(),root.recordId(),root.processInstanceId(),root.initialData(),root.parameters(),root.context());
     }
 
-    /**
-     * 仅相信 Entity 边界对签名 token 恢复的坐标；请求中的
-     * entity/form/release 必须与签名值逐项一致。
-     *
-     * @param session 会话，作为 {@code VerificationTarget} 的输入影响后续处理
-     * @param root 根，作为 {@code verifyPinnedList} 的输入影响后续处理
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param formId 表单ID，后续用于验证已签名表单时定位或关联目标
-     * @param formReleaseId 表单发布版本ID，后续用于验证已签名表单时定位或关联目标
-     * @param formReleaseVersion 表单发布版本，作为 {@code VerificationTarget} 的输入影响后续处理
-     * @param formReleaseToken 表单发布版本令牌，后续用于授权校验、关联或幂等去重
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param listReleaseId 列表发布版本ID，后续用于验证已签名表单时定位或关联目标
-     * @param listReleaseVersion 列表发布版本，供本方法验证已签名表单时使用
-     * @param listReleaseToken 列表发布版本令牌，后续用于授权校验、关联或幂等去重
-     * @return 验证后的已签名表单结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget verifySignedForm(
-            AuthenticatedEmbedSession session,
-            EmbedNativeFormTarget root,
-            String entityCode,
-            String formId,
-            String formReleaseId,
-            Integer formReleaseVersion,
-            String formReleaseToken,
-            String listKey,
-            String listReleaseId,
-            Integer listReleaseVersion,
-            String listReleaseToken) {
-        if (formRuntimePort == null
-                || !StringUtils.hasText(formId)
-                || !StringUtils.hasText(formReleaseId)
-                || formReleaseVersion == null
-                || !StringUtils.hasText(formReleaseToken)) {
-            throw denied();
-        }
-        try {
-            VerificationTarget requested =
-                    new VerificationTarget(
-                            entityCode, formId, formReleaseId,
-                            formReleaseVersion,
-                            session.sessionId(),
-                            session.viewReleaseId(),
-                            session.absoluteExpiresAt());
-            VerifiedTarget verified =
-                    formRuntimePort.verifyReleaseResolutionToken(
-                            formReleaseToken, requested);
-            if (verified == null
-                    || !Objects.equals(formId, verified.formId())
-                    || !Objects.equals(
-                            formReleaseId, verified.formReleaseId())
-                    || formReleaseVersion
-                            != verified.formReleaseVersion()
-                    || StringUtils.hasText(entityCode)
-                            && !Objects.equals(
-                                    entityCode, verified.entityCode())) {
-                throw denied();
-            }
-            PinnedList pinnedList = verifyPinnedList(
-                    session, root, verified.entityCode(),
-                    listKey, listReleaseId, listReleaseVersion,
-                    listReleaseToken);
-            return new EmbedNativeFormTarget(
-                    verified.entityCode(), verified.formId(),
-                    verified.formReleaseId(), verified.formReleaseVersion(),
-                    pinnedList.listKey(), pinnedList.releaseId(),
-                    pinnedList.releaseVersion(), root.entryMode(), null,
-                    null, Map.of(), Map.of(), Map.of());
-        } catch (EmbedException error) {
-            throw error;
-        } catch (RuntimeException error) {
-            throw denied();
-        }
+
+
+
+
+
+
+
+    private static boolean matchesAction(JsonNode body, EmbedNativeFormTarget target) {
+        return isObject(body) && textEquals(body,"formId",target.formId()) && textEquals(body,"entityCode",target.entityCode())
+                && Objects.equals(normalizeMode(text(body,"mode")),target.entryMode()) && recordMatches(body,target);
     }
 
-    /**
-     * 详情请求可携带根列表或 open-list 的固定发布坐标。
-     * 有 release 坐标时必须用同 Session 签名的 List token 验证；
-     * 表单按钮只携带根 listKey 时可直接复用 Session 根坐标。
-     *
-     * @param session 会话，供本方法验证固定列表时使用
-     * @param root 根，作为 {@code PinnedList} 的输入影响后续处理
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param releaseId 发布版本ID，后续用于验证固定列表时定位或关联目标
-     * @param releaseVersion 发布版本，作为 {@code listRuntimePort.verifyReleaseResolutionToken} 的输入影响后续处理
-     * @param releaseToken 发布版本令牌，后续用于授权校验、关联或幂等去重
-     * @return 验证后的固定列表结果，供调用方继续处理
-     */
-    private PinnedList verifyPinnedList(
-            AuthenticatedEmbedSession session,
-            EmbedNativeFormTarget root,
-            String entityCode,
-            String listKey,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseToken) {
-        boolean hasReleaseCoordinate = StringUtils.hasText(releaseId)
-                || releaseVersion != null
-                || StringUtils.hasText(releaseToken);
-        if (!hasReleaseCoordinate) {
-            if (Objects.equals(entityCode, root.entityCode())
-                    && StringUtils.hasText(listKey)
-                    && Objects.equals(listKey, root.listKey())
-                    && StringUtils.hasText(root.listReleaseId())
-                    && root.listReleaseVersion() != null) {
-                return new PinnedList(
-                        root.listKey(), root.listReleaseId(),
-                        root.listReleaseVersion());
-            }
-            return PinnedList.NONE;
-        }
-        if (listRuntimePort == null
-                || !StringUtils.hasText(entityCode)
-                || !StringUtils.hasText(listKey)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
-                || !StringUtils.hasText(releaseToken)) {
-            throw denied();
-        }
-        listRuntimePort.verifyReleaseResolutionToken(
-                releaseToken,
-                new Target(
-                        entityCode, listKey, releaseId, releaseVersion,
-                        session.sessionId(), session.viewId(),
-                        session.viewReleaseId(),
-                        session.absoluteExpiresAt()));
-        return new PinnedList(listKey, releaseId, releaseVersion);
-    }
 
-    /**
-     * 判断是否匹配动作；判断结果决定调用方的后续分支。
-     *
-     * @param body 请求体，后续用于判断是否匹配动作并传递处理结果
-     * @param target 目标，作为 {@code intEquals} 的输入影响后续处理
-     * @return 动作条件成立时为 true，否则为 false
-     */
-    private static boolean matchesAction(
-            JsonNode body,
-            EmbedNativeFormTarget target) {
-        return isObject(body)
-                && textEquals(body, "formId", target.formId())
-                && textEquals(body, "releaseId", target.formReleaseId())
-                && intEquals(body, "releaseVersion", target.formReleaseVersion())
-                && textEquals(body, "entityCode", target.entityCode())
-                && Objects.equals(
-                        normalizeMode(text(body, "mode")),
-                        target.entryMode())
-                && recordMatches(body, target)
-                && StringUtils.hasText(text(body, "releaseResolutionToken"));
-    }
-
-    /**
-     * 处理授权唯一预检查，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权唯一预检查
-     * @param body 请求体，后续用于处理授权唯一预检查并传递处理结果
-     * @param root 根，作为 {@code authorizeFormTarget} 的输入影响后续处理
-     * @param session 会话，作为 {@code authorizeFormTarget} 的输入影响后续处理
-     * @return 处理后的授权唯一预检查结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeUniquePrecheck(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        if (!isObject(body)
-                || !StringUtils.hasText(text(body, "releaseResolutionToken"))) {
-            throw denied();
-        }
-        String mode = StringUtils.hasText(text(body, "recordId"))
-                ? "VIEW" : "CREATE";
-        EmbedNativeFormTarget target = authorizeFormTarget(
-                request, body, root, session, mode);
-        if (!Objects.equals(uriVariable(request, "formId"), target.formId())
-                || !textEquals(body, "releaseId", target.formReleaseId())
-                || !intEquals(body, "releaseVersion",
-                        target.formReleaseVersion())
-                || !recordMatches(body, target)) {
-            throw denied();
-        }
+    private EmbedNativeFormTarget authorizeUniquePrecheck(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        if (!isObject(body)) throw denied();
+        EmbedNativeFormTarget target=authorizeFormTarget(request,body,root,session,StringUtils.hasText(text(body,"recordId"))?"VIEW":"CREATE");
+        if (!Objects.equals(uriVariable(request,"formId"),target.formId()) || !recordMatches(body,target)) throw denied();
         return target;
     }
 
-    /**
-     * 处理授权记录详情，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权记录详情
-     * @param body 请求体，后续用于处理授权记录详情并传递处理结果
-     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @return 处理后的授权记录详情结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeRecordDetail(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        EmbedNativeFormTarget traversal = authorizeTraversalTarget(
-                request, body, root, session);
-        String recordId = uriVariable(request, "recordId");
-        EmbedNativeFormTarget target = traversal == null
-                ? authorizeSignedForm(
-                        session,
-                        root,
-                        uriVariable(request, "entityCode"),
-                        request.getParameter("formId"),
-                        request.getParameter("formReleaseId"),
-                        positiveInt(request.getParameter(
-                                "formReleaseVersion")),
-                        request.getParameter(
-                                "formReleaseResolutionToken"),
-                        request.getParameter("listKey"),
-                        request.getParameter("releaseId"),
-                        positiveInt(request.getParameter("releaseVersion")),
-                        request.getParameter("releaseResolutionToken"),
-                        "VIEW",
-                        recordId)
-                : traversal;
-        if (!"VIEW".equals(target.entryMode())
-                || !Objects.equals(target.entityCode(),
-                        uriVariable(request, "entityCode"))
-                || !Objects.equals(target.recordId(), recordId)
-                || !coordinateEquals(request, "formId", target.formId())
-                || !coordinateEquals(
-                        request, "formReleaseId", target.formReleaseId())
-                || !coordinateIntEquals(
-                        request, "formReleaseVersion",
-                        target.formReleaseVersion())
-                || !coordinateEquals(request, "listKey", target.listKey())
-                || !coordinateEquals(
-                        request, "releaseId", target.listReleaseId())
-                || !coordinateIntEquals(
-                        request, "releaseVersion",
-                        target.listReleaseVersion())) {
-            throw denied();
-        }
+
+    private EmbedNativeFormTarget authorizeRecordDetail(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        String recordId=uriVariable(request,"recordId");
+        EmbedNativeFormTarget target=authorizeTraversalTarget(request,body,root,session);
+        if (target==null) target=authorizeBusinessForm(session,root,request.getParameter("formId"),runtimeContext(request,body),"VIEW",recordId);
+        if (!"VIEW".equals(target.entryMode()) || !Objects.equals(target.entityCode(),uriVariable(request,"entityCode"))
+                || !Objects.equals(target.recordId(),recordId) || !Objects.equals(target.formId(),request.getParameter("formId"))) throw denied();
         return target;
     }
 
-    /**
-     * 处理授权表单归属方，并将结果传给后续步骤。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权表单归属方
-     * @param body 请求体，后续用于处理授权表单归属方并传递处理结果
-     * @param root 根，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @param session 会话，作为 {@code authorizeTraversalTarget} 的输入影响后续处理
-     * @return 处理后的授权表单归属方结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeFormOwner(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        if (!isObject(body)) {
+
+    private EmbedNativeFormTarget authorizeFormOwner(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        if (!isObject(body)) throw denied();
+        String ownerType=text(body,"ownerType"), ownerId=text(body,"ownerId"),recordId=text(body,"recordId");
+        EmbedNativeFormTarget parent=authorizeTraversalTarget(request,body,root,session);
+        if (parent != null) {
+            if ("FORM".equals(ownerType) && Objects.equals(ownerId,parent.formId()) && Objects.equals(recordId,parent.recordId())) return parent;
+            if ("LIST".equals(ownerType) && "LIST".equals(parent.entryMode())) return parent;
             throw denied();
         }
-        EmbedNativeFormTarget traversal = authorizeTraversalTarget(
-                request, body, root, session);
-        String recordId = text(body, "recordId");
-        EmbedNativeFormTarget target = traversal;
-        if (target == null) {
-            String ownerId = text(body, "ownerId");
-            String releaseId = text(body, "releaseId");
-            Integer releaseVersion = positiveInt(
-                    body.get("releaseVersion"));
-            String token = text(body, "releaseResolutionToken");
-            boolean signedTarget = StringUtils.hasText(token)
-                    || StringUtils.hasText(releaseId)
-                    || releaseVersion != null
-                    || !Objects.equals(ownerId, root.formId());
-            if (signedTarget) {
-                target = verifySignedForm(
-                        session, root, text(body, "entityCode"),
-                        ownerId, releaseId, releaseVersion, token,
-                        text(body, "listKey"), null, null, null);
-                if (StringUtils.hasText(recordId)) {
-                    target = targetResolver.authorizePinnedForm(
-                            session, target, "VIEW", recordId);
-                }
-            } else {
-                target = StringUtils.hasText(recordId)
-                        ? targetResolver.authorize(
-                                session, "VIEW", recordId)
-                        : root;
-            }
+        if ("LIST".equals(ownerType) && "LIST".equals(root.entryMode())) {
+            Target list=authorizeList(root,session,root.entityCode(),root.listKey());
+            listRuntimePort.requireListOwner(list,ownerId);
+            // 默认表单的行入口复用 Embed 固定参数过滤，后续关联解析还会验证宿主列表范围。
+            targetResolver.authorize(session,"VIEW",recordId);
+            return root;
         }
-        if (!textEqualsIgnoreCase(body, "ownerType", "FORM")
-                || !textEquals(body, "ownerId", target.formId())
-                || StringUtils.hasText(recordId)
-                        && !Objects.equals(target.recordId(), recordId)) {
-            throw denied();
-        }
-        String releaseId = text(body, "releaseId");
-        if (StringUtils.hasText(releaseId)
-                && (!Objects.equals(target.formReleaseId(), releaseId)
-                || !intEquals(body, "releaseVersion",
-                        target.formReleaseVersion()))) {
-            throw denied();
-        }
-        return target;
+        if (!"FORM".equals(ownerType)) throw denied();
+        return authorizeBusinessForm(session,root,ownerId,runtimeContext(request,body),StringUtils.hasText(recordId)?"VIEW":"CREATE",recordId);
     }
 
-    /**
-     * 判断是否匹配事件；判断结果决定调用方的后续分支。
-     *
-     * @param request 本次请求，后续经校验后用于判断是否匹配事件
-     * @param body 请求体，后续用于判断是否匹配事件并传递处理结果
-     * @param target 目标，作为 {@code textEquals} 的输入影响后续处理
-     * @return 事件条件成立时为 true，否则为 false
-     */
-    private static boolean matchesEvent(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget target) {
-        String eventCode = uriVariable(request, "eventCode");
-        return safeRuntimeKey(eventCode)
-                && isObject(body)
-                && textEqualsIgnoreCase(body, "configType", "FORM")
-                && textEquals(body, "configId", target.formId())
-                && textEquals(body, "releaseId", target.formReleaseId())
-                && intEquals(body, "releaseVersion", target.formReleaseVersion())
-                && textEquals(body, "entityCode", target.entityCode())
-                && recordMatches(body, target)
-                && StringUtils.hasText(text(body, "releaseResolutionToken"));
+
+    private static boolean matchesEvent(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget target) {
+        return safeRuntimeKey(uriVariable(request,"eventCode")) && isObject(body) && textEqualsIgnoreCase(body,"configType","FORM")
+                && textEquals(body,"configId",target.formId()) && textEquals(body,"entityCode",target.entityCode()) && recordMatches(body,target);
     }
+
 
     /**
      * 判断是否匹配文件写入；判断结果决定调用方的后续分支。
@@ -829,98 +480,56 @@ public class EmbedDelegatedRuntimePolicy {
         return targetResolver.authorize(session, "VIEW", mapped.recordId());
     }
 
-    /**
-     * 仅沿 Flow 服务端签发的关联内容遍历链进入非根实体。
-     *
-     * @param request 本次请求，后续经校验后用于处理授权遍历目标
-     * @param body 请求体，后续用于处理授权遍历目标并传递处理结果
-     * @param root 根，供本方法处理授权遍历目标时使用
-     * @param session 会话，作为 {@code targetResolver.authorize} 的输入影响后续处理
-     * @return 处理后的授权遍历目标结果，供调用方继续处理
-     */
-    private EmbedNativeFormTarget authorizeTraversalTarget(
-            HttpServletRequest request,
-            JsonNode body,
-            EmbedNativeFormTarget root,
-            AuthenticatedEmbedSession session) {
-        String token = request.getParameter("viewCompositionTraversalToken");
-        if (!StringUtils.hasText(token)) {
-            token = text(body, "viewCompositionTraversalToken");
-        }
-        if (!StringUtils.hasText(token) && isObject(body)) {
-            token = text(body.get("context"),
-                    "viewCompositionTraversalToken");
-        }
-        if (!StringUtils.hasText(token)) {
-            return null;
-        }
-        if (traversalRuntimePort == null) {
-            throw denied();
-        }
-        TraversalTarget fixed =
-                traversalRuntimePort.resolve(token);
-        if (!"FORM".equals(fixed.rootOwnerType())
-                || !Objects.equals(root.formId(), fixed.rootOwnerId())
-                || !Objects.equals(root.formReleaseId(), fixed.rootReleaseId())
-                || !Objects.equals(root.formReleaseVersion(),
-                        fixed.rootReleaseVersion())
-                || !StringUtils.hasText(fixed.rootRecordId())) {
-            throw denied();
-        }
-        EmbedNativeFormTarget authorizedRoot = targetResolver.authorize(
-                session, "VIEW", fixed.rootRecordId());
-        if (!Objects.equals(root.formId(), authorizedRoot.formId())
-                || !Objects.equals(root.formReleaseId(),
-                        authorizedRoot.formReleaseId())
-                || !Objects.equals(root.formReleaseVersion(),
-                        authorizedRoot.formReleaseVersion())) {
-            throw denied();
-        }
-        boolean formTarget = "FORM".equals(fixed.targetOwnerType());
-        boolean listTarget = "LIST".equals(fixed.targetOwnerType());
-        if ((!formTarget && !listTarget)
-                || !StringUtils.hasText(fixed.targetOwnerId())
-                || !StringUtils.hasText(fixed.targetReleaseId())
-                || fixed.targetReleaseVersion() == null
-                || fixed.targetReleaseVersion() < 1
-                || !StringUtils.hasText(fixed.targetEntityCode())) {
-            throw denied();
-        }
-        return new EmbedNativeFormTarget(
-                fixed.targetEntityCode(),
-                formTarget ? fixed.targetOwnerId() : root.formId(),
-                formTarget ? fixed.targetReleaseId() : root.formReleaseId(),
-                formTarget ? fixed.targetReleaseVersion()
-                        : root.formReleaseVersion(),
-                null, null, null,
-                formTarget ? "VIEW" : "LIST",
-                formTarget ? fixed.targetRecordId() : null,
-                null, Map.of(), Map.of(), Map.of());
+    /** 每跳权限和关系由实体边界重算，第一跳必须属于当前 Embed 根及固定记录。 */
+    private EmbedNativeFormTarget authorizeTraversalTarget(HttpServletRequest request, JsonNode body, EmbedNativeFormTarget root, AuthenticatedEmbedSession session) {
+        Map<String,Object> context=compositionContext(request,body);
+        if (context.isEmpty()) return null;
+        if (traversalRuntimePort==null) throw denied();
+        // 先检查根，避免把其他业务页面的合法路径当作当前嵌入页的授权来源。
+        boolean formRoot="FORM".equals(context.get("ownerType")) && Objects.equals(root.formId(),context.get("ownerId"));
+        boolean listRoot="LIST".equals(context.get("ownerType")) && "LIST".equals(root.entryMode());
+        if(listRoot) {
+            Target list=authorizeList(root,session,root.entityCode(),root.listKey());
+            listRuntimePort.requireListOwner(list,string(context.get("ownerId")));
+        } else if (!formRoot) throw denied();
+        String rootRecordId=string(context.get("recordId"));
+        targetResolver.authorize(session,"VIEW",rootRecordId);
+        TraversalTarget fixed=traversalRuntimePort.resolve(context);
+        if (fixed==null || !Objects.equals(context.get("ownerId"),fixed.rootOwnerId()) || !Objects.equals(rootRecordId,fixed.rootRecordId())) throw denied();
+        boolean form="FORM".equals(fixed.targetOwnerType()), list="LIST".equals(fixed.targetOwnerType());
+        if ((!form&&!list)||!StringUtils.hasText(fixed.targetEntityCode())) throw denied();
+        return new EmbedNativeFormTarget(fixed.targetEntityCode(),form?fixed.targetOwnerId():root.formId(),
+                form?fixed.targetReleaseId():root.formReleaseId(),form?fixed.targetReleaseVersion():root.formReleaseVersion(),
+                null,null,null,form?(StringUtils.hasText(fixed.targetRecordId())?"VIEW":"CREATE"):"LIST",form?fixed.targetRecordId():null,null,Map.of(),Map.of(),Map.of());
     }
 
-    /**
-     * 判断是否具有已签名运行时上下文；判断结果决定调用方的后续分支。
-     *
-     * @param request 本次请求，后续经校验后用于判断是否具有已签名运行时上下文
-     * @param body 请求体，后续用于判断是否具有已签名运行时上下文并传递处理结果
-     * @return 已签名运行时上下文条件成立时为 true，否则为 false
-     */
-    private static boolean hasSignedRuntimeContext(
-            HttpServletRequest request,
-            JsonNode body) {
-        return StringUtils.hasText(request.getParameter(
-                        "releaseResolutionToken"))
-                || StringUtils.hasText(request.getParameter(
-                        "viewCompositionContextToken"))
-                || StringUtils.hasText(request.getParameter(
-                        "viewCompositionTraversalToken"))
-                || StringUtils.hasText(text(body, "releaseResolutionToken"))
-                || StringUtils.hasText(text(body,
-                        "viewCompositionContextToken"))
-                || StringUtils.hasText(text(body,
-                        "viewCompositionTraversalToken"))
-                || StringUtils.hasText(text(body, "actionContextToken"));
+    private static String string(Object value) {return value==null?null:String.valueOf(value);}
+
+    private static Map<String,Object> runtimeContext(HttpServletRequest request,JsonNode body) {
+        return contextMap(request,body,"runtimeContext");
     }
+
+    private static Map<String,Object> compositionContext(HttpServletRequest request,JsonNode body) {
+        Map<String,Object> direct=contextMap(request,body,"compositionContext");
+        if (!direct.isEmpty()) return direct;
+        Object nested=runtimeContext(request,body).get("compositionContext");
+        return nested instanceof Map<?,?> ? new com.fasterxml.jackson.databind.ObjectMapper().convertValue(nested,
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}):Map.of();
+    }
+
+    /** JSON 仅携带定位值，任何访问结论均在后续服务端路径校验后生成。 */
+    private static Map<String,Object> contextMap(HttpServletRequest request,JsonNode body,String key) {
+        try {
+            var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+            if (body!=null && body.path(key).isObject()) return mapper.convertValue(body.get(key),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});
+            String raw=request.getParameter(key);
+            return StringUtils.hasText(raw)?mapper.readValue(raw,new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}):Map.of();
+        } catch (Exception exception) {throw denied();}
+    }
+
+
+
+
 
     /**
      * 记录匹配；供后续追溯或审计使用。

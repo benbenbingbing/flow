@@ -1,10 +1,9 @@
 <template>
   <RelatedContentRuntime v-if="state.kind === 'related'" :key="sequence" ref="relatedRef"
     :composition="state.composition" owner-type="FORM" :owner-id="state.owner.id"
-    :release-id="state.owner.runtimeReleaseId || state.owner.formReleaseId" :release-version="state.owner.runtimeReleaseVersion || state.owner.formReleaseVersion"
-    :release-resolution-token="state.owner.releaseResolutionToken" :source-record-id="state.context.recordId"
+    :config-hash="state.owner.configHash" :runtime-context="{ ...state.context, form: state.owner }" :source-record-id="state.context.recordId"
     :source-data="state.context.formData" :source-parameters="state.context.parameters || {}" :mode="state.context.mode"
-    :host-readonly="state.context.mode === 'view'" :traversal-context-token="state.context.viewCompositionTraversalToken" :show-trigger="false" />
+    :host-readonly="state.context.mode === 'view'" :composition-context="state.context.compositionContext" :show-trigger="false" />
   <EntityListLauncher v-if="state.kind === 'list'" :key="sequence" ref="listRef" :entity-code="state.config.entityCode" :list-key="state.config.listKey"
     :presentation="state.config.presentation || 'DIALOG'" :context="{sourceFormData: state.context.formData, sourceRecordId: state.context.recordId}" :title="state.label">
     <template #default></template>
@@ -95,7 +94,7 @@ async function execute(action, owner, context) {
       if (!recordId || (!config.recordIdField && config.entityCode !== context.entityCode)) throw new Error('请选择目标记录 ID 来源，或先保存当前记录')
     }
     const release = await getFormRuntimeRelease(config.formId)
-    const form = normalizeRuntimeFormRelease(release, config.formId, release.releaseResolutionToken)
+    const form = normalizeRuntimeFormRelease(release, config.formId, release.configHash)
     const entity = await entityApi.getByCode(config.entityCode)
     if (String(form.entityId) !== String(entity.id)) throw new Error('目标表单与实体不匹配，请重新配置')
     next = { ...next, kind: 'form', form, entity, config: { ...config, formMode: mode } }

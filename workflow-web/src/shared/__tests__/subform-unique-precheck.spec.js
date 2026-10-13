@@ -49,9 +49,9 @@ assert.match(
 
 assert.match(subForm, /:form="childRuntimeForm"/)
 assert.match(subForm, /:row="row"/)
-assert.match(subForm, /runtimeReleaseId/)
-assert.match(subForm, /runtimeReleaseVersion/)
-assert.match(subForm, /releaseResolutionToken/)
+assert.match(subForm, /configHash/)
+assert.doesNotMatch(subForm, /runtimeReleaseVersion/)
+assert.match(subForm, /configHash/)
 assert.match(
   subForm,
   /validationRules:\s*JSON\.stringify\([\s\S]*?rules\.validation/,

@@ -635,6 +635,21 @@ public class UiComponentTemplateService {
         if (!(fieldValue instanceof Map<?, ?> field)) {
             throw new IllegalArgumentException("列表列模板快照必须包含 field 对象");
         }
+        String source = field.get("dataSourceType") == null
+                ? "ENTITY_FIELD"
+                : String.valueOf(field.get("dataSourceType")).trim().toUpperCase(java.util.Locale.ROOT);
+        if (!Set.of("ENTITY_FIELD", "FIELD_TEMPLATE", "INTERFACE").contains(source)) {
+            throw new IllegalArgumentException("不支持的列取值方式: " + source);
+        }
+        boolean hasInterface = field.get("interfaceExtensionId") != null
+                && StringUtils.hasText(String.valueOf(field.get("interfaceExtensionId")));
+        // 模板复制不应重新制造两套取值入口；具体接口的作用域在应用到列表时校验。
+        if ("INTERFACE".equals(source) && !hasInterface) {
+            throw new IllegalArgumentException("扩展接口取值方式必须选择接口");
+        }
+        if (!"INTERFACE".equals(source) && hasInterface) {
+            throw new IllegalArgumentException("只有扩展接口取值方式可以绑定接口");
+        }
         // 模板复制也必须遵守数据库分页约束，不能再生成需要全量内存过滤的虚拟查询列。
         if (Boolean.TRUE.equals(field.get("isQuery"))
                 && ((field.get("dataSourceType") != null

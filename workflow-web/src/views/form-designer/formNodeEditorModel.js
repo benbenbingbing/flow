@@ -123,18 +123,6 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         || sourceField.childFormId
         || sourceField.refFormId
         || '',
-      childFormReleaseId:
-        props.childFormReleaseId
-        || props.refFormReleaseId
-        || props.publishedFormReleaseId
-        || sourceField.childFormReleaseId
-        || '',
-      childFormReleaseVersion:
-        props.childFormReleaseVersion
-        ?? props.refFormReleaseVersion
-        ?? props.publishedFormReleaseVersion
-        ?? sourceField.childFormReleaseVersion
-        ?? null,
       // 子表单节点的发布协议只保存 componentProps；关系必填性需从关系配置回读到设计态。
       isRequired: isChildFormNode && node.bindingType === 'RELATION'
         && componentConfig.subFormConfig?.relationRequired === true
@@ -251,16 +239,6 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
           || subFormConfig.publishedFormId
           || ''
         field.refFormId = field.childFormId
-        field.childFormReleaseId = field.childFormReleaseId
-          || subFormConfig.childFormReleaseId
-          || subFormConfig.refFormReleaseId
-          || subFormConfig.publishedFormReleaseId
-          || ''
-        field.childFormReleaseVersion = field.childFormReleaseVersion
-          ?? subFormConfig.childFormReleaseVersion
-          ?? subFormConfig.refFormReleaseVersion
-          ?? subFormConfig.publishedFormReleaseVersion
-          ?? null
         field.repeatable = field.relationType !== 'ONE_TO_ONE'
         field.childEntityId = field.childEntityId || field.refEntityId || ''
         field.childRefFieldCode = field.childRefFieldCode || field.refFieldCode || ''
@@ -335,10 +313,6 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       // 序列化子表单配置
       if (isSubFormField(field)) {
         const childFormId = field.childFormId || field.refFormId || ''
-        const childFormReleaseId = field.childFormReleaseId || ''
-        const childFormReleaseVersion = field.childFormReleaseVersion == null
-          ? null
-          : Number(field.childFormReleaseVersion)
         const subFormConfig = {
           ...(compProps.subFormConfig || {})
         }

@@ -109,7 +109,7 @@ public class UiConfigDraftMetadataService {
         }
         updated.setRevision(current.getRevision() + 1);
         updated.setFields(null);
-        updated.setNodes(null);
+        // 元数据补丁不重写字段，但参数用途仍需校验当前节点；清空节点会误拒绝非实体绑定字段。
         formValidator.validateForm(updated);
 
         UpdateWrapper<EntityForm> wrapper = new UpdateWrapper<>();

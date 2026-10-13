@@ -9,6 +9,8 @@ import com.alibaba.excel.metadata.property.ExcelContentProperty;
 import com.workflow.excel.annotation.validation.ExcelCode;
 import com.workflow.excel.annotation.converter.ExcelCodeMapping;
 import java.lang.reflect.Field;
+import com.workflow.excel.dynamic.ExcelRawCell;
+import com.workflow.excel.dynamic.ExcelValueCodec;
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,6 +43,7 @@ public final class ExcelCodeConverter implements Converter<Object> {
     /** 优先按名称还原代码，可配置允许直接填写代码；禁止模糊匹配或将未知名称映射成默认代码。 */
     @Override
     public Object convertToJavaData(ReadCellData<?> cell, ExcelContentProperty property, GlobalConfiguration global) {
+        ExcelValueCodec.requireLiteral(ExcelRawCell.from(cell, 0, false));
         Mapping mapping = mapping(property);
         // 整数代码按底层数值读取；String 代码仍遵循显示格式，以保留 000 等格式承载的前导零。
         String text = cell.getType() == CellDataTypeEnum.NUMBER && mapping.type() != String.class
@@ -50,7 +53,11 @@ public final class ExcelCodeConverter implements Converter<Object> {
             return null;
         }
         text = text.strip();
-        Object code = mapping.byLabel().get(text);
+        // 通用核心决定名称/代码含义，强类型适配只负责数值别名和 Java 类型还原。
+        if (mapping.byLabel().containsKey(text) || mapping.allowCode() && mapping.byCodeText().containsKey(text)) {
+            return parseCode(mapping.shared().readText(text), mapping.type());
+        }
+        Object code = null;
         if (code == null && mapping.allowCode()) {
             code = mapping.byCodeText().get(text);
             if (code == null && cell.getType() == CellDataTypeEnum.NUMBER && isInteger(mapping.type())) {
@@ -63,10 +70,7 @@ public final class ExcelCodeConverter implements Converter<Object> {
         if (code != null) {
             return code;
         }
-        if (mapping.strict()) {
-            throw new IllegalArgumentException("代码或显示名称不在配置的映射中");
-        }
-        return parseCode(text, mapping.type());
+        return parseCode(mapping.shared().readText(text), mapping.type());
     }
 
     /** 按 DTO 的实际代码值输出显示名称，严格模式下未知代码会中止导出。 */
@@ -118,7 +122,7 @@ public final class ExcelCodeConverter implements Converter<Object> {
     }
 
     private record Mapping(Class<?> type, Map<Object, String> byValue, Map<String, Object> byLabel,
-            Map<String, Object> byCodeText, boolean allowCode, boolean strict) {
+            Map<String, Object> byCodeText, boolean allowCode, boolean strict, ExcelValueCodec.CodeMapping shared) {
         private static Mapping create(Field field) {
             ExcelCodeMapping config = field.getAnnotation(ExcelCodeMapping.class);
             if (config == null || config.value().length == 0) {
@@ -140,6 +144,9 @@ public final class ExcelCodeConverter implements Converter<Object> {
                     throw new IllegalArgumentException("映射的代码、名称或对应 Java 值不能重复");
                 }
             }
+            Map<String, String> sharedCodes = new HashMap<>();
+            for (ExcelCode item : config.value()) sharedCodes.put(item.code(), item.label());
+            ExcelValueCodec.CodeMapping shared = new ExcelValueCodec.CodeMapping(sharedCodes, config.allowCode(), config.strict());
             if (config.allowCode()) {
                 for (Map.Entry<String, Object> label : labels.entrySet()) {
                     if (codes.containsKey(label.getKey()) && !codes.get(label.getKey()).equals(label.getValue())) {
@@ -148,7 +155,7 @@ public final class ExcelCodeConverter implements Converter<Object> {
                 }
             }
             return new Mapping(field.getType(), Map.copyOf(values), Map.copyOf(labels), Map.copyOf(codes),
-                    config.allowCode(), config.strict());
+                    config.allowCode(), config.strict(), shared);
         }
     }
 }

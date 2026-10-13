@@ -1765,7 +1765,7 @@ components:
 
     NativeFormTarget:
       type: object
-      description: Flow 原生 FORM/LIST 固定发布坐标；不包含字段或组件配置
+      description: Flow 原生 FORM/LIST 业务入口和配置摘要；配置选择及授权由服务端会话决定
       required:
         - entityCode
         - entryMode
@@ -1774,25 +1774,25 @@ components:
         - parameters
         - context
       properties:
+        runtimeContext:
+          type: object
+          description: 根表单、记录和列表等业务定位信息，服务端每次重新核验
+          additionalProperties: true
         entityCode: { type: string }
         formId: { type: string }
-        formReleaseId: { type: string }
-        formReleaseVersion: { type: integer, minimum: 1 }
         listKey: { type: string }
-        listReleaseId: { type: string }
-        listReleaseVersion: { type: integer, minimum: 1 }
-        listReleaseResolutionToken:
+        listConfigHash:
           type: string
-          minLength: 32
+          description: 当前列表配置摘要，仅用于检测配置变化，无签名和有效期
         entryMode:
           $ref: '#/components/schemas/FormMode'
         recordId:
           $ref: '#/components/schemas/RecordId'
         processInstanceId:
           $ref: '#/components/schemas/RecordId'
-        formReleaseResolutionToken:
+        formConfigHash:
           type: string
-          minLength: 32
+          description: 当前表单及依赖配置摘要，仅用于检测配置变化，无签名和有效期
         defaultFormResolved:
           type: boolean
           description: true 表示表单坐标已由 Flow 原生 new-data 规则权威解析；表单坐标缺失时表示确实无可用表单，不得回退实时 ACTIVE

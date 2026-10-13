@@ -54,7 +54,6 @@ public class UiConfigReleaseController {
      * @param formId    表单ID
      * @param releaseId 指定发布ID（可选）
      * @param version   指定版本号（可选）
-     * @param releaseResolutionToken 发布版本解析令牌，后续用于授权校验、关联或幂等去重
      * @return 运行态发布快照
      */
     @GetMapping({"/entity-forms/{formId}/runtime", "/entity-forms/{formId}/runtime-release"})
@@ -64,16 +63,10 @@ public class UiConfigReleaseController {
                     .FORM_RELEASE_PATH_QUERY)
     public Result<Object> formRuntimeRelease(
             @PathVariable String formId,
-            @RequestParam(required = false) String releaseId,
-            @RequestParam(required = false) Integer version,
-            @RequestParam(required = false)
-            String releaseResolutionToken) {
-        return Result.success(
-                releaseService.runtimeFormRelease(
-                        formId,
-                        releaseId,
-                        version,
-                        releaseResolutionToken));
+            @RequestParam(required = false) String runtimeContext) {
+        return Result.success(releaseService.runtimeFormRelease(formId,
+                runtimeContext == null || runtimeContext.isBlank() ? Map.of()
+                        : new com.workflow.core.serialization.JsonDocumentCodec(new com.fasterxml.jackson.databind.ObjectMapper()).readObject(runtimeContext, "表单运行来源")));
     }
 
     /**

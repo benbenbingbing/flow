@@ -41,14 +41,14 @@
         <el-tab-pane label="数据与查询" name="data">
           <section class="editor-section first-section">
             <SectionHeading
-              title="字段数据来源"
-              description="普通字段选择“实体字段”；虚拟列可使用字段组合或已注册的数据提供者。"
+              title="数据来源"
+              description="直接读取字段、组合当前行字段或调用扩展接口，三种取值方式只选一种。"
             />
             <div class="form-grid">
-              <el-form-item label="数据来源" required>
+              <el-form-item label="取值方式" required for="">
                 <template #label>
                   <ConfigHelpLabel
-                    label="数据来源"
+                    label="取值方式"
                     help-key="entityList.dataSourceType"
                   />
                 </template>
@@ -58,22 +58,17 @@
                   @change="handleDataSourceChange"
                 >
                   <el-option
-                    v-for="option in dataSourceOptions"
+                    v-for="option in listColumnSourceOptions"
                     :key="option.value"
                     :label="option.label"
                     :value="option.value"
-                  >
-                    <div class="select-option">
-                      <span>{{ option.label }}</span>
-                      <small>{{ option.value }}</small>
-                    </div>
-                  </el-option>
+                  />
                 </el-select>
                 <div v-if="selectedDataSource?.description" class="field-help">
                   {{ selectedDataSource.description }}
                 </div>
               </el-form-item>
-              <el-form-item label="扩展接口">
+              <el-form-item v-if="form.dataSourceType === 'INTERFACE'" label="扩展接口" required for="">
                 <template #label>
                   <ConfigHelpLabel
                     label="扩展接口"
@@ -84,7 +79,7 @@
                   v-model="form.interfaceExtensionId"
                   clearable
                   filterable
-                  placeholder="可选：绑定 LIST_COLUMN 扩展接口"
+                  placeholder="请选择列表扩展接口"
                   style="width: 100%"
                 >
                   <el-option
@@ -94,7 +89,7 @@
                     :value="item.extensionId"
                   />
                 </el-select>
-                <div class="field-help">一个选项就是一个完整可调用接口；普通实体字段留空。</div>
+                <div class="field-help">必选：通过已启用的列表只读接口计算列值；暂无选项时先在扩展管理中创建。</div>
               </el-form-item>
             </div>
 
@@ -102,6 +97,8 @@
               v-if="sourceSimpleSchema.length"
               v-model="form.dataSourceConfig"
               :schema="sourceSimpleSchema"
+              :grouped="false"
+              show-field-help
             />
             <JsonSchemaField
               v-for="item in sourceJsonSchema"
@@ -228,10 +225,13 @@
           <section class="editor-section">
             <SectionHeading
               title="单元格显示"
-              description="选择渲染组件后，下面只展示该组件真正需要的参数。"
+              description="配置单元格脱敏和渲染参数；脱敏仅影响列表显示，不修改记录原值。"
             />
             <div class="form-grid">
-              <el-form-item label="渲染组件" required>
+              <el-form-item label="渲染组件" required for="">
+                <template #label>
+                  <ConfigHelpLabel label="渲染组件" help-key="entityList.renderComponent" />
+                </template>
                 <el-select
                   v-model="form.renderComponent"
                   style="width: 100%"
@@ -254,6 +254,8 @@
               v-if="renderSimpleSchema.length"
               v-model="form.renderConfig"
               :schema="renderSimpleSchema"
+              :grouped="false"
+              show-field-help
             />
             <JsonSchemaField
               v-for="item in renderJsonSchema"
@@ -281,7 +283,7 @@
                 <span>单元格预览</span>
                 <ListQuickCopyCell
                   :enabled="form.columnConfig.quickCopy === true"
-                  :value="form.sampleValue"
+                  :value="previewCopyValue"
                   field-name="模板预览"
                 >
                   <ListCellRenderer
@@ -319,12 +321,23 @@ import ObjectMappingEditor from '@/components/ui-config/ObjectMappingEditor.vue'
 import { uiComponentTemplateApi } from '@/api/uiConfig'
 import { applySchemaDefaults } from '@flow/workflow-core/config-runtime'
 import {
+  formatMaskedListCellValue,
+  isListCellMaskingEnabled,
+  listCellMaskingSchema
+} from '@/shared/list-cell-masking'
+import {
   buildListColumnTemplateSnapshot,
   createListColumnTemplateEditor,
   LIST_COLUMN_TEMPLATE_TYPE
 } from '@/shared/list-column-template'
 import { interfacesForUsage } from './interfaceExtensionModel'
 import { getCellComponentOptions, getCellDescriptor } from '@/extensions/core/registries/listCellRegistry.js'
+import {
+  changeListColumnSource,
+  getListColumnSourceSchema,
+  listColumnSourceOptions,
+  validateListColumnSource
+} from '@/shared/list-column-source'
 
 const props = defineProps({
   dataSourceOptions: { type: Array, default: () => [] },
@@ -444,25 +457,31 @@ const dialogTitle = computed(() => ({
   COPY: '复制列表列模板'
 }[mode.value]))
 const selectedDataSource = computed(() =>
-  props.dataSourceOptions.find(item => item.value === form.dataSourceType)
+  listColumnSourceOptions.find(item => item.value === form.dataSourceType)
 )
 const interfaceExtensions = computed(() =>
   interfacesForUsage(props.interfaceOptions, 'LIST_COLUMN')
+    // 列接口按记录 ID 返回值；与列表可用接口查询保持一致，避免保存无法应用的模板。
+    .filter(item => String(item.outputSchema?.type || '').trim().toLowerCase() === 'object')
 )
 const selectedRenderer = computed(() =>
   getCellDescriptor(form.renderComponent || 'DefaultText')
 )
-const sourceSimpleSchema = computed(() =>
-  (selectedDataSource.value?.configSchema || []).filter(item => item.type !== 'json')
+const sourceSchema = computed(() =>
+  getListColumnSourceSchema(form.dataSourceType, props.dataSourceOptions)
 )
+const sourceSimpleSchema = computed(() => sourceSchema.value.filter(item => item.type !== 'json'))
 const sourceJsonSchema = computed(() =>
-  (selectedDataSource.value?.configSchema || []).filter(item => item.type === 'json')
+  sourceSchema.value.filter(item => item.type === 'json')
 )
-const renderSimpleSchema = computed(() =>
-  (selectedRenderer.value?.configSchema || []).filter(item => item.type !== 'json')
-)
+// 通用脱敏参数与组件参数共用 renderConfig，模板复制到列后沿用同一显示规则。
+const renderSchema = computed(() => [
+  ...listCellMaskingSchema,
+  ...(selectedRenderer.value?.configSchema || [])
+])
+const renderSimpleSchema = computed(() => renderSchema.value.filter(item => item.type !== 'json'))
 const renderJsonSchema = computed(() =>
-  (selectedRenderer.value?.configSchema || []).filter(item => item.type === 'json')
+  renderSchema.value.filter(item => item.type === 'json')
 )
 const previewField = computed(() => ({
   fieldCode: '__template_preview',
@@ -477,6 +496,10 @@ const previewRow = computed(() => ({
   data: { __template_preview: form.sampleValue },
   extData: {}
 }))
+// 复制兜底值必须与预览一致，避免渲染尚未完成时复制出未脱敏的示例原值。
+const previewCopyValue = computed(() => isListCellMaskingEnabled(previewField.value)
+  ? formatMaskedListCellValue(previewRow.value, previewField.value)
+  : form.sampleValue)
 
 function openCreate() {
   mode.value = 'CREATE'
@@ -520,19 +543,24 @@ function open() {
 function resetForm(next) {
   Object.keys(form).forEach(key => delete form[key])
   Object.assign(form, next)
+  form.renderConfig = applySchemaDefaults(renderSchema.value, form.renderConfig)
 }
 
 function normalizeTemplateKey(value) {
   form.templateKey = String(value || '').toUpperCase().replace(/[^A-Z0-9_]/g, '')
 }
 
-function handleDataSourceChange() {
-  form.dataSourceConfig = applySchemaDefaults(selectedDataSource.value?.configSchema || [], {})
-  if (!supportsEntityFieldQuery(form)) form.isQuery = false
+/** 取值方式互斥，切换时清除上一种方式的接口/参数，防止隐藏配置继续参与取值。 */
+function handleDataSourceChange(type) {
+  changeListColumnSource(form, type, props.dataSourceOptions)
 }
 
+/** 切换组件时重置其专用参数，但保留列级脱敏规则，避免模板意外恢复明文展示。 */
 function handleRendererChange() {
-  form.renderConfig = applySchemaDefaults(selectedRenderer.value?.configSchema || [], {})
+  const maskingConfig = Object.fromEntries(
+    listCellMaskingSchema.map(item => [item.key, form.renderConfig[item.key]])
+  )
+  form.renderConfig = applySchemaDefaults(renderSchema.value, maskingConfig)
 }
 
 function updateObjectConfig(target, key, value) {
@@ -542,8 +570,13 @@ function updateObjectConfig(target, key, value) {
 async function saveTemplate() {
   try {
     await formRef.value?.validate()
-    validateRequiredSchema(selectedDataSource.value?.configSchema, form.dataSourceConfig)
-    validateRequiredSchema(selectedRenderer.value?.configSchema, form.renderConfig)
+    const sourceError = validateListColumnSource(form, interfaceExtensions.value)
+    if (sourceError) {
+      activeTab.value = 'data'
+      throw new Error(sourceError)
+    }
+    validateRequiredSchema(sourceSchema.value, form.dataSourceConfig)
+    validateRequiredSchema(renderSchema.value, form.renderConfig)
   } catch (error) {
     if (error instanceof Error) ElMessage.warning(error.message)
     return

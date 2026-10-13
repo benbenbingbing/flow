@@ -30,6 +30,16 @@ public class EmbedNativeListDependencySnapshotAdapter
         this.objectMapper = objectMapper;
     }
 
+    @Override
+    public EmbedNativeListDependencyClosure readForSession(String sessionId, String viewId, String viewReleaseId) {
+        if (!StringUtils.hasText(sessionId) || !StringUtils.hasText(viewId) || !StringUtils.hasText(viewReleaseId))
+            throw new IllegalArgumentException("Embed LIST 会话坐标不完整");
+        EmbedRuntimeReleaseSnapshot release = releasePort.find(sessionId, viewId, viewReleaseId);
+        if (release == null || !"LIST".equals(release.surfaceType()) || !Objects.equals(viewId,release.viewId())
+                || !Objects.equals(viewReleaseId,release.releaseId())) throw new IllegalArgumentException("Embed LIST 会话快照归属不一致");
+        return EmbedNativeListDependencyClosureCodec.decode(objectMapper, release.configJson()).closure();
+    }
+
     /**
      * 同时校验 sessionId、viewId、viewReleaseId、闭包版本和摘要；任一不符即拒绝。
      *

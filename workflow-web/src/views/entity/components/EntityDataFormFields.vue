@@ -42,7 +42,7 @@
         formUniqueErrors: customUniqueErrors,
         formUniqueness: formUniquenessRuntime,
         formCustomValidation: customValidation.runtime,
-        releaseResolutionToken: defaultForm?.releaseResolutionToken
+        configHash: defaultForm?.configHash
       }"
       :data-source-runtime="dataSourceRuntime"
       :form-action-slots="customFormActionSlots"
@@ -70,7 +70,7 @@
         record: formData,
         entityStatusMap,
         entityStatusOptions,
-        releaseResolutionToken: defaultForm?.releaseResolutionToken
+        configHash: defaultForm?.configHash
       }"
       :data-source-runtime="dataSourceRuntime"
       :form-actions="formActions"
@@ -107,7 +107,7 @@
             record: formData,
             entityStatusMap,
             entityStatusOptions,
-            releaseResolutionToken: defaultForm?.releaseResolutionToken
+            configHash: defaultForm?.configHash
           }"
         />
       </el-form-item>
@@ -411,6 +411,8 @@ async function loadRuntimeDataSources(fields: any[]) {
   )
   const optionEntries = await Promise.all(
     (fields || []).map(async field => {
+      // 级联由组件按父路径读取，通用预加载缺少协议参数且会造成重复接口请求。
+      if (String(field.componentType || field.fieldType || '').toLowerCase() === 'cascader') return [field.fieldCode, []]
       try {
         const options = await executeFieldDataSource(field, 'FIELD_OPTIONS')
         return [field.fieldCode, Array.isArray(options) ? options : []]
@@ -580,10 +582,8 @@ watch(
 watch(
   () => [
     props.defaultForm?.id,
-    props.defaultForm?.runtimeReleaseId || props.defaultForm?.formReleaseId,
-    props.defaultForm?.runtimeReleaseVersion
-      ?? props.defaultForm?.formReleaseVersion,
-    props.defaultForm?.releaseResolutionToken,
+    props.defaultForm?.configHash,
+    props.defaultForm?.configHash,
     props.runtimeContext?.record?.id || props.runtimeContext?.recordId,
     props.runtimeContext?.initializationKey
   ],

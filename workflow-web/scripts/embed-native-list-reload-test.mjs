@@ -60,14 +60,14 @@ async function entityList(overrides = {}) {
     entityCode: ref('order'),
     runtimeListKey: ref('main'),
     runtimeScene: ref('PAGE'),
-    viewCompositionTraversalToken: ref(''),
+    compositionContext: ref(''),
     loading: ref(false),
     tableLoading: ref(false),
     loadError: ref(''),
     dataError: ref(''),
     entityDefinition: ref({ id: 'entity-order' }),
     entityFields: ref([]),
-    listConfig: ref({ releaseId: 'release-fixed', publishedVersion: 1 }),
+    listConfig: ref({ configHash: 'graph-fixed' }),
     listConfigFields: ref([]),
     dataList: ref([]),
     refEntityNameMap: ref({}),
@@ -85,7 +85,7 @@ async function entityList(overrides = {}) {
     queryForm: {},
     resolvedInputParameters: ref({}),
     relatedContentRuntimeContext: ref(null),
-    props: { embedded: true, releaseId: 'release-fixed', releaseVersion: 1 },
+    props: { embedded: true, configHash: 'graph-fixed' },
     console: { error() {}, warn() {} },
     clearQueryForm() {},
     safeParseConfig: value => value || {},
@@ -98,7 +98,7 @@ async function entityList(overrides = {}) {
     entityVersionApi: { recordCapabilities: async () => ({}) },
     normalizeEntityVersionCapabilities,
     entityListRuntimeApi: {
-      getSchema: async () => ({ releaseId: 'release-fixed', publishedVersion: 1 }),
+      getSchema: async () => ({ configHash: 'graph-fixed' }),
       query: async () => ({ list: [{ id: 'record-1' }], total: 1 })
     },
     ...overrides
@@ -188,12 +188,43 @@ assert.equal(
 
 const failure = remoteError()
 const failedQuery = await entityList({
-  entityListRuntimeApi: { query: async () => { throw failure } }
+  entityListRuntimeApi: { getSchema: async () => ({ configHash: 'graph-fixed' }), query: async () => { throw failure } }
 })
 await failedQuery.loadDataList()
 assert.equal(failedQuery.dataError.value, failure.message, '普通页面仍就地展示错误')
 await assert.rejects(failedQuery.reload({ throwOnError: true }), error => error === failure)
 assert.equal(failedQuery.tableLoading.value, false)
+
+// 用户刷新先读最新配置摘要，再按原筛选查询；刷新失败不清空筛选或重新执行任何写入。
+const refreshCalls = []
+const refreshFilters = { status: 'DRAFT', keyword: '保留输入' }
+let refreshSchemaFailure = false
+const configChanged = await entityList({
+  queryForm: refreshFilters,
+  listConfig: ref({ configHash: 'graph-old' }),
+  buildRequestFilters: () => ({ ...refreshFilters }),
+  entityListRuntimeApi: {
+    getSchema: async (_entity, _list, _scene, request) => {
+      refreshCalls.push({ type: 'schema', request })
+      if (refreshSchemaFailure) throw failure
+      return { configHash: 'graph-new' }
+    },
+    query: async (_entity, _list, request) => {
+      refreshCalls.push({ type: 'query', request })
+      return { list: [], total: 0 }
+    }
+  }
+})
+await configChanged.reload({ throwOnError: true })
+assert.deepEqual(refreshCalls.map(call => call.type), ['schema', 'query'])
+assert.equal(refreshCalls[0].request.configHash, undefined)
+assert.equal(refreshCalls[1].request.configHash, 'graph-new')
+assert.deepEqual(refreshCalls[1].request.filters, refreshFilters)
+refreshSchemaFailure = true
+await assert.rejects(configChanged.reload({ throwOnError: true }), error => error === failure)
+assert.equal(refreshCalls.filter(call => call.type === 'query').length, 1)
+assert.equal(configChanged.listConfig.value.configHash, 'graph-new')
+assert.deepEqual(configChanged.queryForm, refreshFilters)
 
 let schemaAvailable = false
 let queryCount = 0
@@ -201,7 +232,7 @@ const failedSchema = await entityList({
   entityListRuntimeApi: {
     getSchema: async () => {
       if (!schemaAvailable) throw failure
-      return { releaseId: 'release-fixed', publishedVersion: 1 }
+      return { configHash: 'graph-fixed' }
     },
     query: async () => {
       queryCount += 1
@@ -225,7 +256,7 @@ queryCount = 0
 const pendingList = await entityList({
   entityApi: { getByCode: () => entityPending },
   entityListRuntimeApi: {
-    getSchema: async () => ({ releaseId: 'release-fixed', publishedVersion: 1 }),
+    getSchema: async () => ({ configHash: 'graph-fixed' }),
     query: async () => { queryCount += 1; return { list: [] } }
   }
 })
@@ -243,8 +274,7 @@ let finishReload
 const queryPending = new Promise(resolve => { finishReload = resolve })
 const nativeState = {
   target: {
-    formId: 'form-order', formReleaseId: 'form-fixed',
-    formReleaseVersion: 1, formReleaseResolutionToken: 'resolution-fixed'
+    formId: 'form-order', formConfigHash: 'resolution-fixed'
   },
   listRef: ref(null),
   loading: ref(true),

@@ -43,6 +43,15 @@ public class CurrentFormRuntimeContext {
         return row;
     }
 
+    /**
+     * 列表同样固定本请求首次受理的已校验配置。loader 同时检查 ACTIVE 指针和归属，
+     * 后续事件及变更复用结果，避免副作用发生后因另一人发布而切换规则。
+     */
+    public UiConfigRelease currentList(String listId, java.util.function.Supplier<UiConfigRelease> loader) {
+        Map<String, UiConfigRelease> cache = cache();
+        return cache.computeIfAbsent("LIST:" + listId, ignored -> loader.get());
+    }
+
     /** 事务终检只能复用本次已接受的指纹，绝不能查询旧历史记录。 */
     public UiConfigRelease accepted(String formId, String hash) {
         UiConfigRelease row = current(formId);
@@ -50,7 +59,7 @@ public class CurrentFormRuntimeContext {
         return row;
     }
 
-    /** 摘要覆盖根表单与所有子表单，单独发布子表单也会使旧页面令牌失效。 */
+    /** 摘要覆盖根表单与所有子表单，单独发布子表单也会使旧页面摘要发生变化。 */
     public String graphHash(String formId) {
         Map<String, String> fingerprints = new TreeMap<>();
         collect(formId, new LinkedHashSet<>(), fingerprints);

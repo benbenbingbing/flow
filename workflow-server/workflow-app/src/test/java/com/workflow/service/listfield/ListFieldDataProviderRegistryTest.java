@@ -2,6 +2,7 @@ package com.workflow.service.listfield;
 
 import com.workflow.contracts.entity.list.spi.ListFieldDataProvider;
 import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+import com.workflow.entity.list.extension.TemplateListFieldDataProvider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.list.model.ListFieldDataRecord;
@@ -33,7 +34,8 @@ class ListFieldDataProviderRegistryTest {
                 new ObjectMapper());
 
         assertTrue(registry.supports("custom_score"));
-        assertEquals("CUSTOM_SCORE", registry.getOptions().get(1).getValue());
+        assertEquals(List.of("ENTITY_FIELD", "FIELD_TEMPLATE", "INTERFACE"),
+                registry.getOptions().stream().map(option -> option.getValue()).toList());
         assertTrue(registry.getOptions().get(1).getSupportedEntityCodes().isEmpty());
 
         EntityListField field = new EntityListField();
@@ -45,27 +47,21 @@ class ListFieldDataProviderRegistryTest {
         registry.validate(field);
     }
 
+    /** 业务 Provider 不再形成独立来源选项，模板配置结构仍供设计器编辑。 */
     @Test
-    void filtersOptionsBySupportedEntityCodes() {
-        ListFieldDataProvider expenseOnly = scopedProvider("EXPENSE_RISK", List.of("expense"));
-        ListFieldDataProvider allEntities = scopedProvider("COMMON_SCORE", List.of());
-        ListFieldDataProviderRegistry registry = new ListFieldDataProviderRegistry(
-                List.of(expenseOnly, allEntities),
-                new ObjectMapper());
-
-        List<String> expenseOptions = registry.getOptions("expense").stream()
-                .map(option -> option.getValue())
-                .toList();
-        List<String> contractOptions = registry.getOptions("contract").stream()
-                .map(option -> option.getValue())
-                .toList();
-
-        assertTrue(expenseOptions.contains("ENTITY_FIELD"));
-        assertTrue(expenseOptions.contains("EXPENSE_RISK"));
-        assertTrue(expenseOptions.contains("COMMON_SCORE"));
-        assertTrue(contractOptions.contains("COMMON_SCORE"));
-        assertTrue(contractOptions.contains("ENTITY_FIELD"));
-        assertFalse(contractOptions.contains("EXPENSE_RISK"));
+    void exposesOnlyThreeSourcesAndPreservesTemplateSchema() {
+        var template = new TemplateListFieldDataProvider(new ObjectMapper());
+        var registry = new ListFieldDataProviderRegistry(
+                List.of(template, provider("CUSTOM_SCORE")), new ObjectMapper());
+        for (String entity : List.of("expense", "contract")) {
+            var options = registry.getOptions(entity);
+            assertEquals(List.of("ENTITY_FIELD", "FIELD_TEMPLATE", "INTERFACE"),
+                    options.stream().map(option -> option.getValue()).toList());
+            assertEquals(template.getConfigSchema(), options.get(1).getConfigSchema());
+            assertFalse(options.get(1).isSupportsQuery());
+            assertTrue(options.get(2).isSupportsVirtualField());
+            assertFalse(options.get(2).isSupportsQuery());
+        }
     }
 
     /** 测试拒绝重复的提供者键：验证大小写归一化后键重复时抛出 IllegalStateException */
@@ -76,27 +72,6 @@ class ListFieldDataProviderRegistryTest {
                 () -> new ListFieldDataProviderRegistry(
                         List.of(provider("CUSTOM_SCORE"), provider("custom_score")),
                         new ObjectMapper()));
-    }
-
-    private ListFieldDataProvider scopedProvider(String key, List<String> entityCodes) {
-        return new ListFieldDataProvider() {
-            @Override
-            public String getDataSourceType() {
-                return key;
-            }
-
-            @Override
-            public List<String> getSupportedEntityCodes() {
-                return entityCodes;
-            }
-
-            @Override
-            public void enrich(
-                    List<ListFieldDataRecord> records,
-                    List<com.workflow.contracts.entity.list.model.ListFieldDataConfig> fields,
-                    Map<String, Object> context) {
-            }
-        };
     }
 
     /** 构造指定键的测试数据提供者，含 sourceField 必填配置 schema */

@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * 完成流程任务请求。
  *
- * <p>保留原有字段并增加下一节点审批人选择，兼容既有调用方。</p>
+ * <p>携带审批表单摘要及下一节点审批人选择；服务端按真实任务重新校验操作权限。</p>
  */
 @Data
 public class TaskCompleteRequest {
@@ -19,12 +19,11 @@ public class TaskCompleteRequest {
     private String transferTo;
     private String actionLabel;
     private Map<String, Object> formData;
-    /** 本次提交审批所使用的已发布表单及活动任务令牌。 */
+    /** 本次审批表单和页面配置摘要；任务身份由 taskId 实时核验。 */
     private String formId;
-    private String formReleaseId;
-    private Integer formReleaseVersion;
-    private String formReleaseResolutionToken;
-    /** 客户端声明只用于与服务端任务/令牌联合校验，不能单独授权。 */
+    private String formConfigHash;
+    private Map<String, Object> runtimeContext;
+    /** 客户端声明只用于与服务端任务联合校验，不能单独授权。 */
     private String entityCode;
     private String recordId;
     private String listKey;

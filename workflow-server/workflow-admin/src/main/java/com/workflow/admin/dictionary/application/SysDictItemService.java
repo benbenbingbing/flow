@@ -66,6 +66,30 @@ public class SysDictItemService {
     }
 
     /**
+     * 提供跨模块的只读字典值快照，不暴露持久化实体或父子存储结构。
+     * 按字典树顺序展平，保留停用项供历史数据导出；导入调用方应只接受 enabled=true 的项。
+     * itemValue 未配置时沿用 itemCode，返回集合不可修改。
+     */
+    @Transactional(readOnly = true)
+    public List<DictionaryValue> listDictionaryValues(String dictCode) {
+        List<DictionaryValue> values = new ArrayList<>();
+        collectDictionaryValues(getItemTreeByDictCode(dictCode), values);
+        return List.copyOf(values);
+    }
+
+    private void collectDictionaryValues(List<SysDictItem> items, List<DictionaryValue> values) {
+        if (items == null) return;
+        for (SysDictItem item : items) {
+            values.add(new DictionaryValue(item.getItemValue() == null ? item.getItemCode() : item.getItemValue(),
+                    item.getItemLabel(), "0".equals(item.getStatus())));
+            collectDictionaryValues(item.getChildren(), values);
+        }
+    }
+
+    /** value 是实体实际保存值，label 仅用于显示/名称转换；停用值仍可回显但不能用于新导入。 */
+    public record DictionaryValue(String value, String label, boolean enabled) { }
+
+    /**
      * 根据ID查询字典项
      *
      * @param id 字典项ID

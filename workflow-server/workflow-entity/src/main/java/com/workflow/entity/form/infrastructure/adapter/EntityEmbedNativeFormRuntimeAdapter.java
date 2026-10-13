@@ -6,14 +6,13 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.form.application.model.ResolvedEntityFormRelease;
 import com.workflow.entity.ui.application.UiConfigReleaseService;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 /**
- * 在 Entity 边界内校验 Embed 固定目标并签发原生表单发布解析令牌。
+ * 在 Entity 边界内校验 Embed 固定根和已发布表单组件路径。
  *
  * <p>这里不转换字段或组件配置。iframe 随后调用与 Flow 页面相同的
  * {@code /api/entity-forms/{formId}/runtime-release}，因此新增内建组件不需要修改
@@ -25,149 +24,29 @@ public class EntityEmbedNativeFormRuntimeAdapter
 
     private final EntityDefinitionMapper definitionMapper;
     private final UiConfigReleaseService releaseService;
-    private final UiReleaseResolutionTokenService resolutionTokenService;
 
     /**
      * 初始化实体嵌入式原生表单运行时适配器，保存构造参数供后续方法使用。
      *
      * @param definitionMapper 定义映射器依赖，保存到当前对象供后续业务方法调用
      * @param releaseService 发布版本服务依赖，保存到当前对象供后续业务方法调用
-     * @param resolutionTokenService 解析令牌服务依赖，保存到当前对象供后续业务方法调用
      */
     public EntityEmbedNativeFormRuntimeAdapter(
             EntityDefinitionMapper definitionMapper,
-            UiConfigReleaseService releaseService,
-            UiReleaseResolutionTokenService resolutionTokenService) {
+            UiConfigReleaseService releaseService) {
         this.definitionMapper = definitionMapper;
         this.releaseService = releaseService;
-        this.resolutionTokenService = resolutionTokenService;
     }
 
-    /**
-     * 校验固定发布版本属于固定实体后签发用户与 Embed Session 双重绑定的上下文。
-     *
-     * @param target 目标，作为 {@code hasText} 的输入影响后续处理
-     * @return 处理后的签发发布版本解析令牌文本，供调用方比较或展示
-     */
     @Override
-    public String issueReleaseResolutionToken(Target target) {
-        if (target == null
-                || !StringUtils.hasText(target.entityCode())
-                || !StringUtils.hasText(target.formId())
-                || target.formReleaseVersion() < 1
-                || target.sessionAbsoluteExpiresAt() == null) {
-            throw new IllegalArgumentException("Embed 原生表单目标不完整");
-        }
-        requireOwnedRelease(
-                target.entityCode(), target.formId(),
-                target.formReleaseId(), target.formReleaseVersion());
-        String token = resolutionTokenService.issue(
-                UiRuntimeResolutionContext.standalone(),
-                target.formId(),
-                target.formReleaseId(),
-                target.formReleaseVersion(),
-                0,
-                target.sessionAbsoluteExpiresAt());
-        if (!StringUtils.hasText(token)) {
-            throw new IllegalStateException("Embed 原生表单解析令牌签发失败");
-        }
-        return token;
-    }
+    public String configHash(String formId) { return releaseService.formConfigHash(formId); }
 
-    /**
-     * 验证服务端签名 token、Embed Session 绑定与表单实体归属，返回可信坐标。
-     *
-     * @param token 令牌，后续用于授权校验、关联或幂等去重
-     * @param target 目标，作为 {@code requireSessionBoundClaims} 的输入影响后续处理
-     * @return 验证后的发布版本解析令牌结果，供调用方继续处理
-     */
     @Override
-    public VerifiedTarget verifyReleaseResolutionToken(
-            String token,
-            VerificationTarget target) {
-        UiReleaseResolutionTokenService.Claims claims =
-                requireSessionBoundClaims(token, target);
-        if (!Objects.equals(target.formId(), claims.parentFormId())
-                || !Objects.equals(
-                        target.formReleaseId(), claims.parentReleaseId())
-                || !Objects.equals(
-                        target.formReleaseVersion(),
-                        claims.parentReleaseVersion())) {
-            throw new IllegalArgumentException(
-                    "Embed 原生表单令牌未精确绑定请求目标");
-        }
-        return verifiedOwnedTarget(target);
-    }
-
-    /**
-     * 表单快照首次加载允许携带父表单 token，但必须复用平台
-     * {@code referencesChildRelease} 链验证父快照对目标子表单的引用。
-     *
-     * @param token 令牌，后续用于授权校验、关联或幂等去重
-     * @param target 目标，作为 {@code requireSessionBoundClaims} 的输入影响后续处理
-     * @return 验证后的运行时发布版本请求结果，供调用方继续处理
-     */
-    @Override
-    public VerifiedTarget verifyRuntimeReleaseRequest(
-            String token,
-            VerificationTarget target) {
-        requireSessionBoundClaims(token, target);
-        Map<String, Object> resolved = releaseService.runtimeFormRelease(
-                target.formId(), target.formReleaseId(), target.formReleaseVersion(), token);
-        String hash = String.valueOf(resolved.get("id"));
-        if (!Objects.equals(target.formId(), resolved.get("configId"))
-                || target.formReleaseId() != null && !Objects.equals(target.formReleaseId(), hash))
-            throw new IllegalArgumentException("Embed 原生表单配置摘要与请求不一致");
-        return verifiedOwnedTarget(new VerificationTarget(target.entityCode(), target.formId(), hash, 1,
-                target.sessionId(), target.viewReleaseId(), target.sessionAbsoluteExpiresAt()));
-    }
-
-    /**
-     * 处理已验证{@code owned}目标，并将结果传给后续步骤。
-     *
-     * @param target 目标，作为 {@code requireOwnedRelease} 的输入影响后续处理
-     * @return 处理后的已验证{@code owned}目标结果，供调用方继续处理
-     */
-    private VerifiedTarget verifiedOwnedTarget(
-            VerificationTarget target) {
-        EntityDefinition definition = requireOwnedRelease(
-                target.entityCode(), target.formId(),
-                target.formReleaseId(), target.formReleaseVersion());
-        return new VerifiedTarget(
-                definition.getEntityCode(), target.formId(),
-                target.formReleaseId(), target.formReleaseVersion());
-    }
-
-    /**
-     * 验证 token 只在当前 Embed Session/View 内有效，且不能越过 Session 上限。
-     *
-     * @param token 令牌，后续用于授权校验、关联或幂等去重
-     * @param target 目标，供本方法校验并获取会话绑定声明集合时使用
-     * @return 校验并获取后的会话绑定声明集合结果，供调用方继续处理
-     */
-    private UiReleaseResolutionTokenService.Claims requireSessionBoundClaims(
-            String token,
-            VerificationTarget target) {
-        if (target == null
-                || !StringUtils.hasText(target.formId())
-                || target.formReleaseVersion() < 1
-                || !StringUtils.hasText(target.sessionId())
-                || !StringUtils.hasText(target.viewReleaseId())
-                || target.sessionAbsoluteExpiresAt() == null) {
-            throw new IllegalArgumentException("Embed 原生表单验证目标不完整");
-        }
-        UiReleaseResolutionTokenService.Claims claims =
-                resolutionTokenService.verify(token);
-        if (!Objects.equals(
-                        target.sessionId(), claims.embedSessionId())
-                || !Objects.equals(
-                        target.viewReleaseId(), claims.embedViewReleaseId())
-                || claims.expiresAt()
-                        > target.sessionAbsoluteExpiresAt().getEpochSecond()) {
-            throw new IllegalArgumentException(
-                    "Embed 原生表单令牌与当前 Session 固定目标不一致");
-        }
-        return claims;
+    public VerifiedTarget authorizeTarget(String rootFormId, String formId, Map<String,Object> runtimeContext) {
+        if (!StringUtils.hasText(rootFormId) || !StringUtils.hasText(formId)) throw new IllegalArgumentException("Embed 表单根不能为空");
+        if (!Objects.equals(rootFormId, formId))
+            releaseService.requireComponentPath(rootFormId, formId, runtimeContext == null ? null : runtimeContext.get("componentPath"));
+        return currentFormTarget(null, formId);
     }
 
     /**
@@ -223,8 +102,8 @@ public class EntityEmbedNativeFormRuntimeAdapter
     @Override
     public VerifiedTarget currentFormTarget(String entityCode, String formId) {
         ResolvedEntityFormRelease current = releaseService.resolveRuntimeFormRelease(formId);
-        requireOwnedRelease(entityCode, formId, current.releaseId(), current.releaseVersion());
-        return new VerifiedTarget(entityCode, formId, current.releaseId(), current.releaseVersion());
+        EntityDefinition entity = requireOwnedRelease(entityCode, formId, current.releaseId(), current.releaseVersion());
+        return new VerifiedTarget(entity.getEntityCode(), formId, current.releaseId(), current.releaseVersion());
     }
 
 }

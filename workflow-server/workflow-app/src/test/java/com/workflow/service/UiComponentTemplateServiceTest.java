@@ -24,6 +24,7 @@ import java.util.HexFormat;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,6 +93,37 @@ class UiComponentTemplateServiceTest {
                         .save(request));
 
         assertTrue(error.getMessage().contains("interfaceExtensionId"));
+    }
+
+    /** 列模板也遵守单一来源约束，复制模板不能生成互相覆盖的来源配置。 */
+    @Test
+    void listColumnTemplateRequiresExclusiveInterfaceSource() {
+        var mapper = mock(UiComponentTemplateMapper.class);
+        var service = new UiComponentTemplateService(mapper,
+                mock(UiComponentTemplateVersionMapper.class),
+                new JsonDocumentCodec(new ObjectMapper()),
+                mock(UiExtensionDefinitionMapper.class), mock(JdbcWriteAttempt.class));
+        var request = new UiComponentTemplateSaveRequest();
+        request.setTemplateKey("REMOTE_COLUMN");
+        request.setTemplateName("接口列");
+        request.setTemplateType("LIST_COLUMN_GROUP");
+        request.setSnapshot(Map.of("field", Map.of("dataSourceType", "INTERFACE")));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> service.save(request))
+                .getMessage().contains("必须选择接口"));
+        for (String type : java.util.List.of("ENTITY_FIELD", "FIELD_TEMPLATE")) {
+            request.setSnapshot(Map.of("field", Map.of("dataSourceType", type,
+                    "interfaceExtensionId", "column-interface")));
+            assertTrue(assertThrows(IllegalArgumentException.class, () -> service.save(request))
+                    .getMessage().contains("只有扩展接口"));
+        }
+        request.setSnapshot(Map.of("field", Map.of("dataSourceType", "CUSTOM_SCORE")));
+        assertTrue(assertThrows(IllegalArgumentException.class, () -> service.save(request))
+                .getMessage().contains("不支持的列取值方式"));
+
+        when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any())).thenReturn(1);
+        request.setSnapshot(Map.of("field", Map.of("dataSourceType", "INTERFACE",
+                "interfaceExtensionId", "column-interface")));
+        assertDoesNotThrow(() -> service.save(request));
     }
 
     /**

@@ -25,7 +25,7 @@ import java.util.Map;
 /**
  * 表单唯一性提前检查应用服务。
  *
- * <p>服务端根据签名令牌或当前 ACTIVE 发布版重新解析规则，客户端只能指定规则标识，
+ * <p>服务端验证业务来源后，从本次受理的当前表单配置重新解析规则，客户端只能指定规则标识，
  * 不能提交条件、规范化方式或错误文案。此接口只改善填写反馈，提交事务仍需重新校验。</p>
  */
 @Service
@@ -64,9 +64,7 @@ public class PublishedFormUniquePrecheckService {
         ResolvedEntityFormRelease resolved = releaseService
                 .resolveAuthorizedRuntimeFormRelease(
                         formId,
-                        request.getReleaseId(),
-                        request.getReleaseVersion(),
-                        request.getReleaseResolutionToken());
+                        request.getConfigHash(), request.getRuntimeContext());
         EntityDefinition definition = requireDefinition(resolved);
         requireMutationPermission(
                 definition.getEntityCode(),

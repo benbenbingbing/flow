@@ -95,6 +95,23 @@ public interface UiEventBindingMapper extends BaseMapper<UiEventBinding> {
             @Param("ownerId") String ownerId);
 
     /**
+     * 按修订号物理删除一条活动草稿，供用户删除后重新配置同一事件。
+     *
+     * <p>唯一键包含 deleted，反复把同一位置的记录改为 deleted=1 会与旧删除行
+     * 冲突。发布事件独立保存在快照中，清理草稿不会改变已发布执行链，也不删除
+     * 步骤引用的接口扩展。调用方必须先校验所属配置的访问权限。</p>
+     *
+     * @param id 需要移除的草稿绑定 ID
+     * @param expectedRevision 用户读取的修订号，防止误删期间被修改的草稿
+     * @return 1 表示删除成功；0 表示草稿已变化或已删除，调用方应报告版本冲突
+     */
+    @Delete("DELETE FROM ui_event_binding "
+            + "WHERE id = #{id} AND revision = #{expectedRevision} AND deleted = 0")
+    int deleteDraftByIdAndRevision(
+            @Param("id") String id,
+            @Param("expectedRevision") Integer expectedRevision);
+
+    /**
      * 清理已经失去字段节点的本地事件草稿，包括同目标的旧逻辑删除行。
      * 事件按字段编码而非节点 ID 绑定，清理后重新添加字段不会接上旧事件；
      * 物理清理避免 deleted 参与唯一键时反复删除/重建产生冲突。

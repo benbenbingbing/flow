@@ -32,7 +32,7 @@ import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListScopeAuditService;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiEventRuntimeService;
-import com.workflow.entity.ui.application.UiViewCompositionTokenService;
+import com.workflow.entity.ui.application.UiViewCompositionActionService;
 import com.workflow.entity.ui.api.response.UiEventExecutionResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,7 +80,7 @@ class EntityListRuntimeViewCompositionTest {
     private EntityListPageResultNormalizer pageResultNormalizer;
     private UiEventRuntimeService uiEventRuntimeService;
     private UiInterfaceExtensionService uiDataSourceService;
-    private UiViewCompositionTokenService tokenService;
+    private UiViewCompositionActionService compositionService;
     private List<EntityListDataProvider> dataProviders;
     private List<EntityListSchemaProvider> schemaProviders;
     private EntityListRuntimeService service;
@@ -119,7 +119,7 @@ class EntityListRuntimeViewCompositionTest {
             return result;
         });
         uiDataSourceService = mock(UiInterfaceExtensionService.class);
-        tokenService = mock(UiViewCompositionTokenService.class);
+        compositionService = mock(UiViewCompositionActionService.class);
         dataProviders = new ArrayList<>();
         schemaProviders = new ArrayList<>();
         ObjectMapper objectMapper = new ObjectMapper();
@@ -144,7 +144,7 @@ class EntityListRuntimeViewCompositionTest {
                 pageResultNormalizer,
                 uiEventRuntimeService,
                 mock(CurrentUserRoleService.class),
-                tokenService,
+                compositionService,
                 List.of(),
                 dataProviders,
                 schemaProviders);
@@ -209,15 +209,15 @@ class EntityListRuntimeViewCompositionTest {
     }
 
     @Test
-    void matchNoneTokenReturnsEmptyWithoutExecutingTargetQuery() {
-        UiViewCompositionTokenService.Claims claims = claims(
+    void matchNoneContextReturnsEmptyWithoutExecutingTargetQuery() {
+        UiViewCompositionActionService.ResolvedListContext claims = claims(
                 Map.of(), true);
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims);
         EntityListConfig published = publishedList();
         configurePinnedList(published);
         EntityListQueryRequest request = new EntityListQueryRequest();
-        request.setViewCompositionContextToken("signed-list-context");
+        request.setCompositionContext(compositionContext());
 
         Object result = service.query(
                 "target_entity", "default", request);
@@ -239,17 +239,16 @@ class EntityListRuntimeViewCompositionTest {
     }
 
     @Test
-    void requestCannotReplaceTokenPinnedTargetRelease() {
-        when(tokenService.verifyListContext("signed-list-context"))
+    void requestCannotReplaceAuthoritativeTargetEntity() {
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of("projectId", "p-1"), false));
         EntityListQueryRequest request = new EntityListQueryRequest();
-        request.setViewCompositionContextToken("signed-list-context");
-        request.setReleaseId("attacker-selected-release");
+        request.setCompositionContext(compositionContext());
 
         assertThrows(
                 ForbiddenException.class,
                 () -> service.query(
-                        "target_entity", "default", request));
+                        "other_entity", "default", request));
 
         verify(publishedRuntimeService, never())
                 .resolveViewCompositionConfig(
@@ -259,8 +258,8 @@ class EntityListRuntimeViewCompositionTest {
     }
 
     @Test
-    void signedFiltersAreCombinedWithPublishedFixedFilters() {
-        when(tokenService.verifyListContext("signed-list-context"))
+    void resolvedFiltersAreCombinedWithPublishedFixedFilters() {
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(
                         Map.of(
                                 "projectId", "project-1",
@@ -284,7 +283,7 @@ class EntityListRuntimeViewCompositionTest {
                 1,
                 10)).thenReturn(page);
         EntityListQueryRequest request = new EntityListQueryRequest();
-        request.setViewCompositionContextToken("signed-list-context");
+        request.setCompositionContext(compositionContext());
 
         assertEquals(
                 page,
@@ -300,7 +299,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderFailsClosedWhenAnyCandidateIsOutsidePlatformScope() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("malicious-provider");
@@ -348,7 +347,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionConnectorFailsClosedWhenCandidateIsOutsidePlatformScope() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryInterfaceExtensionId("connector-query");
@@ -374,7 +373,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderReturnsOnlyPlatformVerifiedPublishedFieldsAndSafeTotal() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(
                         Map.of(
                                 "projectId", "project-1",
@@ -450,7 +449,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderUsesVerifiedWindowInsteadOfUntrustedTotal() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("paged-provider");
@@ -601,7 +600,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void systemEntityCompositionRejectsCustomQueryOverride() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryInterfaceExtensionId("connector-query");
@@ -627,7 +626,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void systemEntityCompositionUsesPlatformReadServiceWithoutExtraRecheck() {
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         configurePinnedList(published);
@@ -879,7 +878,7 @@ class EntityListRuntimeViewCompositionTest {
         EntityListConfig published = publishedList();
         published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
         configurePinnedList(published);
-        when(tokenService.verifyListContext("signed-list-context"))
+        when(compositionService.resolveListContext(any(), isNull()))
                 .thenReturn(claims(Map.of("status", "DELETED"), false));
 
         PageResult<?> result = (PageResult<?>) service.query("target_entity", "default", compositionRequest(1, 10));
@@ -920,8 +919,7 @@ class EntityListRuntimeViewCompositionTest {
                 "target_entity",
                 "default",
                 null,
-                null,
-                null))
+                Map.of()))
                 .thenReturn(published);
     }
 
@@ -994,8 +992,7 @@ class EntityListRuntimeViewCompositionTest {
             long pageSize) {
         EntityListQueryRequest request =
                 new EntityListQueryRequest();
-        request.setViewCompositionContextToken(
-                "signed-list-context");
+        request.setCompositionContext(compositionContext());
         request.setPageNum(pageNum);
         request.setPageSize(pageSize);
         return request;
@@ -1003,7 +1000,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void pageParametersCannotReplaceTrustedRelationBounds() {
-        when(tokenService.verifyListContext("signed-list-context")).thenReturn(claims(Map.of("projectId", "owned"), false));
+        when(compositionService.resolveListContext(any(), isNull())).thenReturn(claims(Map.of("projectId", "owned"), false));
         EntityListConfig config = publishedList();
         config.setViewConfig("""
                 {"inputParameterSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]},
@@ -1026,7 +1023,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void pageParameterFilterAndRelationBothReachPublishedQuery() {
-        when(tokenService.verifyListContext("signed-list-context")).thenReturn(claims(Map.of("projectId", "owned"), false));
+        when(compositionService.resolveListContext(any(), isNull())).thenReturn(claims(Map.of("projectId", "owned"), false));
         EntityListConfig config = publishedList();
         config.setViewConfig("""
                 {"inputParameterSchema":{"properties":{"keyword":{"type":"string"}}},
@@ -1060,32 +1057,18 @@ class EntityListRuntimeViewCompositionTest {
         return config;
     }
 
-    private UiViewCompositionTokenService.Claims claims(
+    private UiViewCompositionActionService.ResolvedListContext claims(
             Map<String, Object> filters,
             boolean matchNone) {
-        return new UiViewCompositionTokenService.Claims(
-                "TARGET_LIST",
-                "FORM",
-                "host-form",
-                "host-release",
-                2,
-                "project-requirements",
-                "project",
-                "project-1",
-                "target_entity",
-                "target-list",
-                "target-release",
-                3,
-                filters,
-                matchNone,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                "runtime-user",
-                1,
-                Long.MAX_VALUE);
+        return new UiViewCompositionActionService.ResolvedListContext("FORM", "host-form", "host-release", 2,
+                "project-requirements", "project", "project-1", "target_entity", "target-list", "target-release", 3,
+                filters, matchNone);
+    }
+
+    private com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest compositionContext() {
+        var context = new com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest();
+        context.setOwnerType("FORM"); context.setOwnerId("host-form");
+        context.setCompositionKey("project-requirements"); context.setRecordId("project-1");
+        return context;
     }
 }

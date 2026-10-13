@@ -1,20 +1,20 @@
 package com.workflow.contracts.embed.runtime.port;
 
 /**
- * 校验 Flow 原生关联内容遍历令牌，并解析令牌固定的下一跳运行时资产。
+ * 校验 Flow 原生关联内容关联路径，并解析服务端解析的下一跳运行时资产。
  */
 public interface EmbedNativeTraversalRuntimePort {
 
     /**
-     * 解析签名遍历上下文；令牌无效、过期或不属于当前用户时应拒绝请求。
+     * 解析业务关联路径；每一层重新检查来源记录、目标配置和当前用户权限。
      *
-     * @param token Flow 关联内容运行时签发的不透明遍历令牌
+     * @param compositionContext 业务根入口和逐层关联路径
      * @return 首跳宿主与当前固定目标
      */
-    TraversalTarget resolve(String token);
+    TraversalTarget resolve(java.util.Map<String,Object> compositionContext);
 
     /**
-     * 签名遍历令牌固定的根宿主、当前目标和实体坐标。
+     * 服务端重新解析关联路径得到的根宿主、当前目标和实体坐标。
      *
      * @param rootOwnerType 根归属方类型标识，决定后续遍历目标采用的处理分支
      * @param rootOwnerId 根归属方ID，后续用于处理遍历目标时定位或关联目标

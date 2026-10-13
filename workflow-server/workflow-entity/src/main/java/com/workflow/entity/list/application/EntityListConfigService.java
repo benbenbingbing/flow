@@ -1093,14 +1093,13 @@ public class EntityListConfigService {
             }
             configured.setFieldId(field.getId());
             configured.setFieldCode(field.getFieldCode());
+            // 系统列表经专用只读查询链路返回，不执行模板或列接口补数，取值方式仅允许实体字段。
             if (StringUtils.hasText(
                     configured.getDataSourceType())
                     && !"ENTITY_FIELD".equalsIgnoreCase(
-                            configured.getDataSourceType())
-                    && !"REFERENCE".equalsIgnoreCase(
                             configured.getDataSourceType())) {
                 throw new IllegalArgumentException(
-                        "平台系统表列表字段不能使用自定义查询数据源");
+                        "平台系统表列表字段只能使用实体字段取值方式");
             }
             if (Boolean.TRUE.equals(configured.getIsQuery())) {
                 String operator = StringUtils.hasText(

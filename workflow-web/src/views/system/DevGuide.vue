@@ -180,8 +180,9 @@ Content-Type: application/json
           <h3>5. 动态列配置模型</h3>
           <el-descriptions :column="1" border>
             <el-descriptions-item label="fieldCode">运行时唯一键；实体字段使用原字段编码，虚拟列使用自定义安全编码。</el-descriptions-item>
-            <el-descriptions-item label="dataSourceType">`ENTITY_FIELD` 或已注册的 `ListFieldDataProvider` 编码。</el-descriptions-item>
-            <el-descriptions-item label="dataSourceConfig">数据提供者参数，按提供者声明的 `configSchema` 可视化编辑。</el-descriptions-item>
+            <el-descriptions-item label="dataSourceType">固定三种取值方式：`ENTITY_FIELD`、`FIELD_TEMPLATE`、`INTERFACE`。</el-descriptions-item>
+            <el-descriptions-item label="dataSourceConfig">仅字段组合使用的模板参数，例如 template；接口实现参数在扩展管理中维护。</el-descriptions-item>
+            <el-descriptions-item label="interfaceExtensionId">取值方式为 INTERFACE 时必填；绑定已启用的 LIST / READ 扩展接口。</el-descriptions-item>
             <el-descriptions-item label="renderComponent">单元格组件注册名；留空时自动选择默认文本或字段类型渲染。</el-descriptions-item>
             <el-descriptions-item label="renderConfig">单元格组件参数，不再与数据源参数混用。</el-descriptions-item>
             <el-descriptions-item label="queryType">支持 EQ、NE、LIKE、NOT_LIKE、GT、GE、LT、LE、BETWEEN、IN、NOT_IN、EMPTY、NOT_EMPTY。</el-descriptions-item>
@@ -194,57 +195,24 @@ Content-Type: application/json
         </section>
 
         <section id="provider" class="guide-section">
-          <h3>6. 既有列表数据提供者</h3>
-          <p>复杂关联、聚合或业务计算通过 Spring Bean 注册。编码必须稳定且唯一，配置保存时后端会校验数据源是否存在、参数是否完整、是否支持虚拟列；扩展列不允许配置查询。</p>
-          <CodeCard title="CustomerLevelProvider.java" language="Java">
-            <pre v-pre><code>@Component
-public class CustomerLevelProvider implements ListFieldDataProvider {
-    @Override
-    public String getDataSourceType() {
-        return "CUSTOMER_LEVEL";
-    }
+          <h3>6. 列表列统一扩展接口</h3>
+          <p>复杂关联、聚合和业务计算实现 <code>UiDataSourceProvider</code> 并注册 Spring Bean。在扩展管理选择已注册 Provider，创建上下文为 LIST、类型为 READ 的接口；列表列选择「取值方式：扩展接口」后绑定该接口。</p>
+          <p>可运行示例为 <code>ProjectCustomListUiDataSourceProvider</code>，编码 <code>PROJECT_CUSTOM_UI_LIST</code>。配置 <code>{"columnPrefix":"项目状态"}</code> 后，其 LIST_COLUMN 分支为当前页生成展示值。配置参数集中保存在扩展接口，列仅保存 <code>interfaceExtensionId</code>。</p>
+          <CodeCard title="LIST_COLUMN 输入输出约定" language="Java">
+            <pre v-pre><code>// UiDataSourceProvider.execute 的四个参数：
+// context：服务端生成的 ListInvocationContext，context.usage() == "LIST_COLUMN"
+// dataScopePlan：不可绕过的数据权限约束
+// configuration：扩展管理保存的实现参数，如 columnPrefix
+// input：records（当前页记录）及 field（当前列配置）
 
-    @Override
-    public String getDisplayName() {
-        return "客户等级";
-    }
-
-    @Override
-    public String getDescription() {
-        return "根据客户ID批量查询等级，避免逐行请求。";
-    }
-
-    @Override
-    public boolean supportsQuery() {
-        return false;
-    }
-
-    @Override
-    public List&lt;Map&lt;String, Object&gt;&gt; getConfigSchema() {
-        return List.of(Map.of(
-            "key", "customerField",
-            "label", "客户字段",
-            "type", "text",
-            "required", true
-        ));
-    }
-
-    @Override
-    public void enrich(List&lt;ListFieldDataRecord&gt; records,
-                       List&lt;ListFieldDataConfig&gt; fields,
-                       Map&lt;String, Object&gt; context) {
-        // 1. 汇总当前页/当前结果集中的客户ID
-        // 2. 一次批量查询客户等级
-        // 3. 写入 record.extData[field.getFieldCode()]
-    }
-}</code></pre>
+// 返回记录 ID → 展示值，平台合并到 extData[当前列编码]。
+// 键必须是 records 中的记录 ID，不使用数组下标，也不写回原始 data。
+return Map.of(
+    "record-001", "项目状态：审批中",
+    "record-002", "项目状态：已通过"
+);</code></pre>
           </CodeCard>
-          <el-alert
-            title="查询条件命中未注册的数据源时后端拒绝请求，避免扩展查询失效后返回未过滤数据。"
-            type="warning"
-            :closable="false"
-            show-icon
-          />
+          <p>扩展列在数据库分页后计算，不支持查询或排序。字段组合继续使用内置 FIELD_TEMPLATE；业务自定义统一走扩展接口，不再注册独立列数据源类型。</p>
         </section>
 
         <section id="provider-context" class="guide-section">
@@ -255,7 +223,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
           </el-table>
           <ul class="check-list">
             <li>使用批量查询，禁止在每条记录中单独访问数据库或远程接口。</li>
-            <li>扩展值写入 `extData`，不要覆盖实体原始 `data`。</li>
+            <li>列接口返回记录 ID 到值的 Map，由平台合并到 `extData`，不要覆盖实体原始 `data`。</li>
             <li>外部调用必须设置超时、限流和降级；敏感信息不能写入配置 JSON。</li>
             <li>自定义查询仍受实体数据权限约束，提供者只能处理已授权记录。</li>
             <li>需要接管整页查询时实现 `EntityListDataProvider`，平台会传入不可绕过的 `DataScopePlan`。</li>
@@ -313,7 +281,7 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <li>同一 `getCode() + getVersion()` 对应的实现必须保持不可变；逻辑或依赖变化时提升版本。默认摘要覆盖实现类字节码，依赖额外模型、脚本或资源时必须覆盖 `getArtifactDigest()`，返回整个受审制品的稳定 SHA-256。</li>
             <li>表单事件 Provider 可参考 `ProjectCustomFormUiDataSourceProvider`。已有多入口 Provider 可在扩展管理高级配置中填写内部实现入口；该值只供后端路由，不暴露给设计器。</li>
             <li>`UiInvocationContext` 按 FORM、LIST、ENTITY 分型，只暴露服务端解析的用户、实体、页面、发布版本和绑定位置等可信元数据。</li>
-            <li>现有 `EntityListDataProvider` 和 `ListFieldDataProvider` 通过适配器接入 `LIST_QUERY`、`LIST_COLUMN`，保持已有扩展兼容。</li>
+            <li>列表列业务扩展统一使用 `UiDataSourceProvider` 的 `LIST_COLUMN` 调用；内置字段组合在平台内部执行。</li>
             <li>Provider 必须支持超时、批量、取消、可观测 traceId 和结构化错误，不得按行发起 N+1 远程请求。</li>
           </ul>
         </section>
@@ -325,15 +293,15 @@ public class CustomerLevelProvider implements ListFieldDataProvider {
             <el-descriptions-item label="/diff">按稳定 ID 比较草稿与当前发布，changedItems[] 描述新增、修改、移动、删除。</el-descriptions-item>
             <el-descriptions-item label="/publish-preview">校验完整配置、权限、引用和参数契约，返回 draftHash 和 activeReleaseId 并发前置条件。</el-descriptions-item>
             <el-descriptions-item label="/publish">表单覆盖唯一当前配置，发布后立即全局生效；列表按自己的版本机制发布。</el-descriptions-item>
-            <el-descriptions-item label="/runtime">表单按稳定 ID 读取当前配置。内容摘要和 protocolVersion 是运行协议字段，不是表单业务版本。</el-descriptions-item>
+            <el-descriptions-item label="/runtime">表单按稳定 ID 读取当前配置。configHash 用于检测配置变化，不是表单业务版本。</el-descriptions-item>
             <el-descriptions-item label="/releases、/release-summaries">仅列表提供发布历史查询。</el-descriptions-item>
             <el-descriptions-item label="/activate、/restore-draft">仅列表提供带原因的历史激活和恢复历史到草稿。</el-descriptions-item>
           </el-descriptions>
           <ul class="check-list">
             <li>表单草稿保存不生效，成功发布后新建、任务、历史详情、子表单、列表表单按钮与 Embed 全部采用当前配置。</li>
             <li>旧页面提交返回 409 FORM_CONFIGURATION_CHANGED，提示保留填写内容并重新加载核对。</li>
-            <li>releaseResolutionToken 绑定用户、运行目的、任务、记录、父子引用和配置依赖摘要；子表单单独发布也会使旧令牌失效。</li>
-            <li>列表仍可在父表单、Embed 的签名上下文中读取固定列表版本，表单配置不再固定到流程版本。</li>
+            <li>configHash 没有签名、有效期和续期，只用于检测当前页面依赖的配置变化。业务来源通过 runtimeContext 传递，由服务端实时鉴权。</li>
+            <li>列表仍可由服务端根据父表单引用或 Embed 会话读取固定列表版本，表单配置不再固定到流程版本。</li>
           </ul>
         </section>
 
@@ -471,8 +439,8 @@ const toc = [
 const extensionLevels = [
   { level: '声明式节点/列', useCase: '常规布局、字段、查询、选项和动作', implementation: '使用稳定 ID 项目和统一数据源配置' },
   { level: '节点级组件', useCase: '评分、签名、复杂单元格和局部交互', implementation: '注册表单节点组件或单元格组件，平台继续管理布局、权限和发布' },
-  { level: '声明式虚拟列', useCase: '字段拼接、轻量派生值', implementation: '添加虚拟列，选择 FIELD_TEMPLATE 等可配置数据源' },
-  { level: '自定义数据提供者', useCase: '关联、聚合、远程业务数据', implementation: '实现 ListFieldDataProvider 并声明配置 Schema' },
+  { level: '声明式虚拟列', useCase: '字段拼接、轻量派生值', implementation: '添加虚拟列，取值方式选择 FIELD_TEMPLATE 字段组合' },
+  { level: '扩展接口', useCase: '关联、聚合、远程业务数据', implementation: '实现 UiDataSourceProvider，创建 LIST / READ 接口并绑定列' },
   { level: '自定义单元格', useCase: '进度、标签、图片、复杂交互展示', implementation: 'LIST_CELL JSON 清单声明 Vue 组件' },
   { level: '整页自定义', useCase: '平台节点树或表格运行时无法表达的整体交互', implementation: '使用整表单/整列表组件，但仍复用发布快照、数据源与权限运行时' }
 ]

@@ -313,14 +313,6 @@ function normalizeResourceId(value, required = false) {
   return RESOURCE_ID_PATTERN.test(id) ? id : null
 }
 
-function normalizeReleaseVersion(value, required = false) {
-  if (value === null || value === undefined || value === '') {
-    return required ? null : undefined
-  }
-  const version = Number(value)
-  return Number.isSafeInteger(version) && version > 0 ? version : null
-}
-
 function normalizeOpaqueRuntimeCoordinate(value, maxLength = 4096) {
   const text = safeText(value, '', maxLength)
   return text && !/[\u0000-\u001F\u007F\s]/.test(text) ? text : ''
@@ -370,19 +362,9 @@ export function normalizeEmbedNativeRuntimeTarget(rawTarget, view) {
     rawTarget.listKey ?? rawListRelease.listKey,
     view.surfaceType === 'LIST'
   )
-  const listReleaseId = normalizeResourceId(
-    rawListRelease.listReleaseId ?? rawListRelease.releaseId,
-    view.surfaceType === 'LIST'
-  )
-  const listReleaseVersion = normalizeReleaseVersion(
-    rawListRelease.listReleaseVersion
-      ?? rawListRelease.releaseVersion
-      ?? rawListRelease.version,
-    view.surfaceType === 'LIST'
-  )
-  const listReleaseResolutionToken = normalizeOpaqueRuntimeCoordinate(
-    rawListRelease.listReleaseResolutionToken
-      ?? rawListRelease.releaseResolutionToken
+  const listConfigHash = normalizeOpaqueRuntimeCoordinate(
+    rawListRelease.listConfigHash
+      ?? rawListRelease.configHash
   )
 
   if (!entityCode) {
@@ -390,18 +372,14 @@ export function normalizeEmbedNativeRuntimeTarget(rawTarget, view) {
   }
 
   if (view.surfaceType === 'LIST') {
-    // LIST 必须使用 Session 启动时固定的 exact Release；任何坐标
-    // 缺失都不允许退回当前 ACTIVE，避免已打开页面中途漂移。
-    if (!listKey || !listReleaseId || !listReleaseVersion
-      || !listReleaseResolutionToken) {
+    // 配置选择由已认证 Embed 会话决定，浏览器只持业务定位信息。
+    if (!listKey) {
       throw new EmbedSchemaError('Embed 原生列表坐标无效', 'EMBED_BOOTSTRAP_TARGET_INVALID')
     }
     return Object.freeze({
       entityCode,
       listKey,
-      listReleaseId,
-      listReleaseVersion,
-      listReleaseResolutionToken,
+      listConfigHash,
       mode: 'LIST',
       nativeRuntimeUrl: normalizeOpaqueRuntimeCoordinate(
         rawTarget.nativeRuntimeUrl,
@@ -409,47 +387,28 @@ export function normalizeEmbedNativeRuntimeTarget(rawTarget, view) {
       ) || null,
       initialData: normalizeNativeRuntimeContext(rawTarget.initialData),
       parameters: normalizeNativeRuntimeContext(rawTarget.parameters),
-      runtimeContext: normalizeNativeRuntimeContext(
-        rawTarget.runtimeContext ?? rawTarget.context
-      ),
+      context: normalizeNativeRuntimeContext(rawTarget.context),
+      runtimeContext: normalizeNativeRuntimeContext(rawTarget.runtimeContext),
       // true 表示服务端已在 Launch 时完成一次默认表单解析；即使结果为空，
       // iframe 也不得再按当前 ACTIVE 动态回退。
       defaultFormResolved: rawTarget.defaultFormResolved === true,
       // 列表中的“新增/查看”仍使用启动时固定的默认表单。
       formId: normalizeResourceId(rawForm.formId ?? rawForm.id) || null,
-      formReleaseId: normalizeResourceId(
-        rawFormRelease.formReleaseId ?? rawFormRelease.releaseId
-      ) || null,
-      formReleaseVersion: normalizeReleaseVersion(
-        rawFormRelease.formReleaseVersion
-          ?? rawFormRelease.releaseVersion
-          ?? rawFormRelease.version
-      ) || null,
-      formReleaseResolutionToken: normalizeOpaqueRuntimeCoordinate(
-        rawFormRelease.formReleaseResolutionToken
-          ?? rawFormRelease.releaseResolutionToken
+      formConfigHash: normalizeOpaqueRuntimeCoordinate(
+        rawFormRelease.formConfigHash
+          ?? rawFormRelease.configHash
       ) || null
     })
   }
 
   const formId = normalizeResourceId(rawForm.formId ?? rawForm.id, true)
-  const formReleaseId = normalizeResourceId(
-    rawFormRelease.formReleaseId ?? rawFormRelease.releaseId,
-    true
-  )
-  const formReleaseVersion = normalizeReleaseVersion(
-    rawFormRelease.formReleaseVersion ?? rawFormRelease.releaseVersion ?? rawFormRelease.version,
-    true
-  )
-  const formReleaseResolutionToken = normalizeOpaqueRuntimeCoordinate(
-    rawFormRelease.formReleaseResolutionToken
-      ?? rawFormRelease.releaseResolutionToken
+  const formConfigHash = normalizeOpaqueRuntimeCoordinate(
+    rawFormRelease.formConfigHash
+      ?? rawFormRelease.configHash
   )
   const recordId = normalizeResourceId(rawTarget.recordId ?? rawForm.recordId)
-  // exact Release token 是历史发布快照读取凭据；缺失时不能退回当前 ACTIVE，
-  // 否则管理员后续发布表单会让既有第三方会话发生不可见漂移。
-  if (!formId || !formReleaseId || !formReleaseVersion
-    || !formReleaseResolutionToken
+  // 登录与视图范围由 Embed 会话核验；配置摘要仅在写入时检查变化。
+  if (!formId
     || (view.entryMode === 'VIEW' && !recordId)) {
     throw new EmbedSchemaError('Embed 原生表单坐标无效', 'EMBED_BOOTSTRAP_TARGET_INVALID')
   }
@@ -457,27 +416,22 @@ export function normalizeEmbedNativeRuntimeTarget(rawTarget, view) {
   const target = {
     entityCode,
     formId,
-    formReleaseId,
-    formReleaseVersion,
-    formReleaseResolutionToken,
+    formConfigHash,
     mode: view.entryMode,
     recordId: recordId || null,
     processInstanceId: normalizeResourceId(
       rawTarget.processInstanceId ?? rawForm.processInstanceId
     ) || null,
     listKey: listKey || null,
-    listReleaseId: listReleaseId || null,
-    listReleaseVersion,
-    listReleaseResolutionToken: listReleaseResolutionToken || null,
+    listConfigHash: listConfigHash || null,
     nativeRuntimeUrl: normalizeOpaqueRuntimeCoordinate(
       rawTarget.nativeRuntimeUrl ?? rawForm.nativeRuntimeUrl,
       2048
     ) || null,
     initialData: normalizeNativeRuntimeContext(rawTarget.initialData),
     parameters: normalizeNativeRuntimeContext(rawTarget.parameters),
-    runtimeContext: normalizeNativeRuntimeContext(
-      rawTarget.runtimeContext ?? rawTarget.context
-    )
+    context: normalizeNativeRuntimeContext(rawTarget.context),
+    runtimeContext: normalizeNativeRuntimeContext(rawTarget.runtimeContext)
   }
   return Object.freeze(target)
 }

@@ -143,16 +143,20 @@ public class UiInvocationContextFactory {
             throw new IllegalStateException(
                     "表单按钮 Provider 上下文缺少已验证运行模式");
         }
+        // 流程字段/初始化也复用服务端核验的记录和任务；前端业务 input 不能伪造流程身份。
+        boolean trustedFormRuntime = trustedFormButton || request != null
+                && StringUtils.hasText(request.getServerProcessInstanceId())
+                && StringUtils.hasText(request.getServerFormMode());
         return new FormInvocationContext(
                 common,
                 entity,
                 form.getId(),
                 form.getFormKey(),
                 form.getFormName(),
-                trustedFormButton
+                trustedFormRuntime
                         ? request.getServerFormMode()
                         : firstText(input.get("mode"), "view"),
-                trustedFormButton
+                trustedFormRuntime
                         ? request.getServerRecordId()
                         : text(input.get("recordId")),
                 trustedFormButton
@@ -168,9 +172,9 @@ public class UiInvocationContextFactory {
                         row.get("key"),
                         row.get("id"),
                         row.get("index")),
-                trustedFormButton && request != null
+                trustedFormRuntime && request != null
                         ? request.getServerTaskId() : null,
-                trustedFormButton && request != null
+                trustedFormRuntime && request != null
                         ? request.getServerProcessInstanceId() : null);
     }
 

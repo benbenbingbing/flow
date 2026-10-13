@@ -266,7 +266,7 @@ function nativeTarget(version, mode, targetRecordId = null) {
     formRelease: {
       releaseId: releaseId(version),
       version,
-      releaseResolutionToken: releaseToken(version)
+      configHash: releaseToken(version)
     },
     mode,
     recordId: mode === 'VIEW' ? targetRecordId : null,
@@ -324,7 +324,7 @@ function createBootstrap(session) {
           listRelease: {
             releaseId: `list_release_native_v${pinnedReleaseVersion}`,
             version: pinnedReleaseVersion,
-            releaseResolutionToken: `rrt_native_list_v${pinnedReleaseVersion}_0123456789abcdef`
+            configHash: `rrt_native_list_v${pinnedReleaseVersion}_0123456789abcdef`
           }
         },
     capabilities: capabilities(spec),
@@ -518,7 +518,7 @@ function runtimeRelease(version) {
     id: releaseId(version),
     version,
     effectiveReleaseId: releaseId(version),
-    releaseResolutionToken: releaseToken(version),
+    configHash: releaseToken(version),
     snapshotDocument: JSON.stringify({
       form: {
         id: formId,
@@ -919,7 +919,7 @@ async function main() {
           })
           if (coordinates.releaseId !== `list_release_native_v${version}`
               || Number(coordinates.releaseVersion) !== version
-              || coordinates.releaseResolutionToken
+              || coordinates.configHash
                 !== `rrt_native_list_v${version}_0123456789abcdef`) {
             sendJson(response, 409, {
               code: 409,
@@ -1009,13 +1009,13 @@ async function main() {
             && url.pathname === `/api/entity-forms/${formId}/runtime-release`) {
           const version = Number(url.searchParams.get('version'))
           const requestedReleaseId = url.searchParams.get('releaseId')
-          const requestedToken = url.searchParams.get('releaseResolutionToken')
+          const requestedToken = url.searchParams.get('configHash')
           state.releaseRequests.push({
             launchKey: session.spec.key,
             actorKey: session.spec.actorKey,
             version,
             releaseId: requestedReleaseId,
-            releaseResolutionToken: requestedToken
+            configHash: requestedToken
           })
           if (requestedReleaseId !== releaseId(version)
               || requestedToken !== releaseToken(version)) {

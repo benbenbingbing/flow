@@ -20,7 +20,7 @@ class ProjectEntityMutationExecutorTest {
         EntityMutationPort port = mock(EntityMutationPort.class);
         Map<String, Object> receipt = Map.of(
                 "id", "project-1", "entityCode", "project", "create_by", "creator-1",
-                "data", Map.of("budget", 100), "formReleaseResolutionToken", "host-only-token",
+                "data", Map.of("budget", 100), "runtimeContext", "host-only-context",
                 "actionCapabilities", Map.of("edit", Map.of("enabled", true)));
         when(port.execute(any())).thenAnswer(invocation -> {
             EntityMutationCommand command = invocation.getArgument(0);
@@ -40,7 +40,7 @@ class ProjectEntityMutationExecutorTest {
         Map<String, Object> payload = captured.getValue().payload();
         assertEquals("creator-1", payload.get("create_by"));
         assertFalse(payload.containsKey("createBy"));
-        assertFalse(payload.containsKey("formReleaseResolutionToken"));
+        assertFalse(payload.containsKey("runtimeContext"));
         assertEquals("creator-1", result.getCreateBy());
         assertEquals("project-1", result.getId());
         assertEquals(100, result.getData().get("budget"));

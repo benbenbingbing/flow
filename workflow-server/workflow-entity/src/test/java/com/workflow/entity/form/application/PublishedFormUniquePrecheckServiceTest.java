@@ -94,11 +94,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void reportsDuplicateUsingOnlyServerResolvedPublishedRule() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1",
-                "release-1",
-                3,
-                "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form,
                         "release-1",
@@ -127,11 +123,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void editMergesExistingRecordAndExcludesItself() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1",
-                "release-1",
-                3,
-                "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form,
                         "release-1",
@@ -164,8 +156,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void skipsWhenConditionIsFalseOrPrecheckIsDisabled() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 3));
 
@@ -181,8 +172,7 @@ class PublishedFormUniquePrecheckServiceTest {
                 "project", "name", "project a", null);
 
         EntityForm disabled = publishedForm(conditionalRule(false));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-2", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-2"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         disabled, "release-1", 3));
         FormUniquePrecheckResponse disabledResponse = service.precheck(
@@ -197,8 +187,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void neverReadsDraftRulesWhenNoActiveReleaseExists() {
         EntityForm draft = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         draft, null, null));
 
@@ -217,8 +206,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void scopedUserSkipsGlobalPrecheckBeforeRawRecordLookup() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 3));
         when(dataPermissionEngine.calculatePermission(
@@ -249,8 +237,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void deniedNullAndMissingUsersShareTheSameNonRevealingResult() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 3));
         when(dataPermissionEngine.calculatePermission(
@@ -284,8 +271,7 @@ class PublishedFormUniquePrecheckServiceTest {
     @Test
     void permissionEngineFailureNeverFallsThroughToRawUniquenessQueries() {
         EntityForm form = publishedForm(conditionalRule(true));
-        when(releaseService.resolveAuthorizedRuntimeFormRelease(
-                "form-1", "release-1", 3, "signed-token"))
+        when(releaseService.resolveAuthorizedRuntimeFormRelease(org.mockito.ArgumentMatchers.eq("form-1"), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.anyMap()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 3));
         when(dataPermissionEngine.calculatePermission(
@@ -341,9 +327,9 @@ class PublishedFormUniquePrecheckServiceTest {
             Map<String, Object> formData) {
         FormUniquePrecheckRequest request =
                 new FormUniquePrecheckRequest();
-        request.setReleaseId("release-1");
-        request.setReleaseVersion(3);
-        request.setReleaseResolutionToken("signed-token");
+        request.setConfigHash("release-1");
+
+
         request.setRuleId("uq_project_name_active");
         request.setFieldCode("name");
         request.setFormData(formData);

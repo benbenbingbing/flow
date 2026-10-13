@@ -77,27 +77,13 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = [], has
       || subFormConfig.childFormId
       || subFormConfig.refFormId
       || subFormConfig.publishedFormId,
-    childFormReleaseId: nodeProps.childFormReleaseId
-      || nodeProps.refFormReleaseId
-      || nodeProps.publishedFormReleaseId
-      || linked?.childFormReleaseId
-      || subFormConfig.childFormReleaseId
-      || subFormConfig.refFormReleaseId
-      || subFormConfig.publishedFormReleaseId,
-    childFormReleaseVersion: nodeProps.childFormReleaseVersion
-      ?? nodeProps.refFormReleaseVersion
-      ?? nodeProps.publishedFormReleaseVersion
-      ?? linked?.childFormReleaseVersion
-      ?? subFormConfig.childFormReleaseVersion
-      ?? subFormConfig.refFormReleaseVersion
-      ?? subFormConfig.publishedFormReleaseVersion,
     runtimeNodes: nestedNodes,
     runtimeRootParentId: node.id,
     runtimeFields: fields
   }
 }
 
-/** 统一解码发布节点；保留稳定 ID 和所有发布版本上下文，不修改原配置。 */
+/** 统一解码发布节点；保留稳定 ID 和发布节点业务配置，不修改原配置。 */
 export function normalizeRuntimeNodes(nodes = []) {
   return nodes.map(node => ({
     ...node,

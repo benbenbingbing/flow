@@ -1,3 +1,4 @@
+import { buildRuntimeContext } from './form-runtime/context.js'
 import {
   collectFlowConditionProperties,
   createFlowConditionConfig,
@@ -284,49 +285,31 @@ export function shouldRunFormUniquePrecheck(rule, reason) {
 
 export function resolveFormUniqueRuntimeIdentity(form = {}, context = {}) {
   const formId = String(form.id || form.formId || form.entityFormId || '').trim()
-  const releaseId = String(
-    form.runtimeReleaseId || form.formReleaseId || context.formReleaseId || ''
-  ).trim()
-  const releaseVersion = Number(
-    form.runtimeReleaseVersion
-    ?? form.formReleaseVersion
-    ?? context.formReleaseVersion
-    ?? 0
-  )
-  const releaseResolutionToken = String(
-    form.releaseResolutionToken
-    || context.releaseResolutionToken
-    || context.formReleaseResolutionToken
+  const configHash = String(
+    form.configHash
+    || context.configHash
+    || context.formConfigHash
     || ''
   ).trim()
   const recordId = String(
     context.record?.id || context.recordId || ''
   ).trim()
-  const viewCompositionTraversalToken = String(
-    context.viewCompositionTraversalToken || ''
-  ).trim()
   return {
     formId,
-    releaseId: releaseId || undefined,
-    releaseVersion: releaseVersion > 0 ? releaseVersion : undefined,
-    releaseResolutionToken: releaseResolutionToken || undefined,
-    viewCompositionTraversalToken:
-      viewCompositionTraversalToken || undefined,
+    configHash: configHash || undefined,
+    runtimeContext: buildRuntimeContext(context, form),
     recordId: recordId || undefined,
     // 设计器草稿也有 formId；必须存在发布身份才允许发运行时预检请求。
     published: Boolean(
-      formId && (releaseId || releaseVersion > 0 || releaseResolutionToken)
+      formId && configHash
     )
   }
 }
 
 export function buildFormUniquePrecheckPayload(field, rule, record, identity) {
   return {
-    releaseId: identity.releaseId,
-    releaseVersion: identity.releaseVersion,
-    releaseResolutionToken: identity.releaseResolutionToken,
-    viewCompositionTraversalToken:
-      identity.viewCompositionTraversalToken,
+    configHash: identity.configHash,
+    runtimeContext: identity.runtimeContext,
     ruleId: rule.ruleId,
     fieldCode: resolveFormFieldKey(field),
     recordId: identity.recordId,

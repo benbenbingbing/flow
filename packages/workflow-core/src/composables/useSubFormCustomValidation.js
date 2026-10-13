@@ -43,7 +43,7 @@ export function useSubFormCustomValidation(options) {
       }
       entry.row = row
       const form = options.getForm()
-      const identity = JSON.stringify([form.id, form.runtimeReleaseId, form.runtimeReleaseVersion, row?.id, options.getContext(row, index).entityCode])
+      const identity = JSON.stringify([form.id, form.configHash, row?.id, options.getContext(row, index).entityCode])
       if (identity !== entry.identity) { entry.controller.reset(); entry.identity = identity }
       entry.controller.refresh()
     })

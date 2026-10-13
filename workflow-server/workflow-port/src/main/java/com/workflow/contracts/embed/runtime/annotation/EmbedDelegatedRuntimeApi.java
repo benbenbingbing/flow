@@ -65,7 +65,7 @@ public @interface EmbedDelegatedRuntimeApi {
         SCOPE_DEFAULT,
         /** 不从请求读取 target；下游普通权限仍必须执行。 */
         NONE,
-        /** {@code entityCode} URI template variable，可选签名遍历上下文。 */
+        /** {@code entityCode} URI template variable，可选业务关联路径。 */
         ROOT_ENTITY_PATH,
         /** {@code formId} URI variable 与精确 release query。 */
         FORM_RELEASE_PATH_QUERY,
@@ -79,8 +79,8 @@ public @interface EmbedDelegatedRuntimeApi {
         RECORD_DETAIL_PATH_QUERY,
         /** ownerType/ownerId/release/record body 坐标。 */
         FORM_OWNER_BODY,
-        /** 由 Flow 服务端签发且由业务服务再次验证的运行时令牌。 */
-        SIGNED_RUNTIME_CONTEXT,
+        /** 由业务服务根据真实根入口重新校验的运行时上下文。 */
+        RUNTIME_CONTEXT,
         /** 原生文件读取；文件归属继续由 FileAccessService 验证。 */
         FILE_READ,
         /**
@@ -98,7 +98,7 @@ public @interface EmbedDelegatedRuntimeApi {
     enum Scope {
         /** 固定根实体的只读元数据。 */
         ROOT_ENTITY_METADATA,
-        /** 固定 Published Form 及其签名子表单发布快照。 */
+        /** 当前 Published Form 及发布组件路径指向的子表单。 */
         FORM_RELEASE,
         /** 含 form/entity/release/mode/record 坐标的表单运行请求。 */
         FORM_CONTEXT,
@@ -108,8 +108,8 @@ public @interface EmbedDelegatedRuntimeApi {
         REFERENCE_READ,
         /** 固定表单 owner 下由服务端发布绑定解析的运行请求。 */
         FORM_OWNER_RUNTIME,
-        /** 上一步原生运行时签发的用户/发布/记录绑定令牌驱动的请求。 */
-        SIGNED_RUNTIME_CONTEXT,
+        /** 根据根入口、组件路径和记录标识重新校验的请求。 */
+        RUNTIME_CONTEXT,
         /** 原生附件组件的上传/预览，同时受 Flow 存储权限约束。 */
         FILE_RUNTIME,
         /** 必须属于当前固定实体记录的流程只读运行时。 */

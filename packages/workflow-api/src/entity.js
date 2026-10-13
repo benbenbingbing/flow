@@ -1,3 +1,10 @@
+/** 普通数据 API 用同一业务来源对象定位权限；浏览器不再指定发布版本。 */
+function runtimeConfigContext(source = {}) {
+  const runtimeContext = { ...(source.runtimeContext || {}) }
+  if (source.compositionContext) runtimeContext.compositionContext = source.compositionContext
+  return { configHash: source.configHash || undefined, runtimeContext }
+}
+
 
 /** 为指定 transport 创建接口集合，不在包内持有应用单例。 */
 export function createEntityApi(request) {
@@ -40,8 +47,9 @@ const entityApi = {
   getByCode(code, runtimeContext = {}) {
     return request.get(`/entity/code/${code}`, {
       params: {
-        viewCompositionTraversalToken:
-          runtimeContext.viewCompositionTraversalToken || undefined
+        runtimeContext,
+        compositionContext:
+          runtimeContext.compositionContext || undefined
       }
     })
   },
@@ -161,16 +169,14 @@ const entityDataApi = {
     formReleaseContext = {}
   ) {
     const params = {
-      ...releaseContext,
-      formReleaseId: formReleaseContext.releaseId,
-      formReleaseVersion: formReleaseContext.releaseVersion,
-      formReleaseResolutionToken:
-        formReleaseContext.releaseResolutionToken,
-      // 关联内容的非根实体只能沿服务端签名的遍历链读取。
+      ...runtimeConfigContext(releaseContext),
+      formConfigHash: formReleaseContext.configHash,
+      runtimeContext: { ...runtimeConfigContext(releaseContext).runtimeContext, ...runtimeConfigContext(formReleaseContext).runtimeContext },
+      // 关联内容的非根实体必须携带来源路径，交给服务端重新核实。
       // 这是 Flow 共享详情 API 的可选上下文，不是 Embed 专用分支。
-      viewCompositionTraversalToken:
-        formReleaseContext.viewCompositionTraversalToken
-        || releaseContext.viewCompositionTraversalToken
+      compositionContext:
+        formReleaseContext.compositionContext
+        || releaseContext.compositionContext
         || undefined
     }
     if (listKey) params.listKey = listKey
@@ -189,14 +195,10 @@ const entityDataApi = {
     return request.post('/entity-data', {
       ...data,
       startProcess,
-      listReleaseId: releaseContext.releaseId,
-      listReleaseVersion: releaseContext.releaseVersion,
-      listReleaseResolutionToken:
-        releaseContext.releaseResolutionToken,
-      formReleaseId: data.formReleaseId,
-      formReleaseVersion: data.formReleaseVersion,
-      formReleaseResolutionToken:
-        data.formReleaseResolutionToken
+      listConfigHash:
+        releaseContext.configHash,
+      formConfigHash: data.formConfigHash,
+      runtimeContext: { ...runtimeConfigContext(releaseContext).runtimeContext, ...(data.runtimeContext || {}), ...(data.compositionContext ? { compositionContext: data.compositionContext } : {}) }
     })
   },
 
@@ -209,7 +211,7 @@ const entityDataApi = {
       {
         params: {
           ...(listKey ? { listKey } : {}),
-          ...releaseContext
+          ...runtimeConfigContext(releaseContext)
         }
       }
     )
@@ -225,7 +227,7 @@ const entityDataApi = {
       {
         params: {
           ...(listKey ? { listKey } : {}),
-          ...releaseContext
+          ...runtimeConfigContext(releaseContext)
         }
       }
     )

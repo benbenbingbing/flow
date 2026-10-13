@@ -163,7 +163,7 @@ public class TaskDetailService {
                                     ? new UiRuntimeResolutionContext(
                                             UiRuntimePurpose.HISTORICAL,
                                             published.history().getId(),
-                                            nodeForm.getNodeId())
+                                            nodeForm.getNodeId(), null, processInstanceId, entityCode, processTask.getEntityDataId())
                                     : UiRuntimeResolutionContext.activeTask(
                                             published.history().getId(),
                                             nodeForm.getNodeId(),
@@ -196,8 +196,7 @@ public class TaskDetailService {
                 com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition entityDef =
                         entityDefinitionMapper.findByEntityCode(entityCode).orElse(null);
                 if (entityDef != null) {
-                    // 默认表单虽未显式绑定节点，任务详情同样需要活动任务令牌，
-                    // 否则从此入口进入审批会显示按钮却无法通过提交鉴权。
+                    // 默认表单同样携带任务定位信息，按钮与提交都重新读取当前可办理身份。
                     UiRuntimeResolutionContext defaultFormContext = published == null
                             ? null
                             : UiRuntimeResolutionContext.activeTask(
@@ -388,17 +387,10 @@ public class TaskDetailService {
         formConfig.setLayoutType(form.getLayoutType());
         formConfig.setIsReadonly(nodeForm == null
                 || Integer.valueOf(1).equals(nodeForm.getIsReadonly()));
+        formConfig.setConfigHash(form.getConfigHash());
+        formConfig.setRuntimeContext(form.getRuntimeContext());
         formConfig.setDataSourceBindingsDocument(
                 form.getDataSourceBindingsDocument());
-        formConfig.setEffectiveFormReleaseId(
-                form.getEffectiveReleaseId());
-        formConfig.setHotfixApplied(form.getHotfixApplied());
-        formConfig.setReleaseResolutionToken(
-                form.getReleaseResolutionToken());
-        if (nodeForm != null) {
-            formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
-            formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());
-        }
         if (form.getFields() != null) {
             formConfig.setFields(form.getFields().stream()
                     .map(field -> convertFieldToMap(

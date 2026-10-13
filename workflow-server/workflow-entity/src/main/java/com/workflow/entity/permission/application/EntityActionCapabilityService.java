@@ -33,6 +33,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class EntityActionCapabilityService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.workflow.entity.excel.config.ExcelButtonAvailabilityService> excelAvailability;
 
     private final EntityListActionConfigService actionConfigService;
     private final EntityActionRuleEvaluator ruleEvaluator;
@@ -115,6 +117,13 @@ public class EntityActionCapabilityService {
         actionConfigService.resolveToolbarButtons(config, entityCode).stream()
                 .filter(this::isSelectionToolbarButton)
                 .forEach(buttons::add);
+        Map<String, String> excelReasons = defaultExcelReasons(entityCode, buttons);
+        if (excelAvailability != null) {
+            excelReasons.putAll(excelAvailability.getObject().listReasons(entityCode, config,
+                    actionConfigService.resolveRowButtons(config, entityCode), "ROW_BUTTON_CLICK"));
+            excelReasons.putAll(excelAvailability.getObject().listReasons(entityCode, config,
+                    actionConfigService.resolveToolbarButtons(config, entityCode), "TOOLBAR_BUTTON_CLICK"));
+        }
         // 同一页多个按钮共享任务能力；作用域在展示结束时关闭，提交校验仍读取实时任务。
         try (var display = assigneeLookup.openDisplayBatch(rows, user)) {
             for (EntityDataDTO row : rows) {
@@ -127,12 +136,12 @@ public class EntityActionCapabilityService {
                     if (!StringUtils.hasText(key)) {
                         continue;
                     }
-                    capabilities.put(key, evaluateButton(
+                    capabilities.put(key, withExcelAvailability(button, excelReasons, evaluateButton(
                             entityCode,
                             button,
                             row,
                             user,
-                            statusCategories.get(row.getStatus())));
+                            statusCategories.get(row.getStatus()))));
                 }
                 row.setActionCapabilities(capabilities);
             }
@@ -151,7 +160,10 @@ public class EntityActionCapabilityService {
             EntityListConfig config) {
         Map<String, EntityActionCapabilityDTO> capabilities = new LinkedHashMap<>();
         SysUser user = currentUser();
-        for (Map<String, Object> button : actionConfigService.resolveToolbarButtons(config, entityCode)) {
+        List<Map<String, Object>> toolbarButtons = actionConfigService.resolveToolbarButtons(config, entityCode);
+        Map<String, String> excelReasons = defaultExcelReasons(entityCode, toolbarButtons);
+        if (excelAvailability != null) excelReasons.putAll(excelAvailability.getObject().listReasons(entityCode, config, toolbarButtons, "TOOLBAR_BUTTON_CLICK"));
+        for (Map<String, Object> button : toolbarButtons) {
             if (Boolean.FALSE.equals(button.get("enabled"))) {
                 continue;
             }
@@ -159,14 +171,48 @@ public class EntityActionCapabilityService {
             if (!StringUtils.hasText(key)) {
                 continue;
             }
-            capabilities.put(key,
+            capabilities.put(key, withExcelAvailability(button, excelReasons,
                     isSelectionToolbarButton(button)
                             ? evaluateSelectionToolbarButton(
                                     entityCode, button, user)
                             : evaluateButton(
-                                    entityCode, button, null, user, null));
+                                    entityCode, button, null, user, null)));
         }
         return capabilities;
+    }
+
+    /** 一页最多解析两个方向一次，缺少默认配置只禁用相应按钮，不阻止整个列表读取。 */
+    private Map<String, String> defaultExcelReasons(String entityCode, List<Map<String, Object>> buttons) {
+        if (excelAvailability == null) return new LinkedHashMap<>();
+        Map<String, String> reasons = new LinkedHashMap<>();
+        for (Map<String, Object> button : buttons) {
+            String direction = excelDirection(button);
+            if (direction == null || reasons.containsKey(direction) || Boolean.FALSE.equals(button.get("enabled"))) continue;
+            // 经独立展示服务的事务代理查询，避免配置缺失使列表读取事务被标记回滚。
+            String reason = excelAvailability.getObject().defaultReason(entityCode, direction);
+            reasons.put(direction, Objects.toString(reason, ""));
+        }
+        return reasons;
+    }
+
+    private EntityActionCapabilityDTO withExcelAvailability(Map<String, Object> button, Map<String, String> reasons,
+                                                            EntityActionCapabilityDTO capability) {
+        String direction = excelDirection(button);
+        String reason = direction == null ? reasons.get(asString(button.get("key"))) : reasons.get(direction);
+        if (capability.isVisible() && capability.isEnabled() && StringUtils.hasText(reason)) {
+            return EntityActionCapabilityDTO.disabled(reason);
+        }
+        return capability;
+    }
+
+    /** 只处理系统默认按钮。自定义导出方案和标准 EXPORT 授权不依赖默认指针。 */
+    private String excelDirection(Map<String, Object> button) {
+        if ("custom".equalsIgnoreCase(asString(button.get("type")))) return null;
+        return switch (Objects.toString(button.get("key"), "")) {
+            case "import" -> "IMPORT";
+            case "exportSelected", "exportAll" -> "EXPORT";
+            default -> null;
+        };
     }
 
     /**
@@ -534,7 +580,7 @@ public class EntityActionCapabilityService {
      * evaluateConfiguredAction，待办身份不能扩展为这些动作的权限。</p>
      *
      * @param entityCode 实体编码，用于查询记录状态类别
-     * @param row 服务端读取的当前数据，调用方仍须将请求任务与记录及发布令牌联合绑定
+     * @param row 服务端读取的当前数据，调用方仍须将请求任务与实际流程记录联合验证
      * @param mandatoryRule 内置审批规则，不受表单覆盖配置替换
      * @param overrideRule 已发布按钮的额外适用条件，可以为空
      * @return 允许时携带当前用户的实际任务 ID；任一显示条件失败时隐藏，

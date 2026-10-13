@@ -288,10 +288,8 @@ public class ProcessTaskController {
     private void requireSubmitApprovalAction(TaskCompleteRequest params) {
         FormActionResolveRequest request = new FormActionResolveRequest();
         request.setFormId(params.getFormId());
-        request.setReleaseId(params.getFormReleaseId());
-        request.setReleaseVersion(params.getFormReleaseVersion());
-        request.setReleaseResolutionToken(
-                params.getFormReleaseResolutionToken());
+        request.setConfigHash(
+                params.getFormConfigHash());
         request.setEntityCode(params.getEntityCode());
         request.setListKey(params.getListKey());
         request.setMode("approve");

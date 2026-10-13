@@ -93,18 +93,19 @@ public class EntityListField {
     private String align;
 
     /**
-     * 数据源类型：ENTITY_FIELD/REFERENCE/AGGREGATE/CUSTOM_PROVIDER
+     * 列取值方式：ENTITY_FIELD 读取实体字段、FIELD_TEMPLATE 组合字段、INTERFACE 调用统一扩展接口。
+     * 三种方式互斥；组合与接口的结果只用于展示，不参与实体查询和排序。
      */
     @TableField("data_source_type")
     private String dataSourceType;
 
     /**
-     * 数据源配置JSON
+     * 字段组合的模板参数 JSON；扩展接口自身的参数在扩展管理中维护。
      */
     @TableField("data_source_config")
     private String dataSourceConfig;
 
-    /** 可调用接口扩展 ID；一条扩展即一个完整接口。 */
+    /** INTERFACE 取值方式必填的接口扩展 ID；其它取值方式不能绑定，避免隐式覆盖来源。 */
     @TableField("interface_extension_id")
     private String interfaceExtensionId;
 

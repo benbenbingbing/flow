@@ -52,6 +52,10 @@ public class UiExtensionExecuteRequest {
     @JsonIgnore
     private boolean serverPinnedRelease;
 
+    /** 来源只授予流程读取能力时，任何写接口都必须在产生副作用前拒绝。 */
+    @JsonIgnore
+    private boolean serverReadOnly;
+
     /** 已验证事件步骤的原始绑定所有者类型，仅供内部精确授权。 */
     @JsonIgnore
     private String serverBindingOwnerType;
@@ -68,19 +72,19 @@ public class UiExtensionExecuteRequest {
     @JsonIgnore
     private String serverBindingTargetKey;
 
-    /** FORM_BUTTON_CLICK 已鉴权的记录 ID；新增态允许为空。 */
+    /** 表单按钮或流程上下文已鉴权的记录 ID；新增态允许为空。 */
     @JsonIgnore
     private String serverRecordId;
 
-    /** FORM_BUTTON_CLICK 已鉴权的 create/edit/view/approve 模式。 */
+    /** 服务端已鉴权的 create/edit/view/approve 模式，供 Provider 构造可信上下文。 */
     @JsonIgnore
     private String serverFormMode;
 
-    /** FORM_BUTTON_CLICK 审批模式已核验的任务 ID；普通模式为空。 */
+    /** 流程表单调用已核验的任务 ID；普通实体页面为空。 */
     @JsonIgnore
     private String serverTaskId;
 
-    /** FORM_BUTTON_CLICK 审批模式已核验的流程实例 ID；普通模式为空。 */
+    /** 流程表单调用已核验的实例 ID；流程历史详情也保留该只读来源。 */
     @JsonIgnore
     private String serverProcessInstanceId;
 

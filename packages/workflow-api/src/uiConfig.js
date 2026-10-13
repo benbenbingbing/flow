@@ -2,6 +2,13 @@ import {
   buildUiEventExecutionPayload
 } from '@flow/workflow-core/ui-event-request'
 
+/** 事件/动作统一使用业务上下文，关联路径不能作为普通 input/context 参与脚本映射。 */
+function runtimeRequest(data = {}) {
+  const { compositionContext, releaseId, releaseVersion, ...payload } = data
+  if (compositionContext) payload.runtimeContext = { ...(payload.runtimeContext || {}), compositionContext }
+  return payload
+}
+
 /** 为指定 transport 创建接口集合，不在包内持有应用单例。 */
 export function createUiConfigApi(request) {
 
@@ -54,7 +61,7 @@ const uiExtensionApi = {
 /** 运行态只提交发布时固定的扩展接口 ID，不再透出后端方法。 */
 const uiExtensionRuntimeApi = {
   execute(data) {
-    return request.post('/ui-runtime/extensions/execute', data)
+    return request.post('/ui-runtime/extensions/execute', runtimeRequest(data))
   }
 }
 
@@ -86,14 +93,14 @@ const uiEventBindingApi = {
   execute(eventCode, data) {
     return request.post(
       `/ui-runtime/events/${eventCode}/execute`,
-      buildUiEventExecutionPayload(data, eventCode)
+      buildUiEventExecutionPayload(runtimeRequest(data), eventCode)
     )
   }
 }
 
 const formActionRuntimeApi = {
   resolve(data) {
-    return request.post('/ui-runtime/form-actions/resolve', data)
+    return request.post('/ui-runtime/form-actions/resolve', runtimeRequest(data))
   }
 }
 

@@ -792,9 +792,9 @@ public class ProcessProgressRuntimeService {
                                                             entityCode,
                                                             entityDataId)
                                             : new com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext(
-                                                            purpose,
+                                                            UiRuntimePurpose.HISTORICAL,
                                                             published.history().getId(),
-                                                            nodeForm.getNodeId()));
+                                                            nodeForm.getNodeId(), null, progress.getProcessInstanceId(), entityCode, entityDataId));
                     if (entityForm == null) {
                         throw new IllegalStateException(
                                 "流程发布快照绑定的表单不存在: formId="
@@ -804,8 +804,7 @@ public class ProcessProgressRuntimeService {
                             : null;
                     formConfigs.add(buildProgressFormConfig(
                             entityForm,
-                            nodeFormReadonly,
-                            nodeForm));
+                            nodeFormReadonly));
                     log.info("从流程发布快照查询到节点表单: nodeId={}, formId={}, formName={}",
                             targetNodeId, nodeForm.getFormId(), entityForm.getFormName());
                     break;
@@ -813,8 +812,7 @@ public class ProcessProgressRuntimeService {
             }
             // 3b. 映射表中没有表单绑定，使用默认表单兜底。
             if (formConfigs.isEmpty()) {
-                // 默认表单虽未钉在节点上，审批仍需与实际发布历史和活动任务绑定，
-                // 否则页面能显示按钮，但提交时因缺少发布令牌被安全校验拒绝。
+                // 默认表单同样返回任务或实例定位信息，后续请求仍按真实流程身份重新鉴权。
                 com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext defaultFormContext = null;
                 if (published != null) {
                     String historyId = published.history().getId();
@@ -827,14 +825,14 @@ public class ProcessProgressRuntimeService {
                                     progress.getProcessInstanceId(),
                                     entityCode,
                                     entityDataId)
-                            : com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext.historical(
-                                    historyId,
-                                    targetNodeId);
+                            : new com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext(
+                                    UiRuntimePurpose.HISTORICAL, historyId, targetNodeId, null,
+                                    progress.getProcessInstanceId(), entityCode, entityDataId);
                 }
                 com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm = entityFormRuntimeService
                         .getDefaultForm(entityDef.getId(), defaultFormContext);
                 if (entityForm != null) {
-                    formConfigs.add(buildProgressFormConfig(entityForm, null, null));
+                    formConfigs.add(buildProgressFormConfig(entityForm, null));
                     log.debug(
                             "节点未配置表单，回退到默认表单: status={}, nodeId={}, formId={}",
                             progress.getStatus(),
@@ -942,44 +940,29 @@ public class ProcessProgressRuntimeService {
     }
 
     /**
-     * 根据实体表单与节点表单绑定构建进度表单配置 DTO。
+     * 根据已解析的实体表单构建进度表单配置 DTO。
      * <p>
-     * 合并表单字段、布局节点、只读设置与发布版本信息。
+     * 合并表单字段、布局节点、节点只读设置与当前运行时发布信息。
      *
      * @param entityForm       实体表单
      * @param readonlyOverride 节点级只读覆盖，为 null 表示不强制只读
-     * @param nodeForm         节点表单绑定，其发布版本优先于表单运行时版本，可为 null
      * @return 进度表单配置 DTO
      */
     private ProcessProgressDTO.FormConfigDTO buildProgressFormConfig(
             com.workflow.entity.form.infrastructure.persistence.record.EntityForm entityForm,
-            Boolean readonlyOverride,
-            com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm nodeForm) {
+            Boolean readonlyOverride) {
         ProcessProgressDTO.FormConfigDTO formConfig = new ProcessProgressDTO.FormConfigDTO();
         formConfig.setFormId(entityForm.getId());
-        if (nodeForm != null) {
-            formConfig.setFormReleaseId(nodeForm.getFormReleaseId());
-            formConfig.setFormReleaseVersion(nodeForm.getFormReleaseVersion());
-        } else {
-            // 默认表单没有流程节点钉版，诊断信息应反映本次实际解析的发布版本。
-            formConfig.setFormReleaseId(entityForm.getRuntimeReleaseId());
-            formConfig.setFormReleaseVersion(
-                    entityForm.getRuntimeReleaseVersion());
-        }
         formConfig.setFormName(entityForm.getFormName());
         formConfig.setFormKey(entityForm.getFormKey());
         formConfig.setLayoutType(entityForm.getLayoutType());
         formConfig.setIsReadonly(Boolean.TRUE.equals(readonlyOverride));
         formConfig.setCustomComponent(entityForm.getCustomComponent());
         formConfig.setViewConfig(entityForm.getViewConfig());
+        formConfig.setConfigHash(entityForm.getConfigHash());
+        formConfig.setRuntimeContext(entityForm.getRuntimeContext());
         formConfig.setDataSourceBindingsDocument(
                 entityForm.getDataSourceBindingsDocument());
-        formConfig.setEffectiveFormReleaseId(
-                entityForm.getEffectiveReleaseId());
-        formConfig.setHotfixApplied(
-                entityForm.getHotfixApplied());
-        formConfig.setReleaseResolutionToken(
-                entityForm.getReleaseResolutionToken());
         if (entityForm.getFields() != null) {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             List<Map<String, Object>> fields = new ArrayList<>();

@@ -123,10 +123,10 @@ assert.match(
 )
 assert.match(formArtifact.code, /recordId: recordId\.value \|\| undefined/)
 assert.match(formArtifact.code, /taskId: props\.taskId \|\| undefined/)
-assert.match(formArtifact.code, /releaseId: props\.releaseId \|\| formDefinition\.runtimeReleaseId/)
-assert.match(formArtifact.code, /releaseVersion: props\.releaseVersion/)
-assert.match(formArtifact.code, /releaseResolutionToken:/)
-assert.match(formArtifact.code, /props\.releaseResolutionToken/)
+assert.doesNotMatch(formArtifact.code, /releaseId: props\.releaseId/)
+assert.doesNotMatch(formArtifact.code, /releaseVersion: props\.releaseVersion/)
+assert.match(formArtifact.code, /configHash:/)
+assert.match(formArtifact.code, /props\.configHash/)
 assert.match(formArtifact.code, /input: \{\s+mode: mode\.value,/)
 assert.equal(formArtifact.code.includes('button: action'), false)
 assert.doesNotMatch(
@@ -210,7 +210,7 @@ assert.match(listArtifact.code, /EntityDataSearchForm/)
 assert.match(listArtifact.code, /entityListRuntimeApi\.query/)
 assert.match(listArtifact.code, /ROW_BUTTON_CLICK/)
 assert.match(listArtifact.code, /selectedIds: selectedRows\.value\.map/)
-assert.match(listArtifact.code, /releaseResolutionToken:/)
+assert.match(listArtifact.code, /configHash:/)
 assert.doesNotMatch(listArtifact.code, /input: \{ button, row, selectedRows:/)
 assert.match(
   listArtifact.code,

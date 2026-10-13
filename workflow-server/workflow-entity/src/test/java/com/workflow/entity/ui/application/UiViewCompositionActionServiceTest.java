@@ -30,6 +30,7 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
+import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
@@ -73,8 +74,6 @@ class UiViewCompositionActionServiceTest {
     @Mock
     private UiViewCompositionRuntimeService runtimeService;
     @Mock
-    private UiViewCompositionTokenService tokenService;
-    @Mock
     private UiConfigReleaseMapper releaseMapper;
     @Mock
     private UiConfigReleaseService releaseService;
@@ -110,7 +109,6 @@ class UiViewCompositionActionServiceTest {
                 PermissionUtil.class, "staticMenuMapper", menuMapper);
         service = new UiViewCompositionActionService(
                 runtimeService,
-                tokenService,
                 releaseMapper,
                 releaseService,
                 entitySnapshotService,
@@ -159,18 +157,32 @@ class UiViewCompositionActionServiceTest {
     }
 
     @Test
-    void tamperedActionTokenFailsBeforeRuntimeResolution() {
-        when(tokenService.verifySourceRow("tampered"))
+    void readonlyParentCannotReopenWriteActionsInChild() {
+        fixture(List.of("VIEW","LINK","UNLINK"),"REVERSE_REFERENCE",true,EntityRelation.OwnershipType.ASSOCIATION);
+        UiViewCompositionResolveResponse resolved=runtimeService.resolve(compositionContext());
+        when(runtimeService.resolve(any())).thenReturn(resolved.toBuilder().readonlyContext(true).build());
+        UiViewCompositionActionCapabilitiesRequest request=new UiViewCompositionActionCapabilitiesRequest();
+        request.setCompositionContext(compositionContext());
+        var actions=service.capabilities(request).getActionCapabilities();
+        assertTrue(actions.get("VIEW").isAvailable());
+        assertFalse(actions.get("LINK").isAvailable());
+        assertFalse(actions.get("UNLINK").isAvailable());
+        verify(mutationPort,never()).executeBatch(any());
+    }
+
+    @Test
+    void unauthorizedBusinessContextFailsBeforeMutation() {
+        when(runtimeService.resolve(any()))
                 .thenThrow(new BusinessForbiddenException(
-                        "INVALID_VIEW_COMPOSITION_TOKEN",
-                        "令牌签名无效"));
+                        "VIEW_COMPOSITION_ROW_OUT_OF_SCOPE",
+                        "来源记录不可访问"));
 
         assertThrows(
                 BusinessForbiddenException.class,
                 () -> service.execute(request(
                         "tampered", "SELECT", "op-1", "target-1")));
 
-        verify(runtimeService, never()).resolve(any());
+        verify(runtimeService).resolve(any());
         verify(mutationPort, never()).executeBatch(any());
     }
 
@@ -255,7 +267,7 @@ class UiViewCompositionActionServiceTest {
                 EntityRelation.OwnershipType.ASSOCIATION);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -275,7 +287,7 @@ class UiViewCompositionActionServiceTest {
                 EntityRelation.OwnershipType.COMPOSITION);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -357,7 +369,7 @@ class UiViewCompositionActionServiceTest {
             field.setFieldType(type);
             field.setRefEntityId("other-entity");
             UiViewCompositionActionCapabilitiesRequest request = new UiViewCompositionActionCapabilitiesRequest();
-            request.setActionContextToken("action-token");
+            request.setCompositionContext(compositionContext());
             assertFalse(service.capabilities(request).getActionCapabilities().get("LINK").isAvailable());
             assertThrows(BusinessForbiddenException.class, () -> service.execute(
                     request("action-token", "LINK", "invalid-" + type, "target-1")));
@@ -381,8 +393,6 @@ class UiViewCompositionActionServiceTest {
                         nullableData(
                                 "ownerName", "来源名称",
                                 "targetRef", current.get())));
-        when(tokenService.verifyCandidateList("candidate-token"))
-                .thenReturn(candidateClaims(Map.of(), false));
         EntityDataDTO target = record("target-1", Map.of(
                 "displayName", "目标名称",
                 "sourceRef", "source-1"));
@@ -492,7 +502,7 @@ class UiViewCompositionActionServiceTest {
                 PermissionUtil.class, "staticMenuMapper", menuMapper);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -539,58 +549,27 @@ class UiViewCompositionActionServiceTest {
     }
 
     @Test
-    void reverseReferenceCandidateTokenOnlyContainsUnlinkedScope() {
+    void reverseReferenceCandidateScopeIsRecomputed() {
         fixture(
                 List.of("VIEW", "LINK", "UNLINK"),
                 "REVERSE_REFERENCE",
                 true,
                 EntityRelation.OwnershipType.ASSOCIATION);
-        when(tokenService.issueCandidateList(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.anyBoolean()))
-                .thenReturn("candidate-issued");
         UiViewCompositionLinkCandidatesRequest request =
                 new UiViewCompositionLinkCandidatesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
         request.setAction("LINK");
 
         UiViewCompositionLinkCandidatesResponse response =
                 service.linkCandidates(request);
 
-        assertEquals("candidate-issued",
-                response.getCandidateListContextToken());
+        assertEquals(request.getCompositionContext(), response.getCompositionContext());
         assertFalse(response.isMatchNone());
-        verify(tokenService).issueCandidateList(
-                "FORM",
-                "owner-form",
-                "owner-release",
-                3,
-                "related-targets",
-                "source_entity",
-                "source-1",
-                "target_entity",
-                "target-list",
-                "target-release",
-                2,
-                Map.of(
-                        "sourceRef", true,
-                        "sourceRef_op", "IS_NULL"),
-                false);
+        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
     }
 
     @Test
-    void relationScopeRemainsSignedWhenListAlreadyUsesIsNullFilter() {
+    void relationScopeRemainsConstrainedWhenListAlreadyUsesIsNullFilter() {
         Fixture fixture = fixture(
                 List.of("VIEW", "LINK", "UNLINK"),
                 "REVERSE_REFERENCE",
@@ -609,46 +588,16 @@ class UiViewCompositionActionServiceTest {
                                         "fieldCode", "displayName",
                                         "showInList", true,
                                         "dataSourceType", "ENTITY_FIELD")))));
-        when(tokenService.issueCandidateList(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.anyBoolean()))
-                .thenReturn("candidate-issued");
         UiViewCompositionLinkCandidatesRequest request =
                 new UiViewCompositionLinkCandidatesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
         request.setAction("LINK");
 
         UiViewCompositionLinkCandidatesResponse response =
                 service.linkCandidates(request);
 
         assertFalse(response.isMatchNone());
-        verify(tokenService).issueCandidateList(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.eq(Map.of(
-                        "sourceRef", true,
-                        "sourceRef_op", "IS_NULL")),
-                org.mockito.ArgumentMatchers.eq(false));
+        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
     }
 
     @Test
@@ -658,77 +607,19 @@ class UiViewCompositionActionServiceTest {
                 "REFERENCE_FIELD",
                 true,
                 EntityRelation.OwnershipType.ASSOCIATION);
-        when(tokenService.issueCandidateList(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyMap(),
-                org.mockito.ArgumentMatchers.anyBoolean()))
-                .thenReturn("candidate-issued");
         UiViewCompositionLinkCandidatesRequest request =
                 new UiViewCompositionLinkCandidatesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
         request.setAction("LINK");
 
         UiViewCompositionLinkCandidatesResponse response =
                 service.linkCandidates(request);
 
         assertTrue(response.isMatchNone());
-        verify(tokenService).issueCandidateList(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.eq(Map.of()),
-                org.mockito.ArgumentMatchers.eq(true));
+        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
     }
 
-    @Test
-    void linkCannotUseOnlyOrdinaryActionTokenWithoutCandidateScope() {
-        fixture(
-                List.of("VIEW", "LINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiViewCompositionActionRequest request = request(
-                "action-token", "LINK", "missing-candidate", "target-1");
-        request.setCandidateListContextToken(null);
 
-        BusinessForbiddenException failure = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request));
-
-        assertEquals(
-                "VIEW_COMPOSITION_LINK_CANDIDATE_CONTEXT_REQUIRED",
-                failure.getErrorCode());
-        verify(actionReceiptService, never()).acquire(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.anyString());
-        verify(mutationPort, never()).executeBatch(any());
-    }
 
     @Test
     void batchFingerprintConflictStopsBeforeRecordMutation() {
@@ -770,8 +661,6 @@ class UiViewCompositionActionServiceTest {
                 "REFERENCE_FIELD",
                 true,
                 EntityRelation.OwnershipType.ASSOCIATION);
-        when(tokenService.verifyCandidateList("candidate-token"))
-                .thenReturn(candidateClaims(Map.of(), false));
         UiViewCompositionActionResponse historical =
                 UiViewCompositionActionResponse.builder()
                         .operationId("reference-replay")
@@ -812,7 +701,7 @@ class UiViewCompositionActionServiceTest {
                 false);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -835,32 +724,23 @@ class UiViewCompositionActionServiceTest {
                 false);
 
         Map<String, Object> trusted = service.authorizeFormSubmission(
-                "action-token",
+                compositionContext(),
                 "CREATE",
                 "target_entity",
                 null,
                 "target-form",
-                "target-release",
-                2,
-                "target-form-token");
+                "target-config-hash");
 
         assertEquals(Map.of("displayName", "来源名称"), trusted);
-        verify(releaseService).resolveAuthorizedRuntimeFormRelease(
-                "target-form",
-                "target-release",
-                2,
-                "target-form-token");
         BusinessForbiddenException error = assertThrows(
                 BusinessForbiddenException.class,
                 () -> service.authorizeFormSubmission(
-                        "action-token",
+                        compositionContext(),
                         "EDIT",
                         "target_entity",
                         "other-target",
                         "target-form",
-                        "target-release",
-                        2,
-                        "target-form-token"));
+                        "target-config-hash"));
         assertEquals("VIEW_COMPOSITION_EDIT_TARGET_MISMATCH",
                 error.getErrorCode());
     }
@@ -873,7 +753,7 @@ class UiViewCompositionActionServiceTest {
                 true);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -893,7 +773,7 @@ class UiViewCompositionActionServiceTest {
         formFixture(List.of("VIEW", "EDIT"), null, false);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
-        request.setActionContextToken("action-token");
+        request.setCompositionContext(compositionContext());
 
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
@@ -1146,11 +1026,6 @@ class UiViewCompositionActionServiceTest {
                                         "showInList", targetFieldVisible,
                                         "dataSourceType", "ENTITY_FIELD"))));
 
-        UiViewCompositionTokenService.Claims claims = claims();
-        when(tokenService.verifySourceRow("action-token"))
-                .thenReturn(claims);
-        when(tokenService.verifyCandidateList("candidate-token"))
-                .thenReturn(candidateClaims());
         when(runtimeService.resolve(any()))
                 .thenReturn(UiViewCompositionResolveResponse.builder()
                         .ownerType("FORM")
@@ -1177,9 +1052,7 @@ class UiViewCompositionActionServiceTest {
                                         "sourceRef_op", "EQ"))
                         .matchNone("FORM".equals(targetContentType)
                                 && targetRecordId == null)
-                        .targetReleaseResolutionToken(
-                                "FORM".equals(targetContentType)
-                                        ? "target-form-token" : null)
+                        .targetContentHash("target-config-hash")
                         .build());
         UiConfigRelease ownerRelease = release(
                 "owner-release", "FORM", "owner-form", 3);
@@ -1346,6 +1219,13 @@ class UiViewCompositionActionServiceTest {
         return new EntityMutationBatchResult(batch.operationId(), results);
     }
 
+    private UiViewCompositionResolveRequest compositionContext() {
+        UiViewCompositionResolveRequest context = new UiViewCompositionResolveRequest();
+        context.setOwnerType("FORM"); context.setOwnerId("owner-form");
+        context.setRecordId("source-1"); context.setCompositionKey("related-targets");
+        return context;
+    }
+
     private UiViewCompositionActionRequest request(
             String token,
             String action,
@@ -1353,10 +1233,7 @@ class UiViewCompositionActionServiceTest {
             String... ids) {
         UiViewCompositionActionRequest request =
                 new UiViewCompositionActionRequest();
-        request.setActionContextToken(token);
-        if ("LINK".equals(action)) {
-            request.setCandidateListContextToken("candidate-token");
-        }
+        request.setCompositionContext(compositionContext());
         request.setAction(action);
         request.setOperationId(operationId);
         request.setTargetRecordIds(List.of(ids));
@@ -1369,46 +1246,12 @@ class UiViewCompositionActionServiceTest {
             String... ids) {
         UiViewCompositionActionRequest request = request(
                 "action-token", "SELECT", operationId, ids);
-        request.setCandidateListContextToken("candidate-token");
         return request;
     }
 
-    private UiViewCompositionTokenService.Claims candidateClaims() {
-        return candidateClaims(
-                Map.of(
-                        "sourceRef", true,
-                        "sourceRef_op", "IS_NULL"),
-                false);
-    }
 
-    private UiViewCompositionTokenService.Claims candidateClaims(
-            Map<String, Object> filters,
-            boolean matchNone) {
-        return new UiViewCompositionTokenService.Claims(
-                "CANDIDATE_LIST",
-                "FORM",
-                "owner-form",
-                "owner-release",
-                3,
-                "related-targets",
-                "source_entity",
-                "source-1",
-                "target_entity",
-                "target-list",
-                "target-release",
-                2,
-                filters,
-                matchNone,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                "action-user",
-                1L,
-                Long.MAX_VALUE);
-    }
+
+
 
     private Map<String, Object> nullableData(
             String firstKey,
@@ -1421,32 +1264,7 @@ class UiViewCompositionActionServiceTest {
         return result;
     }
 
-    private UiViewCompositionTokenService.Claims claims() {
-        return new UiViewCompositionTokenService.Claims(
-                "SOURCE_ROW",
-                "FORM",
-                "owner-form",
-                "owner-release",
-                3,
-                "related-targets",
-                "source_entity",
-                "source-1",
-                null,
-                null,
-                null,
-                null,
-                Map.of(),
-                false,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                "action-user",
-                1L,
-                Long.MAX_VALUE);
-    }
+
 
     private UiConfigRelease release(
             String id,

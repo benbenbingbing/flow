@@ -15,24 +15,16 @@ export function normalizeRelatedContentRuntimeActions(actions) {
     .filter(action => RELATED_CONTENT_RUNTIME_ACTIONS.has(action)))]
 }
 
-/**
- * 构造关联内容解析请求。历史钉定表单的发布令牌只作为服务端校验凭证透传；
- * 缺失时保持 undefined，让服务端继续执行当前激活版本的 fail-closed 校验。
- */
+/** 来源路径只是定位信息；服务端从根入口重新鉴权并逐层推导关联范围。 */
 export function buildRelatedContentResolveInput(input = {}) {
-  const releaseResolutionToken = String(
-    input.releaseResolutionToken || ''
-  ).trim()
   return {
     ownerType: String(input.ownerType || '').toUpperCase(),
     ownerId: String(input.ownerId ?? ''),
-    releaseId: input.releaseId,
-    releaseVersion: input.releaseVersion,
     compositionKey: input.compositionKey,
     recordId: input.sourceRecordId || undefined,
-    rowContextToken: input.rowContextToken || undefined,
-    traversalContextToken: input.traversalContextToken || undefined,
-    releaseResolutionToken: releaseResolutionToken || undefined
+    configHash: input.configHash || undefined,
+    runtimeContext: input.runtimeContext || undefined,
+    compositionContext: input.compositionContext || undefined
   }
 }
 
@@ -76,27 +68,13 @@ export function filterRelatedContentButtons(buttons, actions, placement) {
   })
 }
 
-/**
- * 校验服务端解析结果中不可缺少的安全凭证。
- *
- * LIST 没有签名上下文时绝不能继续挂载普通列表，否则请求会退化为目标列表的
- * 常规查询路径并丢失关联固定条件。
- */
+/** 关联页面必须保留来源路径，否则不能退化为目标实体的普通查询。 */
 export function assertRelatedContentResolveContract(value) {
-  if (!value || typeof value !== 'object') {
-    throw new Error('关联内容解析结果为空')
-  }
+  if (!value || typeof value !== 'object') throw new Error('关联内容解析结果为空')
   const contentType = String(value.targetContentType || '').toUpperCase()
-  if (!['FORM', 'LIST'].includes(contentType)) {
-    throw new Error('关联内容目标类型无效')
-  }
-  if (contentType === 'LIST'
-    && !String(value.listContextToken || '').trim()) {
-    throw new Error('关联列表缺少可信查询凭证，已停止加载')
-  }
-  if (value.matchNone !== true
-    && !String(value.traversalContextToken || '').trim()) {
-    throw new Error('关联内容缺少安全导航凭证，已停止加载')
+  if (!['FORM', 'LIST'].includes(contentType)) throw new Error('关联内容目标类型无效')
+  if (value.matchNone !== true && (!value.compositionContext || typeof value.compositionContext !== 'object')) {
+    throw new Error('关联内容缺少来源路径，已停止加载')
   }
   return value
 }

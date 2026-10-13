@@ -95,15 +95,12 @@ public class EntityDataExportService {
         EntityListConfig config = listConfigService.findListConfig(
                 entityCode,
                 request.getListKey(),
-                request.getReleaseId(),
-                request.getReleaseVersion(),
-                request.getReleaseResolutionToken());
+                request.getConfigHash(),
+                request.getRuntimeContext());
         if (config == null
                 && (StringUtils.hasText(request.getListKey())
-                || StringUtils.hasText(request.getReleaseId())
-                || request.getReleaseVersion() != null
-                || StringUtils.hasText(
-                        request.getReleaseResolutionToken()))) {
+                || StringUtils.hasText(request.getConfigHash())
+                || (request.getRuntimeContext() != null && !request.getRuntimeContext().isEmpty()))) {
             throw new IllegalArgumentException(
                     "列表不存在或尚未发布: "
                             + request.getListKey());

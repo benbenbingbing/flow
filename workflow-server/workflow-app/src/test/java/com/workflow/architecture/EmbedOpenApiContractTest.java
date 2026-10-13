@@ -928,8 +928,7 @@ class EmbedOpenApiContractTest {
                 Map.of("supplierId", "supplier-1"));
         when(targetResolver.authorize(any(), any(), any()))
                 .thenReturn(target);
-        when(nativeRuntimePort.issueReleaseResolutionToken(any()))
-                .thenReturn("native-release-token-0123456789abcdef");
+        when(nativeRuntimePort.configHash(any())).thenReturn("native-form-config-hash");
         EmbedNativeFormTargetController targetController =
                 new EmbedNativeFormTargetController(
                         targetResolver, nativeRuntimePort);
@@ -1517,11 +1516,9 @@ class EmbedOpenApiContractTest {
         Schema<?> target = schemas.get("NativeFormTarget");
         assertNotNull(target, "NativeFormTarget 缺失");
         assertEquals(Set.of(
-                        "entityCode", "formId", "formReleaseId",
-                        "formReleaseVersion", "listKey", "listReleaseId",
-                        "listReleaseVersion", "listReleaseResolutionToken",
-                        "entryMode", "recordId",
-                        "processInstanceId", "formReleaseResolutionToken",
+                        "entityCode", "formId", "formConfigHash",
+                        "listKey", "listConfigHash", "runtimeContext",
+                        "entryMode", "recordId", "processInstanceId",
                         "defaultFormResolved", "initialData", "parameters", "context"),
                 target.getProperties().keySet(),
                 "原生目标只能公开固定坐标和上下文，不能投影表单组件");

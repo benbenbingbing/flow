@@ -1,9 +1,13 @@
 <template>
   <div class="flow-action-config">
     <div class="actions-header">
-      <div>
-        <div class="section-title">{{ sectionTitle }}</div>
-        <div class="section-subtitle">{{ sectionSubtitle }}</div>
+      <div class="section-heading">
+        <ConfigHelpLabel
+          class="section-title"
+          :label="sectionTitle"
+          :content="`${sectionSubtitle}。流程发布后动作才生效。`"
+        />
+        <el-tag v-if="hasDraftChanges" type="warning" size="small">有未发布变更</el-tag>
       </div>
       <div class="header-actions">
         <el-button v-if="canOpenExtensionManagement" size="small" @click="openExtensionManagement">
@@ -14,15 +18,6 @@
         </el-button>
       </div>
     </div>
-
-    <el-alert type="info" :closable="false" class="action-alert">
-      <template #title>
-        <div class="alert-content">
-          <span>流程发布后动作才生效</span>
-          <el-tag v-if="hasDraftChanges" type="warning" size="small">有未发布变更</el-tag>
-        </div>
-      </template>
-    </el-alert>
 
     <div class="actions-list" v-loading="loading">
       <div
@@ -126,6 +121,7 @@
               <ConfigHelpLabel
                 label="执行时机"
                 help-key="process.actionTriggerTiming"
+                :content="timingHelp"
               />
             </template>
             <el-select
@@ -146,7 +142,6 @@
                 </div>
               </el-option>
             </el-select>
-            <div class="form-tip">{{ currentTimingOption?.availableContext }}</div>
           </el-form-item>
 
           <el-form-item label="执行方式" required>
@@ -177,6 +172,7 @@
               <ConfigHelpLabel
                 label="处理器"
                 help-key="process.flowActionHandler"
+                :content="handlerHelp"
               />
             </template>
             <ExtensionCapabilityPicker
@@ -188,9 +184,6 @@
               :current-option="currentHandlerCatalogOption"
               @selected="onHandlerSelected"
             />
-            <div class="form-tip">
-              {{ currentHandler?.description || '处理器必须实现 FlowActionProvider，提交后动作应使用幂等键' }}
-            </div>
           </el-form-item>
 
           <el-form-item label="是否启用">
@@ -229,7 +222,7 @@
           <template v-if="editingAction.failurePolicy === 'CUSTOM'">
             <el-form-item label="自定义策略" required>
               <template #label>
-                <ConfigHelpLabel label="自定义策略" help-key="process.actionFailureStrategy" />
+                <ConfigHelpLabel label="自定义策略" help-key="process.actionFailureStrategy" :content="failureStrategyHelp" />
               </template>
               <el-select :model-value="selectedStrategyKey" :loading="strategyLoading" placeholder="请选择已注册策略" style="width: 100%" @change="onStrategySelected">
                 <el-option v-if="selectedStrategyKey && !currentStrategy" :value="selectedStrategyKey" :label="`${selectedStrategyKey}（当前不可用）`" disabled />
@@ -241,7 +234,6 @@
                   <span v-if="strategy.unavailableReason" class="failure-strategy-option__reason">{{ strategy.unavailableReason }}</span>
                 </el-option>
               </el-select>
-              <div class="form-tip">{{ currentStrategy?.description || '动作抛出异常后调用，无需额外配置失败触发条件。' }}</div>
             </el-form-item>
             <el-alert v-if="customStrategyProblem" :title="customStrategyProblem" type="warning" :closable="false" show-icon />
             <el-button v-if="strategyLoadError" link type="primary" @click="loadFailureStrategies">重新加载策略</el-button>
@@ -252,8 +244,13 @@
             v-if="editingAction.executionMode === 'AFTER_COMMIT' && ['RETRY', 'CUSTOM'].includes(editingAction.failurePolicy)"
             :label="editingAction.failurePolicy === 'CUSTOM' ? '额外重试次数' : '最大重试'"
           >
+            <template #label>
+              <ConfigHelpLabel
+                :label="editingAction.failurePolicy === 'CUSTOM' ? '额外重试次数' : '最大重试'"
+                :content="editingAction.failurePolicy === 'CUSTOM' ? '首次执行之外允许重试的次数；策略决定是否重试及等待时间，转人工不会自动暂停流程。' : '默认指数退避，最多等待 6 小时；超过次数进入死信记录'"
+              />
+            </template>
             <el-input-number v-model="retryForm.maxRetries" :min="0" :max="20" />
-            <div class="form-tip">{{ editingAction.failurePolicy === 'CUSTOM' ? '首次执行之外允许重试的次数；策略决定是否重试及等待时间，转人工不会自动暂停流程。' : '默认指数退避，最多等待 6 小时；超过次数进入死信记录' }}</div>
           </el-form-item>
 
           <el-alert
@@ -347,6 +344,7 @@ import { processActionApi } from '@/api/processAction'
 import { extensionCatalogApi } from '@/api/system/extension'
 import { useUserStore } from '@/stores/user'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
+import { getConfigFieldHelp } from '@/shared/config-field-help'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
@@ -431,6 +429,19 @@ const currentHandler = computed(() => handlers.value.find(item =>
   item.definitionId === editingAction.value.actionDefinitionId
   || item.beanName === editingAction.value.interfaceName
 ))
+// 将当前选项的上下文与通用规则合并到帮助中，切换时机、处理器或策略后说明同步更新。
+const timingHelp = computed(() => [
+  getConfigFieldHelp('process.actionTriggerTiming'),
+  currentTimingOption.value?.availableContext
+].filter(Boolean).join(' '))
+const handlerHelp = computed(() => [
+  getConfigFieldHelp('process.flowActionHandler'),
+  currentHandler.value?.description || '提交后动作应使用幂等键。'
+].filter(Boolean).join(' '))
+const failureStrategyHelp = computed(() => [
+  getConfigFieldHelp('process.actionFailureStrategy'),
+  currentStrategy.value?.description || '动作抛出异常后调用，无需额外配置失败触发条件。'
+].filter(Boolean).join(' '))
 const handlerContextParams = computed(() => ({
   processConfigId: props.processId
 }))
@@ -816,7 +827,7 @@ function openExtensionManagement() {
 .actions-header,
 .action-title-row,
 .action-meta,
-.alert-content {
+.section-heading {
   display: flex;
   align-items: center;
 }
@@ -836,18 +847,12 @@ function openExtensionManagement() {
   font-weight: 600;
 }
 
-.section-subtitle,
-.form-tip {
-  margin-top: 4px;
-  color: #909399;
-  font-size: 12px;
+.section-heading,
+.header-actions {
+  flex-wrap: wrap;
 }
 
-.action-alert {
-  margin-bottom: 12px;
-}
-
-.alert-content,
+.section-heading,
 .action-title-row,
 .action-meta {
   gap: 8px;

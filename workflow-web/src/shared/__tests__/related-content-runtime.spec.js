@@ -49,18 +49,17 @@ assert.deepEqual(
 
 assert.throws(
   () => assertRelatedContentResolveContract({ targetContentType: 'LIST' }),
-  /缺少可信查询凭证/
+  /缺少来源路径/
 )
 assert.doesNotThrow(() => assertRelatedContentResolveContract({
   targetContentType: 'LIST',
-  listContextToken: 'signed-list-context',
-  traversalContextToken: 'signed-traversal-context'
+  compositionContext: { ownerType: 'FORM', ownerId: 'form', compositionKey: 'items', recordId: '1' }
 }))
 assert.throws(
   () => assertRelatedContentResolveContract({
     targetContentType: 'FORM'
   }),
-  /缺少安全导航凭证/
+  /缺少来源路径/
 )
 
 const pinnedResolveInput = buildRelatedContentResolveInput({
@@ -70,13 +69,13 @@ const pinnedResolveInput = buildRelatedContentResolveInput({
   releaseVersion: 5,
   compositionKey: 'related-project',
   sourceRecordId: 'source-record',
-  releaseResolutionToken: ' signed-owner-release '
+  configHash: 'owner-hash'
 })
 assert.equal(pinnedResolveInput.ownerType, 'FORM')
 assert.equal(
-  pinnedResolveInput.releaseResolutionToken,
-  'signed-owner-release',
-  '历史钉定表单必须把服务端签发的发布令牌带入关联内容解析请求'
+  pinnedResolveInput.configHash,
+  'owner-hash',
+  '关联内容传递当前配置摘要以检查配置变化'
 )
 
 const activeResolveInput = buildRelatedContentResolveInput({
@@ -87,11 +86,11 @@ const activeResolveInput = buildRelatedContentResolveInput({
   compositionKey: 'related-project',
   sourceRecordId: 'source-record'
 })
-assert.equal(activeResolveInput.releaseResolutionToken, undefined)
+assert.equal(activeResolveInput.configHash, undefined)
 assert.equal(
-  JSON.stringify(activeResolveInput).includes('releaseResolutionToken'),
+  JSON.stringify(activeResolveInput).includes('configHash'),
   false,
-  '未签发令牌时不能伪造空凭证或改变当前激活版本解析语义'
+  '首次读取不要求配置摘要'
 )
 
 const gate = createLatestRequestGate()
@@ -109,17 +108,17 @@ const relatedRuntimeSource = readFileSync(
 assert.match(
   relatedRuntimeSource,
   /entityApi\.getByCode\(value\.targetEntityCode, traversalRuntimeContext\)/,
-  '目标实体定义必须沿服务端签名的关联遍历链读取'
+  '目标实体定义必须沿服务端核验的关联来源路径读取'
 )
 assert.match(
   relatedRuntimeSource,
   /getEntityStatusList\(value\.targetEntityCode, traversalRuntimeContext\)/,
-  '目标表单状态必须与目标实体共用同一签名遍历上下文'
+  '目标表单状态必须与目标实体共用同一关联来源路径'
 )
 assert.match(
   relatedRuntimeSource,
-  /viewCompositionTraversalToken:\s*value\.traversalContextToken/,
-  '目标详情、子表单与原生动作必须继续透传遍历令牌'
+  /compositionContext:\s*value\.compositionContext/,
+  '目标详情、子表单与原生动作必须继续透传关联来源路径'
 )
 
 console.log('related content runtime tests passed')

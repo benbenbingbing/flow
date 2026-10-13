@@ -107,7 +107,8 @@ class UiEventRuntimeServiceTest {
                 formActionService,
                 executionReceiptService,
                 entityDataService,
-                objectMapper);
+                objectMapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         org.mockito.Mockito.lenient().when(
                 formActionService.requireCustomButton(
                         any(UiEventExecuteRequest.class),
@@ -467,7 +468,7 @@ class UiEventRuntimeServiceTest {
                 "ROW_BUTTON_CLICK", "archive");
         request.setRecordId("record-1");
         request.setRequestId("list-request-1");
-        request.setReleaseResolutionToken("verified-token");
+
         request.setInput(Map.of("note", "kept"));
         request.setContext(Map.of(
                 "recordId", "forged-context-record",
@@ -1226,7 +1227,8 @@ class UiEventRuntimeServiceTest {
         service = new UiEventRuntimeService(
                 bindingService, dataSourceService, new UiEventValueMapper(),
                 selectionRuntimeService, auditPort, actionCapabilityService,
-                formActionService, executionReceiptService, entityDataService, objectMapper);
+                formActionService, executionReceiptService, entityDataService, objectMapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         UiEventExecuteRequest request = request(eventCode, "singleUser");
         request.setConfigType("FORM");
         request.setConfigId("form-1");
@@ -1283,7 +1285,8 @@ class UiEventRuntimeServiceTest {
         service = new UiEventRuntimeService(
                 bindingService, dataSourceService, new UiEventValueMapper(),
                 selectionRuntimeService, auditPort, actionCapabilityService,
-                formActionService, executionReceiptService, entityDataService, objectMapper);
+                formActionService, executionReceiptService, entityDataService, objectMapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         UiEventExecuteRequest request = request(eventCode, "");
         request.setConfigType("FORM");
         request.setConfigId("form-1");
@@ -1316,6 +1319,33 @@ class UiEventRuntimeServiceTest {
         assertFalse(provider.getValue().getContext().containsKey("initialData"));
         assertEquals(Map.of("form", Map.of("owner", "selected-user")),
                 result.getEffects().get(0).get("data"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"FIELD_CHANGE", "FORM_OPEN", "DETAIL_LOAD", "SUBFORM_LOAD"})
+    void taskAuthorizedFieldInitializationDoesNotRequireOrdinaryEntityPermission(String eventCode) {
+        UiEventExecuteRequest request = request(eventCode, "assignee");
+        request.setConfigType("FORM"); request.setConfigId("form-1");
+        request.setTargetType("FIELD_CHANGE".equals(eventCode) || "SUBFORM_LOAD".equals(eventCode) ? "FIELD" : "OWNER");
+        request.setRecordId("record-1");
+        // 模拟发布解析器已经按真实任务及记录回查后设置的内部来源。
+        request.setServerProcessInstanceId("instance-1"); request.setServerTaskId("task-1");
+        request.setServerRecordId("record-1"); request.setServerAuthorizedMode("approve");
+        stubPublishedChain(request);
+        service.execute(request);
+        verify(actionCapabilityService, never()).requireStandardPermission(any(), any());
+    }
+
+    @Test
+    void verifiedFieldScopeCannotBeAppliedToAnotherRecord() {
+        UiEventExecuteRequest request = request("FIELD_CHANGE", "assignee");
+        request.setConfigType("FORM"); request.setConfigId("form-1"); request.setTargetType("FIELD");
+        request.setRecordId("another-record"); request.setServerRecordId("record-1");
+        request.setServerProcessInstanceId("instance-1"); request.setServerAuthorizedMode("view");
+        stubPublishedChain(request);
+        assertEquals("FORM_FIELD_RECORD_CONTEXT_MISMATCH", assertThrows(BusinessForbiddenException.class,
+                () -> service.execute(request)).getErrorCode());
+        org.mockito.Mockito.verifyNoInteractions(dataSourceService);
     }
 
     private UiEventExecuteRequest request(String eventCode, String targetKey) {

@@ -12,6 +12,18 @@ public final class EmbedDelegatedRequestContext {
     private static final ThreadLocal<SessionCoordinates> CURRENT_SESSION =
             new ThreadLocal<>();
 
+    private static final ThreadLocal<AuthorizedListTarget> CURRENT_LIST = new ThreadLocal<>();
+
+    /** 仅由认证后的 Embed 策略保存服务端固定列表；客户端 runtimeContext 无法设置此值。 */
+    public record AuthorizedListTarget(String entityCode, String listKey, String releaseId, Integer releaseVersion) {}
+
+    public static void authorizeListTarget(String entityCode, String listKey, String releaseId, Integer releaseVersion) {
+        if (CURRENT_SESSION.get() == null) throw new IllegalStateException("缺少已认证 Embed 会话");
+        CURRENT_LIST.set(new AuthorizedListTarget(entityCode, listKey, releaseId, releaseVersion));
+    }
+
+    public static Optional<AuthorizedListTarget> authorizedListTarget() { return Optional.ofNullable(CURRENT_LIST.get()); }
+
     public static final String VERIFIED_ATTRIBUTE =
             EmbedDelegatedRequestContext.class.getName() + ".verified";
     public static final String TARGET_ATTRIBUTE =
@@ -68,9 +80,12 @@ public final class EmbedDelegatedRequestContext {
             String sessionId,
             String viewReleaseId) {
         SessionCoordinates previous = CURRENT_SESSION.get();
+        AuthorizedListTarget previousList = CURRENT_LIST.get();
+        CURRENT_LIST.remove();
         CURRENT_SESSION.set(new SessionCoordinates(
                 sessionId, viewReleaseId));
         return () -> {
+            if (previousList == null) CURRENT_LIST.remove(); else CURRENT_LIST.set(previousList);
             if (previous == null) {
                 CURRENT_SESSION.remove();
             } else {

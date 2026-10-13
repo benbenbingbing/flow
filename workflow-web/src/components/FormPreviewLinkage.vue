@@ -131,15 +131,16 @@
         :composition="item"
         owner-type="FORM"
         :owner-id="form.id"
-        :release-id="runtimeReleaseId"
-        :release-version="runtimeReleaseVersion"
+
+
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
         :host-readonly="readonly"
         :mode="mode"
-        :traversal-context-token="runtimeTraversalContextToken"
-        :release-resolution-token="runtimeReleaseResolutionToken"
+        :composition-context="runtimeCompositionContext"
+        :config-hash="runtimeConfigHash"
+        :runtime-context="runtimeContext"
         @source-patch="applyRelatedContentPatch"
       />
     </template>
@@ -151,15 +152,16 @@
         :composition="item"
         owner-type="FORM"
         :owner-id="form.id"
-        :release-id="runtimeReleaseId"
-        :release-version="runtimeReleaseVersion"
+
+
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
         :host-readonly="readonly"
         :mode="mode"
-        :traversal-context-token="runtimeTraversalContextToken"
-        :release-resolution-token="runtimeReleaseResolutionToken"
+        :composition-context="runtimeCompositionContext"
+        :config-hash="runtimeConfigHash"
+        :runtime-context="runtimeContext"
         @source-patch="applyRelatedContentPatch"
       />
     </template>
@@ -370,32 +372,26 @@ const runtimeContext = computed(() => ({
   formCustomValidation: customValidation.runtime
 }))
 
-const runtimeReleaseId = computed(() =>
-  props.form?.runtimeReleaseId
-  || props.form?.formReleaseId
+const configHash = computed(() =>
+  props.form?.configHash
   || ''
 )
-const runtimeReleaseVersion = computed(() => Number(
-  props.form?.runtimeReleaseVersion
-  ?? props.form?.formReleaseVersion
-  ?? 0
-))
 const sourceRecordId = computed(() => String(
   props.context?.record?.id
   || props.context?.recordId
   || ''
 ))
-const runtimeTraversalContextToken = computed(() => String(
-  props.context?.viewCompositionTraversalToken || ''
+const runtimeCompositionContext = computed(() => (
+  props.context?.compositionContext || ''
 ))
-const runtimeReleaseResolutionToken = computed(() => String(
-  props.form?.releaseResolutionToken
-  || props.context?.releaseResolutionToken
+const runtimeConfigHash = computed(() => String(
+  props.form?.configHash
+  || props.context?.configHash
   || ''
 ))
 const ownerRelatedContents = computed(() =>
   !props.nodeRootParentId
-    && (props.designPreview || (runtimeReleaseId.value && runtimeReleaseVersion.value > 0))
+    && (props.designPreview || Boolean(configHash.value))
     ? formRelatedContentsAt(props.form?.viewCompositions, null, { preview: props.designPreview })
     : []
 )
@@ -406,7 +402,7 @@ const ownerRelatedContents = computed(() =>
 const tabRelatedContents = computed(() => {
   if (!props.nodeRootParentId) return []
   if (!props.designPreview
-      && (!runtimeReleaseId.value || runtimeReleaseVersion.value < 1)) return []
+      && !configHash.value) return []
   const tabNode = (props.form?.nodes || [])
     .find(node => String(node?.id || '') === String(props.nodeRootParentId))
   if (!tabNode || !createFormNodeVisibility(props.form?.nodes || [], { data: formData.value, mode: props.mode, context: props.context })(tabNode)) return []
@@ -531,9 +527,8 @@ watch(
 watch(
   () => [
     props.form?.id,
-    props.form?.runtimeReleaseId || props.form?.formReleaseId,
-    props.form?.runtimeReleaseVersion ?? props.form?.formReleaseVersion,
-    props.form?.releaseResolutionToken,
+    props.form?.configHash,
+    props.form?.configHash,
     props.context?.record?.id || props.context?.recordId,
     props.context?.initializationKey
   ],

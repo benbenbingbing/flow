@@ -87,7 +87,7 @@ function defaultGroups(items) { return items.flatMap(item => item.children ? [..
 watch(() => pageLayout.value.pages.map(page => page.name), names => {
   if (props.tabbed && !names.includes(props.activeTab)) emit('update:activeTab', pageLayout.value.defaultActiveTabName)
 })
-watch(() => [props.form.id, props.form.runtimeReleaseId || props.form.formReleaseId, props.context.initializationKey], () => {
+watch(() => [props.form.id, props.form.configHash, props.context.initializationKey], () => {
   expanded.value = defaultGroups(tree.value); baseErrors.value = {}; unique.reset(record.value); initialize()
   if (props.tabbed) emit('update:activeTab', pageLayout.value.defaultActiveTabName)
 }, { immediate: true })

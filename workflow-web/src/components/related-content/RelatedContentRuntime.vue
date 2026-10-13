@@ -160,10 +160,8 @@
         v-else-if="candidateContext"
         :entity-code="candidateContext.targetEntityCode"
         :list-key="candidateContext.targetContentKey"
-        :release-id="candidateContext.targetReleaseId"
-        :release-version="candidateContext.targetReleaseVersion"
-        :view-composition-context-token="candidateContext.candidateListContextToken"
-        :view-composition-traversal-token="resolved?.traversalContextToken"
+        :composition-context="candidateContext.compositionContext"
+        :candidate-action="linkCandidateAction"
         :selection-mode="candidateSelectionMode"
         :selection-action-options="candidateActionOptions"
         scene="EMBEDDED"
@@ -179,6 +177,7 @@
 </template>
 
 <script setup>
+import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import {
   computed,
@@ -231,16 +230,14 @@ const props = defineProps({
   composition: { type: Object, required: true },
   ownerType: { type: String, required: true },
   ownerId: { type: [String, Number], required: true },
-  releaseId: { type: String, required: true },
-  releaseVersion: { type: Number, required: true },
   sourceRecordId: { type: [String, Number], default: '' },
   sourceData: { type: Object, default: () => ({}) },
   sourceParameters: { type: Object, default: () => ({}) },
   hostReadonly: { type: Boolean, default: false },
   mode: { type: String, default: 'view' },
-  rowContextToken: { type: String, default: '' },
-  traversalContextToken: { type: String, default: '' },
-  releaseResolutionToken: { type: String, default: '' },
+  compositionContext: { type: Object, default: () => null },
+  configHash: { type: String, default: '' },
+  runtimeContext: { type: Object, default: () => ({}) },
   compact: Boolean,
   showTrigger: { type: Boolean, default: true }
 })
@@ -300,7 +297,7 @@ const failurePolicy = computed(() =>
 )
 const hasSourceContext = computed(() => Boolean(
   String(props.sourceRecordId || '').trim()
-    || String(props.rowContextToken || '').trim()
+    || props.compositionContext
 ))
 const displayTitle = computed(() =>
   presentation.value.title
@@ -335,9 +332,8 @@ const actions = computed(() => {
     publishedActionServiceKeys.value.has(action))
   return new Set([...standard, ...pinnedServices])
 })
-const actionContextToken = computed(() => String(
-  resolved.value?.actionContextToken
-  || resolved.value?.rowContextToken
+const compositionContext = computed(() => (
+  resolved.value?.compositionContext
   || ''
 ))
 const selectSettings = computed(() => config.value.actionSettings?.select || {})
@@ -395,7 +391,7 @@ const runtimeSelectionMode = computed(() => {
 const targetSaveAction = computed(() => resolved.value?.targetRecordId ? 'EDIT' : 'CREATE')
 const canSaveTarget = computed(() =>
   resolved.value?.targetContentType === 'FORM'
-    && Boolean(actionContextToken.value)
+    && Boolean(compositionContext.value)
     && Boolean(targetForm.value)
     && ![true, 1, '1'].includes(targetForm.value.isReadonly)
     && actions.value.has(targetSaveAction.value)
@@ -471,7 +467,7 @@ async function resolveComposition({ force = false } = {}) {
     return resolved.value
   }
   const requestRevision = requestGate.begin()
-  if (!input.recordId && !input.rowContextToken) {
+  if (!input.recordId && !input.compositionContext) {
     loading.value = false
     clearResolvedState()
     // 新建宿主还没有记录 ID，属于正常空状态，由展示层提示先保存，不显示加载失败。
@@ -528,7 +524,7 @@ async function resolveComposition({ force = false } = {}) {
         entityCode: value.targetEntityCode, getForm: () => targetState.form,
         getRecord: () => targetState.record || {}, getRecordId: () => value.targetRecordId,
         getMode: () => runtimeMode, getEntityDefinition: () => targetState.entity
-      }).withContext({ params: targetParameters.value, viewCompositionTraversalToken: value.traversalContextToken, context: { viewCompositionTraversalToken: value.traversalContextToken } })
+      }).withContext({ params: targetParameters.value, compositionContext: value.compositionContext, context: { compositionContext: value.compositionContext } })
       targetDataSourceRuntime.value = runtime
       if (targetState.record) await runtime.initialize({ form: targetState.form,
         fields: targetState.form.fields, nodes: targetState.form.nodes,
@@ -550,15 +546,15 @@ async function resolveComposition({ force = false } = {}) {
 }
 
 async function loadActionCapabilities(value) {
-  const token = String(value?.actionContextToken || value?.rowContextToken || '')
-  if (!token) {
+  const sourceContext = value?.compositionContext
+  if (!sourceContext) {
     return {
       capabilities: {},
       error: '服务端未返回可信动作凭证，已停止开放新增、编辑和关系操作。'
     }
   }
   try {
-    const response = await uiCompositionRuntimeApi.capabilities(token)
+    const response = await uiCompositionRuntimeApi.capabilities(sourceContext)
     return {
       capabilities: response?.actionCapabilities || {},
       error: ''
@@ -573,16 +569,11 @@ async function loadActionCapabilities(value) {
 
 async function loadTargetForm(value) {
   const traversalRuntimeContext = {
-    viewCompositionTraversalToken: value.traversalContextToken
+    compositionContext: value.compositionContext
   }
   const [entity, release, statuses] = await Promise.all([
     entityApi.getByCode(value.targetEntityCode, traversalRuntimeContext),
-    getFormRuntimeRelease(
-      value.targetContentId,
-      value.targetReleaseId,
-      value.targetReleaseVersion,
-      value.targetReleaseResolutionToken
-    ),
+    getFormRuntimeRelease(value.targetContentId, { compositionContext: value.compositionContext }),
     getEntityStatusList(value.targetEntityCode, traversalRuntimeContext)
   ])
   // 关联目标只使用本次加载的表单投影，清除其自带关联入口（包括字段和 Tab 挂载点）。
@@ -592,7 +583,7 @@ async function loadTargetForm(value) {
     ...normalizeRuntimeFormRelease(
       release,
       value.targetContentId,
-      release.releaseResolutionToken || value.targetReleaseResolutionToken
+      release.configHash || value.targetContentHash
     ),
     viewCompositions: []
   }
@@ -611,12 +602,10 @@ async function loadTargetForm(value) {
     value.targetContentId,
     {},
     {
-      releaseId: value.targetReleaseId,
-      releaseVersion: value.targetReleaseVersion,
-      releaseResolutionToken:
-        form.releaseResolutionToken
-        || value.targetReleaseResolutionToken,
-      viewCompositionTraversalToken: value.traversalContextToken
+      configHash:
+        form.configHash
+        || value.targetContentHash,
+      compositionContext: value.compositionContext
     }
   )
   return {
@@ -648,13 +637,11 @@ function currentResolveInput() {
   return buildRelatedContentResolveInput({
     ownerType: props.ownerType,
     ownerId: props.ownerId,
-    releaseId: props.releaseId,
-    releaseVersion: props.releaseVersion,
     compositionKey: props.composition?.compositionKey,
     sourceRecordId: props.sourceRecordId,
-    rowContextToken: props.rowContextToken,
-    traversalContextToken: props.traversalContextToken,
-    releaseResolutionToken: props.releaseResolutionToken
+    compositionContext: props.compositionContext,
+    configHash: props.configHash,
+    runtimeContext: buildRuntimeContext(props.runtimeContext)
   })
 }
 
@@ -732,7 +719,7 @@ function discardTargetDraft() {
 }
 
 /**
- * 创建/更新复用原生发布表单提交接口，携带关联动作与遍历凭证。
+ * 创建/更新复用原生发布表单提交接口，携带关联来源路径供服务端重新鉴权。
  * 校验或提交失败不重载草稿；提交期间锁定输入，并以来源身份隔离迟到的回包。
  */
 async function saveTarget() {
@@ -754,11 +741,9 @@ async function saveTarget() {
     const payload = {
       data,
       formId: form.id,
-      formReleaseId: value.targetReleaseId,
-      formReleaseVersion: value.targetReleaseVersion,
-      formReleaseResolutionToken: form.releaseResolutionToken,
-      viewCompositionActionContextToken: actionContextToken.value,
-      viewCompositionTraversalToken: value.traversalContextToken,
+      formConfigHash: form.configHash,
+      compositionContext: compositionContext.value,
+
       startProcess: false
     }
     const result = value.targetRecordId
@@ -793,7 +778,7 @@ function beforePresentationClose(done) {
  */
 async function openLinkCandidates() {
   if (!canPickLinkCandidate.value
-    || !actionContextToken.value
+    || !compositionContext.value
     || candidateLoading.value) return
   candidateVisible.value = true
   candidateLoading.value = true
@@ -801,7 +786,7 @@ async function openLinkCandidates() {
   candidateContext.value = null
   try {
     candidateContext.value = await uiCompositionRuntimeApi.linkCandidates(
-      actionContextToken.value,
+      compositionContext.value,
       linkCandidateAction.value
     )
   } catch (error) {
@@ -819,15 +804,15 @@ function createOperationId(action) {
 }
 
 /**
- * 浏览器只传签名上下文和选中记录 ID。服务端会重新读取记录、验证目标列表
+ * 浏览器只传关联来源和选中记录 ID。服务端会重新读取记录、验证目标列表
  * 范围并应用发布时固定的映射；前端行数据绝不会直接写入宿主或关系字段。
  */
 async function executeSelectionAction(
   action,
   rows = [],
-  candidateListContextToken = ''
+  candidateContext = null
 ) {
-  if (!actionContextToken.value || actionLoading.value) return null
+  if (!compositionContext.value || actionLoading.value) return null
   const targetRecordIds = rows
     .map(row => String(row?.id || '').trim())
     .filter(Boolean)
@@ -839,8 +824,8 @@ async function executeSelectionAction(
   actionFailure.value = null
   try {
     const result = await uiCompositionRuntimeApi.executeAction({
-      actionContextToken: actionContextToken.value,
-      candidateListContextToken: candidateListContextToken || undefined,
+      compositionContext: compositionContext.value,
+      candidateAction: candidateContext ? action : undefined,
       action,
       targetRecordIds,
       input: {},
@@ -879,7 +864,7 @@ async function executeSelectionAction(
 /**
  * 平台只向审核过的一方可信组件提供宿主发布快照已声明的 actionKey；这层
  * bridge 不是任意第三方代码的强沙箱。payload 中的 extensionId、input 等接口
- * 执行字段全部忽略，服务端从签名宿主版本恢复钉定接口和字段映射。
+ * 执行字段全部忽略，服务端从已发布宿主配置恢复声明的接口和字段映射。
  */
 async function executeBoundAction(action, payload = {}) {
   const actionKey = String(action || '').trim().toUpperCase()
@@ -893,7 +878,7 @@ async function executeBoundAction(action, payload = {}) {
       (payload.targetRecordIds || []).map(id => ({ id }))
     )
   }
-  if (!actionContextToken.value || actionLoading.value) return null
+  if (!compositionContext.value || actionLoading.value) return null
   const targetRecordIds = Array.from(new Set(
     (payload.targetRecordIds || [])
       .map(id => String(id || '').trim())
@@ -903,7 +888,7 @@ async function executeBoundAction(action, payload = {}) {
   actionFailure.value = null
   try {
     const result = await uiCompositionRuntimeApi.executeAction({
-      actionContextToken: actionContextToken.value,
+      compositionContext: compositionContext.value,
       action: actionKey,
       targetRecordIds,
       input: {},
@@ -922,14 +907,12 @@ async function executeBoundAction(action, payload = {}) {
 }
 
 async function executeCandidateSelectionAction(action, rows = []) {
-  const token = String(
-    candidateContext.value?.candidateListContextToken || ''
-  )
-  if (!token || action !== linkCandidateAction.value) {
+  const sourceContext = candidateContext.value?.compositionContext
+  if (!sourceContext || action !== linkCandidateAction.value) {
     ElMessage.error('候选列表上下文已失效，请重新打开')
     return null
   }
-  return executeSelectionAction(action, rows, token)
+  return executeSelectionAction(action, rows, sourceContext)
 }
 
 /**
@@ -949,9 +932,7 @@ async function queryTarget(input = {}) {
       pageNum: Number(input.pageNum || 1),
       pageSize: Number(input.pageSize || 20),
       scene: 'EMBEDDED',
-      releaseId: value.targetReleaseId,
-      releaseVersion: value.targetReleaseVersion,
-      viewCompositionContextToken: value.listContextToken,
+      compositionContext: value.compositionContext,
       context: { parameters: targetParameters.value },
       filters: input.filters || {}
     }
@@ -1016,13 +997,11 @@ const RuntimeBody = defineComponent({
             params: targetParameters.value,
             parameters: targetParameters.value,
             compositionKey: resolved.value.compositionKey,
-            targetReleaseId: resolved.value.targetReleaseId,
-            targetReleaseVersion: resolved.value.targetReleaseVersion,
             entityStatusOptions: targetEntityStatusOptions.value,
             entityStatusMap:
               buildEntityStatusMap(targetEntityStatusOptions.value),
-            viewCompositionTraversalToken:
-              resolved.value.traversalContextToken
+            compositionContext:
+              resolved.value.compositionContext
           },
           runtime: {
             refresh,
@@ -1039,11 +1018,8 @@ const RuntimeBody = defineComponent({
           context: { params: targetParameters.value, parameters: targetParameters.value },
           entityCode: resolved.value.targetEntityCode,
           listKey: resolved.value.targetContentKey,
-          releaseId: resolved.value.targetReleaseId,
-          releaseVersion: resolved.value.targetReleaseVersion,
-          viewCompositionContextToken: resolved.value.listContextToken,
-          viewCompositionTraversalToken:
-            resolved.value.traversalContextToken,
+          compositionContext: resolved.value.compositionContext,
+
           relatedContentActions: Array.from(actions.value),
           // 列表目标复用其发布工具栏；EntityDataList 仍执行列表按钮权限与能力校验。
           showTargetListToolbarActions: true,
@@ -1077,13 +1053,13 @@ const RuntimeBody = defineComponent({
               id: resolved.value.targetRecordId,
               data: targetRecord.value
             },
-            releaseResolutionToken:
-              targetForm.value.releaseResolutionToken,
+            configHash:
+              targetForm.value.configHash,
             entityStatusOptions: targetEntityStatusOptions.value,
             entityStatusMap:
               buildEntityStatusMap(targetEntityStatusOptions.value),
-            viewCompositionTraversalToken:
-              resolved.value.traversalContextToken
+            compositionContext:
+              resolved.value.compositionContext
           }
         })
       }
@@ -1101,13 +1077,10 @@ watch(
     presentation.value.loadMode,
     props.ownerType,
     props.ownerId,
-    props.releaseId,
-    props.releaseVersion,
     props.composition?.compositionKey,
     props.sourceRecordId,
-    props.rowContextToken,
-    props.traversalContextToken,
-    props.releaseResolutionToken,
+    props.compositionContext,
+    props.configHash,
     sourceParameterFingerprint()
   ],
   () => {

@@ -61,13 +61,11 @@ public class EntityRelationDefinitionService {
             "processvariables",
             "startprocess",
             "listkey",
-            "listreleaseid",
-            "listreleaseversion",
-            "listreleaseresolutiontoken",
+            "listconfighash",
+            "runtimecontext",
+            "compositioncontext",
             "formid",
-            "formreleaseid",
-            "formreleaseversion",
-            "formreleaseresolutiontoken");
+            "formconfighash");
 
     private final EntityDefinitionMapper entityMapper;
     private final EntityFieldMapper fieldMapper;

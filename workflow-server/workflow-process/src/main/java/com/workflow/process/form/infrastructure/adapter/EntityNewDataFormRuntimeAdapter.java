@@ -17,6 +17,7 @@ public class EntityNewDataFormRuntimeAdapter
         implements EntityNewDataFormRuntimePort {
 
     private final EntityFormResolveService resolveService;
+    private final com.workflow.entity.ui.application.UiConfigReleaseService releaseService;
 
     /**
      * 复用 {@link EntityFormResolveService} 的默认表单与流程首节点回退规则，
@@ -33,17 +34,13 @@ public class EntityNewDataFormRuntimeAdapter
             return Optional.empty();
         }
         String formId = text(form.get("id"));
-        String releaseId = text(form.get("runtimeReleaseId"));
-        Integer releaseVersion = integer(form.get("runtimeReleaseVersion"));
-        if (!StringUtils.hasText(formId)
-                || !StringUtils.hasText(releaseId)
-                || releaseVersion == null
-                || releaseVersion < 1) {
+        if (!StringUtils.hasText(formId)) {
             throw new IllegalStateException(
                     "原生新增表单缺少精确发布坐标");
         }
-        return Optional.of(new ResolvedForm(
-                formId, releaseId, releaseVersion));
+        // 内部 Embed 绑定可以记录实际配置身份，公共表单响应不再承担传递发布坐标的职责。
+        var resolved = releaseService.resolveRuntimeFormRelease(formId);
+        return Optional.of(new ResolvedForm(formId, resolved.releaseId(), resolved.releaseVersion()));
     }
 
     /**
@@ -60,21 +57,4 @@ public class EntityNewDataFormRuntimeAdapter
         return text.isEmpty() ? null : text;
     }
 
-    /**
-     * 将输入解析为整数，供后续范围校验或计算使用。
-     *
-     * @param value 待处理整数的原始输入，结果供调用方继续使用
-     * @return 处理后的整数结果，供调用方继续处理
-     */
-    private static Integer integer(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        try {
-            String text = text(value);
-            return text == null ? null : Integer.valueOf(text);
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
 }

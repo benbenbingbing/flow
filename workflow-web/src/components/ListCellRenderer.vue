@@ -1,5 +1,7 @@
 <template>
+  <span v-if="maskingEnabled">{{ maskedValue }}</span>
   <component
+    v-else
     :is="renderComponent"
     :value="cellValue"
     :row="row"
@@ -15,6 +17,7 @@ import { getCellComponent, hasCellComponent } from '@/extensions/core/registries
 import DefaultText from '@/extensions/builtin/list-cells/DefaultText.vue'
 import { formatListFieldValue, parseDataSourceConfig } from '@/shared/list-runtime'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { formatMaskedListCellValue, isListCellMaskingEnabled } from '@/shared/list-cell-masking'
 
 const props = defineProps({
   value: { type: [String, Number, Boolean, Object, Array], default: '' },
@@ -22,6 +25,12 @@ const props = defineProps({
   field: { type: Object, default: () => ({}) },
   context: { type: Object, default: () => ({}) }
 })
+
+// 脱敏统一在扩展之前处理，防止自定义渲染组件重新读取 row 中的原始内容。
+const maskingEnabled = computed(() => isListCellMaskingEnabled(props.field))
+const maskedValue = computed(() => formatMaskedListCellValue(
+  props.row, props.field, props.context?.refEntityNameMap || {}, props.context?.entityStatusMap || {}
+))
 
 // 解析数据源配置 JSON
 const parsedConfig = computed(() => {

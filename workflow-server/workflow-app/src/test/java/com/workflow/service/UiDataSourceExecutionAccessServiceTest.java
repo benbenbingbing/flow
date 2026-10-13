@@ -15,7 +15,6 @@ import com.workflow.entity.ui.application.UiEventValueMapper;
 import com.workflow.entity.ui.application.validation.UiExtensionDefinitionValidator;
 import com.workflow.entity.ui.application.UiInterfaceExtensionService;
 import com.workflow.entity.ui.application.UiInvocationContextFactory;
-import com.workflow.entity.ui.application.UiReleaseResolutionTokenService;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
 import com.workflow.entity.definition.application.EntityDefinitionAccessPolicy;
@@ -132,6 +131,28 @@ class UiDataSourceExecutionAccessServiceTest {
                 "UI_DATA_SOURCE_EXECUTION_ORIGIN_REQUIRED",
                 exception.getErrorCode());
         verifyNoInteractions(context.releaseMapper());
+    }
+
+    @Test
+    void providerAuthorizationKeepsTheConfigurationAcceptedEarlierInTheSameRequest() {
+        allowPublishedForm("accepted-config", "{\"FIELD_OPTIONS\":{\"serviceId\":\"source-1\",\"operationCode\":\"query\"}}");
+        var accepted = new com.workflow.entity.ui.application.CurrentFormRuntimeContext(
+                context.releaseMapper(), new ObjectMapper());
+        ReflectionTestUtils.setField(context.service(), "currentRuntime", accepted);
+        org.springframework.web.context.request.RequestContextHolder.setRequestAttributes(
+                new org.springframework.web.context.request.ServletRequestAttributes(new org.springframework.mock.web.MockHttpServletRequest()));
+        try {
+            accepted.current("form-1");
+            // 模拟摘要受理后另一用户发布；该请求的 Provider 不能切到新增或删除过的绑定。
+            when(context.releaseMapper().findActive("FORM", "form-1"))
+                    .thenReturn(release("new-config", 1, "{}"));
+            var result = context.service().authorizePublished(definition("STATIC_OPTIONS", "GLOBAL", null),
+                    request("FIELD_OPTIONS", "form-1", "accepted-config"));
+            assertEquals("accepted-config", result.releaseId());
+            verify(context.releaseMapper(), org.mockito.Mockito.times(1)).findActive("FORM", "form-1");
+        } finally {
+            org.springframework.web.context.request.RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     /** 测试拒绝未在激活发布中绑定的任意启用数据源：验证抛出 UI_DATA_SOURCE_PUBLISHED_BINDING_REQUIRED */
@@ -691,7 +712,8 @@ class UiDataSourceExecutionAccessServiceTest {
         UiEventRuntimeService runtime = new UiEventRuntimeService(
                 bindings, interfaces, new UiEventValueMapper(), mock(EntitySelectionRuntimeService.class),
                 mock(SystemAuditPort.class), mock(EntityActionCapabilityService.class), mock(EntityFormActionService.class),
-                mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper);
+                mock(UiEventExecutionReceiptService.class), mock(EntityDataDynamicService.class), mapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
 
         UiEventExecutionResult result = runtime.execute(event, input -> {
             assertEquals(parameters, input.get("params"));
@@ -1049,15 +1071,13 @@ class UiDataSourceExecutionAccessServiceTest {
         verifyNoInteractions(context.releaseMapper());
     }
 
-    /** 无效/越界令牌与权限拒绝必须在生成内部凭证和执行 Provider 之前终止。 */
+    /** 配置变更与权限拒绝必须在生成内部调用上下文和执行 Provider 之前终止。 */
     @ParameterizedTest
-    @ValueSource(strings = {"invalid-token", "wrong-release", "wrong-version", "denied"})
+    @ValueSource(strings = {"changed-config", "denied"})
     void fieldEventRejectsUntrustedReleaseBeforeProviderExecution(String rejection) throws Exception {
         try (FieldEventFlow flow = fieldEventFlow("ENTITY_SELECTED", true, true)) {
             switch (rejection) {
-                case "invalid-token" -> flow.request().setReleaseResolutionToken("forged-token");
-                case "wrong-release" -> flow.request().setReleaseId("different-release");
-                case "wrong-version" -> flow.request().setReleaseVersion(99);
+                case "changed-config" -> flow.request().setConfigHash("stale-config-hash");
                 case "denied" -> doThrow(new BusinessForbiddenException("DENIED", "禁止访问"))
                         .when(flow.permissions()).requireStandardPermission(
                                 "expense", EntityPermissionAction.LIST);
@@ -1071,7 +1091,7 @@ class UiDataSourceExecutionAccessServiceTest {
     }
 
     /**
-     * 仅替换持久化、权限外部依赖及流程版本查找；签名验证、快照验哈希、事件解析、
+     * 仅替换持久化、权限外部依赖及流程版本查找；配置摘要验证、快照验哈希、事件解析、
      * 接口授权、调用上下文和结果映射都使用生产实现，避免服务间契约被 Mock 掩盖。
      */
     private FieldEventFlow fieldEventFlow(String eventCode, boolean signed, boolean historical) {
@@ -1084,8 +1104,6 @@ class UiDataSourceExecutionAccessServiceTest {
         allowPermissionPlan();
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         UiConfigSnapshotSupport snapshots = new UiConfigSnapshotSupport(context.codec(), objectMapper);
-        UiReleaseResolutionTokenService tokens = new UiReleaseResolutionTokenService(objectMapper);
-        ReflectionTestUtils.setField(tokens, "secret", "field-event-integration-test-secret");
         Map<String, Object> snapshot = Map.of(
                 "configType", "FORM",
                 "form", Map.of("id", "form-1", "entityId", "entity-1"),
@@ -1109,19 +1127,18 @@ class UiDataSourceExecutionAccessServiceTest {
         ReflectionTestUtils.setField(context.releaseService(), "releaseMapper", context.releaseMapper());
         ReflectionTestUtils.setField(context.releaseService(), "codec", context.codec());
         ReflectionTestUtils.setField(context.releaseService(), "snapshotSupport", snapshots);
-        ReflectionTestUtils.setField(context.releaseService(), "resolutionTokenService", tokens);
         var currentForms = new com.workflow.entity.ui.application.CurrentFormRuntimeContext(context.releaseMapper(), objectMapper);
         ReflectionTestUtils.setField(context.releaseService(), "currentForms", currentForms);
-        ReflectionTestUtils.setField(tokens, "currentForms", currentForms);
         doCallRealMethod().when(context.releaseService()).active("FORM", "form-1");
         doCallRealMethod().when(context.releaseService())
-                .resolveRuntimeEventSnapshot(any(), any(), any(), any());
+                .resolveRuntimeEventSnapshot(any(), any(), any());
+        doCallRealMethod().when(context.releaseService()).resolveAuthorizedRuntimeFormRelease(any(), any(), any());
+        doCallRealMethod().when(context.releaseService()).formConfigHash(any());
         doCallRealMethod().when(context.releaseService()).verifiedReleaseSnapshot(any());
         doCallRealMethod().when(context.releaseService()).verifyResolvedEventSnapshot(any(), any());
         String effectiveHash = snapshots.hash(snapshots.canonical(snapshot));
         EntityForm form = context.formMapper().selectById("form-1");
-        when(context.releaseService().resolveRuntimeFormRelease(
-                anyString(), anyString(), anyInt(), any(UiRuntimeResolutionContext.class)))
+        when(context.releaseService().resolveRuntimeFormRelease(anyString()))
                 .thenReturn(new ResolvedEntityFormRelease(
                         form, "release-1", 1, false,
                         "release-1", effectiveHash, null,
@@ -1163,7 +1180,8 @@ class UiDataSourceExecutionAccessServiceTest {
                 new EntitySelectionRuntimeService(entityData, mock(SystemEntityService.class),
                         mock(SystemEntityReadService.class), context.definitionMapper(), objectMapper),
                 mock(SystemAuditPort.class), permissions, mock(EntityFormActionService.class),
-                mock(UiEventExecutionReceiptService.class), entityData, objectMapper);
+                mock(UiEventExecutionReceiptService.class), entityData, objectMapper,
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
         UiEventExecuteRequest request = new UiEventExecuteRequest();
         request.setConfigType("FORM");
         request.setConfigId("form-1");
@@ -1172,10 +1190,7 @@ class UiDataSourceExecutionAccessServiceTest {
         request.setEventCode(eventCode);
         request.setReleaseId("release-1");
         request.setReleaseVersion(1);
-        if (signed) {
-            request.setReleaseResolutionToken(tokens.issue(
-                    UiRuntimeResolutionContext.standalone(), "form-1", "release-1", 1, 0));
-        }
+        request.setConfigHash(currentForms.graphHash("form-1"));
         request.setInput(Map.of("form", Map.of("deptId", "business-dept"),
                 "selection", Map.of("id", "selected-user", "userName", "selected-name"),
                 "value", "selected-user"));

@@ -314,12 +314,11 @@ public class PublishedFormSubmissionService {
     }
 
     /**
-     * 按客户端运行时授权上下文应用精确表单发布版本。
+     * 校验配置摘要和业务来源后处理当前表单。
      *
      * @param formId 指定表单 ID，用于解析发布配置及节点绑定
      * @param releaseId 客户端指定的基础发布 ID，交由授权解析服务核对
      * @param releaseVersion 客户端指定的版本号，交由授权解析服务核对
-     * @param releaseResolutionToken 客户端运行时授权令牌，用于校验精确发布身份
      * @param entityCode 实体编码，用于定位默认表单或根实体校验范围
      * @param recordId 已有记录 ID；新增时为空，后续参与绑定输入和最终记录校验
      * @param mode 提交模式，决定默认值、校验规则和幂等操作码
@@ -329,9 +328,8 @@ public class PublishedFormSubmissionService {
      */
     public Map<String, Object> applyAuthorizedForm(
             String formId,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken,
+            String configHash,
+            Map<String, Object> runtimeContext,
             String entityCode,
             String recordId,
             String mode,
@@ -339,9 +337,8 @@ public class PublishedFormSubmissionService {
             FormSubmissionExecutionContext executionContext) {
         return applyAuthorizedFormWithRelease(
                 formId,
-                releaseId,
-                releaseVersion,
-                releaseResolutionToken,
+                configHash,
+                runtimeContext,
                 entityCode,
                 recordId,
                 mode,
@@ -358,7 +355,6 @@ public class PublishedFormSubmissionService {
      * @param formId 指定表单 ID，用于解析发布配置及节点绑定
      * @param releaseId 客户端指定的基础发布 ID，交由授权解析服务核对
      * @param releaseVersion 客户端指定的版本号，交由授权解析服务核对
-     * @param releaseResolutionToken 客户端运行时授权令牌，用于校验精确发布身份
      * @param entityCode 实体编码，用于定位默认表单或根实体校验范围
      * @param recordId 已有记录 ID；新增时为空，后续参与绑定输入和最终记录校验
      * @param mode 提交模式，决定默认值、校验规则和幂等操作码
@@ -368,9 +364,8 @@ public class PublishedFormSubmissionService {
      */
     public AuthorizedFormApplication applyAuthorizedFormWithRelease(
             String formId,
-            String releaseId,
-            Integer releaseVersion,
-            String releaseResolutionToken,
+            String configHash,
+            Map<String, Object> runtimeContext,
             String entityCode,
             String recordId,
             String mode,
@@ -379,9 +374,8 @@ public class PublishedFormSubmissionService {
         ResolvedEntityFormRelease resolved =
                 releaseService.resolveAuthorizedRuntimeFormRelease(
                         formId,
-                        releaseId,
-                        releaseVersion,
-                        releaseResolutionToken);
+                        configHash,
+                runtimeContext);
         Map<String, Object> data = applyResolvedForm(
                     resolved,
                     entityCode,
