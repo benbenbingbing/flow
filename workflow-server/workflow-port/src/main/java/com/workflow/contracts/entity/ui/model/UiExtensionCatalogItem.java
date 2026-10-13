@@ -1,5 +1,6 @@
 package com.workflow.contracts.entity.ui.model;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -26,6 +27,7 @@ import java.util.Set;
  * @param providerCode 提供者编码，后续用于处理界面扩展目录条目时定位或关联目标
  * @param scopeType 作用域类型标识，决定后续界面扩展目录条目采用的处理分支
  * @param scopeId 作用域ID，后续用于处理界面扩展目录条目时定位或关联目标
+ * @param scopeEntityIds 接口适用实体 ID，供管理目录回显多选范围；不限定该实体内的具体页面
  * @param interfaceKind 接口类型，保存在对象中供后续校验、查询或展示
  * @param interfaceContextType 接口上下文类型标识，决定后续界面扩展目录条目采用的处理分支
  * @param implementationConfig 实现配置内容，决定后续界面扩展目录条目的处理规则
@@ -53,6 +55,7 @@ public record UiExtensionCatalogItem(
         String providerCode,
         String scopeType,
         String scopeId,
+        List<String> scopeEntityIds,
         String interfaceKind,
         String interfaceContextType,
         Map<String, Object> implementationConfig,

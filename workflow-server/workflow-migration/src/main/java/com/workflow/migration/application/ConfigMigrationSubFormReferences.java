@@ -171,8 +171,10 @@ public class ConfigMigrationSubFormReferences {
                 if (executableStep && "executableSnapshot".equals(name) && child instanceof String text) {
                     try {
                         Map<String, Object> executable = object(json.readValue(text, Map.class));
-                        // 哈希与归属 ID 在目标发布时重建；实际接口实现、策略、参数和制品身份必须保持一致。
-                        List.of("extensionId", "scopeId", "extensionRevision").forEach(executable::remove);
+                        // 范围由独立接口定义负责校验，目标发布会重建本地 ID；可移植编码和本地 ID
+                        // 都不参与表单内容指纹，避免同一配置仅因跨环境表示不同而无法复用。
+                        List.of("extensionId", "scopeId", "scopeEntityIds", "scopeEntityIdsDocument", "scopeEntityRefs", "extensionRevision")
+                                .forEach(executable::remove);
                         result.put(name, canonical(executable));
                         return;
                     } catch (com.fasterxml.jackson.core.JsonProcessingException exception) {

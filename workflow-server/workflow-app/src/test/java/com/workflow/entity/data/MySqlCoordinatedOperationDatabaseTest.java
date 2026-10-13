@@ -127,7 +127,7 @@ class MySqlCoordinatedOperationDatabaseTest {
     }
 
     private static DatabaseBootstrapJobCoordinator bootstrap(Harness h) {
-        return transactional(new DatabaseBootstrapJobCoordinator(h.jdbc, locks(h), clock(h)), h);
+        return transactional(new DatabaseBootstrapJobCoordinator(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.bootstrap.infrastructure.persistence.mapper.BootstrapJobMapper.class), locks(h), clock(h)), h);
     }
 
     private static JdbcDatabaseClock clock(Harness h) {
@@ -146,8 +146,7 @@ class MySqlCoordinatedOperationDatabaseTest {
         when(tables.scanUniqueConflicts(any(EntityDefinition.class), anyList())).thenReturn(List.of());
         when(tables.targetSchemaFingerprint(any(EntityDefinition.class), anyList())).thenReturn("a".repeat(64));
         when(tables.actualSchemaFingerprint(any(EntityDefinition.class))).thenReturn("a".repeat(64));
-        return new EntitySchemaOperationService(h.jdbc, new ObjectMapper(), tables,
-                DatabaseQueryDialects.forDatabaseId("MYSQL"), locks(h));
+        return new EntitySchemaOperationService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.entity.definition.infrastructure.persistence.mapper.EntitySchemaOperationMapper.class), new ObjectMapper(), tables, locks(h));
     }
 
     /** 使用生产事务注解，验证独立事务和 REQUIRED 的实际传播边界。 */

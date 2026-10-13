@@ -10,7 +10,9 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrganizationMapper;
 import com.workflow.admin.identity.group.infrastructure.persistence.mapper.SysUserGroupMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.PermissionSqlEvaluationMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import java.util.List;
 
@@ -150,10 +152,10 @@ class PermissionRuleMatcherTest {
 
     @Test
     void matchesControlledSqlAudience() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
+        PermissionSqlEvaluationMapper businessMapper = mock(PermissionSqlEvaluationMapper.class);
+        when(businessMapper.evaluateUserPredicate(any())).thenReturn(1);
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(jdbcTemplate, null, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new PermissionSqlFragmentCompiler(businessMapper, null, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
                 orgMapper, userGroupMapper, List.of(), compiler);
         SysUser user = new SysUser();
@@ -169,7 +171,7 @@ class PermissionRuleMatcherTest {
     @Test
     void rejectsAudienceSqlThatUsesMainAlias() {
         PermissionSqlFragmentCompiler compiler =
-                new PermissionSqlFragmentCompiler(mock(JdbcTemplate.class), null, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                new PermissionSqlFragmentCompiler(mock(PermissionSqlEvaluationMapper.class), null, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         PermissionRuleMatcher matcher = new PermissionRuleMatcher(
                 orgMapper, userGroupMapper, List.of(), compiler);
         PermissionMatchConfig.MatchConditionDTO condition =

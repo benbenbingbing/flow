@@ -7,12 +7,11 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.schema.SchemaType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.SqlParameterValue;
-import org.springframework.jdbc.core.support.SqlLobValue;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniquePrecheckMapper;
+import org.apache.ibatis.type.JdbcType;
 import org.springframework.stereotype.Service;
 
-import java.sql.JDBCType;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -25,7 +24,7 @@ import java.util.*;
 @RequiredArgsConstructor
 public class EntityUniqueBatchPrecheckService {
     static final int QUERY_BATCH_SIZE = 100;
-    private final JdbcTemplate jdbc;
+    private final EntityUniquePrecheckMapper mapper;
     private final DynamicTableService tables;
     private final DatabaseQueryDialect dialect;
     private final EntityRuntimeRecordMapper records;
@@ -101,12 +100,13 @@ public class EntityUniqueBatchPrecheckService {
             Object parameter = candidate.value();
             if (parameter instanceof LocalDate date) parameter = java.sql.Date.valueOf(date);
             if (parameter instanceof LocalDateTime date) parameter = java.sql.Timestamp.valueOf(date);
-            int jdbcType = JDBCType.valueOf(dialect.comparisonJdbcType(kind)).getVendorTypeNumber();
-            if (jdbcType == java.sql.Types.CLOB) parameter = new SqlLobValue(String.valueOf(parameter));
-            args.add(new SqlParameterValue(jdbcType, parameter));
+            JdbcType jdbcType = JdbcType.valueOf(dialect.comparisonJdbcType(kind));
+            if (jdbcType == JdbcType.CLOB) parameter = String.valueOf(parameter);
+            args.add(ParameterizedSql.typed(parameter, jdbcType));
             args.add(entityCode); args.add(field); args.add(candidate.hash());
         }
-        return jdbc.query(String.join(" UNION ALL ", branches), (rs, index) -> rs.getInt(1), args.toArray());
+        return mapper.selectConflictIndexes(ParameterizedSql.of(String.join(" UNION ALL ", branches),
+                args.toArray()));
     }
 
     private record Candidate(int rowIndex, Object value, String hash) { }

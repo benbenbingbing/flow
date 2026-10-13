@@ -124,7 +124,9 @@ class EntityCustomCodeTransactionTest {
         var f = new Fixture();
         var service = f.service(context -> "CUSTOM-001");
         f.tx.executeWithoutResult(status -> service.generateCode(f.context("record"), null));
-        var fields = new com.workflow.entity.data.application.EntityUniqueValueService(f.jdbc);
+        var fields = new com.workflow.entity.data.application.EntityUniqueValueService(
+                com.workflow.testsupport.EntityMapperTestFactory.mapper(f.jdbc.getDataSource(),
+                        com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueValueMapper.class));
         f.tx.executeWithoutResult(status -> fields.replace("asset", "record", Map.of("name", "New name")));
         assertEquals(2, f.count("entity_unique_value"));
         f.tx.executeWithoutResult(status -> fields.release("asset", "record"));
@@ -183,7 +185,7 @@ class EntityCustomCodeTransactionTest {
             var tables = mock(DynamicTableService.class);
             when(tables.getTableName("asset")).thenReturn("wf_asset");
             when(tables.tableExists("asset")).thenReturn(true);
-            reservations = proxy(new EntityCodeReservationService(jdbc, DatabaseQueryDialects.forDatabaseId("MYSQL"), tables));
+            reservations = proxy(new EntityCodeReservationService(com.workflow.testsupport.EntityMapperTestFactory.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityCodeReservationMapper.class), DatabaseQueryDialects.forDatabaseId("MYSQL"), tables));
             rule.setGenerationMode("CUSTOM"); rule.setGeneratorCode("TEST");
             when(mapper.findByEntityCode("asset")).thenReturn(Optional.of(rule));
         }

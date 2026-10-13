@@ -19,7 +19,8 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -41,7 +42,7 @@ public class AssigneeIncidentService {
     private static final Set<String> ACTIONS = Set.of(
             "RETRY_RESOLVER", "ASSIGN_USER", "FALLBACK_GROUP", "TERMINATE_INSTANCE");
 
-    private final JdbcTemplate jdbcTemplate;
+    private final AssigneeIncidentMapper incidentMapper;
     private final ObjectMapper objectMapper;
     private final TaskService taskService;
     private final RuntimeService runtimeService;
@@ -72,8 +73,8 @@ public class AssigneeIncidentService {
                 + " WHEN 'MANUAL_REQUIRED' THEN 3 WHEN 'RESOLVED' THEN 4 WHEN 'TERMINATED' THEN 5 ELSE 0 END,"
                 + " update_time DESC, id DESC" + queryDialect.paginationClause("0", "500");
         return normalized == null
-                ? jdbcTemplate.query(sql, (rs, rowNum) -> incidentView(rs))
-                : jdbcTemplate.query(sql, (rs, rowNum) -> incidentView(rs), normalized);
+                ? incidentMapper.selectRows(ParameterizedSql.of(sql)).stream().map(this::incidentView).toList()
+                : incidentMapper.selectRows(ParameterizedSql.of(sql, normalized)).stream().map(this::incidentView).toList();
     }
 
     /**
@@ -85,29 +86,29 @@ public class AssigneeIncidentService {
     public Map<String, Object> detail(String id) {
         Incident incident = required(id);
         Map<String, Object> result = incidentMap(incident);
-        result.put("actions", jdbcTemplate.query("""
+        result.put("actions", incidentMapper.selectRows(ParameterizedSql.of("""
                 SELECT request_id, action_type, status, operator, request_json,
                        result_json, error_message, create_time, finished_at
                 FROM process_assignee_incident_action
                 WHERE incident_id = ? ORDER BY create_time, id
-                """, (rs, rowNum) -> {
+                """, id)).stream().map(rs -> {
             Map<String, Object> row = new LinkedHashMap<>();
-            row.put("requestId", rs.getString("request_id"));
-            row.put("actionType", rs.getString("action_type"));
-            row.put("status", rs.getString("status"));
-            row.put("operator", rs.getString("operator"));
-            row.put("request", readJson(rs.getString("request_json")));
-            row.put("result", readJson(rs.getString("result_json")));
-            row.put("errorMessage", rs.getString("error_message"));
-            row.put("createdAt", rs.getObject("create_time"));
-            row.put("finishedAt", rs.getObject("finished_at"));
+            row.put("requestId", text(rs.get("request_id")));
+            row.put("actionType", text(rs.get("action_type")));
+            row.put("status", text(rs.get("status")));
+            row.put("operator", text(rs.get("operator")));
+            row.put("request", readJson(text(rs.get("request_json"))));
+            row.put("result", readJson(text(rs.get("result_json"))));
+            row.put("errorMessage", text(rs.get("error_message")));
+            row.put("createdAt", rs.get("create_time"));
+            row.put("finishedAt", rs.get("finished_at"));
             return row;
-        }, id));
+        }).toList());
         return result;
     }
 
     /**
-     * 日期偏移仍以数据库会话时间为准；方言只渲染一次占位符，JDBC 保持原绑定顺序。
+     * 日期偏移仍以数据库会话时间为准；方言只渲染一次占位符，MyBatis 保持原绑定顺序。
      *
      * @return 处理后的数据库时间结果，供调用方继续处理
      */
@@ -122,20 +123,20 @@ public class AssigneeIncidentService {
      */
     public Map<String, Object> metrics() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("statusCounts", jdbcTemplate.queryForList("""
+        result.put("statusCounts", incidentMapper.selectRows(ParameterizedSql.of("""
                 SELECT status, COUNT(*) AS count
                 FROM process_assignee_incident GROUP BY status ORDER BY status
-                """));
-        result.put("policyCounts", jdbcTemplate.queryForList("""
+                """)));
+        result.put("policyCounts", incidentMapper.selectRows(ParameterizedSql.of("""
                 SELECT policy, COUNT(*) AS count
                 FROM process_assignee_incident
                 WHERE create_time >= %s
                 GROUP BY policy ORDER BY count DESC
-                """.formatted(databaseTime().currentAfterSeconds("-2592000"))));
-        Long overdue = jdbcTemplate.queryForObject("""
+                """.formatted(databaseTime().currentAfterSeconds("-2592000")))));
+        Long overdue = incidentMapper.count(ParameterizedSql.of("""
                 SELECT COUNT(*) FROM process_assignee_incident
                 WHERE status = 'RETRY_SCHEDULED' AND next_retry_at <= CURRENT_TIMESTAMP
-                """, Long.class);
+                """));
         result.put("overdueRetries", overdue == null ? 0 : overdue);
         return result;
     }
@@ -161,13 +162,13 @@ public class AssigneeIncidentService {
         String actionId = id();
         String actor = actor();
         try {
-            writeAttempt.execute(() -> jdbcTemplate.update("""
+            writeAttempt.execute(() -> incidentMapper.execute(ParameterizedSql.of("""
                     INSERT INTO process_assignee_incident_action (
                       id, incident_id, request_id, action_type, status, operator,
                       request_json, create_time
                     ) VALUES (?, ?, ?, ?, 'RUNNING', ?, ?, CURRENT_TIMESTAMP)
                     """, actionId, incidentId, request.getRequestId().trim(), action,
-                    actor, writeJson(request)));
+                    actor, writeJson(request))));
         } catch (DuplicateKeyException duplicate) {
             return detail(incidentId);
         }
@@ -179,17 +180,17 @@ public class AssigneeIncidentService {
                 case "TERMINATE_INSTANCE" -> terminate(incident, request.getReason());
                 default -> throw new IllegalArgumentException("不支持的处置动作：" + action);
             };
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident_action
                     SET status = 'SUCCESS', result_json = ?, finished_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, writeJson(result), actionId);
+                    """, writeJson(result), actionId));
         } catch (RuntimeException error) {
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident_action
                     SET status = 'FAILED', error_message = ?, finished_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, safeError(error), actionId);
+                    """, safeError(error), actionId));
             throw error;
         }
         return detail(incidentId);
@@ -198,11 +199,11 @@ public class AssigneeIncidentService {
     /** 系统重启后继续扫描持久化的到期重试事件。 */
     @Scheduled(fixedDelayString = "${workflow.assignee-incident.retry-scan-ms:30000}")
     public void retryDueIncidents() {
-        List<String> ids = jdbcTemplate.query("""
+        List<String> ids = incidentMapper.selectIds(ParameterizedSql.of("""
                 SELECT id FROM process_assignee_incident
                 WHERE status = 'RETRY_SCHEDULED' AND next_retry_at <= CURRENT_TIMESTAMP
                 ORDER BY next_retry_at, id
-                """ + queryDialect.paginationClause("0", "50"), (rs, rowNum) -> rs.getString("id"));
+                """ + queryDialect.paginationClause("0", "50")));
         for (String incidentId : ids) {
             Incident incident = required(incidentId);
             AssigneeIncidentHandleRequest request = new AssigneeIncidentHandleRequest();
@@ -227,14 +228,14 @@ public class AssigneeIncidentService {
         if (!StringUtils.hasText(incident.resolverCode())) {
             // 历史部署可能为固定人员选择了自动重试。必须退出定时扫描，
             // 否则相同请求号的失败审计会让事件永远停留在 RETRY_SCHEDULED。
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident
                     SET status = 'MANUAL_REQUIRED', next_retry_at = NULL,
                         empty_reason_code = 'RESOLVER_CODE_MISSING',
                         empty_reason_message = '事件没有可重试的人员接口，请人工补充办理人或转派用户组',
                         resolution_action = 'RETRY_UNAVAILABLE', update_time = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, incident.id());
+                    """, incident.id()));
             return Map.of("requiresManualHandling", true);
         }
         if (!StringUtils.hasText(incident.taskId())) {
@@ -262,25 +263,25 @@ public class AssigneeIncidentService {
         }
         int retryCount = incident.retryCount() + 1;
         if (retryCount >= incident.maxRetries()) {
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident
                     SET status = 'OPEN', retry_count = ?, next_retry_at = NULL,
                         empty_reason_code = ?, empty_reason_message = ?,
                         resolution_action = 'RETRY_EXHAUSTED', update_time = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, retryCount, resolution.reasonCode(), resolution.reasonMessage(), incident.id());
+                    """, retryCount, resolution.reasonCode(), resolution.reasonMessage(), incident.id()));
             return Map.of("retryCount", retryCount, "exhausted", true);
         }
         long delay = Math.max(5L, Math.round(
                 incident.initialDelaySeconds()
                         * Math.pow(incident.backoffMultiplier(), retryCount)));
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 UPDATE process_assignee_incident
                 SET status = 'RETRY_SCHEDULED', retry_count = ?,
                     next_retry_at = %s,
                     empty_reason_code = ?, empty_reason_message = ?, update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
-                """.formatted(databaseTime().currentAfterSeconds("?")), retryCount, delay, resolution.reasonCode(), resolution.reasonMessage(), incident.id());
+                """.formatted(databaseTime().currentAfterSeconds("?")), retryCount, delay, resolution.reasonCode(), resolution.reasonMessage(), incident.id()));
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }
 
@@ -324,7 +325,7 @@ public class AssigneeIncidentService {
                                 mapValue(variables.get("entityData")),
                                 readMap(incident.resolverExtraParamsJson())));
         if (resolution.resolved()) {
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident
                     SET status = 'MANUAL_REQUIRED', next_retry_at = NULL,
                         empty_reason_code = 'NODE_ENTRY_RETRY_READY',
@@ -332,28 +333,28 @@ public class AssigneeIncidentService {
                         resolution_action = 'WAITING_SOURCE_TASK_RETRY',
                         update_time = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, incident.id());
+                    """, incident.id()));
             return Map.of(
                     "resolvedUsers", resolution.usernames(),
                     "requiresSourceTaskRetry", true);
         }
         int retryCount = incident.retryCount() + 1;
         if (retryCount >= incident.maxRetries()) {
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident
                     SET status = 'OPEN', retry_count = ?, next_retry_at = NULL,
                         empty_reason_code = ?, empty_reason_message = ?,
                         resolution_action = 'RETRY_EXHAUSTED', update_time = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """, retryCount, resolution.reasonCode(),
-                    resolution.reasonMessage(), incident.id());
+                    resolution.reasonMessage(), incident.id()));
             return Map.of("retryCount", retryCount, "exhausted", true);
         }
         long delay = Math.max(5L, Math.round(
                 incident.initialDelaySeconds()
                         * Math.pow(
                         incident.backoffMultiplier(), retryCount)));
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 UPDATE process_assignee_incident
                 SET status = 'RETRY_SCHEDULED', retry_count = ?,
                     next_retry_at = %s,
@@ -361,7 +362,7 @@ public class AssigneeIncidentService {
                     update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """.formatted(databaseTime().currentAfterSeconds("?")), retryCount, delay, resolution.reasonCode(),
-                resolution.reasonMessage(), incident.id());
+                resolution.reasonMessage(), incident.id()));
         return Map.of("retryCount", retryCount, "nextDelaySeconds", delay);
     }
 
@@ -424,13 +425,13 @@ public class AssigneeIncidentService {
                 .processInstanceId(incident.processInstanceId()).singleResult() != null) {
             runtimeService.deleteProcessInstance(incident.processInstanceId(), ProcessEndReason.encode("TERMINATED", reason));
         }
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 UPDATE process_assignee_incident
                 SET status = 'TERMINATED', resolution_action = 'TERMINATE_INSTANCE',
                     resolved_by = ?, resolved_at = CURRENT_TIMESTAMP,
                     next_retry_at = NULL, update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
-                """, actor(), incident.id());
+                """, actor(), incident.id()));
         return Map.of("terminated", true);
     }
 
@@ -454,13 +455,13 @@ public class AssigneeIncidentService {
      * @param actor 操作人，供本方法解析异常事件时使用
      */
     private void resolveIncident(String incidentId, String action, String actor) {
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 UPDATE process_assignee_incident
                 SET status = 'RESOLVED', resolution_action = ?, resolved_by = ?,
                     resolved_at = CURRENT_TIMESTAMP, next_retry_at = NULL,
                     update_time = CURRENT_TIMESTAMP
                 WHERE id = ?
-                """, action, actor, incidentId);
+                """, action, actor, incidentId));
     }
 
     /**
@@ -475,12 +476,12 @@ public class AssigneeIncidentService {
                 ? taskService.createTaskQuery().taskId(incident.taskId()).singleResult()
                 : null;
         if (task == null) {
-            jdbcTemplate.update("""
+            incidentMapper.execute(ParameterizedSql.of("""
                     UPDATE process_assignee_incident
                     SET status = 'MANUAL_REQUIRED', next_retry_at = NULL,
                         resolution_action = 'TASK_NOT_FOUND', update_time = CURRENT_TIMESTAMP
                     WHERE id = ?
-                    """, incident.id());
+                    """, incident.id()));
             throw new IllegalStateException("原流程任务不存在，需要人工核对流程实例");
         }
         return task;
@@ -494,7 +495,7 @@ public class AssigneeIncidentService {
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private Incident required(String id) {
-        List<Incident> rows = jdbcTemplate.query("""
+        List<Incident> rows = incidentMapper.selectRows(ParameterizedSql.of("""
                 SELECT id, process_config_id, process_definition_id, process_instance_id,
                        task_id, node_id, node_name, policy, status, empty_reason_code,
                        empty_reason_message, resolver_code, resolver_extra_params_json,
@@ -503,21 +504,21 @@ public class AssigneeIncidentService {
                        backoff_multiplier, next_retry_at, resolution_action,
                        resolved_by, resolved_at, create_time, update_time
                 FROM process_assignee_incident WHERE id = ?
-                """, (rs, rowNum) -> new Incident(
-                rs.getString("id"), rs.getString("process_config_id"),
-                rs.getString("process_definition_id"), rs.getString("process_instance_id"),
-                rs.getString("task_id"), rs.getString("node_id"), rs.getString("node_name"),
-                rs.getString("policy"), rs.getString("status"),
-                rs.getString("empty_reason_code"), rs.getString("empty_reason_message"),
-                rs.getString("resolver_code"), rs.getString("resolver_extra_params_json"),
-                rs.getString("fallback_user"), rs.getString("fallback_group"),
-                rs.getString("responsibility_owner"), rs.getInt("retry_count"),
-                rs.getInt("max_retries"), rs.getInt("initial_delay_seconds"),
-                rs.getDouble("backoff_multiplier"),
-                rs.getObject("next_retry_at", LocalDateTime.class),
-                rs.getString("resolution_action"), rs.getString("resolved_by"),
-                rs.getObject("resolved_at"), rs.getObject("create_time"),
-                rs.getObject("update_time")), id);
+                """, id)).stream().map(rs -> new Incident(
+                text(rs.get("id")), text(rs.get("process_config_id")),
+                text(rs.get("process_definition_id")), text(rs.get("process_instance_id")),
+                text(rs.get("task_id")), text(rs.get("node_id")), text(rs.get("node_name")),
+                text(rs.get("policy")), text(rs.get("status")),
+                text(rs.get("empty_reason_code")), text(rs.get("empty_reason_message")),
+                text(rs.get("resolver_code")), text(rs.get("resolver_extra_params_json")),
+                text(rs.get("fallback_user")), text(rs.get("fallback_group")),
+                text(rs.get("responsibility_owner")), number(rs.get("retry_count")).intValue(),
+                number(rs.get("max_retries")).intValue(), number(rs.get("initial_delay_seconds")).intValue(),
+                number(rs.get("backoff_multiplier")).doubleValue(),
+                localTime(rs.get("next_retry_at")),
+                text(rs.get("resolution_action")), text(rs.get("resolved_by")),
+                rs.get("resolved_at"), rs.get("create_time"),
+                rs.get("update_time"))).toList();
         if (rows.size() != 1) {
             throw new IllegalArgumentException("空办理人事件不存在：" + id);
         }
@@ -529,33 +530,32 @@ public class AssigneeIncidentService {
      *
      * @param rs {@code rs}，作为 {@code row.put} 的输入影响后续处理
      * @return 异常事件视图键值结果，供调用方继续处理
-     * @throws java.sql.SQLException 数据库访问或结构检查失败时抛出
      */
-    private Map<String, Object> incidentView(java.sql.ResultSet rs) throws java.sql.SQLException {
+    private Map<String, Object> incidentView(Map<String, Object> rs) {
         Map<String, Object> row = new LinkedHashMap<>();
-        row.put("id", rs.getString("id"));
-        row.put("processConfigId", rs.getString("process_config_id"));
-        row.put("processDefinitionId", rs.getString("process_definition_id"));
-        row.put("processInstanceId", rs.getString("process_instance_id"));
-        row.put("taskId", rs.getString("task_id"));
-        row.put("nodeId", rs.getString("node_id"));
-        row.put("nodeName", rs.getString("node_name"));
-        row.put("policy", rs.getString("policy"));
-        row.put("status", rs.getString("status"));
-        row.put("emptyReasonCode", rs.getString("empty_reason_code"));
-        row.put("emptyReasonMessage", rs.getString("empty_reason_message"));
-        row.put("resolverCode", rs.getString("resolver_code"));
-        row.put("fallbackUser", rs.getString("fallback_user"));
-        row.put("fallbackGroup", rs.getString("fallback_group"));
-        row.put("responsibilityOwner", rs.getString("responsibility_owner"));
-        row.put("retryCount", rs.getInt("retry_count"));
-        row.put("maxRetries", rs.getInt("max_retries"));
-        row.put("nextRetryAt", rs.getObject("next_retry_at"));
-        row.put("resolutionAction", rs.getString("resolution_action"));
-        row.put("resolvedBy", rs.getString("resolved_by"));
-        row.put("resolvedAt", rs.getObject("resolved_at"));
-        row.put("createdAt", rs.getObject("create_time"));
-        row.put("updatedAt", rs.getObject("update_time"));
+        row.put("id", text(rs.get("id")));
+        row.put("processConfigId", text(rs.get("process_config_id")));
+        row.put("processDefinitionId", text(rs.get("process_definition_id")));
+        row.put("processInstanceId", text(rs.get("process_instance_id")));
+        row.put("taskId", text(rs.get("task_id")));
+        row.put("nodeId", text(rs.get("node_id")));
+        row.put("nodeName", text(rs.get("node_name")));
+        row.put("policy", text(rs.get("policy")));
+        row.put("status", text(rs.get("status")));
+        row.put("emptyReasonCode", text(rs.get("empty_reason_code")));
+        row.put("emptyReasonMessage", text(rs.get("empty_reason_message")));
+        row.put("resolverCode", text(rs.get("resolver_code")));
+        row.put("fallbackUser", text(rs.get("fallback_user")));
+        row.put("fallbackGroup", text(rs.get("fallback_group")));
+        row.put("responsibilityOwner", text(rs.get("responsibility_owner")));
+        row.put("retryCount", number(rs.get("retry_count")).intValue());
+        row.put("maxRetries", number(rs.get("max_retries")).intValue());
+        row.put("nextRetryAt", rs.get("next_retry_at"));
+        row.put("resolutionAction", text(rs.get("resolution_action")));
+        row.put("resolvedBy", text(rs.get("resolved_by")));
+        row.put("resolvedAt", rs.get("resolved_at"));
+        row.put("createdAt", rs.get("create_time"));
+        row.put("updatedAt", rs.get("update_time"));
         return row;
     }
 
@@ -591,6 +591,17 @@ public class AssigneeIncidentService {
         row.put("createdAt", incident.createdAt());
         row.put("updatedAt", incident.updatedAt());
         return row;
+    }
+
+    /** 历史可空计数与原 ResultSet 数字 getter 一致，缺失值按零参与重试计算。 */
+    private Number number(Object value) { return value instanceof Number number ? number : 0; }
+
+    /** JDBC 驱动可能返回 Timestamp 或 LocalDateTime，统一成重试计算使用的本地时间。 */
+    private LocalDateTime localTime(Object value) {
+        if (value == null) return null;
+        if (value instanceof LocalDateTime time) return time;
+        if (value instanceof java.sql.Timestamp time) return time.toLocalDateTime();
+        throw new IllegalStateException("不支持的事件时间类型: " + value.getClass().getName());
     }
 
     /**

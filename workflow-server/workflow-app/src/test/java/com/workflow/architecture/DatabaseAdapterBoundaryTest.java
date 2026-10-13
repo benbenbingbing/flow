@@ -9,6 +9,14 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 /** 数据库模块是纯方言库：标准与实现同模块，执行和装配由调用方负责。 */
 @AnalyzeClasses(packages = "com.workflow", importOptions = ImportOption.DoNotIncludeTests.class)
 class DatabaseAdapterBoundaryTest {
+    /** 业务 SQL 必须经 Mapper；仅元数据、DDL 执行及事务协调基础设施保留 JdbcTemplate。 */
+    @ArchTest
+    static final ArchRule BUSINESS_SQL_USES_MYBATIS = noClasses()
+            .that().resideOutsideOfPackages(
+                    "com.workflow.core.database..", "com.workflow.config.database..",
+                    "com.workflow.dbmigrator..", "com.workflow.entity.data.infrastructure.schema..")
+            .should().dependOnClassesThat().resideInAPackage("org.springframework.jdbc.core..");
+
     @ArchTest
     static final ArchRule DATABASE_HAS_NO_BUSINESS_OR_EXECUTION_DEPENDENCIES = noClasses()
             .that().resideInAPackage("com.workflow.integration.database..")

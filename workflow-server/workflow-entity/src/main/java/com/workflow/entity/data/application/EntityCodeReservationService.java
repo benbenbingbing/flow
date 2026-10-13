@@ -4,7 +4,8 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityCodeReservationMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ import java.util.Locale;
 public class EntityCodeReservationService {
     /** 独立于可编辑字段的命名空间，避免通用唯一字段重建/删除时释放业务编号。 */
     public static final String CODE_CLAIM_FIELD = "$record_code";
-    private final JdbcTemplate jdbc;
+    private final EntityCodeReservationMapper mapper;
     private final DatabaseQueryDialect dialect;
     private final DynamicTableService tables;
 
@@ -36,13 +37,18 @@ public class EntityCodeReservationService {
     public void reserve(String entityCode, String recordId, String code) {
         String normalized = code.trim().toLowerCase(Locale.ROOT);
         try {
-            jdbc.update("INSERT INTO entity_unique_value (entity_code, field_code, value_hash, normalized_value, record_id) VALUES (?, ?, ?, ?, ?)",
-                    entityCode, CODE_CLAIM_FIELD, hash(normalized), normalized, recordId);
+            mapper.insertClaim(ParameterizedSql.of("INSERT INTO entity_unique_value (entity_code, field_code, value_hash, normalized_value, record_id) VALUES (?, ?, ?, ?, ?)",
+                entityCode,
+                CODE_CLAIM_FIELD,
+                hash(normalized),
+                normalized,
+                recordId));
         } catch (DuplicateKeyException exception) {
             throw conflict();
         }
-        Long matches = jdbc.queryForObject("SELECT COUNT(*) FROM " + table(entityCode)
-                + " WHERE LOWER(TRIM(" + dialect.quoteIdentifier("code") + ")) = ?", Long.class, normalized);
+        Long matches = mapper.countExistingCodes(ParameterizedSql.of("SELECT COUNT(*) FROM " + table(entityCode)
+                + " WHERE LOWER(TRIM(" + dialect.quoteIdentifier("code") + ")) = ?",
+                normalized));
         if (matches != null && matches > 0) throw conflict();
     }
 
@@ -50,9 +56,9 @@ public class EntityCodeReservationService {
     public void validateExistingCodes(String entityCode) {
         if (!tables.tableExists(entityCode)) return;
         String column = "LOWER(TRIM(" + dialect.quoteIdentifier("code") + "))";
-        var duplicates = jdbc.queryForList("SELECT " + column + " FROM " + table(entityCode)
+        var duplicates = mapper.selectDuplicateCodes(ParameterizedSql.of("SELECT " + column + " FROM " + table(entityCode)
                 + " WHERE " + dialect.quoteIdentifier("code") + " IS NOT NULL AND " + column + " <> ''"
-                + " GROUP BY " + column + " HAVING COUNT(*) > 1", String.class);
+                + " GROUP BY " + column + " HAVING COUNT(*) > 1"));
         if (!duplicates.isEmpty()) throw new BusinessConflictException("ENTITY_CODE_EXISTING_CONFLICT",
                 "存在重复的历史编码，请先处理后再启用自定义生成");
     }

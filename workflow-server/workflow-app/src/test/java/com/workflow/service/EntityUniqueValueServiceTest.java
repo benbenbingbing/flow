@@ -4,7 +4,9 @@ import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.data.application.EntityUniqueValueService;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueValueMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import java.util.Map;
 
@@ -20,11 +22,11 @@ class EntityUniqueValueServiceTest {
 
     @Test
     void mapsDatabaseUniqueKeyCollisionToBusinessConflict() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        EntityUniqueValueMapper businessMapper = mock(EntityUniqueValueMapper.class);
         doThrow(new DuplicateKeyException("duplicate"))
-                .when(jdbcTemplate)
-                .update(startsWith("INSERT INTO entity_unique_value"), any(Object[].class));
-        EntityUniqueValueService service = new EntityUniqueValueService(jdbcTemplate);
+                .when(businessMapper)
+                .insertClaim(argThat(statement -> statement.sql().startsWith("INSERT INTO entity_unique_value")));
+        EntityUniqueValueService service = new EntityUniqueValueService(businessMapper);
 
         BusinessConflictException exception = assertThrows(
                 BusinessConflictException.class,

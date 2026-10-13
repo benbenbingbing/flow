@@ -275,6 +275,31 @@ class UiAvailableInterfaceServiceTest {
                         .toList());
     }
 
+    @Test
+    void selectedEntitiesApplyToEveryListWhileContextRemainsIndependent() throws Exception {
+        UiExtensionDefinition selected = definition("selected", "ENTITY", null, "REGISTERED_PROVIDER",
+                operation("query", "LIST", "READ", pageSchema()));
+        selected.setScopeEntityIds(List.of("entity-a", "entity-b"));
+        UiExtensionDefinition global = definition("global", "GLOBAL", null, "REGISTERED_PROVIDER",
+                operation("query", "LIST", "READ", pageSchema()));
+        when(sourceMapper.selectList(any())).thenReturn(List.of(selected, global));
+        for (String[] ids : List.of(new String[]{"list-a2", "entity-a"},
+                new String[]{"list-b", "entity-b"}, new String[]{"list-c", "entity-c"})) {
+            EntityListConfig list = new EntityListConfig();
+            list.setId(ids[0]);
+            list.setEntityId(ids[1]);
+            when(listMapper.selectById(ids[0])).thenReturn(list);
+            when(definitionMapper.selectById(ids[1])).thenReturn(entity(ids[1], ids[1]));
+        }
+        for (String listId : List.of("list-a", "list-a2", "list-b")) {
+            assertEquals(List.of("selected", "global"), service.available("LIST", listId, "LIST_QUERY")
+                    .stream().map(UiAvailableInterface::extensionId).toList());
+        }
+        assertEquals(List.of("global"), service.available("LIST", "list-c", "LIST_QUERY")
+                .stream().map(UiAvailableInterface::extensionId).toList());
+        assertEquals(List.of(), service.available("FORM", "form-a", "FIELD_OPTIONS"));
+    }
+
     private EntityDefinition entity(
             String id,
             String code) {

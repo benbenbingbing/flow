@@ -41,10 +41,12 @@ public class UiExtensionDefinitionSaveRequest {
     private String implementationType;
     /** 注册 Provider 编码；仅 REGISTERED_PROVIDER 使用。 */
     private String providerCode;
-    /** 接口作用范围：GLOBAL/ENTITY/FORM/LIST。 */
+    /** 接口作用范围：GLOBAL（全部实体）或 ENTITY（选择实体）。 */
     private String scopeType;
-    /** 非 GLOBAL 作用范围对象 ID。 */
+    /** 兼容旧 ENTITY 请求的单个实体 ID；新客户端使用 scopeEntityIds。 */
     private String scopeId;
+    /** ENTITY 范围所选实体 ID；接口适用于这些实体中符合业务上下文的全部页面。 */
+    private List<String> scopeEntityIds;
     /** 接口实现配置。 */
     private Map<String, Object> implementationConfig;
     /** 接口执行策略。 */

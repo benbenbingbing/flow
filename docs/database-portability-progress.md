@@ -2,6 +2,18 @@
 
 本文件跟踪当前改造，不代表整个系统已经支持切换数据库。目标是完成原先列出的全部十类运行时依赖，支持 MySQL、Oracle、PostgreSQL、Kingbase、达梦、OceanBase MySQL 和 OceanBase Oracle。历史 Flyway 迁移及部署脚本不在本轮范围内。
 
+## 业务持久化统一到 MyBatis（2026-10-13）
+
+实体数据、唯一值校验及占用、多值字段、成员权限、结构发布台账、Excel 配置与作业、流程异常与节点配置、迁移依赖、文件访问和异步队列监控的业务 SQL 已统一通过 MyBatis / MyBatis-Plus 执行。服务不再直接依赖 `JdbcTemplate`；新增的 `DatabaseAdapterBoundaryTest.BUSINESS_SQL_USES_MYBATIS` 防止重新引入。
+
+数据库元数据、DDL 执行及队列、连接探活、数据库时钟、锁和保存点协调、Flyway 保留 JDBC。Spring JDBC 依赖仍为事务及底层设施所需，不能从依赖中整体删除。动态查询保留服务端白名单及方言编译，`ParameterizedSqlProvider` 只将参数占位转换为 MyBatis 预编译绑定，不接受客户端 SQL 或 MyBatis 插值。
+
+应用工厂统一使用 `STATEMENT` 一级缓存范围，避免基础设施在同一连接上更新后读取旧结果；动态 Map 保留不区分大小写的列访问及已投影的 NULL 列。CLOB/NCLOB 使用已有字符串处理器，Excel 错误明细使用 `ResultHandler` 逐行消费，原有 Spring 事务传播、行锁及独立进度事务保持不变。
+
+本次统一不改变数据库结构，Flyway 迁移文件新增、修改、删除均无。内存数据库回归不能替代各数据库产品的实库兼容验证。
+
+验证：隔离源码副本完成后端编译及 `-DskipTests package`。专项 40 个测试类共 262 项，261 项通过；唯一失败为既有 `CrossModulePersistenceBoundaryTest`，报告 `UiRuntimeAccessAdapter` 跨模块依赖实体 Mapper/Record，该实现和基线均未在本轮改动。新增 JDBC 边界规则通过，事务、锁、LOB、大小写/NULL 映射、Excel 流式读取等相关回归通过。全量测试另被工作区现有 `V117__unify_form_components.java` 与 `V117__interface_extension_entity_scopes.sql` 的重复版本号阻断，按用户约定留待其手工处理；本轮未执行应用实库启动或数据库迁移。验证日志：`/private/tmp/flow-orm-focused.log`、`/private/tmp/flow-orm-package.log`。
+
 ## OceanBase MySQL 实库补充（2026-10-13）
 
 本机 OceanBase CE 4.4.2.1 MySQL 模式已补充真实验证，完整结果见 [OceanBase 兼容性验证](testing/obmysql-compatibility-2026-10-13.md)。下文 2026-09-23 记录中的“非 MySQL 无实库环境”是当时的验证边界，不覆盖此次新增结果。

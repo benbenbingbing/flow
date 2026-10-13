@@ -75,12 +75,12 @@ class EmptyAssigneePolicyFlowableIntegrationTest {
         directory = mock(PersonResolverRuntimeService.class);
         var resolution = new AssigneeResolutionService(directory);
         var policyService = new EmptyAssigneePolicyService(new EmptyAssigneePolicyResolver(json), resolution,
-                new AssigneeIncidentRecorder(jdbc, json, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))), engine.getTaskService());
+                new AssigneeIncidentRecorder(com.workflow.support.BusinessMapperTestSupport.mapper(jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), json, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))), engine.getTaskService());
         var listener = new PersonResolverTaskAssignmentListener(mock(ProcessVersionHistoryMapper.class),
                 engine.getRepositoryService(), engine.getRuntimeService(), engine.getTaskService(), directory, json);
         ReflectionTestUtils.setField(listener, "emptyAssigneePolicyService", policyService);
         engine.getRuntimeService().addEventListener(listener, FlowableEngineEventType.TASK_CREATED);
-        incidents = new AssigneeIncidentService(jdbc, json, engine.getTaskService(), engine.getRuntimeService(), resolution, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
+        incidents = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), json, engine.getTaskService(), engine.getRuntimeService(), resolution, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"), new JdbcWriteAttempt(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)));
     }
 
     @BeforeEach

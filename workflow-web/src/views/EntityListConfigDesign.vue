@@ -681,7 +681,7 @@
           </SettingsSection>
           <SettingsSection
             title="列展示"
-            description="配置列宽和对齐方式等常用展示项"
+            description="配置列宽、对齐、快捷复制、固定位置和溢出提示"
             :collapsible="false"
           >
             <el-form label-width="110px" size="small">
@@ -721,14 +721,6 @@
                   inactive-text="否"
                 />
               </el-form-item>
-            </el-form>
-          </SettingsSection>
-          <SettingsSection
-            title="高级列布局"
-            description="仅在需要冻结列或精细控制宽度时配置"
-            :default-expanded="false"
-          >
-            <el-form label-width="110px" size="small">
               <el-form-item label="固定位置">
                 <el-select v-model="editingColumnConfig.fixed" clearable placeholder="不固定" style="width: 100%">
                   <el-option label="左侧" value="left" />
@@ -835,7 +827,6 @@
                       :value="option.value"
                     />
                   </el-select>
-                  <div class="form-tip">只列出当前实体可用的扩展。没写适用范围的扩展对全部实体可见。</div>
                 </el-form-item>
               </el-form>
               <ConfigSchemaEditor

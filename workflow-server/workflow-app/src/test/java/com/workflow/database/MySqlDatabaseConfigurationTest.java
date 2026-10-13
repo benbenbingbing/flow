@@ -25,6 +25,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MySqlDatabaseConfigurationTest {
+    @Test
+    void applicationReadsDoNotReuseStaleRowsAndPreserveProjectedNullColumns() {
+        context().run(context -> {
+            assertThat(context).hasNotFailed();
+            var configuration = context.getBean(org.apache.ibatis.session.SqlSessionFactory.class).getConfiguration();
+            assertThat(configuration.getLocalCacheScope()).isEqualTo(org.apache.ibatis.session.LocalCacheScope.STATEMENT);
+            assertThat(configuration.isCallSettersOnNulls()).isTrue();
+            // 仅改变有实际数据行的 Map 投影，不能让全空的联表关联对象无条件实例化。
+            assertThat(configuration.isReturnInstanceForEmptyRow()).isFalse();
+        });
+    }
+
     private ApplicationContextRunner context() {
         return new ApplicationContextRunner()
                 .withConfiguration(AutoConfigurations.of(DataSourceAutoConfiguration.class, JdbcTemplateAutoConfiguration.class, com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration.class))

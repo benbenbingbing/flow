@@ -669,7 +669,7 @@ const jsonBagRows = [
   { bag: 'dataSourceConfig', who: '字段组合表单', shape: '仅字段组合使用，如 { template: ${code}-${name} }；扩展接口参数在扩展管理中维护' },
   { bag: 'renderConfig', who: '单元格参数表单', shape: '组件的 configSchema。如 { warningAt, dangerAt, showText, showLevel }' },
   { bag: 'queryConfig', who: '查询项', shape: '{ componentType, placeholder, defaultValue }。查询方式在 queryType' },
-  { bag: 'columnConfig', who: '列展示与高级列布局', shape: '{ fixed: left|right|空, minWidth, showOverflowTooltip, quickCopy }。列宽/对齐在 width、align' }
+  { bag: 'columnConfig', who: '列展示', shape: '{ fixed: left|right|空, minWidth, showOverflowTooltip, quickCopy }。列宽/对齐在 width、align' }
 ]
 
 const providerFullRows = [

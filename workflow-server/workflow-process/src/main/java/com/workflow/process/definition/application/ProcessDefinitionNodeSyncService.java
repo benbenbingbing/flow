@@ -25,7 +25,7 @@ import com.workflow.entity.data.application.EntityFlowStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigDocumentMapper;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -72,8 +72,8 @@ public class ProcessDefinitionNodeSyncService {
     private final ProcessNodeApprovalMapper nodeApprovalMapper;
     /** 节点审批选项服务，同步审批选项 */
     private final ProcessNodeApprovalOptionService approvalOptionService;
-    /** JDBC 模板，用于合并节点配置 JSON */
-    private final JdbcTemplate jdbcTemplate;
+    /** 节点扩展文档 Mapper，合并时只更新 JSON 列。 */
+    private final NodeConfigDocumentMapper documentMapper;
     private final ProcessBpmnNodeParser bpmnParser;
 
     /**
@@ -978,9 +978,7 @@ public class ProcessDefinitionNodeSyncService {
      */
     private void mergeConfigJson(String nodeConfigId, Map<String, Object> newConfig) {
         try {
-            String existingJson = jdbcTemplate.queryForObject(
-                    "SELECT config_json FROM process_node_config WHERE id = ?",
-                    String.class, nodeConfigId);
+            String existingJson = documentMapper.findDocument(nodeConfigId);
             Map<String, Object> mergedConfig = new HashMap<>();
             if (existingJson != null && !existingJson.isEmpty()) {
                 mergedConfig = objectMapper.readValue(
@@ -988,9 +986,7 @@ public class ProcessDefinitionNodeSyncService {
                         HashMap.class);
             }
             mergedConfig.putAll(newConfig);
-            int updated = jdbcTemplate.update(
-                    "UPDATE process_node_config SET config_json = ? WHERE id = ?",
-                    objectMapper.writeValueAsString(mergedConfig), nodeConfigId);
+            int updated = documentMapper.updateDocument(objectMapper.writeValueAsString(mergedConfig), nodeConfigId);
             if (updated != 1) {
                 throw new IllegalStateException(
                         "节点配置更新数量异常: nodeConfigId="

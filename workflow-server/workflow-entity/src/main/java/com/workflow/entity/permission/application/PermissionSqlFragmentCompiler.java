@@ -5,12 +5,12 @@ import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.SqlParameterValue;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.PermissionSqlEvaluationMapper;
+import org.apache.ibatis.type.JdbcType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -45,7 +45,7 @@ public class PermissionSqlFragmentCompiler {
             "UNION", "SLEEP", "BENCHMARK", "GET_LOCK", "RELEASE_LOCK",
             "INFORMATION_SCHEMA", "PERFORMANCE_SCHEMA");
 
-    private final JdbcTemplate jdbcTemplate;
+    private final PermissionSqlEvaluationMapper mapper;
     private final EntityPhysicalTableResolver tableResolver;
     private final DatabaseQueryDialect queryDialect;
 
@@ -90,10 +90,11 @@ public class PermissionSqlFragmentCompiler {
             validate(fragment, false);
             var arguments = new ArrayList<Object>();
             String predicate = substitute(fragment, user, value -> {
-                arguments.add(new SqlParameterValue(Types.VARCHAR, value));
+                arguments.add(ParameterizedSql.typed(value, JdbcType.VARCHAR));
                 return "?";
             });
-            Integer matched = jdbcTemplate.queryForObject(queryDialect.booleanValueQuery(predicate), Integer.class, arguments.toArray());
+            Integer matched = mapper.evaluateUserPredicate(ParameterizedSql.of(queryDialect.booleanValueQuery(predicate),
+                arguments.toArray()));
             return matched != null && matched == 1;
         } catch (RuntimeException exception) {
             log.error("适用对象 SQL 求值失败，按未命中处理: {}", exception.getMessage());

@@ -246,6 +246,7 @@ return Map.of(
             <li>`FORM_INIT` 是表单级绑定；FIELD 仅允许 `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / AFTER_LOAD / BEFORE_SUBMIT`。</li>
             <li>SUB_FORM 与 REPEATER 仅允许 `SUBFORM_ROWS / AFTER_LOAD / BEFORE_SUBMIT`，不能借用 FIELD Usage 配置选项、默认值或字段计算。</li>
             <li>一个 `INTERFACE` 扩展记录对应一个完整可调用接口；页面只保存 `extensionId`，不再选择“服务 + 操作”。</li>
+            <li>作用范围只按实体配置：“全部实体（GLOBAL）”或“选择实体（ENTITY）”，后者支持多选。业务上下文为 LIST 时覆盖所选实体的全部列表，为 FORM 时覆盖全部表单；页面仍需显式绑定接口并发布，不会自动执行。</li>
             <li>配置 Schema、输入映射、输出映射、分页、超时、缓存和失败策略在预览与发布时统一校验。</li>
             <li>所有实体查询、LIST_QUERY 和 LIST_COLUMN 都接收不可绕过的 `DataScopePlan`；缓存键必须包含用户、权限版本和发布版本。</li>
             <li>`AFTER_LOAD` 不得重新拼回未授权字段，`BEFORE_SUBMIT` 的关键校验失败策略必须为 FAIL。</li>

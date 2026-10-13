@@ -1,5 +1,7 @@
 package com.workflow.entity.excel.config;
 
+import static com.workflow.entity.excel.persistence.ExcelMapperTestSupport.mapper;
+import com.workflow.entity.excel.infrastructure.persistence.mapper.ExcelConfigurationMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.core.error.RevisionConflictException;
@@ -50,7 +52,7 @@ class EntityExcelInlineDefaultsTransactionTest {
         database.setURL("jdbc:h2:mem:excel_defaults_" + UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE");
         var migration = Path.of("../workflow-db-migrator/src/main/resources/db/migration/V115__entity_excel_configuration_and_jobs.sql");
         new ResourceDatabasePopulator(new FileSystemResource(migration)).execute(database);
-        repository = spy(new ExcelConfigurationRepository(new JdbcTemplate(database)));
+        repository = spy(new ExcelConfigurationRepository(mapper(database, ExcelConfigurationMapper.class)));
         // 本测试聚焦默认发布事务；已有的表单/列表引用快照在需要的用例中单独提供。
         doReturn(List.of()).when(repository).snapshots("entity1");
 

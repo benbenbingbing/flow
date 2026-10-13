@@ -1062,6 +1062,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         entity.getId(),
                         entity.getEntityCode()));
         List<Map<String, Object>> dependencies = new ArrayList<>();
+        collectExtensionDependencies(snapshot, dependencies);
         collectViewCompositionDependencies(snapshot, dependencies);
         snapshot.put("dependencies", deduplicateDependencies(dependencies));
         return snapshot;
@@ -1151,8 +1152,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         definition.put(field, executable.get(field));
                     }
                     definition.put("status", "ACTIVE");
-                    definition.put("scopeRef", portableInterfaceScope(text(executable.get("scopeType")),
-                            text(executable.get("scopeId"))));
+                    applyPortableInterfaceScope(definition, executable);
                     Map<String, Object> previous = frozen.putIfAbsent(key, definition);
                     if (previous != null && !previous.equals(definition)) {
                         throw new IllegalArgumentException("固定表单内同一接口存在不同的冻结实现: " + key);
@@ -1170,27 +1170,54 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         return result;
     }
 
-    /** 把接口使用范围转为稳定坐标，禁止将源 scopeId 作为目标定位条件。 */
-    private String portableInterfaceScope(String type, String id) {
-        if ("GLOBAL".equalsIgnoreCase(type) || !StringUtils.hasText(type)) return null;
+    /**
+     * 导出实体编码集合，禁止携带源环境的 scopeId/scopeEntityIds。
+     * 冻结的旧 FORM/LIST 快照按宿主所属实体转换；已转换的可移植快照可以直接复用。
+     */
+    private void applyPortableInterfaceScope(Map<String, Object> target, Map<String, Object> source) {
+        String type = text(source.get("scopeType"));
+        boolean global = !StringUtils.hasText(type) || "GLOBAL".equalsIgnoreCase(type);
+        target.put("scopeType", global ? "GLOBAL" : "ENTITY");
+        List<String> refs = new ArrayList<>();
+        if (!global) {
+            if (source.get("scopeEntityRefs") instanceof Collection<?> values) {
+                values.forEach(value -> refs.add(String.valueOf(value)));
+            } else if ("ENTITY".equalsIgnoreCase(type)
+                    && source.get("scopeEntityIds") instanceof Collection<?> ids && !ids.isEmpty()) {
+                ids.forEach(id -> refs.add(portableInterfaceEntity(type, String.valueOf(id))));
+            } else {
+                refs.add(portableInterfaceEntity(type, text(source.get("scopeId"))));
+            }
+            if (refs.isEmpty() || refs.stream().anyMatch(value -> !StringUtils.hasText(value))) {
+                throw new IllegalArgumentException("接口扩展选择实体范围不能为空");
+            }
+        }
+        target.put("scopeEntityRefs", refs.stream().distinct().sorted().toList());
+        List.of("scopeId", "scopeEntityIds", "scopeEntityIdsDocument", "scopeRef").forEach(target::remove);
+    }
+
+    /** 从历史实体、表单或列表 ID 找到实体业务编码；找不到归属时停止导出。 */
+    private String portableInterfaceEntity(String type, String id) {
+        if (!StringUtils.hasText(id)) throw new IllegalArgumentException("接口范围缺少实体归属");
         String ownerId = id;
-        String suffix = "";
         if ("FORM".equalsIgnoreCase(type)) {
             EntityForm form = formMapper.selectById(id);
             if (form == null) throw new IllegalArgumentException("接口所属表单不存在: " + id);
             ownerId = form.getEntityId();
-            suffix = "/" + form.getFormKey();
         } else if ("LIST".equalsIgnoreCase(type)) {
             EntityListConfig list = listConfigMapper.selectById(id);
             if (list == null) throw new IllegalArgumentException("接口所属列表不存在: " + id);
             ownerId = list.getEntityId();
-            suffix = "/" + list.getListKey();
         } else if (!"ENTITY".equalsIgnoreCase(type)) {
             throw new IllegalArgumentException("接口使用范围不支持迁移: " + type);
         }
         EntityDefinition owner = entityMapper.selectById(ownerId);
+        if (owner == null && "ENTITY".equalsIgnoreCase(type)) {
+            // 历史 ENTITY 范围允许存实体编码，转换时统一确认它在源环境确实存在。
+            owner = entityMapper.findByEntityCode(ownerId).orElse(null);
+        }
         if (owner == null) throw new IllegalArgumentException("接口所属实体不存在: " + ownerId);
-        return owner.getEntityCode() + suffix;
+        return owner.getEntityCode();
     }
 
     /** 生成按业务编码关联的完整实体发布配置。 */
@@ -1965,27 +1992,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
             value.put("providerOperationCode",
                     definition.getProviderOperationCode());
             value.put("status", definition.getStatus());
-            String scopeType = definition.getScopeType();
-            if ("ENTITY".equalsIgnoreCase(scopeType)
-                    && entityId.equals(definition.getScopeId())) {
-                value.put("scopeRef", entityCode);
-            } else if ("FORM".equalsIgnoreCase(scopeType)) {
-                EntityForm scopeForm = formMapper.selectById(definition.getScopeId());
-                if (scopeForm != null) {
-                    value.put(
-                            "scopeRef",
-                            entityCode + "/" + scopeForm.getFormKey());
-                }
-            } else if ("LIST".equalsIgnoreCase(scopeType)) {
-                EntityListConfig scopeList = listConfigMapper.selectById(
-                        definition.getScopeId());
-                if (scopeList != null) {
-                    value.put(
-                            "scopeRef",
-                            entityCode + "/" + scopeList.getListKey());
-                }
-            }
-            value.remove("scopeId");
+            Map<String, Object> scope = new LinkedHashMap<>();
+            scope.put("scopeType", definition.getScopeType());
+            scope.put("scopeId", definition.getScopeId());
+            scope.put("scopeEntityIds", definition.getScopeEntityIds());
+            applyPortableInterfaceScope(value, scope);
             result.add(value);
         }
         return result;
@@ -2048,6 +2059,10 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                                     child, codesById));
                 }
             });
+            if (map.containsKey("extensionKey") && map.containsKey("scopeType")
+                    && map.containsKey("implementationType")) {
+                applyPortableInterfaceScope(rewritten, rewritten);
+            }
             return rewritten;
         }
         if (value instanceof Collection<?> collection) {
@@ -2614,7 +2629,27 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
      * @param dependencies 依赖集合，作为 {@code addDependency} 的输入影响后续处理
      */
     private void collectExtensionDependencies(Object value, List<Map<String, Object>> dependencies) {
+        String ownerEntityCode = value instanceof Map<?, ?> snapshot
+                && (ENTITY.equals(snapshot.get("assetType")) || SYSTEM_ENTITY_UI.equals(snapshot.get("assetType")))
+                ? text(snapshot.get("businessKey")) : null;
+        collectExtensionDependencies(value, dependencies, ownerEntityCode);
+    }
+
+    /**
+     * 当前实体已由本资产承载；跳过它的接口范围自依赖，避免只导出某个表单时被提升为实体整包。
+     * 其他范围实体必须保留为硬依赖，供导出展开和目标导入前校验。
+     */
+    private void collectExtensionDependencies(Object value, List<Map<String, Object>> dependencies,
+            String ownerEntityCode) {
         if (value instanceof Map<?, ?> map) {
+            if (map.containsKey("extensionKey") && map.get("scopeEntityRefs") instanceof Collection<?> refs) {
+                for (Object ref : refs) {
+                    String entityCode = String.valueOf(ref);
+                    if (!Objects.equals(ownerEntityCode, entityCode)) {
+                        addDependency(dependencies, ENTITY, entityCode, true, "接口扩展范围实体");
+                    }
+                }
+            }
             map.forEach((key, child) -> {
                 String name = String.valueOf(key);
                 if (child instanceof String text && StringUtils.hasText(text)) {
@@ -2626,14 +2661,14 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         addDependency(dependencies, DICTIONARY, text, true, name);
                     }
                 }
-                collectExtensionDependencies(child, dependencies);
+                collectExtensionDependencies(child, dependencies, ownerEntityCode);
             });
         } else if (value instanceof Collection<?> collection) {
-            collection.forEach(child -> collectExtensionDependencies(child, dependencies));
+            collection.forEach(child -> collectExtensionDependencies(child, dependencies, ownerEntityCode));
         } else if (value instanceof String text && text.trim().startsWith("{")) {
             Object parsed = parseJson(text, null);
             if (parsed != null) {
-                collectExtensionDependencies(parsed, dependencies);
+                collectExtensionDependencies(parsed, dependencies, ownerEntityCode);
             }
         }
     }

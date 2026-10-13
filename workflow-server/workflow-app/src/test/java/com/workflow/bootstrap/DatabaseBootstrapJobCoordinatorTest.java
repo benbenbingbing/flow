@@ -14,21 +14,18 @@ import java.time.LocalDateTime;
 import java.util.function.Supplier;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.bootstrap.infrastructure.persistence.mapper.BootstrapJobMapper;
 
 class DatabaseBootstrapJobCoordinatorTest {
     private static final LocalDateTime NOW = LocalDateTime.parse("2026-09-22T02:00:00");
 
     @Test
     void skipsActionWhenRequiredVersionWasCompleted() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                        anyString(),
-                        eq(Integer.class),
-                        eq("catalog")))
+        BootstrapJobMapper mapper = mock(BootstrapJobMapper.class);
+        when(mapper.completedVersion("catalog"))
                 .thenReturn(2);
         DatabaseBootstrapJobCoordinator coordinator =
-                new DatabaseBootstrapJobCoordinator(jdbcTemplate, mock(JdbcLockedRow.class), () -> NOW);
+                new DatabaseBootstrapJobCoordinator(mapper, mock(JdbcLockedRow.class), () -> NOW);
         @SuppressWarnings("unchecked")
         Supplier<String> action = mock(Supplier.class);
 
@@ -41,22 +38,13 @@ class DatabaseBootstrapJobCoordinatorTest {
 
     @Test
     void executesAndRecordsIncompleteVersion() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                        anyString(),
-                        eq(Integer.class),
-                        eq("catalog")))
+        BootstrapJobMapper mapper = mock(BootstrapJobMapper.class);
+        when(mapper.completedVersion("catalog"))
                 .thenReturn(1);
-        when(jdbcTemplate.update(
-                        anyString(),
-                        eq(2),
-                        anyString(),
-                        eq(NOW),
-                        eq(NOW),
-                        eq("catalog")))
+        when(mapper.complete(eq("catalog"), eq(2), anyString(), eq(NOW)))
                 .thenReturn(1);
         DatabaseBootstrapJobCoordinator coordinator =
-                new DatabaseBootstrapJobCoordinator(jdbcTemplate, mock(JdbcLockedRow.class), () -> NOW);
+                new DatabaseBootstrapJobCoordinator(mapper, mock(JdbcLockedRow.class), () -> NOW);
 
         Optional<String> result =
                 coordinator.executeOnce(
@@ -65,20 +53,14 @@ class DatabaseBootstrapJobCoordinatorTest {
                         () -> "completed");
 
         assertEquals(Optional.of("completed"), result);
-        verify(jdbcTemplate).update(
-                anyString(),
-                eq(2),
-                anyString(),
-                eq(NOW),
-                eq(NOW),
-                eq("catalog"));
+        verify(mapper).complete(eq("catalog"), eq(2), anyString(), eq(NOW));
     }
 
     @Test
     void rejectsInvalidJobIdentityAndVersion() {
         DatabaseBootstrapJobCoordinator coordinator =
                 new DatabaseBootstrapJobCoordinator(
-                        mock(JdbcTemplate.class), mock(JdbcLockedRow.class), () -> NOW);
+                        mock(BootstrapJobMapper.class), mock(JdbcLockedRow.class), () -> NOW);
 
         assertThrows(
                 IllegalArgumentException.class,

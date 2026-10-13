@@ -22,7 +22,7 @@ import static org.mockito.Mockito.mock;
 @ResourceLock(Resources.TIME_ZONE)
 class EntityExcelJobCleanupTimezoneDatabaseTest {
     @Test
-    void utcStoredJobsExpireAfter24HoursRegardlessOfJvmTimezone() {
+    void utcStoredJobsExpireAfter24HoursRegardlessOfJvmTimezone() throws Exception {
         TimeZone previous = TimeZone.getDefault();
         String url = System.getenv("FLOW_OBMYSQL_TEST_URL");
         // clean() 会扫描整个库的到期任务，必须在任何连接和写入前拒绝普通业务库地址。
@@ -46,7 +46,7 @@ class EntityExcelJobCleanupTimezoneDatabaseTest {
                     insertJob(jdbc, recentId, LocalDateTime.now(ZoneOffset.UTC).minusHours(23), null);
                     jdbc.update("INSERT INTO entity_excel_job_row(id,job_id,sheet_no,excel_row_number,errors_json) VALUES (?,?,0,2,?)",
                             UUID.randomUUID().toString(), oldId, "[{\"message\":\"过期错误明细\"}]");
-                    var cleanup = new EntityExcelJobCleanup(jdbc, mock(EntityExcelFileStore.class),
+                    var cleanup = new EntityExcelJobCleanup(jobMapper(source), mock(EntityExcelFileStore.class),
                             new DataSourceTransactionManager(source));
                     cleanup.clean();
                     assertThat(jdbc.queryForObject("SELECT status FROM entity_excel_job WHERE id=?", String.class, oldId))
@@ -63,6 +63,18 @@ class EntityExcelJobCleanupTimezoneDatabaseTest {
                 }
             }
         } finally { TimeZone.setDefault(previous); }
+    }
+
+    private com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper jobMapper(javax.sql.DataSource source) throws Exception {
+        var configuration = new org.apache.ibatis.session.Configuration();
+        configuration.setDatabaseId("OCEANBASE_MYSQL");
+        configuration.setMapUnderscoreToCamelCase(true);
+        configuration.addMapper(com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper.class);
+        var factory = new org.mybatis.spring.SqlSessionFactoryBean();
+        factory.setDataSource(source);
+        factory.setConfiguration(configuration);
+        return new org.mybatis.spring.SqlSessionTemplate(factory.getObject())
+                .getMapper(com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper.class);
     }
 
     /** 与生产认领相同，DATETIME 字段绑定 UTC LocalDateTime，任务不依赖真实用户或实体记录。 */

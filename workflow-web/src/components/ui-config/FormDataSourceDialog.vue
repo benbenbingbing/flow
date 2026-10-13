@@ -75,6 +75,7 @@
               <ConfigHelpLabel
                 label="扩展接口"
                 help-key="entityForm.interfaceExtension"
+                :content="getFormDataSourceInterfaceHelp(binding.usage)"
               />
             </template>
             <el-select
@@ -155,6 +156,7 @@ import { ElMessage } from 'element-plus'
 import { patchFormMetadata } from '@/api/entityForm'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
+import { getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { parseJsonConfig } from '@/utils/jsonConfig'
 import {

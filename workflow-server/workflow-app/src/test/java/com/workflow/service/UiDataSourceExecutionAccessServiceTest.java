@@ -777,6 +777,20 @@ class UiDataSourceExecutionAccessServiceTest {
                 exception.getErrorCode());
     }
 
+    /** 使用真实宿主实体匹配整个集合；不在集合内时即使绑定存在也不能执行。 */
+    @Test
+    void entityScopeAuthorizesSelectedEntityAndRejectsOthers() {
+        allowPublishedForm("release-1", "{\"FIELD_OPTIONS\":{\"serviceId\":\"source-1\",\"operationCode\":\"query\"}}");
+        UiExtensionDefinition selected = definition("STATIC_OPTIONS", "ENTITY", null);
+        selected.setScopeEntityIds(List.of("entity-other", "entity-1"));
+        UiExtensionExecuteRequest request = request("FIELD_OPTIONS", "form-1", null);
+        assertEquals("entity-1", context.service().authorizePublished(selected, request).entityId());
+        selected.setScopeEntityIds(List.of("entity-other", "entity-another"));
+        BusinessForbiddenException error = assertThrows(BusinessForbiddenException.class,
+                () -> context.service().authorizePublished(selected, request));
+        assertEquals("UI_DATA_SOURCE_SCOPE_MISMATCH", error.getErrorCode());
+    }
+
     @Test
     void resolvedFormButtonAuthorizesExactInheritedOwnerWithoutReadingActive() {
         allowFormTarget("active-release-changed");

@@ -5,8 +5,8 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.LocalDateTime;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
+import com.workflow.observability.infrastructure.persistence.mapper.AsyncQueueMetricsMapper;
+import com.workflow.observability.infrastructure.persistence.mapper.AsyncQueueMetricsMapper.QueueSnapshot;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.*;
 
@@ -17,21 +17,12 @@ class AsyncQueueMetricsTest {
         var clock = mock(DatabaseClockPort.class);
         when(clock.utcNow()).thenReturn(now);
         var failSecond = new AtomicBoolean(false);
-        JdbcTemplate jdbc = new JdbcTemplate() {
-            @Override public <T> T queryForObject(String sql, RowMapper<T> mapper, Object... args) {
-                assertEquals(now, args[0]);
-                boolean outbox = sql.contains("workflow_outbox_event");
-                if (!outbox && failSecond.get()) throw new IllegalStateException("模拟第二张队列不可读");
-                var row = mock(java.sql.ResultSet.class);
-                try {
-                    when(row.getLong("ready_count")).thenReturn(failSecond.get() ? 99L : outbox ? 7L : 3L);
-                    when(row.getLong("running_count")).thenReturn(outbox ? 2L : 1L);
-                    when(row.getLong("dead_count")).thenReturn(outbox ? 1L : 0L);
-                    when(row.getObject("oldest_ready_at", LocalDateTime.class)).thenReturn(now.minusSeconds(outbox ? 45 : 12));
-                    return mapper.mapRow(row, 0);
-                } catch (java.sql.SQLException error) { throw new AssertionError(error); }
-            }
-        };
+        var jdbc = mock(AsyncQueueMetricsMapper.class);
+        when(jdbc.outbox(now)).thenAnswer(call -> new QueueSnapshot(failSecond.get() ? 99 : 7, 2, 1, now.minusSeconds(45)));
+        when(jdbc.flowAction(now)).thenAnswer(call -> {
+            if (failSecond.get()) throw new IllegalStateException("模拟第二张队列不可读");
+            return new QueueSnapshot(3, 1, 0, now.minusSeconds(12));
+        });
         var registry = new SimpleMeterRegistry();
         try {
             var metrics = new AsyncQueueMetrics(jdbc, registry, clock);

@@ -215,7 +215,7 @@ class MySqlRuntimeTimeDatabaseTest {
             var query = mock(TaskQuery.class); when(tasks.createTaskQuery()).thenReturn(query); when(query.taskId("task")).thenReturn(query); when(query.singleResult()).thenReturn(task);
             when(runtime.getVariables(anyString())).thenReturn(Map.of());
             when(resolver.resolveConfigured(anyString(), any())).thenReturn(AssigneeResolutionResult.empty("EMPTY", "No candidate", "resolver"));
-            var service = new AssigneeIncidentService(h.jdbc, h.json, tasks, runtime, resolver, QUERY, h.attempt);
+            var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), h.json, tasks, runtime, resolver, QUERY, h.attempt);
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'");
                 for (String id : List.of("task", "multi", "old")) {
@@ -245,7 +245,7 @@ class MySqlRuntimeTimeDatabaseTest {
             f.table("storage_file_object", "id VARCHAR(64) PRIMARY KEY, storage_url VARCHAR(200) UNIQUE, deleted INT, update_time DATETIME(6)");
             var h = new Harness(f);
             h.jdbc.update("INSERT INTO storage_file_object VALUES ('a','url-a',0,NULL),('b','url-b',0,NULL)");
-            var service = new StoredFileAccessService(h.jdbc, mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
+            var service = new StoredFileAccessService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class), mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
                 new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt, QUERY);
             h.tx.executeWithoutResult(status -> {
                 h.jdbc.execute("SET time_zone = '+09:00'"); service.markDeleted("url-a"); utcUpdated(h,"storage_file_object","a");

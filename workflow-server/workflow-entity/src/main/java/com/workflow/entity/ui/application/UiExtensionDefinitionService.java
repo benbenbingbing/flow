@@ -22,6 +22,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -110,9 +111,6 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             query.eq(UiExtensionDefinition::getScopeType,
                     normalize(scopeType));
         }
-        if (StringUtils.hasText(scopeId)) {
-            query.eq(UiExtensionDefinition::getScopeId, scopeId.trim());
-        }
         if (StringUtils.hasText(implementationType)) {
             query.eq(UiExtensionDefinition::getImplementationType,
                     normalize(implementationType));
@@ -121,7 +119,12 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 .eq(UiExtensionDefinition::getDeleted, 0)
                 .orderByAsc(UiExtensionDefinition::getExtensionType)
                 .orderByAsc(UiExtensionDefinition::getExtensionKey)
-                .orderByDesc(UiExtensionDefinition::getVersion));
+                .orderByDesc(UiExtensionDefinition::getVersion)).stream()
+                .filter(value -> !StringUtils.hasText(scopeId)
+                        || ("ENTITY".equals(normalize(value.getScopeType()))
+                            ? value.getScopeEntityIds().contains(scopeId.trim())
+                            : Objects.equals(value.getScopeId(), scopeId.trim())))
+                .toList();
     }
 
     /**
@@ -616,6 +619,7 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 definition.getProviderCode(),
                 definition.getScopeType(),
                 definition.getScopeId(),
+                definition.getScopeEntityIds(),
                 definition.getInterfaceKind(),
                 definition.getInterfaceContextType(),
                 readMap(

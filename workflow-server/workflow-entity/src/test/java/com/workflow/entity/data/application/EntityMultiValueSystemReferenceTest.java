@@ -7,7 +7,8 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityMultiValueMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +26,7 @@ class EntityMultiValueSystemReferenceTest {
 
     @Test
     void enrichesMultiUserReferenceWithoutUsingDynamicSystemTableAccess() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        EntityMultiValueMapper businessMapper = mock(EntityMultiValueMapper.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityDefinitionMapper definitionMapper =
                 mock(EntityDefinitionMapper.class);
@@ -37,7 +38,7 @@ class EntityMultiValueSystemReferenceTest {
                 mock(SystemEntityFieldPolicy.class);
         EntityMultiValueRuntimeService service =
                 new EntityMultiValueRuntimeService(
-                        jdbcTemplate,
+                        businessMapper,
                         fieldMapper,
                         definitionMapper,
                         dynamicTableService,
@@ -68,9 +69,9 @@ class EntityMultiValueSystemReferenceTest {
                 .thenReturn(true);
         when(systemFieldPolicy.displayField("sys_user"))
                 .thenReturn("nickname");
-        when(jdbcTemplate.queryForList(anyString(), any(Object[].class)))
+        when(businessMapper.selectValues(any()))
                 .thenAnswer(invocation -> {
-                    String sql = invocation.getArgument(0);
+                    String sql = ((ParameterizedSql) invocation.getArgument(0)).sql();
                     if (sql.startsWith("SELECT record_id")) {
                         return List.of(
                                 Map.of(
@@ -91,6 +92,7 @@ class EntityMultiValueSystemReferenceTest {
                     }
                     return List.of();
                 });
+        when(businessMapper.selectReferenceOptions(any())).thenReturn(List.of(Map.of("display_name", "张三")));
         EntityDataDTO record = new EntityDataDTO();
         record.setId("record-1");
         record.setData(new LinkedHashMap<>());

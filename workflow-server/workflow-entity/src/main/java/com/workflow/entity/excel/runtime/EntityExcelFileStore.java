@@ -4,7 +4,7 @@ import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.application.FileStorageFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelFileMapper;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -24,13 +24,13 @@ import javax.crypto.spec.SecretKeySpec;
 public class EntityExcelFileStore {
     public static final String XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     private final FileStorageFactory storage;
-    private final JdbcTemplate jdbc;
+    private final EntityExcelFileMapper files;
     private final ExcelPrivateFileCipher cipher;
 
-    public EntityExcelFileStore(FileStorageFactory storage, JdbcTemplate jdbc,
+    public EntityExcelFileStore(FileStorageFactory storage, EntityExcelFileMapper files,
             @Value("${entity.excel.file-secret:${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}}") String secret) {
         this.storage = storage;
-        this.jdbc = jdbc;
+        this.files = files;
         if (secret == null || secret.isBlank()) throw new IllegalArgumentException("Excel任务文件密钥不能为空");
         try {
             cipher = new ExcelPrivateFileCipher(new SecretKeySpec(MessageDigest.getInstance("SHA-256")
@@ -60,10 +60,7 @@ public class EntityExcelFileStore {
         String id = UUID.randomUUID().toString().replace("-", "");
         try {
             LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-            jdbc.update("""
-                    INSERT INTO storage_file_object(id,storage_url,storage_key,owner_user_id,original_name,
-                      content_type,content_length,deleted,create_time,update_time) VALUES (?,?,?,?,?,?,?,0,?,?)
-                    """, id, url, uploaded.get("filename"), owner, name, contentType, Files.size(path), now, now);
+            files.insert(id, url, uploaded.get("filename"), owner, name, contentType, Files.size(path), now);
             return id;
         } catch (RuntimeException ex) { provider.delete(url); throw ex; }
     }
@@ -79,18 +76,17 @@ public class EntityExcelFileStore {
     }
 
     public Map<String, Object> metadata(String id) {
-        var files = jdbc.queryForList("SELECT * FROM storage_file_object WHERE id=? AND deleted=0", id);
-        if (files.size() != 1) throw new IllegalArgumentException("任务文件不存在或已过期");
-        return files.get(0);
+        var file = files.find(id);
+        if (file == null) throw new IllegalArgumentException("任务文件不存在或已过期");
+        return file;
     }
 
     /** 内部清理入口，供任务失败及到期回收使用；不接受浏览器直接指定的存储URL。 */
     public void delete(String id) {
         if (id == null) return;
-        var files = jdbc.queryForList("SELECT storage_url FROM storage_file_object WHERE id=? AND deleted=0", id);
-        if (files.isEmpty()) return;
+        String url = files.activeUrl(id);
+        if (url == null) return;
         var provider = storage.getStrategy();
-        String url = String.valueOf(files.get(0).get("storage_url"));
         if (!provider.delete(url)) {
             // 文件删除无法随数据库回滚；重试时对象可能已经不存在，确认不存在后视为幂等成功。
             try (var input = provider.open(url).inputStream()) {
@@ -101,6 +97,6 @@ public class EntityExcelFileStore {
                 throw new IllegalStateException("Excel任务文件清理失败", failure);
             }
         }
-        jdbc.update("UPDATE storage_file_object SET deleted=1,update_time=? WHERE id=?", LocalDateTime.now(ZoneOffset.UTC), id);
+        files.markDeleted(id, LocalDateTime.now(ZoneOffset.UTC));
     }
 }

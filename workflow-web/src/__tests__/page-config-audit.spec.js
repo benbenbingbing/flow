@@ -1209,7 +1209,7 @@ const wordLimitSectionEnd = formDesigner.indexOf('</SettingsSection>', wordLimit
 const validationSectionStart = formDesigner.indexOf('title="校验规则"')
 const regexIndex = formDesigner.indexOf('label="正则"')
 const componentTypeIndex = formDesigner.indexOf('label="组件类型"')
-const componentParametersIndex = formDesigner.indexOf('class="property-subheading">组件参数')
+const componentParametersIndex = formDesigner.indexOf('class="component-configuration"')
 assert.ok(
   wordLimitSectionStart >= 0
     && wordLimitIndex > wordLimitSectionStart
@@ -2125,7 +2125,6 @@ assert.equal(
   'title="扩展渲染"',
   'title="查询项"',
   'title="列展示"',
-  'title="高级列布局"',
   'title="数据与显示"',
   'title="模板初始化"'
 ].forEach((marker) => {

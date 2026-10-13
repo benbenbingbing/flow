@@ -11,7 +11,8 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUserReferenceMapper;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -40,7 +41,7 @@ public class EntityUserReferenceAdapter
     private final EntityDataDynamicMapper dataMapper;
     private final EntityPhysicalTableResolver tableResolver;
     private final DynamicTableService dynamicTableService;
-    private final JdbcTemplate jdbcTemplate;
+    private final EntityUserReferenceMapper mapper;
     // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
     private final DatabaseQueryDialect queryDialect;
 
@@ -119,16 +120,14 @@ public class EntityUserReferenceAdapter
         if (metadata.multiple() && StringUtils.hasText(field.getRefEntityId())) {
             String multiTable = dynamicTableService.getMultiValueTableName(
                     definition.getEntityCode());
-            List<String> values = jdbcTemplate.queryForList(
-                    "SELECT target_record_id FROM " + queryDialect.quoteIdentifier(multiTable)
+            List<String> values = mapper.selectRelatedUserIds(ParameterizedSql.of("SELECT target_record_id FROM " + queryDialect.quoteIdentifier(multiTable)
                             + " WHERE record_id = ? AND field_code = ?"
                             + " AND target_entity_id = ? AND deleted = 0"
                             + " ORDER BY sort_order, id"
                             + queryDialect.paginationClause("0", Integer.toString(MAX_RESOLVED_USERS + 1)),
-                    String.class,
-                    normalizedRecordId,
-                    field.getFieldCode(),
-                    field.getRefEntityId());
+                normalizedRecordId,
+                field.getFieldCode(),
+                field.getRefEntityId()));
             return resolveUserKeys(
                     field,
                     requireWithinLimit(distinct(values)));
@@ -165,10 +164,9 @@ public class EntityUserReferenceAdapter
         }
         String placeholders = String.join(",",
                 java.util.Collections.nCopies(values.size(), "?"));
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT id, username, deleted FROM sys_user"
+        List<Map<String, Object>> rows = mapper.selectUserIdentities(ParameterizedSql.of("SELECT id, username, deleted FROM sys_user"
                         + " WHERE id IN (" + placeholders + ")",
-                values.toArray());
+                values.toArray()));
         LinkedHashSet<String> inputsMatchingUserIds =
                 new LinkedHashSet<>();
         Map<String, String> usernamesByInput = new LinkedHashMap<>();
@@ -208,13 +206,11 @@ public class EntityUserReferenceAdapter
                 String usernamePlaceholders = String.join(",",
                         java.util.Collections.nCopies(
                                 unresolved.size(), "?"));
-                List<String> canonicalUsernames = jdbcTemplate.queryForList(
-                        "SELECT username FROM sys_user"
+                List<String> canonicalUsernames = mapper.selectLegacyUsernames(ParameterizedSql.of("SELECT username FROM sys_user"
                                 + " WHERE username IN ("
                                 + usernamePlaceholders + ")"
                                 + " AND deleted = 0",
-                        String.class,
-                        unresolved.toArray());
+                unresolved.toArray()));
                 // 数据库 username 使用大小写不敏感排序规则；按相同语义把
                 // 原输入关联到数据库返回值，并始终输出 canonical username。
                 for (String value : unresolved) {

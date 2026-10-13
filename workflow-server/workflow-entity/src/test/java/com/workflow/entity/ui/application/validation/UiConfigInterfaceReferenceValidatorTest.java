@@ -30,6 +30,18 @@ class UiConfigInterfaceReferenceValidatorTest {
     }
 
     @Test
+    void selectedEntitiesAllowEveryListOnlyWithinTheirEntityScope() {
+        TestContext context = context("LIST", "ENTITY", null);
+        context.definition().setScopeEntityIds(List.of("entity-a", "entity-b"));
+        context.definition().setOutputSchemaDocument("{\"type\":\"object\",\"properties\":{\"records\":{\"type\":\"array\"}}}");
+        assertDoesNotThrow(() -> context.validator().validateListDraft("list-a", "entity-a", "service-a", List.of()));
+        assertDoesNotThrow(() -> context.validator().validateListDraft("list-a2", "entity-a", "service-a", List.of()));
+        assertDoesNotThrow(() -> context.validator().validateListDraft("list-b", "entity-b", "service-a", List.of()));
+        assertThrows(IllegalArgumentException.class,
+                () -> context.validator().validateListDraft("list-c", "entity-c", "service-a", List.of()));
+    }
+
+    @Test
     void rejectsOperationContextMismatch() {
         TestContext context = context("LIST", "ENTITY", "entity-a");
 

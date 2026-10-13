@@ -5,7 +5,6 @@ import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationA
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
 import java.util.Map;
@@ -26,11 +25,10 @@ class ConfigMigrationAssetDependencyServiceTest {
     @Test
     void persistenceMergesDuplicateBusinessKeysBeforeInsertingAndRetainsLocations() {
         var mapper = mock(ConfigMigrationAssetDependencyMapper.class);
-        var jdbc = mock(JdbcTemplate.class);
         var codec = new JsonDocumentCodec(new com.fasterxml.jackson.databind.ObjectMapper());
-        when(jdbc.queryForList(anyString(), eq("asset-1"))).thenReturn(List.of(Map.of(
-                "assetType", "PROCESS", "businessKey", "all_flow", "sourceVersion", 24)));
-        var service = new ConfigMigrationAssetDependencyService(mapper, codec, jdbc);
+        when(mapper.findSourceAsset("asset-1")).thenReturn(Map.of(
+                "assetType", "PROCESS", "businessKey", "all_flow", "sourceVersion", 24));
+        var service = new ConfigMigrationAssetDependencyService(mapper, codec);
         service.replace("asset-1", List.of(
                 Map.of("type", "USER", "key", "admin", "required", true, "source", "办理人",
                         "location", "review.assignee", "references", List.of(Map.of("nodeId", "review"))),
@@ -53,14 +51,13 @@ class ConfigMigrationAssetDependencyServiceTest {
     void persistsStableSourceVersionLocationStrengthAndParseStatus() {
         ConfigMigrationAssetDependencyMapper mapper = mock(ConfigMigrationAssetDependencyMapper.class);
         JsonDocumentCodec codec = mock(JsonDocumentCodec.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForList(anyString(), eq("asset-1"))).thenReturn(List.of(Map.of(
+        when(mapper.findSourceAsset("asset-1")).thenReturn(Map.of(
                 "assetType", "FORM",
                 "businessKey", "leave-form",
-                "sourceVersion", 7)));
+                "sourceVersion", 7));
         when(codec.write(any(), anyString())).thenReturn("{}");
         ConfigMigrationAssetDependencyService service =
-                new ConfigMigrationAssetDependencyService(mapper, codec, jdbcTemplate);
+                new ConfigMigrationAssetDependencyService(mapper, codec);
 
         service.replace("asset-1", List.of(Map.of(
                 "type", "ENTITY_FIELD",

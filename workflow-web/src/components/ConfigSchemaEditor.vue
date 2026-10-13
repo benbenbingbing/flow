@@ -99,7 +99,7 @@
             clearable
             @update:model-value="updateValue(item, $event)"
           />
-          <div v-if="item.description" class="config-help">{{ item.description }}</div>
+          <div v-if="item.description && !showFieldHelp" class="config-help">{{ item.description }}</div>
         </el-form-item>
       </component>
     </el-form>
@@ -125,7 +125,9 @@ const props = defineProps({
   schema: { type: Array, default: () => [] },
   // 内嵌参数可直接展示全部可见配置项，省去分组标题、边框和折叠层级。
   grouped: { type: Boolean, default: true },
-  // 内嵌列参数提供问号说明；显式帮助键优先于简短 description，保持业务限制完整。
+  // 宿主可用组件名称替换常用分组标题；未传入时保留通用标题，其他分组不受影响。
+  commonGroupTitle: { type: String, default: '' },
+  // 内嵌列参数只在问号中展示说明，避免下方重复；显式帮助键优先于简短 description，保持业务限制完整。
   showFieldHelp: { type: Boolean, default: false }
 })
 
@@ -141,7 +143,9 @@ const schemaGroups = computed(() => {
     .forEach((item) => {
       const group = groups.get(item.groupKey) || {
         key: item.groupKey,
-        label: item.groupLabel,
+        label: item.groupKey === 'common' && props.commonGroupTitle
+          ? props.commonGroupTitle
+          : item.groupLabel,
         description: item.groupDescription,
         advanced: item.isAdvanced,
         primary: item.groupKey === 'common',

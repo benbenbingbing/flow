@@ -28,7 +28,7 @@ class DynamicTableLargeTextUniqueScanTest {
     @ParameterizedTest
     @EnumSource(DatabaseVendor.class)
     void samplesDuplicateGroupsWithoutGroupingSortingOrTruncatingLob(DatabaseVendor vendor) {
-        var jdbc = mock(JdbcTemplate.class);
+        var mapper = mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class);
         var metadata = mock(SchemaMetadataPort.class);
         var resolver = mock(EntityPhysicalTableResolver.class);
         var entity = new EntityDefinition();
@@ -42,13 +42,13 @@ class DynamicTableLargeTextUniqueScanTest {
                 "memo", "TEXT", java.sql.Types.LONGVARCHAR, null, null, null,
                 true, null, null, false, false, 1)));
         var query = DatabaseQueryDialects.forVendor(vendor);
-        var service = new DynamicTableService(jdbc, mock(EntityFieldMapper.class), resolver,
+        var service = new DynamicTableService(mapper, mock(EntityFieldMapper.class), resolver,
                 mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(vendor), metadata, query);
 
         assertTrue(service.scanUniqueConflicts(entity, List.of(field)).isEmpty());
-        var sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbc).query(sql.capture(), any(RowCallbackHandler.class));
-        String rendered = sql.getValue();
+        verify(mapper).scan("biz_sample", "memo", com.workflow.integration.database.api.schema.SchemaType.Kind.TEXT, query);
+        String rendered = com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.Sql.scan(java.util.Map.of(
+                "table", "biz_sample", "column", "memo", "kind", com.workflow.integration.database.api.schema.SchemaType.Kind.TEXT, "dialect", query));
         assertFalse(rendered.contains("GROUP BY"));
         assertFalse(rendered.contains("SUBSTR"));
         assertFalse(rendered.contains("CAST("));
@@ -66,7 +66,7 @@ class DynamicTableLargeTextUniqueScanTest {
 
     @Test
     void skipsUniqueConflictQueryForColumnNotYetCreatedByPublishPlan() {
-        var jdbc = mock(JdbcTemplate.class);
+        var mapper = mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class);
         var metadata = mock(SchemaMetadataPort.class);
         var resolver = mock(EntityPhysicalTableResolver.class);
         var entity = new EntityDefinition();
@@ -79,11 +79,11 @@ class DynamicTableLargeTextUniqueScanTest {
         when(metadata.columns("biz_sample")).thenReturn(List.of(new SchemaColumnMetadata(
                 "id", "VARCHAR", java.sql.Types.VARCHAR, 64L, null, null,
                 false, null, null, true, true, 1)));
-        var service = new DynamicTableService(jdbc, mock(EntityFieldMapper.class), resolver,
+        var service = new DynamicTableService(mapper, mock(EntityFieldMapper.class), resolver,
                 mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(DatabaseVendor.MYSQL),
                 metadata, DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
 
         assertTrue(service.scanUniqueConflicts(entity, List.of(field)).isEmpty());
-        verify(jdbc, never()).query(any(String.class), any(RowCallbackHandler.class));
+        verifyNoInteractions(mapper);
     }
 }

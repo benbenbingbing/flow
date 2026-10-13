@@ -3,7 +3,8 @@ package com.workflow.migration.infrastructure.persistence.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
-import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.*;
+import java.util.Map;
 
 import java.util.List;
 
@@ -15,6 +16,13 @@ import java.util.List;
 @Mapper
 public interface ConfigMigrationAssetDependencyMapper
         extends BaseMapper<ConfigMigrationAssetDependency> {
+
+    /** 读取有效源资产，依赖快照需要保留其业务键及原始版本。 */
+    @Select("SELECT asset_type, business_key, source_version FROM config_migration_asset WHERE id = #{assetId} AND deleted = 0")
+    @Results({@Result(column = "asset_type", property = "assetType"),
+            @Result(column = "business_key", property = "businessKey"),
+            @Result(column = "source_version", property = "sourceVersion")})
+    Map<String, Object> findSourceAsset(@Param("assetId") String assetId);
 
     /**
      * 按资产ID查询其全部依赖记录，按依赖类型与编码排序。

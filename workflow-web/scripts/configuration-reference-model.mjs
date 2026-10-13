@@ -744,7 +744,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityListConfigDesign.vue', '^rowActionButtons$', '实体配置-列表-编辑-操作列按钮'),
   locationRule('src/views/EntityListConfigDesign.vue', '^(editingQueryConfig\\.|editingField\\.(queryType))', '实体配置-列表-编辑-字段高级配置-常用-查询项'),
   locationRule('src/views/EntityListConfigDesign.vue', '^editingField\\.(width|align)$', '实体配置-列表-编辑-字段高级配置-常用-列展示'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^editingColumnConfig\\.', '实体配置-列表-编辑-字段高级配置-常用-高级列布局'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^editingColumnConfig\\.', '实体配置-列表-编辑-字段高级配置-常用-列展示'),
   locationRule('src/views/EntityListConfigDesign.vue', '^(editingDataSourceConfig|editingRenderConfig|editingField\\.(dataSourceType|interfaceExtensionId|renderComponent|templateId))', '实体配置-列表-编辑-字段高级配置-数据与显示'),
 
   locationRule('src/components/ListButtonConfigPanel.vue', '^row\\.', '实体配置-列表-编辑-工具栏或操作列按钮'),

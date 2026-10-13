@@ -25,8 +25,8 @@
 | `ProjectCustomPersonResolver` | `PersonResolverProvider` | 定制开发 -> 扩展管理 -> 人员接口 | `projectCustomPersonResolver` |
 | `ProjectCustomUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/复合上下文 | `PROJECT_CUSTOM_UI_DATA_SOURCE` |
 | `ProjectCustomEntityUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，ENTITY 作用范围/字段数据 | `PROJECT_CUSTOM_UI_ENTITY` |
-| `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，FORM 作用范围 | `PROJECT_CUSTOM_UI_FORM` |
-| `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，LIST 作用范围 | `PROJECT_CUSTOM_UI_LIST` |
+| `ProjectCustomFormUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，FORM 业务上下文 | `PROJECT_CUSTOM_UI_FORM` |
+| `ProjectCustomListUiDataSourceProvider` | `UiDataSourceProvider` | 定制开发 -> 扩展管理 -> 接口，LIST 业务上下文 | `PROJECT_CUSTOM_UI_LIST` |
 | `ProjectCustomListFieldDataProvider` | `ListFieldDataProvider` | 列表字段高级配置 -> 数据源 | `PROJECT_CUSTOM_FIELD` |
 | `ProjectCustomPermissionOptionProvider` | `EntityPermissionOptionProvider` | 实体列表按钮权限选择器 | `entity:{entity}:custom:project-review` |
 
@@ -56,27 +56,28 @@
 
 | 配置层 | 可选值 | 作用 |
 | --- | --- | --- |
-| 接口扩展作用范围 | `GLOBAL / ENTITY / FORM / LIST` | 限制接口允许绑定到哪些发布配置 |
+| 接口扩展作用范围 | `GLOBAL / ENTITY` | 全部实体或选择多个实体，ENTITY 使用 `scopeEntityIds` 保存实体 ID 集合 |
 | 接口上下文 | `FORM / LIST / ENTITY` | 决定 Provider 可读取的强类型运行上下文 |
 
 Provider 接口只收到已经过平台授权的 `UiInvocationContext`、`DataScopePlan`、
 接口实现配置和调用输入，不会直接收到接口扩展定义的 `scopeType`。因此以下
-`RECOMMENDED_SCOPE` 是配置建议；真正的 scopeId 匹配、发布版本校验和权限校验
+`RECOMMENDED_SCOPE` 是历史诊断标签（旧 FORM/LIST 值不再作为可选范围）；真正的实体范围匹配、发布版本校验和权限校验
 由 `UiDataSourceExecutionAccessService` 在调用 Provider 前完成。
 
 | Provider | 推荐 scopeType | 主要 usage | 示例返回 |
 | --- | --- | --- | --- |
 | `PROJECT_CUSTOM_UI_DATA_SOURCE` | `ENTITY` | 列表、表单、字段、按钮通用联调 | 列值映射、字段补丁、选项或诊断对象 |
 | `PROJECT_CUSTOM_UI_ENTITY` | `ENTITY` | `FIELD_OPTIONS / FIELD_DEFAULT / FIELD_COMPUTE / FIELD_CHANGE / ENTITY_SELECTED / FIELD_BUTTON_CLICK` | 字段选项、`value` 对象、字段事件消息与映射 |
-| `PROJECT_CUSTOM_UI_FORM` | `FORM` | `FORM_INIT / AFTER_LOAD / BEFORE_SUBMIT / FIELD_* / SUBFORM_ROWS / FORM_BUTTON_CLICK` | 表单字段补丁、空子表集合或事件消息 |
-| `PROJECT_CUSTOM_UI_LIST` | `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 一条不落库的验收记录、记录 ID 到列值映射或事件消息 |
+| `PROJECT_CUSTOM_UI_FORM` | `ENTITY`，业务上下文 `FORM` | `FORM_INIT / AFTER_LOAD / BEFORE_SUBMIT / FIELD_* / SUBFORM_ROWS / FORM_BUTTON_CLICK` | 表单字段补丁、空子表集合或事件消息 |
+| `PROJECT_CUSTOM_UI_LIST` | `ENTITY`，业务上下文 `LIST` | `LIST_QUERY / LIST_COLUMN / LIST_LOAD / LIST_EXPORT / TOOLBAR_BUTTON_CLICK / ROW_BUTTON_CLICK` | 一条不落库的验收记录、记录 ID 到列值映射或事件消息 |
 
 配置时在“定制开发 -> 扩展管理 -> 接口”新增接口扩展，类型选择
 `REGISTERED_PROVIDER`，再选择上表中的 Provider。一条扩展记录就是一个可调用
 接口；同一 Provider 若承载多个业务调用，应分别创建多条接口扩展，并用隐藏的
-Provider 能力编码区分实现入口，不再创建“服务后追加多个操作”。FORM 和 LIST
-范围的 `scopeId` 必须填写真实表单 ID 或列表配置 ID；ENTITY 范围需要选择实体
-ID。保存后，在对应表单、字段、列表列或按钮事件中直接选择该接口扩展，并重新
+Provider 能力编码区分实现入口，不再创建“服务后追加多个操作”。作用范围选“全部实体”
+或“选择实体”（支持多选）。业务上下文为 LIST 时，所选实体的所有列表均可绑定；
+FORM 同理覆盖所有表单，但仍需分别绑定，不会自动执行。旧 FORM/LIST 范围在编辑
+保存时转为所属实体范围，历史发布快照保留原范围直至重新发布。保存后，在对应表单、字段、列表列或按钮事件中直接选择该接口扩展，并重新
 发布表单或列表。所有示例日志都以“项目统一数据源”开头，可同时按
 `providerCode`、`recommendedScope` 和 `usage` 检索。
 

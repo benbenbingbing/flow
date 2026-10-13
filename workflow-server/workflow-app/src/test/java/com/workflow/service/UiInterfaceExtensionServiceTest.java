@@ -262,7 +262,7 @@ class UiInterfaceExtensionServiceTest {
                 context.service().freezeOperation("source-1", "query");
         Map<String, Object> snapshot = context.codec().readObject(
                 pinned.document(), "test interface snapshot");
-        assertEquals(3, snapshot.get("schemaVersion"));
+        assertEquals(4, snapshot.get("schemaVersion"));
         assertEquals("INTERFACE", snapshot.get("extensionType"));
         assertEquals("source-1", snapshot.get("extensionId"));
         assertEquals("expense-query", snapshot.get("extensionKey"));
@@ -282,6 +282,53 @@ class UiInterfaceExtensionServiceTest {
                 executeRequest(Map.of(), Map.of()));
 
         assertEquals("published", result);
+    }
+
+    /** 发布冻结完整实体集合，草稿变更不能改变已发布调用的范围。 */
+    @Test
+    void pinnedSnapshotRetainsAllSelectedEntitiesAndStableHash() {
+        TestContext context = context(List.of());
+        UiExtensionDefinition definition = definition(context.codec(), "STATIC_OPTIONS", null,
+                Map.of(), Map.of(), Map.of("options", List.of("ok")));
+        definition.setScopeType("ENTITY");
+        definition.setScopeEntityIds(List.of("entity-2", "entity-1", "entity-2"));
+        when(context.mapper().selectById("source-1")).thenReturn(definition);
+        authorize(context, plan("1=1", 3));
+        var frozen = context.service().freezeOperation("source-1", "query");
+        assertEquals(List.of("entity-1", "entity-2"),
+                context.codec().readObject(frozen.document(), "snapshot").get("scopeEntityIds"));
+        definition.setScopeEntityIds(List.of("entity-1", "entity-2"));
+        assertEquals(frozen.hash(), context.service().freezeOperation("source-1", "query").hash());
+        definition.setScopeEntityIds(List.of("entity-3"));
+        assertEquals(List.of("ok"), context.service().executePinnedOperation(
+                frozen.document(), frozen.hash(), executeRequest(Map.of(), Map.of())));
+        ArgumentCaptor<UiExtensionDefinition> captor = ArgumentCaptor.forClass(UiExtensionDefinition.class);
+        verify(context.executionAccessService()).authorizePublished(captor.capture(), any());
+        assertEquals(List.of("entity-1", "entity-2"), captor.getValue().getScopeEntityIds());
+    }
+
+    /** v3 没有实体数组的历史列表快照仍只能匹配原列表。 */
+    @Test
+    void pinnedV3PageScopeDoesNotExpandToOtherListsOfSameEntity() throws Exception {
+        TestContext context = context(List.of());
+        UiExtensionDefinition definition = definition(context.codec(), "STATIC_OPTIONS", null,
+                Map.of(), Map.of(), Map.of("options", List.of("ok")));
+        definition.setScopeType("LIST");
+        definition.setScopeId("list-1");
+        when(context.mapper().selectById("source-1")).thenReturn(definition);
+        authorize(context, plan("1=1", 3));
+        var frozen = context.service().freezeOperation("source-1", "query");
+        Map<String, Object> legacy = context.codec().readObject(frozen.document(), "snapshot");
+        legacy.put("schemaVersion", 3);
+        legacy.remove("scopeEntityIds");
+        String document = context.codec().canonicalize(context.codec().write(legacy, "snapshot"), "snapshot");
+        String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(document.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        context.service().executePinnedOperation(document, hash, executeRequest(Map.of(), Map.of()));
+        ArgumentCaptor<UiExtensionDefinition> captor = ArgumentCaptor.forClass(UiExtensionDefinition.class);
+        verify(context.executionAccessService()).authorizePublished(captor.capture(), any());
+        assertTrue(captor.getValue().matchesScope("entity-1", "LIST", "list-1"));
+        assertFalse(captor.getValue().matchesScope("entity-1", "LIST", "list-2"));
     }
 
     /** schema v2 的原始文档和哈希必须继续按旧字段执行，不能在读取时重写。 */

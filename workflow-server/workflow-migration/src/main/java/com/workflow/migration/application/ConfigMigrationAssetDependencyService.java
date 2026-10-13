@@ -4,7 +4,6 @@ import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
 import com.workflow.migration.infrastructure.persistence.mapper.ConfigMigrationAssetDependencyMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,7 +25,6 @@ public class ConfigMigrationAssetDependencyService {
 
     private final ConfigMigrationAssetDependencyMapper dependencyMapper;
     private final JsonDocumentCodec codec;
-    private final JdbcTemplate jdbcTemplate;
 
     /**
      * 用新的依赖列表覆盖指定资产的依赖记录。
@@ -114,16 +112,11 @@ public class ConfigMigrationAssetDependencyService {
      * @return 来源资产键值结果，供调用方继续处理
      */
     private Map<String, Object> sourceAsset(String assetId) {
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
-                SELECT asset_type AS assetType, business_key AS businessKey,
-                       source_version AS sourceVersion
-                FROM config_migration_asset
-                WHERE id = ? AND deleted = 0
-                """, assetId);
-        if (rows.isEmpty()) {
+        Map<String, Object> source = dependencyMapper.findSourceAsset(assetId);
+        if (source == null) {
             throw new IllegalArgumentException("配置迁移资产不存在: " + assetId);
         }
-        return rows.get(0);
+        return source;
     }
 
     /**

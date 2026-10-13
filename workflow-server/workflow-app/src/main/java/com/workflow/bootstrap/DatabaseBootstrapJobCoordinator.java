@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.bootstrap.infrastructure.persistence.mapper.BootstrapJobMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class DatabaseBootstrapJobCoordinator
         implements BootstrapJobPort {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final BootstrapJobMapper jobMapper;
     private final JdbcLockedRow lockedRows;
     private final DatabaseClockPort databaseClock;
     private final String ownerId =
@@ -28,13 +28,13 @@ public class DatabaseBootstrapJobCoordinator
     /**
      * 初始化数据库初始化{@code job}{@code coordinator}，保存构造参数供后续方法使用。
      *
-     * @param jdbcTemplate JDBC模板依赖，保存到当前对象供后续业务方法调用
+     * @param jobMapper 任务状态Mapper依赖，保存到当前对象供后续业务方法调用
      * @param lockedRows 已锁定行依赖，保存到当前对象供后续业务方法调用
      * @param databaseClock 数据库时钟依赖，保存到当前对象供后续业务方法调用
      */
     public DatabaseBootstrapJobCoordinator(
-            JdbcTemplate jdbcTemplate, JdbcLockedRow lockedRows, DatabaseClockPort databaseClock) {
-        this.jdbcTemplate = jdbcTemplate;
+            BootstrapJobMapper jobMapper, JdbcLockedRow lockedRows, DatabaseClockPort databaseClock) {
+        this.jobMapper = jobMapper;
         this.lockedRows = lockedRows;
         this.databaseClock = databaseClock;
     }
@@ -65,27 +65,14 @@ public class DatabaseBootstrapJobCoordinator
         lockedRows.ensureAndLock("workflow_bootstrap_job", Map.of(
                 "job_name", jobName, "completed_version", 0,
                 "create_time", startedAt, "update_time", startedAt), List.of("job_name"));
-        Integer completedVersion = jdbcTemplate.queryForObject(
-                "SELECT completed_version FROM workflow_bootstrap_job "
-                        + "WHERE job_name = ? FOR UPDATE",
-                Integer.class,
-                jobName);
+        Integer completedVersion = jobMapper.completedVersion(jobName);
         if (completedVersion != null
                 && completedVersion >= requiredVersion) {
             return Optional.empty();
         }
         T result = action.get();
         var completedAt = databaseClock.utcNow();
-        int updated = jdbcTemplate.update(
-                "UPDATE workflow_bootstrap_job "
-                        + "SET completed_version = ?, owner_id = ?, "
-                        + "completed_at = ?, update_time = ? "
-                        + "WHERE job_name = ?",
-                requiredVersion,
-                ownerId,
-                completedAt,
-                completedAt,
-                jobName);
+        int updated = jobMapper.complete(jobName, requiredVersion, ownerId, completedAt);
         if (updated != 1) {
             throw new IllegalStateException(
                     "Bootstrap job 状态确认失败: " + jobName);

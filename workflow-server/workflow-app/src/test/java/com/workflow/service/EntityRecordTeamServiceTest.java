@@ -13,7 +13,9 @@ import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRecordTeamMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -28,7 +30,7 @@ import static org.mockito.Mockito.*;
 class EntityRecordTeamServiceTest {
 
     private final SchemaMetadataPort metadata = mock(SchemaMetadataPort.class);
-    private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+    private final EntityRecordTeamMapper businessMapper = mock(EntityRecordTeamMapper.class);
     private final EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
     private final EntityPublishedSnapshotService snapshotService =
             mock(EntityPublishedSnapshotService.class);
@@ -36,7 +38,7 @@ class EntityRecordTeamServiceTest {
     /** 被测团队服务 */
     private final EntityRecordTeamService service =
             new EntityRecordTeamService(
-                    jdbcTemplate, tableResolver, snapshotService, schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata);
+                    businessMapper, tableResolver, snapshotService, schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata);
 
     /** 清理用户上下文，避免用例间污染 */
     @AfterEach
@@ -61,7 +63,7 @@ class EntityRecordTeamServiceTest {
                         && !sql.toUpperCase().contains("UNIQUE KEY")));
     }
 
-    /** 测试自动化系统操作跳过记录：验证系统用户触发记录时不与快照服务和 JdbcTemplate 交互 */
+    /** 测试自动化系统操作跳过记录：验证系统用户触发记录时不与快照服务和 EntityRecordTeamMapper 交互 */
     @Test
     void recordSkipsAutomatedSystemOperations() {
         UserContext.setCurrentUser("system", "系统");
@@ -69,7 +71,7 @@ class EntityRecordTeamServiceTest {
         service.record("expense", "record-1", "EDIT", "自动更新", null, null);
 
         verifyNoInteractions(snapshotService);
-        verifyNoInteractions(jdbcTemplate);
+        verifyNoInteractions(businessMapper);
     }
 
     /** 测试团队权限将记录关联到外层实体表：验证权限启用、层级正确且 SQL 条件含 record_id 与 user_id 关联 */
@@ -117,15 +119,7 @@ class EntityRecordTeamServiceTest {
 
         service.record("expense", "record-1", "APPROVE", "通过", "pi-1", "task-1");
 
-        verify(jdbcTemplate).update(
-                contains("INSERT INTO `wf_expense_team`"),
-                any(),
-                eq("record-1"),
-                eq("2038628006255251457"),
-                eq("APPROVE"),
-                eq("通过"),
-                eq("pi-1"),
-                eq("task-1"));
+        verify(businessMapper).insertEvent(argThat(statement -> statement.sql().contains("INSERT INTO `wf_expense_team`") && java.util.Objects.equals("record-1", statement.parameters().get(1).value()) && java.util.Objects.equals("2038628006255251457", statement.parameters().get(2).value()) && java.util.Objects.equals("APPROVE", statement.parameters().get(3).value()) && java.util.Objects.equals("通过", statement.parameters().get(4).value()) && java.util.Objects.equals("pi-1", statement.parameters().get(5).value()) && java.util.Objects.equals("task-1", statement.parameters().get(6).value())));
         verify(snapshotService, never()).getLatestByEntityCode(anyString());
     }
 

@@ -41,7 +41,7 @@ class OceanBaseSchemaValidationTest {
         field.setDefaultValue("必须保留的默认值"); field.setIsPublished(true);
         when(fields.findByEntityId(entity.getId())).thenReturn(List.of(field));
         when(resolver.resolve(entity)).thenReturn("biz_ob_defaults");
-        var service = new DynamicTableService(mock(JdbcTemplate.class), fields, resolver, executor,
+        var service = new DynamicTableService(mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), fields, resolver, executor,
                 new OceanBaseMySqlSchemaDdlDialect(), metadata,
                 DatabaseQueryDialects.forVendor(DatabaseVendor.OCEANBASE_MYSQL));
         var mvc = MockMvcBuilders.standaloneSetup(new PublicationController(service, entity))

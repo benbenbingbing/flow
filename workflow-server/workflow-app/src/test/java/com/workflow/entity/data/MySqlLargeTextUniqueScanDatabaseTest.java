@@ -60,7 +60,7 @@ class MySqlLargeTextUniqueScanDatabaseTest {
         var resolver = mock(EntityPhysicalTableResolver.class);
         when(resolver.resolve(entity)).thenReturn(table);
         var schema = new MySqlSchemaDdlDialect();
-        var service = new DynamicTableService(f.jdbc, mock(EntityFieldMapper.class), resolver, mock(SchemaDdlExecutor.class),
+        var service = new DynamicTableService(com.workflow.support.BusinessMapperTestSupport.mapper(f.jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), mock(EntityFieldMapper.class), resolver, mock(SchemaDdlExecutor.class),
                 schema, new JdbcSchemaMetadata(f.jdbc, schema), DatabaseQueryDialects.forDatabaseId("MYSQL"));
         return service.scanUniqueConflicts(entity, List.of(field));
     }

@@ -315,10 +315,10 @@
                     </el-select>
                   </el-form-item>
                   <div v-if="isEditableFieldNode && selectedComponentSchema.length" class="component-configuration">
-                    <div class="property-subheading">组件参数</div>
                     <ConfigSchemaEditor
                       v-model="selectedComponentConfig"
                       :schema="selectedComponentSchema"
+                      :common-group-title="selectedComponentConfigTitle"
                     />
                   </div>
                 </SettingsCapability>
@@ -1740,6 +1740,11 @@ const formComponentOptionGroups = computed(() => [
 
 const selectedComponentSchema = computed(() =>
   selectedComponentDescriptor.value?.configSchema || []
+)
+
+// 与当前组件的参数 Schema 共用注册描述，切换组件时标题同步更新，兼容项目自定义组件。
+const selectedComponentConfigTitle = computed(() =>
+  `${selectedComponentDescriptor.value?.label || selectedField.value?.componentType || '组件'}配置`
 )
 
 const selectedComponentConfig = computed({
@@ -4739,15 +4744,6 @@ onMounted(async () => {
 
 .checkbox-group :deep(.el-checkbox) {
   margin-right: 0;
-}
-
-.property-subheading {
-  margin: 14px 0 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--el-border-color-lighter);
-  color: var(--el-text-color-primary);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .interaction-actions {

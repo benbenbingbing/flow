@@ -10,7 +10,9 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityMultiValueMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,14 +41,14 @@ class EntityMultiValueRuntimeServiceTest {
      */
     @Test
     void extractsConfiguredCodeAndEntityMultiValuesFromMainRecord() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        EntityMultiValueMapper businessMapper = mock(EntityMultiValueMapper.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         SystemEntityFieldPolicy systemEntityFieldPolicy = mock(SystemEntityFieldPolicy.class);
         EntityMultiValueRuntimeService service = new EntityMultiValueRuntimeService(
-                jdbcTemplate,
+                businessMapper,
                 fieldMapper,
                 definitionMapper,
                 dynamicTableService,
@@ -91,14 +93,14 @@ class EntityMultiValueRuntimeServiceTest {
      */
     @Test
     void compilesEntityMultiValueConditionToParameterizedExists() {
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        EntityMultiValueMapper businessMapper = mock(EntityMultiValueMapper.class);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
         EntityDefinitionMapper definitionMapper = mock(EntityDefinitionMapper.class);
         DynamicTableService dynamicTableService = mock(DynamicTableService.class);
         EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
         SystemEntityFieldPolicy systemEntityFieldPolicy = mock(SystemEntityFieldPolicy.class);
         EntityMultiValueRuntimeService service = new EntityMultiValueRuntimeService(
-                jdbcTemplate,
+                businessMapper,
                 fieldMapper,
                 definitionMapper,
                 dynamicTableService,

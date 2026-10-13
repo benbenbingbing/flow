@@ -95,51 +95,20 @@
         </el-form-item>
         <el-form-item label="作用范围">
           <el-select v-model="editor.scopeType" @change="handleScopeTypeChange">
-            <el-option label="全局" value="GLOBAL" />
-            <el-option label="实体" value="ENTITY" />
-            <el-option label="表单" value="FORM" />
-            <el-option label="列表" value="LIST" />
+            <el-option label="全部实体" value="GLOBAL" />
+            <el-option label="选择实体" value="ENTITY" />
           </el-select>
+          <div class="scope-hint">{{ scopeHint }}</div>
         </el-form-item>
-        <el-form-item v-if="editor.scopeType === 'ENTITY'" label="范围对象" required>
+        <el-form-item v-if="editor.scopeType === 'ENTITY'" label="作用实体" required>
           <EntityDefinitionPicker
-            v-model="editor.scopeId"
+            v-model="editor.scopeEntityIds"
+            multiple
             value-key="id"
             title="选择扩展接口作用实体"
+            placeholder="请选择一个或多个实体"
             :query="{ storageMode: 'DYNAMIC' }"
           />
-        </el-form-item>
-        <el-form-item
-          v-if="['FORM', 'LIST'].includes(editor.scopeType)"
-          label="所属实体"
-          required
-        >
-          <EntityDefinitionPicker
-            v-model="scopeEntityId"
-            value-key="id"
-            title="选择作用对象所属实体"
-            :query="{ storageMode: 'DYNAMIC' }"
-            @selected="handleScopeEntitySelected"
-          />
-        </el-form-item>
-        <el-form-item
-          v-if="['FORM', 'LIST'].includes(editor.scopeType)"
-          label="范围对象"
-          required
-        >
-          <el-select
-            v-model="editor.scopeId"
-            :loading="scopeLoading"
-            filterable
-            placeholder="选择具体表单或列表"
-          >
-            <el-option
-              v-for="option in scopeObjects"
-              :key="option.id"
-              :label="option.label"
-              :value="option.id"
-            />
-          </el-select>
         </el-form-item>
         <el-form-item label="超时">
           <el-input-number
@@ -232,7 +201,7 @@ import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
-import { getFormById, getFormsByEntity } from '@/api/entityForm'
+import { getFormById } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
 import { uiExtensionApi } from '@/api/uiConfig'
 import {
@@ -240,6 +209,7 @@ import {
   mergeInterfaceExecutionPolicy,
   normalizeInterfaceExtension,
   parseInterfaceEditorJson,
+  resolveInterfaceEntityScope,
   requiresInterfaceProvider
 } from './interfaceExtensionModel'
 
@@ -249,11 +219,14 @@ const props = defineProps({
 const emit = defineEmits(['saved'])
 const visible = ref(false)
 const saving = ref(false)
-const scopeLoading = ref(false)
-const scopeEntityId = ref('')
-const scopeObjects = ref([])
 const editor = reactive(emptyEditor())
 const providerOptions = computed(() => props.catalog.providers || [])
+const scopeHint = computed(() => {
+  const entities = editor.scopeType === 'GLOBAL' ? '全部实体' : '所选实体'
+  if (editor.interfaceContextType === 'LIST') return `适用于${entities}的所有列表，无需逐个选择列表。`
+  if (editor.interfaceContextType === 'FORM') return `适用于${entities}的所有表单，无需逐个选择表单。`
+  return `适用于${entities}的实体上下文。`
+})
 
 function emptyEditor() {
   return {
@@ -267,7 +240,7 @@ function emptyEditor() {
     interfaceKind: 'READ',
     interfaceContextType: 'FORM',
     scopeType: 'ENTITY',
-    scopeId: '',
+    scopeEntityIds: [],
     timeoutMs: 3000,
     cacheSeconds: 0,
     executionPolicy: { failurePolicy: 'FAIL' },
@@ -283,16 +256,12 @@ function reset(value = {}) {
 }
 
 function openCreate() {
-  scopeEntityId.value = ''
-  scopeObjects.value = []
   reset()
   visible.value = true
 }
 
 async function openEdit(value) {
   const item = normalizeInterfaceExtension(value)
-  scopeEntityId.value = ''
-  scopeObjects.value = []
   reset({
     id: item.extensionId,
     expectedRevision: item.revision,
@@ -303,8 +272,8 @@ async function openEdit(value) {
     providerOperationCode: item.providerOperationCode || '',
     interfaceKind: item.interfaceKind,
     interfaceContextType: item.interfaceContextType,
-    scopeType: item.scopeType || 'GLOBAL',
-    scopeId: item.scopeId || '',
+    scopeType: item.scopeType === 'GLOBAL' ? 'GLOBAL' : 'ENTITY',
+    scopeEntityIds: [...item.scopeEntityIds],
     timeoutMs: Number(item.executionPolicy.timeoutMs || 3000),
     cacheSeconds: Number(item.executionPolicy.cacheSeconds || 0),
     executionPolicy: { ...item.executionPolicy },
@@ -313,7 +282,15 @@ async function openEdit(value) {
     inputSchemaText: JSON.stringify(item.inputSchema, null, 2),
     outputSchemaText: JSON.stringify(item.outputSchema, null, 2)
   })
-  await resolveScopeObject(item)
+  try {
+    Object.assign(editor, await resolveInterfaceEntityScope(item, {
+      getForm: getFormById,
+      getList: id => entityListConfigApi.getById(id)
+    }))
+  } catch {
+    // 历史对象已删除或无法读取时保持“选择实体”空态，防止保存为全量可用接口。
+    ElMessage.warning('无法确认历史作用范围所属实体，请重新选择作用实体')
+  }
   visible.value = true
 }
 
@@ -325,48 +302,7 @@ function handleImplementationTypeChange(type) {
 }
 
 function handleScopeTypeChange() {
-  editor.scopeId = ''
-  scopeEntityId.value = ''
-  scopeObjects.value = []
-}
-
-async function handleScopeEntitySelected(entity) {
-  scopeEntityId.value = entity?.id || ''
-  editor.scopeId = ''
-  await loadScopeObjects()
-}
-
-async function loadScopeObjects() {
-  if (!scopeEntityId.value || !['FORM', 'LIST'].includes(editor.scopeType)) {
-    scopeObjects.value = []
-    return
-  }
-  scopeLoading.value = true
-  try {
-    const rows = editor.scopeType === 'FORM'
-      ? await getFormsByEntity(scopeEntityId.value)
-      : await entityListConfigApi.getByEntityId(scopeEntityId.value)
-    scopeObjects.value = (Array.isArray(rows) ? rows : []).map(item => ({
-      id: item.id,
-      label: editor.scopeType === 'FORM'
-        ? `${item.formName} (${item.formKey})`
-        : `${item.listName} (${item.listKey})`
-    }))
-  } finally {
-    scopeLoading.value = false
-  }
-}
-
-async function resolveScopeObject(item) {
-  if (item.scopeType === 'FORM' && item.scopeId) {
-    const form = await getFormById(item.scopeId)
-    scopeEntityId.value = form?.entityId || ''
-    await loadScopeObjects()
-  } else if (item.scopeType === 'LIST' && item.scopeId) {
-    const list = await entityListConfigApi.getById(item.scopeId)
-    scopeEntityId.value = list?.entityId || ''
-    await loadScopeObjects()
-  }
+  editor.scopeEntityIds = []
 }
 
 async function save() {
@@ -384,8 +320,8 @@ async function save() {
     ElMessage.warning('请填写 Provider 实现入口')
     return
   }
-  if (editor.scopeType !== 'GLOBAL' && !editor.scopeId) {
-    ElMessage.warning('请选择作用范围对象')
+  if (editor.scopeType === 'ENTITY' && !editor.scopeEntityIds.length) {
+    ElMessage.warning('请至少选择一个作用实体')
     return
   }
   saving.value = true
@@ -404,7 +340,7 @@ async function save() {
         ? editor.providerOperationCode.trim()
         : null,
       scopeType: editor.scopeType,
-      scopeId: editor.scopeType === 'GLOBAL' ? null : editor.scopeId,
+      scopeEntityIds: editor.scopeType === 'GLOBAL' ? [] : [...editor.scopeEntityIds],
       implementationConfig: parseInterfaceEditorJson(
         editor.implementationConfigText,
         '实现配置'
@@ -459,6 +395,13 @@ defineExpose({ openCreate, openEdit })
   color: var(--el-text-color-regular);
   font-size: 12px;
   line-height: 1.7;
+}
+
+.scope-hint {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 6px;
 }
 
 .json-editor-field {

@@ -80,6 +80,8 @@ class ExtensionCatalogServiceTest {
                 customPage.getRecords().get(0).getKey());
         assertEquals("CUSTOM", customPage.getRecords().get(0)
                 .getImplementationOrigin());
+        assertEquals(List.of("entity-a", "entity-b"), customPage.getRecords().get(0)
+                .getScopeEntityIds());
         assertEquals("PLATFORM", service.allItems().stream()
                 .filter(item -> "dictionary".equals(item.getKey()))
                 .findFirst()
@@ -110,6 +112,7 @@ class ExtensionCatalogServiceTest {
                 null,
                 null,
                 null,
+                List.of(),
                 null,
                 null,
                 Map.of(),
@@ -140,8 +143,9 @@ class ExtensionCatalogServiceTest {
                 Map.of(),
                 implementationType,
                 providerCode,
-                "GLOBAL",
+                "ENTITY",
                 null,
+                List.of("entity-a", "entity-b"),
                 "READ",
                 "ENTITY",
                 Map.of(),

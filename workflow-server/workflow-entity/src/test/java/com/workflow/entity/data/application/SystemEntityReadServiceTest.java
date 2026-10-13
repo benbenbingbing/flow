@@ -17,7 +17,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.SystemEntityReadMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,18 +40,18 @@ import static org.mockito.Mockito.when;
 
 class SystemEntityReadServiceTest {
 
-    private JdbcTemplate jdbcTemplate;
+    private SystemEntityReadMapper businessMapper;
     private EntityDefinitionMapper definitionMapper;
     private EntityFieldMapper fieldMapper;
     private SystemEntityReadService service;
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate = mock(JdbcTemplate.class);
+        businessMapper = mock(SystemEntityReadMapper.class);
         definitionMapper = mock(EntityDefinitionMapper.class);
         fieldMapper = mock(EntityFieldMapper.class);
         service = new SystemEntityReadService(
-                jdbcTemplate,
+                businessMapper,
                 definitionMapper,
                 fieldMapper,
                 new SystemEntityFieldPolicy(),
@@ -84,14 +86,9 @@ class SystemEntityReadServiceTest {
                         field("token_version"),
                         field("deleted"),
                         field("create_time")));
-        when(jdbcTemplate.queryForObject(
-                anyString(),
-                eq(Long.class),
-                any(Object[].class)))
+        when(businessMapper.countRecords(any()))
                 .thenReturn(1L);
-        when(jdbcTemplate.queryForList(
-                anyString(),
-                any(Object[].class)))
+        when(businessMapper.selectRecords(any()))
                 .thenReturn(List.of(Map.of(
                         "id", "1",
                         "username", "admin",
@@ -116,25 +113,20 @@ class SystemEntityReadServiceTest {
         assertFalse(result.getRecords().get(0).getData()
                 .containsKey("token_version"));
 
-        ArgumentCaptor<String> countSql =
-                ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForObject(
-                countSql.capture(),
-                eq(Long.class),
-                any(Object[].class));
-        ArgumentCaptor<String> pageSql =
-                ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForList(
-                pageSql.capture(),
-                any(Object[].class));
+        ArgumentCaptor<ParameterizedSql> countSql =
+                ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).countRecords(countSql.capture());
+        ArgumentCaptor<ParameterizedSql> pageSql =
+                ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).selectRecords(pageSql.capture());
 
-        assertTrue(countSql.getValue()
+        assertTrue(countSql.getValue().sql()
                 .contains("`deleted` = 0"));
-        assertTrue(pageSql.getValue()
+        assertTrue(pageSql.getValue().sql()
                 .contains("ORDER BY `username` DESC"));
-        assertFalse(pageSql.getValue()
+        assertFalse(pageSql.getValue().sql()
                 .contains("password"));
-        assertFalse(pageSql.getValue()
+        assertFalse(pageSql.getValue().sql()
                 .contains("token_version"));
     }
 
@@ -148,10 +140,7 @@ class SystemEntityReadServiceTest {
                         field("id"),
                         field("username"),
                         field("deleted")));
-        when(jdbcTemplate.queryForObject(
-                anyString(),
-                eq(Long.class),
-                any(Object[].class)))
+        when(businessMapper.countRecords(any()))
                 .thenReturn(0L);
 
         assertThrows(
@@ -191,14 +180,9 @@ class SystemEntityReadServiceTest {
                         field("id"),
                         field("org_id"),
                         field("deleted")));
-        when(jdbcTemplate.queryForObject(
-                anyString(),
-                eq(Long.class),
-                any(Object[].class)))
+        when(businessMapper.countRecords(any()))
                 .thenReturn(0L);
-        when(jdbcTemplate.queryForList(
-                anyString(),
-                any(Object[].class)))
+        when(businessMapper.selectRecords(any()))
                 .thenReturn(List.of());
 
         service.findPage(
@@ -209,13 +193,10 @@ class SystemEntityReadServiceTest {
                 1,
                 20);
 
-        ArgumentCaptor<String> sql =
-                ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForObject(
-                sql.capture(),
-                eq(Long.class),
-                any(Object[].class));
-        assertTrue(sql.getValue().contains("`org_id` IS NULL"));
+        ArgumentCaptor<ParameterizedSql> sql =
+                ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).countRecords(sql.capture());
+        assertTrue(sql.getValue().sql().contains("`org_id` IS NULL"));
     }
 
     @Test
@@ -230,14 +211,9 @@ class SystemEntityReadServiceTest {
                         field("nickname"),
                         field("password"),
                         field("deleted")));
-        when(jdbcTemplate.queryForObject(
-                anyString(),
-                eq(Long.class),
-                any(Object[].class)))
+        when(businessMapper.countRecords(any()))
                 .thenReturn(1L);
-        when(jdbcTemplate.queryForList(
-                anyString(),
-                any(Object[].class)))
+        when(businessMapper.selectRecords(any()))
                 .thenReturn(List.of(Map.of(
                         "id", "1",
                         "username", "admin",
@@ -250,19 +226,16 @@ class SystemEntityReadServiceTest {
 
         assertEquals("超级管理员",
                 result.getRecords().get(0).getName());
-        ArgumentCaptor<String> countSql =
-                ArgumentCaptor.forClass(String.class);
-        verify(jdbcTemplate).queryForObject(
-                countSql.capture(),
-                eq(Long.class),
-                any(Object[].class));
-        assertTrue(countSql.getValue()
+        ArgumentCaptor<ParameterizedSql> countSql =
+                ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).countRecords(countSql.capture());
+        assertTrue(countSql.getValue().sql()
                 .contains("`deleted` = 0"));
-        assertTrue(countSql.getValue()
+        assertTrue(countSql.getValue().sql()
                 .contains("`nickname` LIKE ?"));
-        assertTrue(countSql.getValue()
+        assertTrue(countSql.getValue().sql()
                 .contains("`username` LIKE ?"));
-        assertFalse(countSql.getValue()
+        assertFalse(countSql.getValue().sql()
                 .contains("password"));
     }
 
@@ -274,10 +247,7 @@ class SystemEntityReadServiceTest {
                 .thenReturn(Optional.of(entity));
         when(fieldMapper.findByEntityId("entity-1"))
                 .thenReturn(List.of(field("id"), field("org_name"), field("deleted")));
-        when(jdbcTemplate.queryForObject(
-                anyString(),
-                eq(Long.class),
-                any(Object[].class)))
+        when(businessMapper.countRecords(any()))
                 .thenReturn(0L);
 
         PageResult<EntityDataDTO> result =

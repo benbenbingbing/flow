@@ -1,5 +1,7 @@
 package com.workflow.entity.excel.runtime;
 
+import static com.workflow.entity.excel.persistence.ExcelMapperTestSupport.mapper;
+import com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.entity.data.api.response.EntityDataDTO;
@@ -64,7 +66,7 @@ class EntityExcelJobTransactionTest {
         new ResourceDatabasePopulator(new FileSystemResource(migration)).execute(database);
         jdbc.execute("CREATE TABLE imported_records(id VARCHAR(64) PRIMARY KEY, name VARCHAR(100))");
         var tx = new DataSourceTransactionManager(database);
-        repository = spy(new EntityExcelJobRepository(jdbc, mapper, tx));
+        repository = spy(new EntityExcelJobRepository(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), mapper, tx));
         var origin = new UiEventExecuteRequest(); origin.setConfigType("LIST"); origin.setConfigId("list1");
         origin.setEntityCode("employee"); origin.setTargetKey("import"); origin.setInput(Map.of("filters", Map.of()));
         var claims = new ExcelActionTokenService.Claims(1, "alice", Instant.now().getEpochSecond() + 900, "BUILT_IN", origin,
@@ -262,7 +264,7 @@ class EntityExcelJobTransactionTest {
         String id = checked.get("jobId").toString();
         jdbc.update("UPDATE entity_excel_job SET status='RUNNING',created_at=?,input_file_id=NULL WHERE id=?",
                 java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusHours(25), id);
-        var cleanup = new EntityExcelJobCleanup(jdbc, files, new DataSourceTransactionManager(jdbc.getDataSource()));
+        var cleanup = new EntityExcelJobCleanup(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), files, new DataSourceTransactionManager(jdbc.getDataSource()));
         cleanup.clean();
         assertThat(jdbc.queryForObject("SELECT status FROM entity_excel_job WHERE id=?", String.class, id)).isEqualTo("FAILED");
         assertThatThrownBy(() -> repository.lockRunning(id)).isInstanceOf(IllegalStateException.class);
@@ -276,7 +278,7 @@ class EntityExcelJobTransactionTest {
         when(submissions.previewSideEffectFreeForm(any(), any(), any(), any(), isNull(), eq("create"), anyMap(), any(), any()))
                 .thenAnswer(call -> {
                     jdbc.update("UPDATE entity_excel_job SET created_at=?", java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).minusHours(25));
-                    new EntityExcelJobCleanup(jdbc, files, new DataSourceTransactionManager(jdbc.getDataSource())).clean();
+                    new EntityExcelJobCleanup(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), files, new DataSourceTransactionManager(jdbc.getDataSource())).clean();
                     return call.getArgument(6);
                 });
         var result = service.importFile("token", "expired-worker", file("same"), false);

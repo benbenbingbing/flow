@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   defaultInterfaceDebugUsage,
   interfaceImplementationTypeOptions,
+  interfaceScopeEntityIds,
   interfacesForEvent,
   interfacesForUsage,
   isInterfaceUsageCompatible,
@@ -12,6 +13,7 @@ import {
   normalizeInterfaceExtensions,
   parseInterfaceEditorJson,
   requiresInterfaceProvider,
+  resolveInterfaceEntityScope,
   resolveInterfaceExtensionId
 } from '../interfaceExtensionModel.js'
 import { eventGroupsForScope, eventsForScope } from '../uiEventScope.js'
@@ -35,6 +37,41 @@ assert.equal(normalized.interfaceKind, 'READ')
 assert.equal(normalized.interfaceContextType, 'FORM')
 assert.deepEqual(normalized.inputSchema, { type: 'object' })
 assert.deepEqual(normalized.outputSchema, { type: 'object' })
+
+assert.deepEqual(interfaceScopeEntityIds({
+  scopeType: 'ENTITY', scopeEntityIds: [' entity-a ', 'entity-b', 'entity-a', '', null]
+}), ['entity-a', 'entity-b'], '选择多个实体时统一 ID 并去重')
+assert.deepEqual(interfaceScopeEntityIds({ scopeType: 'ENTITY', scopeId: 'legacy-entity' }), ['legacy-entity'])
+assert.deepEqual(interfaceScopeEntityIds({
+  scopeType: 'ENTITY', scopeId: 'legacy-entity', scopeEntityIds: []
+}), [], '显式清空选择不能被旧 scopeId 恢复')
+assert.deepEqual(interfaceScopeEntityIds({
+  scopeType: 'GLOBAL', scopeEntityIds: ['stale-entity'], scopeId: 'stale-entity'
+}), [], '全部实体范围不携带遗留选择')
+assert.deepEqual(normalizeInterfaceExtension({
+  scopeType: 'ENTITY', scopeId: 'legacy-entity'
+}).scopeEntityIds, ['legacy-entity'])
+assert.deepEqual(await resolveInterfaceEntityScope({
+  scopeType: 'ENTITY', scopeEntityIds: ['entity-a', 'entity-b']
+}), { scopeType: 'ENTITY', scopeEntityIds: ['entity-a', 'entity-b'] })
+assert.deepEqual(await resolveInterfaceEntityScope({ scopeType: 'GLOBAL' }), {
+  scopeType: 'GLOBAL', scopeEntityIds: []
+})
+for (const [scopeType, loader] of [['FORM', 'getForm'], ['LIST', 'getList']]) {
+  const requested = []
+  const scope = await resolveInterfaceEntityScope({ scopeType, scopeId: 'old-owner' }, {
+    [loader]: async id => {
+      requested.push(id)
+      return { entityId: 'owner-entity' }
+    }
+  })
+  assert.deepEqual(requested, ['old-owner'])
+  assert.deepEqual(scope, { scopeType: 'ENTITY', scopeEntityIds: ['owner-entity'] },
+    '历史表单/列表范围在编辑时扩大到同实体全部同类页面')
+  await assert.rejects(resolveInterfaceEntityScope({ scopeType, scopeId: 'removed-owner' }, {
+    [loader]: async () => null
+  }), /重新选择作用实体/, '历史对象缺失不能误转为全部实体')
+}
 
 assert.deepEqual(
   normalizeInterfaceExtensions([catalogItem, null, {}]).map(item => item.extensionId),
@@ -173,6 +210,11 @@ const interfaceEditorSource = readFileSync(
 assert.match(interfaceEditorSource, /extensionType:\s*'INTERFACE'/)
 assert.match(interfaceEditorSource, /providerOperationCode/)
 assert.doesNotMatch(interfaceEditorSource, /\boperations\b/)
+assert.match(interfaceEditorSource, /label="全部实体" value="GLOBAL"/)
+assert.match(interfaceEditorSource, /label="选择实体" value="ENTITY"/)
+assert.match(interfaceEditorSource, /v-model="editor\.scopeEntityIds"\s+multiple/)
+assert.doesNotMatch(interfaceEditorSource, /v-model="editor\.scopeId"|选择具体表单或列表/)
+assert.match(interfaceEditorSource, /scopeEntityIds: editor\.scopeType === 'GLOBAL' \? \[\] : \[\.\.\.editor\.scopeEntityIds\]/)
 
 assert.deepEqual(
   eventGroupsForScope('FORM', 'OWNER').map(group => group.label),

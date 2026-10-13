@@ -56,7 +56,9 @@ class OceanBaseOraclePersistenceDatabaseTest {
                     .getMapper(com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper.class);
             var json = new ObjectMapper();
             var service = new com.workflow.process.definition.application.ProcessDefinitionNodeSyncService(
-                    nodes, null, null, json, null, null, null, null, null, f.jdbc,
+                    nodes, null, null, json, null, null, null, null, null,
+                    com.workflow.support.BusinessMapperTestSupport.mapper(f.source, "OCEANBASE_ORACLE",
+                            com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigDocumentMapper.class),
                     new com.workflow.process.definition.application.ProcessBpmnNodeParser(json));
             List<String> tags = List.of("startEvent", "endEvent", "userTask", "serviceTask", "scriptTask", "sendTask",
                     "receiveTask", "manualTask", "businessRuleTask", "exclusiveGateway", "parallelGateway", "inclusiveGateway",
@@ -95,8 +97,13 @@ class OceanBaseOraclePersistenceDatabaseTest {
             var vendor = DatabaseVendor.OCEANBASE_ORACLE;
             var attempt = new com.workflow.core.database.jdbc.JdbcWriteAttempt(f.jdbc, DatabaseDialects.insert(vendor));
             var dialect = com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(vendor);
-            var files = new com.workflow.storage.application.StoredFileAccessService(f.jdbc, null, null, attempt, dialect);
-            var incidents = new com.workflow.process.assignment.application.AssigneeIncidentRecorder(f.jdbc,
+            var files = new com.workflow.storage.application.StoredFileAccessService(
+                    com.workflow.support.BusinessMapperTestSupport.mapper(f.source, "OCEANBASE_ORACLE",
+                            com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class),
+                    null, null, attempt, dialect);
+            var incidents = new com.workflow.process.assignment.application.AssigneeIncidentRecorder(
+                    com.workflow.support.BusinessMapperTestSupport.mapper(f.source, "OCEANBASE_ORACLE",
+                            com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class),
                     new ObjectMapper(), dialect, attempt);
             f.tx.executeWithoutResult(status -> {
                 // 无幂等键/原始文件名/内容类型是合法上传；这里调用生产服务而非复制其 INSERT。
@@ -159,7 +166,8 @@ class OceanBaseOraclePersistenceDatabaseTest {
         try (var f = new Fixture("ENTITY_EXCEL_SETTINGS", "ENTITY_EXCEL_SCHEME", "ENTITY_EXCEL_SCHEME_PUBLISHED",
                 "ENTITY_EXCEL_JOB", "ENTITY_EXCEL_JOB_ROW", "SYS_DICT", "ENTITY_FORM_PUBLISHED", "ENTITY_LIST_CONFIG",
                 "UI_CONFIG_RELEASE", "UI_EXTENSION_DEFINITION", "ENTITY_FORM")) {
-            var repository = new ExcelConfigurationRepository(f.jdbc);
+            var repository = new ExcelConfigurationRepository(f.mappers(com.workflow.entity.excel.infrastructure.persistence.mapper.ExcelConfigurationMapper.class)
+                    .getMapper(com.workflow.entity.excel.infrastructure.persistence.mapper.ExcelConfigurationMapper.class));
             String document = "{\"text\":\"" + "中文".repeat(5000) + "\"}";
             var row = new ExcelConfigurationRepository.SchemeRow();
             row.setId("scheme-1"); row.setEntityId("entity-1"); row.setSchemeCode("default"); row.setName("导入方案"); row.setDraftJson(document);
@@ -186,7 +194,8 @@ class OceanBaseOraclePersistenceDatabaseTest {
             assertFalse(repository.dictionaryAvailable("missing"));
             assertNull(repository.excelInterfaceConfiguration("missing", "legacy"));
             assertTrue(repository.snapshots("entity-1").isEmpty());
-            var jobs = new EntityExcelJobRepository(f.jdbc, new ObjectMapper(), f.manager);
+            var jobs = new EntityExcelJobRepository(f.mappers(com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper.class)
+                    .getMapper(com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper.class), new ObjectMapper(), f.manager);
             var scheme = new ExcelResolvedScheme("entity-1", "entity_code", "default", null, "a".repeat(64), "", "form-1");
             var plan = new EntityExcelRuntimeResolver.Plan(null, scheme, null, null, null);
             UserContext.setCurrentUser("user-1", "oracle-tester");

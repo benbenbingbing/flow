@@ -93,8 +93,7 @@ public class UiAvailableInterfaceService {
                                 UiExtensionDefinition::getExtensionKey));
         List<UiAvailableInterface> result = new ArrayList<>();
         for (UiExtensionDefinition definition : definitions) {
-            if (isInvalidGlobalExtension(definition)
-                    || !scopeMatches(definition, owner)) {
+            if (!scopeMatches(definition, owner)) {
                 continue;
             }
             String contextType = normalize(
@@ -123,6 +122,7 @@ public class UiAvailableInterfaceService {
                     definition.getProviderCode(),
                     definition.getScopeType(),
                     definition.getScopeId(),
+                    definition.getScopeEntityIds(),
                     kind,
                     contextType,
                     readSchema(definition.getInputSchemaDocument()),
@@ -149,19 +149,6 @@ public class UiAvailableInterfaceService {
                 UiEventBindingApplicability.contextsForEvent(bindingCode);
         return pageContexts.isEmpty()
                 ? Set.of(owner.type()) : pageContexts;
-    }
-
-    /**
-     * 判断是否无效全局扩展；判断结果决定调用方的后续分支。
-     *
-     * @param definition 定义，作为 {@code equals} 的输入影响后续处理
-     * @return 无效全局扩展条件成立时为 true，否则为 false
-     */
-    private boolean isInvalidGlobalExtension(
-            UiExtensionDefinition definition) {
-        return "GLOBAL".equals(normalize(definition.getScopeType()))
-                && "REGISTERED_PROVIDER".equals(
-                        normalize(definition.getImplementationType()));
     }
 
     /**
@@ -284,17 +271,7 @@ public class UiAvailableInterfaceService {
     private boolean scopeMatches(
             UiExtensionDefinition definition,
             Owner owner) {
-        return switch (normalize(definition.getScopeType())) {
-            case "GLOBAL" -> true;
-            case "ENTITY" -> Objects.equals(
-                    definition.getScopeId(),
-                    owner.entityId());
-            case "FORM" -> "FORM".equals(owner.type())
-                    && Objects.equals(definition.getScopeId(), owner.id());
-            case "LIST" -> "LIST".equals(owner.type())
-                    && Objects.equals(definition.getScopeId(), owner.id());
-            default -> false;
-        };
+        return definition.matchesScope(owner.entityId(), owner.type(), owner.id());
     }
 
     /**

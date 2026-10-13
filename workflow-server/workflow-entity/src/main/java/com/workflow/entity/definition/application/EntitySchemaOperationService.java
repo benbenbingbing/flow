@@ -1,6 +1,5 @@
 package com.workflow.entity.definition.application;
 
-import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -11,7 +10,8 @@ import com.workflow.entity.definition.api.response.EntitySchemaOperationDTO;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntitySchemaOperationMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntitySchemaOperationRow;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,9 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,11 +36,9 @@ public class EntitySchemaOperationService {
     private static final long VERY_LARGE_TABLE_ROWS = 500_000L;
     private static final TypeReference<List<String>> STRING_LIST = new TypeReference<>() { };
 
-    private final JdbcTemplate jdbcTemplate;
+    private final EntitySchemaOperationMapper operationMapper;
     private final ObjectMapper objectMapper;
     private final DynamicTableService dynamicTableService;
-    // 只渲染分页/标识符；筛选条件及业务上限仍由本服务决定。
-    private final DatabaseQueryDialect queryDialect;
     private final JdbcLockedRow lockedRows;
 
     /**
@@ -137,10 +132,7 @@ public class EntitySchemaOperationService {
         if ("SCHEMA_CONSISTENT".equals(operation.getStatus())) {
             return;
         }
-        jdbcTemplate.update(
-                "UPDATE entity_schema_operation SET status = 'DDL_RUNNING', attempt_count = attempt_count + 1, "
-                        + "started_at = CURRENT_TIMESTAMP, finished_at = NULL, error_message = NULL WHERE id = ?",
-                operationId);
+        operationMapper.markRunning(operationId);
         recordEvent(operationId, operation.getStatus(), "DDL_RUNNING", "开始执行DDL计划");
     }
 
@@ -164,12 +156,7 @@ public class EntitySchemaOperationService {
                     "DDL执行后结构仍不一致: " + String.join("；", drift));
         }
         EntitySchemaOperationDTO operation = requireOperation(operationId);
-        jdbcTemplate.update(
-                "UPDATE entity_schema_operation SET status = 'SCHEMA_CONSISTENT', actual_fingerprint = ?, "
-                        + "drift_json = ?, error_message = NULL, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
-                actualFingerprint,
-                writeJson(drift),
-                operationId);
+        operationMapper.complete(operationId, actualFingerprint, writeJson(drift));
         recordEvent(operationId, operation.getStatus(), "SCHEMA_CONSISTENT", "物理结构与目标结构一致");
     }
 
@@ -234,11 +221,7 @@ public class EntitySchemaOperationService {
      * @return 处理后的最新结果，供调用方继续处理
      */
     public EntitySchemaOperationDTO latest(String entityId) {
-        return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE entity_id = ? ORDER BY create_time DESC, id DESC"
-                        + queryDialect.paginationClause("0", "1"),
-                this::map,
-                entityId).stream().findFirst().orElse(null);
+        return map(operationMapper.latest(entityId));
     }
 
     /**
@@ -347,13 +330,8 @@ public class EntitySchemaOperationService {
             String actualFingerprint,
             List<String> drift) {
         EntitySchemaOperationDTO operation = requireOperation(operationId);
-        jdbcTemplate.update(
-                "UPDATE entity_schema_operation SET status = 'DDL_FAILED', actual_fingerprint = COALESCE(?, actual_fingerprint), "
-                        + "drift_json = COALESCE(?, drift_json), error_message = ?, finished_at = CURRENT_TIMESTAMP WHERE id = ?",
-                actualFingerprint,
-                drift == null ? null : writeJson(drift),
-                abbreviate(message, 2000),
-                operationId);
+        operationMapper.markFailed(operationId, actualFingerprint,
+                drift == null ? null : writeJson(drift), abbreviate(message, 2000));
         recordEvent(operationId, operation.getStatus(), "DDL_FAILED", abbreviate(message, 1000));
     }
 
@@ -366,12 +344,7 @@ public class EntitySchemaOperationService {
      * @param message 消息，作为 {@code recordEvent} 的输入影响后续处理
      */
     private void transition(String id, String from, String to, String message) {
-        jdbcTemplate.update(
-                "UPDATE entity_schema_operation SET status = ?, error_message = CASE WHEN ? = 'DDL_PENDING' "
-                        + "THEN NULL ELSE error_message END WHERE id = ?",
-                to,
-                to,
-                id);
+        operationMapper.transition(id, to);
         recordEvent(id, from, to, message);
     }
 
@@ -381,17 +354,10 @@ public class EntitySchemaOperationService {
      * @param operationId 操作ID，后续用于记录事件时定位或关联目标
      * @param from 起始，供本方法记录事件时使用
      * @param to 截止，供本方法记录事件时使用
-     * @param message 消息，作为 {@code jdbcTemplate.update} 的输入影响后续处理
+     * @param message 状态转换说明，写入独立的操作事件供审计追溯
      */
     private void recordEvent(String operationId, String from, String to, String message) {
-        jdbcTemplate.update(
-                "INSERT INTO entity_schema_operation_event "
-                        + "(id, operation_id, from_status, to_status, message) VALUES (?, ?, ?, ?, ?)",
-                compactId(),
-                operationId,
-                from,
-                to,
-                abbreviate(message, 1000));
+        operationMapper.recordEvent(compactId(), operationId, from, to, abbreviate(message, 1000));
     }
 
     /**
@@ -402,24 +368,18 @@ public class EntitySchemaOperationService {
      * @return 符合条件的实体结构操作结果，供调用方继续处理
      */
     private EntitySchemaOperationDTO findByPlan(String entityId, String planHash) {
-        return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE entity_id = ? AND plan_hash = ?",
-                this::map,
-                entityId,
-                planHash).stream().findFirst().orElse(null);
+        return map(operationMapper.findByPlan(entityId, planHash));
     }
 
     /**
      * 已取得计划行锁后读取最新状态；调用方必须处于 prepare 的独立事务内。
      *
      * @param entityId 实体ID，后续用于查询方案更新时定位或关联目标
-     * @param planHash 方案哈希，作为 {@code jdbcTemplate.query} 的输入影响后续处理
+     * @param planHash 不可变方案摘要，限定本次需要锁定的操作记录
      * @return 符合条件的实体结构操作结果，供调用方继续处理
      */
     private EntitySchemaOperationDTO findByPlanForUpdate(String entityId, String planHash) {
-        return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE entity_id = ? AND plan_hash = ? FOR UPDATE",
-                this::map, entityId, planHash).stream().findFirst().orElse(null);
+        return map(operationMapper.findByPlanForUpdate(entityId, planHash));
     }
 
     /**
@@ -429,10 +389,7 @@ public class EntitySchemaOperationService {
      * @return 符合条件的实体结构操作结果，供调用方继续处理
      */
     private EntitySchemaOperationDTO findById(String id) {
-        return jdbcTemplate.query(
-                "SELECT * FROM entity_schema_operation WHERE id = ?",
-                this::map,
-                id).stream().findFirst().orElse(null);
+        return map(operationMapper.findById(id));
     }
 
     /**
@@ -465,53 +422,16 @@ public class EntitySchemaOperationService {
         return operation;
     }
 
-    /**
-     * 处理映射，并将结果传给后续步骤。
-     *
-     * @param rs {@code rs}，作为 {@code dto.setId} 的输入影响后续处理
-     * @param rowNum 行数量，供本方法处理映射时使用
-     * @return 处理后的映射结果，供调用方继续处理
-     * @throws SQLException 数据库访问或结构检查失败时抛出
-     */
-    private EntitySchemaOperationDTO map(ResultSet rs, int rowNum) throws SQLException {
-        EntitySchemaOperationDTO dto = new EntitySchemaOperationDTO();
-        dto.setId(rs.getString("id"));
-        dto.setEntityId(rs.getString("entity_id"));
-        dto.setEntityCode(rs.getString("entity_code"));
-        dto.setStatus(rs.getString("status"));
-        dto.setPlanHash(rs.getString("plan_hash"));
-        dto.setIdempotencyKey(rs.getString("idempotency_key"));
-        dto.setPlan(readList(rs.getString("plan_json")));
-        dto.setTargetFingerprint(rs.getString("target_fingerprint"));
-        dto.setActualFingerprint(rs.getString("actual_fingerprint"));
-        dto.setDrift(readList(rs.getString("drift_json")));
-        dto.setUniqueConflicts(readList(rs.getString("unique_conflict_json")));
-        dto.setRiskLevel(rs.getString("risk_level"));
-        dto.setRiskReason(rs.getString("risk_reason"));
-        dto.setEstimatedRows(rs.getLong("estimated_rows"));
-        dto.setLockRisk(rs.getString("lock_risk"));
-        dto.setReleaseWindow(rs.getString("release_window"));
-        dto.setAttemptCount(rs.getInt("attempt_count"));
-        dto.setErrorMessage(rs.getString("error_message"));
-        dto.setRetryable("DDL_FAILED".equals(dto.getStatus()));
-        dto.setStartedAt(timestamp(rs, "started_at"));
-        dto.setFinishedAt(timestamp(rs, "finished_at"));
-        dto.setCreatedAt(timestamp(rs, "create_time"));
-        dto.setUpdatedAt(timestamp(rs, "update_time"));
+    /** JSON 字段保留原有严格解析；读取异常不能把损坏的结构计划当作已完成。 */
+    private EntitySchemaOperationDTO map(EntitySchemaOperationRow row) {
+        if (row == null) return null;
+        var dto = new EntitySchemaOperationDTO();
+        org.springframework.beans.BeanUtils.copyProperties(row, dto);
+        dto.setPlan(readList(row.getPlanJson()));
+        dto.setDrift(readList(row.getDriftJson()));
+        dto.setUniqueConflicts(readList(row.getUniqueConflictJson()));
+        dto.setRetryable("DDL_FAILED".equals(row.getStatus()));
         return dto;
-    }
-
-    /**
-     * 处理时间戳，并将结果传给后续步骤。
-     *
-     * @param rs {@code rs}，供本方法处理时间戳时使用
-     * @param column 列，作为 {@code rs.getTimestamp} 的输入影响后续处理
-     * @return 处理后的时间戳结果，供调用方继续处理
-     * @throws SQLException 数据库访问或结构检查失败时抛出
-     */
-    private static LocalDateTime timestamp(ResultSet rs, String column) throws SQLException {
-        java.sql.Timestamp timestamp = rs.getTimestamp(column);
-        return timestamp == null ? null : timestamp.toLocalDateTime();
     }
 
     /**

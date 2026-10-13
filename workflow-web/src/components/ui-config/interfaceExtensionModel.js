@@ -82,6 +82,34 @@ export function parseInterfaceEditorJson(text, label) {
 }
 
 /**
+ * 统一实体范围为去重后的 ID 数组；旧单实体 scopeId 仅在缺少新字段时兼容读取。
+ * 显式空数组必须保留为空，避免清空选择后被旧字段意外恢复。
+ */
+export function interfaceScopeEntityIds(value = {}) {
+  if (String(value.scopeType || 'GLOBAL').toUpperCase() !== 'ENTITY') return []
+  const ids = Array.isArray(value.scopeEntityIds)
+    ? value.scopeEntityIds
+    : value.scopeId ? [value.scopeId] : []
+  return [...new Set(ids.map(id => String(id ?? '').trim()).filter(Boolean))]
+}
+
+/**
+ * 将历史表单/列表范围归并到其所属实体，供编辑和调试复用。
+ * 归属无法解析时抛错，调用方应要求重新选择实体，不能悄悄扩大为全部实体。
+ */
+export async function resolveInterfaceEntityScope(value = {}, loaders = {}) {
+  const scopeType = String(value.scopeType || 'GLOBAL').toUpperCase()
+  if (scopeType === 'GLOBAL') return { scopeType, scopeEntityIds: [] }
+  if (scopeType === 'ENTITY') {
+    return { scopeType, scopeEntityIds: interfaceScopeEntityIds(value) }
+  }
+  const load = scopeType === 'FORM' ? loaders.getForm : scopeType === 'LIST' ? loaders.getList : null
+  const owner = load && value.scopeId ? await load(value.scopeId) : null
+  if (!owner?.entityId) throw new Error('无法确认历史作用范围所属实体，请重新选择作用实体')
+  return { scopeType: 'ENTITY', scopeEntityIds: [String(owner.entityId)] }
+}
+
+/**
  * 将管理目录、可用接口选项和历史数据源 DTO 投影为单一扩展接口。
  * 旧 service/operation 字段只用于读取已有草稿，不应被新保存载荷复制。
  */
@@ -104,6 +132,8 @@ export function normalizeInterfaceExtension(value = {}) {
     interfaceContextType: String(
       value.interfaceContextType || value.contextType || value.operationContextType || ''
     ).toUpperCase(),
+    scopeType: String(value.scopeType || 'GLOBAL').toUpperCase(),
+    scopeEntityIds: interfaceScopeEntityIds(value),
     implementationConfig: parseInterfaceJson(
       value.implementationConfig ?? value.implementationConfigDocument
         ?? value.config ?? value.configDocument,

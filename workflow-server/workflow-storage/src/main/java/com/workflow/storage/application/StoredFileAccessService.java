@@ -10,7 +10,8 @@ import com.workflow.contracts.identity.port.CurrentAuthorizationPort;
 import com.workflow.core.error.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -39,7 +40,7 @@ public class StoredFileAccessService {
     private static final Pattern IDEMPOTENCY_KEY = Pattern.compile(
             "[\\x21-\\x7E]{1,128}");
 
-    private final JdbcTemplate jdbcTemplate;
+    private final StoredFileMapper fileMapper;
     private final CurrentAuthorizationPort currentUserRoleService;
     private final CurrentActorPort currentActor;
     private final JdbcWriteAttempt writeAttempt;
@@ -107,7 +108,7 @@ public class StoredFileAccessService {
         int inserted;
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         try {
-            inserted = writeAttempt.execute(() -> jdbcTemplate.update("""
+            inserted = writeAttempt.execute(() -> fileMapper.execute(ParameterizedSql.of("""
                     INSERT INTO storage_file_object (
                       id, storage_url, storage_key, owner_user_id,
                       idempotency_key, request_hash,
@@ -125,7 +126,7 @@ public class StoredFileAccessService {
                     file.getContentType(),
                     file.getSize(),
                     now,
-                    now));
+                    now)));
         } catch (DuplicateKeyException exception) {
             if (claim.idempotencyKey() == null) {
                 throw exception;
@@ -175,14 +176,14 @@ public class StoredFileAccessService {
      */
     @Transactional
     public void markDeleted(String storageUrl) {
-        jdbcTemplate.update("""
+        fileMapper.execute(ParameterizedSql.of("""
                 UPDATE storage_file_object
                 SET deleted = 1,
                     update_time = %s
                 WHERE storage_url = ?
                   AND deleted = 0
                 """.formatted(DatabaseDialects.runtime(queryDialect.vendor()).utcTimestampExpression()),
-                storageUrl);
+                storageUrl));
     }
 
     /**
@@ -191,16 +192,7 @@ public class StoredFileAccessService {
      * @param storageUrl 存储URL，供本方法校验并获取归属方或管理员时使用
      */
     private void requireOwnerOrAdministrator(String storageUrl) {
-        String owner = jdbcTemplate.query("""
-                SELECT owner_user_id
-                FROM storage_file_object
-                WHERE storage_url = ?
-                  AND deleted = 0
-                """,
-                resultSet -> resultSet.next()
-                        ? resultSet.getString("owner_user_id")
-                        : null,
-                storageUrl);
+        String owner = fileMapper.findOwner(storageUrl);
         if (owner == null) {
             throw new ForbiddenException("文件不存在或无权访问");
         }
@@ -236,30 +228,19 @@ public class StoredFileAccessService {
     private StoredUpload findByIdempotencyKey(
             String owner,
             String idempotencyKey, boolean currentRead) {
-        return jdbcTemplate.query("""
+        var row = fileMapper.findUpload(ParameterizedSql.of("""
                 SELECT storage_url, storage_key, original_name,
                        content_length, request_hash, deleted
                 FROM storage_file_object
-                WHERE owner_user_id = ?
-                  AND idempotency_key = ?
-                """ + (currentRead ? queryDialect.readGuardClause() : ""),
-                resultSet -> {
-                    if (!resultSet.next()) {
-                        return null;
-                    }
-                    Map<String, String> response = new HashMap<>();
-                    response.put("url", resultSet.getString("storage_url"));
-                    response.put("filename", resultSet.getString("storage_key"));
-                    response.put("originalName", resultSet.getString("original_name"));
-                    response.put("size", String.valueOf(
-                            resultSet.getLong("content_length")));
-                    return new StoredUpload(
-                            resultSet.getString("request_hash"),
-                            resultSet.getBoolean("deleted"),
-                            response);
-                },
-                owner,
-                idempotencyKey);
+                WHERE owner_user_id = ? AND idempotency_key = ?
+                """ + (currentRead ? queryDialect.readGuardClause() : ""), owner, idempotencyKey));
+        if (row == null) return null;
+        Map<String, String> response = new HashMap<>();
+        response.put("url", row.storageUrl());
+        response.put("filename", row.storageKey());
+        response.put("originalName", row.originalName());
+        response.put("size", String.valueOf(row.contentLength()));
+        return new StoredUpload(row.requestHash(), row.deleted(), response);
     }
 
     /**

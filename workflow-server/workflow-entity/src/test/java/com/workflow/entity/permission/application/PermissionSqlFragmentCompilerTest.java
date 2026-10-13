@@ -4,7 +4,9 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.PermissionSqlEvaluationMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -24,13 +26,13 @@ import static org.mockito.Mockito.when;
  */
 class PermissionSqlFragmentCompilerTest {
 
-    private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+    private final PermissionSqlEvaluationMapper businessMapper = mock(PermissionSqlEvaluationMapper.class);
     private final EntityPhysicalTableResolver tableResolver = mock(EntityPhysicalTableResolver.class);
     private PermissionSqlFragmentCompiler compiler;
 
     @BeforeEach
     void setUp() {
-        compiler = new PermissionSqlFragmentCompiler(jdbcTemplate, tableResolver, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        compiler = new PermissionSqlFragmentCompiler(businessMapper, tableResolver, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
         when(tableResolver.resolve("expense")).thenReturn("wf_expense");
     }
 
@@ -61,26 +63,24 @@ class PermissionSqlFragmentCompilerTest {
 
     @Test
     void matchesUserWrapsBooleanFragment() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class))).thenReturn(1);
+        when(businessMapper.evaluateUserPredicate(any())).thenReturn(1);
 
         boolean matched = compiler.matchesUser(
                 "#{userId} IN (SELECT user_id FROM special_auditors)",
                 user());
 
         assertTrue(matched);
-        var arguments = org.mockito.ArgumentCaptor.forClass(Object[].class);
-        verify(jdbcTemplate).queryForObject(
-                eq("SELECT CASE WHEN (? IN (SELECT user_id FROM special_auditors)) THEN 1 ELSE 0 END"),
-                eq(Integer.class), arguments.capture());
-        org.springframework.jdbc.core.SqlParameterValue value =
-                (org.springframework.jdbc.core.SqlParameterValue) arguments.getValue()[0];
-        assertEquals(java.sql.Types.VARCHAR, value.getSqlType());
-        assertEquals("u1", value.getValue());
+        var arguments = org.mockito.ArgumentCaptor.forClass(ParameterizedSql.class);
+        verify(businessMapper).evaluateUserPredicate(arguments.capture());
+        ParameterizedSql.Parameter value = arguments.getValue().parameters().get(0);
+        assertEquals("SELECT CASE WHEN (? IN (SELECT user_id FROM special_auditors)) THEN 1 ELSE 0 END", arguments.getValue().sql());
+        assertEquals(org.apache.ibatis.type.JdbcType.VARCHAR, value.jdbcType());
+        assertEquals("u1", value.value());
     }
 
     @Test
     void matchesUserFailsClosedWhenQueryFails() {
-        when(jdbcTemplate.queryForObject(anyString(), eq(Integer.class), org.mockito.ArgumentMatchers.any(Object[].class)))
+        when(businessMapper.evaluateUserPredicate(any()))
                 .thenThrow(new RuntimeException("bad sql"));
 
         assertFalse(compiler.matchesUser("#{userId} = 'u1'", user()));

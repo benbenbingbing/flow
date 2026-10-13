@@ -87,8 +87,8 @@
 
       <div v-if="isCascader" class="form-tip" role="note">
         {{ cascaderUsesInterface
-          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“基础与布局 → 组件参数”设置。'
-          : '当前级联选择使用静态选项。如需接口数据，请先在“基础与布局 → 组件参数”将数据来源改为“数据接口”。' }}
+          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“基础与布局 → 级联选择配置”设置。'
+          : '当前级联选择使用静态选项。如需接口数据，请先在“基础与布局 → 级联选择配置”将数据来源改为“数据接口”。' }}
         <el-button v-if="cascaderUsesInterface && selectedField.dataSourceUsage !== 'FIELD_OPTIONS'"
           link type="primary" @click="selectNodeDataSourceUsage('FIELD_OPTIONS')">配置级联数据接口</el-button>
       </div>
@@ -131,8 +131,8 @@
         <template #label>
           <ConfigHelpLabel
             :label="isCascaderOptions ? '级联数据接口' : '扩展接口'"
-            :help-key="isCascaderOptions ? '' : 'entityForm.interfaceExtension'"
-            :content="isCascaderOptions ? '选择已注册且支持字段选项的只读接口。请求通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级；接口返回 value、label、children 或 leaf 节点数组。' : ''"
+            help-key="entityForm.interfaceExtension"
+            :content="selectedDataSourceInterfaceHelp"
           />
         </template>
         <el-select
@@ -402,6 +402,7 @@ import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListParameterContract } from '@/shared/sub-list'
+import { getFormDataSourceInterfaceHelp } from '@/shared/config-field-help'
 import {
   getInputParameterDefinitions,
   getPublishedFormFields,
@@ -453,6 +454,9 @@ const canEditSelectedDataSourceUsage = computed(() =>
 const isCascader = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'cascader')
 const cascaderUsesInterface = computed(() => safeParseConfig(selectedField.value?.componentProps).cascaderSource === 'INTERFACE')
 const isCascaderOptions = computed(() => isCascader.value && selectedField.value?.dataSourceUsage === 'FIELD_OPTIONS')
+const selectedDataSourceInterfaceHelp = computed(() =>
+  getFormDataSourceInterfaceHelp(selectedField.value?.dataSourceUsage, { cascader: isCascaderOptions.value })
+)
 
 const selectedChildRelease = computed(() => childFormReleases.value[0] || null)
 

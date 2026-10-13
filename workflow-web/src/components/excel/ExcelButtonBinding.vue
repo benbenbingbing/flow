@@ -65,7 +65,8 @@ async function readBindingState() {
   const master = masters[0]
   let ext = null
   if (master && !isBuiltinExcelStep(master)) {
-    const extensions = rowsOf(await uiExtensionApi.list({ extensionType: 'INTERFACE', scopeType: props.ownerType, scopeId: String(props.ownerId) }))
+    // 此处读取已绑定接口身份；范围已按实体管理，不再用单个表单/列表过滤历史绑定。
+    const extensions = rowsOf(await uiExtensionApi.list({ extensionType: 'INTERFACE' }))
     ext = extensions.find(e => extensionId(e) === String(master.extensionId)) || null
   }
   if (masters.length > 1 || master && !isBuiltinExcelStep(master) && !isExcelInterface(ext)) {

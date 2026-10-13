@@ -104,7 +104,7 @@ class MySqlRemainingConflictDatabaseTest {
             incidentTables(f);
             var h = new Harness(f);
             // 让每个独立事务先看到空快照，再同时插入，确保覆盖冲突后的当前读。
-            var racing = barrierJdbc(h, "WHERE open_slot =", 6);
+            var racing = barrierMapper(h, "WHERE open_slot =", 6);
             var recorder = h.transactional(new AssigneeIncidentRecorder(racing, h.json,
                     DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt));
             var ids = concurrent(6, index -> recorder.create(incident("task")));
@@ -118,7 +118,7 @@ class MySqlRemainingConflictDatabaseTest {
         try (var f = new Fixture()) {
             incidentTables(f);
             var h = new Harness(f);
-            var recorder = h.transactional(new AssigneeIncidentRecorder(h.jdbc, h.json,
+            var recorder = h.transactional(new AssigneeIncidentRecorder(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), h.json,
                     DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt));
             String actions = f.tables.get("process_assignee_incident_action");
             f.jdbc.execute("ALTER TABLE " + actions + " ADD CONSTRAINT guard_" + f.suffix + " CHECK (action_type='FORBIDDEN')");
@@ -136,7 +136,7 @@ class MySqlRemainingConflictDatabaseTest {
         try (var f = new Fixture()) {
             incidentTables(f); effectTable(f);
             var h = new Harness(f);
-            var recorder = h.transactional(new AssigneeIncidentRecorder(h.jdbc, h.json,
+            var recorder = h.transactional(new AssigneeIncidentRecorder(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), h.json,
                     DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt));
             String incidentId = recorder.create(incident("task"));
             var engine = mock(RuntimeService.class);
@@ -146,7 +146,7 @@ class MySqlRemainingConflictDatabaseTest {
             when(instances.singleResult()).thenReturn(mock(org.flowable.engine.runtime.ProcessInstance.class));
             doAnswer(call -> { h.jdbc.update("INSERT INTO conflict_effect VALUES ('engine')"); return null; })
                     .when(engine).deleteProcessInstance(eq("instance"), anyString());
-            var service = new AssigneeIncidentService(barrierJdbc(h, "FROM process_assignee_incident WHERE id", 6), h.json,
+            var service = new AssigneeIncidentService(barrierMapper(h, "FROM process_assignee_incident WHERE id", 6), h.json,
                     mock(TaskService.class), engine, mock(AssigneeResolutionService.class),
                     DatabaseQueryDialects.forDatabaseId("MYSQL"), h.attempt);
             concurrent(6, index -> h.tx.execute(status -> {
@@ -167,7 +167,7 @@ class MySqlRemainingConflictDatabaseTest {
             table(f, "storage_file_object", "V011__storage_object_ownership.sql");
             alter(f, "storage_file_object", "V018__storage_upload_idempotency.sql"); effectTable(f);
             var h = new Harness(f);
-            var service = h.transactional(new StoredFileAccessService(h.jdbc, mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
+            var service = h.transactional(new StoredFileAccessService(com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class), mock(com.workflow.contracts.identity.port.CurrentAuthorizationPort.class),
                 new com.workflow.admin.security.context.UserContextCurrentActorProvider(), h.attempt,
                     DatabaseQueryDialects.forDatabaseId("MYSQL")));
             var file = new MockMultipartFile("file", "name.txt", "text/plain", "same content".getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -308,15 +308,25 @@ class MySqlRemainingConflictDatabaseTest {
                 .replaceAll(match -> "CONSTRAINT `ct_" + f.suffix + "_" + f.tables.size() + "_" + number.incrementAndGet() + "`");
     }
 
-    private static JdbcTemplate barrierJdbc(Harness h, String fragment, int participants) {
-        var barrier = new CyclicBarrier(participants); var calls = new AtomicInteger();
-        return new JdbcTemplate(h.jdbc.getDataSource()) {
-            @Override public <T> List<T> query(String sql, RowMapper<T> mapper, Object... args) {
-                var rows = super.query(sql, mapper, args);
-                if (sql.contains(fragment) && !sql.contains("FOR SHARE") && calls.incrementAndGet() <= participants) await(barrier);
-                return rows;
+    /** 在真实 Mapper 查询后同步首轮参与者，仍使用同一个 Spring 事务连接。 */
+    private static com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper barrierMapper(
+            Harness h, String fragment, int participants) {
+        var type = com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class;
+        var delegate = com.workflow.support.BusinessMapperTestSupport.mapper(h.jdbc.getDataSource(), type);
+        var barrier = new CyclicBarrier(participants);
+        var calls = new AtomicInteger();
+        return (com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper)
+                java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[]{type}, (proxy, method, args) -> {
+            try {
+                Object result = method.invoke(delegate, args);
+                if (args != null && args.length == 1 && args[0] instanceof com.workflow.core.database.mybatis.ParameterizedSql statement
+                        && statement.sql().contains(fragment) && !statement.sql().contains("FOR SHARE")
+                        && calls.incrementAndGet() <= participants) await(barrier);
+                return result;
+            } catch (java.lang.reflect.InvocationTargetException error) {
+                throw error.getCause();
             }
-        };
+        });
     }
     private static void await(CyclicBarrier barrier) {
         try { barrier.await(10, TimeUnit.SECONDS); }

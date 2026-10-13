@@ -8,7 +8,6 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationA
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAssetDependency;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
@@ -34,10 +33,9 @@ class ConfigMigrationDependencyPublishTest {
         var assets = mock(ConfigMigrationAssetService.class, CALLS_REAL_METHODS);
         var assetMapper = mock(ConfigMigrationAssetMapper.class);
         var dependencyMapper = mock(ConfigMigrationAssetDependencyMapper.class);
-        var jdbc = mock(JdbcTemplate.class);
         var rows = new LinkedHashMap<List<String>, ConfigMigrationAssetDependency>();
-        when(jdbc.queryForList(anyString(), eq("asset-v24"))).thenReturn(List.of(Map.of(
-                "assetType", "PROCESS", "businessKey", "all_flow", "sourceVersion", 24)));
+        when(dependencyMapper.findSourceAsset("asset-v24")).thenReturn(Map.of(
+                "assetType", "PROCESS", "businessKey", "all_flow", "sourceVersion", 24));
         when(assetMapper.insert(any(ConfigMigrationAsset.class))).thenAnswer(call -> {
             call.getArgument(0, ConfigMigrationAsset.class).setId("asset-v24");
             return 1;
@@ -53,7 +51,7 @@ class ConfigMigrationDependencyPublishTest {
         ReflectionTestUtils.setField(assets, "referenceService", references);
         ReflectionTestUtils.setField(assets, "subFormReferences", subForms);
         ReflectionTestUtils.setField(assets, "assetDependencyService", new ConfigMigrationAssetDependencyService(
-                dependencyMapper, new JsonDocumentCodec(json), jdbc));
+                dependencyMapper, new JsonDocumentCodec(json)));
 
         String admin = ConfigMigrationReferenceSupport.reference("USER", "admin");
         String assignment = json.writeValueAsString(Map.of("multiInstanceUserIds", List.of(admin))).replace("\"", "&quot;");

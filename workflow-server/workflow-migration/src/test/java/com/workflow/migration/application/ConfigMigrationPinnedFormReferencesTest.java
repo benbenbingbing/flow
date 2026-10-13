@@ -100,6 +100,20 @@ class ConfigMigrationPinnedFormReferencesTest {
         assertNotEquals(service.fingerprint(first), service.fingerprint(absent));
     }
 
+    @Test
+    void interfaceScopePortableReferencesAndLocalIdsHaveTheSameFingerprint() throws Exception {
+        var json = new ObjectMapper();
+        Map<String, Object> portable = Map.of("formKey", "details", "eventBindings", List.of(Map.of(
+                "steps", List.of(Map.of("operationSnapshotVersion", 2, "executableSnapshot", json.writeValueAsString(
+                        Map.of("schemaVersion", 4, "extensionKey", "shared.options", "scopeType", "ENTITY",
+                                "scopeEntityRefs", List.of("order", "customer"))))))));
+        Map<String, Object> local = Map.of("formKey", "details", "eventBindings", List.of(Map.of(
+                "steps", List.of(Map.of("operationSnapshotVersion", 2, "executableSnapshot", json.writeValueAsString(
+                        Map.of("schemaVersion", 4, "extensionKey", "shared.options", "scopeType", "ENTITY",
+                                "scopeEntityIds", List.of("target-order", "target-customer"))))))));
+        assertEquals(service.fingerprint(portable), service.fingerprint(local));
+    }
+
     private void prepareTarget() {
         EntityDefinition entity = new EntityDefinition(); entity.setId("target-e"); entity.setEntityCode("expense");
         when(entities.findByEntityCode("expense")).thenReturn(Optional.of(entity));

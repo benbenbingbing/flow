@@ -52,6 +52,19 @@ public class DatabaseMybatisConfiguration {
     }
 
     /**
+     * 业务查询统一后关闭跨语句的一级缓存：保存点/行锁基础设施仍可能直接使用同一
+     * JDBC 连接写入，下一次 Mapper 查询必须重新读取，避免轮询及锁后复查使用旧结果。
+     */
+    @Bean
+    public ConfigurationCustomizer statementScopedReads() {
+        return configuration -> {
+            configuration.setLocalCacheScope(org.apache.ibatis.session.LocalCacheScope.STATEMENT);
+            // 动态 Map 投影必须保留数据库 NULL 列，避免从 JDBC 迁移后把“有列空值”误判为“未投影”。
+            configuration.setCallSettersOnNulls(true);
+        };
+    }
+
+    /**
      * 未声明类型的空参数使用标准 SQL NULL，避免 MyBatis 默认 OTHER 被 Oracle 等驱动拒绝。
      * 已声明的 JDBC 类型及数字布尔处理器仍优先；独立的 Flowable 工厂不受此配置影响。
      * 单独出现的“参数 IS NULL”等无法由 SQL 上下文推断类型的位置，仍须在 Mapper 声明类型。
@@ -123,7 +136,7 @@ public class DatabaseMybatisConfiguration {
     }
 
     /**
-     * 向普通 JDBC 业务服务暴露同一产品的纯查询方言，执行仍留在调用方。
+     * 向 Mapper 的 SQL 编译器暴露同一产品的纯查询方言，执行统一交给 MyBatis。
      *
      * @param dialect 方言，作为 {@code DatabaseQueryDialects.forVendor} 的输入影响后续处理
      * @return 处理后的数据库查询方言结果，供调用方继续处理

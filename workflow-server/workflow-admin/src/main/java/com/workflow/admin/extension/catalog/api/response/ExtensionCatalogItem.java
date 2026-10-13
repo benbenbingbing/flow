@@ -48,6 +48,8 @@ public class ExtensionCatalogItem {
     private String providerCode;
     private String scopeType;
     private String scopeId;
+    /** 接口的实体范围，用于编辑器多选回显；GLOBAL 时为空集合。 */
+    private List<String> scopeEntityIds;
     private String interfaceKind;
     private String interfaceContextType;
     private Map<String, Object> implementationConfig;

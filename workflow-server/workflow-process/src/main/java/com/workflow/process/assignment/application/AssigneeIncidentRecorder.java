@@ -5,7 +5,8 @@ import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AssigneeIncidentRecorder {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final AssigneeIncidentMapper incidentMapper;
     private final ObjectMapper objectMapper;
     // 只渲染读守卫语法；开放槽身份及筛选条件仍由本服务决定。
     private final DatabaseQueryDialect queryDialect;
@@ -44,7 +45,7 @@ public class AssigneeIncidentRecorder {
         }
         String incidentId = id();
         try {
-            writeAttempt.execute(() -> jdbcTemplate.update("""
+            writeAttempt.execute(() -> incidentMapper.execute(ParameterizedSql.of("""
                     INSERT INTO process_assignee_incident (
                       id, process_config_id, process_definition_id, process_instance_id,
                       task_id, node_id, node_name, policy, status,
@@ -62,7 +63,7 @@ public class AssigneeIncidentRecorder {
                     command.fallbackUser(), command.fallbackGroup(),
                     command.responsibilityOwner(), command.maxRetries(),
                     command.initialDelaySeconds(), command.backoffMultiplier(),
-                    command.nextRetryAt(), json(command.detail())));
+                    command.nextRetryAt(), json(command.detail()))));
         } catch (DuplicateKeyException duplicate) {
             String concurrent = findOpen(command, true);
             if (concurrent != null) {
@@ -71,7 +72,7 @@ public class AssigneeIncidentRecorder {
             throw duplicate;
         }
         // 创建审计失败必须回滚本次新事件，不能把审计的唯一冲突误认成事件已存在。
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 INSERT INTO process_assignee_incident_action (
                   id, incident_id, request_id, action_type, status, operator,
                   request_json, result_json, create_time, finished_at
@@ -79,7 +80,7 @@ public class AssigneeIncidentRecorder {
                           CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """, id(), incidentId, "CREATE:" + incidentId,
                 json(Map.of("reasonCode", command.reasonCode(), "policy", command.policy())),
-                json(Map.of("status", command.status())));
+                json(Map.of("status", command.status()))));
         return incidentId;
     }
 
@@ -101,14 +102,14 @@ public class AssigneeIncidentRecorder {
                 || nodeId == null || nodeId.isBlank()) {
             return;
         }
-        jdbcTemplate.update("""
+        incidentMapper.execute(ParameterizedSql.of("""
                 UPDATE process_assignee_incident
                 SET status = 'RESOLVED', resolution_action = 'NODE_ENTRY_RECOVERED',
                     resolved_by = 'system', resolved_at = CURRENT_TIMESTAMP,
                     next_retry_at = NULL, update_time = CURRENT_TIMESTAMP
                 WHERE process_instance_id = ? AND node_id = ? AND task_id IS NULL
                   AND status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED')
-                """, processInstanceId, nodeId);
+                """, processInstanceId, nodeId));
     }
 
     /**
@@ -127,10 +128,10 @@ public class AssigneeIncidentRecorder {
         String instanceCondition = instance == null ? "(process_instance_id IS NULL OR process_instance_id = '')" : "process_instance_id = ?";
         if (task != null) parameters.add(task);
         if (instance != null) parameters.add(instance);
-        List<String> ids = jdbcTemplate.query("SELECT id FROM process_assignee_incident WHERE open_slot = ? AND node_id = ? AND "
+        List<String> ids = incidentMapper.selectIds(ParameterizedSql.of("SELECT id FROM process_assignee_incident WHERE open_slot = ? AND node_id = ? AND "
                 + taskCondition + " AND " + instanceCondition
                 + " AND status IN ('OPEN', 'RETRY_SCHEDULED', 'MANUAL_REQUIRED')"
-                + (currentRead ? queryDialect.readGuardClause() : ""), (rs, rowNum) -> rs.getString("id"), parameters.toArray());
+                + (currentRead ? queryDialect.readGuardClause() : ""), parameters));
         return ids.isEmpty() ? null : ids.get(0);
     }
 

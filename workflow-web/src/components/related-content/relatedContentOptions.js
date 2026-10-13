@@ -68,9 +68,9 @@ export function normalizeRows(response) {
 
 export function interfaceScopeLabel(item) {
   return {
-    GLOBAL: '全部页面可用',
-    ENTITY: '指定实体可用',
-    FORM: '指定表单可用',
-    LIST: '指定列表可用'
+    GLOBAL: '全部实体可用',
+    ENTITY: '所选实体可用',
+    FORM: '历史范围（按所属实体使用）',
+    LIST: '历史范围（按所属实体使用）'
   }[item.scopeType] || '受控范围'
 }

@@ -9,7 +9,9 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityDe
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUserReferenceMapper;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import static org.mockito.ArgumentMatchers.*;
 
 import java.util.List;
 import java.util.Map;
@@ -38,7 +40,7 @@ class EntityUserReferenceAdapterTest {
     private EntityDataDynamicMapper dataMapper;
     private EntityPhysicalTableResolver tableResolver;
     private DynamicTableService dynamicTableService;
-    private JdbcTemplate jdbcTemplate;
+    private EntityUserReferenceMapper businessMapper;
     private EntityUserReferenceAdapter adapter;
 
     @BeforeEach
@@ -48,14 +50,14 @@ class EntityUserReferenceAdapterTest {
         dataMapper = mock(EntityDataDynamicMapper.class);
         tableResolver = mock(EntityPhysicalTableResolver.class);
         dynamicTableService = mock(DynamicTableService.class);
-        jdbcTemplate = mock(JdbcTemplate.class);
+        businessMapper = mock(EntityUserReferenceMapper.class);
         adapter = new EntityUserReferenceAdapter(
                 definitionMapper,
                 fieldMapper,
                 dataMapper,
                 tableResolver,
                 dynamicTableService,
-                jdbcTemplate, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+                businessMapper, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         when(definitionMapper.findByEntityCode(ENTITY_CODE))
                 .thenReturn(Optional.of(definition(
@@ -75,10 +77,8 @@ class EntityUserReferenceAdapterTest {
         when(dataMapper.selectById(
                 "biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of("approver_id", " id-alice "));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?)", statement.sql()))))
                 .thenReturn(List.of(Map.of(
                         "id", "id-alice",
                         "username", "alice",
@@ -106,16 +106,11 @@ class EntityUserReferenceAdapterTest {
         when(dataMapper.selectById(
                 "biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of("approver_id", "legacy-approver"));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?)", statement.sql()))))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(
-                eq("SELECT username FROM sys_user"
-                        + " WHERE username IN (?) AND deleted = 0"),
-                eq(String.class),
-                any(Object[].class)))
+        when(businessMapper.selectLegacyUsernames(argThat(statement -> java.util.Objects.equals("SELECT username FROM sys_user"
+                        + " WHERE username IN (?) AND deleted = 0", statement.sql()))))
                 .thenReturn(List.of("legacy-approver"));
 
         assertEquals(
@@ -138,32 +133,24 @@ class EntityUserReferenceAdapterTest {
                 "biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of(
                         "approver_id", "deleted-user-id"));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?)", statement.sql()))))
                 .thenReturn(List.of(Map.of(
                         "id", "deleted-user-id",
                         "username", "former-user",
                         "deleted", 1)));
         // 若 precedence blocker 失效，大小写不敏感的数据库会把该值
         // 解析为另一名启用用户的 username，导致审批误派。
-        lenient().when(jdbcTemplate.queryForList(
-                eq("SELECT username FROM sys_user"
-                        + " WHERE username IN (?) AND deleted = 0"),
-                eq(String.class),
-                any(Object[].class)))
+        lenient().when(businessMapper.selectLegacyUsernames(argThat(statement -> java.util.Objects.equals("SELECT username FROM sys_user"
+                        + " WHERE username IN (?) AND deleted = 0", statement.sql()))))
                 .thenReturn(List.of("deleted-user-id"));
 
         assertEquals(
                 List.of(),
                 adapter.readUserKeys(
                         ENTITY_CODE, RECORD_ID, "approverId"));
-        verify(jdbcTemplate, never()).queryForList(
-                eq("SELECT username FROM sys_user"
-                        + " WHERE username IN (?) AND deleted = 0"),
-                eq(String.class),
-                any(Object[].class));
+        verify(businessMapper, never()).selectLegacyUsernames(argThat(statement -> java.util.Objects.equals("SELECT username FROM sys_user"
+                        + " WHERE username IN (?) AND deleted = 0", statement.sql())));
     }
 
     @Test
@@ -180,16 +167,11 @@ class EntityUserReferenceAdapterTest {
                 "biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of(
                         "approver_id", "Legacy-Approver"));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?)", statement.sql()))))
                 .thenReturn(List.of());
-        when(jdbcTemplate.queryForList(
-                eq("SELECT username FROM sys_user"
-                        + " WHERE username IN (?) AND deleted = 0"),
-                eq(String.class),
-                any(Object[].class)))
+        when(businessMapper.selectLegacyUsernames(argThat(statement -> java.util.Objects.equals("SELECT username FROM sys_user"
+                        + " WHERE username IN (?) AND deleted = 0", statement.sql()))))
                 .thenReturn(List.of("legacy-approver"));
 
         assertEquals(
@@ -214,10 +196,8 @@ class EntityUserReferenceAdapterTest {
         when(dataMapper.selectById(
                 "biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of("approver_id", "id-bob"));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?)", statement.sql()))))
                 .thenReturn(List.of(Map.of(
                         "id", "id-bob",
                         "username", "bob",
@@ -245,18 +225,11 @@ class EntityUserReferenceAdapterTest {
                 .thenReturn("biz_leave_request");
         when(dataMapper.selectById("biz_leave_request", RECORD_ID))
                 .thenReturn(Map.of("id", RECORD_ID));
-        when(jdbcTemplate.queryForList(
-                anyString(),
-                eq(String.class),
-                eq(RECORD_ID),
-                eq("approverIds"),
-                eq("entity-sys-user")))
+        when(businessMapper.selectRelatedUserIds(argThat(statement -> java.util.Objects.equals(RECORD_ID, statement.parameters().get(0).value()) && java.util.Objects.equals("approverIds", statement.parameters().get(1).value()) && java.util.Objects.equals("entity-sys-user", statement.parameters().get(2).value()))))
                 .thenReturn(List.of(
                         " user-2 ", "user-1", "user-2", " "));
-        when(jdbcTemplate.queryForList(
-                eq("SELECT id, username, deleted FROM sys_user"
-                        + " WHERE id IN (?,?)"),
-                any(Object[].class)))
+        when(businessMapper.selectUserIdentities(argThat(statement -> java.util.Objects.equals("SELECT id, username, deleted FROM sys_user"
+                        + " WHERE id IN (?,?)", statement.sql()))))
                 .thenReturn(List.of(
                         Map.of(
                                 "id", "user-1",
@@ -271,15 +244,10 @@ class EntityUserReferenceAdapterTest {
                 ENTITY_CODE, RECORD_ID, "approverIds");
 
         assertEquals(List.of("bob", "alice"), result);
-        verify(jdbcTemplate).queryForList(
-                "SELECT target_record_id FROM `biz_leave_request_multi`"
+        verify(businessMapper).selectRelatedUserIds(argThat(statement -> java.util.Objects.equals("SELECT target_record_id FROM `biz_leave_request_multi`"
                         + " WHERE record_id = ? AND field_code = ?"
                         + " AND target_entity_id = ? AND deleted = 0"
-                        + " ORDER BY sort_order, id LIMIT 0, 201",
-                String.class,
-                RECORD_ID,
-                "approverIds",
-                "entity-sys-user");
+                        + " ORDER BY sort_order, id LIMIT 0, 201", statement.sql()) && java.util.Objects.equals(RECORD_ID, statement.parameters().get(0).value()) && java.util.Objects.equals("approverIds", statement.parameters().get(1).value()) && java.util.Objects.equals("entity-sys-user", statement.parameters().get(2).value())));
         verify(dataMapper).selectById("biz_leave_request", RECORD_ID);
     }
 
@@ -306,7 +274,7 @@ class EntityUserReferenceAdapterTest {
         assertEquals(
                 "实体记录不存在: leave_request/record-1",
                 exception.getMessage());
-        verifyNoInteractions(dynamicTableService, jdbcTemplate);
+        verifyNoInteractions(dynamicTableService, businessMapper);
     }
 
     @Test
@@ -327,7 +295,7 @@ class EntityUserReferenceAdapterTest {
                 dataMapper,
                 tableResolver,
                 dynamicTableService,
-                jdbcTemplate);
+                businessMapper);
     }
 
     @Test
@@ -353,7 +321,7 @@ class EntityUserReferenceAdapterTest {
                 dataMapper,
                 tableResolver,
                 dynamicTableService,
-                jdbcTemplate);
+                businessMapper);
     }
 
     private EntityField userField(

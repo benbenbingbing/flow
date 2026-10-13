@@ -94,7 +94,7 @@ class EntitySchemaOperationTransactionIntegrationTest {
         EntityPhysicalTableResolver resolver = new EntityPhysicalTableResolver(
                 entityMapper, new EntityPhysicalTableNaming(), metadata);
         EntityFieldMapper fieldMapper = mock(EntityFieldMapper.class);
-        tables = new DynamicTableService(jdbc, fieldMapper, resolver, ddlJdbc::execute, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        tables = new DynamicTableService(com.workflow.support.BusinessMapperTestSupport.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), fieldMapper, resolver, ddlJdbc::execute, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
         DataSourceTransactionManager manager = new DataSourceTransactionManager(dataSource);
         migrationTransaction = new TransactionTemplate(manager);
@@ -103,8 +103,7 @@ class EntitySchemaOperationTransactionIntegrationTest {
         TransactionInterceptor interceptor = new TransactionInterceptor();
         interceptor.setTransactionManager(manager);
         interceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
-        ProxyFactory proxy = new ProxyFactory(new EntitySchemaOperationService(jdbc, new ObjectMapper(), tables,
-                com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"),
+        ProxyFactory proxy = new ProxyFactory(new EntitySchemaOperationService(com.workflow.support.BusinessMapperTestSupport.mapper(jdbc.getDataSource(), com.workflow.entity.definition.infrastructure.persistence.mapper.EntitySchemaOperationMapper.class), new ObjectMapper(), tables,
                 new JdbcLockedRow(jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL))));
         proxy.setProxyTargetClass(true);
         proxy.addAdvice(interceptor);

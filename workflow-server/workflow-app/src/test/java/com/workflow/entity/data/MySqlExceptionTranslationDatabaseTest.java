@@ -110,7 +110,7 @@ class MySqlExceptionTranslationDatabaseTest {
             MySqlRemainingConflictDatabaseTest.table(f, "entity_unique_value", "V050__entity_schema_operation_and_unique_value.sql");
             database(f, context -> {
                 var jdbc = context.getBean(JdbcTemplate.class);
-                var service = new EntityUniqueValueService(jdbc); var tx = transaction(context);
+                var service = new EntityUniqueValueService(com.workflow.testsupport.EntityMapperTestFactory.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueValueMapper.class)); var tx = transaction(context);
                 tx.executeWithoutResult(status -> service.replace("entity", "original", Map.of("name", "claimed")));
                 var failure = assertThrows(BusinessConflictException.class, () -> tx.executeWithoutResult(status -> {
                     service.replace("entity", "second", Map.of("name", "temporary"));

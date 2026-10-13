@@ -1,5 +1,7 @@
 package com.workflow.entity.excel.runtime;
 
+import static com.workflow.entity.excel.persistence.ExcelMapperTestSupport.mapper;
+import com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelFileMapper;
 import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.contracts.storage.spi.FileStorageProvider;
@@ -45,7 +47,7 @@ class EntityExcelFileStoreTest {
             return Map.of("url", "/uploads/opaque.bin", "filename", "opaque.bin");
         });
         when(provider.open(anyString())).thenAnswer(call -> new StoredFile(new ByteArrayInputStream(stored), "opaque.bin", "application/octet-stream", stored.length));
-        store = new EntityExcelFileStore(factory, jdbc, "test-file-secret");
+        store = new EntityExcelFileStore(factory, mapper(jdbc.getDataSource(), EntityExcelFileMapper.class), "test-file-secret");
     }
 
     @Test void backendObjectIsEncryptedAndAuthorizedDownloadRestoresBytesAndMetadata() throws Exception {

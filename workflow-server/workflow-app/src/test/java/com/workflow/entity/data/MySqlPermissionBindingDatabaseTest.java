@@ -79,8 +79,7 @@ class MySqlPermissionBindingDatabaseTest {
             f.table("biz_scope_team", "record_id VARCHAR(64),user_id VARCHAR(300)");
             var h = harness(f); var resolver = resolver(); var metadata = mock(SchemaMetadataPort.class);
             when(metadata.tableExists("biz_scope_team")).thenReturn(true);
-            var teams = new EntityRecordTeamService(h.jdbc, resolver, mock(EntityPublishedSnapshotService.class),
-                    mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(DatabaseVendor.MYSQL), metadata);
+            var teams = new EntityRecordTeamService(com.workflow.testsupport.EntityMapperTestFactory.mapper(h.jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityRecordTeamMapper.class), resolver, mock(EntityPublishedSnapshotService.class), mock(SchemaDdlExecutor.class), DatabaseDialects.forVendor(DatabaseVendor.MYSQL), metadata);
             var builder = builder(compiler(h), teams); var mapper = h.mapper(EntityDataDynamicMapper.class);
             h.jdbc.update("INSERT INTO biz_scope(id,`order`,create_by,deleted) VALUES ('id-match','keep','x',0),('name-match','keep','x',0),('denied','keep','deny',0),('other','keep','x',0),('deleted','keep','x',1)");
             h.jdbc.update("INSERT INTO biz_scope_team VALUES ('id-match',?),('name-match',?),('denied',?),('deleted',?),('other','unrelated')",
@@ -128,7 +127,7 @@ class MySqlPermissionBindingDatabaseTest {
         var resolver = mock(EntityPhysicalTableResolver.class); when(resolver.resolve("asset")).thenReturn(TABLE); return resolver;
     }
     private static PermissionSqlFragmentCompiler compiler(Harness h) {
-        return new PermissionSqlFragmentCompiler(h.jdbc, resolver(), DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
+        return new PermissionSqlFragmentCompiler(com.workflow.testsupport.EntityMapperTestFactory.mapper(h.jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.PermissionSqlEvaluationMapper.class), resolver(), DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
     }
     private static PermissionSqlBuilder builder(PermissionSqlFragmentCompiler compiler, EntityRecordTeamService teams) {
         return new PermissionSqlBuilder(null, null, null, List.of(), teams, resolver(), compiler, DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));

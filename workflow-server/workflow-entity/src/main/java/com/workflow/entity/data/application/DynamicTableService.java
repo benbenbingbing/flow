@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.workflow.integration.database.api.schema.SchemaDdlDialect;
 import com.workflow.core.database.port.SchemaMetadataPort;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,7 +42,7 @@ public class DynamicTableService {
             "current_task_id", "current_task_name", "current_task_assignee",
             "submitter_id", "submitter_name", "submit_time", "dept_id",
             "create_by", "update_by", "create_time", "update_time", "deleted");
-    private final JdbcTemplate jdbcTemplate;
+    private final EntityUniqueConflictMapper conflictMapper;
     private final EntityFieldMapper entityFieldMapper;
     private final EntityPhysicalTableResolver tableResolver;
     private final SchemaDdlExecutor schemaDdlExecutor;
@@ -53,7 +53,7 @@ public class DynamicTableService {
     /**
      * 初始化动态表服务，保存构造参数供后续方法使用。
      *
-     * @param jdbcTemplate JDBC模板依赖，保存到当前对象供后续业务方法调用
+     * @param conflictMapper 存量唯一值查询 Mapper，结构变更本身仍使用 DDL 端口
      * @param entityFieldMapper 实体字段映射器依赖，保存到当前对象供后续业务方法调用
      * @param tableResolver 表解析器依赖，保存到当前对象供后续业务方法调用
      * @param schemaDdlExecutor 结构DDL执行器依赖，保存到当前对象供后续业务方法调用
@@ -63,11 +63,11 @@ public class DynamicTableService {
      */
     @Autowired
     public DynamicTableService(
-            JdbcTemplate jdbcTemplate,
+            EntityUniqueConflictMapper conflictMapper,
             EntityFieldMapper entityFieldMapper,
             EntityPhysicalTableResolver tableResolver,
             SchemaDdlExecutor schemaDdlExecutor, SchemaDdlDialect dialect, SchemaMetadataPort metadata, DatabaseQueryDialect queryDialect) {
-        this.jdbcTemplate = jdbcTemplate;
+        this.conflictMapper = conflictMapper;
         this.entityFieldMapper = entityFieldMapper;
         this.tableResolver = tableResolver;
         this.schemaDdlExecutor = schemaDdlExecutor;
@@ -336,7 +336,6 @@ public class DynamicTableService {
         if (!tableExistsByName(physicalTableName)) {
             return List.of();
         }
-        String tableName = quoteIdentifier(physicalTableName);
         Set<String> physicalColumns = getTableColumnsByName(physicalTableName).stream()
                 .map(ColumnInfo::getName)
                 .collect(Collectors.toSet());
@@ -350,55 +349,12 @@ public class DynamicTableService {
             if (!physicalColumns.contains(columnName(field))) {
                 continue;
             }
-            String column = quoteIdentifier(columnName(field));
             var kind = EntityTableDefinitionFactory.fieldColumn(field).type().kind();
-            boolean largeText = kind == com.workflow.integration.database.api.schema.SchemaType.Kind.TEXT
-                    || kind == com.workflow.integration.database.api.schema.SchemaType.Kind.LARGE_TEXT;
-            // 大文本不能截取前缀后分组：Oracle 系不支持 LOB GROUP BY，MySQL 的文本排序
-            // 长度限制也可能把尾部不同的长文本合并。完整比较并按最小记录 ID 选代表行。
-            // 此扫描只用于发布预检；普通标量仍使用数据库原有分组，避免改变其比较规则。
-            String sql = largeText ? largeTextUniqueConflictsSql(physicalTableName, columnName(field), kind)
-                    : "SELECT " + column + " value_text, COUNT(*) duplicate_count FROM "
-                    + tableName + " WHERE " + quoteIdentifier("deleted") + " = 0 AND " + column + " IS NOT NULL "
-                    + "GROUP BY " + column + " HAVING COUNT(*) > 1 ORDER BY " + column
-                    + queryDialect.paginationClause("0", "5");
-            jdbcTemplate.query(sql, rs -> {
-                conflicts.add(field.getFieldName() + "=" + rs.getString("value_text")
-                        + "（" + rs.getLong("duplicate_count") + "条）");
-            });
+            conflictMapper.scan(physicalTableName, columnName(field), kind, queryDialect).forEach(row ->
+                    conflicts.add(field.getFieldName() + "=" + row.getValueText()
+                            + "（" + row.getDuplicateCount() + "条）"));
         }
         return conflicts;
-    }
-
-    /**
-     * 按完整大文本比较重复值；每组只返回 ID 最小的有效记录，并保留真实重复数量。
-     * 不对 LOB 排序、分组或转短字符串，最多读取五组样本；比较规则由产品方言负责。
-     *
-     * @param physicalTable 物理表，作为 {@code quoteIdentifier} 的输入影响后续处理
-     * @param physicalColumn 物理列，作为 {@code quoteIdentifier} 的输入影响后续处理
-     * @param kind 类型，作为 {@code queryDialect.columnComparisonPredicate} 的输入影响后续处理
-     * @return 处理后的{@code large}文本唯一{@code conflicts}SQL文本，供调用方比较或展示
-     */
-    private String largeTextUniqueConflictsSql(String physicalTable, String physicalColumn,
-                                               com.workflow.integration.database.api.schema.SchemaType.Kind kind) {
-        String table = quoteIdentifier(physicalTable);
-        String candidate = quoteIdentifier("candidate");
-        String duplicate = quoteIdentifier("duplicate_row");
-        String earlier = quoteIdentifier("earlier_row");
-        String id = quoteIdentifier("id");
-        String deleted = quoteIdentifier("deleted");
-        String column = quoteIdentifier(physicalColumn);
-        String duplicates = " FROM " + table + " " + duplicate + " WHERE " + duplicate + "." + deleted + " = 0 AND "
-                + queryDialect.columnComparisonPredicate("duplicate_row." + physicalColumn, kind, "=", "candidate." + physicalColumn);
-        String sql = "SELECT " + candidate + "." + column + " value_text, (SELECT COUNT(*)" + duplicates + ") duplicate_count"
-                + " FROM " + table + " " + candidate
-                + " WHERE " + candidate + "." + deleted + " = 0 AND " + candidate + "." + column + " IS NOT NULL"
-                + " AND EXISTS (SELECT 1" + duplicates + " AND " + duplicate + "." + id + " <> " + candidate + "." + id + ")"
-                + " AND NOT EXISTS (SELECT 1 FROM " + table + " " + earlier
-                + " WHERE " + earlier + "." + deleted + " = 0 AND " + earlier + "." + id + " < " + candidate + "." + id
-                + " AND " + queryDialect.columnComparisonPredicate("earlier_row." + physicalColumn, kind, "=", "candidate." + physicalColumn) + ")"
-                + " ORDER BY " + candidate + "." + id;
-        return queryDialect.paginate(sql, "0", "5");
     }
 
     /**

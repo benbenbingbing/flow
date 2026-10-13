@@ -26,6 +26,7 @@ import static org.mockito.Mockito.*;
 /** 真数据库比较覆盖排序规则、精确数值、日期、软删除及规范化占位，不模拟匹配结果。 */
 class EntityUniqueBatchPrecheckServiceTest {
     private JdbcTemplate jdbc;
+    private com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniquePrecheckMapper precheckMapper;
     private EntityUniqueBatchPrecheckService service;
     private final DynamicTableService tables = mock(DynamicTableService.class);
     private final ObjectMapper json = new ObjectMapper();
@@ -38,7 +39,9 @@ class EntityUniqueBatchPrecheckServiceTest {
         jdbc.execute("CREATE TABLE records(id VARCHAR(64) PRIMARY KEY, deleted INT DEFAULT 0, text_value VARCHAR_IGNORECASE(100), exact_text VARCHAR(100), amount DECIMAL(30,8), business_date DATE)");
         jdbc.execute("CREATE TABLE entity_unique_value(entity_code VARCHAR(100), field_code VARCHAR(100), value_hash VARCHAR(64), normalized_value VARCHAR(1000), record_id VARCHAR(64), PRIMARY KEY(entity_code,field_code,value_hash))");
         when(tables.getTableName("sample")).thenReturn("records");
-        service = new EntityUniqueBatchPrecheckService(jdbc, tables, DatabaseQueryDialects.forDatabaseId("MYSQL"), records);
+        precheckMapper = mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniquePrecheckMapper.class,
+                org.mockito.AdditionalAnswers.delegatesTo(com.workflow.testsupport.EntityMapperTestFactory.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniquePrecheckMapper.class)));
+        service = new EntityUniqueBatchPrecheckService(precheckMapper, tables, DatabaseQueryDialects.forDatabaseId("MYSQL"), records);
         clearInvocations(jdbc);
     }
 
@@ -54,7 +57,7 @@ class EntityUniqueBatchPrecheckServiceTest {
 
     @Test void normalizedReservationsCatchTrimmedValuesEvenWhenPhysicalColumnDoesNotMatch() {
         jdbc.update("INSERT INTO records(id,exact_text) VALUES ('secret-record','  Alpha  ')");
-        new EntityUniqueValueService(jdbc).replace("sample", "secret-record", Map.of("exact_text", "  Alpha  "));
+        new EntityUniqueValueService(com.workflow.testsupport.EntityMapperTestFactory.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueValueMapper.class)).replace("sample", "secret-record", Map.of("exact_text", "  Alpha  "));
         var errors = service.validate("sample", snapshot(field("exact_text", EntityField.FieldType.STRING)), List.of(Map.of("exact_text", "alpha")));
         assertThat(errors).extracting(EntityDataMutationValidator.BatchFieldError::code).containsExactly("UNIQUE_CONFLICT");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM entity_unique_value", Integer.class)).isEqualTo(1);
@@ -87,7 +90,7 @@ class EntityUniqueBatchPrecheckServiceTest {
         for (int index = 0; index < 251; index++) rows.add(Map.of("text_value", "row-" + index));
         var errors = service.validate("sample", snapshot(field("text_value", EntityField.FieldType.STRING)), rows);
         assertThat(errors).isEmpty();
-        verify(jdbc, times(3)).query(anyString(), any(RowMapper.class), any(Object[].class));
+        verify(precheckMapper, times(3)).selectConflictIndexes(any());
         verify(jdbc, never()).update(anyString(), any(Object[].class));
     }
 

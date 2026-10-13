@@ -13,7 +13,8 @@ import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRecordTeamMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
 @Service
 public class EntityRecordTeamService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final EntityRecordTeamMapper mapper;
     private final EntityPhysicalTableResolver tableResolver;
     private final EntityPublishedSnapshotService snapshotService;
     private final SchemaDdlExecutor schemaDdlExecutor;
@@ -43,7 +44,7 @@ public class EntityRecordTeamService {
     /**
      * 初始化实体记录团队服务，保存构造参数供后续方法使用。
      *
-     * @param jdbcTemplate JDBC模板依赖，保存到当前对象供后续业务方法调用
+     * @param mapper MyBatis持久化依赖，保存到当前对象供后续业务方法调用
      * @param tableResolver 表解析器依赖，保存到当前对象供后续业务方法调用
      * @param snapshotService 快照服务依赖，保存到当前对象供后续业务方法调用
      * @param schemaDdlExecutor 结构DDL执行器依赖，保存到当前对象供后续业务方法调用
@@ -52,11 +53,11 @@ public class EntityRecordTeamService {
      */
     @Autowired
     public EntityRecordTeamService(
-            JdbcTemplate jdbcTemplate,
+            EntityRecordTeamMapper mapper,
             EntityPhysicalTableResolver tableResolver,
             EntityPublishedSnapshotService snapshotService,
             SchemaDdlExecutor schemaDdlExecutor, SchemaDdlDialect dialect, SchemaMetadataPort metadata) {
-        this.jdbcTemplate = jdbcTemplate;
+        this.mapper = mapper;
         this.tableResolver = tableResolver;
         this.snapshotService = snapshotService;
         this.schemaDdlExecutor = schemaDdlExecutor;
@@ -129,8 +130,7 @@ public class EntityRecordTeamService {
                     LogValue.safe(entityCode), LogValue.safe(tableName));
             return;
         }
-        jdbcTemplate.update(
-                "INSERT INTO " + dialect.quoteIdentifier(tableName) + " "
+        mapper.insertEvent(ParameterizedSql.of("INSERT INTO " + dialect.quoteIdentifier(tableName) + " "
                         + "(id, record_id, user_id, action_type, action_description, "
                         + "process_instance_id, process_task_id, create_time) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
@@ -140,7 +140,7 @@ public class EntityRecordTeamService {
                 normalizedAction(actionType),
                 trim(actionDescription, 500),
                 blankToNull(processInstanceId),
-                blankToNull(processTaskId));
+                blankToNull(processTaskId)));
     }
 
     /**

@@ -70,7 +70,9 @@ public class UiInterfaceExtensionService {
         private static final Set<String> SOURCE_TYPES = Set.of(
                         "DICTIONARY", "STATIC_OPTIONS", "REGISTERED_PROVIDER",
                         "RUNTIME_CONTEXT", "STRUCTURED_COMPUTE");
-        private static final Set<String> SCOPE_TYPES = Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
+        private static final Set<String> SCOPE_TYPES = Set.of("GLOBAL", "ENTITY");
+        /** 历史快照保留页面范围，不允许通过新保存请求创建此范围。 */
+        private static final Set<String> SNAPSHOT_SCOPE_TYPES = Set.of("GLOBAL", "ENTITY", "FORM", "LIST");
         private static final Set<String> CONTEXT_TYPES = Set.of("FORM", "LIST", "ENTITY");
         /** 与数据库 varchar(255) 对齐，并允许迁移后的 source.operation 编码。 */
         private static final Pattern EXTENSION_KEY =
@@ -231,16 +233,19 @@ public class UiInterfaceExtensionService {
                 if (StringUtils.hasText(scopeType)) {
                         query.eq(UiExtensionDefinition::getScopeType, normalize(scopeType));
                 }
-                if (StringUtils.hasText(scopeId)) {
-                        query.eq(UiExtensionDefinition::getScopeId, scopeId);
-                }
                 if (StringUtils.hasText(sourceType)) {
                         query.eq(UiExtensionDefinition::getImplementationType, normalize(sourceType));
                 }
                 query.eq(UiExtensionDefinition::getExtensionType, "INTERFACE")
                                 .eq(UiExtensionDefinition::getDeleted, 0)
                                 .orderByAsc(UiExtensionDefinition::getExtensionKey);
-                return mapper.selectList(query);
+                // 范围是数组，按成员匹配而不是只查旧单值列，兼容所有支持的数据库。
+                return mapper.selectList(query).stream()
+                                .filter(value -> !StringUtils.hasText(scopeId)
+                                                || ("ENTITY".equals(normalize(value.getScopeType()))
+                                                    ? value.getScopeEntityIds().contains(scopeId.trim())
+                                                    : Objects.equals(value.getScopeId(), scopeId.trim())))
+                                .toList();
         }
 
         /**
@@ -312,7 +317,10 @@ public class UiInterfaceExtensionService {
                                 StringUtils.hasText(request.getScopeType())
                                                 ? request.getScopeType()
                                                 : "GLOBAL"));
-                value.setScopeId(blankToNull(request.getScopeId()));
+                // 新记录统一按实体集合保存，清除历史页面 ID，避免混用两套范围来源。
+                value.setScopeId(null);
+                value.setScopeEntityIds("ENTITY".equals(value.getScopeType())
+                                ? requestedScopeEntityIds(request) : List.of());
                 value.setImplementationConfigDocument(write(
                                 request.getImplementationConfig(), "接口实现配置"));
                 value.setExecutionPolicyDocument(
@@ -352,6 +360,7 @@ public class UiInterfaceExtensionService {
                                         .set("provider_code", value.getProviderCode())
                                         .set("scope_type", value.getScopeType())
                                         .set("scope_id", value.getScopeId())
+                                        .set("scope_entity_ids_document", value.getScopeEntityIdsDocument())
                                         .set("implementation_config_document", value.getImplementationConfigDocument())
                                         .set("execution_policy_document", value.getExecutionPolicyDocument())
                                         .set("input_schema_document", value.getInputSchemaDocument())
@@ -804,7 +813,7 @@ public class UiInterfaceExtensionService {
         private PublishedOperationSnapshot freezeDefinition(
                         UiExtensionDefinition resolved) {
                 Map<String, Object> snapshot = new LinkedHashMap<>();
-                snapshot.put("schemaVersion", 3);
+                snapshot.put("schemaVersion", 4);
                 snapshot.put("extensionType", "INTERFACE");
                 snapshot.put("extensionId", resolved.getId());
                 snapshot.put("extensionKey", resolved.getExtensionKey());
@@ -823,6 +832,7 @@ public class UiInterfaceExtensionService {
                 }
                 snapshot.put("scopeType", normalize(resolved.getScopeType()));
                 snapshot.put("scopeId", resolved.getScopeId());
+                snapshot.put("scopeEntityIds", resolved.getScopeEntityIds());
                 snapshot.put("extensionRevision", resolved.getRevision());
                 snapshot.put("providerOperationCode",
                                 resolved.getProviderOperationCode());
@@ -1708,17 +1718,18 @@ public class UiInterfaceExtensionService {
                                 "extensionKey", "displayName", "implementationType",
                                 "providerCode", "providerVersion",
                                 "providerArtifactDigest", "scopeType", "scopeId",
-                                "extensionRevision", "providerOperationCode",
+                                "scopeEntityIds", "extensionRevision", "providerOperationCode",
                                 "interfaceContextType", "interfaceKind",
                                 "implementationConfigDocument",
                                 "executionPolicyDocument", "inputSchemaDocument",
                                 "outputSchemaDocument");
                 int schemaVersion = integer(value.get("schemaVersion"), 0);
-                boolean extensionSchema = schemaVersion == 3;
+                boolean extensionSchema = schemaVersion >= 3;
                 Set<String> allowed = extensionSchema
                                 ? extensionAllowed : legacyAllowed;
                 if (!allowed.containsAll(value.keySet())
-                                || !Set.of(1, 2, 3).contains(schemaVersion)) {
+                                || !Set.of(1, 2, 3, 4).contains(schemaVersion)
+                                || (schemaVersion < 4 && value.containsKey("scopeEntityIds"))) {
                         throw new BusinessConflictException(
                                         "UI_INTERFACE_PINNED_SNAPSHOT_INVALID",
                                         "已发布接口快照版本或字段不受支持");
@@ -1767,12 +1778,25 @@ public class UiInterfaceExtensionService {
                 }
                 definition.setScopeType(normalize(requiredSnapshotText(
                                 value, "scopeType")));
-                if (!SCOPE_TYPES.contains(definition.getScopeType())) {
+                if (!SNAPSHOT_SCOPE_TYPES.contains(definition.getScopeType())) {
                         throw new BusinessConflictException(
                                         "UI_INTERFACE_PINNED_SNAPSHOT_INVALID",
                                         "已发布接口作用域不受支持");
                 }
                 definition.setScopeId(text(value.get("scopeId")));
+                if (schemaVersion >= 4) {
+                        // v4 显式冻结整个实体集合；旧版本继续使用原 scopeId，不能补入当前草稿范围。
+                        if (!(value.get("scopeEntityIds") instanceof List<?> entityIds)) {
+                                throw new BusinessConflictException("UI_INTERFACE_PINNED_SNAPSHOT_INVALID",
+                                                "已发布接口缺少实体作用范围");
+                        }
+                        definition.setScopeEntityIds(UiExtensionDefinition.normalizeScopeEntityIds(entityIds));
+                        if ("ENTITY".equals(definition.getScopeType())
+                                        && definition.getScopeEntityIds().isEmpty()) {
+                                throw new BusinessConflictException("UI_INTERFACE_PINNED_SNAPSHOT_INVALID",
+                                                "已发布接口实体作用范围不能为空");
+                        }
+                }
                 definition.setRevision(integer(value.get(extensionSchema
                                 ? "extensionRevision" : "revision"), 0));
                 if (definition.getRevision() < 1) {
@@ -2211,14 +2235,10 @@ public class UiInterfaceExtensionService {
                         throw new IllegalArgumentException(
                                         "不支持的接口作用域: " + scopeType);
                 }
-                if (!"GLOBAL".equals(scopeType) && !StringUtils.hasText(request.getScopeId())) {
-                        throw new IllegalArgumentException(
-                                        "非全局接口必须指定 scopeId");
-                }
-                if ("GLOBAL".equals(scopeType)
-                                && "REGISTERED_PROVIDER".equals(sourceType)) {
-                        throw new IllegalArgumentException(
-                                        "Provider 必须绑定实体、表单或列表范围");
+                List<String> scopeEntityIds = "ENTITY".equals(scopeType)
+                                ? requestedScopeEntityIds(request) : List.of();
+                if ("ENTITY".equals(scopeType) && scopeEntityIds.isEmpty()) {
+                        throw new IllegalArgumentException("选择实体范围必须至少选择一个实体");
                 }
                 definitionValidator.validateNoForbiddenKeys(
                                 request.getImplementationConfig(),
@@ -2244,7 +2264,7 @@ public class UiInterfaceExtensionService {
                         throw new IllegalArgumentException(
                                         "接口必须声明 FORM/LIST/ENTITY 上下文");
                 }
-                validateInterfaceScope(contextType, scopeType);
+                // 业务上下文只决定调用方式，全部实体和选择实体都支持 FORM/LIST/ENTITY。
                 if ("REGISTERED_PROVIDER".equals(sourceType)
                                 && !StringUtils.hasText(request.getProviderCode())) {
                         throw new IllegalArgumentException("Provider 编码不能为空");
@@ -2254,32 +2274,17 @@ public class UiInterfaceExtensionService {
                 if (!Set.of("ACTIVE", "DISABLED").contains(status)) {
                         throw new IllegalArgumentException("接口扩展状态不合法");
                 }
-                requireScopeAccess(scopeType, request.getScopeId());
+                // 逐个校验配置权限，不能仅验证首个实体后保存未经授权的其他实体。
+                scopeEntityIds.forEach(entityAccessPolicy::requireDynamicById);
         }
 
-        /**
-         * 校验接口作用域；不满足约束时阻止后续处理。
-         *
-         * @param contextType 上下文类型标识，决定后续接口作用域采用的处理分支
-         * @param scopeType 作用域类型标识，决定后续接口作用域采用的处理分支
-         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-         */
-        private void validateInterfaceScope(
-                        String contextType,
-                        String scopeType) {
-                boolean compatible = switch (scopeType) {
-                        case "ENTITY" -> true;
-                        case "FORM" -> "FORM".equals(contextType);
-                        case "LIST" -> "LIST".equals(contextType);
-                        case "GLOBAL" -> !"ENTITY".equals(contextType);
-                        default -> false;
-                };
-                if (!compatible) {
-                        throw new IllegalArgumentException(
-                                        "接口上下文 " + contextType
-                                                        + " 与作用范围 "
-                                                        + scopeType + " 不兼容");
+        /** 新请求优先使用多选列表；只有未提供列表时才接受旧 ENTITY 的单 ID。 */
+        private List<String> requestedScopeEntityIds(UiExtensionDefinitionSaveRequest request) {
+                List<String> ids = request.getScopeEntityIds();
+                if (ids == null && StringUtils.hasText(request.getScopeId())) {
+                        ids = List.of(request.getScopeId());
                 }
+                return UiExtensionDefinition.normalizeScopeEntityIds(ids);
         }
 
         /**
@@ -2405,6 +2410,7 @@ public class UiInterfaceExtensionService {
                                 definition.getProviderArtifactDigest());
                 value.put("scopeType", definition.getScopeType());
                 value.put("scopeId", definition.getScopeId());
+                value.put("scopeEntityIds", definition.getScopeEntityIds());
                 value.put("revision", definition.getRevision());
                 value.put("operationCode", definition.getOperationCode());
                 value.put("operationContextType",
@@ -2484,40 +2490,6 @@ public class UiInterfaceExtensionService {
                                 || exception instanceof BusinessForbiddenException
                                 || exception instanceof BusinessConflictException
                                 || exception instanceof SecurityException;
-        }
-
-        /**
-         * 校验并获取作用域访问；不满足约束时阻止后续处理。
-         *
-         * @param scopeType 作用域类型标识，决定后续作用域访问采用的处理分支
-         * @param scopeId 作用域ID，后续用于校验并获取作用域访问时定位或关联目标
-         * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-         */
-        private void requireScopeAccess(String scopeType, String scopeId) {
-                if ("GLOBAL".equals(scopeType)) {
-                        return;
-                }
-                if ("ENTITY".equals(scopeType)) {
-                        entityAccessPolicy.requireDynamicById(scopeId);
-                        return;
-                }
-                if ("FORM".equals(scopeType)) {
-                        EntityForm form = formMapper.selectById(scopeId);
-                        if (form == null)
-                                throw new IllegalArgumentException("表单作用域不存在");
-                        entityUiConfigurationPolicy
-                                        .requireConfigurableById(
-                                                        form.getEntityId());
-                        return;
-                }
-                if ("LIST".equals(scopeType)) {
-                        EntityListConfig list = listMapper.selectById(scopeId);
-                        if (list == null)
-                                throw new IllegalArgumentException("列表作用域不存在");
-                        entityUiConfigurationPolicy
-                                        .requireConfigurableById(
-                                                        list.getEntityId());
-                }
         }
 
         /**

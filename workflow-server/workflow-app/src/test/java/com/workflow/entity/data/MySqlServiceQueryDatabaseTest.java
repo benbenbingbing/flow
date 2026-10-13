@@ -53,7 +53,7 @@ class MySqlServiceQueryDatabaseTest {
             var resolver = mock(EntityPhysicalTableResolver.class);
             when(resolver.resolve(entity)).thenReturn(table);
             var schema = new MySqlSchemaDdlDialect();
-            var service = new DynamicTableService(f.jdbc, mock(EntityFieldMapper.class), resolver, mock(SchemaDdlExecutor.class),
+            var service = new DynamicTableService(com.workflow.support.BusinessMapperTestSupport.mapper(f.jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), mock(EntityFieldMapper.class), resolver, mock(SchemaDdlExecutor.class),
                     schema, new JdbcSchemaMetadata(f.jdbc, schema), QUERY);
             var order = field("sample_code", EntityField.FieldType.STRING); order.setIsUnique(true); order.setFieldName("编号");
             var amount = field("amount", EntityField.FieldType.DECIMAL); amount.setIsUnique(true); amount.setFieldName("金额");
@@ -93,8 +93,7 @@ class MySqlServiceQueryDatabaseTest {
             when(resolver.resolve(entity)).thenReturn("biz_review");
             when(data.selectById("biz_review", "record")).thenReturn(Map.of("id", "record"));
             when(tables.getMultiValueTableName("review")).thenReturn(multi);
-            var service = new EntityUserReferenceAdapter(definitions, fields, data, resolver, tables,
-                    new JdbcTemplate(f.isolatedDataSource()), QUERY);
+            var service = new EntityUserReferenceAdapter(definitions, fields, data, resolver, tables, com.workflow.testsupport.EntityMapperTestFactory.mapper(new JdbcTemplate(f.isolatedDataSource()).getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUserReferenceMapper.class), QUERY);
             var names = service.readUserKeys("review", "record", "reviewers");
             assertEquals(200, names.size());
             assertEquals("name-u001", names.get(0));
@@ -116,7 +115,7 @@ class MySqlServiceQueryDatabaseTest {
             for (int i = 0; i < 502; i++) f.jdbc.update("INSERT INTO " + table + " (id,status,update_time) VALUES (?,'OPEN','2026-01-01')", String.format("i%04d", i));
             for (String status : List.of("UNKNOWN", "RETRY_SCHEDULED", "MANUAL_REQUIRED", "RESOLVED", "TERMINATED"))
                 f.jdbc.update("INSERT INTO " + table + " (id,status,update_time) VALUES (?,?,'2026-01-01')", status, status);
-            var service = new AssigneeIncidentService(new JdbcTemplate(f.isolatedDataSource()), new ObjectMapper(),
+            var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(f.isolatedDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), new ObjectMapper(),
                     mock(TaskService.class), mock(RuntimeService.class), mock(AssigneeResolutionService.class), QUERY, new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
             var all = service.list(null);
             assertEquals(500, all.size());
@@ -188,7 +187,10 @@ class MySqlServiceQueryDatabaseTest {
             f.jdbc.update("INSERT INTO " + action + " VALUES ('future-created','PENDING',NULL,?),('running','RUNNING',NULL,?)",
                     now.plusSeconds(5), now);
             // 固定从数据库取得的 UTC 边界，避免断言依赖测试线程执行速度。
-            var metrics = new com.workflow.observability.AsyncQueueMetrics(new JdbcTemplate(f.isolatedDataSource()), registry, () -> now);
+            var metrics = new com.workflow.observability.AsyncQueueMetrics(
+                    com.workflow.support.BusinessMapperTestSupport.mapper(f.isolatedDataSource(),
+                            com.workflow.observability.infrastructure.persistence.mapper.AsyncQueueMetricsMapper.class),
+                    registry, () -> now);
             metrics.refresh();
             assertEquals(2, registry.get("workflow.queue.items").tag("queue", "outbox").tag("state", "ready").gauge().value());
             assertEquals(1, registry.get("workflow.queue.items").tag("queue", "outbox").tag("state", "running").gauge().value());

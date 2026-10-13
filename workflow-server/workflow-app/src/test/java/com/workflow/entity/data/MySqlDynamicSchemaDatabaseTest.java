@@ -59,7 +59,7 @@ class MySqlDynamicSchemaDatabaseTest {
             public DataSource schema() { return independent; }
         };
         SchemaDdlExecutor executor = new JdbcSchemaDdlExecutor(connections, dialect);
-        service = new DynamicTableService(jdbc, fieldMapper, resolver, executor, dialect, new JdbcSchemaMetadata(jdbc, dialect), com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
+        service = new DynamicTableService(com.workflow.support.BusinessMapperTestSupport.mapper(jdbc.getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), fieldMapper, resolver, executor, dialect, new JdbcSchemaMetadata(jdbc, dialect), com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
     }
 
     @AfterEach

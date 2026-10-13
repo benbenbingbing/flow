@@ -66,6 +66,88 @@ class ConfigMigrationPinnedInterfaceTest {
     }
 
     @Test
+    void exportsAllEntityScopesByCodeAndRecordsTheirDependencies() {
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setId("source-interface"); definition.setExtensionType("INTERFACE");
+        definition.setExtensionKey("shared.options"); definition.setScopeType("ENTITY");
+        definition.setScopeEntityIds(List.of("source-order", "source-customer"));
+        var interfaces = mock(UiExtensionDefinitionMapper.class);
+        var entities = mock(EntityDefinitionMapper.class);
+        when(interfaces.selectById("source-interface")).thenReturn(definition);
+        for (String code : List.of("order", "customer")) {
+            var entity = new EntityDefinition(); entity.setId("source-" + code); entity.setEntityCode(code);
+            when(entities.selectById(entity.getId())).thenReturn(entity);
+        }
+        ReflectionTestUtils.setField(assets, "extensionDefinitionMapper", interfaces);
+        ReflectionTestUtils.setField(assets, "entityMapper", entities);
+        List<Map<String, Object>> exported = ReflectionTestUtils.invokeMethod(assets, "interfaceExtensionSnapshots",
+                Set.of("source-interface"), "source-order", "order");
+        assertEquals(List.of("customer", "order"), exported.get(0).get("scopeEntityRefs"));
+        assertFalse(exported.toString().contains("source-"));
+        var dependencies = new java.util.ArrayList<Map<String, Object>>();
+        ReflectionTestUtils.invokeMethod(assets, "collectExtensionDependencies", exported, dependencies);
+        assertEquals(Set.of("customer", "order"), dependencies.stream()
+                .map(value -> value.get("key")).collect(java.util.stream.Collectors.toSet()));
+        dependencies.clear();
+        ReflectionTestUtils.invokeMethod(assets, "collectExtensionDependencies", Map.of(
+                "assetType", "ENTITY", "businessKey", "order", "interfaceExtensions", exported), dependencies);
+        assertEquals(List.of("customer"), dependencies.stream().map(value -> value.get("key")).toList(),
+                "自身范围不能将细粒度导出扩大成整实体，但另一范围实体必须作为依赖保留");
+    }
+
+    @Test
+    void missingScopeEntityStopsExportInsteadOfDroppingItsRestriction() {
+        var entities = mock(EntityDefinitionMapper.class);
+        ReflectionTestUtils.setField(assets, "entityMapper", entities);
+        var executable = Map.<String, Object>of("extensionKey", "shared.options", "scopeType", "ENTITY",
+                "scopeEntityIds", List.of("missing-source-entity"), "implementationType", "HTTP");
+        assertThrows(IllegalArgumentException.class, () -> ReflectionTestUtils.invokeMethod(assets,
+                "rewriteInterfaceReferences", executable, Map.of()));
+    }
+
+    @Test
+    void frozenMultiEntityScopesContainOnlySortedPortableCodes() throws Exception {
+        var entities = mock(EntityDefinitionMapper.class);
+        ReflectionTestUtils.setField(assets, "entityMapper", entities);
+        for (String code : List.of("order", "customer")) {
+            var entity = new EntityDefinition(); entity.setId("source-" + code); entity.setEntityCode(code);
+            when(entities.selectById(entity.getId())).thenReturn(entity);
+        }
+        var executable = Map.<String, Object>of("extensionKey", "expense.submit", "scopeType", "ENTITY",
+                "scopeEntityIds", List.of("source-order", "source-customer"), "implementationType", "HTTP");
+        var step = Map.of("executableSnapshot", json.writeValueAsString(executable));
+        var portable = ReflectionTestUtils.<Map<String, Object>>invokeMethod(assets,
+                "rewriteInterfaceReferences", step, Map.of());
+        var scope = json.readValue((String) portable.get("executableSnapshot"), Map.class);
+        assertEquals(List.of("customer", "order"), scope.get("scopeEntityRefs"));
+        assertFalse(portable.toString().contains("source-"));
+        assertFalse(scope.containsKey("scopeEntityIds"));
+    }
+
+    @Test
+    void frozenLegacyFormScopeExportsAtEntityLevelAndRemovesLocalIds() throws Exception {
+        var entities = mock(EntityDefinitionMapper.class);
+        var forms = mock(EntityFormMapper.class);
+        var entity = new EntityDefinition(); entity.setId("source-entity"); entity.setEntityCode("order");
+        var form = new EntityForm(); form.setId("source-form"); form.setEntityId(entity.getId());
+        when(forms.selectById("source-form")).thenReturn(form);
+        when(entities.selectById("source-entity")).thenReturn(entity);
+        ReflectionTestUtils.setField(assets, "entityMapper", entities);
+        ReflectionTestUtils.setField(assets, "formMapper", forms);
+        var executable = Map.<String, Object>of("extensionKey", "expense.submit", "scopeType", "FORM",
+                "scopeId", "source-form", "implementationType", "HTTP");
+        var step = Map.of("executableSnapshot", json.writeValueAsString(executable));
+        var portable = ReflectionTestUtils.<Map<String, Object>>invokeMethod(assets,
+                "rewriteInterfaceReferences", step, Map.of());
+        assertFalse(portable.toString().contains("source-form"));
+        var frozen = assets.pinnedInterfaceDefinitions(Map.of("eventBindings", List.of(
+                Map.of("steps", List.of(portable)))), List.of(Map.of("extensionKey", "expense.submit"))).get(0);
+        assertEquals("ENTITY", frozen.get("scopeType"));
+        assertEquals(List.of("order"), frozen.get("scopeEntityRefs"));
+        assertFalse(frozen.containsKey("scopeId"));
+    }
+
+    @Test
     void actualPinnedExportUsesReleasedFormAndFrozenInterfaceInsteadOfDrafts() throws Exception {
         // 使用真实快照构建器和分区选择器，只隔离数据库读操作。
         for (var field : ConfigMigrationAssetService.class.getDeclaredFields()) {

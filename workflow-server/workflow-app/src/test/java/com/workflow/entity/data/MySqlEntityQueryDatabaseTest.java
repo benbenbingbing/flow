@@ -223,8 +223,7 @@ class MySqlEntityQueryDatabaseTest {
                             .stream().map(column -> {
                                 var field = new EntityField(); field.setFieldCode(column); field.setDbColumnName(column); return field;
                             }).toList());
-            var service = new SystemEntityReadService(f.systemReadJdbc(), definitions, fields, new SystemEntityFieldPolicy(),
-                    com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
+            var service = new SystemEntityReadService(com.workflow.testsupport.EntityMapperTestFactory.mapper(f.systemReadJdbc().getDataSource(), com.workflow.entity.data.infrastructure.persistence.mapper.SystemEntityReadMapper.class), definitions, fields, new SystemEntityFieldPolicy(), com.workflow.integration.database.api.query.DatabaseQueryDialects.forVendor(DatabaseVendor.MYSQL));
             var page = service.findPage("sys_user", Map.of("username", List.of("user1", "user3", "user4", "user5")),
                     2, 2, "nickname", "DESC");
             assertEquals(4, page.getTotal());

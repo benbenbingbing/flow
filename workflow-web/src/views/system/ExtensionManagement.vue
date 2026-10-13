@@ -306,7 +306,7 @@ import { entityListConfigApi } from '@/api/entityListConfig'
 import ExtensionCatalogEditorDialog from '@/components/ui-config/ExtensionCatalogEditorDialog.vue'
 import InterfaceExtensionEditorDialog from '@/components/ui-config/InterfaceExtensionEditorDialog.vue'
 import InterfaceExtensionTestDialog from '@/components/ui-config/InterfaceExtensionTestDialog.vue'
-import { normalizeInterfaceExtension } from '@/components/ui-config/interfaceExtensionModel'
+import { normalizeInterfaceExtension, resolveInterfaceEntityScope } from '@/components/ui-config/interfaceExtensionModel'
 import {
   getBundledExtensionManifest,
   isPlatformBuiltInUiExtension
@@ -548,13 +548,14 @@ function openCreateInterface() {
 async function openTestInterface(row) {
   try {
     const item = normalizeInterfaceExtension(row)
-    let entityId = ''
-    if (item.scopeType === 'FORM' && item.scopeId) {
-      entityId = (await getFormById(item.scopeId))?.entityId || ''
-    } else if (item.scopeType === 'LIST' && item.scopeId) {
-      entityId = (await entityListConfigApi.getById(item.scopeId))?.entityId || ''
-    } else if (item.scopeType === 'ENTITY') {
-      entityId = item.scopeId || ''
+    const scope = await resolveInterfaceEntityScope(item, {
+      getForm: getFormById,
+      getList: id => entityListConfigApi.getById(id)
+    })
+    // 多实体接口从已选实体内准备调试上下文，不能落到无关实体的配置上。
+    let entityId = scope.scopeEntityIds[0] || ''
+    if (scope.scopeType === 'ENTITY' && !entityId) {
+      throw new Error('请先为扩展接口选择作用实体')
     }
     if (!entityId) {
       const result = await entityApi.getOptions({
@@ -677,10 +678,11 @@ function statusType(value) {
 
 function scopeSummary(row) {
   if (isInterface(row)) {
-    if (row.scopeType === 'GLOBAL') return '全局'
-    const label = { ENTITY: '实体', FORM: '表单', LIST: '列表' }[row.scopeType]
-      || row.scopeType
-    return `${label} · ${row.scopeId || '未指定'}`
+    if (row.scopeType === 'GLOBAL') return '全部实体'
+    if (row.scopeType === 'ENTITY') {
+      return row.scopeEntityIds?.length ? `已选 ${row.scopeEntityIds.length} 个实体` : '尚未指定实体'
+    }
+    return '历史范围（编辑时归并到实体）'
   }
   if (row.capabilityType === 'FLOW_ACTION') {
     if (row.visibilityScope === 'GLOBAL') return '全部实体'
@@ -737,7 +739,7 @@ function contractDetail(row) {
       interfaceKind: row.interfaceKind,
       interfaceContextType: row.interfaceContextType,
       scopeType: row.scopeType,
-      scopeId: row.scopeId || null,
+      scopeEntityIds: row.scopeEntityIds || [],
       implementationType: row.implementationType,
       providerCode: row.providerCode || null,
       providerOperationCode: row.providerOperationCode || null,

@@ -3,7 +3,8 @@ package com.workflow.entity.data.application;
 import com.workflow.core.error.BusinessConflictException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueValueMapper;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -22,7 +23,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class EntityUniqueValueService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final EntityUniqueValueMapper mapper;
 
     /**
      * 原子替换一条记录持有的全部唯一值。
@@ -42,15 +43,14 @@ public class EntityUniqueValueService {
                 continue;
             }
             try {
-                jdbcTemplate.update(
-                        "INSERT INTO entity_unique_value "
+                mapper.insertClaim(ParameterizedSql.of("INSERT INTO entity_unique_value "
                                 + "(entity_code, field_code, value_hash, normalized_value, record_id) "
                                 + "VALUES (?, ?, ?, ?, ?)",
-                        entityCode,
-                        entry.getKey(),
-                        sha256(normalized),
-                        abbreviate(normalized),
-                        recordId);
+                entityCode,
+                entry.getKey(),
+                sha256(normalized),
+                abbreviate(normalized),
+                recordId));
             } catch (DuplicateKeyException exception) {
                 throw new BusinessConflictException(
                         "ENTITY_UNIQUE_VALUE_CONFLICT",
@@ -66,10 +66,10 @@ public class EntityUniqueValueService {
      * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
      */
     public void release(String entityCode, String recordId) {
-        jdbcTemplate.update(
-                "DELETE FROM entity_unique_value WHERE entity_code = ? AND record_id = ? AND field_code <> ?",
+        mapper.releaseClaims(ParameterizedSql.of("DELETE FROM entity_unique_value WHERE entity_code = ? AND record_id = ? AND field_code <> ?",
                 entityCode,
-                recordId, EntityCodeReservationService.CODE_CLAIM_FIELD);
+                recordId,
+                EntityCodeReservationService.CODE_CLAIM_FIELD));
     }
 
     /**

@@ -20,7 +20,7 @@ import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFo
 import com.workflow.entity.data.application.EntityFlowStatusService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigDocumentMapper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -389,14 +389,10 @@ class ProcessDefinitionNodeSyncServiceTest {
         NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
         AssigneeConfigMapper assigneeMapper =
                 mock(AssigneeConfigMapper.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                "SELECT config_json FROM process_node_config WHERE id = ?",
-                String.class,
-                "node-0"))
+        NodeConfigDocumentMapper mapper = mock(NodeConfigDocumentMapper.class);
+        when(mapper.findDocument("node-0"))
                 .thenReturn("{}");
-        when(jdbcTemplate.update(
-                org.mockito.ArgumentMatchers.anyString(),
+        when(mapper.updateDocument(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq("node-0")))
                 .thenReturn(1);
@@ -409,7 +405,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 null,
                 null,
                 null,
-                jdbcTemplate);
+                mapper);
         String assigneeConfig = """
                 {"assignmentConfigVersion":2,
                  "assigneeType":"user",
@@ -454,14 +450,10 @@ class ProcessDefinitionNodeSyncServiceTest {
         NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
         AssigneeConfigMapper assigneeMapper =
                 mock(AssigneeConfigMapper.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                "SELECT config_json FROM process_node_config WHERE id = ?",
-                String.class,
-                "node-0"))
+        NodeConfigDocumentMapper mapper = mock(NodeConfigDocumentMapper.class);
+        when(mapper.findDocument("node-0"))
                 .thenReturn("{}");
-        when(jdbcTemplate.update(
-                org.mockito.ArgumentMatchers.anyString(),
+        when(mapper.updateDocument(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq("node-0")))
                 .thenReturn(1);
@@ -474,7 +466,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 null,
                 null,
                 null,
-                jdbcTemplate);
+                mapper);
         String assigneeConfig = """
                 {"assignmentConfigVersion":2,
                  "assigneeType":"node_reference",
@@ -492,9 +484,8 @@ class ProcessDefinitionNodeSyncServiceTest {
         service.parseAndSaveNodeConfigs(
                 "process-1", bpmnUserTask("", extension));
 
-        ArgumentCaptor<Object> json = ArgumentCaptor.forClass(Object.class);
-        verify(jdbcTemplate).update(
-                org.mockito.ArgumentMatchers.anyString(),
+        ArgumentCaptor<String> json = ArgumentCaptor.forClass(String.class);
+        verify(mapper).updateDocument(
                 json.capture(),
                 org.mockito.ArgumentMatchers.eq("node-0"));
         var stored = new ObjectMapper().readTree(String.valueOf(
@@ -513,14 +504,10 @@ class ProcessDefinitionNodeSyncServiceTest {
         NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
         AssigneeConfigMapper assigneeMapper =
                 mock(AssigneeConfigMapper.class);
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                "SELECT config_json FROM process_node_config WHERE id = ?",
-                String.class,
-                "node-0"))
+        NodeConfigDocumentMapper mapper = mock(NodeConfigDocumentMapper.class);
+        when(mapper.findDocument("node-0"))
                 .thenReturn("{}");
-        when(jdbcTemplate.update(
-                org.mockito.ArgumentMatchers.anyString(),
+        when(mapper.updateDocument(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.eq("node-0")))
                 .thenReturn(1);
@@ -533,7 +520,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 null,
                 null,
                 null,
-                jdbcTemplate);
+                mapper);
         String assigneeConfig = """
                 {"collectionSource":"variable",
                  "multiInstanceUserIds":["alice-id"],
@@ -615,12 +602,9 @@ class ProcessDefinitionNodeSyncServiceTest {
     @Test
     void parseAndSaveNodeConfigsPropagatesMultiInstanceMergeFailure() {
         NodeConfigMapper nodeMapper = nodeMapperWithGeneratedIds();
-        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
-        when(jdbcTemplate.queryForObject(
-                "SELECT config_json FROM process_node_config WHERE id = ?",
-                String.class,
-                "node-0"))
-                .thenThrow(new IllegalStateException("jdbc failed"));
+        NodeConfigDocumentMapper mapper = mock(NodeConfigDocumentMapper.class);
+        when(mapper.findDocument("node-0"))
+                .thenThrow(new IllegalStateException("mapper failed"));
         ProcessDefinitionNodeSyncService service = service(
                 nodeMapper,
                 null,
@@ -630,7 +614,7 @@ class ProcessDefinitionNodeSyncServiceTest {
                 null,
                 null,
                 null,
-                jdbcTemplate);
+                mapper);
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
@@ -753,7 +737,7 @@ class ProcessDefinitionNodeSyncServiceTest {
             EntityDefinitionMapper entityDefinitionMapper,
             ProcessNodeFormMapper nodeFormMapper,
             ProcessNodeApprovalMapper nodeApprovalMapper,
-            JdbcTemplate jdbcTemplate) {
+            NodeConfigDocumentMapper mapper) {
         ObjectMapper effectiveMapper =
                 objectMapper == null
                         ? new ObjectMapper()
@@ -761,7 +745,7 @@ class ProcessDefinitionNodeSyncServiceTest {
         return new ProcessDefinitionNodeSyncService(nodeMapper, assigneeMapper, formMapper,
                 effectiveMapper,
                 entityFlowStatusService, entityDefinitionMapper, nodeFormMapper, nodeApprovalMapper,
-                null, jdbcTemplate,
+                null, mapper,
                 new ProcessBpmnNodeParser(effectiveMapper));
     }
 

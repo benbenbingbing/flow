@@ -273,10 +273,7 @@ public class UiConfigInterfaceReferenceValidator {
                 bindingCode,
                 definition,
                 serviceId);
-        if (!scopeMatches(
-                normalize(definition.getScopeType()),
-                definition.getScopeId(),
-                owner)) {
+        if (!definition.matchesScope(owner.entityId(), owner.type(), owner.id())) {
             throw new IllegalArgumentException(
                     "接口扩展作用域与发布对象不一致: "
                             + serviceId);
@@ -364,31 +361,6 @@ public class UiConfigInterfaceReferenceValidator {
                     "列表查询接口输出 Schema 必须包含 records 数组: "
                             + extensionId);
         }
-    }
-
-    /**
-     * 判断作用域匹配条件是否成立，供调用方选择后续分支。
-     *
-     * @param scopeType 作用域类型标识，决定后续作用域匹配采用的处理分支
-     * @param scopeId 作用域ID，后续用于处理作用域匹配时定位或关联目标
-     * @param owner 归属方，作为 {@code equals} 的输入影响后续处理
-     * @return 作用域匹配条件成立时为 true，否则为 false
-     */
-    private boolean scopeMatches(
-            String scopeType,
-            String scopeId,
-            Owner owner) {
-        return switch (scopeType) {
-            case "GLOBAL" -> true;
-            case "ENTITY" -> Objects.equals(
-                    scopeId,
-                    owner.entityId());
-            case "FORM" -> "FORM".equals(owner.type())
-                    && Objects.equals(scopeId, owner.id());
-            case "LIST" -> "LIST".equals(owner.type())
-                    && Objects.equals(scopeId, owner.id());
-            default -> false;
-        };
     }
 
     /**

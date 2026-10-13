@@ -889,18 +889,8 @@ public class UiDataSourceExecutionAccessService {
             UiExtensionDefinition definition,
             Origin origin,
             ConfigTarget target) {
-        String scopeType = normalize(definition.getScopeType());
-        boolean compatible = switch (scopeType) {
-            case "", "GLOBAL" -> true;
-            case "ENTITY" -> Objects.equals(
-                    definition.getScopeId(),
-                    target.entityId());
-            case FORM -> FORM.equals(origin.configType())
-                    && Objects.equals(definition.getScopeId(), origin.configId());
-            case LIST -> LIST.equals(origin.configType())
-                    && Objects.equals(definition.getScopeId(), origin.configId());
-            default -> false;
-        };
+        boolean compatible = definition.matchesScope(
+                target.entityId(), origin.configType(), origin.configId());
         if (!compatible) {
             throw forbidden(
                     "UI_DATA_SOURCE_SCOPE_MISMATCH",

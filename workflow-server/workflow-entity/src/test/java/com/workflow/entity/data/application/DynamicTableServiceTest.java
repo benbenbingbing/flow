@@ -46,7 +46,7 @@ class DynamicTableServiceTest {
             when(fields.findByEntityId("entity-1")).thenReturn(systemFields);
             var jdbc = mock(JdbcTemplate.class);
             var metadata = mock(SchemaMetadataPort.class);
-            var service = new DynamicTableService(jdbc, fields,
+            var service = new DynamicTableService(mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class), fields,
                     resolver, mock(SchemaDdlExecutor.class), new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));
 
             String ddl = service.planEntityTableStructure(entity).get(0);

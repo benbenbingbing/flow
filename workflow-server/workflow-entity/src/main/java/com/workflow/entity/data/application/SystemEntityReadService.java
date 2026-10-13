@@ -11,7 +11,8 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFi
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.SystemEntityReadMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -50,7 +51,7 @@ public class SystemEntityReadService {
             "sys_role",
             "sys_group");
 
-    private final JdbcTemplate jdbcTemplate;
+    private final SystemEntityReadMapper mapper;
     private final EntityDefinitionMapper definitionMapper;
     private final EntityFieldMapper fieldMapper;
     private final SystemEntityFieldPolicy fieldPolicy;
@@ -188,10 +189,8 @@ public class SystemEntityReadService {
         String where = sqlFilter.sql().isBlank()
                 ? ""
                 : " WHERE " + sqlFilter.sql();
-        Long total = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM " + table + where,
-                Long.class,
-                sqlFilter.parameters().toArray());
+        Long total = mapper.countRecords(ParameterizedSql.of("SELECT COUNT(*) FROM " + table + where,
+                sqlFilter.parameters().toArray()));
         // 方言同时生成 SQL 和参数顺序，避免 PostgreSQL 的 LIMIT/OFFSET 交换绑定值。
         var pageQuery = queryDialect.paginate(
                 "SELECT " + selectColumns
@@ -203,7 +202,8 @@ public class SystemEntityReadService {
                                 sortDirection),
                 sqlFilter.parameters(),
                 Math.multiplyExact(safePageNum - 1, safePageSize), safePageSize);
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(pageQuery.sql(), pageQuery.parameters().toArray());
+        List<Map<String, Object>> rows = mapper.selectRecords(ParameterizedSql.of(pageQuery.sql(),
+                pageQuery.parameters().toArray()));
         List<EntityDataDTO> records = rows.stream()
                 .map(row -> toDto(definition, metadata, row))
                 .toList();
@@ -793,7 +793,7 @@ public class SystemEntityReadService {
      * @param table 服务端确定的目标表名，用于生成 SQL 语句
      * @param idColumn ID列，供本方法查找系统实体读取时使用
      * @param id 目标记录 ID，后续用于定位具体数据或配置
-     * @param expression 表达式，作为 {@code jdbcTemplate.queryForObject} 的输入影响后续处理
+     * @param expression 表达式，作为 {@code mapper.lookupLabel} 的输入影响后续处理
      * @return 查找后的系统实体读取文本，供调用方比较或展示
      */
     private String lookup(
@@ -806,13 +806,11 @@ public class SystemEntityReadService {
         }
         try {
             // 调用点均按平台表的唯一主键读取；无需分页来掩盖重复数据，也不依赖 LIMIT。
-            return jdbcTemplate.queryForObject(
-                    "SELECT " + expression
+            return mapper.lookupLabel(ParameterizedSql.of("SELECT " + expression
                             + " FROM " + quote(table)
                             + " WHERE " + quote(idColumn)
                             + " = ?",
-                    String.class,
-                    id);
+                id));
         } catch (RuntimeException ignored) {
             return null;
         }

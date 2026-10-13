@@ -40,7 +40,7 @@ class DynamicTableServiceColumnDefinitionTest {
         field.setDefaultValue("normal");
 
         DynamicTableService service = new DynamicTableService(
-                jdbcTemplate,
+                mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class),
                 fieldMapper,
                 tableResolver,
                 schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));

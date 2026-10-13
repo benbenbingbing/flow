@@ -35,7 +35,7 @@ class DynamicTableServiceMultiValueTest {
         SchemaDdlExecutor schemaDdlExecutor = mock(SchemaDdlExecutor.class);
         when(tableResolver.resolve("expense")).thenReturn("biz_expense");
         DynamicTableService service = new DynamicTableService(
-                jdbcTemplate,
+                mock(com.workflow.entity.data.infrastructure.persistence.mapper.EntityUniqueConflictMapper.class),
                 fieldMapper,
                 tableResolver,
                 schemaDdlExecutor, new MySqlSchemaDdlDialect(), metadata, com.workflow.integration.database.api.query.DatabaseQueryDialects.forDatabaseId("MYSQL"));

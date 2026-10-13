@@ -857,11 +857,6 @@ public class ConfigMigrationImportApplyService {
         if (snapshot.containsKey("interfaceExtensions")
                 || snapshot.containsKey("dataSources")) {
             List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
-            ensureInterfaceScopeOwners(
-                    entity,
-                    interfaces,
-                    mapList(snapshot.get("forms")),
-                    mapList(snapshot.get("lists")));
             Map<String, String> dataSourceIds = applyInterfaceExtensions(
                     entity, interfaces);
             snapshot.put(
@@ -1088,11 +1083,6 @@ public class ConfigMigrationImportApplyService {
         if (snapshot.containsKey("interfaceExtensions")
                 || snapshot.containsKey("dataSources")) {
             List<Map<String, Object>> interfaces = interfaceExtensionValues(snapshot);
-            ensureInterfaceScopeOwners(
-                    entity,
-                    interfaces,
-                    mapList(snapshot.get("forms")),
-                    mapList(snapshot.get("lists")));
             Map<String, String> dataSourceIds =
                     applyInterfaceExtensions(
                             entity,
@@ -1134,157 +1124,6 @@ public class ConfigMigrationImportApplyService {
                     mapList(snapshot.get("menus")));
         }
         permissionCatalogService.synchronizeEntity(entityMapper.selectById(entity.getId()));
-    }
-
-    /**
-     * 在接口扩展落库前预建其 FORM/LIST 作用域宿主。
-     *
-     * <p>迁移包中的接口扩展先于完整表单、列表配置恢复；新环境此时没有可写入
-     * scope_id 的目标记录。这里只建立同事务内的最小 shell，后续 applyForms/
-     * applyLists 会按稳定业务 key 复用并补全，任何后续失败都会随导入事务回滚。</p>
-     *
-     * @param entity 实体，作为 {@code ensureInterfaceScopeForm} 的输入影响后续处理
-     * @param interfaces {@code interfaces}，供本方法确保接口作用域{@code owners}时使用
-     * @param forms 表单集合，供本方法确保接口作用域{@code owners}时使用
-     * @param lists {@code lists}，供本方法确保接口作用域{@code owners}时使用
-     */
-    void ensureInterfaceScopeOwners(
-            EntityDefinition entity,
-            List<Map<String, Object>> interfaces,
-            List<Map<String, Object>> forms,
-            List<Map<String, Object>> lists) {
-        Map<String, Map<String, Object>> formsByKey = forms.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        value -> text(value.get("formKey"), ""),
-                        value -> value,
-                        (left, right) -> left,
-                        LinkedHashMap::new));
-        Map<String, Map<String, Object>> listsByKey = lists.stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        value -> text(value.get("listKey"), ""),
-                        value -> value,
-                        (left, right) -> left,
-                        LinkedHashMap::new));
-        for (Map<String, Object> interfaceDefinition : interfaces) {
-            String scopeType = text(
-                    interfaceDefinition.get("scopeType"), "GLOBAL");
-            String scopeRef = text(
-                    interfaceDefinition.get("scopeRef"), null);
-            if (!StringUtils.hasText(scopeRef)) {
-                continue;
-            }
-            String[] parts = scopeRef.split("/", 2);
-            String ownerKey = parts.length == 2 ? parts[1] : parts[0];
-            if ("FORM".equalsIgnoreCase(scopeType)) {
-                ensureInterfaceScopeForm(
-                        entity,
-                        ownerKey,
-                        scopeRef,
-                        formsByKey.get(ownerKey),
-                        interfaceDefinition);
-            } else if ("LIST".equalsIgnoreCase(scopeType)) {
-                ensureInterfaceScopeList(
-                        entity,
-                        ownerKey,
-                        scopeRef,
-                        listsByKey.get(ownerKey),
-                        interfaceDefinition);
-            }
-        }
-    }
-
-    /**
-     * 确保接口作用域表单；不满足约束时阻止后续处理。
-     *
-     * @param entity 实体，作为 {@code shell.setEntityId} 的输入影响后续处理
-     * @param formKey 表单键，后续用于授权校验、关联或幂等去重
-     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
-     * @param incoming {@code incoming}，作为 {@code shell.setFormName} 的输入影响后续处理
-     * @param interfaceDefinition 接口定义，供本方法确保接口作用域表单时使用
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private void ensureInterfaceScopeForm(
-            EntityDefinition entity,
-            String formKey,
-            String scopeRef,
-            Map<String, Object> incoming,
-            Map<String, Object> interfaceDefinition) {
-        if (formMapper.selectByEntityIdAndFormKey(
-                entity.getId(), formKey) != null) {
-            return;
-        }
-        if (incoming == null) {
-            throw new IllegalStateException(
-                    "表单作用域接口扩展缺少同包表单配置: " + scopeRef);
-        }
-        EntityForm shell = new EntityForm();
-        shell.setEntityId(entity.getId());
-        shell.setFormKey(formKey);
-        shell.setFormName(text(incoming.get("formName"), formKey));
-        shell.setDescription(text(incoming.get("description"), null));
-        shell.setLayoutType(text(incoming.get("layoutType"), "vertical"));
-        shell.setIsDefault(false);
-        shell.setStatus(1);
-        entityFormService.saveForm(shell);
-        log.info("为表单作用域接口扩展预创建表单，entityCode={}，formKey={}，extensionKey={}",
-                entity.getEntityCode(),
-                formKey,
-                interfaceKey(interfaceDefinition));
-    }
-
-    /**
-     * 确保接口作用域列表；不满足约束时阻止后续处理。
-     *
-     * @param entity 实体，作为 {@code shell.setEntityId} 的输入影响后续处理
-     * @param listKey 列表配置键，后续用于确定数据权限与展示字段范围
-     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
-     * @param incoming {@code incoming}，作为 {@code shell.setListName} 的输入影响后续处理
-     * @param interfaceDefinition 接口定义，供本方法确保接口作用域列表时使用
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
-     */
-    private void ensureInterfaceScopeList(
-            EntityDefinition entity,
-            String listKey,
-            String scopeRef,
-            Map<String, Object> incoming,
-            Map<String, Object> interfaceDefinition) {
-        if (listConfigMapper.findByEntityIdAndListKey(
-                entity.getId(), listKey) != null) {
-            return;
-        }
-        if (incoming == null) {
-            throw new IllegalStateException(
-                    "列表作用域接口扩展缺少同包列表配置: " + scopeRef);
-        }
-        EntityListConfig shell = new EntityListConfig();
-        shell.setId(java.util.UUID.randomUUID()
-                .toString().replace("-", ""));
-        shell.setEntityId(entity.getId());
-        shell.setEntityCode(entity.getEntityCode());
-        shell.setListKey(listKey);
-        shell.setListName(text(incoming.get("listName"), listKey));
-        shell.setDescription(text(incoming.get("description"), null));
-        shell.setIsDefault(false);
-        shell.setDeleted(0);
-        shell.setPublishedVersion(0);
-        shell.setRevision(1);
-        shell.setCreatedAt(LocalDateTime.now());
-        shell.setUpdatedAt(LocalDateTime.now());
-        listConfigMapper.insert(shell);
-        log.info("为列表作用域接口扩展预创建列表，entityCode={}，listKey={}，extensionKey={}",
-                entity.getEntityCode(), listKey,
-                interfaceKey(interfaceDefinition));
-    }
-
-    /**
-     * 生成接口键文本，供后续匹配或展示。
-     *
-     * @param definition 定义，作为 {@code text} 的输入影响后续处理
-     * @return 处理后的接口键文本，供调用方比较或展示
-     */
-    private String interfaceKey(Map<String, Object> definition) {
-        return text(definition.get("extensionKey"),
-                text(definition.get("sourceCode"), null));
     }
 
     /**
@@ -1360,12 +1199,54 @@ public class ConfigMigrationImportApplyService {
     private void prepareUiOwners(EntityDefinition entity, Map<String, Object> snapshot) {
         for (Map<String, Object> form : mapList(snapshot.get("forms"))) {
             String key = text(form.get("formKey"), null);
-            ensureInterfaceScopeForm(entity, key, entity.getEntityCode() + "/" + key, form, Map.of());
+            ensureFormOwner(entity, key, form);
         }
         for (Map<String, Object> list : mapList(snapshot.get("lists"))) {
             String key = text(list.get("listKey"), null);
-            ensureInterfaceScopeList(entity, key, entity.getEntityCode() + "/" + key, list, Map.of());
+            ensureListOwner(entity, key, list);
         }
+    }
+
+    /**
+     * 预建跨实体表单引用所需的稳定宿主；已有业务键仅复用，不覆盖其草稿或发布状态。
+     * 完整配置由后续 applyForms 补齐，新增宿主随整个导入事务一起提交或回滚。
+     * 此步骤与接口扩展作用域无关，不能将接口范围重新绑定到页面。
+     */
+    private void ensureFormOwner(EntityDefinition entity, String formKey, Map<String, Object> incoming) {
+        if (formMapper.selectByEntityIdAndFormKey(entity.getId(), formKey) != null) return;
+        EntityForm shell = new EntityForm();
+        shell.setEntityId(entity.getId());
+        shell.setFormKey(formKey);
+        shell.setFormName(text(incoming.get("formName"), formKey));
+        shell.setDescription(text(incoming.get("description"), null));
+        shell.setLayoutType(text(incoming.get("layoutType"), "vertical"));
+        shell.setIsDefault(false);
+        shell.setStatus(1);
+        entityFormService.saveForm(shell);
+        log.info("迁移预创建表单宿主，entityCode={}，formKey={}", entity.getEntityCode(), formKey);
+    }
+
+    /**
+     * 为后续 UI 引用预建列表宿主；只创建缺失的业务键，完整内容由 applyLists 恢复。
+     * 默认页选择与发布在后续步骤处理，避免不完整宿主提前成为运行入口。
+     */
+    private void ensureListOwner(EntityDefinition entity, String listKey, Map<String, Object> incoming) {
+        if (listConfigMapper.findByEntityIdAndListKey(entity.getId(), listKey) != null) return;
+        EntityListConfig shell = new EntityListConfig();
+        shell.setId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        shell.setEntityId(entity.getId());
+        shell.setEntityCode(entity.getEntityCode());
+        shell.setListKey(listKey);
+        shell.setListName(text(incoming.get("listName"), listKey));
+        shell.setDescription(text(incoming.get("description"), null));
+        shell.setIsDefault(false);
+        shell.setDeleted(0);
+        shell.setPublishedVersion(0);
+        shell.setRevision(1);
+        shell.setCreatedAt(LocalDateTime.now());
+        shell.setUpdatedAt(LocalDateTime.now());
+        listConfigMapper.insert(shell);
+        log.info("迁移预创建列表宿主，entityCode={}，listKey={}", entity.getEntityCode(), listKey);
     }
 
     private void applyFormsAndLists(EntityDefinition entity, Map<String, Object> snapshot) {
@@ -1653,7 +1534,7 @@ public class ConfigMigrationImportApplyService {
     /**
      * 保存接口扩展；后续读取或执行将使用更新后的状态。
      *
-     * @param entity 实体，作为 {@code request.setScopeId} 的输入影响后续处理
+     * @param entity 当前迁移实体，供旧单实体包缺少编码时兼容定位
      * @param value 待保存接口扩展的原始输入，结果供调用方继续使用
      * @param extensionKey 扩展键，后续用于授权校验、关联或幂等去重
      * @param legacyOperation 旧版操作，作为 {@code text} 的输入影响后续处理
@@ -1695,11 +1576,10 @@ public class ConfigMigrationImportApplyService {
                 value.get(legacy ? "sourceType" : "implementationType"), null));
         request.setProviderCode(mappedKey(
                 "DATA_PROVIDER", text(value.get("providerCode"), null)));
-        request.setScopeType(text(value.get("scopeType"), "GLOBAL"));
-        request.setScopeId(resolveInterfaceScopeId(
-                entity,
-                request.getScopeType(),
-                text(value.get("scopeRef"), null)));
+        String sourceScopeType = text(value.get("scopeType"), "GLOBAL");
+        // 旧包的 FORM/LIST 坐标只用于找出所属实体；恢复后不再限制到某个界面。
+        request.setScopeType("GLOBAL".equalsIgnoreCase(sourceScopeType) ? "GLOBAL" : "ENTITY");
+        request.setScopeEntityIds(resolveInterfaceScopeEntityIds(entity, sourceScopeType, value));
         Map<String, Object> config = documentMap(value.get(
                 legacy ? "configDocument" : "implementationConfigDocument"));
         Map<String, Object> policy = documentMap(
@@ -1751,52 +1631,50 @@ public class ConfigMigrationImportApplyService {
     }
 
     /**
-     * 解析接口作用域ID；输出作为后续校验或处理的输入。
-     *
-     * @param entity 实体，作为 {@code formMapper.selectByEntityIdAndFormKey} 的输入影响后续处理
-     * @param scopeType 作用域类型标识，决定后续接口作用域ID采用的处理分支
-     * @param scopeRef 作用域引用，作为 {@code IllegalStateException} 的输入影响后续处理
-     * @return 解析后的接口作用域ID文本，供调用方比较或展示
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * 将可移植的实体编码集合解析为目标环境 ID，并兼容旧 ENTITY/FORM/LIST 的 scopeRef。
+     * 所有目标实体已在导入预备阶段创建；缺少目标时阻断导入，不能缩小或放大接口可用范围。
      */
-    String resolveInterfaceScopeId(
-            EntityDefinition entity,
-            String scopeType,
-            String scopeRef) {
-        if ("GLOBAL".equalsIgnoreCase(scopeType)) {
-            return null;
+    List<String> resolveInterfaceScopeEntityIds(
+            EntityDefinition entity, String scopeType, Map<String, Object> value) {
+        if ("GLOBAL".equalsIgnoreCase(scopeType)) return List.of();
+        if (!Set.of("ENTITY", "FORM", "LIST").contains(scopeType.toUpperCase(Locale.ROOT))) {
+            throw new IllegalStateException("迁移暂不支持的接口扩展作用域: " + scopeType);
         }
-        if ("ENTITY".equalsIgnoreCase(scopeType)) {
-            return entity.getId();
-        }
-        if ("FORM".equalsIgnoreCase(scopeType)
-                && StringUtils.hasText(scopeRef)) {
-            String[] parts = scopeRef.split("/", 2);
-            String formKey = parts.length == 2
-                    ? parts[1] : parts[0];
-            EntityForm form = formMapper.selectByEntityIdAndFormKey(
-                    entity.getId(), formKey);
-            if (form == null) {
-                throw new IllegalStateException(
-                        "数据源作用域表单不存在: " + scopeRef);
+        List<String> entityCodes = new ArrayList<>();
+        if (value.containsKey("scopeEntityRefs")) {
+            Object refs = value.get("scopeEntityRefs");
+            if (!(refs instanceof Collection<?> values) || values.isEmpty()) {
+                throw new IllegalStateException("接口扩展选择实体范围不能为空");
             }
-            return form.getId();
-        }
-        if ("LIST".equalsIgnoreCase(scopeType)
-                && StringUtils.hasText(scopeRef)) {
-            String[] parts = scopeRef.split("/", 2);
-            String listKey = parts.length == 2
-                    ? parts[1] : parts[0];
-            EntityListConfig list = listConfigMapper
-                    .findByEntityIdAndListKey(entity.getId(), listKey);
-            if (list == null) {
-                throw new IllegalStateException(
-                        "接口扩展作用域列表不存在: " + scopeRef);
+            for (Object ref : values) {
+                if (!(ref instanceof String code) || !StringUtils.hasText(code) || code.contains("/")) {
+                    throw new IllegalStateException("接口扩展实体引用无效: " + ref);
+                }
+                entityCodes.add(code.trim());
             }
-            return list.getId();
+        } else {
+            String ref = text(value.get("scopeRef"), null);
+            if (!StringUtils.hasText(ref)) {
+                // 早期 ENTITY 导出未写 scopeRef，始终表示当前迁移实体，而非任意环境内 ID。
+                if ("ENTITY".equalsIgnoreCase(scopeType)) return List.of(entity.getId());
+                throw new IllegalStateException("历史接口扩展缺少实体范围引用");
+            }
+            String[] parts = ref.split("/", 2);
+            entityCodes.add("ENTITY".equalsIgnoreCase(scopeType) || parts.length == 2
+                    ? parts[0] : entity.getEntityCode());
         }
-        throw new IllegalStateException(
-                "迁移暂不支持的接口扩展作用域: " + scopeType);
+        Set<String> targetIds = new LinkedHashSet<>();
+        for (String code : entityCodes) {
+            String mappedCode = mappedKey("ENTITY", code);
+            if (mappedCode.equals(entity.getEntityCode())) {
+                targetIds.add(entity.getId());
+                continue;
+            }
+            EntityDefinition target = entityMapper.findByEntityCode(mappedCode)
+                    .orElseThrow(() -> new IllegalStateException("接口扩展范围实体不存在: " + code));
+            targetIds.add(target.getId());
+        }
+        return List.copyOf(targetIds);
     }
 
     /**

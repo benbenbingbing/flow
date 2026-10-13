@@ -1,5 +1,7 @@
 package com.workflow.entity.excel.runtime;
 
+import static com.workflow.entity.excel.persistence.ExcelMapperTestSupport.mapper;
+import com.workflow.entity.excel.infrastructure.persistence.mapper.EntityExcelJobMapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.dictionary.application.SysDictItemService;
 import com.workflow.admin.security.context.UserContext;
@@ -118,7 +120,7 @@ class EntityExcelBatchImportTest {
         codec = spy(new EntityExcelCodecService(mock(SysDictItemService.class), new EntityFieldValidationRuleService(mapper),
                 mock(com.workflow.entity.definition.application.EntityStatusService.class)));
         service = new EntityExcelJobService(resolver, codec, new ExcelActionTokenService(mapper, "batch-test"),
-                new EntityExcelJobRepository(jdbc, mapper, tx), files, mock(EntityExcelAtomicImportPolicy.class),
+                new EntityExcelJobRepository(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), mapper, tx), files, mock(EntityExcelAtomicImportPolicy.class),
                 mock(EntityActionCapabilityService.class), actions, mock(EntityDataDynamicService.class),
                 mock(EntityDataListConfigService.class), submissions, entityValidator,
                 new EntityRuntimeRecordMapper(mapper), definitions, mock(EntityFormPublishedMapper.class),
@@ -319,7 +321,7 @@ class EntityExcelBatchImportTest {
                 LocalDateTime.now(ZoneOffset.UTC).minusHours(25), jobId);
         var tx = new DataSourceTransactionManager(jdbc.getDataSource());
 
-        new EntityExcelJobCleanup(jdbc, files, tx).clean();
+        new EntityExcelJobCleanup(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), files, tx).clean();
 
         var job = jdbc.queryForMap("SELECT * FROM entity_excel_job WHERE id=?", jobId);
         assertThat(job.get("status")).isEqualTo("FAILED");
@@ -328,7 +330,7 @@ class EntityExcelBatchImportTest {
         assertThat(job.get("error_message").toString()).contains("已提交记录保留");
         assertThat(job.get("input_file_id")).isNull();
         assertThat(writer.committedNames()).containsExactlyInAnyOrder("one", "two");
-        assertThatThrownBy(() -> new EntityExcelJobRepository(jdbc, mapper, tx).lockRunning(jobId))
+        assertThatThrownBy(() -> new EntityExcelJobRepository(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), mapper, tx).lockRunning(jobId))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("任务已结束");
     }
 

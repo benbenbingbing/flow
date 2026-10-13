@@ -38,9 +38,9 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.fieldTemplate':
     '含义：把当前行的多个字段组合成一段展示文字。使用方法：以 ${字段编码} 引用字段，例如 ${code}-${name}；code 为 A001、name 为合同审批时显示 A001-合同审批，其他文字原样保留，字段为空时使用单元格“空值文本”。适用场景：编号与名称、姓名与部门等组合展示。组合只读取当前行，不执行脚本、不查询其他记录，也不写回原始字段；在分页后生成，因此不支持作为查询条件或排序字段。',
   'entityForm.interfaceExtension':
-    '选择一个已启用的表单扩展接口作为数据源或字段能力。配置只保存接口 ID，不会在页面中拼装后端调用步骤。',
+    '自定义数据源需实现 UiDataSourceProvider 接口，加 @Component 注册为 Spring Bean；getCode() 提供唯一编码，getDisplayName() 提供名称，execute(...) 执行业务逻辑。部署后在“定制开发 → 扩展管理 → 接口”选择“已注册 Provider”创建并启用接口，业务上下文设为 FORM，作用范围选“全部实体”或包含当前表单所属实体，再在此绑定。',
   'entityList.renderComponent':
-    '含义：决定已取得的列值如何展示，不负责取值，也不修改原始字段。使用方法：保留自动匹配使用平台默认显示；也可指定文本、状态标签、日期或已注册的渲染组件，再填写其显示参数。适用场景：状态显示为彩色标签、日期格式化或定制单元格样式。开启脱敏后统一以脱敏文本展示；无论使用哪种取值方式，显示设置都在取得列值后生效。',
+    '含义：决定已取得的列值如何展示，不负责取值，也不修改原始字段。使用方法：保留自动匹配使用平台默认显示；也可指定文本、状态标签、日期或已注册的渲染组件，再填写其显示参数。只列出当前实体可用的扩展，未设置适用范围的扩展对全部实体可见。适用场景：状态显示为彩色标签、日期格式化或定制单元格样式。开启脱敏后统一以脱敏文本展示；无论使用哪种取值方式，显示设置都在取得列值后生效。',
   'uiConfig.releaseMode':
     '表单统一发布覆盖当前配置，所有引用入口立即使用当前内容，无需重新发布流程。列表保留自己的发布机制。',
   'form.inputParameterSchema':
@@ -259,4 +259,26 @@ export const CONFIG_FIELD_HELP = Object.freeze({
 
 export function getConfigFieldHelp(helpKey) {
   return CONFIG_FIELD_HELP[String(helpKey || '').trim()] || ''
+}
+
+// 与表单数据源运行时和可用接口筛选保持一致，避免把加载读取误配为提交写入。
+const FORM_DATA_SOURCE_USAGE_HELP = Object.freeze({
+  FORM_INIT: '初始化数据（FORM_INIT）：选择 READ 接口，仅在新增记录时返回整表初始数据。',
+  FIELD_OPTIONS: '字段选项（FIELD_OPTIONS）：选择 READ 接口，为下拉、单选、多选等提供候选项；输出 Schema 的根类型须为 array。',
+  FIELD_DEFAULT: '字段默认值（FIELD_DEFAULT）：选择 READ 接口，表单初始化时仅在当前字段为空时填入返回值，不覆盖已有值。',
+  FIELD_COMPUTE: '字段计算（FIELD_COMPUTE）：选择 READ 接口，表单初始化时根据当前数据计算并回填字段值，可覆盖已有值。',
+  SUBFORM_ROWS: '子表行数据（SUBFORM_ROWS）：选择 READ 接口，为子表单或明细表加载行数据；输出 Schema 的根类型须为 array。',
+  AFTER_LOAD: '加载后处理（AFTER_LOAD）：选择 READ 接口，在表单数据加载后加工或补充数据，返回字段对象供表单回填。',
+  BEFORE_SUBMIT: '提交前处理（BEFORE_SUBMIT）：选择 WRITE 接口，在保存前校验或转换待提交数据，最终逻辑由后端在保存事务中执行。'
+})
+
+/** 按当前绑定用途组合接口开发指引；级联选项额外说明其请求和返回协议。 */
+export function getFormDataSourceInterfaceHelp(usage, { cascader = false } = {}) {
+  const usageKey = String(usage || '').trim().toUpperCase()
+  const usageHelp = FORM_DATA_SOURCE_USAGE_HELP[usageKey]
+    || '按所选用途提供字段选项、默认值、计算值、子表行数据，或参与表单初始化、加载后及提交前处理。'
+  const cascaderHelp = cascader && usageKey === 'FIELD_OPTIONS'
+    ? '级联选择通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级；接口返回含 value、label、children 或 leaf 的节点数组，逐级加载须提供 leaf。'
+    : ''
+  return [usageHelp, getConfigFieldHelp('entityForm.interfaceExtension'), cascaderHelp].filter(Boolean).join(' ')
 }

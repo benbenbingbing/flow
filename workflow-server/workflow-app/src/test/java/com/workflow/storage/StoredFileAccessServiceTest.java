@@ -68,7 +68,7 @@ class StoredFileAccessServiceTest {
         org.mockito.Mockito.when(queries.readGuardClause()).thenReturn(" FOR UPDATE");
         authorization = mock(CurrentAuthorizationPort.class);
         service = new StoredFileAccessService(
-                jdbcTemplate,
+                com.workflow.support.BusinessMapperTestSupport.mapper(jdbcTemplate.getDataSource(), com.workflow.storage.infrastructure.persistence.mapper.StoredFileMapper.class),
                 authorization,
                 new UserContextCurrentActorProvider(), new JdbcWriteAttempt(jdbcTemplate, errors), queries);
         UserContext.setCurrentUser("user-1", "tester");

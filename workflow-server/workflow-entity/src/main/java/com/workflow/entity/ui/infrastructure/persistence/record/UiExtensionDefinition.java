@@ -6,9 +6,14 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.TreeSet;
+import org.springframework.util.StringUtils;
 
 /**
  * 统一扩展定义实体，对应 ui_extension_definition 表。
@@ -20,6 +25,9 @@ import java.time.LocalDateTime;
 @Data
 @TableName("ui_extension_definition")
 public class UiExtensionDefinition {
+
+    /** 范围文档只有字符串数组，独立编解码器避免依赖应用层或数据库 JSON 方言。 */
+    private static final JsonDocumentCodec SCOPE_CODEC = new JsonDocumentCodec(new ObjectMapper());
 
     /** 主键ID */
     @TableId(type = IdType.ASSIGN_UUID)
@@ -58,10 +66,76 @@ public class UiExtensionDefinition {
     /** 宿主发布时固定的 Provider 制品摘要（仅钉版运行时）。 */
     @TableField(exist = false)
     private String providerArtifactDigest;
-    /** 接口作用域：GLOBAL、ENTITY、FORM 或 LIST。 */
+    /** 接口作用域：GLOBAL（全部实体）、ENTITY（选择实体）；FORM/LIST 仅保留历史记录。 */
     private String scopeType;
-    /** 非 GLOBAL 作用域对应的实体、表单或列表主键 ID。 */
+    /** 历史单一范围对象 ID，仅用于旧记录和不可变发布快照的兼容读取。 */
     private String scopeId;
+    /** ENTITY 范围下的实体 ID 数组 JSON；用于候选、发布和执行时按实体匹配。 */
+    private String scopeEntityIdsDocument;
+
+    /**
+     * 返回规范化的实体范围；旧 ENTITY 记录没有数组文档时才回退到 scopeId。
+     * 历史 FORM/LIST 不转换为实体，避免旧发布接口自动扩大到同实体的其他页面。
+     *
+     * @return 去重、排序后的实体 ID；GLOBAL 或历史页面范围返回空列表
+     * @throws IllegalArgumentException 范围文档不是非空字符串组成的数组时抛出
+     */
+    public List<String> getScopeEntityIds() {
+        if (!"ENTITY".equalsIgnoreCase(scopeType)) {
+            return List.of();
+        }
+        if (!StringUtils.hasText(scopeEntityIdsDocument)) {
+            return StringUtils.hasText(scopeId) ? List.of(scopeId.trim()) : List.of();
+        }
+        return normalizeScopeEntityIds(SCOPE_CODEC.readArray(scopeEntityIdsDocument, "接口作用实体"));
+    }
+
+    /**
+     * 保存实体集合的稳定表示；后续发布哈希不受选择顺序或重复 ID 影响。
+     * @param entityIds 实体 ID 集合，null 表示空集合；ENTITY 的非空约束由保存服务校验
+     * @throws IllegalArgumentException 包含空白 ID 时抛出
+     */
+    public void setScopeEntityIds(List<String> entityIds) {
+        scopeEntityIdsDocument = SCOPE_CODEC.write(normalizeScopeEntityIds(entityIds), "接口作用实体");
+    }
+
+    /**
+     * 规范化输入并拒绝空白或非字符串 ID，避免损坏范围被解释为全部实体。
+     * @param entityIds 请求或持久化文档中的实体 ID 数组
+     * @return 去重并按 ID 排序的不可变集合
+     * @throws IllegalArgumentException 存在非字符串或空白元素时抛出
+     */
+    public static List<String> normalizeScopeEntityIds(List<?> entityIds) {
+        TreeSet<String> result = new TreeSet<>();
+        if (entityIds != null) {
+            for (Object id : entityIds) {
+                if (!(id instanceof String text) || !StringUtils.hasText(text)) {
+                    throw new IllegalArgumentException("接口作用实体必须为非空实体 ID");
+                }
+                result.add(text.trim());
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * 按真实所属实体匹配接口；业务上下文由调用方单独校验。
+     * 历史页面范围继续精确匹配页面 ID，保证旧快照的权限边界不变。
+     * @param entityId 经服务端确认的页面所属实体，不能使用客户端自报的归属
+     * @param ownerType 当前宿主类型，历史范围需要与 FORM/LIST 精确一致
+     * @param ownerId 当前宿主 ID
+     * @return 该接口是否覆盖当前宿主；未知范围或缺失实体时不会授权
+     */
+    public boolean matchesScope(String entityId, String ownerType, String ownerId) {
+        return switch (scopeType == null ? "" : scopeType.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "GLOBAL" -> true;
+            case "ENTITY" -> entityId != null && getScopeEntityIds().contains(entityId);
+            case "FORM", "LIST" -> scopeType.equalsIgnoreCase(ownerType)
+                    && scopeId != null && scopeId.equals(ownerId);
+            default -> false;
+        };
+    }
+
     /** 接口实现配置 JSON。 */
     private String implementationConfigDocument;
     /** 接口执行策略 JSON，例如缓存、超时和幂等策略。 */

@@ -305,6 +305,8 @@ public class ExtensionCatalogService {
         item.setProviderCode(source.providerCode());
         item.setScopeType(source.scopeType());
         item.setScopeId(source.scopeId());
+        item.setScopeEntityIds(source.scopeEntityIds() == null
+                ? List.of() : List.copyOf(source.scopeEntityIds()));
         item.setInterfaceKind(source.interfaceKind());
         item.setInterfaceContextType(source.interfaceContextType());
         item.setImplementationConfig(valueOrEmpty(

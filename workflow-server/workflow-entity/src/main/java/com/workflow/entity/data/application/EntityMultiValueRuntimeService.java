@@ -10,7 +10,8 @@ import com.workflow.entity.definition.application.SystemEntityFieldPolicy;
 import com.workflow.entity.data.application.DynamicTableService;
 import com.workflow.entity.data.application.EntityPhysicalTableResolver;
 import lombok.RequiredArgsConstructor;
-import org.springframework.jdbc.core.JdbcTemplate;
+import com.workflow.core.database.mybatis.ParameterizedSql;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityMultiValueMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -35,7 +36,7 @@ public class EntityMultiValueRuntimeService {
 
     private static final Pattern IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
 
-    private final JdbcTemplate jdbcTemplate;
+    private final EntityMultiValueMapper mapper;
     private final EntityFieldMapper fieldMapper;
     private final EntityDefinitionMapper definitionMapper;
     private final DynamicTableService dynamicTableService;
@@ -95,12 +96,10 @@ public class EntityMultiValueRuntimeService {
             if (value == null || !StringUtils.hasText(String.valueOf(value))) {
                 continue;
             }
-            Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM sys_dict_item WHERE dict_code = ?"
+            Integer count = mapper.countValidDictItem(ParameterizedSql.of("SELECT COUNT(*) FROM sys_dict_item WHERE dict_code = ?"
                             + " AND item_code = ? AND status = '0' AND deleted = 0",
-                    Integer.class,
-                    field.getDictType(),
-                    String.valueOf(value));
+                field.getDictType(),
+                String.valueOf(value)));
             if (count == null || count == 0) {
                 throw new IllegalArgumentException(
                         "字段 " + field.getFieldName() + " 包含无效代码值: " + value);
@@ -133,26 +132,24 @@ public class EntityMultiValueRuntimeService {
             if (field == null) {
                 continue;
             }
-            jdbcTemplate.update(
-                    "DELETE FROM " + multiTable + " WHERE record_id = ? AND field_code = ?",
-                    recordId,
-                    field.getFieldCode());
+            mapper.deleteFieldValues(ParameterizedSql.of("DELETE FROM " + multiTable + " WHERE record_id = ? AND field_code = ?",
+                recordId,
+                field.getFieldCode()));
             List<String> targetIds = resolveTargetRecordIds(field, entry.getValue());
             for (int index = 0; index < targetIds.size(); index++) {
-                jdbcTemplate.update(
-                        "INSERT INTO " + multiTable
+                mapper.insertValue(ParameterizedSql.of("INSERT INTO " + multiTable
                                 + " (id, record_id, field_code, target_entity_id, target_record_id,"
                                 + " sort_order, deleted, create_by, create_time, update_time)"
                                 + " VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
-                        UUID.randomUUID().toString().replace("-", ""),
-                        recordId,
-                        field.getFieldCode(),
-                        targetEntityId(field),
-                        targetIds.get(index),
-                        index,
-                        UserContext.getUserId(),
-                        LocalDateTime.now(),
-                        LocalDateTime.now());
+                UUID.randomUUID().toString().replace("-", ""),
+                recordId,
+                field.getFieldCode(),
+                targetEntityId(field),
+                targetIds.get(index),
+                index,
+                UserContext.getUserId(),
+                LocalDateTime.now(),
+                LocalDateTime.now()));
             }
         }
     }
@@ -176,11 +173,10 @@ public class EntityMultiValueRuntimeService {
         }
         String placeholders = String.join(",", java.util.Collections.nCopies(recordIds.size(), "?"));
         String multiTable = dynamicTableService.getMultiValueTableName(definition.getEntityCode());
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
-                "SELECT record_id, field_code, target_entity_id, target_record_id, sort_order FROM " + multiTable
+        List<Map<String, Object>> rows = mapper.selectValues(ParameterizedSql.of("SELECT record_id, field_code, target_entity_id, target_record_id, sort_order FROM " + multiTable
                         + " WHERE deleted = 0 AND record_id IN (" + placeholders + ")"
                         + " ORDER BY record_id, field_code, sort_order",
-                recordIds.toArray());
+                recordIds.toArray()));
         Map<String, EntityField> fields = new LinkedHashMap<>();
         Map<String, String> targetEntityIds = new LinkedHashMap<>();
         for (EntityField field : multiValueFields(definition.getId())) {
@@ -339,10 +335,9 @@ public class EntityMultiValueRuntimeService {
      */
     @Transactional
     public void delete(String entityCode, String recordId) {
-        jdbcTemplate.update(
-                "DELETE FROM " + dynamicTableService.getMultiValueTableName(entityCode)
+        mapper.deleteRecordValues(ParameterizedSql.of("DELETE FROM " + dynamicTableService.getMultiValueTableName(entityCode)
                         + " WHERE record_id = ?",
-                recordId);
+                recordId));
     }
 
     /**
@@ -405,16 +400,14 @@ public class EntityMultiValueRuntimeService {
         }
         List<String> targetIds = new ArrayList<>();
         for (String value : values) {
-            List<String> ids = jdbcTemplate.queryForList(
-                    "SELECT id FROM sys_dict_item WHERE dict_code = ?"
+            List<String> ids = mapper.selectDictIds(ParameterizedSql.of("SELECT id FROM sys_dict_item WHERE dict_code = ?"
                             + " AND (id = ? OR item_code = ? OR item_value = ?)"
                             + " AND status = '0' AND deleted = 0 ORDER BY id"
                             + queryDialect.paginationClause("0", "1"),
-                    String.class,
-                    field.getDictType(),
-                    value,
-                    value,
-                    value);
+                field.getDictType(),
+                value,
+                value,
+                value));
             if (ids.isEmpty()) {
                 throw new IllegalArgumentException(
                         "字段 " + field.getFieldName() + " 包含无效代码值: " + value);
@@ -433,10 +426,8 @@ public class EntityMultiValueRuntimeService {
      */
     private String resolveApiValue(EntityField field, String targetRecordId) {
         if (StringUtils.hasText(field.getDictType())) {
-            List<String> codes = jdbcTemplate.queryForList(
-                    "SELECT item_code FROM sys_dict_item WHERE id = ? AND deleted = 0",
-                    String.class,
-                    targetRecordId);
+            List<String> codes = mapper.selectDictCodes(ParameterizedSql.of("SELECT item_code FROM sys_dict_item WHERE id = ? AND deleted = 0",
+                targetRecordId));
             return codes.isEmpty() ? targetRecordId : codes.get(0);
         }
         return targetRecordId;
@@ -464,12 +455,11 @@ public class EntityMultiValueRuntimeService {
             if (rawValue == null) {
                 continue;
             }
-            List<Map<String, Object>> items = jdbcTemplate.queryForList(
-                    "SELECT id, item_code, item_label, status FROM sys_dict_item"
+            List<Map<String, Object>> items = mapper.selectScalarDictOptions(ParameterizedSql.of("SELECT id, item_code, item_label, status FROM sys_dict_item"
                             + " WHERE dict_code = ? AND item_code = ? AND deleted = 0 ORDER BY id"
                             + queryDialect.paginationClause("0", "1"),
-                    field.getDictType(),
-                    String.valueOf(rawValue));
+                field.getDictType(),
+                String.valueOf(rawValue)));
             if (items.isEmpty()) {
                 continue;
             }
@@ -498,10 +488,9 @@ public class EntityMultiValueRuntimeService {
         Map<String, Object> option = new LinkedHashMap<>();
         option.put("id", targetRecordId);
         if (StringUtils.hasText(field.getDictType())) {
-            List<Map<String, Object>> items = jdbcTemplate.queryForList(
-                    "SELECT item_code, item_label, status FROM sys_dict_item"
+            List<Map<String, Object>> items = mapper.selectDictOptions(ParameterizedSql.of("SELECT item_code, item_label, status FROM sys_dict_item"
                             + " WHERE id = ? AND deleted = 0",
-                    targetRecordId);
+                targetRecordId));
             if (!items.isEmpty()) {
                 Map<String, Object> item = items.get(0);
                 option.put("value", item.get("item_code"));
@@ -514,10 +503,9 @@ public class EntityMultiValueRuntimeService {
             if (target != null) {
                 String tableName = resolveTargetTable(target);
                 String displayColumn = resolveDisplayColumn(field, target);
-                List<Map<String, Object>> targets = jdbcTemplate.queryForList(
-                        "SELECT " + queryDialect.quoteIdentifier(displayColumn) + " AS display_name FROM "
+                List<Map<String, Object>> targets = mapper.selectReferenceOptions(ParameterizedSql.of("SELECT " + queryDialect.quoteIdentifier(displayColumn) + " AS display_name, id FROM "
                                 + queryDialect.quoteIdentifier(tableName) + " WHERE id = ?",
-                        targetRecordId);
+                targetRecordId));
                 if (!targets.isEmpty()) {
                     option.put("value", targetRecordId);
                     option.put("label", targets.get(0).get("display_name"));
