@@ -72,8 +72,7 @@ npm run dev
 | type | 设计器中的用途 | 当前实例参数读取位置 |
 | --- | --- | --- |
 | FORM | 实体整表单 | form.viewConfig.customComponentProps → config |
-| FIELD | 表单字段组件 | field.componentProps |
-| NODE | 表单节点扩展 | 节点组件参数 → config |
+| FIELD | 表单组件（输入、展示、子表等） | props.componentProps → config；modelValue 为当前值，formData 为当前表单或子表行 |
 | LIST | 整列表布局 | viewConfig.customComponentProps → config |
 | LIST_CELL | 列渲染组件 | 列 renderConfig → config |
 | LIST_BUTTON | 列表自定义/组件按钮 | mode/row/disabled/reason/context；不保证收到 config |

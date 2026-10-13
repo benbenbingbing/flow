@@ -167,11 +167,20 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
             @Param("leaderName") String leaderName);
     
     /**
-     * 根据path查询父级列表（用于快速获取所有父级）
-     * path: /0/1/2/3/ -> 查询id in (0,1,2,3)
+     * 按完整路径的顺序返回存在且未删除的组织，包括路径中的当前节点。
+     * 路径在 Java 中拆分后绑定为 IN 参数，避免依赖数据库特有的字符串拆分函数。
      *
-     * @param path 当前节点路径
-     * @return 所有父级节点列表
+     * @param path 当前节点路径，例如 /0/1/2/3/；null、空路径返回空列表
+     * @return 按路径顺序去重的组织列表；虚拟根节点和不存在的节点不会返回
      */
-    List<SysOrganization> selectParentsByPath(@Param("path") String path);
+    default List<SysOrganization> selectParentsByPath(String path) {
+        if (path == null || path.isBlank()) return List.of();
+        List<String> ids = java.util.Arrays.stream(path.split("/"))
+                .filter(id -> !id.isBlank()).distinct().toList();
+        if (ids.isEmpty()) return List.of();
+        var rows = selectList(Wrappers.<SysOrganization>lambdaQuery().in(SysOrganization::getId, ids));
+        // IN 查询不保证结果顺序，按原始路径恢复祖先顺序，不能让各数据库的执行计划决定展示顺序。
+        var byId = rows.stream().collect(java.util.stream.Collectors.toMap(SysOrganization::getId, row -> row));
+        return ids.stream().map(byId::get).filter(java.util.Objects::nonNull).toList();
+    }
 }

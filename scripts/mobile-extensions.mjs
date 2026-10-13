@@ -12,7 +12,7 @@ export function generateMobileExtensions() {
   const imports = [], registrations = []
   entries.forEach((entry, index) => {
     const { implementation, capabilities } = entry.platforms.mobile
-    if (!['FIELD', 'FORM', 'NODE', 'VALIDATOR'].includes(entry.type)) throw new Error(`尚不支持的移动扩展类型：${entry.type}`)
+    if (!['FIELD', 'FORM', 'VALIDATOR'].includes(entry.type)) throw new Error(`尚不支持的移动扩展类型：${entry.type}`)
     if (entry.type === 'VALIDATOR' ? !['OBJECT', 'CLASS', 'FACTORY'].includes(implementation.kind) : implementation.kind !== 'COMPONENT') throw new Error(`移动扩展实现类型不符：${entry.name}`)
     const filename = resolveImplementation(path.join(repository, 'workflow-mobile'), implementation)
     const variable = `extension${index}`
@@ -21,7 +21,7 @@ export function generateMobileExtensions() {
       const instance = implementation.kind === 'CLASS' ? `new ${variable}()` : implementation.kind === 'FACTORY' ? `${variable}()` : variable
       registrations.push(`registerCustomValidator(${JSON.stringify(entry.name)}, ${instance}, ${JSON.stringify({ ...entry.metadata, version: entry.version, label: entry.label, description: entry.description })})`)
     } else {
-      registrations.push(`registerMobileExtension({ ...${JSON.stringify({ type: entry.type, name: entry.name, version: entry.version, ...capabilities })}, component: ${variable} })`)
+      registrations.push(`registerMobileExtension({ ...${JSON.stringify({ type: entry.type, name: entry.name, version: entry.version, ...entry.metadata, ...capabilities })}, component: ${variable} })`)
     }
   })
   return ["import { registerMobileExtension } from '@flow/workflow-mobile-ui'", "import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'", ...imports, ...registrations].join('\n')

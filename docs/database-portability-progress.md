@@ -2,6 +2,14 @@
 
 本文件跟踪当前改造，不代表整个系统已经支持切换数据库。目标是完成原先列出的全部十类运行时依赖，支持 MySQL、Oracle、PostgreSQL、Kingbase、达梦、OceanBase MySQL 和 OceanBase Oracle。历史 Flyway 迁移及部署脚本不在本轮范围内。
 
+## OceanBase MySQL 实库补充（2026-10-13）
+
+本机 OceanBase CE 4.4.2.1 MySQL 模式已补充真实验证，完整结果见 [OceanBase 兼容性验证](testing/obmysql-compatibility-2026-10-13.md)。下文 2026-09-23 记录中的“非 MySQL 无实库环境”是当时的验证边界，不覆盖此次新增结果。
+
+`GET_LOCK` 在独立会话首次并发获取时出现多赢家，不能作为此版本的可靠互斥依据。OB MySQL 已改为专用连接上的未提交唯一键插入锁：新增 `V116__oceanbase_transaction_mutex.sql` 和初始化脚本中的 `sys_database_lock` 表，不修改历史迁移。真实数据库回归覆盖 20 轮、每轮 8 个首次竞争者，均恰好一个成功者；其他连接的提交、回滚及 DDL 不释放锁，不同键可并行，关闭后可再次获取且不留下持久锁行。
+
+独立锁连接显式设置 NO WAIT 和 24 小时事务/空闲超时，已确认普通业务连接参数不受影响。释放时检查标记是否仍存在并始终回滚、关闭；该检查是结束时检测，不提供运行中的 fencing。操作必须在事务上限内完成。OB 升级时必须先停止旧 `GET_LOCK` 发布器及 worker，再启动新事务锁版本，两种实现不能混跑。
+
 ## 最终验收（2026-09-23 09:15）
 
 后续启动回归修正（09:36）：用户通过 `start.sh` 启动时，脚本会从 queue 模式后端移除 `SCHEMA_*` 变量；生产 YAML 中三项严格占位符导致 `DatabaseConnections` 提前解析失败。已将 schema-publisher 的 URL/用户名/密码默认值设为空，仅直接结构连接仍校验必填身份，Flyway 配置及脚本隔离不变。新增测试读取生产 YAML 并移除环境继承，修复前复现同样的占位符错误；修复后 queue 无结构身份、仅配置 URL、direct 缺失/完整身份四场景通过。连同连接装配、两种 DDL 执行器及模块边界共 20 项通过，无失败/跳过；尚未替用户重新执行完整启动脚本。迁移文件未改。
@@ -40,7 +48,7 @@
 | 3 | 动态建表和改字段 | 七种 DDL 渲染、直接及队列通道已接入；MySQL 实库已验证 | 非 MySQL 无实库环境；不支持证明的重放失败保留失败状态，不能据错误码假定成功 |
 | 2 | 数据库结构读取 | 主表、团队表、物理表解析、系统实体目录已改为元数据端口 | 非 MySQL 无环境，厂商统计查询与驱动行为尚无实库验证 |
 | 1 | 驱动和数据源 | 主数据源、独立连接、URL 驱动选择、按产品初始化、Flowable 语法族装配已接入 | 非 MySQL 驱动按 Maven profile 及目标环境版本打包；迁移器启动迁移不在范围内 |
-| 4 | 数据库命名锁 | 已接入七产品的锁适配；MySQL 真实并发与跨 DDL 持锁通过 | 非 MySQL 仅实现，无环境实测；OB Oracle 使用只持锁的独立事务，需满足下述产品能力条件 |
+| 4 | 数据库互斥锁 | 已接入七产品的锁适配；MySQL 会话锁及 OB MySQL 独立事务锁均通过真实并发与跨 DDL 持锁验证 | OB MySQL 需 V116 锁表、操作小于24小时且升级不能混跑旧 GET_LOCK；其余产品尚无实库验证；OB Oracle 使用只持锁的独立事务，需满足下述产品能力条件 |
 | 5 | 分页与标识符 | 普通 Mapper 查询优先改为 Wrapper，外层分页统一交给 MyBatis-Plus；实体动态 Provider、关系图和 Embed 复杂 SQL 通过 IPage 接入插件。121 个 Mapper 的全局复核后仅保留 5 处嵌套分页方言片段；锁定查询保持既有锁范围。此前 54 个 Mapper 的手工分页适配已由本轮框架分页替代，验证进度见下文 | 8 个批量 UPDATE/DELETE 已接入独立写入方言，两处队列主键访问提示已按产品生成；运行期配置迁移的 22 处 Wrapper LIMIT 已处理：13 处唯一查询去掉分页、2 处存在性计数、7 处方言分页和稳定排序；普通 Wrapper 的剩余手工分页也统一交给 MP Page；JDBC 查询及嵌套子查询保留方言分页，非 MySQL 仍无实库结论 |
 | 6 | 指定排序规则 | 待办、Embed 共 18 处显式 COLLATE 已移除，授权定向回归通过 | 依赖运行库字段及连接已统一比较规则；Embed 整数实体 ID 转文本已接入查询方言，业务 Mapper 不再硬编码 AS CHAR |
 | 7 | 冲突写入与幂等 | 单行插入、事务锁行和唯一冲突规则已实现；Embed 请求占用、流程状态同步，以及版本/会话计数、唯一值门闩、启动协调、结构计划、三类限流、HOTFIX 计数、流程关联占用已接入；回执/版本写入、版本配置、Outbox、审计、抄送、审批异常、文件登记、Embed 断言和授权、组件模板及表单节点已接入保存点恢复或事务锁行 | 运行时显式 INSERT IGNORE 已移除；当前版本配置与 legacy 草稿的四个写入冲突分支已改为基表当前 revision 读取，MySQL 并发与旧快照验证通过；转办中的待办与审计写入失败现统一回滚，不再吞错后继续事务；终止事务分支的厂商分类归第 10 项，非 MySQL 并发语义仍待实库验收 |
@@ -101,11 +109,11 @@ Flowable 的 Spring 引擎配置在初始化前统一选择语法族：MySQL/OB 
 - PostgreSQL：会话级 `pg_try_advisory_lock/pg_advisory_unlock`。
 - Kingbase：`sys_try_advisory_lock/sys_advisory_unlock`，不依赖额外 PostgreSQL 兼容函数。
 - Oracle/达梦：`DBMS_LOCK.REQUEST(..., FALSE)`，显式 RELEASE。需有 DBMS_LOCK 使用权限；达梦需已提供该系统包，其文档注明 MPP 不支持该包。
-- OB MySQL：使用支持 GET_LOCK 的版本（官方 V4.3.1 文档已列出）；较早版本缺少能力时明确失败，不降级成本地锁。
+- OB MySQL：使用 `sys_database_lock` 唯一键的未提交 INSERT 争抢，`ob_trx_lock_timeout=0` 保证 NO WAIT；仅明确的 1205 行锁竞争返回忙，其他错误保留失败。持锁事务位于独立物理连接，释放回滚；不会复用业务锁行，也不依赖本版本存在并发多赢家问题的 GET_LOCK。
 - OB Oracle：官方文档注明部分版本仅支持 `release_on_commit=TRUE`，因此锁在专用连接的独立事务持有，业务和 DDL 绝不使用此连接，释放时回滚这一个事务。该模式不能使用会自动回收/提交锁连接的代理。
-- 普通锁竞争返回忙；NULL/SQL 异常不伪装成竞争。获取失败关闭连接，释放失败仍关闭会话，句柄重复关闭无副作用，线程重复发布不覆盖原句柄。
+- 普通锁竞争返回忙；NULL/未识别 SQL 异常不伪装成竞争。获取失败关闭连接，释放失败仍关闭会话，句柄重复关闭无副作用，线程重复发布不覆盖原句柄。
 
-依据：[PostgreSQL advisory locks](https://www.postgresql.org/docs/15/functions-admin.html)、[达梦 DBMS_LOCK](https://eco.dameng.com/document/dm/zh-cn/pm/dbms_lock-package.html)、[OceanBase GET_LOCK](https://en.oceanbase.com/docs/common-oceanbase-database-10000000001379158)、[OceanBase Oracle REQUEST](https://en.oceanbase.com/docs/common-oceanbase-database-10000000001975494)、[Kingbase 兼容函数说明](https://help.kingbase.com.cn/v9.1.1.30/PDF/KingbaseES%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E6%89%8B%E5%86%8C.pdf)。
+依据：[PostgreSQL advisory locks](https://www.postgresql.org/docs/15/functions-admin.html)、[达梦 DBMS_LOCK](https://eco.dameng.com/document/dm/zh-cn/pm/dbms_lock-package.html)、[OceanBase NO WAIT 事务锁配置](https://www.oceanbase.com/docs/common-oceanbase-database-cn-1000000001576589)、[OceanBase Oracle REQUEST](https://en.oceanbase.com/docs/common-oceanbase-database-10000000001975494)、[Kingbase 兼容函数说明](https://help.kingbase.com.cn/v9.1.1.30/PDF/KingbaseES%E5%B8%B8%E8%A7%81%E9%97%AE%E9%A2%98%E6%89%8B%E5%86%8C.pdf)。
 
 ## 验证记录（持续更新）
 

@@ -98,7 +98,7 @@ export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields =
   const defaultsByField = new Map()
   const addFieldDefault = (field = {}) => {
     const fieldKey = getFieldKey(field)
-    if (!fieldKey || field.defaultValue == null || field.defaultValue === '') return
+    if (field.isDisplayOnly || !fieldKey || field.defaultValue == null || field.defaultValue === '') return
     defaultsByField.set(fieldKey, field.defaultValue)
   }
 
@@ -106,7 +106,7 @@ export function applyRuntimeFieldDefaults(target = {}, form = {}, entityFields =
   ;(form?.fields || []).forEach(addFieldDefault)
   ;(form?.nodes || []).forEach(node => {
     const nodeType = String(node?.nodeType || '').toUpperCase()
-    if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(nodeType)) return
+    if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(nodeType) || (nodeType === 'FIELD' && node.bindingType === 'NONE')) return
     const props = typeof node?.propsDocument === 'string'
       ? parseRuntimeDefaultValue(node.propsDocument)
       : (node?.propsDocument || node?.props || {})

@@ -17,7 +17,7 @@ final class SchemaChangeWorker {
     void run() {
         String url = required("SCHEMA_DATASOURCE_URL");
         var vendor = DatabaseDialects.resolve(environment("WORKFLOW_DATABASE_VENDOR", "auto"), url);
-        var source = new InitializedDriverDataSource(url, required("SCHEMA_DB_USERNAME"), required("SCHEMA_DB_PASSWORD"),
+        var source = new InitializedDriverDataSource(vendor, url, required("SCHEMA_DB_USERNAME"), required("SCHEMA_DB_PASSWORD"),
                 environment("SCHEMA_DB_DRIVER_CLASS_NAME", null), DatabaseJdbcProfiles.connectionInitSql(vendor));
         String owner = environment("SCHEMA_WORKER_ID", "schema-worker-" + UUID.randomUUID());
         var worker = new JdbcSchemaChangeWorker(source, DatabaseDialects.forVendor(vendor), owner);

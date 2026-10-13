@@ -11,6 +11,7 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.mybatis.spring.MyBatisExceptionTranslator;
 import org.mybatis.spring.SqlSessionTemplate;
 import com.baomidou.mybatisplus.autoconfigure.MybatisPlusProperties;
+import com.baomidou.mybatisplus.autoconfigure.MybatisPlusPropertiesCustomizer;
 import com.baomidou.mybatisplus.autoconfigure.ConfigurationCustomizer;
 import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.type.ClobTypeHandler;
@@ -26,6 +27,30 @@ import org.springframework.context.annotation.Configuration;
 /** 数据库相关 MyBatis 装配，业务审计字段填充仍由应用层提供。 */
 @Configuration(proxyBeanMethods = false)
 public class DatabaseMybatisConfiguration {
+    /**
+     * Oracle 家族将未引用名称折叠为大写，COMMENT 等字段又属于保留字。
+     * 在元数据初始化前统一引用自动生成的物理列和结果别名，使 BaseMapper 的
+     * 读写与 LambdaWrapper 投影遵守同一规则；不能只修手写 SQL 或修改业务实体注解。
+     * 显式 @TableField 映射继续遵循 MyBatis-Plus 的 keepGlobalFormat 约定。
+     *
+     * @param dialect 当前应用选择的数据库方言
+     * @return 本 SqlSessionFactory 的属性定制器，不改变其他语法族的列名格式
+     */
+    @Bean
+    public MybatisPlusPropertiesCustomizer oracleIdentifierMappings(SchemaDdlDialect dialect) {
+        return properties -> {
+            switch (dialect.vendor()) {
+                case ORACLE, OCEANBASE_ORACLE -> {
+                    var database = properties.getGlobalConfig().getDbConfig();
+                    database.setColumnFormat("\"%S\"");
+                    // 只引用列名时 MP 会生成 AS comment，别名本身也必须避开保留字。
+                    database.setPropertyFormat("\"%s\"");
+                }
+                default -> { }
+            }
+        };
+    }
+
     /**
      * 未声明类型的空参数使用标准 SQL NULL，避免 MyBatis 默认 OTHER 被 Oracle 等驱动拒绝。
      * 已声明的 JDBC 类型及数字布尔处理器仍优先；独立的 Flowable 工厂不受此配置影响。

@@ -44,6 +44,57 @@ import static org.mockito.Mockito.when;
  */
 class ProcessDefinitionNodeSyncServiceTest {
 
+    @Test
+    void everyBpmnNodeTypeUsesItsIdWhenNameIsAbsentEmptyOrBlank() {
+        for (String attribute : List.of("", " name=\"\"", " name=\"  \t\"")) {
+            NodeConfigMapper nodes = nodeMapperWithGeneratedIds();
+            var service = service(nodes, null, null, null, null, null, null, null);
+            String xml = bpmnWithEverySupportedNodeType().replace(" />", attribute + " />");
+            service.parseAndSaveNodeConfigs("process-1", xml);
+            var saved = ArgumentCaptor.forClass(NodeConfig.class);
+            verify(nodes, times(NodeConfig.NodeType.values().length)).insert(saved.capture());
+            saved.getAllValues().forEach(node -> assertEquals(node.getNodeId(), node.getNodeName()));
+        }
+    }
+
+    @Test
+    void directNodeSaveUsesTheSameDisplayNameContract() {
+        var nodes = nodeMapperWithGeneratedIds();
+        var processes = mock(com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper.class);
+        when(processes.selectById("process-1")).thenReturn(new com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig());
+        var service = new com.workflow.process.configuration.application.NodeConfigService(nodes, processes,
+                mock(AssigneeConfigMapper.class), mock(FormConfigMapper.class), null);
+        for (var type : NodeConfig.NodeType.values()) {
+            var dto = new NodeConfigDTO(); dto.setNodeId(type.name()); dto.setNodeType(type);
+            dto.setNodeName(type.ordinal() % 3 == 0 ? null : type.ordinal() % 3 == 1 ? "" : " \t ");
+            assertEquals(type.name(), service.save("process-1", dto).getNodeName());
+        }
+    }
+
+    @Test
+    void replacingDraftNodesKeepsNamesAndFallsBackForBlankNamesAcrossAllTypes() {
+        NodeConfigMapper nodes = mock(NodeConfigMapper.class);
+        var service = service(nodes, null, null, null, null, null, null, null);
+        for (int revision = 0; revision < 2; revision++) {
+            List<NodeConfigDTO> drafts = new ArrayList<>();
+            for (var type : NodeConfig.NodeType.values()) {
+                var dto = new NodeConfigDTO(); dto.setNodeId(type.name()); dto.setNodeType(type);
+                dto.setNodeName(revision == 0 ? " 设计名称 " : " \t ");
+                drafts.add(dto);
+            }
+            service.syncDraftNodes("process-1", drafts);
+        }
+        verify(nodes, times(2)).deleteByProcessConfigId("process-1");
+        var saved = ArgumentCaptor.forClass(NodeConfig.class);
+        int types = NodeConfig.NodeType.values().length;
+        verify(nodes, times(types * 2)).insert(saved.capture());
+        for (int i = 0; i < types; i++) {
+            assertEquals(" 设计名称 ", saved.getAllValues().get(i).getNodeName());
+            var replacement = saved.getAllValues().get(types + i);
+            assertEquals(replacement.getNodeId(), replacement.getNodeName());
+        }
+    }
+
     /**
      * 同步草稿节点时应先删除旧节点再插入新节点。
      *

@@ -31,7 +31,7 @@
 | `forms/ProjectExtensionAcceptanceForm.vue` | 整表单选择 `ProjectExtensionAcceptanceForm`，配置 `title`、`showRuntimeTrace`，用于扩展验收 |
 | `fields/ProjectAcceptanceScoreField.vue` | 数值字段选择 `project_acceptance_score`，在组件参数中配置 `passScore`，例如 80 |
 | `fields/ProjectAcceptanceLevelField.vue` | 字符串字段选择 `project_acceptance_level`，按实际字段定义配置 |
-| `nodes/ProjectAcceptanceSummaryNode.vue` | 表单节点选择 `ProjectAcceptanceSummaryNode`，设置 `title`；遵守清单限定的 FIELD / ENTITY_FIELD |
+| `fields/ProjectAcceptanceSummaryField.vue` | 组件类型选择 `ProjectAcceptanceSummaryNode`，设置 `title`；遵守清单限定的 FIELD / ENTITY_FIELD |
 | `lists/ProjectAcceptanceBoardList.vue` | 列表选择 `ProjectAcceptanceBoardList`；`PROJECT_CUSTOM_LIST_SCHEMA` 是同一实现的后端 Schema 集成入口 |
 | `list-cells/ProjectAcceptanceScoreCell.vue` | 数值列渲染组件选择 `ProjectAcceptanceScoreCell`，渲染参数填写 `passScore` |
 | `buttons/ProjectAcceptanceInspectButton.vue` | 列表按钮设为自定义/组件，`customHandler` 填 `ProjectAcceptanceInspectButton` |

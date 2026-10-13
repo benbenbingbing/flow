@@ -22,8 +22,8 @@ const entries = discoverExtensions(root)
 const sample = entries.find(item => item.name === 'project_acceptance_score')
 const copy = value => JSON.parse(JSON.stringify(value))
 
-test('现有清单覆盖十类，保留业务名称和 Demo 开关；生成字段策略与清单一致', () => {
-  assert.equal(new Set(entries.map(item => item.type)).size, 10)
+test('现有清单覆盖九类，保留业务名称和 Demo 开关；生成字段策略与清单一致', () => {
+  assert.equal(new Set(entries.map(item => item.type)).size, 9)
   for (const name of ['ProjectMemberChangeForm', 'PROJECT_CUSTOM_LIST_SCHEMA', 'project_acceptance_score', 'PROJECT:CUSTOM_CONDITION', 'amount', 'DefaultText']) {
     assert.ok(entries.some(item => item.name === name && item.enabled !== false), name)
   }
@@ -50,13 +50,15 @@ test('新模块只增加实现和 JSON 就能被发现，具名导出生成明�
   } finally { rmSync(fixture, { recursive: true, force: true }) }
 })
 
-test('错拼配置、越界路径、错误类型、冲突别名和单版本覆盖均拒绝', () => {
+test('错拼配置、越界路径、错误类型、冲突别名和同版本覆盖均拒绝', () => {
   const invalid = modify => { const value = copy(sample); delete value.origin; delete value.module; delete value.sourceFile; modify(value); return value }
   assert.throws(() => validateManifest(invalid(v => v.metadtaa = {}), root, 'bad.json'), /未知属性/)
   assert.throws(() => validateManifest(invalid(v => v.implementation.path = 'src/../outside.js'), root, 'bad.json'), /实现路径/)
   assert.throws(() => validateManifest(invalid(v => v.implementation.kind = 'FUNCTION'), root, 'bad.json'), /需要 COMPONENT/)
   assert.throws(() => validateManifest(invalid(v => v.metadata.configSchema.push(v.metadata.configSchema[0])), root, 'bad.json'), /key 重复/)
-  assert.throws(() => validateCollisions([sample, { ...sample, version: 2 }]), /冲突/)
+  assert.doesNotThrow(() => validateCollisions([sample, { ...sample, version: 2 }]))
+  assert.throws(() => validateCollisions([sample, { ...sample }]), /冲突/)
+  assert.throws(() => validateManifest(invalid(v => v.type = 'NODE'), root, 'retired.json'), /必须为/)
   assert.throws(() => validateCollisions([sample, { ...sample, name: 'another', aliases: [sample.name.toUpperCase()] }]), /冲突/)
   const form = entries.find(item => item.type === 'FORM')
   assert.doesNotThrow(() => validateCollisions([form, { ...form, version: 2 }]))
@@ -104,6 +106,7 @@ test('真实适配器保留字段特殊解析、双位置动作和独立条件�
     return { descriptor, implementation: component }
   })
   createExtensionInstaller(extensionAdapters)(plan)
+  assert.equal(resolveFieldComponent({ componentType: 'uninstalled_explicit_component', fieldType: 'TEXT' }), undefined, '缺失的显式组件不能伪装为内置文本框')
   assert.equal(resolveFieldComponent({ componentType: 'text' }), resolveFieldComponent({ componentType: 'input' }))
   assert.equal(resolveFieldComponent({ componentType: 'input', fieldType: 'SUB_FORM' }), resolveFieldComponent({ componentType: 'sub_form' }))
   assert.equal(resolveFieldComponent({ componentType: 'input', refEntityType: 'USER' }), resolveFieldComponent({ componentType: 'reference' }))

@@ -8,7 +8,7 @@ const Schema = AsyncValidator.default || AsyncValidator
 const flag = value => value === true || value === 1 || value === '1'
 
 /** 补齐实体字段信息，仍以发布表单规则为准；根表单不混入子表字段。 */
-export function projectRuntimeFields(form = {}, entityFields = [], { rootParentId = '', hasComponent = () => false } = {}) {
+export function projectRuntimeFields(form = {}, entityFields = [], { rootParentId = '' } = {}) {
   const fields = (form.fields || []).map(field => {
     const metadata = entityFields.find(item => (field.fieldCode && item.fieldCode === field.fieldCode) || ((field.fieldId || field.id) != null && String(item.id) === String(field.fieldId || field.id))) || {}
     return { ...metadata, ...field, isRequired: flag(metadata.isRequired) || flag(field.isRequired), fileItems: field.fileItems?.length ? field.fileItems : metadata.fileItems || [], entityFileItems: metadata.fileItems || [] }
@@ -31,7 +31,7 @@ export function projectRuntimeFields(form = {}, entityFields = [], { rootParentI
     for (const node of nodes.filter(item => String(item.parentId || '') === String(parent))) {
       if (seen.has(String(node.id))) throw new Error('表单节点存在循环引用')
       seen.add(String(node.id))
-      const field = resolveRuntimeNodeField(node, fields, descendants(node.id), hasComponent)
+      const field = resolveRuntimeNodeField(node, fields, descendants(node.id))
       if (field) projected.push(field)
       // 子表有独立记录、发布上下文和校验作用域，不能当成父表扁平字段。
       if (!['SUB_FORM', 'REPEATER'].includes(node.nodeType)) visit(node.id)
@@ -74,7 +74,7 @@ export async function validateRuntimeFields(fields, record, options, linkage = {
   const errors = {}
   await Promise.all(fields.map(async field => {
     const key = getFieldKey(field), state = runtimeFieldState(field, options, linkage)
-    if (!key || !state.visible || !state.editable) return
+    if (!key || field.isDisplayOnly || !state.visible || !state.editable) return
     const rules = buildRuntimeFieldRules(field, state.required, field.fieldLabel || field.fieldName, state.attachmentItemRequiredState)
     if (!rules.length) return
     try { await new Schema({ [key]: rules }).validate(record, { firstFields: true }) }
@@ -82,4 +82,20 @@ export async function validateRuntimeFields(fields, record, options, linkage = {
   }))
   // 异步任务的完成顺序不应改变“第一个错误”的定位顺序。
   return Object.fromEntries(fields.map(field => getFieldKey(field)).filter(key => errors[key]).map(key => [key, errors[key]]))
+}
+
+/**
+ * 组件跨字段补丁只落到当前表单/子表行的可编辑字段；不接受原型键、未知字段或展示节点。
+ * 返回实际变化的字段及值，宿主先一次合并，再逐字段触发与普通输入相同的事件和校验。
+ */
+export function resolveComponentFormPatch(patch, fields, record = {}, options = {}, linkage = {}) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch) || options.readonly) return []
+  return Object.entries(patch).flatMap(([code, value]) => {
+    if (['__proto__', 'constructor', 'prototype'].includes(code)) return []
+    const field = fields.find(item => getFieldKey(item) === code)
+    if (!field || field.isDisplayOnly) return []
+    const state = runtimeFieldState(field, { ...options, record }, linkage)
+    if (!state.visible || !state.editable || JSON.stringify(record[code]) === JSON.stringify(value)) return []
+    return [{ field, code, value }]
+  })
 }

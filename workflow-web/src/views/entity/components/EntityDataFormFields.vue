@@ -95,6 +95,10 @@
         <FormFieldRendererLinkage
           v-model="formData.data[field.fieldCode]"
           :field="field"
+          :form-data="formData.data"
+          :mode="isEdit ? 'edit' : 'create'"
+          :linkage-state="linkageState"
+          @patch-form="patch => Object.assign(formData.data, patch)"
           :disabled="isFieldDisabled(field)"
           :options="getFieldOptions(field)"
           :attachment-item-required-state="linkageState.attachmentItemRequired?.[field.fieldCode] || {}"
@@ -103,6 +107,7 @@
             entityCode,
             entityDefinition,
             form: defaultForm,
+            scriptFields: renderFields,
             mode: isEdit ? 'edit' : 'create',
             record: formData,
             entityStatusMap,

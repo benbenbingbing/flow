@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "$comment": "统一表单组件 ContractExampleNode：在组件类型中选择，参数来自 configSchema；modelValue 为当前字段值，formData 为当前表单或子表行。多个字段变更通过 patch-form 交给宿主合并和校验。nodeTypes/supportedBindings 限制可用宿主，不产生第二种渲染方式。",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "ContractExampleNode",
+  "label": "契约示例·摘要节点",
+  "description": "使用统一组件协议读取当前表单数据，展示配置指定的摘要字段。",
+  "version": 1,
+  "enabled": false,
+  "implementation": {
+    "path": "src/extensions/templates/CustomSummaryFieldTemplate.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "snapshotVersion": 2,
+    "nodeTypes": [
+      "FIELD"
+    ],
+    "supportedBindings": [
+      "ENTITY_FIELD"
+    ],
+    "configSchema": [
+      {
+        "key": "fieldCodes",
+        "label": "摘要字段",
+        "type": "json",
+        "jsonShape": "array",
+        "example": [
+          "name"
+        ],
+        "description": "要展示的字段编码数组，例如 [\"name\",\"amount\"]，从当前 formData 中读取。"
+      }
+    ]
+  }
+}

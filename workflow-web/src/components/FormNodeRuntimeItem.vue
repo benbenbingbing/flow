@@ -19,21 +19,8 @@
       @source-patch="applyRelatedContentPatch"
     />
   </template>
-  <component
-    v-if="customDescriptor"
-    :is="customDescriptor.component"
-    :node="node"
-    :model-value="modelValue"
-    :readonly="readonly"
-    :mode="mode"
-    :context="context"
-    :config="customConfig"
-    :data-source-runtime="dataSourceRuntime"
-    @update:model-value="$emit('update:modelValue', $event)"
-  />
-
   <el-card
-    v-else-if="node.nodeType === 'SECTION'"
+    v-if="node.nodeType === 'SECTION'"
     shadow="never"
     class="node-section"
     :class="containerAppearanceClasses"
@@ -173,13 +160,19 @@
     <FormFieldRendererLinkage
       ref="fieldRendererRef"
       :field="runtimeField"
-      :model-value="modelValue[fieldKey]"
+      :model-value="runtimeField.isDisplayOnly ? undefined : modelValue[fieldKey]"
+      :form-data="modelValue"
+      :linkage-state="linkageState"
+      :node="node"
+      :readonly="readonly"
+      :mode="mode"
       :disabled="disabled"
       :options="options"
       :context="{ ...context, node, field: runtimeField }"
       :data-source-runtime="dataSourceRuntime"
       :attachment-item-required-state="attachmentItemRequiredState"
       @update:model-value="updateField"
+      @patch-form="applyRelatedContentPatch"
     />
     <!-- 跨字段错误由表单控制器管理；普通 blur/change 校验成功不能清空其提示和红框。 -->
     <div v-if="crossFieldError" class="el-form-item__error" role="alert">
@@ -234,19 +227,8 @@ import RelatedContentRuntime from '@/components/related-content/RelatedContentRu
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import { buildRuntimeFieldRules, getFieldKey } from '@flow/workflow-core/form-runtime'
 import {
-  getFieldModeAccess,
-  resolveRuntimeNodeFieldRules,
-  safeParseConfig
+  getFieldModeAccess
 } from '@flow/workflow-core/config-runtime'
-import { hasFormFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
-import {
-  isFormFieldExtensionNode,
-  resolveRuntimeFormFieldComponentType
-} from '@flow/workflow-core/form-field-extension'
-import {
-  migrateFormNodeConfig,
-  resolveFormNodeDescriptor
-} from '@/extensions/core/registries/formNodeRegistry.js'
 import {
   appendFormUniqueBlurRule,
   FORM_UNIQUE_PRECHECK_CONTEXT_KEY
@@ -330,14 +312,6 @@ const children = computed(() => visibleChildrenFor(props.node.id))
 const childGutter = computed(() => props.layoutType === 'vertical' ? 0 : 16)
 const containerAppearanceClasses = computed(() =>
   appearanceClasses(props.node.nodeType, props.node.props)
-)
-const customDescriptor = computed(() =>
-  isFormFieldExtensionNode(props.node)
-    ? null
-    : resolveFormNodeDescriptor(props.node)
-)
-const customConfig = computed(() =>
-  migrateFormNodeConfig(props.node, customDescriptor.value)
 )
 const isSectionTitleText = computed(() =>
   String(props.node.props?.textStyle || '').toUpperCase() === 'SECTION_TITLE'
@@ -440,7 +414,7 @@ function updateCollapseNames(value) {
 const nestedNodes = computed(() => collectDescendants(props.node.id))
 
 const runtimeField = computed(() => resolveRuntimeNodeField(
-  props.node, props.fields, nestedNodes.value, hasFormFieldComponent
+  props.node, props.fields, nestedNodes.value
 ))
 
 const fieldKey = computed(() => getFieldKey(runtimeField.value || props.node))
@@ -472,7 +446,7 @@ const attachmentItemRequiredState = computed(() =>
 )
 const fieldRules = computed(() => {
   const field = runtimeField.value
-  if (!field) return []
+  if (!field || field.isDisplayOnly) return []
   const rules = buildRuntimeFieldRules(
     field,
     required.value,
@@ -480,15 +454,14 @@ const fieldRules = computed(() => {
     attachmentItemRequiredState.value
   )
   appendFormUniqueBlurRule(rules, field, uniquePrecheckContext)
-  const componentType = String(field.componentType || '').toUpperCase()
-  const fieldType = String(field.fieldType || '').toUpperCase()
-  if (componentType === 'SUB_FORM' || fieldType === 'SUB_FORM') {
+  // 统一入口收集所有组件的内部校验，包含复杂输入和原节点展示组件。
+  {
     rules.push({
       validator: (_rule, _value, callback) => {
         Promise.resolve(fieldRendererRef.value?.validate?.()).then(valid => {
           if (valid === false) {
             callback(new Error(
-              `${field.fieldLabel || field.fieldName || '子表单'}存在未通过校验的数据`
+              `${field.fieldLabel || field.fieldName || '组件'}存在未通过校验的数据`
             ))
           } else {
             callback()
@@ -503,6 +476,7 @@ const fieldRules = computed(() => {
 })
 
 function updateField(value) {
+  if (disabled.value || runtimeField.value?.isDisplayOnly) return
   emit('update:modelValue', {
     ...(props.modelValue || {}),
     [fieldKey.value]: value

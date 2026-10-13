@@ -97,15 +97,15 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
             <li>编辑历史节点时，不属于当前 nodeType 的活动 props、rules、组件参数和数据源绑定会被清除；需要审计的原值仅进入 `legacyProps` 等非活动兼容区，不参与预览、发布或运行时执行。</li>
             <li>`id`、nodeKey、revision、orderKey、发布快照版本、bindingType 和 bindingRef 不可编辑。已绑定实体字段或实体关系后，nodeType、fieldId、fieldCode、关系和子实体绑定同样不可编辑。</li>
             <li>需要改字段或关系语义时，新建目标节点并绑定新字段/关系，迁移显示标签、布局、兼容组件和该类型允许的数据源；草稿预览、发布验证通过后再删除旧节点。</li>
-            <li>节点级扩展必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
+            <li>表单组件必须通过 `nodeTypes`、supportedBindings 与 configSchema 声明可配置范围。前端只显示允许属性，服务端 PATCH 仍须按类型白名单校验，不能相信前端隐藏。</li>
             <li>默认动态表单的画布、草稿预览和已发布运行时使用同一递归树：垂直默认 24 栅格、水平默认 12 栅格、网格读取 gridSpan，显式 GRID 容器优先。SECTION、GRID、TAB_SET、TAB、COLLAPSE 等容器在预览中必须保持容器语义。</li>
             <li>流程上下文仅提升根级 TAB_SET；嵌套在 SECTION、GRID、TAB 或其他容器中的 TAB_SET 仍由递归节点运行时原位渲染。扩展组件不能依赖外层页签 DOM 层级，应使用稳定 nodeId 和运行时 context。</li>
           </ul>
         </section>
 
         <section id="field-component" class="guide-section">
-          <h3>6. 节点级自定义组件</h3>
-          <p>只替换某一类字段或局部展示节点时，注册节点级组件即可，表单树、校验、数据源、联动、模式权限和发布快照继续由平台管理。</p>
+          <h3>6. 自定义表单组件</h3>
+          <p>只替换某一类字段或局部展示节点时，注册 FIELD 组件即可，表单树、校验、数据源、联动、模式权限和发布快照继续由平台管理。</p>
           <CodeCard title="rating-field-extension.ts" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,
@@ -140,15 +140,15 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
   }
 }</code></pre>
           </CodeCard>
-          <CodeCard title="node-extension.ts" language="JSON">
+          <CodeCard title="summary-component.extension.json" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,
-  "type": "NODE",
+  "type": "FIELD",
   "name": "risk-matrix",
   "label": "risk-matrix",
   "version": 3,
   "implementation": {
-    "path": "src/extensions/common/nodes/RiskMatrixNode.vue",
+    "path": "src/extensions/common/fields/RiskMatrixField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -181,8 +181,8 @@ PATCH /api/entity-forms/frm_project/nodes/node_risk
 // { "hotfix": { "compatible": true } }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>前端注册只负责提供运行时代码；发布前还必须在设计器“扩展清单”登记同名 `NODE` manifest。</li>
-            <li>设计器保存 `componentName + componentVersion + snapshotVersion`，不会自动跟随目标环境的最新版本。</li>
+            <li>前端注册只负责提供运行时代码；发布前还必须在设计器“扩展清单”登记同名 `FIELD` manifest。</li>
+            <li>设计器保存 `props.componentType + componentVersion + snapshotVersion`，不会自动跟随目标环境的最新版本。</li>
             <li>发布会校验启用状态、实现版本、节点类型、绑定类型和快照协议，任一不兼容都会阻止发布。</li>
             <li>组件实现版本仍按扩展机制管理；表单发布需确认当前环境已部署对应实现。</li>
           </ul>
@@ -247,7 +247,7 @@ const emit = defineEmits([
             <li>表单发布时服务端会再次校验扩展状态、组件版本和实体适用范围，不能通过前端请求绕过范围限制。</li>
           </ul>
           <el-alert
-            title="整表单扩展适用于分步、矩阵或图形编辑器；如果只是一个字段、区块、子表或动作槽不同，应使用节点级扩展。整表单也必须读取已发布快照和平台数据源运行时。"
+            title="整表单扩展适用于分步、矩阵或图形编辑器；如果只是一个字段、局部展示或子表不同，应使用 FIELD 表单组件。整表单也必须读取已发布快照和平台数据源运行时。"
             type="warning"
             :closable="false"
             show-icon
@@ -458,7 +458,7 @@ const toc = [
 
 const levels = [
   { level: '声明式递归节点', useCase: '区块、栅格、Tab、字段、子表、明细和动作槽', entry: '表单设计器按节点配置' },
-  { level: '节点级组件', useCase: '评分、签名、坐标、业务选择器或局部复杂展示', entry: 'NODE / FIELD JSON 清单' },
+  { level: '节点级组件', useCase: '评分、签名、坐标、业务选择器或局部复杂展示', entry: 'FIELD JSON 清单' },
   { level: '自定义整表单', useCase: '分步、矩阵、图形化且节点树无法表达的整体交互', entry: 'FORM JSON 清单，仍复用发布与权限运行时' }
 ]
 
@@ -479,9 +479,9 @@ const propertyRows = [
   { types: 'TAB', editable: '页签标题、所属 TAB_SET；用于承载页签内递归内容。', boundary: '不能位于根节点，父级只能选择有效 TAB_SET；无字段规则或数据源。' },
   { types: 'COLLAPSE', editable: '标题、合法父容器、默认展开 defaultExpanded、手风琴 accordion；用于折叠内容组。', boundary: '不显示字段组件、默认值、校验或字段数据源。' },
   { types: 'TEXT', editable: '合法父容器、受限文本 text；普通说明或节标题由 textStyle 区分。', boundary: 'SECTION_TITLE 只改变展示样式；禁止脚本、任意 HTML、事件、实体绑定、字段规则和数据源。' },
-  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件、节点扩展和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
-  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
-  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、节点扩展和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
+  { types: 'FIELD', editable: '显示标签、父容器、兼容组件、必填/只读/隐藏、默认值、占位、组件参数、类型兼容校验、模式权限、gridSpan、事件和受控数据源。', boundary: 'Usage 仅 FIELD_OPTIONS、FIELD_DEFAULT、FIELD_COMPUTE、AFTER_LOAD、BEFORE_SUBMIT；长度/格式仅 STRING、TEXT，范围仅数值类型；绑定身份锁定。' },
+  { types: 'SUB_FORM', editable: '显示标签、父容器、子表布局、已发布子表单版本、gridSpan、组件参数和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，子实体、关系和外键绑定锁定。' },
+  { types: 'REPEATER', editable: '显示标签、父容器、明细布局、已发布子表单版本、gridSpan、组件参数和受控行数据源。', boundary: '展示位置由父容器决定；Usage 仅 SUBFORM_ROWS、AFTER_LOAD、BEFORE_SUBMIT，不显示 FIELD 默认值、普通组件、校验、模式权限或事件。' },
   { types: 'ACTION_SLOT', editable: '仅合法父容器；用于在表单树中放置稳定动作插槽。', boundary: '插槽标识只读；当前不开放动作、权限、位置、字段规则或数据源编辑。' }
 ]
 

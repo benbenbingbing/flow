@@ -6,7 +6,7 @@
       <template #default="{ page }">
         <component v-if="customForm?.readonly" ref="customFormRef" :is="customForm.component" :form="form" :fields="fields" :entity-fields="entityFields" :model-value="record" :readonly="readonly || !customForm.editable" :mode="mode" :context="runtimeContext" :config="formConfig.customComponentProps || {}" :data-source-runtime="dataSourceRuntime" :services="services" :linkage-state="linkage" :entity-code="context.entityCode" :form-action-slots="formActionSlots" @update:model-value="replaceRecord" @form-action="$emit('action', $event)" />
         <p v-else-if="form.customComponent" class="form-message" role="alert">此业务表单暂不支持手机展示，请在电脑端处理。</p>
-        <MobileFormSections v-else :ref="value => setSectionsRef(page.name, value)" v-model:expanded="expanded" :items="page.items" :record="record" :runtime-options="runtimeOptions" :linkage="linkage" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" :errors="errors" :actions="actions" :action-loading-key="actionLoadingKey" @update-field="setField" @field-change="fieldChange" @field-blur="fieldBlur" @action="$emit('action', $event)" />
+        <MobileFormSections v-else :ref="value => setSectionsRef(page.name, value)" v-model:expanded="expanded" :items="page.items" :record="record" :runtime-options="runtimeOptions" :linkage="linkage" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" :errors="errors" :actions="actions" :action-loading-key="actionLoadingKey" @update-field="setField" @patch-form="applyComponentPatch" @field-change="fieldChange" @field-blur="fieldBlur" @action="$emit('action', $event)" />
         <MobileRelatedContent v-for="composition in page.relatedContents" :key="composition.compositionKey" :composition="composition" :form="form" :context="runtimeContext" :services="services" :data-source-runtime="dataSourceRuntime" />
       </template>
       <template #after-tabs><slot name="after-tabs" /></template>
@@ -17,7 +17,7 @@
 import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { Loading as VanLoading } from 'vant'
 import { getFieldKey, applyRuntimeFieldDefaults } from '@flow/workflow-core/form-runtime'
-import { projectRuntimeFields, settleRuntimeLinkages, runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
+import { resolveComponentFormPatch, projectRuntimeFields, settleRuntimeLinkages, runtimeFieldState, validateRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
 import { createFormUniquePrecheckController, resolveFormUniqueRuntimeIdentity, resolveFormFieldUniqueness } from '@flow/workflow-core/form-field-uniqueness'
 import { useFormCrossFieldValidation } from '@flow/workflow-core/vue/useFormCrossFieldValidation'
 import { useFormCustomValidation } from '@flow/workflow-core/vue/useFormCustomValidation'
@@ -37,7 +37,7 @@ const record = ref(props.modelValue), expanded = ref([]), baseErrors = ref({}), 
 const root = ref(), customFormRef = ref(), sectionRefs = new Map()
 let generation = 0
 const eventRevisions = new Map()
-const projection = computed(() => projectRuntimeFields(props.form, props.entityFields, { rootParentId: props.rootParentId, hasComponent: () => true }))
+const projection = computed(() => projectRuntimeFields(props.form, props.entityFields, { rootParentId: props.rootParentId }))
 const fields = computed(() => projection.value.fields)
 const runtimeOptions = computed(() => ({ form: props.form, record: record.value, mode: props.mode, readonly: props.readonly, context: props.context, rootParentId: props.rootParentId }))
 const linkage = ref({ visibility: {}, disabled: {}, required: {}, options: {}, attachmentItemRequired: {} })
@@ -102,7 +102,7 @@ async function initialize() {
 onBeforeUnmount(() => { generation++ })
 function setField(field, value) {
   const code = getFieldKey(field)
-  if (!code || ['__proto__', 'constructor', 'prototype'].includes(code)) return
+  if (field.isDisplayOnly || !code || ['__proto__', 'constructor', 'prototype'].includes(code)) return
   const before = record.value, after = { ...before, [code]: value }
   cross.touchChanged(before, after); custom.touchChanged(before, after)
   delete baseErrors.value[code]; record.value = after; emit('update:modelValue', after)
@@ -114,6 +114,18 @@ function replaceRecord(value) {
     if (['__proto__', 'constructor', 'prototype'].includes(code) || JSON.stringify(record.value[code]) === JSON.stringify(next)) continue
     setField({ fieldCode: code }, next)
   }
+}
+/** 批量补丁只作用于当前 renderer 的记录；子表有独立 renderer 和字段清单。 */
+async function applyComponentPatch(patch) {
+  const changes = resolveComponentFormPatch(patch, fields.value, record.value, runtimeOptions.value, linkage.value)
+  if (!changes.length) return
+  const before = record.value
+  const after = { ...before, ...Object.fromEntries(changes.map(item => [item.code, item.value])) }
+  cross.touchChanged(before, after); custom.touchChanged(before, after)
+  for (const { code } of changes) delete baseErrors.value[code]
+  record.value = after; emit('update:modelValue', after)
+  await nextTick()
+  for (const { field, value } of changes) await fieldChange(field, value)
 }
 async function fieldChange(field, value) {
   try {
@@ -135,13 +147,8 @@ async function fieldBlur(field) {
 function unsupported(items = tree.value) {
   return items.flatMap(item => {
     if (item.kind === 'field') {
-      const capability = mobileFieldCapability(item.field, item.extensionName), state = runtimeFieldState(item.field, runtimeOptions.value, linkage.value)
+      const capability = mobileFieldCapability(item.field), state = runtimeFieldState(item.field, runtimeOptions.value, linkage.value)
       return state.editable && (!capability.editable || !capability.validate) ? [item.field.fieldCode] : []
-    }
-    if (item.kind === 'extension') {
-      const capability = getMobileExtension('NODE', item.node.componentName, item.node.componentVersion || 1)
-      const state = runtimeFieldState({ id: item.node.id, fieldCode: item.node.nodeKey }, runtimeOptions.value, linkage.value)
-      if (state.editable && (!capability?.editable || !capability?.validate)) return [item.id]
     }
     return item.children ? unsupported(item.children) : []
   })

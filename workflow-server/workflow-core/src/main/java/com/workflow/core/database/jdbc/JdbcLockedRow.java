@@ -71,10 +71,7 @@ public class JdbcLockedRow {
                 }
                 if (row.next()) throw new SQLException("事务锁行唯一键匹配多行", "21000");
             }
-            if (point != null) {
-                try { connection.releaseSavepoint(point); }
-                catch (SQLFeatureNotSupportedException unsupported) { /* 随事务结束清理，不通过提交释放。 */ }
-            }
+            JdbcSavepoints.release(connection, point);
             return null;
         });
     }

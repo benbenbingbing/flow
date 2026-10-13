@@ -108,6 +108,11 @@
           <FormFieldRendererLinkage
             :ref="instance => setFieldRendererRef(field, instance)"
             :field="field"
+            :form-data="formData"
+            :linkage-state="linkageState"
+            :readonly="readonly"
+            :mode="mode"
+            @patch-form="applyRelatedContentPatch"
             v-model="formData[getFieldKey(field)]"
             @update:model-value="crossValidation.touch(getFieldKey(field))"
             :disabled="isFieldDisabled(field)"
@@ -169,6 +174,7 @@
 </template>
 
 <script setup>
+import { projectRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
 import { createFormNodeVisibility } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
@@ -361,7 +367,8 @@ const runtimeContext = computed(() => ({
   formDesignPreview: props.designPreview,
   getFormData: () => formData.value,
   setFormFieldValue: handleFieldChange,
-  scriptFields: processedFields.value,
+  scriptFields: projectRuntimeFields(props.form, props.entityFields, { rootParentId: props.nodeRootParentId }).fields,
+  rootParentId: props.nodeRootParentId,
   mode: props.mode,
   form: props.form,
   readonly: props.readonly,

@@ -659,7 +659,7 @@ public class UiViewCompositionConfigValidator {
         if (value.get("extensionType") != null) {
             result.put("extensionType", requireEnum(
                     value.get("extensionType"),
-                    Set.of("NODE", "FORM", "LIST"),
+                    Set.of("FORM", "LIST"),
                     "自定义组件类型"));
         }
         if (value.get("snapshotVersion") != null) {

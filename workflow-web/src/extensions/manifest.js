@@ -1,9 +1,9 @@
 import { getExtensionCatalog } from './core/catalog.js'
 import { getBuiltInFormFieldComponentNames } from './core/registries/formFieldRegistry.js'
 
-/** 当前构建实际安装的全部十类扩展，包含平台内置与可选示例。 */
+/** 当前构建实际安装的全部九类扩展，包含平台内置与可选示例。 */
 export function getBundledExtensionManifest() { return getExtensionCatalog() }
-/** 服务端目前只治理四类 UI 扩展；保留既有接口类型边界。 */
+/** 服务端目前只治理三类 UI 扩展；保留既有接口类型边界。 */
 export function getManagedExtensionManifest() {
   return getExtensionCatalog().filter(item => item.managed && !(item.type === 'FIELD' && item.origin === 'PLATFORM'))
 }

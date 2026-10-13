@@ -1,6 +1,5 @@
 import { registerCustomFormComponent, registerCustomListComponent } from '../registries/customComponentRegistry.js'
 import { registerFormFieldComponent } from '../registries/formFieldRegistry.js'
-import { registerFormNodeComponent } from '../registries/formNodeRegistry.js'
 import { registerCellComponent } from '../registries/listCellRegistry.js'
 import { registerListButtonComponent } from '../registries/listButtonComponentRegistry.js'
 import { registerListToolbarAction, registerListRowAction } from '../registries/listActionRegistry.js'
@@ -12,7 +11,6 @@ export const extensionAdapters = {
   FORM: (entry, value, metadata) => registerCustomFormComponent(entry.name, value, metadata),
   LIST: (entry, value, metadata) => registerCustomListComponent(entry.name, value, metadata),
   FIELD: (entry, value, metadata) => registerFormFieldComponent(entry.name, value, { ...metadata, aliases: entry.aliases || [] }),
-  NODE: (entry, value, metadata) => registerFormNodeComponent(entry.name, value, metadata),
   LIST_CELL: (entry, value, metadata) => registerCellComponent(entry.name, value, metadata),
   LIST_BUTTON: (entry, value) => registerListButtonComponent(entry.name, value),
   VALIDATOR: (entry, value, metadata) => registerCustomValidator(entry.name, value, metadata),

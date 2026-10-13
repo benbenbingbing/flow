@@ -75,6 +75,7 @@ const entityFieldsSource = await source(
 const fieldRendererSource = await source(
   'src/components/FormFieldRendererLinkage.vue'
 )
+const unifiedFieldRendererSource = await source('src/components/FormFieldRenderer.vue')
 const fieldRegistrySource = await source('src/extensions/core/registries/formFieldRegistry.js')
 const formPreviewSource = await source('src/components/FormPreviewLinkage.vue')
 const formNodeRuntimeSource = await source('src/components/FormNodeRuntimeItem.vue')
@@ -234,13 +235,15 @@ assert.equal(projectFieldManifest.name, 'project_acceptance_score')
 assert.match(projectFieldManifest.implementation.path, /ProjectAcceptanceScoreField.vue$/)
 assert.match(fieldRegistrySource, /export function registerFormFieldComponent/)
 assert.match(fieldRegistrySource, /export function resolveFieldComponent/)
-assert.match(fieldRegistrySource, /state.custom/)
+assert.match(fieldRegistrySource, /getFormFieldComponentDescriptor\(componentType, field\?\.componentVersion\)/,
+  '主应用和 Embed 必须使用同一按发布版本解析的组件注册表')
 assert.match(entityDialogSource, /EntityDataFormFields/)
 assert.match(approvalDialogSource, /EntityApprovalBasicInfo/)
 assert.match(entityFieldsSource, /FormPreviewLinkage/)
 assert.match(entityFieldsSource, /FormFieldRendererLinkage/)
 assert.match(entityFieldsSource, /getCustomFormComponent/)
-assert.match(fieldRendererSource, /resolveFieldComponent/)
+assert.match(fieldRendererSource, /import FormFieldRenderer from '\.\/FormFieldRenderer\.vue'/)
+assert.match(unifiedFieldRendererSource, /resolveFieldComponent\(props\.field\)/)
 assertDoesNotContain(
   [formPreviewSource, formNodeRuntimeSource, ...canonicalFieldSources].join('\n'),
   [/cspSafe/, /TrustedFormFieldRenderer/, /isTrustedPublishedRuntime/],

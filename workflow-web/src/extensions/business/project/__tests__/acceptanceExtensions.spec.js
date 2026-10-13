@@ -20,7 +20,7 @@ const expectedComponents = [
   'lists/ProjectAcceptanceBoardList.vue',
   'fields/ProjectAcceptanceScoreField.vue',
   'fields/ProjectAcceptanceLevelField.vue',
-  'nodes/ProjectAcceptanceSummaryNode.vue',
+  'fields/ProjectAcceptanceSummaryField.vue',
   'list-cells/ProjectAcceptanceScoreCell.vue',
   'buttons/ProjectAcceptanceInspectButton.vue',
   'rules/ProjectAcceptanceRuleCondition.vue'
@@ -90,8 +90,7 @@ const expectedFormActionContracts = [
   "targetKey: 'acceptance_form_log'",
   "targetKey: 'acceptance_inline_log'",
   "eventCode: 'FIELD_BUTTON_CLICK'",
-  "fieldComponentName: 'project_acceptance_level'",
-  "componentExtensionType:",
+  "componentType: 'project_acceptance_level'",
   "relationKey: 'projectCustomRelation'",
   "customComponent: 'PROJECT_CUSTOM_LIST_SCHEMA'",
   "providerSchema.viewConfig?.projectCustomSchema",

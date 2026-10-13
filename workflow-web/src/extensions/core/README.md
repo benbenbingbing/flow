@@ -5,7 +5,7 @@
 | 文件/目录 | 用途 | 使用时机 |
 | --- | --- | --- |
 | `installer.js` | 验证导出、实例化、幂等安装 | 应用入口或隔离单元测试 |
-| `adapters/` | 将十类清单映射到现有注册 API | 安装器验证完成后 |
+| `adapters/` | 将九类清单映射到现有注册 API | 安装器验证完成后 |
 | `registries/` | 唯一可执行实现查询 | 宿主渲染、设计器选项 |
 | `catalog.js` | 已安装扩展的纯元数据 | 目录查询和筛选 |
 | `catalogRows.js` | 将元数据投影为管理表格行 | 合并前端与后端扩展目录 |
@@ -58,7 +58,7 @@ extensionAdapters[entry.type](entry, value, metadata)
 
 | 类型 | 适配行为 |
 | --- | --- |
-| FORM / LIST / FIELD / NODE / LIST_CELL | 调用相应组件注册表并传递元数据 |
+| FORM / LIST / FIELD / LIST_CELL | 调用相应组件注册表并传递元数据 |
 | LIST_BUTTON | 按名称安装按钮 Vue 组件；参数由宿主上下文提供 |
 | LIST_ACTION | 按 targets 安装到工具栏、行或两个位置，不执行函数 |
 | VALIDATOR | 安装已有 validate 方法的对象，不在此处 new 类 |
@@ -67,7 +67,7 @@ extensionAdapters[entry.type](entry, value, metadata)
 
 ### 如何新增一种平台类型
 
-仅当现有十类无法表达新的宿主能力时修改此处：先定义契约与运行宿主，再扩展 JSON Schema 和 build/extensions/validate.mjs 的类型检查，随后增加适配器、注册表、目录展示和测试。只在适配器添加一个键不会让设计器或后端自动支持新类型。
+仅当现有九类无法表达新的宿主能力时修改此处：先定义契约与运行宿主，再扩展 JSON Schema 和 build/extensions/validate.mjs 的类型检查，随后增加适配器、注册表、目录展示和测试。只在适配器添加一个键不会让设计器或后端自动支持新类型。
 
 从 `workflow-web/` 运行 `npm run test:extensions` 验证注册映射，再运行 `npm run test:extensions:browser` 和 `npm run build` 检查真实组件导出及两种应用入口。
 
@@ -99,8 +99,7 @@ const RelatedForm = getCustomFormComponent('ContractExampleRelatedForm', 1, unde
 | 注册表文件 | 常用读取接口及用途 |
 | --- | --- |
 | customComponentRegistry.js | getCustomForm/ListComponent、Options、VersionOptions；默认宿主 PAGE，关联内容显式传 RELATED_CONTENT |
-| formFieldRegistry.js | resolveFieldComponent 解析平台/自定义字段；getFormFieldComponent 只查非平台字段 |
-| formNodeRegistry.js | resolveFormNodeDescriptor 校验节点类型和绑定；migrateFormNodeConfig 处理旧配置 |
+| formFieldRegistry.js | resolveFieldComponent 解析平台/自定义字段；getFormFieldComponent 按名称和版本查询统一组件 |
 | listCellRegistry.js | getCellComponent / getCellComponentOptions 查询列渲染器 |
 | listButtonComponentRegistry.js | getListButtonComponent 按名称读取按钮组件 |
 | listActionRegistry.js | getListToolbarAction / getListRowAction 按按钮位置读取处理函数 |
@@ -109,4 +108,4 @@ const RelatedForm = getCustomFormComponent('ContractExampleRelatedForm', 1, unde
 
 表中 Form/List 表示两组分别存在的函数名，不是字面 API 名称。动作返回的 handler 由宿主在点击时调用，不要在初始化时执行。校验器通过 `validateCustomValue(descriptor.validator, value, context)` 归一化结果，避免把错误文本当作成功。
 
-FORM/LIST/NODE/VALIDATOR 保留多版本查询；其余类型由清单检查阻止同名多版本覆盖。修改这些接口时从 `workflow-web/` 运行 `npm run test:extensions` 与相关宿主测试；业务实现不要绕过 JSON 调用 register 函数。
+FORM/LIST/FIELD/VALIDATOR 保留多版本查询；其余类型由清单检查阻止同名多版本覆盖。修改这些接口时从 `workflow-web/` 运行 `npm run test:extensions` 与相关宿主测试；业务实现不要绕过 JSON 调用 register 函数。

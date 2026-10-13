@@ -63,7 +63,7 @@ public class TaskInboxSqlProvider {
             CASE WHEN pt.status='todo' AND (pt.node_type IS NULL OR pt.node_type!='ADD_SIGN')
               THEN CASE WHEN NULLIF(ft.ASSIGNEE_,'') IS NULL THEN 'group' ELSE 'user' END
               ELSE pt.assignee_type END AS assignee_type,
-            pt.status,pt.action,pt.comment,pt.start_time,pt.end_time,
+            pt.status,pt.action,pt.%s,pt.start_time,pt.end_time,
             pt.duration,pt.priority,pt.sla_status,pt.response_due_time,pt.due_time,pt.create_time,
             pt.start_user_id,pt.business_name,pt.business_code,pt.business_data_name,pt.business_current_task_name,
             pt.business_status,pt.inbox_summary_ready,pt.inbox_identity_ready
@@ -76,7 +76,9 @@ public class TaskInboxSqlProvider {
         // 先在数据库确定本页主键，再读取大文本摘要与展示姓名；历史记录数不会放大展示关联。
         String pageIds = "SELECT pt.id " + from(query, query.getStartUserName() != null) + scope(query)
                 + filters(query, context) + order + DatabaseQuerySql.page(context.getDatabaseId(), "q.offset", "q.pageSize");
-        return "SELECT " + COLUMNS + "," + starter(context) + " AS start_user_name FROM (" + pageIds
+        // COMMENT 是 Oracle 保留字；按工厂方言引用列名，列标签仍为 comment，保持实体结果映射。
+        String columns = COLUMNS.formatted(DatabaseQuerySql.identifier(context.getDatabaseId(), "comment"));
+        return "SELECT " + columns + "," + starter(context) + " AS start_user_name FROM (" + pageIds
                 + ") inbox_page JOIN process_task pt ON pt.id=inbox_page.id " + ENGINE_JOIN + STARTER_JOINS + order;
     }
 

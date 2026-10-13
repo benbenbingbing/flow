@@ -15,7 +15,7 @@ final class JdbcScalarParameterBinder {
     private JdbcScalarParameterBinder() {}
 
     /**
-     * 布尔参数按业务存储约定绑定为整数，其余值交给 Spring 保留既有类型与 NULL 处理。
+     * 布尔参数按业务存储约定绑定为整数，空值使用标准 SQL NULL，其余值交给 Spring 推断类型。
      *
      * @param statement {@code statement}，作为 {@code StatementCreatorUtils.setParameterValue} 的输入影响后续处理
      * @param index 索引，作为 {@code StatementCreatorUtils.setParameterValue} 的输入影响后续处理
@@ -23,7 +23,11 @@ final class JdbcScalarParameterBinder {
      * @throws SQLException 数据库访问或结构检查失败时抛出
      */
     static void bind(PreparedStatement statement, int index, Object value) throws SQLException {
-        if (value instanceof Boolean flag) {
+        if (value == null) {
+            // OB Oracle 服务端预编译在执行前没有 ParameterMetaData；未知类型空值若交给
+            // Spring 推断会触发驱动的空元数据问题，与 MyBatis 的 NULL 绑定约定保持一致。
+            StatementCreatorUtils.setParameterValue(statement, index, Types.NULL, null);
+        } else if (value instanceof Boolean flag) {
             StatementCreatorUtils.setParameterValue(statement, index, Types.INTEGER,
                     DatabaseScalarValues.numericBoolean(flag));
         } else {

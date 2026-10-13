@@ -1,18 +1,19 @@
 import LinkageEngine from '../../utils/linkageEngine.js'
 import { resolveRuntimeNodeFieldRules, safeParseConfig } from '../config-runtime/index.js'
-import { resolveRuntimeFormFieldComponentType } from '../form-field-extension.js'
 
-/** 两端共用发布节点到字段的投影；宿主只注入目标平台字段注册查询。 */
-export function resolveRuntimeNodeField(node, fields = [], nestedNodes = [], hasFormFieldComponent = () => false) {
+/** 两端共用发布节点到字段的投影；组件身份只取 componentType，不推断另一种渲染模式。 */
+export function resolveRuntimeNodeField(node, fields = [], nestedNodes = []) {
   if (!['FIELD', 'SUB_FORM', 'REPEATER'].includes(node.nodeType)) return null
   const nodeProps = node.props || {}
-  const componentProps = nodeProps.componentProps || {}
+  const componentProps = safeParseConfig(nodeProps.componentProps)
   const ref = node.bindingRef || nodeProps.fieldCode || nodeProps.fieldId
-  const linked = fields.find(field =>
+  // 显式无绑定节点不能因为 nodeKey 与实体字段同名而继承其值或校验规则。
+  const displayOnly = node.nodeType === 'FIELD' && node.bindingType === 'NONE'
+  const linked = ref != null && !displayOnly ? fields.find(field =>
     String(field.id) === String(ref)
       || String(field.fieldId) === String(ref)
       || field.fieldCode === ref
-  )
+  ) : undefined
   const subFormConfig = componentProps.subFormConfig || nodeProps.subFormConfig || {}
   const nodeFieldRules = resolveRuntimeNodeFieldRules(
     linked || {},
@@ -25,7 +26,7 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = [], has
       }
     : {
         fieldType: node.nodeType,
-        componentType: 'sub_form'
+        componentType: node.nodeType === 'FIELD' ? 'input' : 'sub_form'
       }
   const fallbackComponentType =
     nodeProps.componentType
@@ -41,11 +42,13 @@ export function resolveRuntimeNodeField(node, fields = [], nestedNodes = [], has
     fieldName: nodeProps.fieldName || linked?.fieldName || nodeProps.label || node.nodeKey,
     fieldLabel: nodeProps.label || linked?.fieldLabel || linked?.fieldName || node.nodeKey,
     fieldType: nodeProps.fieldType || linked?.fieldType || fallback.fieldType,
-    componentType: resolveRuntimeFormFieldComponentType(
-      node,
-      fallbackComponentType,
-      hasFormFieldComponent
-    ),
+    componentType: fallbackComponentType,
+    componentVersion: node.componentVersion || 1,
+    snapshotVersion: node.snapshotVersion || 1,
+    // 保留原节点供统一组件读取绑定/布局；NONE 节点只展示，不生成可提交字段。
+    node,
+    bindingType: node.bindingType,
+    isDisplayOnly: displayOnly,
     placeholder: nodeProps.placeholder ?? linked?.placeholder,
     defaultValue: nodeProps.defaultValue ?? linked?.defaultValue,
     isRequired: nodeProps.required === true ? 1 : (linked?.isRequired || 0),

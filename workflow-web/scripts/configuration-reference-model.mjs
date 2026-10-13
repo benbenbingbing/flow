@@ -756,8 +756,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityFormList.vue', '^form\\.', '实体配置-表单-编辑'),
 
   locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(fieldLabel|componentType|placeholder|gridSpan|isRequired|isReadonly|isHidden)$', '实体配置-表单-编辑-字段属性-常用'),
-  locationRule('src/views/EntityFormDesignByEntity.vue', '^selectedField\\.(componentName|templateId)$', '实体配置-表单-编辑-字段属性-复用与扩展'),
-  locationRule('src/views/EntityFormDesignByEntity.vue', '^(selectedComponentConfig|viewConfig\\.customComponentProps)$', '实体配置-表单-编辑-字段属性-复用与扩展-组件参数'),
+  locationRule('src/views/EntityFormDesignByEntity.vue', '^(selectedComponentConfig|viewConfig\\.customComponentProps)$', '实体配置-表单-编辑-基础与布局-组件参数'),
 
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.actionBar$', '实体配置-表单-编辑-表单设置-按钮与操作'),
   locationRule('src/components/form-designer/FormDesignerSettingsDrawer.vue', '^viewConfig\\.inputParameterSchema$', '实体配置-表单-编辑-表单设置-初始化与数据处理-输入参数'),
@@ -947,7 +946,6 @@ export const STRUCTURED_CONFIGURATIONS = Object.freeze([
   formNodeProperty('componentProps', '组件参数', '保存字段组件或容器组件的结构化参数。', '{"clearable":true}', '运行时组件读取受支持参数，未知参数被忽略。', 'FIELD、SUB_FORM、REPEATER 或扩展节点'),
   formNodeProperty('dataSource', '节点扩展接口', '绑定字段选项、默认值、计算、加载后或提交前使用的扩展接口。', '{"usage":"FIELD_OPTIONS","extensionId":"10001"}', '运行时在对应阶段调用已发布扩展接口并应用映射。', 'FIELD、SUB_FORM、REPEATER'),
   formNodeProperty('events', '统一事件绑定', '保存字段或表单标准事件的受管理接口执行链。', '{"ENTITY_SELECTED":{"steps":[]}}', '事件发生时按发布快照执行条件、映射和失败策略。', 'FIELD'),
-  formNodeProperty('nodeExtension', '节点扩展', '绑定已注册节点扩展及实现、快照版本。', '{"componentName":"ProjectCard","componentVersion":1}', '运行时只加载注册扩展，不允许任意组件路径。', '支持扩展的节点'),
 
   ...[
     ['create.visible', '新增时显示', true, '新增表单显示该字段。'],
@@ -1988,12 +1986,6 @@ const CONTROL_OVERRIDES = Object.freeze({
     meaning: '覆盖实体字段在当前表单中的显示标签，不改变实体字段名称。',
     example: '项目负责人',
     expectedEffect: '只有当前表单显示新标签，同一实体的其他表单不受影响。'
-  },
-  'src/views/EntityFormDesignByEntity.vue:selectedField.componentName': {
-    label: '节点扩展组件',
-    meaning: '选择一个已注册且兼容当前节点类型的表单节点扩展组件。',
-    example: 'customer-risk-summary',
-    expectedEffect: '发布快照锁定该扩展及版本，运行时用它替代内置节点渲染；清空后恢复内置节点。'
   },
   'src/views/EntityFormDesignByEntity.vue:selectedComponentConfig': {
     label: '组件属性',

@@ -20,7 +20,7 @@
 | examples/demo | 三个现有 Demo；origin=EXAMPLE | extensions/examples/demo |
 | examples/contracts | 默认禁用的契约/模板示例；origin=EXAMPLE | extensions/templates、extensions/examples/contracts |
 
-注册文件夹建议为 forms、fields、nodes、lists、list-cells、buttons、actions、validators、rules、permissions，只创建用到的类型。业务归属必须放在模块目录下，例如 `business/project/fields/`。实现路径可与清单目录不同。
+注册文件夹建议为 forms、fields、lists、list-cells、buttons、actions、validators、rules、permissions，只创建用到的类型。业务归属必须放在模块目录下，例如 `business/project/fields/`。实现路径可与清单目录不同。
 
 `origin`、`module`、`sourceFile` 由构建器生成，不在 JSON 中填写。目录不是运行权限边界。
 
@@ -33,7 +33,7 @@
 | `$schema` | 否，推荐 | 编辑器补全所用 Schema 路径，相对当前 JSON；不是组件路径。普通三层清单用 `../../../schemas/extension.schema.json`，如 common/validators；模块四层用 `../../../../schemas/extension.schema.json`，如 business/project/fields |
 | `$comment` | 否，推荐 | 面向开发者的注释字符串，说明用途、绑定位置和特殊约束；不会执行业务逻辑 |
 | `schemaVersion` | 是 | 清单协议版本，当前只能为数字 1；新增普通组件不需要提升 |
-| `type` | 是 | 下表十类之一，决定安装适配器和宿主契约 |
+| `type` | 是 | 下表九类之一，决定安装适配器和宿主契约 |
 | `name` | 是 | 业务配置引用的稳定注册名。字母开头，后续允许字母、数字、下划线、点、冒号、连字符，总长不超过 100；移动文件不要改 name |
 | `label` | 是 | 非空显示名称，供支持元数据的设计器和扩展目录展示 |
 | `description` | 否 | 面向使用者的用途说明；省略时按空说明处理，不替代组件逻辑 |
@@ -45,15 +45,14 @@
 | `defaultConfig` | 否，仅 ACTION_CONDITION | 新建条件的默认参数对象，每次深复制；默认空对象；与 hooks.createDefault 互斥 |
 | `aliases` | 否，仅平台 FIELD | 历史组件别名数组；按小写匹配，不能与其他活动字段名称/别名冲突 |
 | `defaultForFieldTypes` | 否，仅平台 FIELD | 新增哪些实体字段类型时默认选本控件，例如 INTEGER、DECIMAL；同一类型只能有一个默认控件 |
-| `hooks` | 否 | 可执行函数的源码引用；当前仅 createDefault、migrateConfig，见第七节 |
+| `hooks` | 否 | 可执行函数的源码引用；当前仅 createDefault，见第七节 |
 
 ### type 与加载形态
 
 | type | implementation.kind | 用途、配置位置 |
 | --- | --- | --- |
 | FORM | COMPONENT | 实体整表单组件；普通页面 PAGE，关联内容另声明 RELATED_CONTENT |
-| FIELD | COMPONENT | 单字段控件；设计器保存注册名，参数从 field.componentProps 读取 |
-| NODE | COMPONENT | 表单节点；用 nodeTypes、supportedBindings 限定宿主 |
+| FIELD | COMPONENT | 统一表单组件；设计器保存 props.componentType，config 为实例参数，同时接收当前值 modelValue 和当前表单 formData |
 | LIST | COMPONENT | 整列表呈现；数据、分页和动作由列表宿主传入 |
 | LIST_CELL | COMPONENT | 列 renderComponent；renderConfig 作为组件 config |
 | LIST_BUTTON | COMPONENT | 自定义/组件按钮；customHandler 填 name |
@@ -84,12 +83,12 @@
 
 | 属性 | 默认/限制 | 含义和使用方式 |
 | --- | --- | --- |
-| `snapshotVersion` | 正整数，默认 1 | 组件实例配置的结构版本；NODE 的旧配置是否调用 migrateConfig 由此判断，不是实现版本 |
+| `snapshotVersion` | 正整数，默认 1 | 组件实例配置的结构版本；发布时检查配置结构与组件声明是否匹配，不是实现版本 |
 | `supportedModes` | 数组，默认空 | create/edit/approve/view 中的支持模式声明；不会自动实现只读或权限控制 |
 | `supportedEntityCodes` | 字符串数组，默认空 | 实体编码范围，空数组或 `["*"]` 表示不限；* 不能与其他值混用。供现有消费者筛选/校验，不是实体 ID 或授权结果 |
 | `supportedFieldTypes` | 字符串数组，默认空 | 字段/校验器/单元格等消费者使用的兼容类型，例如 STRING、DECIMAL；请按实际实现填写，空范围的具体处理由宿主决定 |
-| `nodeTypes` | 仅 NODE | 可用节点类型，例如 `["FIELD"]`；省略/空数组不限制此维度；运行解析时检查 |
-| `supportedBindings` | 仅 NODE | 可用绑定类型，例如 `["ENTITY_FIELD"]`；省略/空数组不限制此维度；运行解析时检查 |
+| `nodeTypes` | 仅 FIELD | 可用节点类型，例如 `["FIELD"]` 或 `["SUB_FORM","REPEATER"]`；省略时默认 FIELD，空数组不限制此维度；运行解析时检查 |
+| `supportedBindings` | 仅 FIELD | 可用绑定类型，例如 `["ENTITY_FIELD"]`；省略/空数组不限制此维度；运行解析时检查 |
 | `usageContexts` | 仅 FORM/LIST，非空数组 | PAGE（默认）是普通页面；RELATED_CONTENT 是关联内容。候选、选版和运行装载使用相同过滤；两套契约不同 |
 | `configSchema` | 参数定义数组，默认空 | 声明设计器可填写哪些参数，见下一节；不是当前实体的参数值 |
 | `capabilities` | 对象，默认空 | 实现支持的能力描述，例如 supportedEvents、supportsReadonly；允许业务能力键，不会自动产生事件、校验方法或动作 |
@@ -102,8 +101,7 @@
 
 | 扩展类型 | 实例实际读取位置 |
 | --- | --- |
-| FIELD | field.componentProps |
-| NODE | 宿主解析节点组件参数后传入 config |
+| FIELD | props.componentProps → config，同时提供 field.componentProps |
 | PAGE FORM / LIST | viewConfig.customComponentProps → config |
 | RELATED_CONTENT FORM / LIST | 关联配置 specialHandling.customComponent.props → config |
 | LIST_CELL | renderConfig → config |
@@ -156,21 +154,11 @@ LIST_ACTION 必须写 `"targets":["TOOLBAR"]`、`["ROW"]` 或两者。工具栏�
 
 简单条件写 defaultConfig，例如 `{"field":"status","operator":"EQ","value":"approved"}`，每次新建都深复制，宿主补 type。需要计算默认参数时，改用 hooks.createDefault 引用函数；二者不可同时填写。函数无参返回新的参数对象，实际条件判定需要对应后端实现。
 
-### 节点 migrateConfig
+### 表单组件数据协议
 
-hooks.migrateConfig 仅用于 NODE。每个钩子都有必填的 path、export、kind，路径/导出规则同 implementation，kind 必须为 FUNCTION。例如已有示例使用：
+所有 FIELD 组件共用一次渲染。`modelValue` 是当前绑定字段值，`formData` 是当前表单或子表行；`config` 是组件参数，`node` 和 `field` 提供宿主元数据。读取其他字段使用 formData，更新当前字段发送 `update:modelValue` 与 `change`；更新多字段发送 `patch-form` 字段补丁，由宿主合并并执行联动、事件和校验。禁止直接修改传入对象。
 
-```json
-{
-  "migrateConfig": {
-    "path": "src/extensions/examples/contracts/nodeConfig.js",
-    "export": "migrateSummaryConfig",
-    "kind": "FUNCTION"
-  }
-}
-```
-
-上面是 hooks 的值。宿主传入 `{fromVersion,toVersion,config}`；钩子返回新配置，不改旧快照、不请求业务接口。配套 `metadata.snapshotVersion=2` 的完整清单见 [ContractExampleNode](examples/contracts/nodes/ContractExampleNode.v1.extension.json)。
+子表的 formData 是当前行，不是根表。父表和根表从 context 的作用域信息访问。展示型组件不要求当前绑定值存在。组件仍需遵守 disabled/readonly。组件身份只保存 props.componentType，componentVersion/snapshotVersion 锁定自定义实现和配置版本；没有独立 NODE 注册或运行时旧配置升级钩子。
 
 ### 平台 FIELD 的 aliases / defaultForFieldTypes
 
@@ -201,8 +189,8 @@ aliases 描述同一实现的旧组件名；defaultForFieldTypes 描述新增实
 - 普通清单：enabled 省略或为 true 即参与安装。
 - examples 清单：还需要应用的 enableDemo=true。现有主应用和 Embed 在 `npm run dev` 时默认开启；生产演示构建使用 `VITE_ENABLE_DEMO_EXTENSIONS=true npm run build`。contracts 示例需另把对应清单 enabled 改为 true。
 - enabled=false 影响构建安装；数据库目录启停、表单/列表发布和引用检查是另一条链路，JSON 不绕过它们。
-- FORM/LIST/NODE/VALIDATOR 支持同名不同版本并存；其他类型同名只允许一个活动版本。字段名按小写、条件名按大写判冲突，别名也检查冲突。
-- 管理页可查看十类。服务端目前纳管 FORM/LIST/NODE/FIELD；平台必需字段和其他类型显示“仅构建注册”，没有凭空增加后端纳管接口。
+- FORM/LIST/FIELD/VALIDATOR 支持同名不同版本并存；其他类型同名只允许一个活动版本。字段名按小写、条件名按大写判冲突，别名也检查冲突。
+- 管理页可查看九类。服务端目前纳管 FORM/LIST/FIELD；平台必需字段和其他类型显示“仅构建注册”，没有凭空增加后端纳管接口。
 - 删除或禁用仍被发布配置引用的实现会导致运行缺失。名称/版本不变也不代表自动制品摘要保持不变，摘要锁定按原有协议检查。
 
 ## 十、JSON 注释怎么写、报错怎么查

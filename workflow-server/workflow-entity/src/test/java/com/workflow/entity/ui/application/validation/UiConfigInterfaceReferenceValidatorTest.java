@@ -147,8 +147,8 @@ class UiConfigInterfaceReferenceValidatorTest {
         TestContext context = cascaderContext();
         Map<String, Object> snapshot = Map.of("configType", "FORM",
                 "form", Map.of("id", "form-a", "entityId", "entity-a"),
-                "nodes", List.of(Map.of("nodeType", "FIELD", "componentName", "cascader",
-                        "propsDocument", "{\"componentProps\":{\"cascaderOptions\":[{\"label\":\"无编码\"}]}}")));
+                "nodes", List.of(Map.of("nodeType", "FIELD",
+                        "propsDocument", "{\"componentType\":\"cascader\",\"componentProps\":{\"cascaderOptions\":[{\"label\":\"无编码\"}]}}")));
         assertThrows(IllegalArgumentException.class, () -> context.validator().validate(snapshot));
     }
 
@@ -164,7 +164,7 @@ class UiConfigInterfaceReferenceValidatorTest {
         Map<String, Object> bindings = Map.of("FIELD_OPTIONS", Map.of("extensionId", "service-a"));
         JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
         return Map.of("configType", "FORM", "form", Map.of("id", "form-a", "entityId", "entity-a"),
-                "nodes", List.of(Map.of("nodeType", "FIELD", "componentName", "cascader",
+                "nodes", List.of(Map.of("nodeType", "FIELD",
                         documents ? "propsDocument" : "props", documents ? codec.write(props, "test") : props,
                         documents ? "dataSourceBindingsDocument" : "dataSourceBindings",
                         documents ? codec.write(bindings, "test") : bindings)));

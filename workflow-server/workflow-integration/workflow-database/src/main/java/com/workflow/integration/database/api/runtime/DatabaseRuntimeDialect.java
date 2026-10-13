@@ -71,6 +71,12 @@ public interface DatabaseRuntimeDialect {
     MetadataScope metadataScope();
 
     /**
+     * 驱动无法可靠返回当前 schema 时使用的单列查询；返回 null 表示使用 JDBC 元数据。
+     * 必须读取当前会话的 schema，不能把包含租户和集群路由信息的登录名当作对象所有者。
+     */
+    default String currentSchemaSql() { return null; }
+
+    /**
      * 生成互斥锁调用描述；锁名兼容既有发布器，调用方负责连接生命周期及事务。
      *
      * @param namespace 命名空间，供本方法锁定方案时使用

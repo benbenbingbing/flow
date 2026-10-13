@@ -11,10 +11,8 @@
  * @property {string[]} [supportedFieldTypes=[]] 字段扩展的兼容实体字段类型。
  * @property {string[]} [supportedEntityCodes=[]] 空数组或 ['*'] 表示所有实体。
  * @property {string} [artifactDigest] 仅整表单/整列表注册支持，64 位十六进制 SHA-256。
- * @property {string[]} [nodeTypes=[]] 仅节点注册支持，如 ['FIELD']。
- * @property {string[]} [supportedBindings=[]] 仅节点注册支持，如 ['ENTITY_FIELD']。
- * @property {function({fromVersion: number, toVersion: number, config: Object}): Object} [migrateConfig]
- *   仅节点注册支持；同步返回升级后的配置，不修改入参、不发请求。
+ * @property {string[]} [nodeTypes=["FIELD"]] 表单组件的宿主类型，如 ['FIELD']。
+ * @property {string[]} [supportedBindings=[]] 表单组件的绑定范围，如 ['ENTITY_FIELD']。
  *
  * @typedef {Object} ConfigProperty
  * @property {string} key 参数键，如 emptyText。

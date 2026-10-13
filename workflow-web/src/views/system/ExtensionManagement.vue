@@ -79,7 +79,7 @@
           新增扩展接口
         </el-button>
         <el-button
-          v-if="canUpdate && (!filters.capabilityType || ['UI_FORM', 'UI_LIST', 'UI_NODE', 'UI_FIELD'].includes(filters.capabilityType))"
+          v-if="canUpdate && (!filters.capabilityType || ['UI_FORM', 'UI_LIST', 'UI_FIELD'].includes(filters.capabilityType))"
           type="primary"
           plain
           @click="openCreateUi"
@@ -323,7 +323,6 @@ const typeOptions = [
   { value: 'PERSON_RESOLVER', label: '人员接口' },
   { value: 'UI_FORM', label: '自定义表单' },
   { value: 'UI_LIST', label: '自定义列表' },
-  { value: 'UI_NODE', label: '表单节点' },
   { value: 'UI_FIELD', label: '表单字段' },
   { value: 'UI_LIST_CELL', label: '列表单元格' },
   { value: 'UI_LIST_BUTTON', label: '列表按钮组件' },

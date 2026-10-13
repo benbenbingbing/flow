@@ -1922,7 +1922,7 @@ public class UiViewCompositionService {
      * @return 视图组件条件成立时为 true，否则为 false
      */
     private boolean isViewComponent(UiExtensionDefinition item) {
-        return item != null && Set.of("NODE", "FORM", "LIST").contains(
+        return item != null && Set.of("FORM", "LIST").contains(
                 normalize(item.getExtensionType()));
     }
 

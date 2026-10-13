@@ -446,12 +446,12 @@ assert.match(customComponentRegistrySource, /formUniqueness\.onFieldBlur/)
 assert.match(customComponentRegistrySource, /formUniqueness\.checkField/)
 assert.match(
   fieldRendererSource,
-  /handleRuntimeChange[\s\S]*?checkChangeOnlyUniqueField\(\)/,
+  /handleRuntimeChange[\s\S]*?checkChangeOnlyUniqueField\(field\)/,
   '无可靠 blur 的复合控件必须在 change 链路显式预检'
 )
 assert.match(
   fieldRendererSource,
-  /rule\.precheck\.trigger !== 'BLUR'[\s\S]*?uniquePrecheckContext\.check\(props\.field, 'BLUR'\)/,
+  /rule\.precheck\.trigger !== 'BLUR'[\s\S]*?uniquePrecheckContext\.check\(field, 'BLUR'\)/,
   '映射到 change 的事件仍必须遵循用户配置的 BLUR 规则'
 )
 assert.equal(

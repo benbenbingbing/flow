@@ -425,7 +425,7 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
             @Param("slaStatus") String slaStatus);
     
     /**
-     * 完成任务
+     * 完成任务并保存办理意见；COMMENT 列按当前方言引用，兼容 Oracle 保留字规则。
      *
      * @param id 目标记录 ID，后续用于定位具体数据或配置
      * @param status 状态标识，决定后续完成任务采用的处理分支
@@ -436,7 +436,9 @@ public interface ProcessTaskMapper extends BaseMapper<ProcessTask> {
      */
     @Update("""
             <script>
-            UPDATE process_task SET status = #{status}, action = #{action}, comment = #{comment}, end_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}, duration = #{duration}
+            UPDATE process_task SET status = #{status}, action = #{action},
+              ${@com.workflow.integration.database.api.query.DatabaseQuerySql@identifier(_databaseId, 'comment')} = #{comment},
+              end_time = ${@com.workflow.integration.database.api.runtime.DatabaseRuntimeSql@currentNow(_databaseId)}, duration = #{duration}
              WHERE id = #{id}
             </script>
             """)

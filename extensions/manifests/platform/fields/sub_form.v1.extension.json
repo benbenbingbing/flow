@@ -15,7 +15,11 @@
     "supportedFieldTypes": [
       "SUB_FORM"
     ],
-    "configSchema": []
+    "configSchema": [],
+    "nodeTypes": [
+      "SUB_FORM",
+      "REPEATER"
+    ]
   },
   "aliases": [],
   "defaultForFieldTypes": [

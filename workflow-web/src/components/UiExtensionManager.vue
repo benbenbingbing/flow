@@ -158,7 +158,7 @@ import {
 } from '@/extensions/manifest'
 
 const emit = defineEmits(['changed'])
-const extensionTypes = ['FORM', 'NODE', 'FIELD', 'LIST']
+const extensionTypes = ['FORM', 'FIELD', 'LIST']
 const modes = ['CREATE', 'EDIT', 'APPROVE', 'VIEW']
 const nodeTypes = [
   'SECTION', 'GRID', 'TAB_SET', 'TAB', 'COLLAPSE',
@@ -179,7 +179,6 @@ if (manifestIssues.length) {
 }
 const extensionTypeLabels = {
   FORM: '表单',
-  NODE: '表单节点',
   FIELD: '表单字段',
   LIST: '列表'
 }

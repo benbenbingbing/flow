@@ -1,86 +1,102 @@
 # OceanBase MySQL 模式实库验证（2026-10-13）
 
-验证对象为当前工作区代码，以及本机 Docker `oceanbase-ce` 中的 `OceanBase_CE 4.4.2.1`（MySQL 协议版本 `5.7.25-OceanBase_CE-v4.4.2.1`）。本次按 `docs/sql/obmysql.sql` 空库初始化路径验证，不以 Flyway 历史迁移是否通过作为切换结论。
+## 结论与验证范围
 
-结论：应用能够启动，常用读写和 Flowable 基础执行能够工作；当前实例仍有并发命名锁、TEXT 默认值等运行兼容问题，不能认定可直接完整替换 MySQL。
+本次直接使用 `docs/sql/obmysql.sql` 初始化本机 Docker OceanBase，再运行当前工作区后端、生产 Mapper 和 JDBC Repository。验证对象是 `OceanBase_CE 4.4.2.1`，协议版本 `5.7.25-OceanBase_CE-v4.4.2.1`；使用项目自带 MySQL Connector/J 和显式 `OCEANBASE_MYSQL` 方言。Flyway 历史迁移不是本次兼容判断依据。
 
-## 隔离方式与配置
+已同步初始化结构，并修复实测发现的锁、元数据和 Mapper 映射问题。合法字段配置下，应用启动、实体发布、表单发布、Excel 配置读写及 Flowable 基础执行可以完成。TEXT/LONGTEXT 非 NULL 数据库默认值仍是当前 OB 的能力限制，现在在发布前给出 HTTP 400 配置提示，不再发送不兼容 DDL，也不静默改变字段类型或默认值。
 
-- 未修改本机 `.env`，未停止或重启已有开发服务。
-- 验证应用使用业务端口 `18081`、监控端口 `19091`。
-- 使用独立测试库和仅获测试库权限的 `flow_ob_check` 账号；密码和验证登录令牌只保存在本机临时目录，不进入仓库。
-- 明确设置 `WORKFLOW_DATABASE_VENDOR=oceanbase-mysql`、`SPRING_FLYWAY_ENABLED=false`，使用项目自带 MySQL Connector/J 连接 `127.0.0.1:2881`。
-- 业务池维持项目默认 `READ_COMMITTED`。首次启动关闭后台调度，以便逐项隔离业务验证。
-- Maven 对当前源码完整打包成功。未将已有大量工作区改动回退或替换。
+覆盖以真实执行记录为准，不将缓存命中、只生成 SQL、约束拒绝或空集合提前返回算作 SQL 执行成功；也不把 Mapper SQL 冒烟验证等同所有动态分支和全部业务流程均已覆盖。
 
-建议连接参数（业务和结构数据源均配置）：
+## 环境隔离与切换配置
+
+- 未修改 `.env`，未停止或重启用户原有开发服务。
+- 验证后端使用 `18081`，监控端口 `19091`；所有导入、写入、并发和队列验证只操作独立 `flow_ob_*_20261013` 库。完成后已关闭验证实例，确认两个测试端口均释放，Docker保持运行。
+- 验证账号仅获独立库权限，测试密码/令牌不入库。仅以 root 读取版本/创建验证库及复核随机命名锁问题。
+- 最终应用关闭 Flyway 与 Flowable 自动更新结构，确认初始化脚本本身可满足启动；启用后台调度进行观察。
+- 最终应用 JDBC URL 没有添加 `useInformationSchema=true`，用以证明元数据修复不依赖额外驱动参数。
 
 ```text
-jdbc:mysql://127.0.0.1:2881/<database>?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true&useInformationSchema=true
+WORKFLOW_DATABASE_VENDOR=oceanbase-mysql
+SPRING_FLYWAY_ENABLED=false
+FLOWABLE_SCHEMA_UPDATE=false
+DB_TRANSACTION_ISOLATION=TRANSACTION_READ_COMMITTED
+SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:2881/<database>?serverTimezone=UTC&useUnicode=true&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true
+DB_USERNAME=<application-user>
+DB_PASSWORD=<application-password>
+SCHEMA_DATASOURCE_URL=<同库的结构发布连接地址>
+SCHEMA_DB_USERNAME=<schema-user>
+SCHEMA_DB_PASSWORD=<非空结构账号密码>
 ```
 
-`useInformationSchema=true` 用于解决本次实测的表注释元数据问题；它不能解决命名锁或 TEXT 默认值问题。若只改连接地址而保留 `vendor=auto`，`jdbc:mysql:` 会被识别为普通 MySQL，部分读锁生成 `FOR SHARE`，本机 OceanBase 不支持该语法。必须显式选择 `oceanbase-mysql`，才能使用已适配的 `LOCK IN SHARE MODE`。
+结构数据源使用同类连接参数及独立授权；默认 direct 发布模式必须配置非空结构密码。新事务锁使用业务身份的独立连接，已有数据库须先建立 `sys_database_lock` 并给业务账号授予 INSERT、SELECT，不能只给结构账号授权。不能只改地址而保留 `vendor=auto`：`jdbc:mysql:` 会选择普通 MySQL 方言，可能生成本机 OB 不支持的 `FOR SHARE`；OB 专属分支已经使用 `LOCK IN SHARE MODE`。
 
-## 初始化脚本与应用接口
+## 初始化脚本同步
 
-修改前脚本成功导入，187 张表、100 个外键，无 SQL 错误；但与当前应用结构不同步。缺少当前表单发布的三张表和 Excel 的五张表，另缺人员交接菜单及加签索引调整，并残留退役 hotfix 表。
+原脚本能导入，但只有187表，与近期代码不同步；实测发布表单时报缺少 `entity_form_publication_lock`。
 
-初始应用验证库额外导入了现有 Excel 五表结构，因此这轮应用启动不能算“原脚本单独导入后全部功能可用”。在仍缺表单发布表的情况下，实际 HTTP 结果如下：
+本次更新：
 
-| 操作 | 实测结果 |
+- 增加 `entity_form_published`、`entity_form_publication_lock`、`entity_form_current_default` 及发布锁固定种子。
+- 增加5张 `entity_excel_*` 配置、发布和任务表。
+- 补人员交接菜单及超级管理员授权。
+- 加签人员组合索引改为普通索引，保留生成任务ID唯一约束。
+- 删除已退役的3张 hotfix 表和相关权限种子；保留仍被代码使用的审计字段。
+- 增加 `sys_database_lock`，用于 OB 专用事务互斥。
+
+最终脚本在全新 `flow_ob_final_20261013` 导入：**193张表、99个外键、零SQL错误**。表名逐一匹配；当前94个 `@TableName` 均存在；新增发布/Excel表的类型、NULL、默认值、主键及索引与当前结构逐项一致。交接授权、发布锁种子、退役数据清理均核验通过。
+
+## 修复及回归证据
+
+| 问题 | 处理及结果 |
 | --- | --- |
-| 登录、当前用户、权限读取 | 成功 |
-| 实体分页、流程分页、表单列表 | 成功 |
-| 创建普通实体、发布动态表 | 成功 |
-| 创建表单、读取草稿 | 成功 |
-| 发布表单 | 业务响应 `code=500`；缺 `entity_form_publication_lock` |
-| 发布带非空默认值的 TEXT 字段 | 业务响应 `code=500`；`Invalid default value for 'note'` |
+| OB 并发 GET_LOCK 返回多个成功者 | 改为独立连接中未提交唯一键 INSERT 仲裁，NO WAIT，释放时回滚并关闭；20轮×8连接均严格1赢家，竞争者不等释放便返回，业务提交/回滚/DDL不释放锁，关闭后可重获，持久锁标记为0 |
+| Connector/J 丢失表注释 REMARKS | 仅 OB MySQL 的表列表改读当前库 information_schema；强制 useInformationSchema=false 仍正确返回中文/引号/反斜杠注释，CREATE验收通过，真实注释不一致仍被拒绝 |
+| TEXT/LONGTEXT 非 NULL DEFAULT 被数据库拒绝 | 在生成完整发布计划前校验；支持普通VARCHAR默认值、无非空默认值的大文本，不再半途执行失败或静默丢值 |
+| SysOrganizationMapper.selectParentsByPath 没有绑定语句 | 改为Java拆分路径、绑定IN参数并恢复路径顺序；保留逻辑删除过滤，空路径不生成非法IN或全表读取 |
+| Excel 清理截止时间被 JVM/JDBC 时区二次转换 | 改为与作业写入一致的 UTC LocalDateTime 绑定；原来25小时任务未过期的问题已修复，Asia/Shanghai、UTC、America/New_York 均验证25小时应过期/23小时应保留 |
+| OB RR 序列化冲突6235被归为未知SQL | 在OB MySQL错误方言中分类为事务并发失败，保留原始异常，不当作唯一键成功；不修改其他产品相同数字错误码含义 |
 
-注意接口错误由业务响应体表达，上述失败请求的 HTTP 状态仍为 200，不能只检查 HTTP 状态码。
+GET_LOCK 问题用无 Spring/MyBatis 的6连接 JDBC 屏障最小复现，并在测试账号及root均重复出现，因此不是框架代理造成的误报。该结论仅针对本次版本实例。
 
-## 已确认的运行兼容问题
+新锁有**24小时事务/空闲上限**，释放时检查标记；这不是执行过程中的 fencing。任务必须在上限内完成。升级到新OB锁实现时，必须先停止旧 GET_LOCK 发布器及 worker，再启动新版本，两种锁机制不能混跑。MySQL 保留原有命名锁行为。
 
-### 并发 GET_LOCK 没有维持单一持有者
+显式 `REPEATABLE_READ` 的旧快照并发场景可能返回6235，这是与MySQL当前读不同的条件风险；本次使用默认 `READ_COMMITTED`。错误分类修复不意味着已经实现RR下所有完整业务事务的自动重试。
 
-六个独立 JDBC 连接同时执行 `GET_LOCK(同一随机名称, 0)`，所有连接在取得返回值后等待同一个屏障，确保测试期间不会提前释放锁。十轮中八轮出现多个连接同时返回 `1`；首轮六个连接均返回 `1`。`IS_USED_LOCK` 只指向其中一个连接，其余“持有者”释放时返回 `0`。测试连接为 `READ-COMMITTED`。
+## 实际应用与引擎执行
 
-这是本机当前版本实例的实测结果，不外推至所有 OceanBase 版本/租户。生产 `StandardDatabaseRuntimeDialect.lockPlan` 对 OB MySQL 复用 `GET_LOCK`，`JdbcDatabaseLock` 将返回 `1` 作为进入临界区的依据。因此实体发布、结构任务 worker 和依赖该锁的清理任务存在并发互斥风险；仅验证单连接获取/释放锁会漏掉这个问题。
+最终独立构建JAR重新启动后，再次验证登录、用户/权限、实体/流程/表单列表、当前表单运行配置及Excel配置读取，全部成功，启动和请求日志零错误。
 
-应在目标生产版本和租户复测，并为 OB 采用经过并发验证的互斥实现，或确认所用版本已修复该行为；不能只吞掉释放异常。
+使用真实认证后的接口验证：登录、当前用户/权限、实体和流程列表；创建实体及动态表发布；创建表单、草稿读取、覆盖发布、当前运行配置读取；Excel方案生成、保存、发布、默认方案配置保存/发布及引用查询。初始化脚本补齐后，表单发布由缺表失败变为成功。
 
-### TEXT / LONGTEXT 非空默认值不兼容
+新增 Excel JdbcTemplate 路径另跑26项实库回归（22项作业事务/文件处理、3项文件仓储、1项三时区边界），全部通过；覆盖幂等重试、失败回滚、错误明细分页、真实XLSX解析/导出、任务过期与文件登记删除。权限、运行计划解析和实体写入入口部分使用测试替身，因此不等同完整HTTP导入/导出业务验收。清理修复前存在“25小时任务仍未过期”的2项失败，修复后均通过。
 
-生产 `OceanBaseMySqlSchemaDdlDialect` 继承 MySQL 方言，生成 `TEXT DEFAULT ('value')`。实测 TEXT 和 LONGTEXT 的括号表达式默认值、普通字符串默认值均被拒绝；`DEFAULT NULL` 可用，VARCHAR 默认值可用。
+Flowable 7.2.0 在禁用schema更新的条件下，完成 `start → admin userTask → end` 的部署、启动、待办查询、中文变量读回、任务完成与布尔变量更新；确认运行实例/待办均归零，流程/任务历史存在且已结束。它验证的是引擎闭环，不代替所有审批监听器、会签、嵌入和外部集成场景。
 
-真实实体发布接口已复现该错误。需要在 OB 字段发布校验/方言中明确处理非空长文本默认值，或在写入业务层落实等效语义，不能静默丢弃默认值。
+最终在独立临时目录完整编译全部20个Maven模块并打包，32项定向单元/接口/实库测试全部通过（零失败、零错误、零跳过）。独立目录避免本机IDE生成的临时编译产物干扰结果；未清理用户工作区target。新增OB实库回归分别覆盖生产Mapper执行、组织路径/发布配置/游标数据断言、元数据与独立事务锁。最终 Mapper 扫描为 **119个 Mapper、694个不同 MappedStatement、996次真实 JDBC 执行全部成功，0次拒绝**。嵌入授权、启动、会话、回执和租约的12条 INSERT 均构造了完整合法依赖，检查写入、读回和新连接中的回滚结果；没有约束失败豁免。逐项口径见 [Mapper执行覆盖清单](obmysql-mapper-coverage-2026-10-13.md)。
 
-### JDBC 表注释读取影响结构队列验收
+修复后重跑6个结构发布队列场景及2个动态结构场景，8项全部通过，包含并发生产/消费、失效租约、不重复执行DDL、重放校验、全部存储类型与增改删列。大文本合法配置不设置非空数据库默认值；拒绝路径由专用测试验证。探索阶段205个旧实库方法的红色结果已区分过期fixture、RR条件与真实兼容问题，没有将其直接当成205个最终通过用例。
 
-表实际创建成功，`information_schema.TABLES.TABLE_COMMENT` 正确，但默认 Connector/J 元数据路径的 `DatabaseMetaData.getTables().REMARKS` 返回空串。`JdbcSchemaMetadata.tables()` 依赖该字段，导致 `SchemaDdlReplayVerifier` 将有注释的 CREATE TABLE 判为未正确执行，结构队列任务无法正常确认。
+## 可重复执行
 
-本次实测在 JDBC URL 加 `useInformationSchema=true` 后，表注释及 CREATE TABLE 验收通过。列、索引、字符集及存储引擎并不是这一失败的原因。
+预先创建本机 `flow_ob_mapper_*` 独立库，按脚本说明设置随机 `@INIT_SIGNING_KEY` 后导入 `docs/sql/obmysql.sql`。凭据通过环境传入，不写入代码：
 
-### 非默认 REPEATABLE_READ 的条件风险
+```bash
+export FLOW_OBMYSQL_TEST_URL='jdbc:mysql://127.0.0.1:2881/flow_ob_mapper_check?serverTimezone=UTC&characterEncoding=utf-8&connectionCollation=utf8mb4_unicode_ci&nullCatalogMeansCurrent=true'
+export FLOW_OBMYSQL_TEST_USER='<test-user>'
+export FLOW_OBMYSQL_TEST_PASSWORD='<test-password>'
+cd workflow-server
+mvn -pl workflow-app -am test \
+  -Dtest=OceanBaseMapperDatabaseTest,OceanBaseSchemaMetadataDatabaseTest,OceanBaseDatabaseLockDatabaseTest,EntityExcelJobCleanupTimezoneDatabaseTest \
+  -Dsurefire.failIfNoSpecifiedTests=false
+```
 
-显式使用 `REPEATABLE_READ`、先建立旧快照再参与并发更新的测试，出现 `SQLState=25000 / error=6235 / can't serialize access for this transaction`。当前 OB 错误分类没有收录 6235，部分路径表现为 `UncategorizedSQLException`。
+Mapper测试严格限制本机 `flow_ob_mapper_*` 库，显式使用 JDBC 事务并强制回滚；生成的动态探测表会清理。需要完整授权对象的 INSERT 使用专用合法依赖样本，不关闭外键/CHECK，也不豁免数据库异常。默认不设置上述环境时，这些实库测试跳过。
 
-该结果不能直接推导默认 `READ_COMMITTED` 的业务路径失败。若部署改为 RR，需要补充事务重试、错误映射和冲突结果读取验证。
+本机原始证据位于 `/tmp/flow-ob-validation/`，包括初始化导入、HTTP、命名锁最小复现、修复回归及生产MappedStatement执行记录。本报告及仓库证据不保存测试凭据；临时目录中的本机凭据文件不得提交。
 
-## 通过的代表性执行路径
+## 迁移清单
 
-- 生产 Mapper 的 CRUD、分页、排序、权限绑定、多值关联、NULL/布尔/时间值处理等大量实库回归。
-- `REGEXP_LIKE`、中文正则、`JSON_TABLE`、`UTC_TIMESTAMP(6)`、`TIMESTAMPADD`。
-- `UPDATE/DELETE ... ORDER BY ... LIMIT`、幂等插入、行锁及 OB 方言共享锁。
-- Flowable 7.2.0：不更新表结构，部署 `start → admin userTask → end`，启动实例，查询待办，读写中文/布尔变量，完成任务，确认运行实例/任务归零以及流程/任务历史完整。
-
-Flowable 验证为引擎基础闭环，不代表完整应用的所有表单、审批监听器、会签/加签、嵌入和外部集成都已验证。
-
-## 证据和边界
-
-本机过程证据位于 `/tmp/flow-ob-validation/`，包括 `app-start.log`、`http-business.log`、`http-text-default.log`、`probes-suite.log`、`probes-features.log`、`probes-named-lock.log` 和 `flowable-smoke.log`。测试代码及随机独立表放在临时验证目录/库，未替换项目原测试。
-
-真实回归是从现有数据库测试创建临时副本，选择 OB 方言后运行。旧测试中的缺表 fixture、写死 MySQL 的对照 SQL、已经变化的业务断言，以及显式 RR 条件测试必须单独分类，不能把所有红色用例计作 OB 语法不兼容。
-
-本次不会用“可以启动”或“多数用例通过”宣称完整生产兼容；并发命名锁问题仍然影响直接切换的判断。
-
-迁移文件：本次未新增、修改或删除任何 Flyway 迁移。工作区原已有未跟踪的 V115，与本次验证无关；这里只同步独立初始化 SQL。
+- 新增：`workflow-server/workflow-db-migrator/src/main/resources/db/migration/V116__oceanbase_transaction_mutex.sql`，只增加运行时事务锁表，便于已有数据库部署新代码。
+- 修改或删除历史版本迁移：无。
+- 同步独立空库初始化脚本：`docs/sql/obmysql.sql`；未建立Flyway B基线、未执行repair。

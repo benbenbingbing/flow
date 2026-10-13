@@ -19,6 +19,7 @@ import com.workflow.process.form.infrastructure.persistence.mapper.FormConfigMap
 import com.workflow.process.configuration.infrastructure.persistence.mapper.NodeConfigMapper;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.ProcessNodeApprovalMapper;
 import com.workflow.process.configuration.application.ProcessNodeApprovalOptionService;
+import com.workflow.process.configuration.application.NodeDisplayName;
 import com.workflow.process.form.infrastructure.persistence.mapper.ProcessNodeFormMapper;
 import com.workflow.entity.data.application.EntityFlowStatusService;
 import lombok.RequiredArgsConstructor;
@@ -116,7 +117,7 @@ public class ProcessDefinitionNodeSyncService {
             for (int i = 0; i < userTasks.getLength(); i++) {
                 Element userTask = (Element) userTasks.item(i);
                 String nodeId = userTask.getAttribute("id");
-                String nodeName = userTask.getAttribute("name");
+                String nodeName = NodeDisplayName.resolve(nodeId, userTask.getAttribute("name"));
                 if (nodeId == null || nodeId.isEmpty()) {
                     continue;
                 }
@@ -181,7 +182,7 @@ public class ProcessDefinitionNodeSyncService {
             for (int i = 0; i < userTasks.getLength(); i++) {
                 Element userTask = (Element) userTasks.item(i);
                 String nodeId = userTask.getAttribute("id");
-                String nodeName = userTask.getAttribute("name");
+                String nodeName = NodeDisplayName.resolve(nodeId, userTask.getAttribute("name"));
                 if (nodeId == null || nodeId.isEmpty()) {
                     continue;
                 }
@@ -322,7 +323,7 @@ public class ProcessDefinitionNodeSyncService {
         NodeConfig node = new NodeConfig();
         node.setId(dto.getId());
         node.setNodeId(dto.getNodeId());
-        node.setNodeName(dto.getNodeName());
+        node.setNodeName(NodeDisplayName.resolve(dto.getNodeId(), dto.getNodeName()));
         node.setNodeType(dto.getNodeType());
         node.setConfigJson(dto.getConfigJson());
         node.setSkipNode(dto.getSkipNode());
@@ -435,7 +436,7 @@ public class ProcessDefinitionNodeSyncService {
         NodeConfig node = new NodeConfig();
         node.setProcessConfigId(processConfigId);
         node.setNodeId(nodeId);
-        node.setNodeName(nodeName);
+        node.setNodeName(NodeDisplayName.resolve(nodeId, nodeName));
         node.setNodeType(nodeType);
         node.setSkipNode(resolveSkipNode(nodeType, content));
         nodeMapper.insert(node);
@@ -1029,7 +1030,7 @@ public class ProcessDefinitionNodeSyncService {
         NodeConfig node = new NodeConfig();
         node.setProcessConfigId(processConfigId);
         node.setNodeId(nodeId);
-        node.setNodeName(nodeName);
+        node.setNodeName(NodeDisplayName.resolve(nodeId, nodeName));
         node.setNodeType(nodeType);
         node.setSkipNode(false);
         if (defaultFlow != null && !defaultFlow.isEmpty()) {

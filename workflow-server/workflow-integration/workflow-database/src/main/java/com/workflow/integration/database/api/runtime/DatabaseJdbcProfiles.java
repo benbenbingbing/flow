@@ -2,6 +2,7 @@ package com.workflow.integration.database.api.runtime;
 
 import com.workflow.integration.database.api.DatabaseVendor;
 import java.util.Locale;
+import java.util.Properties;
 
 /** JDBC 驱动及连接初始化集中定义；兼容模式方言和驱动 URL 是两个独立概念。 */
 public final class DatabaseJdbcProfiles {
@@ -9,6 +10,35 @@ public final class DatabaseJdbcProfiles {
      * 初始化数据库JDBC{@code profiles}，保存构造参数供后续方法使用。
      */
     private DatabaseJdbcProfiles() {}
+
+    /**
+     * 未知兼容模式的连接只启用 OceanBase 注释读取，不根据相同的 JDBC URL 猜测租户模式。
+     * 需要 Oracle 主键及 CLOB 协议的调用方必须使用带 vendor 的重载。
+     */
+    public static Properties connectionProperties(String url) {
+        return connectionProperties(null, url);
+    }
+
+    /**
+     * 按明确的产品和驱动设置连接属性，不改变其他方言的预编译及游标策略。
+     *
+     * @param vendor 已选择的数据库产品；null 表示旧入口未提供模式，只设置通用驱动属性
+     * @param url JDBC URL，决定是否使用 OceanBase 驱动专用属性
+     * @return 每次创建的属性集合；显式 URL 参数仍由驱动处理
+     */
+    public static Properties connectionProperties(DatabaseVendor vendor, String url) {
+        var properties = new Properties();
+        if (url != null && url.toLowerCase(Locale.ROOT).startsWith("jdbc:oceanbase:")) {
+            properties.setProperty("remarksReporting", "true");
+            if (vendor == DatabaseVendor.OCEANBASE_ORACLE) {
+                // Oracle 的命名生成键需要服务端预编译，Reader/InputStream 还需要分片协议。
+                // 驱动会同时开启 serverPrepStmts/cursorFetch，因此必须排除 OB MySQL 租户。
+                properties.setProperty("useOraclePrepareExecute", "true");
+                properties.setProperty("usePieceData", "true");
+            }
+        }
+        return properties;
+    }
 
     /**
      * 生成{@code driver}文本，供后续匹配或展示。

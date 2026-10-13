@@ -6,7 +6,6 @@ import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import com.workflow.integration.database.api.error.DatabaseErrorKind;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Savepoint;
 import java.util.Objects;
 import java.util.function.IntSupplier;
@@ -63,7 +62,7 @@ public class JdbcWriteAttempt {
             } catch (RuntimeException error) {
                 try {
                     connection.rollback(point);
-                    release(connection, point);
+                    JdbcSavepoints.release(connection, point);
                 } catch (SQLException recovery) {
                     // 死锁/断连可能使保存点失效；禁止继续使用已损坏或已整体回滚的事务。
                     recovery.addSuppressed(error);
@@ -71,7 +70,7 @@ public class JdbcWriteAttempt {
                 }
                 throw classify(error);
             }
-            release(connection, point);
+            JdbcSavepoints.release(connection, point);
             return result;
         });
     }
@@ -90,17 +89,4 @@ public class JdbcWriteAttempt {
                 ? new DataAccessResourceFailureException("重复键异常同时包含无法恢复的其他数据库错误", error) : error;
     }
 
-    /**
-     * 处理发布版本，并将结果传给后续步骤。
-     *
-     * @param connection 连接，供本方法处理发布版本时使用
-     * @param point {@code point}，作为 {@code connection.releaseSavepoint} 的输入影响后续处理
-     * @throws SQLException 数据库访问或结构检查失败时抛出
-     */
-    private static void release(Connection connection, Savepoint point) throws SQLException {
-        try { connection.releaseSavepoint(point); }
-        catch (SQLFeatureNotSupportedException unsupported) {
-            // Oracle 等驱动可由外层事务结束清理；不能通过提交模拟保存点释放。
-        }
-    }
 }

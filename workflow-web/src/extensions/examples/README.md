@@ -31,13 +31,11 @@ VITE_ENABLE_DEMO_EXTENSIONS=true npm run build
 | contracts/validatorFactory.js | 导入 createTextLengthValidator，或启用 contract_text_length 的 FACTORY 清单 |
 | contracts/refreshAction.js | 启用 contractExampleRefresh 清单，列表按钮设为自定义/函数，处理器填该名称 |
 | contracts/permissions.js | 启用 contractExamplePermissionOptions 清单，权限编辑器查询当前上下文时调用候选提供器 |
-| contracts/nodeConfig.js | 在 NODE 的 hooks.migrateConfig 中引用 migrateSummaryConfig；ContractExampleNode 清单已有配置 |
 
 例如在项目 JS 模块中直接体验工厂与迁移：
 
 ```js
 import { createTextLengthValidator } from '@/extensions/examples/contracts/validatorFactory.js'
-import { migrateSummaryConfig } from '@/extensions/examples/contracts/nodeConfig.js'
 
 const validator = createTextLengthValidator({ services: {} })
 const result = validator.validate('你好世界', { params: { maxLength: 3 } })

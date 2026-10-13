@@ -43,8 +43,11 @@ for (const file of files) {
   const source = readFileSync(path.join(root, file), 'utf8')
   // 先限定单个组件标签，避免 content-only 帮助跨到后面的 JSON 帮助并误读其键。
   for (const match of source.matchAll(/<ConfigHelpLabel\b(?:[^"'<>]|"[^"]*"|'[^']*')*\/>/g)) {
-    const helpKey = match[0].match(/\bhelp-key="([^"]+)"/)?.[1]
+    // Vue 动态绑定是表达式，不能把整个三元表达式当作帮助键；仍检查其中的字面量引用。
+    const helpKey = match[0].match(/(?:^|\s)help-key="([^"]+)"/)?.[1]
     if (helpKey) usedKeys.add(helpKey)
+    const expression = match[0].match(/:help-key="([^"]+)"/)?.[1]
+    for (const literal of (expression || '').matchAll(/'([^']*)'/g)) if (literal[1]) usedKeys.add(literal[1])
   }
 }
 

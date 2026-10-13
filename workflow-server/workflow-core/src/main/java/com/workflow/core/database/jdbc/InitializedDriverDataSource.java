@@ -1,6 +1,7 @@
 package com.workflow.core.database.jdbc;
 
 import com.workflow.integration.database.api.runtime.DatabaseJdbcProfiles;
+import com.workflow.integration.database.api.DatabaseVendor;
 
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import java.sql.Connection;
@@ -22,6 +23,22 @@ public final class InitializedDriverDataSource extends DriverManagerDataSource {
      * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
      */
     public InitializedDriverDataSource(String url, String username, String password, String driver, String initializationSql) {
+        this(null, url, username, password, driver, initializationSql);
+    }
+
+    /**
+     * 按明确的数据库产品构造独立连接；OB 两种租户共用 URL，不能据此推断 Oracle 协议。
+     *
+     * @param vendor 已选择的产品；旧构造传 null 时保留普通预编译和游标行为
+     * @param url JDBC URL，决定驱动及其专用属性
+     * @param username 登录用户，允许包含租户路由
+     * @param password 登录密码，不得为 null
+     * @param driver 显式驱动类；为空时由 URL 选择
+     * @param initializationSql 每次物理连接创建后执行的初始化 SQL；为空则不执行
+     * @throws IllegalStateException 必要连接信息缺失时抛出
+     */
+    public InitializedDriverDataSource(DatabaseVendor vendor, String url, String username, String password,
+                                       String driver, String initializationSql) {
         if (url == null || url.isBlank()) throw new IllegalStateException("数据库 URL 不能为空");
         if (username == null || username.isBlank()) throw new IllegalStateException("数据库用户名不能为空");
         if (password == null) throw new IllegalStateException("数据库密码未配置");
@@ -29,6 +46,7 @@ public final class InitializedDriverDataSource extends DriverManagerDataSource {
         setUsername(username);
         setPassword(password);
         setDriverClassName(DatabaseJdbcProfiles.driver(url, driver));
+        setConnectionProperties(DatabaseJdbcProfiles.connectionProperties(vendor, url));
         this.initializationSql = initializationSql;
     }
 

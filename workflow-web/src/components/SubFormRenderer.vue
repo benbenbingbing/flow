@@ -57,6 +57,9 @@
                   <FormFieldRenderer
                     v-model="rowData[0][field.fieldKey]"
                     :field="field"
+                    :form-data="rowData[0]"
+                    mode="edit"
+                    @patch-form="applyRowPatch(rowData[0], 0, $event)"
                     @change="handleFieldChange(rowData[0], field, 0, $event)"
                     @blur="handleFieldBlur(rowData[0], field, 0, $event)"
                   />
@@ -110,6 +113,9 @@
                   <FormFieldRenderer
                     v-model="row[field.fieldKey]"
                     :field="field"
+                    :form-data="row"
+                    mode="edit"
+                    @patch-form="applyRowPatch(row, index, $event)"
                     @change="handleFieldChange(row, field, index, $event)"
                     @blur="handleFieldBlur(row, field, index, $event)"
                   />
@@ -157,6 +163,9 @@
               <FormFieldRenderer
                 v-model="row[field.fieldKey]"
                 :field="field"
+                :form-data="row"
+                mode="edit"
+                @patch-form="applyRowPatch(row, $index, $event)"
                 @change="handleFieldChange(row, field, $index, $event)"
                 @blur="handleFieldBlur(row, field, $index, $event)"
               />
@@ -534,6 +543,18 @@ function validateField(row, field, index) {
  * 将 legacy fields-only 字段交互上报给宿主子表。唯一预检依赖子表
  * 发布身份，不能在这个纯渲染组件中误用父表上下文。
  */
+/** 子表补丁仅更新当前行可编辑列，随后逐列通知宿主，不能把明细补丁写入父表。 */
+function applyRowPatch(row, index, patch) {
+  if (props.readonly || props.disabled || !patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  const changes = Object.entries(patch).flatMap(([key, value]) => {
+    if (['__proto__', 'constructor', 'prototype'].includes(key)) return []
+    const field = props.config.fields.find(item => (item.fieldKey || item.fieldCode) === key)
+    return field?.isEditable && !field.isReadonly ? [{ field, key, value }] : []
+  })
+  for (const { key, value } of changes) row[key] = value
+  for (const { field, value } of changes) handleFieldChange(row, field, index, value)
+}
+
 function handleFieldChange(row, field, index, event) {
   emit('field-change', { row, field, index, event })
 }

@@ -41,6 +41,18 @@ public final class DatabaseQuerySql {
     }
 
     /**
+     * 引用源码中固定的列名，避免 COMMENT 等业务字段与 Oracle 保留字冲突。
+     * 标识符校验和大小写归一化由当前方言负责；不能把请求参数作为 SQL 片段传入。
+     *
+     * @param databaseId 当前 MyBatis 工厂的数据库标识
+     * @param identifier 单个固定表名或列名，不包含别名、点号或表达式
+     * @return 按当前数据库规则引用后的标识符
+     */
+    public static String identifier(String databaseId, String identifier) {
+        return DatabaseQueryDialects.forDatabaseId(databaseId).quoteIdentifier(identifier);
+    }
+
+    /**
      * 将源码中固定的整数标识列转为文本；只生成表达式，不绑定业务值或执行数据库操作。
      *
      * @param databaseId 数据库ID，后续用于处理整数标识符文本时定位或关联目标

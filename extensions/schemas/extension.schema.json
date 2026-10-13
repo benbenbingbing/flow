@@ -28,7 +28,6 @@
       "enum": [
         "FORM",
         "FIELD",
-        "NODE",
         "LIST",
         "LIST_CELL",
         "LIST_BUTTON",
@@ -99,7 +98,7 @@
         "snapshotVersion": {
           "type": "integer",
           "minimum": 1,
-          "description": "组件配置结构版本；节点配置升级根据此值调用 migrateConfig。"
+          "description": "组件参数结构版本，发布配置与实现声明必须匹配；结构变化通过数据迁移处理。"
         },
         "supportedModes": {
           "type": "array",
@@ -139,7 +138,7 @@
             "minLength": 1
           },
           "uniqueItems": true,
-          "description": "仅 NODE 使用：宿主节点类型白名单，例如 FIELD。"
+          "description": "FIELD 表单组件允许的宿主节点类型，省略时为 FIELD；子表组件可声明 SUB_FORM、REPEATER。"
         },
         "supportedBindings": {
           "type": "array",
@@ -148,7 +147,7 @@
             "minLength": 1
           },
           "uniqueItems": true,
-          "description": "仅 NODE 使用：节点允许的绑定类型，例如 ENTITY_FIELD。"
+          "description": "FIELD 表单组件允许的绑定类型，例如 ENTITY_FIELD、NONE。"
         },
         "usageContexts": {
           "type": "array",
@@ -304,37 +303,6 @@
       "additionalProperties": false,
       "properties": {
         "createDefault": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "path",
-            "export",
-            "kind"
-          ],
-          "properties": {
-            "path": {
-              "type": "string",
-              "minLength": 1,
-              "description": "相对 workflow-web 的源码路径；只允许 src 下本地文件。"
-            },
-            "export": {
-              "type": "string",
-              "pattern": "^(default|[A-Za-z_$][A-Za-z0-9_$]*)$",
-              "description": "导出名称，支持 default 或具名导出。"
-            },
-            "kind": {
-              "enum": [
-                "COMPONENT",
-                "FUNCTION",
-                "OBJECT",
-                "CLASS",
-                "FACTORY"
-              ],
-              "description": "组件/处理函数/对象/无参类/同步实例工厂。"
-            }
-          }
-        },
-        "migrateConfig": {
           "type": "object",
           "additionalProperties": false,
           "required": [

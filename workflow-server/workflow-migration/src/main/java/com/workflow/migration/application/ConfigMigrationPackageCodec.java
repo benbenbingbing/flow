@@ -529,7 +529,7 @@ public class ConfigMigrationPackageCodec {
 
         Set<String> extensionKeys = new LinkedHashSet<>();
         collectValuesForKeys(selected, Set.of(
-                "customComponent", "renderComponent", "componentName"), extensionKeys);
+                "customComponent", "renderComponent", "componentType"), extensionKeys);
         collectViewComponentKeys(selected, extensionKeys);
         if (sections.contains("extensions")) {
             copyIfPresent(source, selected, "extensions");

@@ -115,7 +115,6 @@ workflow-web/
 - `metadata.configSchema` 定义可配置参数；每个实体的实际值仍保存在表单或列表配置。默认值变化不会重写旧实例。
 - `LIST_ACTION.targets` 可同时声明 TOOLBAR 和 ROW；一份实现安装到两个动作位置。
 - `ACTION_CONDITION.defaultConfig` 每次深复制；复杂默认值用 `hooks.createDefault` 引用 JS 函数。二者不能同时声明。
-- `NODE.hooks.migrateConfig` 引用配置升级函数。可复制示例见 `examples/contracts/nodeConfig.js` 与对应节点清单。
 - 平台 FIELD 的 `aliases/defaultForFieldTypes` 统一声明历史别名与默认控件规则；生成数据只是派生产物，不是第二个声明来源。
 - `enabled` 是构建安装开关，与数据库启停不同。EXAMPLE 还受原有 Demo 开关控制；模板示例默认 `enabled: false`。
 - JSON 使用 `$comment`、`description` 表达注释；Schema 提供中文属性说明与编辑器补全。构建校验负责类型组合、未知属性、路径、参数重复及注册冲突。
@@ -126,9 +125,9 @@ workflow-web/
 
 主应用和 Embed 使用同一 Vite 插件及 `registerApplicationExtensions()`。清单增删改触发整页刷新，避免追加 Provider 和版本状态累积；同一安装计划重复调用无副作用。安装异常阻止启动，修复后整页重载，底层注册表不提供事务回滚。
 
-管理页面可查看十种类型，来源分为平台、通用、业务、示例。只有服务端已支持的 FORM/LIST/NODE/FIELD 参与后台纳管；平台必需字段和其他六类显示“仅构建注册”，不显示未实现的纳管操作。数据库启停、权限和发布检查继续由现有链路执行。
+管理页面可查看十种类型，来源分为平台、通用、业务、示例。只有服务端已支持的 FORM/LIST/FIELD 参与后台纳管；平台必需字段和其他六类显示“仅构建注册”，不显示未实现的纳管操作。数据库启停、权限和发布检查继续由现有链路执行。
 
-FORM/LIST/NODE/VALIDATOR 延续原版本注册能力。其他类型同名仅允许一个活动版本。全宿主精确版本锁定、所有类型的后端治理不是本次迁移的承诺。
+FORM/LIST/FIELD/VALIDATOR 延续原版本注册能力。其他类型同名仅允许一个活动版本。全宿主精确版本锁定、所有类型的后端治理不是本次迁移的承诺。
 
 FORM/LIST 原有 `artifactDigest` 算法仍保留；显式摘要可在清单 metadata 中声明。源码路径与编译产物变化可能影响自动摘要，不能将“名称和版本保留”理解为“历史锁定摘要保持一致”。本次未连接真实业务数据库验证历史发布快照。
 

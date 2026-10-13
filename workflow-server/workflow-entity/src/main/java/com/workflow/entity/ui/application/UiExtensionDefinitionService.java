@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 /**
  * UI 扩展组件定义服务，负责扩展注册、查询、版本管理和兼容性校验。
  *
- * <p>该物理表保存 FORM、NODE、FIELD、LIST 和 INTERFACE 类型；每个扩展以
+ * <p>该物理表保存 FORM、FIELD、LIST 和 INTERFACE 类型；每个扩展以
  * key+version 唯一标识。UI 组件声明运行模式、节点与绑定兼容范围，INTERFACE
  * 则由专用服务校验实现方式、作用域与输入输出契约。管理端聚合展示的流程动作、
  * 人员解析器来自各自能力目录，并不作为本表类型持久化。</p>
@@ -39,7 +39,7 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
 
     /** 本服务负责写入的 UI 组件扩展类型；接口扩展由专用服务维护。 */
     private static final Set<String> UI_TYPES =
-            Set.of("FORM", "NODE", "FIELD", "LIST");
+            Set.of("FORM", "FIELD", "LIST");
     /** 允许的扩展状态。 */
     private static final Set<String> STATUSES =
             Set.of("ACTIVE", "DISABLED");
@@ -220,7 +220,7 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
                 normalizeList(request.getSupportedModes()),
                 "扩展支持模式"));
         value.setSupportedNodeTypesDocument(write(
-                normalizeList(request.getSupportedNodeTypes()),
+                supportedNodeTypes(request),
                 "扩展支持节点类型"));
         value.setSupportedBindingsDocument(write(
                 normalizeList(request.getSupportedBindings()),
@@ -346,6 +346,15 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             throw new IllegalArgumentException(
                     "扩展配置快照版本高于服务端注册版本: "
                             + definition.getExtensionKey());
+        }
+    }
+
+    /** 统一表单组件的字段类型约束保存在 capabilities，供发布时核对绑定字段。 */
+    public void validateFieldType(UiExtensionDefinition definition, String fieldType) {
+        Object supported = readMap(definition.getCapabilitiesDocument(), "扩展能力").get("supportedFieldTypes");
+        if (supported instanceof List<?> types && !types.isEmpty() && StringUtils.hasText(fieldType)
+                && types.stream().noneMatch(type -> normalize(String.valueOf(type)).equals(normalize(fieldType)))) {
+            throw new IllegalArgumentException("组件 " + definition.getExtensionKey() + " 不兼容字段类型 " + fieldType);
         }
     }
 
@@ -525,6 +534,13 @@ public class UiExtensionDefinitionService implements UiExtensionCatalogPort {
             throw new IllegalArgumentException(
                     "扩展不支持当前" + label + ": " + configured);
         }
+    }
+
+    /** 未声明宿主范围的表单组件默认仅用于 FIELD，避免空范围意外开放子表单节点。 */
+    private List<String> supportedNodeTypes(UiExtensionDefinitionSaveRequest request) {
+        List<String> types = normalizeList(request.getSupportedNodeTypes());
+        return types.isEmpty() && "FIELD".equals(normalize(request.getExtensionType()))
+                ? List.of("FIELD") : types;
     }
 
     /**

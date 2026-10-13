@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -34,7 +33,9 @@ public class EntityExcelJobCleanup {
                       OR EXISTS (SELECT 1 FROM entity_excel_job_row r WHERE r.job_id=entity_excel_job.id))
                     ORDER BY created_at
                     """);
-            query.setTimestamp(1, Timestamp.valueOf(cutoff)); query.setMaxRows(100); return query;
+            // created_at 与作业写入统一保存 UTC LocalDateTime。Timestamp.valueOf 会先套用 JVM 时区，
+            // 再被 JDBC 转到连接时区；例如 Asia/Shanghai + UTC 连接会把24小时边界错移8小时。
+            query.setObject(1, cutoff); query.setMaxRows(100); return query;
         }, new ColumnMapRowMapper());
         for (var candidate : jobs) {
             String id = String.valueOf(candidate.get("id"));

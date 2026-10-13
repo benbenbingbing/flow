@@ -3,14 +3,14 @@
     <div class="section-heading"><span class="section-index">02</span><div><h3>{{ operationSectionTitle }}</h3><p>{{ operationSectionDescription }}</p></div></div>
     <template v-if="isJoin">
       <div class="field-grid">
-        <el-form-item label="加入人员" prop="target_user_id" required><FormFieldRendererLinkage v-model="localValue.target_user_id" :field="fieldFor('target_user_id')" :disabled="isDisabled('target_user_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncAndLoad" /></el-form-item>
-        <el-form-item label="来源部门" prop="source_dept_id" required><FormFieldRendererLinkage v-model="localValue.source_dept_id" :field="fieldFor('source_dept_id')" :disabled="isDisabled('source_dept_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncValue" /></el-form-item>
+        <el-form-item label="加入人员" prop="target_user_id" required><FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }" v-model="localValue.target_user_id" :field="fieldFor('target_user_id')" :disabled="isDisabled('target_user_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncAndLoad" /></el-form-item>
+        <el-form-item label="来源部门" prop="source_dept_id" required><FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }" v-model="localValue.source_dept_id" :field="fieldFor('source_dept_id')" :disabled="isDisabled('source_dept_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncValue" /></el-form-item>
         <el-form-item label="人员类型" prop="employment_type" required><el-select v-model="localValue.employment_type" :disabled="isDisabled('employment_type')" style="width: 100%" @change="syncValue"><el-option v-for="item in EMPLOYMENT_TYPES" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item>
         <el-form-item label="计划退出日期" prop="planned_leave_date" :required="requiresPlannedLeave"><el-date-picker v-model="localValue.planned_leave_date" :disabled="isDisabled('planned_leave_date')" type="date" value-format="YYYY-MM-DD" placeholder="长期成员可不填" style="width: 100%" @change="syncValue" /></el-form-item>
       </div>
     </template>
     <template v-else>
-      <el-form-item label="目标项目成员" prop="project_member_id" required><FormFieldRendererLinkage v-model="localValue.project_member_id" :field="fieldFor('project_member_id')" :disabled="isDisabled('project_member_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncAndLoad" /></el-form-item>
+      <el-form-item label="目标项目成员" prop="project_member_id" required><FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }" v-model="localValue.project_member_id" :field="fieldFor('project_member_id')" :disabled="isDisabled('project_member_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncAndLoad" /></el-form-item>
       <el-alert v-if="memberContext.memberProjectMismatch" title="所选成员不属于当前项目，请重新选择。" type="error" :closable="false" show-icon />
     </template>
     <div v-if="showsAllocation" class="allocation-row">
@@ -31,7 +31,7 @@
     <div class="section-heading"><span class="section-index">04</span><div><h3>工作与角色交接</h3><p>有效角色或账号权限存在时，必须明确同项目交接人。</p></div></div>
     <el-alert :title="handoverAlertTitle" :type="routeFlags.handover_required_flag ? 'warning' : 'info'" :closable="false" show-icon class="section-alert" />
     <div class="field-grid">
-      <el-form-item label="交接成员" prop="handover_member_id" :required="routeFlags.handover_required_flag"><FormFieldRendererLinkage v-model="localValue.handover_member_id" :field="fieldFor('handover_member_id')" :disabled="isDisabled('handover_member_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncValue" /></el-form-item>
+      <el-form-item label="交接成员" prop="handover_member_id" :required="routeFlags.handover_required_flag"><FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }" v-model="localValue.handover_member_id" :field="fieldFor('handover_member_id')" :disabled="isDisabled('handover_member_id')" :context="fieldContext" :data-source-runtime="dataSourceRuntime" @change="syncValue" /></el-form-item>
       <el-form-item label="权限回收截止日期" prop="permission_revoke_deadline" :required="routeFlags.handover_required_flag"><el-date-picker v-model="localValue.permission_revoke_deadline" :disabled="isDisabled('permission_revoke_deadline')" type="date" value-format="YYYY-MM-DD" placeholder="不晚于退出后 1 天" style="width: 100%" @change="syncValue" /></el-form-item>
     </div>
     <el-form-item label="交接说明" prop="handover_description" :required="routeFlags.handover_required_flag"><el-input v-model="localValue.handover_description" :disabled="isDisabled('handover_description')" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="说明工作项、角色职责、文档、风险与未完成事项的交接结果" @input="syncValue" /></el-form-item>

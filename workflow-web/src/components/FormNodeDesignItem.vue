@@ -391,7 +391,7 @@
         :required="node.isRequired === 1"
         class="design-form-item"
       >
-        <FormFieldRenderer :field="node" :disabled="true" />
+        <FormFieldRenderer :field="node" :node="componentPreviewNode" :disabled="true" :readonly="true" mode="view" />
       </el-form-item>
       <div
         v-if="nestedFieldContainer"
@@ -485,6 +485,7 @@ import RelationContentDesignPreview from '@/components/form-designer/RelationCon
 import { formRelatedContentsAt } from '@/shared/form-related-content'
 import SectionField from '@/extensions/builtin/fields/components/SectionField.vue'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
 import {
   resolveFormContainerAppearance,
   supportsFormContainerAppearance
@@ -523,6 +524,11 @@ const nodeType = computed(() =>
   String(props.node.nodeType || props.legacyNodeType(props.node) || 'FIELD').toUpperCase()
 )
 const nodeConfig = computed(() => safeParseConfig(props.node.componentProps))
+// 画布与发布运行时使用相同节点协议；复杂组件读取 node/config 时无需为设计态另写分支。
+const componentPreviewNode = computed(() => buildFormNodePayload(
+  { ...props.node, nodeType: nodeType.value },
+  { componentProps: nodeConfig.value }
+))
 const containerAppearanceClasses = computed(() =>
   appearanceClasses(nodeType.value, nodeConfig.value)
 )

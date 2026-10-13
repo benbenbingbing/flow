@@ -7,7 +7,7 @@
 | 模板 | 适用类型 | 复制后要改什么、保留什么 |
 | --- | --- | --- |
 | CustomFieldTemplate.vue | FIELD | 替换输入展示，保留 fieldValue、disabled 和 change/blur/focus；参数从 field.componentProps 读取 |
-| CustomNodeTemplate.vue | NODE | 根据 config.fieldCodes 显示摘要，可改标题/字段；modelValue 是整份字段对象 |
+| CustomSummaryFieldTemplate.vue | FIELD | 根据 config.fieldCodes 显示摘要，读取 formData；与输入组件使用同一协议 |
 | CustomFormTemplate.vue | FORM | 替换布局或复用 FormPreviewLinkage，保留无参 validate 与数据更新、只读、联动 |
 | CustomListTemplate.vue | LIST | 改列表布局；分页通过事件，业务动作交给 runtime |
 | CustomCellTemplate.vue | LIST_CELL | 改单列展示；value 是格式化值，原始记录取 row |

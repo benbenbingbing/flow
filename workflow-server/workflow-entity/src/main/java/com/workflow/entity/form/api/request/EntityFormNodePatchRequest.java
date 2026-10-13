@@ -24,8 +24,6 @@ public class EntityFormNodePatchRequest {
     private String bindingType;
     /** 绑定引用（如字段编码） */
     private String bindingRef;
-    /** 自定义组件注册名 */
-    private String componentName;
     /** 自定义组件版本 */
     private Integer componentVersion;
     /** 自定义组件快照版本 */

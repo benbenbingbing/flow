@@ -100,12 +100,10 @@ const expectedSchemas = {
       'validation',
       'modeAccess',
       'gridSpan',
-      'events',
-      'nodeExtension'
+      'events'
     ],
     capabilities: {
       fieldProperties: true,
-      nodeExtension: true,
       rules: true,
       binding: true,
       childForm: false,
@@ -122,11 +120,11 @@ const expectedSchemas = {
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'nodeExtension'
+      'componentType',
+      'componentProps'
     ],
     capabilities: {
       fieldProperties: false,
-      nodeExtension: true,
       rules: false,
       binding: true,
       childForm: true,
@@ -144,11 +142,11 @@ const expectedSchemas = {
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'nodeExtension'
+      'componentType',
+      'componentProps'
     ],
     capabilities: {
       fieldProperties: false,
-      nodeExtension: true,
       rules: false,
       binding: true,
       childForm: true,
@@ -175,7 +173,6 @@ Object.entries(expectedSchemas).forEach(([nodeType, expected]) => {
   assert.deepEqual(actual.editable, nodeType === 'FIELD' ? expected.editable : [...expected.editable, 'modeAccess'], `${nodeType} editable properties`)
   Object.entries({
     fieldProperties: false,
-    nodeExtension: false,
     rules: false,
     binding: false,
     childForm: false,
@@ -420,14 +417,13 @@ const fieldPayload = buildFormNodePayload(
     fieldName: '金额',
     fieldLabel: '申请金额',
     fieldType: 'DECIMAL',
-    componentType: 'number',
+    componentType: 'currency-field',
     placeholder: '请输入金额',
     defaultValue: 0,
     gridSpan: 12,
     isRequired: 1,
     isReadonly: 0,
     isHidden: 0,
-    componentName: 'currency-field',
     componentVersion: 3,
     snapshotVersion: 5,
     validationRules: {
@@ -473,7 +469,7 @@ assert.deepEqual(fieldPayload.props, {
   fieldName: '金额',
   label: '申请金额',
   fieldType: 'DECIMAL',
-  componentType: 'number',
+  componentType: 'currency-field',
   placeholder: '请输入金额',
   defaultValue: 0,
   gridSpan: 12,
@@ -540,7 +536,8 @@ assert.deepEqual(fieldPayload.dataSourceBindings.FIELD_DEFAULT, {
     value: 'amount'
   }
 })
-assert.equal(fieldPayload.componentName, 'currency-field')
+assert.equal(fieldPayload.props.componentType, 'currency-field')
+assert.equal('componentName' in fieldPayload, false)
 assert.equal(fieldPayload.componentVersion, 3)
 assert.equal(fieldPayload.snapshotVersion, 5)
 assert.equal(fieldPayload.templateId, undefined)
@@ -689,7 +686,6 @@ assertMissing(
   'PATCH payload must omit technical identity and compatibility fields'
 )
 ;[
-  'componentName',
   'componentVersion',
   'snapshotVersion',
   'rules',
@@ -1124,21 +1120,15 @@ const customFieldPayload = buildFormNodePayload({
   fieldName: '验收评分',
   fieldLabel: '验收评分',
   fieldType: 'INTEGER',
-  componentType: 'number',
-  componentExtensionType: 'FIELD',
-  componentName: 'project_acceptance_score',
+  componentType: 'project_acceptance_score',
   componentVersion: 1,
   snapshotVersion: 1
 })
-assert.equal(customFieldPayload.props.componentType, 'number')
-assert.equal(
-  customFieldPayload.props.componentExtensionType,
-  'FIELD'
-)
-assert.equal(
-  customFieldPayload.componentName,
-  'project_acceptance_score'
-)
+assert.equal(customFieldPayload.props.componentType, 'project_acceptance_score')
+assertMissing(customFieldPayload.props, ['componentExtensionType'], '统一组件不再使用扩展类型标记')
+assertMissing(customFieldPayload, ['componentName'], '统一组件不再保存第二个组件名称')
+assert.equal(customFieldPayload.componentVersion, 1)
+assert.equal(customFieldPayload.snapshotVersion, 1)
 
 const immutableField = {
   id: 'immutable-field',

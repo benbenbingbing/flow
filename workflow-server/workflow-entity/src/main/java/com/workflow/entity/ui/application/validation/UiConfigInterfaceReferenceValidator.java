@@ -174,14 +174,13 @@ public class UiConfigInterfaceReferenceValidator {
      */
     private void validateCascader(Map<?, ?> node, String path, Owner owner) {
         // 配置中的任意业务对象也可能含 componentType；仅处理真实字段节点/旧字段投影。
-        if (!node.containsKey("componentName") && !node.containsKey("nodeType")
+        if (!node.containsKey("nodeType")
                 && !(node.containsKey("componentType")
                 && path.matches(".*\\.(?:nodes|legacyFields|fields)\\[\\d+\\]"))) return;
         Map<String, Object> props = configurationMap(
                 node.containsKey("props") ? node.get("props") : node.get("propsDocument"),
                 "级联字段属性");
         String component = text(props.get("componentType"));
-        if (!StringUtils.hasText(component)) component = text(node.get("componentName"));
         if (!StringUtils.hasText(component)) component = text(node.get("componentType"));
         if (!"CASCADER".equals(normalize(component))) return;
         Map<String, Object> componentProps = configurationMap(

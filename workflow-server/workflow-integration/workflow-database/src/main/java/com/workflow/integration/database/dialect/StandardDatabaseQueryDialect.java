@@ -92,9 +92,15 @@ public final class StandardDatabaseQueryDialect implements DatabaseQueryDialect 
             // 不使用默认日期格式，避免 DateStyle/NLS_DATE_FORMAT 改变年月日顺序。
             // PostgreSQL 时间最多微秒；Oracle 系列 FF 按时间类型输出小数秒，不先截成 DATE。
             case TIMESTAMP -> "TO_CHAR(" + quoted + ", 'YYYY-MM-DD HH24:MI:SS." + (postgres ? "US" : "FF") + "')";
-            case INTEGER, LONG, DECIMAL, BOOLEAN, BYTE -> postgres
-                    ? "CAST(" + quoted + " AS TEXT)"
-                    : "TO_CHAR(" + quoted + ", '" + decimalPattern(type) + "', 'NLS_NUMERIC_CHARACTERS=''.,''')";
+            case INTEGER, LONG, DECIMAL, BOOLEAN, BYTE -> {
+                if (postgres) yield "CAST(" + quoted + " AS TEXT)";
+                // OB Oracle 4.4 的 NLS 参数解析不接受 Oracle 的嵌套引号形式（OBE-12702）。
+                // 保留显式小数点及完整精度/尾零，仅为该产品使用已验证的无引号参数值。
+                String numericCharacters = vendor() == DatabaseVendor.OCEANBASE_ORACLE
+                        ? "NLS_NUMERIC_CHARACTERS = .,"
+                        : "NLS_NUMERIC_CHARACTERS=''.,''";
+                yield "TO_CHAR(" + quoted + ", '" + decimalPattern(type) + "', '" + numericCharacters + "')";
+            }
             default -> throw new IllegalArgumentException("不支持文本匹配的列类型");
         };
     }

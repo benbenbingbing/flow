@@ -368,7 +368,6 @@ class EntityFormNodePropertyPolicyTest {
                                 "fieldCode", "amount",
                                 "fieldType", "DECIMAL",
                                 "componentType", "number",
-                                "componentExtensionType", "FIELD",
                                 "gridSpan", 12),
                         false));
         assertThrows(
@@ -392,14 +391,13 @@ class EntityFormNodePropertyPolicyTest {
                                 "componentType", "input",
                                 "gridSpan", 12),
                         false));
-        assertThrows(
-                IllegalArgumentException.class,
+        assertDoesNotThrow(
                 () -> EntityFormNodePropertyPolicy.normalizeProps(
                         "FIELD",
                         Map.of(
                                 "fieldCode", "amount",
                                 "fieldType", "DECIMAL",
-                                "componentType", "unknown_widget",
+                                "componentType", "project_amount",
                                 "gridSpan", 12),
                         false));
         assertThrows(

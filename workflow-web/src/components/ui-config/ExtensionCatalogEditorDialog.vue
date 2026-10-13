@@ -71,7 +71,6 @@
               >
                 <el-option label="自定义表单" value="FORM" />
                 <el-option label="自定义列表" value="LIST" />
-                <el-option label="表单节点" value="NODE" />
                 <el-option label="表单字段" value="FIELD" />
               </el-select>
             </el-form-item>

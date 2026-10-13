@@ -20,8 +20,9 @@ import java.util.regex.PatternSyntaxException;
  * <p>集中管理各类表单节点（FIELD、SUB_FORM、REPEATER、容器节点等）允许的属性集合、
  * 数据源绑定位置、字段绑定类型、扩展组件与模板的校验规则，并提供属性迁移、
  * 校验项归一化和非法属性剥离能力。所有方法均为纯函数，便于在不同上下文复用。</p>
+ * <p>公开的组件识别方法也供 UI 发布校验调用，避免草稿保存与发布使用不同的内置组件规则。</p>
  */
-final class EntityFormNodePropertyPolicy {
+public final class EntityFormNodePropertyPolicy {
 
     private static final Set<String> FIELD_DATA_SOURCE_USAGES = Set.of(
             UiDataSourceUsages.FIELD_OPTIONS,
@@ -101,7 +102,7 @@ final class EntityFormNodePropertyPolicy {
             Set.of("SECTION", "GRID", "TAB_SET", "TAB", "COLLAPSE");
     private static final Set<String> FIELD_PROPS = Set.of(
             "fieldId", "fieldCode", "fieldName", "label", "fieldType",
-            "componentType", "componentExtensionType",
+            "componentType",
             "placeholder", "defaultValue", "gridSpan",
             "required", "readonly", "hidden", "componentProps");
     private static final Set<String> SUB_FORM_PROPS = Set.of(
@@ -415,24 +416,30 @@ final class EntityFormNodePropertyPolicy {
      * 校验节点是否允许配置扩展组件，不允许时拒绝组件名/版本/快照。
      *
      * @param nodeType         节点类型
-     * @param componentName    扩展组件名
+     * @param componentType    扩展组件名
      * @param componentVersion 组件版本
      * @param snapshotVersion  快照版本
      * @throws IllegalArgumentException 节点不支持扩展但配置了扩展组件时抛出
      */
     static void validateExtension(
             String nodeType,
-            String componentName,
+            String componentType,
             Integer componentVersion,
             Integer snapshotVersion) {
         String normalizedType = normalize(nodeType);
         if (!supportsExtension(normalizedType)
-                && (StringUtils.hasText(componentName)
+                && (StringUtils.hasText(componentType) && !isBuiltInComponent(componentType)
                 || componentVersion != null
                 || snapshotVersion != null)) {
             throw new IllegalArgumentException(
                     normalizedType + " 节点不支持扩展组件配置");
         }
+    }
+
+    /** 内置组件不需要扩展定义；其他名称统一通过 FIELD 目录校验。 */
+    public static boolean isBuiltInComponent(String type) {
+        return type != null && (BUILT_IN_COMPONENT_FIELD_TYPES.containsKey(type.trim().toLowerCase(Locale.ROOT))
+                || Set.of("sub_form", "repeater").contains(type.trim().toLowerCase(Locale.ROOT)));
     }
 
     /**
@@ -664,10 +671,6 @@ final class EntityFormNodePropertyPolicy {
         requireText(props, "fieldName", 500);
         requireText(props, "fieldType", 50);
         requireText(props, "componentType", 100);
-        requireEnum(
-                props,
-                "componentExtensionType",
-                Set.of("FIELD"));
         requireIntegerRange(props, "gridSpan", 1, 24);
         requireBoolean(props, "required");
         requireBoolean(props, "readonly");
@@ -679,10 +682,11 @@ final class EntityFormNodePropertyPolicy {
                 .toLowerCase(Locale.ROOT);
         Set<String> supported =
                 BUILT_IN_COMPONENT_FIELD_TYPES.get(componentType);
-        if (StringUtils.hasText(componentType) && supported == null) {
-            throw new IllegalArgumentException(
-                    "未注册的字段组件类型: " + componentType);
+        // 子表单有独立的节点语义，不能通过 FIELD 控件名绕过关系绑定校验。
+        if (Set.of("sub_form", "repeater").contains(componentType)) {
+            throw new IllegalArgumentException("子表单组件必须配置为 SUB_FORM 或 REPEATER 节点");
         }
+        // 自定义组件的注册和兼容范围在发布校验中按 FIELD 定义核对。
         if (supported != null
                 && StringUtils.hasText(fieldType)
                 && !supported.contains(fieldType)) {

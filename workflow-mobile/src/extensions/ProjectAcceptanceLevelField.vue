@@ -9,7 +9,7 @@ import { Button as VanButton } from 'vant'
 import { MobileFieldRenderer } from '@flow/workflow-mobile-ui'
 const props = defineProps({ field: Object, modelValue: [String, Number], disabled: Boolean, context: Object, services: Object, options: Array, dataSourceRuntime: Object })
 const emit = defineEmits(['update:modelValue', 'change', 'blur'])
-const selectField = computed(() => ({ ...props.field, componentType: 'select', componentName: undefined, extensionName: undefined }))
+const selectField = computed(() => ({ ...props.field, componentType: 'select' }))
 const runtimeOptions = ref(null), loading = ref(false), error = ref(''), fieldRef = ref()
 const choices = computed(() => runtimeOptions.value ?? props.options ?? [])
 let generation = 0

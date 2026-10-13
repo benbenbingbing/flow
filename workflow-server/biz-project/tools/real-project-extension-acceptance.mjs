@@ -540,7 +540,7 @@ async function ensureUiExtensions() {
       }
     },
     {
-      extensionType: 'NODE',
+      extensionType: 'FIELD',
       extensionKey: 'ProjectAcceptanceSummaryNode',
       displayName: '项目验收摘要节点',
       supportedNodeTypes: ['FIELD'],
@@ -710,7 +710,6 @@ function formNodeRecord({
   nodeType,
   bindingType = 'NONE',
   bindingRef = null,
-  componentName = null,
   componentVersion = null,
   snapshotVersion = null,
   props = {},
@@ -738,7 +737,6 @@ function formNodeRecord({
     nodeType,
     bindingType,
     bindingRef,
-    componentName,
     componentVersion,
     snapshotVersion,
     propsDocument: json(props),
@@ -763,8 +761,6 @@ function fieldNode(
 ) {
   const field = fields.get(fieldCode)
   assert.ok(field, `表单节点字段 ${fieldCode} 不存在`)
-  const fieldComponentName =
-    overrides.fieldComponentName || null
   const componentByType = {
     INTEGER: 'number',
     DATE: 'date',
@@ -780,14 +776,12 @@ function fieldNode(
     nodeType: 'FIELD',
     bindingType: 'ENTITY_FIELD',
     bindingRef: fieldCode,
-    componentName:
-      overrides.componentName || fieldComponentName,
     componentVersion:
       overrides.componentVersion
-      || (fieldComponentName ? 1 : null),
+      || (overrides.componentType ? 1 : null),
     snapshotVersion:
       overrides.snapshotVersion
-      || (fieldComponentName ? 1 : null),
+      || (overrides.componentType ? 1 : null),
     props: {
       fieldId: field.id,
       fieldCode,
@@ -798,8 +792,6 @@ function fieldNode(
         overrides.componentType
         || componentByType[field.fieldType]
         || 'input',
-      componentExtensionType:
-        fieldComponentName ? 'FIELD' : undefined,
       placeholder: `请填写${field.fieldName}`,
       gridSpan: overrides.gridSpan || 12,
       required: field.isRequired === true,
@@ -1331,7 +1323,7 @@ async function configureForms(entity) {
       3,
       {
         gridSpan: 12,
-        fieldComponentName: 'project_acceptance_score',
+        componentType: 'project_acceptance_score',
         componentProps: { passScore: 60 }
       }
     ),
@@ -1343,7 +1335,7 @@ async function configureForms(entity) {
       4,
       {
         gridSpan: 12,
-        fieldComponentName: 'project_acceptance_level',
+        componentType: 'project_acceptance_level',
         dataSourceBindings: {
           FIELD_OPTIONS: {
             extensionId:
@@ -1388,7 +1380,7 @@ async function configureForms(entity) {
       7,
       {
         gridSpan: 24,
-        componentName: 'ProjectAcceptanceSummaryNode',
+        componentType: 'ProjectAcceptanceSummaryNode',
         componentVersion: 1,
         snapshotVersion: 1,
         title: '扩展执行摘要',
@@ -3242,36 +3234,8 @@ async function verifyRuntime(lists, forms, process, fixtures) {
     actionSlotNode,
     '节点矩阵表单缺少 ACTION_SLOT 节点'
   )
-  assert.equal(
-    scoreProps.componentType,
-    'number',
-    '评分字段没有保留后端可校验的内置回退组件'
-  )
-  assert.equal(
-    scoreProps.componentExtensionType,
-    'FIELD',
-    '评分字段没有声明 FIELD 扩展引用'
-  )
-  assert.equal(
-    scoreNode?.componentName,
-    'project_acceptance_score',
-    '评分字段没有绑定项目自定义字段组件'
-  )
-  assert.equal(
-    levelProps.componentType,
-    'select',
-    '复核级别字段没有保留后端可校验的内置回退组件'
-  )
-  assert.equal(
-    levelProps.componentExtensionType,
-    'FIELD',
-    '复核级别字段没有声明 FIELD 扩展引用'
-  )
-  assert.equal(
-    levelNode?.componentName,
-    'project_acceptance_level',
-    '复核级别字段没有绑定项目自定义字段组件'
-  )
+  assert.equal(scoreProps.componentType, 'project_acceptance_score', '评分字段统一组件引用未落库')
+  assert.equal(levelProps.componentType, 'project_acceptance_level', '复核级别统一组件引用未落库')
   ;['FIELD_OPTIONS', 'FIELD_DEFAULT'].forEach(usage => {
     assert.ok(
       levelBindings[usage]?.extensionId,
@@ -3279,9 +3243,9 @@ async function verifyRuntime(lists, forms, process, fixtures) {
     )
   })
   assert.equal(
-    summaryNode?.componentName,
+    summaryProps.componentType,
     'ProjectAcceptanceSummaryNode',
-    '摘要字段没有绑定项目自定义节点组件'
+    '摘要字段没有绑定项目自定义表单组件'
   )
   assert.equal(
     parseDocument(

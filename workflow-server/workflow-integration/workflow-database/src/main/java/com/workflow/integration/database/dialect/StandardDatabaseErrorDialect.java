@@ -144,6 +144,9 @@ public final class StandardDatabaseErrorDialect implements DatabaseErrorDialect 
             case 4101 -> DEADLOCK;
             case 6003, 6004, 6006 -> LOCK_TIMEOUT;
             case 6002 -> TRANSACTION_ROLLBACK;
+            // OB MySQL 在旧 RR 快照上执行冲突写入时返回 6235/25000，SQLState 不属于 40 类。
+            // 明确归为事务并发失败，防止调用方将其当成未知 SQL 或可忽略的唯一键冲突。
+            case 6235 -> oracleMode ? UNKNOWN : TRANSACTION_ROLLBACK;
             default -> UNKNOWN;
         };
     }

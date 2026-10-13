@@ -47,7 +47,6 @@ const schema = ({
   editable = [],
   configKeys = [],
   fieldProperties = false,
-  nodeExtension = false,
   rules = false,
   dataSourceUsages = [],
   binding = false,
@@ -58,7 +57,6 @@ const schema = ({
   editable: Object.freeze(fieldProperties || !editable.length ? editable : [...editable, 'modeAccess']),
   configKeys: Object.freeze(fieldProperties || !editable.length ? configKeys : [...configKeys, 'modeAccess', 'linkageRules']),
   fieldProperties,
-  nodeExtension,
   rules,
   dataSourceUsages: Object.freeze(dataSourceUsages),
   binding,
@@ -141,11 +139,9 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'validation',
       'modeAccess',
       'gridSpan',
-      'events',
-      'nodeExtension'
+      'events'
     ],
     fieldProperties: true,
-    nodeExtension: true,
     rules: true,
     dataSourceUsages: FIELD_DATA_SOURCE_USAGES,
     binding: true,
@@ -161,10 +157,10 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'nodeExtension'
+      'componentType',
+      'componentProps'
     ],
     configKeys: ['showPadding', 'showBorder'],
-    nodeExtension: true,
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
@@ -181,10 +177,10 @@ export const FORM_NODE_PROPERTY_SCHEMAS = Object.freeze({
       'childFormRelease',
       'dataSource',
       'gridSpan',
-      'nodeExtension'
+      'componentType',
+      'componentProps'
     ],
     configKeys: ['showPadding', 'showBorder'],
-    nodeExtension: true,
     dataSourceUsages: SUBFORM_DATA_SOURCE_USAGES,
     binding: true,
     childForm: true,
@@ -207,7 +203,6 @@ const FIELD_PROP_KEYS = Object.freeze([
   'label',
   'fieldType',
   'componentType',
-  'componentExtensionType',
   'placeholder',
   'defaultValue',
   'gridSpan',
@@ -450,7 +445,6 @@ function buildFieldProps(field, componentProps) {
       field.componentType
     ),
     componentType: field.componentType,
-    componentExtensionType: field.componentExtensionType,
     placeholder: field.placeholder,
     defaultValue: field.defaultValue,
     gridSpan: field.gridSpan,
@@ -475,7 +469,7 @@ function buildSubFormProps(field, componentProps) {
     fieldName: field.fieldName,
     label: field.fieldLabel,
     fieldType: 'SUB_FORM',
-    componentType: 'sub_form',
+    componentType: field.componentType || 'sub_form',
     gridSpan: field.gridSpan,
     componentProps
   }
@@ -588,8 +582,7 @@ function buildClearFields(
 ) {
   const clearFields = new Set()
   if (clearParentId) clearFields.add('parentId')
-  if (!nodeSchema.nodeExtension || !payload.componentName) {
-    clearFields.add('componentName')
+  if (!payload.componentVersion) {
     clearFields.add('componentVersion')
     clearFields.add('snapshotVersion')
   }
@@ -698,9 +691,9 @@ export function buildFormNodePayload(
       legacyProps: field.legacyProps || {}
     })
   }
-  if (nodeSchema.nodeExtension && field.componentName) {
-    payload.componentName = field.componentName
-    payload.componentVersion = field.componentVersion || 1
+  // 所有可选组件共用 componentType；版本只锁定所选实现，不再保存第二个组件名称。
+  if (nodeSchema.editable.includes('componentType') && field.componentVersion) {
+    payload.componentVersion = field.componentVersion
     payload.snapshotVersion = field.snapshotVersion || 1
   }
   if (nodeSchema.rules) {

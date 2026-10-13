@@ -1,5 +1,7 @@
 <template>
-  <component v-if="custom && (disabled ? custom.readonly : custom.editable)" ref="customRef" :is="custom.component" v-bind="fieldProps" @update:model-value="$emit('update:modelValue', $event)" @change="$emit('change', $event)" @blur="$emit('blur', $event)" @focus="$emit('focus', $event)" />
+  <VanField v-if="custom && (disabled ? custom.readonly : custom.editable)" class="mobile-form-field" :border="false" :label="fieldLabel" :required="required" :label-align="labelPosition">
+    <template #input><component ref="customRef" :is="custom.component" v-bind="fieldProps" @update:model-value="updateCustomValue" @patch-form="patchCustomForm" @change="$emit('change', $event)" @blur="$emit('blur', $event)" @focus="$emit('focus', $event)" /></template>
+  </VanField>
   <div v-else-if="disabled ? !capability.readonly : !capability.editable" class="field-unsupported" role="alert">{{ capability.reason || '当前扩展不支持此操作' }}，请在电脑端查看或处理。</div>
   <MobileSubForm v-else-if="type === 'sub_form'" ref="subFormRef" v-bind="fieldProps" :services="services" :registry="registry" @update:model-value="handleChange" />
   <MobileSubList v-else-if="type === 'sub_list'" :field="field" :context="context" :services="services" />
@@ -48,17 +50,24 @@ import MobileRichTextEditor from './MobileRichTextEditor.vue'
 import MobileSubForm from '../form/MobileSubForm.vue'
 import MobileSubList from '../form/MobileSubList.vue'
 import MobileEntityPicker from '../pickers/MobileEntityPicker.vue'
-import { getMobileExtension, mobileFieldCapability, mobileFieldType } from './registry.js'
+import { getMobileFieldExtension, mobileFieldCapability, mobileFieldType } from './registry.js'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
-const props = defineProps({ ...formFieldProps, services: { type: Object, default: () => ({}) }, registry: { type: Object, default: () => ({}) }, extensionName: { type: String, default: '' }, required: Boolean })
-const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
+const props = defineProps({ ...formFieldProps, services: { type: Object, default: () => ({}) }, registry: { type: Object, default: () => ({}) }, required: Boolean })
+const emit = defineEmits(['update:modelValue', 'patch-form', 'change', 'blur', 'focus'])
 const { fieldValue, fieldLabel, parsedComponentProps, staticOptions, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled })
 const type = computed(() => mobileFieldType(props.field))
 const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
 const inputAlign = computed(() => labelPosition.value === 'top' ? 'left' : 'right')
-const custom = computed(() => getMobileExtension('FIELD', props.extensionName || type.value, props.field.componentVersion || props.field.extensionVersion || 1))
-const capability = computed(() => mobileFieldCapability(props.field, props.extensionName))
-const fieldProps = computed(() => ({ field: props.field, modelValue: props.modelValue, disabled: props.disabled, options: props.options, context: props.context, services: props.services, dataSourceRuntime: props.dataSourceRuntime, attachmentItemRequiredState: props.attachmentItemRequiredState }))
+const custom = computed(() => getMobileFieldExtension(props.field))
+const capability = computed(() => mobileFieldCapability(props.field))
+const fieldProps = computed(() => ({ formData: props.formData, node: props.node || props.field.node, config: parsedComponentProps.value, readonly: props.readonly, mode: props.mode, field: props.field, modelValue: props.modelValue, disabled: props.disabled, options: props.options, context: props.context, services: props.services, dataSourceRuntime: props.dataSourceRuntime, attachmentItemRequiredState: props.attachmentItemRequiredState }))
+/** 组件写入统一经过宿主，禁用/无绑定时不得生成假字段。 */
+function updateCustomValue(value) {
+  if (!props.disabled && !props.readonly && !props.field.isDisplayOnly) emit('update:modelValue', value)
+}
+function patchCustomForm(patch) {
+  if (!props.disabled && !props.readonly) emit('patch-form', patch)
+}
 const entityType = computed(() => ['user', 'dept', 'role', 'group', 'entity', 'sub_list'].includes(type.value))
 const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value))
 const selectionType = computed(() => entityType.value || ['select', 'select_multiple'].includes(type.value))

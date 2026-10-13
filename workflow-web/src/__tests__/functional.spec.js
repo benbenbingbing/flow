@@ -15,15 +15,7 @@ import {
   getCustomListComponentVersionOptions,
   getCustomFormComponentVersionOptions
 } from '@/extensions/core/registries/customComponentRegistry.js'
-import {
-  getFormNodeComponent,
-  getFormNodeComponentOptions,
-  getFormNodeDescriptor,
-  hasFormNodeComponent,
-  migrateFormNodeConfig,
-  registerFormNodeComponent,
-  resolveFormNodeDescriptor
-} from '@/extensions/core/registries/formNodeRegistry.js'
+import { registerFormFieldComponent, getFormFieldComponent, getFormFieldComponentDescriptor, getFormFieldComponentOptions, resolveFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import {
   registerListToolbarAction,
   getListToolbarAction,
@@ -261,105 +253,25 @@ assert.deepEqual(
   [2, 1]
 )
 
-registerFormNodeComponent('versionedNode', DemoNodeV1, {
-  version: 1,
-  nodeTypes: ['FIELD'],
-  supportedBindings: ['ENTITY_FIELD']
-})
-registerFormNodeComponent('versionedNode', DemoNodeV2, {
-  version: 2,
-  nodeTypes: ['FIELD'],
-  supportedBindings: ['ENTITY_FIELD']
-})
-assert.equal(getFormNodeComponent('versionedNode', 1), DemoNodeV1)
-assert.equal(getFormNodeComponent('versionedNode', 2), DemoNodeV2)
-assert.equal(getFormNodeComponent('versionedNode'), DemoNodeV2)
-assert.equal(getFormNodeComponent('versionedNode', 'invalid'), undefined)
-assert.equal(hasFormNodeComponent('versionedNode', 3), false)
-assert.equal(
-  resolveFormNodeDescriptor({
-    nodeType: 'FIELD',
-    bindingType: 'ENTITY_FIELD',
-    componentName: 'versionedNode',
-    componentVersion: 1
-  })?.component,
-  DemoNodeV1
-)
-assert.equal(
-  resolveFormNodeDescriptor({
-    nodeType: 'FIELD',
-    bindingType: 'ENTITY_FIELD',
-    componentName: 'versionedNode'
-  })?.component,
-  DemoNodeV2
-)
-assert.equal(
-  resolveFormNodeDescriptor({
-    nodeType: 'FIELD',
-    bindingType: 'ENTITY_FIELD',
-    componentName: 'versionedNode',
-    componentVersion: 3
-  }),
-  null
-)
-assert.equal(getFormNodeDescriptor('versionedNode', 1)?.version, 1)
-assert.deepEqual(
-  getFormNodeComponentOptions()
-    .filter(item => item.name === 'versionedNode')
-    .map(item => item.version),
-  [2]
-)
-
-registerFormNodeComponent('migratedNode', DemoNodeV2, {
-  version: 1,
-  snapshotVersion: 2,
-  nodeTypes: ['FIELD'],
-  supportedBindings: ['ENTITY_FIELD'],
-  migrateConfig({ fromVersion, toVersion, config }) {
-    return {
-      ...config,
-      migratedFrom: fromVersion,
-      migratedTo: toVersion
-    }
-  }
-})
-const migratedNodeDescriptor = getFormNodeDescriptor('migratedNode', 1)
-assert.deepEqual(
-  migrateFormNodeConfig(
-    {
-      snapshotVersion: 1,
-      props: {
-        fieldCode: 'risk_level',
-        componentProps: {
-          title: '风险摘要'
-        }
-      }
-    },
-    migratedNodeDescriptor
-  ),
-  {
-    title: '风险摘要',
-    migratedFrom: 1,
-    migratedTo: 2
-  }
-)
-assert.deepEqual(
-  migrateFormNodeConfig(
-    {
-      snapshotVersion: 2,
-      props: {
-        fieldCode: 'risk_level',
-        componentProps: {
-          title: '风险摘要'
-        }
-      }
-    },
-    migratedNodeDescriptor
-  ),
-  {
-    title: '风险摘要'
-  }
-)
+// 输入组件和跨字段展示组件使用同一个注册表、精确版本和宿主能力约束。
+for (const [version, component] of [[1, DemoNodeV1], [2, DemoNodeV2]]) {
+  registerFormFieldComponent('versionedSummary', component, {
+    version, nodeTypes: ['FIELD'], supportedBindings: ['ENTITY_FIELD']
+  })
+}
+assert.equal(getFormFieldComponent('versionedSummary', 1), DemoNodeV1)
+assert.equal(getFormFieldComponent('versionedSummary', 2), DemoNodeV2)
+assert.equal(getFormFieldComponent('versionedSummary'), DemoNodeV2)
+assert.equal(getFormFieldComponent('versionedSummary', 3), undefined)
+assert.equal(getFormFieldComponent('versionedSummary', 'invalid'), undefined)
+const summaryField = { nodeType: 'FIELD', bindingType: 'ENTITY_FIELD', componentType: 'versionedSummary' }
+assert.equal(resolveFieldComponent({ ...summaryField, componentVersion: 1 }), DemoNodeV1)
+assert.equal(resolveFieldComponent(summaryField), DemoNodeV2)
+assert.equal(resolveFieldComponent({ ...summaryField, componentVersion: 3 }), undefined)
+assert.equal(resolveFieldComponent({ ...summaryField, nodeType: 'SUB_FORM' }), undefined)
+assert.equal(resolveFieldComponent({ ...summaryField, bindingType: 'NONE' }), undefined)
+assert.equal(getFormFieldComponentDescriptor('versionedSummary', 1)?.version, 1)
+assert.deepEqual(getFormFieldComponentOptions().filter(item => item.name === 'versionedSummary').map(item => item.version), [2])
 
 let toolbarCalled = false
 const toolbarHandler = (context) => {

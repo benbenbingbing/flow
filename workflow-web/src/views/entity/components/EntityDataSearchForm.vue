@@ -7,12 +7,18 @@
           <div class="range-query-control">
             <FormFieldRenderer
               class="query-field-control"
+              :form-data="form"
+              mode="edit"
+              @patch-form="applyQueryPatch"
               v-model="form[field.fieldCode + '_start']"
               :field="rangeEndField(field, 'start')"
             />
             <span>~</span>
             <FormFieldRenderer
               class="query-field-control"
+              :form-data="form"
+              mode="edit"
+              @patch-form="applyQueryPatch"
               v-model="form[field.fieldCode + '_end']"
               :field="rangeEndField(field, 'end')"
             />
@@ -22,6 +28,9 @@
         <FormFieldRenderer
           v-else
           class="query-field-control"
+              :form-data="form"
+              mode="edit"
+              @patch-form="applyQueryPatch"
           v-model="form[field.fieldCode]"
           :field="field"
         />
@@ -79,6 +88,16 @@ function rangeEndField(field: any, position: 'start' | 'end') {
   return {
     ...field,
     placeholder: `${position === 'start' ? '开始' : '结束'}${field.fieldName}`
+  }
+}
+
+/** 查询组件只能改当前查询模型，不能回写业务记录或加入未知参数。 */
+function applyQueryPatch(patch: Record<string, any>) {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
+  const keys = new Set(props.fields.flatMap(field => field.queryType === 'BETWEEN'
+    ? [field.fieldCode + '_start', field.fieldCode + '_end'] : [field.fieldCode]))
+  for (const [key, value] of Object.entries(patch)) {
+    if (keys.has(key) && !['__proto__', 'constructor', 'prototype'].includes(key)) form.value[key] = value
   }
 }
 

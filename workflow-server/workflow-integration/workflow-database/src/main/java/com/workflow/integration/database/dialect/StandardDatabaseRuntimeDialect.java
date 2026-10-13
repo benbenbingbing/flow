@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import static com.workflow.integration.database.api.runtime.DatabaseLockPlan.Invocation.*;
@@ -153,6 +154,12 @@ public final class StandardDatabaseRuntimeDialect implements DatabaseRuntimeDial
         };
     }
 
+    /** OceanBase Connector/J 2.4 的 getSchema 未实现；从会话读取实际所有者以隔离元数据范围。 */
+    @Override public String currentSchemaSql() {
+        return vendor == DatabaseVendor.OCEANBASE_ORACLE
+                ? "SELECT SYS_CONTEXT('USERENV','CURRENT_SCHEMA') FROM DUAL" : null;
+    }
+
     /**
      * 锁定方案；避免后续并发处理覆盖状态。
      *
@@ -168,14 +175,25 @@ public final class StandardDatabaseRuntimeDialect implements DatabaseRuntimeDial
         }
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            // 保持原 MySQL SQL SHA2 的键，滚动升级期间新旧发布器仍争用同一把锁。
+            // MySQL 保持原 SQL SHA2 的键，滚动升级仍争用同一命名锁。
+            // OB 已切换为事务锁，升级时必须停止旧 GET_LOCK 发布器/worker，不能混跑两种锁实现。
             String name = namespace + ":" + HexFormat.of().formatHex(digest.digest(key.getBytes(StandardCharsets.UTF_8))).substring(0, 40);
             byte[] hash = digest.digest((namespace + ":" + key).getBytes(StandardCharsets.UTF_8));
             long longId = ByteBuffer.wrap(hash).getLong();
             int integerId = ByteBuffer.wrap(hash).getInt() & 0x3fffffff;
             return switch (vendor) {
-                case MYSQL, OCEANBASE_MYSQL -> new DatabaseLockPlan("SELECT GET_LOCK(?, 0)",
+                case MYSQL -> new DatabaseLockPlan("SELECT GET_LOCK(?, 0)",
                         "SELECT RELEASE_LOCK(?)", name, TEXT_QUERY, 1, 0, 1, false);
+                // OB 4.4.2 的 GET_LOCK 并发首次获取可返回多个成功，改用未提交唯一键插入仲裁。
+                // NO WAIT 使首次插入竞争也立即返回；锁连接保持事务，业务 DDL 在其他连接执行。
+                case OCEANBASE_MYSQL -> new DatabaseLockPlan(
+                        "INSERT INTO sys_database_lock (lock_key) VALUES (?)",
+                        "SELECT COUNT(*) FROM sys_database_lock WHERE lock_key = ?",
+                        name, TEXT_TRANSACTION_INSERT, 1, 0, 1, true,
+                        List.of("SET SESSION ob_trx_lock_timeout = 0",
+                                // 独立事务的24小时上限远高于发布操作预算，避免租户较短默认值提前释放锁。
+                                "SET SESSION ob_trx_timeout = 86400000000",
+                                "SET SESSION ob_trx_idle_timeout = 86400000000"), 1205);
                 case POSTGRESQL -> new DatabaseLockPlan("SELECT pg_try_advisory_lock(?)",
                         "SELECT pg_advisory_unlock(?)", longId, BOOLEAN_QUERY, 1, 0, 1, false);
                 case KINGBASE -> new DatabaseLockPlan("SELECT sys_try_advisory_lock(?)",

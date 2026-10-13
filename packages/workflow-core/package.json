@@ -47,7 +47,6 @@
     "./utils/calcEngine": "./dist/utils/calcEngine.js",
     "./utils/flowConditionGroups": "./dist/utils/flowConditionGroups.js",
     "./utils/linkageEngine": "./dist/utils/linkageEngine.js",
-    "./form-field-extension": "./dist/shared/form-field-extension.js",
     "./browser/field-event-scripts": "./dist/shared/field-event-scripts.js",
     "./runtime/app-mode": "./dist/runtime/app-mode.js",
     "./vue/useFormField": "./dist/extensions/builtin/fields/composables/useFormField.js",

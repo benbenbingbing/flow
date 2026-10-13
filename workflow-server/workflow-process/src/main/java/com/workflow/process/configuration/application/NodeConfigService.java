@@ -257,7 +257,7 @@ public class NodeConfigService {
         NodeConfig node = new NodeConfig();
         node.setId(dto.getId());
         node.setNodeId(dto.getNodeId());
-        node.setNodeName(dto.getNodeName());
+        node.setNodeName(NodeDisplayName.resolve(dto.getNodeId(), dto.getNodeName()));
         node.setNodeType(dto.getNodeType());
         node.setConfigJson(dto.getConfigJson());
         node.setSkipNode(dto.getSkipNode());

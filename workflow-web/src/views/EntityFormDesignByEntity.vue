@@ -301,17 +301,29 @@
                   <el-input v-model="selectedField.fieldLabel" />
                 </SettingsFormItem>
 
-                <SettingsCapability :disabled="!isFieldNode" reason="仅实体字段支持组件、占位提示和默认值配置">
+                <SettingsCapability :disabled="!isEditableFieldNode" reason="当前节点不支持选择组件">
                   <el-form-item label="组件类型">
-                    <el-select v-model="selectedField.componentType" style="width: 100%" @change="handleCompatibleComponentChange">
-                      <el-option
-                        v-for="option in availableFormFieldComponentOptions"
-                        :key="option.value"
-                        :label="option.label"
-                        :value="option.value"
-                      />
+                    <el-select v-model="selectedField.componentType" filterable style="width: 100%" @change="handleCompatibleComponentChange">
+                      <el-option-group v-for="group in formComponentOptionGroups" :key="group.label" :label="group.label">
+                        <el-option
+                          v-for="option in group.options"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        />
+                      </el-option-group>
                     </el-select>
                   </el-form-item>
+                  <div v-if="isEditableFieldNode && selectedComponentSchema.length" class="component-configuration">
+                    <div class="property-subheading">组件参数</div>
+                    <ConfigSchemaEditor
+                      v-model="selectedComponentConfig"
+                      :schema="selectedComponentSchema"
+                    />
+                  </div>
+                </SettingsCapability>
+
+                <SettingsCapability :disabled="!isFieldNode" reason="仅实体字段支持占位提示和默认值配置">
                   <el-form-item label="占位提示">
                     <el-input v-model="selectedField.placeholder" placeholder="提示文字" />
                   </el-form-item>
@@ -899,55 +911,6 @@
                 </div>
               </SettingsSection>
 
-              <SettingsSection
-                :disabled="!(canConfigureNodeExtension || isEditableFieldNode || isFieldNode)"
-                disabled-reason="当前节点不支持复用与扩展"
-                v-show="activeNodeSettingsTab === 'extension'"
-                title="复用与扩展"
-                description="节点扩展和组件参数"
-                :default-expanded="!!selectedField.componentName || !!selectedField.fieldComponentName"
-              >
-                <template #summary>
-                  <el-tag
-                    size="small"
-                    :type="selectedField.componentName || selectedField.fieldComponentName ? 'success' : 'info'"
-                  >
-                    {{ selectedField.componentName || selectedField.fieldComponentName ? '已配置' : '未配置' }}
-                  </el-tag>
-                </template>
-
-                <SettingsFormItem :disabled="!canConfigureNodeExtension" disabled-reason="当前节点不支持节点扩展" label="节点扩展">
-                  <el-select
-                    v-model="selectedField.componentName"
-                    clearable
-                    filterable
-                    placeholder="使用内置节点"
-                    style="width: 100%"
-                    @change="handleNodeExtensionChange"
-                  >
-                    <el-option
-                      v-for="option in availableNodeExtensionOptions"
-                      :key="option.value"
-                      :label="`${option.label} (v${option.version})`"
-                      :value="option.value"
-                    />
-                  </el-select>
-                  <div v-if="selectedField.componentName" class="form-tip">
-                    锁定实现 v{{ selectedField.componentVersion || 1 }}，
-                    配置快照 v{{ selectedField.snapshotVersion || 1 }}
-                  </div>
-                </SettingsFormItem>
-
-                <SettingsCapability :disabled="!isFieldNode || !selectedComponentSchema.length" reason="当前组件未提供可配置参数">
-                  <div class="property-subheading">组件参数</div>
-                  <p v-if="!isFieldNode || !selectedComponentSchema.length" class="form-tip">当前组件未提供可配置参数</p>
-                  <ConfigSchemaEditor
-                    v-if="isFieldNode && selectedComponentSchema.length"
-                    v-model="selectedComponentConfig"
-                    :schema="selectedComponentSchema"
-                  />
-                </SettingsCapability>
-              </SettingsSection>
             </el-form>
           </el-scrollbar>
         </template>
@@ -1080,7 +1043,7 @@
 <script setup>
 import { showRequestError } from '@/shared/request'
 
-import { createFormNodeEditorModel } from './form-designer/formNodeEditorModel.js'
+import { compatibleFormComponentOptions, createFormNodeEditorModel } from './form-designer/formNodeEditorModel.js'
 
 import { resolveFormLabelPosition, resolveFormLabelWidth, resolveNewFormFieldGridSpan } from '@/shared/form-layout'
 
@@ -1146,9 +1109,6 @@ import {
   resolveFormRendererMode,
   shouldPersistFormNodes
 } from '@/shared/form-renderer-mode'
-import {
-  getFormNodeComponentOptions
-} from '@/extensions/core/registries/formNodeRegistry.js'
 import {
   FORM_NODE_MAX_DEPTH,
   FORM_NODE_ORDER_STEP,
@@ -1318,7 +1278,6 @@ const relatedContentAnchorOptions = computed(() => formFields.value
   })))
 const formFieldComponentOptions = getFormFieldComponentOptions()
 const localCustomFormOptions = getCustomFormComponentOptions()
-const localNodeExtensionOptions = getFormNodeComponentOptions()
 const activeExtensionMap = computed(() => {
   const result = new Map()
   extensionDefinitions.value
@@ -1353,18 +1312,6 @@ const selectedCustomFormCatalogOption = computed(() => {
       }
     : null
 })
-const nodeExtensionOptions = computed(() =>
-  localNodeExtensionOptions.map(option => {
-    const definition = activeExtensionMap.value.get(`NODE:${option.value}`)
-    return {
-      ...option,
-      version: definition?.version || option.version || 1,
-      snapshotVersion:
-        definition?.snapshotVersion || option.snapshotVersion || 1,
-      manifestRegistered: Boolean(definition)
-    }
-  })
-)
 const modeOptions = [
   { value: 'create', label: '新增' },
   { value: 'edit', label: '编辑' },
@@ -1527,37 +1474,6 @@ const customFormButtonCount = computed(() =>
     button.enabled !== false
   ).length || 0
 )
-
-const availableNodeExtensionOptions = computed(() => {
-  const nodeType = String(selectedField.value?.nodeType || '').toUpperCase()
-  const { bindingType } = resolveFormNodeBinding(
-    selectedField.value,
-    nodeType
-  )
-  return nodeExtensionOptions.value.filter(option =>
-    (!option.nodeTypes?.length || option.nodeTypes.includes(nodeType))
-      && (!option.supportedBindings?.length
-        || option.supportedBindings
-          .map(value => String(value).toUpperCase())
-          .includes(bindingType))
-  )
-})
-
-function handleNodeExtensionChange(componentName) {
-  if (componentName && selectedField.value?.fieldComponentName) {
-    selectedField.value.componentType = getDefaultComponentType(
-      selectedField.value.fieldType
-    )
-    selectedField.value.fieldComponentName = ''
-    selectedField.value.fieldComponentVersion = null
-    selectedField.value.fieldComponentSnapshotVersion = null
-  }
-  const descriptor = nodeExtensionOptions.value.find(
-    option => option.value === componentName
-  )
-  selectedField.value.componentVersion = descriptor?.version || null
-  selectedField.value.snapshotVersion = descriptor?.snapshotVersion || null
-}
 
 function refreshExtensionCatalog() {
   loadExtensionDefinitions()
@@ -1811,16 +1727,16 @@ async function loadExtensionDefinitions({ strict = false } = {}) {
 }
 
 const selectedComponentDescriptor = computed(() =>
-  getFormFieldComponentDescriptor(selectedField.value?.componentType)
+  getFormFieldComponentDescriptor(selectedField.value?.componentType, selectedField.value?.componentVersion)
 )
 
-const availableFormFieldComponentOptions = computed(() => {
-  const fieldType = String(selectedField.value?.fieldType || '').toUpperCase()
-  return formFieldComponentOptions.filter(option =>
-    !option.supportedFieldTypes?.length
-    || option.supportedFieldTypes.map(type => String(type).toUpperCase()).includes(fieldType)
-  )
-})
+const availableFormFieldComponentOptions = computed(() =>
+  compatibleFormComponentOptions(selectedField.value, formFieldComponentOptions)
+)
+const formComponentOptionGroups = computed(() => [
+  { label: '系统预置', options: availableFormFieldComponentOptions.value.filter(option => option.origin === 'PLATFORM') },
+  { label: '项目自定义', options: availableFormFieldComponentOptions.value.filter(option => option.origin !== 'PLATFORM') }
+].filter(group => group.options.length))
 
 const selectedComponentSchema = computed(() =>
   selectedComponentDescriptor.value?.configSchema || []
@@ -1867,9 +1783,6 @@ const canEditGridSpan = computed(() =>
       form.value.layoutType === 'grid'
       || nodeTypeOf(nodeById(selectedField.value?.parentId)) === 'GRID'
     )
-)
-const canConfigureNodeExtension = computed(() =>
-  selectedNodePropertySchema.value.nodeExtension
 )
 const selectedNodeConfig = computed(() =>
   safeParseConfig(selectedField.value?.componentProps)
@@ -3025,7 +2938,6 @@ function fieldToNodeEntity(field, index) {
     nodeType: payload.nodeType,
     bindingType: payload.bindingType,
     bindingRef: payload.bindingRef,
-    componentName: payload.componentName,
     componentVersion: payload.componentVersion,
     snapshotVersion: payload.snapshotVersion,
     propsDocument: stringifyConfig(payload.props),
@@ -3743,45 +3655,28 @@ function updateSelectedNodeConfig(key, value) {
   })
 }
 
+/** 切换唯一组件并锁定其版本，平台校验、联动与子表关系不随控件切换被清空。 */
 function handleCompatibleComponentChange() {
   if (!selectedField.value) return
-  let descriptor = getFormFieldComponentDescriptor(
-    selectedField.value.componentType
-  )
-  const fieldType = String(selectedField.value.fieldType || '').toUpperCase()
-  const supported = descriptor?.supportedFieldTypes || []
-  if (supported.length
-      && !supported.map(type => String(type).toUpperCase()).includes(fieldType)) {
-    ElMessage.warning('该组件与当前字段类型不兼容，已恢复默认组件')
-    selectedField.value.componentType = getDefaultComponentType(fieldType)
-    descriptor = getFormFieldComponentDescriptor(
-      selectedField.value.componentType
-    )
+  const field = selectedField.value
+  if (!availableFormFieldComponentOptions.value.some(option => option.value === field.componentType)) {
+    ElMessage.warning('该组件与当前节点不兼容，已恢复默认组件')
+    field.componentType = isFieldNode.value ? getDefaultComponentType(field.fieldType) : 'sub_form'
   }
-  if (hasFormFieldComponent(selectedField.value.componentType)) {
-    const extensionName = selectedField.value.componentType
-    const definition = activeExtensionMap.value.get(
-      `FIELD:${extensionName}`
-    )
-    selectedField.value.fieldComponentName = extensionName
-    selectedField.value.fieldComponentVersion =
-      definition?.version || descriptor?.version || 1
-    selectedField.value.fieldComponentSnapshotVersion =
-      definition?.snapshotVersion || descriptor?.snapshotVersion || 1
-    selectedField.value.componentName = ''
-    selectedField.value.componentVersion = null
-    selectedField.value.snapshotVersion = null
-  } else {
-    selectedField.value.fieldComponentName = ''
-    selectedField.value.fieldComponentVersion = null
-    selectedField.value.fieldComponentSnapshotVersion = null
-  }
-  selectedField.value.componentProps = '{}'
-  selectedField.value.validationRules = '{}'
-  selectedField.value.dataSourceBindings = {}
-  selectedField.value.interfaceExtensionId = ''
-  selectedField.value.dataSourceInputMappingText = '{}'
-  selectedField.value.dataSourceOutputMappingText = '{}'
+  const descriptor = getFormFieldComponentDescriptor(field.componentType)
+  const definition = activeExtensionMap.value.get(`FIELD:${field.componentType}`)
+  const custom = hasFormFieldComponent(field.componentType)
+  field.componentVersion = custom ? (definition?.version || descriptor?.version || 1) : null
+  field.snapshotVersion = custom ? (definition?.snapshotVersion || descriptor?.snapshotVersion || 1) : null
+  // 这些配置由平台消费，独立于组件参数 Schema；仅清理前一控件的专属参数。
+  const previousConfig = safeParseConfig(field.componentProps)
+  const platformKeys = [
+    'events', 'modeAccess', 'linkageRules', 'subFormConfig', 'subListConfig',
+    'refConfig', 'fileItems', 'attachmentItemRequiredRules', 'showPadding', 'showBorder'
+  ]
+  field.componentProps = stringifyConfig(Object.fromEntries(
+    platformKeys.filter(key => Object.hasOwn(previousConfig, key)).map(key => [key, previousConfig[key]])
+  ))
 }
 
 function getModeAccessValue(mode, key) {

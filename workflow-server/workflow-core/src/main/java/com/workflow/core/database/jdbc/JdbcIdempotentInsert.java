@@ -4,9 +4,7 @@ import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
 
 import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import com.workflow.integration.database.api.error.DatabaseErrorKind;
-import java.sql.Connection;
 import java.sql.SQLException;
-import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Savepoint;
 import java.util.Map;
 import java.util.Objects;
@@ -69,7 +67,7 @@ public class JdbcIdempotentInsert {
                 if (!isDuplicate(error)) throw error;
                 inserted = false;
             }
-            release(connection, point);
+            JdbcSavepoints.release(connection, point);
             return inserted;
         }));
     }
@@ -84,19 +82,4 @@ public class JdbcIdempotentInsert {
         return errors.classify(error) == DatabaseErrorKind.UNIQUE;
     }
 
-    /**
-     * Oracle JDBC 等不支持显式释放时交给事务结束清理，不能通过提交来模拟释放。
-     *
-     * @param connection 连接，供本方法处理发布版本时使用
-     * @param point {@code point}，作为 {@code connection.releaseSavepoint} 的输入影响后续处理
-     * @throws SQLException 数据库访问或结构检查失败时抛出
-     */
-    private static void release(Connection connection, Savepoint point) throws SQLException {
-        if (point == null) return;
-        try {
-            connection.releaseSavepoint(point);
-        } catch (SQLFeatureNotSupportedException unsupported) {
-            // 保留调用方的原事务边界。
-        }
-    }
 }

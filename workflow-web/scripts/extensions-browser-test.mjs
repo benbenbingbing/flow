@@ -21,9 +21,8 @@ import 'element-plus/dist/index.css'
 import { registerApplicationExtensions } from '/src/extensions/register.js'
 import { getExtensionCatalog } from '/src/extensions/core/catalog.js'
 import { getCustomFormComponent, getCustomListComponent } from '/src/extensions/core/registries/customComponentRegistry.js'
-import { resolveFieldComponent } from '/src/extensions/core/registries/formFieldRegistry.js'
+import { resolveFieldComponent, getFormFieldComponent } from '/src/extensions/core/registries/formFieldRegistry.js'
 import { getCellComponent } from '/src/extensions/core/registries/listCellRegistry.js'
-import { getFormNodeComponent } from '/src/extensions/core/registries/formNodeRegistry.js'
 import { getListButtonComponent } from '/src/extensions/core/registries/listButtonComponentRegistry.js'
 import { getListToolbarAction, getListRowAction } from '/src/extensions/core/registries/listActionRegistry.js'
 import { getCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
@@ -31,7 +30,7 @@ import { getEntityActionRuleCondition, resolveEntityPermissionOptions } from '/s
 const options = {enableDemo: new URLSearchParams(location.search).has('demo')}
 registerApplicationExtensions(options)
 registerApplicationExtensions(options)
-const field = resolveFieldComponent({componentType:'project_acceptance_score'})
+const field = resolveFieldComponent({componentType:'project_acceptance_score',fieldType:'INTEGER'})
 const cell = getCellComponent('ProjectAcceptanceScoreCell')
 const added = getCellComponent('BrowserTemporaryCell')
 createApp({setup:()=>()=>h('main',[
@@ -44,7 +43,7 @@ window.extensionTest = {
   names: getExtensionCatalog().map(item=>item.name),
   types: [...new Set(getExtensionCatalog().map(item=>item.type))],
   label: getExtensionCatalog().find(item=>item.name==='BrowserTemporaryCell')?.label,
-  identities: [getCustomFormComponent('ProjectMemberChangeForm'),getCustomListComponent('ProjectAcceptanceBoardList'),getFormNodeComponent('ProjectAcceptanceSummaryNode'),getListButtonComponent('ProjectAcceptanceInspectButton'),condition?.component].every(Boolean),
+  identities: [getCustomFormComponent('ProjectMemberChangeForm'),getCustomListComponent('ProjectAcceptanceBoardList'),getFormFieldComponent('ProjectAcceptanceSummaryNode'),getListButtonComponent('ProjectAcceptanceInspectButton'),condition?.component].every(Boolean),
   actions: typeof getListToolbarAction('projectAcceptanceToolbarAction') === 'function' && typeof getListRowAction('projectAcceptanceRowAction') === 'function' && getListToolbarAction('projectAcceptanceSelectionAction') === getListRowAction('projectAcceptanceSelectionAction'),
   validate: value => getCustomValidator('amount',1).validator.validate(value,{params:{maxAmount:100}}),
   permissions: await resolveEntityPermissionOptions({entityCode:'Project'}),
@@ -116,7 +115,7 @@ try {
   await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }) })
   await send('Runtime.enable'); await send('Page.enable')
   await send('Page.navigate', { url }); await ready()
-  assert.equal(await evaluate('extensionTest.types.length'), 10)
+  assert.equal(await evaluate('extensionTest.types.length'), 9)
   assert.equal(await evaluate('extensionTest.identities && extensionTest.actions'), true)
   assert.equal(await evaluate('extensionTest.names.includes("DemoProjectForm")'), false)
   assert.equal(await evaluate('extensionTest.permissions.length'), 1, '重复初始化不重复追加权限候选')
@@ -144,7 +143,7 @@ try {
   assert.equal(await evaluate('extensionTest.names.includes("BrowserTemporaryCell")'), false)
   assert.equal(await evaluate('document.querySelector("#added") === null'), true)
   assert.deepEqual(browserErrors, [])
-  console.info('JSON 扩展浏览器验收通过：十类注册、真实字段/单元格、动作/校验/权限、Demo、重复初始化、清单新增/修改/删除自动刷新。')
+  console.info('JSON 扩展浏览器验收通过：九类注册、真实字段/单元格、动作/校验/权限、Demo、重复初始化、清单新增/修改/删除自动刷新。')
 } finally {
   ws?.close(); browser?.kill(); await server?.close()
   await sleep(200)

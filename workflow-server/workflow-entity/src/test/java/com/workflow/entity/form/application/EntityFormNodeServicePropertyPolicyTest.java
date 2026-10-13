@@ -61,7 +61,6 @@ class EntityFormNodeServicePropertyPolicyTest {
                 "validation", Map.of(),
                 "extension", Map.of()));
         request.setClearFields(Set.of(
-                "componentName",
                 "componentVersion",
                 "snapshotVersion",
                 "dataSourceBindings",

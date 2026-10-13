@@ -27,6 +27,10 @@
         >
           <FormFieldRenderer 
             :field="field"
+            :form-data="formData"
+            :readonly="readonly"
+            :mode="readonly ? 'view' : 'edit'"
+            @patch-form="applyComponentPatch"
             :context="{ getFormData: () => formData, scriptFields: form.fields }"
             v-model="formData[field.fieldCode || `field_${field.id}`]"
             :disabled="readonly || field.isReadonly === 1"
@@ -38,6 +42,7 @@
 </template>
 
 <script setup>
+import { resolveComponentFormPatch } from '@flow/workflow-core/form-runtime/formModel'
 import { isSubFormLayoutField, resolveFormLabelPosition, resolveFormLabelWidth } from '@/shared/form-layout'
 
 import { ref, computed, watch } from 'vue'
@@ -67,6 +72,13 @@ const emit = defineEmits(['update:modelValue'])
 
 const formRef = ref(null)
 const formData = ref({ ...props.modelValue })
+/** 预览同样限制补丁到本表可编辑字段，保持与运行态相同的数据边界。 */
+function applyComponentPatch(patch) {
+  const changes = resolveComponentFormPatch(patch, props.form.fields || [], formData.value, {
+    form: props.form, mode: props.readonly ? 'view' : 'edit', readonly: props.readonly
+  })
+  formData.value = { ...formData.value, ...Object.fromEntries(changes.map(item => [item.code, item.value])) }
+}
 
 // 同步外部数据
 watch(() => props.modelValue, (val) => {

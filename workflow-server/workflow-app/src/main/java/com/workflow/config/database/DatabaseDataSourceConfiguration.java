@@ -36,6 +36,7 @@ public class DatabaseDataSourceConfiguration {
         pool.setUsername(properties.getUsername());
         pool.setPassword(properties.getPassword());
         pool.setDriverClassName(DatabaseJdbcProfiles.driver(properties.getUrl(), properties.getDriverClassName()));
+        pool.setDataSourceProperties(DatabaseJdbcProfiles.connectionProperties(dialect.vendor(), properties.getUrl()));
         pool.setConnectionInitSql(DatabaseJdbcProfiles.connectionInitSql(dialect.vendor()));
         return pool;
     }
@@ -62,7 +63,7 @@ public class DatabaseDataSourceConfiguration {
             @Value("${workflow.schema-publisher.datasource.driver-class-name:}") String schemaDriver,
             @Value("${spring.datasource.hikari.connection-init-sql:}") String configuredInitSql) {
         String initSql = configuredInitSql.isBlank() ? DatabaseJdbcProfiles.connectionInitSql(dialect.vendor()) : configuredInitSql;
-        DataSource application = new InitializedDriverDataSource(properties.getUrl(), properties.getUsername(), properties.getPassword(),
+        DataSource application = new InitializedDriverDataSource(dialect.vendor(), properties.getUrl(), properties.getUsername(), properties.getPassword(),
                 properties.getDriverClassName(), initSql);
         return new DatabaseConnections() {
             @Override public DataSource application() { return application; }
@@ -70,7 +71,7 @@ public class DatabaseDataSourceConfiguration {
                 // 与原专用 DDL 入口保持一致，不允许误用空身份执行结构发布。
                 if (schemaPassword.isBlank()) throw new IllegalStateException("SCHEMA_DB_PASSWORD is required");
                 DatabaseJdbcProfiles.requireCompatibleUrl(dialect.vendor(), schemaUrl);
-                return new InitializedDriverDataSource(schemaUrl, schemaUser, schemaPassword, schemaDriver, initSql);
+                return new InitializedDriverDataSource(dialect.vendor(), schemaUrl, schemaUser, schemaPassword, schemaDriver, initSql);
             }
         };
     }

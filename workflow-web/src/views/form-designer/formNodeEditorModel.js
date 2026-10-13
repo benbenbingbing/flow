@@ -2,10 +2,26 @@ import { restoreRelationEditorMetadata } from '@/shared/relation-content'
 import { getFormFieldComponentDescriptor, hasFormFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import { normalizeFormNodeType } from '@flow/workflow-core/form-node-hierarchy'
 import { buildFormNodePayload, extractFormNodeComponentConfig, formNodeSupports, getFormNodeDataSourceUsages, mergeFormNodeFieldMetadata, resolveFormNodeBinding } from '@flow/workflow-core/form-node-property-schema'
-import { getDefaultFormFieldComponentType as getDefaultComponentType } from '@flow/workflow-core/extensions/core/fieldPolicy'
-import { FORM_FIELD_EXTENSION_TYPE, resolveFormFieldExtensionName } from '@flow/workflow-core/form-field-extension'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListDisplayConfig, SUB_LIST_ACTION_DISPLAY_VERSION } from '@/shared/sub-list'
+
+/**
+ * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
+ * 未声明 nodeTypes 的字段控件只适用于 FIELD，避免误用于子表单的整行数据。
+ */
+export function compatibleFormComponentOptions(field, options) {
+  const nodeType = normalizeFormNodeType(field?.nodeType || 'FIELD')
+  const { bindingType } = resolveFormNodeBinding(field, nodeType)
+  const fieldType = String(field?.fieldType || '').toUpperCase()
+  return options.filter(option => {
+    const nodeTypes = option.nodeTypes?.length ? option.nodeTypes : ['FIELD']
+    return nodeTypes.map(type => String(type).toUpperCase()).includes(nodeType)
+      && (!option.supportedBindings?.length || option.supportedBindings
+        .map(type => String(type).toUpperCase()).includes(bindingType))
+      && (!option.supportedFieldTypes?.length || option.supportedFieldTypes
+        .map(type => String(type).toUpperCase()).includes(fieldType))
+  })
+}
 
 /**
  * 设计节点与发布协议的双向转换。只读取实体元数据和扩展目录，不负责请求、保存或修改基线。
@@ -60,10 +76,6 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
     const componentConfig = extractFormNodeComponentConfig(nodeType, props)
     const rulesSupported = formNodeSupports(nodeType, 'rules')
     const isChildFormNode = ['SUB_FORM', 'REPEATER'].includes(nodeType)
-    const fieldComponentName = resolveFormFieldExtensionName({
-      ...node,
-      props
-    })
     const field = {
       ...sourceField,
       id: node.id,
@@ -76,25 +88,8 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       bindingRef: node.bindingRef || '',
       revision: node.revision,
       orderKey: node.orderKey,
-      componentName: fieldComponentName
-        ? ''
-        : (node.componentName || ''),
-      componentVersion: fieldComponentName
-        ? null
-        : node.componentVersion,
-      snapshotVersion: fieldComponentName
-        ? null
-        : node.snapshotVersion,
-      fieldComponentName,
-      fieldComponentVersion: fieldComponentName
-        ? node.componentVersion
-        : null,
-      fieldComponentSnapshotVersion: fieldComponentName
-        ? node.snapshotVersion
-        : null,
-      componentExtensionType: fieldComponentName
-        ? FORM_FIELD_EXTENSION_TYPE
-        : '',
+      componentVersion: node.componentVersion,
+      snapshotVersion: node.snapshotVersion,
       legacyProps: parseDocument(node.legacyPropsDocument),
       dataSourceBindings: bindings,
       fieldId: props.fieldId ?? sourceField.fieldId ?? sourceField.id,
@@ -104,14 +99,9 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
       fieldType: isChildFormNode
         ? 'SUB_FORM'
         : (props.fieldType || sourceField.fieldType || node.nodeType),
-      componentType: isChildFormNode
-        ? 'sub_form'
-        : (
-            fieldComponentName
-            || props.componentType
-            || sourceField.componentType
-            || node.nodeType.toLowerCase()
-          ),
+      componentType: props.componentType
+        || (isChildFormNode ? 'sub_form' : sourceField.componentType)
+        || node.nodeType.toLowerCase(),
       placeholder: props.placeholder ?? sourceField.placeholder,
       defaultValue: props.defaultValue ?? sourceField.defaultValue,
       // 旧发布曾使用 props.span；读取后统一投影成 gridSpan，下一次保存自动规范化。
@@ -164,44 +154,20 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
     const effectiveRequired = isEntityFieldFixedRequired(field)
       ? 1
       : field.isRequired
-    const selectedFieldComponent =
-      field.fieldComponentName
-      || (
-        hasFormFieldComponent(field.componentType)
-          ? field.componentType
-          : ''
-      )
-    const fieldComponentDescriptor = selectedFieldComponent
-      ? getFormFieldComponentDescriptor(selectedFieldComponent)
-      : null
-    const fieldComponentDefinition = selectedFieldComponent
-      ? activeExtensionMap.value.get(
-          `FIELD:${selectedFieldComponent}`
-        )
-      : null
-    const persistedField = selectedFieldComponent
-        ? {
-          ...field,
-          isRequired: effectiveRequired,
-          componentType: getDefaultComponentType(field.fieldType),
-          componentExtensionType: FORM_FIELD_EXTENSION_TYPE,
-          componentName: selectedFieldComponent,
-          componentVersion:
-            field.fieldComponentVersion
-            || fieldComponentDefinition?.version
-            || fieldComponentDescriptor?.version
-            || 1,
-          snapshotVersion:
-            field.fieldComponentSnapshotVersion
-            || fieldComponentDefinition?.snapshotVersion
-            || fieldComponentDescriptor?.snapshotVersion
-            || 1
-        }
-      : {
-          ...field,
-          isRequired: effectiveRequired,
-          componentExtensionType: undefined
-        }
+    const isCustomComponent = hasFormFieldComponent(field.componentType)
+    const descriptor = getFormFieldComponentDescriptor(field.componentType, field.componentVersion)
+    const definition = activeExtensionMap.value.get(`FIELD:${field.componentType}`)
+    // 保存唯一组件标识，读取后无需再将“节点扩展”翻译成设计器的第二套字段。
+    const persistedField = {
+      ...field,
+      isRequired: effectiveRequired,
+      componentVersion: isCustomComponent
+        ? (field.componentVersion || definition?.version || descriptor?.version || 1)
+        : null,
+      snapshotVersion: isCustomComponent
+        ? (field.snapshotVersion || definition?.snapshotVersion || descriptor?.snapshotVersion || 1)
+        : null
+    }
     return buildFormNodePayload(
       {
         ...persistedField,

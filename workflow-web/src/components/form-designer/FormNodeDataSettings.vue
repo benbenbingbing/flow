@@ -87,8 +87,8 @@
 
       <div v-if="isCascader" class="form-tip" role="note">
         {{ cascaderUsesInterface
-          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“复用与扩展 → 组件参数”设置。'
-          : '当前级联选择使用静态选项。如需接口数据，请先在“复用与扩展 → 组件参数”将数据来源改为“数据接口”。' }}
+          ? '级联选择通过“字段选项”绑定数据接口。加载方式在“基础与布局 → 组件参数”设置。'
+          : '当前级联选择使用静态选项。如需接口数据，请先在“基础与布局 → 组件参数”将数据来源改为“数据接口”。' }}
         <el-button v-if="cascaderUsesInterface && selectedField.dataSourceUsage !== 'FIELD_OPTIONS'"
           link type="primary" @click="selectNodeDataSourceUsage('FIELD_OPTIONS')">配置级联数据接口</el-button>
       </div>

@@ -39,7 +39,6 @@ import com.workflow.admin.organization.infrastructure.persistence.record.SysOrga
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
-import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
@@ -941,12 +940,12 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                 if (StringUtils.hasText(fieldCode)) {
                     referencedFields.add(fieldCode);
                 }
-                String componentName = text(node.get("componentName"));
+                String componentName = nodeComponentType(node);
                 Integer componentVersion = integer(node.get("componentVersion"));
                 if (StringUtils.hasText(componentName)
                         && componentVersion != null) {
                     extensionReferences.add(extensionReference(
-                            nodeExtensionType(node),
+                            "FIELD",
                             componentName,
                             componentVersion));
                 }
@@ -1306,11 +1305,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                 nodeSnapshot.put(
                         "parentNodeKey",
                         nodeKeysById.get(node.getParentId()));
-                if (StringUtils.hasText(node.getComponentName())
+                if (StringUtils.hasText(nodeComponentType(portableMap(node)))
                         && node.getComponentVersion() != null) {
                     extensionReferences.add(extensionReference(
-                            nodeExtensionType(node),
-                            node.getComponentName(),
+                            "FIELD",
+                            nodeComponentType(portableMap(node)),
                             node.getComponentVersion()));
                 }
                 collectInterfaceExtensionIds(nodeSnapshot, dataSourceIds);
@@ -1688,7 +1687,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                 String name = text(component.get("name"));
                 Integer version = integer(component.get("version"));
                 String extensionType = firstNonBlank(
-                        text(component.get("extensionType")), "NODE");
+                        text(component.get("extensionType")), "FORM");
                 if (StringUtils.hasText(name) && version != null) {
                     extensionReferences.add(extensionReference(
                             extensionType, name, version));
@@ -1891,34 +1890,11 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         return type + "|" + key + "|" + version;
     }
 
-    /**
-     * 生成节点扩展类型文本，供后续匹配或展示。
-     *
-     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
-     * @return 处理后的节点扩展类型文本，供调用方比较或展示
-     */
-    private String nodeExtensionType(Map<String, Object> node) {
-        Map<String, Object> props = mapValue(parseJson(
-                text(node.get("propsDocument")),
-                Map.of()));
-        return UiExtensionReferencePolicy.resolveNodeExtensionType(
-                text(node.get("nodeType")),
-                props);
-    }
-
-    /**
-     * 生成节点扩展类型文本，供后续匹配或展示。
-     *
-     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
-     * @return 处理后的节点扩展类型文本，供调用方比较或展示
-     */
-    private String nodeExtensionType(EntityFormNode node) {
-        Map<String, Object> props = mapValue(parseJson(
-                node == null ? null : node.getPropsDocument(),
-                Map.of()));
-        return UiExtensionReferencePolicy.resolveNodeExtensionType(
-                node == null ? null : node.getNodeType(),
-                props);
+    /** 导出依赖与运行时共用属性中的唯一组件身份。 */
+    private String nodeComponentType(Map<String, Object> node) {
+        Map<String, Object> props = mapValue(parseJson(text(node.get("propsDocument")), Map.of()));
+        if (props.isEmpty()) props = mapValue(node.get("props"));
+        return text(props.get("componentType"));
     }
 
     /**

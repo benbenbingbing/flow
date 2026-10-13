@@ -3991,12 +3991,16 @@ public class UiConfigReleaseService {
                     form.getCustomComponentSnapshotVersion());
         }
         for (EntityFormNode node : nodes) {
-            if (!StringUtils.hasText(node.getComponentName())) {
+            Map<String, Object> props = codec.readObject(
+                    StringUtils.hasText(node.getPropsDocument()) ? node.getPropsDocument() : "{}", "组件属性");
+            String componentType = text(props.get("componentType"));
+            if (!StringUtils.hasText(componentType)
+                    || com.workflow.entity.form.application.EntityFormNodePropertyPolicy.isBuiltInComponent(componentType)) {
                 continue;
             }
             var definition = extensionDefinitionService.requireActive(
-                    nodeExtensionType(node),
-                    node.getComponentName(),
+                    "FIELD",
+                    componentType,
                     node.getComponentVersion());
             extensionDefinitionService.validateCompatibility(
                     definition,
@@ -4004,49 +4008,8 @@ public class UiConfigReleaseService {
                     node.getNodeType(),
                     node.getBindingType(),
                     node.getSnapshotVersion());
+            extensionDefinitionService.validateFieldType(definition, text(props.get("fieldType")));
         }
-    }
-
-    /**
-     * 生成节点扩展类型文本，供后续匹配或展示。
-     *
-     * @param node 节点，作为 {@code UiExtensionReferencePolicy.resolveNodeExtensionType} 的输入影响后续处理
-     * @return 处理后的节点扩展类型文本，供调用方比较或展示
-     */
-    private String nodeExtensionType(EntityFormNode node) {
-        Map<String, Object> props =
-                node != null
-                        && StringUtils.hasText(node.getPropsDocument())
-                        ? codec.readObject(
-                                node.getPropsDocument(),
-                                "表单节点扩展属性")
-                        : Map.of();
-        return UiExtensionReferencePolicy.resolveNodeExtensionType(
-                node == null ? null : node.getNodeType(),
-                props);
-    }
-
-    /**
-     * 生成节点扩展类型文本，供后续匹配或展示。
-     *
-     * @param node 节点，作为 {@code mapValue} 的输入影响后续处理
-     * @return 处理后的节点扩展类型文本，供调用方比较或展示
-     */
-    private String nodeExtensionType(Map<String, Object> node) {
-        if (node == null) {
-            return UiExtensionReferencePolicy.NODE;
-        }
-        Map<String, Object> props = mapValue(node.get("props"));
-        if (props.isEmpty()
-                && StringUtils.hasText(
-                        text(node.get("propsDocument")))) {
-            props = codec.readObject(
-                    text(node.get("propsDocument")),
-                    "表单节点扩展属性");
-        }
-        return UiExtensionReferencePolicy.resolveNodeExtensionType(
-                text(node.get("nodeType")),
-                props);
     }
 
     /**

@@ -6,8 +6,7 @@
 
 | 文件 | 如何使用、注意什么 |
 | --- | --- |
-| form-field.js | defineProps(formFieldProps)、defineEmits(formFieldEmits)；modelValue 是单个字段值 |
-| form-node.js | 使用 formNodeProps/formNodeEmits；modelValue 是整份业务字段对象，更新需保留其他字段 |
+| form-field.js | defineProps(formFieldProps)、defineEmits(formFieldEmits)；modelValue 是当前字段值，formData 为当前表单数据；多字段更新发送 patch-form |
 | form.js | 使用 customFormProps/customFormEmits；处理模式、联动、错误和动作插槽，并暴露 validate() |
 | list.js | 使用 customListProps/customListEmits；消费宿主数据/分页并通过 runtime 执行受控动作 |
 | list-cell.js | 使用 listCellProps；config 来自列渲染参数，value 已经格式化 |

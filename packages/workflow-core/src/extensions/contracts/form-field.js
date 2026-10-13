@@ -1,20 +1,18 @@
 /**
- * 单字段 Vue 契约。使用 FIELD 类型 JSON 清单注册；
- * 配置字段 componentType 为清单 name，查找忽略大小写。
- * 节点树设计器的 FIELD 扩展还使用 node.componentName 和
- * node.props.componentExtensionType='FIELD'，不能误标为 NODE；优先在设计器选组件。
- *
- * modelValue 仅为当前字段值；field 是完整字段配置。没有独立 config prop，
- * 自定义参数读取 field.componentProps（可能是 JSON 字符串）。
- * 可从 contracts/runtime.js 导入 useFormField 复用值同步、配置解析、选项、只读、
- * 默认值和标准事件，见 templates/CustomFieldTemplate.vue。
- * 宿主传入的 disabled 已包含联动和权限结果，组件必须遵守它。
- *
- * 复杂字段可额外 defineExpose({ validate })，无参返回 boolean/Promise<boolean>。
- * 自定义校验类需声明 VALIDATOR 清单 并在设计器字段中绑定才会自动执行。
- * 组件应 emit change/blur；宿主统一调用规则并在字段下方显示错误。
+ * 统一表单组件契约：内置组件与项目组件都使用 FIELD 清单及 props.componentType。
+ * modelValue 是当前绑定字段值；formData 是当前表单或子表行，根表数据通过 context 访问。
+ * 组件只能发出值事件，不能原地修改 formData/node/config；跨字段修改使用 patch-form。
+ * 宿主统一负责字段状态、标签、联动、事件和校验；组件必须遵守 disabled/readonly。
+ * 复杂组件可 expose validate() 返回 boolean/Promise<boolean>，由宿主提交校验调用。
  */
 export const formFieldProps = {
+  // 当前作用域的完整业务数据；子表组件拿到当前行，不能把它当根表写回。
+  formData: { type: Object, default: () => ({}) },
+  // 当前节点及已解码参数；无节点的字段列表仍遵循相同组件协议。
+  node: { type: Object, default: null },
+  config: { type: Object, default: () => ({}) },
+  readonly: { type: Boolean, default: false },
+  mode: { type: String, default: 'view' },
   // 宿主字段配置快照，包含字段编码和 componentProps；不要原地修改。
   field: { type: Object, required: true },
   // 宿主提供的当前模型；通过 update:modelValue 返回新值，数据形状见本文件说明。
@@ -34,6 +32,7 @@ export const formFieldProps = {
 /**
  * update:modelValue(value) 同步字段值；change(value) 驱动宿主的事件、联动和预检。
  * 一次交互各发送一次；blur(value)/focus(value) 使用当前值。
+ * patch-form({ fieldCode: value }) 原子更新当前作用域的多个字段；宿主负责对应 change 链。
  * 只发送 update:modelValue 会漏掉宿主 change 链路。
  */
-export const formFieldEmits = ['update:modelValue', 'change', 'blur', 'focus']
+export const formFieldEmits = ['update:modelValue', 'patch-form', 'change', 'blur', 'focus']

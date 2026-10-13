@@ -6,7 +6,6 @@
 export * from './component.js'
 export * from './form.js'
 export * from '@flow/workflow-core/extensions/contracts/form-field'
-export * from './form-node.js'
 export * from './list.js'
 export * from './list-cell.js'
 export * from './list-action.js'

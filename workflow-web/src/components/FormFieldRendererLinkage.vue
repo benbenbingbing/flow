@@ -1,21 +1,15 @@
 /**
  * 支持字段联动的字段渲染器
- * 基于 formFieldComponentMap 动态渲染对应字段组件
+ * 统一组件渲染入口外的字段事件、联动和校验宿主
  */
 
 <template>
   <div class="form-field-renderer-linkage" :class="{ 'has-custom-validation-error': customValidationError }">
-    <component
+    <FormFieldRenderer
       ref="fieldComponentRef"
-      :is="resolvedComponent"
-      :field="field"
-      :modelValue="modelValue"
-      @update:modelValue="$emit('update:modelValue', $event)"
-      :disabled="disabled"
-      :options="options"
-      :context="context"
-      :data-source-runtime="dataSourceRuntime"
-      :attachment-item-required-state="attachmentItemRequiredState"
+      v-bind="$props"
+      @update:model-value="$emit('update:modelValue', $event)"
+      @patch-form="handleFormPatch"
       @change="handleRuntimeChange"
       @blur="handleRuntimeBlur"
       @focus="$emit('focus', $event)"
@@ -25,15 +19,15 @@
 </template>
 
 <script setup>
-import TextField from '@/extensions/builtin/fields/components/TextField.vue'
+import FormFieldRenderer from './FormFieldRenderer.vue'
+import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/contracts/form-field'
+import { resolveComponentFormPatch } from '@flow/workflow-core/form-runtime/formModel'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
 import { CUSTOM_VALIDATION_CONTEXT_KEY } from '@flow/workflow-core/form-custom-validation'
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, nextTick } from 'vue'
 import { showRequestError } from '@/shared/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { resolveFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
 import { uiEventBindingApi } from '@/api/uiConfig'
-import { getFormId } from '@/shared/form-action-runtime'
 import { buildFieldEventPayload, applyRuntimeFieldEffects } from '@flow/workflow-core/form-runtime/fieldEvents'
 import { isEntitySelectionEventField } from '@/components/ui-config/uiFieldEventCapabilities'
 import {
@@ -41,38 +35,8 @@ import {
   resolveFormUniqueValidationTrigger
 } from '@flow/workflow-core/form-runtime/uniquePrecheckContext'
 
-const props = defineProps({
-  field: {
-    type: Object,
-    required: true
-  },
-  modelValue: {
-    type: [String, Number, Array, Date, Object, Boolean],
-    default: ''
-  },
-  disabled: {
-    type: Boolean,
-    default: false
-  },
-  options: {
-    type: Array,
-    default: null
-  },
-  context: {
-    type: Object,
-    default: () => ({})
-  },
-  dataSourceRuntime: {
-    type: Object,
-    default: null
-  },
-  attachmentItemRequiredState: {
-    type: Object,
-    default: () => ({})
-  }
-})
-
-const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
+const props = defineProps({ ...formFieldProps, linkageState: { type: Object, default: () => ({}) } })
+const emit = defineEmits(formFieldEmits)
 provideFieldScriptContext(() => props.context)
 const fieldComponentRef = ref(null)
 const uniquePrecheckContext = inject(FORM_UNIQUE_PRECHECK_CONTEXT_KEY, null)
@@ -84,21 +48,16 @@ async function handleRuntimeBlur(event) {
   await customValidationContext?.onFieldBlur(props.field)
 }
 
-const resolvedComponent = computed(() => {
-  const component = resolveFieldComponent(props.field)
-  return component || TextField
-})
-
-async function handleRuntimeChange(value) {
+async function handleRuntimeChange(value, field = props.field) {
   emit('change', value)
-  await executeRuntimeEvent('FIELD_CHANGE', value, null)
+  await executeRuntimeEvent('FIELD_CHANGE', value, null, field)
   // 与设计器的事件能力判断一致，系统用户/部门引用也必须触发已开放的选择事件。
-  if (isEntitySelectionEventField(props.field)) {
-    await executeRuntimeEvent('ENTITY_SELECTED', value, value)
+  if (isEntitySelectionEventField(field)) {
+    await executeRuntimeEvent('ENTITY_SELECTED', value, value, field)
   }
   // 事件回填可能修改条件字段，必须用全部 effect 落地后的最终数据预检。
-  await checkChangeOnlyUniqueField()
-  await customValidationContext?.checkField(props.field, 'CHANGE')
+  await checkChangeOnlyUniqueField(field)
+  await customValidationContext?.checkField(field, 'CHANGE')
 }
 
 /**
@@ -106,18 +65,18 @@ async function handleRuntimeChange(value) {
  * Element Plus 原生输入组件那样自动触发 FormItem change 校验。因此在
  * 运行字段的 change 链路中显式执行用户配置的 BLUR 唯一预检。
  */
-async function checkChangeOnlyUniqueField() {
-  const rule = uniquePrecheckContext?.resolveRule?.(props.field)
+async function checkChangeOnlyUniqueField(field) {
+  const rule = uniquePrecheckContext?.resolveRule?.(field)
   if (!rule?.precheck?.enabled
       || rule.precheck.trigger !== 'BLUR'
-      || resolveFormUniqueValidationTrigger(props.field) !== 'change') {
+      || resolveFormUniqueValidationTrigger(field) !== 'change') {
     return
   }
-  await uniquePrecheckContext.check(props.field, 'BLUR')
+  await uniquePrecheckContext.check(field, 'BLUR')
 }
 
-async function executeRuntimeEvent(eventCode, value, selection) {
-  const payload = buildFieldEventPayload(props.field, value, {
+async function executeRuntimeEvent(eventCode, value, selection, field) {
+  const payload = buildFieldEventPayload(field, value, {
     ...props.context, getFormData: currentFormData
   }, selection)
   if (!payload) return
@@ -138,9 +97,20 @@ async function executeRuntimeEvent(eventCode, value, selection) {
 }
 
 function currentFormData() {
-  if (props.context?.getFormData) return props.context.getFormData()
-  const record = props.context?.record
-  return record?.data && typeof record.data === 'object' ? record.data : record || {}
+  // formData 始终由当前宿主显式传入；空子表行也不能退回根表 record。
+  return props.formData
+}
+
+/** 跨字段补丁先整体落地，再逐字段进入标准 change 链，事件读取的都是合并后的当前作用域。 */
+async function handleFormPatch(patch) {
+  if (props.disabled || props.readonly) return
+  const changes = resolveComponentFormPatch(patch, props.context.scriptFields || [], currentFormData(), {
+    form: props.context.form, context: props.context, mode: props.mode, readonly: props.readonly, rootParentId: props.context.rootParentId
+  }, props.linkageState)
+  if (!changes.length) return
+  emit('patch-form', Object.fromEntries(changes.map(item => [item.code, item.value])))
+  await nextTick()
+  for (const { field, value } of changes) await handleRuntimeChange(value, field)
 }
 
 /** 将子表单等复合字段的校验能力透传给外层 FormItem。 */

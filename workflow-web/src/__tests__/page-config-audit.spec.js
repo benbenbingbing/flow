@@ -1176,7 +1176,7 @@ assert.ok(
 assert.equal(
   formFieldRegistrySource.includes("key: 'maxlength'"),
   false,
-  '最大长度只能在数据校验中配置，不能在复用与扩展中重复出现'
+  '最大长度只能在数据校验中配置，不能在组件参数中重复出现'
 )
 assert.equal(
   formFieldRegistrySource.includes("key: 'showWordLimit'"),
@@ -1208,7 +1208,8 @@ const wordLimitSectionStart = formDesigner.indexOf('title="基础属性"')
 const wordLimitSectionEnd = formDesigner.indexOf('</SettingsSection>', wordLimitSectionStart)
 const validationSectionStart = formDesigner.indexOf('title="校验规则"')
 const regexIndex = formDesigner.indexOf('label="正则"')
-const extensionSettingsIndex = formDesigner.indexOf('title="复用与扩展"')
+const componentTypeIndex = formDesigner.indexOf('label="组件类型"')
+const componentParametersIndex = formDesigner.indexOf('class="property-subheading">组件参数')
 assert.ok(
   wordLimitSectionStart >= 0
     && wordLimitIndex > wordLimitSectionStart
@@ -1216,8 +1217,10 @@ assert.ok(
     && validationSectionStart > wordLimitSectionEnd
     && validationMaxLengthIndex > validationSectionStart
     && regexIndex > validationMaxLengthIndex
-    && extensionSettingsIndex > regexIndex,
-  '显示字数应位于基础属性内，长度与正则应保留在数据校验中，并在复用与扩展之前'
+    && componentTypeIndex > wordLimitSectionStart
+    && componentParametersIndex > componentTypeIndex
+    && componentParametersIndex < wordLimitSectionEnd,
+  '组件类型及参数、显示字数应位于基础属性内，长度与正则保留在数据校验中'
 )
 ;[
   'getRuntimeRegexPatternError',
@@ -1289,8 +1292,7 @@ assert.ok(
   'title="子列表配置"',
   'title="引用选择配置"',
   'title="值与计算"',
-  'title="事件与回填"',
-  'title="复用与扩展"'
+  'title="事件与回填"'
 ].forEach((marker) => {
   assert.ok(
     formDesignerSurface.includes(marker),
@@ -2452,8 +2454,8 @@ const configurationArchitectureExpectations = {
     'HTTP `409`',
     'SECTION、GRID、TAB_SET、TAB、COLLAPSE、TEXT、FIELD、SUB_FORM、REPEATER、ACTION_SLOT',
     '最大深度 8 层',
-    '"type": "NODE"',
-    '节点级扩展',
+    '"type": "FIELD"',
+    'FIELD 表单组件',
     'FORM_INIT',
     'BEFORE_SUBMIT',
     'DataScopePlan',
@@ -2542,11 +2544,11 @@ const extensionEntry = readFileSync(path.join(root, 'src/extensions/index.js'), 
 const extensionManifest = readFileSync(path.join(root, 'src/extensions/manifest.js'), 'utf8')
 ;[
   'permissions',
-  'migrationSupported',
   'deprecatedAt'
 ].forEach((marker) => {
   assert.ok((extensionManifest + readFileSync(path.join(root, 'src/extensions/core/catalog.js'), 'utf8')).includes(marker), `扩展治理清单缺少字段: ${marker}`)
 })
+assert.doesNotMatch(extensionManifest + readFileSync(path.join(root, 'src/extensions/core/catalog.js'), 'utf8'), /migrationSupported|migrateConfig/, '旧节点组件迁移钩子已删除，目录不能再声明第二套配置协议')
 const extensionRegister = readFileSync(path.join(root, 'src/extensions/register.js'), 'utf8')
 assert.ok(
   extensionRegister.includes('registerApplicationExtensions')

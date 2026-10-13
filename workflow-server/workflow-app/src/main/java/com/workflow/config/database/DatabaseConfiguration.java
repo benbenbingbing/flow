@@ -5,6 +5,8 @@ import com.workflow.core.database.jdbc.JdbcDatabaseClock;
 import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
+import com.workflow.core.database.jdbc.OceanBaseOracleJdbcTemplate;
+import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.core.database.jdbc.DatabaseExceptionClassifier;
 import com.workflow.core.database.jdbc.DatabaseSQLExceptionTranslator;
 import com.workflow.integration.database.api.error.DatabaseErrorDialect;
@@ -23,12 +25,40 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.SQLExceptionTranslator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.jdbc.JdbcProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.jdbc.core.JdbcOperations;
+import javax.sql.DataSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /** 应用选择 integration 的纯方言，并装配 core/业务模块负责执行的基础设施。 */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(JdbcProperties.class)
 public class DatabaseConfiguration {
+    /**
+     * OB Oracle 的预编译在执行前不提供参数元数据，统一处理业务 JDBC 的未知类型空值。
+     * 保留 Boot 的查询、结果处理设置及厂商异常翻译，其他数据库继续使用标准 JdbcTemplate。
+     * 显式参数类型和第三方引擎自己的 JDBC 访问不受此装配影响。
+     */
+    @Bean
+    @ConditionalOnMissingBean(JdbcOperations.class)
+    public JdbcTemplate jdbcTemplate(DataSource source, SchemaDdlDialect dialect, JdbcProperties properties,
+            SQLExceptionTranslator translator) {
+        JdbcTemplate jdbc = dialect.vendor() == DatabaseVendor.OCEANBASE_ORACLE
+                ? new OceanBaseOracleJdbcTemplate(source) : new JdbcTemplate(source);
+        var settings = properties.getTemplate();
+        jdbc.setIgnoreWarnings(settings.isIgnoreWarnings());
+        jdbc.setFetchSize(settings.getFetchSize());
+        jdbc.setMaxRows(settings.getMaxRows());
+        if (settings.getQueryTimeout() != null) jdbc.setQueryTimeout((int) settings.getQueryTimeout().getSeconds());
+        jdbc.setSkipResultsProcessing(settings.isSkipResultsProcessing());
+        jdbc.setSkipUndeclaredResults(settings.isSkipUndeclaredResults());
+        jdbc.setResultsMapCaseInsensitive(settings.isResultsMapCaseInsensitive());
+        jdbc.setExceptionTranslator(translator);
+        return jdbc;
+    }
+
     /**
      * 处理数据库错误方言，并将结果传给后续步骤。
      *

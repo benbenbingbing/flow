@@ -4,7 +4,7 @@
 
 ## 交付内容
 
-- 十类扩展：FORM、FIELD、NODE、LIST、LIST_CELL、LIST_BUTTON、LIST_ACTION、VALIDATOR、ACTION_CONDITION、PERMISSION_PROVIDER。
+- 九类扩展：FORM、FIELD、LIST、LIST_CELL、LIST_BUTTON、LIST_ACTION、VALIDATOR、ACTION_CONDITION、PERMISSION_PROVIDER。
 - 53 份清单，40 份启用；Demo 关闭时实际安装 37 项，打开后增加 3 项。其余 13 份为默认禁用的契约模板/示例。
 - 现有业务实现、平台字段和单元格、金额校验、Demo、契约和模板迁入 `workflow-web/src/extensions`。旧目录和注册入口已删除，无重导出兼容层。
 - 主应用与 Embed 使用同一构建插件与注册入口；生产注册 API 调用只位于 core/adapters。
@@ -22,7 +22,7 @@
 | `npm run extensions:check` | 53 份清单结构、路径、冲突与生成数据一致性通过 |
 | `npm run test:extensions` | 13 项通过；含真实 Vite 缺失具名导出失败及仅修正 JSON 后恢复 |
 | `npm run test:extension-contracts` | 8 项校验契约测试通过；28 个契约、模板、示例 JS/Vue 入口真实编译通过 |
-| `npm run test:extensions:browser` | 十类实际注册、字段/单元格渲染、动作引用、金额校验、权限去重、Demo 开关通过；新增/修改/删除临时 JSON 后自动刷新通过 |
+| `npm run test:extensions:browser` | 九类实际注册、字段/单元格渲染、动作引用、金额校验、权限去重、Demo 开关通过；新增/修改/删除临时 JSON 后自动刷新通过 |
 | `npm run test:custom-validators:browser` | 实体表单、平铺/节点/自绘表单、子表、编辑器、审批、只读、隐藏字段、错误提示和失焦行为通过 |
 | `npm run test:entity-relations` | 关联内容、关系模型、运行参数及页面参数检查通过 |
 | `node scripts/embed-boundary-test.mjs` | 主应用与 Embed 共享 JSON 入口、原运行边界通过 |

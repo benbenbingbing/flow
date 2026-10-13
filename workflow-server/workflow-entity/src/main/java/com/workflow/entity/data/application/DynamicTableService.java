@@ -193,6 +193,13 @@ public class DynamicTableService {
     public List<String> planEntityTableStructure(EntityDefinition entityDefinition) {
         String tableName = tableResolver.resolve(entityDefinition);
         List<EntityField> fields = entityFieldMapper.findByEntityId(entityDefinition.getId());
+        // 先校验全部目标列，再比较结构差异：仅修改默认值时列类型可能没有变化，
+        // 也必须拒绝当前数据库不支持的配置，不能发布成功却悄悄忽略业务默认值。
+        for (EntityField field : fields) {
+            if (isPhysicalDynamicField(field)) {
+                dialect.columnDefinition(EntityTableDefinitionFactory.fieldColumn(field));
+            }
+        }
         if (!tableExistsByName(tableName)) {
             return buildCreateTablePlan(tableName, fields, entityDefinition.getEntityName());
         }

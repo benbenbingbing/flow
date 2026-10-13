@@ -54,7 +54,7 @@
                 prop="project_id"
                 required
               >
-                <FormFieldRendererLinkage
+                <FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }"
                   v-model="localValue.project_id"
                   :field="fieldFor('project_id')"
                   :disabled="isDisabled('project_id')"
@@ -83,7 +83,7 @@
                 prop="applicant_id"
                 required
               >
-                <FormFieldRendererLinkage
+                <FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }"
                   v-model="localValue.applicant_id"
                   :field="fieldFor('applicant_id')"
                   :disabled="isDisabled('applicant_id')"
@@ -97,7 +97,7 @@
                 prop="applicant_dept_id"
                 required
               >
-                <FormFieldRendererLinkage
+                <FormFieldRendererLinkage :form-data="localValue" :mode="fieldContext.mode" @patch-form="patch => { Object.assign(localValue, patch); syncValue() }"
                   v-model="localValue.applicant_dept_id"
                   :field="fieldFor('applicant_dept_id')"
                   :disabled="isDisabled('applicant_dept_id')"
@@ -300,6 +300,7 @@ const fieldContext = computed(() => ({
   entityCode: props.entityCode,
   entityDefinition: props.entityDefinition,
   form: props.form,
+  scriptFields: props.fields,
   mode: props.mode,
   record: props.context?.record || { data: localValue },
   configHash: props.form?.configHash

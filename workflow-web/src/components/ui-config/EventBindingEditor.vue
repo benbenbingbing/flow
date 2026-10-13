@@ -680,9 +680,7 @@ const targetLabel = computed(() =>
 const canEdit = computed(() => Boolean(props.ownerId) && !props.disabledReason)
 const fieldCapabilities = computed(() => {
   const field = props.targetField
-  return getFormFieldComponentDescriptor(field?.fieldComponentName
-    || (field?.componentExtensionType === 'FIELD' ? field?.componentName : '')
-    || field?.componentType)?.capabilities || {}
+  return getFormFieldComponentDescriptor(field?.componentType, field?.componentVersion)?.capabilities || {}
 })
 
 const entityOwnerContext = computed(() =>

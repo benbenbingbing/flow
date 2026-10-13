@@ -113,7 +113,7 @@ class EntityFormNodeServiceTest {
         verify(nodeMapper, never()).update(isNull(), any());
     }
 
-    /** 测试补丁拒绝不适配节点类型的属性：验证 SECTION 不接受 componentName、TEXT 不接受 dataSourceBindings、FIELD 不接受 childFormId */
+    /** 测试补丁拒绝不适配节点类型的属性：验证 SECTION 不接受组件版本、TEXT 不接受 dataSourceBindings、FIELD 不接受 childFormId */
     @Test
     void patchRejectsPropertiesThatDoNotApplyToNodeType() {
         EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
@@ -128,7 +128,7 @@ class EntityFormNodeServiceTest {
         EntityFormNodePatchRequest componentRequest =
                 new EntityFormNodePatchRequest();
         componentRequest.setExpectedRevision(1);
-        componentRequest.setComponentName("custom-section");
+        componentRequest.setComponentVersion(1);
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service.patch("form-1", "section", componentRequest));

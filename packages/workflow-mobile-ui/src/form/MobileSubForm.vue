@@ -121,7 +121,7 @@ async function validate() {
   const parameterErrors = validateSubFormParameters(parameters.value, schema.value)
   error.value = parameterErrors[0]?.message || (rows.value.length < minRows.value ? `至少添加 ${minRows.value} 条明细` : rows.value.length > maxRows.value ? `最多允许 ${maxRows.value} 条明细` : '')
   if (error.value) return false
-  if (rows.value.length && !projectRuntimeFields(definition.value, [], { rootParentId: rootParentId.value, hasComponent: () => true }).fields.length && !definition.value.customComponent) { error.value = '明细字段未正确加载，请重试'; return false }
+  if (rows.value.length && !projectRuntimeFields(definition.value, [], { rootParentId: rootParentId.value }).fields.length && !definition.value.customComponent) { error.value = '明细字段未正确加载，请重试'; return false }
   for (const row of rows.value) {
     const key = rowKey(row), renderer = rowRefs.get(key)
     if (!renderer || !(await renderer.validate())) { opened.value = key; error.value = renderer?.getValidationError() || '请检查明细内容'; return false }

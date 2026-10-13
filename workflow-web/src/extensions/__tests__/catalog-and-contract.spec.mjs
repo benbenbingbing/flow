@@ -15,14 +15,14 @@ import {
 
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 
-test('全部十类出现在目录中，远程纳管项去重，其余项只展示构建信息', () => {
+test('全部九类出现在目录中，远程纳管项去重，其余项只展示构建信息', () => {
   const entries = discoverExtensions(root).filter(item => item.enabled !== false)
   publishExtensionCatalog(entries)
   const catalog = getExtensionCatalog()
   const managed = catalog.find(item => item.type === 'FORM')
   const keys = new Set([`UI_FORM:${managed.name}:${managed.version}`])
   const rows = localExtensionRows(catalog, keys)
-  assert.equal(new Set(rows.map(item => item.capabilityType)).size, 10)
+  assert.equal(new Set(rows.map(item => item.capabilityType)).size, 9)
   assert.ok(!rows.some(item => item.key === managed.name))
   const validator = rows.find(item => item.capabilityType === 'UI_VALIDATOR')
   assert.equal(validator.buildOnly, true)
@@ -63,18 +63,18 @@ test('页面与关联宿主使用相同上下文过滤，精确版本仍遵守�
 test('对象、同步工厂和命名钩子按契约安装，服务显式传入工厂', () => {
   const service = { limit: 10 }
   const observed = []
-  const install = createExtensionInstaller({ VALIDATOR: (_entry, value) => observed.push(value), NODE: (_entry, _value, metadata) => observed.push(metadata) })
+  const install = createExtensionInstaller({ VALIDATOR: (_entry, value) => observed.push(value), ACTION_CONDITION: (_entry, _value, metadata) => observed.push(metadata) })
   const entry = (name, kind, implementation) => ({ descriptor: { type: 'VALIDATOR', name, version: 1, implementation: { kind } }, implementation })
   const object = { validate: () => true }
-  const migrate = value => ({ ...value, migrated: true })
+  const createDefault = () => ({ field: 'amount' })
   install([
     entry('object', 'OBJECT', object),
     entry('factory', 'FACTORY', ({ services }) => ({ validate: value => value <= services.rule.limit })),
-    { descriptor: { type: 'NODE', name: 'hook', version: 1, implementation: { kind: 'COMPONENT' } }, implementation: {}, hooks: { migrateConfig: migrate } }
+    { descriptor: { type: 'ACTION_CONDITION', name: 'hook', version: 1, implementation: { kind: 'COMPONENT' } }, implementation: {}, hooks: { createDefault } }
   ], { services: { rule: service } })
   assert.equal(observed[0], object)
   assert.equal(observed[1].validate(11), false)
-  assert.deepEqual(observed[2].migrateConfig({ current: 1 }), { current: 1, migrated: true })
+  assert.deepEqual(observed[2].createDefault(), { field: 'amount' })
 })
 
 test('清单编辑器 Schema 路径可解析；业务实现没有第二套注册入口', () => {

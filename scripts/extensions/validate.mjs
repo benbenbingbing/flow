@@ -2,8 +2,8 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 const schema = JSON.parse(readFileSync(new URL('../../extensions/schemas/extension.schema.json', import.meta.url), 'utf8'))
-const multiVersionTypes = new Set(['FORM', 'LIST', 'NODE', 'VALIDATOR'])
-const componentTypes = new Set(['FORM', 'LIST', 'FIELD', 'NODE', 'LIST_CELL', 'LIST_BUTTON', 'ACTION_CONDITION'])
+const multiVersionTypes = new Set(['FORM', 'LIST', 'FIELD', 'VALIDATOR'])
+const componentTypes = new Set(['FORM', 'LIST', 'FIELD', 'LIST_CELL', 'LIST_BUTTON', 'ACTION_CONDITION'])
 
 /** 执行本项目清单 Schema 使用的校验关键字；错误携带 JSON 属性路径，供构建输出定位。 */
 function validateValue(value, rule, location) {
@@ -63,11 +63,10 @@ export function validateManifest(manifest, root, filename, { platform = 'pc', im
   if ((manifest.aliases || manifest.defaultForFieldTypes) && type !== 'FIELD') fail('别名和默认字段类型仅用于 FIELD')
   if (hooks.createDefault && type !== 'ACTION_CONDITION') fail('createDefault 仅用于 ACTION_CONDITION')
   if (hooks.createDefault && manifest.defaultConfig) fail('createDefault 和 defaultConfig 不能同时配置')
-  if (hooks.migrateConfig && type !== 'NODE') fail('migrateConfig 仅用于 NODE')
   for (const ref of Object.values(hooks)) if (ref.kind !== 'FUNCTION') fail('钩子必须使用 FUNCTION')
   if (metadata.usageContexts && !['FORM', 'LIST'].includes(type)) fail('usageContexts 仅用于 FORM/LIST')
   if (metadata.artifactDigest && !['FORM', 'LIST'].includes(type)) fail('artifactDigest 仅用于 FORM/LIST')
-  if ((metadata.nodeTypes || metadata.supportedBindings) && type !== 'NODE') fail('nodeTypes/supportedBindings 仅用于 NODE')
+  if ((metadata.nodeTypes || metadata.supportedBindings) && type !== 'FIELD') fail('nodeTypes/supportedBindings 仅用于 FIELD')
   const scope = metadata.supportedEntityCodes || []
   if (scope.includes('*') && scope.length !== 1) fail('全部实体范围只使用 ["*"]')
   const keys = (metadata.configSchema || []).map(item => item.key)
@@ -80,7 +79,7 @@ export function validateManifest(manifest, root, filename, { platform = 'pc', im
   for (const ref of references) resolveImplementation(implementationRoot, ref)
 }
 
-/** 按最终注册规则校验所有启用项，避免大小写、别名或单版本表的后写覆盖。 */
+/** 按最终注册规则校验启用项；同名组件允许多个版本，别名不能跨名称抢占。 */
 export function validateCollisions(entries) {
   const identities = new Map()
   const fields = new Map()
@@ -94,8 +93,16 @@ export function validateCollisions(entries) {
       : entry.type === 'ACTION_CONDITION' ? entry.name.toUpperCase() : entry.name
     reserve(identities, `${entry.type}:${name}${multiVersionTypes.has(entry.type) ? `@${entry.version}` : ''}`, entry)
     if (entry.type === 'FIELD') {
-      for (const alias of [name, ...(entry.aliases || [])]) reserve(fields, alias.toLowerCase(), entry)
-      for (const fieldType of entry.defaultForFieldTypes || []) reserve(defaults, fieldType.toUpperCase(), entry)
+      for (const alias of [name, ...(entry.aliases || [])]) {
+        const key = alias.toLowerCase()
+        if (fields.has(key) && fields.get(key) !== name) throw new Error(`${entry.sourceFile}: 组件别名 ${key} 冲突，已由 ${fields.get(key)} 使用`)
+        fields.set(key, name)
+      }
+      for (const fieldType of entry.defaultForFieldTypes || []) {
+        const key = fieldType.toUpperCase()
+        if (defaults.has(key) && defaults.get(key) !== name) throw new Error(`${entry.sourceFile}: 字段默认组件 ${key} 冲突`)
+        defaults.set(key, name)
+      }
     }
   }
 }

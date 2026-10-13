@@ -1,6 +1,7 @@
 package com.workflow.core.database.schema;
 
 import com.workflow.integration.database.api.DatabaseDialects;
+import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;
 import com.workflow.integration.database.api.schema.SchemaColumnMetadata;
 import com.workflow.integration.database.api.schema.SchemaIndexMetadata;
@@ -59,6 +60,16 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
      */
     @Override
     public List<SchemaTableMetadata> tables() {
+        if (dialect.vendor() == DatabaseVendor.OCEANBASE_MYSQL) {
+            // Connector/J 的 SHOW TABLE STATUS 路径在 OB 4.4 返回空 REMARKS，即使表实际有注释。
+            // 直接读取当前库的目录视图，避免依赖每条业务/DDL 连接都配置 useInformationSchema，
+            // 也防止建表后的重放验收把已成功的 DDL 误判为失败；MySQL 元数据路径保持不变。
+            return jdbc.query("SELECT TABLE_NAME, TABLE_COMMENT FROM information_schema.TABLES "
+                            + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'",
+                    (rows, index) -> new SchemaTableMetadata(rows.getString(1), rows.getString(2)))
+                    .stream().filter(table -> table.name().equals(physicalName(table.name().toLowerCase(Locale.ROOT))))
+                    .sorted(Comparator.comparing(SchemaTableMetadata::name)).toList();
+        }
         return jdbc.execute((ConnectionCallback<List<SchemaTableMetadata>>) connection -> {
             var scope = scope(connection);
             var result = new ArrayList<SchemaTableMetadata>();
@@ -201,8 +212,19 @@ public final class JdbcSchemaMetadata implements SchemaMetadataPort {
             return new Scope(connection.getCatalog(), null);
         }
         String schema;
-        try { schema = connection.getSchema(); }
-        catch (SQLFeatureNotSupportedException exception) { schema = null; }
+        String schemaSql = runtimeDialect.currentSchemaSql();
+        if (schemaSql != null) {
+            // 使用同一连接保留 CURRENT_SCHEMA；OB 登录名可能含 @tenant#cluster，不能拿它兜底。
+            try (var statement = connection.createStatement(); var rows = statement.executeQuery(schemaSql)) {
+                schema = rows.next() ? rows.getString(1) : null;
+            }
+            if (schema == null || schema.isBlank()) {
+                throw new SQLException("数据库未返回当前 schema，禁止跨 schema 读取实体结构");
+            }
+        } else {
+            try { schema = connection.getSchema(); }
+            catch (SQLFeatureNotSupportedException | AbstractMethodError exception) { schema = null; }
+        }
         if (schema == null || schema.isBlank()) {
             // Oracle/DM 的旧驱动可能没有 getSchema，默认 schema 就是当前连接用户。
             if (runtimeDialect.metadataScope() == DatabaseRuntimeDialect.MetadataScope.CURRENT_SCHEMA_OR_USER) {

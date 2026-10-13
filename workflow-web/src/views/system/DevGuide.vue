@@ -78,15 +78,15 @@ Content-Type: application/json
             <el-table-column prop="capability" label="能力与限制" />
           </el-table>
           <p>表单树最大嵌套深度为 `8`。发布校验必须检查父子类型、孤儿节点、循环引用、跨表单 SUB_FORM 循环和引用的已发布表单版本。</p>
-          <CodeCard title="form-node-extension.ts" language="JSON">
+          <CodeCard title="form-component.extension.json" language="JSON">
             <pre v-pre><code>{
   "schemaVersion": 1,
-  "type": "NODE",
+  "type": "FIELD",
   "name": "risk-matrix",
   "label": "risk-matrix",
   "version": 3,
   "implementation": {
-    "path": "src/extensions/common/nodes/RiskMatrixNode.vue",
+    "path": "src/extensions/common/fields/RiskMatrixField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -130,15 +130,15 @@ Content-Type: application/json
     ],
     "snapshotVersion": 1
   },
-  "$comment": "配置迁移函数放入 JS 文件，通过 hooks.migrateConfig 的 path/export 引用。"
+  "$comment": "统一组件同时接收 modelValue 与 formData，多字段更新通过 patch-form。"
 }</code></pre>
           </CodeCard>
           <ul class="check-list">
-            <li>节点组件接收 `node / modelValue / readonly / mode / context / dataSourceRuntime`，并通过标准事件更新值。</li>
-            <li>`snapshotVersion` 和 `migrateConfig` 用于读取历史发布快照；废弃参数至少保留一个兼容周期。</li>
-            <li>同时通过 `/api/ui-extensions` 注册 `NODE` manifest；实现版本和快照版本必须与前端描述符一致。</li>
+            <li>所有表单组件接收 `modelValue / formData / node / field / config / disabled / readonly / mode / context / dataSourceRuntime`；modelValue 是当前绑定值，formData 是当前表单或子表行。</li>
+            <li>`update:modelValue` 更新当前字段，`patch-form` 提交多个字段的补丁；由宿主统一执行权限、联动和校验。</li>
+            <li>同时通过 `/api/ui-extensions` 注册 `FIELD` manifest；实现版本和快照版本必须与前端描述符一致。</li>
             <li>配置迁移会携带 manifest 和递归节点结构，但不会携带组件可执行代码；部署流水线必须先部署代码再激活快照。</li>
-            <li>未知历史 `componentProps` 迁移到 `legacyProps`，扩展不得静默丢弃或直接执行其中脚本。</li>
+            <li>组件名称只保存在 `props.componentType`；组件参数保存在 `props.componentProps`，不再配置独立的节点扩展。</li>
             <li>设计器父容器候选必须复用平台父子类型规则，排除自身、后代和移动整棵子树后超过 8 层的目标；服务端 PATCH/reorder 必须重新计算并校验，不能只信前端过滤。</li>
           </ul>
         </section>

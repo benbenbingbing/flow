@@ -19,7 +19,7 @@
           :linkage-state="linkageState"
           :readonly="readonly"
           :mode="mode"
-          :context="context"
+          :context="runtimeContext"
           :data-source-runtime="dataSourceRuntime"
           :children-for="childrenFor"
           :layout-type="layoutType"
@@ -42,6 +42,7 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { projectRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
 import FormNodeRuntimeItem from '@/components/FormNodeRuntimeItem.vue'
 import { normalizeRuntimeNodes, createFormNodeVisibility } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { resolveFormNodeLayoutSpan } from '@flow/workflow-core/form-node-property-schema'
@@ -66,6 +67,16 @@ const props = defineProps({
 defineEmits(['update:modelValue'])
 const formRef = ref()
 const revealFieldCode = ref('')
+
+// 当前节点树是一个完整数据作用域，独立使用和子表嵌套时均不依赖根表取值函数。
+const runtimeContext = computed(() => ({
+  ...props.context,
+  rootParentId: props.rootParentId,
+  mode: props.mode,
+  readonly: props.readonly,
+  getFormData: () => props.modelValue,
+  scriptFields: projectRuntimeFields({ fields: props.fields, nodes: props.nodes }, [], { rootParentId: props.rootParentId }).fields
+}))
 
 const normalizedNodes = computed(() => normalizeRuntimeNodes(props.nodes))
 

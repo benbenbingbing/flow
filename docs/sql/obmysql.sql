@@ -1,10 +1,10 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
--- 包含 192 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 193 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- OceanBase MySQL 模式不支持 RANDOM_BYTES；导入前请在同一会话设置 @INIT_SIGNING_KEY 为新生成的 64 位十六进制随机串（例如 openssl rand -hex 32 的输出）。
 -- 未设置该变量时，签名密钥的 NOT NULL 约束会拒绝导入；不要将密钥明文写入本文件。
--- 本文件是独立初始化脚本，不属于 Flyway 迁移；结构与种子数据已对齐当前 V115。
+-- 本文件是独立初始化脚本，不属于 Flyway 迁移；结构与种子数据已对齐当前 V116。
 -- 表单仅使用 entity_form_published 的当前配置；空库不保留旧 FORM 发布历史和热修复功能，LIST 历史及发布审计仍保留。
 
 SET NAMES utf8mb4;
@@ -3449,6 +3449,12 @@ CREATE TABLE `sys_dict` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_dict_code` (`dict_code`,`deleted`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统字典类型表';
+
+-- 独立持锁连接只插入未提交标记；NO WAIT 唯一键冲突仲裁竞争，释放统一回滚，不写入业务数据。
+CREATE TABLE `sys_database_lock` (
+  `lock_key` varchar(64) NOT NULL COMMENT '命名空间及业务键哈希，唯一键冲突用于非阻塞互斥；仅持锁事务可见',
+  PRIMARY KEY (`lock_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='跨实例独立事务互斥锁标记，不持久化业务数据';
 
 CREATE TABLE `sys_dict_item` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',

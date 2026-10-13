@@ -1,6 +1,5 @@
 import { normalizeRuntimeNodes, isFormNodeVisible } from '@flow/workflow-core/form-runtime/nodeProjection'
 import { runtimeFieldState } from '@flow/workflow-core/form-runtime/formModel'
-import { resolveFormFieldExtensionName } from '@flow/workflow-core/form-field-extension'
 import { resolveRuntimeFormTabLayout } from '@flow/workflow-core/form-runtime/runtimeFormTabs'
 
 /** 移动布局投影：Tab 转分组、Grid 纵向排列，原节点身份和字段绑定全部保留。 */
@@ -13,12 +12,10 @@ export function buildMobileFormTree(form, fields, options, linkage = {}) {
     if (seen.has(String(node.id))) throw new Error('表单分组存在循环引用')
     seen.add(String(node.id))
     if (!visible(node) || !isFormNodeVisible(node, { data: options.record, mode: options.mode, context: options.context })) return []
-    if (node.componentName && !resolveFormFieldExtensionName(node)) return [{ kind: 'extension', id: String(node.id), node }]
     const field = byId.get(String(node.id))
-    if (field) return runtimeFieldState(field, options, linkage).visible ? [{ kind: 'field', id: String(node.id), field, extensionName: resolveFormFieldExtensionName(node) }] : []
+    if (field) return runtimeFieldState(field, options, linkage).visible ? [{ kind: 'field', id: String(node.id), field }] : []
     if (node.nodeType === 'TEXT') return [{ kind: 'text', id: String(node.id), text: node.props.text || node.props.content || node.props.label || '', title: node.props.textStyle === 'SECTION_TITLE' }]
     if (node.nodeType === 'ACTION_SLOT') return [{ kind: 'actions', id: String(node.id), slotKey: node.nodeKey }]
-    if (node.componentName) return [{ kind: 'extension', id: String(node.id), node }]
     const children = visit(node.id)
     if (!children.length) return []
     if (['GRID', 'TAB_SET'].includes(node.nodeType)) {
@@ -39,7 +36,7 @@ export function groupsContainingField(tree, fieldCode) {
   const groups = []
   function visit(items, ancestors) {
     for (const item of items) {
-      if ((item.kind === 'field' && String(item.field.fieldCode || item.field.fieldKey) === String(fieldCode)) || (item.kind === 'extension' && item.id === String(fieldCode))) groups.push(...ancestors)
+      if ((item.kind === 'field' && String(item.field.fieldCode || item.field.fieldKey) === String(fieldCode))) groups.push(...ancestors)
       if (item.children) visit(item.children, [...ancestors, item.id])
     }
   }

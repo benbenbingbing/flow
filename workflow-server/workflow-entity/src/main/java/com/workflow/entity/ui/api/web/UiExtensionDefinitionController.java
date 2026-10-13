@@ -162,7 +162,7 @@ public class UiExtensionDefinitionController {
     /**
      * 根据扩展类型把写命令交给对应的应用服务。
      *
-     * <p>通用 UI 组件目录只负责 FORM/NODE/FIELD/LIST；INTERFACE 需要专门的
+     * <p>通用 UI 组件目录只负责 FORM/FIELD/LIST；INTERFACE 需要专门的
      * 实现、作用域和执行契约校验。分派保留在统一 HTTP 入口，可避免目录查询服务
      * 反向依赖接口运行服务，进而破坏发布链路的单向依赖。</p>
      *

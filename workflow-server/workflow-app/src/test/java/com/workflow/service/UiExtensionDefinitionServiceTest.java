@@ -35,7 +35,36 @@ class UiExtensionDefinitionServiceTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> service(mock(UiExtensionDefinitionMapper.class))
-                        .requireActive("NODE", "risk-matrix", null));
+                        .requireActive("FIELD", "risk-matrix", null));
+    }
+
+    /** 单一组件协议仍必须遵守宿主节点、绑定方式和字段类型约束。 */
+    @Test
+    void validatesUnifiedComponentHostAndFieldType() {
+        UiExtensionDefinitionService service = service(mock(UiExtensionDefinitionMapper.class));
+        UiExtensionDefinition definition = new UiExtensionDefinition();
+        definition.setExtensionKey("project-review");
+        definition.setSnapshotVersion(1);
+        definition.setSupportedNodeTypesDocument("[\"FIELD\"]");
+        definition.setSupportedBindingsDocument("[\"ENTITY_FIELD\",\"COMPUTED\"]");
+        definition.setCapabilitiesDocument("{\"supportedFieldTypes\":[\"STRING\"]}");
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> {
+            service.validateCompatibility(definition, "VIEW", "FIELD", "ENTITY_FIELD", 1);
+            service.validateFieldType(definition, "STRING");
+        });
+        assertThrows(IllegalArgumentException.class, () -> service.validateFieldType(definition, "INTEGER"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.validateCompatibility(definition, "EDIT", "FIELD", "RELATION", 1));
+    }
+
+    /** 已退役的 NODE 不再允许作为第二种组件目录写入。 */
+    @Test
+    void rejectsRetiredNodeExtensionType() {
+        UiExtensionDefinitionSaveRequest request = new UiExtensionDefinitionSaveRequest();
+        request.setExtensionType("NODE"); request.setExtensionKey("custom-node");
+        request.setDisplayName("旧节点"); request.setVersion(1);
+        assertThrows(IllegalArgumentException.class,
+                () -> service(mock(UiExtensionDefinitionMapper.class)).save(request));
     }
 
     /** 测试拒绝不支持的节点类型：验证 SECTION 节点对仅支持 FIELD 的扩展抛出异常 */

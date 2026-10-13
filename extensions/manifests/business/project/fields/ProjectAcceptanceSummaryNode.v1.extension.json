@@ -1,15 +1,15 @@
 {
   "$schema": "../../../../schemas/extension.schema.json",
-  "$comment": "用途：项目·验收摘要节点。name=ProjectAcceptanceSummaryNode 是业务配置的稳定引用，移动文件不要改名。 在表单节点扩展中选择 name；宿主按节点类型、绑定类型解析实现，并传入组件 config。 实现：path 相对 workflow-web；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 nodeTypes/supportedBindings 限制可用节点和绑定；snapshotVersion 是配置结构版本。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "$comment": "统一表单组件 ProjectAcceptanceSummaryNode：在组件类型中选择，参数来自 configSchema；modelValue 为当前字段值，formData 为当前表单或子表行。多个字段变更通过 patch-form 交给宿主合并和校验。nodeTypes/supportedBindings 限制可用宿主，不产生第二种渲染方式。",
   "schemaVersion": 1,
-  "type": "NODE",
+  "type": "FIELD",
   "name": "ProjectAcceptanceSummaryNode",
-  "label": "项目·验收摘要节点",
-  "description": "读取整表单上下文并演示节点级统一数据源调用。",
+  "label": "项目·验收摘要",
+  "description": "读取表单上下文并通过统一字段更新协议展示验收摘要。",
   "version": 1,
   "enabled": true,
   "implementation": {
-    "path": "src/extensions/business/project/nodes/ProjectAcceptanceSummaryNode.vue",
+    "path": "src/extensions/business/project/fields/ProjectAcceptanceSummaryField.vue",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -38,7 +38,7 @@
   "platforms": {
     "mobile": {
       "implementation": {
-        "path": "src/extensions/ProjectAcceptanceSummaryNode.vue",
+        "path": "src/extensions/ProjectAcceptanceSummaryField.vue",
         "export": "default",
         "kind": "COMPONENT"
       },

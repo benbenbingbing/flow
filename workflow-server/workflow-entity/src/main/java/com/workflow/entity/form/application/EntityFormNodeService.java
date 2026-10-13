@@ -18,7 +18,6 @@ import com.workflow.entity.form.api.request.EntityFormNodeReorderRequest;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityForm;
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
-import com.workflow.entity.ui.application.UiExtensionReferencePolicy;
 import com.workflow.entity.ui.application.UiMutableInterfaceReferenceNormalizer;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.form.infrastructure.persistence.mapper.EntityFormMapper;
@@ -72,7 +71,7 @@ public class EntityFormNodeService {
         private static final Set<String> SUB_FORM_NODE_TYPES = Set.of(
                         "SUB_FORM", "REPEATER");
         private static final Set<String> CLEARABLE_PATCH_FIELDS = Set.of(
-                        "parentId", "bindingRef", "componentName", "componentVersion",
+                        "parentId", "bindingRef", "componentVersion",
                         "snapshotVersion", "childFormId", "childFormReleaseId",
                         "childFormReleaseVersion", "rules", "dataSourceBindings");
         private static final Set<String> IMMUTABLE_BOUND_PROP_KEYS = Set.of(
@@ -196,7 +195,6 @@ public class EntityFormNodeService {
                 node.setNodeType(normalize(request.getNodeType(), "FIELD"));
                 node.setBindingType(normalize(request.getBindingType(), "NONE"));
                 node.setBindingRef(blankToNull(request.getBindingRef()));
-                node.setComponentName(blankToNull(request.getComponentName()));
                 node.setComponentVersion(request.getComponentVersion());
                 node.setSnapshotVersion(request.getSnapshotVersion());
                 node.setPropsDocument(write(
@@ -308,7 +306,6 @@ public class EntityFormNodeService {
                                 .set("node_type", updated.getNodeType())
                                 .set("binding_type", updated.getBindingType())
                                 .set("binding_ref", updated.getBindingRef())
-                                .set("component_name", updated.getComponentName())
                                 .set("component_version", updated.getComponentVersion())
                                 .set("snapshot_version", updated.getSnapshotVersion())
                                 .set("props_document", updated.getPropsDocument())
@@ -1372,7 +1369,7 @@ public class EntityFormNodeService {
                                 nodeType, request.getDataSourceBindings());
                 EntityFormNodePropertyPolicy.validateExtension(
                                 nodeType,
-                                request.getComponentName(),
+                                text(request.getProps() == null ? null : request.getProps().get("componentType")),
                                 request.getComponentVersion(),
                                 request.getSnapshotVersion());
                 if (!EntityFormNodePropertyPolicy.supportsChildForm(nodeType)
@@ -1458,7 +1455,7 @@ public class EntityFormNodeService {
                 try {
                         EntityFormNodePropertyPolicy.validateExtension(
                                         nodeType,
-                                        node.getComponentName(),
+                                        componentType(node),
                                         node.getComponentVersion(),
                                         node.getSnapshotVersion());
                 } catch (IllegalArgumentException exception) {
@@ -1466,13 +1463,12 @@ public class EntityFormNodeService {
                                 throw exception;
                         }
                         Map<String, Object> component = new LinkedHashMap<>();
-                        component.put("componentName", node.getComponentName());
+                        component.put("componentType", componentType(node));
                         component.put("componentVersion", node.getComponentVersion());
                         component.put("snapshotVersion", node.getSnapshotVersion());
                         if (EntityFormNodePropertyPolicy.meaningful(component)) {
                                 inactive.put("component", component);
                         }
-                        node.setComponentName(null);
                         node.setComponentVersion(null);
                         node.setSnapshotVersion(null);
                 }
@@ -1534,6 +1530,18 @@ public class EntityFormNodeService {
                 node.setLegacyPropsDocument(write(legacy, "历史节点属性"));
         }
 
+        /** 组件身份只从属性中的 componentType 读取，所有节点共用同一注册协议。 */
+        private String componentType(EntityFormNode node) {
+                Map<String, Object> props = read(node.getPropsDocument(), "表单节点属性");
+                return text(props == null ? null : props.get("componentType"));
+        }
+
+        /** 内置组件无需数据库注册；自定义组件发布前必须锁定已注册版本。 */
+        private boolean isCustomComponent(EntityFormNode node) {
+                String type = componentType(node);
+                return StringUtils.hasText(type) && !EntityFormNodePropertyPolicy.isBuiltInComponent(type);
+        }
+
         /**
          * 校验节点；不满足约束时阻止后续处理。
          *
@@ -1559,33 +1567,19 @@ public class EntityFormNodeService {
                         normalizeRelationBoundSubFormProps(node);
                 }
                 validateSubFormReleaseBinding(node);
-                if (StringUtils.hasText(node.getComponentName())
+                if (isCustomComponent(node)
                                 && (node.getComponentVersion() == null
                                                 || node.getComponentVersion() < 1
                                                 || node.getSnapshotVersion() == null
                                                 || node.getSnapshotVersion() < 1)) {
                         throw new IllegalArgumentException(
-                                        "节点扩展组件必须锁定实现版本和配置快照版本");
+                                        "自定义组件必须锁定实现版本和配置快照版本");
                 }
-                if (!StringUtils.hasText(node.getComponentName())
+                if (!StringUtils.hasText(componentType(node))
                                 && (node.getComponentVersion() != null
                                                 || node.getSnapshotVersion() != null)) {
                         throw new IllegalArgumentException(
-                                        "未配置节点扩展组件时不能单独保存组件版本");
-                }
-                String componentExtensionType =
-                                UiExtensionReferencePolicy
-                                                .resolveNodeExtensionType(
-                                                                node.getNodeType(),
-                                                                read(
-                                                                                node.getPropsDocument(),
-                                                                                "表单节点扩展属性"));
-                if (UiExtensionReferencePolicy.FIELD.equals(
-                                componentExtensionType)
-                                && !StringUtils.hasText(
-                                                node.getComponentName())) {
-                        throw new IllegalArgumentException(
-                                        "FIELD 字段组件扩展必须配置 componentName");
+                                        "未配置组件时不能单独保存组件版本");
                 }
                 LambdaQueryWrapper<EntityFormNode> duplicateQuery = new LambdaQueryWrapper<EntityFormNode>()
                                 .eq(EntityFormNode::getFormId, node.getFormId())
@@ -1634,7 +1628,7 @@ public class EntityFormNodeService {
                         throw new IllegalArgumentException(
                                         "平台系统表查看表单不能配置动作插槽");
                 }
-                if (StringUtils.hasText(node.getComponentName())) {
+                if (isCustomComponent(node)) {
                         throw new IllegalArgumentException(
                                         "平台系统表查看表单不能配置自定义写入组件");
                 }
@@ -1831,12 +1825,6 @@ public class EntityFormNodeService {
                         target.setBindingRef(clear.contains("bindingRef")
                                         ? null
                                         : blankToNull(request.getBindingRef()));
-                }
-                if (request.getComponentName() != null
-                                || clear.contains("componentName")) {
-                        target.setComponentName(clear.contains("componentName")
-                                        ? null
-                                        : blankToNull(request.getComponentName()));
                 }
                 if (request.getComponentVersion() != null
                                 || clear.contains("componentVersion")) {
@@ -2284,8 +2272,7 @@ public class EntityFormNodeService {
                                         nodeType, request.getDataSourceBindings());
                 }
                 if (!EntityFormNodePropertyPolicy.supportsExtension(nodeType)
-                                && (request.getComponentName() != null
-                                                || request.getComponentVersion() != null
+                                && (request.getComponentVersion() != null
                                                 || request.getSnapshotVersion() != null)) {
                         throw new IllegalArgumentException(
                                         nodeType + " 节点不支持扩展组件配置");
@@ -2357,7 +2344,6 @@ public class EntityFormNodeService {
                 target.setNodeType(source.getNodeType());
                 target.setBindingType(source.getBindingType());
                 target.setBindingRef(source.getBindingRef());
-                target.setComponentName(source.getComponentName());
                 target.setComponentVersion(source.getComponentVersion());
                 target.setSnapshotVersion(source.getSnapshotVersion());
                 target.setPropsDocument(source.getPropsDocument());
@@ -2390,7 +2376,6 @@ public class EntityFormNodeService {
                 request.setNodeType(source.getNodeType());
                 request.setBindingType(source.getBindingType());
                 request.setBindingRef(source.getBindingRef());
-                request.setComponentName(source.getComponentName());
                 request.setComponentVersion(source.getComponentVersion());
                 request.setSnapshotVersion(source.getSnapshotVersion());
                 request.setProps(read(source.getPropsDocument(), "表单节点属性"));
@@ -2429,7 +2414,6 @@ public class EntityFormNodeService {
                 request.setNodeType(source.getNodeType());
                 request.setBindingType(source.getBindingType());
                 request.setBindingRef(source.getBindingRef());
-                request.setComponentName(source.getComponentName());
                 request.setComponentVersion(source.getComponentVersion());
                 request.setSnapshotVersion(source.getSnapshotVersion());
                 request.setProps(read(source.getPropsDocument(), "表单节点属性"));
@@ -2445,9 +2429,6 @@ public class EntityFormNodeService {
                                 clear, "parentId", source.getParentId(), current.getParentId());
                 addClearIfMissing(
                                 clear, "bindingRef", source.getBindingRef(), current.getBindingRef());
-                addClearIfMissing(
-                                clear, "componentName",
-                                source.getComponentName(), current.getComponentName());
                 addClearIfMissing(
                                 clear, "componentVersion",
                                 source.getComponentVersion(), current.getComponentVersion());
@@ -2509,7 +2490,6 @@ public class EntityFormNodeService {
                                 || !Objects.equals(normalize(source.getNodeType(), "FIELD"), current.getNodeType())
                                 || !Objects.equals(normalize(source.getBindingType(), "NONE"), current.getBindingType())
                                 || !Objects.equals(source.getBindingRef(), current.getBindingRef())
-                                || !Objects.equals(source.getComponentName(), current.getComponentName())
                                 || !Objects.equals(source.getComponentVersion(), current.getComponentVersion())
                                 || !Objects.equals(source.getSnapshotVersion(), current.getSnapshotVersion())
                                 || !Objects.equals(source.getPropsDocument(), current.getPropsDocument())

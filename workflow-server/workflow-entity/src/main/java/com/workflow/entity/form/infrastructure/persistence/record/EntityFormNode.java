@@ -34,8 +34,6 @@ public class EntityFormNode {
     private String bindingType;
     /** 绑定引用（如字段编码） */
     private String bindingRef;
-    /** 前端渲染组件注册名 */
-    private String componentName;
     /** 组件版本号 */
     private Integer componentVersion;
     /** 当前激活的组件发布快照版本号 */
