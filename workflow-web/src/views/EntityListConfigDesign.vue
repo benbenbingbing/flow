@@ -1966,7 +1966,8 @@ function handleRevisionConflict(error, target) {
     }
     return true
   }
-  ElMessage.error(error?.message || '保存失败')
+  // 请求层可能已经展示业务错误，复用去重入口，避免同一次保存弹出两条相同提示。
+  showRequestError(error, error?.message || '保存失败')
   return false
 }
 async function saveCurrentField(field, options = {}) {

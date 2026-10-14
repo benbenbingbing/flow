@@ -37,7 +37,13 @@ assert.deepEqual(field.dataSourceConfig, {}, '实体字段不能残留组合或�
 assert.equal(validateListColumnSource(field, interfaces), '')
 assert.match(validateListColumnSource({ ...field, fieldId: 'virtual_1' }, interfaces), /虚拟列/)
 assert.match(validateListColumnSource({ ...field, interfaceExtensionId: 'column-interface' }, interfaces), /只有“扩展接口”/)
-assert.equal(validateListColumnSource({ ...field, dataSourceType: 'CUSTOM_PROVIDER' }, interfaces), '请选择取值方式')
+const legacySourceError = validateListColumnSource({
+  ...field, fieldName: '项目扩展列', dataSourceType: 'PROJECT_CUSTOM_FIELD'
+}, interfaces)
+assert.match(legacySourceError, /列“项目扩展列”（字段编码：name）/)
+assert.match(legacySourceError, /取值配置与当前版本不兼容（PROJECT_CUSTOM_FIELD）/)
+assert.match(legacySourceError, /重新选择可用的取值方式/)
+assert.match(legacySourceError, /“扩展接口”并绑定接口/)
 
 // 列与模板都以同一协议保存 INTERFACE，重载后不可退回到实体字段或虚假的模板来源。
 changeListColumnSource(field, 'INTERFACE', sources)

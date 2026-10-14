@@ -65,6 +65,26 @@ public class EntityListConfigurationValidator {
      * @throws IllegalArgumentException 配置为空、实体信息缺失、标识不合法、数据范围模式错误等时抛出
      */
     public void validate(EntityListConfigDTO dto) {
+        validate(dto, null);
+    }
+
+    /**
+     * 校验一次单列草稿变更，避免其他历史列的旧取值方式阻止逐列编辑和修复。
+     *
+     * @param dto 已合并本次变更的完整列表；仍检查字段数量、编码唯一性及筛选/排序依赖
+     * @param changedField 本次新增或修改的列，必须是 dto.fields 中的对象；只规范化、校验这一列的配置
+     * @throws IllegalArgumentException 当前列或列表整体约束不合法时抛出；整包保存和发布仍须调用 validate
+     */
+    public void validateFieldChange(EntityListConfigDTO dto, EntityListField changedField) {
+        if (changedField == null || dto == null || dto.getFields() == null
+                || dto.getFields().stream().noneMatch(field -> field == changedField)) {
+            throw new IllegalArgumentException("待校验的列必须包含在列表配置中");
+        }
+        validate(dto, changedField);
+    }
+
+    /** changedField 为空表示整包校验；单列保存保留跨列约束，但不重新校验其他列的来源和接口。 */
+    private void validate(EntityListConfigDTO dto, EntityListField changedField) {
         if (dto == null) {
             throw new IllegalArgumentException("列表配置不能为空");
         }
@@ -99,14 +119,15 @@ public class EntityListConfigurationValidator {
         validateStructured(dto.getFixedFilterConfig(), "固定查询条件");
 
         List<EntityListField> fields = dto.getFields();
-        EntityListQueryPolicy.validateConfiguration(fields);
+        List<EntityListField> changedFields = changedField == null ? fields : List.of(changedField);
+        EntityListQueryPolicy.validateConfiguration(changedFields);
         EntityListQueryPolicy.validateFilters(fields,
                 com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getFixedFilterConfig()));
         interfaceReferenceValidator.validateListDraft(
                 dto.getId(),
                 dto.getEntityId(),
-                dto.getQueryInterfaceExtensionId(),
-                fields);
+                changedField == null ? dto.getQueryInterfaceExtensionId() : null,
+                changedFields);
         if (fields == null) {
             fields = List.of();
         }
@@ -130,7 +151,10 @@ public class EntityListConfigurationValidator {
                 .collect(Collectors.toSet());
         Set<String> fieldCodes = new HashSet<>();
         for (EntityListField field : fields) {
-            validateField(field, entityFieldIds, fieldCodes);
+            validateFieldCode(field, fieldCodes);
+            if (changedField == null || field == changedField) {
+                validateField(field, entityFieldIds);
+            }
         }
         var view = com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig());
         if (view.get("table") instanceof java.util.Map<?, ?> table
@@ -159,16 +183,12 @@ public class EntityListConfigurationValidator {
     }
 
     /**
-     * 校验单个列表字段：编码格式与唯一性、互斥的取值方式、查询方式、列对齐和配置 JSON。
+     * 校验编码格式与唯一性；增量保存也必须检查完整列表，防止新列与既有列冲突。
      *
      * @param field           列表字段配置
-     * @param entityFieldIds  实体已有的字段 ID 集合（用于校验实体字段来源）
      * @param fieldCodes      已收集的字段编码集合（用于去重，会被本方法修改）
      */
-    private void validateField(
-            EntityListField field,
-            Set<String> entityFieldIds,
-            Set<String> fieldCodes) {
+    private void validateFieldCode(EntityListField field, Set<String> fieldCodes) {
         if (field == null || !StringUtils.hasText(field.getFieldCode())
                 || !FIELD_CODE.matcher(field.getFieldCode()).matches()) {
             throw new IllegalArgumentException("列表字段编码不合法");
@@ -177,7 +197,15 @@ public class EntityListConfigurationValidator {
         if (!fieldCodes.add(normalizedCode)) {
             throw new IllegalArgumentException("列表字段编码重复: " + field.getFieldCode());
         }
+    }
 
+    /**
+     * 校验并规范化当前列的互斥取值方式、查询方式、列对齐和配置 JSON。
+     *
+     * @param field 编码已校验的列表字段配置
+     * @param entityFieldIds 实体已有字段 ID，用于校验实体字段来源
+     */
+    private void validateField(EntityListField field, Set<String> entityFieldIds) {
         String dataSourceType = StringUtils.hasText(field.getDataSourceType())
                 ? field.getDataSourceType().trim().toUpperCase(Locale.ROOT)
                 : "ENTITY_FIELD";
@@ -201,7 +229,12 @@ public class EntityListConfigurationValidator {
                     throw new IllegalArgumentException("扩展接口取值方式必须选择接口: " + field.getFieldCode());
                 }
             }
-            default -> throw new IllegalArgumentException("不支持的列取值方式: " + dataSourceType);
+            // 整包保存和发布可能由其他历史列触发错误，必须指出配置位置和修复入口。
+            default -> throw new IllegalArgumentException("列“"
+                    + (StringUtils.hasText(field.getFieldName()) ? field.getFieldName() : field.getFieldCode())
+                    + "”（字段编码：" + field.getFieldCode() + "）的取值配置与当前版本不兼容（"
+                    + dataSourceType + "）。请打开该列的“高级配置”，重新选择可用的取值方式并补全配置后保存；"
+                    + "组合文本请选择“字段组合”，业务计算请选择“扩展接口”并绑定接口。");
         }
 
         String queryType = StringUtils.hasText(field.getQueryType())

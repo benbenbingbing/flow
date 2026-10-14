@@ -10,6 +10,11 @@ import com.workflow.entity.definition.infrastructure.persistence.record.EntityFi
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.entity.list.application.EntityListConfigService;
 import com.workflow.entity.list.application.EntityListRelationalConfigService;
+import com.workflow.entity.list.application.validation.EntityListConfigurationValidator;
+import com.workflow.entity.list.extension.ListFieldDataProviderRegistry;
+import com.workflow.entity.list.extension.TemplateListFieldDataProvider;
+import com.workflow.entity.ui.application.validation.StructuredConfigValidator;
+import com.workflow.entity.ui.application.validation.UiConfigInterfaceReferenceValidator;
 import com.workflow.entity.permission.application.EntityListActionConfigService;
 import com.workflow.entity.permission.application.EntityListActionRulePolicy;
 
@@ -52,6 +57,54 @@ import static org.mockito.Mockito.when;
  * 覆盖字段补丁显式清空可选绑定、动作创建持久化显式排序等增量配置场景。
  */
 class EntityListIncrementalConfigurationTest {
+
+    /** 新增与修改共用的校验入口应保留其他历史列，并允许先保存当前有效列，再逐列修复。 */
+    @Test
+    void singleFieldSaveValidatesMergedDraftWithoutBlockingOnLegacyColumns() {
+        var json = new ObjectMapper();
+        var validator = new EntityListConfigurationValidator(
+                new StructuredConfigValidator(json), new JsonDocumentCodec(json),
+                new ListFieldDataProviderRegistry(List.of(new TemplateListFieldDataProvider(json)), json),
+                mock(EntityFieldMapper.class), mock(UiConfigInterfaceReferenceValidator.class));
+        var service = new EntityListConfigService(null, null,
+                mock(EntityDefinitionMapper.class), null, null, null, null, null,
+                validator, null, null, null, null);
+        var legacy = new EntityListField();
+        legacy.setId("legacy-1");
+        legacy.setFieldCode("legacyProject");
+        legacy.setDataSourceType("PROJECT_CUSTOM_FIELD");
+        var draft = new EntityListConfigDTO();
+        draft.setEntityId("entity-1");
+        draft.setEntityCode("project");
+        draft.setListKey("default");
+        draft.setFields(List.of(legacy));
+        var created = new EntityListField();
+        created.setFieldCode("summary");
+        created.setDataSourceType("FIELD_TEMPLATE");
+        created.setDataSourceConfig("{\"template\":\"${code} - ${name}\"}");
+
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                service, "validateSingleField", draft, created, null));
+        assertEquals(List.of(legacy, created), draft.getFields());
+        created.setId("new-1");
+        var updated = new EntityListField();
+        org.springframework.beans.BeanUtils.copyProperties(created, updated);
+        updated.setDataSourceConfig("{\"template\":\"${name}\"}");
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                service, "validateSingleField", draft, updated, "new-1"));
+        assertEquals(List.of(legacy, updated), draft.getFields());
+        assertEquals("PROJECT_CUSTOM_FIELD", legacy.getDataSourceType());
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(draft));
+
+        // 编辑历史列本身时仍必须改用合法来源；修复完成后才允许完整校验通过。
+        var repaired = new EntityListField();
+        org.springframework.beans.BeanUtils.copyProperties(legacy, repaired);
+        repaired.setDataSourceType("FIELD_TEMPLATE");
+        repaired.setDataSourceConfig("{\"template\":\"${code}\"}");
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(
+                service, "validateSingleField", draft, repaired, "legacy-1"));
+        assertDoesNotThrow(() -> validator.validate(draft));
+    }
 
     @Test
     void listFieldBooleanFlagsAlwaysParticipateInInsertAndUpdate() throws Exception {

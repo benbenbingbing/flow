@@ -639,7 +639,9 @@ public class UiComponentTemplateService {
                 ? "ENTITY_FIELD"
                 : String.valueOf(field.get("dataSourceType")).trim().toUpperCase(java.util.Locale.ROOT);
         if (!Set.of("ENTITY_FIELD", "FIELD_TEMPLATE", "INTERFACE").contains(source)) {
-            throw new IllegalArgumentException("不支持的列取值方式: " + source);
+            throw new IllegalArgumentException("当前列模板的取值配置与当前版本不兼容（" + source
+                    + "）。请在模板的“数据与查询”中重新选择可用的取值方式并补全配置后保存；"
+                    + "组合文本请选择“字段组合”，业务计算请选择“扩展接口”并绑定接口。");
         }
         boolean hasInterface = field.get("interfaceExtensionId") != null
                 && StringUtils.hasText(String.valueOf(field.get("interfaceExtensionId")));

@@ -34,7 +34,12 @@ export function changeListColumnSource(field, type, sourceOptions = []) {
 /** 保存前校验取值方式和必要参数；返回可直接展示的错误文案，空字符串表示有效。 */
 export function validateListColumnSource(field, interfaces = [], { virtual } = {}) {
   const type = field?.dataSourceType || 'ENTITY_FIELD'
-  if (!listColumnSourceOptions.some(option => option.value === type)) return '请选择取值方式'
+  // 历史来源不能只显示内部编码；保存前指出当前列和恢复配置的入口。
+  if (!listColumnSourceOptions.some(option => option.value === type)) {
+    const label = field.fieldName || field.fieldCode || '未命名列'
+    const code = field.fieldCode ? `（字段编码：${field.fieldCode}）` : ''
+    return `列“${label}”${code}的取值配置与当前版本不兼容（${type}）。请重新选择可用的取值方式并补全配置后保存；组合文本请选择“字段组合”，业务计算请选择“扩展接口”并绑定接口。`
+  }
   if (type === 'INTERFACE') {
     if (!field.interfaceExtensionId) return '请选择扩展接口'
     if (!interfaces.some(item => (item.extensionId || item.id) === field.interfaceExtensionId)) {

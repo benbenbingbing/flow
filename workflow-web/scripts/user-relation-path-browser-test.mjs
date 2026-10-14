@@ -12,12 +12,18 @@ import { createApp, h, reactive, nextTick } from 'vue'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import Selector from '/src/components/EntityUserRelationPathSelector.vue'
-const state=reactive({value:{schemaVersion:2,entityCode:'expense',path:[]},status:{},broken:false})
+const state=reactive({value:{schemaVersion:2,entityCode:'expense',path:[]},status:{},broken:false,failPrefix:null,delayPrefix:null,requests:[]})
 const option=(code,label,source,target,multiple=false)=>({step:{type:source==='expense'?'REFERENCE_FIELD':'SYSTEM_REFERENCE',code,sourceEntityCode:source,targetEntityCode:target},label,targetEntityCode:target,multiple,terminal:target==='sys_user'})
-const catalog=prefix=>!prefix.length?[option('applicant','申请用户','expense','sys_user'),option('applicants','申请用户（多选）','expense','sys_user',true)]:prefix.at(-1).targetEntityCode==='sys_user'?[option('dept_id','所属部门','sys_user','sys_organization')]:[option('create_by','创建人','sys_organization','sys_user')]
+const catalog=prefix=>!prefix.length?[option('applicant','申请用户','expense','sys_user'),option('applicants','申请用户（多选）','expense','sys_user',true),option('department','业务部门','expense','sys_organization'),{...option('retired','已停用关系','expense','sys_user'),disabledReason:'关系已停用'}]:prefix.at(-1).targetEntityCode==='sys_user'?[option('dept_id','所属部门','sys_user','sys_organization')]:[option('create_by','创建人','sys_organization','sys_user')]
 window.pathTest={state,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,140));await nextTick()},request:async(url,{params}={})=>{
  const prefix=JSON.parse(params.prefix||params.path||'[]')
- if(url.endsWith('/options')){if(state.broken&&prefix.length===1)return [];return catalog(prefix)}
+ if(url.endsWith('/options')){
+  const codes=prefix.map(s=>s.code).join('/')
+  state.requests.push(codes)
+  if(state.failPrefix===codes)throw Error('模拟关系加载失败')
+  if(state.delayPrefix===codes){state.delayPrefix=null;await new Promise(resolve=>window.pathTest.release=resolve)}
+  if(state.broken&&prefix.length===1)return [];return catalog(prefix)
+ }
  return {terminal:true,multiple:prefix.some(s=>s.code==='applicants')}
 }}
 createApp({setup:()=>()=>h('main',{style:'max-width:560px;margin:36px auto'},[
@@ -40,10 +46,19 @@ async function send(method,params={}){
 }
 async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description||JSON.stringify(r.exceptionDetails));return r.result.value}
 const visible="e=>e.getClientRects().length>0&&!e.closest('[aria-hidden=\"true\"]')"
-async function select(level,label){
- await evaluate(`document.querySelectorAll('.el-select__wrapper')[${level}].click()`);await sleep(100)
- await evaluate(`(()=>{const option=[...document.querySelectorAll('.el-select-dropdown__item')].filter(${visible}).find(e=>e.textContent.trim().startsWith(${JSON.stringify(label)}));if(!option)throw Error('missing option');option.click()})()`)
+async function openPicker(){
+ await evaluate("document.querySelector('.path-input').click()")
+ await sleep(450)
+ assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'true')
+}
+async function nodeAction(label,expand=false,occurrence=0){
+ await evaluate(`(()=>{const label=[...document.querySelectorAll('.relation-label')].filter(${visible}).filter(e=>e.textContent.trim()===${JSON.stringify(label)}).at(${occurrence});if(!label)throw Error('missing tree node: '+${JSON.stringify(label)});const target=${expand}?label.closest('[role="treeitem"]').querySelector('.el-tree-node__expand-icon'):label;target.click()})()`)
  await evaluate('pathTest.settle()')
+}
+async function closePicker(){
+ await evaluate("document.querySelector('.path-tree-panel').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))")
+ await sleep(200)
+ assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'false')
 }
 
 try{
@@ -60,22 +75,100 @@ try{
  for(let i=0;i<200;i++){if(await evaluate('Boolean(window.pathTest)'))break;await sleep(100)}
  assert.equal(await evaluate('Boolean(window.pathTest)'),true,errors.join('\n'))
  await evaluate('pathTest.settle()')
- await select(0,'申请用户（多选）')
+ assert.deepEqual(await evaluate('pathTest.state.requests.slice()'),[''],'initial load only fetches root relations')
+ assert.equal(await evaluate("document.querySelectorAll('.path-input').length"),1)
+ assert.equal(await evaluate("document.querySelectorAll('.path-level, .el-select').length"),0)
+ await openPicker()
+ await nodeAction('已停用关系')
+ assert.equal(await evaluate('pathTest.state.value.path.length'),0)
+ await nodeAction('申请用户（多选）',true)
+ assert.deepEqual(await evaluate('pathTest.state.requests.slice()'),['','applicants'],'only the expanded branch is loaded')
+ await nodeAction('所属部门')
+ assert.equal(await evaluate('pathTest.state.value.path.length'),0,'browsing does not commit an incomplete path')
+ await nodeAction('创建人')
+ assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicants','dept_id','create_by'])
  assert.equal(await evaluate('pathTest.state.status.valid'),true)
  assert.equal(await evaluate('pathTest.state.status.multiple'),true)
- await select(1,'所属部门');assert.equal(await evaluate('pathTest.state.status.valid'),false)
- await select(2,'创建人')
- assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicants','dept_id','create_by'])
- assert.equal(await evaluate('pathTest.state.status.multiple'),true)
- assert.match(await evaluate("document.querySelector('.path-summary').textContent"),/申请用户.*所属部门.*创建人/)
+ assert.equal(await evaluate("document.querySelector('.path-input').getAttribute('aria-expanded')"),'false')
+ assert.match(await evaluate("document.querySelector('.path-value').textContent"),/申请用户.*所属部门.*创建人/)
+ await sleep(250)
  const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-user-relation-path.png',Buffer.from(screenshot.data,'base64'))
- await select(0,'申请用户');assert.equal(await evaluate('pathTest.state.value.path.length'),1)
+
+ // 回显已选分支；浏览其他分支或关闭弹层不能覆盖既有选择。
+ await openPicker()
+ assert.equal(await evaluate("document.querySelector('.selected-icon').closest('.relation-node').querySelector('.relation-label').textContent"),'创建人')
+ assert.equal(await evaluate("(()=>{const label=[...document.querySelectorAll('.relation-label')].find(e=>e.textContent==='所属部门');const rect=label.getBoundingClientRect();return document.elementFromPoint(rect.x+5,rect.y+rect.height/2)?.textContent.includes('所属部门')})()"),true,'restoring the tree must keep the intermediate relation visible')
+ const treeScreenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-user-relation-path-tree.png',Buffer.from(treeScreenshot.data,'base64'))
+ await nodeAction('创建人')
+ assert.equal(await evaluate('pathTest.state.status.valid&&!pathTest.state.status.loading'),true,'reselecting the same endpoint must remain valid')
+ await openPicker()
+ await nodeAction('申请用户',true)
+ await closePicker()
+ assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicants','dept_id','create_by'])
+ assert.equal(await evaluate('pathTest.state.status.valid'),true)
+ await openPicker()
+ await nodeAction('申请用户')
+ assert.equal(await evaluate('pathTest.state.value.path.length'),1)
+ assert.equal(await evaluate('pathTest.state.status.multiple'),false)
+
+ // 旧配置只回显不升级；用户节点仍能展开，失败后可以在原分支重试。
  await evaluate("pathTest.state.value={schemaVersion:1,entityCode:'expense',fieldCode:'applicant'};pathTest.settle()")
  assert.equal(await evaluate('pathTest.state.value.schemaVersion'),1)
+ assert.equal(await evaluate("document.querySelector('.path-value').textContent"),'申请用户')
+ await openPicker()
+ await evaluate("pathTest.state.failPrefix='applicant'")
+ await nodeAction('申请用户',true)
+ assert.match(await evaluate("document.querySelector('.path-tree-panel .el-alert').textContent"),/加载失败/)
+ assert.equal(await evaluate('pathTest.state.status.valid'),true)
+ await evaluate('pathTest.state.failPrefix=null')
+ await nodeAction('申请用户',true)
+ await nodeAction('所属部门')
+ await nodeAction('创建人')
+ assert.equal(await evaluate('pathTest.state.value.schemaVersion'),2)
+ assert.equal(await evaluate('pathTest.state.value.path.length'),3)
+
+ // 同名循环关系可在不同深度继续展开，达到上限后不再加载下级。
+ await openPicker()
+ await nodeAction('业务部门')
+ for(let depth=2;depth<8;depth++) await nodeAction(depth%2===0?'创建人':'所属部门',true,-1)
+ assert.equal(await evaluate("[...document.querySelectorAll('.relation-label')].filter(e=>e.textContent==='创建人').at(-1).closest('[role=treeitem]').querySelector('.el-tree-node__expand-icon').classList.contains('is-leaf')"),true)
+ await nodeAction('创建人',false,-1)
+ assert.equal(await evaluate('pathTest.state.value.path.length'),8)
+ assert.equal(await evaluate('pathTest.state.status.valid'),true)
+ assert.equal(await evaluate('pathTest.state.requests.some(prefix=>prefix.split("/").length>=8)'),false)
+ await evaluate("document.querySelector('.path-clear').click();pathTest.settle()")
+ assert.equal(await evaluate('pathTest.state.value.path.length'),0)
+ assert.equal(await evaluate('pathTest.state.status.valid'),false)
+
+ // 方向键只展开，Enter 才选定；关闭后焦点回到唯一选择入口。
+ await openPicker()
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'ArrowRight',code:'ArrowRight'})
+ await evaluate('pathTest.settle()')
+ assert.equal(await evaluate('pathTest.state.value.path.length'),0)
+ await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter'})
+ await evaluate('pathTest.settle()')
+ assert.deepEqual(await evaluate('pathTest.state.value.path.map(s=>s.code)'),['applicant'])
+ assert.equal(await evaluate("document.activeElement.classList.contains('path-input')"),true)
+
+ // 已失效配置保持原坐标，提示修复并仍允许重新选择。
  await evaluate("pathTest.state.broken=true;pathTest.state.value={schemaVersion:2,entityCode:'expense',path:[{type:'REFERENCE_FIELD',code:'applicant',targetEntityCode:'sys_user'},{type:'SYSTEM_REFERENCE',code:'dept_id',targetEntityCode:'sys_organization'}]};pathTest.settle()")
  assert.equal(await evaluate('pathTest.state.status.valid'),false)
  assert.equal(await evaluate('pathTest.state.value.path.length'),2)
- assert.match(await evaluate("document.querySelector('.el-alert').textContent"),/第 2 级关系失效/)
+ assert.match(await evaluate("document.querySelector('.path-error').textContent"),/关系“dept_id”已失效/)
+ await openPicker()
+ await nodeAction('申请用户（多选）')
+ assert.equal(await evaluate('pathTest.state.status.valid'),true)
+
+ // 节点切换后到达的旧展开响应不能污染新配置或新树。
+ await evaluate("pathTest.state.broken=false;pathTest.state.delayPrefix='applicants'")
+ await openPicker()
+ await nodeAction('申请用户（多选）',true)
+ await evaluate("pathTest.state.value={schemaVersion:1,entityCode:'expense',fieldCode:'applicant'};pathTest.settle()")
+ await evaluate('pathTest.release();pathTest.settle()')
+ assert.equal(await evaluate('pathTest.state.value.fieldCode'),'applicant')
+ assert.equal(await evaluate('pathTest.state.status.valid'),true)
+ assert.equal(await evaluate("document.querySelector('.path-value').textContent"),'申请用户')
+ assert.equal(await evaluate("[...document.querySelectorAll('.relation-label')].filter(e=>e.textContent==='所属部门').length"),0)
  assert.deepEqual(errors,[])
- console.log('user relation path browser tests passed: incremental selection, user endpoint expansion, cardinality, upstream reset, V1 restore, invalid path retention')
+ console.log('user relation path browser tests passed: lazy tree, selection/cancel, path display, cardinality, V1 restore, retry, depth limit, clear, invalid path retention, stale response isolation')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}

@@ -118,7 +118,7 @@ class UiComponentTemplateServiceTest {
         }
         request.setSnapshot(Map.of("field", Map.of("dataSourceType", "CUSTOM_SCORE")));
         assertTrue(assertThrows(IllegalArgumentException.class, () -> service.save(request))
-                .getMessage().contains("不支持的列取值方式"));
+                .getMessage().contains("请在模板的“数据与查询”中重新选择"));
 
         when(mapper.update(org.mockito.ArgumentMatchers.isNull(), any())).thenReturn(1);
         request.setSnapshot(Map.of("field", Map.of("dataSourceType", "INTERFACE",

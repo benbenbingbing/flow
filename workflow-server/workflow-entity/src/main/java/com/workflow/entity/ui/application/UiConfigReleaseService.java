@@ -373,7 +373,9 @@ public class UiConfigReleaseService {
             var request = objectMapper.convertValue(composition,
                     com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest.class);
             var resolved = compositionRuntime.getObject().resolve(request);
-            if (!FORM.equals(resolved.getTargetContentType())
+            if (LIST.equals(resolved.getTargetContentType())) {
+                requireRelatedListForm(formId, context, resolved);
+            } else if (!FORM.equals(resolved.getTargetContentType())
                     || !Objects.equals(formId, resolved.getTargetContentId())
                     || context.get("recordId") != null && !Objects.equals(
                             String.valueOf(context.get("recordId")), resolved.getTargetRecordId())) {
@@ -409,6 +411,46 @@ public class UiConfigReleaseService {
                     authorized != null && StringUtils.hasText(authorized.processInstanceId()));
         }
         return authorized;
+    }
+
+    /**
+     * 关联列表中的行通过默认表单或已发布按钮打开详情，关联目标本身仍是 LIST。
+     * 必须从该列表的固定快照核实表单入口，并重查行的关系范围；不能把父记录 ID
+     * 当作目标行，也不能为了允许详情加载而跳过关联来源校验。
+     */
+    private void requireRelatedListForm(String formId, Map<String, Object> context,
+            com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse resolved) {
+        EntityForm form = resolveRuntimeFormRelease(formId).form();
+        if (!Objects.equals(form.getEntityId(), resolved.getTargetEntityId())
+                || StringUtils.hasText(text(context.get("listKey")))
+                && !Objects.equals(text(context.get("listKey")), resolved.getTargetContentKey())) {
+            throw relatedListFormMismatch();
+        }
+        String buttonId = text(context.get("buttonId"));
+        if (StringUtils.hasText(buttonId)) {
+            // 使用关系解析出的发布版本，避免当前列表草稿或新版本扩大旧入口的目标范围。
+            EntityListConfigDTO list = resolveServerPinnedRuntimeListRelease(resolved.getTargetContentId(),
+                    resolved.getTargetReleaseId(), resolved.getTargetReleaseVersion()).list();
+            boolean bound = java.util.stream.Stream.of(list.getToolbarConfig(), list.getRowActionConfig())
+                    .filter(Objects::nonNull).flatMap(Collection::stream)
+                    .anyMatch(button -> (Objects.equals(buttonId, text(button.get("id")))
+                            || Objects.equals(buttonId, text(button.get("key"))))
+                            && Objects.equals(formId, text(button.get("targetFormId"))));
+            if (!bound) throw relatedListFormMismatch();
+        } else {
+            EntityForm defaultForm = currentDefaultForm(resolved.getTargetEntityId());
+            if (defaultForm == null || !Objects.equals(formId, defaultForm.getId())) {
+                throw relatedListFormMismatch();
+            }
+        }
+        String recordId = text(context.get("recordId"));
+        if (StringUtils.hasText(recordId)) {
+            compositionRuntime.getObject().requireTargetMembership(resolved, recordId);
+        }
+    }
+
+    private static BusinessForbiddenException relatedListFormMismatch() {
+        return new BusinessForbiddenException("FORM_RUNTIME_CONTEXT_MISMATCH", "表单与关联列表来源不一致");
     }
 
     /** 从根表单逐层核实稳定组件路径，拒绝跳层、环路和未发布的任意目标。 */

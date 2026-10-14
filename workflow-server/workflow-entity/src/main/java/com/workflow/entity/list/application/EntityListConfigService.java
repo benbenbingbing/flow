@@ -992,11 +992,11 @@ public class EntityListConfigService {
         return field;
     }
     /**
-     * 校验{@code single}字段；不满足约束时阻止后续处理。
+     * 合并单列变更后检查跨列约束，只校验当前列的来源配置，允许逐列修复历史草稿。
      *
-     * @param config 配置内容，决定后续{@code single}字段的处理规则
-     * @param field 字段，作为 {@code fields.add} 的输入影响后续处理
-     * @param replacingId {@code replacing}ID，后续用于校验{@code single}字段时定位或关联目标
+     * @param config 当前完整列表草稿，字段集合会替换为合并后的候选配置
+     * @param field 本次新增或修改的列
+     * @param replacingId 被替换列的 ID；新增时为 null
      */
     private void validateSingleField(
             EntityListConfigDTO config,
@@ -1005,11 +1005,13 @@ public class EntityListConfigService {
         List<EntityListField> fields = config.getFields() == null
                 ? new java.util.ArrayList<>()
                 : new java.util.ArrayList<>(config.getFields());
-        fields.removeIf(item -> Objects.equals(item.getId(), replacingId));
+        if (replacingId != null) {
+            fields.removeIf(item -> Objects.equals(item.getId(), replacingId));
+        }
         fields.add(field);
         config.setFields(fields);
         validateSystemListConfiguration(config);
-        configurationValidator.validate(config);
+        configurationValidator.validateFieldChange(config, field);
     }
     /**
      * 校验系统列表配置；不满足约束时阻止后续处理。

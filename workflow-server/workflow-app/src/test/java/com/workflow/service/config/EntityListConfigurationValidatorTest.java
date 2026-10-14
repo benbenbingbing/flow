@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -179,7 +180,7 @@ class EntityListConfigurationValidatorTest {
         field.setInterfaceExtensionId(null);
         field.setDataSourceType("PROJECT_CUSTOM_FIELD");
         assertTrue(assertThrows(IllegalArgumentException.class,
-                () -> validator.validate(listWith(field))).getMessage().contains("不支持的列取值方式"));
+                () -> validator.validate(listWith(field))).getMessage().contains("取值配置与当前版本不兼容"));
     }
 
     /** 实体列和虚拟列都可组合文本，但必须填写模板且不能把结果用于查询或排序。 */
@@ -206,6 +207,100 @@ class EntityListConfigurationValidatorTest {
         var dto = listWith(field);
         dto.setViewConfig(Map.of("table", Map.of("defaultSortField", "summary")));
         assertThrows(IllegalArgumentException.class, () -> validator.validate(dto));
+    }
+
+    /** 保存新列不受未修改的历史来源影响；整包校验仍拒绝旧来源并指出对应列。 */
+    @Test
+    void fieldChangeIgnoresLegacySourceButFullValidationIdentifiesIt() {
+        var validator = validator(mock(EntityFieldMapper.class));
+        var legacy = column("PROJECT_CUSTOM_FIELD");
+        legacy.setFieldCode("legacyProject");
+        legacy.setFieldName("项目扩展列");
+        var changed = column("FIELD_TEMPLATE");
+        changed.setDataSourceConfig("{\"template\":\"${code} - ${name}\"}");
+        var dto = listWith(legacy);
+        dto.setFields(List.of(legacy, changed));
+
+        assertDoesNotThrow(() -> validator.validateFieldChange(dto, changed));
+        assertEquals("PROJECT_CUSTOM_FIELD", legacy.getDataSourceType());
+        assertNull(legacy.getQueryType(), "保存别的列不能规范化或改写旧列");
+        var error = assertThrows(IllegalArgumentException.class, () -> validator.validate(dto));
+        assertTrue(error.getMessage().contains("PROJECT_CUSTOM_FIELD"));
+        assertTrue(error.getMessage().contains("列“项目扩展列”（字段编码：legacyProject）"));
+        assertTrue(error.getMessage().contains("取值配置与当前版本不兼容"));
+        assertTrue(error.getMessage().contains("请打开该列的“高级配置”"));
+        assertTrue(error.getMessage().contains("“扩展接口”并绑定接口"));
+        assertThrows(IllegalArgumentException.class, () -> validator.validateFieldChange(dto, legacy));
+    }
+
+    /** 单列校验只检查当前列的接口引用，允许在其他接口失效时逐列修复草稿。 */
+    @Test
+    void fieldChangeValidatesOnlyChangedInterfaceReference() {
+        var references = mock(UiConfigInterfaceReferenceValidator.class);
+        var validator = validator(mock(EntityFieldMapper.class), references);
+        var old = column("INTERFACE");
+        old.setFieldCode("oldColumn");
+        old.setInterfaceExtensionId("retired-interface");
+        var changed = column("INTERFACE");
+        changed.setInterfaceExtensionId("current-interface");
+        var dto = listWith(changed);
+        dto.setQueryInterfaceExtensionId("query-interface");
+        dto.setFields(List.of(old, changed));
+
+        assertDoesNotThrow(() -> validator.validateFieldChange(dto, changed));
+        verify(references).validateListDraft(null, "entity-1", null, List.of(changed));
+        changed.setInterfaceExtensionId(null);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateFieldChange(dto, changed));
+    }
+
+    /** 缩小校验范围不能放松当前列模板要求，也不能绕过全表字段上限和大小写不敏感的编码唯一性。 */
+    @Test
+    void fieldChangeRetainsTemplateUniquenessAndFieldLimitChecks() {
+        var validator = validator(mock(EntityFieldMapper.class));
+        var changed = column("FIELD_TEMPLATE");
+        var dto = listWith(changed);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validateFieldChange(dto, changed)).getMessage().contains("template"));
+        changed.setDataSourceConfig("{\"template\":\"${name}\"}");
+        var duplicate = column("PROJECT_CUSTOM_FIELD");
+        duplicate.setFieldCode("SUMMARY");
+        dto.setFields(List.of(duplicate, changed));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validateFieldChange(dto, changed)).getMessage().contains("编码重复"));
+
+        var fields = IntStream.range(0, 200).mapToObj(index -> {
+            var legacy = column("PROJECT_CUSTOM_FIELD");
+            legacy.setFieldCode("legacy" + index);
+            return legacy;
+        }).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        fields.add(changed);
+        dto.setFields(fields);
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validateFieldChange(dto, changed)).getMessage().contains("最多配置 200"));
+    }
+
+    /** 当前列改为展示来源时，已有查询项、固定筛选、页面参数和默认排序依赖都必须继续阻止保存。 */
+    @Test
+    void fieldChangeRetainsQueryFilterParameterAndSortChecks() {
+        var validator = validator(mock(EntityFieldMapper.class));
+        var changed = column("FIELD_TEMPLATE");
+        changed.setDataSourceConfig("{\"template\":\"${name}\"}");
+        var dto = listWith(changed);
+        changed.setIsQuery(true);
+        assertThrows(IllegalArgumentException.class, () -> validator.validateFieldChange(dto, changed));
+        changed.setIsQuery(false);
+        dto.setFixedFilterConfig(Map.of("summary", "test"));
+        assertThrows(IllegalArgumentException.class, () -> validator.validateFieldChange(dto, changed));
+        dto.setFixedFilterConfig(null);
+        dto.setViewConfig(Map.of("table", Map.of("defaultSortField", "summary")));
+        assertThrows(IllegalArgumentException.class, () -> validator.validateFieldChange(dto, changed));
+        dto.setViewConfig(Map.of(
+                "inputParameterSchema", Map.of("properties", Map.of("search", Map.of("type", "string"))),
+                "inputParameterBindings", List.of(Map.of("parameter", "search", "targetField", "summary", "usage", "FILTER"))));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> validator.validateFieldChange(dto, changed)).getMessage().contains("参数用途字段不可用"));
+        dto.setViewConfig(null);
+        assertDoesNotThrow(() -> validator.validateFieldChange(dto, changed));
     }
 
     private EntityListField column(String type) {
