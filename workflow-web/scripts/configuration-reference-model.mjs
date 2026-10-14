@@ -180,7 +180,7 @@ export const IGNORED_UI_BINDINGS = Object.freeze({
   ],
   'src/views/EntityListConfigDesign.vue': [
     '^activeConfigTab$', '^previewDialogVisible$', '^previewViewport$', '^previewQueryForm$',
-    '^previewPageNum$', '^fieldConfigDialogVisible$', '^activeFieldConfigTab$', '^publishDialogVisible$'
+    '^previewPageNum$', '^fieldConfigDialogVisible$', '^publishDialogVisible$'
   ],
   'src/components/ListButtonConfigPanel.vue': [
     '^advancedDialogVisible$', '^openListDialogVisible$', '^buttonEventDialogVisible$'
@@ -742,10 +742,12 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/views/EntityListConfigDesign.vue', '^(configInfo\\.customComponent|viewConfig\\.customComponentProps)', '实体配置-列表-编辑-列表设置-扩展渲染'),
   locationRule('src/views/EntityListConfigDesign.vue', '^toolbarButtons$', '实体配置-列表-编辑-工具栏按钮'),
   locationRule('src/views/EntityListConfigDesign.vue', '^rowActionButtons$', '实体配置-列表-编辑-操作列按钮'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^(editingQueryConfig\\.|editingField\\.(queryType))', '实体配置-列表-编辑-字段高级配置-常用-查询项'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^editingField\\.(width|align)$', '实体配置-列表-编辑-字段高级配置-常用-列展示'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^editingColumnConfig\\.', '实体配置-列表-编辑-字段高级配置-常用-列展示'),
-  locationRule('src/views/EntityListConfigDesign.vue', '^(editingDataSourceConfig|editingRenderConfig|editingField\\.(dataSourceType|interfaceExtensionId|renderComponent|templateId))', '实体配置-列表-编辑-字段高级配置-数据与显示'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^(editingQueryConfig\\.|editingField\\.(queryType))', '实体配置-列表-编辑-字段高级配置-查询项'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^editingField\\.(width|align)$', '实体配置-列表-编辑-字段高级配置-列展示'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^editingColumnConfig\\.', '实体配置-列表-编辑-字段高级配置-列展示'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^(editingRenderConfig|editingField\\.renderComponent)', '实体配置-列表-编辑-字段高级配置-列展示'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^(editingDataSourceConfig|editingField\\.(dataSourceType|interfaceExtensionId))', '实体配置-列表-编辑-字段高级配置-取值方式'),
+  locationRule('src/views/EntityListConfigDesign.vue', '^selectedListTemplateId$', '实体配置-列表-编辑-字段高级配置-模板初始化'),
 
   locationRule('src/components/ListButtonConfigPanel.vue', '^row\\.', '实体配置-列表-编辑-工具栏或操作列按钮'),
   locationRule('src/components/ListButtonConfigPanel.vue', '^advancedButton\\.(mappedFieldCode|hideWhenMapped)$', '实体配置-列表-编辑-操作列按钮-更多'),

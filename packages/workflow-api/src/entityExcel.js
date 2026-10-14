@@ -26,7 +26,8 @@ export function createEntityExcelApi(request) {
     schemes: (code, params = {}) => request.get(`${base(code)}/excel-schemes`, { params }),
     scheme: (code, key) => request.get(scheme(code, key)),
     saveScheme: (code, data) => request.post(`${base(code)}/excel-schemes/save`, data),
-    publishScheme: (code, key, data) => request.post(`${scheme(code, key)}/publish`, data),
+    // 配置页用常驻面板展示发布失败详情，可关闭请求层的瞬时提示。
+    publishScheme: (code, key, data, options = {}) => request.post(`${scheme(code, key)}/publish`, data, options),
     status: (code, key, data) => request.post(`${scheme(code, key)}/status`, data),
     references: (code, key) => request.get(`${scheme(code, key)}/references`),
     remove: (code, key, data) => request.post(`${scheme(code, key)}/delete`, data),

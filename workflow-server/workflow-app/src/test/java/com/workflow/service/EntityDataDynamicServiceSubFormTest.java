@@ -39,6 +39,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -424,6 +426,14 @@ class EntityDataDynamicServiceSubFormTest {
                         "task-1",
                         "业务审核",
                         "admin"));
+        // 首次提交判断必须读取已落库且锁定的记录，不能依赖调用方 DTO。
+        Map<String, Object> savedRow = new HashMap<>();
+        when(fixture.dynamicMapper.insert(eq("wf_parent"), anyMap())).thenAnswer(call -> {
+            savedRow.putAll(call.<Map<String, Object>>getArgument(1));
+            return 1;
+        });
+        when(fixture.dynamicMapper.selectByIdForUpdate(eq("wf_parent"), anyString()))
+                .thenAnswer(call -> new HashMap<>(savedRow));
 
         EntityDataDTO dto = new EntityDataDTO();
         dto.setEntityCode("parent");
@@ -454,6 +464,7 @@ class EntityDataDynamicServiceSubFormTest {
         assertEquals(
                 updateData.get("process_start_time"),
                 updateData.get("submitted_at"));
+        assertEquals(updateData.get("process_start_time"), updateData.get("submit_time"));
     }
 
     /**

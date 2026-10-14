@@ -31,7 +31,7 @@ const interfaces=[{extensionId:'amount-interface',extensionKey:'AMOUNT',displayN
 const templateInterfaces=[...interfaces,...['array','string'].map(type=>({
  ...interfaces[0],extensionId:type+'-interface',extensionKey:type.toUpperCase(),displayName:'不适用于列的'+type+'接口',outputSchema:{type}
 }))]
-const state=reactive({epoch:0,fieldWrites:[],templateWrites:[],requests:[],config:{
+const state=reactive({epoch:0,fieldWrites:[],templateWrites:[],metadataWrites:[],requests:[],entityFields:[{id:'name-field',fieldCode:'name',fieldName:'名称',fieldType:'STRING'}],config:{
  id:'list-1',entityId:'entity-1',entityCode:'project',listKey:'SOURCE_TEST',listName:'取值方式验收',revision:1,
  fields:[{id:'column-1',revision:1,fieldId:'name-field',fieldCode:'name',fieldName:'名称',fieldType:'STRING',showInList:true,isQuery:false,dataSourceType:'ENTITY_FIELD',dataSourceConfig:'',interfaceExtensionId:null,sortOrder:0,orderKey:1000000}]
 }})
@@ -47,7 +47,8 @@ entityListConfigApi.patchField=async(id,fieldId,revision,payload)=>{
 entityListConfigApi.createField=async(id,payload)=>{
  const row={...copy(payload),id:'created-'+state.fieldWrites.length,revision:1};state.fieldWrites.push(copy(row));state.config.fields.push(row);return copy(row)
 }
-entityApi.getById=async()=>({id:'entity-1',entityName:'项目',entityCode:'project',fields:[{id:'name-field',fieldCode:'name',fieldName:'名称',fieldType:'STRING'}]})
+entityApi.getById=async()=>({id:'entity-1',entityName:'项目',entityCode:'project',fields:copy(state.entityFields)})
+entityListConfigApi.patchMetadata=async(id,payload)=>{state.metadataWrites.push(copy(payload));Object.assign(state.config,copy(payload),{revision:state.config.revision+1});return copy(state.config)}
 entityListScopeRuleApi.getConfiguration=async()=>({policies:[],bindings:[],listDefaults:{}})
 uiExtensionApi.availableInterfaces=async()=>copy(interfaces)
 uiComponentTemplateApi.list=async()=>[]
@@ -114,7 +115,6 @@ async function input(label, value) {
 }
 async function openColumn(index = 0) {
   await step(`([...document.querySelectorAll('.field-config-table .el-table__body tr')][${index}].querySelectorAll('button')).forEach(button=>{if(button.textContent.trim()==='设置')button.click()})`)
-  await clickText('数据与显示', '[role="tab"]')
 }
 async function closeOptions() {
   await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' })
@@ -265,9 +265,25 @@ try {
   saved = await evaluate('JSON.parse(JSON.stringify(sourceTest.state.templateWrites.at(-1).snapshot.field))')
   assert.deepEqual(JSON.parse(saved.dataSourceConfig || '{}'), {})
   assert.equal(saved.interfaceExtensionId, null)
+  // 隐藏字段不在已保存列配置中；参数用途仍应从设计器合并后的完整实体字段中选取。
+  await step("sourceTest.state.entityFields.push({id:'project-field',fieldCode:'projectId',fieldName:'隐藏项目',fieldType:'STRING',isQuery:false,showInList:false});sourceTest.reload()")
+  await clickText('输入参数', '[role="tab"]')
+  await clickText('添加参数')
+  await clickText('增加用途')
+  const targetSelect = `document.querySelector('.parameter-usage .usage-row').querySelectorAll('.el-select')[1]`
+  await step(`(()=>{const select=${targetSelect};sourceTest.activeDropdownId=select.querySelector('[aria-controls]').getAttribute('aria-controls');select.querySelector('.el-select__wrapper').click()})()`)
+  assert.deepEqual((await options()).map(item => item.text), ['名称', '隐藏项目'], '未勾选查询或展示的实体字段也应可选，虚拟列不参与数据库筛选')
+  await step(`([...${activeOptions}].filter(${visible})).find(item=>item.textContent.trim()==='隐藏项目').click()`)
+  await clickText('保存全部')
+  const hiddenBinding = { parameter: 'param1', usage: 'FILTER', targetField: 'projectId', operator: 'EQ' }
+  assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(sourceTest.state.metadataWrites.at(-1).viewConfig.inputParameterBindings))'), [hiddenBinding])
+  await step('sourceTest.reload()')
+  await clickText('输入参数', '[role="tab"]')
+  assert.match(await evaluate(`${targetSelect}.textContent`), /隐藏项目/, '保存后重载仍回显隐藏筛选字段')
+  assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(sourceTest.state.config.viewConfig.inputParameterBindings))'), [hiddenBinding])
   assert.deepEqual(errors, [])
   assert.deepEqual(diagnostics, [])
-  console.log('list column source browser acceptance passed: real designer/template dialogs, three exclusive sources, conditional required interface, configuration cleanup, virtual fields, tooltip instructions, save/reload')
+  console.log('list column source browser acceptance passed: real designer/template dialogs, three exclusive sources, conditional required interface, configuration cleanup, virtual fields, hidden parameter fields, tooltip instructions, save/reload')
 } finally {
   ws?.close()
   browser?.kill()

@@ -341,41 +341,27 @@
 
           <!-- 实体字段是设计器语义类型，保存时投影为受控人员解析器。 -->
           <template v-if="assigneeForm.assigneeType === 'entity_user_reference'">
-            <el-form-item label="用户字段" required>
+            <el-form-item label="用户关系路径" required>
               <template #label>
-                <ConfigHelpLabel label="用户字段" content="候选项来自绑定实体的全部已发布字段；运行时读取实体的最新记录值，不依赖该字段是否出现在当前节点表单中。当前表单或其他表单保存该字段后都能参与解析。" />
+                <ConfigHelpLabel label="用户关系路径" content="从流程绑定记录出发，逐级选择实体关系，最后一级须为用户。用户关系也可继续展开；任意一级为多值时，最终可能返回多人。节点进入时读取最新记录值，最多支持 8 级。" />
               </template>
-              <el-select
-                v-model="assigneeForm.entityUserReference.fieldCode"
-                filterable
-                clearable
-                placeholder="请选择已发布的用户单选或多选关系字段"
-                no-data-text="绑定实体中没有可用的用户关系字段"
-                style="width: 100%"
+              <EntityUserRelationPathSelector
+                v-model="assigneeForm.entityUserReference"
+                :process-id="processId"
+                :entity-code="boundEntity?.entityCode || ''"
+                @state="state => entityUserPathState = state"
                 @change="onEntityUserReferenceFieldChanged"
-              >
-                <el-option
-                  v-for="field in entityUserReferenceFieldOptions"
-                  :key="field.fieldCode"
-                  :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
-                  :value="field.fieldCode"
-                >
-                  <span>{{ field.fieldName || field.fieldCode }}</span>
-                  <span class="reference-node-id">
-                    {{ field.fieldCode }} · {{ field.fieldType === 'MULTI_REFERENCE' ? '多选用户' : '单选用户' }}
-                  </span>
-                </el-option>
-              </el-select>
+              />
             </el-form-item>
 
             <el-form-item label="分配方式">
               <el-tag v-if="assigneeForm.isMultiInstance" type="success">
-                字段中的全部用户分别生成任务
+                路径解析到的全部用户分别生成任务
               </el-tag>
-              <el-tag v-else-if="selectedEntityUserReferenceField?.fieldType === 'MULTI_REFERENCE'" type="info">
-                字段中的全部用户作为候选人
+              <el-tag v-else-if="entityUserReferenceMultiple" type="info">
+                路径解析到的全部用户作为候选人
               </el-tag>
-              <el-tag v-else type="info">字段中的用户直接办理</el-tag>
+              <el-tag v-else type="info">路径解析到的用户直接办理</el-tag>
             </el-form-item>
           </template>
 
@@ -809,6 +795,8 @@
           </SettingsSection>
           <NextApproverConfigEditor
             ref="nextApproverConfigEditorRef"
+            :process-id="processId"
+            :entity-code="boundEntity?.entityCode || ''"
             v-model="assigneeForm.nextApproverSelection"
             :role-options="roleOptions"
             :group-options="groupOptions"
@@ -1809,6 +1797,7 @@
 </template>
 
 <script setup>
+import EntityUserRelationPathSelector from "./EntityUserRelationPathSelector.vue"
 import NodeSlaEditor from "./node-config/NodeSlaEditor.vue"
 import { updateBpmnExtensionProperty } from './node-config/bpmnExtensionProperties.js'
 
@@ -2173,6 +2162,12 @@ const selectedEntityUserReferenceField = computed(() =>
   entityUserReferenceFieldOptions.value.find(field =>
     field.fieldCode === assigneeForm.value.entityUserReference?.fieldCode)
 )
+
+// 路径基数以服务端逐跳校验结果为准，V1 未编辑配置仍保留原字段语义。
+const entityUserPathState = ref({ valid: false, loading: false, multiple: false })
+const entityUserReferenceMultiple = computed(() => assigneeForm.value.entityUserReference?.schemaVersion === 2
+  ? entityUserPathState.value.multiple
+  : selectedEntityUserReferenceField.value?.fieldType === 'MULTI_REFERENCE')
 
 // 连线状态配置表单
 const statusForm = ref({
@@ -3342,7 +3337,7 @@ function onMultiInstanceChange(enabled) {
   }
   if (assigneeForm.value.assigneeType === ENTITY_USER_REFERENCE_ASSIGNEE_TYPE) {
     assigneeForm.value.assignmentMode = enabled
-      || selectedEntityUserReferenceField.value?.fieldType === 'MULTI_REFERENCE'
+      || entityUserReferenceMultiple.value
       ? 'CANDIDATE'
       : 'DIRECT'
   }
@@ -3790,7 +3785,7 @@ function onEntityUserReferenceFieldChanged() {
   assigneeForm.value.entityUserReference.entityCode =
     boundEntity.value?.entityCode || ''
   assigneeForm.value.assignmentMode = assigneeForm.value.isMultiInstance
-    || selectedEntityUserReferenceField.value?.fieldType === 'MULTI_REFERENCE'
+    || entityUserReferenceMultiple.value
     ? 'CANDIDATE'
     : 'DIRECT'
   markAssignmentConfigDirty()
@@ -4051,6 +4046,7 @@ function projectedAssigneeFormForPersistence() {
       ...assigneeForm.value.entityUserReference,
       entityCode: boundEntity.value?.entityCode || '',
       fieldType: selectedEntityUserReferenceField.value?.fieldType,
+      multiple: entityUserReferenceMultiple.value,
       isMultiInstance: assigneeForm.value.isMultiInstance
     })
     return {
@@ -4248,8 +4244,10 @@ function applyConfigurationSection(section) {
             ElMessage.warning('当前流程尚未绑定实体，无法配置实体用户关系字段')
             return false
           }
-          if (!selectedEntityUserReferenceField.value) {
-            ElMessage.warning('请选择仍然存在且已发布的用户单选或多选关系字段')
+          if (assigneeForm.value.entityUserReference.schemaVersion === 2
+            ? !entityUserPathState.value.valid || entityUserPathState.value.loading
+            : !selectedEntityUserReferenceField.value) {
+            ElMessage.warning('请选择有效且以用户结束的关系路径，并等待校验完成')
             return false
           }
           const projected = projectedAssigneeFormForPersistence()

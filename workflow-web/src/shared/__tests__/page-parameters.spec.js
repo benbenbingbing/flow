@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields, pageParameterInitializationFields, validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
+import { mapPageParameters, resolvePageParameters, initializePageFields, pageParameterFields, pageParameterFilterFields, pageParameterInitializationFields, validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
 import { buildSubFormParentContext } from '@flow/workflow-core/subform-parameter-contract'
 import { mergeFormNodeFieldMetadata } from '@flow/workflow-core/form-node-property-schema'
 
@@ -114,3 +114,16 @@ await assert.rejects(retryRuntime.initialize({ form: targetForm, fields: [{ fiel
 retryParams.project = 'fixed'
 await retryRuntime.initialize({ form: targetForm, fields: [{ fieldCode: 'projectId' }] })
 assert.equal(retryRecord.projectId, 'fixed', '参数修正后可重试，不能被初始化去重拦截')
+
+// 隐藏筛选独立于列表查询/展示；包括旧接口的数字、字符串开关以及未保存过列配置的字段。
+const hiddenFilterFields = [false, 0, '0', undefined, true].map((isQuery, index) => ({
+  fieldCode: `field${index}`, fieldName: `字段${index}`, isQuery, showInList: false
+}))
+assert.deepEqual(pageParameterFilterFields([
+  ...hiddenFilterFields,
+  { fieldCode: 'summary', fieldId: 'virtual_summary', dataSourceType: 'ENTITY_FIELD' },
+  { fieldCode: 'computed', dataSourceType: 'FIELD_TEMPLATE' },
+  { fieldCode: 'interfaceValue', dataSourceType: 'INTERFACE' },
+  { fieldCode: 'legacyInterfaceValue', interfaceExtensionId: 'extension-1' }
+]).map(field => field.fieldCode), hiddenFilterFields.map(field => field.fieldCode))
+console.log('list parameter fields passed: hidden/non-query entity fields included, computed columns excluded')

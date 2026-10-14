@@ -42,7 +42,7 @@ class EntityUserReferenceFieldPersonResolverTest {
     }
 
     @Test
-    void descriptorPublishesTheStrictV1ConfigurationContract() {
+    void descriptorPublishesStrictV1AndV2ConfigurationContracts() {
         var descriptor = resolver.descriptor();
 
         assertEquals(
@@ -57,10 +57,10 @@ class EntityUserReferenceFieldPersonResolverTest {
         assertFalse(descriptor.dynamicExtraParams());
         assertEquals(
                 false,
-                descriptor.extraParamSchema().get("additionalProperties"));
+                ((Map<?, ?>) ((List<?>) descriptor.extraParamSchema().get("oneOf")).get(0)).get("additionalProperties"));
         assertEquals(
                 List.of("schemaVersion", "entityCode", "fieldCode"),
-                descriptor.extraParamSchema().get("required"));
+                ((Map<?, ?>) ((List<?>) descriptor.extraParamSchema().get("oneOf")).get(0)).get("required"));
     }
 
     @Test
@@ -140,7 +140,7 @@ class EntityUserReferenceFieldPersonResolverTest {
     @Test
     void validationRejectsInvalidSchemaAndAssignmentModeBeforeReadingMetadata() {
         Map<String, Object> unsupportedVersion = Map.of(
-                "schemaVersion", 2,
+                "schemaVersion", 3,
                 "entityCode", "purchase_order",
                 "fieldCode", "approver");
 
@@ -315,6 +315,34 @@ class EntityUserReferenceFieldPersonResolverTest {
                         config("purchase_order", "approver"))));
 
         assertEquals(infrastructureFailure, failure);
+    }
+
+    @Test
+    void pathCardinalityComesFromTheEntirePathAndDeployedPathsRequireVersions() {
+        var paths = mock(com.workflow.contracts.entity.port.EntityUserPathPort.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(resolver, "pathPort", paths);
+        Map<String, Object> params = Map.of("schemaVersion", 2, "entityCode", "purchase_order", "path", List.of(
+                Map.of("type", "REFERENCE_FIELD", "code", "projects"),
+                Map.of("type", "REFERENCE_FIELD", "code", "owner")));
+        var parsed = EntityUserReferenceFieldConfig.parse(params);
+        when(paths.describe("purchase_order", parsed.path(), List.of())).thenReturn(
+                new com.workflow.contracts.entity.port.EntityUserPathPort.PathDescription("sys_user", true, true, List.of(), parsed.path()));
+        assertThrows(IllegalArgumentException.class, () -> resolver.validate(validationRequest(
+                PersonResolveUsage.ASSIGNEE, "DIRECT", false, params)));
+        resolver.validate(validationRequest(PersonResolveUsage.ASSIGNEE, "CANDIDATE", false, params));
+        resolver.validate(validationRequest(PersonResolveUsage.MULTI_INSTANCE, "CANDIDATE", true, params));
+        assertEquals("ENTITY_USER_PATH_UNCOMPILED", assertThrows(PersonResolutionException.class,
+                () -> resolver.resolve(request("purchase_order", "record-1", params))).reasonCode());
+    }
+
+    @Test
+    void pathConfigRejectsMixedVersionsAndMalformedCoordinates() {
+        assertThrows(IllegalArgumentException.class, () -> EntityUserReferenceFieldConfig.parse(Map.of(
+                "schemaVersion", 2, "entityCode", "expense", "fieldCode", "owner", "path", List.of())));
+        assertThrows(IllegalArgumentException.class, () -> EntityUserReferenceFieldConfig.parse(Map.of(
+                "schemaVersion", 2, "entityCode", "expense", "path", List.of(Map.of("type", "SQL", "code", "owner")))));
+        assertThrows(IllegalArgumentException.class, () -> EntityUserReferenceFieldConfig.parse(Map.of(
+                "schemaVersion", 2, "entityCode", "expense", "path", List.of(Map.of("type", "REFERENCE_FIELD", "code", "owner.secret")))));
     }
 
     private PersonResolverConfigurationValidationRequest validationRequest(

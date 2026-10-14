@@ -147,6 +147,22 @@ class EntityExcelConfigurationServiceTest {
         verify(repository).scheme("entity1", "basic");
         verifyNoMoreInteractions(repository);
     }
+    @Test void unavailableDictionaryDuringPublicationRetainsColumnLocationAndDoesNotWrite() throws Exception {
+        var row = scheme("basic", false);
+        var grade = ExcelSchemeValidatorTest.field("grade", EntityField.FieldType.SELECT);
+        grade.setFieldName("等级"); grade.setDictType("customer_grade");
+        var snapshot = new EntityPublishedSnapshot(); snapshot.setFields(List.of(grade));
+        when(snapshots.findLatestByEntityCode("employee")).thenReturn(snapshot);
+        var column = new ExcelSchemeDocument.Column("grade", "客户等级", List.of(), "grade", false, true,
+                false, 20, Map.of("type", "DICT"), Map.of());
+        row.setDraftJson(json.writeValueAsString(ExcelSchemeValidatorTest.document("basic", false, List.of(column))));
+        assertThatThrownBy(() -> service.publish("employee", "basic", 2))
+                .hasMessageContaining("方案“basic”（basic）").hasMessageContaining("导出设置 → A 列“客户等级”")
+                .hasMessageContaining("实体字段：“等级” / grade").hasMessageContaining("customer_grade")
+                .hasMessageContaining("不存在或已停用").hasMessageContaining("字段设计");
+        verify(repository, never()).publish(any(), any(), any(), any(), any());
+    }
+
     @Test void wrongRevisionCannotSaveOrPublish() throws Exception {
         var row = scheme("basic", false);
         assertThatThrownBy(() -> service.save("employee", new SaveScheme(row.getId(), 1, "basic", "x", ExcelSchemeValidatorTest.valid("basic", false))))

@@ -35,3 +35,9 @@ test('关联属性仅传入源实体和源字段，不允许客户端替换目�
   api.referenceFields('entity/a', 'customer/b')
   assert.deepEqual(calls, [['GET', '/entities/entity%2Fa/excel-reference-fields/customer%2Fb']])
 })
+
+test('发布页可关闭瞬时错误提示并自行常驻展示详细定位信息', () => {
+  const { api, calls } = harness()
+  api.publishScheme('customer', 'export', { expectedRevision: 1 }, { silentError: true })
+  assert.deepEqual(calls, [['POST', '/entities/customer/excel-schemes/export/publish', { expectedRevision: 1 }, { silentError: true }]])
+})

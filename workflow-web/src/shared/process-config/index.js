@@ -51,12 +51,20 @@ export function isEntityUserReferenceField(field = {}) {
   return String(field.refEntityType || '').trim().toUpperCase() === 'USER'
 }
 
-/** 将解析器 extraParams 或完整 assigneeConfig 恢复为设计器字段坐标。 */
+/** 恢复 V1 字段或 V2 关系路径；打开旧配置不升级，已发布版本坐标无损保留。 */
 export function normalizeEntityUserReferenceConfig(value = {}) {
   const source = configObject(value)
   const params = Object.keys(configObject(source.extraParams)).length
     ? configObject(source.extraParams)
     : source
+  if (Number(params.schemaVersion) === 2) {
+    return {
+      schemaVersion: 2,
+      entityCode: String(params.entityCode || '').trim(),
+      path: Array.isArray(params.path) ? params.path.map(step => ({ ...step })) : [],
+      ...(Array.isArray(params.versions) ? { versions: params.versions.map(version => ({ ...version })) } : {})
+    }
+  }
   return {
     schemaVersion: Number(params.schemaVersion || 1),
     entityCode: String(params.entityCode || '').trim(),
@@ -65,8 +73,8 @@ export function normalizeEntityUserReferenceConfig(value = {}) {
 }
 
 /**
- * 把设计器的实体用户字段语义类型投影到统一的内置人员解析器契约。
- * 多选字段在普通任务中作为候选人，多人办理时由 collection 为每人建任务。
+ * 把设计器人员来源投影到统一解析器。V2 使用服务端校验的整条路径基数，
+ * 中间多值即使用候选人；多人办理由 collection 为去重后的每人建任务。
  */
 export function buildEntityUserReferenceResolverConfig(value = {}) {
   const config = normalizeEntityUserReferenceConfig(value)
@@ -76,14 +84,10 @@ export function buildEntityUserReferenceResolverConfig(value = {}) {
     assigneeType: 'interface',
     resolverCode: ENTITY_USER_REFERENCE_RESOLVER_CODE,
     resolverDisplayName: ENTITY_USER_REFERENCE_RESOLVER_DISPLAY_NAME,
-    assignmentMode: multiInstance || fieldType === 'MULTI_REFERENCE'
+    assignmentMode: multiInstance || (config.schemaVersion === 2 ? value.multiple === true : fieldType === 'MULTI_REFERENCE')
       ? 'CANDIDATE'
       : 'DIRECT',
-    extraParams: {
-      schemaVersion: 1,
-      entityCode: config.entityCode,
-      fieldCode: config.fieldCode
-    }
+    extraParams: { ...config }
   }
 }
 

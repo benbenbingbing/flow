@@ -403,21 +403,24 @@ public class EntityExcelConfigurationService {
         if (entitySnapshot == null) throw conflict("实体尚未发布，Excel 方案暂不可用");
         List<EntityField> fields = entitySnapshot.getFields();
         validator.validatePublished(doc, entity, fields);
-        for (var column : doc.columns()) {
+        for (int index = 0; index < doc.columns().size(); index++) {
+            var column = doc.columns().get(index);
             EntityField field = fields.stream().filter(f -> f.getFieldCode().equals(column.fieldCode())).findFirst().orElseThrow();
-            if (!fieldPolicy.isRuntimeReadable(entity, field)) throw new IllegalArgumentException("字段不允许导出: " + column.fieldCode());
+            if (!fieldPolicy.isRuntimeReadable(entity, field)) throw ExcelConfigurationErrors.column(doc, index, field,
+                    "字段 / 列标题", "字段不允许导出，请从本方案移除此列，或选择允许读取的字段");
             if ("DICT".equals(column.codec().get("type")) && !repository.dictionaryAvailable(field.getDictType())) {
-                throw new IllegalArgumentException("字段代码表不存在或已停用: " + column.fieldCode());
+                throw ExcelConfigurationErrors.column(doc, index, field, "转换规则 → 字典代码",
+                        "字段绑定的代码表“" + field.getDictType() + "”不存在或已停用。请检查该代码表，或到“字段设计”中重新绑定后发布实体");
             }
         }
         if (!doc.importConfig().enabled()) return null;
         var form = formMapper.selectByEntityIdAndFormKey(entity.getId(), doc.importConfig().writeFormKey());
-        if (form == null) throw new IllegalArgumentException("写入表单不存在");
+        if (form == null) throw ExcelConfigurationErrors.setting(doc, "导入设置 → 写入表单", "写入表单不存在（" + doc.importConfig().writeFormKey() + "），请重新选择当前实体已发布的表单");
         var published = publishedForms.selectById(form.getId());
-        if (published == null || !entity.getId().equals(published.getEntityId())) throw new IllegalArgumentException("写入表单尚未发布或归属不匹配");
+        if (published == null || !entity.getId().equals(published.getEntityId())) throw ExcelConfigurationErrors.setting(doc, "导入设置 → 写入表单", "写入表单尚未发布或归属不匹配（" + doc.importConfig().writeFormKey() + "），请发布该表单或重新选择当前实体已发布的表单");
         // 表单草稿的启停编辑不能影响线上导入；运行可用性以唯一当前发布内容为准。
         JsonNode publishedDocument = read(published.getSnapshotDocument(), JsonNode.class);
-        if (publishedDocument.path("form").path("status").asInt(1) != 1) throw new IllegalArgumentException("写入表单已停用");
+        if (publishedDocument.path("form").path("status").asInt(1) != 1) throw ExcelConfigurationErrors.setting(doc, "导入设置 → 写入表单", "写入表单已停用（" + doc.importConfig().writeFormKey() + "），请启用并发布该表单，或选择其他表单");
         return form.getId();
     }
     private boolean supports(ExcelSchemeDocument doc, String operation) {

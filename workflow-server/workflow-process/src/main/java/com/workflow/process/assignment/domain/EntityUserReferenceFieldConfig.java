@@ -3,20 +3,32 @@ package com.workflow.process.assignment.domain;
 import org.springframework.util.StringUtils;
 
 import java.util.Map;
+import java.util.List;
+import com.workflow.contracts.entity.port.EntityUserPathPort.Step;
+import com.workflow.contracts.entity.port.EntityUserPathPort.Version;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * {@code entityUserReferenceField} 人员解析器的不可变 V1 配置。
+ * {@code entityUserReferenceField} 人员解析器的不可变配置；V1 为直接字段，V2 为有限关系路径。
  *
  * @param schemaVersion 结构版本，保存在对象中供后续校验、查询或展示
  * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
- * @param fieldCode 字段编码，后续用于处理实体用户引用字段配置时定位或关联目标
+ * @param fieldCode V1 的直接用户字段，V2 必须为空，避免两种人员来源同时生效
+ * @param path V2 逐级关系坐标，执行时从流程业务记录出发，最后必须为用户
+ * @param versions 发布时由服务端生成的实体版本，防止后续实体发布改变已有流程路径语义
  */
 public record EntityUserReferenceFieldConfig(
         int schemaVersion,
         String entityCode,
-        String fieldCode) {
+        String fieldCode,
+        List<Step> path,
+        List<Version> versions) {
+
+    /** 保留旧调用方的单字段构造契约。 */
+    public EntityUserReferenceFieldConfig(int schemaVersion, String entityCode, String fieldCode) {
+        this(schemaVersion, entityCode, fieldCode, List.of(), List.of());
+    }
 
     public static final String RESOLVER_CODE = "entityUserReferenceField";
     private static final int MAX_ENTITY_CODE_LENGTH = 128;
@@ -36,7 +48,7 @@ public record EntityUserReferenceFieldConfig(
         Set<String> unsupported = new java.util.LinkedHashSet<>(
                 source.keySet());
         unsupported.removeAll(Set.of(
-                "schemaVersion", "entityCode", "fieldCode"));
+                "schemaVersion", "entityCode", "fieldCode", "path", "versions"));
         if (!unsupported.isEmpty()) {
             throw invalid("包含不支持的参数: "
                     + String.join(",", unsupported));
@@ -45,8 +57,8 @@ public record EntityUserReferenceFieldConfig(
             throw invalid("schemaVersion 不能为空");
         }
         int schemaVersion = integer(source.get("schemaVersion"));
-        if (schemaVersion != 1) {
-            throw invalid("schemaVersion 只支持 1");
+        if (schemaVersion != 1 && schemaVersion != 2) {
+            throw invalid("schemaVersion 只支持 1 或 2");
         }
         String entityCode = required(
                 source.get("entityCode"), "entityCode");
@@ -54,6 +66,42 @@ public record EntityUserReferenceFieldConfig(
             throw invalid("entityCode 长度不能超过 "
                     + MAX_ENTITY_CODE_LENGTH);
         }
+        if (schemaVersion == 2) {
+            if (source.containsKey("fieldCode")) throw invalid("V2 不能包含 fieldCode");
+            if (!(source.get("path") instanceof List<?> steps) || steps.isEmpty() || steps.size() > 8)
+                throw invalid("path 必须包含 1 至 8 步");
+            List<Step> path = steps.stream().map(value -> {
+                if (!(value instanceof Map<?, ?> step) || !Set.of("type", "code", "targetEntityCode", "sourceEntityCode").containsAll(step.keySet()))
+                    throw invalid("路径步骤包含非法参数");
+                String type = required(step.get("type"), "type");
+                if (!Set.of("REFERENCE_FIELD", "SYSTEM_REFERENCE", "RELATION", "REVERSE_REFERENCE", "PARENT_RELATION").contains(type))
+                    throw invalid("路径类型不支持: " + type);
+                String code = required(step.get("code"), "code");
+                if (!FIELD_CODE.matcher(code).matches()) throw invalid("路径编码格式不合法");
+                String target = step.get("targetEntityCode") == null ? null : required(step.get("targetEntityCode"), "targetEntityCode");
+                if (Set.of("REVERSE_REFERENCE", "PARENT_RELATION").contains(type) && target == null) throw invalid("反向引用必须指定 targetEntityCode");
+                String sourceEntity = step.get("sourceEntityCode") == null ? null : required(step.get("sourceEntityCode"), "sourceEntityCode");
+                return new Step(type, code, target, sourceEntity);
+            }).toList();
+            List<Version> versions = List.of();
+            if (source.containsKey("versions")) {
+                if (!(source.get("versions") instanceof List<?> list) || list.isEmpty() || list.size() > 9)
+                    throw invalid("versions 必须包含 1 至 9 个实体版本");
+                versions = list.stream().map(value -> {
+                    if (!(value instanceof Map<?, ?> version) || !Set.of("entityCode", "historyId", "schemaHash", "systemVersion").containsAll(version.keySet()))
+                        throw invalid("实体版本参数非法");
+                    String code = required(version.get("entityCode"), "version.entityCode");
+                    if (version.get("systemVersion") != null) {
+                        if (integer(version.get("systemVersion")) != 1 || version.get("historyId") != null || version.get("schemaHash") != null)
+                            throw invalid("系统关系版本非法");
+                        return new Version(code, null, null, 1);
+                    }
+                    return new Version(code, required(version.get("historyId"), "historyId"), required(version.get("schemaHash"), "schemaHash"), null);
+                }).toList();
+            }
+            return new EntityUserReferenceFieldConfig(2, entityCode, null, path, versions);
+        }
+        if (source.containsKey("path") || source.containsKey("versions")) throw invalid("V1 不能包含路径参数");
         String fieldCode = required(
                 source.get("fieldCode"), "fieldCode");
         if (!FIELD_CODE.matcher(fieldCode).matches()) {

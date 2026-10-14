@@ -3,9 +3,10 @@ package com.workflow.process.assignment.extension;
 import com.workflow.process.assignment.domain.EntityUserReferenceFieldConfig;
 
 import com.workflow.contracts.entity.port.EntityUserReferencePort.EntityUserReferenceException;
-import com.workflow.contracts.entity.port.EntityUserReferencePort.UserReferenceField;
 import com.workflow.contracts.entity.port.EntityCodeCatalogPort;
 import com.workflow.contracts.entity.port.EntityUserReferencePort;
+import com.workflow.contracts.entity.port.EntityUserPathPort;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.workflow.contracts.extension.ExtensionImplementationOrigin;
 import com.workflow.contracts.process.assignment.model.PersonResolveRequest;
 import com.workflow.contracts.process.assignment.model.PersonResolveResult;
@@ -23,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 从流程绑定实体的用户单选或多选关系字段解析办理人。
+ * 从流程绑定实体的直接用户字段（V1）或已发布关系路径（V2）解析办理人。
  */
 @Component("entityUserReferenceFieldPersonResolver")
 public class EntityUserReferenceFieldPersonResolver
@@ -33,33 +34,18 @@ public class EntityUserReferenceFieldPersonResolver
             new PersonResolverDescriptor(
                     EntityUserReferenceFieldConfig.RESOLVER_CODE,
                     "实体用户关系字段",
-                    "从流程绑定实体的已发布用户单选或多选关系字段读取人员。",
-                    1,
+                    "从流程绑定实体沿已发布关系路径读取用户，兼容直接用户字段。",
+                    2,
                     1,
                     Set.of(
                             PersonResolveUsage.ASSIGNEE,
                             PersonResolveUsage.CANDIDATE,
                             PersonResolveUsage.MULTI_INSTANCE),
-                    Map.of(
-                            "type", "object",
-                            "additionalProperties", false,
-                            "required", List.of(
-                                    "schemaVersion",
-                                    "entityCode",
-                                    "fieldCode"),
-                            "properties", Map.of(
-                                    "schemaVersion", Map.of("const", 1),
-                                    "entityCode", Map.of(
-                                            "type", "string",
-                                            "minLength", 1,
-                                            "maxLength", 128),
-                                    "fieldCode", Map.of(
-                                            "type", "string",
-                                            "minLength", 1,
-                                            "maxLength", 100,
-                                            "pattern",
-                                            "^[A-Za-z][A-Za-z0-9_]{0,99}$"))),
+                    EntityUserPathSchema.schema(),
                     false);
+
+    @Autowired
+    private EntityUserPathPort pathPort;
 
     private final EntityUserReferencePort referencePort;
     private final EntityCodeCatalogPort entityCodeCatalogPort;
@@ -130,14 +116,14 @@ public class EntityUserReferenceFieldPersonResolver
         }
         config.validateAssignmentMode(
                 request.assignmentMode(), request.multiInstance());
-        UserReferenceField field =
-                referencePort.requireUserReferenceField(
-                config.entityCode(), config.fieldCode());
+        boolean multiple = config.schemaVersion() == 2
+                ? pathPort.describe(config.entityCode(), config.path(), config.versions()).multiple()
+                : referencePort.requireUserReferenceField(config.entityCode(), config.fieldCode()).multiple();
         if (request.usage() == PersonResolveUsage.ASSIGNEE) {
             config.validateFieldCardinality(
                     request.assignmentMode(),
                     request.multiInstance(),
-                    field.multiple());
+                    multiple);
         }
     }
 
@@ -176,6 +162,11 @@ public class EntityUserReferenceFieldPersonResolver
                     "流程上下文缺少实体记录 ID");
         }
         try {
+            if (config.schemaVersion() == 2) {
+                if (StringUtils.hasText(request.processDefinitionId()) && config.versions().isEmpty())
+                    throw new EntityUserReferenceException("ENTITY_USER_PATH_UNCOMPILED", "已发布人员路径缺少实体版本");
+                return PersonResolveResult.users(pathPort.readUserKeys(config.entityCode(), request.entityDataId(), config.path(), config.versions()));
+            }
             return PersonResolveResult.users(referencePort.readUserKeys(
                     config.entityCode(),
                     request.entityDataId(),
@@ -189,7 +180,7 @@ public class EntityUserReferenceFieldPersonResolver
                     Map.of(
                             "entityCode", config.entityCode(),
                             "entityDataId", request.entityDataId(),
-                            "fieldCode", config.fieldCode()),
+                            "fieldCode", String.valueOf(config.fieldCode())),
                     exception);
         }
     }

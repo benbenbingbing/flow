@@ -81,27 +81,40 @@ public class ExcelSchemeValidator {
         Map<String, EntityField> byCode = fields.stream().collect(Collectors.toMap(EntityField::getFieldCode, Function.identity()));
         Set<String> keys = new HashSet<>(), inputFields = new HashSet<>(), inputHeaders = new HashSet<>();
         int inputs = 0, outputs = 0;
-        for (var column : doc.columns()) {
-            require(column.key() != null && !column.key().isBlank() && keys.add(column.key()), "列标识不能为空或重复");
-            require(column.header() != null && !column.header().isBlank() && column.header().length() <= 200, "列标题不能为空且最多200字符");
+        for (int index = 0; index < doc.columns().size(); index++) {
+            var column = doc.columns().get(index);
             EntityField field = byCode.get(column.fieldCode());
-            require(field != null, "方案字段不存在于已发布实体: " + column.fieldCode());
-            require(field.getFieldType() != null && SUPPORTED_TYPES.contains(field.getFieldType()), "不支持此字段类型的 Excel 映射: " + column.fieldCode());
-            require(column.width() == null || (column.width() >= 1 && column.width() <= 255), "列宽必须在1至255之间");
-            if (column.importEnabled()) {
-                inputs++;
-                require(inputFields.add(column.fieldCode()), "同一字段不能重复映射导入列: " + column.fieldCode());
-                require(!Boolean.FALSE.equals(field.getEditable())
-                        && (!Boolean.TRUE.equals(field.getIsSystem()) || Set.of("name", "code").contains(field.getFieldCode())), "字段不允许导入写入: " + column.fieldCode());
-                require(inputHeaders.add(column.header().strip()), "导入标题或别名重复: " + column.header());
-                // 分批模式仅使用当前标题或位置，旧别名随文档保留但不再参与映射与发布校验。
-                if (!"BATCH".equals(doc.importConfig().transactionPolicy())) for (String alias : column.headerAliases()) {
-                    require(alias != null && !alias.isBlank() && inputHeaders.add(alias.strip()), "导入标题或别名重复: " + alias);
+            String setting = "字段 / 列标题";
+            try {
+                require(column.key() != null && !column.key().isBlank() && keys.add(column.key()), "列标识不能为空或重复，请重新添加重复的列映射");
+                require(column.header() != null && !column.header().isBlank() && column.header().length() <= 200, "列标题不能为空且最多200字符");
+                require(field != null, "方案字段不存在于已发布实体，请先在“字段设计”中发布该字段，或重新选择本列字段");
+                require(field.getFieldType() != null && SUPPORTED_TYPES.contains(field.getFieldType()), "不支持此字段类型的 Excel 映射: " + column.fieldCode());
+                setting = "列宽";
+                require(column.width() == null || (column.width() >= 1 && column.width() <= 255), "列宽必须在1至255之间");
+                setting = "字段 / 列标题";
+                if (column.importEnabled()) {
+                    inputs++;
+                    require(inputFields.add(column.fieldCode()), "同一字段不能重复映射导入列，请移除重复列或选择其他字段");
+                    require(!Boolean.FALSE.equals(field.getEditable())
+                            && (!Boolean.TRUE.equals(field.getIsSystem()) || Set.of("name", "code").contains(field.getFieldCode())), "字段不允许导入写入，请从导入列中移除，或选择可写入字段");
+                    require(inputHeaders.add(column.header().strip()), "导入标题或别名重复，请修改本列标题: " + column.header());
+                    // 分批模式仅使用当前标题或位置，旧别名随文档保留但不再参与映射与发布校验。
+                    if (!"BATCH".equals(doc.importConfig().transactionPolicy())) for (String alias : column.headerAliases()) {
+                        require(alias != null && !alias.isBlank() && inputHeaders.add(alias.strip()), "导入标题或别名重复: " + alias);
+                    }
                 }
+                if (column.exportEnabled()) outputs++;
+                setting = "转换规则";
+                validateCodec(column, field);
+                setting = "附加校验";
+                validateRules(column.validation());
+            } catch (IllegalArgumentException | ArithmeticException | java.time.DateTimeException failure) {
+                // 只包装配置校验异常，保留原始原因；数据库/服务异常不伪装成可编辑字段错误。
+                var located = ExcelConfigurationErrors.column(doc, index, field, setting, failure.getMessage());
+                located.initCause(failure);
+                throw located;
             }
-            if (column.exportEnabled()) outputs++;
-            validateCodec(column, field);
-            validateRules(column.validation());
         }
         require(!doc.importConfig().enabled() || inputs > 0, "导入方案至少需要一列输入字段");
         require(!doc.exportConfig().enabled() || outputs > 0, "导出方案至少需要一列输出字段");
@@ -122,23 +135,34 @@ public class ExcelSchemeValidator {
             require(("DATE".equals(type) && field.getFieldType() == EntityField.FieldType.DATE)
                     || ("DATETIME".equals(type) && field.getFieldType() == EntityField.FieldType.DATETIME),
                     "日期字段必须使用 DATE，日期时间字段必须使用 DATETIME，避免时间被截断");
-            if (codec.get("format") != null) DateTimeFormatter.ofPattern(String.valueOf(codec.get("format")));
-            if (codec.get("zoneId") != null) ZoneId.of(String.valueOf(codec.get("zoneId")));
+            if (codec.get("format") != null) datePattern(codec.get("format"), "日期格式");
+            if (codec.get("zoneId") != null) {
+                try { ZoneId.of(String.valueOf(codec.get("zoneId"))); }
+                catch (java.time.DateTimeException invalid) { throw new IllegalArgumentException("日期显示时区无效，请填写有效时区，例如 Asia/Shanghai", invalid); }
+            }
             if (codec.get("readPatterns") instanceof List<?> patterns) {
                 require(patterns.size() <= 10, "日期读取格式最多10个");
-                patterns.forEach(pattern -> DateTimeFormatter.ofPattern(String.valueOf(pattern)));
+                patterns.forEach(pattern -> datePattern(pattern, "允许输入的日期格式"));
             }
         }
         if (Set.of("AMOUNT", "NUMBER").contains(type)) {
             require(Set.of(EntityField.FieldType.INTEGER, EntityField.FieldType.LONG, EntityField.FieldType.DECIMAL).contains(field.getFieldType()), "数值转换器只能绑定数值字段");
             if (codec.get("scale") != null) {
-                int scale = new BigDecimal(String.valueOf(codec.get("scale"))).intValueExact();
+                int scale;
+                try { scale = new BigDecimal(String.valueOf(codec.get("scale"))).intValueExact(); }
+                catch (NumberFormatException | ArithmeticException invalid) { throw new IllegalArgumentException("小数位数必须为0至18之间的整数", invalid); }
                 require(scale >= 0 && scale <= 18, "金额小数位数必须在0至18之间");
             }
-            if (codec.get("roundingMode") != null) RoundingMode.valueOf(String.valueOf(codec.get("roundingMode")));
+            if (codec.get("roundingMode") != null) {
+                try { RoundingMode.valueOf(String.valueOf(codec.get("roundingMode"))); }
+                catch (IllegalArgumentException invalid) { throw new IllegalArgumentException("舍入方式无效，请重新选择舍入方式", invalid); }
+            }
         }
         if ("DICT".equals(type)) {
-            require(field.getDictType() != null && !field.getDictType().isBlank(), "字典转换器必须绑定有代码表的实体字段");
+            require(field.getDictType() != null && !field.getDictType().isBlank(),
+                    "status".equals(field.getFieldCode()) && Boolean.TRUE.equals(field.getIsSystem())
+                            ? "系统状态字段不使用代码表。请在“导出设置”中将本列的“字典代码”改为“实体状态”，再选择“导出名称”或“导出代码”"
+                            : "选择了“字典代码”，但实体字段未绑定代码表。请到“字段设计”中为此字段绑定代码表并发布实体，或将本列转换规则改为“文本”");
             require(Set.of("CODE", "LABEL", "LABEL_OR_CODE").contains(String.valueOf(codec.getOrDefault("importMode", "LABEL_OR_CODE"))), "字典导入模式不合法");
             require(Set.of("CODE", "LABEL").contains(String.valueOf(codec.getOrDefault("exportMode", "LABEL"))), "字典导出模式不合法");
         }
@@ -153,15 +177,23 @@ public class ExcelSchemeValidator {
     }
 
     private void validateRules(Map<String, Object> rules) {
-        BigDecimal min = decimal(rules.get("min")), max = decimal(rules.get("max"));
+        BigDecimal min = decimal(rules.get("min"), "最小值"), max = decimal(rules.get("max"), "最大值");
         require(min == null || max == null || min.compareTo(max) <= 0, "附加校验最小值不能大于最大值");
         if (rules.get("pattern") != null) {
             String pattern = String.valueOf(rules.get("pattern"));
             require(pattern.length() <= 500, "附加校验正则最多500字符");
-            Pattern.compile(pattern);
+            try { Pattern.compile(pattern); }
+            catch (java.util.regex.PatternSyntaxException invalid) { throw new IllegalArgumentException("正则表达式无效，请修改附加校验的格式规则", invalid); }
         }
     }
-    private BigDecimal decimal(Object value) { return value == null ? null : new BigDecimal(String.valueOf(value)); }
+    private BigDecimal decimal(Object value, String label) {
+        try { return value == null ? null : new BigDecimal(String.valueOf(value)); }
+        catch (NumberFormatException invalid) { throw new IllegalArgumentException(label + "必须是有效数字", invalid); }
+    }
+    private void datePattern(Object value, String label) {
+        try { DateTimeFormatter.ofPattern(String.valueOf(value)); }
+        catch (IllegalArgumentException invalid) { throw new IllegalArgumentException(label + "无效：“" + value + "”，请检查日期格式", invalid); }
+    }
     private void sheetName(String name) {
         require(name != null && !name.isBlank() && name.length() <= 31 && !name.matches(".*[\\\\/*?:\\[\\]].*")
                 && !name.startsWith("'") && !name.endsWith("'"), "Sheet 名称必须为1至31字符且不能包含 Excel 禁用字符");

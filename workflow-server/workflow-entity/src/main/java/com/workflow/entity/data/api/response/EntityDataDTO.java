@@ -26,17 +26,17 @@ public class EntityDataDTO {
     /** 当前关联流程的只读生命周期：NOT_STARTED / RUNNING / COMPLETED。 */
     private String processStatus;
     private String processInstanceId;       // 流程实例ID
-    private LocalDateTime processStartTime; // 流程开始时间
+    private LocalDateTime processStartTime; // 当前轮流程开始时间，重新发起后更新，用于本轮耗时统计
     private LocalDateTime processEndTime;   // 流程结束时间
     private String currentTaskId;           // 当前任务ID
     private String currentTaskName;         // 当前任务名称
     private String currentTaskAssignee;     // 当前任务审批人
     private Map<String, Object> data;       // 自定义字段数据
-    private String submitterId;             // 提交人ID
-    private String submitterName;           // 提交人姓名
+    private String submitterId;             // 首次成功提交审批的实际用户ID，草稿为空，供提交人权限判断使用
+    private String submitterName;           // 首次提交时的用户名快照，随 submitTime 固定，不受后续编辑或重提影响
     private String deptId;                  // 所属部门ID
     private String deptName;                // 所属部门名称
-    private LocalDateTime submitTime;       // 提交时间
+    private LocalDateTime submitTime;       // 首次成功提交审批的服务端时间，用于跨流程轮次的总耗时统计；历史缺失不自动补填
     // 实体字段编码及 JSON 属性统一使用物理列名，不提供历史 created*/updated* 别名。
     @JsonProperty("create_time")
     private LocalDateTime createTime;       // 创建时间

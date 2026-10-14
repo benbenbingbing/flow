@@ -69,6 +69,9 @@ public class ProcessBpmnPublishSanitizer {
     @Autowired
     private PersonResolverRuntimeService personResolverRuntimeService;
 
+    @Autowired
+    private EntityUserPathBpmnCompiler entityUserPathBpmnCompiler;
+
     /** 解析器自身拥有 extraParams 语义，发布器只负责路由校验请求。 */
     @Autowired(required = false)
     private List<PersonResolverConfigurationValidationProvider>
@@ -156,6 +159,14 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredCallActivities(result);
         result = fixConfiguredReceiveTasks(result);
         result = fixConfiguredUserTaskSlas(result);
+        if (entityUserPathBpmnCompiler != null) {
+            try {
+                Document document = parseXml(result);
+                if (entityUserPathBpmnCompiler.compile(document)) result = writeXml(document);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("人员关系路径发布编译失败: " + e.getMessage(), e);
+            }
+        }
         result = validateNextApproverSelections(result, processConfigId);
         result = installEntryDynamicResolverCollectionHandlers(result);
         result = fixScriptTasks(result);

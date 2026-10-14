@@ -102,10 +102,6 @@ public class EntityListConfigurationValidator {
         EntityListQueryPolicy.validateConfiguration(fields);
         EntityListQueryPolicy.validateFilters(fields,
                 com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getFixedFilterConfig()));
-        com.workflow.entity.ui.application.PageParameterPolicy.validate(
-                com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig()), "LIST",
-                fields == null ? null : fields.stream().filter(field -> Boolean.TRUE.equals(field.getIsQuery()))
-                        .map(EntityListField::getFieldCode).collect(Collectors.toSet()));
         interfaceReferenceValidator.validateListDraft(
                 dto.getId(),
                 dto.getEntityId(),
@@ -119,6 +115,15 @@ public class EntityListConfigurationValidator {
         }
 
         List<EntityField> entityFields = entityFieldMapper.findByEntityId(dto.getEntityId());
+        // 参数用途按完整实体元数据校验，与顶部查询项、列表展示及是否已保存列配置无关。
+        // 扩展值在分页后生成，仍不能成为数据库筛选目标。
+        Set<String> parameterFields = entityFields.stream()
+                .map(EntityField::getFieldCode).collect(Collectors.toSet());
+        fields.stream().filter(field -> field != null && !EntityListQueryPolicy.isEntityField(field))
+                .map(EntityListField::getFieldCode).forEach(parameterFields::remove);
+        com.workflow.entity.ui.application.PageParameterPolicy.validate(
+                com.workflow.entity.ui.application.PageParameterPolicy.map(dto.getViewConfig()), "LIST",
+                parameterFields);
         Set<String> entityFieldIds = entityFields.stream()
                 .map(EntityField::getId)
                 .map(String::valueOf)

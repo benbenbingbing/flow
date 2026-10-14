@@ -880,7 +880,7 @@ assert.equal(
 )
 ;[
   [entitySettingsDesigner, 'designMode', ['label="数据库列名"', '<EntityValidationRuleEditor']],
-  [listDesigner, 'configMode', ['title="扩展渲染"', 'label="数据与显示"']]
+  [listDesigner, 'configMode', ['title="扩展渲染"', 'title="取值方式"']]
 ].forEach(([source, modeVariable, visibleMarkers]) => {
   assert.equal(source.includes(modeVariable), false, `设计器不得再按模式隐藏配置: ${modeVariable}`)
   visibleMarkers.forEach((marker) => {
@@ -2125,7 +2125,7 @@ assert.equal(
   'title="扩展渲染"',
   'title="查询项"',
   'title="列展示"',
-  'title="数据与显示"',
+  'title="取值方式"',
   'title="模板初始化"'
 ].forEach((marker) => {
   assert.ok(listDesigner.includes(marker), `列表设置缺少常用优先或高级折叠分组: ${marker}`)

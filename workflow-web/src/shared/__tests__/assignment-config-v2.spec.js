@@ -1124,3 +1124,21 @@ assert.notEqual(
 )
 
 console.log('assignment config v2 contract tests passed')
+
+// 中间多选不能因末端单选而变成 DIRECT；V2 load-save 保持完整路径与钉定版本。
+const relationPath = {
+  schemaVersion: 2,
+  entityCode: 'expense',
+  path: [
+    { type: 'REFERENCE_FIELD', code: 'applicants', sourceEntityCode: 'expense', targetEntityCode: 'sys_user' },
+    { type: 'SYSTEM_REFERENCE', code: 'dept_id', sourceEntityCode: 'sys_user', targetEntityCode: 'sys_organization' },
+    { type: 'SYSTEM_REFERENCE', code: 'create_by', sourceEntityCode: 'sys_organization', targetEntityCode: 'sys_user' }
+  ],
+  versions: [{ entityCode: 'expense', historyId: 'v1', schemaHash: 'hash' }]
+}
+const pathResolver = buildEntityUserReferenceResolverConfig({ ...relationPath, multiple: true, fieldType: 'REFERENCE' })
+assert.equal(pathResolver.assignmentMode, 'CANDIDATE')
+assert.deepEqual(pathResolver.extraParams, relationPath)
+assert.deepEqual(normalizeEntityUserReferenceConfig(pathResolver), relationPath)
+assert.equal(buildEntityUserReferenceResolverConfig({ ...relationPath, multiple: false }).assignmentMode, 'DIRECT')
+assert.equal(buildEntityUserReferenceResolverConfig({ ...relationPath, isMultiInstance: true }).assignmentMode, 'CANDIDATE')

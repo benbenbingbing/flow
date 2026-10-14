@@ -14,6 +14,26 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 验证真实 BPMN/JSON 的定点转换、动态规则保留和人员引用图，不执行人员接口。 */
 class ConfigMigrationAssignmentSupportTest {
     @Test
+    void relationPathMapsEveryCoordinateAndDropsEnvironmentSpecificVersions() {
+        Map<String, Object> params = Map.of("schemaVersion", 2, "entityCode", "expense", "path", List.of(
+                Map.of("type", "REFERENCE_FIELD", "code", "project", "sourceEntityCode", "expense", "targetEntityCode", "project"),
+                Map.of("type", "REFERENCE_FIELD", "code", "owner", "sourceEntityCode", "project", "targetEntityCode", "sys_user")),
+                "versions", List.of(Map.of("historyId", "source-only")));
+        List<String> references = new ArrayList<>();
+        String result = ConfigMigrationAssignmentSupport.rewriteNodeConfig(ConfigMigrationAssignmentSupport.write(
+                Map.of("assigneeConfig", resolver("entityUserReferenceField", params))), Map.of(), (type, key, context) -> {
+                    references.add(type + ":" + key);
+                    return type.equals("ENTITY") && !key.startsWith("sys_") ? "target_" + key : key;
+                });
+        assertTrue(references.contains("ENTITY_PATH_FIELD:expense/project"));
+        assertTrue(references.contains("ENTITY_PATH_FIELD:project/owner"));
+        assertTrue(result.contains("target_project"));
+        assertTrue(result.contains("target_expense"));
+        assertFalse(result.contains("source-only"));
+        assertFalse(result.contains("versions"));
+    }
+
+    @Test
     void mapsUsersGroupsAndRolesWithoutReplacingDocumentationOrExpressions() {
         String xml = bpmn("""
                 <bpmn:userTask id="review" flowable:assignee="source-login"

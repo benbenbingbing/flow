@@ -16,7 +16,6 @@
         class="design-tabs"
       >
         <el-tab-pane label="字段设计" name="fields" />
-        <el-tab-pane v-if="!isSystemEntity" label="Excel 导入导出" name="excel" />
         <el-tab-pane v-if="!isSystemEntity" label="数据权限" name="permissions" />
         <el-tab-pane
           :label="relationCount ? `实体关系 ${relationCount}` : '实体关系'"
@@ -27,6 +26,7 @@
           label="默认事件"
           name="events"
         />
+        <el-tab-pane v-if="!isSystemEntity" label="Excel 导入导出" name="excel" />
       </el-tabs>
     </div>
 
@@ -295,19 +295,14 @@
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selectedField.optionSource === 'DICT'" label="代码表" required>
-                <el-select
+                <DictDefinitionPicker
                   v-model="selectedField.dictType"
-                  filterable
-                  placeholder="选择系统代码表"
+                  :options="dictOptions"
+                  :loading="dictOptionsLoading"
+                  :error="dictOptionsError"
                   style="width: calc(100% - 88px)"
-                >
-                  <el-option
-                    v-for="dict in dictOptions"
-                    :key="dict.dictCode"
-                    :label="`${dict.dictName} (${dict.dictCode})`"
-                    :value="dict.dictCode"
-                  />
-                </el-select>
+                  @retry="loadDictOptions"
+                />
                 <el-button style="margin-left: 8px" @click="openQuickDictDialog">新建</el-button>
                 <div class="form-tip">数据保存代码项编码，显示名称从代码表关联解析。</div>
               </el-form-item>
@@ -960,6 +955,7 @@ import EntityFieldTypePanel from '@/views/entity/components/EntityFieldTypePanel
 import ActionRuleGroupEditor from '@/components/ActionRuleGroupEditor.vue'
 import UserSelector from '@/components/UserSelector.vue'
 import EntityDefinitionPicker from '@/components/EntityDefinitionPicker.vue'
+import DictDefinitionPicker from '@/components/DictDefinitionPicker.vue'
 import EntityExcelSettings from '@/components/excel/EntityExcelSettings.vue'
 import EntityDefaultEventPanel from '@/views/entity/components/EntityDefaultEventPanel.vue'
 import EntityRelationManagement from '@/views/entity/components/EntityRelationManagement.vue'
@@ -1073,6 +1069,8 @@ const draggedType = ref(null)
 const optionsText = ref('')
 const refEntityFields = ref([])
 const dictOptions = ref([])
+const dictOptionsLoading = ref(false)
+const dictOptionsError = ref('')
 const quickDictVisible = ref(false)
 const quickDictForm = ref({ dictName: '', dictCode: '' })
 
@@ -1142,12 +1140,17 @@ const isReference = computed(() => {
   return selectedField.value && ['REFERENCE', 'MULTI_REFERENCE'].includes(selectedField.value.fieldType)
 })
 
+/** 首次进入和新建代码表后刷新候选项；失败时保留现有名称回显，并允许在选择弹窗重试。 */
 const loadDictOptions = async () => {
+  dictOptionsLoading.value = true
+  dictOptionsError.value = ''
   try {
     dictOptions.value = await getDictList() || []
   } catch (error) {
     console.error('加载代码表失败:', error)
-    dictOptions.value = []
+    dictOptionsError.value = '加载代码表失败，请重试'
+  } finally {
+    dictOptionsLoading.value = false
   }
 }
 

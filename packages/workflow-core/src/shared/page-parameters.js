@@ -105,6 +105,17 @@ export function pageParameterFields(fields = []) {
 }
 
 /**
+ * 列表参数是隐藏的附加筛选，不受查询区开关或列可见性影响。
+ * 调用方传入合并后的完整实体列；分页后计算的虚拟/扩展值不能用于数据库筛选。
+ */
+export function pageParameterFilterFields(fields = []) {
+  return pageParameterFields(fields).filter(field =>
+    (!field.dataSourceType || String(field.dataSourceType).trim().toUpperCase() === 'ENTITY_FIELD')
+    && !field.interfaceExtensionId
+    && !String(field.fieldId || '').startsWith('virtual_'))
+}
+
+/**
  * 设计器候选和运行时赋值共用同一范围：只读影响手工编辑，不阻止参数提供初值。
  * 身份和系统维护字段仍由服务端管理；同一字段的元数据与节点投影只展示一次。
  */

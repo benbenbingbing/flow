@@ -105,6 +105,8 @@ public class ConfigMigrationPackageService {
     private final ConfigMigrationAssignmentTargetValidator assignmentTargetValidator;
     private final DatabaseQueryDialect queryDialect;
     @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.definition.application.EntityPublishedSnapshotService userPathSnapshots;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.contracts.migration.port.EntityExcelMigrationPort excelConfigurations;
     /**
      * 生成配置导出包。
@@ -1056,7 +1058,7 @@ public class ConfigMigrationPackageService {
         if ("GROUP".equals(type)) {
             return groupMapper.selectByGroupCode(key) != null;
         }
-        if (Set.of("PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD").contains(type)) {
+        if (Set.of("PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD", "ENTITY_PATH_FIELD", "ENTITY_PATH_RELATION").contains(type)) {
             return assignmentTargetValidator.resolved(dependency, type, key, this::mappedKey,
                     coordinate -> findTargetUserField(coordinate, packageAssets));
         }
@@ -1110,6 +1112,8 @@ public class ConfigMigrationPackageService {
      * @return 目标用户字段键值结果，供调用方继续处理
      */
     private Map<String, Object> findTargetUserField(String coordinate, Map<String, PackageAsset> packageAssets) {
+        if (coordinate.startsWith("path:")) return findTargetPathMetadata(coordinate.substring(5), packageAssets, false);
+        if (coordinate.startsWith("relation:")) return findTargetPathMetadata(coordinate.substring(9), packageAssets, true);
         String[] parts = coordinate.split("/", 2);
         if (parts.length != 2) return Map.of();
         String entityCode = parts[0];
@@ -1136,6 +1140,47 @@ public class ConfigMigrationPackageService {
         value.put("fieldType", String.valueOf(field.getFieldType()));
         value.put("refEntityCode", referenceCode);
         return isUserReferenceField(value) ? value : Map.of();
+    }
+
+    /** 路径依赖支持包内尚未落库的实体；目标库只读取发布字段/关系，不能以草稿满足导入校验。 */
+    private Map<String, Object> findTargetPathMetadata(String coordinate, Map<String, PackageAsset> assets, boolean relation) {
+        String[] parts = coordinate.split("/", 2);
+        if (parts.length != 2) return Map.of();
+        String section = relation ? "relations" : "fields";
+        String key = relation ? "relationCode" : "fieldCode";
+        for (PackageAsset asset : assets.values()) {
+            if ("ENTITY".equals(asset.assetType()) && parts[0].equals(asset.businessKey()) && asset.snapshot().containsKey(section)) {
+                return documents.readMapList(asset.snapshot().get(section)).stream().filter(value -> parts[1].equals(value.get(key)))
+                        .findFirst().orElse(Map.of());
+            }
+        }
+        EntityDefinition definition = entityMapper.findByEntityCode(parts[0]).orElse(null);
+        if (definition == null) return Map.of();
+        if (definition.getStorageMode() == EntityDefinition.StorageMode.SYSTEM) {
+            if (relation) return Map.of();
+            EntityField field = fieldMapper.findByEntityIdAndFieldCode(definition.getId(), parts[1]);
+            if (field == null || !systemEntityFieldPolicy.isRuntimeReadable(definition, field)) return Map.of();
+            String target = com.workflow.entity.definition.application.EntityUserPathMetadata.systemTarget(parts[0], parts[1]);
+            return target == null ? Map.of() : Map.of("fieldType", "REFERENCE", "refEntityCode", target);
+        }
+        var snapshot = userPathSnapshots.getLatestByEntityId(definition.getId());
+        if (relation) {
+            return snapshot.getRelations() == null ? Map.of() : snapshot.getRelations().stream()
+                    .filter(value -> parts[1].equals(value.getRelationCode()) && !Boolean.FALSE.equals(value.getEnabled()))
+                    .map(value -> Map.<String, Object>of("relationType", value.getRelationType().name(),
+                            "childEntityCode", value.getChildEntityCode(), "childRefFieldCode", value.getChildRefFieldCode()))
+                    .findFirst().orElse(Map.of());
+        }
+        for (EntityField field : snapshot.getFields()) {
+            if (!parts[1].equals(field.getFieldCode())) continue;
+            Map<String, Object> value = new LinkedHashMap<>();
+            value.put("fieldType", field.getFieldType().name());
+            value.put("refEntityType", field.getRefEntityType() == null ? "" : field.getRefEntityType().name());
+            EntityDefinition target = StringUtils.hasText(field.getRefEntityId()) ? entityMapper.selectById(field.getRefEntityId()) : null;
+            value.put("refEntityCode", target == null ? "" : target.getEntityCode());
+            return value;
+        }
+        return Map.of();
     }
 
     /**

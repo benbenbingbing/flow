@@ -34,6 +34,61 @@ class ExcelSchemeValidatorTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void missingDictionaryNamesSchemeDirectionColumnFieldAndRepairLocation() {
+        var name = field("name", EntityField.FieldType.STRING);
+        var grade = field("grade", EntityField.FieldType.SELECT); grade.setFieldName("客户等级");
+        var columns = List.of(directionalColumn("name_in", "name", "客户名称", true, false),
+                directionalColumn("name_out", "name", "客户名称", false, true),
+                new ExcelSchemeDocument.Column("grade_out", "等级名称", List.of(), "grade", false, true, false, 20, Map.of("type", "DICT"), Map.of()));
+        var base = document("customer_export", true, columns);
+        var doc = new ExcelSchemeDocument(1, base.schemeCode(), "客户资料", null, base.file(), base.importConfig(), base.exportConfig(), columns);
+        assertThatThrownBy(() -> validator.validatePublished(doc, entity(), List.of(name, grade)))
+                .hasMessageContaining("方案“客户资料”（customer_export）")
+                .hasMessageContaining("导出设置 → B 列“等级名称”")
+                .hasMessageContaining("实体字段：“客户等级” / grade")
+                .hasMessageContaining("转换规则").hasMessageContaining("未绑定代码表")
+                .hasMessageContaining("字段设计").hasMessageContaining("发布实体");
+    }
+
+    @Test void systemStatusDictionaryMistakeSuggestsEntityStatusConverter() {
+        var status = field("status", EntityField.FieldType.STRING); status.setIsSystem(true); status.setFieldName("状态");
+        var doc = document("status_export", false, List.of(new ExcelSchemeDocument.Column("status", "状态名称", List.of(), "status", false, true,
+                false, 20, Map.of("type", "DICT"), Map.of())));
+        assertThatThrownBy(() -> validator.validatePublished(doc, entity(), List.of(status)))
+                .hasMessageContaining("导出设置 → A 列“状态名称”")
+                .hasMessageContaining("实体字段：“状态” / status")
+                .hasMessageContaining("系统状态字段不使用代码表")
+                .hasMessageContaining("改为“实体状态”");
+    }
+
+    @Test void malformedCodecAndRuleValuesHaveReadableSettingNames() {
+        var date = field("date", EntityField.FieldType.DATE); date.setFieldName("业务日期");
+        var invalidDate = document("dates", true, List.of(column("date", "date", "日期", List.of(), Map.of("type", "DATE", "format", "invalid-pattern"))));
+        assertThatThrownBy(() -> validator.validatePublished(invalidDate, entity(), List.of(date)))
+                .hasMessageContaining("实体字段：“业务日期” / date").hasMessageContaining("转换规则：日期格式无效");
+        var number = field("amount", EntityField.FieldType.DECIMAL);
+        var invalidScale = document("amounts", true, List.of(column("amount", "amount", "金额", List.of(), Map.of("type", "AMOUNT", "scale", "wrong"))));
+        assertThatThrownBy(() -> validator.validatePublished(invalidScale, entity(), List.of(number)))
+                .hasMessageContaining("转换规则：小数位数必须为0至18之间的整数");
+        var invalidMin = document("amounts", true, List.of(new ExcelSchemeDocument.Column("amount", "金额", List.of(), "amount", true, false,
+                false, 20, Map.of("type", "AMOUNT"), Map.of("min", "wrong"))));
+        assertThatThrownBy(() -> validator.validatePublished(invalidMin, entity(), List.of(number)))
+                .hasMessageContaining("导入设置 → A 列“金额”").hasMessageContaining("附加校验：最小值必须是有效数字");
+    }
+
+    @Test void locationUsesIndependentSequencesIncludingLegacyInactiveAndColumnsBeyondZ() {
+        var columns = new java.util.ArrayList<ExcelSchemeDocument.Column>();
+        columns.add(directionalColumn("before", "before", "先导出", false, true));
+        for (int i = 0; i < 26; i++) columns.add(directionalColumn("input" + i, "input" + i, "输入" + i, true, false));
+        columns.add(directionalColumn("both", "both", "双向列", true, true));
+        columns.add(directionalColumn("inactive", "inactive", "历史列", false, false));
+        var doc = document("legacy", true, columns);
+        assertThat(ExcelConfigurationErrors.column(doc, 27, field("both", EntityField.FieldType.STRING), "转换规则", "格式无效"))
+                .hasMessageContaining("导入设置 → AA 列 / 导出设置 → B 列“双向列”");
+        assertThat(ExcelConfigurationErrors.column(doc, 28, null, "字段 / 列标题", "字段不存在"))
+                .hasMessageContaining("未启用的历史列 → 第 1 项“历史列”").hasMessageContaining("inactive");
+    }
+
     static EntityDefinition entity() {
         var entity = new EntityDefinition(); entity.setId("entity1"); entity.setEntityCode("employee");
         entity.setStorageMode(EntityDefinition.StorageMode.DYNAMIC); return entity;

@@ -2,6 +2,11 @@
   <section v-loading="loading" class="excel-settings">
     <el-alert v-if="loadError" type="error" :title="loadError" :closable="false" /><el-button v-if="loadError" @click="load">重新加载</el-button>
     <template v-else>
+      <el-alert v-if="publicationFailure" class="publication-failure" type="error" :title="`方案“${publicationFailure.name}”发布失败`" show-icon @close="publicationFailure = null">
+        <p class="publication-message">{{ publicationFailure.message }}</p>
+        <el-button type="primary" link :disabled="saving" @click="editFailedScheme">编辑此方案</el-button>
+        <span>修改后请保存草稿，再重新发布。</span>
+      </el-alert>
       <div class="scheme-heading"><h3>方案管理</h3><el-button @click="openNew(false)">新增方案</el-button><el-button type="primary" @click="openNew(true)">按实体字段生成方案</el-button></div>
       <el-table :data="schemes" border>
         <el-table-column prop="name" label="方案名称" min-width="160" /><el-table-column prop="schemeCode" label="编码" min-width="150" />
@@ -11,6 +16,9 @@
       </el-table>
     </template>
     <el-dialog v-model="editorVisible" :title="selected.id ? '编辑 Excel 方案' : '新增 Excel 方案'" width="min(1280px, 95vw)" append-to-body :close-on-click-modal="false" destroy-on-close>
+      <el-alert v-if="publicationFailure?.schemeCode === editor.schemeCode" class="publication-failure" type="error" title="上次发布未通过，请检查以下配置" :closable="false" show-icon>
+        <p class="publication-message">{{ publicationFailure.message }}</p>
+      </el-alert>
       <el-form label-width="140px">
         <div class="editor-grid">
           <el-form-item label="方案编码" required><el-input v-model="editor.schemeCode" :disabled="Boolean(selected.id)" /></el-form-item>
@@ -138,6 +146,7 @@ import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExcelColumnEditor from './ExcelColumnEditor.vue'
 import { configOf, createScheme, rowsOf, supportsOperation, validateScheme, schemePayload, splitSchemeForEditor } from './excelModel'
 const props = defineProps({ entityCode: { type: String, required: true }, entityId: { type: [String, Number], required: true }, fields: { type: Array, default: () => [] } })
+const publicationFailure = ref(null)
 const loading = ref(false), saving = ref(false), loadError = ref(''), schemes = ref([]), settings = ref({}), forms = ref([])
 // 默认选择属于实体入口指针，单独保存编辑状态，不能混入方案的列/格式文档或复制给新方案。
 const defaultSelection = ref({ import: false, export: false }), settingsRevision = ref(0)
@@ -202,19 +211,41 @@ async function saveScheme() {
       name: editor.value.name,
       config: schemePayload(editor.value)
     })
+    if (publicationFailure.value?.schemeCode === editor.value.schemeCode) publicationFailure.value = null
     editorVisible.value = false
   }, '方案草稿已保存，请发布后使用')
 }
 /** 方案和它的默认选择在服务端同事务发布，无需再单独发布实体默认设置。 */
-async function publish(row) { await run(() => api.publishScheme(props.entityCode, row.schemeCode, { expectedRevision: row.revision, expectedSettingsRevision: row.settingsRevision }), '方案及默认选择已发布') }
+async function publish(row) {
+  if (saving.value) return
+  const entityCode = props.entityCode
+  saving.value = true; publicationFailure.value = null
+  try {
+    await api.publishScheme(entityCode, row.schemeCode, { expectedRevision: row.revision, expectedSettingsRevision: row.settingsRevision }, { silentError: true })
+    if (entityCode !== props.entityCode) return
+    ElMessage.success('方案及默认选择已发布')
+    await load()
+  } catch (error) {
+    // 后端给出的列位置和修复建议保留到用户处理；不再让详细错误只闪现在顶部 toast。
+    if (entityCode === props.entityCode) publicationFailure.value = {
+      schemeCode: row.schemeCode, name: row.name || row.schemeCode, message: error.message || '发布失败，请稍后重试'
+    }
+  } finally { saving.value = false }
+}
+/** 读取失败方案的最新草稿，继续沿用修订号检查；不能用列表缓存覆盖其他人已保存的修改。 */
+async function editFailedScheme() {
+  if (publicationFailure.value) await edit({ schemeCode: publicationFailure.value.schemeCode })
+}
 async function toggle(row) { await run(() => api.status(props.entityCode, row.schemeCode, { expectedRevision: row.revision, status: row.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' }), '方案状态已更新') }
 async function references(row) { try { referenceRows.value = rowsOf(await api.references(props.entityCode, row.schemeCode)); referencesVisible.value = true } catch (e) { ElMessage.error(e.message) } }
 async function remove(row) { try { await ElMessageBox.confirm(`删除方案“${row.name}”？已被引用的方案需要先解除引用。`, '删除方案', { type: 'warning' }) } catch { return } await run(() => api.remove(props.entityCode, row.schemeCode, { expectedRevision: row.revision }), '方案已删除') }
-watch(() => props.entityCode, load, { immediate: true })
+watch(() => props.entityCode, () => { publicationFailure.value = null; return load() }, { immediate: true })
 </script>
 <style scoped>
 .excel-settings { padding: 20px; overflow: auto; flex: 1; }
 .excel-settings p { color: var(--el-text-color-secondary); }
+.publication-failure { margin-bottom: 16px; }
+.publication-message { margin: 4px 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; color: var(--el-color-danger); user-select: text; }
 .scheme-heading { display: flex; gap: 12px; align-items: center; }
 .scheme-heading h3 { margin-right: auto; }
 .editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }

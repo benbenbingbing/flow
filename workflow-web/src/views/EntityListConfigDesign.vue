@@ -629,61 +629,62 @@
     <el-dialog
       v-model="fieldConfigDialogVisible"
       :title="`字段高级配置：${editingField?.fieldName || ''}`"
-      width="720px"
+      width="900px"
+      style="max-width: calc(100vw - 32px)"
       destroy-on-close
     >
-      <el-tabs v-if="editingField" v-model="activeFieldConfigTab" class="field-config-tabs">
-        <el-tab-pane label="常用" name="common">
-          <SettingsSection
-            title="查询项"
-            description="配置字段作为查询条件时的输入方式"
-            :collapsible="false"
-            primary
-          >
-            <el-form label-width="110px" size="small">
-              <el-form-item label="查询组件">
-                <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
-                  <el-option
-                    v-for="option in queryComponentOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="查询方式">
-                <template #label>
-                  <ConfigHelpLabel
-                    label="查询方式"
-                    help-key="entityList.queryType"
-                  />
-                </template>
-                <el-select
-                  v-model="editingField.queryType"
-                  :disabled="!editingField.isQuery"
-                  style="width: 100%"
-                >
-                  <el-option
-                    v-for="option in availableQueryTypeOptions"
-                    :key="option.value"
-                    :label="option.label"
-                    :value="option.value"
-                  />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="占位提示">
-                <el-input v-model="editingQueryConfig.placeholder" />
-              </el-form-item>
-              <el-form-item label="默认值">
-                <el-input v-model="editingQueryConfig.defaultValue" />
-              </el-form-item>
-            </el-form>
-          </SettingsSection>
-          <SettingsSection
-            title="列展示"
-            description="配置列宽、对齐、快捷复制、固定位置和溢出提示"
-            :collapsible="false"
-          >
+      <div v-if="editingField" class="field-config-content">
+        <SettingsSection
+          title="查询项"
+          description="配置字段作为查询条件时的输入方式"
+          :collapsible="false"
+          primary
+        >
+          <el-form label-width="110px" size="small" class="field-config-grid">
+            <el-form-item label="查询组件">
+              <el-select v-model="editingQueryConfig.componentType" clearable placeholder="自动匹配字段类型" style="width: 100%">
+                <el-option
+                  v-for="option in queryComponentOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="查询方式">
+              <template #label>
+                <ConfigHelpLabel
+                  label="查询方式"
+                  help-key="entityList.queryType"
+                />
+              </template>
+              <el-select
+                v-model="editingField.queryType"
+                :disabled="!editingField.isQuery"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="option in availableQueryTypeOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="占位提示">
+              <el-input v-model="editingQueryConfig.placeholder" />
+            </el-form-item>
+            <el-form-item label="默认值">
+              <el-input v-model="editingQueryConfig.defaultValue" />
+            </el-form-item>
+          </el-form>
+        </SettingsSection>
+        <SettingsSection
+          title="列展示"
+          description="配置列布局、渲染组件、脱敏和空值显示"
+          :collapsible="false"
+        >
+          <div class="field-config-grid field-config-column-grid">
             <el-form label-width="110px" size="small">
               <el-form-item label="列宽" for="">
                 <template #label>
@@ -739,134 +740,124 @@
               <el-form-item label="溢出提示">
                 <el-switch v-model="editingColumnConfig.showOverflowTooltip" />
               </el-form-item>
-            </el-form>
-          </SettingsSection>
-        </el-tab-pane>
-        <el-tab-pane label="数据与显示" name="data-render">
-          <SettingsSection
-            title="数据与显示"
-            description="集中配置字段取值来源、单元格组件和显示参数"
-            :collapsible="false"
-            primary
-          >
-            <div class="field-config-subsection">
-              <div class="field-config-subsection__title">数据来源</div>
-              <el-form label-width="110px" size="small">
-                <el-form-item label="取值方式" for="">
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="取值方式"
-                      help-key="entityList.dataSourceType"
-                    />
-                  </template>
-                  <el-select
-                    v-model="editingField.dataSourceType"
-                    style="width: 100%"
-                    @change="handleDataSourceChange(editingField)"
-                  >
-                    <el-option
-                      v-for="option in listColumnSourceOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                      :disabled="(isVirtualField(editingField) && option.value === 'ENTITY_FIELD') || (isSystemEntity && option.value !== 'ENTITY_FIELD')"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="editingField.dataSourceType === 'INTERFACE'" label="扩展接口" required for="">
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="扩展接口"
-                      help-key="entityList.interfaceExtension"
-                    />
-                  </template>
-                  <el-select
-                    v-model="editingField.interfaceExtensionId"
-                    clearable
-                    filterable
-                    placeholder="请选择用于计算本列的接口"
-                    style="width: 100%"
-                  >
-                    <el-option
-                      v-for="item in listColumnInterfaces"
-                      :key="item.extensionId"
-                      :label="`${item.displayName} (${item.extensionKey})`"
-                      :value="item.extensionId"
-                    />
-                  </el-select>
-                </el-form-item>
-              </el-form>
-              <ConfigSchemaEditor
-                v-if="editingSourceSchema.length"
-                v-model="editingDataSourceConfig"
-                :schema="editingSourceSchema"
-                :grouped="false"
-                show-field-help
-              />
-            </div>
-            <div class="field-config-subsection">
-              <div class="field-config-subsection__title">单元格显示</div>
-              <el-form label-width="110px" size="small">
-                <el-form-item label="渲染组件" for="">
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="渲染组件"
-                      help-key="entityList.renderComponent"
-                    />
-                  </template>
-                  <el-select
-                    v-model="editingField.renderComponent"
-                    clearable
-                    placeholder="自动匹配"
-                    style="width: 100%"
-                  >
-                    <el-option
-                      v-for="option in selectableCellComponentOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                </el-form-item>
-              </el-form>
-              <ConfigSchemaEditor
-                v-model="editingRenderConfig"
-                :schema="editingRenderSchema"
-                :grouped="false"
-                show-field-help
-              />
-            </div>
-          </SettingsSection>
-          <SettingsSection
-            title="模板初始化"
-            description="选择后把模板配置复制到当前列；保存后独立，后续模板修改不会影响本列"
-            :default-expanded="false"
-          >
-            <el-form label-width="110px" size="small">
-              <el-form-item label="初始化模板">
+              <el-form-item label="渲染组件" for="">
+                <template #label>
+                  <ConfigHelpLabel
+                    label="渲染组件"
+                    help-key="entityList.renderComponent"
+                  />
+                </template>
                 <el-select
-                  v-model="selectedListTemplateId"
+                  v-model="editingField.renderComponent"
                   clearable
-                  filterable
-                  placeholder="选择模板并复制配置"
+                  placeholder="自动匹配"
                   style="width: 100%"
-                  @change="applyListColumnTemplate"
                 >
                   <el-option
-                    v-for="template in listTemplates"
-                    :key="template.id"
-                    :label="template.templateName"
-                    :value="template.id"
+                    v-for="option in selectableCellComponentOptions"
+                    :key="option.value"
+                    :label="option.label"
+                    :value="option.value"
                   />
                 </el-select>
-                <div class="field-help">
-                  只复制数据源、查询和显示配置，不保存模板关联，也不会自动跟随模板更新。
-                </div>
               </el-form-item>
             </el-form>
-          </SettingsSection>
-        </el-tab-pane>
-      </el-tabs>
+            <ConfigSchemaEditor
+              class="field-config-render-editor"
+              v-model="editingRenderConfig"
+              :schema="editingRenderSchema"
+              :grouped="false"
+              show-field-help
+            />
+          </div>
+        </SettingsSection>
+        <SettingsSection
+          title="取值方式"
+          description="配置字段取值来源及其参数"
+          :collapsible="false"
+        >
+          <el-form label-width="110px" size="small">
+            <el-form-item label="取值方式" for="">
+              <template #label>
+                <ConfigHelpLabel
+                  label="取值方式"
+                  help-key="entityList.dataSourceType"
+                />
+              </template>
+              <el-select
+                v-model="editingField.dataSourceType"
+                style="width: 100%"
+                @change="handleDataSourceChange(editingField)"
+              >
+                <el-option
+                  v-for="option in listColumnSourceOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                  :disabled="(isVirtualField(editingField) && option.value === 'ENTITY_FIELD') || (isSystemEntity && option.value !== 'ENTITY_FIELD')"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="editingField.dataSourceType === 'INTERFACE'" label="扩展接口" required for="">
+              <template #label>
+                <ConfigHelpLabel
+                  label="扩展接口"
+                  help-key="entityList.interfaceExtension"
+                />
+              </template>
+              <el-select
+                v-model="editingField.interfaceExtensionId"
+                clearable
+                filterable
+                placeholder="请选择用于计算本列的接口"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="item in listColumnInterfaces"
+                  :key="item.extensionId"
+                  :label="`${item.displayName} (${item.extensionKey})`"
+                  :value="item.extensionId"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+          <ConfigSchemaEditor
+            v-if="editingSourceSchema.length"
+            v-model="editingDataSourceConfig"
+            :schema="editingSourceSchema"
+            :grouped="false"
+            show-field-help
+          />
+        </SettingsSection>
+        <SettingsSection
+          title="模板初始化"
+          description="选择后把模板配置复制到当前列；保存后独立，后续模板修改不会影响本列"
+          :default-expanded="false"
+        >
+          <el-form label-width="110px" size="small">
+            <el-form-item label="初始化模板">
+              <el-select
+                v-model="selectedListTemplateId"
+                clearable
+                filterable
+                placeholder="选择模板并复制配置"
+                style="width: 100%"
+                @change="applyListColumnTemplate"
+              >
+                <el-option
+                  v-for="template in listTemplates"
+                  :key="template.id"
+                  :label="template.templateName"
+                  :value="template.id"
+                />
+              </el-select>
+              <div class="field-help">
+                只复制数据源、查询和显示配置，不保存模板关联，也不会自动跟随模板更新。
+              </div>
+            </el-form-item>
+          </el-form>
+        </SettingsSection>
+      </div>
       <template #footer>
         <el-button @click="fieldConfigDialogVisible = false">取消</el-button>
         <el-button type="primary" @click="saveFieldAdvancedConfig">保存当前列</el-button>
@@ -1166,7 +1157,6 @@ const selectedCustomListSchema = computed(() =>
   getCustomListDescriptor(configInfo.value.customComponent)?.configSchema || []
 )
 const fieldConfigDialogVisible = ref(false)
-const activeFieldConfigTab = ref('common')
 const editingField = ref(null)
 // 下拉按 supportedEntityCodes 收窄到当前实体；当前已选值始终保留
 const selectableCellComponentOptions = computed(() =>
@@ -1633,7 +1623,6 @@ function openFieldConfig(field) {
   editingField.value = field
   syncFieldConfigEditors(field)
   selectedListTemplateId.value = ''
-  activeFieldConfigTab.value = 'common'
   fieldConfigDialogVisible.value = true
 }
 function syncFieldConfigEditors(field) {
@@ -2549,7 +2538,7 @@ async function handleReleaseChanged(event) {
 }
 
 .view-config-form :deep(.settings-section__body > .el-form-item:last-child),
-.field-config-tabs :deep(.settings-section__body > .el-form:last-child .el-form-item:last-child) {
+.field-config-content :deep(.settings-section__body > .el-form:last-child .el-form-item:last-child) {
   margin-bottom: 10px;
 }
 @media (min-width: 1440px) {
@@ -2576,23 +2565,37 @@ async function handleReleaseChanged(event) {
 .view-config-form :deep(.access-scope-section .form-tip) {
   flex-basis: 100%;
 }
+/* 字段属性在宽面板中并排展示；动态渲染参数使用相同网格，窄屏恢复单列避免控件拥挤。 */
+.field-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  align-items: start;
+}
+/* 展平两类编辑器的布局包装，使动态参数接续列属性排列，不留下半行空白。 */
+.field-config-column-grid > .el-form,
+.field-config-column-grid > .field-config-render-editor,
+.field-config-render-editor :deep(.config-schema-form),
+.field-config-render-editor :deep(.config-schema-form > div) {
+  display: contents;
+}
+.field-config-grid :deep(.el-form-item) {
+  min-width: 0;
+}
+.field-config-grid :deep(.el-form-item__content) {
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .field-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .field-help {
   width: 100%;
   margin-top: 5px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.5;
-}
-.field-config-subsection + .field-config-subsection {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-.field-config-subsection__title {
-  margin-bottom: 10px;
-  color: var(--el-text-color-primary);
-  font-size: 13px;
-  font-weight: 600;
 }
 .field-toolbar {
   display: flex;

@@ -230,6 +230,34 @@ class EntityUserReferenceFieldPublishSanitizerTest {
         }
     }
 
+    @Test
+    void publishCompilesVersionsForBaseAndNextApproverSources() {
+        var paths = mock(com.workflow.contracts.entity.port.EntityUserPathPort.class);
+        var step = new com.workflow.contracts.entity.port.EntityUserPathPort.Step("REFERENCE_FIELD", "owner", "sys_user", "expense");
+        var version = new com.workflow.contracts.entity.port.EntityUserPathPort.Version("expense", "local-history", "local-hash", null);
+        when(paths.describe(org.mockito.ArgumentMatchers.eq("expense"), org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.eq(List.of()))).thenReturn(
+                new com.workflow.contracts.entity.port.EntityUserPathPort.PathDescription("sys_user", false, true, List.of(version), List.of(step)));
+        var sanitizer = configuredSanitizer();
+        var validator = mock(PersonResolverConfigurationValidationProvider.class);
+        when(validator.resolverCode()).thenReturn("entityUserReferenceField");
+        ReflectionTestUtils.setField(sanitizer, "personResolverConfigurationValidators", List.of(validator));
+        ReflectionTestUtils.setField(sanitizer, "entityUserPathBpmnCompiler", new EntityUserPathBpmnCompiler(paths, new ObjectMapper()));
+        String config = """
+                {"assignmentConfigVersion":2,"assigneeType":"interface","resolverCode":"entityUserReferenceField",
+                 "assignmentMode":"DIRECT","extraParams":{"schemaVersion":2,"entityCode":"expense",
+                 "path":[{"type":"REFERENCE_FIELD","code":"owner"}],
+                 "versions":[{"entityCode":"expense","historyId":"foreign-history","schemaHash":"forged"}]},
+                 "nextApproverSelection":{"version":1,"visible":true,"editable":true,"source":{
+                   "type":"RESOLVER","resolverCode":"entityUserReferenceField","extraParams":{
+                     "schemaVersion":2,"entityCode":"expense","path":[{"type":"REFERENCE_FIELD","code":"owner"}]}}}}
+                """;
+        String output = sanitizer.sanitize(wrap(userTask("approve", config)), "path_flow", "process-1");
+        assertTrue(output.contains("local-history"));
+        assertFalse(output.contains("foreign-history"));
+        verify(paths, times(2)).describe(org.mockito.ArgumentMatchers.eq("expense"), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq(List.of()));
+    }
+
     private ProcessBpmnPublishSanitizer configuredSanitizer() {
         ProcessBpmnPublishSanitizer sanitizer =
                 new ProcessBpmnPublishSanitizer(new ObjectMapper());

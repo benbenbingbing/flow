@@ -1009,7 +1009,7 @@ class EntityListRuntimeViewCompositionTest {
         configurePinnedList(config);
         EntityListField field = new EntityListField();
         field.setFieldCode("projectId");
-        field.setIsQuery(true);
+        field.setIsQuery(false);
         when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of(field));
         EntityListQueryRequest request = compositionRequest(1, 10);
         var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
@@ -1030,7 +1030,7 @@ class EntityListRuntimeViewCompositionTest {
                 "inputParameterBindings":[{"parameter":"keyword","usage":"FILTER","targetField":"name","operator":"EQ"}]}
                 """);
         configurePinnedList(config);
-        EntityListField field = new EntityListField(); field.setFieldCode("name"); field.setIsQuery(true);
+        EntityListField field = new EntityListField(); field.setFieldCode("name"); field.setIsQuery(false);
         when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of(field));
         when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
                 .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
@@ -1041,6 +1041,58 @@ class EntityListRuntimeViewCompositionTest {
         verify(dataListService).findPageWithResolvedConfig(any(), any(), eq(config),
                 org.mockito.ArgumentMatchers.argThat(filters -> "owned".equals(filters.get("projectId"))
                         && "unsaved-name".equals(filters.get("name")) && "EQ".equals(filters.get("name_op"))), anyLong(), anyLong());
+    }
+
+    /** 隐藏参数只依赖发布用途，字段没有出现在列表列配置中时也能参与数据库筛选。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"EQ", "NE", "LIKE", "IN"})
+    void hiddenParameterFiltersReachQueryWithoutListColumns(String operator) {
+        EntityListConfig config = publishedList();
+        config.setViewConfig("""
+                {"inputParameterSchema":{"properties":{"project":{"type":"%s"}}},
+                "inputParameterBindings":[{"parameter":"project","usage":"FILTER","targetField":"projectId","operator":"%s"}]}
+                """.formatted("IN".equals(operator) ? "array" : "string", operator));
+        configureActiveList(config);
+        when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of());
+        when(dataListService.findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong()))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
+        Object value = "IN".equals(operator) ? List.of("project-1", "project-2") : "project-1";
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
+        context.setParameters(Map.of("project", value));
+        request.setContext(context);
+
+        service.query("target_entity", "default", request);
+
+        verify(dataListService).findPageWithResolvedConfig(any(), any(), eq(config),
+                org.mockito.ArgumentMatchers.argThat(filters -> value.equals(filters.get("projectId"))
+                        && operator.equals(filters.get("projectId_op"))), anyLong(), anyLong());
+        // 放开发布参数用途不等于放开任意客户端 filters；隐藏字段仍不能绕过查询区白名单。
+        request.setFilters(Map.of("projectId", "injected"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> service.query("target_entity", "default", request)).getMessage().contains("字段未配置为可查询条件"));
+    }
+
+    /** 参数条件必须与已发布固定条件求交，冲突时不能执行数据查询或加载事件。 */
+    @Test
+    void hiddenParameterCannotReplacePublishedFixedFilter() {
+        EntityListConfig config = publishedList();
+        config.setViewConfig("""
+                {"inputParameterSchema":{"properties":{"project":{"type":"string"}}},
+                "inputParameterBindings":[{"parameter":"project","usage":"FILTER","targetField":"projectId","operator":"EQ"}]}
+                """);
+        config.setFixedFilterConfig("{\"projectId\":\"owned\"}");
+        configureActiveList(config);
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        var context = new com.workflow.entity.list.api.response.EntityListRuntimeContextDTO();
+        context.setParameters(Map.of("project", "foreign"));
+        request.setContext(context);
+
+        PageResult<?> page = (PageResult<?>) service.query("target_entity", "default", request);
+
+        assertEquals(0, page.getTotal());
+        verify(dataListService, never()).findPageWithResolvedConfig(any(), any(), any(), anyMap(), anyLong(), anyLong());
+        verify(uiEventRuntimeService, never()).execute(any(), any());
     }
 
     private EntityListConfig publishedList() {

@@ -37,7 +37,7 @@ final class ConfigMigrationAssignmentSupport {
     private static final Set<String> EXTENSIONS = Set.of(
             "http://flowable.org/bpmn", "http://camunda.org/schema/1.0/bpmn");
     static final Set<String> TARGET_TYPES = Set.of("USER", "GROUP", "ROLE", "DEPT",
-            "PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD");
+            "PERSON_RESOLVER", "POSITION", "ORG_BUSINESS_LEVEL", "ENTITY_USER_FIELD", "ENTITY_PATH_FIELD", "ENTITY_PATH_RELATION");
 
     /**
      * 初始化配置迁移分配支持，保存构造参数供后续方法使用。
@@ -276,15 +276,19 @@ final class ConfigMigrationAssignmentSupport {
         if (code.isEmpty()) code = text(config.get("interfaceName"));
         Map<String, Object> params = object(config.get("extraParams"));
         if ("entityUserReferenceField".equals(code)) {
-            String entity = text(params.get("entityCode"));
-            String field = text(params.get("fieldCode"));
-            String original = entity + "/" + field;
-            String coordinate = mapper.map("ENTITY_USER_FIELD", original, context);
-            String[] parts = coordinate.split("/", 2);
-            if (parts.length == 2) {
-                // 显式字段映射已给出完整目标坐标，不能再把目标实体当作来源重复映射。
-                params.put("entityCode", coordinate.equals(original) ? mapper.map("ENTITY", parts[0], context) : parts[0]);
-                params.put("fieldCode", parts[1]);
+            if ("2".equals(text(params.get("schemaVersion")))) {
+                rewriteUserPath(params, context, mapper);
+            } else {
+                String entity = text(params.get("entityCode"));
+                String field = text(params.get("fieldCode"));
+                String original = entity + "/" + field;
+                String coordinate = mapper.map("ENTITY_USER_FIELD", original, context);
+                String[] parts = coordinate.split("/", 2);
+                if (parts.length == 2) {
+                    // 显式字段映射已给出完整目标坐标，不能再把目标实体当作来源重复映射。
+                    params.put("entityCode", coordinate.equals(original) ? mapper.map("ENTITY", parts[0], context) : parts[0]);
+                    params.put("fieldCode", parts[1]);
+                }
             }
         } else if ("relativeOrgPosition".equals(code)) {
             field(params, "positionCode", "POSITION", context, mapper);
@@ -307,6 +311,42 @@ final class ConfigMigrationAssignmentSupport {
             config.put("resolverCode", mapped);
             if (config.containsKey("interfaceName")) config.put("interfaceName", mapped);
         }
+    }
+
+    /** 每一级关系都是迁移依赖；历史版本只能在目标环境发布时重新编译，不能跨环境复制。 */
+    private static void rewriteUserPath(Map<String, Object> params, Map<String, Object> context, ReferenceMapper mapper) {
+        List<Map<String, Object>> path = maps(params.get("path"));
+        String root = text(params.get("entityCode"));
+        String current = root;
+        List<Map<String, Object>> rewritten = new ArrayList<>();
+        for (int i = 0; i < path.size(); i++) {
+            Map<String, Object> step = new LinkedHashMap<>(path.get(i));
+            String source = text(step.get("sourceEntityCode"));
+            if (source.isEmpty()) source = current;
+            if (!source.equals(current)) throw new IllegalArgumentException("人员路径来源实体不连续");
+            String target = text(step.get("targetEntityCode"));
+            if (target.isEmpty()) target = i + 1 < path.size() ? text(path.get(i + 1).get("sourceEntityCode")) : "sys_user";
+            if (target.isEmpty()) throw new IllegalArgumentException("请在设计器重新选择人员关系路径，补齐目标实体编码后再迁移");
+            boolean reverse = Set.of("REVERSE_REFERENCE", "PARENT_RELATION").contains(step.get("type"));
+            String coordinate = (reverse ? target : source) + "/" + text(step.get("code"));
+            String dependencyType = Set.of("RELATION", "PARENT_RELATION").contains(step.get("type")) ? "ENTITY_PATH_RELATION" : "ENTITY_PATH_FIELD";
+            String mapped = mapper.map(dependencyType, coordinate, context);
+            String[] parts = mapped.split("/", 2);
+            if (parts.length != 2) throw new IllegalArgumentException("人员路径关系映射必须使用 实体编码/关系编码");
+            String mappedSource = mapper.map("ENTITY", source, context);
+            String mappedTarget = mapper.map("ENTITY", target, context);
+            if (!mapped.equals(coordinate)) {
+                if (reverse) mappedTarget = parts[0]; else mappedSource = parts[0];
+            }
+            step.put("sourceEntityCode", mappedSource);
+            step.put("targetEntityCode", mappedTarget);
+            step.put("code", parts[1]);
+            rewritten.add(step);
+            current = target;
+        }
+        params.put("entityCode", mapper.map("ENTITY", root, context));
+        params.put("path", rewritten);
+        params.remove("versions");
     }
 
     /**

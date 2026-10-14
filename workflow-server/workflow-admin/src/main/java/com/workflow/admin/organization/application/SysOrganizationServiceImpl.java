@@ -130,6 +130,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         
         SysOrganization oldOrg = StringUtils.hasText(org.getId())
                 ? orgMapper.selectById(org.getId()) : null;
+        // 创建身份来自可信操作上下文；禁止客户端伪造或通过更新重新指定创建者。
+        org.setCreateBy(oldOrg == null ? com.workflow.admin.security.context.UserContext.getUserId() : oldOrg.getCreateBy());
         protectLeaderProjection(org, oldOrg);
         org.setBusinessLevelCode(normalizeAndValidateBusinessLevel(
                 org.getBusinessLevelCode()));

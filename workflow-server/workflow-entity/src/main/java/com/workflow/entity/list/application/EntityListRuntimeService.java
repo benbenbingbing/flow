@@ -333,8 +333,10 @@ public class EntityListRuntimeService {
         if (safeRequest.getContext() == null) safeRequest.setContext(new EntityListRuntimeContextDTO());
         safeRequest.getContext().setParameters(parameters);
 
-        Map<String, Object> parameterFilters = validateUserFilters(config,
-                com.workflow.entity.ui.application.PageParameterPolicy.filters(parameterConfig, parameters));
+        // 筛选字段和操作符来自已校验的发布用途，调用方仅提供参数值；隐藏条件不要求勾选查询。
+        // 普通 filters 仍按查询区白名单校验，参数条件在下方与固定范围、关系和用户筛选求交。
+        Map<String, Object> parameterFilters =
+                com.workflow.entity.ui.application.PageParameterPolicy.filters(parameterConfig, parameters);
 
         Map<String, Object> filters = validateUserFilters(
                 config,

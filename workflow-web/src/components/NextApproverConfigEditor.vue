@@ -71,7 +71,15 @@
           />
         </el-form-item>
 
-        <el-form-item label="extraParams" for="">
+        <el-form-item v-if="localConfig.source.resolverCode === 'entityUserReferenceField'" label="用户关系路径">
+          <EntityUserRelationPathSelector
+            v-model="localConfig.source.extraParams"
+            :process-id="processId"
+            :entity-code="entityCode"
+            @state="state => userPathState = state"
+          />
+        </el-form-item>
+        <el-form-item v-else label="extraParams" for="">
           <template #label>
             <ConfigHelpLabel label="extraParams" content="仅填写该人员接口声明的扩展参数" />
           </template>
@@ -94,6 +102,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import EntityUserRelationPathSelector from '@/components/EntityUserRelationPathSelector.vue'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vue'
 import PersonScopeRuleEditor from '@/components/PersonScopeRuleEditor.vue'
@@ -105,6 +114,8 @@ import {
 } from '@flow/workflow-core/next-approver'
 
 const props = defineProps({
+  processId: { type: String, default: '' },
+  entityCode: { type: String, default: '' },
   modelValue: {
     type: Object,
     default: () => ({})
@@ -133,6 +144,7 @@ const extraParamsText = ref(JSON.stringify(
   2
 ))
 const extraParamsError = ref('')
+const userPathState = ref({ valid: false, loading: false })
 const resolverContext = { usage: 'CANDIDATE' }
 let syncingFromProps = false
 
@@ -226,6 +238,11 @@ function parseExtraParams() {
 }
 
 function validate() {
+  if (localConfig.value.visible && localConfig.value.source.type === 'RESOLVER'
+      && localConfig.value.source.resolverCode === 'entityUserReferenceField'
+      && (!userPathState.value.valid || userPathState.value.loading)) {
+    return { valid: false, message: '下一审批人：请选择有效且以用户结束的关系路径，并等待校验完成' }
+  }
   if (
     localConfig.value.visible
     && localConfig.value.source.type === 'RESOLVER'

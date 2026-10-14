@@ -101,6 +101,23 @@ class SysOrganizationServiceImplPositionCompatibilityTest {
                 "organization_business_level");
     }
 
+    @Test
+    void creatorComesFromAuthenticatedContextAndSurvivesUpdates() {
+        com.workflow.admin.security.context.UserContext.setCurrentUser("actor-id", "actor");
+        try {
+            SysOrganization created = new SysOrganization();
+            created.setOrgCode("NEW"); created.setOrgName("New department"); created.setType("org");
+            created.setCreateBy("forged-id");
+            service.saveOrg(created);
+            assertEquals("actor-id", created.getCreateBy());
+            SysOrganization existing = existingOrganization(); existing.setCreateBy("original-id");
+            when(organizationMapper.selectById(existing.getId())).thenReturn(existing);
+            SysOrganization requested = updateRequest(null); requested.setCreateBy("forged-id");
+            service.saveOrg(requested);
+            assertEquals("original-id", requested.getCreateBy());
+        } finally { com.workflow.admin.security.context.UserContext.clear(); }
+    }
+
     private static SysOrganization existingOrganization() {
         SysOrganization organization = new SysOrganization();
         organization.setId("org-a");

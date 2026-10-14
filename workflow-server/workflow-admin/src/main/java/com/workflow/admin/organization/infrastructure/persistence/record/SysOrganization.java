@@ -108,6 +108,10 @@ public class SysOrganization {
      * 创建时间
      */
     private LocalDateTime createTime;
+
+    /** 创建者用户主键，供流程沿部门关系寻找创建人；历史未知值保持为空，更新时不可改写。 */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String createBy;
     
     /**
      * 更新时间

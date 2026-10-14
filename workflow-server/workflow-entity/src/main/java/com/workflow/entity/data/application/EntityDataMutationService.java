@@ -15,6 +15,7 @@ import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDyna
 import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityCodeGeneratorService;
 import com.workflow.entity.definition.application.code.EntityCodeGenerationInput;
+import com.workflow.entity.definition.application.code.EntityCodeGenerationScope;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -106,7 +107,13 @@ public class EntityDataMutationService {
                                         "实体不存在: " + entityCode));
         List<EntityRelation> relations =
                 relationRuntimeService.loadRelations(definition);
-        Map<String, Object> originalData = dto.getData();
+        Map<String, Object> originalData = dto.getData() == null ? null : new HashMap<>(dto.getData());
+        if (originalData != null) {
+            // 表单会把系统字段混入 data；除了禁止入库，也不能在草稿响应和流程载荷中回显伪造审计。
+            List.of("submitTime", "submit_time", "submitterId", "submitter_id", "submitterName", "submitter_name")
+                    .forEach(originalData::remove);
+            dto.setData(originalData);
+        }
         Map<String, Object> parentData =
                 relationRuntimeService.withoutRelationData(
                         originalData,
@@ -133,10 +140,8 @@ public class EntityDataMutationService {
         if (!dynamicTableService.tableExists(entityCode)) {
             dynamicTableService.createEntityTable(definition);
         }
-        String currentUserId =
-                getCurrentUserId(dto.getSubmitterId());
-        String currentUserName =
-                getCurrentUserName(dto.getSubmitterName());
+        // 创建/编辑身份只能来自可信上下文，不能借用请求中的提交人冒充操作者。
+        String currentUserId = getCurrentUserId();
 
         boolean creating = !StringUtils.hasText(dto.getId());
         // 创建场景必须在唯一值预留前生成稳定ID，确保预留和业务写入属于同一事务主体。
@@ -147,6 +152,21 @@ public class EntityDataMutationService {
         Map<String, Object> data =
                 recordMapper.toStorageMap(dto);
         dto.setData(originalData);
+        // 首次提交审计由流程启动维护；普通保存不能提前填写、清空或改写。
+        data.remove("submit_time");
+        data.remove("submitter_id");
+        data.remove("submitter_name");
+        if (creating) {
+            dto.setSubmitTime(null);
+            dto.setSubmitterId(null);
+            dto.setSubmitterName(null);
+        } else {
+            Map<String, Object> existing = dynamicMapper.selectById(tableName, dto.getId());
+            if (existing == null) {
+                throw new BusinessConflictException("ENTITY_DATA_NOT_FOUND", "数据不存在: " + dto.getId());
+            }
+            copySubmissionAudit(dto, payloadMapper.toRuntimeDto(existing, entityCode));
+        }
         // 业务编号只由服务器创建，客户端值不应进入写前唯一性预留或字段规则校验。
         data.remove("code");
         validator.validatePublishedFields(
@@ -167,15 +187,12 @@ public class EntityDataMutationService {
                     tableName,
                     data,
                     currentUserId,
-                    currentUserName,
                     multiValueData);
         } else {
             // 编码只在创建时分配，更新入口不能通过 DTO 覆写。
             data.remove("code");
             data.put("update_by", currentUserId);
             data.put("update_time", LocalDateTime.now());
-            data.remove("submitter_id");
-            data.remove("submitter_name");
             dynamicMapper.update(tableName, data);
             entityRecordTeamService.record(
                     entityCode,
@@ -574,14 +591,12 @@ public class EntityDataMutationService {
      * @param tableName 目标物理表名，后续用于构造查询或表结构操作
      * @param data 数据，后续用于插入实体数据变更并传递处理结果
      * @param currentUserId 当前用户ID，后续用于插入实体数据变更时定位或关联目标
-     * @param currentUserName 当前用户名称，后续用于插入实体数据变更时匹配或展示
      */
     private void insert(
             EntityDataDTO dto,
             String tableName,
             Map<String, Object> data,
             String currentUserId,
-            String currentUserName,
             Map<String, List<String>> multiValueData) {
         String id = StringUtils.hasText(dto.getId()) ? dto.getId() : generateId();
         LocalDateTime now = LocalDateTime.now();
@@ -591,10 +606,7 @@ public class EntityDataMutationService {
         data.put("update_by", currentUserId);
         data.put("update_time", now);
         data.put("deleted", 0);
-        data.put("submitter_id", currentUserId);
-        data.put("submitter_name", currentUserName);
-        dto.setSubmitterId(currentUserId);
-        dto.setSubmitterName(currentUserName);
+        // 草稿只有创建人；提交人与提交时间等到首次成功发起审批后一起登记。
 
         String currentDeptId = getCurrentDeptId();
         if (currentDeptId != null) {
@@ -675,10 +687,6 @@ public class EntityDataMutationService {
         }
         dto.setStartProcess(true);
         dto.setEntityCode(entityCode);
-        dto.setSubmitterId(asText(
-                existingData.get("submitter_id")));
-        dto.setSubmitterName(asText(
-                existingData.get("submitter_name")));
         dto.setProcessVariables(null);
         // 更新 DTO 只含补丁字段；新实例必须使用保存后的完整数据和原业务编号。
         EntityDataDTO persisted = payloadMapper.toRuntimeDto(dynamicMapper.selectById(
@@ -707,33 +715,35 @@ public class EntityDataMutationService {
     }
 
     /**
-     * 读取当前用户ID；查询结果供调用方展示或继续处理。
+     * 读取可信操作人 ID；异步任务沿用聚合命令身份，两者皆无时记为 system。
      *
-     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
      * @return 读取后的当前用户ID文本，供调用方比较或展示
      */
-    private String getCurrentUserId(
-            String defaultValue) {
-        if (StringUtils.hasText(defaultValue)) {
-            return defaultValue;
-        }
+    private String getCurrentUserId() {
         String userId = UserContext.getUserId();
-        return userId == null ? "system" : userId;
+        if (StringUtils.hasText(userId)) {
+            return userId;
+        }
+        // 异步流程动作没有登录线程，但聚合写入器已建立命令作用域；
+        // 复用该可信身份，避免记录归属退化为 system，绝不读取表单提交人兜底。
+        var context = EntityCodeGenerationScope.current();
+        return context != null && StringUtils.hasText(context.operatorId()) ? context.operatorId() : "system";
     }
 
     /**
-     * 读取当前用户名称；查询结果供调用方展示或继续处理。
+     * 读取可信操作人名称，与当前用户 ID 一起写入首次提交审计。
      *
-     * @param defaultValue 首选值不可用时采用的兜底值，保证后续处理有稳定输入
      * @return 读取后的当前用户名称文本，供调用方比较或展示
      */
-    private String getCurrentUserName(
-            String defaultValue) {
-        if (StringUtils.hasText(defaultValue)) {
-            return defaultValue;
+    private String getCurrentUserName() {
+        if (StringUtils.hasText(UserContext.getUserId())) {
+            return StringUtils.hasText(UserContext.getUsername()) ? UserContext.getUsername() : UserContext.getUserId();
         }
-        String userName = UserContext.getUsername();
-        return userName == null ? "系统" : userName;
+        var context = EntityCodeGenerationScope.current();
+        if (context != null && StringUtils.hasText(context.operatorId())) {
+            return StringUtils.hasText(context.operatorName()) ? context.operatorName() : context.operatorId();
+        }
+        return "系统";
     }
 
     /**
@@ -831,7 +841,16 @@ public class EntityDataMutationService {
         startWorkflow(dto, null);
     }
 
-    /** 原记录新建一轮实例时传入旧实例坐标，由流程关联锁保证只能启动一次。 */
+    /**
+     * 在保存事务内启动一轮流程，并在成功后登记首次提交审计。
+     *
+     * <p>调用方须已取得聚合根锁或在同一事务内创建记录。启动或后续写入失败时，
+     * 流程实例和提交审计随外层事务一起回滚。</p>
+     *
+     * @param dto 已保存的记录，返回时同步本轮流程信息及首次提交审计
+     * @param previousInstanceId 重新发起的旧实例坐标；用于流程关联锁校验和识别历史记录
+     * @throws BusinessConflictException 记录不存在或发布快照未绑定流程时抛出
+     */
     private void startWorkflow(EntityDataDTO dto, String previousInstanceId) {
         EntityPublishedSnapshot snapshot =
                 snapshotService.getLatestByEntityCode(
@@ -845,6 +864,22 @@ public class EntityDataMutationService {
                     "实体发布快照未绑定流程定义: "
                             + dto.getEntityCode());
         }
+        String tableName = dynamicTableService.getTableName(dto.getEntityCode());
+        Map<String, Object> persisted = dynamicMapper.selectByIdForUpdate(tableName, dto.getId());
+        if (persisted == null) {
+            throw new BusinessConflictException("ENTITY_DATA_NOT_FOUND", "数据不存在: " + dto.getId());
+        }
+        // 仅凭 submit_time 为空不能判断首次：旧版本已提交的记录没有填该列，
+        // 必须同时检查流程痕迹，避免重启时把当前时间伪装成历史首次提交时间。
+        boolean firstSubmission = persisted.get("submit_time") == null
+                && !StringUtils.hasText(asText(persisted.get("process_instance_id")))
+                && persisted.get("process_start_time") == null
+                && (!StringUtils.hasText(asText(persisted.get("process_status")))
+                    || "NOT_STARTED".equals(asText(persisted.get("process_status"))))
+                && !StringUtils.hasText(previousInstanceId);
+        EntityDataDTO previousAudit = payloadMapper.toRuntimeDto(persisted, dto.getEntityCode());
+        String submittingUserId = getCurrentUserId();
+        String submittingUserName = getCurrentUserName();
         ProcessStartResult result =
                 processRuntimePort.start(
                         new ProcessStartRequest(
@@ -852,8 +887,8 @@ public class EntityDataMutationService {
                                 dto.getEntityCode(),
                                 dto.getId(),
                                 dto.getCode(),
-                                dto.getSubmitterId(),
-                                dto.getSubmitterName(),
+                                submittingUserId,
+                                submittingUserName,
                                 getStatusByCategory(
                                         dto.getEntityCode(),
                                         "PROCESSING",
@@ -867,6 +902,11 @@ public class EntityDataMutationService {
         Map<String, Object> updateData =
                 new HashMap<>();
         updateData.put("id", dto.getId());
+        if (firstSubmission) {
+            updateData.put("submit_time", startedAt);
+            updateData.put("submitter_id", submittingUserId);
+            updateData.put("submitter_name", submittingUserName);
+        }
         updateData.put(
                 "process_instance_id",
                 result.processInstanceId());
@@ -895,12 +935,16 @@ public class EntityDataMutationService {
                 updateData,
                 "submitted_at",
                 startedAt);
-        dynamicMapper.update(
-                dynamicTableService.getTableName(
-                        dto.getEntityCode()),
-                updateData);
+        dynamicMapper.update(tableName, updateData);
         refreshTaskSummary(dto.getEntityCode(), dto.getId());
 
+        if (firstSubmission) {
+            dto.setSubmitTime(startedAt);
+            dto.setSubmitterId(submittingUserId);
+            dto.setSubmitterName(submittingUserName);
+        } else {
+            copySubmissionAudit(dto, previousAudit);
+        }
         dto.setProcessInstanceId(
                 result.processInstanceId());
         Map<String, Object> current = dynamicMapper.selectById(
@@ -920,6 +964,13 @@ public class EntityDataMutationService {
                 "发起流程",
                 result.processInstanceId(),
                 result.currentTaskId());
+    }
+
+    /** 将存储中的首次提交事实回填到响应，避免普通保存回显客户端伪造的审计值。 */
+    private void copySubmissionAudit(EntityDataDTO target, EntityDataDTO persisted) {
+        target.setSubmitTime(persisted.getSubmitTime());
+        target.setSubmitterId(persisted.getSubmitterId());
+        target.setSubmitterName(persisted.getSubmitterName());
     }
 
     /**

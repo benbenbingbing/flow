@@ -40,6 +40,12 @@ class ConfigMigrationAssignmentTargetValidator {
             Function<String, Map<String, Object>> fieldLookup) {
         if ("POSITION".equals(type)) return organizationDirectory.requireEnabledPosition(key) != null;
         if ("ORG_BUSINESS_LEVEL".equals(type)) return organizationDirectory.isOrganizationBusinessLevelEnabled(key);
+        if ("ENTITY_PATH_FIELD".equals(type) || "ENTITY_PATH_RELATION".equals(type)) {
+            String[] parts = key.split("/", 2);
+            if (parts.length != 2) return false;
+            String coordinate = key.equals(dependency.get("key")) ? mapping.apply("ENTITY", parts[0]) + "/" + parts[1] : key;
+            return !fieldLookup.apply(("ENTITY_PATH_RELATION".equals(type) ? "relation:" : "path:") + coordinate).isEmpty();
+        }
         if ("ENTITY_USER_FIELD".equals(type)) {
             String[] parts = key.split("/", 2);
             if (parts.length != 2) return false;
@@ -67,6 +73,10 @@ class ConfigMigrationAssignmentTargetValidator {
                 // 新实体尚未落库，直接验证包内字段；不能提前调用依赖目标库的字段解析器。
                 EntityUserReferenceFieldConfig fieldConfig = EntityUserReferenceFieldConfig.parse(params);
                 fieldConfig.validateAssignmentMode(mode, multi);
+                if (fieldConfig.schemaVersion() == 2) {
+                    if (!validatePath(fieldConfig, mode, multi, usage, fieldLookup)) return false;
+                    continue;
+                }
                 Map<String, Object> field = fieldLookup.apply(fieldConfig.entityCode() + "/" + fieldConfig.fieldCode());
                 if (field.isEmpty()) return false;
                 if (usage == PersonResolveUsage.ASSIGNEE) {
@@ -90,4 +100,34 @@ class ConfigMigrationAssignmentTargetValidator {
         // 新快照必须有用途及配置上下文，防止不完整的解析器依赖静默通过。
         return !maps(dependency.get("references")).isEmpty();
     }
+    /** 导入预检可读取同包待发布关系，发布阶段仍由权威编译器复核实际定义与版本。 */
+    private boolean validatePath(EntityUserReferenceFieldConfig config, String mode, boolean multi,
+            PersonResolveUsage usage, Function<String, Map<String, Object>> lookup) {
+        String current = config.entityCode();
+        boolean multiple = false;
+        for (var step : config.path()) {
+            if (!current.equals(step.sourceEntityCode())) return false;
+            boolean parent = "PARENT_RELATION".equals(step.type());
+            boolean reverse = parent || "REVERSE_REFERENCE".equals(step.type());
+            boolean relation = parent || "RELATION".equals(step.type());
+            Map<String, Object> value = lookup.apply((relation ? "relation:" : "path:")
+                    + (reverse ? step.targetEntityCode() : current) + "/" + step.code());
+            if (value.isEmpty()) return false;
+            String target = relation ? text(value.get("childEntityCode")) : text(value.get("refEntityCode"));
+            if (!relation && target.isEmpty()) {
+                String kind = text(value.get("refEntityType"));
+                if (kind.isEmpty()) kind = text(value.get("fieldType"));
+                target = switch (kind) { case "USER" -> "sys_user"; case "DEPT" -> "sys_organization";
+                    case "ROLE" -> "sys_role"; case "GROUP" -> "sys_group"; default -> ""; };
+            }
+            if (!(reverse ? current : step.targetEntityCode()).equals(target)) return false;
+            multiple |= !parent && (reverse || (relation ? !"ONE_TO_ONE".equals(value.get("relationType"))
+                    : "MULTI_REFERENCE".equals(value.get("fieldType"))));
+            current = step.targetEntityCode();
+        }
+        if (!"sys_user".equals(current)) return false;
+        if (usage == PersonResolveUsage.ASSIGNEE) config.validateFieldCardinality(mode, multi, multiple);
+        return true;
+    }
+
 }

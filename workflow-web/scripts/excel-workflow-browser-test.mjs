@@ -50,7 +50,9 @@ api.saveScheme=async(_,data)=>{
  }
  state.settings.revision++;return schemeView(saved)
 }
-api.publishScheme=async(_,key,data)=>{
+api.publishScheme=async(_,key,data,options)=>{
+ state.lastPublicationOptions=copy(options)
+ if(state.publicationFailure)throw Error(state.publicationFailure)
  const row=state.schemes.find(s=>s.schemeCode===key)
  if(data.expectedRevision!==row.revision||data.expectedSettingsRevision!==state.settings.revision)throw Error('revision')
  state.writes.push({kind:'scheme-publish',schemeCode:key,...copy(data)});row.revision++;row.publishedConfig=copy(row.draftConfig)
@@ -158,7 +160,27 @@ try {
  assert.equal(await page.locator('.column-drag-handle:focus').getAttribute('aria-label'),'拖拽 AB 列排序')
  await click('设置页')
  await page.getByRole('button',{name:'按实体字段生成方案',exact:true}).waitFor()
+ // 发布失败常驻显示具体列和修复位置；打开编辑器仍可对照，重试成功后清除。
+ const publicationMessage='方案“基础资料”（basic） → 导出设置 → D 列“类别”（实体字段：“类别” / category）→ 转换规则 → 字典代码：字段绑定的代码表“categories”不存在或已停用。请检查该代码表，或到“字段设计”中重新绑定后发布实体'
+ await page.evaluate(message=>window.excelTest.state.publicationFailure=message,publicationMessage)
+ await click('发布')
+ const publicationAlert=page.locator('.excel-settings > .publication-failure')
+ await publicationAlert.waitFor()
+ assert.equal(await publicationAlert.locator('.publication-message').textContent(),publicationMessage)
+ assert.equal(await page.evaluate(()=>window.excelTest.state.writes.filter(w=>w.kind==='scheme-publish').length),0)
+ assert.deepEqual(await page.evaluate(()=>window.excelTest.state.lastPublicationOptions),{silentError:true})
+ assert.equal(await page.locator('.el-message--error').count(),0,'发布失败详情只在常驻面板显示')
+ await click('编辑此方案')
+ const failedEditor=page.locator('.el-dialog').filter({has:page.getByText('编辑 Excel 方案',{exact:true})})
+ await failedEditor.locator('.publication-failure').waitFor()
+ assert.equal(await failedEditor.locator('.publication-message').textContent(),publicationMessage)
+ assert.equal(await failedEditor.locator('.el-form-item').filter({hasText:'方案编码'}).locator('input').inputValue(),'basic')
+ await failedEditor.getByRole('button',{name:'取消',exact:true}).click();await page.waitForTimeout(350)
+ assert.equal(await publicationAlert.isVisible(),true)
+ await publicationAlert.screenshot({path:'/tmp/workflow-excel-publication-error.png'})
+ await page.evaluate(()=>window.excelTest.state.publicationFailure=null)
  await click('发布');await page.waitForFunction(()=>window.excelTest.state.writes.some(w=>w.kind==='scheme-publish'))
+ assert.equal(await publicationAlert.count(),0,'发布成功后清除旧失败提示')
  assert.equal(await page.evaluate(()=>window.excelTest.state.writes.find(w=>w.kind==='scheme-publish').expectedRevision),1)
  assert.equal(await page.evaluate(()=>window.excelTest.state.writes.find(w=>w.kind==='scheme-publish').expectedSettingsRevision),1)
  assert.deepEqual(await page.evaluate(()=>window.excelTest.state.settings.publishedConfig),{defaultImportSchemeCode:'basic',defaultExportSchemeCode:'basic'})

@@ -27,6 +27,10 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class EntityDataMutationPayloadMapper {
 
+    /** 首次提交审计由流程启动维护，普通编辑只能沿用存储值，供提交人与提交时间追溯使用。 */
+    private static final Set<String> SUBMISSION_AUDIT_COLUMNS =
+            Set.of("submit_time", "submitter_id", "submitter_name");
+
     private final EntityRuntimeRecordMapper recordMapper;
     private final EntityPublishedSnapshotService snapshotService;
     private final EntityDataMutationValidator validator;
@@ -85,6 +89,10 @@ public class EntityDataMutationPayloadMapper {
                 });
         existingData.forEach(
                 updateData::putIfAbsent);
+        // 显式保留数据库中的空值，避免草稿的首次提交信息被请求伪造；
+        // 不能使用 putIfAbsent，因为它不会覆盖请求中已填入的非空值。
+        SUBMISSION_AUDIT_COLUMNS.forEach(column ->
+                updateData.put(column, existingData.get(column)));
         return updateData;
     }
 
@@ -154,12 +162,7 @@ public class EntityDataMutationPayloadMapper {
         values.put(
                 "currentTaskAssignee",
                 "current_task_assignee");
-        values.put("submitterId", "submitter_id");
-        values.put(
-                "submitterName",
-                "submitter_name");
         values.put("deptId", "dept_id");
-        values.put("submitTime", "submit_time");
         return values;
     }
 
