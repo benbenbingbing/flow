@@ -19,6 +19,7 @@ export function createEntityExcelApi(request) {
     }
   }
   return {
+    referenceFields: (code, field) => request.get(`${base(code)}/excel-reference-fields/${encodeURIComponent(field)}`),
     settings: code => request.get(`${base(code)}/excel-settings`),
     saveSettings: (code, data) => request.post(`${base(code)}/excel-settings/save`, data),
     publishSettings: (code, data) => request.post(`${base(code)}/excel-settings/publish`, data),

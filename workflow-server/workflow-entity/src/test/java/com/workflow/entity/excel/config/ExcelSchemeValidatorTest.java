@@ -9,7 +9,30 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.*;
 
 class ExcelSchemeValidatorTest {
-    private final ExcelSchemeValidator validator = new ExcelSchemeValidator();
+    private final EntityExcelReferenceMetadata references = org.mockito.Mockito.mock(EntityExcelReferenceMetadata.class);
+    private final ExcelSchemeValidator validator = new ExcelSchemeValidator(references);
+
+    @Test
+    void referencesRequireDedicatedCodecAndValidateTargetPropertiesAtPublication() {
+        var source = field("customer", EntityField.FieldType.REFERENCE);
+        var scalar = field("text", EntityField.FieldType.STRING);
+        var target = new EntityExcelReferenceMetadata.Target("customers", "客户", false, false, Map.of(
+                "code", new EntityExcelReferenceMetadata.Property("code", "编码", EntityField.FieldType.STRING, "code"),
+                "name", new EntityExcelReferenceMetadata.Property("name", "名称", EntityField.FieldType.STRING, "name"),
+                "email", new EntityExcelReferenceMetadata.Property("email", "邮箱", EntityField.FieldType.STRING, "email")));
+        org.mockito.Mockito.when(references.resolve(source)).thenReturn(target);
+        var columns = List.of(column("customer", "customer", "客户", List.of(), Map.of("type", "ENTITY_REFERENCE")));
+        assertThatCode(() -> validator.validatePublished(document("refs", true, columns), entity(), List.of(source))).doesNotThrowAnyException();
+        for (var codec : List.of(Map.<String,Object>of("type", "STRING"),
+                Map.<String,Object>of("type", "ENTITY_REFERENCE", "matchFields", List.of("missing")),
+                Map.<String,Object>of("type", "ENTITY_REFERENCE", "exportField", "private_field"))) {
+            var invalid = document("refs", true, List.of(column("customer", "customer", "客户", List.of(), codec)));
+            assertThatThrownBy(() -> validator.validatePublished(invalid, entity(), List.of(source))).isInstanceOf(IllegalArgumentException.class);
+        }
+        assertThatThrownBy(() -> validator.validatePublished(document("refs", true,
+                List.of(column("text", "text", "文本", List.of(), Map.of("type", "ENTITY_REFERENCE")))), entity(), List.of(scalar)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 
     static EntityDefinition entity() {
         var entity = new EntityDefinition(); entity.setId("entity1"); entity.setEntityCode("employee");

@@ -466,3 +466,27 @@ test('历史坏别名在升级编辑后不阻止严格或按位置模式发布�
   }
   assert.equal(source.importConfig.transactionPolicy, 'ATOMIC_ALL')
 })
+
+test('单选多选实体默认匹配编码名称，独立保存自定义匹配属性和导出内容', () => {
+  const fields = [{ fieldCode: 'customer', fieldName: '客户', fieldType: 'REFERENCE' }, { fieldCode: 'partners', fieldName: '合作方', fieldType: 'MULTI_REFERENCE' }]
+  const scheme = createScheme(fields)
+  scheme.schemeCode = 'references'; scheme.name = '关联实体'; scheme.importConfig.writeFormKey = 'create'
+  const editor = splitSchemeForEditor(scheme)
+  assert.deepEqual(editor.importColumns.map(column => column.codec.matchFields), [['code', 'name'], ['code', 'name']])
+  assert.deepEqual(editor.exportColumns.map(column => column.codec.exportField), ['name', 'name'])
+  assert.equal(editor.importColumns[1].codec.separator, ';')
+  assert.deepEqual(columnCodecOptions(fields[0], 'IMPORT'), [['ENTITY_REFERENCE', '实体关联']])
+  editor.importColumns[0].codec.matchFields = ['email', 'id']
+  editor.exportColumns[0].codec.exportField = 'email'
+  editor.importColumns[1].codec.separator = '\n'
+  const saved = splitSchemeForEditor(schemePayload(editor))
+  assert.deepEqual(saved.importColumns[0].codec.matchFields, ['email', 'id'])
+  assert.equal(saved.exportColumns[0].codec.exportField, 'email')
+  assert.equal(saved.importColumns[1].codec.separator, '\n')
+  assert.equal(saved.exportColumns[1].codec.separator, ';')
+  assert.equal(saved.importColumns[0].codec.exportField, undefined)
+  assert.equal(saved.exportColumns[0].codec.matchFields, undefined)
+  assert.equal(validateScheme(saved), '')
+  saved.importColumns[0].codec.matchFields = []
+  assert.match(validateScheme(saved), /请选择关联实体的导入匹配属性/)
+})

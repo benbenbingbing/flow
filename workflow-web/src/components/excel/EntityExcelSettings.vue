@@ -87,7 +87,7 @@
                 </el-form-item>
               </div>
               <el-divider content-position="left">导入列 · 拖拽序号调整模板列顺序</el-divider>
-              <ExcelColumnEditor v-model="editor.importColumns" :fields="fields" operation="IMPORT" />
+              <ExcelColumnEditor v-model="editor.importColumns" :fields="fields" :entity-code="entityCode" operation="IMPORT" />
             </template>
           </el-tab-pane>
           <el-tab-pane label="导出设置" name="EXPORT">
@@ -102,7 +102,7 @@
                 <el-form-item label="导出 Sheet"><el-input v-model="editor.exportConfig.sheetName" /></el-form-item>
               </div>
               <el-divider content-position="left">导出列 · 拖拽序号调整文件列顺序</el-divider>
-              <ExcelColumnEditor v-model="editor.exportColumns" :fields="fields" operation="EXPORT" />
+              <ExcelColumnEditor v-model="editor.exportColumns" :fields="fields" :entity-code="entityCode" operation="EXPORT" />
             </template>
           </el-tab-pane>
         </el-tabs>

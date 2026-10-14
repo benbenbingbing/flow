@@ -74,7 +74,7 @@ class EntityExcelInlineDefaultsTransactionTest {
         when(publishedForms.selectById("form1")).thenReturn(published);
 
         var target = new EntityExcelConfigurationService(repository, entities, snapshots, forms, publishedForms,
-                mock(CurrentUserRoleService.class), policy, new SystemEntityFieldPolicy(), new ExcelSchemeValidator(), json);
+                mock(CurrentUserRoleService.class), policy, new SystemEntityFieldPolicy(), new ExcelSchemeValidator(org.mockito.Mockito.mock(com.workflow.entity.excel.config.EntityExcelReferenceMetadata.class)), json);
         var factory = new ProxyFactory(target);
         factory.setProxyTargetClass(true);
         factory.addAdvice(new TransactionInterceptor(new DataSourceTransactionManager(database), new AnnotationTransactionAttributeSource()));

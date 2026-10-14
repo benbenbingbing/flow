@@ -27,7 +27,7 @@ class EntityExcelCodecServiceTest {
     private final SysDictItemService dictionaries = mock(SysDictItemService.class);
     private final EntityStatusService statuses = mock(EntityStatusService.class);
     private final EntityExcelCodecService service = new EntityExcelCodecService(dictionaries,
-            new EntityFieldValidationRuleService(new ObjectMapper()), statuses);
+            new EntityFieldValidationRuleService(new ObjectMapper()), statuses, mock(EntityExcelReferenceService.class));
 
     @Test
     void exportsEntityStatusNamesWithEntityOverridesBuiltinsAndUnknownCodeFallback() {

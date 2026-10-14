@@ -60,6 +60,25 @@
           </el-select>
           <small class="codec-hint">使用实体字段绑定的代码表，名称与代码自动转换。</small>
         </template>
+        <template v-if="row.codec.type === 'ENTITY_REFERENCE'">
+          <small class="codec-hint">关联实体：{{ referenceState(row).target?.entityName || (referenceState(row).error ? '不可用' : '读取中') }}</small>
+          <span class="codec-label">{{ importing ? '导入匹配属性' : '导出内容' }}</span>
+          <el-select v-if="importing" :model-value="row.codec.matchFields ?? ['code', 'name']" multiple filterable aria-label="导入匹配属性" :loading="referenceState(row).loading" @update:model-value="value => row.codec.matchFields = value">
+            <el-option v-for="field in referenceProperties(row)" :key="field.fieldCode" :value="field.fieldCode" :label="`${field.fieldName} (${field.fieldCode})`" />
+          </el-select>
+          <el-select v-else :model-value="row.codec.exportField ?? 'name'" filterable aria-label="关联实体导出内容" :loading="referenceState(row).loading" @update:model-value="value => row.codec.exportField = value">
+            <el-option v-for="field in referenceProperties(row)" :key="field.fieldCode" :value="field.fieldCode" :label="`${field.fieldName} (${field.fieldCode})`" />
+          </el-select>
+          <template v-if="isMultipleReference(row)">
+            <span class="codec-label">多值分隔符</span>
+            <el-select :model-value="row.codec.separator ?? ';'" aria-label="多值分隔符" @update:model-value="value => row.codec.separator = value">
+              <el-option label="英文分号 ;" value=";" /><el-option label="换行" :value="'\n'" />
+            </el-select>
+          </template>
+          <small v-if="referenceState(row).error" class="reference-error" role="alert">{{ referenceState(row).error }} <el-button link type="primary" @click="loadReference(row.fieldCode, true)">重试</el-button></small>
+          <small v-else class="codec-hint">{{ importing ? '任一属性精确匹配；多个属性命中不同记录或名称重复时会报错。' : '按关联记录读取所选属性的值；编码、ID、日期等基础属性均可选择。' }}</small>
+          <small v-if="isMultipleReference(row)" class="codec-hint">值中包含分隔符或反斜杠时，在前面加反斜杠转义。</small>
+        </template>
         <template v-if="!importing && row.codec.type === 'ENTITY_STATUS'">
           <el-select :model-value="row.codec.exportMode || 'LABEL'" aria-label="实体状态导出方式" @update:model-value="value => row.codec.exportMode = value">
             <el-option label="导出名称" value="LABEL" />
@@ -73,8 +92,8 @@
       <template #default="{ row }">
         <el-checkbox v-model="row.validation.required">必填</el-checkbox>
         <el-checkbox v-model="row.validation.uniqueInFile">文件内唯一</el-checkbox>
-        <el-input v-model="row.validation.min" aria-label="最小值" placeholder="最小值（可选）" />
-        <el-input v-model="row.validation.max" aria-label="最大值" placeholder="最大值（可选）" />
+        <el-input v-if="row.codec.type !== 'ENTITY_REFERENCE'" v-model="row.validation.min" aria-label="最小值" placeholder="最小值（可选）" />
+        <el-input v-if="row.codec.type !== 'ENTITY_REFERENCE'" v-model="row.validation.max" aria-label="最大值" placeholder="最大值（可选）" />
       </template>
     </el-table-column>
     <el-table-column :label="importing ? '模板宽度 / 操作' : '宽度 / 操作'" width="140">
@@ -89,17 +108,41 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
+import { entityExcelApi } from '@/api/entityExcel'
 import { columnCodecOptions, createColumn, excelColumnLabel, reorderColumns } from './excelModel'
 
 const props = defineProps({
   modelValue: { type: Array, required: true },
   fields: { type: Array, default: () => [] },
+  entityCode: { type: String, default: '' },
   operation: { type: String, default: 'IMPORT', validator: value => ['IMPORT', 'EXPORT'].includes(value) }
 })
 const emit = defineEmits(['update:modelValue'])
 const importing = computed(() => props.operation === 'IMPORT')
 const roundingModes = [{ value: 'UNNECESSARY', label: '禁止隐式舍入' }, { value: 'HALF_UP', label: '四舍五入' }, { value: 'HALF_EVEN', label: '四舍六入五成双' }, { value: 'HALF_DOWN', label: '五舍六入' }, { value: 'DOWN', label: '截断多余小数' }, { value: 'UP', label: '有余数则远离零进位' }, { value: 'CEILING', label: '向正无穷方向取整' }, { value: 'FLOOR', label: '向负无穷方向取整' }]
+
+// 按源实体与字段缓存属性元数据；异步响应只能更新自己的缓存项，切换实体不会串用旧数据。
+const referenceTargets = ref({})
+const referenceKey = field => `${props.entityCode}:${field}`
+const referenceState = row => referenceTargets.value[referenceKey(row.fieldCode)] || {}
+const referenceProperties = row => Object.values(referenceState(row).target?.properties || {})
+const isMultipleReference = row => props.fields.find(field => field.fieldCode === row.fieldCode)?.fieldType === 'MULTI_REFERENCE'
+async function loadReference(field, retry = false) {
+  if (!props.entityCode || !field) return
+  const key = referenceKey(field)
+  if (!retry && referenceTargets.value[key]) return
+  const state = { loading: true, target: null, error: '' }
+  referenceTargets.value[key] = state
+  try {
+    const target = await entityExcelApi.referenceFields(props.entityCode, field)
+    referenceTargets.value[key] = { loading: false, target, error: '' }
+  } catch (error) {
+    referenceTargets.value[key] = { loading: false, target: null, error: error.message || '读取关联实体属性失败' }
+  }
+}
+watch(() => [props.entityCode, ...props.modelValue.filter(row => row.codec?.type === 'ENTITY_REFERENCE').map(row => row.fieldCode)],
+  () => props.modelValue.filter(row => row.codec?.type === 'ENTITY_REFERENCE').forEach(row => loadReference(row.fieldCode)), { immediate: true })
 
 function codecOptions(row) {
   return columnCodecOptions(props.fields.find(field => field.fieldCode === row.fieldCode), props.operation)
@@ -187,6 +230,8 @@ function changeCodec(row, type) {
     row.codec = { type, format: type === 'DATE' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss', ...(importing.value ? { readPatterns: [] } : { zoneId: 'Asia/Shanghai' }) }
   } else if (type === 'DICT') {
     row.codec = { type, ...(importing.value ? { importMode: 'LABEL_OR_CODE' } : { exportMode: 'LABEL' }) }
+  } else if (type === 'ENTITY_REFERENCE') {
+    row.codec = { type, separator: ';', ...(importing.value ? { matchFields: ['code', 'name'] } : { exportField: 'name' }) }
   } else if (type === 'ENTITY_STATUS') {
     row.codec = { type, exportMode: 'LABEL' }
   } else {
@@ -205,6 +250,7 @@ function changeCodec(row, type) {
 :deep(.column-drop-target > td) { background:var(--el-color-primary-light-9) !important; box-shadow:inset 0 2px var(--el-color-primary); }
 .add-column { margin-top: 12px; }
 :deep(.el-input), :deep(.el-select) { margin-bottom: 6px; }
+.reference-error { display:block; color:var(--el-color-danger); }
 .codec-label { display: block; margin: 2px 0 4px; font-size: 12px; color: var(--el-text-color-regular); }
 .codec-hint { display: block; color: var(--el-text-color-secondary); line-height: 1.5; }
 </style>

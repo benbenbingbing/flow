@@ -29,3 +29,9 @@ test('文件过期的 HTTP JSON Blob 还原业务原因，下载错误不作为�
   const api = createEntityExcelApi({ get: async (_, options) => { assert.equal(options.responseType, 'blob'); assert.equal(options.silentError, true); throw error } })
   await assert.rejects(api.download('job', 'ERROR_REPORT'), failure => failure === error && failure.message === '任务文件已超过24小时保留期，请重新执行')
 })
+
+test('关联属性仅传入源实体和源字段，不允许客户端替换目标实体', () => {
+  const { api, calls } = harness()
+  api.referenceFields('entity/a', 'customer/b')
+  assert.deepEqual(calls, [['GET', '/entities/entity%2Fa/excel-reference-fields/customer%2Fb']])
+})

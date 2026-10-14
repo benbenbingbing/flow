@@ -339,12 +339,13 @@ public class EntityExcelConfigurationService {
         Set<EntityField.FieldType> simple = Set.of(EntityField.FieldType.STRING, EntityField.FieldType.TEXT,
                 EntityField.FieldType.INTEGER, EntityField.FieldType.LONG, EntityField.FieldType.DECIMAL,
                 EntityField.FieldType.DATE, EntityField.FieldType.DATETIME, EntityField.FieldType.BOOLEAN,
-                EntityField.FieldType.SELECT, EntityField.FieldType.RADIO);
+                EntityField.FieldType.SELECT, EntityField.FieldType.RADIO, EntityField.FieldType.REFERENCE, EntityField.FieldType.MULTI_REFERENCE);
         List<ExcelSchemeDocument.Column> columns = fields.stream().filter(f -> simple.contains(f.getFieldType()))
                 .filter(f -> fieldPolicy.isRuntimeReadable(entity, f)).map(f -> {
                     String codec = switch (f.getFieldType()) {
                         case DATE -> "DATE"; case DATETIME -> "DATETIME"; case DECIMAL -> "AMOUNT";
-                        case INTEGER, LONG -> "NUMBER"; case BOOLEAN -> "BOOLEAN"; default -> "STRING";
+                        case INTEGER, LONG -> "NUMBER"; case BOOLEAN -> "BOOLEAN";
+                        case REFERENCE, MULTI_REFERENCE -> "ENTITY_REFERENCE"; default -> "STRING";
                     };
                     if (normalized(f.getDictType()) != null) codec = "DICT";
                     // 系统状态没有字典绑定，生成方案时直接使用实体状态名称，普通状态字段仍遵循其代码表。
@@ -362,6 +363,16 @@ public class EntityExcelConfigurationService {
                 new ExcelSchemeDocument.ExportConfig(true, request.name() + "_{yyyyMMddHHmmss}", "数据"), columns);
         validator.validateDraft(doc);
         return doc;
+    }
+
+    /** 只返回源实体已发布关联字段的目标属性，供编辑器选择匹配和输出内容。 */
+    @Transactional(readOnly = true)
+    public EntityExcelReferenceMetadata.Target referenceFields(String entityCode, String fieldCode) {
+        EntityDefinition entity = management(entityCode, false);
+        EntityField field = snapshots.getLatestByEntityId(entity.getId()).getFields().stream()
+                .filter(item -> item.getFieldCode().equals(fieldCode)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("已发布实体字段不存在：" + fieldCode));
+        return validator.referenceOptions(field);
     }
 
     private EntityDefinition management(String code, boolean lock) {

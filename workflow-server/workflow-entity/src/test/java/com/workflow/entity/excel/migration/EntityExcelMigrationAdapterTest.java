@@ -35,7 +35,7 @@ class EntityExcelMigrationAdapterTest {
     private final EntityFormPublishedMapper publishedForms = mock(EntityFormPublishedMapper.class);
     private final EntityExcelMigrationAdapter adapter = new EntityExcelMigrationAdapter(entities,
             mock(EntityPublishedSnapshotService.class), mock(EntityFormMapper.class), publishedForms,
-            mock(EntityListConfigMapper.class), repository, configurations, new ExcelSchemeValidator(), mock(CurrentUserRoleService.class), json);
+            mock(EntityListConfigMapper.class), repository, configurations, new ExcelSchemeValidator(org.mockito.Mockito.mock(com.workflow.entity.excel.config.EntityExcelReferenceMetadata.class)), mock(CurrentUserRoleService.class), json);
 
     @AfterEach void clearTransaction() { TransactionSynchronizationManager.clear(); }
 

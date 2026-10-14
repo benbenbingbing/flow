@@ -118,7 +118,7 @@ class EntityExcelBatchImportTest {
         when(files.metadata(anyString())).thenAnswer(call -> Map.of(
                 "original_name", storedNames.get(call.getArgument(0)), "content_type", EntityExcelFileStore.XLSX));
         codec = spy(new EntityExcelCodecService(mock(SysDictItemService.class), new EntityFieldValidationRuleService(mapper),
-                mock(com.workflow.entity.definition.application.EntityStatusService.class)));
+                mock(com.workflow.entity.definition.application.EntityStatusService.class), mock(EntityExcelReferenceService.class)));
         service = new EntityExcelJobService(resolver, codec, new ExcelActionTokenService(mapper, "batch-test"),
                 new EntityExcelJobRepository(mapper(jdbc.getDataSource(), EntityExcelJobMapper.class), mapper, tx), files, mock(EntityExcelAtomicImportPolicy.class),
                 mock(EntityActionCapabilityService.class), actions, mock(EntityDataDynamicService.class),

@@ -600,6 +600,7 @@ public class EntityExcelJobService {
                     cursor = batch.nextCursor(); finished = records.isEmpty() || cursor == null;
                 }
                 if (count.addAndGet(records.size()) > MAX_EXPORT_ROWS) throw new IllegalArgumentException("单次导出超过100000行，请缩小筛选范围");
+                formatter.prepareBatch(records);
                 return records.stream().map(formatter::formatRow).toList();
             }
         };

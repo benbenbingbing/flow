@@ -32,7 +32,7 @@ class EntityExcelMigrationCompatibilityTest {
     private final EntityUiConfigurationPolicy policy = mock(EntityUiConfigurationPolicy.class);
     private final EntityExcelConfigurationService service = new EntityExcelConfigurationService(repository, entities,
             mock(EntityPublishedSnapshotService.class), forms, mock(EntityFormPublishedMapper.class), mock(CurrentUserRoleService.class),
-            policy, mock(SystemEntityFieldPolicy.class), new ExcelSchemeValidator(), json);
+            policy, mock(SystemEntityFieldPolicy.class), new ExcelSchemeValidator(org.mockito.Mockito.mock(com.workflow.entity.excel.config.EntityExcelReferenceMetadata.class)), json);
     @AfterEach void clearTransaction() { TransactionSynchronizationManager.clear(); }
 
     @Test void fieldsUseFinalCoveredSchemesAndStillRejectUncoveredPublishedScheme() throws Exception {

@@ -19,13 +19,19 @@ import java.util.regex.Pattern;
 
 /** 在发布边界验证动态列协议；实体字段来源必须是已发布快照，不能信任浏览器提供的类型。 */
 @Component
+@lombok.RequiredArgsConstructor
 public class ExcelSchemeValidator {
-    private static final Set<EntityField.FieldType> SIMPLE_TYPES = Set.of(
+    private final EntityExcelReferenceMetadata references;
+
+    /** 供设计器展示目标属性；不接受客户端指定关联实体。 */
+    public EntityExcelReferenceMetadata.Target referenceOptions(EntityField field) { return references.resolve(field); }
+
+    private static final Set<EntityField.FieldType> SUPPORTED_TYPES = Set.of(
             EntityField.FieldType.STRING, EntityField.FieldType.TEXT, EntityField.FieldType.INTEGER,
             EntityField.FieldType.LONG, EntityField.FieldType.DECIMAL, EntityField.FieldType.DATE,
             EntityField.FieldType.DATETIME, EntityField.FieldType.BOOLEAN, EntityField.FieldType.SELECT,
-            EntityField.FieldType.RADIO);
-    private static final Set<String> CODECS = Set.of("STRING", "DATE", "DATETIME", "AMOUNT", "NUMBER", "BOOLEAN", "DICT", "ENTITY_STATUS");
+            EntityField.FieldType.RADIO, EntityField.FieldType.REFERENCE, EntityField.FieldType.MULTI_REFERENCE);
+    private static final Set<String> CODECS = Set.of("STRING", "DATE", "DATETIME", "AMOUNT", "NUMBER", "BOOLEAN", "DICT", "ENTITY_STATUS", "ENTITY_REFERENCE");
 
     /** 保存允许未完成的映射草稿，但稳定身份和协议边界必须始终合法。 */
     public void validateDraft(ExcelSchemeDocument doc) {
@@ -80,7 +86,7 @@ public class ExcelSchemeValidator {
             require(column.header() != null && !column.header().isBlank() && column.header().length() <= 200, "列标题不能为空且最多200字符");
             EntityField field = byCode.get(column.fieldCode());
             require(field != null, "方案字段不存在于已发布实体: " + column.fieldCode());
-            require(field.getFieldType() != null && SIMPLE_TYPES.contains(field.getFieldType()), "第一版不支持复杂字段: " + column.fieldCode());
+            require(field.getFieldType() != null && SUPPORTED_TYPES.contains(field.getFieldType()), "不支持此字段类型的 Excel 映射: " + column.fieldCode());
             require(column.width() == null || (column.width() >= 1 && column.width() <= 255), "列宽必须在1至255之间");
             if (column.importEnabled()) {
                 inputs++;
@@ -105,6 +111,13 @@ public class ExcelSchemeValidator {
         Map<String, Object> codec = column.codec();
         String type = String.valueOf(codec.getOrDefault("type", "STRING"));
         require(CODECS.contains(type), "不支持的转换器: " + type);
+        boolean reference = EntityExcelReferenceMetadata.isReference(field);
+        require(reference == "ENTITY_REFERENCE".equals(type), "单选或多选实体必须使用实体关联转换器");
+        if (reference) {
+            EntityExcelReferenceMetadata.settings(references.resolve(field), codec, column.importEnabled(), column.exportEnabled());
+            require(column.validation().get("min") == null && column.validation().get("max") == null,
+                    "实体关联字段不支持数值范围校验");
+        }
         if (Set.of("DATE", "DATETIME").contains(type)) {
             require(("DATE".equals(type) && field.getFieldType() == EntityField.FieldType.DATE)
                     || ("DATETIME".equals(type) && field.getFieldType() == EntityField.FieldType.DATETIME),

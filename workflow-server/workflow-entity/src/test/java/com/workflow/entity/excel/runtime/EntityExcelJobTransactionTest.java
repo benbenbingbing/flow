@@ -440,7 +440,7 @@ class EntityExcelJobTransactionTest {
     private EntityExcelCodecService realCodec() {
         return new EntityExcelCodecService(mock(com.workflow.admin.dictionary.application.SysDictItemService.class),
                 new com.workflow.entity.definition.application.EntityFieldValidationRuleService(mapper),
-                mock(com.workflow.entity.definition.application.EntityStatusService.class));
+                mock(com.workflow.entity.definition.application.EntityStatusService.class), mock(EntityExcelReferenceService.class));
     }
 
     private void workbookPlan(String operation) {

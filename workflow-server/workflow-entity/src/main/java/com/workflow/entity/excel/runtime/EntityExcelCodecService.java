@@ -57,6 +57,7 @@ public class EntityExcelCodecService {
     private final SysDictItemService dictionaries;
     private final EntityFieldValidationRuleService fieldRules;
     private final EntityStatusService entityStatuses;
+    private final EntityExcelReferenceService references;
 
     /**
      * 完成文件转换及元数据校验。rows 是截止前的候选行（含失败行），allRows 保留全部非空原始行供结果报告。
@@ -109,6 +110,16 @@ public class EntityExcelCodecService {
                     }
                     mapping.forEach((index, column) -> indices.put(column, index));
                 }, batch -> {
+                    // 每批按关联列收集输入后统一查询，不能为每个单元格单独访问数据库。
+                    if (!stopped[0]) for (ColumnCodec column : columns) if (column.reference != null) {
+                        Integer index = indices.get(column);
+                        List<String> values = new ArrayList<>();
+                        if (index != null) for (ExcelRawRow raw : batch) {
+                            try { values.add(ExcelValueCodec.readString(raw.cells().get(index), true, true)); }
+                            catch (IllegalArgumentException invalid) { /* 公式等单元格错误由行循环定位。 */ }
+                        }
+                        column.reference.prepareImport(values);
+                    }
                     for (ExcelRawRow raw : batch) {
                         checkColumnLimit(raw);
                         // XLSX 可以根本没有空行 XML；物理行号的跳跃和显式空行具有同样的截止含义。
@@ -205,6 +216,10 @@ public class EntityExcelCodecService {
         if (finalValues == null || finalValues.size() != parsed.rows().size())
             throw new IllegalArgumentException("最终校验行必须与原始文件行一一对应");
         List<ColumnCodec> columns = compile(plan, true);
+        // 表单前置处理可能改变关联 ID；在最终校验阶段重新批量鉴权。
+        for (ColumnCodec column : columns) if (column.reference != null)
+            column.reference.prepareIds(finalValues.stream().filter(java.util.Objects::nonNull)
+                    .map(values -> processedValue(values, column.field.getFieldCode())).toList());
         List<Error> errors = new ArrayList<>();
         Map<ColumnCodec, Integer> indices = new HashMap<>();
         Map<ColumnCodec, Map<String, List<Row>>> uniqueRows = new LinkedHashMap<>();
@@ -234,7 +249,7 @@ public class EntityExcelCodecService {
                     if (blank(value) && (flag(column.column.validation(), "required", false)
                             || Boolean.TRUE.equals(column.field.getIsRequired()) && !generatedCode))
                         throw new IllegalArgumentException("字段不能为空");
-                    Object canonical = canonicalValue(column, value);
+                    Object canonical = column.reference != null ? column.reference.validateIds(value) : canonicalValue(column, value);
                     validate(column, canonical);
                     if (!blank(canonical) && (Boolean.TRUE.equals(column.field.getIsUnique())
                             || flag(column.column.validation(), "uniqueInFile", false))) {
@@ -354,6 +369,7 @@ public class EntityExcelCodecService {
                 case "AMOUNT", "NUMBER" -> "十进制数，最多" + compiled.scale + "位小数；"
                         + (compiled.rounding == RoundingMode.UNNECESSARY ? "超出精度时报错" : "按方案配置进行舍入")
                         + (flag(options, "allowThousands", true) ? "；支持千分位" : "；不支持千分位");
+                case "ENTITY_REFERENCE" -> compiled.reference.instructions();
                 case "BOOLEAN" -> "填写 true/false 或 1/0";
                 case "DICT" -> "CODE".equals(options.get("importMode")) ? "填写右侧字典代码"
                         : "LABEL".equals(options.get("importMode")) ? "填写右侧字典名称" : "填写右侧字典代码或名称";
@@ -426,7 +442,9 @@ public class EntityExcelCodecService {
 
     /** 大批量导出应使用 prepareExport 一次编译；此方法适合单条导出。 */
     public List<?> formatRow(EntityExcelRuntimeResolver.Plan plan, EntityDataDTO row) {
-        return prepareExport(plan).formatRow(row);
+        var formatter = prepareExport(plan);
+        formatter.prepareBatch(List.of(row));
+        return formatter.formatRow(row);
     }
 
     /** 固定本次导出的字段格式、字典和实体状态名称，之后所有分页共享，避免按行查询或导出中途改名。 */
@@ -438,6 +456,11 @@ public class EntityExcelCodecService {
         private final List<ColumnCodec> columns;
         private ExportFormatter(List<ColumnCodec> columns) { this.columns = List.copyOf(columns); }
         public List<List<String>> heads() { return columns.stream().map(column -> List.of(column.column.header())).toList(); }
+        /** 分页导出前预取关联记录，缓存只保留本页，避免随文件大小无限增长。 */
+        public void prepareBatch(List<EntityDataDTO> rows) {
+            for (ColumnCodec column : columns) if (column.reference != null)
+                column.reference.prepareIds(rows.stream().map(row -> fieldValue(row, column.field.getFieldCode())).toList());
+        }
         public List<?> formatRow(EntityDataDTO row) {
             List<Object> values = new ArrayList<>(columns.size());
             for (ColumnCodec column : columns) values.add(column.write(fieldValue(row, column.field.getFieldCode())));
@@ -462,6 +485,8 @@ public class EntityExcelCodecService {
             }
             if (!importing && Boolean.FALSE.equals(field.getRuntimeReadable())) throw new IllegalArgumentException("字段不可导出：" + field.getFieldName());
             String type = string(column.codec().getOrDefault("type", defaultCodec(field)));
+            if (com.workflow.entity.excel.config.EntityExcelReferenceMetadata.isReference(field) != "ENTITY_REFERENCE".equals(type))
+                throw new IllegalArgumentException("单选或多选实体必须使用实体关联转换器：" + field.getFieldName());
             if ("ENTITY_STATUS".equals(type)) {
                 // 运行时再次守住转换器边界，旧快照或外部配置也不能借名称转换导入系统状态。
                 if (importing || column.importEnabled() || !column.exportEnabled())
@@ -599,11 +624,13 @@ public class EntityExcelCodecService {
         private final ZoneId zone;
         private final int scale;
         private final RoundingMode rounding;
+        private final EntityExcelReferenceService.Session reference;
 
         private ColumnCodec(ExcelSchemeDocument.Column column, EntityField field, String type, Map<String, String> dictionary,
                 boolean importing, Map<String, String> statusNames) {
             this.column = column; this.field = field; this.type = type; this.dictionary = dictionary;
             this.statusNames = statusNames;
+            this.reference = "ENTITY_REFERENCE".equals(type) ? references.compile(field, column.codec(), importing) : null;
             Map<String, Object> options = column.codec();
             zone = ZoneId.of(string(options.getOrDefault("zoneId", "Asia/Shanghai")));
             dates = Set.of("DATE", "DATETIME").contains(type)
@@ -620,6 +647,7 @@ public class EntityExcelCodecService {
         private Object read(ExcelRawCell cell) {
             Map<String, Object> options = column.codec();
             Object result = switch (type) {
+                case "ENTITY_REFERENCE" -> reference.read(ExcelValueCodec.readString(cell, true, true));
                 case "DATE", "DATETIME" -> {
                     LocalDateTime date = dates.read(cell);
                     yield date == null ? null : "DATE".equals(type) ? date.toLocalDate() : date;
@@ -639,13 +667,14 @@ public class EntityExcelCodecService {
                 case "STRING" -> ExcelValueCodec.readString(cell, flag(options, "trim", true), flag(options, "emptyToNull", true));
                 default -> throw new IllegalArgumentException("不支持的转换器：" + type);
             };
-            return coerce(result, field);
+            return reference != null ? result : coerce(result, field);
         }
 
         private Object write(Object value) {
             if (value == null) return null;
             Map<String, Object> options = column.codec();
             return switch (type) {
+                case "ENTITY_REFERENCE" -> reference.write(value);
                 case "DATE", "DATETIME" -> dates.write(toDateTime(value, zone));
                 case "AMOUNT", "NUMBER" -> ExcelValueCodec.writeAmount(new BigDecimal(value.toString()), scale, rounding, flag(options, "writeAsText", true));
                 case "DICT" -> {
@@ -729,6 +758,7 @@ public class EntityExcelCodecService {
 
     private static String defaultCodec(EntityField field) {
         return switch (field.getFieldType()) {
+            case REFERENCE, MULTI_REFERENCE -> "ENTITY_REFERENCE";
             case DATE -> "DATE"; case DATETIME -> "DATETIME"; case INTEGER, LONG, DECIMAL -> "NUMBER"; case BOOLEAN -> "BOOLEAN";
             default -> "STRING";
         };
@@ -737,7 +767,7 @@ public class EntityExcelCodecService {
         return field.getDefaultValue() != null && !field.getDefaultValue().isBlank()
                 || Boolean.TRUE.equals(field.getIsSystem()) && "code".equals(field.getFieldCode());
     }
-    private static boolean blank(Object value) { return value == null || value instanceof String text && text.isBlank(); }
+    private static boolean blank(Object value) { return value == null || value instanceof String text && text.isBlank() || value instanceof java.util.Collection<?> values && values.isEmpty(); }
     private static String string(Object value) { return value == null ? "" : value.toString(); }
     private static int integer(Object value) { return new BigDecimal(string(value)).intValueExact(); }
     private static boolean flag(Map<String, Object> config, String key, boolean fallback) { return config.get(key) == null ? fallback : Boolean.TRUE.equals(config.get(key)); }

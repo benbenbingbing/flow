@@ -45,7 +45,7 @@ class EntityExcelConfigurationServiceTest {
     private final EntityUiConfigurationPolicy policy = mock(EntityUiConfigurationPolicy.class);
     private final ObjectMapper json = new ObjectMapper();
     private final EntityExcelConfigurationService service = new EntityExcelConfigurationService(repository, entities, snapshots,
-            forms, publishedForms, roles, policy, new SystemEntityFieldPolicy(), new ExcelSchemeValidator(), json);
+            forms, publishedForms, roles, policy, new SystemEntityFieldPolicy(), new ExcelSchemeValidator(org.mockito.Mockito.mock(com.workflow.entity.excel.config.EntityExcelReferenceMetadata.class)), json);
     private final EntityDefinition entity = ExcelSchemeValidatorTest.entity();
 
     @BeforeEach void setup() {

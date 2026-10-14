@@ -52,6 +52,12 @@ public class EntityExcelConfigurationController {
     public ApiResponse<List<Reference>> references(@PathVariable String entityCode, @PathVariable String schemeCode) {
         return ApiResponse.success(service.references(entityCode, schemeCode));
     }
+    /** 目标实体从字段定义推导，返回属性清单而非关联业务记录。 */
+    @GetMapping("/excel-reference-fields/{fieldCode}")
+    public ApiResponse<com.workflow.entity.excel.config.EntityExcelReferenceMetadata.Target> referenceFields(
+            @PathVariable String entityCode, @PathVariable String fieldCode) {
+        return ApiResponse.success(service.referenceFields(entityCode, fieldCode));
+    }
     @GetMapping("/excel-settings")
     public ApiResponse<SettingsView> settings(@PathVariable String entityCode) {
         return ApiResponse.success(service.settings(entityCode));

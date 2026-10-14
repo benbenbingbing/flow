@@ -39,15 +39,19 @@ export function supportsEntityStatusCodec(field, operation) {
   return operation === 'EXPORT' && field?.isSystem === true && field.fieldCode === 'status'
 }
 
+export const isEntityReference = field => ['REFERENCE', 'MULTI_REFERENCE'].includes(String(field?.fieldType).toUpperCase())
+
 /** 编辑器按字段与方向提供转换选项；导入不能通过名称转换绕过系统状态维护规则。 */
 export function columnCodecOptions(field, operation) {
+  if (isEntityReference(field)) return [['ENTITY_REFERENCE', '实体关联']]
   return supportsEntityStatusCodec(field, operation) ? [...baseCodecOptions, ['ENTITY_STATUS', '实体状态']] : baseCodecOptions
 }
 
 /** 按实体字段预填列标题、转换规则和校验；新选中的系统状态导出名称，历史列不经过此初始化。 */
 export function createColumn(field = {}, operation) {
   const type = String(field.fieldType || '').toUpperCase()
-  const codec = supportsEntityStatusCodec(field, operation) ? { type: 'ENTITY_STATUS', exportMode: 'LABEL' }
+  const codec = isEntityReference(field) ? { type: 'ENTITY_REFERENCE', matchFields: ['code', 'name'], exportField: 'name', separator: ';' }
+    : supportsEntityStatusCodec(field, operation) ? { type: 'ENTITY_STATUS', exportMode: 'LABEL' }
     : (field.dictType || field.dictCode) ? { type: 'DICT', importMode: 'LABEL_OR_CODE', exportMode: 'LABEL' }
     : ['DATE','DATETIME','TIMESTAMP'].includes(type) ? { type: type === 'DATE' ? 'DATE' : 'DATETIME', format: type === 'DATE' ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss', zoneId: 'Asia/Shanghai' }
       : ['DECIMAL','MONEY','AMOUNT'].includes(type) ? { type: 'AMOUNT', scale: field.fieldPrecision ?? 2, roundingMode: 'UNNECESSARY', writeAsText: true }
@@ -56,11 +60,11 @@ export function createColumn(field = {}, operation) {
   const writable = field.editable !== false && (!field.isSystem || businessSystemFields.has(field.fieldCode))
   return { key: field.fieldCode || '', fieldCode: field.fieldCode || '', header: field.fieldName || '', headerAliases: [], importEnabled: writable, exportEnabled: true, requiredHeader: Boolean(field.isRequired), width: 20, codec, validation: { required: Boolean(field.isRequired), uniqueInFile: Boolean(field.isUnique) } }
 }
-/** 生成待编辑草稿，保留业务名称/编码；内部系统列、不可读字段及复杂关系字段不自动映射。 */
+/** 生成待编辑草稿，保留业务名称/编码；内部系统列、不可读字段及附件/子表不自动映射，单选多选实体使用关联转换器。 */
 export function createScheme(fields = []) {
   const columns = fields
     .filter(f => f.runtimeReadable !== false && (!f.isSystem || businessSystemFields.has(f.fieldCode)))
-    .filter(f => !['FILE','IMAGE','ATTACHMENT','SUBFORM','SUB_FORM','SUB_LIST','ENTITY','REFERENCE','MULTI_REFERENCE','USER','DEPT','DEPARTMENT','MULTI_SELECT','CHECKBOX'].includes(String(f.fieldType).toUpperCase()))
+    .filter(f => !['FILE','IMAGE','ATTACHMENT','SUBFORM','SUB_FORM','SUB_LIST','ENTITY','USER','DEPT','DEPARTMENT','MULTI_SELECT','CHECKBOX'].includes(String(f.fieldType).toUpperCase()))
     .map(createColumn)
   return { schemaVersion: 1, schemeCode: '', name: '', description: '', file: { sheetName: '数据', headRowNumber: 1, unknownColumnPolicy: 'REJECT' }, importConfig: { enabled: true, writePolicy: 'CREATE_ONLY', transactionPolicy: 'BATCH', writeFormKey: '', unknownColumnPolicy: 'DIRECT', ...importOptionDefaults, startProcess: false, maxRows: 1000 }, exportConfig: { enabled: true, fileNamePattern: '数据_{yyyyMMddHHmmss}', sheetName: '数据' }, columns }
 }
@@ -78,8 +82,8 @@ function directionalColumns(columns, direction) {
     if (direction === 'inactive') return copy
     copy.codec = { ...copy.codec }
     const unusedCodecOptions = direction === 'import'
-      ? ['exportMode', 'writeAsText', 'zoneId']
-      : ['readPatterns', 'importMode', 'allowThousands', 'currencySymbol']
+      ? ['exportMode', 'writeAsText', 'zoneId', 'exportField']
+      : ['readPatterns', 'importMode', 'allowThousands', 'currencySymbol', 'matchFields']
     for (const key of unusedCodecOptions) delete copy.codec[key]
     if (direction === 'export') {
       copy.headerAliases = []
@@ -162,6 +166,10 @@ export function validateScheme(config, { draft = false } = {}) {
   for (const [direction, columns] of [['导入', importColumns], ['导出', exportColumns]]) {
     const fields = new Set(), headers = new Set()
     for (const c of columns) {
+      if (c.codec?.type === 'ENTITY_REFERENCE') {
+        if (direction === '导入' && (!Array.isArray(c.codec.matchFields ?? ['code', 'name']) || !(c.codec.matchFields ?? ['code', 'name']).length)) return '请选择关联实体的导入匹配属性'
+        if (direction === '导出' && !(c.codec.exportField ?? 'name')) return '请选择关联实体的导出内容'
+      }
       if (fields.has(c.fieldCode)) return `${direction}字段 ${c.fieldCode} 重复映射`
       fields.add(c.fieldCode)
       // 新 BATCH 模式按严格标题/位置读取，不再解释历史别名；保留值但不能让隐藏旧规则阻止发布。

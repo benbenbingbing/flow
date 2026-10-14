@@ -78,7 +78,7 @@ class ExcelButtonAvailabilityTransactionTest {
                 mock(CurrentUserRoleService.class),
                 policy,
                 new SystemEntityFieldPolicy(),
-                new ExcelSchemeValidator(),
+                new ExcelSchemeValidator(org.mockito.Mockito.mock(com.workflow.entity.excel.config.EntityExcelReferenceMetadata.class)),
                 json);
         configurations = transactionalProxy(configurationTarget, manager);
 
