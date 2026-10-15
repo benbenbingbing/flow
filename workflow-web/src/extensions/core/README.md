@@ -109,3 +109,11 @@ const RelatedForm = getCustomFormComponent('ContractExampleRelatedForm', 1, unde
 表中 Form/List 表示两组分别存在的函数名，不是字面 API 名称。动作返回的 handler 由宿主在点击时调用，不要在初始化时执行。校验器通过 `validateCustomValue(descriptor.validator, value, context)` 归一化结果，避免把错误文本当作成功。
 
 FORM/LIST/FIELD/VALIDATOR 保留多版本查询；其余类型由清单检查阻止同名多版本覆盖。修改这些接口时从 `workflow-web/` 运行 `npm run test:extensions` 与相关宿主测试；业务实现不要绕过 JSON 调用 register 函数。
+
+## 组件前端事件与可选择的处理函数
+
+字段组件通过 `defineOptions({ scriptEvents: [...] })` 声明事件，使用 `useFormField().triggerScriptEvent(name, payload)` 在真实业务时机触发。安装器从编译后的组件对象派生 `capabilities.scriptEvents`；不要在 FIELD manifest 再维护事件列表。它与后台事件链的 `capabilities.supportedEvents` 独立。
+
+可复用处理函数新增 `FIELD_EVENT_HANDLER` 清单，`implementation.kind` 为 `FUNCTION`。函数接收 `{ value, field, selection, event, setValue, getFieldValue, setFieldValue }`，安装时不会执行。字段属性下拉选择函数后保存 `{ mode: 'function', handler: '注册名', version: 1 }`。`metadata.supportedFieldTypes` 和 `metadata.capabilities.eventNames` 可限制适用范围；函数实现版本须保留，不能静默换成最新版。
+
+完整接入与存储说明见 `docs/component-owned-field-events-plan.md`；可运行的公共函数清单在 `extensions/manifests/common/handlers/`，业务事件示例在 `ProjectAcceptanceScoreField.vue`。

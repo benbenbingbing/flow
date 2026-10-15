@@ -27,6 +27,15 @@
 </template>
 
 <script setup>
+
+// 仅声明此实现已接入的前端事件，供字段配置和运行时共用。
+defineOptions({ scriptEvents: [
+    { name: 'onChange', label: '值变化', description: '用户修改值后触发，完成后执行值变化事件链' },
+    { name: 'onFocus', label: '聚焦', description: '控件获得焦点时触发' },
+    { name: 'onBlur', label: '失焦', description: '控件失去焦点时触发' },
+    { name: 'onVisibleChange', label: '面板显隐', description: '选择面板打开或关闭时触发', parameters: [{ name: 'visible', type: 'boolean', description: '面板是否显示' }] },
+    { name: 'onExpandChange', label: '展开节点', description: '展开级联节点时触发', parameters: [{ name: 'path', type: 'array', description: '展开节点的值路径' }] }
+] })
 import { computed } from 'vue'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { cascaderPath } from '@flow/workflow-core/cascader-runtime'
@@ -35,7 +44,9 @@ import { useCascaderFieldRuntime } from '@flow/workflow-core/vue/useCascaderFiel
 
 const props = defineProps(formFieldProps)
 const emit = defineEmits(['update:modelValue', 'change', 'blur', 'focus'])
-const { placeholder, isDisabled, handleChange, handleBlur, handleFocus, customEventListeners } = useFormField(props, emit)
+const { placeholder, isDisabled, handleChange, handleBlur, handleFocus, customEventListeners } = useFormField(props, emit, { eventPayloads: {
+  onVisibleChange: visible => ({ visible }), onExpandChange: path => ({ path })
+} })
 const { options, loading, error, revision, isLazy, loadChildren, resolvePath, retry, clearError } = useCascaderFieldRuntime(props)
 const selectedPath = computed(() => cascaderPath(props.modelValue))
 

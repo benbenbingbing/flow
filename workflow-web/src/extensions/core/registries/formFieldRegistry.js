@@ -1,13 +1,19 @@
 import { normalizeExtensionDescriptor } from '@flow/workflow-core/config-runtime'
 import fieldDefinitions from '@flow/workflow-core/extensions/generated/field-definitions'
+import { readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
 
 // 所有表单组件共用注册表；来源仅用于目录分组，不决定渲染或数据更新协议。
 const components = new Map()
+const platformAliases = new Map()
 export const formFieldComponentMap = {}
 
 /** 安装一个确定版本；发布配置按版本查找，不能被后续安装静默覆盖。 */
 export function registerFormFieldComponent(type, component, metadata = {}) {
   const descriptor = normalizeExtensionDescriptor(type, component, metadata)
+  const scriptEvents = readComponentScriptEvents(component, type)
+  descriptor.capabilities = { ...descriptor.capabilities }
+  delete descriptor.capabilities.scriptEvents
+  if (scriptEvents !== undefined) descriptor.capabilities.scriptEvents = scriptEvents
   descriptor.nodeTypes = (metadata.nodeTypes || ['FIELD']).map(value => String(value).toUpperCase())
   descriptor.supportedBindings = (metadata.supportedBindings || []).map(value => String(value).toUpperCase())
   const name = String(type).toLowerCase()
@@ -17,6 +23,7 @@ export function registerFormFieldComponent(type, component, metadata = {}) {
   components.set(name, versions)
   if (metadata.origin === 'PLATFORM') {
     for (const alias of [type, ...(metadata.aliases || [])]) formFieldComponentMap[alias.toLowerCase()] = component
+    for (const alias of [type, ...(metadata.aliases || [])]) platformAliases.set(alias.toLowerCase(), name)
   }
 }
 
@@ -48,28 +55,32 @@ function supportsField(descriptor, field) {
 }
 
 /** 显式自定义组件优先；未指定组件的实体字段仍按内置类型规则选择控件。 */
-export function resolveFieldComponent(field) {
+export function resolveFieldComponentDescriptor(field) {
   const componentType = String(field?.componentType || '').toLowerCase()
   const fieldType = String(field?.fieldType || '').toLowerCase()
   const selected = getFormFieldComponentDescriptor(componentType, field?.componentVersion)
   if (selected?.origin !== 'PLATFORM' && components.has(componentType)) {
-    return selected && supportsField(selected, field) ? selected.component : undefined
+    return selected && supportsField(selected, field) ? selected : undefined
   }
   // 显式选择的实现缺失时必须报告不可用，不能悄悄换成字段类型对应的输入框。
   if (componentType && !formFieldComponentMap[componentType] && !components.has(componentType)) return undefined
-  if (componentType === 'sub_list' || fieldType === 'sub_list') return formFieldComponentMap.sub_list
-  if (componentType === 'sub_form' || fieldType === 'sub_form') return formFieldComponentMap.sub_form
+  const platform = type => getFormFieldComponentDescriptor(platformAliases.get(type), field?.componentVersion)
+  if (componentType === 'sub_list' || fieldType === 'sub_list') return platform('sub_list')
+  if (componentType === 'sub_form' || fieldType === 'sub_form') return platform('sub_form')
   const refEntityType = String(field?.refEntityType || '').toUpperCase()
   if (['USER', 'DEPT', 'ROLE', 'GROUP'].includes(refEntityType)
-      || (refEntityType === 'CUSTOM' && field?.refEntityId)) return formFieldComponentMap.reference
+      || (refEntityType === 'CUSTOM' && field?.refEntityId)) return platform('reference')
   const generic = new Set(['input', 'string', 'text', ''])
   const candidates = [componentType, fieldType].filter(type => !generic.has(type))
     .concat([componentType, fieldType].filter(type => generic.has(type)))
   for (const type of candidates) {
-    if (formFieldComponentMap[type]) return formFieldComponentMap[type]
+    if (formFieldComponentMap[type]) return platform(type)
   }
   return undefined
 }
+
+/** 渲染和事件编辑器共用解析规则，包含历史别名、引用字段优先级以及精确版本。 */
+export function resolveFieldComponent(field) { return resolveFieldComponentDescriptor(field)?.component }
 
 /** 目录每个名称展示最新版本；具体发布版本由节点独立锁定。 */
 export function getFormFieldComponentOptions() {

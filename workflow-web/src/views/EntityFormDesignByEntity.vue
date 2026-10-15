@@ -1062,6 +1062,7 @@ import { getFieldLinkageDraftError } from '@/composables/useFieldValueLinkage'
 import { getAttachmentConditionError } from '@/shared/form-field-linkage'
 import EventConfigPanel from '@/components/EventConfigPanel.vue'
 import { readFieldScripts, writeFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
+import { getFieldScriptEventCatalog, validateFieldScriptConfiguration } from '@/shared/field-script-configuration'
 import EventBindingDialog from '@/components/ui-config/EventBindingDialog.vue'
 import FormNodeEventBindings from '@/components/form-designer/FormNodeEventBindings.vue'
 import FormDataSourceDialog from '@/components/ui-config/FormDataSourceDialog.vue'
@@ -2014,12 +2015,11 @@ const selectedNodeInterfaces = computed(() =>
 
 // 草稿根属性和已保存的 componentProps.events 使用相同读取规则。
 const currentEventValues = computed(() => readFieldScripts(currentEventField.value))
-const scriptEventLabels = { onInput: '输入中', onChange: '值变化', onBlur: '失焦', onFocus: '聚焦' }
 // 概览与编辑器共用读取规则，仅展示包含有效脚本的事件名称，不展示脚本内容。
-const configuredScriptEvents = computed(() => Object.keys(readFieldScripts(selectedField.value)).map(name => ({
-  name,
-  label: scriptEventLabels[name] ? `${scriptEventLabels[name]}（${name}）` : name
-})))
+const configuredScriptEvents = computed(() => {
+  const labels = Object.fromEntries(getFieldScriptEventCatalog(selectedField.value).events.map(item => [item.name, item.label]))
+  return Object.keys(readFieldScripts(selectedField.value)).map(name => ({ name, label: labels[name] ? `${labels[name]}（${name}）` : `${name}（待核对）` }))
+})
 const hasEventConfig = computed(() => configuredScriptEvents.value.length > 0)
 
 provide(FORM_DESIGNER_CONTEXT_KEY, {
@@ -3993,6 +3993,11 @@ async function handlePublish() {
     return
   }
   if (!validateRendererForPublish()) return
+  const scriptErrors = validateFieldScriptConfiguration(formFields.value)
+  if (scriptErrors.length) {
+    ElMessage.warning({ message: `前端事件配置需要处理：${scriptErrors.slice(0, 3).map(item => item.message).join('；')}`, duration: 6500 })
+    return
+  }
   // 发布前统一落库节点与关联属性；任一步失败均停止，不发布旧草稿。
   if (hasUnsavedLocalChanges() && !await handleSave()) return
   if (!await validateFormActionsForPersistence({ requireEventBindings: true })) return

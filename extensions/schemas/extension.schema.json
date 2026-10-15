@@ -33,6 +33,7 @@
         "LIST_BUTTON",
         "LIST_ACTION",
         "VALIDATOR",
+        "FIELD_EVENT_HANDLER",
         "ACTION_CONDITION",
         "PERMISSION_PROVIDER"
       ],

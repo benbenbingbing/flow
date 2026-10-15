@@ -35,6 +35,11 @@
 </template>
 
 <script setup>
+
+// 仅声明此实现已接入的前端事件，供字段配置和运行时共用。
+defineOptions({ scriptEvents: [
+
+] })
 import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed } from 'vue'
 import EntityDataList from '@/views/entity/EntityDataList.vue'

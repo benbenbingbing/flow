@@ -1,250 +1,185 @@
-# 组件自声明前端事件方案与 TextField 改造示例
+# 组件自声明前端事件：实现与接入说明
 
-状态：设计方案，运行代码尚未改造。配套示例为 `docs/examples/TextField.component-events.example.vue`；示例使用拟新增的运行 API，不能直接替换当前组件运行。
+状态：已实现。处理函数通过下拉选择已注册的名称和版本；代码片段直接输入函数体。实际文本组件位于 `workflow-web/src/extensions/builtin/fields/components/TextField.vue`，配套完整示例位于 `docs/examples/TextField.component-events.example.vue`。
 
-## 目标与职责
-
-组件开发者在组件中声明支持的事件，并在正确的交互位置触发。表单配置者在字段属性中选择这些事件，填写代码片段或处理函数。系统负责读取声明、保存字段绑定、执行脚本和显示错误。预置组件与自定义组件遵循同一协议。
+## 事件如何流转
 
 ```mermaid
 flowchart LR
-  A[组件静态 scriptEvents 声明] --> B[注册器提取组件事件目录]
-  B --> C[字段属性选择事件并填写处理代码]
-  C --> D[保存表单节点并发布]
-  E[组件中的真实交互] --> F[共享字段脚本执行器]
-  D --> F
-  F --> G[当前字段或当前表单作用域回填]
+  A[Vue 静态 scriptEvents] --> B[安装器提取并校验目录]
+  B --> C[字段属性选择事件]
+  C --> D[输入代码片段或选择处理函数]
+  D --> E[节点 componentProps.events]
+  F[组件中的真实交互] --> G[useFormField 执行器]
+  E --> G
+  G --> H[回填当前值或同表单字段]
+  G --> I[标准 change 完成后执行原事件链]
 ```
 
-本期范围是组件前端事件。现有后台事件链的 `supportedEvents` 含义保持独立；`onChange` 完成后继续沿用现有 `FIELD_CHANGE` 链路。不增加全局事件总线，也不要求用户另写事件触发代码。
+前端事件目录是 `capabilities.scriptEvents`，由组件派生。原有 `capabilities.supportedEvents` 仍表示后台事件链能力，两者没有互相转换的关系。
 
-## 1. 事件声明直接归组件所有
+## 1. 在组件中声明事件
 
-建议用 Vue 的静态自定义选项承载声明：
+在 `<script setup>` 中使用静态选项：
 
 ```js
 defineOptions({
   name: 'AddressRecognitionField',
-  scriptEvents: [
-    {
-      name: 'onRecognizeSuccess',
-      label: '识别成功',
-      description: '组件完成地址识别后触发',
-      parameters: [
-        { name: 'address', type: 'string', description: '识别后的完整地址' }
-      ]
-    }
-  ]
-});
+  scriptEvents: [{
+    name: 'onRecognizeSuccess',
+    label: '识别成功',
+    description: '组件完成地址识别后触发',
+    parameters: [
+      { name: 'address', type: 'string', required: true, description: '识别后的完整地址' }
+    ]
+  }]
+})
 ```
 
-`scriptEvents` 是拟新增的项目约定。Vue 允许保留此类组件选项，但当前注册器、设计器和运行时还不会消费它，必须一起改造。
+- `name` 必须符合 `^on[A-Z][A-Za-z0-9]*$`，同一组件内不能重复。
+- `label` 为设计器显示名称；`description` 说明真实触发时机。
+- `parameters` 描述 `event.data`，类型支持 string / number / boolean / object / array / any，默认可选。
+- `variants` 可限定组件共用实现时的规范注册名。例如 TextField 的 `onClear` 只声明给 `input/password`，不给 `textarea`。
+- `scriptEvents: []` 表示明确没有事件；未声明的旧组件保留兼容协议。
 
-| 属性 | 约束与用途 |
-| --- | --- |
-| `name` | 稳定事件名，例如 `onClear`；同一组件中唯一，沿用 `^on[A-Z][A-Za-z0-9]*$` 命名规则 |
-| `label` | 表单设计器显示的中文名称 |
-| `description` | 说明真实触发时机，以及哪些操作不会触发 |
-| `parameters` | `event.data` 中的参数说明，用于编辑器提示和运行时参数形状校验；只传普通数据 |
-| `variants` | 可选：组件复用多个注册名称时，限定适用的规范组件名；缺省表示全部变体 |
+`defineOptions` 编译后成为组件选项对象，安装器读取 `implementation.scriptEvents`，不读取 `.vue` 源码、不挂载组件，也不调用 setup。普通 setup 局部变量和 `defineExpose` 不作为能力目录。
 
-例如 TextField 同时用于 `input`、`password`、`textarea`，它的 `onClear` 声明使用 `variants: ['input', 'password']`。注册器按实际注册名称过滤，`string/text` 等历史别名先归一到对应注册名称。不能直接用实体 `fieldType` 猜测事件能力，因为同一字段可能实际渲染为实体选择器或自定义组件。
+验证记录：使用当前 Vue 编译插件和 Vite 8.1.5，对真实 TextField 进行 production 压缩构建，再导入生成的 JS，测试验证事件名、variants、parameters 均保留。对应测试为 `workflow-web/src/extensions/__tests__/component-script-events.spec.mjs`。若未来改成异步加载，必须先解析模块并取真实组件导出，再安装；不能读取尚未解析的异步包装器。
 
-声明只能包含可序列化的元数据，不能执行用户脚本或依赖组件实例。声明本身不会产生事件，组件还必须有对应的触发调用。
+组件 manifest 不再重复填写事件列表。安装器从组件提取声明，注册描述和扩展目录共用这份数据。修改组件源码会触发开发环境整页重载，使事件目录同步刷新。
 
-## 2. 单一声明来源与存储位置
-
-| 内容 | 来源与保存位置 |
-| --- | --- |
-| 组件支持哪些事件 | `.vue` 的 `defineOptions({ scriptEvents })`，跟组件代码和版本一起维护 |
-| 设计器使用的事件目录 | 安装器从组件对象读取并验证声明，投影到注册描述与目录的 `capabilities.scriptEvents`；这是派生数据 |
-| 纳管自定义组件的能力副本 | 如需要后端展示、发布核对，随现有扩展配置同步到 `ui_extension_definition.capabilities_document` 的 `scriptEvents` 属性；无需额外事件表 |
-| 预置组件的声明 | 沿用当前构建注册模式，不要求为了事件强行新增数据库扩展记录 |
-| 当前字段的事件代码 | 保存到表单节点的 `entity_form_node.props_document`，路径为 `componentProps.events`；随表单保存、发布进入运行快照 |
-
-manifest 继续负责组件名称、版本、实现路径等注册信息，事件列表不在 manifest 再维护一份。组件管理页可展示派生声明，不能通过修改数据库能力副本凭空增加组件事件。
-
-现在 `installer.js` 的注册 metadata 与 `publish(plan.map(item => item.entry))` 是两条投影路径。改造时必须让两者使用同一份提取后的声明，否则会出现运行时认识事件、管理页看不到的情况。后端纳管副本应随组件注册或更新明确同步；仅修改 `.vue` 不意味着数据库自动同步。
-
-事件声明按具体组件版本读取。版本引用必须解析到相同实现和描述，避免设计器使用新事件、运行时仍加载旧组件。
-
-## 3. 表单配置界面
-
-字段属性里的“前端脚本事件”读取实际组件的声明，展示中文名称、事件编码、触发说明、参数说明以及配置状态。
-
-```text
-组件：文本输入
-
-输入中    onInput     未配置
-值变化    onChange    已配置
-聚焦      onFocus     未配置
-失焦      onBlur      未配置
-清空      onClear     未配置
-按键      onKeydown   已配置
-```
-
-点击事件后选择“代码片段”或“处理函数”，编辑、语法校验并保存。配置为空时不执行额外业务逻辑，正常输入、值同步和原有事件链继续工作。不提供任意输入新事件名的入口。
-
-切换组件或版本时，保留不再支持的旧绑定并标明原因，供用户修改或移除。保存草稿可以保留问题，发布前必须处理仍有内容的不兼容绑定，不能静默丢失脚本。
-
-### 代码片段
-
-选择 `onChange`，直接填写函数体，兼容当前习惯：
+## 2. 在真实交互处触发
 
 ```js
-// 去掉名称两侧空格，后续 change 链读取格式化后的值。
-setValue(String(value ?? '').trim());
+const { fieldValue, triggerScriptEvent } = useFormField(props, emit)
+
+async function onAddressRecognized(address) {
+  fieldValue.value = address
+  const result = await triggerScriptEvent('onRecognizeSuccess', {
+    value: address,
+    data: { address }
+  })
+  // 如业务还需要进入标准值变化链，再使用 handleChange(result.value)。
+  // 仅在 result.current 时继续，避免新输入后执行旧事件链。
+}
 ```
 
-### 处理函数
+`triggerScriptEvent(name, { value?, selection?, data? })` 检查组件声明和参数，读取当前字段绑定，执行处理器并报告异常，返回 `Promise<{ current, value }>`。传入的 value 只是本次快照，不自动更新模型；省略时取最新本地值。此调用不会自行发出宿主 change，也不会调用后台事件链。
 
-选择 `onKeydown`，填写一个函数表达式或箭头函数。系统用统一的上下文调用它：
+`handleChange` 负责标准 onChange 脚本完成后的宿主 change。`handleInput` 只执行输入脚本。`handleSelectionChange` 保持实体字段 value 为 ID、selection 为记录，脚本改选或清空后不会继续携带旧记录回填。
+
+函数上下文与代码片段变量一致：
+
+| 名称 | 用途 |
+| --- | --- |
+| value | 本次处理器开始时的值快照 |
+| field | 字段配置快照，直接修改它不会修改真实配置 |
+| selection | 实体选中记录或记录数组；清空时为 null |
+| event.name | 当前声明中的事件名 |
+| event.data | 组件传入的普通 JSON 数据，按声明校验类型 |
+| setValue(value) | 回填当前字段，同批次后续事件读取更新后的值 |
+| getFieldValue(code) | 读取当前表单/子表行的字段 |
+| setFieldValue(code, value) | 回填当前作用域字段，不递归执行目标字段脚本 |
+
+支持 await，异步等待最长 5 秒；超时、新输入、只读、禁用、卸载后的 helper 写入被阻止。返回值不自动回填。脚本仍运行在浏览器页面中，超时不能抢占同步死循环；嵌入页面沿用禁用前端脚本的限制。
+
+## 3. 处理函数通过下拉选择
+
+处理函数写在受构建管理的 JS 模块中，接收一个上下文对象：
 
 ```js
-async function ({ value, event, setValue }) {
-  // 中文输入法确认候选词时，不作为业务上的回车操作。
-  if (event.data.key === 'Enter' && !event.data.isComposing) {
-    setValue(String(value ?? '').trim());
+/** 只处理字符串，通过 helper 回填，不依赖 window 上的函数名称。 */
+export async function trimCustomerName({ value, setValue }) {
+  if (typeof value === 'string') setValue(value.trim())
+}
+```
+
+为它新增 `FIELD_EVENT_HANDLER` 清单，例如 `extensions/manifests/business/customer/handlers/trim_name.v1.extension.json`：
+
+```json
+{
+  "$schema": "../../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD_EVENT_HANDLER",
+  "name": "customer.trimName",
+  "label": "整理客户名称",
+  "description": "去除客户名称首尾空格",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/business/customer/handlers/trimName.js",
+    "export": "trimCustomerName",
+    "kind": "FUNCTION"
+  },
+  "metadata": {
+    "supportedFieldTypes": ["STRING"],
+    "capabilities": { "eventNames": ["onChange", "onBlur"] }
   }
 }
 ```
 
-两种模式都存代码字符串，不持久化 JavaScript 函数对象，不依赖 `window` 上的函数名，也不通过 `this` 访问组件实例。第一期每个事件配置一个处理器。
+清单类型对应 `registerFieldEventHandler`，安装阶段不会执行函数。字段类型和 eventNames 为空时不限制范围。下拉框按范围筛选，保存精确版本，不回退最新版本；缺失或不适用的引用显示错误。发布后需要改变处理语义时新增版本，保留旧实现。
 
-## 4. 字段绑定格式与兼容
+本次提供两个公共函数：`trimText@1`（去除首尾空格）和 `trimTextOnEnter@1`（非输入法组词的 Enter 时去除首尾空格）。它们在扩展管理中作为构建项展示。移动实现通过 manifest 的 `platforms.mobile` 单独注册，遵循现有跨端扩展规则。
 
-建议使用显式模式区分两种写法：
+## 4. 字段保存格式
+
+代码片段直接输入，例如 `setValue(String(value ?? '').trim())`。编辑器保存以下 JSON：
 
 ```json
 {
   "events": {
-    "onChange": {
-      "mode": "body",
-      "code": "setValue(String(value ?? '').trim());"
-    },
-    "onKeydown": {
-      "mode": "function",
-      "code": "async function ({ value, event, setValue }) { if (event.data.key === 'Enter' && !event.data.isComposing) setValue(String(value ?? '').trim()); }"
-    }
+    "onChange": { "mode": "body", "code": "setValue(String(value ?? '').trim())" },
+    "onKeydown": { "mode": "function", "handler": "trimTextOnEnter", "version": 1 }
   }
 }
 ```
 
-上述 JSON 位于 `componentProps` 内。已有字符串，例如 `events.onChange = "setValue(value)"`，读取时归一为 `{ mode: 'body', code: 'setValue(value)' }`，不要求批量改写历史发布数据。设计态 `eventOnChange` 等旧别名仍作为兼容输入，显式清空优先，不能从旧副本恢复已删除代码。
+该 JSON 在字段 componentProps 内，持久化至 `entity_form_node.props_document`，随节点复制、保存和发布进入配置快照。不存 JavaScript 函数对象，也不把函数表达式作为“处理函数”模式输入。
 
-当前 `readFieldScripts/writeFieldScripts`、事件编辑器、事件摘要和 `formNodeEditorModel` 都按字符串处理，必须统一接入绑定归一化方法。不能只改变弹窗保存格式，否则对象形式脚本会被过滤或在 `.trim()` 时出错。节点属性校验与导入导出也需要接受并验证这两个模式。
+旧字符串绑定仍按代码片段执行。`eventOnChange` 等根草稿覆盖持久化副本，包括显式清空；读取和序列化统一使用 `readFieldScripts/writeFieldScripts`，不会把对象引用当字符串过滤掉。
 
-“处理函数”模式在保存时校验为单个函数表达式或箭头函数及其语法，不执行函数；运行时编译后用 `ctx` 调用一次并等待 Promise。代码片段模式沿用参数注入。两种模式的返回值都不自动写回，赋值必须使用 helper。
+编辑器仅展示组件声明的事件。未知旧绑定保留原文并标注，允许保存草稿；发布前必须移除或换回支持它的组件。已有字符串绑定保留原监听兼容路径，新结构化绑定和组件主动触发必须匹配声明。保存时只做语法/注册引用校验，不执行用户代码。
 
-## 5. 组件如何触发
+PC 设计器发布前核对实际解析的组件、版本、声明及函数引用。后端保存、导入和发布时验证事件 JSON 形状；后端不执行 Vue，也不代替对应前端构建解析函数。自定义组件目录能力副本随原有纳管同步流程更新，单改 Vue 不会自动更新数据库中的目录记录。
 
-沿用 `useFormField` 作为组件接入入口，新增组件内部 API：
+## 5. TextField 的改造
 
-```js
-const { fieldValue, triggerScriptEvent } = useFormField(props, emit);
+- 静态声明 onInput、onChange、onFocus、onBlur、onClear、onKeydown，并保留实际可用的鼠标、keyup 和输入法组合事件。
+- 保留 textarea、密码遮蔽、字数限制、行数、只读等展示行为。
+- `@clear` 接入共享适配器；keydown 提取 key/code/isComposing 和修饰键，不传 DOM Event。
+- 使用 `useFormField(props, emit, { eventAdapter: 'text' })`。
 
-// 在自定义组件完成地址识别后调用；这是组件代码，不是表单用户代码。
-// 先同步组件的实际值，触发参数中的 value 只提供本次事件快照。
-fieldValue.value = recognizedAddress;
-await triggerScriptEvent('onRecognizeSuccess', {
-  value: recognizedAddress,
-  data: { address: recognizedAddress }
-});
+Element Plus 清空会在一个调用栈中发出 `update:modelValue → change → clear → input`。适配器先即时同步模型，再合并同栈通知，按以下顺序执行：
+
+```text
+onClear → onInput → onChange → 宿主 change（一次）→ 同批次 onBlur
 ```
 
-`triggerScriptEvent(name, { value, selection, data })` 的拟定契约：
+clear 第一步收到空字符串，后续步骤读取 helper 更新后的值。新输入立即使旧异步批次失效，不排在旧任务后等待。处理器内部 setValue 不被当成新用户输入。
 
-- 根据实际组件及版本的声明检查事件与参数；不支持的名字是开发错误，不能默默当成已接入。
-- 检查只读、禁用、销毁和当前宿主是否允许脚本，缺少表单上下文时给出可定位错误。
-- 读取当前字段实例的绑定；无绑定立即正常返回。
-- 传入的 value 只指定本次处理器的值快照，不隐式更新模型；省略时使用运行层最新值。
-- 调用共享执行器，提供值快照、字段快照、选中记录及事件参数。
-- 内部处理异常并报告字段名与事件名；返回 `Promise<{ current, value }>`，表示调用是否仍有效及 helper 处理后的当前值。
-- 此方法只运行当前组件事件脚本，不自行发出宿主 `change`，也不会请求后台事件链；标准 `handleChange` 负责脚本完成后的宿主通知。
+非文本示例是 `ProjectAcceptanceScoreField.vue`：声明 `onScoreCommit`，在提交评分时传 `{ score }`，完成后进入标准 change。PC 与移动评分组件分别声明并触发，编辑器无评分事件专属代码。
 
-内置的 `handleInput/handleChange/handleFocus/handleBlur` 也使用相同执行器。组件不必自行编译脚本。对于原生 `emit` 不提供可等待返回值的问题，组件通过 composable 调用此 API，以便保留“脚本结束后再发 change”的顺序。
+其它预置组件也声明了自己实际接入的事件：数字/实体选择为变化和焦点事件，选择/日期/级联包含真实面板事件，单选/多选/开关/附件/富文本/子表单提供值变化事件，展示组件明确为空。
 
-代码片段的变量、函数模式的 `ctx` 属性保持一致：
+## 6. 跨端与验证
 
-| 属性/方法 | 作用 |
-| --- | --- |
-| `value` | 本次处理器开始时的当前字段值快照 |
-| `field` | 字段配置快照，修改它不改变实际配置 |
-| `selection` | 实体选择记录，非选择事件通常为 `null` |
-| `event.name` | 声明中的事件名 |
-| `event.data` | 组件提供、符合声明的普通数据，不直接暴露 DOM Event |
-| `setValue(value)` | 写当前字段；同一交互后续步骤使用更新后的值 |
-| `getFieldValue(code)` | 按字段编码读取当前表单/子表行 |
-| `setFieldValue(code, value)` | 在当前作用域回填；不会递归执行目标字段脚本 |
+移动端从自己的组件实现声明能力，不把 PC 的 DOM 按键、鼠标或清空能力直接复制过去。共享的代码片段/函数引用执行器可在移动表单使用，具体事件是否可触发仍取决于移动组件声明和真实接入点；移动表单会显示不支持的事件及缺失函数提示。当前设计器事件目录与发布预检针对 PC 实现；未建立跨端发布能力矩阵，PC 专属交互不能当作两端共同业务规则。
 
-初期沿用异步等待最多 5 秒和旧请求失效后的 helper 写保护。超时只结束等待，不能终止浏览器主线程同步代码；这仍是管理员配置的浏览器代码执行机制，不能称为隔离沙箱。
+验证入口：
 
-## 6. TextField.vue 的具体改造
+```sh
+npm run build:packages
+node workflow-web/src/shared/__tests__/field-event-scripts.spec.js
+node workflow-web/src/shared/__tests__/component-script-events.spec.js
+npm run test:extensions --workspace workflow-web
+npm run test:designer-models --workspace workflow-web
+npm run test:field-scripts:browser --workspace workflow-web
+npm run build --workspace workflow-web
+npm run build --workspace workflow-mobile
+```
 
-完整示例见 `docs/examples/TextField.component-events.example.vue`。它保留当前两个输入分支、密码遮蔽、字数限制与行数配置，主要增加：
+后端针对性测试：在 workflow-server 运行 `mvn -pl workflow-entity -am -Dtest=EntityFormNodePropertyPolicyTest -Dsurefire.failIfNoSpecifiedTests=false test`。
 
-1. 在 `defineOptions` 中声明六个核心事件；`onClear` 只适用于 input/password。
-2. 保留 input/change/focus/blur 的明确绑定，加入 clear/keydown 处理。
-3. 通过新增 `triggerScriptEvent` 传递标准化按键数据。
-4. 替换当前按用户任意事件名生成监听器的 `v-on="customEventListeners"`。
-5. 使用拟新增的 `useFormField(..., { eventAdapter: 'text' })` 文本事件适配模式，解决清空操作的一次交互、多次底层通知问题。
+验证结果（2026-10-15）：共享包 62 项、移动端 25 项、扩展 15 项、设计器模型 10 项和后端节点属性 15 项测试通过；新旧事件执行器测试、真实浏览器验收以及 PC/Embed/移动端构建通过。浏览器验收包含真实自定义评分事件、函数选择和执行、异步清空、输入法参数、保存重开、未知旧绑定提示和嵌入禁用。全仓可维护性行数预算检查存在 98 项超限；使用修改前 HEAD 内容核对仍为 98 项，本次未调整预算。
 
-### 文本事件适配器的必要行为
-
-当前依赖的输入组件清空时依次发送 `update:modelValue('') → change('') → clear → input('')`。现有 `valueRevision` 又会在多个处理入口递增，因此不能简单新增 `@clear` 就宣称时序正确。
-
-拟新增的文本适配器按以下规则实现：
-
-- 模型仍即时更新；将同一同步调用栈的事件通知暂存到一个微任务批次，识别它们是否属于一次清空。
-- 清空批次固定执行 `onClear → onInput → onChange → 宿主 change`；只执行已配置的脚本，宿主 change 最多一次，保留现有值变化事件链入口。
-- 第一个清空脚本拿到明确的空字符串；后续处理器开始时获取同一批次中 helper 更新后的值。普通输入与真正提交变化仍分别处理，不因输入而自动执行 onChange。
-- 同一次清空只递增一次用户输入修订号，脚本内部 setValue 不视为新用户交互；真正的新输入才使旧异步处理失效。
-- 同批次若还有 blur，按 change 完成后再处理 blur；不能让正常 blur 无故使 change 失效。
-- 同一批次串行，不同后续输入可使旧批次失效；不得把所有输入排成长队，旧批次不能阻塞最新值。
-- 本地保存当前写入值，不能依赖尚未刷新的 props；清空、脚本回填和事件链都使用同一份已确认的最新值。
-
-这套规则是待实现的契约，示例没有包含适配器实现。没有补齐前不能将示例直接投入运行。
-
-按键处理采用观察语义。异步脚本不能可靠地阻止当前浏览器默认按键行为，因此首期不提供 `event.preventDefault()` 或 `return false` 拦截承诺。
-
-## 7. 需要配套修改的代码
-
-| 位置 | 改动 |
-| --- | --- |
-| `workflow-web/src/extensions/core/installer.js` | 从实际组件读取、校验静态 scriptEvents，过滤变体，并供注册与目录共用 |
-| `workflow-web/src/extensions/core/catalog.js` | 发布派生事件目录，支持组件管理页与纳管同步 |
-| `packages/workflow-core/src/shared/config-runtime/index.js` | 在描述中保留提取后的事件能力 |
-| `workflow-web/src/extensions/core/registries/formFieldRegistry.js` | 让设计器和渲染器获得同一实际组件描述，正确处理别名与版本 |
-| `workflow-web/src/components/FormFieldRenderer.vue` | 向共享运行层提供实际组件描述与当前表单上下文 |
-| `packages/workflow-core/src/extensions/builtin/fields/composables/useFormField.js` | 声明校验、triggerScriptEvent、文本交互适配与旧接口兼容 |
-| `packages/workflow-core/src/shared/field-event-scripts.js` | 两种绑定模式归一化、编译执行、event.data 与 ctx 支持 |
-| `workflow-web/src/components/EventConfigPanel.vue` | 按组件声明展示事件、参数、代码/函数模式和无效旧绑定 |
-| `workflow-web/src/views/form-designer/formNodeEditorModel.js` 及设计器摘要 | 序列化、回显、删除、复制和重开兼容对象形式处理器 |
-| 表单节点属性保存、发布检查与导入导出 | 校验绑定形状；核对组件版本及可用声明，保持发布快照语义 |
-| `TextField.vue` 与组件模板 | 实际示例接入；后续自定义组件照同一模板声明与触发 |
-
-已有共享逻辑可以复用，但不能只修改 TextField 一个文件完成这项能力。
-
-## 8. 兼容、跨端与落地顺序
-
-1. 先实现声明提取、绑定归一化和执行器，现有未声明组件保留旧协议；声明缺失与显式空列表区分。
-2. 接入 TextField 与编辑器，使用真实交互验证；核心六事件是第一轮示例，迁移前还须盘点已配置的 onMouseenter、输入法事件等旧自定义事件，并补齐实际可用声明/绑定，不能直接取消原有功能。
-3. 保留已发布表单的旧协议执行路径，切换新协议前逐项核对绑定。必要时用新组件版本承载行为变化，不回写历史发布快照。
-4. 再接入一个非文本自定义组件验证：新增业务事件只改组件声明与触发代码，编辑器无需增加该事件专属分支。
-5. PC 与移动端分别从实际实现提取能力，不能把 TextField 的 DOM 按键/清空能力直接复制给移动端组件。面向多端发布时提示不一致并阻止宣称某端不具备的能力已接入。
-6. 嵌入页面继续执行现有脚本禁用规则；后台事件链能力不受前端脚本声明自动扩展。
-
-## 9. 验收标准
-
-- 组件无需挂载就能读取声明；输入、密码、多行文本事件目录正确，目录与实际解析组件一致。
-- 一个全新自定义组件声明并触发 `onRecognizeSuccess` 后，设计器自动显示，绑定代码可执行；不为这个事件改设计器代码。
-- 同一组件放入两个表单字段，各自脚本独立；子表不同的行按稳定行身份隔离。
-- 代码片段与函数模式均支持 await，语法错误在保存时定位；函数只被调用一次；保存过程不执行用户代码。
-- 原字符串脚本、显式清空、复制、保存重开、发布、导入导出都不丢失代码。
-- input 不产生值变化事件链；change 脚本结束后宿主发一次 change；无脚本时保持正常交互。
-- 点击真实清空按钮，clear/input/change 各一次，后台值变化链一次；包含 await 的清空脚本不被同批次 input 错误取消。
-- 快速输入使旧异步回填失效；卸载、只读、禁用、超时及脚本抛错都有符合契约的行为。
-- Enter 与中文输入法的 isComposing 参数正确；参数对象中没有 DOM Event 或组件实例。
-- 未声明、版本不匹配、平台不支持的事件有明确提示，不能看似保存成功却永不执行。
-
-本次交付仅新增方案文档与示例文件。数据库迁移：新增无、修改无、删除无。预期实现可复用现有 JSON 文档列；如果实施中需要新增结构，应另增更高版本迁移，禁止改写历史迁移。
+数据库迁移：新增无、修改无、删除无；使用原有 JSON 文档列。

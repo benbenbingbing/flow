@@ -1,5 +1,6 @@
 import { markRaw } from 'vue'
 import { getDefaultFormFieldComponentType } from '@flow/workflow-core/extensions/core/fieldPolicy'
+import { readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
 
 const extensions = new Map()
 const builtin = new Set(['input', 'password', 'textarea', 'number', 'date', 'datetime', 'time', 'select', 'select_multiple', 'radio', 'checkbox', 'switch', 'cascader', 'user', 'dept', 'role', 'group', 'entity', 'file', 'image', 'rich_text', 'section', 'sub_form', 'sub_list'])
@@ -8,7 +9,9 @@ const builtin = new Set(['input', 'password', 'textarea', 'number', 'date', 'dat
 export function registerMobileExtension({ type = 'FIELD', name, version = 1, component, readonly = true, editable = false, validate = false, nodeTypes = ['FIELD'], supportedBindings = [], supportedFieldTypes = [] }) {
   const key = `${type}:${name}@${version}`
   if (!['FIELD', 'FORM'].includes(type) || !name || !Number.isSafeInteger(version) || version < 1 || !component || extensions.has(key)) throw new Error(`移动扩展注册无效或重复：${key}`)
-  extensions.set(key, Object.freeze({ type, name, version, component: markRaw(component), readonly, editable, validate, nodeTypes, supportedBindings, supportedFieldTypes }))
+  const scriptEvents = type === 'FIELD' ? readComponentScriptEvents(component, name) : undefined
+  extensions.set(key, Object.freeze({ type, name, version, component: markRaw(component), readonly, editable, validate, nodeTypes, supportedBindings, supportedFieldTypes,
+    ...(scriptEvents === undefined ? {} : { scriptEvents }) }))
 }
 export function getMobileExtension(type, name, version = 1) { return extensions.get(`${type}:${name}@${version}`) }
 export function mobileFieldType(field) {

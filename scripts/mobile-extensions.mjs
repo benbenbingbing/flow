@@ -12,19 +12,22 @@ export function generateMobileExtensions() {
   const imports = [], registrations = []
   entries.forEach((entry, index) => {
     const { implementation, capabilities } = entry.platforms.mobile
-    if (!['FIELD', 'FORM', 'VALIDATOR'].includes(entry.type)) throw new Error(`尚不支持的移动扩展类型：${entry.type}`)
-    if (entry.type === 'VALIDATOR' ? !['OBJECT', 'CLASS', 'FACTORY'].includes(implementation.kind) : implementation.kind !== 'COMPONENT') throw new Error(`移动扩展实现类型不符：${entry.name}`)
+    if (!['FIELD', 'FORM', 'VALIDATOR', 'FIELD_EVENT_HANDLER'].includes(entry.type)) throw new Error(`尚不支持的移动扩展类型：${entry.type}`)
+    const kinds = entry.type === 'VALIDATOR' ? ['OBJECT', 'CLASS', 'FACTORY'] : entry.type === 'FIELD_EVENT_HANDLER' ? ['FUNCTION'] : ['COMPONENT']
+    if (!kinds.includes(implementation.kind)) throw new Error(`移动扩展实现类型不符：${entry.name}`)
     const filename = resolveImplementation(path.join(repository, 'workflow-mobile'), implementation)
     const variable = `extension${index}`
     imports.push(`import ${implementation.export === 'default' ? variable : `{ ${implementation.export} as ${variable} }`} from ${JSON.stringify(filename)}`)
-    if (entry.type === 'VALIDATOR') {
+    if (entry.type === 'FIELD_EVENT_HANDLER') {
+      registrations.push(`registerFieldEventHandler(${JSON.stringify(entry.name)}, ${variable}, ${JSON.stringify({ ...entry.metadata, version: entry.version, label: entry.label, description: entry.description })})`)
+    } else if (entry.type === 'VALIDATOR') {
       const instance = implementation.kind === 'CLASS' ? `new ${variable}()` : implementation.kind === 'FACTORY' ? `${variable}()` : variable
       registrations.push(`registerCustomValidator(${JSON.stringify(entry.name)}, ${instance}, ${JSON.stringify({ ...entry.metadata, version: entry.version, label: entry.label, description: entry.description })})`)
     } else {
       registrations.push(`registerMobileExtension({ ...${JSON.stringify({ type: entry.type, name: entry.name, version: entry.version, ...entry.metadata, ...capabilities })}, component: ${variable} })`)
     }
   })
-  return ["import { registerMobileExtension } from '@flow/workflow-mobile-ui'", "import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'", ...imports, ...registrations].join('\n')
+  return ["import { registerMobileExtension } from '@flow/workflow-mobile-ui'", "import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'", "import { registerFieldEventHandler } from '@flow/workflow-core/extensions/core/registries/fieldEventHandlerRegistry'", ...imports, ...registrations].join('\n')
 }
 
 export function mobileExtensionsPlugin() {
@@ -34,12 +37,21 @@ export function mobileExtensionsPlugin() {
     load(id) { if (id === '\0' + virtualId) return generateMobileExtensions() },
     configureServer(server) {
       const manifests = manifestDirectory
+      const implementationRoot = path.join(repository, 'workflow-mobile')
+      const readFieldImplementations = () => new Set(discoverExtensions(implementationRoot, { platform: 'mobile', implementationRoot })
+        .filter(entry => entry.type === 'FIELD' && entry.platforms?.mobile)
+        .map(entry => path.resolve(implementationRoot, entry.platforms.mobile.implementation.path)))
+      let fieldImplementations = readFieldImplementations()
       server.watcher.add(manifests)
       server.watcher.on('all', (_, filename) => {
-        if (!filename.startsWith(manifests)) return
+        if (!filename.startsWith(manifests) && !fieldImplementations.has(filename)) return
+        try { fieldImplementations = readFieldImplementations() } catch (error) {
+          server.ws.send({ type: 'error', err: { message: error.message, stack: error.stack, plugin: 'flow-mobile-extensions' } })
+          return
+        }
         const module = server.moduleGraph.getModuleById('\0' + virtualId)
         if (module) server.moduleGraph.invalidateModule(module)
-        // 注册表为每个页面实例持有；完整重载避免热更新重复安装同版本。
+        // 事件能力由组件静态选项提取；完整重载同时刷新注册表和事件目录。
         server.ws.send({ type: 'full-reload' })
       })
     }

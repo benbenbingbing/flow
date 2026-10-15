@@ -18,6 +18,7 @@
   <VanField v-else-if="selectionType || dateType" class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="selectionLabel" :placeholder="`请选择${fieldLabel}`" :label-align="labelPosition" :input-align="inputAlign" center readonly is-link clickable :required="required" @click="openPicker" />
   <VanField v-else class="mobile-form-field" :border="false" :label="fieldLabel" :model-value="type === 'number' ? numberDraft ?? fieldValue : fieldValue" :type="['textarea', 'password', 'number'].includes(type) ? type : 'text'" :placeholder="placeholder" :maxlength="parsedComponentProps.maxlength" :autosize="type === 'textarea'" :label-align="labelPosition" :input-align="inputAlign" :required="required" @update:model-value="input" @focus="handleFocus" @blur="blur" />
   <p v-if="optionError" class="field-unsupported" role="alert">{{ optionError }}<button @click="loadOptions">重试</button></p>
+  <p v-if="scriptConfigurationErrors.length" class="field-unsupported" role="alert">{{ scriptConfigurationErrors.join('；') }}</p>
   <MobileEntityPicker v-if="entityType" v-model:show="pickerOpen" :title="`选择${fieldLabel}`" :model-value="selectedRecords" :multiple="multiple" :load-options="loadEntityOptions" :identity="`${context.form?.id || ''}:${field.fieldCode}`" @confirm="selectRecords" />
   <VanPopup v-else-if="type !== 'cascader'" v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
     <template v-if="dateType">
@@ -38,7 +39,9 @@
   </VanPopup>
 </template>
 <script setup>
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch, provide, getCurrentInstance } from 'vue'
+import { FIELD_SCRIPT_EVENTS, readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
+import { readFieldScripts, validateFieldScript } from '@flow/workflow-core/browser/field-event-scripts'
 import { Field as VanField, Switch as VanSwitch, RadioGroup as VanRadioGroup, Radio as VanRadio, CheckboxGroup as VanCheckboxGroup, Checkbox as VanCheckbox, Popup as VanPopup, Picker as VanPicker, DatePicker as VanDatePicker, TimePicker as VanTimePicker, NavBar as VanNavBar, Cell as VanCell } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
@@ -52,13 +55,34 @@ import MobileSubList from '../form/MobileSubList.vue'
 import MobileEntityPicker from '../pickers/MobileEntityPicker.vue'
 import { getMobileFieldExtension, mobileFieldCapability, mobileFieldType } from './registry.js'
 import { resolveMobileLabelPosition } from './mobileFieldLayout.js'
+// 移动端从自己的实现声明能力，不继承 PC 的鼠标、键盘和清空事件。
+defineOptions({ scriptEvents: [
+  { name: 'onChange', label: '值变化', description: '确认修改后触发', variants: ['input', 'password', 'textarea', 'number', 'date', 'datetime', 'time', 'select', 'select_multiple', 'radio', 'checkbox', 'switch', 'cascader', 'user', 'dept', 'role', 'group', 'entity', 'file', 'image', 'rich_text', 'sub_form'] },
+  { name: 'onInput', label: '输入中', description: '输入文本时触发', variants: ['input', 'password', 'textarea', 'number', 'rich_text'] },
+  { name: 'onFocus', label: '聚焦', description: '输入控件获得焦点时触发', variants: ['input', 'password', 'textarea', 'number', 'rich_text', 'cascader'] },
+  { name: 'onBlur', label: '失焦', description: '输入控件失去焦点时触发', variants: ['input', 'password', 'textarea', 'number', 'rich_text', 'cascader'] }
+] })
 const props = defineProps({ ...formFieldProps, services: { type: Object, default: () => ({}) }, registry: { type: Object, default: () => ({}) }, required: Boolean })
 const emit = defineEmits(['update:modelValue', 'patch-form', 'change', 'blur', 'focus'])
-const { fieldValue, fieldLabel, parsedComponentProps, staticOptions, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled })
+const componentOptions = getCurrentInstance().type
+const mobileScriptEvents = computed(() => readComponentScriptEvents(componentOptions, mobileFieldType(props.field)))
+const { fieldValue, fieldLabel, parsedComponentProps, staticOptions, placeholder, handleChange, handleInput, handleBlur, handleFocus, handleSelectionChange } = useFormField(props, emit, { applyDefaults: () => !props.disabled, scriptEvents: mobileScriptEvents })
 const type = computed(() => mobileFieldType(props.field))
 const labelPosition = computed(() => resolveMobileLabelPosition(props.context.form))
 const inputAlign = computed(() => labelPosition.value === 'top' ? 'left' : 'right')
 const custom = computed(() => getMobileFieldExtension(props.field))
+provide(FIELD_SCRIPT_EVENTS, computed(() => custom.value?.scriptEvents))
+// PC 配置可能包含移动端没有的交互；明确显示不可用原因，不能让已配置事件看似会在本端执行。
+const scriptConfigurationErrors = computed(() => {
+  const declarations = custom.value ? custom.value.scriptEvents : mobileScriptEvents.value
+  return Object.entries(readFieldScripts(props.field)).flatMap(([name, binding]) => {
+    try {
+      if (declarations !== undefined && !declarations.some(item => item.name === name)) throw new Error('移动组件不支持此事件')
+      validateFieldScript(binding, props.field, name)
+      return []
+    } catch (error) { return [`${name}：${error.message}`] }
+  })
+})
 const capability = computed(() => mobileFieldCapability(props.field))
 const fieldProps = computed(() => ({ formData: props.formData, node: props.node || props.field.node, config: parsedComponentProps.value, readonly: props.readonly, mode: props.mode, field: props.field, modelValue: props.modelValue, disabled: props.disabled, options: props.options, context: props.context, services: props.services, dataSourceRuntime: props.dataSourceRuntime, attachmentItemRequiredState: props.attachmentItemRequiredState }))
 /** 组件写入统一经过宿主，禁用/无绑定时不得生成假字段。 */

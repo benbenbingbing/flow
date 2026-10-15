@@ -9,6 +9,21 @@ import { updateBpmnExtensionProperty } from '../../../components/node-config/bpm
 function editor(entityFields = []) {
   return createFormNodeEditorModel({ entityFields: { value: entityFields }, activeExtensionMap: { value: new Map() } })
 }
+test('节点复制和保存回读保留函数引用，根草稿显式清空覆盖旧代码', () => {
+  const model = editor()
+  const binding = { mode: 'function', handler: 'trimText', version: 1 }
+  const node = { nodeType: 'FIELD', nodeKey: 'name', bindingType: 'NONE', propsDocument: JSON.stringify({
+    fieldCode: 'name', fieldType: 'STRING', componentType: 'input', componentProps: { events: { onChange: binding, onInput: 'old' } }
+  }) }
+  const field = model.nodeToField(node)
+  assert.deepEqual(field.eventOnChange, binding)
+  field.eventOnInput = ''
+  const payload = model.fieldToNodePayload(JSON.parse(JSON.stringify(field)))
+  assert.deepEqual(payload.props.componentProps.events, { onChange: binding })
+  const restored = model.nodeToField({ ...node, propsDocument: JSON.stringify(payload.props) })
+  assert.deepEqual(restored.eventOnChange, binding)
+  assert.equal(restored.eventOnInput, undefined)
+})
 test('自定义组件使用唯一组件类型往返，参数和锁定版本不会恢复成平台默认控件', () => {
   const name = 'designer_summary_component'
   const schema = [{ key: 'caption', label: '标题', type: 'string' }]

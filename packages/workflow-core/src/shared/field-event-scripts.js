@@ -1,7 +1,38 @@
 import { isEmbedPath } from '../runtime/app-mode.js'
+import { FIELD_HANDLER_NAME, getFieldEventHandler, fieldEventHandlerApplicable } from '../extensions/core/registries/fieldEventHandlerRegistry.js'
 
 export const FIELD_SCRIPT_CONTEXT = Symbol('field-script-context')
 export const FIELD_SCRIPT_TIMEOUT = 5000
+
+/** 保留非法对象供编辑器定位，不能在读取/保存时静默删除已有绑定。 */
+export function hasFieldScript(binding) {
+  if (typeof binding === 'string') return Boolean(binding.trim())
+  if (binding == null) return false
+  if (binding.mode === 'body') return typeof binding.code !== 'string' || Boolean(binding.code.trim())
+  return true
+}
+
+/** 历史字符串是代码片段；函数模式只接受受控注册名和精确版本。 */
+export function normalizeFieldScript(binding) {
+  if (typeof binding === 'string') return { mode: 'body', code: binding }
+  if (!binding || typeof binding !== 'object' || Array.isArray(binding)) throw new Error('事件处理配置必须为代码片段或处理函数引用')
+  if (binding.mode === 'body' && typeof binding.code === 'string' && Object.keys(binding).every(key => ['mode', 'code'].includes(key))) return { mode: 'body', code: binding.code }
+  if (binding.mode === 'function' && typeof binding.handler === 'string' && FIELD_HANDLER_NAME.test(binding.handler) && Number.isSafeInteger(binding.version) && binding.version > 0
+    && Object.keys(binding).every(key => ['mode', 'handler', 'version'].includes(key))) return { mode: 'function', handler: binding.handler, version: binding.version }
+  throw new Error('处理函数须选择注册名和版本，代码片段须填写 code')
+}
+
+/** 设计器保存/发布与运行时共享校验；只编译代码，绝不在校验时执行。 */
+export function validateFieldScript(binding, field, eventName) {
+  const normalized = normalizeFieldScript(binding)
+  if (normalized.mode === 'body') compileFieldScript(normalized.code)
+  else {
+    const descriptor = getFieldEventHandler(normalized.handler, normalized.version)
+    if (!descriptor) throw new Error(`处理函数未安装：${normalized.handler}@${normalized.version}`)
+    if (!fieldEventHandlerApplicable(descriptor, field, eventName)) throw new Error(`处理函数不适用于当前字段或事件：${normalized.handler}`)
+  }
+  return normalized
+}
 
 /** 根属性是设计器草稿，优先于已序列化的 componentProps.events，包括显式清空。 */
 export function readFieldScripts(field) {
@@ -13,7 +44,7 @@ export function readFieldScripts(field) {
   Object.entries(field || {}).forEach(([key, value]) => {
     if (key.startsWith('eventOn')) events[`on${key.slice(7)}`] = value
   })
-  return Object.fromEntries(Object.entries(events).filter(([, code]) => typeof code === 'string' && code.trim()))
+  return Object.fromEntries(Object.entries(events).filter(([, binding]) => hasFieldScript(binding)))
 }
 
 /** 同步草稿与序列化副本；清空/删除脚本后不能从旧 componentProps 再恢复出来。 */
@@ -23,7 +54,7 @@ export function writeFieldScripts(field, events) {
     try { props = JSON.parse(props) } catch { props = {} }
   }
   const componentProps = { ...props }
-  const scripts = Object.fromEntries(Object.entries(events).filter(([, code]) => typeof code === 'string' && code.trim()))
+  const scripts = Object.fromEntries(Object.entries(events).filter(([, binding]) => hasFieldScript(binding)))
   Object.keys(field).forEach(key => {
     if (key.startsWith('eventOn')) delete field[key]
   })
@@ -65,19 +96,21 @@ export function fieldScriptEventSupported(field, event) {
  * 超时只能结束异步等待，无法抢占主线程死循环，也不限制脚本访问浏览器全局对象。
  */
 export async function runFieldScript(code, context, { timeout = FIELD_SCRIPT_TIMEOUT } = {}) {
-  if (!code?.trim() || !context.isCurrent()) return
+  if (!hasFieldScript(code) || !context.isCurrent()) return
   const environmentError = fieldScriptEnvironmentError()
   if (environmentError) throw new Error(environmentError)
-  const run = compileFieldScript(code)
+  const binding = validateFieldScript(code, context.field, context.event?.name)
+  const run = binding.mode === 'body' ? compileFieldScript(binding.code) : getFieldEventHandler(binding.handler, binding.version).handler
   let active = true
   let timer
   const guardedWrite = fn => (...args) => {
     if (active && context.isCurrent()) return fn(...args)
   }
   try {
+    const ctx = Object.freeze({ value: context.value, field: context.field, selection: context.selection, event: context.event,
+      setValue: guardedWrite(context.setValue), getFieldValue: context.getFieldValue, setFieldValue: guardedWrite(context.setFieldValue) })
     await Promise.race([
-      run(context.value, context.field, context.selection, context.event,
-        guardedWrite(context.setValue), context.getFieldValue, guardedWrite(context.setFieldValue)),
+      binding.mode === 'body' ? run(ctx.value, ctx.field, ctx.selection, ctx.event, ctx.setValue, ctx.getFieldValue, ctx.setFieldValue) : run(ctx),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error(`脚本等待超过 ${timeout} 毫秒`)), timeout)
       })

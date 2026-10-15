@@ -30,6 +30,14 @@ import { ElMessage } from 'element-plus'
 import { Connection } from '@element-plus/icons-vue'
 import { uiEventBindingApi } from '@/api/uiConfig'
 import { getFormId } from '@/shared/form-action-runtime'
+import { useFormField } from '@flow/workflow-core/vue/useFormField'
+
+defineOptions({ scriptEvents: [
+  { name: 'onChange', label: '值变化', description: '评分脚本处理完成后执行值变化事件链' },
+  { name: 'onScoreCommit', label: '提交评分', description: '滑块拖动结束或输入框提交评分时触发，随后执行值变化事件', parameters: [
+    { name: 'score', type: 'number', description: '本次提交的原始评分', required: true }
+  ] }
+] })
 
 const props = defineProps({
   field: { type: Object, default: () => ({}) },
@@ -41,6 +49,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:modelValue', 'change'])
+const fieldEvents = useFormField(props, emit)
 const localValue = ref(normalize(props.modelValue))
 const eventLoading = ref(false)
 const passScore = computed(() =>
@@ -71,15 +80,17 @@ function normalize(value) {
     : 0
 }
 
-function handleChange(value) {
+async function handleChange(value) {
   const normalized = normalize(value)
   console.info('[ProjectExtensionAcceptance] 自定义评分字段变化', {
     fieldCode: props.field?.fieldCode,
     value: normalized,
     mode: props.context?.mode
   })
-  emit('update:modelValue', normalized)
-  emit('change', normalized)
+  // 业务事件由组件在真实交互处触发；脚本回填后再进入标准 change 与后台事件链。
+  fieldEvents.fieldValue.value = normalized
+  const result = await fieldEvents.triggerScriptEvent('onScoreCommit', { value: normalized, data: { score: normalized } })
+  if (result.current) await fieldEvents.handleChange(result.value)
 }
 
 async function executeFieldButtonEvent() {

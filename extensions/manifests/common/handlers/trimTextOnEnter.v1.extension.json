@@ -1,0 +1,39 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD_EVENT_HANDLER",
+  "name": "trimTextOnEnter",
+  "label": "回车时去除首尾空格",
+  "description": "按下 Enter 且不在输入法组词时去除首尾空格。",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/handlers/textHandlers.js",
+    "export": "trimTextOnEnter",
+    "kind": "FUNCTION"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "TEXT"
+    ],
+    "capabilities": {
+      "eventNames": [
+        "onKeydown"
+      ]
+    }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/textHandlers.js",
+        "export": "trimTextOnEnter",
+        "kind": "FUNCTION"
+      },
+      "capabilities": {
+        "readonly": false,
+        "editable": true,
+        "validate": false
+      }
+    }
+  }
+}

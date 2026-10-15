@@ -20,6 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EntityFormNodePropertyPolicyTest {
 
     @Test
+    void scriptBindingsPreserveLegacyCodeAndVersionedHandlers() {
+        Map<String, Object> events = Map.of("onInput", "setValue(value)",
+                "onChange", Map.of("mode", "body", "code", "await Promise.resolve()"),
+                "onBlur", Map.of("mode", "function", "handler", "trimText", "version", 1));
+        Map<String, Object> props = Map.of("componentProps", Map.of("events", events));
+        assertEquals(props, EntityFormNodePropertyPolicy.normalizeProps("FIELD", props, false).active());
+        for (Object invalid : java.util.List.of("wrong-shape", Map.of("change", "code"),
+                Map.of("onChange", Map.of("mode", "function", "code", "() => {}")),
+                Map.of("onChange", Map.of("mode", "function", "handler", "trimText", "version", 1.5)),
+                Map.of("onChange", Map.of("mode", "body", "code", 42)))) {
+            assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(
+                    "FIELD", Map.of("componentProps", Map.of("events", invalid)), false));
+        }
+    }
+
+    @Test
     void passwordInputIsABuiltInStringComponent() {
         assertTrue(EntityFormNodePropertyPolicy.isBuiltInComponent("password"));
         Map<String, Object> props = Map.of("fieldCode", "secret", "fieldType", "STRING",

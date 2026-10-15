@@ -22,8 +22,8 @@ const entries = discoverExtensions(root)
 const sample = entries.find(item => item.name === 'project_acceptance_score')
 const copy = value => JSON.parse(JSON.stringify(value))
 
-test('现有清单覆盖九类，保留业务名称和 Demo 开关；生成字段策略与清单一致', () => {
-  assert.equal(new Set(entries.map(item => item.type)).size, 9)
+test('现有清单覆盖十类，保留业务名称和 Demo 开关；生成字段策略与清单一致', () => {
+  assert.equal(new Set(entries.map(item => item.type)).size, 10)
   for (const name of ['ProjectMemberChangeForm', 'PROJECT_CUSTOM_LIST_SCHEMA', 'project_acceptance_score', 'PROJECT:CUSTOM_CONDITION', 'amount', 'DefaultText']) {
     assert.ok(entries.some(item => item.name === name && item.enabled !== false), name)
   }

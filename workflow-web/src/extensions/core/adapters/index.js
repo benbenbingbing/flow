@@ -5,6 +5,7 @@ import { registerListButtonComponent } from '../registries/listButtonComponentRe
 import { registerListToolbarAction, registerListRowAction } from '../registries/listActionRegistry.js'
 import { registerEntityActionRuleCondition, registerEntityPermissionOptionProvider } from '../registries/entityActionRuleRegistry.js'
 import { registerCustomValidator } from '@flow/workflow-core/extensions/core/registries/validatorRegistry'
+import { registerFieldEventHandler } from '@flow/workflow-core/extensions/core/registries/fieldEventHandlerRegistry'
 
 /** 平台内部注册适配器；业务新增实现只写 JSON，value 已经由安装器校验并实例化。 */
 export const extensionAdapters = {
@@ -14,6 +15,7 @@ export const extensionAdapters = {
   LIST_CELL: (entry, value, metadata) => registerCellComponent(entry.name, value, metadata),
   LIST_BUTTON: (entry, value) => registerListButtonComponent(entry.name, value),
   VALIDATOR: (entry, value, metadata) => registerCustomValidator(entry.name, value, metadata),
+  FIELD_EVENT_HANDLER: (entry, value, metadata) => registerFieldEventHandler(entry.name, value, metadata),
   LIST_ACTION(entry, value) {
     if (entry.targets.includes('TOOLBAR')) registerListToolbarAction(entry.name, value)
     if (entry.targets.includes('ROW')) registerListRowAction(entry.name, value)

@@ -2,7 +2,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 const schema = JSON.parse(readFileSync(new URL('../../extensions/schemas/extension.schema.json', import.meta.url), 'utf8'))
-const multiVersionTypes = new Set(['FORM', 'LIST', 'FIELD', 'VALIDATOR'])
+const multiVersionTypes = new Set(['FORM', 'LIST', 'FIELD', 'VALIDATOR', 'FIELD_EVENT_HANDLER'])
 const componentTypes = new Set(['FORM', 'LIST', 'FIELD', 'LIST_CELL', 'LIST_BUTTON', 'ACTION_CONDITION'])
 
 /** 执行本项目清单 Schema 使用的校验关键字；错误携带 JSON 属性路径，供构建输出定位。 */
@@ -56,7 +56,7 @@ export function validateManifest(manifest, root, filename, { platform = 'pc', im
   const { type, implementation, metadata = {}, hooks = {} } = manifest
   const fail = message => { throw new Error(`${filename}: ${message}`) }
   if (componentTypes.has(type) && implementation.kind !== 'COMPONENT') fail(`${type} 需要 COMPONENT`)
-  if (['LIST_ACTION', 'PERMISSION_PROVIDER'].includes(type) && implementation.kind !== 'FUNCTION') fail(`${type} 需要 FUNCTION`)
+  if (['LIST_ACTION', 'PERMISSION_PROVIDER', 'FIELD_EVENT_HANDLER'].includes(type) && implementation.kind !== 'FUNCTION') fail(`${type} 需要 FUNCTION`)
   if (type === 'VALIDATOR' && !['OBJECT', 'CLASS', 'FACTORY'].includes(implementation.kind)) fail('VALIDATOR 需要 OBJECT/CLASS/FACTORY')
   if ((type === 'LIST_ACTION') !== Boolean(manifest.targets)) fail('targets 只允许且必须出现在 LIST_ACTION')
   if (manifest.defaultConfig && type !== 'ACTION_CONDITION') fail('defaultConfig 仅用于 ACTION_CONDITION')

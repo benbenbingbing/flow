@@ -21,6 +21,13 @@
 </template>
 
 <script setup>
+
+// 仅声明此实现已接入的前端事件，供字段配置和运行时共用。
+defineOptions({ scriptEvents: [
+    { name: 'onChange', label: '值变化', description: '用户修改值后触发，完成后执行值变化事件链' },
+    { name: 'onFocus', label: '聚焦', description: '控件获得焦点时触发' },
+    { name: 'onBlur', label: '失焦', description: '控件失去焦点时触发' }
+] })
 import { computed } from 'vue'
 import { useFormField } from '@flow/workflow-core/vue/useFormField'
 

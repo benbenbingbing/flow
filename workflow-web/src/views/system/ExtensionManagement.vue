@@ -274,6 +274,14 @@
           <h3>配置 Schema</h3>
           <pre class="json-viewer">{{ formatJson(detail.configSchema || detail.extraParamSchema || {}) }}</pre>
         </section>
+        <section v-if="detail.capabilities?.scriptEvents" class="detail-section">
+          <h3>组件前端事件</h3>
+          <el-table :data="detail.capabilities.scriptEvents" size="small">
+            <el-table-column prop="label" label="名称" width="110" />
+            <el-table-column prop="name" label="事件编码" width="160" />
+            <el-table-column prop="description" label="触发说明" />
+          </el-table>
+        </section>
       </div>
     </el-drawer>
 
@@ -328,6 +336,7 @@ const typeOptions = [
   { value: 'UI_LIST_BUTTON', label: '列表按钮组件' },
   { value: 'UI_LIST_ACTION', label: '列表动作函数' },
   { value: 'UI_VALIDATOR', label: '前端校验器' },
+  { value: 'UI_FIELD_EVENT_HANDLER', label: '前端事件处理函数' },
   { value: 'UI_ACTION_CONDITION', label: '操作条件编辑器' },
   { value: 'UI_PERMISSION_PROVIDER', label: '权限候选提供器' }
 ]
@@ -399,7 +408,7 @@ async function load() {
   loadError.value = ''
   try {
     const [catalogRows, allDefinitions, catalog] = await Promise.all([
-      (currentFilters.status === 'BUILD_ONLY' || ['UI_LIST_CELL', 'UI_LIST_BUTTON', 'UI_LIST_ACTION', 'UI_VALIDATOR', 'UI_ACTION_CONDITION', 'UI_PERMISSION_PROVIDER'].includes(currentFilters.capabilityType)) ? Promise.resolve([]) : loadAllExtensionCatalogRows(
+      (currentFilters.status === 'BUILD_ONLY' || ['UI_LIST_CELL', 'UI_LIST_BUTTON', 'UI_LIST_ACTION', 'UI_VALIDATOR', 'UI_FIELD_EVENT_HANDLER', 'UI_ACTION_CONDITION', 'UI_PERMISSION_PROVIDER'].includes(currentFilters.capabilityType)) ? Promise.resolve([]) : loadAllExtensionCatalogRows(
         params => extensionCatalogApi.manage(params),
         { ...currentFilters, implementationOrigin: ['COMMON', 'EXAMPLE'].includes(currentFilters.implementationOrigin) ? undefined : currentFilters.implementationOrigin }
       ),

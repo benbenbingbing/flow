@@ -1,3 +1,5 @@
+import { readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
+
 /**
  * 创建独立安装器。entries 为生成器提供的模块引用与可信描述，不接受页面上传清单。
  * adapters 由平台固定提供；测试可注入独立适配器验证错误隔离与幂等性。
@@ -13,7 +15,8 @@ export function createExtensionInstaller(adapters, publish = () => {}) {
     if (installedSignature !== null) throw new Error('扩展清单变化需要刷新页面，不能叠加注册')
     try {
       // 完整验证导出和实例后才写入注册表；业务函数在此阶段不可被当作工厂误执行。
-      const plan = selected.map(({ descriptor: entry, implementation, hooks = {} }) => {
+      const plan = selected.map(({ descriptor, implementation, hooks = {} }) => {
+        let entry = descriptor
         const fail = message => { throw new Error(`${entry.sourceFile} [${entry.type}:${entry.name}]: ${message}`) }
         if (!adapters[entry.type]) fail('没有对应注册适配器')
         const kind = entry.implementation.kind
@@ -33,6 +36,14 @@ export function createExtensionInstaller(adapters, publish = () => {}) {
         if (kind === 'COMPONENT' && (!value || !['object', 'function'].includes(typeof value))) fail('缺少 Vue 组件导出')
         if (kind === 'OBJECT' && (!value || typeof value !== 'object')) fail('缺少对象导出')
         if (entry.type === 'VALIDATOR' && typeof value?.validate !== 'function') fail('校验器必须提供 validate(value, context)')
+        if (entry.type === 'FIELD') {
+          let scriptEvents
+          try { scriptEvents = readComponentScriptEvents(value, entry.name) } catch (error) { fail(error.message) }
+          // 注册描述和目录必须发布同一份派生声明；不能只给 adapter 增加能力而遗漏服务端目录副本。
+          const { scriptEvents: ignored, ...capabilities } = entry.metadata?.capabilities || {}
+          entry = { ...entry, metadata: { ...entry.metadata, capabilities: { ...capabilities,
+            ...(scriptEvents === undefined ? {} : { scriptEvents }) } } }
+        }
         for (const [key, hook] of Object.entries(hooks)) if (typeof hook !== 'function') fail(`${key} 钩子必须为函数`)
         return { entry, value, metadata: { ...entry.metadata, name: entry.name, label: entry.label, description: entry.description, version: entry.version, origin: entry.origin, ...hooks } }
       })

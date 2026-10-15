@@ -6,6 +6,11 @@
 </template>
 
 <script setup>
+
+// 仅声明此实现已接入的前端事件，供字段配置和运行时共用。
+defineOptions({ scriptEvents: [
+
+] })
 import { computed } from 'vue'
 
 const props = defineProps({

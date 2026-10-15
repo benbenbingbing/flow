@@ -15,14 +15,14 @@ import {
 
 const root = fileURLToPath(new URL('../../..', import.meta.url))
 
-test('全部九类出现在目录中，远程纳管项去重，其余项只展示构建信息', () => {
+test('全部十类出现在目录中，远程纳管项去重，其余项只展示构建信息', () => {
   const entries = discoverExtensions(root).filter(item => item.enabled !== false)
   publishExtensionCatalog(entries)
   const catalog = getExtensionCatalog()
   const managed = catalog.find(item => item.type === 'FORM')
   const keys = new Set([`UI_FORM:${managed.name}:${managed.version}`])
   const rows = localExtensionRows(catalog, keys)
-  assert.equal(new Set(rows.map(item => item.capabilityType)).size, 9)
+  assert.equal(new Set(rows.map(item => item.capabilityType)).size, 10)
   assert.ok(!rows.some(item => item.key === managed.name))
   const validator = rows.find(item => item.capabilityType === 'UI_VALIDATOR')
   assert.equal(validator.buildOnly, true)

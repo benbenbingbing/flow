@@ -16,9 +16,10 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, provide } from 'vue'
 import { provideFieldScriptContext } from '@/composables/provideFieldScriptContext'
-import { resolveFieldComponent } from '@/extensions/core/registries/formFieldRegistry.js'
+import { resolveFieldComponentDescriptor } from '@/extensions/core/registries/formFieldRegistry.js'
+import { FIELD_SCRIPT_EVENTS } from '@flow/workflow-core/browser/field-script-metadata'
 import { formFieldProps, formFieldEmits } from '@flow/workflow-core/extensions/contracts/form-field'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 
@@ -26,7 +27,9 @@ const props = defineProps(formFieldProps)
 const emit = defineEmits(formFieldEmits)
 provideFieldScriptContext(() => props.context)
 const componentRef = ref(null)
-const resolvedComponent = computed(() => resolveFieldComponent(props.field))
+const resolvedDescriptor = computed(() => resolveFieldComponentDescriptor(props.field))
+const resolvedComponent = computed(() => resolvedDescriptor.value?.component)
+provide(FIELD_SCRIPT_EVENTS, computed(() => resolvedDescriptor.value?.capabilities.scriptEvents))
 const componentProps = computed(() => ({
   ...props,
   node: props.node || props.field.node || null,

@@ -635,6 +635,39 @@ public final class EntityFormNodePropertyPolicy {
             }
         }
         rejectArbitraryUrl(props.get("componentProps"), "componentProps");
+        validateScriptEvents(objectMap(props.get("componentProps")).get("events"));
+    }
+
+    /**
+     * 字段事件随节点 JSON 保存、复制和发布；后端仅验证存储形状，不执行浏览器代码。
+     * 旧字符串仍有效，函数引用必须锁定正整数版本；实际可用性由对应前端构建注册表核对。
+     */
+    private static void validateScriptEvents(Object events) {
+        if (events == null) return;
+        if (!(events instanceof Map<?, ?> bindings)) {
+            throw new IllegalArgumentException("componentProps.events 必须为对象");
+        }
+        for (Map.Entry<?, ?> entry : bindings.entrySet()) {
+            if (!String.valueOf(entry.getKey()).matches("^on[A-Z][A-Za-z0-9]*$")) {
+                throw new IllegalArgumentException("前端事件名称格式无效：" + entry.getKey());
+            }
+            Object value = entry.getValue();
+            if (value instanceof String) continue;
+            if (!(value instanceof Map<?, ?> binding)) {
+                throw new IllegalArgumentException("前端事件必须配置代码片段或处理函数引用");
+            }
+            if ("body".equals(binding.get("mode")) && binding.get("code") instanceof String
+                    && Set.of("mode", "code").containsAll(binding.keySet())) continue;
+            Object version = binding.get("version");
+            if ("function".equals(binding.get("mode"))
+                    && binding.get("handler") instanceof String handler
+                    && handler.matches("^[A-Za-z][A-Za-z0-9_.:-]{0,99}$")
+                    && version instanceof Number number && number.doubleValue() >= 1
+                    && number.doubleValue() <= 9007199254740991D
+                    && number.doubleValue() == Math.floor(number.doubleValue())
+                    && Set.of("mode", "handler", "version").containsAll(binding.keySet())) continue;
+            throw new IllegalArgumentException("前端事件处理配置无效：" + entry.getKey());
+        }
     }
 
     /** 显示配置不授予数据权限；只接受四种模式的显示开关与条件规则对象。 */

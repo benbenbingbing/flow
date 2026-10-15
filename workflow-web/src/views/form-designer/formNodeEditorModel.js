@@ -4,6 +4,7 @@ import { normalizeFormNodeType } from '@flow/workflow-core/form-node-hierarchy'
 import { buildFormNodePayload, extractFormNodeComponentConfig, formNodeSupports, getFormNodeDataSourceUsages, mergeFormNodeFieldMetadata, resolveFormNodeBinding } from '@flow/workflow-core/form-node-property-schema'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListDisplayConfig, SUB_LIST_ACTION_DISPLAY_VERSION } from '@/shared/sub-list'
+import { readFieldScripts } from '@flow/workflow-core/browser/field-event-scripts'
 
 /**
  * 统一组件目录按宿主节点、绑定与实体类型筛选；平台预置和项目组件遵守相同约束。
@@ -333,14 +334,8 @@ export function createFormNodeEditorModel({ entityFields, activeExtensionMap }) 
         }
       }
 
-      // 序列化事件配置
-      const events = {}
-      Object.keys(field).forEach(key => {
-        if (key.startsWith('eventOn') && field[key]) {
-          const eventName = 'on' + key.slice(7)
-          events[eventName] = field[key]
-        }
-      })
+      // 根草稿覆盖持久化副本（含显式清空），同时保留处理函数引用和未展开过的旧节点事件。
+      const events = readFieldScripts(field)
       if (Object.keys(events).length > 0) {
         compProps.events = events
       } else {

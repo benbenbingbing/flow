@@ -1,0 +1,37 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "schemaVersion": 1,
+  "type": "FIELD_EVENT_HANDLER",
+  "name": "trimText",
+  "label": "去除首尾空格",
+  "description": "文本值去除首尾空格，通过 setValue 回填当前字段。",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/common/handlers/textHandlers.js",
+    "export": "trimText",
+    "kind": "FUNCTION"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "STRING",
+      "TEXT"
+    ],
+    "capabilities": {
+      "eventNames": []
+    }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "path": "src/extensions/textHandlers.js",
+        "export": "trimText",
+        "kind": "FUNCTION"
+      },
+      "capabilities": {
+        "readonly": false,
+        "editable": true,
+        "validate": false
+      }
+    }
+  }
+}

@@ -17,24 +17,30 @@ import Editor from '/src/components/EventConfigPanel.vue'
 import FormPreview from '/src/components/FormPreviewLinkage.vue'
 import { uiEventBindingApi } from '/src/api/uiConfig.js'
 import request from '/src/utils/request.js'
-const state = reactive({record:{text:'', user:null, target:''}, trace:[], visible:false, codes:{onChange:'if ('}, saved:null, useAccessor:false})
+import { registerApplicationExtensions } from '/src/extensions/register.js'
+registerApplicationExtensions()
+const state = reactive({record:{text:'', user:null, target:'',score:20}, trace:[], visible:false, codes:{onChange:'if ('}, saved:null, useAccessor:false})
 window.scriptTrace=state.trace
-const text={fieldCode:'text',fieldName:'测试文本',componentType:'input',componentProps:{events:{
+const text={fieldCode:'text',fieldName:'测试文本',fieldType:'STRING',componentType:'input',componentProps:{events:{
  onInput:"window.scriptTrace.push(['input',value])",
  onChange:"await new Promise(r=>setTimeout(r,20)); setValue(value.trim().toUpperCase()); setFieldValue('target',getFieldValue('text')); window.scriptTrace.push(['script',value])",
  onFocus:"window.scriptTrace.push(['focus',value])",onBlur:"window.scriptTrace.push(['blur',value])"
 }}}
 const user={fieldCode:'user',fieldName:'单选用户',fieldType:'REFERENCE',componentType:'reference',refEntityType:'USER',componentProps:{events:{onChange:"setFieldValue('target', selection ? selection.name : '已清空'); window.scriptTrace.push(['user',value,selection])"}}}
 state.text=text;state.user=user
+state.score={fieldCode:'score',fieldName:'自定义评分',fieldType:'INTEGER',componentType:'project_acceptance_score',componentVersion:1,componentProps:{events:{
+ onScoreCommit:{mode:'body',code:"await Promise.resolve();window.scriptTrace.push(['score-commit',event.data.score]);setValue(value+1)"},
+ onChange:{mode:'body',code:"window.scriptTrace.push(['score-change',value])"}
+}}}
 state.nodeRecord={nodeText:''}
 const nodeField={id:'nf1',fieldCode:'nodeText',fieldName:'节点文本',fieldType:'STRING',componentType:'input',componentProps:{events:{onChange:"await Promise.resolve();setValue(value.toUpperCase());setFieldValue('nodeTarget','节点回填')"}}}
-const nodeForm={id:'nodeForm',fields:[nodeField,{id:'nf2',fieldCode:'nodeTarget',fieldType:'STRING'}],nodes:[{id:'node1',nodeType:'FIELD',nodeKey:'nodeText',bindingType:'FIELD',bindingRef:'nf1',props:{fieldCode:'nodeText',componentType:'input'}}]}
+const nodeForm={id:'nodeForm',fields:[nodeField,{id:'nf2',fieldCode:'nodeTarget',fieldType:'STRING'}],nodes:[{id:'node1',nodeType:'FIELD',nodeKey:'nodeText',bindingType:'FIELD',bindingRef:'nf1',props:{fieldCode:'nodeText',componentType:'input'}},{id:'node2',nodeType:'FIELD',nodeKey:'nodeTarget',bindingType:'FIELD',bindingRef:'nf2',props:{fieldCode:'nodeTarget',fieldType:'STRING',componentType:'input'}}]}
 const row={id:'u1',name:'测试用户',code:'user1',entityType:'USER'}
 request.get=async url=>{if(!url.startsWith('/entity-selector/'))throw Error('unexpected API: '+url);return url.includes('/batch')?[row]:{records:[row],total:1}}
 uiEventBindingApi.execute=async(code,payload)=>{state.trace.push(['chain',code,JSON.parse(JSON.stringify(payload))]);return {effects:[]}}
 const app=createApp({setup(){return()=>h('main',{style:'width:880px;margin:30px auto'},[
  h('h2','前端脚本事件验收'),
- ...['text','user'].map(key=>h('div',{id:key,style:'margin:20px 0'},[h(Renderer,{field:state[key],modelValue:state.record[key],'onUpdate:modelValue':v=>state.record[key]=v,context:{form:{id:'f1'},...(state.useAccessor?{getFormData:()=>state.record}:{record:state.record})}})])),
+ ...['text','user','score'].map(key=>h('div',{id:key,style:'margin:20px 0'},[h(Renderer,{field:state[key],formData:state.record,modelValue:state.record[key],'onUpdate:modelValue':v=>state.record[key]=v,context:{form:{id:'f1'},...(state.useAccessor?{getFormData:()=>state.record}:{record:state.record})}})])),
  h('div',{id:'node-preview'},[h(FormPreview,{form:nodeForm,modelValue:state.nodeRecord,'onUpdate:modelValue':v=>state.nodeRecord=v,mode:'create'})]),
  h('p',{id:'target'},state.record.target),h('button',{id:'outside'},'其他区域'),
  h(Editor,{visible:state.visible,'onUpdate:visible':v=>state.visible=v,modelValue:state.codes,field:state.text,onSave:codes=>state.saved=codes})
@@ -86,6 +92,11 @@ try{
  assert.ok(trace.findIndex(t=>t[0]==='script')<trace.findIndex(t=>t[0]==='chain'))
  assert.equal(trace.find(t=>t[0]==='chain')[2].input.value,'ABC')
  assert.equal(await evaluate('scriptTest.state.record.target'),'ABC')
+ // 业务组件自己的事件自动执行，完成后使用回填值进入标准 change；没有设计器专属评分分支。
+ await evaluate(`scriptTest.state.trace.length=0;(()=>{const e=document.querySelector('#score input');e.value='60';e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))})();scriptTest.settle()`)
+ assert.deepEqual(await evaluate(`JSON.parse(JSON.stringify(scriptTest.state.trace.filter(t=>t[0]!=='chain')))`),[['score-commit',60],['score-change',61]])
+ assert.equal(await evaluate(`scriptTest.state.trace.filter(t=>t[0]==='chain').length`),1)
+ assert.equal(await evaluate('scriptTest.state.record.score'),61)
  // 点击真实实体选择器并选择记录，模型仍是 ID，脚本收到完整 selection。
  await evaluate(`document.querySelector('#user .selector-input').click()`);await evaluate('scriptTest.settle()');await clickText('选择')
  assert.equal(await evaluate('scriptTest.state.record.user'),'u1')
@@ -109,15 +120,43 @@ try{
  // 编辑器拦截语法错误，修正后保存。
  await evaluate('scriptTest.state.visible=true;scriptTest.settle()');await clickText('保存')
  assert.equal(await evaluate('scriptTest.state.saved'),null)
- assert.match(await evaluate('document.body.textContent'),/onChange 脚本语法错误/)
+ assert.match(await evaluate('document.body.textContent'),/onChange 配置错误/)
  await evaluate(`scriptTest.state.codes={onChange:"await Promise.resolve(); setValue(value)"};scriptTest.settle()`);await clickText('保存')
- assert.equal(await evaluate('scriptTest.state.saved.onChange'),'await Promise.resolve(); setValue(value)')
+ assert.equal(await evaluate('scriptTest.state.saved.onChange.code'),'await Promise.resolve(); setValue(value)')
  assert.equal(await evaluate('scriptTest.state.visible'),false)
- // 再次打开能读回保存值；不支持的事件显示原因、不可编辑。
- await evaluate(`scriptTest.state.codes=scriptTest.state.saved;scriptTest.state.text.componentType='reference';scriptTest.state.visible=true;scriptTest.settle()`)
- await clickText('onInput','.el-tabs__item')
- assert.match(await evaluate('document.body.textContent'),/当前组件未接入此事件/)
- assert.equal(await evaluate(`([...document.querySelectorAll('.cm-content')].filter(${visible}))[0].getAttribute('contenteditable')`),'false')
+ // 处理函数必须从真实注册选项选择，保存引用并实际执行。
+ await evaluate(`scriptTest.state.codes=scriptTest.state.saved;scriptTest.state.visible=true;scriptTest.settle()`)
+ await clickText('处理函数','.el-radio-button')
+ await evaluate(`document.querySelector('#pane-onChange .el-select__wrapper').click();scriptTest.settle()`)
+ await clickText('去除首尾空格（trimText@1）','.el-select-dropdown__item')
+ const handlerScreenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-field-script-handler.png',Buffer.from(handlerScreenshot.data,'base64'))
+ await clickText('保存')
+ assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(scriptTest.state.saved.onChange))'),{mode:'function',handler:'trimText',version:1})
+ await evaluate(`scriptTest.state.text.componentProps.events=scriptTest.state.saved;scriptTest.state.trace.length=0`)
+ await inputText(' selected handler ');await commitText()
+ assert.equal(await evaluate('scriptTest.state.record.text'),'selected handler')
+ assert.equal(await evaluate(`scriptTest.state.trace.filter(t=>t[0]==='chain').length`),1)
+ // 真实清空按钮：异步 clear 不被底层 input 取消，后续事件读取 helper 最新值。
+ await evaluate(`scriptTest.state.text.componentProps.events={
+ onClear:{mode:'body',code:"await new Promise(r=>setTimeout(r,20)); window.scriptTrace.push(['clear',value]);setValue('reset')"},
+ onInput:{mode:'body',code:"window.scriptTrace.push(['input',value]);setValue(value+'-input')"},
+ onChange:{mode:'body',code:"window.scriptTrace.push(['script',value]);setValue(value+'-change')"}
+ };scriptTest.settle()`)
+ await inputText('clear me')
+ await evaluate(`scriptTest.state.trace.length=0;document.querySelector('#text .el-input__clear').click();scriptTest.settle()`)
+ assert.deepEqual(await evaluate(`JSON.parse(JSON.stringify(scriptTest.state.trace.filter(t=>t[0]!=='chain')))`),[['clear',''],['input','reset'],['script','reset-input']])
+ assert.equal(await evaluate(`scriptTest.state.trace.filter(t=>t[0]==='chain').length`),1)
+ assert.equal(await evaluate('scriptTest.state.record.text'),'reset-input-change')
+ // 键盘数据与 IME 标志通过普通对象传入，Enter 处理函数不会误处理组词。
+ await evaluate(`scriptTest.state.text.componentProps.events={onKeydown:{mode:'body',code:"window.scriptTrace.push(['key',event.data.key,event.data.isComposing])"}};scriptTest.state.trace.length=0;scriptTest.settle()`)
+ await evaluate(`document.querySelector('#text input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',isComposing:true,bubbles:true}));scriptTest.settle()`)
+ assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(scriptTest.state.trace))'),[['key','Enter',true]])
+ // 不支持的旧绑定保留并显示原因，不允许继续添加任意事件。
+ await evaluate(`scriptTest.state.codes={onInput:'setValue(value)'};scriptTest.state.text.componentType='reference';scriptTest.state.visible=true;scriptTest.settle()`)
+ await evaluate(`document.getElementById('tab-onInput').click();scriptTest.settle()`)
+ assert.match(await evaluate('document.body.textContent'),/当前组件未声明此事件/)
+ assert.match(await evaluate(`document.querySelector('#pane-onInput').textContent`),/setValue/)
+ assert.equal(await evaluate(`document.querySelector('#pane-onInput .cm-content') === null`),true)
  const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/flow-field-script-editor.png',Buffer.from(screenshot.data,'base64'))
  await clickText('取消')
  // Embed 路径在进入动态编译前被拦截，普通事件链仍然可以执行。
@@ -126,5 +165,5 @@ try{
  assert.equal(await evaluate('Boolean(window.embedScriptRan)'),false)
  assert.match(await evaluate('document.body.textContent'),/嵌入页面不支持前端脚本事件/)
  assert.deepEqual(errors,[])
- console.log('field script browser acceptance passed: real text/entity, ID/selection, helpers, async chain ordering, one change per commit, errors, editor syntax/save/reopen, disabled events, Embed guard')
+ console.log('field script browser acceptance passed: text/entity/custom component, selected handler, async clear/input/change, IME payload, helpers, one chain per commit, editor save/reopen, legacy events, Embed guard')
 }finally{ws?.close();browser?.kill();await server?.close();await sleep(200);rmSync(fixture,{recursive:true,force:true});rmSync(profile,{recursive:true,force:true,maxRetries:3,retryDelay:200})}
