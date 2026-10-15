@@ -39,7 +39,7 @@ public class UiViewCompositionConfigValidator {
             "releaseId", "releaseVersion", "contentHash");
     private static final Set<String> PRESENTATION_KEYS = Set.of(
             "position", "loadMode", "title", "showTitle", "showBorder", "anchorSide", "emptyText",
-            "listOptions", "layout", "visibleModes", "visibilityCondition");
+            "listOptions", "layout", "visibleModes", "visibilityCondition", "actionBar");
     // 仅复用结构化条件方言；输入已经是 Map，不依赖应用 ObjectMapper 的序列化扩展。
     private static final PublishedFormConditionEvaluator PRESENTATION_CONDITIONS =
             new PublishedFormConditionEvaluator(new ObjectMapper());
@@ -139,7 +139,7 @@ public class UiViewCompositionConfigValidator {
         Map<String, Object> target = normalizeTarget(
                 requireMap(config.get("target"), "显示什么"));
         Map<String, Object> presentation = normalizePresentation(
-                requireMap(config.get("presentation"), "显示方式"));
+                requireMap(config.get("presentation"), "显示方式"), (String) target.get("contentType"));
         if (presentation.containsKey("listOptions") && !"LIST".equals(target.get("contentType"))) {
             throw new IllegalArgumentException("子列表选项只能用于列表目标");
         }
@@ -254,10 +254,11 @@ public class UiViewCompositionConfigValidator {
      * 规范化展示；输出作为后续校验或处理的输入。
      *
      * @param value 待规范化展示的原始输入，结果供调用方继续使用
+     * @param contentType 已校验的目标类型，用于限定可配置外观的内置按钮
      * @return 展示键值结果，供调用方继续处理
      */
     private Map<String, Object> normalizePresentation(
-            Map<String, Object> value) {
+            Map<String, Object> value, String contentType) {
         requireAllowedKeys(value, PRESENTATION_KEYS, "显示方式");
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("position", requireEnum(
@@ -279,6 +280,12 @@ public class UiViewCompositionConfigValidator {
             result.put("anchorSide", requireEnum(value.get("anchorSide"), Set.of("BEFORE", "AFTER"), "节点相对位置"));
         }
         putOptionalText(result, "emptyText", value.get("emptyText"), 500);
+        // 外观仅引用固定动作，不改变 actions 中已有的权限或操作规则；缺省时保持历史样式。
+        if (value.containsKey("actionBar")) {
+            result.put("actionBar", BuiltInButtonAppearancePolicy.normalize(value.get("actionBar"),
+                    "FORM".equals(contentType) ? BuiltInButtonAppearancePolicy.RELATED_FORM_BUTTONS
+                            : BuiltInButtonAppearancePolicy.RELATED_LIST_BUTTONS));
+        }
         if (value.containsKey("layout")) {
             Map<String, Object> layout = requireMap(value.get("layout"), "外层布局");
             requireAllowedKeys(layout, Set.of("width", "height", "padding"), "外层布局");

@@ -2,30 +2,38 @@
   <section class="mobile-subform">
     <header><strong>{{ field.fieldLabel || field.fieldName }}</strong><span>{{ rows.length }} 条</span></header>
     <p v-if="error" class="subform-error" role="alert">{{ error }}<button v-if="loadError" @click="loadDefinition">重试</button></p>
+    <div v-if="canAddRow && showTopActions" class="subform-actions" :style="actionBarStyle">
+      <MobileBuiltInActionButton action-key="add" :config="actionBar" :defaults="addDefaults" :block="useDefaultAlignment" @click="addRow" />
+    </div>
     <VanLoading v-if="loading" size="20" />
     <VanEmpty v-else-if="!rows.length" description="暂无明细" :image-size="48" />
     <div v-for="(row, index) in rows" :key="rowKey(row)" class="subform-row">
       <VanCell :title="rowTitle(row, index)" :label="rowSummary(row)" is-link @click="opened = rowKey(row)" />
-      <button v-if="!disabled" class="remove-row" @click="removeRow(row)">删除</button>
+      <MobileBuiltInActionButton v-if="!disabled" action-key="remove" :config="actionBar" :defaults="removeDefaults"
+        native-default class="remove-row" @click="removeRow(row)" />
       <!-- 关闭的行保留运行实例，提交校验覆盖所有明细，且不会丢失异步校验状态。 -->
       <VanPopup :show="opened === rowKey(row)" :lazy-render="false" position="bottom" round class="subform-editor" safe-area-inset-bottom @update:show="value => { if (!value) opened = '' }">
         <VanNavBar :title="rowTitle(row, index)" left-text="返回" @click-left="opened = ''" />
         <div class="subform-content"><MobileFormRenderer v-if="definition && !loading" :ref="value => setRef(rowKey(row), value)" :form="definition" :root-parent-id="rootParentId" :model-value="row" :readonly="disabled" :mode="disabled ? 'view' : context.mode || 'edit'" :context="rowContext(row, index)" :services="services" :data-source-runtime="rowRuntime(row)" @update:model-value="value => updateRow(row, value)" /></div>
       </VanPopup>
     </div>
-    <VanButton v-if="!disabled && !loading && rows.length < maxRows" block plain type="primary" icon="plus" size="small" @click="addRow">添加明细</VanButton>
+    <div v-if="canAddRow && showBottomActions" class="subform-actions" :style="actionBarStyle">
+      <MobileBuiltInActionButton action-key="add" :config="actionBar" :defaults="addDefaults" :block="useDefaultAlignment" @click="addRow" />
+    </div>
   </section>
 </template>
 <script setup>
 import { childFormRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { computed, nextTick, onBeforeUnmount, ref, watch, toRaw } from 'vue'
-import { Button as VanButton, Cell as VanCell, Empty as VanEmpty, Loading as VanLoading, NavBar as VanNavBar, Popup as VanPopup, showConfirmDialog } from 'vant'
+import { Cell as VanCell, Empty as VanEmpty, Loading as VanLoading, NavBar as VanNavBar, Popup as VanPopup, showConfirmDialog } from 'vant'
 import { formFieldProps } from '@flow/workflow-core/extensions/contracts/form-field'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubFormParameterContract, normalizeInputParameterSchema, resolveSubFormParameters, buildSubFormParentContext, applySubFormFieldInitialization, validateSubFormParameters } from '@flow/workflow-core/subform-parameter-contract'
 import { projectRuntimeFields } from '@flow/workflow-core/form-runtime/formModel'
 import { normalizeRuntimeFormRelease } from '@flow/workflow-core/form-runtime/release'
 import MobileFormRenderer from './MobileFormRenderer.vue'
+import MobileBuiltInActionButton from './MobileBuiltInActionButton.vue'
+import { normalizeBuiltInActionBar, builtInActionBarStyle, builtInActionBarHasPosition } from '@flow/workflow-core/builtin-button-appearance'
 const props = defineProps({ ...formFieldProps, services: { type: Object, default: () => ({}) } })
 const emit = defineEmits(['update:modelValue'])
 const config = computed(() => safeParseConfig(props.field.componentProps).subFormConfig || {})
@@ -43,6 +51,15 @@ const rows = computed(() => Array.isArray(props.modelValue) ? props.modelValue :
 const maxRows = computed(() => one.value ? 1 : Number(props.field.maxRows ?? config.value.maxRows ?? 100))
 const minRows = computed(() => Number(props.field.minRows ?? config.value.minRows ?? 0))
 const definition = ref(null), entityCode = ref(''), loading = ref(false), loadError = ref(''), error = ref(''), opened = ref(''), rootParentId = ref('')
+// 移动端旧入口位于底部且占满宽度；只有显式指定对齐时才改成内容宽度。
+const actionBar = computed(() => normalizeBuiltInActionBar(config.value.actionBar, ['add', 'remove']))
+const addDefaults = { label: '添加明细', icon: 'Plus', buttonType: 'primary', buttonAppearance: 'PLAIN', size: 'small' }
+const removeDefaults = { label: '删除', icon: '', buttonType: 'danger', buttonAppearance: 'TEXT', size: 'small' }
+const useDefaultAlignment = computed(() => !actionBar.value.align || actionBar.value.align === 'DEFAULT')
+const actionBarStyle = computed(() => builtInActionBarStyle(actionBar.value, 'LEFT', 8))
+const showTopActions = computed(() => builtInActionBarHasPosition(actionBar.value, 'TOP', 'BOTTOM'))
+const showBottomActions = computed(() => builtInActionBarHasPosition(actionBar.value, 'BOTTOM', 'BOTTOM'))
+const canAddRow = computed(() => !props.disabled && !loading.value && rows.value.length < maxRows.value)
 const parent = computed(() => buildSubFormParentContext(props.context))
 const contract = computed(() => normalizeSubFormParameterContract(config.value.parameterContract))
 const schema = computed(() => normalizeInputParameterSchema(safeParseConfig(definition.value?.viewConfig).inputParameterSchema))
@@ -132,5 +149,7 @@ onBeforeUnmount(() => { sequence++ })
 defineExpose({ validate })
 </script>
 <style scoped>
-.mobile-subform { padding: 14px 0; }.mobile-subform header { display: flex; justify-content: space-between; padding: 0 0 12px; }.mobile-subform header span { color: var(--flow-mobile-muted); }.subform-row { border: 1px solid var(--flow-mobile-border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }.remove-row { border: 0; background: transparent; color: #ad4837; padding: 8px 16px; min-height: 44px; }.subform-editor { height: 90dvh; display: flex; flex-direction: column; }.subform-content { padding: 0 16px 24px; overflow: auto; flex: 1; }.subform-error { color: #ad4837; font-size: 13px; line-height: 1.6; }.subform-error button { border: 0; background: none; color: inherit; min-height: 44px; }
+.subform-actions { display: flex; flex-wrap: wrap; }
+.subform-actions:not(:last-child) { margin-bottom: 10px; }
+.mobile-subform { padding: 14px 0; }.mobile-subform header { display: flex; justify-content: space-between; padding: 0 0 12px; }.mobile-subform header span { color: var(--flow-mobile-muted); }.subform-row { border: 1px solid var(--flow-mobile-border); border-radius: 8px; overflow: hidden; margin-bottom: 10px; }.remove-row.mobile-built-in-action--native { border: 0; background: transparent; color: #ad4837; padding: 8px 16px; min-height: 44px; }.subform-editor { height: 90dvh; display: flex; flex-direction: column; }.subform-content { padding: 0 16px 24px; overflow: auto; flex: 1; }.subform-error { color: #ad4837; font-size: 13px; line-height: 1.6; }.subform-error button { border: 0; background: none; color: inherit; min-height: 44px; }
 </style>

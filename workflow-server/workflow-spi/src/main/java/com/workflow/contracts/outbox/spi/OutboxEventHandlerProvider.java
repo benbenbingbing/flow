@@ -32,4 +32,16 @@ public interface OutboxEventHandlerProvider {
     default boolean retryable() {
         return false;
     }
+
+    /**
+     * 判断本次失败是否能通过自动重试恢复。
+     * 默认沿用主题的幂等重试策略；实现可对需要人工修复的配置错误返回 false，
+     * 让事件保留在死信中，修复原因后再显式重放，不能将失败当成消费成功。
+     *
+     * @param failure 本次投递异常，供业务处理器识别不可自动恢复的原因
+     * @return true 表示在重试预算内退避重试，false 表示立即进入死信
+     */
+    default boolean retryable(Throwable failure) {
+        return retryable();
+    }
 }

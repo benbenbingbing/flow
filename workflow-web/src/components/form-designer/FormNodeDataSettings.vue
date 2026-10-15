@@ -271,6 +271,12 @@
       </el-form-item>
     </SettingsSection>
 
+    <SettingsSection v-if="isSubFormField(selectedField)" v-show="activeNodeSettingsTab === 'child-pages'"
+      title="内置按钮外观" description="仅调整外观，新增和删除功能保持不变">
+      <BuiltInButtonAppearanceEditor v-model="selectedSubFormActionBar" :actions="subFormBuiltInActions" />
+      <div class="form-tip">新增按钮可调整操作栏位置，删除按钮始终保留在对应子行；权限、只读和行数限制继续生效。</div>
+    </SettingsSection>
+
     <SettingsSection
       v-if="isSubFormField(selectedField)"
       disabled-reason="仅子表单和明细表节点支持参数传递"
@@ -399,6 +405,8 @@ import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
+import BuiltInButtonAppearanceEditor from '@/components/BuiltInButtonAppearanceEditor.vue'
+import { normalizeBuiltInActionBar } from '@flow/workflow-core/builtin-button-appearance'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
 import { safeParseConfig, stringifyConfig } from '@flow/workflow-core/config-runtime'
 import { normalizeSubListParameterContract } from '@/shared/sub-list'
@@ -488,6 +496,25 @@ const selectedSubFormShowTitle = computed({
     selectedField.value.componentProps = stringifyConfig({
       ...componentProps,
       subFormConfig: { ...(componentProps.subFormConfig || {}), showTitle: value }
+    })
+  }
+})
+
+const subFormBuiltInActions = [
+  { key: 'add', label: '添加一行', icon: 'Plus', buttonType: 'primary', size: 'small', sort: 0 },
+  { key: 'remove', label: '删除', icon: 'Delete', buttonType: 'danger', buttonAppearance: 'TEXT', size: 'small', sort: 1, scope: 'row' }
+]
+// 仅写入展示属性并合并现有配置，表单引用、参数和关系约束始终由原有链路维护。
+const selectedSubFormActionBar = computed({
+  get() {
+    return normalizeBuiltInActionBar(safeParseConfig(selectedField.value?.componentProps).subFormConfig?.actionBar, ['add', 'remove'])
+  },
+  set(value) {
+    if (!selectedField.value || !isSubFormField(selectedField.value)) return
+    const componentProps = safeParseConfig(selectedField.value.componentProps)
+    selectedField.value.componentProps = stringifyConfig({
+      ...componentProps,
+      subFormConfig: { ...(componentProps.subFormConfig || {}), actionBar: normalizeBuiltInActionBar(value, ['add', 'remove']) }
     })
   }
 })

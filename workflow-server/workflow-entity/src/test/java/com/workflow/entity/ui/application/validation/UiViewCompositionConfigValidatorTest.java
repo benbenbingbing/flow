@@ -17,6 +17,46 @@ class UiViewCompositionConfigValidatorTest {
             new UiViewCompositionConfigValidator();
 
     @Test
+    void builtInAppearanceSurvivesNormalizationWithoutChangingExistingActions() {
+        Map<String, Object> config = frontendDraft();
+        Map<String, Object> presentation = mutableChild(config, "presentation");
+        assertFalse(((Map<?, ?>) validator.validate(config).normalizedConfig()
+                .get("presentation")).containsKey("actionBar"));
+        Map<String, Object> listBar = Map.of("position", "BOTTOM", "align", "RIGHT", "gap", 16,
+                "buttons", Map.of("refresh", Map.of("label", "刷新验收数据", "buttonAppearance", "TEXT"),
+                        "link", Map.of("icon", "Link"), "open", Map.of("size", "large")));
+        presentation.put("actionBar", listBar);
+        Map<String, Object> normalizedList = validator.validate(config).normalizedConfig();
+        assertEquals(listBar, ((Map<?, ?>) normalizedList.get("presentation")).get("actionBar"));
+        assertEquals(config.get("actions"), normalizedList.get("actions"));
+
+        mutableChild(config, "target").put("contentType", "FORM");
+        config.put("actions", List.of("VIEW", "EDIT"));
+        Map<String, Object> formBar = Map.of("buttons", Map.of("save", Map.of("label", "保存验收信息"),
+                "open", Map.of("buttonType", "primary")));
+        presentation.put("actionBar", formBar);
+        Map<String, Object> normalizedForm = validator.validate(config).normalizedConfig();
+        assertEquals(formBar, ((Map<?, ?>) normalizedForm.get("presentation")).get("actionBar"));
+        assertEquals(config.get("actions"), normalizedForm.get("actions"));
+    }
+
+    @Test
+    void builtInAppearanceRejectsButtonsFromAnotherContentTypeAndBehaviorOverrides() {
+        Map<String, Object> config = frontendDraft();
+        Map<String, Object> presentation = mutableChild(config, "presentation");
+        presentation.put("actionBar", Map.of("buttons", Map.of("save", Map.of("label", "保存"))));
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+        mutableChild(config, "target").put("contentType", "FORM");
+        for (Object invalid : List.of(Map.of("buttons", Map.of("refresh", Map.of())),
+                Map.of("buttons", Map.of("save", Map.of("visible", false))), Map.of("gap", 41), "invalid")) {
+            presentation.put("actionBar", invalid);
+            assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+        }
+        presentation.put("actionBar", null);
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(config));
+    }
+
+    @Test
     void childListSettingsKeepOuterLayoutSeparateAndRejectInvalidOptions() {
         Map<String, Object> config = frontendDraft();
         Map<String, Object> presentation = mutableChild(config, "presentation");

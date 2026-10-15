@@ -11,14 +11,13 @@
           {{ sum.label }}: {{ sum.value }}
         </span>
       </span>
-      <el-button
-        v-if="canAddRow"
-        type="primary"
-        size="small"
-        @click="addRow"
-      >
-        <el-icon><Plus /></el-icon>添加一行
-      </el-button>
+      <BuiltInActionButton v-if="canAddRow && !hasCustomToolbarPlacement" action-key="add"
+        :config="actionBar" :defaults="addDefaults" @click="addRow" />
+    </div>
+
+    <!-- 自定义位置仅移动新增入口；删除必须留在对应子行，避免操作对象不明确。 -->
+    <div v-if="canAddRow && hasCustomToolbarPlacement && showTopActions" class="sub-form-actions" :style="actionBarStyle">
+      <BuiltInActionButton action-key="add" :config="actionBar" :defaults="addDefaults" @click="addRow" />
     </div>
 
     <template v-if="config.layout === 'form'">
@@ -27,15 +26,15 @@
         <div v-if="rowData.length === 0" class="relation-row one-to-one-form">
           <el-empty v-if="disabled || readonly" description="暂无数据" :image-size="56" />
           <el-empty v-else description="暂无数据" :image-size="56">
-            <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加数据</el-button>
+            <BuiltInActionButton v-if="canAddRow && !hasCustomToolbarPlacement" action-key="add"
+              :config="actionBar" :defaults="{ ...addDefaults, label: '添加数据', icon: '' }" @click="addRow" />
           </el-empty>
         </div>
         <div v-else class="relation-row one-to-one-form">
           <div v-if="canRemoveRow" class="form-row-header">
             <span class="row-title">{{ config.label || '子数据' }}</span>
-            <el-button type="danger" size="small" text @click="removeRow(0)">
-              <el-icon><Delete /></el-icon>移除数据
-            </el-button>
+            <BuiltInActionButton action-key="remove" :config="actionBar"
+              :defaults="{ ...removeDefaults, label: '移除数据' }" @click="removeRow(0)" />
           </div>
           <slot
             v-if="$slots.row"
@@ -79,7 +78,8 @@
           </template>
           <template v-else>
             <el-empty description="暂无行" :image-size="56">
-              <el-button v-if="canAddRow" type="primary" size="small" @click="addRow">添加一行</el-button>
+              <BuiltInActionButton v-if="canAddRow && !hasCustomToolbarPlacement" action-key="add"
+                :config="actionBar" :defaults="{ ...addDefaults, icon: '' }" @click="addRow" />
             </el-empty>
           </template>
         </template>
@@ -87,9 +87,8 @@
         <div v-for="(row, index) in rowData" :key="index" class="relation-row">
           <div v-if="showRowHeader" class="form-row-header">
             <span class="row-title">{{ isRepeatable ? `第 ${index + 1} 行` : (config.label || '明细') }}</span>
-            <el-button v-if="canRemoveRow" type="danger" size="small" text @click="removeRow(index)">
-              <el-icon><Delete /></el-icon>删除
-            </el-button>
+            <BuiltInActionButton v-if="canRemoveRow" action-key="remove" :config="actionBar"
+              :defaults="removeDefaults" @click="removeRow(index)" />
           </div>
           <slot
             v-if="$slots.row"
@@ -139,9 +138,8 @@
       >
         <template #empty>
           <el-empty description="暂无行" :image-size="56">
-            <template v-if="isRepeatable && !disabled && !readonly">
-              <el-button type="primary" size="small" @click="addRow">添加一行</el-button>
-            </template>
+            <BuiltInActionButton v-if="isRepeatable && canAddRow && !hasCustomToolbarPlacement" action-key="add"
+              :config="actionBar" :defaults="{ ...addDefaults, icon: '' }" @click="addRow" />
           </el-empty>
         </template>
         <el-table-column type="index" width="50" align="center" />
@@ -176,22 +174,18 @@
           </template>
         </el-table-column>
 
-        <el-table-column v-if="isRepeatable && !disabled && !readonly" label="" width="64" align="center" fixed="right">
+        <el-table-column v-if="isRepeatable && !disabled && !readonly" label="" :width="tableRemoveWidth" align="center" fixed="right">
           <template #default="{ $index }">
-            <el-button
-              type="danger"
-              size="small"
-              text
-              aria-label="删除子表行"
-              title="删除子表行"
-              @click="removeRow($index)"
-            >
-              <el-icon><Delete /></el-icon>
-            </el-button>
+            <BuiltInActionButton action-key="remove" :config="actionBar" :defaults="tableRemoveDefaults"
+              :disabled="!canRemoveRow" aria-label="删除子表行" title="删除子表行" @click="removeRow($index)" />
           </template>
         </el-table-column>
       </el-table>
     </template>
+
+    <div v-if="canAddRow && hasCustomToolbarPlacement && showBottomActions" class="sub-form-actions sub-form-actions--bottom" :style="actionBarStyle">
+      <BuiltInActionButton action-key="add" :config="actionBar" :defaults="addDefaults" @click="addRow" />
+    </div>
 
     <el-alert 
       v-if="validationErrors.length > 0" 
@@ -208,7 +202,8 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
-import { Plus, Delete } from '@element-plus/icons-vue'
+import BuiltInActionButton from '@/components/BuiltInActionButton.vue'
+import { normalizeBuiltInActionBar, builtInActionBarStyle, builtInActionBarHasPosition, resolveBuiltInButton } from '@flow/workflow-core/builtin-button-appearance'
 import FormFieldRenderer from './FormFieldRenderer.vue'
 import {
   areSubFormValuesEqual,
@@ -291,12 +286,38 @@ const canAddRow = computed(() => canEdit.value && rowData.value.length < maxRows
 
 const canRemoveRow = computed(() => canEdit.value && rowData.value.length > minRows.value)
 
+// 默认位置保留历史标题栏和空态入口；显式布局则使用独立操作栏，隐藏标题也不会影响新增。
+const actionBar = computed(() => normalizeBuiltInActionBar(props.config.actionBar, ['add', 'remove']))
+const hasCustomToolbarPlacement = computed(() =>
+  (actionBar.value.position && actionBar.value.position !== 'DEFAULT')
+  || (actionBar.value.align && actionBar.value.align !== 'DEFAULT')
+)
+const addDefaults = { label: '添加一行', icon: 'Plus', buttonType: 'primary', size: 'small' }
+const removeDefaults = { label: '删除', icon: 'Delete', buttonType: 'danger', buttonAppearance: 'TEXT', size: 'small' }
+const actionBarStyle = computed(() => builtInActionBarStyle(actionBar.value, 'LEFT', 8))
+const showTopActions = computed(() => builtInActionBarHasPosition(actionBar.value, 'TOP'))
+const showBottomActions = computed(() => builtInActionBarHasPosition(actionBar.value, 'BOTTOM'))
+const tableRemoveDefaults = computed(() => {
+  const button = resolveBuiltInButton(actionBar.value, 'remove', removeDefaults)
+  // 表格历史入口只显示图标；清空图标时补回动作名，避免普通/圆形回退后出现空白按钮。
+  return { ...removeDefaults, label: button.icon ? '' : '删除' }
+})
+const tableRemoveWidth = computed(() => {
+  const button = resolveBuiltInButton(actionBar.value, 'remove', tableRemoveDefaults.value)
+  // 历史纯图标操作列仍为 64px；自定义文案需要额外宽度，避免被固定操作列裁切。
+  return Math.max(64, Math.min(640, (button.label?.length || 0) * 14 + 48))
+})
+
 const showSummary = computed(() => {
   return props.config.showSummary && props.config.summaryFields?.length > 0
 })
 
 const showHeader = computed(() => {
   if (isOneToOne.value) return false
+  // 新增移出标题栏后，不保留没有标题、汇总或必填提示的空白栏。
+  if (hasCustomToolbarPlacement.value) {
+    return props.config.showHeaderTitle !== false || props.config.required || showSummary.value
+  }
   return isRepeatable.value || showSummary.value || canAddRow.value
 })
 
@@ -646,6 +667,17 @@ defineExpose({
   margin-left: 15px;
   color: #409eff;
   font-weight: 500;
+}
+
+.sub-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.sub-form-actions--bottom {
+  margin-top: 10px;
+  margin-bottom: 0;
 }
 
 .sub-form-table {

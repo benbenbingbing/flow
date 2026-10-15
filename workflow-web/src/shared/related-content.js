@@ -58,13 +58,13 @@ export const RELATED_CONTENT_RELATION_OPTIONS = Object.freeze([
 ])
 
 export const RELATED_CONTENT_ACTION_OPTIONS = Object.freeze([
-  { value: 'VIEW', label: '仅查看', description: '只能查看目标内容，不允许修改。' },
-  { value: 'SELECT', label: '选择记录', description: '选择目标记录后，可回填当前表单字段或建立关联。' },
-  { value: 'CREATE', label: '新增记录', description: '目标为表单且尚无关联记录时，在当前区域填写并保存子表单，可带入已配置的关联初值；目标为列表时开放列表自带的新增按钮。' },
-  { value: 'EDIT', label: '编辑记录', description: '目标为表单时在当前区域编辑并保存子表单，独立保存不随主表提交；目标为列表时开放列表行内的编辑按钮。' },
-  { value: 'LINK', label: '建立关联', description: '只建立两条记录之间的关系，不修改目标记录内容。' },
-  { value: 'UNLINK', label: '解除关联', description: '只解除关系，不删除目标记录。' },
-  { value: 'SAVE_WITH_FORM', label: '随当前表单一起保存', description: '关联内容暂不提供此能力；组成型数据请继续使用已有子表单或重复器。' }
+  { value: 'VIEW', label: '仅查看', description: '查看关联记录，不提供新增、编辑、选择或关系变更操作。' },
+  { value: 'SELECT', label: '选择记录', description: '从目标列表选择记录，按配置回填当前表单字段；也可将选择结果设为建立关联，此时需同时勾选“建立关联”。' },
+  { value: 'CREATE', label: '新增记录', description: '目标为表单且尚无关联记录时，在当前区域填写新记录；目标为列表时，使用列表自带的新增入口。新记录独立保存，不随主表提交。' },
+  { value: 'EDIT', label: '编辑记录', description: '目标为表单时，在当前区域修改关联记录；目标为列表时，通过行操作中的编辑入口修改。修改需独立保存，取消主表不会撤销已保存的修改。' },
+  { value: 'LINK', label: '建立关联', description: '选择已有目标记录，与当前记录建立关系，不新增目标记录。' },
+  { value: 'UNLINK', label: '解除关联', description: '解除当前记录与目标记录的关系，保留目标记录本身。' },
+  { value: 'SAVE_WITH_FORM', label: '随当前表单一起保存', description: '普通关联不支持随主表提交；需要一起保存的子记录，请使用组成型子表单或明细。' }
 ])
 
 export const RELATED_CONTENT_FAILURE_OPTIONS = Object.freeze([

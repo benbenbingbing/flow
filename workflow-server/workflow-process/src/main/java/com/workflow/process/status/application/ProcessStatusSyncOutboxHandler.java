@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.contracts.outbox.spi.OutboxEventHandlerProvider;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.status.infrastructure.persistence.mapper.ProcessStatusSyncMapper;
 import com.workflow.process.status.infrastructure.persistence.record.ProcessStatusSyncRecord;
@@ -47,6 +48,28 @@ public class ProcessStatusSyncOutboxHandler
     @Override
     public boolean retryable() {
         return true;
+    }
+
+    /**
+     * 冻结范围过期必须重新保存数据版本配置，重复消费同一载荷无法修复。
+     * 仅停止此错误的自动重试；数据库瞬时故障和其他业务冲突仍沿用有界重试。
+     *
+     * @param failure 消费异常，允许事务或适配器包装业务冲突
+     * @return 配置过期时为 false，保留死信供修复配置后显式重放
+     */
+    @Override
+    public boolean retryable(Throwable failure) {
+        // 按异常类型和稳定错误码判断，不依赖可能变化的中文错误文案。
+        java.util.Set<Throwable> visited = java.util.Collections.newSetFromMap(
+                new java.util.IdentityHashMap<>());
+        for (Throwable cause = failure; cause != null && visited.add(cause);
+                cause = cause.getCause()) {
+            if (cause instanceof BusinessConflictException conflict
+                    && "ENTITY_VERSION_SCOPE_STALE".equals(conflict.getErrorCode())) {
+                return false;
+            }
+        }
+        return retryable();
     }
 
     /**

@@ -28,13 +28,14 @@ import ButtonConfig from '/src/components/ListButtonConfigPanel.vue'
 import DataTable from '/src/views/entity/components/EntityDataTable.vue'
 import RelatedPanel from '/src/components/related-content/RelatedContentPanel.vue'
 import Designer from '/src/views/EntityFormDesignByEntity.vue'
-import SubFormField from '/src/extensions/builtin/fields/components/SubFormField.vue'
-import { registerFormFieldComponent } from '/src/extensions/core/registries/formFieldRegistry.js'
+import { registerApplicationExtensions } from '/src/extensions/register.js'
 import { buildFormNodePayload } from '@flow/workflow-core/form-node-property-schema'
+import { resolveLocalFormActions } from '@flow/workflow-core/form-actions'
 import { buildRelationEditor } from '/src/shared/relation-content.js'
 import { normalizeListActionForSave } from '/src/shared/list-config-design.js'
 import request from '/src/utils/request.js'
-registerFormFieldComponent('sub_form',SubFormField,{origin:'PLATFORM'})
+// 与真实应用共用安装入口，输入字段、子表单及业务扩展必须经过统一清单注册。
+registerApplicationExtensions()
 const source={id:'all',entityCode:'ALL',entityName:'全流程验收'}
 const fields=[{id:'name',fieldCode:'reqName',fieldName:'需求名称',fieldType:'STRING',componentType:'input'},
  {id:'ref',fieldCode:'zdw_all_id',fieldName:'所属验收',fieldType:'REFERENCE',refEntityId:'all'},
@@ -118,14 +119,14 @@ request.defaults.adapter=async config=>{
  }
  else if(url==='/ui-runtime/view-compositions/actions/capabilities')data={actionCapabilities:state.inlineSaveTest
    ?{EDIT:{available:!state.inlineViewOnly},CREATE:{available:!state.inlineViewOnly,initialValues:{acceptance_id:body.compositionContext.recordId}}}:{}}
- // 独立提交内存落库，检查配置摘要及关联来源；延迟/失败用于验证重复点击与回包隔离。
+ // 独立提交与服务端 EntityDataActionService 一致，从顶层 compositionContext 核验来源；延迟/失败用于验证重复点击与回包隔离。
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/load')data={id:'all-3',data:{name:'主表名称',childId:'child-all-3'}}
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/update'){state.mainSavedData=body.data;data={id:'all-3',data:body.data}}
- else if(state.nativeHostTest&&url==='/ui-runtime/form-actions/resolve')data=state.formButtonsTest&&body.formId==='owner'?[{...state.testButton,ownerFormId:'owner',runtimeKey:'owner:quick',type:'custom',key:'quick',label:'运行测试按钮',visible:true,enabled:true,placement:'FOOTER'}]:[]
+ else if(state.nativeHostTest&&url==='/ui-runtime/form-actions/resolve')data=state.formButtonsTest&&body.formId==='owner'?[{...state.testButton,ownerFormId:'owner',runtimeKey:'owner:quick',type:'custom',key:'quick',label:'运行测试按钮',visible:true,enabled:true,placement:'FOOTER'}]:body.formId==='owner'?resolveLocalFormActions(hostForm(),body):[]
  else if(state.nativeHostTest&&url.startsWith('/ui-runtime/events/'))data={success:true,results:[],patch:{}}
  else if(state.inlineSaveTest&&(url==='/entity-data'||url.endsWith('/update'))){
-   if(!body.runtimeContext?.compositionContext||body.formConfigHash!=='req-graph'||body.formId!=='req-form')throw Error('独立保存未携带可信发布上下文')
-   const recordId=body.runtimeContext.compositionContext.recordId
+   if(!body.compositionContext||body.formConfigHash!=='req-graph'||body.formId!=='req-form')throw Error('独立保存未携带可信发布上下文')
+   const recordId=body.compositionContext.recordId
    if(state.inlineSaveDelay)await new Promise(resolve=>setTimeout(resolve,state.inlineSaveDelay))
    if(state.inlineSaveFailure)throw Error('模拟子表单提交失败')
    state.childRecords[recordId]={...body.data};data={id:'child-'+recordId,data:body.data}
@@ -251,7 +252,7 @@ async function until(expression) {
   throw Error('等待失败: ' + expression + '\n' + await evaluate('document.body.innerText'))
 }
 try {
-  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')], include: ['axios'] }, server: { host: '127.0.0.1', port: 3397, strictPort: true } })
+  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')], include: ['axios', 'async-validator', 'dompurify'] }, server: { host: '127.0.0.1', port: 3397, strictPort: true, forwardConsole: false } })
   await server.listen()
   browser = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=9397', '--user-data-dir=' + profile, 'about:blank'], { stdio: 'ignore' })
   let targets
@@ -557,8 +558,11 @@ try {
   await evaluate("relationTest.state.compositions[0].config.presentation.position='DRAWER';relationTest.state.compositions[0].config.actions=['EDIT'];relationTest.settle()")
   await click('已添加 · 配置', "document.getElementById('picker')")
   const dialog = "document.querySelector('.related-content-config-dialog')"
-  await until(`${dialog}?.innerText.includes('继承实体关系：关联需求') && !${dialog}.querySelector('.el-loading-mask')`)
-  assert.equal(await evaluate(`${dialog}.innerText.includes('ZDWREQ.acceptance_id = 当前记录.id')`), true)
+  // 摘要卡片移除后直接核对匹配规则和当前选中的目标页面，避免仅凭展示标题通过校验。
+  const relationMatch = `${dialog}?.querySelector('.relation-match-rule')`
+  const targetContentSelection = `${dialog}?.querySelector('.target-content-select .el-select__selected-item.el-select__placeholder')`
+  await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && !${dialog}.querySelector('.el-loading-mask')`)
+  assert.equal(await evaluate(`${targetContentSelection}?.textContent.trim()`), '需求详情表单 (details)')
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`), 3)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods, .el-segmented').length`), 0)
   assert.equal(await evaluate(`${dialog}.querySelector('.inherited-target').textContent.includes('需求管理')`), true)
@@ -566,7 +570,7 @@ try {
   await click('下一步', dialog)
   assert.equal(await evaluate(`${dialog}.innerText.includes('第 2 步，共 3 步')`), true)
   assert.equal(await evaluate(`[...${dialog}.querySelectorAll('.step-heading')].find(e=>e.getClientRects().length).textContent.includes('允许做什么')`), true)
-  assert.equal(await evaluate(`[...${dialog}.querySelectorAll('.action-card')].some(e=>e.textContent.includes('随当前表单一起保存'))`), false, '新展示不能提供无效的聚合保存勾选项')
+  assert.equal(await evaluate(`[...${dialog}.querySelectorAll('.action-option')].some(e=>e.textContent.includes('随当前表单一起保存'))`), false, '新展示不能提供无效的聚合保存勾选项')
   await click('上一步', dialog)
   const displaySettings = `${dialog}.querySelector('.form-content-display-settings')`
   assert.equal(await evaluate(`${displaySettings}.querySelector('input.el-input__inner').disabled`),false,'普通关联必须能够修改显示属性')
@@ -587,21 +591,20 @@ try {
   assert.equal(inherited.config.presentation.showTitle,false)
   assert.equal(inherited.expectedOwnerRevision,100)
   await evaluate('relationTest.relatedPanel.value.open(relationTest.state.compositions[1]);relationTest.settle()')
-  await until(`${dialog}?.innerText.includes('继承实体关系：需求明细')`)
-  assert.equal(await evaluate(`${dialog}.innerText.includes('一对多：选择关联实体的列表')`),true)
+  await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.zdw_all_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='需求明细列表 (requirements)'`)
   await click('取消',dialog)
 
   // 无编辑/新增权限的关联表单保持只读，不再显示原来的刷新/编辑/新增按钮。
   await evaluate("relationTest.state.compositions[0].config.presentation.position='INLINE';relationTest.state.published=true;relationTest.settle()")
   await until("document.querySelector('#runtime .related-content-runtime input')?.value==='关联需求 all-2'")
-  assert.equal(await evaluate("document.querySelector('#runtime .related-content-runtime__header').querySelector(':scope > span')===null"),true)
+  assert.equal(await evaluate("document.querySelector('#runtime .related-content-runtime:has(.linkage-form-preview) .related-content-runtime__header > span')===null"),true)
   assert.equal(await evaluate("document.querySelector('#runtime .related-content-runtime:has(.linkage-form-preview) .related-content-runtime__header button')"),null)
   await evaluate('relationTest.state.published=false;relationTest.settle()')
 
   // 普通关联在当前区域独立保存；组成子表单后续回归仍只更新主表草稿。
   const inlineForm = "document.querySelector('#runtime .related-content-runtime:has(.linkage-form-preview)')"
   const inlineInput = `${inlineForm}.querySelector('input')`
-  const inlineWrites = "relationTest.state.calls.filter(c=>c.method==='post'&&(c.url==='/entity-data'||c.url.endsWith('/update'))&&c.body.runtimeContext?.compositionContext?.recordId)"
+  const inlineWrites = "relationTest.state.calls.filter(c=>c.method==='post'&&(c.url==='/entity-data'||c.url.endsWith('/update'))&&c.body.compositionContext?.recordId)"
   async function fillInline(value) {
     await evaluate(`(()=>{const input=${inlineInput};input.value=${JSON.stringify(value)};input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.blur()})()`)
     await evaluate('relationTest.settle()')
@@ -625,7 +628,7 @@ try {
   await until(`relationTest.state.childRecords['all-2']?.reqName==='当前页面修改的需求' && !${inlineForm}.querySelector('.el-loading-mask')`)
   const updateCall = await evaluate(`JSON.parse(JSON.stringify(${inlineWrites}.at(-1)))`)
   assert.equal(updateCall.url,'/entity-data/entity/ZDWREQ/detail/child-all-2/update')
-  assert.equal(updateCall.body.runtimeContext.compositionContext.recordId,'all-2')
+  assert.equal(updateCall.body.compositionContext.recordId,'all-2')
   assert.equal(updateCall.body.formConfigHash,'req-graph')
   assert.equal(updateCall.body.startProcess,false)
 
@@ -713,7 +716,8 @@ try {
   // 失效的关系不可退回默认值或继续保存。
   for (const invalid of ['disabled','missing','failure']) {
     await evaluate(`relationTest.relations[0].enabled=${invalid!=='disabled'};relationTest.relations[0].deleted=${invalid==='missing'?1:0};relationTest.state.relationFailure=${invalid==='failure'};relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()`)
-    await until(`${dialog}?.querySelector('.entity-relation-binding .el-alert--error')`)
+    const expectedError = { disabled: '此实体关系已停用', missing: '此实体关系已不存在', failure: '模拟实体关系加载失败' }[invalid]
+    await until(`${dialog}?.querySelector('.relation-binding-error')?.textContent.includes(${JSON.stringify(expectedError)})`)
     assert.equal(await evaluate(`[...${dialog}.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存显示配置').disabled`),true)
     await click('取消',dialog)
   }
@@ -721,7 +725,7 @@ try {
 
   // 历史接口取数必须由用户明确移除；保存后恢复真正的实体关系引用，操作权限仍保留。
   await evaluate("relationTest.state.compositions[0].config.specialHandling={mode:'INTERFACE_SERVICE',interfaceService:{extensionId:'legacy-reader',inputMappings:[],outputMappings:[]},actionServices:[]};relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()")
-  await until(`${dialog}?.innerText.includes('继承实体关系：关联需求')`)
+  await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='需求详情表单 (details)'`)
   await click('保存显示配置',dialog)
   await until(`${dialog}.innerText.includes('改为使用实体关系取数')`)
   assert.equal(await evaluate('relationTest.state.compositions[0].revision'),3)
@@ -733,11 +737,11 @@ try {
 
   // 关系数量发生变化后重新选择页面，不能保留不兼容的单条表单。
   await evaluate("relationTest.relations[0].relationType='ONE_TO_MANY';relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()")
-  await until(`${dialog}?.innerText.includes('一对多：选择关联实体的列表')`)
-  assert.equal(await evaluate(`${dialog}.innerText.includes('需求详情表单 (details)')`),false)
+  await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='选择已发布列表'`)
+  assert.equal(await evaluate(`${targetContentSelection}.classList.contains('is-transparent')`),true,'关系变成一对多后必须清空原来的单条表单选择')
   await click('保存显示配置',dialog)
   assert.equal(await evaluate('relationTest.state.compositions[0].revision'),4)
-  await evaluate(`[...${dialog}.querySelectorAll('.el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.includes('显示内容')).querySelector('.el-select__wrapper').click()`)
+  await evaluate(`${dialog}.querySelector('.target-content-select .el-select__wrapper').click()`)
   await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('需求明细列表'))")
   await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('需求明细列表')).click()")
   await click('保存显示配置',dialog)
@@ -749,15 +753,15 @@ try {
 
   // 新建业务关联必须选择目录中的关系；扩展页面另有入口，不能再次输入字段匹配条件。
   await click('新增关联内容',"document.querySelector('.related-content-panel')")
-  await until(`${dialog}?.innerText.includes('继承实体关系：请选择')`)
+  await until(`${dialog}?.querySelector('.relation-binding-select .el-select__placeholder')?.textContent.trim()==='选择已定义的实体关系'`)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),3)
   assert.equal(await evaluate(`[...${dialog}.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存显示配置').disabled`),true)
-  await evaluate(`${dialog}.querySelector('.entity-relation-binding .el-select__wrapper').click()`)
+  await evaluate(`${dialog}.querySelector('.relation-binding-select .el-select__wrapper').click()`)
   await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('所属需求'))")
   await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('所属需求')).click()")
-  await until(`${dialog}.innerText.includes('当前记录.acceptance_id = ZDWREQ.id')`)
+  await until(`${relationMatch}?.textContent.trim()==='当前记录.acceptance_id = ZDWREQ.id'`)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods').length`),0)
-  await evaluate(`[...${dialog}.querySelectorAll('.el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.includes('显示内容')).querySelector('.el-select__wrapper').click()`)
+  await evaluate(`${dialog}.querySelector('.target-content-select .el-select__wrapper').click()`)
   await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单'))")
   await evaluate("[...document.querySelectorAll('.el-select-dropdown__item')].find(e=>e.getClientRects().length&&e.textContent.includes('需求详情表单')).click()")
   await click('保存显示配置',dialog)
@@ -766,13 +770,13 @@ try {
   await click('扩展页面',"document.querySelector('.related-content-panel')")
   await until(`${dialog}?.innerText.includes('扩展页面')`)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),4)
-  assert.equal(await evaluate(`${dialog}.querySelector('.entity-relation-binding')===null`),true)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-binding-select, .relation-match-rule, .inherited-target').length`),0,'扩展页面不应继承业务实体关系')
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods button').length`),1)
   await click('取消',dialog)
 
   // 展示设置引导用户回到真实主从编辑入口；只呈现正向组成关系，不自动改变普通关联定义。
   await evaluate('relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()')
-  await until(`${dialog}?.innerText.includes('继承实体关系：关联需求')`)
+  await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='需求明细列表 (requirements)'`)
   await click('下一步', dialog)
   await click('前往添加主从编辑', dialog)
   await until("document.querySelector('#picker .composition-filter') && document.querySelectorAll('#picker .relation-item').length===1")
@@ -822,7 +826,7 @@ try {
   await click('保存显示配置',dialog)
   await until("relationTest.placementItems()[0].anchorKey==='text-node'")
   await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn')?.click();relationTest.settle()")
-  await until("document.querySelector('#placement-canvas [data-node-id=\"text-node\"] .relation-design-preview input')")
+  await until("document.querySelector('#placement-canvas .form-node-design-entry:has(> [data-node-id=\"text-node\"]) > .relation-design-preview input')")
   await until("document.querySelector('#placement-preview .relation-design-preview input')")
   const initialResolveCalls=await evaluate("relationTest.state.calls.filter(c=>c.url==='/ui-runtime/view-compositions/resolve').length")
   for(const mode of ['create','edit','view']) {
@@ -833,7 +837,7 @@ try {
   }
   // 稳定 nodeKey、递归区块、Tab 和表单末尾均使用相同的布局预览，不重复渲染。
   for(const [key,selector,position] of [
-    ['nested-key','[data-node-id="nested"]','INLINE'],
+    ['nested-key','.form-node-design-entry:has(> [data-node-id="nested"])','INLINE'],
     ['tab-key','.design-tab-panel','TAB'],
     ['','','INLINE']
   ]) {
@@ -1046,7 +1050,7 @@ try {
   await evaluate("[...document.querySelectorAll('#real-designer .header-right button')].find(e=>e.textContent.replace(/\\s/g,'')==='发布').click();relationTest.settle()")
   await until("[...document.querySelectorAll('.el-dialog')].some(e=>e.getClientRects().length&&e.innerText.includes('发布说明'))")
   assert.equal(await evaluate("relationTest.state.compositions.find(c=>c.config.target.contentType==='LIST').config.presentation.listOptions.pageSize"),39)
-  await click('发布',"[...document.querySelectorAll('.el-dialog')].find(e=>e.getClientRects().length&&e.innerText.includes('发布说明'))")
+  await click('确认发布',"[...document.querySelectorAll('.el-dialog')].find(e=>e.getClientRects().length&&e.innerText.includes('发布说明'))")
   await until('relationTest.state.designerPublished===true')
   await evaluate("relationTest.state.published=true;relationTest.state.sourceRecordId='all-1';relationTest.settle()")
   await until("relationTest.state.calls.some(c=>c.url.endsWith('/requirements/query')&&c.body.pageSize===39)")

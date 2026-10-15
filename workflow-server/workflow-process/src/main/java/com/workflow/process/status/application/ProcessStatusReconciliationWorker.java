@@ -73,7 +73,8 @@ public class ProcessStatusReconciliationWorker {
                 (historic.getDeleteReason() == null || historic.getDeleteReason().isBlank())
                         && statusPolicy != null && statusPolicy.usesTransitions(historic.getProcessDefinitionId())
                         ? null : fallbackStatus(category));
-        log.warn("补发流程结束状态同步事件: processInstanceId={}",
+        // 多实例对账可能同时看到缺失事件，发布端按稳定事件键去重。
+        log.debug("已检查并补建流程结束状态同步事件: processInstanceId={}",
                 link.getProcessInstanceId());
     }
 

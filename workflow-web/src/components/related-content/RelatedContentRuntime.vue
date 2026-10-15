@@ -16,55 +16,26 @@
     />
     <template v-if="inlinePresentation">
       <el-card shadow="never" class="related-content-runtime__card" :class="{ 'is-borderless': presentation.showBorder === false }">
-        <template v-if="presentation.showTitle !== false || resolved?.targetContentType === 'LIST' || canSaveTarget || canPickLinkCandidate" #header>
+        <template v-if="presentation.showTitle !== false || showTopActions" #header>
           <div class="related-content-runtime__header">
             <span v-if="presentation.showTitle !== false">{{ displayTitle }}</span>
-            <div class="related-content-runtime__actions">
-              <el-button
-                v-if="resolved?.targetContentType === 'LIST'"
-                link
-                type="primary"
-                :loading="loading || actionLoading"
-                @click="refresh"
-              >
-                刷新
-              </el-button>
-              <el-button
-                v-if="canSaveTarget"
-                link
-                type="primary"
-                :loading="targetSaveLoading"
-                :disabled="loading || actionLoading"
-                @click="saveTarget"
-              >
-                保存子表单
-              </el-button>
-              <el-button
-                v-if="canPickLinkCandidate"
-                link
-                type="primary"
-                :disabled="actionLoading"
-                @click="openLinkCandidates"
-              >
-                选择并建立关联
-              </el-button>
-            </div>
+            <RuntimeActions v-if="showTopActions" inline />
           </div>
         </template>
         <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
+        <RuntimeActions v-if="showBottomActions" inline bottom />
       </el-card>
     </template>
 
-    <el-button
+    <BuiltInActionButton
       v-else-if="showTrigger"
-      type="primary"
-      link
+      action-key="open"
+      :config="presentation.actionBar"
+      :defaults="{ label: triggerLabel, buttonType: 'primary', buttonAppearance: 'LINK' }"
       :loading="loading"
       :disabled="!hasSourceContext"
       @click="openPresentation"
-    >
-      {{ triggerLabel }}
-    </el-button>
+    />
 
     <el-dialog
       v-if="dialogPresentation"
@@ -75,31 +46,9 @@
       :before-close="beforePresentationClose"
       destroy-on-close
     >
-      <div
-        v-if="canSaveTarget || canPickLinkCandidate"
-        class="related-content-runtime__presentation-actions"
-      >
-        <el-button
-          v-if="canSaveTarget"
-          type="primary"
-          link
-          :loading="targetSaveLoading"
-          :disabled="loading || actionLoading"
-          @click="saveTarget"
-        >
-          保存子表单
-        </el-button>
-        <el-button
-          v-if="canPickLinkCandidate"
-          type="primary"
-          link
-          :disabled="actionLoading"
-          @click="openLinkCandidates"
-        >
-          选择并建立关联
-        </el-button>
-      </div>
+      <RuntimeActions v-if="showTopActions" />
       <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
+      <RuntimeActions v-if="showBottomActions" bottom />
     </el-dialog>
 
     <el-drawer
@@ -110,31 +59,9 @@
       :before-close="beforePresentationClose"
       destroy-on-close
     >
-      <div
-        v-if="canSaveTarget || canPickLinkCandidate"
-        class="related-content-runtime__presentation-actions"
-      >
-        <el-button
-          v-if="canSaveTarget"
-          type="primary"
-          link
-          :loading="targetSaveLoading"
-          :disabled="loading || actionLoading"
-          @click="saveTarget"
-        >
-          保存子表单
-        </el-button>
-        <el-button
-          v-if="canPickLinkCandidate"
-          type="primary"
-          link
-          :disabled="actionLoading"
-          @click="openLinkCandidates"
-        >
-          选择并建立关联
-        </el-button>
-      </div>
+      <RuntimeActions v-if="showTopActions" />
       <div :inert="targetSaveLoading" v-loading="targetSaveLoading"><RuntimeBody /></div>
+      <RuntimeActions v-if="showBottomActions" bottom />
     </el-drawer>
 
     <el-dialog
@@ -177,6 +104,8 @@
 </template>
 
 <script setup>
+import BuiltInActionButton from '@/components/BuiltInActionButton.vue'
+import { builtInActionBarHasPosition, builtInActionBarStyle, resolveBuiltInButton } from '@flow/workflow-core/builtin-button-appearance'
 import { buildRuntimeContext } from '@flow/workflow-core/form-runtime/context'
 import { uiExtensionRuntimeApi } from '@/api/uiConfig'
 import {
@@ -396,6 +325,52 @@ const canSaveTarget = computed(() =>
     && ![true, 1, '1'].includes(targetForm.value.isReadonly)
     && actions.value.has(targetSaveAction.value)
 )
+// 动作能力及处理函数由运行时固定提供；展示配置只能覆盖外观和排序，不能增加、隐藏或替换动作。
+const toolbarActions = computed(() => {
+  const result = []
+  if (inlinePresentation.value && resolved.value?.targetContentType === 'LIST') {
+    result.push({ key: 'refresh', label: '刷新', sort: 0, loading: loading.value || actionLoading.value, onClick: refresh })
+  }
+  if (canSaveTarget.value) {
+    result.push({ key: 'save', label: '保存子表单', sort: 10, loading: targetSaveLoading.value, disabled: loading.value || actionLoading.value, onClick: saveTarget })
+  }
+  if (canPickLinkCandidate.value) {
+    result.push({ key: 'link', label: '选择并建立关联', sort: 20, disabled: actionLoading.value, onClick: openLinkCandidates })
+  }
+  return result.sort((left, right) =>
+    resolveBuiltInButton(presentation.value.actionBar, left.key, left).sort
+      - resolveBuiltInButton(presentation.value.actionBar, right.key, right).sort)
+})
+const showTopActions = computed(() => toolbarActions.value.length > 0
+  && builtInActionBarHasPosition(presentation.value.actionBar, 'TOP', 'TOP'))
+const showBottomActions = computed(() => toolbarActions.value.length > 0
+  && builtInActionBarHasPosition(presentation.value.actionBar, 'BOTTOM', 'TOP'))
+
+/** 顶部、底部共用同一组固定动作及忙碌状态，双操作栏也会受原有保存防重入保护。 */
+const RuntimeActions = defineComponent({
+  props: { inline: Boolean, bottom: Boolean },
+  setup(actionProps) {
+    return () => {
+      const defaultAlign = actionProps.inline && presentation.value.showTitle === false ? 'LEFT' : 'RIGHT'
+      const explicitAlign = presentation.value.actionBar?.align && presentation.value.actionBar.align !== 'DEFAULT'
+      return h('div', {
+        class: [
+          actionProps.inline ? 'related-content-runtime__actions' : 'related-content-runtime__presentation-actions',
+          { 'is-bottom': actionProps.bottom, 'has-custom-alignment': explicitAlign, 'has-custom-gap': presentation.value.actionBar?.gap != null }
+        ],
+        style: builtInActionBarStyle(presentation.value.actionBar, defaultAlign, 4)
+      }, toolbarActions.value.map(action => h(BuiltInActionButton, {
+        key: action.key,
+        actionKey: action.key,
+        config: presentation.value.actionBar,
+        defaults: { label: action.label, sort: action.sort, buttonType: 'primary', buttonAppearance: 'LINK' },
+        loading: action.loading,
+        disabled: action.disabled,
+        onClick: action.onClick
+      })))
+    }
+  }
+})
 const targetMode = computed(() => !canSaveTarget.value ? 'view'
   : targetSaveAction.value === 'EDIT' ? 'edit' : 'create')
 const targetDraftDirty = computed(() => Boolean(targetDraftBaseline.value)
@@ -1147,6 +1122,24 @@ defineExpose({ open: openPresentation })
   justify-content: flex-end;
   gap: 4px;
   margin-bottom: 8px;
+}
+
+/* 显式对齐才占满标题剩余空间；未配置时保留旧版隐藏标题后靠左的布局。 */
+.related-content-runtime__actions.has-custom-alignment {
+  flex: 1;
+}
+.related-content-runtime__actions,
+.related-content-runtime__presentation-actions {
+  flex-wrap: wrap;
+}
+.related-content-runtime__actions.has-custom-gap :deep(.el-button + .el-button),
+.related-content-runtime__presentation-actions.has-custom-gap :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+.related-content-runtime__actions.is-bottom,
+.related-content-runtime__presentation-actions.is-bottom {
+  margin-top: 12px;
+  margin-bottom: 0;
 }
 
 .related-content-runtime__load {

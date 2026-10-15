@@ -1,17 +1,24 @@
 <template>
   <section ref="pickerRoot" class="form-relation-picker">
     <div class="relation-heading">
-      <strong>实体关系</strong>
+      <div class="relation-title">
+        <strong>实体关系</strong>
+        <ConfigHelpLabel
+          class="relation-help"
+          label="实体关系"
+          :show-label="false"
+          content="普通关联独立展示；组成关系添加子表单或明细，随主表保存。"
+        />
+      </div>
       <el-button link size="small" :loading="loading" @click="load">刷新</el-button>
     </div>
-    <p>普通关联独立展示；组成关系添加子表单或明细，随主表保存。</p>
     <div v-if="compositionOnly" class="composition-filter">
       <strong>随主表保存的组成关系</strong>
       <el-button link size="small" type="primary" @click="compositionOnly = false">显示全部关系</el-button>
     </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
     <div v-for="relation in visibleRelations" :key="relationUsageKey(relation)" class="relation-item">
-      <div>
+      <div class="relation-title">
         <strong
           class="relation-property-title"
           role="button"
@@ -21,7 +28,12 @@
           @dblclick.stop="openRelationProperties(relation)"
           @keydown.enter.stop="openRelationProperties(relation)"
         >{{ relation.relationName }}</strong>
-        <small>{{ relationTarget(relation).entityName }} · {{ isCompositionEditorRelation(relation) ? '随主表保存' : relation.direction === 'REVERSE' ? '所属记录 · 独立展示' : '独立展示' }}</small>
+        <ConfigHelpLabel
+          class="relation-help"
+          :label="relation.relationName"
+          :show-label="false"
+          :content="`${relationTarget(relation).entityName} · ${isCompositionEditorRelation(relation) ? '随主表保存' : relation.direction === 'REVERSE' ? '所属记录 · 独立展示' : '独立展示'}`"
+        />
       </div>
       <el-button
         size="small" link type="primary"
@@ -63,6 +75,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
 import { entityRelationApi } from '@/api/entityRelation'
 import { getFormsByEntity, getFormRuntimeRelease } from '@/api/entityForm'
 import { entityListConfigApi } from '@/api/entityListConfig'
@@ -240,12 +253,12 @@ defineExpose({ load, openRelation, showCompositionEditors })
 <style scoped>
 .form-relation-picker { padding: 16px; border-top: 1px solid var(--el-border-color-lighter); }
 .relation-heading { display: flex; align-items: center; justify-content: space-between; }
+.relation-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.relation-help { flex: 0 0 auto; }
 .composition-filter { font-size: 12px; color: var(--el-color-primary); }
 .form-relation-picker p, .help { font-size: 12px; line-height: 1.7; color: var(--el-text-color-secondary); }
 .relation-item { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
-.relation-item strong, .relation-item small { display: block; overflow-wrap: anywhere; }
-.relation-item small { margin-top: 4px; color: var(--el-text-color-secondary); }
-.relation-property-title { cursor: pointer; }
+.relation-property-title { min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
 .relation-property-title[aria-disabled="true"] { cursor: default; }
 .target-form { margin-top: 20px; }
 </style>

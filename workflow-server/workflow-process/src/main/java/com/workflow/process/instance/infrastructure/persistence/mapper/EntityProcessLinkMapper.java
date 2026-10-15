@@ -186,7 +186,7 @@ public interface EntityProcessLinkMapper extends BaseMapper<EntityProcessLink> {
     }
 
     /**
-     * 查询结束活动{@code reconciliation}；查询结果供调用方展示或继续处理。
+     * 查询引擎已结束但尚缺结束同步事件的活动关联，供对账补建事件。
      *
      * @param limit 上限参数，用于限制后续查询范围和返回数量
      * @return 实体流程链接集合，供调用方遍历或展示
@@ -196,7 +196,9 @@ public interface EntityProcessLinkMapper extends BaseMapper<EntityProcessLink> {
     }
 
     /**
-     * 保留完整业务查询，由 MyBatis-Plus 处理最外层分页，避免重复维护各数据库分页语法。
+     * 排除已有结束事件后再分页，避免长期失败的老关联占满批次，饿死后续缺失事件。
+     * 已有事件（包括死信）由 Outbox 重试或人工恢复，不能由定时对账重置。
+     * event_key 的固定结束后缀配合精确的 aggregate_id 区分同流程的任务状态事件。
      *
      * @param page 分页参数，用于限制后续查询范围和返回数量
      * @return 实体流程链接集合，供调用方遍历或展示
@@ -211,6 +213,13 @@ public interface EntityProcessLinkMapper extends BaseMapper<EntityProcessLink> {
                 FROM ACT_HI_PROCINST historic
                 WHERE historic.PROC_INST_ID_ = link.process_instance_id
                   AND historic.END_TIME_ IS NOT NULL
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM workflow_outbox_event event
+                WHERE event.topic = 'PROCESS_STATUS_SYNC'
+                  AND event.aggregate_type = 'PROCESS_INSTANCE'
+                  AND event.aggregate_id = link.process_instance_id
+                  AND event.event_key LIKE '%:PROCESS_END:END'
               )
             ORDER BY link.update_time
             </script>

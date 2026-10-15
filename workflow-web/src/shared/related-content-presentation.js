@@ -1,3 +1,4 @@
+import { builtInActionBarError, normalizeBuiltInActionBar } from '@flow/workflow-core/builtin-button-appearance'
 import { evaluateFlowConditionGroup, isFlowConditionGroupComplete, parseFlowConditionConfig } from '@flow/workflow-core/utils/flowConditionGroups'
 
 /** 展示设置只控制区域呈现，不能改变查询范围、目标发布配置或操作权限。 */
@@ -19,7 +20,16 @@ export function relatedContentLayoutStyle(presentation = {}) {
   return result
 }
 
+const relatedContentButtonKeys = contentType => contentType === 'LIST' ? ['refresh', 'link', 'open'] : ['save', 'open']
+
+/** 主动切换目标类型时清除不再适用的按钮，保留共用入口外观及操作栏布局。 */
+export function normalizeRelatedContentActionBar(value, contentType) {
+  return normalizeBuiltInActionBar(value, relatedContentButtonKeys(contentType))
+}
+
 export function relatedContentPresentationError(presentation = {}, contentType) {
+  const actionBarError = builtInActionBarError(presentation.actionBar, relatedContentButtonKeys(contentType))
+  if (actionBarError) return actionBarError
   const ranges = { width: [10, 100], height: [120, 3000], padding: [0, 80] }
   for (const [key, value] of Object.entries(presentation.layout || {})) {
     const range = ranges[key]

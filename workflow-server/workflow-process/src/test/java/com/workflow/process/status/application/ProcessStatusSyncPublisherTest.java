@@ -12,7 +12,7 @@ import static org.mockito.Mockito.verify;
 class ProcessStatusSyncPublisherTest {
 
     @Test
-    void reconciliationRequeuesFailedProcessEndEvent() {
+    void reconciliationPreservesExistingRetryBudgetAndDeadLetters() {
         OutboxPublishPort outboxPublisher =
                 mock(OutboxPublishPort.class);
         ProcessStatusSyncPublisher publisher =
@@ -25,9 +25,9 @@ class ProcessStatusSyncPublisherTest {
                 "COMPLETED",
                 "APPROVED");
 
-        verify(outboxPublisher).publishOrRequeueFailed(
+        verify(outboxPublisher).publish(
                 argThat(this::isExpectedProcessEnd));
-        verify(outboxPublisher, never()).publish(
+        verify(outboxPublisher, never()).publishOrRequeueFailed(
                 argThat(this::isExpectedProcessEnd));
     }
 

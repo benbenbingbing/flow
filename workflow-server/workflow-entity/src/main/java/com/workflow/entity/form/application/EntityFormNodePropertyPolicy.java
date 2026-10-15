@@ -1,6 +1,7 @@
 package com.workflow.entity.form.application;
 
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.entity.ui.application.validation.BuiltInButtonAppearancePolicy;
 import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
@@ -797,6 +798,13 @@ public final class EntityFormNodePropertyPolicy {
                 "layout",
                 Set.of("form", "table"));
         requireBoolean(subFormConfig, "repeatable");
+        // 组成型子表单只允许调整增行、移除的外观，保存语义及只读、行数限制仍由原逻辑控制。
+        if (subFormConfig.containsKey("actionBar")) {
+            subFormConfig.put("actionBar", BuiltInButtonAppearancePolicy.normalize(
+                    subFormConfig.get("actionBar"), BuiltInButtonAppearancePolicy.COMPOSITION_BUTTONS));
+            componentProps.put("subFormConfig", subFormConfig);
+            props.put("componentProps", componentProps);
+        }
         SubFormParameterContractPolicy.validateShape(
                 SubFormParameterContractPolicy.contract(
                         Map.of("componentProps", componentProps)));

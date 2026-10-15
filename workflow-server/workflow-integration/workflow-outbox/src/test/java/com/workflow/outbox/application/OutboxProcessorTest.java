@@ -24,6 +24,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
 
 class OutboxProcessorTest {
 
@@ -83,6 +84,46 @@ class OutboxProcessorTest {
                 eq(1),
                 eq(30L),
                 eq("temporary"));
+    }
+
+    @Test
+    void permanentFailureStopsEvenWhenTopicSupportsRetries() throws Exception {
+        OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
+        OutboxEventHandlerProvider handler = handler("TEST");
+        when(handler.retryable()).thenReturn(true);
+        var failure = new IllegalStateException("configuration requires repair");
+        when(handler.retryable(failure)).thenReturn(false);
+        doThrow(failure).when(handler).handle(any(OutboxEvent.class));
+        OutboxRecord record = processingRecord();
+        when(mapper.selectClaimed(record.getId(), "worker-1")).thenReturn(record);
+
+        new OutboxProcessor(mapper, List.of(handler), scheduler())
+                .process(record.getId(), "worker-1", 7L, 120);
+
+        verify(mapper).markFailed(record.getId(), "worker-1", 7L,
+                "DEAD", 1, 0L, failure.getMessage());
+        verify(mapper, never()).markProcessed(any(), any(), org.mockito.ArgumentMatchers.anyLong());
+    }
+
+    @Test
+    void transientFailuresBackOffAndStopAtRetryLimit() throws Exception {
+        OutboxRecordMapper mapper = mock(OutboxRecordMapper.class);
+        OutboxEventHandlerProvider handler = handler("TEST");
+        when(handler.retryable()).thenReturn(true);
+        doThrow(new IllegalStateException("temporary"))
+                .when(handler).handle(any(OutboxEvent.class));
+        OutboxRecord record = processingRecord();
+        when(mapper.selectClaimed(record.getId(), "worker-1")).thenReturn(record);
+        OutboxProcessor processor = new OutboxProcessor(mapper, List.of(handler), scheduler());
+
+        record.setRetryCount(1);
+        processor.process(record.getId(), "worker-1", 7L, 120);
+        verify(mapper).markFailed(record.getId(), "worker-1", 7L,
+                "FAILED", 2, 60L, "temporary");
+        record.setRetryCount(2);
+        processor.process(record.getId(), "worker-1", 7L, 120);
+        verify(mapper).markFailed(record.getId(), "worker-1", 7L,
+                "DEAD", 3, 0L, "temporary");
     }
 
     @Test
@@ -197,7 +238,7 @@ class OutboxProcessorTest {
 
     private OutboxEventHandlerProvider handler(String topic) {
         OutboxEventHandlerProvider handler =
-                mock(OutboxEventHandlerProvider.class);
+                mock(OutboxEventHandlerProvider.class, CALLS_REAL_METHODS);
         when(handler.topic()).thenReturn(topic);
         return handler;
     }

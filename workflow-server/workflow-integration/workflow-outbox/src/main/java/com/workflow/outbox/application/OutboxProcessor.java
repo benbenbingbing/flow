@@ -218,7 +218,7 @@ public class OutboxProcessor {
                 ? 8
                 : Math.max(1, record.getMaxRetries());
         OutboxEventHandlerProvider handler = handlers.get(record.getTopic());
-        boolean retryable = handler != null && handler.retryable();
+        boolean retryable = handler != null && handler.retryable(exception);
         String status = !retryable || retries >= maxRetries
                 ? "DEAD"
                 : "FAILED";
@@ -239,9 +239,10 @@ public class OutboxProcessor {
             return;
         }
         log.error(
-                "Outbox 事件处理失败: id={}, topic={}, retry={}/{}",
+                "Outbox 事件处理失败: id={}, topic={}, status={}, retry={}/{}",
                 record.getId(),
                 record.getTopic(),
+                status,
                 retries,
                 maxRetries,
                 exception);

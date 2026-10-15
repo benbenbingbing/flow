@@ -161,3 +161,25 @@ test('BPMN 扩展写入不修改命令栈的旧快照，保留其他扩展和值
   assert.deepEqual(element.businessObject.extensionElements.values[1].values.map(x => x.name), ['entityCode'])
   assert.equal(changes[1].before.values[1].values[0].value, 'after')
 })
+
+// 操作栏属于引用实例，往返保存不能覆盖子表关系或参数映射。
+test('组成型子表按钮外观在 SUB_FORM/REPEATER 的编辑保存回显中保留', () => {
+  const actionBar = { position: 'BOTH', align: 'RIGHT', gap: 12, buttons: {
+    add: { label: '新增验收项', buttonType: 'primary', buttonAppearance: 'PLAIN', size: 'large', borderRadius: 8 },
+    remove: { label: '移除此项', icon: 'Delete', buttonType: 'danger', buttonAppearance: 'TEXT' }
+  } }
+  for (const nodeType of ['SUB_FORM', 'REPEATER']) {
+    const model = editor()
+    const node = { id: 'items', nodeType, nodeKey: 'items', bindingType: 'RELATION', bindingRef: 'order_items', propsDocument: JSON.stringify({
+      componentType: 'sub_form', childFormId: 'item-form', componentProps: { subFormConfig: { actionBar, showTitle: false, parameterContract: { parameterMapping: { orderId: 'parent.recordId' } } } }
+    }) }
+    const field = model.nodeToField(node)
+    const payload = model.fieldToNodePayload(field)
+    assert.deepEqual(payload.props.componentProps.subFormConfig.actionBar, actionBar)
+    assert.equal(payload.props.componentProps.subFormConfig.showTitle, false)
+    assert.deepEqual(payload.props.componentProps.subFormConfig.parameterContract, { parameterMapping: { orderId: 'parent.recordId' } })
+    assert.equal(payload.bindingRef, 'order_items')
+    const restored = model.nodeToField({ ...node, propsDocument: JSON.stringify(payload.props) })
+    assert.deepEqual(model.fieldToNodePayload(restored).props.componentProps.subFormConfig.actionBar, actionBar)
+  }
+})

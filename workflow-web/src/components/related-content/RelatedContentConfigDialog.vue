@@ -33,6 +33,7 @@
           :key="targetSection.section" :section="targetSection.section" v-show="!embedded ? activeStep === 1 : settingsTab === targetSection.tab"
           :editor="editor"
           :isRelationBound="isRelationBound"
+          :relation-match-text="boundEntityRelation && !relationBindingError ? relationMatchLabel(boundEntityRelation) : ''"
           :contentTypeOptions="contentTypeOptions"
           :targetCatalogLoading="targetCatalogLoading"
           :targetContentOptions="targetContentOptions"
@@ -47,23 +48,16 @@
           @handlePositionChange="handlePositionChange"
           @handleAnchorChange="handleAnchorChange"
         >
-          <template v-if="targetSection.section !== 'basic'" #relation-summary>
-            <section v-if="isRelationBound" class="entity-relation-binding">
-              <div class="relation-binding-heading">
-                <strong>继承实体关系：{{ boundEntityRelation?.relationName || boundRelationCode || '请选择' }}</strong>
-                <el-button link type="primary" @click="openEntityRelationManagement">去实体设计修改关系</el-button>
-              </div>
-              <el-select v-if="canSelectBinding" v-model="boundRelationKey" filterable placeholder="选择已定义的实体关系" style="width: 100%; margin-bottom: 12px" @change="selectBinding">
-                <el-option v-for="relation in sourceRelations" :key="relationUsageKey(relation)" :value="relationUsageKey(relation)" :disabled="relation.enabled === false || relation.enabled === 0" :label="`${relation.relationName} · ${relationTarget(relation).entityName} · ${relation.direction === 'REVERSE' ? '所属记录' : relation.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多'}`" />
-              </el-select>
+          <template #relation-binding>
+            <template v-if="isRelationBound">
+              <el-form-item v-if="canSelectBinding" label="实体关系" required>
+                <el-select v-model="boundRelationKey" class="relation-binding-select" filterable placeholder="选择已定义的实体关系" style="width: 100%" @change="selectBinding">
+                  <el-option v-for="relation in sourceRelations" :key="relationUsageKey(relation)" :value="relationUsageKey(relation)" :disabled="relation.enabled === false || relation.enabled === 0" :label="`${relation.relationName} · ${relationTarget(relation).entityName} · ${relation.direction === 'REVERSE' ? '所属记录' : relation.relationType === 'ONE_TO_ONE' ? '一对一' : '一对多'}`" />
+                </el-select>
+              </el-form-item>
               <el-alert v-if="canSelectBinding && !catalogLoading && !sourceRelations.length && !relationBindingError" title="请先在实体设计中定义关系，再返回这里选择展示页面。" type="info" :closable="false" />
-              <el-alert v-if="relationBindingError" :title="relationBindingError" type="error" :closable="false" show-icon />
-              <el-descriptions v-else-if="boundEntityRelation" :column="2" border size="small">
-                <el-descriptions-item label="关联实体">{{ relationTarget(boundEntityRelation).entityName }}</el-descriptions-item>
-                <el-descriptions-item label="关联数量">{{ boundEntityRelation.direction === 'REVERSE' ? '所属记录 · 表单' : relationContentType(boundEntityRelation) === 'FORM' ? '一对一 · 表单' : '一对多 · 列表' }}</el-descriptions-item>
-                <el-descriptions-item label="匹配规则" :span="2">{{ relationMatchLabel(boundEntityRelation) }}</el-descriptions-item>
-              </el-descriptions>
-            </section>
+              <el-alert v-if="relationBindingError" class="relation-binding-error" :title="relationBindingError" type="error" :closable="false" show-icon />
+            </template>
           </template>
         </RelatedContentTargetStep>
         <RelatedContentPageSettings v-if="embedded" v-show="settingsTab === 'child-pages'" :editor="editor" :parameter-schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
@@ -191,15 +185,11 @@
             title="允许做什么"
             description="选择用户可以执行的动作。目标实体的权限和数据范围仍会独立校验。"
           />
-          <div class="action-grid">
-            <label
+          <div class="action-options" role="group" aria-label="关联操作">
+            <div
               v-for="option in actionOptions"
               :key="option.value"
-              class="action-card"
-              :class="{
-                'is-selected': editor.config.actions.includes(option.value),
-                'is-disabled': isActionDisabled(option.value)
-              }"
+              class="action-option"
             >
               <el-checkbox
                 :model-value="editor.config.actions.includes(option.value)"
@@ -211,10 +201,9 @@
               <ConfigHelpLabel
                 :label="option.label"
                 :show-label="false"
-                :content="`是什么：${option.description} 何时使用：仅在用户确实需要该操作时开启。结果：平台仍会重新校验目标记录与动作权限。`"
+                :content="option.description"
               />
-              <small>{{ option.description }}</small>
-            </label>
+            </div>
           </div>
 
           <el-alert v-if="ownerType === 'FORM'" type="info" :closable="false" class="composition-save-guide">
@@ -753,6 +742,7 @@ import { entityListConfigApi } from '@/api/entityListConfig'
 import { entityRelationApi } from '@/api/entityRelation'
 import { relationContentType, relationTarget, relationUsageKey, relationMatchLabel } from '@/shared/entity-relation'
 import { applyEntityRelationBinding } from '@/shared/relation-content'
+import { normalizeRelatedContentActionBar } from '@/shared/related-content-presentation'
 import { uiCompositionApi } from '@/api/uiComposition'
 import { uiExtensionApi } from '@/api/uiConfig'
 import {
@@ -1181,6 +1171,7 @@ async function selectBinding() {
   editor.config.relation = { type: 'ENTITY_RELATION', relationCode: relation.relationCode, direction: relation.direction || 'FORWARD' }
   delete editor.config.presentation.listOptions
   editor.config.target = { ...relationTarget(relation), contentType: relationContentType(relation), contentId: '', contentKey: '', contentName: '' }
+  resetIncompatibleButtonAppearance()
   editor.config.actions = ['VIEW']
   if (!editor.config.name) editor.config.name = relation.relationName
   applyEntityRelationBinding(editor, relation)
@@ -1202,6 +1193,7 @@ async function handleTargetEntitySelected(entity) {
 }
 
 function handleContentTypeChange() {
+  resetIncompatibleButtonAppearance()
   if (editor.config.target.contentType !== 'LIST') delete editor.config.presentation.listOptions
   Object.assign(editor.config.target, {
     contentId: '',
@@ -1214,6 +1206,21 @@ function handleContentTypeChange() {
     editor.config.actionSettings.create.associateAfterCreate = false
   }
   updateRelatedContentAnchor(editor, props.ownerType)
+}
+
+/** 目标类型切换会改变系统按钮集合；共用的打开入口和位置设置继续沿用。 */
+function resetIncompatibleButtonAppearance() {
+  if (editor.config.presentation.actionBar === undefined) return
+  editor.config.presentation.actionBar = normalizeRelatedContentActionBar(
+    editor.config.presentation.actionBar, editor.config.target.contentType
+  )
+}
+
+/** 关系基数被外部修改时，重新绑定也可能把表单变为列表；同类型回显不清洗用户草稿。 */
+function applyBoundRelationWithButtonAppearance(relation) {
+  const previousType = editor.config.target.contentType
+  applyEntityRelationBinding(editor, relation)
+  if (previousType !== editor.config.target.contentType) resetIncompatibleButtonAppearance()
 }
 
 async function handleTargetContentChange(id) {
@@ -1530,7 +1537,7 @@ async function save() {
   if (isRelationBound.value) {
     if (relationBindingError.value) return
     try {
-      applyEntityRelationBinding(editor, boundEntityRelation.value)
+      applyBoundRelationWithButtonAppearance(boundEntityRelation.value)
     } catch (error) {
       relationBindingError.value = error.message
       activeStep.value = 1
@@ -1608,7 +1615,7 @@ async function open(value = null, { extension = false } = {}) {
   await loadCommonCatalog()
   if (isRelationBound.value && !canSelectBinding.value && !relationBindingError.value) {
     try {
-      applyEntityRelationBinding(editor, boundEntityRelation.value)
+      applyBoundRelationWithButtonAppearance(boundEntityRelation.value)
     } catch (error) {
       relationBindingError.value = error.message
     }
@@ -1647,21 +1654,6 @@ defineExpose({ open })
 </script>
 
 <style scoped>
-.entity-relation-binding {
-  margin: 20px 0;
-  padding: 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
-}
-.relation-binding-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.inherited-target { overflow-wrap: anywhere; }
-
 .dialog-heading,
 .dialog-footer,
 .relation-preview,
@@ -1776,7 +1768,6 @@ defineExpose({ open })
 }
 
 .selection-card small,
-.action-card small,
 .special-choice small {
   color: var(--el-text-color-secondary);
   font-size: 12px;
@@ -1838,7 +1829,23 @@ defineExpose({ open })
 .composition-save-guide { margin-top: 16px; }
 .composition-save-guide p { margin: 8px 0; line-height: 1.7; }
 
-.action-grid,
+.action-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-bottom: 16px;
+}
+
+.action-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.action-option :deep(.el-checkbox) {
+  margin-right: 0;
+}
+
 .special-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1846,7 +1853,6 @@ defineExpose({ open })
   margin-bottom: 18px;
 }
 
-.action-card,
 .special-choice {
   position: relative;
   display: grid;
@@ -1859,20 +1865,13 @@ defineExpose({ open })
   cursor: pointer;
 }
 
-.action-card small,
 .special-choice small {
   grid-column: 1 / -1;
 }
 
-.action-card.is-selected,
 .special-choice.is-selected {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
-}
-
-.action-card.is-disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .action-settings-card {
@@ -2000,7 +1999,6 @@ defineExpose({ open })
 @media (max-width: 820px) {
   .two-column-form,
   .relation-methods,
-  .action-grid,
   .special-choice-grid {
     grid-template-columns: 1fr;
   }

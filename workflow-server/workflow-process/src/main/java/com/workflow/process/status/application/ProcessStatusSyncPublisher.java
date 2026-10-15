@@ -71,13 +71,14 @@ public class ProcessStatusSyncPublisher {
     }
 
     /**
-     * 重新排队先前失败的结束事件；仍使用相同事件键以复用原有去重语义。
+     * 对账补建缺失的结束事件；已存在事件由 Outbox 自身退避重试。
+     * 不重置 FAILED 的次数和下次重试时间，也不自动激活 DEAD，避免无限重投。
      *
      * @param processInstanceId 原结束事件所属流程实例 ID
      * @param entityCode 原事件的实体编码
      * @param entityRecordId 原事件的记录 ID
      * @param statusCategory 原结束原因类别
-     * @param fallbackStatus 原兜底状态，重排时保持消费者输入一致
+     * @param fallbackStatus 缺失事件采用的兜底状态，已存在事件保持原载荷
      */
     public void republishProcessEnd(
             String processInstanceId,
@@ -93,28 +94,16 @@ public class ProcessStatusSyncPublisher {
                 entityRecordId,
                 null,
                 statusCategory,
-                fallbackStatus), true);
+                fallbackStatus));
     }
 
     /**
-     * 正常发布入口，不重新排队已失败的事件。
-     *
-     * @param payload 已组装的状态同步事件，交给统一校验与入队方法
-     */
-    private void publish(ProcessStatusSyncPayload payload) {
-        publish(payload, false);
-    }
-
-    /**
-     * 校验路由坐标并构造 Outbox 去重键；requeueFailed 仅供明确的补偿路径使用。
+     * 校验路由坐标并构造 Outbox 去重键，普通发布和定时对账均保持严格幂等。
      *
      * @param payload 包含流程、任务或结束序号及实体目标的事件
-     * @param requeueFailed 是否允许将同键的失败 Outbox 事件重新排队
      * @throws IllegalArgumentException 流程或实体坐标缺失时抛出
      */
-    private void publish(
-            ProcessStatusSyncPayload payload,
-            boolean requeueFailed) {
+    private void publish(ProcessStatusSyncPayload payload) {
         require(payload.processInstanceId(), "processInstanceId");
         require(payload.eventSequence(), "eventSequence");
         require(payload.entityCode(), "entityCode");
@@ -129,11 +118,7 @@ public class ProcessStatusSyncPublisher {
                 payload.processInstanceId(),
                 payload,
                 20);
-        if (requeueFailed) {
-            outboxPublisher.publishOrRequeueFailed(request);
-        } else {
-            outboxPublisher.publish(request);
-        }
+        outboxPublisher.publish(request);
     }
 
     /**

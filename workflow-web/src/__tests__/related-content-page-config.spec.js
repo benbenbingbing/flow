@@ -29,7 +29,7 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
 ;[
   '显示什么',
   '数据来源',
-  '继承实体关系',
+  '匹配规则',
   '选择已定义的实体关系',
   '允许做什么',
   '特殊情况怎么处理',

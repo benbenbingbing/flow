@@ -749,6 +749,8 @@ const subFormConfig = computed(() => {
   return {
     label: field?.fieldLabel || field?.fieldName || '明细',
     showHeaderTitle: false,
+    // 外观属于当前引用实例，不能读取被引用子表单的操作栏覆盖它。
+    actionBar: parsedComponentProps.value.subFormConfig?.actionBar,
     fieldKey: field?.fieldCode || field?.fieldKey || 'detailList',
     required: relationRequired,
     minRows: minimumRows,

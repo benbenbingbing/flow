@@ -20,6 +20,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EntityFormNodePropertyPolicyTest {
 
     @Test
+    void childFormBuiltInAppearancePersistsAtSubFormConfigPathWithoutBehaviorChanges() {
+        Map<String, Object> actionBar = Map.of("position", "BOTH", "align", "RIGHT", "gap", 12,
+                "buttons", Map.of("add", Map.of("label", "添加明细", "icon", "Plus", "sort", 0),
+                        "remove", Map.of("label", "移除此项", "icon", "Delete", "buttonType", "danger",
+                                "buttonAppearance", "LINK", "borderRadius", 8, "textColor", "#1234")));
+        Map<String, Object> props = Map.of("componentProps", Map.of("showBorder", false,
+                "subFormConfig", Map.of("repeatable", true, "layout", "table", "actionBar", actionBar)));
+        for (String type : Set.of("SUB_FORM", "REPEATER")) {
+            assertEquals(props, EntityFormNodePropertyPolicy.normalizeProps(type, props, false).active());
+            Map<String, Object> legacy = Map.of("componentProps", Map.of("subFormConfig", Map.of("repeatable", true)));
+            assertEquals(legacy, EntityFormNodePropertyPolicy.normalizeProps(type, legacy, false).active());
+        }
+    }
+
+    @Test
+    void childFormBuiltInAppearanceRejectsBehaviorOverridesAndUnsupportedActions() {
+        for (String type : Set.of("SUB_FORM", "REPEATER")) {
+            for (Object invalid : java.util.List.of(Map.of("buttons", Map.of("save", Map.of())),
+                    Map.of("buttons", Map.of("add", Map.of("enabled", false))),
+                    Map.of("buttons", Map.of("remove", Map.of("handler", "customRemove"))),
+                    Map.of("position", "NONE"), Map.of("gap", -1), "invalid")) {
+                assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(type,
+                        Map.of("componentProps", Map.of("subFormConfig", Map.of("actionBar", invalid))), false));
+            }
+            Map<String, Object> subFormConfig = new LinkedHashMap<>();
+            subFormConfig.put("actionBar", null);
+            assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps(type,
+                    Map.of("componentProps", Map.of("subFormConfig", subFormConfig)), false));
+        }
+    }
+
+    @Test
     void scriptBindingsPreserveLegacyCodeAndVersionedHandlers() {
         Map<String, Object> events = Map.of("onInput", "setValue(value)",
                 "onChange", Map.of("mode", "body", "code", "await Promise.resolve()"),

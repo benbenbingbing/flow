@@ -24,6 +24,7 @@
     "./file-attachment": "./dist/shared/file-attachment.js",
     "./file-upload-idempotency": "./dist/shared/file-upload-idempotency.js",
     "./form-actions": "./dist/shared/form-actions.js",
+    "./builtin-button-appearance": "./dist/shared/builtin-button-appearance.js",
     "./form-container-appearance": "./dist/shared/form-container-appearance.js",
     "./form-cross-field-runtime": "./dist/shared/form-cross-field-runtime.js",
     "./form-cross-field-validation": "./dist/shared/form-cross-field-validation.js",

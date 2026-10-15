@@ -94,7 +94,7 @@
     "test:runtime-regressions": "node --test src/views/home/__tests__/inboxPageState.spec.js src/views/__tests__/listSaveSequence.spec.js src/components/ui-config/__tests__/eventStepModel.spec.js",
     "test:designer-models": "node --loader ./scripts/test-alias-loader.mjs --test src/views/form-designer/__tests__/designerModels.spec.js",
     "test:regression": "npm run test:unit && npm run test:embed && npm run test:embed-management && npm run test:form-node-schema && npm run test:form-renderer-mode && npm run test:form-node-drag && npm run test:runtime-form-tabs && npm run test:integration && npm run test:functional && npm run test:page-config && npm run test:configuration-reference && npm run test:ui-config && npm run test:terminology",
-    "test:form-properties": "node --loader ./scripts/test-alias-loader.mjs src/views/form-designer/__tests__/relatedContentDraftModel.spec.js && node --loader ./scripts/test-alias-loader.mjs src/shared/__tests__/related-content-presentation.spec.js && npm run test:cascader",
+    "test:form-properties": "node --loader ./scripts/test-alias-loader.mjs src/views/form-designer/__tests__/relatedContentDraftModel.spec.js && node --loader ./scripts/test-alias-loader.mjs src/shared/__tests__/related-content-presentation.spec.js && npm run test:cascader && npm run test:builtin-button-appearance",
     "test:cascader": "node --loader ./scripts/test-alias-loader.mjs src/shared/__tests__/cascader-config.spec.js && node --test src/shared/__tests__/cascader-field.spec.js ../packages/workflow-core/tests/cascader-runtime.test.mjs ../workflow-mobile/tests/cascader.test.mjs",
     "test:form-node-visibility": "node src/shared/__tests__/form-node-visibility.spec.js",
     "test:form-node-visibility:browser": "node scripts/entity-relation-browser-test.mjs --node-visibility",
@@ -103,7 +103,9 @@
     "test:form-buttons:browser": "node scripts/entity-relation-browser-test.mjs --form-buttons",
     "test:excel": "node --test src/components/excel/__tests__/excelModel.spec.mjs ../packages/workflow-api/tests/entity-excel.test.mjs ../packages/workflow-core/tests/excel-effects.test.mjs",
     "test:excel:browser": "node scripts/excel-workflow-browser-test.mjs",
-    "test:cascader:browser": "node scripts/cascader-browser-test.mjs"
+    "test:cascader:browser": "node scripts/cascader-browser-test.mjs",
+    "test:builtin-button-appearance": "node --test ../packages/workflow-core/tests/builtin-button-appearance.test.mjs src/shared/__tests__/related-content-button-appearance.spec.js src/components/__tests__/subformBuiltInAppearance.spec.mjs",
+    "test:builtin-button-appearance:browser": "node scripts/builtin-button-appearance-browser-test.mjs"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

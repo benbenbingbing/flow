@@ -2,6 +2,7 @@ package com.workflow.process.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.database.jdbc.JdbcIdempotentInsert;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.contracts.entity.port.EntityRecordPort;
 import com.workflow.contracts.outbox.model.OutboxEvent;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
@@ -18,9 +19,29 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProcessStatusSyncOutboxHandlerTest {
     private static final LocalDateTime NOW = LocalDateTime.parse("2026-09-22T01:00:00");
+
+    @Test
+    void staleSnapshotFailurePropagatesWithoutAcknowledgingStatusSync() throws Exception {
+        Fixture fixture = fixture();
+        ProcessStatusSyncPayload payload = new ProcessStatusSyncPayload(
+                "process-1", "PROCESS_END", "END", "expense", "record-1",
+                null, "COMPLETED", "APPROVED");
+        when(fixture.inserts.insertIfAbsent(any(), any())).thenReturn(true);
+        when(fixture.linkMapper.closeActive("process-1", "APPROVED")).thenReturn(1);
+        var failure = new BusinessConflictException("ENTITY_VERSION_SCOPE_STALE", "请重新保存数据版本配置");
+        doThrow(failure).when(fixture.entityRecordPort)
+                .markProcessEnded("process-1", "expense", "record-1", "COMPLETED", "APPROVED");
+
+        assertSame(failure, assertThrows(BusinessConflictException.class,
+                () -> fixture.handler.handle(fixture.event(payload))));
+        verify(fixture.mapper, never()).markApplied(any(), any());
+    }
 
     @Test
     void appliesTaskStatusOnce() throws Exception {
