@@ -62,7 +62,7 @@
         </RelatedContentTargetStep>
         <RelatedContentPageSettings v-if="embedded" v-show="settingsTab === 'child-pages'" :editor="editor" :parameter-schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
         <el-empty v-if="embedded && settingsTab === 'rules'" description="子表单内部字段校验在目标表单中维护；当前关联区域不重复配置字段规则。" :image-size="70" />
-        <el-empty v-if="embedded && settingsTab === 'interaction'" description="新增初值在子页面的操作设置中配置。引用字段的选择与快捷回填请在字段属性中配置。" :image-size="70" />
+        <el-empty v-if="embedded && settingsTab === 'interaction'" description="引用字段的选择与快捷回填请在字段属性中配置。" :image-size="70" />
 
 
         <component :is="embedded ? SettingsSection : 'section'" title="数据来源" :default-expanded="true" v-if="!isRelationBound" v-show="!embedded ? activeStep === 2 : settingsTab === 'child-pages'">
@@ -206,59 +206,6 @@
             </div>
           </div>
 
-          <el-alert v-if="ownerType === 'FORM'" type="info" :closable="false" class="composition-save-guide">
-            <template #title>需要随主表单一起保存？</template>
-            <p>在左侧“实体关系”中，为组成关系添加主从编辑：一对一使用子表单，一对多使用明细。普通关联的目标记录独立保存。</p>
-            <el-button v-if="compositionEditorAvailable" link type="primary" @click="openCompositionEditor">前往添加主从编辑</el-button>
-            <el-button v-if="sourceEntity.id" link type="primary" @click="openEntityRelationManagement">管理实体关系</el-button>
-          </el-alert>
-
-          <div
-            v-if="editor.config.actions.includes('CREATE')"
-            class="action-settings-card"
-          >
-            <template v-if="editor.config.target.contentType === 'FORM'">
-              <div class="action-settings-card__heading">
-                <strong>新增记录设置</strong>
-                <span>初值由平台根据当前记录生成；保存时会重新取值并覆盖对应目标字段。</span>
-              </div>
-              <ServiceMappingEditor
-                v-model="editor.config.actionSettings.create.initialMappings"
-                title="新增初值"
-                description="把当前记录字段作为目标表单初值；目标保存权限和字段规则仍会再次校验。"
-                left-label="当前记录字段"
-                right-label="目标记录字段"
-                :left-options="sourceReadableFieldOptions"
-                :right-options="targetEditableFieldOptions"
-                empty-text="没有额外新增初值"
-              />
-            </template>
-            <template v-else>
-              <div class="action-settings-card__heading">
-                <strong>新增记录设置</strong>
-                <span>列表目标直接使用目标列表自带的新增按钮，新增入口和数据范围由目标列表自身配置决定。</span>
-              </div>
-              <el-alert
-                title="在目标表单中通过实体引用字段选择所属记录。保存后，只有符合当前关联条件的记录才会显示在列表中。"
-                type="warning"
-                :closable="false"
-                show-icon
-              />
-            </template>
-          </div>
-
-          <el-alert
-            :title="saveBoundaryTitle"
-            :description="saveBoundaryDescription"
-            type="warning"
-            :closable="false"
-            show-icon
-            class="save-boundary-alert"
-          />
-          <div class="permission-summary">
-            <strong>最终权限如何确定</strong>
-            <span>当前页面权限、来源记录权限、目标内容权限、目标数据范围和字段权限会同时生效；关联条件只能缩小范围。</span>
-          </div>
         </component>
 
         <component :is="embedded ? SettingsSection : 'section'" :title="isRelationBound ? '展示扩展' : '页面扩展'" :default-expanded="true" v-show="!embedded ? activeStep === 4 : settingsTab === 'extension'">
@@ -637,7 +584,6 @@ import { Plus, Delete } from '@element-plus/icons-vue'
 import { ElDialog, ElMessage } from 'element-plus'
 import RelatedContentPageSettings from './RelatedContentPageSettings.vue'
 import SettingsSection from '@/components/SettingsSection.vue'
-import { useRouter } from 'vue-router'
 import PageParameterMappingEditor from '@/components/page-parameters/PageParameterMappingEditor.vue'
 import { validatePageParameterMappings } from '@flow/workflow-core/page-parameters'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
@@ -751,12 +697,10 @@ const props = defineProps({
   sourceFields: { type: Array, default: () => [] },
   sourceContentFields: { type: Array, default: () => [] },
   anchorOptions: { type: Array, default: () => [] },
-  existingCount: { type: Number, default: 0 },
-  compositionEditorAvailable: { type: Boolean, default: false }
+  existingCount: { type: Number, default: 0 }
 })
 
-const emit = defineEmits(['saved', 'draft-change', 'open-composition-editor'])
-const router = useRouter()
+const emit = defineEmits(['saved', 'draft-change'])
 const visible = ref(false)
 const saving = ref(false)
 const testing = ref(false)
@@ -802,20 +746,6 @@ const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' 
 const stepIds = computed(() => isRelationBound.value ? [1, 3, 4] : [1, 2, 3, 4])
 const visibleStep = step => isRelationBound.value && step === 2 ? 1 : step
 const stepNumber = step => stepIds.value.indexOf(step) + 1
-
-/** 数据规则只能在实体设计中修改，新标签页保留当前展示草稿。 */
-function openEntityRelationManagement() {
-  const entityId = boundEntityRelation.value?.parentEntityId || props.sourceEntity.id
-  if (!entityId) return
-  const route = router.resolve({ path: `/entity/design/${entityId}`, query: { tab: 'relations' } })
-  window.open(route.href, '_blank', 'noopener,noreferrer')
-}
-
-/** 定位设计器的组成关系入口；关闭未提交的展示窗口，不改变关系归属或保存边界。 */
-function openCompositionEditor() {
-  visible.value = false
-  emit('open-composition-editor')
-}
 
 const selectedEntityRelation = computed(() => isRelationBound.value ? boundEntityRelation.value : null)
 const contentTypeOptions = computed(() => RELATED_CONTENT_TYPE_OPTIONS.map(option => ({
@@ -870,12 +800,6 @@ const targetReadableFieldOptions = computed(() => contentScopedFieldOptions(
   targetContentFields.value,
   editor.config.target.contentType,
   false
-))
-const targetEditableFieldOptions = computed(() => contentScopedFieldOptions(
-  targetFieldOptions.value,
-  targetContentFields.value,
-  editor.config.target.contentType,
-  true
 ))
 const dataInterfaces = computed(() =>
   normalizeInterfaceExtensions(dataInterfaceOptions.value)
@@ -970,12 +894,6 @@ const canTest = computed(() => Boolean(
   && editor.config.target.contentId
   && validateRelatedContent(editor, props.ownerType).errors.every(error => error.step !== 2)
 ))
-const saveBoundaryTitle = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION' ? '组成关系只读展示'
-  : '目标内容独立保存')
-const saveBoundaryDescription = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION'
-  ? '需要编辑子记录时，请从表单左侧实体关系添加主从编辑组件，随主表统一保存。'
-  : '在目标表单中的新增或编辑会立即独立保存，取消当前页面不会撤销目标内容。')
-
 async function loadCommonCatalog() {
   catalogLoading.value = true
   try {
@@ -1529,7 +1447,6 @@ defineExpose({ open })
 .dialog-heading,
 .dialog-footer,
 .relation-preview,
-.permission-summary,
 .special-config-card__heading,
 .review-card__heading,
 .service-mapping__heading {
@@ -1551,8 +1468,7 @@ defineExpose({ open })
 .dialog-heading span,
 .collapse-heading small,
 .special-config-card__heading span,
-.service-mapping__heading small,
-.permission-summary span {
+.service-mapping__heading small {
   color: var(--el-text-color-secondary);
   font-size: 12px;
   line-height: 1.55;
@@ -1599,8 +1515,7 @@ defineExpose({ open })
 }
 
 .recommendation-alert,
-.field-match-alert,
-.save-boundary-alert {
+.field-match-alert {
   margin-bottom: 18px;
 }
 
@@ -1659,16 +1574,14 @@ defineExpose({ open })
   color: var(--el-text-color-secondary);
 }
 
-.relation-preview,
-.permission-summary {
+.relation-preview {
   margin-top: 18px;
   padding: 14px 16px;
   border-radius: 7px;
   background: var(--el-fill-color-light);
 }
 
-.relation-preview > div,
-.permission-summary {
+.relation-preview > div {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1697,9 +1610,6 @@ defineExpose({ open })
   gap: 10px;
   margin-top: 10px;
 }
-
-.composition-save-guide { margin-top: 16px; }
-.composition-save-guide p { margin: 8px 0; line-height: 1.7; }
 
 .action-options {
   display: flex;
@@ -1744,27 +1654,6 @@ defineExpose({ open })
 .special-choice.is-selected {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary-light-9);
-}
-
-.action-settings-card {
-  margin-bottom: 18px;
-  padding: 16px;
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 7px;
-  background: var(--el-fill-color-extra-light);
-}
-
-.action-settings-card__heading {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-bottom: 14px;
-}
-
-.action-settings-card__heading span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .special-collapse {

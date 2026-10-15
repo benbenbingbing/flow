@@ -97,7 +97,7 @@ request.defaults.adapter=async config=>{
  else if(url==='/entity-list-config/entity/req')data=[list]
  else if(url==='/entity-form/req-form/fields')data=formFields
  else if(url==='/entity-forms/req-form/runtime')data=state.inlineSaveTest
-   ?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,isReadonly:!!state.inlineFormReadonly},legacyFields:formFields.map(f=>({...f,isRequired:1})),nodes:nodes.map(n=>({...n,props:{...n.props,isRequired:1}}))})}
+   ?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,isReadonly:!!state.inlineFormReadonly,viewConfig:{...form.viewConfig,inputParameterBindings:[{usage:'INITIALIZE',parameter:'sourceName',targetField:'reqName'}]}},legacyFields:formFields.map(f=>({...f,isRequired:1})),nodes:nodes.map(n=>({...n,props:{...n.props,isRequired:1}}))})}
    :state.nestedTargetTest
    ?{...formRelease,snapshotDocument:JSON.stringify({form,legacyFields:formFields,nodes:nestedTargetNodes,viewCompositions:nestedTargetRelations})}
    :state.parameterTest?{...formRelease,snapshotDocument:JSON.stringify({form:{...form,dataSourceBindingsDocument:{AFTER_LOAD:[{extensionId:'parameter-reader',bindingCode:'parameter-reader'}]}},legacyFields:formFields,nodes})}:formRelease
@@ -118,7 +118,7 @@ request.defaults.adapter=async config=>{
    data={compositionKey:item.compositionKey,targetContentType:t.contentType,targetContentId:t.contentId,targetContentKey:t.contentKey,targetEntityCode:'ZDWREQ',targetEntityId:'req',targetContentHash:t.contentType==='FORM'?'req-graph':'list-graph',targetRecordId:missing?null:'child-'+body.recordId,matchNone:missing,actions:['VIEW'],compositionContext:{ownerType:body.ownerType,ownerId:body.ownerId,recordId:body.recordId,compositionKey:body.compositionKey,path:[],configHash:body.configHash}}
  }
  else if(url==='/ui-runtime/view-compositions/actions/capabilities')data={actionCapabilities:state.inlineSaveTest
-   ?{EDIT:{available:!state.inlineViewOnly},CREATE:{available:!state.inlineViewOnly,initialValues:{acceptance_id:body.compositionContext.recordId}}}:{}}
+   ?{EDIT:{available:!state.inlineViewOnly},CREATE:{available:!state.inlineViewOnly}}:{}}
  // 独立提交与服务端 EntityDataActionService 一致，从顶层 compositionContext 核验来源；延迟/失败用于验证重复点击与回包隔离。
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/load')data={id:'all-3',data:{name:'主表名称',childId:'child-all-3'}}
  else if(state.nativeHostTest&&url==='/entity-data/entity/ALL/detail/all-3/update'){state.mainSavedData=body.data;data={id:'all-3',data:body.data}}
@@ -191,7 +191,7 @@ const app=createApp({setup(){return()=>h('main',{style:'width:1080px;margin:20px
  state.viewHostTest?h('section',{id:'view-host'},[h(ViewFormFields,{entityData:{name:'主表名称'},approvalNormalForm:hostForm(),formReadonly:true,mode:'view',nodeRootParentId:'host-child',context:{record:{id:'all-3'}},entityCode:'ALL',entityDefinition:source,entityFields:hostFields})]):null,
  state.nativeHostTest?h(HostFormDialog,{ref:hostDialog,entityCode:'ALL',entityDefinition:{...source,fields:hostFields},entityFields:hostFields,defaultForm:hostForm()}):null,
  state.designerTest?h('section',{id:'real-designer'},[h(RouterView,{key:state.designerRemount||0})]):null,
- h(RelatedPanel,{ref:relatedPanel,ownerType:'FORM',ownerId:'owner',sourceEntity:source,compositionEditorAvailable:true,onOpenCompositionEditor:()=>picker.value.showCompositionEditors(),sourceFields:[{fieldCode:'name',fieldName:'验收名称'}],anchorOptions:placementNodes.map(node=>({value:node.id,label:(node.fieldName||node.nodeKey)+'（节点之后）',nodeType:node.nodeType}))}),
+ h(RelatedPanel,{ref:relatedPanel,ownerType:'FORM',ownerId:'owner',sourceEntity:source,sourceFields:[{fieldCode:'name',fieldName:'验收名称'}],anchorOptions:placementNodes.map(node=>({value:node.id,label:(node.fieldName||node.nodeKey)+'（节点之后）',nodeType:node.nodeType}))}),
  state.aggregateRuntime?h('section',{id:'aggregate-runtime'},[h('h3','主从编辑运行时'),h(Runtime,{form:aggregateForm(),modelValue:state.aggregateData,'onUpdate:modelValue':value=>state.aggregateData=value,context:{record:{id:'all-1'}},mode:'edit',readonly:false,showHeader:false})]):null,
  state.placementTest?h('section',{id:'placement-canvas',key:'canvas-'+(state.placementRemount||0)},[
  ...placementChildren('').map((node,index)=>h(DesignNode,{node,siblingIndex:index,siblingCount:3,relatedContents:placementItems(),childrenFor:placementChildren,nodeSpanFor:()=>24,nodeStyleFor:()=>({width:'100%'}),legacyNodeType:n=>n.nodeType,nodeLabel:id=>placementNodes.find(n=>n.id===id)?.fieldName||id,canDropNode:()=>true,onEditRelatedContent:item=>{state.placementEdited=item.id;relatedPanel.value.open(item)},onRemoveRelatedContent:item=>{state.placementRemoved=item.id}})),
@@ -632,15 +632,16 @@ try {
   assert.equal(updateCall.body.formConfigHash,'req-graph')
   assert.equal(updateCall.body.startProcess,false)
 
-  // 新关联第一次保存创建；再保存更新同一条记录，不再重复创建。
-  await evaluate("relationTest.state.sourceRecordId='missing';relationTest.settle()")
-  await until(`${inlineInput}?.value==='' && !${inlineInput}.disabled`)
+  // 新页面通过统一参数初始化；用户修改后保存创建，再保存更新同一条记录。
+  await evaluate("relationTest.state.compositions[0].config.parameterMappings=[{parameter:'sourceName',sourceType:'FIELD',sourceField:'name'}];relationTest.state.sourceRecordId='missing';relationTest.settle()")
+  await until(`${inlineInput}?.value===relationTest.state.sourceData.name && !${inlineInput}.disabled`)
   await fillInline('第一次保存创建的需求')
   await click('保存子表单',inlineForm)
   await until(`${inlineInput}?.value==='第一次保存创建的需求' && !${inlineForm}.querySelector('.el-loading-mask')`)
   const createCall = await evaluate(`JSON.parse(JSON.stringify(${inlineWrites}.at(-1)))`)
   assert.equal(createCall.url,'/entity-data')
-  assert.equal(createCall.body.data.acceptance_id,'missing','服务端关联初值进入新增草稿')
+  assert.equal(createCall.body.data.reqName,'第一次保存创建的需求','参数预填允许用户修改，保存不重新覆盖输入')
+  assert.equal(createCall.body.compositionContext.recordId,'missing')
   await fillInline('新需求再次修改')
   await click('保存子表单',inlineForm)
   assert.equal(await evaluate(`${inlineWrites}.at(-1).url`),'/entity-data/entity/ZDWREQ/detail/child-missing/update')
@@ -771,19 +772,14 @@ try {
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods button').length`),1)
   await click('取消',dialog)
 
-  // 展示设置引导用户回到真实主从编辑入口；只呈现正向组成关系，不自动改变普通关联定义。
+  // 关联操作不再显示主从跳转或新增初值；左侧真实主从编辑入口保持可用。
   await evaluate('relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()')
   await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='需求明细列表 (requirements)'`)
   await click('下一步', dialog)
-  await click('前往添加主从编辑', dialog)
-  await until("document.querySelector('#picker .composition-filter') && document.querySelectorAll('#picker .relation-item').length===1")
-  assert.equal(await evaluate("document.querySelector('#picker .relation-item').innerText.includes('组成明细')"),true)
+  assert.equal(await evaluate(`/需要随主表单一起保存|新增记录设置|新增初值|目标内容独立保存|最终权限如何确定/.test(${dialog}.innerText)`),false)
+  await click('取消', dialog)
+  await evaluate("document.querySelector('.related-content-panel .el-drawer__close-btn').click();relationTest.settle()")
   await until("!document.querySelector('.related-content-panel')?.getClientRects().length")
-  await evaluate("relationTest.relations.find(r=>r.relationCode==='ownedDetails').ownershipType='ASSOCIATION';relationTest.picker.value.showCompositionEditors();relationTest.settle()")
-  await until("document.querySelector('#picker').innerText.includes('暂无可用的组成关系')")
-  assert.equal(await evaluate("document.querySelectorAll('#picker .relation-item').length"),0)
-  await evaluate("relationTest.relations.find(r=>r.relationCode==='ownedDetails').ownershipType='COMPOSITION';relationTest.picker.value.showCompositionEditors();relationTest.settle()")
-  await until("document.querySelectorAll('#picker .relation-item').length===1")
   // 组成关系直接生成主从编辑节点，不调用实体字段创建接口，也不创建独立保存的展示配置。
   await click('添加主从编辑', "document.getElementById('picker')")
   await until("document.body.innerText.includes('选择子记录使用的表单')")
@@ -955,8 +951,9 @@ try {
   await until("document.querySelector('.form-settings-drawer .content-card')")
   await click('编辑',"document.querySelector('.form-settings-drawer .content-card')")
   await until(`${propertyDrawer}?.querySelector('.el-tabs__item.is-active')?.textContent==='子页面'`)
-  await click('前往添加主从编辑', propertyDrawer)
-  await until("document.querySelector('#real-designer .composition-filter') && document.querySelectorAll('#real-designer .relation-item').length===1")
+  assert.equal(await evaluate(`/需要随主表单一起保存|新增记录设置|新增初值|目标内容独立保存|最终权限如何确定/.test(${propertyDrawer}.innerText)`),false)
+  await evaluate(`${propertyDrawer}.querySelector('.el-drawer__close-btn').click();document.querySelector('.form-settings-drawer .el-drawer__close-btn')?.click();relationTest.settle()`)
+  await until("document.querySelector('#real-designer .relation-item')")
   await click('添加主从编辑',"document.getElementById('real-designer')")
   await until("document.body.innerText.includes('选择子记录使用的表单')")
   await click('添加到表单')

@@ -155,18 +155,32 @@ class UiViewCompositionConfigValidatorTest {
     }
 
     @Test
-    void acceptsOnlyCreateInitialMappings() {
+    void preservesPageParameterMappingsWithoutCreatingActionSettingsOrSaveWarnings() {
         Map<String, Object> config = frontendDraft();
-        config.put("actions", List.of("CREATE"));
-        Map<String, Object> create = Map.of("initialMappings", List.of(Map.of(
-                "source", "projectId", "target", "projectId")));
-        config.put("actionSettings", Map.of("create", create));
+        config.put("actions", List.of("VIEW", "CREATE", "EDIT"));
+        List<Map<String, Object>> mappings = List.of(Map.of(
+                "parameter", "projectId", "sourceType", "FIELD", "sourceField", "projectId"));
+        config.put("parameterMappings", mappings);
 
-        Map<?, ?> settings = (Map<?, ?>) validator.validate(config)
-                .normalizedConfig().get("actionSettings");
+        var result = validator.validate(config);
 
-        assertEquals(1, settings.size());
-        assertEquals(1, ((List<?>) ((Map<?, ?>) settings.get("create")).get("initialMappings")).size());
+        assertEquals(mappings, result.normalizedConfig().get("parameterMappings"));
+        assertFalse(result.normalizedConfig().containsKey("actionSettings"));
+        assertTrue(result.warnings().isEmpty());
+    }
+
+    @Test
+    void rejectsRetiredInitialMappingsAndEvenEmptyActionSettings() {
+        for (Map<String, Object> settings : List.<Map<String, Object>>of(
+                Map.of(), Map.of("create", Map.of("initialMappings", List.of())),
+                Map.of("create", Map.of("initialMappings", List.of(Map.of(
+                        "sourceField", "id", "targetField", "projectId")))))) {
+            Map<String, Object> config = frontendDraft();
+            config.put("actionSettings", settings);
+            IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                    () -> validator.validate(config));
+            assertTrue(failure.getMessage().contains("actionSettings"));
+        }
     }
 
     @Test

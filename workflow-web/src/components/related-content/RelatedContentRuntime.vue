@@ -393,13 +393,12 @@ async function resolveComposition({ force = false } = {}) {
       targetEntity.value = targetState.entity
       targetForm.value = targetState.form
       // 缺少目标时仅在服务端允许 CREATE 的情况下建立新增草稿；它不进入宿主的数据模型。
-      const initialValues = JSON.parse(JSON.stringify(capabilityState.capabilities.CREATE?.initialValues || {}))
       const draft = targetState.record || (canSaveTarget.value
-        ? Object.assign(applyRuntimeFieldDefaults({}, targetState.form, targetState.entity.fields || []), initialValues)
+        ? applyRuntimeFieldDefaults({}, targetState.form, targetState.entity.fields || [])
         : null)
       targetState.record = draft && initializePageFields(draft, targetState.form.viewConfig,
         targetParameters.value, pageParameterFields([...(targetState.form.fields || []), ...(targetState.form.nodes || [])]),
-        Object.keys(initialValues), targetMode.value)
+        [], targetMode.value)
       targetRecord.value = targetState.record
       targetRuntimeState = targetState
       targetEntityStatusOptions.value = targetState.statuses

@@ -39,7 +39,7 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
   '目标记录示例',
   '当前配置可由平台默认能力完成，无需特殊处理。',
   'ConfigHelpLabel',
-  'actionSettings',
+  'parameterMappings',
   '数据或动作扩展接口',
   '自定义组件',
   '组件版本',
@@ -95,7 +95,9 @@ assert.ok(runtime.includes('props.configHash'), '关联内容解析请求未携�
 assert.ok(runtime.includes('assertRelatedContentResolveContract'), '关联列表缺少来源上下文时未失败关闭')
 assert.ok(runtime.includes('relatedContentActions'), '关联动作未传递给目标列表做精确限制')
 assert.ok(runtime.includes('compositionContext'), '关联动作未使用业务来源上下文')
-assert.ok(runtime.includes('initialValues'), '关联新增未使用服务端解析的可信初值')
+assert.doesNotMatch(runtime, /capabilities\.CREATE\?\.initialValues/, '新增草稿不再读取专属初值映射')
+assert.ok(runtime.includes('initializePageFields'), '目标表单仍通过统一页面参数初始化字段')
+assert.ok(runtime.includes('mapPageParameters'), '关联页面保留来源参数传递')
 assert.ok(formDialog.includes('compositionContext'), '目标表单提交未携带关联内容动作上下文')
 assert.ok(runtime.includes('function renderFailureState'), '运行时失败策略没有统一处理入口')
 assert.ok(runtime.includes("failurePolicy.value === 'HIDE'"), '自定义组件缺失时不支持隐藏内容')
@@ -113,7 +115,9 @@ assert.ok(publishDialog.includes(':data="preview.dependencies"'), '折叠依赖�
 assert.ok(publishDialog.includes("ENTITY_SCHEMA: '实体定义'"), '发布前未解释实体定义依赖')
 assert.ok(publishDialog.includes('dependencyVersionLabel'), '发布依赖缺少业务化版本说明')
 
-assert.ok(dialog.includes('需要随主表单一起保存？'), '设计器未保留组成型数据的主从编辑引导')
+assert.doesNotMatch(dialog, /需要随主表单一起保存|新增记录设置|新增初值|目标内容独立保存|最终权限如何确定|actionSettings/, '关联操作只保留动作选项，移除说明和专属初值设置')
+assert.ok(dialog.includes('PageParameterMappingEditor'), '子页面仍可配置统一参数传递')
+assert.ok(formDesigner.includes('FormRelationPicker'), '真正主从编辑保留实体关系入口')
 assert.ok(formRuntime.includes('@patch-form="applyFieldPatch"'), '实体引用字段的回填仍需经过表单联动')
 
 console.log('related content page config tests passed')

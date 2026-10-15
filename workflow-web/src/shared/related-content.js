@@ -131,11 +131,6 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
         mappings: []
       },
       actions: ['VIEW'],
-      actionSettings: {
-        create: {
-          initialMappings: []
-        }
-      },
       specialHandling: {
         mode: 'NONE',
         interfaceService: {
@@ -194,7 +189,7 @@ function serializeInterfaceBinding(binding = {}, action = false) {
 }
 
 /**
- * 将服务端记录和历史草稿归一为同一编辑模型。展示快照只用于中文回显，
+ * 按当前配置契约构造编辑模型，参数传递统一使用 parameterMappings。展示快照只用于中文回显，
  * 运行时仍必须由服务端根据 ID 重新解析并鉴权。普通关系不再使用接口取数
  * 或动作接口，读取时清除这些配置，防止隐藏字段在后续保存中重新启用。
  */
@@ -202,8 +197,11 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
   const empty = createEmptyRelatedContent(defaults)
   const rawConfig = parseConfig(value.config ?? value.configDocument)
   const config = {
-    ...empty.config,
-    ...rawConfig,
+    schemaVersion: rawConfig.schemaVersion ?? empty.config.schemaVersion,
+    name: rawConfig.name ?? empty.config.name,
+    enabled: rawConfig.enabled ?? empty.config.enabled,
+    parameterMappings: Array.isArray(rawConfig.parameterMappings) ? clone(rawConfig.parameterMappings) : [],
+    ...(rawConfig.entitySnapshots ? { entitySnapshots: clone(rawConfig.entitySnapshots) } : {}),
     source: { ...empty.config.source, ...(rawConfig.source || {}) },
     target: { ...empty.config.target, ...(rawConfig.target || {}) },
     presentation: {
@@ -220,14 +218,6 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
     actions: Array.isArray(rawConfig.actions)
       ? [...new Set(rawConfig.actions)]
       : ['VIEW'],
-    actionSettings: {
-      create: {
-        ...empty.config.actionSettings.create,
-        initialMappings: Array.isArray(rawConfig.actionSettings?.create?.initialMappings)
-          ? clone(rawConfig.actionSettings.create.initialMappings)
-          : []
-      }
-    },
     specialHandling: {
       mode: rawConfig.specialHandling?.mode ?? empty.config.specialHandling.mode,
       interfaceService: normalizeInterfaceBinding(

@@ -533,7 +533,7 @@ class UiViewCompositionServiceTest {
     }
 
     @Test
-    void releaseSnapshotValidatesCreateInitialMappingsAgainstPinnedForm() {
+    void releaseSnapshotValidatesPageParametersAgainstPublishedDeclarationAndReadableSource() {
         Fixture fixture = fixture();
         stubEntityRelation(fixture, EntityRelation.RelationType.ONE_TO_ONE);
         EntityForm targetForm = new EntityForm();
@@ -541,58 +541,48 @@ class UiViewCompositionServiceTest {
         targetForm.setEntityId("requirement-entity");
         targetForm.setStatus(1);
         targetForm.setActiveReleaseId("release-target");
-        when(fixture.formMapper.selectById("form-target"))
-                .thenReturn(targetForm);
-        updateTargetRelease(
-                fixture,
-                "FORM",
-                "form-target",
-                targetFormReleaseDocument(false));
-
+        when(fixture.formMapper.selectById("form-target")).thenReturn(targetForm);
+        Map<String, Object> targetSnapshot = new LinkedHashMap<>(targetFormReleaseDocument(false));
+        targetSnapshot.put("form", Map.of("id", "form-target", "entityId", "requirement-entity",
+                "viewConfig", Map.of("inputParameterSchema", Map.of("properties",
+                        Map.of("projectCode", Map.of("type", "string"))))));
+        updateTargetRelease(fixture, "FORM", "form-target", targetSnapshot);
         Map<String, Object> config = new LinkedHashMap<>(config());
-        config.put("target", Map.of(
-                "entityId", "requirement-entity",
-                "entityCode", "requirement",
-                "entityName", "需求",
-                "contentType", "FORM",
-                "contentId", "form-target",
-                "contentKey", "requirement_detail",
-                "contentName", "需求详情"));
+        config.put("target", Map.of("entityId", "requirement-entity", "contentType", "FORM", "contentId", "form-target"));
         config.put("actions", List.of("VIEW", "CREATE"));
-        config.put("actionSettings", Map.of(
-                "create", Map.of(
-                        "initialMappings", List.of(Map.of(
-                                "sourceField", "projectCode",
-                                "targetField", "requirementProjectCode")))));
+        config.put("parameterMappings", List.of(Map.of("parameter", "projectCode", "sourceType", "FIELD", "sourceField", "projectCode")));
         UiViewComposition composition = existing(fixture.codec, 1);
         composition.setConfigDocument(fixture.codec.write(config, "test"));
-        when(fixture.mapper.findByOwner("FORM", "form-1"))
-                .thenReturn(List.of(composition));
-        Map<String, Object> owner = ownerSnapshot(
-                fixture.service.snapshot("FORM", "form-1"), List.of());
-        owner.put("legacyFields", List.of(Map.of(
-                "fieldCode", "projectCode",
-                "isHidden", 0,
-                "isReadonly", 1)));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(composition));
+        Map<String, Object> owner = ownerSnapshot(fixture.service.snapshot("FORM", "form-1"), List.of());
+        owner.put("legacyFields", List.of(Map.of("fieldCode", "projectCode", "isHidden", 0, "isReadonly", 1)));
 
-        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot(
-                "FORM", "form-1", owner));
+        // 参数来源可以只读，但必须在来源发布页显示；删除初值配置不能删掉此读取边界。
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot("FORM", "form-1", owner));
+        owner.put("legacyFields", List.of(Map.of("fieldCode", "projectCode", "isHidden", 1)));
+        IllegalArgumentException hidden = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validateReleaseSnapshot("FORM", "form-1", owner));
+        assertTrue(hidden.getMessage().contains("当前记录字段未在宿主表单发布版本中显示"));
 
-        updateTargetRelease(
-                fixture,
-                "FORM",
-                "form-target",
-                targetFormReleaseDocument(true));
-        // 重新生成宿主快照，使目标哈希也固定到这个只读目标表单版本。
-        Map<String, Object> invalidOwner = ownerSnapshot(
-                fixture.service.snapshot("FORM", "form-1"), List.of());
-        invalidOwner.put("legacyFields", owner.get("legacyFields"));
-        IllegalArgumentException failure = assertThrows(
-                IllegalArgumentException.class,
-                () -> fixture.service.validateReleaseSnapshot(
-                        "FORM", "form-1", invalidOwner));
-        assertTrue(failure.getMessage().contains(
-                "目标字段未在固定表单版本的“新增”模式中开放"));
+        updateTargetRelease(fixture, "FORM", "form-target", targetFormReleaseDocument(false));
+        Map<String, Object> missingDeclaration = ownerSnapshot(fixture.service.snapshot("FORM", "form-1"), List.of());
+        missingDeclaration.put("legacyFields", List.of(Map.of("fieldCode", "projectCode", "isHidden", 0)));
+        IllegalArgumentException undeclared = assertThrows(IllegalArgumentException.class,
+                () -> fixture.service.validateReleaseSnapshot("FORM", "form-1", missingDeclaration));
+        assertTrue(undeclared.getMessage().contains("目标发布页面未声明输入参数"));
+    }
+
+    @Test
+    void rejectsRetiredCreateInitialMappingsAtSaveAndPublication() {
+        Fixture fixture = fixture();
+        Map<String, Object> config = new LinkedHashMap<>(config());
+        config.put("actionSettings", Map.of("create", Map.of("initialMappings", List.of(
+                Map.of("sourceField", "projectCode", "targetField", "requirementProjectCode")))));
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.validate("FORM", "form-1", config));
+        UiViewComposition composition = existing(fixture.codec, 1);
+        composition.setConfigDocument(fixture.codec.write(config, "test"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(composition));
+        assertThrows(IllegalArgumentException.class, () -> fixture.service.snapshot("FORM", "form-1"));
     }
 
     @Test
@@ -605,9 +595,6 @@ class UiViewCompositionServiceTest {
                 targetListReleaseDocument(true));
         Map<String, Object> config = new LinkedHashMap<>(config());
         config.put("actions", List.of("VIEW", "CREATE", "EDIT"));
-        config.put("actionSettings", Map.of(
-                "create", Map.of(
-                        "initialMappings", List.of())));
         UiViewComposition composition = existing(fixture.codec, 1);
         composition.setConfigDocument(fixture.codec.write(config, "test"));
         when(fixture.mapper.findByOwner("FORM", "form-1"))

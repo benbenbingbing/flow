@@ -415,20 +415,15 @@ public class EntityDataActionService {
                         dto.getListKey(),
                         runtimeContext);
         if (compositionSubmission) {
-            Map<String, Object> trustedInitialValues =
-                    viewCompositionActionService.authorizeFormSubmission(
-                            dto.getCompositionContext(),
-                            "CREATE",
-                            dto.getEntityCode(),
-                            null,
-                            dto.getFormId(),
-                            dto.getFormConfigHash());
-            // 发布映射生成的初值属于服务端约束。即使浏览器提交了同名字段，
-            // 也必须以锁后重新读取来源记录得到的值为准。
-            Map<String, Object> safeData = new LinkedHashMap<>(
-                    dto.getData() == null ? Map.of() : dto.getData());
-            safeData.putAll(trustedInitialValues);
-            dto.setData(safeData);
+            // 关联上下文只授权本次目标表单提交；参数预填和用户填写的字段值
+            // 由后续标准表单规则统一校验，不能在这里按来源记录重新覆盖。
+            viewCompositionActionService.authorizeFormSubmission(
+                    dto.getCompositionContext(),
+                    "CREATE",
+                    dto.getEntityCode(),
+                    null,
+                    dto.getFormId(),
+                    dto.getFormConfigHash());
             dto.setListKey(null);
         }
         if (excelContext == null) {

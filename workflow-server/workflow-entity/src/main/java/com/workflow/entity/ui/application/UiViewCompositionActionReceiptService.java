@@ -166,17 +166,12 @@ public class UiViewCompositionActionReceiptService {
                 Map<String, Object> capability = objectMapper.convertValue(
                         rawCapability,
                         new TypeReference<Map<String, Object>>() {});
-                Map<String, Object> initialValues = objectMapper.convertValue(
-                        capability.getOrDefault("initialValues", Map.of()),
-                        new TypeReference<Map<String, Object>>() {});
                 capabilities.put(
                         String.valueOf(key),
                         UiViewCompositionActionCapabilityDTO.builder()
                                 .available(Boolean.TRUE.equals(
                                         capability.get("available")))
                                 .reason(text(capability.get("reason")))
-                                .initialValues(initialValues == null
-                                        ? Map.of() : initialValues)
                                 .build());
             });
         }

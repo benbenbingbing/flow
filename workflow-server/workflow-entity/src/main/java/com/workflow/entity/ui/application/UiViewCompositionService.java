@@ -2081,7 +2081,7 @@ public class UiViewCompositionService {
      *
      * @param ownerType 归属方类型标识，决定后续固定引用采用的处理分支
      * @param ownerEntityId 归属方实体ID，后续用于校验固定引用时定位或关联目标
-     * @param ownerSnapshot 归属方快照，作为 {@code validatePublishedActionMappings} 的输入影响后续处理
+     * @param ownerSnapshot 归属方快照，作为 {@code validatePublishedParameterMappings} 的输入影响后续处理
      * @param config 配置内容，决定后续固定引用的处理规则
      * @param label 标签，后续用于校验固定引用时匹配或展示
      * @param enforceUnifiedRelation 新宿主发布/激活时执行统一关系限制，既有依赖复查保留已发布关系语义
@@ -2109,7 +2109,7 @@ public class UiViewCompositionService {
                 schemas.source(),
                 schemas.target(),
                 label);
-        validatePublishedActionMappings(
+        validatePublishedParameterMappings(
                 ownerType,
                 ownerSnapshot,
                 verifiedTargetSnapshot(targetRelease, label),
@@ -2542,21 +2542,20 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 校验页面传参与新增初值映射确实存在于宿主和目标的精确发布快照。
+     * 校验页面参数引用目标已发布声明，字段来源属于宿主发布时可读取的字段。
      *
-     * <p>设计态字段目录可能在发布前发生变化；只校验实体当前字段会让配置
-     * 发布成功后才在运行时变成不可用。这里同时验证钉定实体结构和 FORM/LIST
-     * 发布可见、可编辑边界，使普通发布、历史激活与 HOTFIX 使用相同规则。</p>
+     * <p>输入参数是业务输入，不能绕过来源页面的字段可见性；草稿字段目录可能在
+     * 发布前变化，因此发布与历史激活都必须按精确发布快照复核。</p>
      *
-     * @param ownerType 归属方类型标识，决定后续已发布动作映射集合采用的处理分支
+     * @param ownerType 归属方类型标识，决定后续已发布页面参数映射集合采用的处理分支
      * @param ownerSnapshot 归属方快照，作为 {@code requirePublishedOwnerReadableField} 的输入影响后续处理
      * @param targetSnapshot 目标快照，作为 {@code PageParameterPolicy.map} 的输入影响后续处理
      * @param target 目标，作为 {@code PageParameterPolicy.map} 的输入影响后续处理
-     * @param config 配置内容，决定后续已发布动作映射集合的处理规则
+     * @param config 配置内容，决定后续已发布页面参数映射集合的处理规则
      * @param schemas {@code schemas}，作为 {@code requirePublishedOwnerReadableField} 的输入影响后续处理
-     * @param label 标签，后续用于校验已发布动作映射集合时匹配或展示
+     * @param label 标签，后续用于校验已发布页面参数映射集合时匹配或展示
      */
-    private void validatePublishedActionMappings(
+    private void validatePublishedParameterMappings(
             String ownerType,
             Map<String, Object> ownerSnapshot,
             Map<String, Object> targetSnapshot,
@@ -2579,52 +2578,6 @@ public class UiViewCompositionService {
             if ("FIELD".equals(mapping.get("sourceType"))) {
                 requirePublishedOwnerReadableField(ownerType, ownerSnapshot, schemas.source(),
                         String.valueOf(mapping.get("sourceField")), label, "页面传参", parameterIndex);
-            }
-        }
-        Map<String, Object> settings = requireMap(
-                config.get("actionSettings"), label + "操作设置");
-        List<String> actions = config.get("actions") instanceof List<?> values
-                ? values.stream().map(String::valueOf).map(this::normalize).toList()
-                : List.of();
-
-        Map<String, Object> create = requireMap(
-                settings.get("create"), label + "新增记录设置");
-        // CREATE 对 FORM 与 LIST 目标均开放：FORM 目标走发布表单提交桥，
-        // 需要校验初值映射落在目标表单可编辑字段上；LIST 目标复用目标列表
-        // 自带的新增能力，带入关联值走目标列表的页面输入参数链路，
-        // 因此不涉及发布表单初值映射，跳过 FORM 专属校验。
-        if (actions.contains("CREATE")
-                && "FORM".equals(normalize(String.valueOf(
-                        target.get("contentType"))))) {
-            int index = 0;
-            for (Map<String, Object> mapping : mappingList(
-                    create.get("initialMappings"))) {
-                index++;
-                if (mapping.containsKey("literal")) {
-                    throw mappingInvalid(
-                            label, "新增初值", index,
-                            "初值必须来自当前记录字段，不能使用固定值");
-                }
-                String ownerField = firstMappingField(
-                        mapping, "sourceField", "source");
-                String targetField = firstMappingField(
-                        mapping, "targetField", "target");
-                requirePublishedOwnerReadableField(
-                        ownerType,
-                        ownerSnapshot,
-                        schemas.source(),
-                        ownerField,
-                        label,
-                        "新增初值",
-                        index);
-                requirePublishedFormEditableField(
-                        targetSnapshot,
-                        schemas.target(),
-                        targetField,
-                        "create",
-                        label,
-                        "新增初值",
-                        index);
             }
         }
     }
@@ -2685,50 +2638,6 @@ public class UiViewCompositionService {
             throw mappingInvalid(
                     label, mappingLabel, index,
                     "当前记录字段未在宿主列表发布版本中显示: " + fieldCode);
-        }
-    }
-
-    /**
-     * 校验并获取已发布表单可编辑字段；不满足约束时阻止后续处理。
-     *
-     * @param snapshot 快照，作为 {@code findFormField} 的输入影响后续处理
-     * @param schema 结构，作为 {@code publishedField} 的输入影响后续处理
-     * @param fieldCode 字段编码，后续用于校验并获取已发布表单可编辑字段时定位或关联目标
-     * @param mode 模式标识，决定后续已发布表单可编辑字段采用的处理分支
-     * @param label 标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
-     * @param mappingLabel 映射标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
-     * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
-     */
-    private void requirePublishedFormEditableField(
-            Map<String, Object> snapshot,
-            EntityPublishedSnapshot schema,
-            String fieldCode,
-            String mode,
-            String label,
-            String mappingLabel,
-            int index) {
-        EntityField field = publishedField(
-                schema,
-                fieldCode,
-                label,
-                mappingLabel,
-                index,
-                "目标表单");
-        if (Boolean.FALSE.equals(field.getEditable())) {
-            throw mappingInvalid(
-                    label, mappingLabel, index,
-                    "目标实体字段不可编辑: " + fieldCode);
-        }
-        Map<String, Object> published = findFormField(snapshot, fieldCode);
-        if (published == null
-                || flag(published.get("isHidden"))
-                || flag(published.get("isReadonly"))
-                || !editableInPublishedMode(published, mode)) {
-            throw mappingInvalid(
-                    label, mappingLabel, index,
-                    "目标字段未在固定表单版本的“"
-                            + ("create".equals(mode) ? "新增" : "编辑")
-                            + "”模式中开放: " + fieldCode);
         }
     }
 
@@ -2808,57 +2717,6 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 判断可编辑已发布模式条件是否成立，供调用方选择后续分支。
-     *
-     * @param field 字段，供本方法处理可编辑已发布模式时使用
-     * @param mode 模式标识，决定后续可编辑已发布模式采用的处理分支
-     * @return 可编辑已发布模式条件成立时为 true，否则为 false
-     */
-    private boolean editableInPublishedMode(
-            Map<String, Object> field,
-            String mode) {
-        Object raw = field.get("extensionConfig");
-        if (raw == null || raw instanceof String text
-                && !StringUtils.hasText(text)) {
-            return true;
-        }
-        Map<String, Object> extension;
-        if (raw instanceof Map<?, ?> map) {
-            extension = stringMap(map);
-        } else {
-            extension = codec.readObject(
-                    String.valueOf(raw), "表单字段模式配置");
-        }
-        Object rawModes = extension.get("modes");
-        if (!(rawModes instanceof Map<?, ?> modes)) {
-            return true;
-        }
-        Object rawMode = modes.get(mode);
-        if (!(rawMode instanceof Map<?, ?> modeConfig)) {
-            return true;
-        }
-        Map<String, Object> normalized = stringMap(modeConfig);
-        return !Boolean.FALSE.equals(normalized.get("visible"))
-                && !Boolean.FALSE.equals(normalized.get("editable"));
-    }
-
-    /**
-     * 生成首个映射字段文本，供后续匹配或展示。
-     *
-     * @param mapping 映射，作为 {@code blankToNull} 的输入影响后续处理
-     * @param primary 主要，作为 {@code blankToNull} 的输入影响后续处理
-     * @param fallback 兜底，主值不可用时供后续处理兜底
-     * @return 处理后的首个映射字段文本，供调用方比较或展示
-     */
-    private String firstMappingField(
-            Map<String, Object> mapping,
-            String primary,
-            String fallback) {
-        String value = blankToNull(mapping.get(primary));
-        return value != null ? value : blankToNull(mapping.get(fallback));
-    }
-
-    /**
      * 标记界面视图组合；后续读取或执行将使用更新后的状态。
      *
      * @param value 待标记界面视图组合的原始输入，结果供调用方继续使用
@@ -2891,7 +2749,7 @@ public class UiViewCompositionService {
             String message) {
         return new IllegalArgumentException(
                 label + mappingLabel + "第 " + index + " 项无效：" + message
-                        + "。请返回第三步“允许做什么”修改字段映射");
+                        + "。请检查参数传递配置");
     }
 
     /**

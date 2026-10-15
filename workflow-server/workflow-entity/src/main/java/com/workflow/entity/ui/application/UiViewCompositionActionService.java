@@ -140,12 +140,12 @@ public class UiViewCompositionActionService {
             String compositionKey,String sourceEntityCode,String sourceRecordId) {}
 
     /**
-     * 校验关联内容打开的目标表单提交，并返回服务端必须覆盖的新增初值。
+     * 校验关联内容打开的目标表单是否允许本次新增或编辑。
      *
      * <p>普通表单提交不会调用本方法。携带关联内容业务上下文时，目标实体、表单、
      * 精确发布版本以及 EDIT 记录 ID 均从不可变宿主快照重新解析；来源行和目标行
-     * 会先加锁再复核，避免关系在校验与写入之间变化。CREATE 的初值同样在锁后
-     * 从来源记录重新计算，浏览器提交的同名字段不能覆盖它们。</p>
+     * 会先加锁再复核，避免关系在校验与写入之间变化。字段值继续交给目标表单的
+     * 标准提交流程校验，不在关联内容授权步骤中生成或覆盖数据。</p>
      *
      * @param compositionContext 业务入口和关联路径，服务端重新校验后才能执行动作
      * @param action 动作标识，决定后续授权表单提交采用的处理分支
@@ -153,10 +153,9 @@ public class UiViewCompositionActionService {
      * @param targetRecordId 目标记录ID，后续用于处理授权表单提交时定位或关联目标
      * @param targetFormId 目标表单ID，后续用于处理授权表单提交时定位或关联目标
      * @param targetConfigHash 目标表单页面配置摘要，变更时拒绝写入并保留输入
-     * @return CREATE 时必须合并到目标数据的可信初值；EDIT 时为空
      */
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> authorizeFormSubmission(
+    public void authorizeFormSubmission(
             UiViewCompositionResolveRequest compositionContext,
             String action,
             String targetEntityCode,
@@ -185,7 +184,7 @@ public class UiViewCompositionActionService {
         lockMutationRows(initial, source, targets);
 
         // 锁等待期间来源关系可能已经变化，因此必须重新解析一次，而不是继续使用
-        // 加锁前得到的 targetRecordId 或初值。
+        // 加锁前得到的 targetRecordId 或操作能力。
         ActionContext context = resolveContext(compositionContext);
         Map<String, UiViewCompositionActionCapabilityDTO> actionCapabilities =
                 capabilities(context);
@@ -197,9 +196,6 @@ public class UiViewCompositionActionService {
                 targetRecordId,
                 targetFormId,
                 targetConfigHash);
-        return "CREATE".equals(normalizedAction)
-                ? actionCapabilities.get("CREATE").getInitialValues()
-                : Map.of();
     }
 
     /**
@@ -1231,13 +1227,7 @@ public class UiViewCompositionActionService {
                 context.targetEntity(), EntityPermissionAction.VIEW)) {
             return denied("没有目标实体查看权限");
         }
-        Map<String, Object> create = map(
-                map(context.config().get("actionSettings")).get("create"));
-        try {
-            return allowed(resolveCreateInitialValues(context, create));
-        } catch (RuntimeException exception) {
-            return denied(exception.getMessage());
-        }
+        return allowed();
     }
 
     /**
@@ -1282,68 +1272,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 解析创建初始值集合；输出作为后续校验或处理的输入。
-     *
-     * @param context 执行上下文，向后续创建初始值集合步骤传递身份、配置或状态
-     * @param create 创建，作为 {@code mapList} 的输入影响后续处理
-     * @return 创建初始值集合键值结果，供调用方继续处理
-     */
-    private Map<String, Object> resolveCreateInitialValues(
-            ActionContext context,
-            Map<String, Object> create) {
-        List<Map<String, Object>> mappings = mapList(
-                create.get("initialMappings"));
-        if (mappings.isEmpty()) {
-            return Map.of();
-        }
-        EntityDataDTO source = readAccessible(
-                context.sourceEntity(),
-                context.claims().sourceRecordId(),
-                null);
-        Map<String, Object> values = new LinkedHashMap<>();
-        for (Map<String, Object> mapping : mappings) {
-            if (mapping.containsKey("literal")) {
-                throw conflict(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_INVALID",
-                        "新增初值只能来自当前记录字段");
-            }
-            String sourceField = firstText(
-                    mapping.get("sourceField"), mapping.get("source"));
-            String targetField = firstText(
-                    mapping.get("targetField"), mapping.get("target"));
-            if (!StringUtils.hasText(sourceField)
-                    || !StringUtils.hasText(targetField)) {
-                throw conflict(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_INVALID",
-                        "新增初值必须同时指定当前记录字段和目标表单字段");
-            }
-            requireReadableSourcePublishedField(context, sourceField);
-            requireEditableTargetFormField(context, targetField, "create");
-            if (values.containsKey(targetField)) {
-                throw conflict(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_INVALID",
-                        "新增初值不能重复写入目标字段: " + targetField);
-            }
-            Object value = recordValue(source, sourceField);
-            if (!Boolean.FALSE.equals(mapping.get("required"))
-                    && value == null) {
-                throw conflict(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_VALUE_MISSING",
-                        "当前记录字段 “" + sourceField
-                                + "” 为空，无法生成必填新增初值");
-            }
-            if (value instanceof Map<?, ?>) {
-                throw conflict(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_VALUE_INVALID",
-                        "当前记录字段不能以对象形式作为新增初值: "
-                                + sourceField);
-            }
-            values.put(targetField, value);
-        }
-        return Collections.unmodifiableMap(values);
-    }
-
-    /**
      * 校验并获取可读来源已发布字段；不满足约束时阻止后续处理。
      *
      * @param context 执行上下文，向后续可读来源已发布字段步骤传递身份、配置或状态
@@ -1356,8 +1284,8 @@ public class UiViewCompositionActionService {
                 context.sourceSchema(), fieldCode, "来源");
         if (Boolean.FALSE.equals(field.getRuntimeReadable())) {
             throw forbidden(
-                    "VIEW_COMPOSITION_CREATE_MAPPING_FIELD_FORBIDDEN",
-                    "当前记录字段不可用于新增初值: " + fieldCode);
+                    "VIEW_COMPOSITION_ACTION_MAPPING_FIELD_FORBIDDEN",
+                    "当前记录字段不可用于接口动作: " + fieldCode);
         }
         if (FORM.equals(context.claims().ownerType())) {
             Map<String, Object> publishedField = mapList(
@@ -1370,7 +1298,7 @@ public class UiViewCompositionActionService {
             if (publishedField == null
                     || truthy(publishedField.get("isHidden"))) {
                 throw forbidden(
-                        "VIEW_COMPOSITION_CREATE_MAPPING_FIELD_FORBIDDEN",
+                        "VIEW_COMPOSITION_ACTION_MAPPING_FIELD_FORBIDDEN",
                         "当前字段未在固定宿主表单中显示: " + fieldCode);
             }
             return;
@@ -1385,7 +1313,7 @@ public class UiViewCompositionActionService {
         if (publishedField == null
                 || !truthy(publishedField.get("showInList"))) {
             throw forbidden(
-                    "VIEW_COMPOSITION_CREATE_MAPPING_FIELD_FORBIDDEN",
+                    "VIEW_COMPOSITION_ACTION_MAPPING_FIELD_FORBIDDEN",
                     "当前字段未在固定宿主列表中显示: " + fieldCode);
         }
     }
@@ -1405,7 +1333,7 @@ public class UiViewCompositionActionService {
                 context.targetSchema(), fieldCode, "目标");
         if (Boolean.FALSE.equals(field.getEditable())) {
             throw forbidden(
-                    "VIEW_COMPOSITION_CREATE_MAPPING_FIELD_FORBIDDEN",
+                    "VIEW_COMPOSITION_ACTION_MAPPING_FIELD_FORBIDDEN",
                     "目标实体字段不可编辑: " + fieldCode);
         }
         Map<String, Object> publishedField = mapList(
@@ -1420,8 +1348,8 @@ public class UiViewCompositionActionService {
                 || truthy(publishedField.get("isReadonly"))
                 || !editableInMode(publishedField, mode)) {
             throw forbidden(
-                    "VIEW_COMPOSITION_CREATE_MAPPING_FIELD_FORBIDDEN",
-                    "目标字段未在固定表单版本中开放新增: " + fieldCode);
+                    "VIEW_COMPOSITION_ACTION_MAPPING_FIELD_FORBIDDEN",
+                    "目标字段未在固定表单版本中开放当前操作: " + fieldCode);
         }
     }
 
@@ -1500,22 +1428,9 @@ public class UiViewCompositionActionService {
      * @return 处理后的允许结果，供调用方继续处理
      */
     private UiViewCompositionActionCapabilityDTO allowed() {
-        return allowed(Map.of());
-    }
-
-    /**
-     * 处理允许，并将结果传给后续步骤。
-     *
-     * @param initialValues 缺失行首次创建时的列值；已有行的业务值不会被覆盖
-     * @return 处理后的允许结果，供调用方继续处理
-     */
-    private UiViewCompositionActionCapabilityDTO allowed(
-            Map<String, Object> initialValues) {
         return UiViewCompositionActionCapabilityDTO.builder()
                 .available(true)
                 .reason("")
-                .initialValues(initialValues == null
-                        ? Map.of() : initialValues)
                 .build();
     }
 

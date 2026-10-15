@@ -30,7 +30,7 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> ROOT_KEYS = Set.of(
             "schemaVersion", "name", "enabled", "source",
             "target", "presentation", "relation", "actions",
-            "actionSettings", "specialHandling", "entitySnapshots", "parameterMappings");
+            "specialHandling", "entitySnapshots", "parameterMappings");
     private static final Set<String> SOURCE_KEYS = Set.of(
             "entityId", "entityCode", "entityName");
     private static final Set<String> TARGET_KEYS = Set.of(
@@ -50,8 +50,6 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> MAPPING_KEYS = Set.of(
             "source", "target", "sourceField", "targetField",
             "sourceLabel", "targetLabel", "literal", "required");
-    private static final Set<String> ACTION_SETTINGS_KEYS = Set.of("create");
-    private static final Set<String> CREATE_SETTINGS_KEYS = Set.of("initialMappings");
     private static final Set<String> SPECIAL_KEYS = Set.of(
             "mode", "interfaceService", "actionServices", "customComponent",
             "failurePolicy");
@@ -136,8 +134,6 @@ public class UiViewCompositionConfigValidator {
         Map<String, Object> relation = normalizeRelation(
                 requireMap(config.get("relation"), "数据关联"));
         List<String> actions = normalizeActions(config.get("actions"));
-        Map<String, Object> actionSettings = normalizeActionSettings(
-                optionalMap(config.get("actionSettings"), "操作设置"));
         Map<String, Object> rawSpecial = optionalMap(config.get("specialHandling"), "特殊处理");
         UiViewCompositionExtensionPolicy.validateSpecialHandling(relation, rawSpecial);
         Map<String, Object> special = normalizeSpecialHandling(rawSpecial);
@@ -159,7 +155,6 @@ public class UiViewCompositionConfigValidator {
         normalized.put("relation", relation);
         normalized.put("actions", actions);
         normalized.put("parameterMappings", PageParameterPolicy.mappings(config.get("parameterMappings")));
-        normalized.put("actionSettings", actionSettings);
         normalized.put("specialHandling", special);
         if (!entitySnapshots.isEmpty()) {
             normalized.put("entitySnapshots", entitySnapshots);
@@ -167,7 +162,7 @@ public class UiViewCompositionConfigValidator {
         return new ValidationResult(
                 normalized,
                 buildSummary(target, presentation),
-                buildWarnings(actions));
+                List.of());
     }
 
     /**
@@ -411,23 +406,6 @@ public class UiViewCompositionConfigValidator {
             result.add(requireEnum(value, ACTIONS, "允许操作"));
         }
         return List.copyOf(result);
-    }
-
-    /**
-     * 规范化新增表单的字段初值。关系由实体引用字段维护，这里只声明预填值，
-     * 不承载选择记录、关联写入或宿主字段回填。
-     *
-     * @param value 编辑器提交的操作设置，只允许新增初值映射
-     * @return 经白名单校验的新增设置，供目标表单生成初值
-     */
-    private Map<String, Object> normalizeActionSettings(
-            Map<String, Object> value) {
-        requireAllowedKeys(value, ACTION_SETTINGS_KEYS, "操作设置");
-        Map<String, Object> create = optionalMap(
-                value.get("create"), "新增记录设置");
-        requireAllowedKeys(create, CREATE_SETTINGS_KEYS, "新增记录设置");
-        return Map.of("create", Map.of("initialMappings", normalizeMappings(
-                create.get("initialMappings"), "新增初值", true)));
     }
 
     /**
@@ -850,19 +828,6 @@ public class UiViewCompositionConfigValidator {
                 ? "表单" : "列表";
         return "以" + positionNames.get(presentation.get("position"))
                 + "方式显示“" + targetName + "”" + contentName;
-    }
-
-    /**
-     * 构建{@code warnings}；结果供后续流程传递或持久化。
-     *
-     * @param actions 动作集合，供本方法构建{@code warnings}时使用
-     * @return 界面视图组合配置校验器集合，供调用方遍历或展示
-     */
-    private List<String> buildWarnings(List<String> actions) {
-        if (actions.contains("CREATE") || actions.contains("EDIT")) {
-            return List.of("目标内容独立保存，不随当前表单一起提交。");
-        }
-        return List.of();
     }
 
     /**

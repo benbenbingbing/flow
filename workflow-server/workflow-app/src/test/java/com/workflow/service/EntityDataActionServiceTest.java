@@ -547,14 +547,16 @@ class EntityDataActionServiceTest {
         }
 
         @Test
-        void compositionCreateOverwritesClientValueWithTrustedInitialMapping() {
+        void compositionCreatePreservesSubmittedValuesAndUsesStandardFormValidation() {
                 EntityDataDTO dto = new EntityDataDTO();
                 dto.setEntityCode("asset");
                 dto.setFormId("form-1");
                 dto.setFormConfigHash("form-graph-hash");
                 dto.setCompositionContext(compositionContext());
+                Map<String, Object> runtimeContext = Map.of("taskId", "task-1");
+                dto.setRuntimeContext(runtimeContext);
                 dto.setData(Map.of(
-                                "displayName", "浏览器篡改值",
+                                "displayName", "用户修改后的值",
                                 "note", "保留值"));
                 EntityForm form = form("form-1", "entity-asset");
                 EntityDefinition asset = new EntityDefinition();
@@ -563,10 +565,6 @@ class EntityDataActionServiceTest {
                 when(formMapper.selectById("form-1")).thenReturn(form);
                 when(definitionMapper.selectById("entity-asset"))
                                 .thenReturn(asset);
-                when(viewCompositionActionService.authorizeFormSubmission(compositionContext(), "CREATE", "asset", null, "form-1", "form-graph-hash"))
-                                .thenReturn(Map.of(
-                                                "displayName",
-                                                "服务端来源值"));
                 FormSubmissionExecutionContext context = context(
                                 "composition-create-trace",
                                 "ENTITY_CREATE");
@@ -574,12 +572,12 @@ class EntityDataActionServiceTest {
                                 eq("ENTITY_CREATE"),
                                 isNull(),
                                 anyMap())).thenReturn(context);
-                Map<String, Object> trustedSubmission = Map.of(
-                                "displayName", "服务端来源值",
+                Map<String, Object> submittedData = Map.of(
+                                "displayName", "用户修改后的值",
                                 "note", "保留值");
-                when(formSubmissionService.applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", trustedSubmission, context)).thenReturn(
+                when(formSubmissionService.applyAuthorizedFormWithRelease("form-1", "form-graph-hash", runtimeContext, "asset", null, "create", submittedData, context)).thenReturn(
                                         new PublishedFormSubmissionService.AuthorizedFormApplication(
-                                                trustedSubmission,
+                                                submittedData,
                                                 "form-release-1",
                                                 2));
                 stubDefaultEventExecution();
@@ -587,13 +585,13 @@ class EntityDataActionServiceTest {
                                 .thenReturn(mutationResult(
                                                 "1",
                                                 EntityMutationOperationType.CREATE,
-                                                trustedSubmission));
+                                                submittedData));
 
                 service.create(dto);
 
                 verify(viewCompositionActionService)
                                 .authorizeFormSubmission(compositionContext(), "CREATE", "asset", null, "form-1", "form-graph-hash");
-                verify(formSubmissionService).applyAuthorizedFormWithRelease("form-1", "form-graph-hash", Map.of(), "asset", null, "create", trustedSubmission, context);
+                verify(formSubmissionService).applyAuthorizedFormWithRelease("form-1", "form-graph-hash", runtimeContext, "asset", null, "create", submittedData, context);
                 verify(actionConfigService, never())
                                 .resolveListConfig(anyString(), any());
         }

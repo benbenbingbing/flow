@@ -30,7 +30,7 @@ assert.equal(empty.config.source.entityName, '需求')
 assert.equal(empty.config.presentation.loadMode, 'ON_DEMAND')
 assert.deepEqual(RELATED_CONTENT_ACTION_OPTIONS.map(option => option.value), ['VIEW', 'CREATE', 'EDIT'])
 assert.deepEqual(empty.config.actions, ['VIEW'])
-assert.deepEqual(empty.config.actionSettings, { create: { initialMappings: [] } })
+assert.equal(Object.hasOwn(empty.config, 'actionSettings'), false)
 
 assert.equal(
   relatedContentPositionOptions('FORM').some(item => item.value === 'ROW_EXPAND'),
@@ -292,11 +292,13 @@ Object.assign(editable.config.target, {
 })
 Object.assign(editable.config.relation, { type: 'REFERENCE_FIELD', sourceField: 'projectId' })
 editable.config.actions = ['CREATE', 'EDIT']
-editable.config.actionSettings.create.initialMappings = [{ source: 'id', target: 'projectId' }]
+editable.config.parameterMappings = [{ parameter: 'sourceId', sourceType: 'FIELD', sourceField: 'id' }]
 assert.equal(validateRelatedContent(editable, 'FORM').valid, true)
-assert.deepEqual(buildRelatedContentPayload(editable, 'FORM', 'owner').config.actionSettings, {
-  create: { initialMappings: [{ source: 'id', target: 'projectId' }] }
-})
+const editablePayload = buildRelatedContentPayload(editable, 'FORM', 'owner')
+assert.deepEqual(editablePayload.config.parameterMappings, editable.config.parameterMappings, '新增和编辑使用统一参数传递')
+assert.equal(Object.hasOwn(editablePayload.config, 'actionSettings'), false, '保存载荷不再包含新增初值配置')
+editablePayload.config.parameterMappings[0].sourceField = 'changed'
+assert.equal(editable.config.parameterMappings[0].sourceField, 'id', '参数映射保存副本不应改写编辑草稿')
 editable.config.actions = ['UNKNOWN_ACTION']
 assert.ok(validateRelatedContent(editable, 'FORM').errors.some(error => error.field === 'actions'))
 

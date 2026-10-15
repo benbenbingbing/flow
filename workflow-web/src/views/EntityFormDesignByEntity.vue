@@ -114,7 +114,6 @@
             </div>
           </div>
           <FormRelationPicker
-            ref="formRelationPickerRef"
             :source-entity="entityInfo"
             :owner-id="form.id"
             :compositions="relatedContents"
@@ -267,7 +266,7 @@
             <el-tab-pane v-for="tab in availableNodeSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
           </el-tabs>
           <el-scrollbar class="node-property-scrollbar">
-            <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" :composition-editor-available="!isCustomRendererMode && !isSystemEntity" @open-composition-editor="openCompositionEditors" @draft-change="updateRelatedContentDraft" />
+            <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" @draft-change="updateRelatedContentDraft" />
           </el-scrollbar>
         </template>
         <template v-else-if="selectedField">
@@ -956,11 +955,9 @@
           :source-fields="entityFields"
           :source-content-fields="formFields"
           :anchor-options="relatedContentAnchorOptions"
-          :composition-editor-available="!isCustomRendererMode && !isSystemEntity"
           @count-change="relatedContentCount = $event"
           @loaded="relatedContents = $event"
           @changed="handleRelatedContentChanged"
-          @open-composition-editor="openCompositionEditors"
         />
       </template>
     </FormDesignerSettingsDrawer>
@@ -1233,7 +1230,6 @@ const runtimeCodeDialogRef = ref(null)
 const relatedContentPanelRef = ref(null)
 const relatedContentCount = ref(0)
 const relatedContents = ref([])
-const formRelationPickerRef = ref(null)
 const relatedDraftState = createRelatedContentDraftState()
 const selectedRelatedKey = ref('')
 const selectedRelatedContent = computed(() => relatedContents.value.find(item => relatedContentIdentity(item) === selectedRelatedKey.value) || null)
@@ -1577,14 +1573,6 @@ async function saveSelectedRelatedContent() {
     ElMessage.success('当前属性已保存，发布后生效')
   } catch (error) { showRequestError(error, error?.message || '保存属性失败，输入已保留') }
   finally { savingNode.value = false }
-}
-
-/** 主从数据通过左侧关系创建真实节点；离开展示设置后定位该入口，保留设计器里的其他草稿修改。 */
-async function openCompositionEditors() {
-  showFormSettings.value = false
-  propertyDrawerVisible.value = false
-  await nextTick()
-  await formRelationPickerRef.value?.showCompositionEditors()
 }
 
 async function removeRelatedContent(item) {

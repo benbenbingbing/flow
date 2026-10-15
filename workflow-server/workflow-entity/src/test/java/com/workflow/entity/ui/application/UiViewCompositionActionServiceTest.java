@@ -180,7 +180,7 @@ class UiViewCompositionActionServiceTest {
     }
 
     @Test
-    void formCapabilitiesExposeServerResolvedCreateValuesAndExactEdit() {
+    void formCapabilitiesAuthorizeCreateAndExactEdit() {
         formFixture(
                 List.of("VIEW", "CREATE", "EDIT"),
                 "target-1");
@@ -195,10 +195,6 @@ class UiViewCompositionActionServiceTest {
                 response.getActionCapabilities().keySet());
         assertTrue(response.getActionCapabilities().get("CREATE")
                 .isAvailable());
-        assertEquals(
-                Map.of("displayName", "来源名称"),
-                response.getActionCapabilities().get("CREATE")
-                        .getInitialValues());
         assertTrue(response.getActionCapabilities().get("EDIT")
                 .isAvailable());
     }
@@ -209,7 +205,7 @@ class UiViewCompositionActionServiceTest {
                 List.of("VIEW", "CREATE", "EDIT"),
                 "target-1");
 
-        Map<String, Object> trusted = service.authorizeFormSubmission(
+        service.authorizeFormSubmission(
                 compositionContext(),
                 "CREATE",
                 "target_entity",
@@ -217,7 +213,6 @@ class UiViewCompositionActionServiceTest {
                 "target-form",
                 "target-config-hash");
 
-        assertEquals(Map.of("displayName", "来源名称"), trusted);
         BusinessForbiddenException error = assertThrows(
                 BusinessForbiddenException.class,
                 () -> service.authorizeFormSubmission(
@@ -446,12 +441,6 @@ class UiViewCompositionActionServiceTest {
         Map<String, Object> config = Map.of(
                 "enabled", true,
                 "actions", actions,
-                "actionSettings", Map.of(
-                        "create", Map.of(
-                                "initialMappings", List.of(Map.of(
-                                        "sourceField", "ownerName",
-                                        "targetField", "displayName",
-                                        "required", true)))),
                 "entitySnapshots", Map.of(
                         "source", pin(
                                 "source-history", sourceEntity, 1, "a"),

@@ -134,9 +134,7 @@
       :source-content-fields="sourceContentFields"
       :anchor-options="anchorOptions"
       :existing-count="rows.length"
-      :composition-editor-available="compositionEditorAvailable"
       @saved="handleSaved"
-      @open-composition-editor="openCompositionEditor"
     />
   </component>
 </template>
@@ -164,11 +162,10 @@ const props = defineProps({
   sourceEntity: { type: Object, default: () => ({}) },
   sourceFields: { type: Array, default: () => [] },
   sourceContentFields: { type: Array, default: () => [] },
-  anchorOptions: { type: Array, default: () => [] },
-  compositionEditorAvailable: { type: Boolean, default: false }
+  anchorOptions: { type: Array, default: () => [] }
 })
 
-const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons', 'open-composition-editor', 'edit-draft', 'create-draft', 'delete-draft', 'refresh-drafts'])
+const emit = defineEmits(['count-change', 'changed', 'loaded', 'configure-buttons', 'edit-draft', 'create-draft', 'delete-draft', 'refresh-drafts'])
 const visible = ref(false)
 // 表单设置直接承载面板；列表仍使用独立抽屉，共用同一套配置与保存逻辑。
 const drawerProps = computed(() => ({
@@ -188,11 +185,6 @@ const dialogRef = ref(null)
 function configureButtons(tab) {
   visible.value = false
   emit('configure-buttons', tab)
-}
-
-function openCompositionEditor() {
-  visible.value = false
-  emit('open-composition-editor')
 }
 
 function normalizeRows(response) {

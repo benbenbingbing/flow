@@ -1,5 +1,5 @@
 <template>
-  <section ref="pickerRoot" class="form-relation-picker">
+  <section class="form-relation-picker">
     <div class="relation-heading">
       <div class="relation-title">
         <strong>实体关系</strong>
@@ -12,12 +12,8 @@
       </div>
       <el-button link size="small" :loading="loading" @click="load">刷新</el-button>
     </div>
-    <div v-if="compositionOnly" class="composition-filter">
-      <strong>随主表保存的组成关系</strong>
-      <el-button link size="small" type="primary" @click="compositionOnly = false">显示全部关系</el-button>
-    </div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" />
-    <div v-for="relation in visibleRelations" :key="relationUsageKey(relation)" class="relation-item">
+    <div v-for="relation in relations" :key="relationUsageKey(relation)" class="relation-item">
       <div class="relation-title">
         <strong
           class="relation-property-title"
@@ -41,7 +37,7 @@
         @click="openRelation(relation)"
       >{{ relation.enabled === false ? '已停用' : (isCompositionEditorRelation(relation) ? existingEditorFor(relation) : existingFor(relation)) ? '已添加 · 配置' : isCompositionEditorRelation(relation) ? '添加主从编辑' : `选择${typeLabel(relation)}` }}</el-button>
     </div>
-    <p v-if="!loading && !error && !visibleRelations.length">{{ compositionOnly ? '暂无可用的组成关系。请先在“管理实体关系”中配置组成关系，再刷新此处。' : '尚未定义关系，请先配置关联实体及关联字段。' }}</p>
+    <p v-if="!loading && !error && !relations.length">尚未定义关系，请先配置关联实体及关联字段。</p>
     <el-button v-if="sourceEntity.id" link type="primary" @click="openRelationManagement">
       管理实体关系
     </el-button>
@@ -72,7 +68,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ConfigHelpLabel from '@/components/ConfigHelpLabel.vue'
@@ -94,10 +90,6 @@ const props = defineProps({
 const emit = defineEmits(['saved', 'edit', 'add-editor', 'edit-node', 'open-properties', 'draft-added', 'edit-node-settings'])
 const router = useRouter()
 const relations = ref([]), loading = ref(false), error = ref('')
-const pickerRoot = ref(null), compositionOnly = ref(false)
-const visibleRelations = computed(() => compositionOnly.value
-  ? relations.value.filter(relation => isCompositionEditorRelation(relation) && relation.enabled !== false && relation.enabled !== 0)
-  : relations.value)
 const visible = ref(false), selectedRelation = ref(null), editing = ref(null)
 const options = ref([]), contentId = ref(''), catalogLoading = ref(false), catalogError = ref(''), saving = ref(false)
 let loadSequence = 0, catalogSequence = 0
@@ -118,14 +110,6 @@ function openRelationManagement() {
     query: { tab: 'relations' }
   })
   window.open(route.href, '_blank', 'noopener,noreferrer')
-}
-
-/** 从关联展示设置返回主从编辑入口，只筛选正向组成关系，避免把普通关联误当作主表拥有的子数据。 */
-async function showCompositionEditors() {
-  compositionOnly.value = true
-  await load()
-  await nextTick()
-  pickerRoot.value?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 }
 
 /** 关系目录独立于实体字段；失败时保留错误，不能把失败伪装成没有关系。 */
@@ -247,7 +231,7 @@ async function save() {
 
 watch(() => props.sourceEntity.id, load, { immediate: true })
 watch(visible, value => { if (!value) ++catalogSequence })
-defineExpose({ load, openRelation, showCompositionEditors })
+defineExpose({ load, openRelation })
 </script>
 
 <style scoped>
@@ -255,7 +239,6 @@ defineExpose({ load, openRelation, showCompositionEditors })
 .relation-heading { display: flex; align-items: center; justify-content: space-between; }
 .relation-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .relation-help { flex: 0 0 auto; }
-.composition-filter { font-size: 12px; color: var(--el-color-primary); }
 .form-relation-picker p, .help { font-size: 12px; line-height: 1.7; color: var(--el-text-color-secondary); }
 .relation-item { padding: 12px 0; border-bottom: 1px solid var(--el-border-color-lighter); }
 .relation-property-title { min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
