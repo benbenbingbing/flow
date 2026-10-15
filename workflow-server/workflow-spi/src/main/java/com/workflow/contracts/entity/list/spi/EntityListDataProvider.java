@@ -31,7 +31,8 @@ public interface EntityListDataProvider {
      *
      * @param context       列表运行时上下文
      * @param dataScopePlan 数据范围查询计划
-     * @param query         查询参数
+     * @param query         查询参数；可选 sortField/sortDirection 已按发布列配置校验，
+     *                      Provider 必须在分页前应用该顺序，缺省时保留自身默认顺序
      * @return 查询结果
      */
     Object query(

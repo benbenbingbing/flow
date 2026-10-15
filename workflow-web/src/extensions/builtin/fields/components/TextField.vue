@@ -18,6 +18,8 @@
     <el-input
       v-else
       v-model="fieldValue"
+      :type="isPassword ? 'password' : 'text'"
+      :show-password="isPassword && !isDisabled"
       :placeholder="placeholder"
       :disabled="isDisabled"
       :maxlength="maxlength"
@@ -63,6 +65,9 @@ const isTextarea = computed(() => {
   return type.toLowerCase() === 'textarea'
 })
 
+// 密码控件复用文本的数据与事件协议；只读时也保持遮蔽，不能回退成明文展示。
+const isPassword = computed(() => String(props.field?.componentType || '').toLowerCase() === 'password')
+
 const textareaRows = computed(() => {
   return parsedComponentProps.value.rows || 3
 })
@@ -72,7 +77,7 @@ const maxlength = computed(() => {
 })
 
 const showWordLimit = computed(() => {
-  return !!maxlength.value && parsedComponentProps.value.showWordLimit !== false
+  return !isPassword.value && !!maxlength.value && parsedComponentProps.value.showWordLimit !== false
 })
 </script>
 

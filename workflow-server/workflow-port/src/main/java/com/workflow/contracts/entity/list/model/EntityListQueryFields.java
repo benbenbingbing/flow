@@ -25,6 +25,12 @@ public final class EntityListQueryFields {
      */
     public static final String FILTERS = "filters";
 
+    /** 已验证可排序的实体字段编码；Provider 应在分页前排序，不能对单页结果重排。 */
+    public static final String SORT_FIELD = "sortField";
+
+    /** SORT_FIELD 对应的 ASC/DESC 方向；两项未提供时保持 Provider 原有默认顺序。 */
+    public static final String SORT_DIRECTION = "sortDirection";
+
     /**
      * 初始化实体列表查询字段，保存构造参数供后续方法使用。
      */

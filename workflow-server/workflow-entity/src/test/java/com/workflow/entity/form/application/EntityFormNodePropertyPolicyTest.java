@@ -20,6 +20,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EntityFormNodePropertyPolicyTest {
 
     @Test
+    void passwordInputIsABuiltInStringComponent() {
+        assertTrue(EntityFormNodePropertyPolicy.isBuiltInComponent("password"));
+        Map<String, Object> props = Map.of("fieldCode", "secret", "fieldType", "STRING",
+                "componentType", "password", "componentProps", Map.of("maxlength", 32));
+        assertEquals(props, EntityFormNodePropertyPolicy.normalizeProps("FIELD", props, false).active());
+        assertThrows(IllegalArgumentException.class, () -> EntityFormNodePropertyPolicy.normalizeProps("FIELD",
+                Map.of("fieldType", "INTEGER", "componentType", "password"), false));
+    }
+
+    @Test
     void containerVisibilitySurvivesNormalization() {
         Map<String, Object> props = Map.of("label", "显示区域", "modeAccess", Map.of("edit", Map.of("visible", false)),
                 "linkageRules", Map.of("visibilityRule", "status == 'ACTIVE'"));

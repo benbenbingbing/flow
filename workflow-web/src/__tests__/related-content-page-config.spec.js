@@ -127,7 +127,8 @@ assert.ok(listRuntime.includes("'selection-action'"), '目标列表未把选择�
 assert.ok(listSelectionState.includes('explicitSelectionScene'), '内嵌关联列表未识别显式选择动作')
 assert.ok(listSelectionState.includes('props.selectionActionOptions.length > 0'), '选择动作不能驱动内嵌列表操作区')
 assert.doesNotMatch(listSelectionState, /runtimeScene\.value[^\n]*EMBEDDED/, '不能把所有内嵌列表全局变成选择场景')
-assert.ok(publishDialog.includes('关联内容发布依赖'), '发布前未展示关联内容依赖')
+assert.ok(publishDialog.includes('关联内容与发布依赖'), '发布前未展示关联内容依赖')
+assert.ok(publishDialog.includes(':data="preview.dependencies"'), '折叠依赖区域必须保留真实预检依赖明细')
 assert.ok(publishDialog.includes("ENTITY_SCHEMA: '实体定义'"), '发布前未解释实体定义依赖')
 assert.ok(publishDialog.includes('dependencyVersionLabel'), '发布依赖缺少业务化版本说明')
 

@@ -211,6 +211,18 @@
               <el-form-item label="溢出提示">
                 <el-switch v-model="form.columnConfig.showOverflowTooltip" />
               </el-form-item>
+              <el-form-item label="是否排序">
+                <template #label>
+                  <ConfigHelpLabel label="是否排序" help-key="entityList.columnSortable" />
+                </template>
+                <el-switch
+                  v-model="form.columnConfig.sortable"
+                  :disabled="!form.showInList || !supportsEntityFieldQuery(form)"
+                  inline-prompt
+                  active-text="是"
+                  inactive-text="否"
+                />
+              </el-form-item>
               <el-form-item label="快捷复制">
                 <el-switch
                   v-model="form.columnConfig.quickCopy"

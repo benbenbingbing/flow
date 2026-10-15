@@ -58,6 +58,7 @@ public final class EntityFormNodePropertyPolicy {
     private static final Map<String, Set<String>>
             BUILT_IN_COMPONENT_FIELD_TYPES = Map.ofEntries(
                     Map.entry("input", Set.of("STRING")),
+                    Map.entry("password", Set.of("STRING")),
                     Map.entry("textarea", Set.of("STRING", "TEXT")),
                     Map.entry("rich_text", Set.of("TEXT", "RICH_TEXT")),
                     Map.entry(

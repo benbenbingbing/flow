@@ -51,6 +51,8 @@ await api.handleChange(' a ')
 assert.equal(props.modelValue, 'A')
 assert.deepEqual(emitted, [['change', 'A']], '异步脚本赋值后再发 change')
 
+// 密码输入切换后仍使用文本事件协议，输入/聚焦/失焦脚本不能静默失效。
+props.field.componentType = 'password'
 props.field.eventOnInput = "setValue(value.toUpperCase())"
 emitted.length = 0
 await api.handleInput('b')

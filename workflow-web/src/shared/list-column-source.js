@@ -28,7 +28,15 @@ export function changeListColumnSource(field, type, sourceOptions = []) {
   field.dataSourceType = type
   field.interfaceExtensionId = ''
   field.dataSourceConfig = applySchemaDefaults(getListColumnSourceSchema(type, sourceOptions), {})
-  if (type !== 'ENTITY_FIELD') field.isQuery = false
+  if (type !== 'ENTITY_FIELD') {
+    field.isQuery = false
+    // 查询与排序都发生在分页前；切到计算列时不保留无法执行的排序开关。
+    const columnConfig = safeParseConfig(field.columnConfig)
+    if (columnConfig.sortable === true) {
+      columnConfig.sortable = false
+      field.columnConfig = typeof field.columnConfig === 'string' ? JSON.stringify(columnConfig) : columnConfig
+    }
+  }
 }
 
 /** 保存前校验取值方式和必要参数；返回可直接展示的错误文案，空字符串表示有效。 */

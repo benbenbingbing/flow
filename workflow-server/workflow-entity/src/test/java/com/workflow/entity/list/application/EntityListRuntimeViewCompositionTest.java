@@ -155,6 +155,97 @@ class EntityListRuntimeViewCompositionTest {
         UserContext.clear();
     }
 
+    /** 表头排序经事件入口传递到数据库分页，取消排序继续走原有默认查询。 */
+    @Test
+    void headerSortReachesDatabaseQueryAndCanBeCleared() {
+        EntityListConfig published = publishedList();
+        configureActiveList(published);
+        configureSortableField(published);
+        PageResult<EntityDataDTO> expected = new PageResult<>(List.of(), 50, 2, 10);
+        when(dataListService.findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 2, 10, "name", "desc"))
+                .thenReturn(expected);
+        when(dataListService.findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 2, 10)).thenReturn(expected);
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setPageNum(2);
+        request.setSortField("name");
+        request.setSortDirection("desc");
+
+        assertEquals(50, ((PageResult<?>) service.query("target_entity", "default", request)).getTotal());
+        verify(dataListService).findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 2, 10, "name", "desc");
+        request.setSortField(null);
+        request.setSortDirection(null);
+        service.query("target_entity", "default", request);
+        verify(dataListService).findPageWithResolvedConfig(
+                "target_entity", "default", published, Map.of(), 2, 10);
+    }
+
+    @Test
+    void systemEntityAcceptsHeaderSort() {
+        EntityListConfig published = publishedList();
+        configureActiveList(published);
+        configureSortableField(published);
+        when(definitionMapper.findByEntityCode("target_entity"))
+                .thenReturn(Optional.of(definition(EntityDefinition.StorageMode.SYSTEM)));
+        when(systemEntityReadService.isSystemEntity("target_entity")).thenReturn(true);
+        when(systemEntityReadService.findPage("target_entity", Map.of(), 1, 10, "name", "asc"))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 10));
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setSortField("name");
+        request.setSortDirection("asc");
+
+        service.query("target_entity", "default", request);
+        verify(systemEntityReadService).findPage("target_entity", Map.of(), 1, 10, "name", "asc");
+    }
+
+    @Test
+    void customProviderReceivesValidatedHeaderSort() {
+        EntityListConfig published = publishedList();
+        published.setQueryProviderCode("sorted-provider");
+        configureActiveList(published);
+        configureSortableField(published);
+        stubProviderPermission();
+        EntityListDataProvider provider = provider("sorted-provider", new PageResult<>(List.of(), 0, 1, 10));
+        dataProviders.add(provider);
+        EntityListQueryRequest request = new EntityListQueryRequest();
+        request.setSortField("name");
+        request.setSortDirection("desc");
+
+        service.query("target_entity", "default", request);
+
+        verify(provider).query(any(), any(), eq(Map.of("pageNum", 1, "pageSize", 10, "filters", Map.of(),
+                "sortField", "name", "sortDirection", "desc")));
+    }
+
+    @Test
+    void eventCannotEnableSortingForAnUnconfiguredField() {
+        EntityListConfig published = publishedList();
+        configureActiveList(published);
+        configureSortableField(published);
+        when(uiEventRuntimeService.execute(any(), any())).thenAnswer(invocation -> {
+            com.workflow.entity.ui.api.request.UiEventExecuteRequest event = invocation.getArgument(0);
+            event.getInput().put("sortField", "secret");
+            event.getInput().put("sortDirection", "asc");
+            Function<Map<String, Object>, Object> handler = invocation.getArgument(1);
+            return handler.apply(event.getInput());
+        });
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.query("target_entity", "default", new EntityListQueryRequest()));
+        verify(dataListService, never()).findPageWithResolvedConfig(
+                any(), any(), any(), anyMap(), anyLong(), anyLong(), any(), any());
+    }
+
+    private void configureSortableField(EntityListConfig config) {
+        EntityListField field = new EntityListField();
+        field.setFieldCode("name");
+        field.setShowInList(true);
+        field.setColumnConfig("{\"sortable\":true}");
+        when(publishedRuntimeService.resolveFields(eq(config), any())).thenReturn(List.of(field));
+    }
+
     /** 入口标识只作为查询上下文，不限制列表加载或数据查询。 */
     @ParameterizedTest
     @ValueSource(strings = {"MENU", "PAGE", "DIALOG", "DRAWER", "EMBEDDED",

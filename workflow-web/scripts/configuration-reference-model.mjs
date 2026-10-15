@@ -365,7 +365,7 @@ export const AUTHORITATIVE_ENUMS = Object.freeze([
     area: '列表选择模式',
     source: 'src/views/EntityListConfigDesign.vue',
     values: [
-      ['NONE', '不可选择', '普通列表不显示勾选框；需要选择数据的工具栏按钮会自动开启勾选。'],
+      ['NONE', '不可选择', '普通列表不显示勾选框；工具栏按钮不会自动开启勾选，需要选择数据时由配置者手动调整选择模式。'],
       ['MULTIPLE', '可选择', '普通列表允许勾选多条记录，各按钮分别约束执行所需条数。']
     ]
   },
@@ -1550,6 +1550,14 @@ const CONTROL_OVERRIDES = Object.freeze({
     "skipWhen": "当前表单需要采集或修改字段值时关闭。",
     "expectedEffect": "运行时展示现有值并禁止编辑；其他权限和节点字段状态仍继续约束操作。"
   },
+  "editingColumnConfig.sortable": {
+    "label": "是否排序",
+    "meaning": "允许用户点击此列表头按实体字段原始值排序。",
+    "example": true,
+    "configureWhen": "需要用户按名称、金额或日期查看全部匹配记录时开启。",
+    "skipWhen": "无需排序时关闭；字段组合、扩展接口及虚拟列不支持排序。",
+    "expectedEffect": "保存发布后可切换升序、降序和取消排序；切换时回到第一页，取消后恢复默认顺序。"
+  },
   "editingColumnConfig.quickCopy": {
     "label": "快捷复制",
     "meaning": "为列表单元格提供复制显示值的入口。",
@@ -2154,7 +2162,7 @@ const CONTROL_OVERRIDES = Object.freeze({
   'src/views/EntityListConfigDesign.vue:configInfo.selectionMode': {
     meaning: '控制普通列表是否提供勾选入口，只保留不可选择和可选择。',
     example: 'MULTIPLE',
-    expectedEffect: '可选择允许勾选多条；按钮自行约束执行条数，需要选择的按钮自动开启勾选。选择器模式由调用方独立设置。'
+    expectedEffect: '可选择允许勾选多条；选择模式独立设置，工具栏按钮不会自动开启勾选。配置者需确保按钮条数要求与列表设置匹配。选择器模式由调用方独立设置。'
   },
   'src/views/EntityListConfigDesign.vue:selectedListTemplateId': {
     meaning: '选择一个已发布的列表列模板，用它初始化当前列的高级配置。',

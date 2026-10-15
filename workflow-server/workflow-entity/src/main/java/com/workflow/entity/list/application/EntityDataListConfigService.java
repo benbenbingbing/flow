@@ -167,6 +167,20 @@ public class EntityDataListConfigService {
             Map<String, Object> condition,
             long pageNum,
             long pageSize) {
+        return findPageWithResolvedConfig(entityCode, listKey, config, condition, pageNum, pageSize, null, null);
+    }
+
+    /**
+     * 在数据库分页前应用表头排序；请求必须对应当前发布版本中开启排序的实体展示列。
+     * 两个排序参数为空时沿用默认排序，保持旧调用方及取消排序时的行为。
+     *
+     * @param sortField 用户选中的字段编码，禁止传入 SQL 列名或表达式
+     * @param sortDirection 用户选中的 ASC/DESC；非法字段或方向抛出 IllegalArgumentException
+     * @return 保持原有权限条件和总数语义的有序分页结果
+     */
+    public PageResult<EntityDataDTO> findPageWithResolvedConfig(
+            String entityCode, String listKey, EntityListConfig config, Map<String, Object> condition,
+            long pageNum, long pageSize, String sortField, String sortDirection) {
         String resolvedListKey = config != null ? config.getListKey() : null;
         List<EntityListField> allFields = config == null
                 ? List.of()
@@ -177,7 +191,9 @@ public class EntityDataListConfigService {
         EntityListQueryPolicy.validateFilters(allFields, condition);
         EntityListQueryPolicy.validateSort(allFields, defaultSort(config).field());
         Map<String, Object> baseCondition = condition == null ? Map.of() : condition;
-        DefaultSort sort = defaultSort(config);
+        EntityListQueryPolicy.validateRequestedSort(allFields, sortField, sortDirection, jsonDocumentCodec);
+        DefaultSort sort = StringUtils.hasText(sortField)
+                ? new DefaultSort(sortField, sortDirection) : defaultSort(config);
 
         PageResult<EntityDataDTO> page = dynamicService.findPage(
                 entityCode,

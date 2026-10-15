@@ -23,6 +23,8 @@ const safeHtml = computed(() => DOMPurify.sanitize(String(props.modelValue || '�
 const display = computed(() => {
   const value = props.modelValue
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return '—'
+  // 只读详情也遵循密码组件的遮蔽语义，掩码仅用于展示，不能写回字段值。
+  if (type.value === 'password') return '••••••••'
   if (isProcessStatusField(props.field)) return resolveProcessStatusLabel(value)
   if (isEntityStatusField(props.field)) {
     // 与详情顶部保持同一口径，优先展示当前记录由服务端解析的实体状态名称。

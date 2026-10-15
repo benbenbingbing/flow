@@ -20,7 +20,7 @@ export const CONFIG_FIELD_HELP = Object.freeze({
   'entityList.dataScopeMode':
     '本列表只使用自己绑定的数据规则。未绑定允许规则时，有列表权限的人看到全部数据。',
   'entityList.selectionMode':
-    '不可选择时隐藏勾选框；可选择时允许勾选多条。需要数据的工具栏按钮会自动开启勾选，各按钮单独约束执行所需条数。表单选择器及打开列表的单选、多选由调用方配置。',
+    '不可选择时隐藏勾选框；可选择时允许勾选多条。选择模式由你独立设置，工具栏按钮不会自动开启勾选。若按钮需要选择数据，请自行将列表设为可选择；各按钮仍单独约束执行所需条数。表单选择器及打开列表的单选、多选由调用方配置。',
   'entityList.selectionReturnMappings':
     '点击“添加映射”，选择来源字段并填写返回名称。每条选中记录都会在 selectionData 中附加这些字段；不添加时保留原记录，不生成附加映射。表单自动回填需在引用字段的“配置快捷回填”中单独设置。',
   'entityList.defaultSort':
@@ -29,6 +29,8 @@ export const CONFIG_FIELD_HELP = Object.freeze({
     '决定查询控件如何生成条件，例如等于、模糊、区间或多值匹配。可选项会按字段类型过滤。',
   'entityList.columnWidth':
     '单位为像素（px），例如 160 表示 160px。大于 0 时使用固定列宽；设为 0 时自动分配宽度，并以“最小宽度”为下限。',
+  'entityList.columnSortable':
+    '默认关闭。开启并保存、发布后，可点击列表表头切换升序、降序和取消排序。排序按字段原始值对全部匹配数据生效，切换时回到第一页；取消后恢复列表默认排序。字段组合、扩展接口和虚拟列在分页后生成，不支持排序。',
   'entityList.columnMinWidth':
     '单位为像素（px），默认 100px。仅在“列宽”为 0（自动）时生效，自动分配的列宽不会小于此值；设置固定列宽后，此项不生效。',
   'entityList.dataSourceType':

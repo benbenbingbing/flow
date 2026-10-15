@@ -16,6 +16,10 @@ public class EntityListQueryRequest {
     private long pageNum = 1;
     /** 每页大小，默认 10 */
     private long pageSize = 10;
+    /** 用户点击表头选择的实体字段编码；为空时恢复列表发布配置中的默认排序。 */
+    private String sortField;
+    /** 与 sortField 配套的 asc/desc；只允许发布配置中明确启用排序的展示列。 */
+    private String sortDirection;
     /** 场景（PAGE/EXPORT 等），默认 PAGE */
     private String scene = "PAGE";
     /** 页面配置摘要用于变更提示，不能指定历史发布版本。 */

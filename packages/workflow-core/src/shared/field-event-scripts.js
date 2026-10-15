@@ -50,9 +50,9 @@ export function compileFieldScript(code) {
 
 export function fieldScriptEventSupported(field, event) {
   const type = String(field?.componentType || field?.fieldType || '').toLowerCase()
-  if (event === 'onInput') return ['input', 'string', 'text', 'textarea'].includes(type)
+  if (event === 'onInput') return ['input', 'password', 'string', 'text', 'textarea'].includes(type)
   if (event === 'onFocus' || event === 'onBlur') {
-    return ['input', 'string', 'text', 'textarea', 'number', 'integer', 'long', 'decimal', 'double',
+    return ['input', 'password', 'string', 'text', 'textarea', 'number', 'integer', 'long', 'decimal', 'double',
       'date', 'datetime', 'select', 'multi_select', 'select_multiple', 'cascader',
       'reference', 'multi_reference', 'user', 'dept'].includes(type)
   }

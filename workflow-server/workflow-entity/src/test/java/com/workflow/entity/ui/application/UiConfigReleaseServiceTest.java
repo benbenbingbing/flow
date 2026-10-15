@@ -92,6 +92,38 @@ import static org.mockito.Mockito.when;
  */
 class UiConfigReleaseServiceTest {
 
+    /** 首次与更新发布由当前发布记录决定，两个类型都返回可供业务界面展示的语义明细。 */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"FORM", "LIST"})
+    void publishPreviewExposesFirstPublishAndSemanticDetails(String type) {
+        TestContext context = context();
+        String id = "FORM".equals(type) ? "form-1" : "list-1";
+        EntityForm draftForm = form();
+        draftForm.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1")).thenReturn(draftForm);
+        EntityListConfigDTO draftList = listConfig(3);
+        when(context.listConfigService().findById("list-1")).thenReturn(draftList);
+        UiConfigPublishRequest request = new UiConfigPublishRequest();
+        request.setReleaseMode("STANDARD");
+
+        UiConfigPublishPreviewDTO first = context.service().publishPreview(type, id, request);
+        assertTrue(first.isFirstPublish());
+        assertFalse(first.getChangeDetails().isEmpty());
+        assertTrue(first.getChangeDetails().stream().allMatch(item -> item.getItemLabel() != null));
+        assertFalse(first.getRiskItems().isEmpty());
+
+        UiConfigRelease active = configRelease(context.codec(), "active", type, id,
+                context.service().draftSnapshot(type, id));
+        when(context.releaseMapper().findActive(type, id)).thenReturn(active);
+        draftForm.setFormName("更新表单");
+        draftList.setListName("更新列表");
+        UiConfigPublishPreviewDTO updated = context.service().publishPreview(type, id, request);
+        assertFalse(updated.isFirstPublish());
+        String path = "FORM".equals(type) ? "/formName" : "/listName";
+        assertTrue(updated.getChangeDetails().stream().anyMatch(item -> path.equals(item.getPath())
+                && item.getBeforeValue() != null && item.getAfterValue() != null));
+    }
+
     /** 已删除字段的坏接口绑定必须在草稿、统一发布预检中统一排除。 */
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.ValueSource(strings = {"STANDARD"})

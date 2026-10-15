@@ -1,6 +1,7 @@
 package com.workflow.entity.list.application;
 
 import com.workflow.entity.list.infrastructure.persistence.record.EntityListField;
+import com.workflow.core.serialization.JsonDocumentCodec;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -45,6 +46,42 @@ public final class EntityListQueryPolicy {
     /** 校验扩展列排序；实体字段是否存在及其 SQL 标识符由元数据校验器和查询服务继续校验。 */
     public static void validateSort(List<EntityListField> fields, String fieldCode) {
         if (StringUtils.hasText(fieldCode)) requireEntityField(fields, fieldCode, "排序字段");
+    }
+
+    /**
+     * 校验表头排序权限。调用方必须传入同一次查询所用的发布字段，不能使用设计器草稿。
+     * 默认排序不走该入口，因此旧列表可继续按未开放交互排序的字段排序；清空两项则恢复默认。
+     * 未开放、隐藏、虚拟列或非法方向均在查询前拒绝，防止直接 API 绕过表头开关。
+     */
+    public static void validateRequestedSort(List<EntityListField> fields, String fieldCode,
+            String direction, JsonDocumentCodec codec) {
+        if (!StringUtils.hasText(fieldCode)) {
+            if (StringUtils.hasText(direction)) throw new IllegalArgumentException("排序方向必须同时指定排序字段");
+            return;
+        }
+        if (!"asc".equalsIgnoreCase(direction) && !"desc".equalsIgnoreCase(direction)) {
+            throw new IllegalArgumentException("排序方向仅支持 ASC 或 DESC");
+        }
+        validateSort(fields, fieldCode);
+        EntityListField field = fields == null ? null : fields.stream()
+                .filter(item -> item != null && Objects.equals(fieldCode, item.getFieldCode()))
+                .findFirst().orElse(null);
+        if (field == null || Boolean.FALSE.equals(field.getShowInList())
+                || !StringUtils.hasText(field.getColumnConfig())
+                || !Boolean.TRUE.equals(codec.readObject(field.getColumnConfig(), "列展示配置").get("sortable"))) {
+            throw new IllegalArgumentException("字段未开启列排序: " + fieldCode);
+        }
+    }
+
+    /** 保存时只接受布尔开关；扩展值在分页之后生成，不能声明可进行数据库排序。 */
+    public static void validateColumnSort(EntityListField field, Map<String, Object> columnConfig) {
+        Object sortable = columnConfig.get("sortable");
+        if (sortable != null && !(sortable instanceof Boolean)) {
+            throw new IllegalArgumentException("是否排序必须为布尔值: " + field.getFieldCode());
+        }
+        if (Boolean.TRUE.equals(sortable) && !isEntityField(field)) {
+            throw new IllegalArgumentException("虚拟列不能开启列排序: " + field.getFieldCode());
+        }
     }
 
     private static void requireEntityField(List<EntityListField> fields, String code, String usage) {

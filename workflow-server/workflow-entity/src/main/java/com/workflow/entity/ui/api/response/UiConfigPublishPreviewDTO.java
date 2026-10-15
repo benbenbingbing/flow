@@ -24,6 +24,10 @@ public class UiConfigPublishPreviewDTO {
     String impactToken;
     String riskLevel;
     boolean changed;
+    /** 当前没有已发布配置时为 true，界面据此展示初始化摘要。 */
+    boolean firstPublish;
+    /** 与风险补丁同源的可读变更；仅去掉已被节点完整表达的兼容字段镜像。 */
+    List<UiConfigPublishChangeDTO> changeDetails;
     /** 兼容旧客户端保留，当前固定为 false */
     boolean requiresOverride;
     boolean canPublish;

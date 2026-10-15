@@ -202,7 +202,8 @@ public class EntityListConfigService {
      *
      * <p>字段和按钮采用物理重建，以便复用发布快照中的稳定 ID，避免逻辑删除
      * 行占用主键或生成新 ID。独立的数据范围规则不属于 UI 发布快照，本方法不
-     * 读取也不修改这些即时配置。</p>
+     * 读取也不修改这些即时配置。调用方必须已验证发布快照的完整性和归属；
+     * 恢复只重建历史草稿，不按当前编辑规则重新校验取值方式或外部接口。</p>
      *
      * @param dto DTO，作为 {@code lockList} 的输入影响后续处理
      * @param expectedRevision 预期修订版本，作为 {@code requireExpectedRevision} 的输入影响后续处理
@@ -222,19 +223,10 @@ public class EntityListConfigService {
                 "列表配置已被其他人修改");
         lockDraftChildrenForRelease(dto.getId());
 
-        // 发布历史已保存在 ui_config_release；这里只精确重建可编辑草稿子项。
-        fieldMapper.deleteByListConfigId(dto.getId());
-        actionConfigService.deleteRelationalConfig(dto.getId());
-        EntityListConfigDTO restored = saveConfigInternal(
+        return saveConfigInternal(
                 dto,
                 null,
                 SaveMode.RELEASE_RESTORE);
-
-        // 普通导入会为新按钮分配 ID；再次物化发布 ID，保证 canonical hash 对齐。
-        actionConfigService.deleteRelationalConfig(dto.getId());
-        EntityListConfig persisted = configMapper.selectById(dto.getId());
-        actionConfigService.synchronizeRelationalConfigForRelease(persisted);
-        return findById(restored.getId());
     }
 
     /**
@@ -269,8 +261,12 @@ public class EntityListConfigService {
         }
         EntityListConfigDTO candidate = buildCandidate(source, current);
         requireEntityAccess(candidate);
-        validateSystemListConfiguration(candidate);
-        configurationValidator.validate(candidate);
+        // 撤销恢复的是已验证的不可变发布快照，不是提交新的编辑配置。
+        // 当前版本可能已移除旧来源/接口，不能用新规则阻断恢复；重新保存和发布仍严格校验。
+        if (saveMode != SaveMode.RELEASE_RESTORE) {
+            validateSystemListConfiguration(candidate);
+            configurationValidator.validate(candidate);
+        }
         requireOverridePermission(candidate);
         EntityListConfig config = buildPersistentConfig(
                 candidate,
@@ -303,13 +299,23 @@ public class EntityListConfigService {
                         "列表配置已被其他人修改，请刷新后重试");
             }
         }
+        if (saveMode == SaveMode.RELEASE_RESTORE) {
+            // 权限和 owner CAS 通过后再重建子项；保留发布 ID，且整个操作失败时由事务回滚。
+            fieldMapper.deleteByListConfigId(config.getId());
+            actionConfigService.deleteRelationalConfig(config.getId());
+        }
         if (source.getFields() != null) {
             synchronizeFieldsByDiff(
                     config,
                     source.getFields(),
                     saveMode);
         }
-        actionConfigService.synchronizeRelationalConfig(config);
+        if (saveMode == SaveMode.RELEASE_RESTORE) {
+            // 直接按发布协议恢复稳定按钮 ID，避免普通保存先按当前生命周期过滤历史按钮。
+            actionConfigService.synchronizeRelationalConfigForRelease(config);
+        } else {
+            actionConfigService.synchronizeRelationalConfig(config);
+        }
         permissionCatalogService.synchronizeCustomPermissions(config);
         return findById(config.getId());
     }

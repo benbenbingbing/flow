@@ -117,6 +117,7 @@
           :pageNum="pageNum"
           :pageSize="pageSize"
           :listFields="listFields"
+          :sort-state="sortState"
           :toolbarButtons="toolbarButtons"
           :toolbarCapabilities="listConfig?.toolbarCapabilities || {}"
           :rowActionButtons="rowActionButtons"
@@ -151,6 +152,7 @@
           @event-action="handleEventAction"
           @size-change="handleSizeChange"
           @page-change="handlePageChange"
+          @sort-change="handleSortChange"
         >
           <template v-if="showPageRuntimeDiagnostics" #toolbar-leading>
             <RuntimeVersionDiagnostics
@@ -232,6 +234,7 @@ import { applyRuntimeEventEffects } from '@flow/workflow-core/form-runtime/event
 import { useEntityVersionCapabilities } from './list/useEntityVersionCapabilities.js'
 
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
+import { resolveListColumnSort } from '@/shared/list-column-sort'
 import { ref, reactive, computed, watch, nextTick, toRefs } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { showRequestError } from '@/shared/request'
@@ -262,7 +265,6 @@ import { safeParseConfig } from '@flow/workflow-core/config-runtime'
 import { filterRelatedContentButtons } from '@/shared/related-content-runtime'
 import { isButtonRelatedContent } from '@/shared/list-related-content'
 import { withListButtonTypeDefault } from '@/shared/list-config-design'
-import { isSelectionToolbarButton } from '@/shared/list-selection'
 import { loadExplicitListButtonForm } from '@/shared/list-button-form-runtime'
 import {
   buildEntityStatusMap,
@@ -422,9 +424,8 @@ const runtimeSelectionMode = computed(() => {
   if (effectiveSelectionMode.value !== 'NONE') {
     return effectiveSelectionMode.value
   }
-  // 普通列表允许多选；关联内容仍仅在唯一选中时取得来源 ID，按钮自行约束数量。
-  return pageSectionCompositions.value.length > 0 || toolbarButtons.value.some(isSelectionToolbarButton)
-    ? 'MULTIPLE' : 'NONE'
+  // 页级关联内容仍需选择来源记录；工具栏按钮只校验条数，不替列表开启勾选入口。
+  return pageSectionCompositions.value.length > 0 ? 'MULTIPLE' : 'NONE'
 })
 const loading = ref(false)
 const tableLoading = ref(false)
@@ -454,6 +455,9 @@ const pageNum = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const queryForm = reactive<Record<string, any>>({})
+// 用户选择只属于当前列表，筛选和分页沿用它；取消排序时不传参数，由服务端恢复默认值。
+const sortState = ref<{ sortField: string, sortDirection: string } | null>(null)
+let dataRequestSequence = 0
 const loadedDefaultForm = ref<any>(null)
 const runtimeDefaultForm = computed(() =>
   props.defaultForm || loadedDefaultForm.value)
@@ -710,7 +714,6 @@ const showSelectionColumn = computed(() => {
   if (isSystemEntity.value) return false
   return selectionScene.value
     || runtimeSelectionMode.value !== 'NONE'
-    || toolbarButtons.value.some(isSelectionToolbarButton)
 })
 // 引用实体名称缓存
 const refEntityNameMap = ref<Record<string, string>>({})
@@ -746,7 +749,7 @@ watch(
 )
 
 // 加载引用实体名称
-async function loadRefEntityNames() {
+async function loadRefEntityNames(isCurrent = () => true) {
   if (!dataList.value.length) return
   const sourceFields = listFields.value.length > 0 ? listFields.value : entityFields.value
   if (!sourceFields.length) return
@@ -794,6 +797,7 @@ async function loadRefEntityNames() {
       request
         .get(`/entity-selector/${entityType}/batch?${params}`)
         .then((records: any[]) => {
+          if (!isCurrent()) return
           for (const item of records || []) {
             const cacheKey = `${groupKey}:${item.id}`
             refEntityNameMap.value[cacheKey] =
@@ -862,6 +866,10 @@ const loadEntityDefinition = (options: { throwOnError?: boolean } = {}) => {
 // 页面事件默认就地显示错误；宿主刷新需要原始错误以关联已有 error 事件。
 const prepareEntityDefinition = async (options: { throwOnError?: boolean } = {}) => {
   if (!entityCode.value) return
+  // 切换实体/列表立即作废旧查询，避免其响应在新配置准备期间重新写入旧数据。
+  dataRequestSequence += 1
+  sortState.value = null
+  pageNum.value = 1
   const requestedEntityCode = entityCode.value
   const capabilitiesGeneration = resetVersionCapabilities()
   loading.value = true
@@ -976,9 +984,18 @@ const loadDefaultForm = async (notifyOnError = false) => {
 /** 加载实际列表数据；throwOnError 仅供需要确认刷新结果的内部调用方使用。 */
 const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
   if (!entityCode.value) return
+  const requestSequence = ++dataRequestSequence
+  const isCurrent = () => requestSequence === dataRequestSequence
   tableLoading.value = true
   dataError.value = ''
   try {
+    // 发布配置可能撤销列排序；每次查询重新校验，不携带已失效的排序字段。
+    if (sortState.value) {
+      sortState.value = resolveListColumnSort(listFields.value, {
+        prop: sortState.value.sortField,
+        order: sortState.value.sortDirection === 'asc' ? 'ascending' : 'descending'
+      })
+    }
     resolvedInputParameters.value = resolvePageParameters(listConfig.value?.viewConfig, props.context?.params || props.context?.parameters || {})
     const params = buildRequestFilters()
     const res = await entityListRuntimeApi.query(
@@ -992,10 +1009,13 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
         runtimeContext: props.context?.runtimeContext || {},
         compositionContext: props.compositionContext,
         candidateAction: props.candidateAction,
+        ...(sortState.value || {}),
         filters: params,
         context: relatedContentRuntimeContext.value
       }
     )
+    // 快速切换升降序或页码时，只接受最后一次请求，旧响应不得覆盖新顺序。
+    if (!isCurrent()) return
     if (Array.isArray(res)) {
       total.value = res.length
       const start = (pageNum.value - 1) * pageSize.value
@@ -1007,14 +1027,24 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
       pageNum.value = Number(res?.pageNum ?? res?.current ?? pageNum.value)
       pageSize.value = Number(res?.pageSize ?? res?.size ?? pageSize.value)
     }
-    await loadRefEntityNames()
+    await loadRefEntityNames(isCurrent)
   } catch (error) {
+    if (!isCurrent()) return
     console.error('加载数据列表失败:', error)
     dataError.value = error?.message || '无法读取列表数据；当前页面不会把错误显示成空列表。'
     if (options?.throwOnError === true) throw error
   } finally {
-    tableLoading.value = false
+    if (isCurrent()) tableLoading.value = false
   }
+}
+/** 表头排序作用于全部筛选结果，每次改变后从第一页读取；重复初始化事件不重新查询。 */
+const handleSortChange = (payload: { prop?: string, order?: string | null }) => {
+  const next = resolveListColumnSort(listFields.value, payload)
+  if (next?.sortField === sortState.value?.sortField
+      && next?.sortDirection === sortState.value?.sortDirection) return
+  sortState.value = next
+  pageNum.value = 1
+  loadDataList()
 }
 // 查询
 const handleSearch = () => {
@@ -1327,6 +1357,8 @@ watch(() => [
   if (entityCode.value && runtimeListKey.value) {
     loadEntityDefinition()
   } else {
+    dataRequestSequence += 1
+    sortState.value = null
     resetVersionCapabilities()
   }
 }, { immediate: true })

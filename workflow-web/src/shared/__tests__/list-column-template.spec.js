@@ -34,6 +34,7 @@ const editor = createListColumnTemplateEditor({
 
 assert.equal(editor.renderConfig.labelMap.ACTIVE, '启用')
 assert.equal(editor.columnConfig.quickCopy, false)
+assert.equal(editor.columnConfig.sortable, false)
 
 const snapshot = buildListColumnTemplateSnapshot(editor)
 assert.equal(snapshot.metadata.sampleValue, 'ACTIVE')
@@ -110,3 +111,18 @@ assert.deepEqual(
   ]),
   { ACTIVE: '启用' }
 )
+
+// 模板复制保留实体列排序，但不能把排序能力带到分页后生成的虚拟列。
+const sortableSnapshot = buildListColumnTemplateSnapshot(createListColumnTemplateEditor({
+  field: { columnConfig: JSON.stringify({ sortable: true, minWidth: 180 }) }
+}))
+assert.equal(JSON.parse(sortableSnapshot.field.columnConfig).sortable, true)
+const sortableRealField = applyListColumnTemplateSnapshot({ fieldId: 'real' }, sortableSnapshot)
+assert.equal(JSON.parse(sortableRealField.columnConfig).sortable, true)
+const sortableVirtualField = applyListColumnTemplateSnapshot({ fieldId: 'virtual_1' }, sortableSnapshot)
+assert.equal(JSON.parse(sortableVirtualField.columnConfig).sortable, false)
+assert.equal(JSON.parse(sortableVirtualField.columnConfig).minWidth, 180)
+const calculatedSnapshot = buildListColumnTemplateSnapshot(createListColumnTemplateEditor({
+  field: { dataSourceType: 'FIELD_TEMPLATE', columnConfig: { sortable: true } }
+}))
+assert.equal(JSON.parse(calculatedSnapshot.field.columnConfig).sortable, false)

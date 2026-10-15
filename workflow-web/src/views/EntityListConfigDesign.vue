@@ -411,10 +411,9 @@
                       />
                     </template>
                     <el-radio-group v-model="configInfo.selectionMode">
-                      <el-radio-button value="NONE" :disabled="toolbarRequiresSelection">不可选择</el-radio-button>
+                      <el-radio-button value="NONE">不可选择</el-radio-button>
                       <el-radio-button value="MULTIPLE">可选择</el-radio-button>
                     </el-radio-group>
-                    <div v-if="toolbarRequiresSelection" class="field-help">已启用的工具栏按钮需要选择数据，已自动开启可选择。</div>
                   </el-form-item>
                   <el-form-item v-if="configInfo.selectionMode !== 'NONE'" label="返回值字段">
                     <el-select v-model="configInfo.selectionValueField" filterable style="width: 420px">
@@ -526,14 +525,10 @@
       <div class="preview-content">
         <div class="preview-toolbar">
           <el-text type="info">
-            使用当前页面的字段与显示配置，数据通过列表运行时接口加载。
+            使用当前页面的字段与显示配置，数据通过列表运行时接口加载；表头排序需保存并发布后生效。
           </el-text>
-          <el-radio-group v-model="previewViewport" size="small">
-            <el-radio-button value="desktop">桌面</el-radio-button>
-            <el-radio-button value="tablet">平板</el-radio-button>
-          </el-radio-group>
         </div>
-        <div class="preview-viewport" :class="`is-${previewViewport}`">
+        <div class="preview-viewport">
           <el-alert
             v-if="previewError"
             :title="previewError"
@@ -560,6 +555,7 @@
           <el-table
             v-loading="previewLoading"
             :data="previewDataList"
+            @sort-change="handlePreviewSortChange"
             :stripe="viewConfig.table.stripe !== false"
             :border="viewConfig.table.border === true"
             :size="viewConfig.table.size || 'small'"
@@ -572,6 +568,8 @@
             <el-table-column
               v-for="field in previewListFields"
               :key="field.fieldCode"
+              :prop="field.fieldCode"
+              :sortable="isPreviewColumnSortable(field) ? 'custom' : false"
               :label="field.fieldName"
               :width="field.width > 0 ? field.width : undefined"
               :align="field.align"
@@ -681,7 +679,7 @@
         </SettingsSection>
         <SettingsSection
           title="列展示"
-          description="配置列布局、渲染组件、脱敏和空值显示"
+          description="配置列布局、排序、渲染组件、脱敏和空值显示"
           :collapsible="false"
         >
           <div class="field-config-grid field-config-column-grid">
@@ -717,6 +715,18 @@
                 <el-switch
                   v-model="editingColumnConfig.quickCopy"
                   :disabled="!editingField.showInList"
+                  inline-prompt
+                  active-text="是"
+                  inactive-text="否"
+                />
+              </el-form-item>
+              <el-form-item label="是否排序">
+                <template #label>
+                  <ConfigHelpLabel label="是否排序" help-key="entityList.columnSortable" />
+                </template>
+                <el-switch
+                  v-model="editingColumnConfig.sortable"
+                  :disabled="!editingField.showInList || !supportsEntityFieldQuery(editingField)"
                   inline-prompt
                   active-text="是"
                   inactive-text="否"
@@ -906,6 +916,7 @@ import { showRequestError } from '@/shared/request'
 import { mergeFieldConfig as mergeListColumns, normalizeFieldForSave as serializeListColumn, isVirtualField } from './list-designer/listColumnModel.js'
 
 import { supportsEntityFieldQuery } from '@/shared/list-query-policy'
+import { isListColumnSortable, resolveListColumnSort } from '@/shared/list-column-sort'
 import PageInputParameterSettings from '@/components/page-parameters/PageInputParameterSettings.vue'
 import { ref, onMounted, onBeforeUnmount, computed, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -938,7 +949,7 @@ import UiConfigReleaseHistoryDialog from '@/components/ui-config/UiConfigRelease
 import RuntimeCodeViewerDialog from '@/components/RuntimeCodeViewerDialog.vue'
 import RelatedContentPanel from '@/components/related-content/RelatedContentPanel.vue'
 import { findButtonRelatedContent, isRelatedContentButton } from '@/shared/list-related-content'
-import { isSelectionToolbarButton, normalizeListSelectionMode } from '@/shared/list-selection'
+import { normalizeListSelectionMode } from '@/shared/list-selection'
 import { getCellComponentOptions, getCellDescriptor } from '@/extensions/core/registries/listCellRegistry.js'
 import { filterOptionsByEntity } from '@flow/workflow-core/extension-entity-scope'
 import { getCustomListComponentOptions, getCustomListDescriptor } from '@/extensions/core/registries/customComponentRegistry.js'
@@ -1035,13 +1046,16 @@ const pageLoading = ref(false)
 const loadError = ref('')
 const previewDialogVisible = ref(false)
 const previewError = ref('')
-const previewViewport = ref('desktop')
 const previewQueryForm = ref({})
 const previewDataList = ref([])
 const previewLoading = ref(false)
 const previewPageNum = ref(1)
 const previewPageSize = ref(10)
 const previewTotal = ref(0)
+const previewSort = ref(null)
+const previewPublishedFields = ref([])
+const previewSchemaLoaded = ref(false)
+let previewRequestSequence = 0
 const savingAll = ref(false)
 const availableListColumnInterfaces = ref([])
 const eventFieldOptions = computed(() =>
@@ -1192,12 +1206,6 @@ const listColumnInterfaces = computed(() =>
 )
 // 工具栏按钮配置
 const toolbarButtons = ref([])
-const toolbarRequiresSelection = computed(() => toolbarButtons.value.some(button =>
-  button.enabled !== false && isSelectionToolbarButton(button)))
-// 按钮可单独保存；运行时也据按钮显示勾选列，避免列表设置尚未保存时没有选择入口。
-watch([toolbarRequiresSelection, () => configInfo.value.selectionMode], ([required, mode]) => {
-  if (required && mode !== 'MULTIPLE') configInfo.value.selectionMode = 'MULTIPLE'
-})
 // 操作列按钮配置
 const rowActionButtons = ref([])
 const eventButtonOptions = computed(() =>
@@ -1616,6 +1624,7 @@ async function removeVirtualField(field) {
 /** 切换取值方式时同步清空旧绑定与参数，避免隐藏的扩展接口覆盖当前选择。 */
 function handleDataSourceChange(field) {
   changeListColumnSource(field, field.dataSourceType, dataSourceOptions.value)
+  if (!supportsEntityFieldQuery(field)) editingColumnConfig.value.sortable = false
   editingDataSourceConfig.value = field.dataSourceConfig
   field.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
 }
@@ -1645,6 +1654,7 @@ function syncFieldConfigEditors(field) {
     minWidth: 100,
     showOverflowTooltip: true,
     quickCopy: false,
+    sortable: false,
     ...safeParseConfig(field.columnConfig)
   }
 }
@@ -1671,6 +1681,8 @@ async function saveFieldAdvancedConfig() {
   editingField.value.dataSourceConfig = stringifyConfig(editingDataSourceConfig.value)
   editingField.value.renderConfig = stringifyConfig(editingRenderConfig.value)
   editingField.value.queryConfig = stringifyConfig(editingQueryConfig.value)
+  // 分页后计算的列无法参与全量排序，保存时清除模板或历史草稿带入的开关。
+  if (!supportsEntityFieldQuery(editingField.value)) editingColumnConfig.value.sortable = false
   editingField.value.columnConfig = stringifyConfig(editingColumnConfig.value)
   if (await saveCurrentField(editingField.value)) fieldConfigDialogVisible.value = false
 }
@@ -1944,6 +1956,7 @@ function fieldConfigSummary(field) {
     if (field.align && field.align !== 'left') {
       parts.push(field.align === 'center' ? '居中' : '右对齐')
     }
+    if (isListColumnSortable(field)) parts.push('可排序')
     if (safeParseConfig(field.columnConfig).quickCopy === true) {
       parts.push('快捷复制')
     }
@@ -2028,7 +2041,8 @@ async function saveListMetadata(options = {}) {
         : configInfo.value.dataScopeMode || 'INHERIT',
       accessPermissionCode: configInfo.value.accessPermissionCode || '',
       selectionConfig: {
-        selectionMode: toolbarRequiresSelection.value ? 'MULTIPLE' : normalizeListSelectionMode(configInfo.value.selectionMode),
+        // 勾选入口由列表设置独立决定，工具栏按钮的条数要求不能改写用户选择。
+        selectionMode: normalizeListSelectionMode(configInfo.value.selectionMode),
         valueField: configInfo.value.selectionValueField || 'id',
         returnMappings: validateSelectionReturnMappings(configInfo.value.selectionReturnMappingsText)
       },
@@ -2245,16 +2259,46 @@ async function handlePublished() {
   await loadDiff()
 }
 async function openPreview() {
+  // 重新打开时使旧预览请求失效，清空旧页面和错误提示。
+  previewRequestSequence += 1
+  previewLoading.value = false
+  previewError.value = ''
+  previewDataList.value = []
+  previewTotal.value = 0
+  previewSort.value = null
+  previewPageNum.value = 1
+  previewPublishedFields.value = []
+  previewSchemaLoaded.value = false
   previewPageSize.value = viewConfig.value.pagination.pageSize || 10
   previewDialogVisible.value = true
-  await nextTick()
   await loadPreviewData()
+}
+/** 预览使用真实分页数据，只允许已发布且当前草稿仍开启排序的列发送排序请求。 */
+function isPreviewColumnSortable(field) {
+  return isListColumnSortable(field) && previewPublishedFields.value.some(
+    published => published.showInList !== false
+      && published.fieldCode === field.fieldCode && isListColumnSortable(published)
+  )
+}
+function handlePreviewSortChange(event) {
+  previewSort.value = resolveListColumnSort(previewListFields.value.filter(isPreviewColumnSortable), event)
+  previewPageNum.value = 1
+  loadPreviewData()
 }
 async function loadPreviewData() {
   if (!entityCode.value || !configInfo.value?.listKey) return
+  const requestSequence = ++previewRequestSequence
   previewLoading.value = true
   previewError.value = ''
   try {
+    // 配置加载和数据查询共用请求序号与 finally；失败重试必须重新读取配置，
+    // 不能留下旧请求的 loading，也不能让过期配置重新开放排序入口。
+    if (!previewSchemaLoaded.value) {
+      const schema = await entityListRuntimeApi.getSchema(entityCode.value, configInfo.value.listKey, 'PAGE')
+      if (requestSequence !== previewRequestSequence) return
+      previewPublishedFields.value = schema?.fields || []
+      previewSchemaLoaded.value = true
+    }
     const filters = { ...previewQueryForm.value }
     previewQueryFields.value.forEach((field) => {
       const code = field.fieldCode
@@ -2268,19 +2312,25 @@ async function loadPreviewData() {
       {
         pageNum: previewPageNum.value,
         pageSize: previewPageSize.value,
+        ...(previewSort.value || {}),
         scene: 'PAGE',
         filters
       }
     )
+    // 连续点击排序时，只接受最后一次请求，避免旧响应覆盖新顺序。
+    if (requestSequence !== previewRequestSequence) return
     previewDataList.value = result?.records || result?.list || []
     previewTotal.value = Number(result?.total || previewDataList.value.length)
   } catch (error) {
+    if (requestSequence !== previewRequestSequence) return
     console.error('加载列表预览失败:', error)
     previewDataList.value = []
     previewTotal.value = 0
-    previewError.value = error?.message || '预览数据加载失败，请重试'
+    previewError.value = error?.message || (previewSchemaLoaded.value
+      ? '预览数据加载失败，请重试'
+      : '读取已发布列表配置失败，请保存并发布后重试')
   } finally {
-    previewLoading.value = false
+    if (requestSequence === previewRequestSequence) previewLoading.value = false
   }
 }
 function handlePreviewSearch() {
@@ -2635,18 +2685,11 @@ async function handleReleaseChanged(event) {
   overflow: auto;
 }
 .preview-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   margin-bottom: 12px;
 }
 .preview-viewport {
   width: 100%;
   margin: 0 auto;
-}
-.preview-viewport.is-tablet {
-  max-width: 820px;
 }
 .preview-error {
   margin-bottom: 12px;

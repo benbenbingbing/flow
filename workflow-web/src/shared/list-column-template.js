@@ -34,6 +34,7 @@ const DEFAULT_FIELD_CONFIG = Object.freeze({
     fixed: '',
     minWidth: 100,
     showOverflowTooltip: true,
+    sortable: false,
     quickCopy: false
   }),
   renderConfig: JSON.stringify({
@@ -81,6 +82,7 @@ export function createListColumnTemplateEditor(seed = {}) {
       fixed: '',
       minWidth: 100,
       showOverflowTooltip: true,
+      sortable: false,
       quickCopy: false,
       ...parseObjectConfig(field.columnConfig)
     },
@@ -116,7 +118,10 @@ export function applyListColumnTemplateSnapshot(target, snapshotDocument) {
     localOverridesDocument: ''
   })
   // 模板没有目标字段身份；落到虚拟列时必须再检查，不能复制出虚拟查询条件。
-  if (!supportsEntityFieldQuery(target)) target.isQuery = false
+  if (!supportsEntityFieldQuery(target)) {
+    target.isQuery = false
+    clearUnsupportedSorting(target)
+  }
   return target
 }
 
@@ -153,8 +158,19 @@ export function sanitizeTemplateFieldConfig(value) {
     Object.entries(value)
       .filter(([key]) => !TEMPLATE_IDENTITY_KEYS.has(key))
   )
-  if (!supportsEntityFieldQuery(field)) field.isQuery = false
+  if (!supportsEntityFieldQuery(field)) {
+    field.isQuery = false
+    clearUnsupportedSorting(field)
+  }
   return field
+}
+
+/** 模板复用到分页后生成的列时清掉排序，避免保存出无法执行的排序配置。 */
+function clearUnsupportedSorting(field) {
+  const config = parseObjectConfig(field.columnConfig)
+  if (config.sortable !== true) return
+  config.sortable = false
+  field.columnConfig = typeof field.columnConfig === 'string' ? JSON.stringify(config) : config
 }
 
 export function mappingObjectToRows(value) {
@@ -195,6 +211,7 @@ export function describeListColumnTemplate(editor) {
     parts.push('不显示')
   }
   if (editor.isQuery) parts.push(`查询 ${editor.queryType || 'EQ'}`)
+  if (editor.columnConfig?.sortable === true && supportsEntityFieldQuery(editor)) parts.push('可排序')
   if (editor.columnConfig?.quickCopy === true) parts.push('快捷复制')
   if (editor.renderComponent) parts.push(editor.renderComponent)
   if (editor.dataSourceType && editor.dataSourceType !== 'ENTITY_FIELD') {

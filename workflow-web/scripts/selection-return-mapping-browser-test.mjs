@@ -84,7 +84,8 @@ async function chooseSource(index, path) {
 }
 const saveCount = () => evaluate('mappingTest.state.saves.length')
 try {
-  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 3401, strictPort: true } })
+  // 共享请求包间接引入 axios，提前预构建，避免断言开始后 Vite 刷新页面丢失测试上下文。
+  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')], include: ['axios'] }, server: { host: '127.0.0.1', port: 3401, strictPort: true } })
   await server.listen()
   browser = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=9401', `--user-data-dir=${profile}`, 'about:blank'
@@ -142,14 +143,23 @@ try {
   await step("document.querySelector('[aria-label=\"删除第 1 条映射\"]').click()")
   await button('保存列表设置')
   assert.deepEqual(await evaluate('JSON.parse(JSON.stringify(mappingTest.state.saves.at(-1).selectionConfig.returnMappings))'), [], '删空后保存空数组')
-  // 只有需要数据的按钮自动开启勾选；移除该要求后用户仍能关闭列表勾选。
+  // 工具栏需要选中记录也不能改写列表设置；用户可自由切换，保存和重载保持选择。
   await step("mappingTest.state.config.selectionConfig.selectionMode='NONE';mappingTest.state.config.toolbarConfig=[{key:'archive',type:'custom',customMode:'event',label:'归档',enabled:true,selectionRequirement:'SINGLE'}];mappingTest.state.mountId++")
   await settings()
-  assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button.is-active').textContent.trim()"), '可选择')
-  assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button input').disabled"), true)
+  assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button.is-active').textContent.trim()"), '不可选择')
+  assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button input').disabled"), false)
+  await button('保存列表设置')
+  assert.equal(await evaluate('mappingTest.state.saves.at(-1).selectionConfig.selectionMode'), 'NONE')
+  await step("Array.from(document.querySelectorAll('.selection-behavior-section .el-radio-button')).find(el=>el.textContent.trim()==='可选择').click()")
   await button('保存列表设置')
   assert.equal(await evaluate('mappingTest.state.saves.at(-1).selectionConfig.selectionMode'), 'MULTIPLE')
-  await step("mappingTest.state.config.selectionConfig.selectionMode='NONE';mappingTest.state.config.toolbarConfig[0].selectionRequirement='NONE';mappingTest.state.mountId++")
+  await step('mappingTest.state.mountId++')
+  await settings()
+  assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button.is-active').textContent.trim()"), '可选择')
+  await step("Array.from(document.querySelectorAll('.selection-behavior-section .el-radio-button')).find(el=>el.textContent.trim()==='不可选择').click()")
+  await button('保存列表设置')
+  assert.equal(await evaluate('mappingTest.state.saves.at(-1).selectionConfig.selectionMode'), 'NONE')
+  await step('mappingTest.state.mountId++')
   await settings()
   assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button.is-active').textContent.trim()"), '不可选择')
   assert.equal(await evaluate("document.querySelector('.selection-behavior-section .el-radio-button input').disabled"), false)

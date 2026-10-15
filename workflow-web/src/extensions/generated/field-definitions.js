@@ -105,6 +105,14 @@ export default [
     ]
   },
   {
+    "name": "password",
+    "aliases": [],
+    "defaultForFieldTypes": [],
+    "supportedFieldTypes": [
+      "STRING"
+    ]
+  },
+  {
     "name": "radio",
     "aliases": [],
     "defaultForFieldTypes": [

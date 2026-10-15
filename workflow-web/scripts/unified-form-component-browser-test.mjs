@@ -7,6 +7,7 @@ import path from 'node:path'
 
 // 挂载真实设计器和节点树运行时；全部接口走内存适配器，不读取或改写业务配置。
 const summary = JSON.parse(readFileSync('../extensions/manifests/business/project/fields/ProjectAcceptanceSummaryNode.v1.extension.json', 'utf8'))
+const password = JSON.parse(readFileSync('../extensions/manifests/platform/fields/password.v1.extension.json', 'utf8'))
 const harness = `
 import {createApp,h,reactive,nextTick} from 'vue'
 import {createPinia} from 'pinia'
@@ -16,16 +17,21 @@ import 'element-plus/dist/index.css'
 import Designer from '/src/views/EntityFormDesignByEntity.vue'
 import Runtime from '/src/components/FormPreviewLinkage.vue'
 import TextField from '/src/extensions/builtin/fields/components/TextField.vue'
+import MobileField from '/@fs/${path.resolve('../packages/workflow-mobile-ui/src/fields/MobileFieldRenderer.vue')}'
+import 'vant/lib/index.css'
 import Summary from '/src/extensions/business/project/fields/ProjectAcceptanceSummaryField.vue'
 import {registerFormFieldComponent} from '/src/extensions/core/registries/formFieldRegistry.js'
 import request from '/src/utils/request.js'
 const summary=${JSON.stringify(summary)}
+const password=${JSON.stringify(password)}
 registerFormFieldComponent('input',TextField,{origin:'PLATFORM',label:'文本输入',supportedFieldTypes:['STRING','TEXT']})
+registerFormFieldComponent(password.name,TextField,{...password.metadata,origin:'PLATFORM',label:password.label,version:password.version})
 registerFormFieldComponent(summary.name,Summary,{...summary.metadata,origin:'PROJECT',label:summary.label,version:summary.version})
 const fields=['name','target','locked','hidden'].map((fieldCode,index)=>({id:fieldCode,fieldCode,fieldName:fieldCode,fieldType:'STRING',componentType:'input',isReadonly:fieldCode==='locked'?1:0,isHidden:fieldCode==='hidden'?1:0}))
 const designerNode={id:'design-name',formId:'component-design',nodeType:'FIELD',nodeKey:'name',bindingType:'ENTITY_FIELD',bindingRef:'name',revision:1,orderKey:1000000,propsDocument:JSON.stringify({fieldId:'name',fieldCode:'name',fieldName:'客户名称',fieldType:'STRING',componentType:'input',label:'客户名称'})}
 const designerForm={id:'component-design',entityId:'component-entity',formName:'统一组件配置验收',formKey:'component_design',revision:1,status:1,layoutType:'vertical',viewConfig:'{}'}
 const state=reactive({data:{name:'初始值',target:'待回填',locked:'只读原值',hidden:'隐藏原值'},row:{name:'子表原值',target:'子表目标',locked:'子表只读'},readonly:false,seen:[],patches:[],events:[],api:[],saves:[],designerNodes:[designerNode]})
+Object.assign(state,{passwordForm:null,passwordData:{name:''},passwordReadonly:false,mobilePassword:''})
 const Probe={props:['modelValue','formData','node','field','config','disabled','readonly','context'],emits:['update:modelValue','change','patch-form'],setup(props,{emit}){
  const scalar=()=>{emit('update:modelValue','组件新值');emit('change','组件新值')}
  const patch=()=>emit('patch-form',{target:'跨字段新值',locked:'禁止修改',hidden:'禁止修改',unknown:'禁止新增',rootOnly:'禁止跨作用域'})
@@ -56,7 +62,9 @@ await router.push('/designer/component-design?entityId=component-entity');await 
 const app=createApp({setup(){return()=>h('main',{style:'width:1100px;margin:20px auto'},[
  h('section',{id:'designer',style:'height:650px;border:1px solid #ddd'},[h(RouterView)]),
  h('h2','统一协议运行时'),h('section',{id:'runtime'},[h(Runtime,{form,modelValue:state.data,'onUpdate:modelValue':v=>state.data=v,readonly:state.readonly,mode:'create',showHeader:false})]),
- h('h2','子表当前行'),h('section',{id:'row'},[h(Runtime,{form:rowForm,nodeRootParentId:'rows',modelValue:state.row,'onUpdate:modelValue':v=>state.row=v,readonly:state.readonly,mode:'create',showHeader:false})])
+ h('h2','子表当前行'),h('section',{id:'row'},[h(Runtime,{form:rowForm,nodeRootParentId:'rows',modelValue:state.row,'onUpdate:modelValue':v=>state.row=v,readonly:state.readonly,mode:'create',showHeader:false})]),
+ state.passwordForm&&h('section',{id:'password-runtime'},[h(Runtime,{form:state.passwordForm,modelValue:state.passwordData,'onUpdate:modelValue':v=>state.passwordData=v,readonly:state.passwordReadonly,mode:state.passwordReadonly?'view':'edit',showHeader:false})]),
+ state.passwordForm&&h('section',{id:'mobile-password'},[h(MobileField,{field:{fieldCode:'name',fieldName:'密码',fieldType:'STRING',componentType:'password'},modelValue:state.mobilePassword,'onUpdate:modelValue':v=>state.mobilePassword=v,disabled:state.passwordReadonly})])
 ])}})
 app.use(createPinia()).use(router).use(ElementPlus).mount('#app')
 window.componentTest={state,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,220));await nextTick()}}
@@ -113,6 +121,29 @@ try{
  assert.equal(props.componentType,summary.name);assert.equal(props.componentProps.title,'统一后的摘要')
  assert.equal(Object.hasOwn(saved,'componentName'),false);assert.equal(Object.hasOwn(props,'componentExtensionType'),false)
  console.log('designer single-selector/schema/save checks passed')
+ // 从真实组件下拉选择密码输入，再用保存的节点重建运行时，覆盖序列化与回显。
+ await evaluate('document.querySelector(\'[data-node-id="design-name"]\').dispatchEvent(new MouseEvent("dblclick",{bubbles:true}));componentTest.settle()')
+ await evaluate(`(()=>{const item=[...document.querySelectorAll('.property-form .el-form-item')].find(e=>e.querySelector('.el-form-item__label')?.textContent.trim()==='组件类型');item.querySelector('.el-select__wrapper').click()})();componentTest.settle()`)
+ await clickText('密码输入','.el-select-dropdown__item')
+ await click('.el-drawer__close-btn');await clickText('保存全部')
+ const passwordNodes=await evaluate('JSON.parse(JSON.stringify(componentTest.state.saves.at(-1)))')
+ assert.equal(JSON.parse(passwordNodes[0].propsDocument).componentType,'password')
+ await evaluate(`componentTest.state.passwordForm={id:'password-form',fields:[{id:'name',fieldCode:'name',fieldType:'STRING',fieldLength:24}],nodes:${JSON.stringify(passwordNodes)}};componentTest.settle()`)
+ assert.equal(await evaluate('document.querySelector("#password-runtime input").type'),'password')
+ assert.equal(await evaluate('document.querySelector("#mobile-password input").type'),'password')
+ await evaluate(`(()=>{for(const selector of ['#password-runtime input','#mobile-password input']){const input=document.querySelector(selector);input.value='Example-123';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}))}})();componentTest.settle()`)
+ assert.equal(await evaluate('componentTest.state.passwordData.name'),'Example-123')
+ assert.equal(await evaluate('componentTest.state.mobilePassword'),'Example-123')
+ await click('#password-runtime .el-input__password')
+ assert.equal(await evaluate('document.querySelector("#password-runtime input").type'),'text')
+ await click('#password-runtime .el-input__password')
+ assert.equal(await evaluate('document.querySelector("#password-runtime input").type'),'password')
+ await evaluate('componentTest.state.passwordReadonly=true;componentTest.settle()')
+ assert.equal(await evaluate('document.querySelector("#password-runtime input").disabled'),true)
+ assert.equal(await evaluate('document.querySelector("#password-runtime input").type'),'password')
+ assert.equal(await evaluate('document.querySelector("#mobile-password .readonly-value").textContent'),'••••••••')
+ assert.equal(await evaluate('componentTest.state.mobilePassword'),'Example-123','只读掩码不能覆盖原始值')
+ console.log('password designer/save/runtime checks passed: PC/mobile input, reveal toggle, readonly masking')
  // 运行时同时传递字段值和整表数据；组件主动发起越权补丁也必须由宿主过滤。
  const probe=await evaluate('JSON.parse(document.querySelector("#runtime .probe-state").textContent)')
  assert.equal(probe.value,'初始值');assert.equal(probe.target,'待回填');assert.equal(probe.node,'name');assert.equal(probe.config.caption,'统一参数')

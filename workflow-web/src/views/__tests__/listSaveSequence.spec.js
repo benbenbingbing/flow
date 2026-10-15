@@ -7,7 +7,7 @@ function createPage(scopeSaved) {
   const page = extractSfcFunctions(new URL('../EntityListConfigDesign.vue', import.meta.url), ['saveListMetadata', 'saveAll'], {
     writeFixedFilterRows: () => ({}), fixedFilterRows: ref([]), isSystemEntity: ref(false), entityFields: ref([]),
     entityListConfigApi: { patchMetadata: async (_id, payload) => { calls.push(['metadata', payload.expectedRevision]); return { revision: payload.expectedRevision + 1 } } },
-    configId: 'list1', configInfo, toolbarRequiresSelection: ref(false), normalizeListSelectionMode: () => 'SINGLE', validateSelectionReturnMappings: () => [],
+    configId: 'list1', configInfo, normalizeListSelectionMode: () => 'NONE', validateSelectionReturnMappings: () => [],
     viewConfig: ref({}), entityCode: ref('ENTITY'), saveScopeBindings: async () => { calls.push(['scope']); return scopeSaved },
     rememberMetadataBaseline: () => { calls.push(['baseline', configInfo.value.revision]) }, loadDiff: async () => { calls.push(['diff']) },
     ElMessage: { success: message => calls.push(['success', message]), warning: message => calls.push(['warning', message]) }, handleRevisionConflict: error => { throw error },

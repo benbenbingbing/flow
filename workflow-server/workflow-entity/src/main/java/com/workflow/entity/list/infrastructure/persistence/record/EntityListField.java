@@ -122,7 +122,7 @@ public class EntityListField {
     private String formatter;
 
     /**
-     * 列展示配置JSON
+     * 列展示配置 JSON；sortable 默认 false，显式为 true 时允许用户点击实体字段表头进行服务端排序。
      */
     @TableField("column_config")
     private String columnConfig;

@@ -14,9 +14,10 @@ assert.deepEqual(getListColumnSourceSchema('ENTITY_FIELD', sources), [])
 assert.deepEqual(getListColumnSourceSchema('CUSTOM_PROVIDER', sources), [])
 assert.equal(getListColumnSourceSchema('FIELD_TEMPLATE', sources)[0].helpKey, 'entityList.fieldTemplate')
 
-const field = { fieldId: 'field-1', fieldCode: 'name', dataSourceType: 'ENTITY_FIELD', isQuery: true }
+const field = { fieldId: 'field-1', fieldCode: 'name', dataSourceType: 'ENTITY_FIELD', isQuery: true, columnConfig: JSON.stringify({ sortable: true, minWidth: 180 }) }
 changeListColumnSource(field, 'INTERFACE', sources)
 assert.equal(field.isQuery, false)
+assert.deepEqual(JSON.parse(field.columnConfig), { sortable: false, minWidth: 180 })
 assert.deepEqual(field.dataSourceConfig, {})
 assert.equal(validateListColumnSource(field, interfaces), '请选择扩展接口')
 field.interfaceExtensionId = 'unavailable'

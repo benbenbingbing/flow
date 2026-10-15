@@ -327,6 +327,7 @@ public class EntityListRuntimeService {
             boolean serverPinnedEntry) {
         String scene = normalized(safeRequest.getScene(), "PAGE");
         requireListAccess(config);
+        validateRequestedSort(config, safeRequest.getSortField(), safeRequest.getSortDirection());
         Map<String, Object> parameterConfig = readObject(config.getViewConfig(), "列表视图配置");
         Map<String, Object> parameters = com.workflow.entity.ui.application.PageParameterPolicy.resolve(
                 parameterConfig, safeRequest.getContext() == null ? Map.of() : safeRequest.getContext().getParameters());
@@ -390,6 +391,11 @@ public class EntityListRuntimeService {
                 "pageSize",
                 Math.max(1, Math.min(200, safeRequest.getPageSize())));
         eventInput.put("scene", scene);
+        // LIST_LOAD 和自定义查询也接收已校验的表头排序，保证其可在分页前应用同一顺序。
+        if (StringUtils.hasText(safeRequest.getSortField())) {
+            eventInput.put(EntityListQueryFields.SORT_FIELD, safeRequest.getSortField());
+            eventInput.put(EntityListQueryFields.SORT_DIRECTION, safeRequest.getSortDirection());
+        }
         event.setInput(eventInput);
         // 配置已由入口验证；关联内容和 Embed 也执行该精确发布版本的 LIST_LOAD，绝不追随 ACTIVE。
         event.setServerPinnedRelease(Boolean.TRUE.equals(config.getPinnedRelease()) || serverPinnedEntry);
@@ -986,6 +992,9 @@ public class EntityListRuntimeService {
                         : Map.of();
         // 事件前置步骤可能改写 filters；进入默认查询前再次校验，不能绕过列表列约束。
         validateDatabaseQuery(config, filters);
+        String sortField = text(eventInput.get(EntityListQueryFields.SORT_FIELD));
+        String sortDirection = text(eventInput.get(EntityListQueryFields.SORT_DIRECTION));
+        validateRequestedSort(config, sortField, sortDirection);
         int pageNum = positiveInt(
                 eventInput.get("pageNum"),
                 (int) Math.max(1, safeRequest.getPageNum()));
@@ -1026,8 +1035,8 @@ public class EntityListRuntimeService {
                     filters,
                     pageNum,
                     pageSize,
-                    text(tableConfig.get("defaultSortField")),
-                    text(tableConfig.get("defaultSortDirection")));
+                    StringUtils.hasText(sortField) ? sortField : text(tableConfig.get("defaultSortField")),
+                    StringUtils.hasText(sortField) ? sortDirection : text(tableConfig.get("defaultSortDirection")));
         }
         if (StringUtils.hasText(config.getQueryProviderCode())) {
             EntityListDataProvider provider = dataProviders.stream()
@@ -1057,12 +1066,20 @@ public class EntityListRuntimeService {
             query.put(
                     EntityListQueryFields.FILTERS,
                     filters);
+            if (StringUtils.hasText(sortField)) {
+                query.put(EntityListQueryFields.SORT_FIELD, sortField);
+                query.put(EntityListQueryFields.SORT_DIRECTION, sortDirection);
+            }
             return provider.query(
                     runtimeContext(entityCode, listKey, scene, safeRequest.getContext()),
                     plan,
                     query);
         }
 
+        if (StringUtils.hasText(sortField)) {
+            return dataListService.findPageWithResolvedConfig(
+                    entityCode, listKey, config, filters, pageNum, pageSize, sortField, sortDirection);
+        }
         return dataListService.findPageWithResolvedConfig(
                 entityCode,
                 listKey,
@@ -1391,6 +1408,13 @@ public class EntityListRuntimeService {
         if (view.get("table") instanceof Map<?, ?> table) {
             EntityListQueryPolicy.validateSort(fields, text(table.get("defaultSortField")));
         }
+    }
+
+    /** 入口与事件回调均按同一发布快照核验表头排序，防止草稿开关或前置步骤扩大排序范围。 */
+    private void validateRequestedSort(EntityListConfig config, String field, String direction) {
+        if (!StringUtils.hasText(field) && !StringUtils.hasText(direction)) return;
+        EntityListQueryPolicy.validateRequestedSort(publishedRuntimeService.resolveFields(
+                config, fieldMapper.findByListConfigId(config.getId())), field, direction, jsonDocumentCodec);
     }
 
     /**

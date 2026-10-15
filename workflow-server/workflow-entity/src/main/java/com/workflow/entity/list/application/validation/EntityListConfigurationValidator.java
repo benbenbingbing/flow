@@ -251,7 +251,8 @@ public class EntityListConfigurationValidator {
         }
         validateExtensionName(field.getRenderComponent(), "单元格组件");
         structuredConfigValidator.parseObject(field.getDataSourceConfig(), "数据源配置");
-        structuredConfigValidator.parseObject(field.getColumnConfig(), "列展示配置");
+        EntityListQueryPolicy.validateColumnSort(field,
+                structuredConfigValidator.parseObject(field.getColumnConfig(), "列展示配置"));
         structuredConfigValidator.parseObject(field.getQueryConfig(), "查询配置");
         structuredConfigValidator.parseObject(field.getRenderConfig(), "渲染配置");
         field.setColumnConfig(blankToNull(field.getColumnConfig()));

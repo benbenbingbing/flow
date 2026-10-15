@@ -51,7 +51,9 @@
       :border="tableConfig.border === true"
       :size="tableConfig.size || 'default'"
       :max-height="maxHeight"
+      :default-sort="tableSort"
       @selection-change="handleSelectionChange"
+      @sort-change="payload => emit('sort-change', payload)"
     >
       <el-table-column
         v-if="rowExpandCompositions.length > 0"
@@ -89,6 +91,7 @@
           :label="field.fieldName"
           :width="field.width > 0 ? field.width : undefined"
           :align="field.align"
+          :sortable="isListColumnSortable(field) ? 'custom' : false"
           :fixed="getColumnConfig(field).fixed || undefined"
           :min-width="field.width > 0 ? undefined : (getColumnConfig(field).minWidth || 100)"
           :show-overflow-tooltip="getColumnConfig(field).showOverflowTooltip !== false">
@@ -280,6 +283,7 @@ import { getFieldModelPath } from '@flow/workflow-core/form-runtime'
 import { formatDateValue, formatListFieldValue, isDateFieldCode } from '@/shared/list-runtime'
 import { formatMaskedListCellValue, isListCellMaskingEnabled } from '@/shared/list-cell-masking'
 import { safeParseConfig } from '@flow/workflow-core/config-runtime'
+import { isListColumnSortable } from '@/shared/list-column-sort'
 import ListCellAction from '@/components/ListCellAction.vue'
 import { buildCellActionMap, hidesMappedRowButton } from '@/shared/list-cell-action'
 import {
@@ -321,6 +325,7 @@ const props = defineProps<{
   buttonCompositions?: any[]
   listOwnerId?: string
   listConfigHash?: string
+  sortState?: { sortField: string, sortDirection: string } | null
 }>()
 
 const rowExpandCompositions = computed(() => props.rowExpandCompositions || [])
@@ -331,6 +336,11 @@ const compositionContext = computed(() => (
 
 const tableConfig = computed(() => props.viewConfig?.table || {})
 const paginationConfig = computed(() => props.viewConfig?.pagination || {})
+// 错误重试会重建表格，使用当前服务端排序恢复表头箭头，避免显示与数据顺序脱节。
+const tableSort = computed(() => props.sortState ? {
+  prop: getFieldModelPath(props.sortState.sortField),
+  order: props.sortState.sortDirection === 'asc' ? 'ascending' : 'descending'
+} : {})
 
 const emit = defineEmits<{
   create: [btn?: any]
@@ -346,6 +356,7 @@ const emit = defineEmits<{
   'selection-change': [rows: any[]]
   'size-change': [val: number]
   'page-change': [val: number]
+  'sort-change': [payload: { prop?: string, order?: string | null }]
   'event-action': [payload: { button: any, row?: any, selectedRows: any[] }]
 }>()
 
@@ -591,6 +602,10 @@ async function openRelatedContent(button: any, row: any) {
   if (sequence === relatedContentOpenSequence) await relatedContentRuntimeRef.value?.open()
 }
 const tableRef = ref<any>()
+watch(() => props.sortState, value => {
+  // 刷新配置后当前列可能禁用排序；clearSort 不触发新的数据请求。
+  if (!value) tableRef.value?.clearSort()
+})
 const restoringPageSelection = ref(false)
 const entityListLauncherRef = ref<InstanceType<typeof EntityListLauncher>>()
 const pendingOpenListAction = ref<{ button: any, row?: any } | null>(null)
