@@ -39,9 +39,6 @@ const publishDialog = read('src/components/UiConfigPublishDialog.vue')
   '目标记录示例',
   '当前配置可由平台默认能力完成，无需特殊处理。',
   'ConfigHelpLabel',
-  '选择记录后怎么处理',
-  '选择结果回填',
-  '新增后自动建立关联',
   'actionSettings',
   '数据或动作扩展接口',
   '自定义组件',
@@ -69,7 +66,6 @@ assert.doesNotMatch(dialog, /<textarea|type="textarea"|v-model="[^\"]*(?:script|
 
 assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/resolve'), '缺少关联内容可信运行时解析 API')
 assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions/capabilities'), '缺少关联内容权威动作能力 API')
-assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions/link-candidates'), '缺少建立关联专用候选列表 API')
 assert.ok(runtimeApi.includes('/ui-runtime/view-compositions/actions'), '缺少关联内容权威动作执行 API')
 ;[
   'compositionContext',
@@ -101,16 +97,6 @@ assert.ok(runtime.includes('relatedContentActions'), '关联动作未传递给�
 assert.ok(runtime.includes('compositionContext'), '关联动作未使用业务来源上下文')
 assert.ok(runtime.includes('initialValues'), '关联新增未使用服务端解析的可信初值')
 assert.ok(formDialog.includes('compositionContext'), '目标表单提交未携带关联内容动作上下文')
-assert.ok(dialog.includes('当前版本不支持新增并自动关联在同一事务完成'), '设计器未明确禁用非原子的新增后关联')
-assert.ok(dialog.includes('已有组成型子表单或重复器'), '设计器未引导组成型数据使用现有能力')
-assert.ok(runtime.includes('selectionActionOptions'), '目标列表未展示权威选择/关联动作')
-assert.ok(runtime.includes('compositionContext'), '建立关联没有使用候选范围来源上下文')
-assert.ok(runtime.includes('openLinkCandidates'), '目标列表缺少“选择并建立关联”入口')
-assert.ok(runtime.includes('executeCandidateSelectionAction'), '候选记录未通过专用动作桥提交目标 ID')
-assert.ok(runtime.includes('!props.hostReadonly'), '只读宿主仍可能展示字段回填动作')
-assert.ok(formRuntime.includes(':host-readonly="readonly"'), '表单没有把只读状态传给关联内容')
-assert.ok(nodeRuntime.includes(':host-readonly="readonly"'), '表单节点没有把只读状态传给关联内容')
-assert.ok(runtime.includes('当前已关联列表'), '候选范围与当前已关联范围缺少用途隔离说明')
 assert.ok(runtime.includes('function renderFailureState'), '运行时失败策略没有统一处理入口')
 assert.ok(runtime.includes("failurePolicy.value === 'HIDE'"), '自定义组件缺失时不支持隐藏内容')
 assert.ok(runtime.includes("failurePolicy.value === 'PLACEHOLDER'"), '自定义组件缺失时不支持显示占位')
@@ -119,17 +105,15 @@ assert.ok(runtime.includes('function handleActionFailure'), '动作接口失败�
 assert.ok(runtime.includes("actionFailure.value?.policy !== 'HIDE'"), '动作接口失败选择隐藏时仍会显示关联内容')
 assert.ok(runtime.includes("actionFailure.value?.policy === 'PLACEHOLDER'"), '动作接口失败选择占位时未显示占位状态')
 assert.ok(runtime.includes('throw error'), '隐藏或占位策略不能把动作失败伪装成成功')
-assert.ok(runtime.includes("emit('source-patch'"), '选择结果没有向宿主表单发送服务端字段补丁')
-assert.ok(formRuntime.includes('@source-patch="applyRelatedContentPatch"'), '宿主表单未接收关联选择回填')
-assert.ok(nodeRuntime.includes('@source-patch="applyRelatedContentPatch"'), '表单节点未接收关联选择回填')
 assert.ok(listRuntime.includes('filterRelatedContentButtons'), '目标列表按钮未按关联动作逐项过滤')
-assert.ok(listRuntime.includes("'selection-action'"), '目标列表未把选择动作交给权威动作桥')
-assert.ok(listSelectionState.includes('explicitSelectionScene'), '内嵌关联列表未识别显式选择动作')
-assert.ok(listSelectionState.includes('props.selectionActionOptions.length > 0'), '选择动作不能驱动内嵌列表操作区')
+assert.ok(listSelectionState.includes('explicitSelectionScene'), '列表选择器未识别显式选择模式')
 assert.doesNotMatch(listSelectionState, /runtimeScene\.value[^\n]*EMBEDDED/, '不能把所有内嵌列表全局变成选择场景')
 assert.ok(publishDialog.includes('关联内容与发布依赖'), '发布前未展示关联内容依赖')
 assert.ok(publishDialog.includes(':data="preview.dependencies"'), '折叠依赖区域必须保留真实预检依赖明细')
 assert.ok(publishDialog.includes("ENTITY_SCHEMA: '实体定义'"), '发布前未解释实体定义依赖')
 assert.ok(publishDialog.includes('dependencyVersionLabel'), '发布依赖缺少业务化版本说明')
+
+assert.ok(dialog.includes('需要随主表单一起保存？'), '设计器未保留组成型数据的主从编辑引导')
+assert.ok(formRuntime.includes('@patch-form="applyFieldPatch"'), '实体引用字段的回填仍需经过表单联动')
 
 console.log('related content page config tests passed')

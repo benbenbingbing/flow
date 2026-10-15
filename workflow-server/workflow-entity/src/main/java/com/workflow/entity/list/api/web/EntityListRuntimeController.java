@@ -28,11 +28,10 @@ public class EntityListRuntimeController {
             @RequestParam(required = false) String scene,
             @RequestParam(required = false) String configHash,
             @RequestParam(required = false) String runtimeContext,
-            @RequestParam(required = false) String compositionContext,
-            @RequestParam(required = false) String candidateAction) {
+            @RequestParam(required = false) String compositionContext) {
         return Result.success(runtimeService.schema(entityCode, listKey, scene, configHash,
                 com.workflow.entity.ui.application.RuntimeRequestContext.map(runtimeContext),
-                com.workflow.entity.ui.application.RuntimeRequestContext.composition(compositionContext), candidateAction));
+                com.workflow.entity.ui.application.RuntimeRequestContext.composition(compositionContext)));
     }
 
     /**

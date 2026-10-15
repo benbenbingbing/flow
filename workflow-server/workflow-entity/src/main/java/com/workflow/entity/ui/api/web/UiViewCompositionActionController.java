@@ -5,10 +5,8 @@ import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.contracts.embed.runtime.annotation.EmbedDelegatedRuntimeApi;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
-import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionLinkCandidatesResponse;
 import com.workflow.entity.ui.application.UiViewCompositionActionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,7 +28,7 @@ public class UiViewCompositionActionController {
     private final UiViewCompositionActionService actionService;
 
     /**
-     * 执行 SELECT、LINK 或 UNLINK。实体、字段和筛选条件均由服务端重新校验已发布关联配置后恢复。
+     * 执行已发布接口扩展动作。实体、字段和筛选条件均由服务端重新校验已发布关联配置后恢复。
      *
      * @param request 本次请求，后续经校验后用于执行界面视图组合动作
      * @return 执行后的界面视图组合动作结果，供调用方继续处理
@@ -57,20 +55,4 @@ public class UiViewCompositionActionController {
         return Result.success(actionService.capabilities(request));
     }
 
-    /**
-     * 生成“选择并建立关联”的专用候选列表上下文。候选条件完全来自已发布配置，
-     * 请求不能携带实体、列表或任意筛选。
-     *
-     * @param request 本次请求，后续经校验后用于处理链接候选集合
-     * @return 处理后的链接候选集合结果，供调用方继续处理
-     */
-    @PostMapping("/link-candidates")
-    @EmbedDelegatedRuntimeApi(
-            value = EmbedDelegatedRuntimeApi.Scope.RUNTIME_CONTEXT,
-            targetBinding = EmbedDelegatedRuntimeApi.TargetBinding
-                    .RUNTIME_CONTEXT)
-    public Result<UiViewCompositionLinkCandidatesResponse> linkCandidates(
-            @RequestBody UiViewCompositionLinkCandidatesRequest request) {
-        return Result.success(actionService.linkCandidates(request));
-    }
 }

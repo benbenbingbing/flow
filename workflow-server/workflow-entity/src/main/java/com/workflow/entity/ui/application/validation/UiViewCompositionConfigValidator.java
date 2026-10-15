@@ -50,12 +50,8 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> MAPPING_KEYS = Set.of(
             "source", "target", "sourceField", "targetField",
             "sourceLabel", "targetLabel", "literal", "required");
-    private static final Set<String> ACTION_SETTINGS_KEYS = Set.of(
-            "select", "create");
-    private static final Set<String> SELECT_SETTINGS_KEYS = Set.of(
-            "mode", "result", "mappings");
-    private static final Set<String> CREATE_SETTINGS_KEYS = Set.of(
-            "associateAfterCreate", "initialMappings");
+    private static final Set<String> ACTION_SETTINGS_KEYS = Set.of("create");
+    private static final Set<String> CREATE_SETTINGS_KEYS = Set.of("initialMappings");
     private static final Set<String> SPECIAL_KEYS = Set.of(
             "mode", "interfaceService", "actionServices", "customComponent",
             "failurePolicy");
@@ -88,13 +84,7 @@ public class UiViewCompositionConfigValidator {
     private static final Set<String> RELATION_TYPES = Set.of(
             "SAME_RECORD", "ENTITY_RELATION", "REFERENCE_FIELD",
             "REVERSE_REFERENCE", "FIELD_MATCH", "INTERFACE_SERVICE");
-    private static final Set<String> ACTIONS = Set.of(
-            "VIEW", "SELECT", "CREATE", "EDIT", "LINK", "UNLINK",
-            "SAVE_WITH_FORM");
-    private static final Set<String> SELECT_MODES = Set.of(
-            "SINGLE", "MULTIPLE");
-    private static final Set<String> SELECT_RESULTS = Set.of(
-            "FILL_FIELDS", "LINK");
+    private static final Set<String> ACTIONS = Set.of("VIEW", "CREATE", "EDIT");
     private static final Set<String> SPECIAL_MODES = Set.of(
             "NONE", "INTERFACE_SERVICE", "CUSTOM_COMPONENT", "BOTH");
     private static final Set<String> FAILURE_POLICIES = Set.of(
@@ -148,17 +138,15 @@ public class UiViewCompositionConfigValidator {
         List<String> actions = normalizeActions(config.get("actions"));
         Map<String, Object> actionSettings = normalizeActionSettings(
                 optionalMap(config.get("actionSettings"), "操作设置"));
-        Map<String, Object> special = normalizeSpecialHandling(
-                optionalMap(config.get("specialHandling"), "特殊处理"));
+        Map<String, Object> rawSpecial = optionalMap(config.get("specialHandling"), "特殊处理");
+        UiViewCompositionExtensionPolicy.validateSpecialHandling(relation, rawSpecial);
+        Map<String, Object> special = normalizeSpecialHandling(rawSpecial);
         Map<String, Object> entitySnapshots = normalizeEntitySnapshots(
                 optionalMap(config.get("entitySnapshots"), "实体发布快照"));
 
         validateCrossFields(
-                target,
                 presentation,
                 relation,
-                actions,
-                actionSettings,
                 special);
 
         Map<String, Object> normalized = new LinkedHashMap<>();
@@ -395,11 +383,6 @@ public class UiViewCompositionConfigValidator {
             throw new IllegalArgumentException("页面不再单独定义关联条件，请先建立实体关系；特殊查询请使用扩展页面的数据接口");
         }
         if ("ENTITY_RELATION".equals(relation.get("type"))) {
-            // 单条表单没有候选列表。不能发布一个显示按钮但无法执行的“建立关联”入口。
-            if (config.get("target") instanceof Map<?, ?> target && "FORM".equals(target.get("contentType"))
-                    && config.get("actions") instanceof List<?> actions && actions.contains("LINK")) {
-                throw new IllegalArgumentException("建立关联需要候选列表；单条关联表单请通过实体引用字段选择所属记录");
-            }
             if (relation.containsKey("sourceField") || relation.containsKey("targetField")
                     || relation.get("mappings") instanceof List<?> mappings && !mappings.isEmpty()) {
                 throw new IllegalArgumentException("实体关系展示不能自行配置字段匹配条件");
@@ -431,46 +414,20 @@ public class UiViewCompositionConfigValidator {
     }
 
     /**
-     * 规范化第三步的业务动作设置。这里保留选择结果与新增初值映射，运行时
-     * 只能据此生成受控字段补丁，不能接受客户端临时指定任意字段路径。
+     * 规范化新增表单的字段初值。关系由实体引用字段维护，这里只声明预填值，
+     * 不承载选择记录、关联写入或宿主字段回填。
      *
-     * @param value 待规范化动作{@code settings}的原始输入，结果供调用方继续使用
-     * @return 动作{@code settings}键值结果，供调用方继续处理
+     * @param value 编辑器提交的操作设置，只允许新增初值映射
+     * @return 经白名单校验的新增设置，供目标表单生成初值
      */
     private Map<String, Object> normalizeActionSettings(
             Map<String, Object> value) {
         requireAllowedKeys(value, ACTION_SETTINGS_KEYS, "操作设置");
-        Map<String, Object> select = optionalMap(
-                value.get("select"), "选择记录设置");
         Map<String, Object> create = optionalMap(
                 value.get("create"), "新增记录设置");
-        requireAllowedKeys(select, SELECT_SETTINGS_KEYS, "选择记录设置");
         requireAllowedKeys(create, CREATE_SETTINGS_KEYS, "新增记录设置");
-
-        Map<String, Object> normalizedSelect = new LinkedHashMap<>();
-        normalizedSelect.put("mode", requireEnum(
-                select.getOrDefault("mode", "SINGLE"),
-                SELECT_MODES,
-                "选择方式"));
-        normalizedSelect.put("result", requireEnum(
-                select.getOrDefault("result", "FILL_FIELDS"),
-                SELECT_RESULTS,
-                "选择记录后的处理方式"));
-        normalizedSelect.put("mappings", normalizeMappings(
-                select.get("mappings"), "选择结果回填", true));
-
-        Map<String, Object> normalizedCreate = new LinkedHashMap<>();
-        normalizedCreate.put(
-                "associateAfterCreate",
-                create.get("associateAfterCreate") != null
-                        && requireBoolean(
-                        create.get("associateAfterCreate"),
-                        "新增后自动建立关联"));
-        normalizedCreate.put("initialMappings", normalizeMappings(
-                create.get("initialMappings"), "新增初值", true));
-        return Map.of(
-                "select", normalizedSelect,
-                "create", normalizedCreate);
+        return Map.of("create", Map.of("initialMappings", normalizeMappings(
+                create.get("initialMappings"), "新增初值", true)));
     }
 
     /**
@@ -845,77 +802,24 @@ public class UiViewCompositionConfigValidator {
     }
 
     /**
-     * 校验跨字段；不满足约束时阻止后续处理。
+     * 校验展示和取数配置的跨字段约束，避免运行时产生无界加载或缺失取数接口。
      *
-     * @param target 目标，供本方法校验跨字段时使用
-     * @param presentation 展示，供本方法校验跨字段时使用
-     * @param relation 关系，供本方法校验跨字段时使用
-     * @param actions 动作集合，供本方法校验跨字段时使用
-     * @param actionSettings 动作{@code settings}，作为 {@code optionalMap} 的输入影响后续处理
-     * @param special {@code special}，供本方法校验跨字段时使用
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
+     * @param presentation 关联内容的展示与加载策略
+     * @param relation 数据来源规则
+     * @param special 已校验的接口扩展配置
+     * @throws IllegalArgumentException 行展开立即加载或接口取数缺少注册接口
      */
     private void validateCrossFields(
-            Map<String, Object> target,
             Map<String, Object> presentation,
             Map<String, Object> relation,
-            List<String> actions,
-            Map<String, Object> actionSettings,
             Map<String, Object> special) {
         if ("ROW_EXPAND".equals(presentation.get("position"))
                 && "IMMEDIATE".equals(presentation.get("loadMode"))) {
             throw new IllegalArgumentException(
                     "行展开内容必须按需加载，避免列表一次加载全部关联数据");
         }
-        if (actions.contains("SAVE_WITH_FORM")) {
-            throw new IllegalArgumentException(
-                    "关联内容尚未接入随当前表单统一提交；组成型数据请使用已有子表单或重复器");
-        }
-        if (actions.contains("SELECT")
-                && !"LIST".equals(target.get("contentType"))) {
-            throw new IllegalArgumentException("选择记录仅适用于目标列表");
-        }
-        // CREATE/EDIT 对表单和列表目标都开放：表单目标走发布表单提交桥，由动作能力接口
-        // 逐项授权；列表目标表示开放目标列表自带的新增/编辑按钮，实际可见性仍由目标列表
-        // 按钮配置和用户对目标实体的权限决定，此处不再限制目标类型。
-        Map<String, Object> select = optionalMap(
-                actionSettings.get("select"), "选择记录设置");
-        if (actions.contains("SELECT")) {
-            String selectResult = String.valueOf(select.get("result"));
-            List<Map<String, Object>> mappings = normalizeMappings(
-                    select.get("mappings"), "选择结果回填", true);
-            if ("FILL_FIELDS".equals(selectResult) && mappings.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "选择记录并回填当前表单时必须配置至少一项字段映射");
-            }
-            if ("FILL_FIELDS".equals(selectResult)
-                    && "MULTIPLE".equals(select.get("mode"))) {
-                throw new IllegalArgumentException(
-                        "回填普通表单字段时只能选择一条记录");
-            }
-            if ("LINK".equals(selectResult)
-                    && !actions.contains("LINK")) {
-                throw new IllegalArgumentException(
-                        "选择后建立关联时必须同时启用建立关联");
-            }
-        }
-        Set<String> relationshipTypes = Set.of(
-                "REFERENCE_FIELD", "REVERSE_REFERENCE", "ENTITY_RELATION");
-        if ((actions.contains("LINK") || actions.contains("UNLINK"))
-                && !relationshipTypes.contains(relation.get("type"))) {
-            throw new IllegalArgumentException(
-                    "建立或解除关联仅适用于引用字段或已有实体关系");
-        }
-        Map<String, Object> create = optionalMap(
-                actionSettings.get("create"), "新增记录设置");
-        if (actions.contains("CREATE")
-                && Boolean.TRUE.equals(create.get("associateAfterCreate"))) {
-            throw new IllegalArgumentException(
-                    "新增后自动建立关联尚未接入同一事务，请关闭后分别保存和建立关联");
-        }
         if ("INTERFACE_SERVICE".equals(relation.get("type"))
-                && !(special.get("interfaceService")
-                instanceof Map<?, ?>)) {
+                && !(special.get("interfaceService") instanceof Map<?, ?>)) {
             throw new IllegalArgumentException(
                     "通过接口扩展关联数据时，必须在特殊处理中单独选择数据解析接口");
         }
@@ -955,11 +859,7 @@ public class UiViewCompositionConfigValidator {
      * @return 界面视图组合配置校验器集合，供调用方遍历或展示
      */
     private List<String> buildWarnings(List<String> actions) {
-        if (actions.contains("SAVE_WITH_FORM")) {
-            return List.of("关联内容不能随宿主统一提交，请使用已有组成型子表单或重复器。");
-        }
-        if (actions.contains("CREATE") || actions.contains("EDIT")
-                || actions.contains("LINK") || actions.contains("UNLINK")) {
+        if (actions.contains("CREATE") || actions.contains("EDIT")) {
             return List.of("目标内容独立保存，不随当前表单一起提交。");
         }
         return List.of();

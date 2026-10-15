@@ -303,7 +303,7 @@ class EntityListRuntimeViewCompositionTest {
     void matchNoneContextReturnsEmptyWithoutExecutingTargetQuery() {
         UiViewCompositionActionService.ResolvedListContext claims = claims(
                 Map.of(), true);
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims);
         EntityListConfig published = publishedList();
         configurePinnedList(published);
@@ -331,7 +331,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void requestCannotReplaceAuthoritativeTargetEntity() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of("projectId", "p-1"), false));
         EntityListQueryRequest request = new EntityListQueryRequest();
         request.setCompositionContext(compositionContext());
@@ -350,7 +350,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void resolvedFiltersAreCombinedWithPublishedFixedFilters() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(
                         Map.of(
                                 "projectId", "project-1",
@@ -390,7 +390,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderFailsClosedWhenAnyCandidateIsOutsidePlatformScope() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("malicious-provider");
@@ -438,7 +438,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionConnectorFailsClosedWhenCandidateIsOutsidePlatformScope() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryInterfaceExtensionId("connector-query");
@@ -464,7 +464,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderReturnsOnlyPlatformVerifiedPublishedFieldsAndSafeTotal() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(
                         Map.of(
                                 "projectId", "project-1",
@@ -540,7 +540,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void compositionProviderUsesVerifiedWindowInsteadOfUntrustedTotal() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryProviderCode("paged-provider");
@@ -691,7 +691,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void systemEntityCompositionRejectsCustomQueryOverride() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         published.setQueryInterfaceExtensionId("connector-query");
@@ -717,7 +717,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void systemEntityCompositionUsesPlatformReadServiceWithoutExtraRecheck() {
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of(), false));
         EntityListConfig published = publishedList();
         configurePinnedList(published);
@@ -969,7 +969,7 @@ class EntityListRuntimeViewCompositionTest {
         EntityListConfig published = publishedList();
         published.setFixedFilterConfig("{\"status\":\"ACTIVE\"}");
         configurePinnedList(published);
-        when(compositionService.resolveListContext(any(), isNull()))
+        when(compositionService.resolveListContext(any()))
                 .thenReturn(claims(Map.of("status", "DELETED"), false));
 
         PageResult<?> result = (PageResult<?>) service.query("target_entity", "default", compositionRequest(1, 10));
@@ -1091,7 +1091,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void pageParametersCannotReplaceTrustedRelationBounds() {
-        when(compositionService.resolveListContext(any(), isNull())).thenReturn(claims(Map.of("projectId", "owned"), false));
+        when(compositionService.resolveListContext(any())).thenReturn(claims(Map.of("projectId", "owned"), false));
         EntityListConfig config = publishedList();
         config.setViewConfig("""
                 {"inputParameterSchema":{"type":"object","properties":{"project":{"type":"string"}},"required":["project"]},
@@ -1114,7 +1114,7 @@ class EntityListRuntimeViewCompositionTest {
 
     @Test
     void pageParameterFilterAndRelationBothReachPublishedQuery() {
-        when(compositionService.resolveListContext(any(), isNull())).thenReturn(claims(Map.of("projectId", "owned"), false));
+        when(compositionService.resolveListContext(any())).thenReturn(claims(Map.of("projectId", "owned"), false));
         EntityListConfig config = publishedList();
         config.setViewConfig("""
                 {"inputParameterSchema":{"properties":{"keyword":{"type":"string"}}},

@@ -4,7 +4,7 @@ import { useEntityDataSelectionState } from '../../views/entity/composables/useE
 
 const scope = effectScope()
 scope.run(() => {
-  const props = reactive({ selectionMode: 'NONE', selectionActionOptions: [], initialSelectedRows: [] })
+  const props = reactive({ selectionMode: 'NONE', initialSelectedRows: [] })
   const scene = ref('PAGE')
   const config = ref({ selectionConfig: { selectionMode: 'SINGLE' } })
   const state = useEntityDataSelectionState(props, scene, config)

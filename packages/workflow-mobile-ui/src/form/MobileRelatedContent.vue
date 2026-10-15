@@ -21,7 +21,7 @@ import MobileFormRenderer from './MobileFormRenderer.vue'
 import MobileRecordList from './MobileRecordList.vue'
 const props = defineProps({ composition: Object, form: Object, context: Object, services: Object, dataSourceRuntime: Object })
 const title = computed(() => props.composition.config?.presentation?.title || props.composition.compositionName || props.composition.name || '关联内容')
-const requiresWrite = computed(() => (Array.isArray(props.composition.config?.actions) ? props.composition.config.actions : []).some(action => !['VIEW', 'SELECT'].includes(action)))
+const requiresWrite = computed(() => (Array.isArray(props.composition.config?.actions) ? props.composition.config.actions : []).some(action => action !== 'VIEW'))
 const opened = ref(false), result = ref(null), loading = ref(false), error = ref('')
 let revision = 0
 const input = computed(() => buildRelatedContentResolveInput({ ownerType: 'FORM', ownerId: props.form.id, compositionKey: props.composition.compositionKey, sourceRecordId: props.context.recordId || props.context.record?.id, compositionContext: props.context.compositionContext, configHash: props.form.configHash || props.context.configHash, runtimeContext: buildRuntimeContext(props.context, props.form) }))

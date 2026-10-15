@@ -1,18 +1,14 @@
 import { relatedContentPresentationError } from './related-content-presentation.js'
 const SUPPORTED_ACTIONS = new Set([
   'VIEW',
-  'SELECT',
   'CREATE',
-  'EDIT',
-  'LINK',
-  'UNLINK',
-  'SAVE_WITH_FORM'
+  'EDIT'
 ])
 let relatedContentKeySequence = 0
 
 export const RELATED_CONTENT_TYPE_OPTIONS = Object.freeze([
   { value: 'FORM', label: '表单', description: '查看或编辑一条目标数据。' },
-  { value: 'LIST', label: '列表', description: '查看、选择或批量操作多条目标数据。' }
+  { value: 'LIST', label: '列表', description: '查看多条目标数据，并按权限新增或编辑。' }
 ])
 
 export const RELATED_CONTENT_POSITION_OPTIONS = Object.freeze([
@@ -58,13 +54,9 @@ export const RELATED_CONTENT_RELATION_OPTIONS = Object.freeze([
 ])
 
 export const RELATED_CONTENT_ACTION_OPTIONS = Object.freeze([
-  { value: 'VIEW', label: '仅查看', description: '查看关联记录，不提供新增、编辑、选择或关系变更操作。' },
-  { value: 'SELECT', label: '选择记录', description: '从目标列表选择记录，按配置回填当前表单字段；也可将选择结果设为建立关联，此时需同时勾选“建立关联”。' },
+  { value: 'VIEW', label: '仅查看', description: '查看关联记录，不提供新增或编辑操作。' },
   { value: 'CREATE', label: '新增记录', description: '目标为表单且尚无关联记录时，在当前区域填写新记录；目标为列表时，使用列表自带的新增入口。新记录独立保存，不随主表提交。' },
   { value: 'EDIT', label: '编辑记录', description: '目标为表单时，在当前区域修改关联记录；目标为列表时，通过行操作中的编辑入口修改。修改需独立保存，取消主表不会撤销已保存的修改。' },
-  { value: 'LINK', label: '建立关联', description: '选择已有目标记录，与当前记录建立关系，不新增目标记录。' },
-  { value: 'UNLINK', label: '解除关联', description: '解除当前记录与目标记录的关系，保留目标记录本身。' },
-  { value: 'SAVE_WITH_FORM', label: '随当前表单一起保存', description: '普通关联不支持随主表提交；需要一起保存的子记录，请使用组成型子表单或明细。' }
 ])
 
 export const RELATED_CONTENT_FAILURE_OPTIONS = Object.freeze([
@@ -140,13 +132,7 @@ export function createEmptyRelatedContent({ ownerType = 'FORM', sourceEntity = {
       },
       actions: ['VIEW'],
       actionSettings: {
-        select: {
-          mode: 'SINGLE',
-          result: 'FILL_FIELDS',
-          mappings: []
-        },
         create: {
-          associateAfterCreate: false,
           initialMappings: []
         }
       },
@@ -209,7 +195,8 @@ function serializeInterfaceBinding(binding = {}, action = false) {
 
 /**
  * 将服务端记录和历史草稿归一为同一编辑模型。展示快照只用于中文回显，
- * 运行时仍必须由服务端根据 ID 重新解析并鉴权。
+ * 运行时仍必须由服务端根据 ID 重新解析并鉴权。普通关系不再使用接口取数
+ * 或动作接口，读取时清除这些配置，防止隐藏字段在后续保存中重新启用。
  */
 export function normalizeRelatedContent(value = {}, defaults = {}) {
   const empty = createEmptyRelatedContent(defaults)
@@ -231,29 +218,18 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
         : []
     },
     actions: Array.isArray(rawConfig.actions)
-      ? [...new Set(rawConfig.actions.filter(action => SUPPORTED_ACTIONS.has(action)))]
+      ? [...new Set(rawConfig.actions)]
       : ['VIEW'],
     actionSettings: {
-      ...empty.config.actionSettings,
-      ...(rawConfig.actionSettings || {}),
-      select: {
-        ...empty.config.actionSettings.select,
-        ...(rawConfig.actionSettings?.select || {}),
-        mappings: Array.isArray(rawConfig.actionSettings?.select?.mappings)
-          ? clone(rawConfig.actionSettings.select.mappings)
-          : []
-      },
       create: {
         ...empty.config.actionSettings.create,
-        ...(rawConfig.actionSettings?.create || {}),
         initialMappings: Array.isArray(rawConfig.actionSettings?.create?.initialMappings)
           ? clone(rawConfig.actionSettings.create.initialMappings)
           : []
       }
     },
     specialHandling: {
-      ...empty.config.specialHandling,
-      ...(rawConfig.specialHandling || {}),
+      mode: rawConfig.specialHandling?.mode ?? empty.config.specialHandling.mode,
       interfaceService: normalizeInterfaceBinding(
         rawConfig.specialHandling?.interfaceService
       ),
@@ -265,10 +241,19 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
         ...empty.config.specialHandling.customComponent,
         ...(rawConfig.specialHandling?.customComponent || {}),
         props: parseConfig(rawConfig.specialHandling?.customComponent?.props)
-      }
+      },
+      failurePolicy: rawConfig.specialHandling?.failurePolicy ?? empty.config.specialHandling.failurePolicy
     }
   }
   if (!config.actions.length) config.actions = ['VIEW']
+  if (!['SAME_RECORD', 'INTERFACE_SERVICE'].includes(config.relation.type)) {
+    // 编辑模型保留空结构供共享表单绑定；持久化时会省略普通关系的接口字段。
+    config.specialHandling.interfaceService = normalizeInterfaceBinding()
+    config.specialHandling.actionServices = []
+    config.specialHandling.mode = ['CUSTOM_COMPONENT', 'BOTH'].includes(config.specialHandling.mode)
+      ? 'CUSTOM_COMPONENT'
+      : 'NONE'
+  }
   if (config.relation.type === 'INTERFACE_SERVICE'
     && config.specialHandling.mode === 'NONE') {
     config.specialHandling.mode = 'INTERFACE_SERVICE'
@@ -284,18 +269,25 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
   }
 }
 
+/** 构造宿主草稿的保存载荷；普通关系省略接口配置，独立扩展页只写入服务端允许的绑定字段。 */
 export function buildRelatedContentPayload(value, ownerType, ownerId) {
   const normalized = normalizeRelatedContent(value, {
     ownerType,
     sourceEntity: value?.config?.source || {}
   })
   const config = clone(normalized.config)
-  config.specialHandling.interfaceService = serializeInterfaceBinding(
-    normalized.config.specialHandling.interfaceService
-  )
-  config.specialHandling.actionServices = (
-    normalized.config.specialHandling.actionServices || []
-  ).map(binding => serializeInterfaceBinding(binding, true))
+  if (['SAME_RECORD', 'INTERFACE_SERVICE'].includes(config.relation.type)) {
+    config.specialHandling.interfaceService = serializeInterfaceBinding(
+      normalized.config.specialHandling.interfaceService
+    )
+    config.specialHandling.actionServices = (
+      normalized.config.specialHandling.actionServices || []
+    ).map(binding => serializeInterfaceBinding(binding, true))
+  } else {
+    // 普通关系的空编辑占位不属于保存契约，避免重新携带已移除的扩展能力。
+    delete config.specialHandling.interfaceService
+    delete config.specialHandling.actionServices
+  }
   const result = {
     compositionKey: normalized.compositionKey || undefined,
     anchorType: normalized.anchorType,
@@ -402,7 +394,7 @@ export function recommendRelatedContentRelation({
 /** 返回分步骤的可定位错误，配置页可直接把用户带到需要修改的位置。 */
 export function validateRelatedContent(value, ownerType = 'FORM') {
   const item = normalizeRelatedContent(value, { ownerType })
-  const { target, presentation, relation, actions, actionSettings, specialHandling } = item.config
+  const { target, presentation, relation, actions, specialHandling } = item.config
   const errors = []
   const add = (step, field, message) => errors.push({ step, field, message })
 
@@ -446,52 +438,9 @@ export function validateRelatedContent(value, ownerType = 'FORM') {
   }
 
   if (!actions.length) add(3, 'actions', '请至少选择一种允许的操作')
-  if (actions.includes('SELECT') && target.contentType !== 'LIST') {
-    add(3, 'actions', '选择记录仅适用于目标列表')
+  if (actions.some(action => !SUPPORTED_ACTIONS.has(action))) {
+    add(3, 'actions', '包含不支持的关联内容操作')
   }
-  if (relation.type === 'ENTITY_RELATION' && actions.includes('LINK') && target.contentType !== 'LIST') {
-    add(3, 'actions', '建立关联需要候选列表；单条表单请通过实体引用字段选择所属记录')
-  }
-  if (actions.includes('SELECT')) {
-    const select = actionSettings.select || {}
-    if (!['SINGLE', 'MULTIPLE'].includes(select.mode)) {
-      add(3, 'actionSettings.select.mode', '请选择单选或多选')
-    }
-    if (!['FILL_FIELDS', 'LINK'].includes(select.result)) {
-      add(3, 'actionSettings.select.result', '请选择选择记录后的处理方式')
-    }
-    if (select.result === 'FILL_FIELDS'
-      && String(ownerType).toUpperCase() !== 'FORM') {
-      add(3, 'actionSettings.select.result', '回填字段仅适用于表单中的关联内容')
-    }
-    if (select.result === 'FILL_FIELDS' && !select.mappings?.length) {
-      add(3, 'actionSettings.select.mappings', '请至少配置一项选择结果回填字段')
-    }
-    if (select.result === 'FILL_FIELDS' && select.mode === 'MULTIPLE') {
-      add(3, 'actionSettings.select.mode', '回填普通表单字段时只能选择一条记录')
-    }
-    if (select.result === 'LINK' && !actions.includes('LINK')) {
-      add(3, 'actions', '选择后建立关联时，请同时启用“建立关联”')
-    }
-  }
-  if ((actions.includes('LINK') || actions.includes('UNLINK'))
-    && !['REFERENCE_FIELD', 'REVERSE_REFERENCE', 'ENTITY_RELATION'].includes(relation.type)) {
-    add(3, 'actions', '建立或解除关联仅适用于引用字段或已有实体关系')
-  }
-  if (actions.includes('SAVE_WITH_FORM')) {
-    add(3, 'actions', '关联内容尚未接入随当前表单统一提交；组成型数据请使用已有子表单或重复器')
-  }
-  // 新增后自动建立关联只作用于表单提交桥；列表目标的新增走目标列表自身按钮，不做此校验。
-  if (actions.includes('CREATE') && target.contentType === 'FORM') {
-    const create = actionSettings.create || {}
-    if (typeof create.associateAfterCreate !== 'boolean') {
-      add(3, 'actionSettings.create.associateAfterCreate', '请选择新增后是否自动建立关联')
-    }
-    if (create.associateAfterCreate) {
-      add(3, 'actionSettings.create.associateAfterCreate', '新增后自动建立关联尚未接入同一事务，请关闭后分别保存和建立关联')
-    }
-  }
-
   const usesService = ['INTERFACE_SERVICE', 'BOTH'].includes(specialHandling.mode)
   const needsDataService = relation.type === 'INTERFACE_SERVICE'
   const actionServices = Array.isArray(specialHandling.actionServices)

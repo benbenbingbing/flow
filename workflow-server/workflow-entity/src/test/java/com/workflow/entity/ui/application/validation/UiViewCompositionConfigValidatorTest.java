@@ -24,7 +24,7 @@ class UiViewCompositionConfigValidatorTest {
                 .get("presentation")).containsKey("actionBar"));
         Map<String, Object> listBar = Map.of("position", "BOTTOM", "align", "RIGHT", "gap", 16,
                 "buttons", Map.of("refresh", Map.of("label", "刷新验收数据", "buttonAppearance", "TEXT"),
-                        "link", Map.of("icon", "Link"), "open", Map.of("size", "large")));
+                        "open", Map.of("size", "large", "icon", "View")));
         presentation.put("actionBar", listBar);
         Map<String, Object> normalizedList = validator.validate(config).normalizedConfig();
         assertEquals(listBar, ((Map<?, ?>) normalizedList.get("presentation")).get("actionBar"));
@@ -155,69 +155,38 @@ class UiViewCompositionConfigValidatorTest {
     }
 
     @Test
-    void acceptsSingleSelectionWithWhitelistedFieldMappings() {
+    void acceptsOnlyCreateInitialMappings() {
         Map<String, Object> config = frontendDraft();
-        config.put("actions", List.of("SELECT"));
-        config.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "SINGLE",
-                        "result", "FILL_FIELDS",
-                        "mappings", List.of(Map.of(
-                                "source", "managerId",
-                                "target", "projectManagerId"))),
-                "create", Map.of(
-                        "associateAfterCreate", false,
-                        "initialMappings", List.of())));
+        config.put("actions", List.of("CREATE"));
+        Map<String, Object> create = Map.of("initialMappings", List.of(Map.of(
+                "source", "projectId", "target", "projectId")));
+        config.put("actionSettings", Map.of("create", create));
 
         Map<?, ?> settings = (Map<?, ?>) validator.validate(config)
                 .normalizedConfig().get("actionSettings");
-        Map<?, ?> select = (Map<?, ?>) settings.get("select");
 
-        assertEquals("SINGLE", select.get("mode"));
-        assertEquals("FILL_FIELDS", select.get("result"));
-        assertEquals(1, ((List<?>) select.get("mappings")).size());
+        assertEquals(1, settings.size());
+        assertEquals(1, ((List<?>) ((Map<?, ?>) settings.get("create")).get("initialMappings")).size());
     }
 
     @Test
-    void rejectsActionCombinationsThatDoNotHaveSafeRuntimeSemantics() {
-        Map<String, Object> aggregate = frontendDraft();
-        mutableChild(aggregate, "target").put("contentType", "FORM");
-        mutableChild(aggregate, "relation").put("type", "ENTITY_RELATION");
-        mutableChild(aggregate, "relation").put(
-                "relationCode", "project_requirements");
-        aggregate.put("actions", List.of("SAVE_WITH_FORM", "EDIT"));
-
-        IllegalArgumentException aggregateError = assertThrows(
-                IllegalArgumentException.class,
-                () -> validator.validate(aggregate));
-        assertTrue(aggregateError.getMessage().contains("子表单或重复器"));
-
+    void rejectsRemovedActionsAndSettingsInsteadOfPreservingThem() {
+        for (String action : List.of("SELECT", "LINK", "UNLINK", "SAVE_WITH_FORM")) {
+            Map<String, Object> config = frontendDraft();
+            config.put("actions", List.of("VIEW", action));
+            assertThrows(IllegalArgumentException.class, () -> validator.validate(config), action);
+        }
         Map<String, Object> selection = frontendDraft();
-        selection.put("actions", List.of("SELECT"));
-        selection.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "MULTIPLE",
-                        "result", "FILL_FIELDS",
-                        "mappings", List.of(Map.of(
-                                "source", "id",
-                                "target", "requirementId")))));
+        selection.put("actionSettings", Map.of("select", Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> validator.validate(selection));
 
-        IllegalArgumentException selectionError = assertThrows(
-                IllegalArgumentException.class,
-                () -> validator.validate(selection));
-        assertTrue(selectionError.getMessage().contains("只能选择一条"));
-
-        Map<String, Object> createAndLink = frontendDraft();
-        mutableChild(createAndLink, "target").put("contentType", "FORM");
-        createAndLink.put("actions", List.of("CREATE"));
-        createAndLink.put("actionSettings", Map.of(
-                "create", Map.of(
-                        "associateAfterCreate", true,
-                        "initialMappings", List.of())));
-        IllegalArgumentException createError = assertThrows(
-                IllegalArgumentException.class,
-                () -> validator.validate(createAndLink));
-        assertTrue(createError.getMessage().contains("同一事务"));
+        // 连关闭值也不能继续持久化：移除的设置已经不属于配置契约。
+        for (boolean enabled : List.of(false, true)) {
+            Map<String, Object> create = frontendDraft();
+            create.put("actions", List.of("CREATE"));
+            create.put("actionSettings", Map.of("create", Map.of("associateAfterCreate", enabled)));
+            assertThrows(IllegalArgumentException.class, () -> validator.validate(create));
+        }
     }
 
     @Test
@@ -314,6 +283,7 @@ class UiViewCompositionConfigValidatorTest {
     @Test
     void acceptsActionOnlyInterfaceServiceWithoutDataResolver() {
         Map<String, Object> config = frontendDraft();
+        config.put("relation", Map.of("type", "SAME_RECORD"));
         config.put("specialHandling", new LinkedHashMap<>(Map.of(
                 "mode", "INTERFACE_SERVICE",
                 "actionServices", List.of(Map.of(
@@ -337,6 +307,7 @@ class UiViewCompositionConfigValidatorTest {
     @Test
     void rejectsDuplicateActionServiceKeys() {
         Map<String, Object> config = frontendDraft();
+        config.put("relation", Map.of("type", "SAME_RECORD"));
         Map<String, Object> binding = Map.of(
                 "actionKey", "calculateRisk",
                 "serviceId", "risk-service",

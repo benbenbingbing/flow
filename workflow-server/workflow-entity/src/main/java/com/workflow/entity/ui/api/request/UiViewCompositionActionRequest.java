@@ -17,7 +17,7 @@ public class UiViewCompositionActionRequest {
     /** 服务端每次重新解析的业务入口及关联路径。 */
     private UiViewCompositionResolveRequest compositionContext;
 
-    /** SELECT、LINK 或 UNLINK；其余动作在安全提交桥开放前会明确拒绝。 */
+    /** 已发布接口扩展动作键；新增、编辑由目标表单的保存入口处理。 */
     private String action;
     /** 目标记录 ID；服务端会逐条重读并重新应用数据权限。 */
     private List<String> targetRecordIds;

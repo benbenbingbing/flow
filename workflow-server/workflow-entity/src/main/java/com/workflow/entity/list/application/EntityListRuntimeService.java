@@ -86,15 +86,15 @@ public class EntityListRuntimeService {
     /** 加载普通列表或关联列表；来源仅用于定位，固定范围由服务端重新计算。 */
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schema(String entityCode, String listKey, String requestedScene) {
-        return schema(entityCode, listKey, requestedScene, null, Map.of(), null, null);
+        return schema(entityCode, listKey, requestedScene, null, Map.of(), null);
     }
 
     @Transactional(readOnly = true)
     public EntityListSchemaDTO schema(String entityCode, String listKey, String requestedScene,
             String configHash, Map<String, Object> runtimeContext,
-            UiViewCompositionResolveRequest compositionContext, String candidateAction) {
+            UiViewCompositionResolveRequest compositionContext) {
         var resolved = compositionContext == null ? null
-                : viewCompositionActionService.resolveListContext(compositionContext, candidateAction);
+                : viewCompositionActionService.resolveListContext(compositionContext);
         EntityListConfig config = requireList(entityCode, listKey, configHash, runtimeContext, resolved);
         return schemaResolved(entityCode, listKey, requestedScene, config);
     }
@@ -247,7 +247,7 @@ public class EntityListRuntimeService {
         EntityListQueryRequest safeRequest = request == null
                 ? new EntityListQueryRequest() : request;
         var compositionContext = safeRequest.getCompositionContext() == null ? null
-                : viewCompositionActionService.resolveListContext(safeRequest.getCompositionContext(), safeRequest.getCandidateAction());
+                : viewCompositionActionService.resolveListContext(safeRequest.getCompositionContext());
         EntityListConfig config = requireList(
                 entityCode,
                 listKey,

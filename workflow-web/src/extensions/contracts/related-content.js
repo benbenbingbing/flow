@@ -5,23 +5,24 @@
  *
  * 这里没有普通整列表的 dataList/queryForm/pageNum，也不保证 mode、formActionSlots。
  * modelValue 是目标记录的业务字段数据，不是来源记录；LIST 应通过 runtime.query 查询。
- * 宿主没有监听 update:modelValue 或调用 validate()，修改必须走已发布的 runtime.dispatch。
+ * 表单数据通过宿主的内置保存入口提交。runtime.dispatch 仅在 SAME_RECORD /
+ * INTERFACE_SERVICE 独立扩展页提供，普通 ENTITY_RELATION 关联页不提供此能力。
  *
  * @typedef {Object} RelatedContentRuntime
  * @property {function(): Promise<*>} refresh 重新解析并刷新关联内容。
  * @property {function({pageNum?: number, pageSize?: number, filters?: Object}): Promise<*>} query
  *   仅 LIST 目标可调用；服务端约束查询范围，响应是列表查询 API 结果。
- * @property {function(string, Object=): Promise<*>} dispatch
- *   传 capabilities 中的动作名和 { targetRecordIds }。不接受自选 extensionId/input；
+ * @property {function(string, Object=): Promise<*>} [dispatch]
+ *   仅独立扩展页提供；调用前必须检查方法存在性。传 capabilities 中的动作名和
+ *   { targetRecordIds }，宿主使用解析得到的发布上下文，不接受自选 extensionId/input；
  *   不可用或忙碌时可返回 null，返回值不能一律理解为成功。
- * @property {function(): Promise<*>} openLinkCandidates 打开受控关联候选选择。
  * @property {string[]} capabilities 已启用的动作名，如 VIEW/EDIT/CREATE。
  * @property {Object} actionCapabilities 服务端动作可用性结果，应结合宿主结果使用。
  */
 export const relatedContentProps = {
   // 宿主选定的表单配置及发布上下文。
   form: { type: Object, default: null },
-  // 目标记录的业务字段，只读输入；本宿主不监听 update:modelValue，修改须调用 runtime.dispatch。
+  // 目标记录的业务字段；表单通过 update:modelValue 更新宿主草稿，再由内置保存入口提交。
   modelValue: { type: Object, default: () => ({}) },
   // 宿主整表或节点只读状态，不得在组件内部绕过。
   readonly: { type: Boolean, default: true },

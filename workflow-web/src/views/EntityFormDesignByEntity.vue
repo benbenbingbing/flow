@@ -1560,7 +1560,8 @@ function validateRelatedContentDrafts(onlyKey) {
     if (!relatedDraftState.dirty(item)) continue
     const validation = validateRelatedContent(item, 'FORM')
     if (!validation.valid) {
-      openRelatedContentProperties(item, 'child-pages')
+      // 扩展配置已归到独立标签页，保存失败时直接定位到对应入口。
+      openRelatedContentProperties(item, validation.errors[0]?.step === 4 ? 'extension' : 'child-pages')
       throw new Error(validation.errors[0].message)
     }
   }
@@ -1608,7 +1609,8 @@ async function loadRelatedContents({ strict = false } = {}) {
       .map(item => normalizeRelatedContent(item, { ownerType: 'FORM', sourceEntity: entityInfo.value }))
       .sort((left, right) => Number(left.orderKey || 0) - Number(right.orderKey || 0))
     relatedContentCount.value = relatedContents.value.length
-    relatedDraftState.reset(relatedContents.value)
+    // 旧接口已从编辑模型清除，仍需标记原始服务端记录待保存，避免直接发布时残留旧能力。
+    relatedDraftState.reset(relatedContents.value, { sourceItems: rows })
   } catch (error) {
     if (ownerId !== form.value.id) return
     relatedContents.value = []

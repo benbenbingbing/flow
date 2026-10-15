@@ -33,6 +33,8 @@ import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiViewComposition;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -187,6 +189,33 @@ class UiViewCompositionServiceTest {
         assertEquals(2, result.getOwnerRevision());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH"})
+    @SuppressWarnings("unchecked")
+    void ordinaryDraftReturnsRetiredBindingsWithoutResolvingDeletedDefinitions(String relationType) {
+        Fixture fixture = fixture();
+        Map<String, Object> config = legacyInterfaceConfig();
+        config.put("relation", Map.of("type", relationType));
+        Map<String, Object> special = new LinkedHashMap<>((Map<String, Object>) config.get("specialHandling"));
+        special.put("mode", "BOTH");
+        special.put("actionServices", List.of(Map.of(
+                "actionKey", "CHECK_RISK", "serviceId", "deleted-action", "operationCode", "check")));
+        special.put("customComponent", Map.of("name", "project-timeline", "version", 2,
+                "props", Map.of("compact", true)));
+        config.put("specialHandling", special);
+        UiViewComposition current = existing(fixture.codec, 3);
+        current.setConfigDocument(fixture.codec.write(config, "retired interface config"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+        when(fixture.dataSourceService.resolveDefinitionReference(anyString(), anyString()))
+                .thenThrow(new IllegalArgumentException("接口定义已删除"));
+
+        UiViewCompositionDTO loaded = fixture.service.list("FORM", "form-1").get(0);
+
+        // 回显保留废弃接口和自定义组件，前端才能检测差异并提交真正的清理。
+        assertEquals(config, loaded.getConfig());
+        org.mockito.Mockito.verifyNoInteractions(fixture.dataSourceService);
+    }
+
     @Test
     void legacyInterfaceDraftLoadsAndSavesAsExtensionIdOnly() {
         Fixture fixture = fixture();
@@ -310,6 +339,81 @@ class UiViewCompositionServiceTest {
     }
 
     @Test
+    void draftSnapshotMatchesPublicationSnapshotForSavedValidConfiguration() {
+        Fixture fixture = fixture();
+        AtomicReference<UiViewComposition> persisted = new AtomicReference<>();
+        when(fixture.mapper.insert(any(UiViewComposition.class))).thenAnswer(invocation -> {
+            UiViewComposition value = invocation.getArgument(0);
+            value.setId("saved-composition");
+            persisted.set(value);
+            return 1;
+        });
+        when(fixture.mapper.selectById("saved-composition")).thenAnswer(invocation -> persisted.get());
+        when(fixture.formMapper.update(isNull(), any())).thenReturn(1);
+        fixture.service.create("FORM", "form-1", request(null));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(persisted.get()));
+
+        List<Map<String, Object>> published = fixture.service.snapshot("FORM", "form-1");
+        List<Map<String, Object>> draft = fixture.service.draftSnapshot("FORM", "form-1");
+
+        assertEquals(published, draft);
+        assertEquals(sha256(fixture.codec.canonicalize(fixture.codec.write(published, "发布快照"), "发布快照")),
+                sha256(fixture.codec.canonicalize(fixture.codec.write(draft, "草稿快照"), "草稿快照")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"actions", "settings", "target"})
+    void draftSnapshotReadsInvalidConfigurationWhilePublicationStillRejects(String invalidPart) {
+        Fixture fixture = fixture();
+        UiViewComposition current = existing(fixture.codec, 9);
+        Map<String, Object> invalid = new LinkedHashMap<>(config());
+        switch (invalidPart) {
+            case "actions" -> invalid.put("actions", List.of("UNKNOWN_ACTION"));
+            case "settings" -> invalid.put("actionSettings", Map.of("unknownSetting", true));
+            case "target" -> {
+                Map<String, Object> target = new LinkedHashMap<>((Map<String, Object>) invalid.get("target"));
+                target.put("contentId", "missing-target");
+                invalid.put("target", target);
+            }
+        }
+        current.setConfigDocument(fixture.codec.write(invalid, "无效草稿"));
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+
+        List<Map<String, Object>> snapshot = assertDoesNotThrow(
+                () -> fixture.service.draftSnapshot("FORM", "form-1"));
+        Map<?, ?> config = (Map<?, ?>) snapshot.get(0).get("config");
+        if ("target".equals(invalidPart)) {
+            // 目标失败发生在实体钉定之后，必须撤掉副本中的部分钉定结果。
+            assertEquals(invalid, config);
+            assertFalse(config.containsKey("entitySnapshots"));
+        } else {
+            String key = "actions".equals(invalidPart) ? "actions" : "actionSettings";
+            assertEquals(invalid.get(key), config.get(key));
+        }
+        if ("target".equals(invalidPart)) {
+            assertThrows(BusinessConflictException.class, () -> fixture.service.snapshot("FORM", "form-1"));
+        } else {
+            assertThrows(IllegalArgumentException.class, () -> fixture.service.snapshot("FORM", "form-1"));
+        }
+        assertEquals(invalid, fixture.codec.readObject(current.getConfigDocument(), "草稿未被修改"));
+    }
+
+    @Test
+    void draftDependencyReadDoesNotMaskPermissionOrInfrastructureFailures() {
+        Fixture fixture = fixture();
+        when(fixture.mapper.findByOwner("FORM", "form-1"))
+                .thenReturn(List.of(existing(fixture.codec, 9)));
+        UiConfigReleaseMapper releases = (UiConfigReleaseMapper)
+                ReflectionTestUtils.getField(fixture.service, "releaseMapper");
+        when(releases.selectById("release-target"))
+                .thenThrow(new ForbiddenException("目标配置无权访问"));
+        assertThrows(ForbiddenException.class, () -> fixture.service.draftSnapshot("FORM", "form-1"));
+        org.mockito.Mockito.doThrow(new IllegalStateException("database unavailable"))
+                .when(releases).selectById("release-target");
+        assertThrows(IllegalStateException.class, () -> fixture.service.draftSnapshot("FORM", "form-1"));
+    }
+
+    @Test
     void snapshotAndProjectedSnapshotPinTheCurrentTargetRelease() {
         Fixture fixture = fixture();
         UiViewComposition current = existing(fixture.codec, 9);
@@ -413,88 +517,19 @@ class UiViewCompositionServiceTest {
     }
 
     @Test
-    void releaseSnapshotValidatesSelectMappingsAgainstBothPublishedAssets() {
+    void rejectsRemovedRelationActionsWhenValidatingOrPublishing() {
         Fixture fixture = fixture();
-        Map<String, Object> config = new LinkedHashMap<>(config());
-        config.put("actions", List.of("VIEW", "SELECT"));
-        config.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "SINGLE",
-                        "result", "FILL_FIELDS",
-                        "mappings", List.of(Map.of(
-                                "sourceField", "requirementName",
-                                "targetField", "selectedRequirementName",
-                                "required", true))),
-                "create", Map.of(
-                        "associateAfterCreate", false,
-                        "initialMappings", List.of())));
-        UiViewComposition composition = existing(fixture.codec, 1);
-        composition.setConfigDocument(fixture.codec.write(config, "test"));
-        when(fixture.mapper.findByOwner("FORM", "form-1"))
-                .thenReturn(List.of(composition));
-
-        Map<String, Object> owner = ownerSnapshot(
-                fixture.service.snapshot("FORM", "form-1"), List.of());
-        owner.put("legacyFields", List.of(Map.of(
-                "fieldCode", "selectedRequirementName",
-                "isHidden", 0,
-                "isReadonly", 0)));
-        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot(
-                "FORM", "form-1", owner));
-
-        Map<String, Object> readonlyOwner = fixture.codec.readObject(
-                fixture.codec.write(owner, "test"), "test");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> ownerField = (Map<String, Object>)
-                ((List<?>) readonlyOwner.get("legacyFields")).get(0);
-        ownerField.put("isReadonly", 1);
-        IllegalArgumentException readonlyFailure = assertThrows(
-                IllegalArgumentException.class,
-                () -> fixture.service.validateReleaseSnapshot(
-                        "FORM", "form-1", readonlyOwner));
-        assertTrue(readonlyFailure.getMessage().contains(
-                "当前字段未在固定表单版本的“编辑”模式中开放"));
-        assertTrue(readonlyFailure.getMessage().contains(
-                "返回第三步“允许做什么”"));
-    }
-
-    @Test
-    void releaseSnapshotRejectsSelectMappingFromHiddenTargetListField() {
-        Fixture fixture = fixture();
-        updateTargetRelease(
-                fixture,
-                "LIST",
-                "list-target",
-                targetListReleaseDocument(false));
-        Map<String, Object> config = new LinkedHashMap<>(config());
-        config.put("actions", List.of("VIEW", "SELECT"));
-        config.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "SINGLE",
-                        "result", "FILL_FIELDS",
-                        "mappings", List.of(Map.of(
-                                "sourceField", "requirementName",
-                                "targetField", "selectedRequirementName"))),
-                "create", Map.of(
-                        "associateAfterCreate", false,
-                        "initialMappings", List.of())));
-        UiViewComposition composition = existing(fixture.codec, 1);
-        composition.setConfigDocument(fixture.codec.write(config, "test"));
-        when(fixture.mapper.findByOwner("FORM", "form-1"))
-                .thenReturn(List.of(composition));
-        Map<String, Object> owner = ownerSnapshot(
-                fixture.service.snapshot("FORM", "form-1"), List.of());
-        owner.put("legacyFields", List.of(Map.of(
-                "fieldCode", "selectedRequirementName",
-                "isHidden", 0,
-                "isReadonly", 0)));
-
-        IllegalArgumentException failure = assertThrows(
-                IllegalArgumentException.class,
-                () -> fixture.service.validateReleaseSnapshot(
-                        "FORM", "form-1", owner));
-        assertTrue(failure.getMessage().contains(
-                "目标字段未在固定列表版本中显示"));
+        for (String action : List.of("SELECT", "LINK", "UNLINK", "SAVE_WITH_FORM")) {
+            Map<String, Object> config = new LinkedHashMap<>(config());
+            config.put("actions", List.of("VIEW", action));
+            assertThrows(IllegalArgumentException.class,
+                    () -> fixture.service.validate("FORM", "form-1", config), action);
+            UiViewComposition composition = existing(fixture.codec, 1);
+            composition.setConfigDocument(fixture.codec.write(config, "test"));
+            when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(composition));
+            assertThrows(IllegalArgumentException.class,
+                    () -> fixture.service.snapshot("FORM", "form-1"), action);
+        }
     }
 
     @Test
@@ -525,12 +560,7 @@ class UiViewCompositionServiceTest {
                 "contentName", "需求详情"));
         config.put("actions", List.of("VIEW", "CREATE"));
         config.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "SINGLE",
-                        "result", "FILL_FIELDS",
-                        "mappings", List.of()),
                 "create", Map.of(
-                        "associateAfterCreate", false,
                         "initialMappings", List.of(Map.of(
                                 "sourceField", "projectCode",
                                 "targetField", "requirementProjectCode")))));
@@ -576,12 +606,7 @@ class UiViewCompositionServiceTest {
         Map<String, Object> config = new LinkedHashMap<>(config());
         config.put("actions", List.of("VIEW", "CREATE", "EDIT"));
         config.put("actionSettings", Map.of(
-                "select", Map.of(
-                        "mode", "SINGLE",
-                        "result", "LINK",
-                        "mappings", List.of()),
                 "create", Map.of(
-                        "associateAfterCreate", false,
                         "initialMappings", List.of())));
         UiViewComposition composition = existing(fixture.codec, 1);
         composition.setConfigDocument(fixture.codec.write(config, "test"));
@@ -1135,7 +1160,7 @@ class UiViewCompositionServiceTest {
         relation.setOwnershipType(EntityRelation.OwnershipType.COMPOSITION);
         Map<String, Object> config = relationConfig();
         assertDoesNotThrow(() -> fixture.service.validate("FORM", "form-1", config));
-        config.put("actions", List.of("UNLINK"));
+        config.put("actions", List.of("EDIT"));
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> fixture.service.validate("FORM", "form-1", config));
         assertTrue(failure.getMessage().contains("随主表保存"));

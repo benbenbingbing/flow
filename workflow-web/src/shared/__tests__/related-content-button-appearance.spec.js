@@ -30,7 +30,7 @@ async function setupRuntime(presentation = {}) {
     getEffectiveEntityStatusOptions: () => [], relatedFormDraftGuardKey: Symbol('draft'),
     BuiltInActionButton: { name: 'BuiltInActionButton' },
     ElMessage: { error(message) { throw new Error(message) }, success() {}, warning() {} }
-  }, 'resolved, targetForm, targetRecord, targetRendererRef, actionCapabilities, targetSaveLoading, loading, actionLoading, canSaveTarget, toolbarActions, showTopActions, showBottomActions, RuntimeActions, saveTarget, refresh, openLinkCandidates')
+  }, 'resolved, targetForm, targetRecord, targetRendererRef, actionCapabilities, targetSaveLoading, loading, actionLoading, canSaveTarget, toolbarActions, showTopActions, showBottomActions, RuntimeActions, saveTarget, refresh')
   state.resolved.value = { targetContentType: 'FORM', targetRecordId: 'child-1', compositionContext: 'trusted-context' }
   state.targetForm.value = { id: 'child-form' }
   state.actionCapabilities.value = { EDIT: { available: true } }
@@ -80,18 +80,15 @@ test('自定义外观及上下双栏共享原保存动作和加载状态，无�
   }
 })
 
-test('列表按钮排序只影响已授权动作，切换弹窗或抽屉仍保留原有入口集合', async () => {
-  const { props, state, render } = await setupRuntime({ actionBar: { buttons: { link: { sort: 0 }, refresh: { sort: 100 } } } })
+test('关联列表内嵌时提供刷新入口，目标列表继续使用自己的新增编辑按钮', async () => {
+  const { props, state, render } = await setupRuntime({ actionBar: { buttons: { refresh: { label: '重新加载', sort: 100 } } } })
   state.resolved.value.targetContentType = 'LIST'
-  state.actionCapabilities.value = { LINK: { available: true } }
-  assert.deepEqual(state.toolbarActions.value.map(action => action.key), ['link', 'refresh'])
-  assert.deepEqual(render().children.map(button => button.props.onClick), [state.openLinkCandidates, state.refresh])
-  state.actionCapabilities.value.LINK.available = false
+  state.actionCapabilities.value = { VIEW: { available: true }, CREATE: { available: true }, EDIT: { available: true } }
   assert.deepEqual(state.toolbarActions.value.map(action => action.key), ['refresh'])
-  state.actionCapabilities.value.LINK.available = true
+  assert.deepEqual(render().children.map(button => button.props.onClick), [state.refresh])
   for (const position of ['DIALOG', 'DRAWER', 'PAGE']) {
     props.composition.config.presentation.position = position
-    assert.deepEqual(state.toolbarActions.value.map(action => action.key), ['link'])
+    assert.deepEqual(state.toolbarActions.value.map(action => action.key), [])
   }
 })
 
@@ -134,7 +131,6 @@ test('设计器按目标类型和展示方式提供固定外观入口，切换�
   editor.config.target.contentType = 'LIST'
   assert.deepEqual(state.buttonActions.value.map(action => action.key), ['open'])
   editor.config.presentation.position = 'INLINE'
-  editor.config.actions = ['LINK']
-  assert.deepEqual(state.buttonActions.value.map(action => action.key), ['refresh', 'link'])
+  assert.deepEqual(state.buttonActions.value.map(action => action.key), ['refresh'])
   assert.equal(editor.config.presentation.actionBar.buttons.open.label, '打开验收')
 })

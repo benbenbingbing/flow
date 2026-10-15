@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.workflow.entity.ui.application.validation.UiViewCompositionConfigValidator;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.workflow.core.error.BusinessConflictException;
@@ -496,6 +497,43 @@ public class UiViewCompositionService {
     }
 
     /**
+     * 读取设计态比较快照，允许设计器展示尚未满足发布规则的草稿。
+     *
+     * <p>草稿保存时已经完成规范化，这里不再次执行保存或发布校验。可用依赖仍按
+     * 发布快照规则钉定，保证有效草稿的比较哈希不变；依赖缺失时保留原始文档，
+     * 让用户能够查看差异并修复。结果只用于设计态，不能作为可执行发布制品。</p>
+     *
+     * @param ownerType FORM 或 LIST，仍会检查宿主访问权限
+     * @param ownerId 宿主配置 ID
+     * @return 不含 revision、时间等易变值的草稿条目
+     */
+    public List<Map<String, Object>> draftSnapshot(String ownerType, String ownerId) {
+        OwnerState owner = requireOwner(ownerType, ownerId, false);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (UiViewComposition value : mapper.findByOwner(owner.type(), owner.id())) {
+            Map<String, Object> config = readConfig(value.getConfigDocument());
+            // 钉定会分多步更新嵌套字段；必须在独立副本上进行，失败后不能留下
+            // 一半新依赖、一半旧配置的比较文档，也不能修改数据库中的草稿。
+            Map<String, Object> pinned = readConfig(value.getConfigDocument());
+            try {
+                pinPublishedDependencies(pinned, owner.entityId());
+                config = pinned;
+            } catch (IllegalArgumentException | BusinessConflictException exception) {
+                // 仅容忍配置/依赖业务错误；权限失败和数据库故障仍向调用方传播。
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", value.getId());
+            item.put("compositionKey", value.getCompositionKey());
+            item.put("anchorType", value.getAnchorType());
+            item.put("anchorKey", value.getAnchorKey());
+            item.put("orderKey", value.getOrderKey());
+            item.put("config", config);
+            result.add(item);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * 将历史发布中的关联内容投影为“按当前依赖重新钉定”的稳定比较副本。
      *
      * <p>撤销预检需要区分用户草稿变更和目标资产/接口扩展的依赖漂移。本方法
@@ -963,7 +1001,7 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 将关联内容草稿中的接口引用收敛为 extensionId。
+     * 将独立扩展页面草稿中的接口引用收敛为 extensionId。
      *
      * <p>旧 serviceId + operationCode 仅用来查找 V088 迁移产生的扩展记录；
      * 新增、修改、复制、撤销恢复与迁移导入落库前都经过该方法，
@@ -987,7 +1025,7 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 规范化接口引用；输出作为后续校验或处理的输入。
+     * 仅规范化独立扩展页面的接口引用，普通关系的废弃引用原样回显供设计器清理。
      *
      * @param config 配置内容，决定后续接口引用的处理规则
      * @param executableRequired {@code executable}必填，供本方法规范化接口引用时使用
@@ -995,6 +1033,11 @@ public class UiViewCompositionService {
     private void normalizeInterfaceReferences(
             Map<String, Object> config,
             boolean executableRequired) {
+        // 废弃接口的定义可能已删除，读取普通关系不能再依赖它；保留原始字段，
+        // 让前端识别清理差异并将配置标脏，避免仅在 DTO 中丢弃而无法持久化清理。
+        if (!UiViewCompositionExtensionPolicy.allowsInterfaceExtensions(config.get("relation"))) {
+            return;
+        }
         Map<String, Object> special = stringMap(
                 requireMap(config.get("specialHandling"), "特殊处理"));
         if (special.get("interfaceService") instanceof Map<?, ?> raw) {
@@ -1892,8 +1935,7 @@ public class UiViewCompositionService {
                         "本地写入失败时必须停止操作，不能隐藏错误或显示占位");
             }
             if ("WRITE".equals(operation.interfaceKind())
-                    && Set.of("VIEW", "SELECT", "CREATE", "EDIT",
-                    "LINK", "UNLINK", "SAVE_WITH_FORM").contains(
+                    && Set.of("VIEW", "CREATE", "EDIT").contains(
                     normalize(String.valueOf(service.get("actionKey"))))) {
                 throw new IllegalArgumentException(
                         "标准页面操作由平台权威执行；同名接口只能选择 READ 操作用于校验、计算或界面结果");
@@ -2094,8 +2136,7 @@ public class UiViewCompositionService {
                         label + "本地写入失败时必须停止操作");
             }
             if ("WRITE".equals(operation.interfaceKind())
-                    && Set.of("VIEW", "SELECT", "CREATE", "EDIT",
-                    "LINK", "UNLINK", "SAVE_WITH_FORM").contains(
+                    && Set.of("VIEW", "CREATE", "EDIT").contains(
                     normalize(String.valueOf(service.get("actionKey"))))) {
                 throw new BusinessConflictException(
                         "UI_VIEW_COMPOSITION_STANDARD_ACTION_WRITE_FORBIDDEN",
@@ -2501,7 +2542,7 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 校验第三步动作中的字段映射确实存在于宿主和目标的精确发布快照。
+     * 校验页面传参与新增初值映射确实存在于宿主和目标的精确发布快照。
      *
      * <p>设计态字段目录可能在发布前发生变化；只校验实体当前字段会让配置
      * 发布成功后才在运行时变成不可用。这里同时验证钉定实体结构和 FORM/LIST
@@ -2546,49 +2587,6 @@ public class UiViewCompositionService {
                 ? values.stream().map(String::valueOf).map(this::normalize).toList()
                 : List.of();
 
-        Map<String, Object> select = requireMap(
-                settings.get("select"), label + "选择记录设置");
-        if (actions.contains("SELECT")
-                && "FILL_FIELDS".equals(normalize(String.valueOf(
-                select.get("result"))))) {
-            if (!"FORM".equals(ownerType)
-                    || !"LIST".equals(normalize(String.valueOf(
-                    target.get("contentType"))))) {
-                throw new IllegalArgumentException(
-                        label + "选择记录回填只适用于表单中的目标列表，请修改“允许做什么”");
-            }
-            int index = 0;
-            for (Map<String, Object> mapping : mappingList(
-                    select.get("mappings"))) {
-                index++;
-                if (mapping.containsKey("literal")) {
-                    throw mappingInvalid(
-                            label, "选择结果回填", index,
-                            "来源必须是目标列表字段，不能使用固定值");
-                }
-                String targetField = firstMappingField(
-                        mapping, "sourceField", "source");
-                String ownerField = firstMappingField(
-                        mapping, "targetField", "target");
-                requirePublishedListReadableField(
-                        targetSnapshot,
-                        schemas.target(),
-                        targetField,
-                        label,
-                        "选择结果回填",
-                        index);
-                requirePublishedFormEditableField(
-                        ownerSnapshot,
-                        schemas.source(),
-                        ownerField,
-                        "edit",
-                        label,
-                        "选择结果回填",
-                        index,
-                        true);
-            }
-        }
-
         Map<String, Object> create = requireMap(
                 settings.get("create"), label + "新增记录设置");
         // CREATE 对 FORM 与 LIST 目标均开放：FORM 目标走发布表单提交桥，
@@ -2626,8 +2624,7 @@ public class UiViewCompositionService {
                         "create",
                         label,
                         "新增初值",
-                        index,
-                        false);
+                        index);
             }
         }
     }
@@ -2692,47 +2689,6 @@ public class UiViewCompositionService {
     }
 
     /**
-     * 校验并获取已发布列表可读字段；不满足约束时阻止后续处理。
-     *
-     * @param snapshot 快照，作为 {@code findListField} 的输入影响后续处理
-     * @param schema 结构，作为 {@code publishedField} 的输入影响后续处理
-     * @param fieldCode 字段编码，后续用于校验并获取已发布列表可读字段时定位或关联目标
-     * @param label 标签，后续用于校验并获取已发布列表可读字段时匹配或展示
-     * @param mappingLabel 映射标签，后续用于校验并获取已发布列表可读字段时匹配或展示
-     * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
-     */
-    private void requirePublishedListReadableField(
-            Map<String, Object> snapshot,
-            EntityPublishedSnapshot schema,
-            String fieldCode,
-            String label,
-            String mappingLabel,
-            int index) {
-        EntityField field = publishedField(
-                schema, fieldCode, label, mappingLabel, index, "目标");
-        if (Boolean.FALSE.equals(field.getRuntimeReadable())) {
-            throw mappingInvalid(
-                    label, mappingLabel, index,
-                    "目标字段不可用于运行时回填: " + fieldCode);
-        }
-        Map<String, Object> published = findListField(snapshot, fieldCode);
-        if (published == null || !flag(published.get("showInList"))) {
-            throw mappingInvalid(
-                    label, mappingLabel, index,
-                    "目标字段未在固定列表版本中显示: " + fieldCode
-                            + "；请在目标列表中显示该字段后重新发布");
-        }
-        String sourceType = normalize(String.valueOf(
-                published.get("dataSourceType")));
-        if (StringUtils.hasText(sourceType)
-                && !Set.of("ENTITY_FIELD", "REFERENCE").contains(sourceType)) {
-            throw mappingInvalid(
-                    label, mappingLabel, index,
-                    "计算列或自定义列不能直接回填实体字段: " + fieldCode);
-        }
-    }
-
-    /**
      * 校验并获取已发布表单可编辑字段；不满足约束时阻止后续处理。
      *
      * @param snapshot 快照，作为 {@code findFormField} 的输入影响后续处理
@@ -2742,7 +2698,6 @@ public class UiViewCompositionService {
      * @param label 标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
      * @param mappingLabel 映射标签，后续用于校验并获取已发布表单可编辑字段时匹配或展示
      * @param index 索引，作为 {@code publishedField} 的输入影响后续处理
-     * @param ownerField 归属方字段，作为 {@code publishedField} 的输入影响后续处理
      */
     private void requirePublishedFormEditableField(
             Map<String, Object> snapshot,
@@ -2751,20 +2706,18 @@ public class UiViewCompositionService {
             String mode,
             String label,
             String mappingLabel,
-            int index,
-            boolean ownerField) {
+            int index) {
         EntityField field = publishedField(
                 schema,
                 fieldCode,
                 label,
                 mappingLabel,
                 index,
-                ownerField ? "当前表单" : "目标表单");
+                "目标表单");
         if (Boolean.FALSE.equals(field.getEditable())) {
             throw mappingInvalid(
                     label, mappingLabel, index,
-                    (ownerField ? "当前实体字段" : "目标实体字段")
-                            + "不可编辑: " + fieldCode);
+                    "目标实体字段不可编辑: " + fieldCode);
         }
         Map<String, Object> published = findFormField(snapshot, fieldCode);
         if (published == null
@@ -2773,8 +2726,7 @@ public class UiViewCompositionService {
                 || !editableInPublishedMode(published, mode)) {
             throw mappingInvalid(
                     label, mappingLabel, index,
-                    (ownerField ? "当前字段" : "目标字段")
-                            + "未在固定表单版本的“"
+                    "目标字段未在固定表单版本的“"
                             + ("create".equals(mode) ? "新增" : "编辑")
                             + "”模式中开放: " + fieldCode);
         }
@@ -3739,7 +3691,7 @@ public class UiViewCompositionService {
             throw new IllegalStateException("关联内容保存后未能重新读取");
         }
         Map<String, Object> config = readConfig(value.getConfigDocument());
-        // 旧草稿回显时保留已停用接口供用户修正，但不允许其真正执行或发布。
+        // 独立扩展页面仍规范化旧接口；普通关系原样回显废弃字段供前端标脏清理。
         normalizeReadableInterfaceReferences(config);
         return UiViewCompositionDTO.builder()
                 .id(value.getId())

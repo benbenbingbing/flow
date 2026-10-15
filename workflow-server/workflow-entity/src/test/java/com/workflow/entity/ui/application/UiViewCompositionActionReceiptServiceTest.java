@@ -10,7 +10,6 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.BusinessConflictException;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionChangedReferenceDTO;
 import com.workflow.entity.mutation.application.EntityMutationReceiptService;
 import com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
 import com.workflow.entity.mutation.infrastructure.persistence.record.EntityMutationReceipt;
@@ -98,37 +97,34 @@ class UiViewCompositionActionReceiptServiceTest {
     @Test
     void exactSortedTargetSetReplaysWholeBatch() {
         UiViewCompositionActionReceiptService.AcquireResult first = acquire(
-                "LINK", List.of("target-2", "target-1"), "operation-1");
+                "EXECUTE_INTERFACE:sync", List.of("target-2", "target-1"), "operation-1");
         assertNull(first.replayedResponse());
         service.complete(first.receiptCommand(), response(
-                "LINK", "operation-1", List.of("target-2", "target-1")));
+                "EXECUTE_INTERFACE:sync", "operation-1", List.of("target-2", "target-1")));
 
         UiViewCompositionActionReceiptService.AcquireResult replay = acquire(
-                "LINK", List.of("target-1", "target-2"), "operation-1");
+                "EXECUTE_INTERFACE:sync", List.of("target-1", "target-2"), "operation-1");
 
         assertTrue(replay.replayedResponse().isReplayed());
-        assertEquals(2, replay.replayedResponse()
-                .getChangedReferences().size());
-        assertTrue(replay.replayedResponse()
-                .getChangedReferences().stream()
-                .allMatch(UiViewCompositionChangedReferenceDTO::isReplayed));
+        assertEquals(Map.of("processedIds", List.of("target-2", "target-1")),
+                replay.replayedResponse().getActionResult());
     }
 
     @Test
     void sameOperationRejectsActionOrTargetSetChangeBeforeNewReceipt() {
         UiViewCompositionActionReceiptService.AcquireResult first = acquire(
-                "LINK", List.of("target-1"), "operation-2");
+                "EXECUTE_INTERFACE:sync", List.of("target-1"), "operation-2");
         service.complete(first.receiptCommand(), response(
-                "LINK", "operation-2", List.of("target-1")));
+                "EXECUTE_INTERFACE:sync", "operation-2", List.of("target-1")));
 
         assertThrows(
                 BusinessConflictException.class,
                 () -> acquire(
-                        "UNLINK", List.of("target-1"), "operation-2"));
+                        "EXECUTE_INTERFACE:recalculate", List.of("target-1"), "operation-2"));
         assertThrows(
                 BusinessConflictException.class,
                 () -> acquire(
-                        "LINK", List.of("target-1", "target-2"),
+                        "EXECUTE_INTERFACE:sync", List.of("target-1", "target-2"),
                         "operation-2"));
         assertEquals(1, receipts.size());
     }
@@ -136,13 +132,13 @@ class UiViewCompositionActionReceiptServiceTest {
     @Test
     void sameClientOperationFromAnotherUserNeverReplaysFirstUsersResult() {
         UiViewCompositionActionReceiptService.AcquireResult first = acquire(
-                "LINK", List.of("target-1"), "operation-3");
+                "EXECUTE_INTERFACE:sync", List.of("target-1"), "operation-3");
         service.complete(first.receiptCommand(), response(
-                "LINK", "operation-3", List.of("target-1")));
+                "EXECUTE_INTERFACE:sync", "operation-3", List.of("target-1")));
 
         UserContext.setCurrentUser("user-b", "Bob");
         UiViewCompositionActionReceiptService.AcquireResult other = acquire(
-                "LINK", List.of("target-1"), "operation-3");
+                "EXECUTE_INTERFACE:sync", List.of("target-1"), "operation-3");
 
         assertNull(other.replayedResponse());
         assertFalse(first.receiptCommand().context().idempotencyKey()
@@ -175,17 +171,7 @@ class UiViewCompositionActionReceiptServiceTest {
                 .operationId(operationId)
                 .action(action)
                 .sourceRecordId("source-1")
-                .changedReferences(targetIds.stream()
-                        .map(targetId ->
-                                UiViewCompositionChangedReferenceDTO.builder()
-                                        .sourceRecordId("source-1")
-                                        .targetRecordId(targetId)
-                                        .relationType("REVERSE_REFERENCE")
-                                        .linked(true)
-                                        .changed(true)
-                                        .replayed(false)
-                                        .build())
-                        .toList())
+                .actionResult(Map.of("processedIds", targetIds))
                 .build();
     }
 }

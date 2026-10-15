@@ -64,42 +64,6 @@
       <RuntimeActions v-if="showBottomActions" bottom />
     </el-drawer>
 
-    <el-dialog
-      v-model="candidateVisible"
-      title="选择要关联的记录"
-      width="82%"
-      destroy-on-close
-    >
-      <el-skeleton v-if="candidateLoading" :rows="5" animated />
-      <el-alert
-        v-else-if="candidateError"
-        title="候选记录加载失败"
-        :description="candidateError"
-        type="error"
-        :closable="false"
-        show-icon
-      />
-      <el-empty
-        v-else-if="candidateContext?.matchNone"
-        description="当前没有可建立关联的记录；单值关系已有记录时，请先解除原关联"
-      />
-      <AsyncEntityDataList
-        v-else-if="candidateContext"
-        :entity-code="candidateContext.targetEntityCode"
-        :list-key="candidateContext.targetContentKey"
-        :composition-context="candidateContext.compositionContext"
-        :candidate-action="linkCandidateAction"
-        :selection-mode="candidateSelectionMode"
-        :selection-action-options="candidateActionOptions"
-        scene="EMBEDDED"
-        embedded
-        :show-toolbar="false"
-        :show-row-actions="false"
-        :show-search="true"
-        :show-pagination="true"
-        @selection-action="executeCandidateSelectionAction"
-      />
-    </el-dialog>
   </div>
 </template>
 
@@ -162,7 +126,6 @@ const props = defineProps({
   sourceRecordId: { type: [String, Number], default: '' },
   sourceData: { type: Object, default: () => ({}) },
   sourceParameters: { type: Object, default: () => ({}) },
-  hostReadonly: { type: Boolean, default: false },
   mode: { type: String, default: 'view' },
   compositionContext: { type: Object, default: () => null },
   configHash: { type: String, default: '' },
@@ -171,7 +134,7 @@ const props = defineProps({
   showTrigger: { type: Boolean, default: true }
 })
 
-const emit = defineEmits(['target-saved', 'source-patch'])
+const emit = defineEmits(['target-saved'])
 const resolved = ref(null)
 const loading = ref(false)
 const actionLoading = ref(false)
@@ -180,10 +143,6 @@ const actionCapabilityError = ref('')
 const actionCapabilities = ref({})
 const actionFailure = ref(null)
 const presentationVisible = ref(false)
-const candidateVisible = ref(false)
-const candidateLoading = ref(false)
-const candidateError = ref('')
-const candidateContext = ref(null)
 const targetEntity = ref(null)
 const targetForm = ref(null)
 const targetRecord = ref(null)
@@ -203,6 +162,12 @@ const config = computed(() => props.composition?.config || {})
 const presentation = computed(() => config.value.presentation || {})
 const visibilityAllows = computed(() => relatedContentIsVisible(presentation.value, props.sourceData, props.mode))
 const specialHandling = computed(() => config.value.specialHandling || {})
+// 动作接口仅属于独立扩展页面；旧普通关系发布配置不能再暴露接口调用入口。
+const allowsActionExtensions = computed(() => ['SAME_RECORD', 'INTERFACE_SERVICE'].includes(
+  String(config.value.relation?.type || '').toUpperCase()
+))
+const actionServices = computed(() => allowsActionExtensions.value
+  ? specialHandling.value.actionServices || [] : [])
 const customComponentConfig = computed(
   () => specialHandling.value.customComponent || {}
 )
@@ -240,12 +205,12 @@ const triggerLabel = computed(() =>
     : `查看${displayTitle.value}`
 )
 const publishedActionServiceKeys = computed(() => new Set(
-  (specialHandling.value.actionServices || [])
+  actionServices.value
     .map(binding => String(binding?.actionKey || '').trim().toUpperCase())
     .filter(action => /^[A-Z][A-Z0-9_.-]{0,99}$/.test(action))
 ))
 const actionServiceBindings = computed(() => new Map(
-  (specialHandling.value.actionServices || [])
+  actionServices.value
     .map(binding => [
       String(binding?.actionKey || '').trim().toUpperCase(),
       binding
@@ -265,58 +230,6 @@ const compositionContext = computed(() => (
   resolved.value?.compositionContext
   || ''
 ))
-const selectSettings = computed(() => config.value.actionSettings?.select || {})
-const selectionActionOptions = computed(() => {
-  const result = []
-  const selectResult = String(selectSettings.value.result || '').toUpperCase()
-  if (!props.hostReadonly
-    && actions.value.has('SELECT')
-    && selectResult !== 'LINK') {
-    result.push({
-      action: 'SELECT',
-      label: '确认选择',
-      type: 'primary'
-    })
-  }
-  if (actions.value.has('UNLINK')) {
-    result.push({ action: 'UNLINK', label: '解除关联', type: 'danger' })
-  }
-  return result
-})
-const linkCandidateAction = computed(() => {
-  const selectResult = String(selectSettings.value.result || '').toUpperCase()
-  if (actions.value.has('SELECT')
-    && actions.value.has('LINK')
-    && selectResult === 'LINK') return 'SELECT'
-  return actions.value.has('LINK') ? 'LINK' : ''
-})
-const canPickLinkCandidate = computed(() =>
-  resolved.value?.targetContentType === 'LIST'
-    && Boolean(linkCandidateAction.value)
-)
-const candidateSelectionMode = computed(() => {
-  if (linkCandidateAction.value === 'SELECT') {
-    return String(selectSettings.value.mode || 'SINGLE').toUpperCase()
-  }
-  return String(config.value.relation?.type || '').toUpperCase()
-    === 'REFERENCE_FIELD' ? 'SINGLE' : 'MULTIPLE'
-})
-const candidateActionOptions = computed(() => linkCandidateAction.value
-  ? [{
-      action: linkCandidateAction.value,
-      label: '选择并建立关联',
-      type: 'primary'
-    }]
-  : []
-)
-const runtimeSelectionMode = computed(() => {
-  if (!selectionActionOptions.value.length) return 'NONE'
-  if (actions.value.has('SELECT')) {
-    return String(selectSettings.value.mode || 'SINGLE').toUpperCase()
-  }
-  return String(config.value.relation?.type || '').toUpperCase()
-    === 'REFERENCE_FIELD' ? 'SINGLE' : 'MULTIPLE'
-})
 const targetSaveAction = computed(() => resolved.value?.targetRecordId ? 'EDIT' : 'CREATE')
 const canSaveTarget = computed(() =>
   resolved.value?.targetContentType === 'FORM'
@@ -333,9 +246,6 @@ const toolbarActions = computed(() => {
   }
   if (canSaveTarget.value) {
     result.push({ key: 'save', label: '保存子表单', sort: 10, loading: targetSaveLoading.value, disabled: loading.value || actionLoading.value, onClick: saveTarget })
-  }
-  if (canPickLinkCandidate.value) {
-    result.push({ key: 'link', label: '选择并建立关联', sort: 20, disabled: actionLoading.value, onClick: openLinkCandidates })
   }
   return result.sort((left, right) =>
     resolveBuiltInButton(presentation.value.actionBar, left.key, left).sort
@@ -636,10 +546,6 @@ function clearResolvedState() {
   actionCapabilities.value = {}
   actionCapabilityError.value = ''
   actionFailure.value = null
-  candidateVisible.value = false
-  candidateLoading.value = false
-  candidateError.value = ''
-  candidateContext.value = null
 }
 
 /**
@@ -746,94 +652,11 @@ function beforePresentationClose(done) {
   done()
 }
 
-/**
- * 候选弹窗只请求服务端根据已发布关系签发的专用列表上下文，不向接口提交
- * entityCode、listKey 或筛选条件。这样“当前已关联列表”和“可新建关联候选”
- * 始终是两个用途隔离的可信范围。
- */
-async function openLinkCandidates() {
-  if (!canPickLinkCandidate.value
-    || !compositionContext.value
-    || candidateLoading.value) return
-  candidateVisible.value = true
-  candidateLoading.value = true
-  candidateError.value = ''
-  candidateContext.value = null
-  try {
-    candidateContext.value = await uiCompositionRuntimeApi.linkCandidates(
-      compositionContext.value,
-      linkCandidateAction.value
-    )
-  } catch (error) {
-    candidateError.value = error?.message || '无法加载可建立关联的候选记录'
-  } finally {
-    candidateLoading.value = false
-  }
-}
-
 function createOperationId(action) {
   const suffix = globalThis.crypto?.randomUUID?.()
     || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   // 同一个安全格式 operationId 同时贯穿请求 Trace、系统审计和实体变更回执。
   return `related-content_${String(action || '').toLowerCase()}_${suffix}`
-}
-
-/**
- * 浏览器只传关联来源和选中记录 ID。服务端会重新读取记录、验证目标列表
- * 范围并应用发布时固定的映射；前端行数据绝不会直接写入宿主或关系字段。
- */
-async function executeSelectionAction(
-  action,
-  rows = [],
-  candidateContext = null
-) {
-  if (!compositionContext.value || actionLoading.value) return null
-  const targetRecordIds = rows
-    .map(row => String(row?.id || '').trim())
-    .filter(Boolean)
-  if (!targetRecordIds.length) {
-    ElMessage.warning('请先选择目标记录')
-    return null
-  }
-  actionLoading.value = true
-  actionFailure.value = null
-  try {
-    const result = await uiCompositionRuntimeApi.executeAction({
-      compositionContext: compositionContext.value,
-      candidateAction: candidateContext ? action : undefined,
-      action,
-      targetRecordIds,
-      input: {},
-      operationId: createOperationId(action)
-    })
-    if (result?.actionCapabilities) {
-      actionCapabilities.value = result.actionCapabilities
-    }
-    if (result?.sourcePatch
-      && Object.keys(result.sourcePatch).length > 0) {
-      emit('source-patch', result.sourcePatch)
-    }
-    if (Array.isArray(result?.changedReferences)
-      && result.changedReferences.length > 0) {
-      await refresh()
-      emit('target-saved', resolved.value)
-      candidateVisible.value = false
-      candidateContext.value = null
-    }
-    ElMessage.success(
-      String(action).toUpperCase() === 'UNLINK'
-        ? '关联已解除'
-        : String(action).toUpperCase() === 'LINK'
-          ? '关联已建立'
-          : '选择结果已处理'
-    )
-    if (!inlinePresentation.value) presentationVisible.value = false
-    return result
-  } catch (error) {
-    return handleActionFailure(action, error)
-  } finally {
-    actionLoading.value = false
-  }
 }
 
 /**
@@ -843,15 +666,9 @@ async function executeSelectionAction(
  */
 async function executeBoundAction(action, payload = {}) {
   const actionKey = String(action || '').trim().toUpperCase()
-  if (!actionKey || !actions.value.has(actionKey)) {
+  if (!allowsActionExtensions.value || !actionKey || !actions.value.has(actionKey)) {
     ElMessage.error('当前发布版本未开放该操作')
     return null
-  }
-  if (['SELECT', 'LINK', 'UNLINK'].includes(actionKey)) {
-    return executeSelectionAction(
-      actionKey,
-      (payload.targetRecordIds || []).map(id => ({ id }))
-    )
   }
   if (!compositionContext.value || actionLoading.value) return null
   const targetRecordIds = Array.from(new Set(
@@ -879,15 +696,6 @@ async function executeBoundAction(action, payload = {}) {
   } finally {
     actionLoading.value = false
   }
-}
-
-async function executeCandidateSelectionAction(action, rows = []) {
-  const sourceContext = candidateContext.value?.compositionContext
-  if (!sourceContext || action !== linkCandidateAction.value) {
-    ElMessage.error('候选列表上下文已失效，请重新打开')
-    return null
-  }
-  return executeSelectionAction(action, rows, sourceContext)
 }
 
 /**
@@ -981,8 +789,7 @@ const RuntimeBody = defineComponent({
           runtime: {
             refresh,
             query: queryTarget,
-            dispatch: executeBoundAction,
-            openLinkCandidates,
+            ...(allowsActionExtensions.value ? { dispatch: executeBoundAction } : {}),
             capabilities: Array.from(actions.value),
             actionCapabilities: actionCapabilities.value
           }
@@ -998,12 +805,9 @@ const RuntimeBody = defineComponent({
           relatedContentActions: Array.from(actions.value),
           // 列表目标复用其发布工具栏；EntityDataList 仍执行列表按钮权限与能力校验。
           showTargetListToolbarActions: true,
-          selectionMode: runtimeSelectionMode.value,
-          selectionActionOptions: selectionActionOptions.value,
           scene: 'EMBEDDED',
           embedded: true,
-          ...relatedContentListProps(presentation.value, Array.from(actions.value)),
-          onSelectionAction: executeSelectionAction
+          ...relatedContentListProps(presentation.value, Array.from(actions.value))
         })
       }
       if (targetForm.value && targetRecord.value) {

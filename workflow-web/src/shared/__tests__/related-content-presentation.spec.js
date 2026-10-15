@@ -21,7 +21,7 @@ const actionBar = {
 }
 assert.equal(relatedContentPresentationError({ actionBar }, 'FORM'), '')
 assert.notEqual(relatedContentPresentationError({ actionBar }, 'LIST'), '', '表单保存按钮不能混入列表外观配置')
-assert.equal(relatedContentPresentationError({ actionBar: { buttons: { refresh: { label: '重新加载' }, link: { label: '关联已有记录' }, open: { label: '查看记录' } } } }, 'LIST'), '')
+assert.equal(relatedContentPresentationError({ actionBar: { buttons: { refresh: { label: '重新加载' }, open: { label: '查看记录' } } } }, 'LIST'), '')
 for (const invalid of [
   null,
   { position: 'HIDDEN' },
@@ -36,5 +36,5 @@ for (const invalid of [
 }
 const switchedToList = normalizeRelatedContentActionBar({ ...actionBar, buttons: { ...actionBar.buttons, open: { label: '查看验收' } } }, 'LIST')
 assert.deepEqual(switchedToList, { position: 'BOTH', align: 'RIGHT', gap: 12, buttons: { open: { label: '查看验收' } } }, '表单改为列表仅移除表单专属按钮')
-assert.deepEqual(normalizeRelatedContentActionBar({ ...switchedToList, buttons: { ...switchedToList.buttons, refresh: { label: '刷新' }, link: { label: '关联' } } }, 'FORM'), switchedToList, '列表改为表单保留打开入口和布局')
+assert.deepEqual(normalizeRelatedContentActionBar({ ...switchedToList, buttons: { ...switchedToList.buttons, refresh: { label: '刷新' } } }, 'FORM'), switchedToList, '列表改为表单保留打开入口和布局')
 console.log('related content presentation tests passed')

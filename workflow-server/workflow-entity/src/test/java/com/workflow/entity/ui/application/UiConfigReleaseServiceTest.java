@@ -249,6 +249,55 @@ class UiConfigReleaseServiceTest {
     }
 
     @Test
+    void diffReadsInvalidCompositionDraftWithoutInvokingPublicationValidation() {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1")).thenReturn(draft);
+        Map<String, Object> baseline = context.service().draftSnapshot("FORM", "form-1");
+        UiConfigRelease active = configRelease(context.codec(), "release-active", "FORM", "form-1", baseline);
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
+        Map<String, Object> unfinished = Map.of(
+                "id", "composition-1", "compositionKey", "related", "anchorType", "OWNER", "anchorKey", "",
+                "orderKey", 1000, "config", Map.of("actions", List.of("UNKNOWN_ACTION"),
+                        "actionSettings", Map.of("unknownSetting", true)));
+        when(context.viewCompositionService().draftSnapshot("FORM", "form-1"))
+                .thenReturn(List.of(unfinished));
+        when(context.viewCompositionService().snapshot("FORM", "form-1"))
+                .thenThrow(new IllegalArgumentException("动作配置不完整"));
+
+        UiConfigDiffDTO diff = context.service().diff("FORM", "form-1");
+
+        assertTrue(diff.isChanged());
+        assertTrue(diff.getChangedSections().contains("viewCompositions"));
+        assertEquals(snapshotHash(context.codec(), context.service().draftSnapshot("FORM", "form-1")),
+                diff.getDraftHash());
+        verify(context.viewCompositionService(), never()).snapshot(any(), any());
+        assertThrows(IllegalArgumentException.class, () -> context.service().publishPreview(
+                "FORM", "form-1", new UiConfigPublishRequest()));
+    }
+
+    @Test
+    void diffRemainsReadableWhenPublishedCompositionDependenciesCannotBeRestored() {
+        TestContext context = context();
+        EntityForm draft = form();
+        draft.setDataSourceBindingsDocument(null);
+        when(context.formService().getById("form-1")).thenReturn(draft);
+        UiConfigRelease active = configRelease(context.codec(), "release-active", "FORM", "form-1",
+                context.service().draftSnapshot("FORM", "form-1"));
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
+        draft.setFormName("未发布修改");
+        when(context.viewCompositionService().normalizeSnapshotForCurrentDependencies(any()))
+                .thenThrow(new BusinessConflictException("TARGET_MISSING", "目标列表已删除"));
+
+        UiConfigDiffDTO diff = context.service().diff("FORM", "form-1");
+
+        assertTrue(diff.isChanged());
+        assertFalse(diff.isCanDiscardDraft());
+        assertTrue(diff.getDiscardBlockedReason().contains("目标列表已删除"));
+    }
+
+    @Test
     void formDraftSnapshotRedactsPinnedViewCompositionProviderDefinition() {
         TestContext context = context();
         EntityForm draft = form();
@@ -262,7 +311,7 @@ class UiConfigReleaseServiceTest {
         composition.put("key", "project_requirements");
         composition.put("nested", Map.of(
                 "executableSnapshot", executable));
-        when(context.viewCompositionService().snapshot(
+        when(context.viewCompositionService().draftSnapshot(
                 UiConfigReleaseService.FORM, "form-1"))
                 .thenReturn(List.of(composition));
 
@@ -1009,6 +1058,50 @@ class UiConfigReleaseServiceTest {
                 org.mockito.ArgumentMatchers.eq(9));
         verify(context.releaseMapper(), never())
                 .insert(any(UiConfigRelease.class));
+    }
+
+    @Test
+    void invalidCompositionDraftCanBeDiscardedUsingTheHashReturnedByDiff() {
+        TestContext context = context();
+        EntityForm published = form();
+        published.setRevision(10);
+        published.setActiveReleaseId("release-active");
+        when(context.formService().getById("form-1")).thenReturn(published);
+        UiConfigRelease active = configRelease(context.codec(), "release-active", "FORM", "form-1",
+                context.service().draftSnapshot("FORM", "form-1"));
+        when(context.releaseMapper().findActive("FORM", "form-1")).thenReturn(active);
+        EntityForm current = form();
+        current.setRevision(9);
+        current.setActiveReleaseId(active.getId());
+        when(context.formService().getById("form-1")).thenReturn(current);
+        when(context.formMapper().selectByIdForUpdate("form-1")).thenReturn(current);
+        var compositions = new java.util.concurrent.atomic.AtomicReference<List<Map<String, Object>>>(List.of(
+                Map.of("id", "invalid", "compositionKey", "invalid", "anchorType", "OWNER", "orderKey", 1000,
+                        "config", Map.of("actions", List.of("UNKNOWN_ACTION")))));
+        when(context.viewCompositionService().draftSnapshot("FORM", "form-1"))
+                .thenAnswer(invocation -> compositions.get());
+        when(context.viewCompositionService().snapshot("FORM", "form-1"))
+                .thenAnswer(invocation -> {
+                    if (!compositions.get().isEmpty()) throw new IllegalArgumentException("无效草稿不能发布");
+                    return List.of();
+                });
+        org.mockito.Mockito.doAnswer(invocation -> {
+            compositions.set(List.of());
+            return null;
+        }).when(context.viewCompositionService()).restoreForRelease(
+                org.mockito.ArgumentMatchers.eq("FORM"), org.mockito.ArgumentMatchers.eq("form-1"), any());
+        when(context.formService().restoreFormForRelease(any(EntityForm.class), org.mockito.ArgumentMatchers.eq(9)))
+                .thenReturn(published);
+
+        UiConfigDiffDTO diff = context.service().diff("FORM", "form-1");
+        assertTrue(diff.isCanDiscardDraft());
+        when(context.formService().getById("form-1")).thenReturn(current, published);
+        UiConfigDraftDiscardResultDTO result = context.service().discardDraft("FORM", "form-1",
+                discardRequest(9, diff.getDraftHash(), active.getId()));
+
+        assertEquals(diff.getDraftHash(), result.getDiscardedDraftHash());
+        assertEquals(active.getContentHash(), result.getDraftHash());
+        assertFalse(result.isRemainingChanged());
     }
 
     @Test
@@ -2390,6 +2483,8 @@ class UiConfigReleaseServiceTest {
         UiViewCompositionService viewCompositionService =
                 mock(UiViewCompositionService.class);
         when(viewCompositionService.snapshot(any(), any()))
+                .thenReturn(List.of());
+        when(viewCompositionService.draftSnapshot(any(), any()))
                 .thenReturn(List.of());
         when(viewCompositionService
                 .normalizeSnapshotForCurrentDependencies(any()))

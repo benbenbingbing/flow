@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 public final class BuiltInButtonAppearancePolicy {
 
     public static final Set<String> RELATED_FORM_BUTTONS = Set.of("save", "open");
-    public static final Set<String> RELATED_LIST_BUTTONS = Set.of("refresh", "link", "open");
+    public static final Set<String> RELATED_LIST_BUTTONS = Set.of("refresh", "open");
     public static final Set<String> COMPOSITION_BUTTONS = Set.of("add", "remove");
     private static final Set<String> ACTION_BAR_KEYS = Set.of("position", "align", "gap", "buttons");
     private static final Set<String> BUTTON_KEYS = Set.of(

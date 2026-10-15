@@ -40,12 +40,11 @@ test('data detail and delete preserve composition scope in runtimeContext query'
   assert.equal(calls[0].args[2].params.runtimeContext.taskId, 'task')
   for (const call of calls) assert.deepEqual(call.args[2].params.runtimeContext.compositionContext, source)
 })
-test('candidate lists and relationship actions keep the same source path', () => {
+test('related lists and extension actions keep the same source path', () => {
   const { calls, request } = harness()
-  createEntityListRuntimeApi(request).getSchema('child', 'items', 'EMBEDDED', { compositionContext: source, candidateAction: 'SELECT' })
-  createUiCompositionRuntimeApi(request).uiCompositionRuntimeApi.executeAction({ compositionContext: source, action: 'SELECT', targetRecordIds: ['child-1'], operationId: 'select-1' })
-  assert.equal(calls[0].args[1].params.candidateAction, 'SELECT')
+  createEntityListRuntimeApi(request).getSchema('child', 'items', 'EMBEDDED', { compositionContext: source })
+  createUiCompositionRuntimeApi(request).uiCompositionRuntimeApi.executeAction({ compositionContext: source, action: 'CUSTOM_VALIDATE', targetRecordIds: ['child-1'], operationId: 'validate-1' })
   assert.deepEqual(calls[0].args[1].params.compositionContext, source)
   assert.deepEqual(calls[1].args[1].compositionContext, source)
-  assert.equal(calls[1].args[2].headers['X-Trace-Id'], 'select-1')
+  assert.equal(calls[1].args[2].headers['X-Trace-Id'], 'validate-1')
 })

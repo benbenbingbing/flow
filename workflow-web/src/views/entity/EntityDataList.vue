@@ -176,16 +176,6 @@
         <div>
           <el-button @click="emit('cancel')">取消</el-button>
           <el-button
-            v-for="option in selectionActionOptions"
-            :key="option.action"
-            :type="option.type || 'primary'"
-            :disabled="selectedRows.length === 0"
-            @click="confirmRelatedContentAction(option.action)"
-          >
-            {{ option.label }}
-          </el-button>
-          <el-button
-            v-if="selectionActionOptions.length === 0"
             type="primary"
             :disabled="selectedRows.length === 0"
             @click="confirmSelection"
@@ -292,18 +282,12 @@ const props = withDefaults(defineProps<{
   listKey?: string
   configHash?: string
   compositionContext?: Record<string, unknown>
-  candidateAction?: string
   relatedContentActions?: string[]
   showTargetListToolbarActions?: boolean
   scene?: string
   context?: Record<string, any>
   showSelectionFooter?: boolean
   selectionMode?: 'NONE' | 'SINGLE' | 'MULTIPLE'
-  selectionActionOptions?: Array<{
-    action: string
-    label: string
-    type?: string
-  }>
   initialSelectedRows?: any[]
   embedded?: boolean
   showSearch?: boolean
@@ -323,11 +307,9 @@ const props = withDefaults(defineProps<{
   listKey: '',
   configHash: '',
   compositionContext: null,
-  candidateAction: '',
   context: () => ({}),
   showSelectionFooter: true,
   selectionMode: 'NONE',
-  selectionActionOptions: () => [],
   initialSelectedRows: () => [],
   embedded: false,
   showSearch: true,
@@ -360,7 +342,6 @@ const embeddedFormPresentation = computed(() =>
 const emit = defineEmits<{
   confirm: [rows: any[]]
   cancel: []
-  'selection-action': [action: string, rows: any[]]
   'selection-change': [rows: any[]]
 }>()
 const entityCode = computed(() =>
@@ -633,7 +614,6 @@ const listReleaseContext = computed(() => ({
   configHash: listConfig.value?.configHash || props.configHash || undefined,
   runtimeContext: props.context?.runtimeContext || {},
   compositionContext: compositionContext.value || undefined,
-  candidateAction: props.candidateAction || undefined
 }))
 function buttonOrder(button: any) {
   const orderKey = Number(button?.orderKey)
@@ -929,7 +909,6 @@ const loadListConfig = async (options: { refreshConfig?: boolean } = {}) => {
         configHash: options.refreshConfig ? undefined : listConfig.value?.configHash || props.configHash,
         runtimeContext: props.context?.runtimeContext || {},
         compositionContext: props.compositionContext,
-        candidateAction: props.candidateAction
       }
     )
     listConfig.value = schema || null
@@ -1008,7 +987,6 @@ const loadDataList = async (options: { throwOnError?: boolean } = {}) => {
         configHash: listConfig.value?.configHash || props.configHash,
         runtimeContext: props.context?.runtimeContext || {},
         compositionContext: props.compositionContext,
-        candidateAction: props.candidateAction,
         ...(sortState.value || {}),
         filters: params,
         context: relatedContentRuntimeContext.value
@@ -1338,16 +1316,6 @@ const confirmSelection = () => {
     applySelectionReturnMappings(row, mappings)))
 }
 
-/**
- * 关联内容动作只把选中记录 ID 交给父组件，整行数据不会成为权威输入。
- * 这里仍传递原行对象是为了兼容 Vue 事件形态；动作桥会立即裁剪为 ID。
- */
-const confirmRelatedContentAction = (action: string) => {
-  const rows = effectiveSelectionMode.value === 'SINGLE'
-    ? selectedRows.value.slice(0, 1)
-    : selectedRows.value
-  emit('selection-action', action, rows)
-}
 // 监听实体编码变化
 watch(() => [
   entityCode.value,

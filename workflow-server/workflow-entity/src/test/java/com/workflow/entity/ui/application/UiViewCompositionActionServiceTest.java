@@ -15,13 +15,11 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.contracts.entity.ui.model.UiActionCommandPlan;
 import com.workflow.contracts.entity.ui.model.UiActionMutationCommand;
 import com.workflow.core.error.BusinessForbiddenException;
-import com.workflow.core.error.BusinessConflictException;
 import com.workflow.core.result.PageResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
@@ -31,10 +29,7 @@ import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
-import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionLinkCandidatesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -42,6 +37,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -54,16 +50,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -158,15 +151,15 @@ class UiViewCompositionActionServiceTest {
 
     @Test
     void readonlyParentCannotReopenWriteActionsInChild() {
-        fixture(List.of("VIEW","LINK","UNLINK"),"REVERSE_REFERENCE",true,EntityRelation.OwnershipType.ASSOCIATION);
+        formFixture(List.of("VIEW", "CREATE", "EDIT"), "target-1");
         UiViewCompositionResolveResponse resolved=runtimeService.resolve(compositionContext());
         when(runtimeService.resolve(any())).thenReturn(resolved.toBuilder().readonlyContext(true).build());
         UiViewCompositionActionCapabilitiesRequest request=new UiViewCompositionActionCapabilitiesRequest();
         request.setCompositionContext(compositionContext());
         var actions=service.capabilities(request).getActionCapabilities();
         assertTrue(actions.get("VIEW").isAvailable());
-        assertFalse(actions.get("LINK").isAvailable());
-        assertFalse(actions.get("UNLINK").isAvailable());
+        assertFalse(actions.get("CREATE").isAvailable());
+        assertFalse(actions.get("EDIT").isAvailable());
         verify(mutationPort,never()).executeBatch(any());
     }
 
@@ -180,516 +173,9 @@ class UiViewCompositionActionServiceTest {
         assertThrows(
                 BusinessForbiddenException.class,
                 () -> service.execute(request(
-                        "tampered", "SELECT", "op-1", "target-1")));
+                        "EXECUTE_INTERFACE", "op-1", "target-1")));
 
         verify(runtimeService).resolve(any());
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void selectRereadsTargetAndOnlyReturnsPublishedFieldPatch() {
-        fixture(
-                List.of("VIEW", "SELECT"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-
-        UiViewCompositionActionResponse response = service.execute(
-                request("action-token", "SELECT", "select-1", "target-1"));
-
-        assertEquals(Map.of("ownerName", "目标名称"),
-                response.getSourcePatch());
-        assertTrue(response.getChangedReferences().isEmpty());
-        assertTrue(response.getActionCapabilities().get("SELECT")
-                .isAvailable());
-        assertFalse(response.getActionCapabilities().get("CREATE")
-                .isAvailable());
-        verify(dynamicDataService).findPage(
-                "target_entity",
-                "target-list-key",
-                Map.of(
-                        "sourceRef", "source-1",
-                        "sourceRef_op", "EQ",
-                        "id", "target-1",
-                        "id_op", "EQ"),
-                1,
-                2);
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void selectRejectsTargetOutsideTrustedListScope() {
-        fixture(
-                List.of("VIEW", "SELECT"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        when(dynamicDataService.findPage(
-                any(), any(), any(),
-                org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(new PageResult<>(List.of(), 0, 1, 2));
-
-        BusinessForbiddenException failure = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request(
-                        "action-token", "SELECT", "select-2", "target-1")));
-
-        assertEquals(
-                "VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                failure.getErrorCode());
-    }
-
-    @Test
-    void undeclaredMutationActionIsRejected() {
-        fixture(
-                List.of("VIEW", "SELECT"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-
-        BusinessForbiddenException failure = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request(
-                        "action-token", "LINK", "link-1", "target-1")));
-
-        assertEquals("VIEW_COMPOSITION_ACTION_NOT_ALLOWED",
-                failure.getErrorCode());
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void hiddenTargetListFieldDisablesSelectCapability() {
-        fixture(
-                List.of("VIEW", "SELECT"),
-                "REVERSE_REFERENCE",
-                false,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiViewCompositionActionCapabilitiesRequest request =
-                new UiViewCompositionActionCapabilitiesRequest();
-        request.setCompositionContext(compositionContext());
-
-        UiViewCompositionActionCapabilitiesResponse response =
-                service.capabilities(request);
-
-        assertFalse(response.getActionCapabilities().get("SELECT")
-                .isAvailable());
-        assertTrue(response.getActionCapabilities().get("SELECT")
-                .getReason().contains("未在固定列表版本中显示"));
-    }
-
-    @Test
-    void compositionRelationCannotBeLinkedOrUnlinkedIndependently() {
-        fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                "ENTITY_RELATION",
-                true,
-                EntityRelation.OwnershipType.COMPOSITION);
-        UiViewCompositionActionCapabilitiesRequest request =
-                new UiViewCompositionActionCapabilitiesRequest();
-        request.setCompositionContext(compositionContext());
-
-        UiViewCompositionActionCapabilitiesResponse response =
-                service.capabilities(request);
-
-        assertFalse(response.getActionCapabilities().get("LINK")
-                .isAvailable());
-        assertTrue(response.getActionCapabilities().get("LINK")
-                .getReason().contains("组成型关系"));
-        assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request(
-                        "action-token", "LINK", "link-2", "target-1")));
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"REVERSE_REFERENCE", "ENTITY_RELATION", "PLAIN_ID"})
-    void scalarRelationLinkAndUnlinkUseAtomicMutationBatch(String fieldMode) {
-        Fixture fixture = fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                "PLAIN_ID".equals(fieldMode) ? "ENTITY_RELATION" : fieldMode,
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        if ("PLAIN_ID".equals(fieldMode)) {
-            EntityField field = entitySnapshotService.getPinnedByHistoryId("target-history")
-                    .snapshot().getFields().get(1);
-            field.setFieldType(EntityField.FieldType.STRING);
-            field.setRefEntityId(null);
-        }
-        AtomicReference<String> current = new AtomicReference<>();
-        when(dynamicDataService.findAccessibleById(
-                "target_entity", "target-1", "target-list-key"))
-                .thenAnswer(ignored -> record(
-                        "target-1",
-                        Map.of("displayName", "目标名称",
-                                "sourceRef",
-                                current.get() == null ? "" : current.get())));
-        doAnswer(invocation -> {
-                    EntityMutationBatchCommand batch = invocation.getArgument(0);
-                    Object value = batch.commands().get(0).payload()
-                            .get("data") instanceof Map<?, ?> data
-                            ? data.get("sourceRef") : null;
-                    current.set(value == null ? null : String.valueOf(value));
-                    return result(batch, false, true);
-                }).when(mutationPort).executeBatch(any());
-
-        UiViewCompositionActionResponse linked = service.execute(
-                request("action-token", "LINK", "roundtrip-link", "target-1"));
-        UiViewCompositionActionResponse unlinked = service.execute(
-                request("action-token", "UNLINK", "roundtrip-unlink", "target-1"));
-
-        assertTrue(linked.getChangedReferences().get(0).isLinked());
-        assertFalse(unlinked.getChangedReferences().get(0).isLinked());
-        assertEquals(null, current.get());
-        ArgumentCaptor<EntityMutationBatchCommand> batches =
-                ArgumentCaptor.forClass(EntityMutationBatchCommand.class);
-        verify(mutationPort, org.mockito.Mockito.times(2))
-                .executeBatch(batches.capture());
-        assertTrue(batches.getAllValues().stream()
-                .allMatch(EntityMutationBatchCommand::atomic));
-        assertEquals("source-1", ((Map<?, ?>) batches.getAllValues()
-                .get(0).commands().get(0).payload().get("data"))
-                .get("sourceRef"));
-        assertEquals(null, ((Map<?, ?>) batches.getAllValues()
-                .get(1).commands().get(0).payload().get("data"))
-                .get("sourceRef"));
-        assertEquals(fixture.sourceEntity().getEntityCode(),
-                batches.getAllValues().get(0).commands().get(0)
-                        .context().sourceEntityCode());
-    }
-
-    @Test
-    void entityRelationRejectsIncompatibleFieldForCapabilitiesAndWrites() {
-        fixture(List.of("VIEW", "LINK", "UNLINK"), "ENTITY_RELATION", true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        EntityField field = entitySnapshotService.getPinnedByHistoryId("target-history")
-                .snapshot().getFields().get(1);
-        for (var type : List.of(EntityField.FieldType.REFERENCE, EntityField.FieldType.LONG)) {
-            field.setFieldType(type);
-            field.setRefEntityId("other-entity");
-            UiViewCompositionActionCapabilitiesRequest request = new UiViewCompositionActionCapabilitiesRequest();
-            request.setCompositionContext(compositionContext());
-            assertFalse(service.capabilities(request).getActionCapabilities().get("LINK").isAvailable());
-            assertThrows(BusinessForbiddenException.class, () -> service.execute(
-                    request("action-token", "LINK", "invalid-" + type, "target-1")));
-        }
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @ParameterizedTest
-    @ValueSource(strings = {"REFERENCE_FIELD", "ENTITY_RELATION_REVERSE"})
-    void singleReferenceMutationReturnsAuthoritativeHostPatch(String relationType) {
-        fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                relationType,
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        AtomicReference<String> current = new AtomicReference<>();
-        when(dynamicDataService.findAccessibleById(
-                "source_entity", "source-1", null))
-                .thenAnswer(ignored -> record(
-                        "source-1",
-                        nullableData(
-                                "ownerName", "来源名称",
-                                "targetRef", current.get())));
-        EntityDataDTO target = record("target-1", Map.of(
-                "displayName", "目标名称",
-                "sourceRef", "source-1"));
-        when(dynamicDataService.findPage(
-                "target_entity",
-                "target-list-key",
-                Map.of("id", "target-1", "id_op", "EQ"),
-                1,
-                2)).thenReturn(new PageResult<>(
-                        List.of(target), 1, 1, 2));
-        doAnswer(invocation -> {
-                    EntityMutationBatchCommand batch = invocation.getArgument(0);
-                    Object value = ((Map<?, ?>) batch.commands().get(0)
-                            .payload().get("data")).get("targetRef");
-                    current.set(value == null ? null : String.valueOf(value));
-                    return result(batch, false, true);
-                }).when(mutationPort).executeBatch(any());
-
-        UiViewCompositionActionResponse linked = service.execute(request(
-                "action-token", "LINK", "reference-link", "target-1"));
-        UiViewCompositionActionResponse unlinked = service.execute(request(
-                "action-token", "UNLINK", "reference-unlink", "target-1"));
-
-        assertEquals("target-1", linked.getSourcePatch().get("targetRef"));
-        assertTrue(unlinked.getSourcePatch().containsKey("targetRef"));
-        assertNull(unlinked.getSourcePatch().get("targetRef"));
-        assertNull(current.get());
-    }
-
-    @Test
-    void duplicateOperationIdUsesStablePersistentIdempotencyKey() {
-        fixture(
-                List.of("VIEW", "LINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        when(dynamicDataService.findAccessibleById(
-                "target_entity", "target-1", "target-list-key"))
-                .thenReturn(record("target-1", Map.of(
-                        "displayName", "目标名称",
-                        "sourceRef", "")));
-        AtomicReference<Boolean> replay = new AtomicReference<>(false);
-        doAnswer(invocation -> {
-                    EntityMutationBatchCommand batch = invocation.getArgument(0);
-                    boolean value = replay.getAndSet(true);
-                    return result(batch, value, false);
-                }).when(mutationPort).executeBatch(any());
-
-        UiViewCompositionActionResponse first = service.execute(
-                request("action-token", "LINK", "same-operation", "target-1"));
-        UiViewCompositionActionResponse second = service.execute(
-                request("action-token", "LINK", "same-operation", "target-1"));
-
-        assertFalse(first.isReplayed());
-        assertTrue(second.isReplayed());
-        ArgumentCaptor<EntityMutationBatchCommand> batches =
-                ArgumentCaptor.forClass(EntityMutationBatchCommand.class);
-        verify(mutationPort, org.mockito.Mockito.times(2))
-                .executeBatch(batches.capture());
-        assertEquals(
-                batches.getAllValues().get(0).commands().get(0)
-                        .context().idempotencyKey(),
-                batches.getAllValues().get(1).commands().get(0)
-                        .context().idempotencyKey());
-    }
-
-    @Test
-    void unlinkRejectsRecordLinkedToAnotherSource() {
-        fixture(
-                List.of("VIEW", "UNLINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        when(dynamicDataService.findAccessibleById(
-                "target_entity", "target-1", "target-list-key"))
-                .thenReturn(record("target-1", Map.of(
-                        "displayName", "目标名称",
-                        "sourceRef", "other-source")));
-        when(dynamicDataService.findPage(
-                any(), any(), any(),
-                org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(new PageResult<>(List.of(), 0, 1, 2));
-
-        var failure = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request(
-                        "action-token", "UNLINK", "cross-unlink", "target-1")));
-
-        assertEquals("VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                failure.getErrorCode());
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void relationMutationRequiresUpdatePermissionOnAuthoritativeSide() {
-        fixture(
-                List.of("VIEW", "LINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        SysMenuMapper menuMapper = org.mockito.Mockito.mock(
-                SysMenuMapper.class);
-        when(menuMapper.selectPermsByUserId("action-user"))
-                .thenReturn(Set.of("entity:target_entity:view"));
-        ReflectionTestUtils.setField(
-                PermissionUtil.class, "staticMenuMapper", menuMapper);
-        UiViewCompositionActionCapabilitiesRequest request =
-                new UiViewCompositionActionCapabilitiesRequest();
-        request.setCompositionContext(compositionContext());
-
-        UiViewCompositionActionCapabilitiesResponse response =
-                service.capabilities(request);
-
-        assertFalse(response.getActionCapabilities().get("LINK")
-                .isAvailable());
-        assertTrue(response.getActionCapabilities().get("LINK")
-                .getReason().contains("编辑权限"));
-        assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(request(
-                        "action-token", "LINK", "no-update", "target-1")));
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void selectLinkRejectsAccessibleIdOutsideResolvedFixedFilters() {
-        fixture(
-                List.of("VIEW", "SELECT", "LINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION,
-                "LINK");
-        when(dynamicDataService.findAccessibleById(
-                "target_entity", "target-1", "target-list-key"))
-                .thenReturn(record("target-1", Map.of(
-                        "displayName", "目标名称",
-                        "sourceRef", "")));
-        when(dynamicDataService.findPage(
-                any(), any(), any(),
-                org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.anyLong()))
-                .thenReturn(new PageResult<>(List.of(), 0, 1, 2));
-
-        BusinessForbiddenException failure = assertThrows(
-                BusinessForbiddenException.class,
-                () -> service.execute(candidateSelectRequest(
-                        "tampered-select-link",
-                        "target-1")));
-
-        assertEquals("VIEW_COMPOSITION_LINK_CANDIDATE_OUT_OF_SCOPE",
-                failure.getErrorCode());
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void reverseReferenceCandidateScopeIsRecomputed() {
-        fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiViewCompositionLinkCandidatesRequest request =
-                new UiViewCompositionLinkCandidatesRequest();
-        request.setCompositionContext(compositionContext());
-        request.setAction("LINK");
-
-        UiViewCompositionLinkCandidatesResponse response =
-                service.linkCandidates(request);
-
-        assertEquals(request.getCompositionContext(), response.getCompositionContext());
-        assertFalse(response.isMatchNone());
-        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
-    }
-
-    @Test
-    void relationScopeRemainsConstrainedWhenListAlreadyUsesIsNullFilter() {
-        Fixture fixture = fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiConfigRelease targetRelease = releaseMapper.selectById(
-                "target-release");
-        when(releaseService.verifiedReleaseSnapshot(targetRelease))
-                .thenReturn(Map.of(
-                        "list", Map.of(
-                                "id", "target-list",
-                                "entityId", fixture.targetEntity().getId(),
-                                "fixedFilterConfig", Map.of(
-                                        "sourceRef_op", "IS_NULL"),
-                                "fields", List.of(Map.of(
-                                        "fieldCode", "displayName",
-                                        "showInList", true,
-                                        "dataSourceType", "ENTITY_FIELD")))));
-        UiViewCompositionLinkCandidatesRequest request =
-                new UiViewCompositionLinkCandidatesRequest();
-        request.setCompositionContext(compositionContext());
-        request.setAction("LINK");
-
-        UiViewCompositionLinkCandidatesResponse response =
-                service.linkCandidates(request);
-
-        assertFalse(response.isMatchNone());
-        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
-    }
-
-    @Test
-    void singleReferenceWithExistingValueHasNoMisleadingCandidates() {
-        fixture(
-                List.of("VIEW", "LINK", "UNLINK"),
-                "REFERENCE_FIELD",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiViewCompositionLinkCandidatesRequest request =
-                new UiViewCompositionLinkCandidatesRequest();
-        request.setCompositionContext(compositionContext());
-        request.setAction("LINK");
-
-        UiViewCompositionLinkCandidatesResponse response =
-                service.linkCandidates(request);
-
-        assertTrue(response.isMatchNone());
-        assertEquals(response.isMatchNone(), service.resolveListContext(request.getCompositionContext(), "LINK").matchNone());
-    }
-
-
-
-    @Test
-    void batchFingerprintConflictStopsBeforeRecordMutation() {
-        fixture(
-                List.of("VIEW", "LINK"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        when(actionReceiptService.acquire(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyList(),
-                org.mockito.ArgumentMatchers.anyString()))
-                .thenThrow(new BusinessConflictException(
-                        "ENTITY_MUTATION_IDEMPOTENCY_CONFLICT",
-                        "同一操作不能改变动作或目标集合"));
-
-        assertThrows(
-                BusinessConflictException.class,
-                () -> service.execute(request(
-                        "action-token", "LINK", "conflict-op", "target-1")));
-
-        verify(aggregateWriter, never()).lock(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString());
-        verify(mutationPort, never()).executeBatch(any());
-    }
-
-    @Test
-    void exactSingleReferenceReplaySurvivesExpectedRelationChange() {
-        fixture(
-                List.of("VIEW", "LINK"),
-                "REFERENCE_FIELD",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
-        UiViewCompositionActionResponse historical =
-                UiViewCompositionActionResponse.builder()
-                        .operationId("reference-replay")
-                        .action("LINK")
-                        .sourceRecordId("source-1")
-                        .sourcePatch(Map.of("targetRef", "target-1"))
-                        .changedReferences(List.of())
-                        .actionCapabilities(Map.of())
-                        .replayed(true)
-                        .build();
-        when(actionReceiptService.acquire(
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.eq("LINK"),
-                org.mockito.ArgumentMatchers.eq(List.of("target-1")),
-                org.mockito.ArgumentMatchers.eq("reference-replay")))
-                .thenReturn(new UiViewCompositionActionReceiptService
-                        .AcquireResult(null, historical));
-
-        UiViewCompositionActionResponse replay = service.execute(request(
-                "action-token", "LINK", "reference-replay", "target-1"));
-
-        assertTrue(replay.isReplayed());
-        assertEquals("target-1", replay.getSourcePatch().get("targetRef"));
         verify(mutationPort, never()).executeBatch(any());
     }
 
@@ -697,8 +183,7 @@ class UiViewCompositionActionServiceTest {
     void formCapabilitiesExposeServerResolvedCreateValuesAndExactEdit() {
         formFixture(
                 List.of("VIEW", "CREATE", "EDIT"),
-                "target-1",
-                false);
+                "target-1");
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
         request.setCompositionContext(compositionContext());
@@ -706,6 +191,8 @@ class UiViewCompositionActionServiceTest {
         UiViewCompositionActionCapabilitiesResponse response =
                 service.capabilities(request);
 
+        assertEquals(Set.of("VIEW", "CREATE", "EDIT"),
+                response.getActionCapabilities().keySet());
         assertTrue(response.getActionCapabilities().get("CREATE")
                 .isAvailable());
         assertEquals(
@@ -720,8 +207,7 @@ class UiViewCompositionActionServiceTest {
     void formSubmissionRejectsWrongRecordAndAcceptsExactPinnedContext() {
         formFixture(
                 List.of("VIEW", "CREATE", "EDIT"),
-                "target-1",
-                false);
+                "target-1");
 
         Map<String, Object> trusted = service.authorizeFormSubmission(
                 compositionContext(),
@@ -746,31 +232,8 @@ class UiViewCompositionActionServiceTest {
     }
 
     @Test
-    void createAndSaveWithFormFailClosedWhenAtomicBridgeIsUnavailable() {
-        formFixture(
-                List.of("VIEW", "CREATE", "SAVE_WITH_FORM"),
-                "target-1",
-                true);
-        UiViewCompositionActionCapabilitiesRequest request =
-                new UiViewCompositionActionCapabilitiesRequest();
-        request.setCompositionContext(compositionContext());
-
-        UiViewCompositionActionCapabilitiesResponse response =
-                service.capabilities(request);
-
-        assertFalse(response.getActionCapabilities().get("CREATE")
-                .isAvailable());
-        assertTrue(response.getActionCapabilities().get("CREATE")
-                .getReason().contains("同一事务"));
-        assertFalse(response.getActionCapabilities().get("SAVE_WITH_FORM")
-                .isAvailable());
-        assertTrue(response.getActionCapabilities().get("SAVE_WITH_FORM")
-                .getReason().contains("子表单或重复器"));
-    }
-
-    @Test
     void editCapabilityRequiresResolvedTargetRecord() {
-        formFixture(List.of("VIEW", "EDIT"), null, false);
+        formFixture(List.of("VIEW", "EDIT"), null);
         UiViewCompositionActionCapabilitiesRequest request =
                 new UiViewCompositionActionCapabilitiesRequest();
         request.setCompositionContext(compositionContext());
@@ -784,16 +247,105 @@ class UiViewCompositionActionServiceTest {
                 .getReason().contains("没有解析到"));
     }
 
+    /** 删除的内置动作没有独立执行分支，也不能仅凭请求动作名写实体。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"SELECT", "LINK", "UNLINK", "SAVE_WITH_FORM"})
+    void removedBuiltinActionsCannotExecute(String action) {
+        listFixture(List.of("VIEW"));
+
+        BusinessForbiddenException failure = assertThrows(
+                BusinessForbiddenException.class,
+                () -> service.execute(request(action, "removed-action", "target-1")));
+
+        assertEquals("VIEW_COMPOSITION_ACTION_NOT_ALLOWED", failure.getErrorCode());
+        verify(mutationPort, never()).executeBatch(any());
+        verify(dataSourceService, never()).executePinnedOperation(any(), any(), any());
+    }
+
+    /** 关联内容的列表查询仍保持服务端计算的关系范围。 */
+    @Test
+    void listContextRetainsResolvedRelationshipFilters() {
+        listFixture(List.of("VIEW"));
+
+        var context = service.resolveListContext(compositionContext());
+
+        assertEquals(Map.of("sourceRef", "source-1", "sourceRef_op", "EQ"),
+                context.fixedFilters());
+        assertEquals("target-list", context.targetContentId());
+        assertFalse(context.matchNone());
+    }
+
+    /** FORM/LIST 独立扩展页面继续执行已发布的 READ 动作。 */
+    @ParameterizedTest
+    @CsvSource({"FORM,SAME_RECORD", "FORM,INTERFACE_SERVICE", "LIST,SAME_RECORD", "LIST,INTERFACE_SERVICE"})
+    void readInterfaceActionReturnsPublishedResultWithoutEntityMutation(String contentType, String relationType) {
+        fixture(List.of("VIEW"), contentType, "target-1");
+        addWriteActionService("CALCULATE_TOTAL", new UiActionCommandPlan(List.of(), Map.of()));
+        replaceRelationType(relationType);
+        when(dataSourceService.validatePinnedActionOperation(
+                "{}", "a".repeat(64), "service-action", "service.action", 1, "execute", "FORM"))
+                .thenReturn(new UiInterfaceExtensionService.ActionOperationDescriptor(
+                        "service-action", "service.action", 1, "execute", "READ",
+                        "REGISTERED_PROVIDER", "provider.action", "FORM"));
+        when(dataSourceService.executePinnedOperation(any(), any(), any()))
+                .thenReturn(Map.of("total", 42));
+
+        var response = service.execute(request("CALCULATE_TOTAL", "read-op", "target-1"));
+
+        assertEquals(Map.of("total", 42), response.getActionResult());
+        verify(mutationPort, never()).executeBatch(any());
+    }
+
+    /** 普通关系的旧发布不签发扩展能力，也不能通过直接请求动作端点执行残留绑定。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH", ""})
+    void ordinaryRelationshipCannotExecuteHistoricalInterfaceAction(String relationType) {
+        listFixture(List.of("VIEW"));
+        addWriteActionService("CALCULATE_TOTAL", new UiActionCommandPlan(List.of(), Map.of()));
+        replaceRelationType(relationType);
+        UiViewCompositionActionCapabilitiesRequest capabilitiesRequest = new UiViewCompositionActionCapabilitiesRequest();
+        capabilitiesRequest.setCompositionContext(compositionContext());
+
+        var capabilities = service.capabilities(capabilitiesRequest).getActionCapabilities();
+
+        assertFalse(capabilities.containsKey("CALCULATE_TOTAL"));
+        assertTrue(capabilities.get("VIEW").isAvailable());
+        assertEquals("target-list", service.resolveListContext(compositionContext()).targetContentId());
+        BusinessForbiddenException failure = assertThrows(BusinessForbiddenException.class,
+                () -> service.execute(request("CALCULATE_TOTAL", "legacy-ordinary", "target-1")));
+        assertEquals("VIEW_COMPOSITION_ACTION_NOT_ALLOWED", failure.getErrorCode());
+        verify(dataSourceService, never()).validatePinnedActionOperation(any(), any(), any(), any(), any(), any(), any());
+        verify(dataSourceService, never()).executePinnedOperation(any(), any(), any());
+        verify(dataSourceService, never()).planPinnedActionOperation(any(), any(), any());
+        verify(mutationPort, never()).executeBatch(any());
+    }
+
+    /** 接口扩展仍必须拒绝关联范围之外的可见记录。 */
+    @Test
+    void interfaceActionRejectsRecordOutsideResolvedListScope() {
+        listFixture(List.of("VIEW"));
+        addWriteActionService("RECALCULATE", new UiActionCommandPlan(List.of(), Map.of()));
+        when(dynamicDataService.findPage(
+                org.mockito.ArgumentMatchers.eq("target_entity"),
+                org.mockito.ArgumentMatchers.eq("target-list-key"),
+                org.mockito.ArgumentMatchers.anyMap(),
+                org.mockito.ArgumentMatchers.eq(1L), org.mockito.ArgumentMatchers.eq(2L)))
+                .thenReturn(new PageResult<>(List.of(), 0, 1, 2));
+
+        BusinessForbiddenException failure = assertThrows(
+                BusinessForbiddenException.class,
+                () -> service.execute(request("RECALCULATE", "out-of-scope", "target-1")));
+
+        assertEquals("VIEW_COMPOSITION_ACTION_TARGET_OUT_OF_SCOPE", failure.getErrorCode());
+        verify(mutationPort, never()).executeBatch(any());
+    }
+
     /** Provider 不能把计划中的记录 ID 当作新的授权来源。 */
     @Test
     void localWriteProviderCannotMutateUnselectedRelatedRecord() {
-        fixture(
-                List.of("VIEW"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
+        listFixture(List.of("VIEW"));
         addWriteActionService(
-                "RECALCULATE",
+                "EXECUTE_INTERFACE",
                 new UiActionCommandPlan(
                         List.of(new UiActionMutationCommand(
                                 "target_entity",
@@ -805,8 +357,7 @@ class UiViewCompositionActionServiceTest {
         BusinessForbiddenException failure = assertThrows(
                 BusinessForbiddenException.class,
                 () -> service.execute(request(
-                        "action-token",
-                        "RECALCULATE",
+                        "EXECUTE_INTERFACE",
                         "service-out-of-scope",
                         "target-1")));
 
@@ -819,13 +370,9 @@ class UiViewCompositionActionServiceTest {
     /** 子命令回执键必须随批次主体隔离键变化，而不是只依赖客户端 operationId。 */
     @Test
     void localWriteCommandIdempotencyDerivesFromSubjectBoundBatchKey() {
-        fixture(
-                List.of("VIEW"),
-                "REVERSE_REFERENCE",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION);
+        listFixture(List.of("VIEW"));
         addWriteActionService(
-                "RECALCULATE",
+                "EXECUTE_INTERFACE",
                 new UiActionCommandPlan(
                         List.of(new UiActionMutationCommand(
                                 "target_entity",
@@ -848,9 +395,9 @@ class UiViewCompositionActionServiceTest {
                 .thenReturn(batchReceipt("tenant-user-source-b"));
 
         service.execute(request(
-                "action-token", "RECALCULATE", "same-client-op", "target-1"));
+                "EXECUTE_INTERFACE", "same-client-op", "target-1"));
         service.execute(request(
-                "action-token", "RECALCULATE", "same-client-op", "target-1"));
+                "EXECUTE_INTERFACE", "same-client-op", "target-1"));
 
         ArgumentCaptor<EntityMutationBatchCommand> batches =
                 ArgumentCaptor.forClass(EntityMutationBatchCommand.class);
@@ -863,63 +410,18 @@ class UiViewCompositionActionServiceTest {
         assertFalse(first.equals(second));
     }
 
-    private Fixture fixture(
-            List<String> actions,
-            String relationType,
-            boolean targetFieldVisible,
-            EntityRelation.OwnershipType ownershipType) {
-        return fixture(
-                actions,
-                relationType,
-                targetFieldVisible,
-                ownershipType,
-                "FILL_FIELDS",
-                "LIST",
-                "target-1",
-                false);
+    private void listFixture(List<String> actions) {
+        fixture(actions, "LIST", "target-1");
     }
 
-    private Fixture fixture(
-            List<String> actions,
-            String relationType,
-            boolean targetFieldVisible,
-            EntityRelation.OwnershipType ownershipType,
-            String selectResult) {
-        return fixture(
-                actions,
-                relationType,
-                targetFieldVisible,
-                ownershipType,
-                selectResult,
-                "LIST",
-                "target-1",
-                false);
+    private void formFixture(List<String> actions, String targetRecordId) {
+        fixture(actions, "FORM", targetRecordId);
     }
 
-    private Fixture formFixture(
+    private void fixture(
             List<String> actions,
-            String targetRecordId,
-            boolean associateAfterCreate) {
-        return fixture(
-                actions,
-                "REFERENCE_FIELD",
-                true,
-                EntityRelation.OwnershipType.ASSOCIATION,
-                "FILL_FIELDS",
-                "FORM",
-                targetRecordId,
-                associateAfterCreate);
-    }
-
-    private Fixture fixture(
-            List<String> actions,
-            String relationType,
-            boolean targetFieldVisible,
-            EntityRelation.OwnershipType ownershipType,
-            String selectResult,
             String targetContentType,
-            String targetRecordId,
-            boolean associateAfterCreate) {
+            String targetRecordId) {
         EntityDefinition sourceEntity = entity(
                 "source-entity-id", "source_entity");
         EntityDefinition targetEntity = entity(
@@ -937,57 +439,15 @@ class UiViewCompositionActionServiceTest {
         EntityField sourceRef = field(
                 "sourceRef", EntityField.FieldType.REFERENCE,
                 sourceEntity.getId());
-        EntityRelation entityRelation = new EntityRelation();
-        entityRelation.setRelationCode("source-targets");
-        entityRelation.setChildEntityId(targetEntity.getId());
-        entityRelation.setChildEntityCode(targetEntity.getEntityCode());
-        entityRelation.setChildRefFieldCode("sourceRef");
-        entityRelation.setOwnershipType(ownershipType);
-        entityRelation.setEnabled(true);
         EntityPublishedSnapshot sourceSchema = snapshot(
-                "source-history",
-                sourceEntity,
-                List.of(ownerName, targetRef),
-                List.of(entityRelation));
+                "source-history", sourceEntity, List.of(ownerName, targetRef));
         EntityPublishedSnapshot targetSchema = snapshot(
-                "target-history",
-                targetEntity,
-                List.of(displayName, sourceRef),
-                List.of());
-
-        if ("ENTITY_RELATION_REVERSE".equals(relationType)) {
-            entityRelation.setParentEntityId(targetEntity.getId());
-            entityRelation.setChildEntityId(sourceEntity.getId());
-            entityRelation.setChildRefFieldCode("targetRef");
-            sourceSchema.setRelations(List.of());
-            targetSchema.setRelations(List.of(entityRelation));
-        }
-        Map<String, Object> relation = switch (relationType) {
-            case "ENTITY_RELATION_REVERSE" -> Map.of("type", "ENTITY_RELATION", "direction", "REVERSE", "relationCode", "source-targets");
-            case "REFERENCE_FIELD" -> Map.of(
-                    "type", relationType,
-                    "sourceField", "targetRef");
-            case "ENTITY_RELATION" -> Map.of(
-                    "type", relationType,
-                    "relationCode", "source-targets");
-            default -> Map.of(
-                    "type", relationType,
-                    "targetField", "sourceRef");
-        };
+                "target-history", targetEntity, List.of(displayName, sourceRef));
         Map<String, Object> config = Map.of(
                 "enabled", true,
                 "actions", actions,
-                "relation", relation,
                 "actionSettings", Map.of(
-                        "select", Map.of(
-                                "mode", "SINGLE",
-                                "result", selectResult,
-                                "mappings", List.of(Map.of(
-                                        "sourceField", "displayName",
-                                        "targetField", "ownerName",
-                                        "required", true))),
                         "create", Map.of(
-                                "associateAfterCreate", associateAfterCreate,
                                 "initialMappings", List.of(Map.of(
                                         "sourceField", "ownerName",
                                         "targetField", "displayName",
@@ -1023,7 +483,7 @@ class UiViewCompositionActionServiceTest {
                                 "entityId", targetEntity.getId(),
                                 "fields", List.of(Map.of(
                                         "fieldCode", "displayName",
-                                        "showInList", targetFieldVisible,
+                                        "showInList", true,
                                         "dataSourceType", "ENTITY_FIELD"))));
 
         when(runtimeService.resolve(any()))
@@ -1106,21 +566,9 @@ class UiViewCompositionActionServiceTest {
                 1,
                 2)).thenReturn(new PageResult<>(
                         List.of(target), 1, 1, 2));
-        when(dynamicDataService.findPage(
-                targetEntity.getEntityCode(),
-                "target-list-key",
-                Map.of(
-                        "sourceRef", true,
-                        "sourceRef_op", "IS_NULL",
-                        "id", "target-1",
-                        "id_op", "EQ"),
-                1,
-                2)).thenReturn(new PageResult<>(
-                        List.of(target), 1, 1, 2));
         when(mutationPort.executeBatch(any()))
                 .thenAnswer(invocation -> result(
                         invocation.getArgument(0), false, true));
-        return new Fixture(sourceEntity, targetEntity);
     }
 
     @SuppressWarnings("unchecked")
@@ -1153,6 +601,8 @@ class UiViewCompositionActionServiceTest {
                 "mode", "INTERFACE_SERVICE",
                 "actionServices", List.of(binding),
                 "failurePolicy", "ERROR"));
+        // 扩展动作只存在于独立扩展页面，普通关系 fixture 仍只开放标准展示/表单能力。
+        config.put("relation", Map.of("type", "INTERFACE_SERVICE"));
         composition.put("config", config);
         Map<String, Object> replaced = new java.util.LinkedHashMap<>(
                 ownerSnapshot);
@@ -1180,6 +630,19 @@ class UiViewCompositionActionServiceTest {
                 org.mockito.ArgumentMatchers.eq("{}"),
                 org.mockito.ArgumentMatchers.eq("a".repeat(64)),
                 any())).thenReturn(plan);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void replaceRelationType(String relationType) {
+        UiConfigRelease release = releaseMapper.selectById("owner-release");
+        Map<String, Object> snapshot = new java.util.LinkedHashMap<>(releaseService.verifiedReleaseSnapshot(release));
+        List<Map<String, Object>> compositions = (List<Map<String, Object>>) snapshot.get("viewCompositions");
+        Map<String, Object> composition = new java.util.LinkedHashMap<>(compositions.get(0));
+        Map<String, Object> config = new java.util.LinkedHashMap<>((Map<String, Object>) composition.get("config"));
+        config.put("relation", Map.of("type", relationType));
+        composition.put("config", config);
+        snapshot.put("viewCompositions", List.of(composition));
+        when(releaseService.verifiedReleaseSnapshot(release)).thenReturn(snapshot);
     }
 
     private UiViewCompositionActionReceiptService.AcquireResult batchReceipt(
@@ -1227,7 +690,6 @@ class UiViewCompositionActionServiceTest {
     }
 
     private UiViewCompositionActionRequest request(
-            String token,
             String action,
             String operationId,
             String... ids) {
@@ -1240,31 +702,6 @@ class UiViewCompositionActionServiceTest {
         request.setInput(Map.of());
         return request;
     }
-
-    private UiViewCompositionActionRequest candidateSelectRequest(
-            String operationId,
-            String... ids) {
-        UiViewCompositionActionRequest request = request(
-                "action-token", "SELECT", operationId, ids);
-        return request;
-    }
-
-
-
-
-
-    private Map<String, Object> nullableData(
-            String firstKey,
-            Object firstValue,
-            String secondKey,
-            Object secondValue) {
-        Map<String, Object> result = new java.util.LinkedHashMap<>();
-        result.put(firstKey, firstValue);
-        result.put(secondKey, secondValue);
-        return result;
-    }
-
-
 
     private UiConfigRelease release(
             String id,
@@ -1295,15 +732,14 @@ class UiViewCompositionActionServiceTest {
     private EntityPublishedSnapshot snapshot(
             String historyId,
             EntityDefinition entity,
-            List<EntityField> fields,
-            List<EntityRelation> relations) {
+            List<EntityField> fields) {
         EntityPublishedSnapshot snapshot = new EntityPublishedSnapshot();
         snapshot.setHistoryId(historyId);
         snapshot.setEntityId(entity.getId());
         snapshot.setEntityCode(entity.getEntityCode());
         snapshot.setVersion(1);
         snapshot.setFields(fields);
-        snapshot.setRelations(relations);
+        snapshot.setRelations(List.of());
         snapshot.setRelationsSnapshotAvailable(true);
         return snapshot;
     }
@@ -1336,8 +772,4 @@ class UiViewCompositionActionServiceTest {
         return record;
     }
 
-    private record Fixture(
-            EntityDefinition sourceEntity,
-            EntityDefinition targetEntity) {
-    }
 }

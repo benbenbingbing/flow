@@ -15,12 +15,6 @@ const uiCompositionRuntimeApi = {
       compositionContext
     })
   },
-  linkCandidates(compositionContext, action) {
-    return request.post('/ui-runtime/view-compositions/actions/link-candidates', {
-      compositionContext,
-      action
-    })
-  },
   executeAction(data = {}) {
     const operationId = String(data?.operationId || '').trim()
     return request.post(

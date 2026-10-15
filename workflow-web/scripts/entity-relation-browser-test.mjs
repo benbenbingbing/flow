@@ -723,13 +723,10 @@ try {
   }
   await evaluate('relationTest.relations[0].enabled=true;relationTest.relations[0].deleted=0;relationTest.state.relationFailure=false')
 
-  // 历史接口取数必须由用户明确移除；保存后恢复真正的实体关系引用，操作权限仍保留。
-  await evaluate("relationTest.state.compositions[0].config.specialHandling={mode:'INTERFACE_SERVICE',interfaceService:{extensionId:'legacy-reader',inputMappings:[],outputMappings:[]},actionServices:[]};relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()")
+  // 关联内容只配置查看、新增和编辑；再次保存后继续保留实体关系绑定和编辑权限。
+  await evaluate("relationTest.relatedPanel.value.open(relationTest.state.compositions[0]);relationTest.settle()")
   await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && ${targetContentSelection}?.textContent.trim()==='需求详情表单 (details)'`)
-  await click('保存显示配置',dialog)
-  await until(`${dialog}.innerText.includes('改为使用实体关系取数')`)
-  assert.equal(await evaluate('relationTest.state.compositions[0].revision'),3)
-  await click('改为使用实体关系取数',dialog)
+  assert.deepEqual(await evaluate(`[...${dialog}.querySelectorAll('.action-options .el-checkbox__label')].map(item=>item.textContent.trim())`), ['仅查看', '新增记录', '编辑记录'])
   await click('保存显示配置',dialog)
   await until('relationTest.state.compositions[0].revision===4')
   assert.equal(await evaluate('relationTest.state.compositions[0].config.specialHandling.mode'),'NONE')

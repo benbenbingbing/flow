@@ -20,7 +20,7 @@ export function relatedContentLayoutStyle(presentation = {}) {
   return result
 }
 
-const relatedContentButtonKeys = contentType => contentType === 'LIST' ? ['refresh', 'link', 'open'] : ['save', 'open']
+const relatedContentButtonKeys = contentType => contentType === 'LIST' ? ['refresh', 'open'] : ['save', 'open']
 
 /** 主动切换目标类型时清除不再适用的按钮，保留共用入口外观及操作栏布局。 */
 export function normalizeRelatedContentActionBar(value, contentType) {

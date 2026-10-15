@@ -44,9 +44,6 @@ const buttonActions = computed(() => {
     result.push({ key: 'save', label: '保存子表单', sort: 10, ...defaults })
   } else if (config.target.contentType === 'LIST') {
     if (inline) result.push({ key: 'refresh', label: '刷新', sort: 0, ...defaults })
-    if (config.actions?.includes('LINK')) {
-      result.push({ key: 'link', label: '选择并建立关联', sort: 20, ...defaults })
-    }
   }
   if (!inline) {
     const title = config.presentation.title || config.name || config.target.contentName || '关联内容'

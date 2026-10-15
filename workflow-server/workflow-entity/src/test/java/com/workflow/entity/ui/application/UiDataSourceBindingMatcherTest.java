@@ -172,6 +172,7 @@ class UiDataSourceBindingMatcherTest {
                 List.of(Map.of(
                         "compositionKey", "project-requirements",
                         "config", Map.of(
+                                "relation", Map.of("type", "INTERFACE_SERVICE"),
                                 "specialHandling", Map.of(
                                         "mode", "INTERFACE_SERVICE",
                                         "interfaceService", Map.of(
@@ -213,6 +214,7 @@ class UiDataSourceBindingMatcherTest {
                 List.of(Map.of(
                         "compositionKey", "project-requirements",
                         "config", Map.of(
+                                "relation", Map.of("type", "SAME_RECORD"),
                                 "specialHandling", Map.of(
                                         "mode", "INTERFACE_SERVICE",
                                         "actionServices", List.of(Map.of(

@@ -12,7 +12,6 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.contracts.entity.mutation.model.EntityMutationSourceType;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilityDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionChangedReferenceDTO;
 import com.workflow.entity.mutation.application.EntityMutationReceiptService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,7 +19,6 @@ import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -28,7 +26,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * “关联内容”关系动作的批次级持久化幂等门。
+ * “关联内容”接口扩展写动作的批次级持久化幂等门。
  *
  * <p>实体变更管道的回执以单条写命令为粒度，不能单独阻止同一个客户端
  * {@code operationId} 改变动作或目标集合后只执行新增的那一部分。本服务在任何
@@ -97,7 +95,7 @@ public class UiViewCompositionActionReceiptService {
         EntityMutationContext context = EntityMutationContext.builder(
                         sourceType,
                         "VIEW_COMPOSITION_ACTION_BATCH",
-                        "关联内容关系动作批次")
+                        "关联内容接口动作批次")
                 .sourceId(ownerId)
                 .sourceRecord(sourceEntityCode, sourceRecordId)
                 .operator(userId, UserContext.getUsername())
@@ -146,8 +144,8 @@ public class UiViewCompositionActionReceiptService {
                         record,
                         null,
                         null,
-                        response.getChangedReferences().stream()
-                                .anyMatch(UiViewCompositionChangedReferenceDTO::isChanged),
+                        // 批次回执只保存接口响应；真实写入结果由各实体命令回执记录。
+                        false,
                         false));
     }
 
@@ -160,23 +158,6 @@ public class UiViewCompositionActionReceiptService {
     private UiViewCompositionActionResponse restoreResponse(
             Map<String, Object> stored) {
         Map<String, Object> value = stored == null ? Map.of() : stored;
-        List<UiViewCompositionChangedReferenceDTO> changed = new ArrayList<>();
-        Object rawChanged = value.get("changedReferences");
-        if (rawChanged instanceof List<?> rows) {
-            for (Object row : rows) {
-                Map<String, Object> item = objectMapper.convertValue(
-                        row,
-                        new TypeReference<Map<String, Object>>() {});
-                changed.add(UiViewCompositionChangedReferenceDTO.builder()
-                        .sourceRecordId(text(item.get("sourceRecordId")))
-                        .targetRecordId(text(item.get("targetRecordId")))
-                        .relationType(text(item.get("relationType")))
-                        .linked(Boolean.TRUE.equals(item.get("linked")))
-                        .changed(Boolean.TRUE.equals(item.get("changed")))
-                        .replayed(true)
-                        .build());
-            }
-        }
         Map<String, UiViewCompositionActionCapabilityDTO> capabilities =
                 new LinkedHashMap<>();
         Object rawCapabilities = value.get("actionCapabilities");
@@ -199,9 +180,6 @@ public class UiViewCompositionActionReceiptService {
                                 .build());
             });
         }
-        Map<String, Object> sourcePatch = objectMapper.convertValue(
-                value.getOrDefault("sourcePatch", Map.of()),
-                new TypeReference<Map<String, Object>>() {});
         Map<String, Object> actionResult = objectMapper.convertValue(
                 value.getOrDefault("actionResult", Map.of()),
                 new TypeReference<Map<String, Object>>() {});
@@ -209,8 +187,6 @@ public class UiViewCompositionActionReceiptService {
                 .operationId(text(value.get("operationId")))
                 .action(text(value.get("action")))
                 .sourceRecordId(text(value.get("sourceRecordId")))
-                .sourcePatch(sourcePatch == null ? Map.of() : sourcePatch)
-                .changedReferences(List.copyOf(changed))
                 .actionCapabilities(Map.copyOf(capabilities))
                 .actionResult(actionResult == null ? Map.of() : actionResult)
                 .replayed(true)

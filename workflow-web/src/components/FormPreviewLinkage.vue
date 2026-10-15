@@ -112,7 +112,7 @@
             :linkage-state="linkageState"
             :readonly="readonly"
             :mode="mode"
-            @patch-form="applyRelatedContentPatch"
+            @patch-form="applyFieldPatch"
             v-model="formData[getFieldKey(field)]"
             @update:model-value="crossValidation.touch(getFieldKey(field))"
             :disabled="isFieldDisabled(field)"
@@ -141,12 +141,10 @@
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
-        :host-readonly="readonly"
         :mode="mode"
         :composition-context="runtimeCompositionContext"
         :config-hash="runtimeConfigHash"
         :runtime-context="runtimeContext"
-        @source-patch="applyRelatedContentPatch"
       />
     </template>
 
@@ -162,12 +160,10 @@
         :source-record-id="sourceRecordId"
         :source-data="formData"
         :source-parameters="runtimeContext.params || runtimeContext.parameters || {}"
-        :host-readonly="readonly"
         :mode="mode"
         :composition-context="runtimeCompositionContext"
         :config-hash="runtimeConfigHash"
         :runtime-context="runtimeContext"
-        @source-patch="applyRelatedContentPatch"
       />
     </template>
   </div>
@@ -298,10 +294,9 @@ function handleCustomFormUpdate(val) {
 }
 
 /**
- * 关联选择的回填字段已经由服务端按发布快照、字段权限和映射白名单校验。
- * 这里只合并服务端返回的字段补丁，让它继续经过表单既有联动与校验链。
+ * 字段组件产生的回填补丁继续经过表单既有联动与校验链。
  */
-function applyRelatedContentPatch(patch) {
+function applyFieldPatch(patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
   formData.value = {
     ...formData.value,

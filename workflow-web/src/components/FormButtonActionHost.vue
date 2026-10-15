@@ -3,7 +3,7 @@
     :composition="state.composition" owner-type="FORM" :owner-id="state.owner.id"
     :config-hash="state.owner.configHash" :runtime-context="{ ...state.context, form: state.owner }" :source-record-id="state.context.recordId"
     :source-data="state.context.formData" :source-parameters="state.context.parameters || {}" :mode="state.context.mode"
-    :host-readonly="state.context.mode === 'view'" :composition-context="state.context.compositionContext" :show-trigger="false" />
+    :composition-context="state.context.compositionContext" :show-trigger="false" />
   <EntityListLauncher v-if="state.kind === 'list'" :key="sequence" ref="listRef" :entity-code="state.config.entityCode" :list-key="state.config.listKey"
     :presentation="state.config.presentation || 'DIALOG'" :context="{sourceFormData: state.context.formData, sourceRecordId: state.context.recordId}" :title="state.label">
     <template #default></template>

@@ -62,7 +62,7 @@
         </RelatedContentTargetStep>
         <RelatedContentPageSettings v-if="embedded" v-show="settingsTab === 'child-pages'" :editor="editor" :parameter-schema="targetParameterSchema" :source-fields="sourceReadableFieldOptions.map(item => item.raw)" />
         <el-empty v-if="embedded && settingsTab === 'rules'" description="子表单内部字段校验在目标表单中维护；当前关联区域不重复配置字段规则。" :image-size="70" />
-        <el-empty v-if="embedded && settingsTab === 'interaction'" description="选择回填和新增映射在子页面的关联操作中配置。当前关联区域未注册通用字段事件。" :image-size="70" />
+        <el-empty v-if="embedded && settingsTab === 'interaction'" description="新增初值在子页面的操作设置中配置。引用字段的选择与快捷回填请在字段属性中配置。" :image-size="70" />
 
 
         <component :is="embedded ? SettingsSection : 'section'" title="数据来源" :default-expanded="true" v-if="!isRelationBound" v-show="!embedded ? activeStep === 2 : settingsTab === 'child-pages'">
@@ -113,7 +113,7 @@
 
             <el-alert
               v-if="editor.config.relation.type === 'INTERFACE_SERVICE'"
-              :title="embedded ? '请在关联操作扩展中选择负责查找目标数据的扩展接口。' : '请在第 4 步选择负责查找目标数据的扩展接口。普通关联失败时不会自动调用扩展接口。'"
+              :title="embedded ? '请在“数据与扩展”中选择负责查找目标数据的扩展接口。' : '请在第 4 步选择负责查找目标数据的扩展接口。普通关联失败时不会自动调用扩展接口。'"
               type="info"
               :closable="false"
               show-icon
@@ -214,62 +214,6 @@
           </el-alert>
 
           <div
-            v-if="editor.config.actions.includes('SELECT')"
-            class="action-settings-card"
-          >
-            <div class="action-settings-card__heading">
-              <strong>选择记录后怎么处理</strong>
-              <span>用户只提交选中的记录 ID，平台会重新读取数据并校验权限后再回填或建立关系。</span>
-            </div>
-            <el-form label-position="top">
-              <div class="two-column-form">
-                <el-form-item>
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="选择方式"
-                      content="是什么：限制一次可以选择多少条目标记录。何时使用：普通字段回填选单条，建立多条关系时可选多条。结果：服务端只处理最终确认且仍有权访问的记录。"
-                    />
-                  </template>
-                  <el-radio-group v-model="editor.config.actionSettings.select.mode">
-                    <el-radio-button value="SINGLE">单选（推荐）</el-radio-button>
-                    <el-radio-button value="MULTIPLE">多选</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item>
-                  <template #label>
-                    <ConfigHelpLabel
-                      label="选择结果"
-                      content="是什么：确认选择后平台执行的结果。何时使用：把目标信息带回当前表单时选回填字段；只维护两条记录关系时选建立关联。结果：不会直接修改未配置的字段。"
-                    />
-                  </template>
-                  <el-radio-group v-model="editor.config.actionSettings.select.result">
-                    <el-radio-button value="FILL_FIELDS">回填当前表单</el-radio-button>
-                    <el-radio-button value="LINK">建立关联</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-              </div>
-            </el-form>
-            <ServiceMappingEditor
-              v-if="editor.config.actionSettings.select.result === 'FILL_FIELDS'"
-              v-model="editor.config.actionSettings.select.mappings"
-              title="选择结果回填"
-              description="只允许从目标实体的可见字段回填到当前表单的可编辑字段。"
-              left-label="目标记录字段"
-              right-label="当前表单字段"
-              :left-options="targetReadableFieldOptions"
-              :right-options="sourceEditableFieldOptions"
-              empty-text="尚未配置回填字段"
-            />
-            <el-alert
-              v-else
-              title="请同时启用“建立关联”；关系会由服务端按当前关联方式处理。"
-              type="info"
-              :closable="false"
-              show-icon
-            />
-          </div>
-
-          <div
             v-if="editor.config.actions.includes('CREATE')"
             class="action-settings-card"
           >
@@ -278,26 +222,6 @@
                 <strong>新增记录设置</strong>
                 <span>初值由平台根据当前记录生成；保存时会重新取值并覆盖对应目标字段。</span>
               </div>
-              <el-form label-position="top">
-                <el-form-item>
-                  <template #label>
-                      <ConfigHelpLabel
-                        label="新增后自动建立关联"
-                        content="是什么：目标记录新增成功后，同时维护它与当前记录的关系。何时使用：需要创建并关联一次完成时。结果：当前版本尚未接入同一事务，因此不能启用；可新增成功后再使用“建立关联”。"
-                      />
-                  </template>
-                  <el-switch
-                    v-model="editor.config.actionSettings.create.associateAfterCreate"
-                    :disabled="editor.config.actionSettings.create.associateAfterCreate !== true"
-                  />
-                </el-form-item>
-              </el-form>
-              <el-alert
-                title="当前版本不支持新增并自动关联在同一事务完成；请保持关闭，新增后再建立关联。"
-                type="info"
-                :closable="false"
-                show-icon
-              />
               <ServiceMappingEditor
                 v-model="editor.config.actionSettings.create.initialMappings"
                 title="新增初值"
@@ -315,7 +239,7 @@
                 <span>列表目标直接使用目标列表自带的新增按钮，新增入口和数据范围由目标列表自身配置决定。</span>
               </div>
               <el-alert
-                title="新增记录会按第 2 步的参数映射带入关联值；请确保目标表单把关联字段声明为页面输入参数，否则新建记录可能因不满足关联条件而不在列表中显示。"
+                title="在目标表单中通过实体引用字段选择所属记录。保存后，只有符合当前关联条件的记录才会显示在列表中。"
                 type="warning"
                 :closable="false"
                 show-icon
@@ -324,17 +248,9 @@
           </div>
 
           <el-alert
-            v-if="editor.config.actions.includes('LINK') || editor.config.actions.includes('UNLINK')"
-            title="建立或解除关联只修改关系，不会删除目标记录。平台会校验两侧记录权限、当前关系和基数限制。"
-            type="info"
-            :closable="false"
-            show-icon
-            class="save-boundary-alert"
-          />
-          <el-alert
             :title="saveBoundaryTitle"
             :description="saveBoundaryDescription"
-            :type="editor.config.actions.includes('SAVE_WITH_FORM') ? 'error' : 'warning'"
+            type="warning"
             :closable="false"
             show-icon
             class="save-boundary-alert"
@@ -345,7 +261,7 @@
           </div>
         </component>
 
-        <component :is="embedded ? SettingsSection : 'section'" :title="settingsTab === 'extension' ? '展示扩展' : '关联操作扩展'" :default-expanded="true" v-show="!embedded ? activeStep === 4 : ['child-pages', 'extension'].includes(settingsTab)">
+        <component :is="embedded ? SettingsSection : 'section'" :title="isRelationBound ? '展示扩展' : '页面扩展'" :default-expanded="true" v-show="!embedded ? activeStep === 4 : settingsTab === 'extension'">
           <StepHeading
             :number="String(stepNumber(4))"
             v-if="!embedded" title="特殊情况怎么处理"
@@ -358,29 +274,25 @@
             :closable="false"
             show-icon
           />
-          <el-alert v-if="isRelationBound && useDataInterfaceService" type="warning" :closable="false"
-            title="此历史配置使用了取数接口。请移除接口取数，恢复按实体关系查找数据后再保存。">
-            <el-button link type="primary" @click="toggleDataInterfaceService(false)">改为使用实体关系取数</el-button>
-          </el-alert>
           <el-collapse v-model="advancedSections" class="special-collapse">
             <el-collapse-item name="special">
               <template #title>
                 <div class="collapse-heading">
                   <span>特殊处理</span>
-                  <small>复杂查询、外部能力或专业界面</small>
+                  <small>{{ isRelationBound ? '使用已注册组件展示关联数据' : '复杂查询、外部能力或专业界面' }}</small>
                 </div>
               </template>
 
               <div class="special-choice-grid">
-                <label v-show="!embedded || settingsTab === 'child-pages'" class="special-choice" :class="{ 'is-selected': useInterfaceService }">
+                <label v-if="!isRelationBound" class="special-choice" :class="{ 'is-selected': useInterfaceService }">
                   <el-checkbox
                     :model-value="useInterfaceService"
                     :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
                     @change="toggleSpecial('INTERFACE_SERVICE', $event)"
-                  >{{ isRelationBound ? '使用动作扩展接口' : '使用数据或动作扩展接口' }}</el-checkbox>
-                  <small>{{ isRelationBound ? '扩展受控业务操作，数据仍按实体关系查找。' : '复杂查询、计算、聚合或受控业务操作。' }}</small>
+                  >使用数据或动作扩展接口</el-checkbox>
+                  <small>复杂查询、计算、聚合或受控业务操作。</small>
                 </label>
-                <label v-show="!embedded || settingsTab === 'extension'" class="special-choice" :class="{ 'is-selected': useCustomComponent }">
+                <label class="special-choice" :class="{ 'is-selected': useCustomComponent }">
                   <el-checkbox
                     :model-value="useCustomComponent"
                     @change="toggleSpecial('CUSTOM_COMPONENT', $event)"
@@ -389,24 +301,21 @@
                 </label>
               </div>
 
-              <div v-if="useInterfaceService" v-show="!embedded || settingsTab === 'child-pages'" class="special-config-card">
+              <div v-if="!isRelationBound && useInterfaceService" class="special-config-card">
                 <div class="special-config-card__heading">
                   <div>
-                    <strong>{{ isRelationBound ? '动作扩展接口' : '数据或动作扩展接口' }}</strong>
+                    <strong>数据或动作扩展接口</strong>
                     <span>只能选择已注册能力，页面不能填写地址、密钥、脚本或 SQL。</span>
                   </div>
                   <el-tag effect="plain">服务端重新鉴权</el-tag>
                 </div>
-                <el-alert v-if="isRelationBound" type="info" :closable="false"
-                  title="目标数据由实体关系确定；可扩展操作或展示组件，无需另外配置取数接口。" />
                 <el-checkbox
-                  v-if="!isRelationBound"
                   :model-value="useDataInterfaceService"
                   :disabled="editor.config.relation.type === 'INTERFACE_SERVICE'"
                   class="data-service-toggle"
                   @change="toggleDataInterfaceService"
                 >使用接口查找目标数据</el-checkbox>
-                <el-form v-if="useDataInterfaceService && !isRelationBound" label-width="104px">
+                <el-form v-if="useDataInterfaceService" label-width="104px">
                   <div class="two-column-form">
                     <el-form-item required>
                       <template #label>
@@ -580,7 +489,7 @@
                 </div>
               </div>
 
-              <div v-if="useCustomComponent" v-show="!embedded || settingsTab === 'extension'" class="special-config-card">
+              <div v-if="useCustomComponent" class="special-config-card">
                 <div class="special-config-card__heading">
                   <div>
                     <strong>自定义组件</strong>
@@ -870,6 +779,8 @@ const canSelectBinding = ref(false)
 const relationBindingError = ref('')
 const dataInterfaceOptions = ref([])
 const actionInterfaceOptions = ref([])
+// 首次启用时还没有 extensionId，用本地编辑状态先展开选择器，不把此状态写入发布配置。
+const dataInterfaceSelectionOpen = ref(false)
 const recommendedRelation = ref({ type: '' })
 const recommendationText = ref('')
 const testResult = ref(null)
@@ -918,9 +829,7 @@ const relationOptions = computed(() => RELATED_CONTENT_RELATION_OPTIONS.filter(o
   return String(props.sourceEntity.id || '') === String(editor.config.target.entityId || '')
     || String(props.sourceEntity.entityCode || '') === String(editor.config.target.entityCode || '')
 }))
-// 新关联展示不提供尚未接入聚合提交的勾选项；历史草稿保留该项以便用户取消后恢复可保存状态。
-const actionOptions = computed(() => RELATED_CONTENT_ACTION_OPTIONS.filter(option =>
-  option.value !== 'SAVE_WITH_FORM' || editor.config.actions.includes('SAVE_WITH_FORM')))
+const actionOptions = RELATED_CONTENT_ACTION_OPTIONS
 const failureOptions = RELATED_CONTENT_FAILURE_OPTIONS
 const positionOptions = computed(() => relatedContentPositionOptions(props.ownerType))
 const availableAnchorOptions = computed(() => {
@@ -956,12 +865,6 @@ const sourceReadableFieldOptions = computed(() => contentScopedFieldOptions(
   props.ownerType,
   false
 ))
-const sourceEditableFieldOptions = computed(() => contentScopedFieldOptions(
-  sourceFieldOptions.value,
-  props.sourceContentFields,
-  props.ownerType,
-  true
-))
 const targetReadableFieldOptions = computed(() => contentScopedFieldOptions(
   targetFieldOptions.value,
   targetContentFields.value,
@@ -984,7 +887,7 @@ const actionInterfaces = computed(() =>
 )
 const selectedDataInterface = computed(() => dataInterfaces.value.find(item =>
   String(item.extensionId) === String(
-    editor.config.specialHandling.interfaceService.extensionId
+    editor.config.specialHandling.interfaceService?.extensionId
   )
 ))
 const interfaceInputOptions = computed(() =>
@@ -1043,9 +946,9 @@ const selectedCustomComponentSchema = computed(() => {
 const specialMode = computed(() => editor.config.specialHandling.mode || 'NONE')
 const useInterfaceService = computed(() => ['INTERFACE_SERVICE', 'BOTH'].includes(specialMode.value))
 const useDataInterfaceService = computed(() => editor.config.relation.type === 'INTERFACE_SERVICE'
-  || Boolean(editor.config.specialHandling.interfaceService.extensionId))
+  || dataInterfaceSelectionOpen.value
+  || Boolean(editor.config.specialHandling.interfaceService?.extensionId))
 const useCustomComponent = computed(() => ['CUSTOM_COMPONENT', 'BOTH'].includes(specialMode.value))
-const supportsRelationshipMutation = computed(() => editor.config.relation.type === 'ENTITY_RELATION')
 const naturalSummary = computed(() => describeRelatedContent(editor, props.sourceEntity.entityName || '当前页面'))
 const relationSummary = computed(() => describeRelatedContentRelation(editor))
 const actionSummary = computed(() => describeRelatedContentActions(editor))
@@ -1059,9 +962,6 @@ const localValidation = computed(() => {
     result.errors.push({ step: 3, field: 'actions', message: '组成关系在这里仅供查看；需要编辑时请从表单左侧实体关系添加主从编辑组件' })
   }
   if (relationBindingError.value) result.errors.unshift({ step: 1, field: 'relation', message: relationBindingError.value })
-  if (isRelationBound.value && useDataInterfaceService.value) {
-    result.errors.push({ step: 4, field: 'interfaceService', message: '请移除接口取数，恢复使用实体关系' })
-  }
   return { ...result, valid: !result.errors.length, firstStep: visibleStep(result.errors[0]?.step || 1) }
 })
 const canTest = computed(() => Boolean(
@@ -1070,13 +970,10 @@ const canTest = computed(() => Boolean(
   && editor.config.target.contentId
   && validateRelatedContent(editor, props.ownerType).errors.every(error => error.step !== 2)
 ))
-const saveBoundaryTitle = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION' ? '组成关系只读展示' : editor.config.actions.includes('SAVE_WITH_FORM')
-  ? '请改用已有组成型子表单或重复器'
+const saveBoundaryTitle = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION' ? '组成关系只读展示'
   : '目标内容独立保存')
 const saveBoundaryDescription = computed(() => boundEntityRelation.value?.ownershipType === 'COMPOSITION'
   ? '需要编辑子记录时，请从表单左侧实体关系添加主从编辑组件，随主表统一保存。'
-  : editor.config.actions.includes('SAVE_WITH_FORM')
-  ? '关联内容尚未接入宿主统一提交，该选项不能发布；取消勾选后继续配置。'
   : '在目标表单中的新增或编辑会立即独立保存，取消当前页面不会撤销目标内容。')
 
 async function loadCommonCatalog() {
@@ -1089,19 +986,19 @@ async function loadCommonCatalog() {
           return []
         })
         : Promise.resolve([]),
-      uiExtensionApi.availableInterfaces({
+      isRelationBound.value ? Promise.resolve([]) : uiExtensionApi.availableInterfaces({
         ownerType: String(props.ownerType).toUpperCase(),
         ownerId: String(props.ownerId),
         bindingCode: 'RELATED_CONTENT_RESOLVE'
       }).catch(() => []),
-      uiExtensionApi.availableInterfaces({
+      isRelationBound.value ? Promise.resolve([]) : uiExtensionApi.availableInterfaces({
         ownerType: String(props.ownerType).toUpperCase(),
         ownerId: String(props.ownerId),
         bindingCode: 'RELATED_CONTENT_ACTION'
       }).catch(() => [])
     ])
     sourceRelations.value = normalizeRows(relations)
-    // 两种 bindingCode 由服务端分别按上下文和读写能力筛选，不能在前端合并后串用。
+    // 普通关系不再加载接口目录；独立扩展页面的两种 bindingCode 仍由服务端分别筛选。
     dataInterfaceOptions.value = normalizeRows(dataRows)
     actionInterfaceOptions.value = normalizeRows(actionRows)
   } finally {
@@ -1201,10 +1098,6 @@ function handleContentTypeChange() {
     contentName: ''
   })
   targetContentFields.value = []
-  // 新增后自动建立关联只适用于表单提交桥；切到列表目标时强制关闭，避免保存无效配置。
-  if (editor.config.target.contentType === 'LIST') {
-    editor.config.actionSettings.create.associateAfterCreate = false
-  }
   updateRelatedContentAnchor(editor, props.ownerType)
 }
 
@@ -1262,22 +1155,14 @@ function isActionDisabled(action) {
   // 实体关系的数量可能已变化，历史勾选项即使不再兼容也必须允许取消。
   if (isRelationBound.value && editor.config.actions.includes(action)) return false
   if (boundEntityRelation.value?.ownershipType === 'COMPOSITION') return action !== 'VIEW'
-  if (action === 'SAVE_WITH_FORM') {
-    // 新配置不能启用；历史草稿若已经勾选，仍允许用户取消勾选后保存。
-    return !editor.config.actions.includes('SAVE_WITH_FORM')
-  }
-  if (action === 'SELECT') return editor.config.target.contentType !== 'LIST'
-  if (action === 'LINK' && editor.config.target.contentType !== 'LIST') return true
   if (['CREATE', 'EDIT'].includes(action)) {
     // 表单目标走发布表单提交桥；列表目标表示开放目标列表自带的新增/编辑按钮（仍受列表配置与实体权限过滤）。
     return !['FORM', 'LIST'].includes(editor.config.target.contentType)
   }
-  if (['LINK', 'UNLINK'].includes(action)) return !supportsRelationshipMutation.value
   return false
 }
 
 function toggleAction(action, checked) {
-  if (action === 'SAVE_WITH_FORM' && checked) return
   const values = new Set(editor.config.actions)
   if (checked) values.add(action)
   else values.delete(action)
@@ -1285,19 +1170,6 @@ function toggleAction(action, checked) {
   if (action === 'VIEW' && checked) {
     values.clear()
     values.add('VIEW')
-  }
-  // 聚合随宿主提交和独立写入属于不同保存边界，不能同时启用。
-  if (action === 'SAVE_WITH_FORM' && checked) {
-    for (const independentAction of ['CREATE', 'EDIT', 'LINK', 'UNLINK']) {
-      values.delete(independentAction)
-    }
-  } else if (checked && ['CREATE', 'EDIT', 'LINK', 'UNLINK'].includes(action)) {
-    values.delete('SAVE_WITH_FORM')
-  }
-  if (action === 'LINK'
-    && !checked
-    && editor.config.actionSettings.select.result === 'LINK') {
-    editor.config.actionSettings.select.result = 'FILL_FIELDS'
   }
   editor.config.actions = Array.from(values)
 }
@@ -1315,6 +1187,7 @@ function updateSpecialMode({ service = useInterfaceService.value, component = us
 function toggleSpecial(type, checked) {
   if (type === 'INTERFACE_SERVICE') {
     if (!checked) {
+      dataInterfaceSelectionOpen.value = false
       Object.assign(editor.config.specialHandling.interfaceService, {
         extensionId: '',
         extensionName: '',
@@ -1330,6 +1203,7 @@ function toggleSpecial(type, checked) {
 }
 
 function toggleDataInterfaceService(checked) {
+  dataInterfaceSelectionOpen.value = checked
   if (checked) {
     updateSpecialMode({ service: true, component: useCustomComponent.value })
     return
@@ -1340,10 +1214,6 @@ function toggleDataInterfaceService(checked) {
     inputMappings: [],
     outputMappings: []
   })
-  if (isRelationBound.value) {
-    // 恢复关系取数后，保留既有动作接口和展示组件；没有扩展时回到平台默认能力。
-    updateSpecialMode({ service: editor.config.specialHandling.actionServices.length > 0 })
-  }
 }
 
 function addActionService() {
@@ -1376,8 +1246,8 @@ function actionInterfaceDescription(value) {
 }
 
 function actionKeyOptions(binding) {
-  const enabled = actionOptions.value.filter(option =>
-    ['VIEW', 'SELECT', 'LINK', 'UNLINK'].includes(option.value)
+  const enabled = actionOptions.filter(option =>
+    option.value === 'VIEW'
       && editor.config.actions.includes(option.value))
   const item = actionInterface(binding)
   return [
@@ -1596,6 +1466,7 @@ async function open(value = null, { extension = false } = {}) {
   if (!value) next.orderKey = (props.existingCount + 1) * 1000000
   Object.keys(editor).forEach(key => delete editor[key])
   Object.assign(editor, next)
+  dataInterfaceSelectionOpen.value = false
   isRelationBound.value = value ? !['SAME_RECORD', 'INTERFACE_SERVICE'].includes(next.config.relation.type) : !extension
   canSelectBinding.value = isRelationBound.value && (!value || next.config.relation.type !== 'ENTITY_RELATION')
   if (canSelectBinding.value) editor.config.relation = { type: 'ENTITY_RELATION', relationCode: '' }
@@ -1644,7 +1515,8 @@ watch(editor, () => {
 watch(() => props.modelValue?.revision, () => {
   if (!props.embedded || hydrating || !props.modelValue) return
   hydrating = true
-  Object.assign(editor, JSON.parse(JSON.stringify(props.modelValue)))
+  Object.assign(editor, normalizeRelatedContent(props.modelValue, { ownerType: props.ownerType, sourceEntity: props.sourceEntity }))
+  dataInterfaceSelectionOpen.value = false
   hydrating = false
 })
 watch(() => props.modelValue?.compositionKey, () => {

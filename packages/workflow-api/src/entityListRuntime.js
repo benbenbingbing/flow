@@ -10,8 +10,7 @@ const entityListRuntimeApi = {
           release.configHash || undefined,
         compositionContext:
           release.compositionContext || undefined,
-        runtimeContext: release.runtimeContext || undefined,
-        candidateAction: release.candidateAction || undefined
+        runtimeContext: release.runtimeContext || undefined
       }
     })
   },

@@ -64,6 +64,8 @@ class BuiltInButtonAppearancePolicyTest {
         assertThrows(IllegalArgumentException.class, () -> normalize(Map.of("buttons", Map.of("refresh", Map.of()))));
         assertThrows(IllegalArgumentException.class, () -> BuiltInButtonAppearancePolicy.normalize(
                 Map.of("buttons", Map.of("save", Map.of())), BuiltInButtonAppearancePolicy.COMPOSITION_BUTTONS));
+        assertThrows(IllegalArgumentException.class, () -> BuiltInButtonAppearancePolicy.normalize(
+                Map.of("buttons", Map.of("link", Map.of())), BuiltInButtonAppearancePolicy.RELATED_LIST_BUTTONS));
     }
 
     @Test

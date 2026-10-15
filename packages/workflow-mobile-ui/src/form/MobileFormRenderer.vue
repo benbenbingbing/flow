@@ -156,8 +156,6 @@ function unsupported(items = tree.value) {
 /** 本地规则、跨字段、唯一预检和自定义规则都基于完整模型，不依赖当前展开的分组。 */
 async function validate() {
   if (loading.value || loadError.value || modelError.value) return false
-  // 关联独立写操作仍在 PC 完成；如果发布配置要求随宿主保存，不能遗漏后继续提交。
-  if (relatedContents.value.some(item => Array.isArray(item.config?.actions) && item.config.actions.includes('SAVE_WITH_FORM'))) { loadError.value = '此表单包含需要一并保存的关联内容，请在电脑端办理'; return false }
   if (props.form.customComponent && (!customForm.value || !customForm.value.editable || !customForm.value.validate)) { loadError.value = '该业务表单暂不支持手机办理，请在电脑端处理'; return false }
   const unsupportedFields = unsupported()
   if (unsupportedFields.length) { baseErrors.value = { [unsupportedFields[0]]: '此项暂不支持手机办理，请在电脑端处理' }; await reveal(unsupportedFields[0]); return false }

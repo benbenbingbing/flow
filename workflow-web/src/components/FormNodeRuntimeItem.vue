@@ -11,12 +11,10 @@
       :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
-      :host-readonly="readonly"
         :mode="mode"
       :composition-context="runtimeCompositionContext"
       :config-hash="runtimeConfigHash"
       :runtime-context="context"
-      @source-patch="applyRelatedContentPatch"
     />
   </template>
   <el-card
@@ -98,12 +96,10 @@
             :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
-            :host-readonly="readonly"
         :mode="mode"
             :composition-context="runtimeCompositionContext"
             :config-hash="runtimeConfigHash"
       :runtime-context="context"
-            @source-patch="applyRelatedContentPatch"
           />
         </template>
       </div>
@@ -172,7 +168,7 @@
       :data-source-runtime="dataSourceRuntime"
       :attachment-item-required-state="attachmentItemRequiredState"
       @update:model-value="updateField"
-      @patch-form="applyRelatedContentPatch"
+      @patch-form="applyFieldPatch"
     />
     <!-- 跨字段错误由表单控制器管理；普通 blur/change 校验成功不能清空其提示和红框。 -->
     <div v-if="crossFieldError" class="el-form-item__error" role="alert">
@@ -207,12 +203,10 @@
       :source-record-id="sourceRecordId"
         :source-data="(context.getFormData?.() || context.record?.data || {})"
         :source-parameters="context.params || context.parameters || {}"
-      :host-readonly="readonly"
         :mode="mode"
       :composition-context="runtimeCompositionContext"
       :config-hash="runtimeConfigHash"
       :runtime-context="context"
-      @source-patch="applyRelatedContentPatch"
     />
   </template>
 </template>
@@ -292,10 +286,10 @@ function relatedContentsForNode(targetNode, side = 'AFTER') {
 }
 
 /**
- * 节点内关联内容的选择结果只接受服务端裁剪后的字段补丁，并通过统一
- * modelValue 事件交给父表单，避免节点局部状态绕过表单联动与校验。
+ * 字段组件回填通过统一 modelValue 事件交给父表单，
+ * 避免节点局部状态绕过表单联动与校验。
  */
-function applyRelatedContentPatch(patch) {
+function applyFieldPatch(patch) {
   if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return
   emit('update:modelValue', {
     ...props.modelValue,

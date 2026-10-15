@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.contracts.entity.ui.model.UiDataSourceUsages;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -230,6 +231,10 @@ public class UiDataSourceBindingMatcher {
             }
             Map<String, Object> config = stringMap(
                     composition.get("config"));
+            // 通用接口入口不能借普通关系旧发布中的取数或动作绑定绕过独立扩展页面边界。
+            if (!UiViewCompositionExtensionPolicy.allowsInterfaceExtensions(config.get("relation"))) {
+                continue;
+            }
             Map<String, Object> special = stringMap(
                     config.get("specialHandling"));
             if (resolve && matchesBinding(

@@ -2,6 +2,7 @@ package com.workflow.entity.ui.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
@@ -25,9 +26,7 @@ import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
 import com.workflow.entity.data.application.SystemEntityReadService;
-import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
 import com.workflow.entity.definition.application.EntityPublishedSnapshotService;
-import com.workflow.entity.definition.application.EntityRelationFieldPolicy;
 import com.workflow.entity.definition.application.model.EntityPublishedSnapshot;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -36,14 +35,11 @@ import com.workflow.entity.permission.application.EntityActionCapabilityService;
 import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionCapabilitiesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionActionRequest;
-import com.workflow.entity.ui.api.request.UiViewCompositionLinkCandidatesRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilitiesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionCapabilityDTO;
 import com.workflow.entity.ui.api.response.UiViewCompositionActionResponse;
-import com.workflow.entity.ui.api.response.UiViewCompositionChangedReferenceDTO;
-import com.workflow.entity.ui.api.response.UiViewCompositionLinkCandidatesResponse;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
@@ -71,8 +67,8 @@ import java.util.Set;
  * 已发布“关联内容”的权威动作执行服务。
  *
  * <p>动作上下文从业务入口和已发布关联路径恢复，随后重新执行宿主、目标发布、实体和数据
- * 权限校验。SELECT 的字段映射、LINK/UNLINK 的关系字段均只读取不可变发布
- * 快照；客户端行对象、实体编码、字段名和筛选条件不会进入权威执行链。</p>
+ * 权限校验。新增、编辑沿用目标表单的保存流程；接口扩展动作只读取已发布
+ * 快照，客户端行对象、实体编码、字段名和筛选条件不会进入权威执行链。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -80,13 +76,7 @@ public class UiViewCompositionActionService {
 
     private static final String FORM = "FORM";
     private static final String LIST = "LIST";
-    private static final Set<String> KNOWN_ACTIONS = Set.of(
-            "VIEW", "SELECT", "CREATE", "EDIT", "LINK", "UNLINK",
-            "SAVE_WITH_FORM");
-    private static final Set<String> EXECUTABLE_ACTIONS = Set.of(
-            "SELECT", "LINK", "UNLINK");
-    private static final Set<String> MUTABLE_RELATIONS = Set.of(
-            "REFERENCE_FIELD", "REVERSE_REFERENCE", "ENTITY_RELATION");
+    private static final Set<String> KNOWN_ACTIONS = Set.of("VIEW", "CREATE", "EDIT");
     private static final int MAX_TARGET_RECORDS = 200;
     private static final int MAX_ACTION_MUTATIONS = 100;
 
@@ -108,8 +98,8 @@ public class UiViewCompositionActionService {
      * 计算当前业务上下文下的权威动作能力。
      *
      * <p>该结果同时考虑发布声明、关系类型、已固定字段以及当前用户标准权限。
-     * CREATE/EDIT 仅在精确发布表单提交桥可用时开放；SELECT/LINK/UNLINK 则要求
-     * 已发布映射、候选范围和目标记录权限全部通过，任何校验失败都会关闭动作。</p>
+     * CREATE/EDIT 仅在精确发布表单提交桥可用时开放；接口扩展须通过已发布
+     * 操作校验。任何校验失败都会关闭对应动作。</p>
      *
      * @param request 本次请求，后续经校验后用于处理能力集合
      * @return 处理后的能力集合结果，供调用方继续处理
@@ -129,79 +119,13 @@ public class UiViewCompositionActionService {
                 .build();
     }
 
-    /**
-     * 签发“选择候选记录建立关联”的专用目标列表上下文。
-     *
-     * <p>候选目标、列表精确发布版本和关系条件均从宿主发布快照恢复。普通关联
-     * 列表的“当前已关联”条件不会被复用：反向引用和普通实体关系只查询引用字段
-     * 为空的记录；单值正向引用可排除当前引用。候选范围仍由列表运行时叠加目标
-     * 列表固定条件和当前用户数据范围。</p>
-     *
-     * @param request 本次请求，后续经校验后用于处理链接候选集合
-     * @return 处理后的链接候选集合结果，供调用方继续处理
-     */
-    @Transactional(readOnly = true)
-    public UiViewCompositionLinkCandidatesResponse linkCandidates(
-            UiViewCompositionLinkCandidatesRequest request) {
-        if (request == null
-                || request.getCompositionContext() == null) {
-            throw new IllegalArgumentException("关联内容动作上下文不能为空");
-        }
-        String action = normalize(request.getAction());
-        if (!Set.of("LINK", "SELECT").contains(action)) {
-            throw new IllegalArgumentException(
-                    "关联候选只支持建立关联或选择后建立关联");
-        }
-        ActionContext context = resolveContext(
-                request.getCompositionContext());
-        if (!LIST.equals(context.resolved().getTargetContentType())) {
-            throw conflict(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_LIST_REQUIRED",
-                    "选择候选记录建立关联只适用于目标列表");
-        }
-        Map<String, UiViewCompositionActionCapabilityDTO> capabilities =
-                capabilities(context);
-        requireAvailable(capabilities, "LINK");
-        if ("SELECT".equals(action)) {
-            requireAvailable(capabilities, "SELECT");
-            String result = normalize(text(map(
-                    map(context.config().get("actionSettings"))
-                            .get("select")).get("result")));
-            if (!"LINK".equals(result)) {
-                throw conflict(
-                        "VIEW_COMPOSITION_SELECT_RESULT_INVALID",
-                        "当前选择动作不是建立关联");
-            }
-        }
-
-        CandidatePlan plan = candidatePlan(context);
-        UiViewCompositionResolveResponse target = context.resolved();
-        return UiViewCompositionLinkCandidatesResponse.builder()
-                .action(action)
-                .targetEntityCode(target.getTargetEntityCode())
-                .targetContentId(target.getTargetContentId())
-                .targetContentKey(target.getTargetContentKey())
-                .targetReleaseId(target.getTargetReleaseId())
-                .targetReleaseVersion(target.getTargetReleaseVersion())
-                .compositionContext(request.getCompositionContext())
-                .matchNone(plan.matchNone())
-                .build();
-    }
-
-    /** 为列表查询重算普通关系范围或候选范围；调用方必须与用户查询、列表固定条件取交集。 */
-    public ResolvedListContext resolveListContext(UiViewCompositionResolveRequest request, String candidateAction) {
+    /** 为列表查询重算普通关系范围；调用方必须与用户查询、列表固定条件取交集。 */
+    public ResolvedListContext resolveListContext(UiViewCompositionResolveRequest request) {
         ActionContext context = resolveContext(request);
         UiViewCompositionResolveResponse target = context.resolved();
         if (!LIST.equals(target.getTargetContentType())) throw new IllegalArgumentException("关联目标不是列表");
         Map<String,Object> filters = target.getFixedFilters();
         boolean matchNone = target.isMatchNone();
-        if (StringUtils.hasText(candidateAction)) {
-            UiViewCompositionLinkCandidatesRequest candidate = new UiViewCompositionLinkCandidatesRequest();
-            candidate.setCompositionContext(request); candidate.setAction(candidateAction);
-            linkCandidates(candidate); // 同时检查 LINK/SELECT 能力，客户端模式只能收窄到已发布动作。
-            CandidatePlan plan = candidatePlan(context);
-            filters = plan.filters(); matchNone = plan.matchNone();
-        }
         return new ResolvedListContext(target.getOwnerType(),target.getOwnerId(),target.getReleaseId(),target.getReleaseVersion(),
                 target.getCompositionKey(),target.getSourceEntityCode(),target.getSourceRecordId(),target.getTargetEntityCode(),
                 target.getTargetContentId(),target.getTargetReleaseId(),target.getTargetReleaseVersion(),filters,matchNone);
@@ -299,217 +223,11 @@ public class UiViewCompositionActionService {
         Map<String, UiViewCompositionActionCapabilityDTO> capabilities =
                 capabilities(context);
         requireAvailable(capabilities, action.action());
-        Map<String, Object> standardActionResult =
-                EXECUTABLE_ACTIONS.contains(action.action())
-                        ? executeStandardActionRead(
-                        action, context, optionalActionService(
-                                context, action.action()))
-                        : Map.of();
-
-        if ("SELECT".equals(action.action())) {
-            return executeSelect(
-                    action, context, capabilities, standardActionResult);
-        }
-        if (Set.of("LINK", "UNLINK").contains(action.action())) {
-            return executeRelationMutation(
-                    action,
-                    context,
-                    "LINK".equals(action.action()),
-                    "UNLINK".equals(action.action()),
-                    action.action(),
-                    capabilities,
-                    standardActionResult);
-        }
         return executeInterfaceAction(
                 action,
                 context,
                 requireActionService(context, action.action()),
                 capabilities);
-    }
-
-    /**
-     * 执行{@code select}，并将结果传给后续步骤。
-     *
-     * @param action 动作标识，决定后续{@code select}采用的处理分支
-     * @param context 执行上下文，向后续{@code select}步骤传递身份、配置或状态
-     * @param capabilities 能力集合，作为 {@code requireAvailable} 的输入影响后续处理
-     * @param actionResult 动作结果，作为 {@code executeRelationMutation} 的输入影响后续处理
-     * @return 执行后的{@code select}结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private UiViewCompositionActionResponse executeSelect(
-            ValidatedAction action,
-            ActionContext context,
-            Map<String, UiViewCompositionActionCapabilityDTO> capabilities,
-            Map<String, Object> actionResult) {
-        Map<String, Object> select = map(
-                map(context.config().get("actionSettings")).get("select"));
-        String mode = normalize(text(select.get("mode")));
-        requireSelectionCount(action.targetRecordIds(), mode);
-        String result = normalize(text(select.get("result")));
-        if ("LINK".equals(result)) {
-            requireAvailable(capabilities, "LINK");
-            return executeRelationMutation(
-                    action, context, true, false, "SELECT", capabilities,
-                    actionResult);
-        }
-        if (!"FILL_FIELDS".equals(result)) {
-            throw conflict(
-                    "VIEW_COMPOSITION_SELECT_RESULT_INVALID",
-                    "已发布配置包含不支持的选择结果处理方式");
-        }
-        List<EntityDataDTO> records = readTargets(
-                context, action.targetRecordIds(), true);
-        Map<String, Object> patch = buildSourcePatch(
-                context, select, records.get(0));
-        return UiViewCompositionActionResponse.builder()
-                .operationId(action.operationId())
-                .action("SELECT")
-                .sourceRecordId(context.claims().sourceRecordId())
-                .sourcePatch(Collections.unmodifiableMap(patch))
-                .changedReferences(List.of())
-                .actionCapabilities(capabilities)
-                .actionResult(actionResult)
-                .replayed(false)
-                .build();
-    }
-
-    /**
-     * 执行关系变更，并将结果传给后续步骤。
-     *
-     * @param action 动作标识，决定后续关系变更采用的处理分支
-     * @param context 执行上下文，向后续关系变更步骤传递身份、配置或状态
-     * @param link 链接，作为 {@code requireAvailable} 的输入影响后续处理
-     * @param requireResolvedMembership {@code require}已解析{@code membership}，供本方法执行关系变更时使用
-     * @param responseAction 响应动作，供本方法执行关系变更时使用
-     * @param capabilities 能力集合，作为 {@code requireAvailable} 的输入影响后续处理
-     * @param actionResult 动作结果，供本方法执行关系变更时使用
-     * @return 执行后的关系变更结果，供调用方继续处理
-     */
-    private UiViewCompositionActionResponse executeRelationMutation(
-            ValidatedAction action,
-            ActionContext context,
-            boolean link,
-            boolean requireResolvedMembership,
-            String responseAction,
-            Map<String, UiViewCompositionActionCapabilityDTO> capabilities,
-            Map<String, Object> actionResult) {
-        requireAvailable(capabilities, link ? "LINK" : "UNLINK");
-        String relationType = normalize(text(
-                context.relation().get("type")));
-        if (!MUTABLE_RELATIONS.contains(relationType)) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_ACTION_UNSUPPORTED",
-                    "当前数据关联方式不支持建立或解除关系");
-        }
-        CandidatePlan candidateContext = link
-                ? requireCandidateContext(action, context)
-                : requireNoCandidateContext(action);
-        UiViewCompositionActionReceiptService.AcquireResult receipt =
-                actionReceiptService.acquire(
-                        context.claims().ownerType(),
-                        context.claims().ownerId(),
-                        context.claims().releaseId(),
-                        context.claims().releaseVersion(),
-                        context.claims().compositionKey(),
-                        context.sourceEntity().getEntityCode(),
-                        context.claims().sourceRecordId(),
-                        responseAction,
-                        action.targetRecordIds(),
-                        action.operationId());
-        if (receipt.replayedResponse() != null) {
-            return receipt.replayedResponse();
-        }
-
-        List<EntityDataDTO> initialTargets = link
-                ? readCandidateTargets(
-                        context,
-                        action.targetRecordIds(),
-                        candidateContext)
-                : readTargets(
-                        context,
-                        action.targetRecordIds(),
-                        requireResolvedMembership);
-        EntityDataDTO initialSource = readAccessible(
-                context.sourceEntity(),
-                context.claims().sourceRecordId(),
-                null);
-        lockMutationRows(context, initialSource, initialTargets);
-
-        // 数据权限检查必须在锁后再执行一次。这样权限范围或关联值在等待锁期间
-        // 发生变化时会整体失败，而不会依据锁前的陈旧行构造写命令。
-        EntityDataDTO source = readAccessible(
-                context.sourceEntity(),
-                context.claims().sourceRecordId(),
-                null);
-        List<EntityDataDTO> targets = link
-                ? readCandidateTargets(
-                        context,
-                        action.targetRecordIds(),
-                        candidateContext)
-                : readTargets(
-                        context,
-                        action.targetRecordIds(),
-                        requireResolvedMembership);
-        MutationPlan plan = mutationPlan(
-                context,
-                source,
-                targets,
-                link,
-                action.operationId(),
-                receipt.receiptCommand().context().idempotencyKey());
-        EntityMutationBatchResult batch = mutationPort.executeBatch(
-                new EntityMutationBatchCommand(
-                        action.operationId(), plan.commands(), true));
-        Map<String, EntityMutationResult> resultsByOperation =
-                new LinkedHashMap<>();
-        for (EntityMutationResult result : batch.results()) {
-            resultsByOperation.put(result.operationId(), result);
-        }
-        List<EntityMutationResult> primaryResults = plan.commands().stream()
-                .map(command -> {
-                    EntityMutationResult result = resultsByOperation.get(
-                            command.operationId());
-                    if (result == null) {
-                        throw new IllegalStateException(
-                                "关联内容实体变更缺少主命令结果: "
-                                        + command.operationId());
-                    }
-                    return result;
-                })
-                .toList();
-        List<UiViewCompositionChangedReferenceDTO> changed =
-                new ArrayList<>();
-        for (int index = 0; index < plan.targetRecordIds().size(); index++) {
-            EntityMutationResult result = primaryResults.get(index);
-            changed.add(UiViewCompositionChangedReferenceDTO.builder()
-                    .sourceRecordId(context.claims().sourceRecordId())
-                    .targetRecordId(plan.targetRecordIds().get(index))
-                    .relationType(relationType)
-                    .linked(link)
-                    .changed(result.changed())
-                    .replayed(result.replayed())
-                    .build());
-        }
-        boolean replayed = !primaryResults.isEmpty()
-                && primaryResults.stream()
-                .allMatch(EntityMutationResult::replayed);
-        Map<String, Object> sourcePatch = relationSourcePatch(
-                context, plan, link);
-        UiViewCompositionActionResponse response =
-                UiViewCompositionActionResponse.builder()
-                .operationId(action.operationId())
-                .action(responseAction)
-                .sourceRecordId(context.claims().sourceRecordId())
-                .sourcePatch(sourcePatch)
-                .changedReferences(List.copyOf(changed))
-                .actionCapabilities(capabilities)
-                .actionResult(actionResult)
-                .replayed(replayed)
-                .build();
-        actionReceiptService.complete(
-                receipt.receiptCommand(), response);
-        return response;
     }
 
     /**
@@ -538,7 +256,7 @@ public class UiViewCompositionActionService {
                 null);
         List<EntityDataDTO> targets = action.targetRecordIds().isEmpty()
                 ? List.of()
-                : readTargets(context, action.targetRecordIds(), true);
+                : readTargets(context, action.targetRecordIds());
         Map<String, Object> input = actionInput(
                 context, binding, source, targets);
         UiExtensionExecuteRequest executeRequest = actionExecuteRequest(
@@ -592,7 +310,7 @@ public class UiViewCompositionActionService {
                 null);
         targets = action.targetRecordIds().isEmpty()
                 ? List.of()
-                : readTargets(context, action.targetRecordIds(), true);
+                : readTargets(context, action.targetRecordIds());
         input = actionInput(context, binding, source, targets);
         executeRequest = actionExecuteRequest(
                 action, context, binding, input);
@@ -626,65 +344,6 @@ public class UiViewCompositionActionService {
                 replayed);
         actionReceiptService.complete(receipt.receiptCommand(), response);
         return response;
-    }
-
-    /**
-     * 标准选择/关系动作始终由平台权威链执行；同名 READ 绑定只作为前置校验、
-     * 计算或界面结果补充，失败会使整个事务终止，绝不能替代关系写入。
-     *
-     * @param action 动作标识，决定后续标准动作读取采用的处理分支
-     * @param context 执行上下文，向后续标准动作读取步骤传递身份、配置或状态
-     * @param binding 绑定，作为 {@code validateActionBinding} 的输入影响后续处理
-     * @return 标准动作读取键值结果，供调用方继续处理
-     */
-    private Map<String, Object> executeStandardActionRead(
-            ValidatedAction action,
-            ActionContext context,
-            Map<String, Object> binding) {
-        if (binding.isEmpty()) {
-            return Map.of();
-        }
-        UiInterfaceExtensionService.ActionOperationDescriptor descriptor =
-                validateActionBinding(context, binding);
-        if (!"READ".equals(descriptor.interfaceKind())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_STANDARD_ACTION_WRITE_FORBIDDEN",
-                    "标准选择、建立关联和解除关联必须由平台权威链执行；同名接口只能用于只读校验、计算或返回界面结果");
-        }
-        List<EntityDataDTO> targets;
-        boolean candidateSelection = "LINK".equals(action.action())
-                || "SELECT".equals(action.action())
-                && "LINK".equals(normalize(text(map(
-                map(context.config().get("actionSettings"))
-                        .get("select")).get("result"))));
-        if (candidateSelection) {
-            CandidatePlan candidate =
-                    requireCandidateContext(action, context);
-            targets = readCandidateTargets(
-                    context, action.targetRecordIds(), candidate);
-        } else {
-            targets = readTargets(
-                    context, action.targetRecordIds(), true);
-        }
-        EntityDataDTO source = readAccessible(
-                context.sourceEntity(),
-                context.claims().sourceRecordId(),
-                null);
-        Object raw = dataSourceService.executePinnedOperation(
-                requiredField(
-                        binding,
-                        "executableSnapshot",
-                        "动作接口操作快照"),
-                requiredField(
-                        binding,
-                        "definitionHash",
-                        "动作接口操作哈希"),
-                actionExecuteRequest(
-                        action,
-                        context,
-                        binding,
-                        actionInput(context, binding, source, targets)));
-        return mapActionOutput(binding, raw);
     }
 
     /**
@@ -809,23 +468,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 整理可选动作服务数据，供调用方遍历或继续处理。
-     *
-     * @param context 执行上下文，向后续可选动作服务步骤传递身份、配置或状态
-     * @param actionKey 动作键，后续用于授权校验、关联或幂等去重
-     * @return 可选动作服务键值结果，供调用方继续处理
-     */
-    private Map<String, Object> optionalActionService(
-            ActionContext context,
-            String actionKey) {
-        return actionServices(context).stream()
-                .filter(item -> normalize(text(item.get("actionKey")))
-                        .equals(normalize(actionKey)))
-                .findFirst()
-                .orElse(Map.of());
-    }
-
-    /**
      * 整理动作{@code services}数据，供调用方遍历或继续处理。
      *
      * @param context 执行上下文，向后续动作{@code services}步骤传递身份、配置或状态
@@ -833,6 +475,10 @@ public class UiViewCompositionActionService {
      */
     private List<Map<String, Object>> actionServices(
             ActionContext context) {
+        // 能力签发和执行都从此处读取绑定；普通关系的旧发布即使残留动作接口也不再开放。
+        if (!UiViewCompositionExtensionPolicy.allowsInterfaceExtensions(context.config().get("relation"))) {
+            return List.of();
+        }
         return mapList(map(context.config().get("specialHandling"))
                 .get("actionServices"));
     }
@@ -1295,277 +941,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 返回关系写入后必须同步到宿主表单模型的权威字段值。
-     *
-     * <p>REFERENCE_FIELD 的实际写入发生在来源记录上。若只刷新关联内容而不
-     * 回填宿主模型，用户随后保存旧表单值会把刚建立或解除的关系反向覆盖。
-     * 其它当前支持的关系写在目标记录上，来源表单没有对应字段，因此不返回
-     * 浏览器可猜测的多值补丁。</p>
-     *
-     * @param context 执行上下文，向后续关系来源补丁步骤传递身份、配置或状态
-     * @param plan 执行方案，后续决定操作步骤和校验约束
-     * @param link 链接，供本方法处理关系来源补丁时使用
-     * @return 关系来源补丁键值结果，供调用方继续处理
-     */
-    private Map<String, Object> relationSourcePatch(
-            ActionContext context,
-            MutationPlan plan,
-            boolean link) {
-        if (!"REFERENCE_FIELD".equals(normalize(text(
-                context.relation().get("type")))) && !UiEntityRelationBinding.reverse(context.relation())) {
-            return Map.of();
-        }
-        String sourceField = UiEntityRelationBinding.reverse(context.relation())
-                ? requireAssociationRelation(context).getChildRefFieldCode()
-                : requiredField(context.relation(), "sourceField", "来源引用字段");
-        String linkedId = link && !plan.targetRecordIds().isEmpty()
-                ? plan.targetRecordIds().get(0)
-                : null;
-        return Collections.unmodifiableMap(
-                singletonNullable(sourceField, linkedId));
-    }
-
-    /**
-     * 处理变更方案，并将结果传给后续步骤。
-     *
-     * @param context 执行上下文，向后续变更方案步骤传递身份、配置或状态
-     * @param source 待处理变更方案的原始输入，结果供调用方继续使用
-     * @param targets 目标集合，供本方法处理变更方案时使用
-     * @param link 链接，供本方法处理变更方案时使用
-     * @param operationId 操作ID，后续用于处理变更方案时定位或关联目标
-     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
-     * @return 处理后的变更方案结果，供调用方继续处理
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private MutationPlan mutationPlan(
-            ActionContext context,
-            EntityDataDTO source,
-            List<EntityDataDTO> targets,
-            boolean link,
-            String operationId,
-            String batchIdempotencyKey) {
-        String type = normalize(text(context.relation().get("type")));
-        List<EntityMutationCommand> commands = new ArrayList<>();
-        List<String> targetIds = targets.stream()
-                .map(EntityDataDTO::getId)
-                .toList();
-        if ("REFERENCE_FIELD".equals(type) || UiEntityRelationBinding.reverse(context.relation())) {
-            if (targets.size() != 1) {
-                throw new IllegalArgumentException(
-                        "单值引用字段每次只能建立或解除一条关系");
-            }
-            requireDynamic(context.sourceEntity(), "来源实体");
-            capabilityService.requireStandardPermission(
-                    context.sourceEntity().getEntityCode(),
-                    EntityPermissionAction.UPDATE);
-            String fieldCode;
-            if (UiEntityRelationBinding.reverse(context.relation())) {
-                fieldCode = requireAssociationRelation(context).getChildRefFieldCode();
-            } else {
-                fieldCode = requiredField(context.relation(), "sourceField", "来源引用字段");
-                EntityField field = requirePinnedField(context.sourceSchema(), fieldCode, "来源");
-                requireReference(field, context.targetEntity().getId(), "来源");
-            }
-            String targetId = targets.get(0).getId();
-            requireRelationshipState(
-                    scalar(recordValue(source, fieldCode), fieldCode),
-                    targetId,
-                    link);
-            commands.add(updateCommand(
-                    context,
-                    operationId,
-                    0,
-                    context.sourceEntity().getEntityCode(),
-                    source.getId(),
-                    fieldCode,
-                    link ? targetId : null,
-                    batchIdempotencyKey));
-            return new MutationPlan(List.copyOf(commands), targetIds);
-        }
-
-        requireDynamic(context.targetEntity(), "目标实体");
-        capabilityService.requireStandardPermission(
-                context.targetEntity().getEntityCode(),
-                EntityPermissionAction.UPDATE);
-        String fieldCode;
-        if ("REVERSE_REFERENCE".equals(type)) {
-            fieldCode = requiredField(
-                    context.relation(), "targetField", "目标引用字段");
-            EntityField field = requirePinnedField(
-                    context.targetSchema(), fieldCode, "目标");
-            requireReference(field, context.sourceEntity().getId(), "目标");
-        } else {
-            EntityRelation relation = requireAssociationRelation(context);
-            fieldCode = relation.getChildRefFieldCode();
-        }
-        for (int index = 0; index < targets.size(); index++) {
-            EntityDataDTO target = targets.get(index);
-            requireRelationshipState(
-                    scalar(recordValue(target, fieldCode), fieldCode),
-                    source.getId(),
-                    link);
-            commands.add(updateCommand(
-                    context,
-                    operationId,
-                    index,
-                    context.targetEntity().getEntityCode(),
-                    target.getId(),
-                    fieldCode,
-                    link ? source.getId() : null,
-                    batchIdempotencyKey));
-        }
-        return new MutationPlan(List.copyOf(commands), targetIds);
-    }
-
-    /**
-     * 组成型关系必须随父聚合提交。这里仅允许普通关联，避免 UNLINK 被错误
-     * 实现成删除子记录，或绕开既有子项归属校验。
-     *
-     * @param context 执行上下文，向后续{@code association}关系步骤传递身份、配置或状态
-     * @return 校验并获取后的{@code association}关系结果，供调用方继续处理
-     */
-    private EntityRelation requireAssociationRelation(
-            ActionContext context) {
-        boolean reverse = UiEntityRelationBinding.reverse(context.relation());
-        var ownerSchema = reverse ? context.targetSchema() : context.sourceSchema();
-        var childSchema = reverse ? context.sourceSchema() : context.targetSchema();
-        String relationCode = requiredField(
-                context.relation(), "relationCode", "实体关系编码");
-        EntityRelation definition = ownerSchema.getRelations() == null
-                ? null
-                : ownerSchema.getRelations().stream()
-                .filter(item -> Boolean.TRUE.equals(item.getEnabled()))
-                .filter(item -> Objects.equals(
-                        relationCode, item.getRelationCode()))
-                .findFirst()
-                .orElse(null);
-        if (definition == null
-                || !Objects.equals(
-                childSchema.getEntityId(),
-                definition.getChildEntityId())
-                || !StringUtils.hasText(definition.getChildRefFieldCode())) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_INVALID",
-                    "已固定实体版本中不存在该关系");
-        }
-        if (definition.getOwnershipType()
-                != EntityRelation.OwnershipType.ASSOCIATION) {
-            throw conflict(
-                    "VIEW_COMPOSITION_COMPOSITION_ACTION_REJECTED",
-                    "组成型关系只能随父表单统一保存，不能独立建立或解除");
-        }
-        // 能力判断、候选查询和实际写入都经过这里，避免按钮可用但普通 ID 字段无法保存。
-        EntityField field = requirePinnedField(
-                childSchema, definition.getChildRefFieldCode(), "关系字段");
-        var violation = EntityRelationFieldPolicy.violation(field, ownerSchema.getEntityId());
-        if (violation != null) {
-            throw conflict("VIEW_COMPOSITION_RELATION_INVALID", violation.message());
-        }
-        return definition;
-    }
-
-    /**
-     * 更新命令；后续读取或执行将使用更新后的状态。
-     *
-     * @param context 执行上下文，向后续命令步骤传递身份、配置或状态
-     * @param operationId 操作ID，后续用于更新命令时定位或关联目标
-     * @param index 索引，作为 {@code sha256} 的输入影响后续处理
-     * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     * @param fieldCode 字段编码，后续用于更新命令时定位或关联目标
-     * @param value 待更新命令的原始输入，结果供调用方继续使用
-     * @param batchIdempotencyKey 批次幂等键，后续用于授权校验、关联或幂等去重
-     * @return 更新后的命令结果，供调用方继续处理
-     */
-    private EntityMutationCommand updateCommand(
-            ActionContext context,
-            String operationId,
-            int index,
-            String entityCode,
-            String recordId,
-            String fieldCode,
-            Object value,
-            String batchIdempotencyKey) {
-        String commandId = operationId + ":" + index;
-        // 与接口动作相同，标准关系写的单条回执也必须继承批次级主体隔离。
-        String idempotencyKey = "uivc:" + sha256(String.join("|",
-                batchIdempotencyKey,
-                "relation",
-                String.valueOf(index),
-                entityCode,
-                recordId,
-                fieldCode));
-        EntityMutationSourceType sourceType = FORM.equals(
-                context.claims().ownerType())
-                ? EntityMutationSourceType.FORM
-                : EntityMutationSourceType.LIST;
-        EntityMutationContext mutationContext = EntityMutationContext.builder(
-                        sourceType,
-                        "VIEW_COMPOSITION_RELATION",
-                        "关联内容建立或解除关系")
-                .sourceId(context.claims().ownerId())
-                .sourceRecord(
-                        context.sourceEntity().getEntityCode(),
-                        context.claims().sourceRecordId())
-                .trace(operationId, idempotencyKey)
-                .extraParams(Map.of(
-                        "compositionKey", context.claims().compositionKey(),
-                        "ownerReleaseId", context.claims().releaseId(),
-                        "ownerReleaseVersion", context.claims().releaseVersion()))
-                .build();
-        return new EntityMutationCommand(
-                commandId,
-                entityCode,
-                recordId,
-                EntityMutationOperationType.UPDATE,
-                Map.of("data", singletonNullable(fieldCode, value)),
-                mutationContext);
-    }
-
-    /**
-     * 整理{@code singleton}可空数据，供调用方遍历或继续处理。
-     *
-     * @param key 键，后续用于授权校验、关联或幂等去重
-     * @param value 待处理{@code singleton}可空的原始输入，结果供调用方继续使用
-     * @return {@code singleton}可空键值结果，供调用方继续处理
-     */
-    private Map<String, Object> singletonNullable(
-            String key,
-            Object value) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put(key, value);
-        return result;
-    }
-
-    /**
-     * 校验并获取{@code relationship}状态；不满足约束时阻止后续处理。
-     *
-     * @param current 当前，供本方法校验并获取{@code relationship}状态时使用
-     * @param relatedRecordId 关联记录ID，后续用于校验并获取{@code relationship}状态时定位或关联目标
-     * @param link 链接，供本方法校验并获取{@code relationship}状态时使用
-     */
-    private void requireRelationshipState(
-            Object current,
-            String relatedRecordId,
-            boolean link) {
-        String currentId = current == null ? null : String.valueOf(current);
-        if (link && StringUtils.hasText(currentId)
-                && !Objects.equals(currentId, relatedRecordId)) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_ALREADY_LINKED",
-                    "记录已关联其他数据，请先解除原关系");
-        }
-        if (!link && StringUtils.hasText(currentId)
-                && !Objects.equals(currentId, relatedRecordId)) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_MISMATCH",
-                    "目标记录不属于当前关系，不能解除");
-        }
-        // currentId 为空时仍进入实体幂等管道。这样首次无操作和同 operationId
-        // 重放都具有一致结果，且不会为了识别重放而新增进程内状态。
-    }
-
-    /**
      * 锁定变更行；避免后续并发处理覆盖状态。
      *
      * @param context 执行上下文，向后续变更行步骤传递身份、配置或状态
@@ -1600,13 +975,11 @@ public class UiViewCompositionActionService {
      *
      * @param context 执行上下文，向后续目标集合步骤传递身份、配置或状态
      * @param ids ID 集合，供本方法读取目标集合时使用
-     * @param requireResolvedMembership {@code require}已解析{@code membership}，供本方法读取目标集合时使用
      * @return 实体数据集合，供调用方遍历或展示
      */
     private List<EntityDataDTO> readTargets(
             ActionContext context,
-            List<String> ids,
-            boolean requireResolvedMembership) {
+            List<String> ids) {
         if (context.targetEntity().getStorageMode()
                 == EntityDefinition.StorageMode.DYNAMIC) {
             capabilityService.requireStandardPermission(
@@ -1621,264 +994,10 @@ public class UiViewCompositionActionService {
                     LIST.equals(context.resolved().getTargetContentType())
                             ? context.resolved().getTargetContentKey()
                             : null);
-            if (requireResolvedMembership) {
-                record = requireResolvedMembership(context, id);
-            }
+            record = requireResolvedMembership(context, id);
             result.add(record);
         }
         return List.copyOf(result);
-    }
-
-    /**
-     * 校验并获取候选人上下文；不满足约束时阻止后续处理。
-     *
-     * @param action 动作标识，决定后续候选人上下文采用的处理分支
-     * @param context 执行上下文，向后续候选人上下文步骤传递身份、配置或状态
-     * @return 校验并获取后的候选人上下文结果，供调用方继续处理
-     */
-    private CandidatePlan requireCandidateContext(ValidatedAction action, ActionContext context) {
-        // LINK 的候选边界不再由浏览器凭证提供，每次从当前发布配置与来源行推导。
-        return candidatePlan(context);
-    }
-
-    private CandidatePlan requireNoCandidateContext(ValidatedAction action) {
-        return null;
-    }
-
-    /**
-     * 锁前和锁后都重新计算候选计划。来源引用或固定关系在等待锁期间变化时，旧
-     * 候选范围立即失效，调用方必须重新打开候选列表，不能依据陈旧范围写入。
-     *
-     * @param context 执行上下文，向后续候选人作用域{@code still}当前步骤传递身份、配置或状态
-     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
-     */
-    private void requireCandidateScopeStillCurrent(
-            ActionContext context,
-            CandidatePlan candidate) {
-        CandidatePlan expected = candidatePlan(context);
-        if (candidate.matchNone() != expected.matchNone()
-                || !Objects.equals(
-                candidate.filters(), expected.filters())) {
-            throw conflict(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_STALE",
-                    "关联关系已变化，请重新打开候选列表后再选择");
-        }
-    }
-
-    /**
-     * 读取候选人目标集合；查询结果供调用方展示或继续处理。
-     *
-     * @param context 执行上下文，向后续候选人目标集合步骤传递身份、配置或状态
-     * @param ids ID 集合，供本方法读取候选人目标集合时使用
-     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
-     * @return 实体数据集合，供调用方遍历或展示
-     */
-    private List<EntityDataDTO> readCandidateTargets(
-            ActionContext context,
-            List<String> ids,
-            CandidatePlan candidate) {
-        requireCandidateScopeStillCurrent(context, candidate);
-        if (candidate.matchNone()) {
-            throw conflict(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_EMPTY",
-                    "当前固定条件下没有可建立关联的候选记录");
-        }
-        if (context.targetEntity().getStorageMode()
-                == EntityDefinition.StorageMode.DYNAMIC) {
-            capabilityService.requireStandardPermission(
-                    context.targetEntity().getEntityCode(),
-                    EntityPermissionAction.VIEW);
-        }
-        List<EntityDataDTO> result = new ArrayList<>();
-        for (String id : ids) {
-            EntityDataDTO record = readAccessible(
-                    context.targetEntity(),
-                    id,
-                    context.resolved().getTargetContentKey());
-            requireCandidateMembership(
-                    context, candidate, record, id);
-            result.add(record);
-        }
-        return List.copyOf(result);
-    }
-
-    /**
-     * 校验并获取候选人{@code membership}；不满足约束时阻止后续处理。
-     *
-     * @param context 执行上下文，向后续候选人{@code membership}步骤传递身份、配置或状态
-     * @param candidate 候选人，后续用于判断有效期或展示该事件的发生时间
-     * @param record 记录，供本方法校验并获取候选人{@code membership}时使用
-     * @param recordId 业务记录 ID，用于定位目标数据并关联后续变更或审计
-     */
-    private void requireCandidateMembership(
-            ActionContext context,
-            CandidatePlan candidate,
-            EntityDataDTO record,
-            String recordId) {
-        if (record == null
-                || !Objects.equals(recordId, record.getId())
-                || !matchesFilters(record, candidate.filters())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_OUT_OF_SCOPE",
-                    "所选记录不属于当前关联候选范围");
-        }
-        Map<String, Object> condition = new LinkedHashMap<>(
-                targetListFixedFilters(context));
-        // 固定列表若约束 id，先对已按数据范围读取的记录执行同等受控判断，再
-        // 改为精确 id 查询；否则简单筛选文档无法同时表达两个 id 条件。
-        if (hasFilterBase(condition, "id")) {
-            Map<String, Object> idFilter = filterForBase(condition, "id");
-            if (!matchesFilters(record, idFilter)) {
-                throw forbidden(
-                        "VIEW_COMPOSITION_LINK_CANDIDATE_OUT_OF_SCOPE",
-                        "所选记录不满足目标列表固定条件");
-            }
-            removeFilterBase(condition, "id");
-        }
-        candidate.filters().forEach((key, value) -> {
-            String base = stripFilterSuffix(key);
-            if (!"id".equals(base)) {
-                condition.put(key, value);
-            }
-        });
-        condition.put("id", recordId);
-        condition.put("id_op", "EQ");
-        PageResult<EntityDataDTO> page =
-                context.targetEntity().getStorageMode()
-                        == EntityDefinition.StorageMode.SYSTEM
-                        ? systemEntityReadService.findPage(
-                                context.targetEntity().getEntityCode(),
-                                condition, 1, 2)
-                        : dynamicDataService.findPage(
-                                context.targetEntity().getEntityCode(),
-                                context.resolved().getTargetContentKey(),
-                                condition, 1, 2);
-        if (page.getTotal() != 1
-                || page.getRecords().isEmpty()
-                || !Objects.equals(
-                recordId, page.getRecords().get(0).getId())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_LINK_CANDIDATE_OUT_OF_SCOPE",
-                    "所选记录不满足目标列表固定条件或当前数据权限");
-        }
-    }
-
-    /**
-     * 整理过滤基础数据，供调用方遍历或继续处理。
-     *
-     * @param filters 过滤条件，作为 {@code result.put} 的输入影响后续处理
-     * @param fieldCode 字段编码，后续用于处理过滤基础时定位或关联目标
-     * @return 过滤基础键值结果，供调用方继续处理
-     */
-    private Map<String, Object> filterForBase(
-            Map<String, Object> filters,
-            String fieldCode) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        for (String suffix : List.of("", "_op", "_start", "_end")) {
-            String key = fieldCode + suffix;
-            if (filters.containsKey(key)) {
-                result.put(key, filters.get(key));
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 移除过滤基础；后续读取或执行将使用更新后的状态。
-     *
-     * @param filters 过滤条件，供本方法移除过滤基础时使用
-     * @param fieldCode 字段编码，后续用于移除过滤基础时定位或关联目标
-     */
-    private void removeFilterBase(
-            Map<String, Object> filters,
-            String fieldCode) {
-        for (String suffix : List.of("", "_op", "_start", "_end")) {
-            filters.remove(fieldCode + suffix);
-        }
-    }
-
-    /**
-     * 生成{@code strip}过滤后缀文本，供后续匹配或展示。
-     *
-     * @param key 键，后续用于授权校验、关联或幂等去重
-     * @return 处理后的{@code strip}过滤后缀文本，供调用方比较或展示
-     */
-    private String stripFilterSuffix(String key) {
-        for (String suffix : List.of("_start", "_end", "_op")) {
-            if (key.endsWith(suffix)) {
-                return key.substring(0, key.length() - suffix.length());
-            }
-        }
-        return key;
-    }
-
-    /**
-     * 只用于服务端计算的候选条件和固定列表的 id 条件，不接收浏览器任意表达式。
-     *
-     * @param record 记录，作为 {@code recordValue} 的输入影响后续处理
-     * @param filters 过滤条件，作为 {@code filterOperator} 的输入影响后续处理
-     * @return 过滤条件条件成立时为 true，否则为 false
-     */
-    private boolean matchesFilters(
-            EntityDataDTO record,
-            Map<String, Object> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return true;
-        }
-        Set<String> bases = new LinkedHashSet<>();
-        filters.keySet().forEach(key ->
-                bases.add(stripFilterSuffix(key)));
-        for (String base : bases) {
-            Object actual = recordValue(record, base);
-            Object expected = filters.get(base);
-            String operator = filterOperator(filters, base);
-            boolean matches = switch (operator) {
-                case "IS_NULL" -> actual == null
-                        || actual instanceof String text && text.isBlank();
-                case "EQ" -> Objects.equals(text(actual), text(expected));
-                case "NE" -> !Objects.equals(text(actual), text(expected));
-                case "LIKE" -> actual != null && expected != null
-                        && text(actual).contains(text(expected));
-                case "IN" -> expected instanceof Collection<?> values
-                        && values.stream().anyMatch(value ->
-                        Objects.equals(text(actual), text(value)));
-                case "BETWEEN" -> compareFilterValues(
-                        actual, filters.get(base + "_start")) >= 0
-                        && compareFilterValues(
-                        actual, filters.get(base + "_end")) <= 0;
-                case "GT" -> compareFilterValues(actual, expected) > 0;
-                case "GE" -> compareFilterValues(actual, expected) >= 0;
-                case "LT" -> compareFilterValues(actual, expected) < 0;
-                case "LE" -> compareFilterValues(actual, expected) <= 0;
-                default -> false;
-            };
-            if (!matches) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /**
-     * 比较过滤值集合；结果供调用方的后续步骤使用。
-     *
-     * @param left 左侧，作为 {@code java.math.BigDecimal} 的输入影响后续处理
-     * @param right 右侧，供本方法比较过滤值集合时使用
-     * @return 比较后的过滤值集合结果，供调用方继续处理
-     */
-    private int compareFilterValues(Object left, Object right) {
-        if (left == null || right == null) {
-            return left == right ? 0 : left == null ? -1 : 1;
-        }
-        if (left instanceof Number || right instanceof Number) {
-            try {
-                return new java.math.BigDecimal(text(left))
-                        .compareTo(new java.math.BigDecimal(text(right)));
-            } catch (NumberFormatException ignored) {
-                // 非标准数值按数据库字符串字段常见的字典序进行安全比较。
-            }
-        }
-        return text(left).compareTo(text(right));
     }
 
     /**
@@ -1894,14 +1013,14 @@ public class UiViewCompositionActionService {
         UiViewCompositionResolveResponse resolved = context.resolved();
         if (resolved.isMatchNone()) {
             throw conflict(
-                    "VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                    "当前关联条件没有可选择的数据");
+                    "VIEW_COMPOSITION_ACTION_TARGET_OUT_OF_SCOPE",
+                    "当前关联条件没有可操作的数据");
         }
         if (FORM.equals(resolved.getTargetContentType())) {
             if (!Objects.equals(recordId, resolved.getTargetRecordId())) {
                 throw forbidden(
-                        "VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                        "选择记录不属于当前关联内容");
+                        "VIEW_COMPOSITION_ACTION_TARGET_OUT_OF_SCOPE",
+                        "目标记录不属于当前关联内容");
             }
             return readAccessible(context.targetEntity(), recordId, null);
         }
@@ -1917,8 +1036,8 @@ public class UiViewCompositionActionService {
                 || condition.containsKey("id_start")
                 || condition.containsKey("id_end")) {
             throw forbidden(
-                    "VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                    "选择记录不满足关联内容的固定条件");
+                    "VIEW_COMPOSITION_ACTION_TARGET_OUT_OF_SCOPE",
+                    "目标记录不满足关联内容的固定条件");
         }
         condition.put("id", recordId);
         condition.put("id_op", "EQ");
@@ -1936,8 +1055,8 @@ public class UiViewCompositionActionService {
                 || !Objects.equals(
                 recordId, page.getRecords().get(0).getId())) {
             throw forbidden(
-                    "VIEW_COMPOSITION_SELECTION_OUT_OF_SCOPE",
-                    "选择记录不满足关联内容的固定条件或数据权限");
+                    "VIEW_COMPOSITION_ACTION_TARGET_OUT_OF_SCOPE",
+                    "目标记录不满足关联内容的固定条件或数据权限");
         }
         return page.getRecords().get(0);
     }
@@ -1962,88 +1081,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 构建来源补丁；结果供后续流程传递或持久化。
-     *
-     * @param context 执行上下文，向后续来源补丁步骤传递身份、配置或状态
-     * @param select {@code select}，作为 {@code validateSelectMappings} 的输入影响后续处理
-     * @param targetRecord 目标记录，作为 {@code recordValue} 的输入影响后续处理
-     * @return 来源补丁键值结果，供调用方继续处理
-     */
-    private Map<String, Object> buildSourcePatch(
-            ActionContext context,
-            Map<String, Object> select,
-            EntityDataDTO targetRecord) {
-        List<FieldMapping> mappings = validateSelectMappings(context, select);
-        Map<String, Object> patch = new LinkedHashMap<>();
-        for (FieldMapping mapping : mappings) {
-            Object value = recordValue(targetRecord, mapping.fromTarget());
-            if (mapping.required() && value == null) {
-                throw conflict(
-                        "VIEW_COMPOSITION_MAPPING_REQUIRED_VALUE_MISSING",
-                        "目标记录字段 “" + mapping.fromTarget()
-                                + "” 为空，无法完成必填回填");
-            }
-            if (value instanceof Map<?, ?>) {
-                throw conflict(
-                        "VIEW_COMPOSITION_MAPPING_VALUE_INVALID",
-                        "目标记录字段不能以对象形式直接回填");
-            }
-            patch.put(mapping.toSource(), value);
-        }
-        return patch;
-    }
-
-    /**
-     * 校验{@code select}映射集合；不满足约束时阻止后续处理。
-     *
-     * @param context 执行上下文，向后续{@code select}映射集合步骤传递身份、配置或状态
-     * @param select {@code select}，作为 {@code mapList} 的输入影响后续处理
-     * @return 字段映射集合，供调用方遍历或展示
-     */
-    private List<FieldMapping> validateSelectMappings(
-            ActionContext context,
-            Map<String, Object> select) {
-        if (!FORM.equals(context.claims().ownerType())
-                || !LIST.equals(context.resolved().getTargetContentType())) {
-            throw conflict(
-                    "VIEW_COMPOSITION_SELECT_CONTEXT_INVALID",
-                    "选择回填只适用于表单中嵌入的目标列表");
-        }
-        List<Map<String, Object>> mappings = mapList(
-                select.get("mappings"));
-        if (mappings.isEmpty()) {
-            throw conflict(
-                    "VIEW_COMPOSITION_MAPPING_REQUIRED",
-                    "已发布配置缺少选择结果回填字段");
-        }
-        List<FieldMapping> result = new ArrayList<>();
-        for (Map<String, Object> mapping : mappings) {
-            if (mapping.containsKey("literal")) {
-                throw conflict(
-                        "VIEW_COMPOSITION_MAPPING_INVALID",
-                        "选择结果回填不允许使用常量代替目标记录字段");
-            }
-            String fromTarget = firstText(
-                    mapping.get("sourceField"), mapping.get("source"));
-            String toSource = firstText(
-                    mapping.get("targetField"), mapping.get("target"));
-            if (!StringUtils.hasText(fromTarget)
-                    || !StringUtils.hasText(toSource)) {
-                throw conflict(
-                        "VIEW_COMPOSITION_MAPPING_INVALID",
-                        "选择结果回填必须同时指定目标记录字段和当前表单字段");
-            }
-            requireReadableTargetListField(context, fromTarget);
-            requireEditableSourceFormField(context, toSource);
-            result.add(new FieldMapping(
-                    fromTarget,
-                    toSource,
-                    !Boolean.FALSE.equals(mapping.get("required"))));
-        }
-        return List.copyOf(result);
-    }
-
-    /**
      * 校验并获取可读目标列表字段；不满足约束时阻止后续处理。
      *
      * @param context 执行上下文，向后续可读目标列表字段步骤传递身份、配置或状态
@@ -2057,7 +1094,7 @@ public class UiViewCompositionActionService {
         if (Boolean.FALSE.equals(field.getRuntimeReadable())) {
             throw forbidden(
                     "VIEW_COMPOSITION_MAPPING_FIELD_FORBIDDEN",
-                    "目标字段不可用于运行时回填: " + fieldCode);
+                    "目标字段不可用于接口动作: " + fieldCode);
         }
         Map<String, Object> list = map(
                 context.targetSnapshot().get("list"));
@@ -2071,7 +1108,7 @@ public class UiViewCompositionActionService {
                 || !truthy(publishedField.get("showInList"))) {
             throw forbidden(
                     "VIEW_COMPOSITION_MAPPING_FIELD_FORBIDDEN",
-                    "目标字段未在固定列表版本中显示，不能回填: " + fieldCode);
+                    "目标字段未在固定列表版本中显示，不能用于接口动作: " + fieldCode);
         }
         String sourceType = normalize(text(
                 publishedField.get("dataSourceType")));
@@ -2079,40 +1116,7 @@ public class UiViewCompositionActionService {
                 && !Set.of("ENTITY_FIELD", "REFERENCE").contains(sourceType)) {
             throw forbidden(
                     "VIEW_COMPOSITION_MAPPING_FIELD_FORBIDDEN",
-                    "计算列或自定义列不能作为实体字段回填: " + fieldCode);
-        }
-    }
-
-    /**
-     * 校验并获取可编辑来源表单字段；不满足约束时阻止后续处理。
-     *
-     * @param context 执行上下文，向后续可编辑来源表单字段步骤传递身份、配置或状态
-     * @param fieldCode 字段编码，后续用于校验并获取可编辑来源表单字段时定位或关联目标
-     */
-    private void requireEditableSourceFormField(
-            ActionContext context,
-            String fieldCode) {
-        EntityField field = requirePinnedField(
-                context.sourceSchema(), fieldCode, "来源");
-        if (Boolean.FALSE.equals(field.getEditable())) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_MAPPING_FIELD_FORBIDDEN",
-                    "当前实体字段不可编辑: " + fieldCode);
-        }
-        Map<String, Object> publishedField = mapList(
-                context.ownerSnapshot().get("legacyFields"))
-                .stream()
-                .filter(item -> Objects.equals(
-                        fieldCode, text(item.get("fieldCode"))))
-                .findFirst()
-                .orElse(null);
-        if (publishedField == null
-                || truthy(publishedField.get("isHidden"))
-                || truthy(publishedField.get("isReadonly"))
-                || !editableInMode(publishedField, "edit")) {
-            throw forbidden(
-                    "VIEW_COMPOSITION_MAPPING_FIELD_FORBIDDEN",
-                    "当前字段未在固定表单版本中开放编辑: " + fieldCode);
+                    "计算列或自定义列不能作为接口动作的实体字段输入: " + fieldCode);
         }
     }
 
@@ -2159,13 +1163,12 @@ public class UiViewCompositionActionService {
         Map<String, UiViewCompositionActionCapabilityDTO> result =
                 new LinkedHashMap<>();
         for (String action : List.of(
-                "VIEW", "SELECT", "CREATE", "EDIT", "LINK", "UNLINK",
-                "SAVE_WITH_FORM")) {
+                "VIEW", "CREATE", "EDIT")) {
             if (!declared.contains(action)) {
                 result.put(action, denied("未在已发布配置中启用"));
                 continue;
             }
-            result.put(action, capability(context, action, declared));
+            result.put(action, capability(context, action));
         }
         for (Map<String, Object> binding : actionServices(context)) {
             String actionKey = normalize(text(binding.get("actionKey")));
@@ -2192,21 +1195,15 @@ public class UiViewCompositionActionService {
      *
      * @param context 执行上下文，向后续能力步骤传递身份、配置或状态
      * @param action 动作标识，决定后续能力采用的处理分支
-     * @param declared {@code declared}，作为 {@code selectCapability} 的输入影响后续处理
      * @return 处理后的能力结果，供调用方继续处理
      */
     private UiViewCompositionActionCapabilityDTO capability(
             ActionContext context,
-            String action,
-            Set<String> declared) {
+            String action) {
         return switch (action) {
             case "VIEW" -> allowed();
             case "CREATE" -> createCapability(context);
             case "EDIT" -> editCapability(context);
-            case "SAVE_WITH_FORM" -> denied(
-                    "关联内容尚未接入随宿主提交，请使用已有组成型子表单或重复器");
-            case "SELECT" -> selectCapability(context, declared);
-            case "LINK", "UNLINK" -> relationCapability(context);
             default -> denied("动作不受支持");
         };
     }
@@ -2236,10 +1233,6 @@ public class UiViewCompositionActionService {
         }
         Map<String, Object> create = map(
                 map(context.config().get("actionSettings")).get("create"));
-        if (Boolean.TRUE.equals(create.get("associateAfterCreate"))) {
-            return denied(
-                    "新增后自动建立关联尚未接入同一事务，请关闭后再发布");
-        }
         try {
             return allowed(resolveCreateInitialValues(context, create));
         } catch (RuntimeException exception) {
@@ -2487,227 +1480,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 查询能力；查询结果供调用方展示或继续处理。
-     *
-     * @param context 执行上下文，向后续能力步骤传递身份、配置或状态
-     * @param declared {@code declared}，供本方法查询能力时使用
-     * @return 查询后的能力结果，供调用方继续处理
-     */
-    private UiViewCompositionActionCapabilityDTO selectCapability(
-            ActionContext context,
-            Set<String> declared) {
-        if (!LIST.equals(context.resolved().getTargetContentType())) {
-            return denied("选择记录仅适用于目标列表");
-        }
-        if (!hasPermission(
-                context.targetEntity(), EntityPermissionAction.VIEW)) {
-            return denied("没有目标实体查看权限");
-        }
-        Map<String, Object> select = map(
-                map(context.config().get("actionSettings")).get("select"));
-        String result = normalize(text(select.get("result")));
-        if ("LINK".equals(result)) {
-            if (!declared.contains("LINK")) {
-                return denied("选择后建立关联必须同时启用建立关联");
-            }
-            return relationCapability(context);
-        }
-        if (!"FILL_FIELDS".equals(result)) {
-            return denied("选择结果处理方式不受支持");
-        }
-        try {
-            validateSelectMappings(context, select);
-            return allowed();
-        } catch (RuntimeException exception) {
-            return denied(exception.getMessage());
-        }
-    }
-
-    /**
-     * 处理关系能力，并将结果传给后续步骤。
-     *
-     * @param context 执行上下文，向后续关系能力步骤传递身份、配置或状态
-     * @return 处理后的关系能力结果，供调用方继续处理
-     */
-    private UiViewCompositionActionCapabilityDTO relationCapability(
-            ActionContext context) {
-        String type = normalize(text(context.relation().get("type")));
-        if (!MUTABLE_RELATIONS.contains(type)) {
-            return denied("当前关联方式不支持关系写入");
-        }
-        try {
-            if ("REFERENCE_FIELD".equals(type)) {
-                EntityField field = requirePinnedField(
-                        context.sourceSchema(),
-                        requiredField(
-                                context.relation(),
-                                "sourceField",
-                                "来源引用字段"),
-                        "来源");
-                requireReference(
-                        field, context.targetEntity().getId(), "来源");
-            } else if ("REVERSE_REFERENCE".equals(type)) {
-                EntityField field = requirePinnedField(
-                        context.targetSchema(),
-                        requiredField(
-                                context.relation(),
-                                "targetField",
-                                "目标引用字段"),
-                        "目标");
-                requireReference(
-                        field, context.sourceEntity().getId(), "目标");
-            } else {
-                requireAssociationRelation(context);
-            }
-        } catch (RuntimeException exception) {
-            return denied(exception.getMessage());
-        }
-        EntityDefinition writeEntity = ("REFERENCE_FIELD".equals(type) || UiEntityRelationBinding.reverse(context.relation()))
-                ? context.sourceEntity() : context.targetEntity();
-        if (writeEntity.getStorageMode()
-                != EntityDefinition.StorageMode.DYNAMIC) {
-            return denied("系统实体不支持通过关联内容直接写入关系");
-        }
-        if (!hasPermission(writeEntity, EntityPermissionAction.UPDATE)) {
-            return denied("没有关系字段所属实体的编辑权限");
-        }
-        if (!hasPermission(
-                context.targetEntity(), EntityPermissionAction.VIEW)) {
-            return denied("没有目标实体查看权限");
-        }
-        return allowed();
-    }
-
-    /**
-     * 根据固定关系生成最小候选条件，并与目标列表固定条件安全求交。
-     *
-     * @param context 执行上下文，向后续候选人方案步骤传递身份、配置或状态
-     * @return 处理后的候选人方案结果，供调用方继续处理
-     */
-    private CandidatePlan candidatePlan(ActionContext context) {
-        String relationType = normalize(text(
-                context.relation().get("type")));
-        Map<String, Object> listFixed = targetListFixedFilters(context);
-        Map<String, Object> candidate = new LinkedHashMap<>();
-        boolean matchNone = false;
-        if ("REFERENCE_FIELD".equals(relationType) || UiEntityRelationBinding.reverse(context.relation())) {
-            EntityDataDTO source = readAccessible(
-                    context.sourceEntity(),
-                    context.claims().sourceRecordId(),
-                    null);
-            String sourceField = UiEntityRelationBinding.reverse(context.relation())
-                    ? requireAssociationRelation(context).getChildRefFieldCode()
-                    : requiredField(context.relation(), "sourceField", "来源引用字段");
-            String currentId = trim(text(scalar(
-                    recordValue(source, sourceField), sourceField)));
-            if (StringUtils.hasText(currentId)) {
-                // REFERENCE_FIELD 是单值关系，现有 LINK 动作明确禁止隐式替换。
-                // 因此已有引用时不展示“看起来可选、提交必失败”的其他记录；用户
-                // 需先在当前已关联列表解除关系，再重新打开候选列表。
-                matchNone = true;
-            }
-        } else {
-            String targetField;
-            if ("REVERSE_REFERENCE".equals(relationType)) {
-                targetField = requiredField(
-                        context.relation(), "targetField", "目标引用字段");
-            } else if ("ENTITY_RELATION".equals(relationType)) {
-                targetField = requireAssociationRelation(context)
-                        .getChildRefFieldCode();
-            } else {
-                throw conflict(
-                        "VIEW_COMPOSITION_RELATION_ACTION_UNSUPPORTED",
-                        "当前数据关联方式不支持选择候选记录建立关系");
-            }
-            if (hasFilterBase(listFixed, targetField)
-                    && !"IS_NULL".equals(filterOperator(
-                    listFixed, targetField))) {
-                // SQL 的普通比较与 NULL 不会相交；目标列表若把关系字段固定为
-                // 其它值，候选集合必须安全地视为空，不能覆盖列表约束。
-                matchNone = true;
-            }
-            if (!matchNone) {
-                // 即使目标列表本身已配置 IS_NULL，也仍在候选范围中显式保留
-                // 关系条件。这样候选安全边界不依赖列表过滤器是否携带占位值，
-                // 更不会因某种运行时忽略仅含 _op 的条件而退化为全量查询。
-                candidate.put(targetField, true);
-                candidate.put(targetField + "_op", "IS_NULL");
-            }
-        }
-        return new CandidatePlan(
-                Collections.unmodifiableMap(candidate), matchNone);
-    }
-
-    /**
-     * 整理目标列表固定过滤条件数据，供调用方遍历或继续处理。
-     *
-     * @param context 执行上下文，向后续目标列表固定过滤条件步骤传递身份、配置或状态
-     * @return 目标列表固定过滤条件键值结果，供调用方继续处理
-     */
-    private Map<String, Object> targetListFixedFilters(
-            ActionContext context) {
-        Object raw = map(context.targetSnapshot().get("list"))
-                .get("fixedFilterConfig");
-        if (raw == null) {
-            return Map.of();
-        }
-        if (raw instanceof Map<?, ?>) {
-            return map(raw);
-        }
-        if (raw instanceof String text && StringUtils.hasText(text)) {
-            try {
-                return objectMapper.readValue(
-                        text, new TypeReference<Map<String, Object>>() {});
-            } catch (Exception exception) {
-                throw conflict(
-                        "VIEW_COMPOSITION_TARGET_LIST_FILTER_INVALID",
-                        "固定目标列表的筛选条件无法解析");
-            }
-        }
-        throw conflict(
-                "VIEW_COMPOSITION_TARGET_LIST_FILTER_INVALID",
-                "固定目标列表的筛选条件格式不正确");
-    }
-
-    /**
-     * 判断是否具有过滤基础；判断结果决定调用方的后续分支。
-     *
-     * @param filters 过滤条件，供本方法判断是否具有过滤基础时使用
-     * @param fieldCode 字段编码，后续用于判断是否具有过滤基础时定位或关联目标
-     * @return 过滤基础条件成立时为 true，否则为 false
-     */
-    private boolean hasFilterBase(
-            Map<String, Object> filters,
-            String fieldCode) {
-        return filters.containsKey(fieldCode)
-                || filters.containsKey(fieldCode + "_op")
-                || filters.containsKey(fieldCode + "_start")
-                || filters.containsKey(fieldCode + "_end");
-    }
-
-    /**
-     * 生成过滤操作人文本，供后续匹配或展示。
-     *
-     * @param filters 过滤条件，作为 {@code normalize} 的输入影响后续处理
-     * @param fieldCode 字段编码，后续用于处理过滤操作人时定位或关联目标
-     * @return 处理后的过滤操作人文本，供调用方比较或展示
-     */
-    private String filterOperator(
-            Map<String, Object> filters,
-            String fieldCode) {
-        String operator = normalize(text(filters.get(fieldCode + "_op")));
-        if (StringUtils.hasText(operator)) {
-            return operator;
-        }
-        if (filters.containsKey(fieldCode + "_start")
-                || filters.containsKey(fieldCode + "_end")) {
-            return "BETWEEN";
-        }
-        return filters.get(fieldCode) instanceof Collection<?>
-                ? "IN" : "EQ";
-    }
-
-    /**
      * 判断是否具有权限；判断结果决定调用方的后续分支。
      *
      * @param entity 实体，供本方法判断是否具有权限时使用
@@ -2858,7 +1630,6 @@ public class UiViewCompositionActionService {
                 ownerSnapshot,
                 targetSnapshot,
                 config,
-                map(config.get("relation")),
                 sourceEntity,
                 targetEntity,
                 sourceSchema,
@@ -2932,9 +1703,7 @@ public class UiViewCompositionActionService {
             throw new IllegalArgumentException(
                     "动作标识必须以字母开头，且只能包含字母、数字、点、横线或下划线");
         }
-        if (KNOWN_ACTIONS.contains(action)
-                && !EXECUTABLE_ACTIONS.contains(action)
-                && !"VIEW".equals(action)) {
+        if (KNOWN_ACTIONS.contains(action) && !"VIEW".equals(action)) {
             throw new IllegalArgumentException(
                     "该标准动作必须通过平台表单或页面权威入口执行");
         }
@@ -2953,9 +1722,6 @@ public class UiViewCompositionActionService {
                 || request.getTargetRecordIds().isEmpty()
                 ? List.of()
                 : normalizeRecordIds(request.getTargetRecordIds());
-        if (EXECUTABLE_ACTIONS.contains(action) && ids.isEmpty()) {
-            throw new IllegalArgumentException("请选择至少一条目标记录");
-        }
         return new ValidatedAction(
                 request.getCompositionContext(),
                 action,
@@ -2991,24 +1757,6 @@ public class UiViewCompositionActionService {
             throw new IllegalArgumentException("目标记录ID不能重复");
         }
         return List.copyOf(ids);
-    }
-
-    /**
-     * 校验并获取选择数量；不满足约束时阻止后续处理。
-     *
-     * @param ids ID 集合，供本方法校验并获取选择数量时使用
-     * @param mode 模式标识，决定后续选择数量采用的处理分支
-     * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
-     */
-    private void requireSelectionCount(List<String> ids, String mode) {
-        if (!Set.of("SINGLE", "MULTIPLE").contains(mode)) {
-            throw conflict(
-                    "VIEW_COMPOSITION_SELECT_MODE_INVALID",
-                    "已发布配置包含不支持的选择方式");
-        }
-        if ("SINGLE".equals(mode) && ids.size() != 1) {
-            throw new IllegalArgumentException("当前配置只能选择一条记录");
-        }
     }
 
     /**
@@ -3055,26 +1803,6 @@ public class UiViewCompositionActionService {
     }
 
     /**
-     * 校验并获取引用；不满足约束时阻止后续处理。
-     *
-     * @param field 字段，供本方法校验并获取引用时使用
-     * @param expectedEntityId 预期实体ID，后续用于校验并获取引用时定位或关联目标
-     * @param label 标签，后续用于校验并获取引用时匹配或展示
-     */
-    private void requireReference(
-            EntityField field,
-            String expectedEntityId,
-            String label) {
-        if (field.getFieldType() != EntityField.FieldType.REFERENCE
-                || !Objects.equals(
-                expectedEntityId, field.getRefEntityId())) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_INVALID",
-                    label + "关联字段不是指向预期实体的单值引用");
-        }
-    }
-
-    /**
      * 生成必填字段文本，供后续匹配或展示。
      *
      * @param value 待处理必填字段的原始输入，结果供调用方继续使用
@@ -3115,22 +1843,6 @@ public class UiViewCompositionActionService {
         Map<String, Object> values = objectMapper.convertValue(
                 record, new TypeReference<>() {});
         return values.get(fieldCode);
-    }
-
-    /**
-     * 处理标量，并将结果传给后续步骤。
-     *
-     * @param value 待处理标量的原始输入，结果供调用方继续使用
-     * @param fieldCode 字段编码，后续用于处理标量时定位或关联目标
-     * @return 处理后的标量结果，供调用方继续处理
-     */
-    private Object scalar(Object value, String fieldCode) {
-        if (value instanceof Collection<?> || value instanceof Map<?, ?>) {
-            throw conflict(
-                    "VIEW_COMPOSITION_RELATION_VALUE_INVALID",
-                    "关系字段必须为单值: " + fieldCode);
-        }
-        return value;
     }
 
     /**
@@ -3321,7 +2033,6 @@ public class UiViewCompositionActionService {
      * @param ownerSnapshot 归属方快照，保存在对象中供后续校验、查询或展示
      * @param targetSnapshot 目标快照，保存在对象中供后续校验、查询或展示
      * @param config 配置内容，决定后续动作上下文的处理规则
-     * @param relation 关系，保存在对象中供后续校验、查询或展示
      * @param sourceEntity 来源实体，保存在对象中供后续校验、查询或展示
      * @param targetEntity 目标实体，保存在对象中供后续校验、查询或展示
      * @param sourceSchema 来源结构，保存在对象中供后续校验、查询或展示
@@ -3333,7 +2044,6 @@ public class UiViewCompositionActionService {
             Map<String, Object> ownerSnapshot,
             Map<String, Object> targetSnapshot,
             Map<String, Object> config,
-            Map<String, Object> relation,
             EntityDefinition sourceEntity,
             EntityDefinition targetEntity,
             EntityPublishedSnapshot sourceSchema,
@@ -3353,41 +2063,6 @@ public class UiViewCompositionActionService {
             String action,
             List<String> targetRecordIds,
             String operationId) {
-    }
-
-    /**
-     * 封装字段映射的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param fromTarget 起始目标，保存在对象中供后续校验、查询或展示
-     * @param toSource 截止来源，保存在对象中供后续校验、查询或展示
-     * @param required 必填，保存在对象中供后续校验、查询或展示
-     */
-    private record FieldMapping(
-            String fromTarget,
-            String toSource,
-            boolean required) {
-    }
-
-    /**
-     * 封装变更方案的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param commands {@code commands}，保存在对象中供后续校验、查询或展示
-     * @param targetRecordIds 目标记录ID 集合，保存在对象中供后续校验、查询或展示
-     */
-    private record MutationPlan(
-            List<EntityMutationCommand> commands,
-            List<String> targetRecordIds) {
-    }
-
-    /**
-     * 封装候选人方案的不可变数据；各分量供后续校验、传递或结果展示使用。
-     *
-     * @param filters 过滤条件，保存在对象中供后续校验、查询或展示
-     * @param matchNone 匹配{@code none}，保存在对象中供后续校验、查询或展示
-     */
-    private record CandidatePlan(
-            Map<String, Object> filters,
-            boolean matchNone) {
     }
 
     /**

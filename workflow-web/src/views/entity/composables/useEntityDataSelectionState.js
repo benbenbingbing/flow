@@ -13,12 +13,11 @@ export function useEntityDataSelectionState(props, runtimeScene, listConfig) {
   })
   const explicitSelectionScene = computed(() =>
     ['SINGLE', 'MULTIPLE'].includes(props.selectionMode)
-      || (Array.isArray(props.selectionActionOptions)
-        && props.selectionActionOptions.length > 0)
+
   )
   const selectionScene = computed(() =>
     ['FORM_PICKER', 'SUB_TABLE'].includes(runtimeScene.value)
-    // 内嵌、弹窗和抽屉仍可承载普通列表，只有调用方显式传入选择模式或动作时
+    // 内嵌、弹窗和抽屉仍可承载普通列表，只有调用方显式传入选择模式时
     // 才进入选择器；列表勾选开关不能隐式隐藏工具栏并打开选择器底栏。
     || explicitSelectionScene.value
   )

@@ -29,6 +29,7 @@ import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.entity.ui.api.request.UiExtensionExecuteRequest;
 import com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest;
 import com.workflow.entity.ui.api.response.UiViewCompositionResolveResponse;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiConfigReleaseMapper;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import lombok.RequiredArgsConstructor;
@@ -782,6 +783,10 @@ public class UiViewCompositionRuntimeService {
     private boolean usesInterfaceService(
             Map<String, Object> relation,
             Map<String, Object> special) {
+        // 普通关系的旧发布可能仍携带已移除接口；忽略它们才能继续按实体关系取数。
+        if (!UiViewCompositionExtensionPolicy.allowsInterfaceExtensions(relation)) {
+            return false;
+        }
         if ("INTERFACE_SERVICE".equals(normalize(
                 text(relation.get("type"))))) {
             return true;

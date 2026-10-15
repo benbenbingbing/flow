@@ -1,11 +1,7 @@
 const RELATED_CONTENT_RUNTIME_ACTIONS = new Set([
   'VIEW',
-  'SELECT',
   'CREATE',
-  'EDIT',
-  'LINK',
-  'UNLINK',
-  'SAVE_WITH_FORM'
+  'EDIT'
 ])
 
 export function normalizeRelatedContentRuntimeActions(actions) {

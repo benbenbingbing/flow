@@ -39,6 +39,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
@@ -177,6 +178,41 @@ class UiViewCompositionRuntimeServiceTest {
         assertEquals("source-record", response.getSourceRecordId());
         verify(entitySnapshotService, never())
                 .getLatestByEntityCode(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH"})
+    @SuppressWarnings("unchecked")
+    void historicalOrdinaryInterfaceBindingsDoNotReplaceEntityRelationResolution(String relationType) {
+        Fixture fixture = fixture(relationType, "LIST", true);
+        Map<String, Object> snapshot = new LinkedHashMap<>(fixture.ownerSnapshot());
+        Map<String, Object> composition = new LinkedHashMap<>((Map<String, Object>)
+                ((List<?>) snapshot.get("viewCompositions")).get(0));
+        Map<String, Object> config = new LinkedHashMap<>((Map<String, Object>) composition.get("config"));
+        config.put("specialHandling", Map.of(
+                "mode", "INTERFACE_SERVICE",
+                "failurePolicy", "ERROR",
+                "interfaceService", Map.of("serviceId", "deleted-service", "operationCode", "resolve"),
+                "actionServices", List.of(Map.of("actionKey", "CHECK_RISK", "extensionId", "deleted-action"))));
+        composition.put("config", config);
+        snapshot.put("viewCompositions", List.of(composition));
+        when(releaseService.verifiedReleaseSnapshot(fixture.ownerRelease())).thenReturn(snapshot);
+
+        UiViewCompositionResolveResponse response = service.resolve(fixture.request());
+
+        assertEquals(fixture.expectedFilters(), response.getFixedFilters());
+        assertEquals("target-list-release", response.getTargetReleaseId());
+        org.mockito.Mockito.verifyNoInteractions(dataSourceService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SAME_RECORD", "INTERFACE_SERVICE"})
+    void independentExtensionPageRetainsInterfaceDataResolution(String relationType) {
+        boolean result = ReflectionTestUtils.invokeMethod(service, "usesInterfaceService",
+                Map.of("type", relationType),
+                Map.of("interfaceService", Map.of("extensionId", "read-extension")));
+
+        assertTrue(result);
     }
 
     @Test

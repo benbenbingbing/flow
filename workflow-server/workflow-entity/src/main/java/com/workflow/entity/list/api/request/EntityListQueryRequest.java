@@ -27,8 +27,6 @@ public class EntityListQueryRequest {
     private Map<String, Object> runtimeContext = Map.of();
     /** 关联范围每次都从已发布关系与来源记录重新计算。 */
     private com.workflow.entity.ui.api.request.UiViewCompositionResolveRequest compositionContext;
-    /** LINK/UNLINK 候选查询仍须核验对应按钮能力，不能凭此字段扩大范围。 */
-    private String candidateAction;
     /** 查询过滤条件 */
     private Map<String, Object> filters = new LinkedHashMap<>();
     /** 列表运行时上下文（关联来源、参数等） */

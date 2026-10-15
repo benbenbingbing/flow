@@ -699,7 +699,7 @@ public class UiConfigReleaseService {
      */
     public Map<String, Object> draftSnapshot(String configType, String configId) {
         Map<String, Object> snapshot = buildDraftSnapshot(
-                configType, configId, false);
+                configType, configId, false, false);
         if (!FORM.equals(normalize(configType))) {
             return snapshot;
         }
@@ -720,7 +720,7 @@ public class UiConfigReleaseService {
      * @return 差异 DTO，包含是否变化、变化区块与明细
      */
     public UiConfigDiffDTO diff(String configType, String configId) {
-        Map<String, Object> draft = buildDraftSnapshot(configType, configId);
+        Map<String, Object> draft = buildDraftSnapshot(configType, configId, true, false);
         String draftDocument = snapshotSupport.canonical(draft);
         String draftHash = snapshotSupport.hash(draftDocument);
         UiConfigRelease active = active(configType, configId);
@@ -2082,7 +2082,7 @@ public class UiConfigReleaseService {
                 verifiedSnapshot(active));
         Map<String, Object> currentDraft = buildDraftSnapshot(
                 configType,
-                configId);
+                configId, true, false);
         Map<String, Object> activeSnapshot =
                 normalizeReleaseComparisonSnapshot(
                         configType,
@@ -2353,11 +2353,16 @@ public class UiConfigReleaseService {
             Map<String, Object> currentDraft,
             Map<String, Object> activeSnapshot,
             String activeHash) {
-        Map<String, Object> projected = projectedDraftAfterDiscard(
-                configType,
-                configId,
-                currentDraft,
-                activeSnapshot);
+        Map<String, Object> projected;
+        try {
+            projected = projectedDraftAfterDiscard(
+                    configType, configId, currentDraft, activeSnapshot);
+        } catch (IllegalArgumentException | BusinessConflictException exception) {
+            // 差异读取不是恢复预检。发布基线的依赖失效时只关闭撤销入口，仍允许
+            // 设计器展示当前草稿；权限和基础设施故障不在此处吞掉。
+            return DraftDiscardAssessment.unavailable(
+                    "当前发布基线无法恢复：" + exception.getMessage());
+        }
         return assessDraftDiscard(
                 configType,
                 currentDraft,
@@ -3369,7 +3374,7 @@ public class UiConfigReleaseService {
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId) {
-        return buildDraftSnapshot(configType, configId, true);
+        return buildDraftSnapshot(configType, configId, true, true);
     }
 
     /**
@@ -3377,14 +3382,16 @@ public class UiConfigReleaseService {
      *
      * @param configType 配置类型标识，决定后续草稿快照采用的处理分支
      * @param configId 配置ID，后续用于构建草稿快照时定位或关联目标
-     * @param pinRuntimeReferences 固定运行时引用，供本方法构建草稿快照时使用
+     * @param pinRuntimeReferences 是否固定节点和事件的运行时引用
+     * @param validateCompositions 是否按发布规则校验关联内容；设计读取允许未完成的配置
      * @return 草稿快照键值结果，供调用方继续处理
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private Map<String, Object> buildDraftSnapshot(
             String configType,
             String configId,
-            boolean pinRuntimeReferences) {
+            boolean pinRuntimeReferences,
+            boolean validateCompositions) {
         requireType(configType);
         if (FORM.equals(configType)) {
             EntityForm form = formService.getById(configId);
@@ -3420,7 +3427,7 @@ public class UiConfigReleaseService {
             snapshot.put(
                     "viewCompositions",
                     snapshotSupport.stableValue(
-                            snapshotViewCompositions(FORM, configId)));
+                            snapshotViewCompositions(FORM, configId, validateCompositions)));
             stripFormVersionReferences(snapshot);
             return snapshot;
         }
@@ -3444,7 +3451,7 @@ public class UiConfigReleaseService {
         snapshot.put(
                 "viewCompositions",
                 snapshotSupport.stableValue(
-                        snapshotViewCompositions(LIST, configId)));
+                        snapshotViewCompositions(LIST, configId, validateCompositions)));
         return snapshot;
     }
 
@@ -3453,12 +3460,17 @@ public class UiConfigReleaseService {
      *
      * @param configType 配置类型标识，决定后续快照视图{@code compositions}采用的处理分支
      * @param configId 配置ID，后续用于处理快照视图{@code compositions}时定位或关联目标
+     * @param validateCompositions 发布与预检使用严格快照，差异读取使用可编辑草稿快照
      * @return 界面配置发布版本集合，供调用方遍历或展示
      */
     private List<Map<String, Object>> snapshotViewCompositions(
             String configType,
-            String configId) {
-        return requireViewCompositionService().snapshot(configType, configId);
+            String configId,
+            boolean validateCompositions) {
+        UiViewCompositionService compositions = requireViewCompositionService();
+        return validateCompositions
+                ? compositions.snapshot(configType, configId)
+                : compositions.draftSnapshot(configType, configId);
     }
 
     /**
