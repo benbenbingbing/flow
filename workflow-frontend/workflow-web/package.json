@@ -9,7 +9,7 @@
     "build:embed": "vite build --config vite.embed.config.js",
     "preview": "vite preview",
     "test:flow-action-failure-strategy": "node src/shared/__tests__/flow-action-failure-strategy.spec.js",
-    "test:empty-assignee": "node src/shared/__tests__/empty-assignee-policy.spec.js",
+    "test:empty-assignee": "node src/shared/__tests__/empty-assignee-policy.spec.js && node --test src/views/system/__tests__/assigneeIncidentPagination.spec.js",
     "test:extension-catalog-pagination": "node src/shared/__tests__/extension-catalog-pagination.spec.js",
     "test:task-handover": "node src/views/system/__tests__/taskHandover.spec.js",
     "test:task-handover:browser": "node scripts/task-handover-browser-test.mjs",

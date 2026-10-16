@@ -3,6 +3,7 @@ package com.workflow.process.assignment.api.web;
 import com.workflow.admin.authorization.application.PermissionUtil;
 import com.workflow.core.error.ForbiddenException;
 import com.workflow.core.result.ApiResponse;
+import com.workflow.core.result.PageResult;
 import com.workflow.core.security.AuthenticatedApi;
 import com.workflow.process.assignment.api.request.AssigneeIncidentHandleRequest;
 import com.workflow.process.assignment.application.AssigneeIncidentService;
@@ -16,7 +17,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.Map;
 
 /** 空办理人事件管理与处置 API。 */
@@ -29,16 +29,20 @@ public class AssigneeIncidentController {
     private final AssigneeIncidentService incidentService;
 
     /**
-     * 列出办理人异常事件；查询结果供调用方展示或继续处理。
+     * 分页查询办理人异常事件，返回当前页和筛选后的总数。
      *
-     * @param status 状态标识，决定后续办理人异常事件采用的处理分支
-     * @return 符合条件的办理人异常事件结果，供调用方继续处理
+     * @param status 可选事件状态，未传时查询全部状态
+     * @param pageNum 从 1 开始的页码
+     * @param pageSize 每页条数，默认 20，最多 100
+     * @return 当前页记录与总数，供管理页面分页展示
      */
     @GetMapping
-    public ApiResponse<List<Map<String, Object>>> list(
-            @RequestParam(required = false) String status) {
+    public ApiResponse<PageResult<Map<String, Object>>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "1") Integer pageNum,
+            @RequestParam(defaultValue = "20") Integer pageSize) {
         require("process:assignee-incident:list");
-        return ApiResponse.success(incidentService.list(status));
+        return ApiResponse.success(incidentService.list(status, pageNum, pageSize));
     }
 
     /**

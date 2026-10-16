@@ -104,7 +104,7 @@ class MySqlServiceQueryDatabaseTest {
     }
 
     @Test
-    void incidentListPreservesStatusPriorityAndCapsTheFilteredSetAtFiveHundred() {
+    void incidentListPreservesStatusPriorityAndPagesTheFilteredSet() {
         try (var f = new MySqlRuntimePaginationDatabaseTest.Fixture()) {
             String columns = "id VARCHAR(64) PRIMARY KEY, retry_count INT, max_retries INT, next_retry_at DATETIME,"
                     + " resolved_at DATETIME, create_time DATETIME, update_time DATETIME";
@@ -117,16 +117,34 @@ class MySqlServiceQueryDatabaseTest {
                 f.jdbc.update("INSERT INTO " + table + " (id,status,update_time) VALUES (?,?,'2026-01-01')", status, status);
             var service = new AssigneeIncidentService(com.workflow.support.BusinessMapperTestSupport.mapper(f.isolatedDataSource(), com.workflow.process.assignment.infrastructure.persistence.mapper.AssigneeIncidentMapper.class), new ObjectMapper(),
                     mock(TaskService.class), mock(RuntimeService.class), mock(AssigneeResolutionService.class), QUERY, new JdbcWriteAttempt(new JdbcTemplate(), DatabaseDialects.insert(DatabaseVendor.MYSQL)));
-            var all = service.list(null);
-            assertEquals(500, all.size());
-            assertEquals("UNKNOWN", all.get(0).get("id"));
-            assertEquals("i0501", all.get(1).get("id"));
-            var open = service.list(" OPEN ");
-            assertEquals(500, open.size());
-            assertEquals("i0501", open.get(0).get("id"));
-            assertEquals("i0002", open.get(open.size() - 1).get("id"));
-            assertEquals(List.of("RESOLVED"), service.list("RESOLVED").stream().map(row -> row.get("id")).toList());
-            assertTrue(service.list("' OR 1=1 --").isEmpty());
+            var all = service.list(null, 1, 100);
+            assertEquals(507, all.getTotal());
+            assertEquals(100, all.getRecords().size());
+            assertEquals("UNKNOWN", all.getRecords().get(0).get("id"));
+            assertEquals("i0501", all.getRecords().get(1).get("id"));
+            var open = service.list(" OPEN ", 1, 100);
+            assertEquals(502, open.getTotal());
+            assertEquals(100, open.getRecords().size());
+            assertEquals("i0501", open.getRecords().get(0).get("id"));
+            assertEquals("i0402", open.getRecords().get(99).get("id"));
+
+            // 查询第六页，验证原先被 500 条上限截掉的记录仍可访问，且跨页保持状态优先级。
+            var lastOpen = service.list("OPEN", 6, 100);
+            assertEquals(502, lastOpen.getTotal());
+            assertEquals(6, lastOpen.getPageNum());
+            assertEquals(100, lastOpen.getPageSize());
+            assertEquals(List.of("i0001", "i0000"),
+                    lastOpen.getRecords().stream().map(row -> row.get("id")).toList());
+            var lastAll = service.list(null, 6, 100);
+            assertEquals(507, lastAll.getTotal());
+            assertEquals(List.of("i0002", "i0001", "i0000", "RETRY_SCHEDULED", "MANUAL_REQUIRED", "RESOLVED", "TERMINATED"),
+                    lastAll.getRecords().stream().map(row -> row.get("id")).toList());
+            var resolved = service.list("RESOLVED", 1, 100);
+            assertEquals(1, resolved.getTotal());
+            assertEquals(List.of("RESOLVED"), resolved.getRecords().stream().map(row -> row.get("id")).toList());
+            var unmatched = service.list("' OR 1=1 --", 1, 100);
+            assertEquals(0, unmatched.getTotal());
+            assertTrue(unmatched.getRecords().isEmpty());
         }
     }
 

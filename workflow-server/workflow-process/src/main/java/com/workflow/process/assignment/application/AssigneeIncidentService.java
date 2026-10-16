@@ -3,6 +3,8 @@ package com.workflow.process.assignment.application;
 import com.workflow.process.status.application.ProcessEndReason;
 
 import com.workflow.core.database.jdbc.JdbcWriteAttempt;
+import com.workflow.core.result.PageRequest;
+import com.workflow.core.result.PageResult;
 import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.workflow.integration.database.api.DatabaseDialects;
 import com.workflow.integration.database.api.runtime.DatabaseRuntimeDialect;
@@ -52,13 +54,25 @@ public class AssigneeIncidentService {
     private final JdbcWriteAttempt writeAttempt;
 
     /**
-     * 查询事件和责任人、重试时间等管理字段。
+     * 按状态分页查询事件及管理字段，不再截断为前 500 条。
      *
-     * @param status 状态标识，决定后续办理人异常事件采用的处理分支
-     * @return 办理人异常事件集合，供调用方遍历或展示
+     * @param status 可选事件状态，空白表示全部状态
+     * @param pageNum 从 1 开始的页码，非正数归一为 1
+     * @param pageSize 单页条数，缺省 20，限制为 1 至 100
+     * @return 当前页记录、筛选后总数和规范化的分页参数
      */
-    public List<Map<String, Object>> list(String status) {
+    public PageResult<Map<String, Object>> list(String status, Integer pageNum, Integer pageSize) {
+        PageRequest page = PageRequest.normalize(pageNum, pageSize, 20, 100);
         String normalized = trimToNull(status);
+        String filter = normalized == null ? "" : " WHERE status = ?";
+        List<Object> parameters = normalized == null ? List.of() : List.of(normalized);
+        // 计数和记录共用筛选条件，确保总页数对应当前状态而不是全局指标。
+        Long count = incidentMapper.count(ParameterizedSql.of(
+                "SELECT COUNT(*) FROM process_assignee_incident" + filter, parameters));
+        long total = count == null ? 0L : count;
+        if (page.offset() >= total) {
+            return new PageResult<>(List.of(), total, page.pageNumber(), page.pageSize());
+        }
         // CASE 保留原状态优先级；未知/NULL 状态仍排在 0，时间相同用主键稳定排序。
         String sql = """
                 SELECT id, process_config_id, process_definition_id, process_instance_id,
@@ -68,13 +82,15 @@ public class AssigneeIncidentService {
                        retry_count, max_retries, next_retry_at, resolution_action,
                        resolved_by, resolved_at, create_time, update_time
                 FROM process_assignee_incident
-                """ + (normalized == null ? "" : " WHERE status = ?")
+                """ + filter
                 + " ORDER BY CASE status WHEN 'OPEN' THEN 1 WHEN 'RETRY_SCHEDULED' THEN 2"
                 + " WHEN 'MANUAL_REQUIRED' THEN 3 WHEN 'RESOLVED' THEN 4 WHEN 'TERMINATED' THEN 5 ELSE 0 END,"
-                + " update_time DESC, id DESC" + queryDialect.paginationClause("0", "500");
-        return normalized == null
-                ? incidentMapper.selectRows(ParameterizedSql.of(sql)).stream().map(this::incidentView).toList()
-                : incidentMapper.selectRows(ParameterizedSql.of(sql, normalized)).stream().map(this::incidentView).toList();
+                + " update_time DESC, id DESC";
+        // 方言负责各数据库分页参数的顺序；筛选值和分页值始终使用绑定参数。
+        var statement = queryDialect.paginate(sql, parameters, page.offset(), page.pageSize());
+        var records = incidentMapper.selectRows(ParameterizedSql.of(statement.sql(), statement.parameters()))
+                .stream().map(this::incidentView).toList();
+        return new PageResult<>(records, total, page.pageNumber(), page.pageSize());
     }
 
     /**

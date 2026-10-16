@@ -1,14 +1,5 @@
 <template>
   <div class="incident-page">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">WORKFLOW OPERATIONS</p>
-        <h1>空办理人事件中心</h1>
-        <p class="hero-copy">集中发现、追踪和恢复无法生成有效办理人的流程任务。</p>
-      </div>
-      <el-button :loading="loading" @click="refresh">刷新</el-button>
-    </section>
-
     <section class="metric-grid">
       <article v-for="item in metricCards" :key="item.label" class="metric-card">
         <span>{{ item.label }}</span>
@@ -22,13 +13,16 @@
           <h2>待处理事件</h2>
           <span>所有操作均记录请求号、操作人和处置历史</span>
         </div>
-        <el-select v-model="status" clearable placeholder="全部状态" style="width: 180px" @change="loadList">
-          <el-option label="待处理" value="OPEN" />
-          <el-option label="等待重试" value="RETRY_SCHEDULED" />
-          <el-option label="处理中" value="PROCESSING" />
-          <el-option label="已解决" value="RESOLVED" />
-          <el-option label="已终止" value="TERMINATED" />
-        </el-select>
+        <div class="toolbar-actions">
+          <el-select v-model="status" clearable placeholder="全部状态" style="width: 180px" @change="changeStatus">
+            <el-option label="待处理" value="OPEN" />
+            <el-option label="等待重试" value="RETRY_SCHEDULED" />
+            <el-option label="处理中" value="PROCESSING" />
+            <el-option label="已解决" value="RESOLVED" />
+            <el-option label="已终止" value="TERMINATED" />
+          </el-select>
+          <el-button :loading="loading" @click="refresh">刷新</el-button>
+        </div>
       </header>
 
       <el-table v-loading="loading" :data="incidents" row-key="id" @row-click="openDetail">
@@ -61,6 +55,17 @@
           <template #default="{ row }"><el-button link type="primary" @click.stop="openDetail(row)">详情</el-button></template>
         </el-table-column>
       </el-table>
+      <el-pagination
+        class="pagination"
+        :current-page="pageNum"
+        :page-size="pageSize"
+        :page-sizes="[20, 50, 100]"
+        :total="total"
+        :disabled="loading"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="changePage"
+        @size-change="changePageSize"
+      />
     </section>
 
     <el-drawer v-model="detailVisible" title="事件详情" size="min(680px, 92vw)">
@@ -122,6 +127,11 @@ const incidents = ref([])
 const metrics = ref({})
 const detail = ref(null)
 const status = ref('OPEN')
+const pageNum = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+// 状态筛选和翻页可以连续触发，仅允许最新请求更新列表及加载状态。
+let listRequestVersion = 0
 const loading = ref(false)
 const handling = ref(false)
 const detailVisible = ref(false)
@@ -187,13 +197,53 @@ function statusType(input) {
   return 'danger'
 }
 
+/** 按当前筛选加载一页；处置导致末页清空时回到最后一个有效页。 */
 async function loadList() {
+  const version = ++listRequestVersion
   loading.value = true
   try {
-    incidents.value = unwrap(await assigneeIncidentApi.list(status.value)) || []
+    const result = unwrap(await assigneeIncidentApi.list({
+      status: status.value || undefined,
+      pageNum: pageNum.value,
+      pageSize: pageSize.value
+    }))
+    if (version !== listRequestVersion) return
+    total.value = Number(result?.total || 0)
+    const lastPage = Math.max(1, Math.ceil(total.value / pageSize.value))
+    if (pageNum.value > lastPage) {
+      pageNum.value = lastPage
+      return await loadList()
+    }
+    incidents.value = result?.records || []
+  } catch (error) {
+    // 请求拦截器统一提示错误；清空旧页，避免把旧数据当作新筛选结果。
+    if (version === listRequestVersion) {
+      incidents.value = []
+      total.value = 0
+    }
+    throw error
   } finally {
-    loading.value = false
+    if (version === listRequestVersion) loading.value = false
   }
+}
+
+/** 筛选范围变化后从第一页查询，避免沿用旧状态的页码。 */
+function changeStatus() {
+  pageNum.value = 1
+  return loadList()
+}
+
+function changePage(page) {
+  if (page === pageNum.value) return
+  pageNum.value = page
+  return loadList()
+}
+
+/** 更换每页条数时重置页码，确保页码与查询偏移一致。 */
+function changePageSize(size) {
+  pageSize.value = size
+  pageNum.value = 1
+  return loadList()
 }
 
 async function loadMetrics() {
@@ -233,24 +283,22 @@ onMounted(refresh)
 </script>
 
 <style scoped>
-.incident-page { min-height: 100%; padding: 24px; color: #17221f; background: radial-gradient(circle at 8% 0%, #d9efe6 0, transparent 34%), #f3f5f0; }
-.hero-panel, .workspace-panel { border: 1px solid #d9dfd8; border-radius: 18px; background: rgba(255, 255, 252, .92); box-shadow: 0 16px 40px rgba(28, 55, 45, .07); }
-.hero-panel { display: flex; align-items: center; justify-content: space-between; padding: 26px 30px; }
-.eyebrow { margin: 0 0 6px; color: #237154; font-size: 11px; font-weight: 800; letter-spacing: .16em; }
-h1 { margin: 0; font-family: Georgia, 'Noto Serif SC', serif; font-size: 30px; }
-.hero-copy { margin: 8px 0 0; color: #637069; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 16px 0; }
+.incident-page { min-height: 100%; padding: 24px; color: #17221f; background: #fff; }
+.workspace-panel { border: 1px solid #d9dfd8; border-radius: 18px; background: #fff; }
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 0 0 16px; }
 .metric-card { padding: 18px 20px; border: 1px solid #dce3dc; border-radius: 14px; background: #fff; }
 .metric-card span { display: block; color: #6b7771; font-size: 13px; }
 .metric-card strong { display: block; margin-top: 5px; color: #164f3b; font: 700 28px Georgia, serif; }
 .workspace-panel { padding: 22px; }
 .toolbar, .detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .toolbar { margin-bottom: 18px; }
+.toolbar-actions { display: flex; align-items: center; gap: 12px; }
+.pagination { display: flex; justify-content: flex-end; margin-top: 20px; overflow-x: auto; }
 .toolbar h2, .detail-heading h3 { margin: 0; }
 .toolbar span { color: #7b8580; font-size: 13px; }
 .primary-cell { font-weight: 650; }
 small { color: #7b8580; }
 .detail-heading { margin: 24px 0 14px; }
 @media (max-width: 900px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .incident-page { padding: 12px; } .hero-panel { align-items: flex-start; padding: 20px; } .hero-copy { max-width: 240px; } .metric-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .incident-page { padding: 12px; } .toolbar { align-items: flex-start; flex-direction: column; } .pagination { justify-content: flex-start; } .metric-grid { grid-template-columns: 1fr 1fr; } }
 </style>
