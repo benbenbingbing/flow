@@ -1,5 +1,7 @@
 # 实体关系、页面展示与主从编辑
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 业务关系只在实体设计中定义一次。表单和列表引用关系，不再自行定义引用字段、反向引用或字段匹配条件。单选、多选实体字段仍用于选择和保存记录 ID；子表单、关联列表改为页面组件，不再新增 `SUB_FORM`、`SUB_LIST` 实体字段。
 
 ## 功能与保存边界

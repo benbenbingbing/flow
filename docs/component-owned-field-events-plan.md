@@ -1,5 +1,7 @@
 # 组件自声明前端事件：实现与接入说明
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 状态：已实现。处理函数通过下拉选择已注册的名称和版本；代码片段直接输入函数体。实际文本组件位于 `workflow-web/src/extensions/builtin/fields/components/TextField.vue`，配套完整示例位于 `docs/examples/TextField.component-events.example.vue`。
 
 ## 事件如何流转
@@ -94,11 +96,11 @@ export async function trimCustomerName({ value, setValue }) {
 }
 ```
 
-为它新增 `FIELD_EVENT_HANDLER` 清单，例如 `extensions/manifests/business/customer/handlers/trim_name.v1.extension.json`：
+为它新增 `FIELD_EVENT_HANDLER` 清单，例如 `extensions/manifests/biz-customer/handlers/trim_name.v1.extension.json`：
 
 ```json
 {
-  "$schema": "../../../../schemas/extension.schema.json",
+  "$schema": "../../../schemas/extension.schema.json",
   "schemaVersion": 1,
   "type": "FIELD_EVENT_HANDLER",
   "name": "customer.trimName",
@@ -106,7 +108,7 @@ export async function trimCustomerName({ value, setValue }) {
   "description": "去除客户名称首尾空格",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/business/customer/handlers/trimName.js",
+    "package": "@flow/biz-customer/pc/handlers/trimName",
     "export": "trimCustomerName",
     "kind": "FUNCTION"
   },

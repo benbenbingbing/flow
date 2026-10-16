@@ -2,7 +2,7 @@
 
 审查日期：2026-09-24。基于提交 `c7318b5f` 的本地代码。范围包括 `workflow-web/src`、`workflow-mobile/src`、三个公共包及构建/CI 配置；源文件盘点为 544 个、131,817 行（含模板、样式、注释、生成常量，不含测试和构建产物）。采用目录依赖与重复片段检索，再追踪关键调用链；没有逐行证明所有前端功能无缺陷。
 
-本报告保留整改前审查结论与当时行号；当前实施及验证见 [整改验收说明](./frontend-refactor-progress-2026-09-24.md)。原审查阶段新增本报告和[问题复现脚本](/Users/dawei/Documents/ddup/ai/flow/output/frontend-audit-reproductions-2026-09-24.mjs)，当时未修改业务源码；证据脚本仅适用上述基线。Flyway 迁移文件：新增、修改、删除均无。
+本报告保留整改前审查结论与当时行号；当前实施及验证见 [整改验收说明](frontend-refactor-progress-2026-09-24.md)。原审查阶段新增本报告和[问题复现脚本](frontend-audit-reproductions-2026-09-24.mjs)，当时未修改业务源码；证据脚本仅适用上述基线。Flyway 迁移文件：新增、修改、删除均无。
 
 ## 结论与已有基础
 
@@ -278,7 +278,7 @@ saveScopeBindings 返回 false 后，saveListMetadata 仍更新元数据基线�
 | `node --test packages/*/tests/*.test.mjs` | 22 项通过 |
 | 在 workflow-mobile 执行 `node --test tests/*.test.mjs` | 13 项通过 |
 | 在 workflow-web 执行 `node src/components/__tests__/bpmnViewerStability.spec.js` | 通过 |
-| [源码复现脚本](/Users/dawei/Documents/ddup/ai/flow/output/frontend-audit-reproductions-2026-09-24.mjs) | 5 组问题均复现 |
+| [源码复现脚本](frontend-audit-reproductions-2026-09-24.mjs) | 5 组问题均复现 |
 | 在 workflow-web 执行 `node scripts/maintainability-budget.mjs` | 失败；前端超预算 28 个文件 |
 
 复现脚本提取 Vue 组件的实际方法并注入内存记录、假接口和可控 Promise，没有复制被审查的业务算法，也没有请求真实业务服务。它的断言成功表示当前缺陷存在，不能写成“5 项功能测试通过”。

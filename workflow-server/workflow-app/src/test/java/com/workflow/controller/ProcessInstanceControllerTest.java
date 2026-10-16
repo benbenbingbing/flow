@@ -39,6 +39,9 @@ public class ProcessInstanceControllerTest {
     @MockitoBean
     private ProcessInstanceService processInstanceService;
 
+    @MockitoBean
+    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+
     /** 每个测试前初始化的流程进度测试 DTO */
     private ProcessProgressDTO testProgress;
 
@@ -166,8 +169,8 @@ public class ProcessInstanceControllerTest {
      */
     @Test
     void triggerReceiveTaskPassesMessageAndVariablesToService() throws Exception {
-        when(processInstanceService.triggerReceiveTask(eq("proc-inst-1"), any()))
-                .thenReturn("execution-1");
+        when(instanceCommands.triggerReceiveTask(any()))
+                .thenReturn(new com.workflow.contracts.process.instance.model.ReceiveTaskTriggerResult(null, "execution-1"));
 
         mockMvc.perform(post("/api/process-instance/proc-inst-1/receive")
                         .contentType("application/json")
@@ -183,9 +186,10 @@ public class ProcessInstanceControllerTest {
                 .andExpect(jsonPath("$.data.processInstanceId").value("proc-inst-1"))
                 .andExpect(jsonPath("$.data.executionId").value("execution-1"));
 
-        verify(processInstanceService).triggerReceiveTask(eq("proc-inst-1"), argThat(request ->
-                "Receive_Payment".equals(request.getActivityId())
-                        && "paymentCallback".equals(request.getMessageRef())
-                        && "SUCCESS".equals(request.getVariables().get("paymentStatus"))));
+        verify(instanceCommands).triggerReceiveTask(argThat(request ->
+                "proc-inst-1".equals(request.processInstanceId())
+                        && "Receive_Payment".equals(request.activityId())
+                        && "paymentCallback".equals(request.messageRef())
+                        && "SUCCESS".equals(request.variables().get("paymentStatus"))));
     }
 }

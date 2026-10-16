@@ -25,6 +25,11 @@ import java.util.Map;
 @RequestMapping("/api/task-action")
 @RequiredArgsConstructor
 public class TaskActionController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+
 
     private final TaskActionService taskActionService;
     private final TaskAddSignService taskAddSignService;
@@ -42,26 +47,9 @@ public class TaskActionController {
     public Result<Void> completeTask(
             @PathVariable String taskId,
             @RequestBody Map<String, Object> requestBody) {
-        String userId = UserContext.getUsername();
-        if (userId == null || userId.isEmpty()) {
-            throw new ForbiddenException("用户未登录");
-        }
-
-        String action = requestBody != null ? (String) requestBody.get("action") : "approve";
-        String comment = requestBody != null ? (String) requestBody.get("comment") : null;
-        String transferTo = requestBody != null ? (String) requestBody.get("transferTo") : null;
-        String actionLabel = requestBody != null ? (String) requestBody.get("actionLabel") : null;
-
-        requireSubmitApprovalAction(requestBody, taskId);
-        if (taskAddSignService.isAddSignTask(taskId)) {
-            taskAddSignService.completeAddSignTask(taskId, action, comment);
-        } else {
-            if (!taskAddSignService.handleSourceCompletion(
-                    taskId, userId, action, comment, actionLabel, null)) {
-                taskActionService.completeTask(taskId, userId, action, comment, transferTo, actionLabel);
-            }
-        }
-        return Result.success(null);
+        taskCommands.completeHttp(com.workflow.process.command.application.ProcessHttpCommands.task(
+                taskId, requestBody));
+        return Result.success();
     }
 
     /**
@@ -138,7 +126,8 @@ public class TaskActionController {
 
         String reason = requestBody != null ? requestBody.get("reason") : null;
 
-        taskActionService.withdrawProcess(processInstanceId, userId, reason);
+        instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(requestBody == null ? null : requestBody.get("requestId")), processInstanceId, reason));
         return Result.success(null);
     }
 

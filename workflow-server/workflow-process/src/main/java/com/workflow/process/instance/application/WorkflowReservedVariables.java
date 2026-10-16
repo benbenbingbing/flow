@@ -57,6 +57,21 @@ public final class WorkflowReservedVariables {
             "loopCounter");
 
     /**
+     * 只能由审批、退回或表单同步维护的旧编排字段。此集合仅约束公共业务变量接口，
+     * 不改变已发布流程和节点表单内部写入约定；新增控制字段优先放入 _wf 命名空间。
+     */
+    private static final Set<String> PUBLIC_OPERATION_VARIABLES = Set.of(
+            "approved", "action", "actionLabel", "comment", "approver", "assignee", "entityData",
+            "rejectBy", "rejectTime", "_approvers_", "_rejected_", "_rejectTarget_", "_rejectBy_", "_rejectTime_",
+            "_rejectComment_", "_rejectSourceTaskId_", "_rejectSourceNodeId_",
+            "_resubmitted_", "_resubmitTime_", "_resubmitComment_", "_resubmitBy_", "resubmitted");
+
+    /** 公共变量读写共用判定，防止调用方通过设置审批控制字段模拟任务办理。 */
+    public static boolean isPublicBusinessVariable(String name) {
+        return name != null && !name.isBlank() && !isProtectedContextVariable(name) && !PUBLIC_OPERATION_VARIABLES.contains(name);
+    }
+
+    /**
      * 复制调用方变量并移除平台保留键，避免修改请求对象自身。
      *
      * @param source 待清洗工作流保留流程变量的原始输入，结果供调用方继续使用

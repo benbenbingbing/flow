@@ -1,0 +1,39 @@
+{
+  "name": "flow-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "workflow-web",
+    "workflow-mobile",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10"
+  },
+  "scripts": {
+    "check:lockfile": "node scripts/check-native-lockfile.mjs",
+    "build:packages": "npm run check:lockfile && npm run check:business-boundaries && npm run extensions:generate && node scripts/build-workspace-packages.mjs",
+    "build:web": "npm run build:packages && npm run build --workspace workflow-web",
+    "build:mobile": "npm run build:packages && npm run build --workspace workflow-mobile",
+    "build": "npm run build:packages && npm run build --workspace workflow-web && npm run build --workspace workflow-mobile",
+    "test:web": "npm run build:packages && npm run test --workspace workflow-web",
+    "test:packages": "node --test packages/*/tests/*.test.mjs",
+    "test:mobile": "npm run test --workspace workflow-mobile",
+    "dev:web": "node scripts/dev-workspace.mjs web",
+    "dev:mobile": "node scripts/dev-workspace.mjs mobile",
+    "extensions:generate": "node scripts/extensions/generate-field-definitions.mjs",
+    "check:frontend-budget": "node scripts/check-frontend-budget.mjs",
+    "check:business-boundaries": "node scripts/check-business-boundaries.mjs",
+    "test:architecture": "node --test scripts/tests/*.test.mjs ../scripts/tests/*.test.mjs",
+    "test:business": "npm run test --workspace @flow/biz-project"
+  },
+  "overrides": {
+    "vue": "3.5.29",
+    "element-plus": "2.13.3"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.7",
+    "@vue/compiler-sfc": "3.5.29"
+  }
+}

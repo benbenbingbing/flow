@@ -13,6 +13,9 @@ import java.util.List;
  */
 @Data
 public class TaskAddSignRequest {
+    /** 重试复用的业务意图键；旧客户端未传时仍按一次新操作处理。 */
+    private String requestId;
+
 
     /**
      * 加签类型：PARALLEL（并行）、BEFORE（前加签）、AFTER（后加签）

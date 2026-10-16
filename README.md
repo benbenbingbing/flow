@@ -61,7 +61,15 @@ migration job / schema worker (schema database identity)
 
 ```text
 workflow-server/       后端 Maven reactor
-workflow-web/          Vue 前端
+workflow-frontend/     前端 npm workspaces 根目录及唯一锁文件
+  workflow-web/        PC/Embed Vue 产品应用
+  workflow-mobile/     移动端 Vue 产品应用
+  packages/            产品公共包、扩展 SDK 与 biz-* 业务包
+  extensions/          扩展声明 manifests 与格式规范 schemas
+  config/              前端交付业务模块选择
+  scripts/             前端构建、开发监听与架构检查
+  examples/            前端集成示例
+start.sh               本地前后端统一启动入口
 deploy/                Compose、Helm、k3s 验证配置和运维手册
 docs/                  领域设计、数据库、测试和历史资料
 .github/workflows/     CI 与生产发布流程
@@ -171,10 +179,14 @@ docker compose --env-file .env ps
 `FLOW_DEV_HOST=开发机局域网IP`，重启后用手机访问该 IP 的移动端端口；脚本会将
 PC 和移动端的实际 Origin 加入开发环境 CORS 白名单。两端请求均使用相对 `/api`。
 
-前端采用根目录 npm workspaces 和唯一 workspace 锁文件。`start.sh` 自动安装依赖并
-构建 `workflow-core`、`workflow-api`、`workflow-mobile-ui`、PC（含 Embed）和移动端。
+前端采用 `workflow-frontend/` 下的 npm workspaces 和唯一锁文件。仓库根目录不执行 npm 安装；
+`start.sh` 自动进入前端工作区安装依赖并
+构建产品公共包、扩展 SDK、业务包、PC（含 Embed）和移动端。
 共享包源码修改由 watch 重建。移动端的组件位置、扩展注册与限制见
-[`workflow-mobile/README.md`](workflow-mobile/README.md)。
+[`workflow-mobile/README.md`](workflow-frontend/workflow-mobile/README.md)。业务实现统一位于 `workflow-frontend/packages/biz-*`，
+同名声明位于 `workflow-frontend/extensions/manifests/biz-*`。前端命令入口见
+[前端工作区](workflow-frontend/README.md)，模块选择、SDK 宿主能力和依赖边界见
+[前端业务模块开发](docs/frontend-business-modules.md)。
 
 `start.sh` 只管理本地应用进程，不参与 CI，也不是生产部署入口。它会核对 PID 对应
 的进程命令，发现端口属于其他程序时会中止启动并报错，不会直接终止无关进程。
@@ -233,6 +245,7 @@ mvn verify
 前端完整验证：
 
 ```bash
+cd workflow-frontend
 npm ci
 npm run build
 npm run test:packages
@@ -241,7 +254,8 @@ npm run test:e2e --workspace workflow-mobile
 npm run test:web
 ```
 
-真实环境验收使用单独的环境变量，不会从本地文件读取业务对象标识。执行
+以上命令从仓库根目录进入前端工作区；后续部署命令回到仓库根目录执行。
+真实环境验收使用单独的环境变量，不会从本地文件读取业务对象标识。在 `workflow-frontend/` 执行
 `npm run test:acceptance:real --workspace workflow-web` 前，除 `TEST_USERNAME`、`TEST_PASSWORD` 和
 `WORKFLOW_WEB_BASE` 外，还必须提供已发布且可访问的
 `VISUAL_ENTITY_ID`、`VISUAL_ENTITY_CODE`、`VISUAL_PROCESS_ID`、`VISUAL_FORM_ID` 和
@@ -337,6 +351,8 @@ Environment `阿里云flow` 管理。
 
 ## 相关文档
 
+- [前端工作区](workflow-frontend/README.md)
+- [文档目录与历史路径对应](docs/README.md)
 - [Embed 集成 OpenAPI 契约](docs/api/embed-v1.yaml)
 - [Embed 外部接口兼容与发布策略](docs/api/compatibility-policy.md)
 - [Embed 集成客户端故障处理](deploy/runbooks/open-api-client-incident.md)

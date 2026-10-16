@@ -424,6 +424,12 @@ public class TaskAddSignService {
             targetType = "PROCESS_ADD_SIGN",
             targetIdArg = 0)
     public void cancel(String addSignId) {
+        cancel(addSignId, null);
+    }
+
+    /** 撤销规则保持一致，公共命令提供的原因写入原操作日志；旧调用沿用加签备注。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void cancel(String addSignId, String reason) {
         ProcessTaskAddSign addSign = addSignMapper.selectByIdForUpdate(addSignId);
         if (addSign == null) {
             throw new IllegalArgumentException("加签记录不存在");
@@ -446,7 +452,7 @@ public class TaskAddSignService {
                 addSign.getSourceTaskId(),
                 "ADD_SIGN_CANCEL",
                 currentUsername(),
-                addSign.getComment(),
+                StringUtils.hasText(reason) ? reason : addSign.getComment(),
                 Map.of("addSignId", addSignId, "type", addSign.getOperationType()));
     }
 

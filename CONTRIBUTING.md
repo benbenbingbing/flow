@@ -51,6 +51,8 @@ docker compose --env-file .env ps
 
 ## 提交前检查
 
+以下各组命令分别从仓库根目录开始执行。
+
 后端：
 
 ```bash
@@ -61,9 +63,12 @@ mvn verify
 前端：
 
 ```bash
-cd workflow-web
+cd workflow-frontend
 npm ci
-npm test
+npm run test:architecture
+npm run test:packages
+npm run test:mobile
+npm run test:web
 npm run build
 ```
 
@@ -109,6 +114,6 @@ workflow-server/workflow-db-migrator/src/main/resources/db/migration/
 - `.env` 和 `.env.*.local`
 - `logs/`、`uploads/`、`*.log`、`*.pid`
 - `workflow-server/**/target/`
-- `workflow-web/dist/`
-- `workflow-web/node_modules/`
+- `workflow-frontend/**/dist/`
+- `workflow-frontend/**/node_modules/`
 - `.local/` 和 `.codex-artifacts/`

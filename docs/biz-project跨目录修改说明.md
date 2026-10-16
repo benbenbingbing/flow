@@ -1,5 +1,7 @@
 # biz-project 跨目录修改说明
 
+> 本文为历史跨目录修改记录，保留当时的路径和验证结果。当前前端源码和唯一锁文件已迁入 `workflow-frontend/`；后端 `workflow-server/biz-project/` 未随之移动。
+
 ## 1. 约束执行结论
 
 - 项目管理业务资产全部位于 `workflow-server/biz-project/`。

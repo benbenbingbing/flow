@@ -11,6 +11,7 @@ import com.workflow.process.action.domain.FlowActionTriggerEvent;
 import com.workflow.process.action.infrastructure.flowable.FlowActionRuntimeAdapter;
 import com.workflow.process.action.infrastructure.persistence.record.FlowAction;
 import com.workflow.process.action.infrastructure.persistence.record.FlowActionExecution;
+import com.workflow.process.command.application.ProcessInvocationScope;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
@@ -66,7 +67,8 @@ public class FlowActionExecutor {
         // 提交后动作运行在线程池中，ThreadLocal 不会自动继承。这里从已持久化
         // 的触发事件恢复作用域，使处理器发起的实体变更仍归属于原业务操作。
         try (OperationContextHolder.Scope ignored =
-                     OperationContextHolder.open(operationContext)) {
+                     OperationContextHolder.open(operationContext);
+             ProcessInvocationScope processScope = openProcessScope(action, event, idempotencyKey)) {
             FlowActionContext context = buildContext(
                     action, event, idempotencyKey);
             if (execution != null) {
@@ -100,6 +102,16 @@ public class FlowActionExecutor {
                 throw error;
             }
         }
+    }
+
+    /**
+     * 只有宿主解析出的动作、实例及持久化执行键齐备才签发最小作用域。
+     * 提交后重试也在这里重建，退出时自动恢复上一层；不把事件中的 operatorId 冒充当前登录用户。
+     */
+    private ProcessInvocationScope openProcessScope(FlowAction action, FlowActionTriggerEvent event, String executionKey) {
+        if (!StringUtils.hasText(event.getProcessInstanceId()) || !StringUtils.hasText(action.getId())
+                || !StringUtils.hasText(executionKey)) return null;
+        return ProcessInvocationScope.openAction(event.getProcessInstanceId(), action.getId(), executionKey);
     }
 
     /**

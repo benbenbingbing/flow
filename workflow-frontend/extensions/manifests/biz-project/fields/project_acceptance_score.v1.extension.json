@@ -1,0 +1,56 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：项目·验收评分。name=project_acceptance_score 是业务配置的稳定引用，移动文件不要改名。 在表单设计器的字段组件中选择 name；实例参数由 field.componentProps 传入。 实现：package 指向 @flow/biz-project 的公开入口；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "project_acceptance_score",
+  "label": "项目·验收评分",
+  "description": "用滑块、等级和实时结果展示自定义字段组件。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "export": "default",
+    "kind": "COMPONENT",
+    "package": "@flow/biz-project/pc/fields/ProjectAcceptanceScoreField"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "passScore",
+        "label": "通过分数",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 60,
+        "description": "通过阈值，范围 0～100；组件将当前评分与此值比较显示等级，各字段或列可以独立配置。"
+      }
+    ],
+    "capabilities": {
+      "emitsChange": true,
+      "supportedEvents": [
+        "FIELD_BUTTON_CLICK"
+      ],
+      "supportsReadonly": true
+    }
+  },
+  "platforms": {
+    "mobile": {
+      "implementation": {
+        "export": "default",
+        "kind": "COMPONENT",
+        "package": "@flow/biz-project/mobile/fields/ProjectAcceptanceScoreField"
+      },
+      "capabilities": {
+        "readonly": true,
+        "editable": true,
+        "validate": true
+      }
+    }
+  }
+}

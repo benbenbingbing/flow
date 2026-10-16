@@ -3,19 +3,20 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRONTEND_DIR="$ROOT_DIR/workflow-frontend"
 SERVER_PID_FILE="$ROOT_DIR/workflow-server/server.pid"
 SCHEMA_WORKER_PID_FILE="$ROOT_DIR/workflow-server/schema-worker.pid"
-WEB_PID_FILE="$ROOT_DIR/workflow-web/web.pid"
+WEB_PID_FILE="$FRONTEND_DIR/workflow-web/web.pid"
 SERVER_LOG="$ROOT_DIR/workflow-server/server.log"
 SCHEMA_WORKER_LOG="$ROOT_DIR/workflow-server/schema-worker.log"
-WEB_LOG="$ROOT_DIR/workflow-web/web.log"
+WEB_LOG="$FRONTEND_DIR/workflow-web/web.log"
 SERVER_JAR="$ROOT_DIR/workflow-server/workflow-app/target/workflow-server-1.0.0.jar"
 MIGRATOR_JAR="$ROOT_DIR/workflow-server/workflow-db-migrator/target/workflow-db-migrator-1.0.0-exec.jar"
 RUNTIME_DIR="$ROOT_DIR/workflow-server/.runtime"
-WEB_EXECUTABLE="$ROOT_DIR/node_modules/.bin/vite"
-MOBILE_PID_FILE="$ROOT_DIR/workflow-mobile/mobile.pid"
-MOBILE_LOG="$ROOT_DIR/workflow-mobile/mobile.log"
-PACKAGE_SERVICES=(workflow-core workflow-api workflow-mobile-ui)
+WEB_EXECUTABLE="$FRONTEND_DIR/node_modules/.bin/vite"
+MOBILE_PID_FILE="$FRONTEND_DIR/workflow-mobile/mobile.pid"
+MOBILE_LOG="$FRONTEND_DIR/workflow-mobile/mobile.log"
+PACKAGE_SERVICES=()
 WEB_PROCESS_PATTERN="node_modules/.bin/vite"
 
 action="${1:-start}"
@@ -35,6 +36,8 @@ Usage: ./start.sh [start|restart|restart-backend|stop|pause|status]
 Environment:
   START_LOCAL_MYSQL=auto|true|false
       auto starts the Compose MySQL service when DB_HOST is localhost.
+  FLOW_FRONTEND_MODULES=none|biz-project[,biz-other]
+      Overrides workflow-frontend/config/frontend-modules.json for this launch. Restart to change modules.
 EOF
 }
 
@@ -257,24 +260,19 @@ stop_server() {
 }
 
 stop_application() {
-    local package pattern
-    stop_pid_file "$MOBILE_PID_FILE" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
-    for package in "${PACKAGE_SERVICES[@]}"; do
-        pattern="build-module-package.mjs --watch"
-        [[ "$package" != "workflow-mobile-ui" ]] || pattern="$WEB_PROCESS_PATTERN"
-        stop_pid_file "$ROOT_DIR/packages/$package/watch.pid" "$package watch" "$pattern" "$ROOT_DIR/packages/$package"
-    done
+    stop_pid_file "$MOBILE_PID_FILE" "mobile" "$WEB_PROCESS_PATTERN" "$FRONTEND_DIR/workflow-mobile"
+    stop_package_watchers
     stop_pid_file \
         "$WEB_PID_FILE" "web" \
-        "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
+        "$WEB_PROCESS_PATTERN" "$FRONTEND_DIR/workflow-web"
     stop_server
     stop_pid_file \
         "$SCHEMA_WORKER_PID_FILE" "schema worker" \
         "workflow-db-migrator-1.0.0-exec.jar" "$ROOT_DIR"
     stop_owned_listener \
         "$WEB_PORT" "web" \
-        "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-web"
-    stop_owned_listener "$MOBILE_PORT" "mobile" "$WEB_PROCESS_PATTERN" "$ROOT_DIR/workflow-mobile"
+        "$WEB_PROCESS_PATTERN" "$FRONTEND_DIR/workflow-web"
+    stop_owned_listener "$MOBILE_PORT" "mobile" "$WEB_PROCESS_PATTERN" "$FRONTEND_DIR/workflow-mobile"
     wait_for_port_release "$MOBILE_PORT" "mobile"
     wait_for_port_release "$WEB_PORT" "web"
 }
@@ -300,9 +298,12 @@ show_status() {
     process_status "schema-worker" "$SCHEMA_WORKER_PID_FILE"
     process_status "web" "$WEB_PID_FILE"
     process_status "mobile" "$MOBILE_PID_FILE"
-    local package
-    for package in "${PACKAGE_SERVICES[@]}"; do
-        process_status "$package" "$ROOT_DIR/packages/$package/watch.pid"
+    local directory package
+    # 显示所有已知包，不能因当前配置禁用了业务就隐藏仍在运行的旧 watcher。
+    for directory in "$FRONTEND_DIR"/packages/*; do
+        [[ -f "$directory/package.json" || -f "$directory/watch.pid" ]] || continue
+        package="${directory##*/}"
+        process_status "$package" "$directory/watch.pid"
     done
 
     if curl --fail --silent --max-time 2 \
@@ -360,7 +361,7 @@ build_application() {
 
     log "Installing workspace and building shared packages, PC and mobile"
     (
-        cd "$ROOT_DIR"
+        cd "$FRONTEND_DIR"
         npm ci
         npm run build
     )
@@ -453,7 +454,7 @@ start_web() {
     start_detached \
         "$WEB_PID_FILE" \
         "$WEB_LOG" \
-        "$ROOT_DIR/workflow-web" \
+        "$FRONTEND_DIR/workflow-web" \
         env \
         VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://127.0.0.1:${SERVER_PORT}}" \
         "$WEB_EXECUTABLE" \
@@ -464,29 +465,68 @@ start_web() {
 
 start_mobile() {
     log "Starting mobile development server"
-    start_detached "$MOBILE_PID_FILE" "$MOBILE_LOG" "$ROOT_DIR/workflow-mobile" \
+    start_detached "$MOBILE_PID_FILE" "$MOBILE_LOG" "$FRONTEND_DIR/workflow-mobile" \
         env VITE_API_PROXY_TARGET="${VITE_API_PROXY_TARGET:-http://127.0.0.1:${SERVER_PORT}}" \
         VITE_WEB_PORT="$WEB_PORT" "$WEB_EXECUTABLE" --host 0.0.0.0 --port "$MOBILE_PORT" --strictPort
+}
+
+# 读取与 npm 构建相同的选择列表，并固定本次启动快照。
+# 后端构建可能持续较久；期间编辑配置不能使 Vite 加载尚未构建的另一组业务。
+load_package_services() {
+    local selected package modules=""
+    selected="$(node --input-type=module - "$FRONTEND_DIR/scripts/workspace-packages.mjs" <<'JS'
+import { pathToFileURL } from 'node:url'
+const { selectedWorkspacePackages } = await import(pathToFileURL(process.argv[2]).href)
+console.log(selectedWorkspacePackages().map(name => name.replace(/^@flow\//, '')).join('\n'))
+JS
+    )" || fail "Unable to resolve frontend modules"
+    PACKAGE_SERVICES=()
+    while IFS= read -r package; do
+        [[ -n "$package" ]] || continue
+        PACKAGE_SERVICES+=("$package")
+        if [[ "$package" == biz-* ]]; then
+            modules="${modules:+$modules,}$package"
+        fi
+    done <<< "$selected"
+    export FLOW_FRONTEND_MODULES="${modules:-none}"
+}
+
+# 停止按 PID 文件扫描，不依赖新配置；禁用/移除业务清单后仍能回收其旧 watcher。
+# 继续使用原有 cwd 与命令身份核验，避免终止同名的其他仓库进程。
+stop_package_watchers() {
+    local pid_file directory package pattern
+    for pid_file in "$FRONTEND_DIR"/packages/*/watch.pid; do
+        [[ -f "$pid_file" ]] || continue
+        directory="${pid_file%/watch.pid}"
+        package="${directory##*/}"
+        pattern="build-module-package.mjs --watch"
+        [[ "$package" != "workflow-mobile-ui" ]] || pattern="$WEB_PROCESS_PATTERN"
+        stop_pid_file "$pid_file" "$package watch" "$pattern" "$directory"
+    done
 }
 
 # 直接启动构建器而非 npm 包装进程，让 PID 文件对应真实服务并可独立停止。
 start_package_watchers() {
     local package pid ready attempt
+    ((${#PACKAGE_SERVICES[@]} > 0)) || load_package_services
     for package in "${PACKAGE_SERVICES[@]}"; do
         if [[ "$package" == "workflow-mobile-ui" ]]; then
-            start_detached "$ROOT_DIR/packages/$package/watch.pid" "$ROOT_DIR/packages/$package/watch.log" \
-                "$ROOT_DIR/packages/$package" "$WEB_EXECUTABLE" build --watch
+            start_detached "$FRONTEND_DIR/packages/$package/watch.pid" "$FRONTEND_DIR/packages/$package/watch.log" \
+                "$FRONTEND_DIR/packages/$package" "$WEB_EXECUTABLE" build --watch
         else
-            start_detached "$ROOT_DIR/packages/$package/watch.pid" "$ROOT_DIR/packages/$package/watch.log" \
-                "$ROOT_DIR/packages/$package" node "$ROOT_DIR/scripts/build-module-package.mjs" --watch
+            start_detached "$FRONTEND_DIR/packages/$package/watch.pid" "$FRONTEND_DIR/packages/$package/watch.log" \
+                "$FRONTEND_DIR/packages/$package" node "$FRONTEND_DIR/scripts/build-module-package.mjs" --watch
         fi
-        pid="$(cat "$ROOT_DIR/packages/$package/watch.pid")"
+        pid="$(cat "$FRONTEND_DIR/packages/$package/watch.pid")"
         ready=false
         # Vite watch 会先清理 dist；首次输出完成后再启动消费者，避免随机缺失入口。
         for attempt in {1..30}; do
-            pid_is_running "$pid" || fail "$package watcher exited; see packages/$package/watch.log"
-            if [[ -s "$ROOT_DIR/packages/$package/dist/index.js" ]] \
-                && grep -q 'built' "$ROOT_DIR/packages/$package/watch.log"; then
+            pid_is_running "$pid" || fail "$package watcher exited; see workflow-frontend/packages/$package/watch.log"
+            # 业务包只公开 pc/mobile 子入口，不要求存在会混合两端依赖的 dist/index.js。
+            # 每次启动会截断日志，因此 built 必须来自本轮完整复制/构建。
+            if [[ -d "$FRONTEND_DIR/packages/$package/dist" ]] \
+                && grep -q 'built' "$FRONTEND_DIR/packages/$package/watch.log" \
+                && { [[ "$package" != "workflow-mobile-ui" ]] || [[ -s "$FRONTEND_DIR/packages/$package/dist/index.js" ]]; }; then
                 ready=true
                 break
             fi
@@ -532,6 +572,7 @@ wait_for_process() {
 start_application() {
     validate_start_environment
     validate_toolchain
+    load_package_services
     stop_application
     trap cleanup_failed_start EXIT
     start_mysql

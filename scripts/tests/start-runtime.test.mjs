@@ -103,7 +103,7 @@ stop_owned_listener() { record "stop-listener:$2"; }
 wait_for_port_release() { record "wait-port:$2"; }
 start_server() { record 'start:server'; }
 wait_for_process() { record "ready:$1"; }
-for unrelated in start_application stop_application start_mysql build_application run_migrations start_schema_worker start_web start_mobile start_package_watchers; do
+for unrelated in start_application stop_application start_mysql build_application run_migrations start_schema_worker start_web start_mobile start_package_watchers load_package_services; do
     eval "$unrelated() { record 'UNEXPECTED:$unrelated'; return 91; }"
 done
 action=restart-backend

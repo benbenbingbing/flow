@@ -237,7 +237,7 @@ active_process_definition_key bigint GENERATED ALWAYS AS ( CASE WHEN COALESCE(`d
 
 实现定位：[EntityDefinitionMapper.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/infrastructure/persistence/mapper/EntityDefinitionMapper.java)、[ProcessDefinitionConfigMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/definition/infrastructure/persistence/mapper/ProcessDefinitionConfigMapper.java)、[EntityDefinitionService.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/definition/application/EntityDefinitionService.java)。
 
-用途变更依据：[DataPermissionEngine.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java)、[config-field-help.js](../../workflow-web/src/shared/config-field-help.js)。
+用途变更依据：[DataPermissionEngine.java](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java)、[config-field-help.js](../../workflow-frontend/workflow-web/src/shared/config-field-help.js)。
 
 ### 1.2 entity_field 实体字段定义表
 
@@ -1117,7 +1117,7 @@ erDiagram
 - [V094 列表查询事件合并](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V094__merge_list_query_into_load_event.sql)：只迁移查询槽位草稿，不改写历史发布快照。
 - [EntityListRuntimeService](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/list/application/EntityListRuntimeService.java)：场景与访问检查、查询入口、固定条件、可信上下文。
 - [EntityListScopeService](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/EntityListScopeService.java)、[DataPermissionEngine](../../workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/DataPermissionEngine.java)：未绑定策略、显式确认、独立权限发布、实际范围计算。
-- [EntityListConfigDesign.vue](../../workflow-web/src/views/EntityListConfigDesign.vue)、[JSON 配置帮助](../../workflow-web/src/shared/json-config-help.js)：视图初始化结构、选择返回映射、上下文配置的作用边界。
+- [EntityListConfigDesign.vue](../../workflow-frontend/workflow-web/src/views/EntityListConfigDesign.vue)、[JSON 配置帮助](../../workflow-frontend/workflow-web/src/shared/json-config-help.js)：视图初始化结构、选择返回映射、上下文配置的作用边界。
 
 ### 2.4 entity_list_field 实体列表字段配置表
 

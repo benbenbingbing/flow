@@ -17,6 +17,8 @@ import org.flowable.common.engine.api.FlowableTaskAlreadyClaimedException;
 import org.flowable.task.api.Task;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskActionService;
+import com.workflow.process.task.application.ProcessTaskCommandAdapter;
+import org.springframework.test.util.ReflectionTestUtils;
 import com.workflow.process.task.application.TaskAddSignService;
 import com.workflow.process.task.application.TaskDetailService;
 import com.workflow.process.task.infrastructure.persistence.record.ProcessTask;
@@ -127,14 +129,15 @@ class ProcessTaskControllerTest {
                 mock(TaskListQueryService.class));
         UserContext.setCurrentUser("user-1", "admin");
 
+        var commands = mock(com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort.class);
+        ReflectionTestUtils.setField(controller, "instanceCommands", commands);
         controller.withdrawProcess(Map.of(
                 "processInstanceId", "process-1",
                 "reason", "测试撤回"));
 
-        verify(taskActionService).withdrawProcess(
-                "process-1",
-                "user-1",
-                "测试撤回");
+        verify(commands).withdraw(org.mockito.ArgumentMatchers.argThat(command ->
+                "process-1".equals(command.processInstanceId()) && "测试撤回".equals(command.reason())));
+        verify(taskActionService, never()).withdrawProcess(any(), any(), any());
     }
 
     /** 可选认领能力只属于仍待办的共享候选任务，与是否显示审批主入口分开。 */
@@ -158,10 +161,9 @@ class ProcessTaskControllerTest {
     @MethodSource("taskRaceExceptions")
     void completeConvertsEngineRaceIntoStableConflict(RuntimeException race, String expectedCode) {
         UserContext.setCurrentUser("user-1", "alice");
-        TaskActionService service = mock(TaskActionService.class);
+        ProcessTaskCommandAdapter service = mock(ProcessTaskCommandAdapter.class);
         doThrow(race)
-                .when(service).completeTask(eq("task-1"), eq("alice"), eq("approve"),
-                        any(), any(), any(), any(), any(), any());
+                .when(service).completeHttp(any());
         TaskCompleteRequest request = new TaskCompleteRequest();
         request.setTaskId("task-1");
         request.setAction("approve");
@@ -175,8 +177,8 @@ class ProcessTaskControllerTest {
     @ParameterizedTest
     @MethodSource("taskRaceExceptions")
     void manualClaimConvertsEngineRaceIntoStableConflict(RuntimeException race, String expectedCode) {
-        TaskActionService service = mock(TaskActionService.class);
-        doThrow(race).when(service).claimTask("task-1");
+        ProcessTaskCommandAdapter service = mock(ProcessTaskCommandAdapter.class);
+        doThrow(race).when(service).claim(any());
 
         BusinessConflictException failure = assertThrows(BusinessConflictException.class,
                 () -> controller(service).claimTask("task-1"));
@@ -244,16 +246,15 @@ class ProcessTaskControllerTest {
     @Test
     void nonTaskLookupFailureRetainsOriginalError() {
         UserContext.setCurrentUser("user-1", "alice");
-        TaskActionService service = mock(TaskActionService.class);
+        ProcessTaskCommandAdapter service = mock(ProcessTaskCommandAdapter.class);
         FlowableObjectNotFoundException failure = new FlowableObjectNotFoundException("definition missing", String.class);
-        doThrow(failure).when(service).completeTask(eq("task-1"), eq("alice"), eq("approve"),
-                any(), any(), any(), any(), any(), any());
+        doThrow(failure).when(service).completeHttp(any());
         TaskCompleteRequest request = new TaskCompleteRequest();
         request.setTaskId("task-1");
         request.setAction("approve");
 
         assertEquals("审批失败: definition missing", controller(service).completeTask(request).getMessage());
-        doThrow(failure).when(service).claimTask("task-1");
+        doThrow(failure).when(service).claim(any());
         assertEquals(failure, assertThrows(FlowableObjectNotFoundException.class,
                 () -> controller(service).claimTask("task-1")));
     }
@@ -277,13 +278,15 @@ class ProcessTaskControllerTest {
         return result.getData().getRecords().get(0);
     }
 
-    private ProcessTaskController controller(TaskActionService taskActionService) {
-        return new ProcessTaskController(mock(ProcessTaskService.class),
+    private ProcessTaskController controller(ProcessTaskCommandAdapter taskCommands) {
+        var controller = new ProcessTaskController(mock(ProcessTaskService.class),
                 mock(TaskDetailService.class),
-                taskActionService,
+                mock(TaskActionService.class),
                 mock(ProcessInstanceAccessService.class),
                 mock(TaskAddSignService.class),
                 mock(EntityFormActionService.class),
                 mock(TaskListQueryService.class));
+        ReflectionTestUtils.setField(controller, "taskCommands", taskCommands);
+        return controller;
     }
 }

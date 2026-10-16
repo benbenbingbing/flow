@@ -1,57 +1,46 @@
 # 前端扩展集中管理与 JSON 注册
 
-实施日期：2026-09-21。状态：已实现。开发入口见 [前端扩展中心](../workflow-web/src/extensions/README.md)，验证结果见 [实施验收记录](frontend-extension-json-registration-verification.md)。
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
 
-采用集中清单、构建发现、启动安装的方式。现有平台、通用、业务、演示实现已完整迁入 `src/extensions/`；未来模块的实现可以位于自己的 `src/modules/<module>/`，清单仍集中存放。新增现有类型只写实现和 JSON，不修改注册 JS。
+实施日期：2026-09-21。状态：已实现。开发入口见 [前端扩展中心](../workflow-frontend/workflow-web/src/extensions/README.md)，验证结果见 [实施验收记录](frontend-extension-json-registration-verification.md)。
+
+采用集中清单、构建发现、启动安装的方式。产品内置、通用和演示实现保留在应用内；业务实现已独立到 `packages/biz-*`，公开契约位于 `packages/workflow-extension-sdk`，清单集中在前端工作区的 `extensions/`。新增现有类型只写实现、公开包入口和 JSON，不修改注册 JS。模块选择和依赖规则见 [前端业务模块开发](frontend-business-modules.md)。
 
 ## 文件夹与职责
 
 ```text
+extensions/
+├── manifests/
+│   ├── platform/                       # 标准字段、内置单元格
+│   ├── common/                         # 通用校验等跨业务扩展
+│   ├── biz-project/                    # 项目业务清单
+│   └── examples/                       # Demo 与默认禁用的契约示例
+└── schemas/                            # 有属性说明的 JSON Schema
+packages/
+├── workflow-extension-sdk/             # 公开契约与宿主能力接口
+└── biz-project/src/
+    ├── shared/                         # 跨端业务模型
+    ├── api/                            # 项目接口组装
+    ├── pc/                             # PC 表单、字段、列表、动作等
+    └── mobile/                         # 移动表单和字段
+scripts/extensions/                     # 公共发现、校验、代码生成
 workflow-web/
-├── build/extensions/                 # 构建插件：发现、校验、生成、监听
-├── scripts/check-extensions.mjs       # 本地和 CI 共用检查入口
-├── scripts/extensions-browser-test.mjs # 实际注册与清单增删改浏览器验收
+├── build/extensions/                   # PC/Embed 构建插件和兼容入口
+├── scripts/check-extensions.mjs         # 本地和 CI 共用检查入口
 └── src/extensions/
-    ├── README.md                     # 开发步骤、类型与配置位置
-    ├── index.js                      # 对外公共查询入口
-    ├── register.js                   # 主应用与 Embed 唯一安装入口
-    ├── manifest.js                   # 安装目录与服务端治理范围查询
-    ├── manifests/                    # 唯一手工维护的注册声明
-    │   ├── platform/                 # 标准字段、内置单元格
-    │   ├── common/                   # 通用校验等跨业务扩展
-    │   ├── business/project/         # 项目业务清单
-    │   └── examples/                 # Demo 与默认禁用的契约示例
-    ├── schemas/                      # 有属性说明的 JSON Schema
-    ├── core/
-    │   ├── installer.js              # 导出校验、实例化、幂等安装
-    │   ├── adapters/                 # 十种类型的注册适配器
-    │   ├── registries/               # 各类型唯一运行注册表
-    │   ├── catalog.js                # 纯元数据目录，不保存第二份组件
-    │   ├── catalogRows.js            # 管理页面投影与筛选
-    │   └── fieldPolicy.js            # 字段默认及兼容规则
-    ├── builtin/                      # 平台必需实现
-    │   ├── fields/                   # 文本、数字、选择、附件、引用、子表等
-    │   └── list-cells/               # 文本、状态、日期单元格
-    ├── common/validators/            # 金额校验器
-    ├── business/project/             # 已迁入的全部项目实现
-    │   ├── forms/                    # 整表单
-    │   ├── fields/                   # 字段控件
-    │   ├── nodes/                    # 表单节点
-    │   ├── lists/                    # 整列表
-    │   ├── list-cells/               # 单元格
-    │   ├── buttons/                  # 按钮组件
-    │   ├── rules/                    # 操作条件编辑器
-    │   ├── permissions/              # 权限候选项
-    │   ├── api/                      # 该模块业务请求
-    │   └── acceptanceRuntime.js      # 该模块列表动作函数
-    ├── examples/                     # Demo、对象/工厂校验、配置升级示例
-    ├── contracts/                    # props、事件、方法、运行边界
-    ├── templates/                    # 可复制的组件模板
-    ├── generated/                    # 平台字段纯数据策略，禁止手改
-    └── __tests__/                    # 发现、校验、安装、目录、宿主边界测试
+    ├── register.js                     # 主应用与 Embed 唯一安装入口
+    ├── manifest.js                     # 安装目录与服务端治理范围查询
+    ├── core/                           # 安装器、适配器、注册表、目录
+    ├── builtin/                        # 平台必需实现
+    ├── common/                         # 产品通用扩展
+    ├── examples/                       # 不依赖业务包的产品示例
+    ├── contracts/                      # 产品内部兼容入口
+    ├── templates/                      # 可复制的组件模板
+    ├── generated/                      # 平台字段派生数据，禁止手改
+    └── __tests__/                      # 发现、校验、安装、目录、宿主边界测试
 ```
 
-主要目录均有 README。清单按归属再按类型分类，例如 `manifests/business/project/fields/xxx.v1.extension.json`。无总清单 `index.json`，新增子目录也会自动发现。业务动作目前复用原模块的 `acceptanceRuntime.js`，新增较多动作时可自行建立 `actions/`。
+主要目录均有 README。清单按归属再按类型分类，例如 `extensions/manifests/biz-project/fields/xxx.v1.extension.json`。无总清单 `index.json`，新增子目录也会自动发现。业务动作目前复用原模块的 `acceptanceRuntime.js`，新增较多动作时可自行建立 `actions/`。
 
 ## 集中的十种扩展
 
@@ -87,7 +76,7 @@ workflow-web/
   "description": "编辑验收评分并显示等级",
   "version": 1,
   "implementation": {
-    "path": "src/extensions/business/project/fields/ProjectAcceptanceScoreField.vue",
+    "package": "@flow/biz-project/pc/fields/ProjectAcceptanceScoreField",
     "export": "default",
     "kind": "COMPONENT"
   },
@@ -100,9 +89,9 @@ workflow-web/
 }
 ```
 
-以上展示的是现有评分清单的核心字段，不要再创建同名副本。完整可运行文件位于 `manifests/business/project/fields/project_acceptance_score.v1.extension.json`。
+以上展示的是现有评分清单的核心字段，不要再创建同名副本。完整可运行文件位于 `extensions/manifests/biz-project/fields/project_acceptance_score.v1.extension.json`。
 
-4. 执行 `npm run extensions:check`、`npm run test:extensions` 和 `npm run build`。调整平台字段时先执行 `npm run extensions:generate`。
+4. 将业务加入前端工作区 `config/frontend-modules.json` 的 `enabledModules`。在 `workflow-web/` 执行 `npm run extensions:check`、`npm run test:extensions`，在前端工作区根目录执行 `npm run build`。调整平台字段时先执行 `npm run extensions:generate`。
 5. 部署构建，在实体表单/列表设计器中选择名称、填写实例参数、发布；流程复用已发布的实体表单。
 
 新增代码需要重新构建部署。生产浏览器不读取任意上传 JSON，也不动态导入页面传来的模块路径。
@@ -110,7 +99,7 @@ workflow-web/
 ## 协议约定
 
 - `name` 是稳定配置引用；`schemaVersion` 是清单协议版本；`version` 是实现版本；`metadata.snapshotVersion` 是组件配置结构版本。
-- `implementation.path` 相对 `workflow-web`，必须为 `src/` 内存在的 `.vue/.js/.mjs` 文件。`export` 指定 default 或具名导出。
+- 产品内 `implementation.path` 相对目标应用，必须为 `src/` 内存在的 `.vue/.js/.mjs` 文件；业务使用同名包公开的 `implementation.package` 入口，两者二选一。`export` 指定 default 或具名导出。
 - `kind` 为 COMPONENT/FUNCTION/OBJECT/CLASS/FACTORY。类无参构造；工厂同步接收 `{ services }` 并返回校验器实例；动作和权限函数在安装时不会执行。
 - `metadata.configSchema` 定义可配置参数；每个实体的实际值仍保存在表单或列表配置。默认值变化不会重写旧实例。
 - `LIST_ACTION.targets` 可同时声明 TOOLBAR 和 ROW；一份实现安装到两个动作位置。

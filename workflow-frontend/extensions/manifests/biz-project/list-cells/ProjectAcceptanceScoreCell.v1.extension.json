@@ -1,0 +1,35 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：项目·验收评分单元格。name=ProjectAcceptanceScoreCell 是业务配置的稳定引用，移动文件不要改名。 在列表列的 renderComponent 中选择 name；该列 renderConfig 作为 config 传入。 实现：package 指向 @flow/biz-project 的公开入口；default 是默认导出；kind=COMPONENT 表示 Vue 组件引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。 supportedFieldTypes 声明兼容字段类型，设计时应按此范围选择。 configSchema 只定义参数，各实例的实际取值另存；每项 description 说明用途。",
+  "schemaVersion": 1,
+  "type": "LIST_CELL",
+  "name": "ProjectAcceptanceScoreCell",
+  "label": "项目·验收评分单元格",
+  "description": "在标准列表中以进度条和等级展示验收评分。",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "export": "default",
+    "kind": "COMPONENT",
+    "package": "@flow/biz-project/pc/list-cells/ProjectAcceptanceScoreCell"
+  },
+  "metadata": {
+    "supportedFieldTypes": [
+      "INTEGER",
+      "LONG",
+      "DECIMAL",
+      "DOUBLE"
+    ],
+    "configSchema": [
+      {
+        "key": "passScore",
+        "label": "通过分数",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "defaultValue": 60,
+        "description": "通过阈值，范围 0～100；组件将当前评分与此值比较显示等级，各字段或列可以独立配置。"
+      }
+    ]
+  }
+}

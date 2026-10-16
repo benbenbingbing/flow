@@ -228,9 +228,10 @@ public class FlowActionEngineEventListener implements FlowableEventListener {
         if (trigger.getProcessInstanceId() != null) {
             try {
                 variables.putAll(runtimeService.getVariables(trigger.getProcessInstanceId()));
-            } catch (Exception ignored) {
-                // 运行实例已结束则回退到历史变量查询
-                variables.putAll(flowActionHelper.getVariables(trigger.getProcessInstanceId()));
+            } catch (org.flowable.common.engine.api.FlowableObjectNotFoundException ended) {
+                // 仅运行对象实际退出时查历史，数据库/反序列化错误不能伪装成正常结束。
+                // 此时尚未进入动作执行范围，使用共用的内部作用域读取器保留事件身份字段。
+                variables.putAll(flowActionHelper.getTriggerVariables(trigger.getProcessInstanceId()));
             }
         }
         if (event instanceof FlowableEntityWithVariablesEvent variablesEvent

@@ -3,7 +3,7 @@
 > 2026-09-20 退役说明：发布候选功能已整体下线，V099 清理其专属菜单、授权和六张表。下文候选建议仅作历史记录；普通配置迁移的导入、导出、发布和批次回滚继续保留。
 
 > 历史说明：原 4.3“节点操作矩阵”建议已由
-> [节点操作权限三开关方案](./node-operation-permission-simplification.md)替代；该节保留用于追溯当时分析。
+> [节点操作权限三开关方案](node-operation-permission-simplification.md)替代；该节保留用于追溯当时分析。
 
 > 分析日期：2026-08-20  
 > 分析范围：实体定义、表单配置、列表配置、数据权限、发布版本、BPMN 流程设计、节点配置、流程发布和运行治理。
@@ -39,9 +39,9 @@
 现有实体、表单、列表能力可参考：
 
 - [项目能力范围](../README.md#能力范围)
-- [实体字段类型](../workflow-web/src/shared/entity-design/index.js#L1)
+- [实体字段类型](../workflow-frontend/workflow-web/src/shared/entity-design/index.js#L1)
 - [表单节点属性模型](../workflow-web/src/shared/form-node-property-schema.js#L52)
-- [列表配置模型](../workflow-web/src/shared/list-config-design.js#L7)
+- [列表配置模型](../workflow-frontend/workflow-web/src/shared/list-config-design.js#L7)
 
 ## 3. P0：优先解决安全性和发布可靠性
 
@@ -78,7 +78,7 @@
 | `PERSONAL` | 默认仅本人创建或提交的数据 |
 | `EXPLICIT_ALL` | 管理员明确确认允许全部数据 |
 
-当前手册说明未绑定允许规则时可能看到全部数据，参见 [entity.js](../workflow-web/src/data/user-manual/entity.js#L444)。这是最应优先调整的默认行为之一。
+当前手册说明未绑定允许规则时可能看到全部数据，参见 [entity.js](../workflow-frontend/workflow-web/src/data/user-manual/entity.js#L444)。这是最应优先调整的默认行为之一。
 
 ### 3.4 实体结构一致性与唯一性保障
 
@@ -106,7 +106,7 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 - 草稿漂移、影响范围变化或技术不兼容时仍阻断；
 - 发布后自动观察窗口和一键回滚。
 
-目前 REVIEW 主要是风险提示，不形成额外阻断，参见 [entity.js](../workflow-web/src/data/user-manual/entity.js#L1306)。
+目前 REVIEW 主要是风险提示，不形成额外阻断，参见 [entity.js](../workflow-frontend/workflow-web/src/data/user-manual/entity.js#L1306)。
 
 ### 3.6 应用级发布候选
 
@@ -125,7 +125,7 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 
 ### 4.1 BPMN 专用配置面板
 
-增加消息、定时、条件、信号、边界事件、调用活动和事件子流程的专用配置面板。当前部分类型仍依赖 XML 和人工兼容性验证，参见 [process.js](../workflow-web/src/data/user-manual/process.js#L256)。
+增加消息、定时、条件、信号、边界事件、调用活动和事件子流程的专用配置面板。当前部分类型仍依赖 XML 和人工兼容性验证，参见 [process.js](../workflow-frontend/workflow-web/src/data/user-manual/process.js#L256)。
 
 建议每种事件至少覆盖：
 
@@ -161,11 +161,11 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 - 是否必须填写原因；
 - 对应权限码和适用条件。
 
-当前运行时已经具备多种任务操作，参见 [processTask.js](../workflow-web/src/api/processTask.js#L88)，但缺少统一的节点级配置矩阵。
+当前运行时已经具备多种任务操作，参见 [processTask.js](../workflow-frontend/workflow-web/src/api/processTask.js#L88)，但缺少统一的节点级配置矩阵。
 
 ### 4.4 实体业务数据批量导入中心（不同于配置迁移）
 
-现有“配置迁移”已经实现，而且是较完整的配置资产迁移中心：支持选择与校验已发布快照、生成和下载 `.wfpack`、上传校验、环境差异分析、依赖及映射处理、发布与回滚。其迁移对象包括实体定义、表单/列表等实体快照、流程、系统实体 UI、字典、工作日历和 SLA 策略，参见 [ConfigMigration.vue](../workflow-web/src/views/system/ConfigMigration.vue#L6) 和 [ConfigMigrationController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ConfigMigrationController.java#L38)。因此，**配置迁移本身不是缺失功能**。
+现有“配置迁移”已经实现，而且是较完整的配置资产迁移中心：支持选择与校验已发布快照、生成和下载 `.wfpack`、上传校验、环境差异分析、依赖及映射处理、发布与回滚。其迁移对象包括实体定义、表单/列表等实体快照、流程、系统实体 UI、字典、工作日历和 SLA 策略，参见 [ConfigMigration.vue](../workflow-frontend/workflow-web/src/views/system/ConfigMigration.vue#L6) 和 [ConfigMigrationController.java](../workflow-server/workflow-migration/src/main/java/com/workflow/migration/api/web/ConfigMigrationController.java#L38)。因此，**配置迁移本身不是缺失功能**。
 
 本节所指的是另一类能力：把 Excel/CSV 中的一批业务记录导入某个动态实体，即向运行期 `biz_*` 业务表写入数据。配置迁移页面也已明确说明“不包含业务数据、系统表结构和运行台账”。两者边界如下：
 
@@ -187,7 +187,7 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 - 幂等键；
 - 导入任务进度和审计日志。
 
-当前实体数据 API 有业务记录导出但未发现对应的通用导入接口，参见 [entity.js](../workflow-web/src/api/entity.js#L229)。如果产品明确不承担业务数据初始化和日常批量录入，则本项可以降为 `P2` 或从建设范围移除。
+当前实体数据 API 有业务记录导出但未发现对应的通用导入接口，参见 [entity.js](../workflow-frontend/workflow-web/src/api/entity.js#L229)。如果产品明确不承担业务数据初始化和日常批量录入，则本项可以降为 `P2` 或从建设范围移除。
 
 ### 4.5 统一配置测试中心
 
@@ -215,7 +215,7 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 
 ### 4.7 收口字段事件配置
 
-当前仍有填写 JavaScript 的旧字段事件编辑器，参见 [EventConfigPanel.vue](../workflow-web/src/components/EventConfigPanel.vue#L9)，但新运行时走受控事件绑定 API。
+当前仍有填写 JavaScript 的旧字段事件编辑器，参见 [EventConfigPanel.vue](../workflow-frontend/workflow-web/src/components/EventConfigPanel.vue#L9)，但新运行时走受控事件绑定 API。
 
 建议：
 
@@ -298,7 +298,7 @@ DDL 失败后应支持重新执行、比对真实表结构和生成修复计划�
 
 ### 5.7 表单细节补齐
 
-为 `TAB_SET` 增加默认激活页配置。当前明确不支持该配置，参见 [entity.js](../workflow-web/src/data/user-manual/entity.js#L712)。
+为 `TAB_SET` 增加默认激活页配置。当前明确不支持该配置，参见 [entity.js](../workflow-frontend/workflow-web/src/data/user-manual/entity.js#L712)。
 
 ## 6. 推荐实施顺序
 

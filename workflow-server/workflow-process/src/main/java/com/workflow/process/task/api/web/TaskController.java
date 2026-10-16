@@ -27,6 +27,11 @@ import java.util.Map;
 @RequestMapping("/api/task")
 @RequiredArgsConstructor
 public class TaskController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+
 
     private final TaskService taskService;
     private final TaskActionService taskActionService;
@@ -72,24 +77,8 @@ public class TaskController {
      */
     @PostMapping("/complete")
     public Result<Void> completeTask(@RequestBody Map<String, Object> params) {
-        String taskId = (String) params.get("taskId");
-        String action = (String) params.get("action");
-        String comment = (String) params.get("comment");
-        String transferTo = (String) params.get("transferTo");
-        String actionLabel = (String) params.get("actionLabel");
-        
-        String currentUser = UserContext.getUsername();
-        requireSubmitApprovalAction(params, taskId);
-        if (taskAddSignService.isAddSignTask(taskId)) {
-            taskAddSignService.completeAddSignTask(taskId, action, comment);
-        } else {
-            if (!taskAddSignService.handleSourceCompletion(
-                    taskId, currentUser, action, comment, actionLabel, null)) {
-                taskActionService.completeTask(
-                        taskId, currentUser, action, comment,
-                        transferTo, actionLabel);
-            }
-        }
+        taskCommands.completeHttp(com.workflow.process.command.application.ProcessHttpCommands.task(
+                (String) params.get("taskId"), params));
         return Result.success();
     }
 
@@ -185,8 +174,8 @@ public class TaskController {
         if (currentUser == null || currentUser.isBlank()) {
             currentUser = UserContext.getUsername();
         }
-        taskActionService.withdrawProcess(
-                processInstanceId, currentUser, reason);
+        instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(params.get("requestId")), processInstanceId, reason));
         return Result.success();
     }
 
@@ -210,17 +199,10 @@ public class TaskController {
      */
     @PostMapping("/resubmit")
     public Result<Void> resubmitTask(@RequestBody Map<String, Object> params) {
-        String taskId = (String) params.get("taskId");
-        String comment = (String) params.get("comment");
-        Map<String, Object> formData = (Map<String, Object>) params.get("formData");
-        taskActionService.completeTask(
-                taskId,
-                UserContext.getUsername(),
-                "resubmit",
-                comment,
-                null,
-                "重新提交",
-                formData);
+        taskCommands.resubmit(new com.workflow.contracts.process.task.model.ResubmitTaskCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta((String) params.get("requestId")),
+                (String) params.get("taskId"), new com.workflow.contracts.process.task.model.TaskSubmission(
+                        (String) params.get("comment"), "重新提交", (Map<String, Object>) params.get("formData"), null, null)));
         return Result.success();
     }
 }

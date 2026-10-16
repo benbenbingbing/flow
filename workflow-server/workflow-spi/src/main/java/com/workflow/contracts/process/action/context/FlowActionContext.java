@@ -5,6 +5,8 @@ import com.workflow.contracts.process.action.model.FlowActionTraceFields;
 import com.workflow.contracts.process.action.model.FlowActionScopeType;
 import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
 import com.workflow.contracts.process.action.spi.FlowActionProvider;
+import com.workflow.contracts.process.query.model.ProcessInstanceView;
+import com.workflow.contracts.process.query.model.ProcessTaskView;
 import lombok.Data;
 
 import com.workflow.contracts.entity.model.EntityRecordData;
@@ -172,6 +174,14 @@ public class FlowActionContext {
     }
 
     /**
+     * 显式读取当前运行态业务变量，不改变触发快照；流程结束后明确失败。
+     * 提交后/重试动作应有意识地选择实时值或触发值，不能悄悄改变原业务判断时点。
+     */
+    public Map<String, Object> getLiveVariables() {
+        return runtimeAccess == null ? Map.of() : runtimeAccess.getLiveVariables(processInstanceId);
+    }
+
+    /**
      * 获取单个流程变量值，优先读快照。
      *
      * @param name 变量名
@@ -233,7 +243,7 @@ public class FlowActionContext {
      *
      * @return 运行中的流程实例；不存在返回 null
      */
-    public Object getProcessInstance() {
+    public ProcessInstanceView getProcessInstance() {
         return runtimeAccess == null ? null : runtimeAccess.getProcessInstance(processInstanceId);
     }
 
@@ -242,17 +252,17 @@ public class FlowActionContext {
      *
      * @return 历史流程实例；不存在返回 null
      */
-    public Object getHistoricProcessInstance() {
+    public ProcessInstanceView getHistoricProcessInstance() {
         return runtimeAccess == null ? null : runtimeAccess.getHistoricProcessInstance(processInstanceId);
     }
 
     /**
-     * 获取流程实例当前活动中的第一个待办任务。
+     * 获取流程实例全部活动任务，包括并行分支及平台本地加签任务。
      *
-     * @return 当前待办任务；无则返回 null
+     * @return 活动任务快照；无任务时为空列表，不能把第一项当作默认审批目标
      */
-    public Object getCurrentTask() {
-        return runtimeAccess == null ? null : runtimeAccess.getCurrentTask(processInstanceId);
+    public List<ProcessTaskView> getActiveTasks() {
+        return runtimeAccess == null ? List.of() : runtimeAccess.getActiveTasks(processInstanceId);
     }
 
     /**
@@ -260,7 +270,7 @@ public class FlowActionContext {
      *
      * @return 触发任务；无则返回 null
      */
-    public Object getTriggerTask() {
+    public ProcessTaskView getTriggerTask() {
         return runtimeAccess == null ? null : runtimeAccess.getTask(taskId);
     }
 

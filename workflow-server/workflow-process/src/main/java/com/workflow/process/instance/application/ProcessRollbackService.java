@@ -41,6 +41,9 @@ import java.util.*;
 @RequiredArgsConstructor
 public class ProcessRollbackService {
     @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.task.port.ProcessTaskCommandPort taskCommands;
+
+    @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
 
     private final RuntimeService runtimeService;
@@ -53,12 +56,12 @@ public class ProcessRollbackService {
     private final org.flowable.engine.RepositoryService repositoryService;
 
     /**
-     * 驳回任务到指定节点（默认驳回给发起人）
+     * 驳回兼容入口：未指定目标按发布连线执行；指定目标则验证实际到达，不能任意跳转。
      *
      * @param taskId    当前任务ID
      * @param userId    当前用户
      * @param comment   驳回原因
-     * @param targetNodeId 目标节点ID（可选，默认是发起人节点）
+     * @param targetNodeId 发布策略允许的目标节点（可选；省略时不强制指定落点）
      * @return 处理后的驳回任务结果，供调用方继续处理
      */
     @Transactional(rollbackFor = Exception.class)
@@ -70,77 +73,16 @@ public class ProcessRollbackService {
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public Result<Void> rejectTask(String taskId, String userId, String comment, String targetNodeId) {
-        // 1. 验证任务
-        Task task = taskService.createTaskQuery()
-                .taskId(taskId)
-                .singleResult();
-
-        if (task == null) {
-            return Result.error(404, "任务不存在或已处理");
+        var meta = com.workflow.process.command.application.ProcessHttpCommands.meta(null);
+        var submission = com.workflow.contracts.process.task.model.TaskSubmission.comment(comment);
+        // 历史签名的 userId 不再作为授权来源；公共命令始终验证真实执行身份。
+        // 未指定目标沿发布驳回连线执行，指定目标则要求实际到达该节点。
+        if (targetNodeId == null || targetNodeId.isBlank()) {
+            taskCommands.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(meta, taskId, "reject", submission));
+        } else {
+            taskCommands.returnToNode(new com.workflow.contracts.process.task.model.ReturnTaskCommand(meta, taskId, targetNodeId, submission));
         }
-
-        String processInstanceId = task.getProcessInstanceId();
-        String processDefinitionId = task.getProcessDefinitionId();
-
-        // 2. 如果没有指定目标节点，默认回到发起人
-        if (targetNodeId == null || targetNodeId.isEmpty()) {
-            targetNodeId = findStartNodeId(processDefinitionId);
-        }
-
-        // 3. 获取流程发起人
-        HistoricProcessInstance historicProcessInstance = historyService
-                .createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-
-        String startUserId = historicProcessInstance != null ? 
-                historicProcessInstance.getStartUserId() : null;
-
-        if (startUserId == null) {
-            return Result.error(500, "无法获取流程发起人");
-        }
-
-        try {
-            // 4. 设置驳回标记
-            Map<String, Object> variables = new HashMap<>();
-            variables.put("_rejected_", true);
-            variables.put("_rejectBy_", userId);
-            variables.put("_rejectTime_", new Date());
-            variables.put("_rejectComment_", comment);
-            variables.put("_rejectSourceTaskId_", taskId);
-            variables.put("_rejectSourceNodeId_", task.getTaskDefinitionKey());
-            variables.put("approved", "reject");
-
-            // 5. 完成任务并设置驳回变量
-            taskService.setVariablesLocal(taskId, variables);
-            taskService.complete(taskId, variables);
-
-            // 6. 创建一个新的任务给发起人（用于重新提交）
-            // 使用信号或消息触发重新提交节点
-            // 这里简化处理：直接创建一个新任务
-
-            log.info("任务 {} 被 {} 驳回，将重新分配给发起人 {}", 
-                    LogValue.safe(taskId), LogValue.safe(userId), LogValue.safe(startUserId));
-
-            // 7. 同步待办状态
-            processTaskService.syncTasksFromFlowable(processInstanceId);
-
-            // 新版本驳回通过实际连线路由；不能在连线回写后再无条件覆盖业务状态。
-            if (statusPolicy == null || !statusPolicy.usesTransitions(processDefinitionId)) {
-                updateEntityStatusToRejected(processInstanceId, taskId, userId);
-            }
-
-            return Result.success(null);
-
-        } catch (Exception e) {
-            // 返回业务错误也必须回滚已推进的引擎与实体状态，避免吞异常后提交半成品。
-            if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
-                org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
-            }
-            log.error("驳回任务失败: taskId={}, userId={}, failureType={}",
-                    LogValue.safe(taskId), LogValue.safe(userId), LogValue.failureType(e));
-            return Result.error(500, "驳回失败: " + e.getMessage());
-        }
+        return Result.success();
     }
 
     /**
@@ -162,80 +104,16 @@ public class ProcessRollbackService {
             targetIdArg = 0)
     public Result<Void> resubmitProcess(String processInstanceId, String userId, 
                                          Map<String, Object> formData, String comment) {
-        // 1. 验证流程实例
-        ProcessInstance processInstance = runtimeService
-                .createProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-
-        if (processInstance == null) {
-            return Result.error(404, "流程实例不存在或已结束");
-        }
-
-        // 2. 验证是否是发起人
-        HistoricProcessInstance historicInstance = historyService
-                .createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-
-        String startUserId = historicInstance != null ? historicInstance.getStartUserId() : null;
-        if (startUserId == null || !startUserId.equals(userId)) {
-            return Result.error(403, "只有发起人才能重新提交");
-        }
-
-        // 3. 获取当前任务（应该是发起人的重新提交任务）
-        Task currentTask = taskService.createTaskQuery()
-                .processInstanceId(processInstanceId)
-                .taskAssignee(userId)
-                .singleResult();
-
-        if (currentTask == null) {
-            // 可能任务已经流转走了，或者被其他方式处理了
-            return Result.error(400, "没有找到可重新提交的任务");
-        }
-
-        try {
-            // 4. 更新表单数据
-            Map<String, Object> safeFormData =
-                    WorkflowReservedVariables.sanitizeRuntimeMutation(
-                            formData);
-            if (!safeFormData.isEmpty()) {
-                runtimeService.setVariables(
-                        processInstanceId, safeFormData);
-                
-                // 更新实体数据
-                updateEntityData(
-                        processInstanceId,
-                        currentTask.getId(),
-                        userId,
-                        safeFormData);
-            }
-
-            // 5. 设置重新提交变量
-            Map<String, Object> variables = new HashMap<>();
-            variables.put("_resubmitted_", true);
-            variables.put("_resubmitTime_", new Date());
-            variables.put("_resubmitComment_", comment);
-            variables.put("_resubmitBy_", userId);
-            variables.put("approved", "approve");  // 重新提交表示同意继续流程
-            variables.put("action", "resubmit");
-            variables.put("comment", comment);
-
-            // 6. 完成任务（继续流程）
-            taskService.complete(currentTask.getId(), variables);
-
-            log.info("流程 {} 被发起人 {} 重新提交", LogValue.safe(processInstanceId), LogValue.safe(userId));
-
-            // 7. 同步待办状态
-            processTaskService.syncTasksFromFlowable(processInstanceId);
-
-            return Result.success(null);
-
-        } catch (Exception e) {
-            log.error("重新提交失败: processInstanceId={}, userId={}", 
-                    LogValue.safe(processInstanceId), LogValue.safe(userId), LogValue.failureType(e));
-            return Result.error(500, "重新提交失败: " + e.getMessage());
-        }
+        // 旧接口只提供实例 ID。多个退回待办时不能随意选第一条，调用方须改用 taskId 命令。
+        String identity = com.workflow.admin.security.context.UserContext.requireUsernameOrId();
+        var candidates = taskService.createTaskQuery().processInstanceId(processInstanceId)
+                .taskAssignee(identity).list();
+        if (candidates.size() != 1) throw new com.workflow.contracts.process.error.ProcessOperationException(
+                "PROCESS_STATE_CHANGED", "需要唯一的重新提交待办，请使用明确的 taskId", processInstanceId);
+        taskCommands.resubmit(new com.workflow.contracts.process.task.model.ResubmitTaskCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(null), candidates.get(0).getId(),
+                new com.workflow.contracts.process.task.model.TaskSubmission(comment, "重新提交", formData, null, null)));
+        return Result.success();
     }
 
     /**
@@ -257,13 +135,15 @@ public class ProcessRollbackService {
         // 检查流程变量中是否有驳回标记
         Map<String, Object> vars = runtimeService.getVariables(processInstanceId);
         
-        Boolean rejected = (Boolean) vars.get("_rejected_");
-        if (Boolean.TRUE.equals(rejected)) {
+        // 统一办理路径以 approved 决定连线；旧退回入口还会留下带下划线的标记。
+        // 两者都读取，避免旧页面在收口后看不到可以重新提交的退回待办。
+        boolean rejected = Boolean.TRUE.equals(vars.get("_rejected_")) || "reject".equals(vars.get("approved"));
+        if (rejected) {
             Map<String, Object> result = new HashMap<>();
             result.put("rejected", true);
-            result.put("rejectBy", vars.get("_rejectBy_"));
-            result.put("rejectTime", vars.get("_rejectTime_"));
-            result.put("rejectComment", vars.get("_rejectComment_"));
+            result.put("rejectBy", vars.getOrDefault("_rejectBy_", vars.get("rejectBy")));
+            result.put("rejectTime", vars.getOrDefault("_rejectTime_", vars.get("rejectTime")));
+            result.put("rejectComment", vars.getOrDefault("_rejectComment_", vars.get("comment")));
             result.put("canResubmit", true);
             return result;
         }

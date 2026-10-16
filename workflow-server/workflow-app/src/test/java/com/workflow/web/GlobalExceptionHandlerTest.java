@@ -34,6 +34,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class GlobalExceptionHandlerTest {
 
+    @Test
+    void processPortErrorsKeepAuthorizationConflictAndNotFoundSemantics() {
+        for (var expected : java.util.Map.of("PROCESS_ACCESS_DENIED", 403, "PROCESS_NOT_FOUND", 404,
+                "IDEMPOTENCY_CONFLICT", 409, "TASK_ALREADY_COMPLETED", 409, "VARIABLE_SCOPE_UNSUPPORTED", 400,
+                "PROCESS_OPERATION_FAILED", 500).entrySet()) {
+            var response = handler.handleProcessOperationException(new com.workflow.contracts.process.error.ProcessOperationException(
+                    expected.getKey(), "流程操作失败", "task-1"));
+            assertEquals(expected.getValue(), response.getStatusCode().value());
+            assertEquals(expected.getKey(), response.getBody().getErrorCode());
+        }
+    }
+
     /** 驱动文本与 SQL 不进入响应，同一个码在不同语言下保持相同提示。 */
     @Test
     void databaseErrorsHavePortableMessagesWithoutDriverText() {

@@ -1,5 +1,7 @@
 # 实体自定义编码接入
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 编码规则支持 `RULE`（内置规则，默认）和 `CUSTOM`（业务生成器）。管理入口为实体列表的“数据编码规则配置”。选择自定义生成器后配置参数；仅影响之后创建的记录，编辑、审批和流程重提不重新取号。
 
 ## 保存顺序与上下文

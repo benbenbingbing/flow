@@ -36,6 +36,9 @@ import java.util.stream.Collectors;
 @Service("workflowTaskService")
 @RequiredArgsConstructor
 public class TaskServiceImpl implements com.workflow.process.task.application.TaskService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.task.port.ProcessTaskCommandPort taskCommands;
+
 
     private final org.flowable.engine.TaskService flowableTaskService;
     private final HistoryService historyService;
@@ -133,16 +136,19 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     /**
-     * 完成任务。办理语义统一走 {@link TaskActionService}，避免会签/或签出现第二套实现。
+     * 完成任务。兼容旧调用签名，办理语义统一走公共任务命令，包含发布表单和加签分流。
      */
     public void completeTask(String taskId, String action, String comment, String transferTo, String actionLabel) {
-        taskActionService.completeTask(
-                taskId,
-                UserContext.requireUsernameOrId(),
-                action,
-                comment,
-                transferTo,
-                actionLabel);
+        var submission = new com.workflow.contracts.process.task.model.TaskSubmission(comment, actionLabel, null, null, null);
+        var meta = com.workflow.process.command.application.ProcessHttpCommands.meta(null);
+        if ("transfer".equalsIgnoreCase(action)) {
+            taskCommands.transfer(new com.workflow.contracts.process.task.model.TransferTaskCommand(meta, taskId, transferTo, submission));
+        } else if ("resubmit".equalsIgnoreCase(action)) {
+            taskCommands.resubmit(new com.workflow.contracts.process.task.model.ResubmitTaskCommand(meta, taskId, submission));
+        } else {
+            taskCommands.complete(new com.workflow.contracts.process.task.model.CompleteTaskCommand(meta, taskId,
+                    action == null ? "approve" : action, submission));
+        }
     }
 
     /**
@@ -365,44 +371,8 @@ public class TaskServiceImpl implements com.workflow.process.task.application.Ta
             targetType = "PROCESS_TASK",
             targetIdArg = 0)
     public void resubmitTask(String taskId, String comment, Map<String, Object> formData) {
-        org.flowable.task.api.Task task = flowableTaskService.createTaskQuery()
-                .taskId(taskId)
-                .singleResult();
-        
-        if (task == null) {
-            throw new RuntimeException("任务不存在或已处理");
-        }
-        
-        String processInstanceId = task.getProcessInstanceId();
-        
-        // 1. 添加审批意见
-        if (StringUtils.hasText(comment)) {
-            flowableTaskService.addComment(taskId, processInstanceId, 
-                    "重新提交: " + comment);
-        }
-        
-        // 2. 更新表单数据
-        Map<String, Object> safeFormData =
-                WorkflowReservedVariables.sanitizeRuntimeMutation(formData);
-        if (!safeFormData.isEmpty()) {
-            safeFormData.forEach((key, value) -> {
-                runtimeService.setVariable(processInstanceId, key, value);
-            });
-        }
-        
-        // 3. 设置审批结果变量
-        flowableTaskService.setVariable(taskId, "approved", "approve");
-        flowableTaskService.setVariable(taskId, "resubmitted", true);
-        
-        // 4. 完成任务
-        flowableTaskService.complete(taskId);
-        
-        // 5. 更新本地待办状态
-        processTaskService.completeTask(taskId, "resubmit", comment);
-        
-        // 6. 同步创建下一节点的待办
-        processTaskService.syncTasksFromFlowable(processInstanceId);
-        
-        log.info("任务重新提交成功: taskId={}, user={}", taskId, UserContext.requireUsernameOrId());
+        taskCommands.resubmit(new com.workflow.contracts.process.task.model.ResubmitTaskCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId,
+                new com.workflow.contracts.process.task.model.TaskSubmission(comment, "重新提交", formData, null, null)));
     }
 }

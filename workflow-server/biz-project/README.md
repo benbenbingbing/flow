@@ -134,10 +134,14 @@ SPI，身份参数为 `IdentityUser`；知会扩展不再使本模块直接依�
 - `ProjectGovernanceService`：集中实现跨实体校验和幂等写入。
 - `ProjectMemberChangeService`：集中实现成员、投入、权限回收和角色移交规则。
 
-F07 前端自定义表单位于：
+F07 前端自定义表单位于以下仓库路径：
 
 ```text
-workflow-web/src/extensions/business/project/forms/ProjectMemberChangeForm.vue
+workflow-frontend/packages/biz-project/src/pc/forms/ProjectMemberChangeForm.vue
+workflow-frontend/packages/biz-project/src/mobile/forms/ProjectMemberChangeForm.vue
 ```
 
 除该业务自定义表单和跨实体处理器外，F07 的实体、字段、列表、菜单、数据范围、BPMN、节点表单绑定和动作绑定均由配置实现。
+
+前端依赖和构建在 [前端工作区](../../workflow-frontend/README.md) 中统一管理；
+模块选择与扩展契约见 [前端业务模块开发](../../docs/frontend-business-modules.md)。

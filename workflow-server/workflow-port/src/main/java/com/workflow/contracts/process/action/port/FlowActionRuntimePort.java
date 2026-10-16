@@ -1,14 +1,19 @@
 package com.workflow.contracts.process.action.port;
 
 import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.process.query.model.ProcessInstanceView;
+import com.workflow.contracts.process.query.model.ProcessTaskView;
+import java.util.List;
 import java.util.Map;
 
 /**
  * 流程动作执行期间可用的运行时数据访问能力。
  *
- * <p>引擎对象以 {@link Object} 暴露，避免 contracts 模块依赖 Flowable 或实体实现类。</p>
+ * <p>第二版以独立投影替换引擎对象；外部扩展需重新编译，不应再向 Flowable 类型强制转换。</p>
  */
 public interface FlowActionRuntimePort {
+    /** 类型投影及完整活动任务集合契约版本；宿主和扩展应一起升级。 */
+    int CONTRACT_VERSION = 2;
 
     /**
      * 读取流程变量；查询结果供调用方展示或继续处理。
@@ -17,6 +22,9 @@ public interface FlowActionRuntimePort {
      * @return 流程变量键值结果，供调用方继续处理
      */
     Map<String, Object> getVariables(String processInstanceId);
+
+    /** 显式读取当前运行态的业务变量快照；已结束时抛 PROCESS_ALREADY_ENDED，不回退历史。 */
+    Map<String, Object> getLiveVariables(String processInstanceId);
 
     /**
      * 读取变量；查询结果供调用方展示或继续处理。
@@ -55,7 +63,7 @@ public interface FlowActionRuntimePort {
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @return 符合条件的流程动作运行时访问结果，供调用方继续处理
      */
-    Object getProcessInstance(String processInstanceId);
+    ProcessInstanceView getProcessInstance(String processInstanceId);
 
     /**
      * 读取历史流程实例；查询结果供调用方展示或继续处理。
@@ -63,15 +71,15 @@ public interface FlowActionRuntimePort {
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @return 符合条件的流程动作运行时访问结果，供调用方继续处理
      */
-    Object getHistoricProcessInstance(String processInstanceId);
+    ProcessInstanceView getHistoricProcessInstance(String processInstanceId);
 
     /**
-     * 读取当前任务；查询结果供调用方展示或继续处理。
+     * 读取全部活动任务，包含并行分支和已激活的本地加签；调用方必须明确选择办理目标。
      *
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @return 符合条件的流程动作运行时访问结果，供调用方继续处理
      */
-    Object getCurrentTask(String processInstanceId);
+    List<ProcessTaskView> getActiveTasks(String processInstanceId);
 
     /**
      * 读取任务；查询结果供调用方展示或继续处理。
@@ -79,7 +87,7 @@ public interface FlowActionRuntimePort {
      * @param taskId 任务 ID，用于定位目标待办并关联后续状态或操作
      * @return 符合条件的流程动作运行时访问结果，供调用方继续处理
      */
-    Object getTask(String taskId);
+    ProcessTaskView getTask(String taskId);
 
     /**
      * 读取实体数据；查询结果供调用方展示或继续处理。

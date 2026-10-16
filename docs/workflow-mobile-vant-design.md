@@ -1,7 +1,7 @@
 # 移动端 Vant 独立展示层设计
 
 日期：2026-09-21  
-状态：已实施；验证记录见 [移动端使用说明](../workflow-mobile/README.md)。  
+状态：已实施；验证记录见 [移动端使用说明](../workflow-frontend/workflow-mobile/README.md)。
 设计基线：`8822c2c5`。以下保留设计依据与验收标准。
 
 ## 1. 结论与范围

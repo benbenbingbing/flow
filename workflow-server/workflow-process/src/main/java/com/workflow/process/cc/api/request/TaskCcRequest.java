@@ -12,6 +12,9 @@ import java.util.List;
  */
 @Data
 public class TaskCcRequest {
+    /** 重试复用的业务意图键；旧客户端未传时仍按一次新操作处理。 */
+    private String requestId;
+
 
     /**
      * 知会人员标识列表（用户ID或用户名）

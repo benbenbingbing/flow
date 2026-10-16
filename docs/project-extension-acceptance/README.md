@@ -30,7 +30,7 @@
 2. 本机 Flyway 仅按要求处理 V001 历史校验值。其他迁移校验问题需要单独确认，不能由
    本脚本绕过。
 3. 准备一个具备超级管理员权限、已完成首次改密的测试账号。
-4. 前端使用当前 `workflow-web/src/extensions/business/project` 代码启动或构建。
+4. 前端使用当前 `workflow-frontend/packages/biz-project/src/pc` 代码启动或构建。
 
 ## 初始化命令
 
@@ -183,15 +183,15 @@ projectCustomPersonResolver
 
 ## 自动检查
 
-前端：
+前端（从仓库根目录进入前端工作区）：
 
 ```bash
-cd workflow-web
-node src/extensions/business/project/__tests__/acceptanceExtensions.spec.js
+cd workflow-frontend
+node packages/biz-project/tests/acceptanceExtensions.spec.js
 npm run build
 ```
 
-后端：
+后端（另开终端，从仓库根目录执行）：
 
 ```bash
 cd workflow-server

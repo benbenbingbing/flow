@@ -9,4 +9,3 @@
 **/*.log
 **/*.pid
 .codex-artifacts
-workflow-server

@@ -50,7 +50,7 @@
 
 当前运行环境在审查过程中登录态失效，因此没有绕过认证继续操作。文档不会把未实测页面写成已验证事实。
 
-![复杂项目成员变更流程设计器](./config-flexibility-audit-assets/process-designer.png)
+![复杂项目成员变更流程设计器](config-flexibility-audit-assets/process-designer.png)
 
 ## 三、当前配置能力基线
 

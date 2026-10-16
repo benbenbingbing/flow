@@ -31,6 +31,9 @@ import java.util.Map;
 @RequestMapping("/api/process-instance")
 @RequiredArgsConstructor
 public class ProcessInstanceController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+
     
     private final ProcessInstanceService processInstanceService;
     
@@ -134,7 +137,9 @@ public class ProcessInstanceController {
         }
         
         String reason = requestBody != null ? requestBody.get("reason") : null;
-        return processInstanceService.terminateProcess(processInstanceId, userId, reason);
+        instanceCommands.terminate(new com.workflow.contracts.process.instance.model.TerminateProcessCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(requestBody == null ? null : requestBody.get("requestId")), processInstanceId, reason));
+        return Result.success();
     }
     
     /**
@@ -164,7 +169,9 @@ public class ProcessInstanceController {
     public ApiResponse<Map<String, String>> triggerReceiveTask(
             @PathVariable String processInstanceId,
             @RequestBody ReceiveTaskTriggerRequest request) {
-        String executionId = processInstanceService.triggerReceiveTask(processInstanceId, request);
+        String executionId = instanceCommands.triggerReceiveTask(new com.workflow.contracts.process.instance.model.TriggerReceiveTaskCommand(
+                com.workflow.process.command.application.ProcessHttpCommands.meta(request.getRequestId()), processInstanceId,
+                request.getExecutionId(), request.getActivityId(), request.getMessageRef(), request.getVariables())).executionId();
         return ApiResponse.success(Map.of(
                 "processInstanceId", processInstanceId,
                 "executionId", executionId));

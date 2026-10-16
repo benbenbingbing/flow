@@ -4,4 +4,4 @@
 /docker-compose.yml @iscarson
 /start.sh @iscarson
 /workflow-server/Dockerfile @iscarson
-/workflow-web/Dockerfile @iscarson
+/workflow-frontend/workflow-web/Dockerfile @iscarson

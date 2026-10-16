@@ -1,5 +1,7 @@
 # JSON 扩展集中化实施验收
 
+> 本文保留迁移前的验收命令与结果。当前应用、包和清单位于 `workflow-frontend/`，命令目录按 [前端工作区](../workflow-frontend/README.md) 执行。
+
 日期：2026-09-21。迁移对照版本：`48273ad7`。范围为前端源码、构建注册、管理页、指南、示例及测试；未连接真实业务数据库执行发布或生产数据验收。
 
 ## 交付内容
@@ -58,4 +60,4 @@
 
 Flyway 迁移文件：新增无、修改无、删除无。已检查 Git 差异，本次未改动任何 SQL 迁移；未执行 flyway repair 或基线操作。
 
-源码、清单、文档和测试保留在当前工作区，未提交、未部署。开发者操作步骤和完整目录说明见 [实施设计](frontend-extension-json-registration-design.md) 与 [扩展中心 README](../workflow-web/src/extensions/README.md)。
+源码、清单、文档和测试保留在当前工作区，未提交、未部署。开发者操作步骤和完整目录说明见 [实施设计](frontend-extension-json-registration-design.md) 与 [扩展中心 README](../workflow-frontend/workflow-web/src/extensions/README.md)。

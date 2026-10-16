@@ -54,13 +54,43 @@ public class ProcessInstanceAccessService {
         if (instance == null) {
             throw new IllegalArgumentException("流程实例不存在");
         }
-        if (currentUserRoleService.isAdministrator()
-                || matches(instance.getStartUserId(), userId, username)
-                || isTaskParticipant(processInstanceId, userId, username)
-                || ccRecordMapper.existsForUser(processInstanceId, userId, username) > 0) {
+        if (canRead(processInstanceId, instance.getStartUserId())) {
             return;
         }
         throw new ForbiddenException("无权访问该流程实例");
+    }
+
+    /**
+     * 供批量查询在分页前应用与详情完全相同的范围；不以异常过滤掩盖数据库故障。
+     * 已加载实例由平台查询器提供，不能用调用方伪造的实例对象作为外部授权凭据。
+     */
+    public boolean canRead(HistoricProcessInstance instance) {
+        return canRead(instance.getId(), instance.getStartUserId());
+    }
+
+    private boolean canRead(String instanceId, String startUserId) {
+        requireIdentity();
+        return currentUserRoleService.isAdministrator() || isParticipant(instanceId, startUserId);
+    }
+
+    /** 参与范围包括发起、当前/历史办理和知会；管理员不会仅因角色自动成为所有流程参与人。 */
+    public boolean isParticipant(HistoricProcessInstance instance) {
+        return isParticipant(instance.getId(), instance.getStartUserId());
+    }
+
+    private boolean isParticipant(String instanceId, String startUserId) {
+        requireIdentity();
+        String userId = UserContext.getUserId();
+        String username = UserContext.getUsername();
+        return matches(startUserId, userId, username)
+                || isTaskParticipant(instanceId, userId, username)
+                || ccRecordMapper.existsForUser(instanceId, userId, username) > 0;
+    }
+
+    private void requireIdentity() {
+        if (!StringUtils.hasText(UserContext.getUserId()) && !StringUtils.hasText(UserContext.getUsername())) {
+            throw new ForbiddenException("用户未登录");
+        }
     }
 
     /**

@@ -1,5 +1,7 @@
 # 表单自定义按钮执行方式
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 表单设计 → 设置 → 按钮与操作 → 添加自定义按钮，在“执行方式”或“更多”中配置动作。配置完成后启用按钮、保存草稿并发布表单。旧按钮默认继续使用事件链，不需要迁移。
 
 | 执行方式 | 配置内容与运行行为 |

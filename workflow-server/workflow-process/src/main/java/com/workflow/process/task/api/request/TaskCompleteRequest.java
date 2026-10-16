@@ -13,6 +13,8 @@ import java.util.Map;
 @Data
 public class TaskCompleteRequest {
 
+    /** 同一提交重试复用此值；未提供时服务器按一次新的提交处理。 */
+    private String requestId;
     private String taskId;
     private String action;
     private String comment;

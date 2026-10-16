@@ -212,9 +212,8 @@ public class ProcessInstanceServiceTest {
                 request);
 
         assertEquals("execution-1", executionId);
-        verify(runtimeService).trigger(
-                "execution-1",
-                Map.of("paymentStatus", "SUCCESS"));
+        verify(runtimeService).setVariablesLocal("instance-1", Map.of("paymentStatus", "SUCCESS"));
+        verify(runtimeService).trigger("execution-1");
     }
 
     /** 消息名不匹配时必须拒绝触发，避免错误回调推进流程 */

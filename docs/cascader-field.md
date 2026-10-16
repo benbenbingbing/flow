@@ -1,5 +1,7 @@
 # 级联选择字段
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 级联选择适用于省市区、分类、组织树等分层数据。PC 与移动端使用相同配置和接口协议，保存值始终为一条从根到叶子的完整编码路径，例如 `["guangdong", "guangzhou", "tianhe"]`。清空时保存 `[]`。不支持多选、仅保存末级编码或选择非叶子节点。
 
 ## 设计器配置

@@ -46,7 +46,7 @@ public class DemoTypedActionHandler implements TypedFlowActionProvider<DemoActio
         log.info("自定义参数(原始): {}", ctx.getExtraParams());
         log.info("流程变量: {}", ctx.getVariables());
         log.info("实体数据: {}", ctx.getEntityData());
-        log.info("当前任务: {}", ctx.getCurrentTask());
+        log.info("全部活动任务: {}", ctx.getActiveTasks());
         log.info("========== [DemoTypedActionHandler] 流程动作执行结束 ==========");
     }
 }

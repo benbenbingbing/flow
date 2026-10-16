@@ -243,6 +243,22 @@ public class EntityFormRuntimeService {
         }
         return runtimeForm;
     }
+    /** 只返回办理校验所需的稳定表单身份及摘要，避免跨模块传递表单持久化实体。 */
+    public com.workflow.contracts.process.task.model.TaskFormReference submissionReference(
+            ProcessNodeForm binding, UiRuntimeResolutionContext context) {
+        EntityForm form = getByBinding(binding, context);
+        return form == null ? null : new com.workflow.contracts.process.task.model.TaskFormReference(
+                form.getId(), form.getConfigHash());
+    }
+
+    /** 默认表单也使用同一发布解析规则；返回 null 时提交入口必须明确拒绝。 */
+    public com.workflow.contracts.process.task.model.TaskFormReference defaultSubmissionReference(
+            String entityId, UiRuntimeResolutionContext context) {
+        EntityForm form = getDefaultForm(entityId, context);
+        return form == null ? null : new com.workflow.contracts.process.task.model.TaskFormReference(
+                form.getId(), form.getConfigHash());
+    }
+
     /** 只向页面提供稳定业务坐标；流程版本和用户权限不交由浏览器维护。 */
     private java.util.Map<String, Object> businessContext(UiRuntimeResolutionContext context) {
         var values = new java.util.LinkedHashMap<String, Object>();

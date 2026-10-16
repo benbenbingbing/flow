@@ -1,6 +1,7 @@
 package com.workflow.web;
 
 import com.workflow.core.error.BusinessConflictException;
+import com.workflow.contracts.process.error.ProcessOperationException;
 import com.workflow.entity.form.application.error.FormCrossFieldValidationException;
 import com.workflow.core.error.BusinessForbiddenException;
 import com.workflow.core.error.ForbiddenException;
@@ -40,6 +41,30 @@ public class GlobalExceptionHandler {
      */
     public GlobalExceptionHandler(DatabaseExceptionClassifier databaseErrors) {
         this.databaseErrors = databaseErrors;
+    }
+
+    /**
+     * Java 公共流程异常在 HTTP 边界映射为稳定状态；原表单字段错误仍保留定位信息，
+     * 不能因为公共封装把 403/409 变成 500，或丢失前端保留输入所需的数据。
+     */
+    @ExceptionHandler(ProcessOperationException.class)
+    public ResponseEntity<ApiResponse<Object>> handleProcessOperationException(ProcessOperationException error) {
+        if (error.getCause() instanceof FormCrossFieldValidationException validation) {
+            return handleFormCrossFieldValidationException(validation);
+        }
+        String code = error.getErrorCode();
+        int status;
+        if (error.getCause() instanceof ForbiddenException
+                || java.util.Set.of("PROCESS_ACCESS_DENIED", "PROCESS_ACTOR_REQUIRED").contains(code)) status = 403;
+        else if (java.util.Set.of("PROCESS_NOT_FOUND", "TASK_NOT_FOUND").contains(code)) status = 404;
+        else if (error.getCause() instanceof BusinessConflictException || java.util.Set.of("PROCESS_STATE_CHANGED",
+                "TASK_STATE_CHANGED", "TASK_ALREADY_COMPLETED", "TASK_ALREADY_CLAIMED", "PROCESS_ALREADY_ENDED",
+                "IDEMPOTENCY_CONFLICT", "COMMAND_IN_PROGRESS", "COMMAND_REENTRANT").contains(code)) status = 409;
+        else if (java.util.Set.of("PROCESS_INVALID_ARGUMENT", "VARIABLE_NOT_WRITABLE", "VARIABLE_SCOPE_UNSUPPORTED",
+                "ACTION_NOT_ALLOWED", "TASK_ACTION_NOT_ALLOWED", "NEXT_APPROVER_SELECTION_INVALID").contains(code)) status = 400;
+        else status = 500;
+        log.error("流程操作失败: errorCode={}, targetId={}", code, error.getTargetId(), error);
+        return ResponseEntity.status(status).body(ApiResponse.error(status, code, error.getMessage()));
     }
 
 

@@ -1,5 +1,7 @@
 # Flow 第三方 iframe 嵌入运行时详细设计
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 > 状态：V1 Native LIST/FORM 单运行时架构已实现；仍需本机 MySQL 隔离迁移验证、跨浏览器/安全验收、生产部署与接入方联合评审
 > 文档版本：1.3
 > 日期：2026-09-10

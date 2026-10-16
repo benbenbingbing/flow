@@ -1,5 +1,7 @@
 # 流程动作自定义失败策略设计方案
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 日期：2026-09-26。状态：第一阶段已实现；通知与补偿属于后续扩展。
 
 本方案面向流程、节点、连线上的“流程动作”。目标是让项目开发者注册失败策略，配置人员在设计器中选择策略、填写参数，运行时根据异常和执行上下文决定后续处理。

@@ -20,7 +20,7 @@
 
 ### 1. 子表单证据
 
-- 设计器明确序列化这些 ID：[EntityFormDesignByEntity.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-web/src/views/EntityFormDesignByEntity.vue:3332)。
+- 设计器明确序列化这些 ID：[EntityFormDesignByEntity.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-frontend/workflow-web/src/views/EntityFormDesignByEntity.vue:3332)。
 - 节点通过 portableMap 导出：[ConfigMigrationAssetService.java](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:1194)。通用清洗只递归 Map/Collection，对 JSON 字符串原样返回：[sanitizeValue](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:2317)。
 - 导入重建节点和 fieldId，但没有子表单引用重写：[applyForms](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java:1462)。
 - 子表单归一逻辑直接调用 `releaseMapper.selectById(releaseId)`：[EntityFormNodeService.java](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-entity/src/main/java/com/workflow/entity/form/application/EntityFormNodeService.java:950)。
@@ -30,8 +30,8 @@
 
 补充核实：当前 wfpack 没有独立的组件模板资产导入。列表列的当前模板入口是复制初始化，`applyListColumnTemplateSnapshot` 会清空 templateId/templateVersion/localOverridesDocument，正常新配置后续不依赖模板。表单节点仍采用锁定模板版本和手动升级的模式，并在发布时检查模板记录；两种路径不能混为一谈。下述列表校验风险仅适用于仍残留模板绑定的历史或其他入口配置。
 
-- 列表列复制后解除绑定：[list-column-template.js](/Users/dawei/Documents/ddup/ai/flow/workflow-web/src/shared/list-column-template.js:108)。
-- 表单节点仍锁定版本并支持升级：[EntityFormDesignByEntity.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-web/src/views/EntityFormDesignByEntity.vue:4339)。
+- 列表列复制后解除绑定：[list-column-template.js](/Users/dawei/Documents/ddup/ai/flow/workflow-frontend/workflow-web/src/shared/list-column-template.js:108)。
+- 表单节点仍锁定版本并支持升级：[EntityFormDesignByEntity.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-frontend/workflow-web/src/views/EntityFormDesignByEntity.vue:4339)。
 
 - `templateId` 不在导出技术字段排除集合：[TECHNICAL_KEYS](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:122)；节点和列表列均通过 portableMap/portableList 导出：[节点导出](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:1194)、[列表列导出](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:1245)。
 - 节点、列表列导入没有重新绑定 templateId：[节点导入](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java:1494)、[列表列导入](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java:2069)。
@@ -43,7 +43,7 @@
 
 - 导出只将绑定的 policyId 变成 policyKey：[数据范围导出](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java:1289)。
 - 导入重绑 policyId 后直接插入 binding，matchConfig 未转换：[applyDataScopes](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java:2527)。
-- 界面指定用户使用 `value-key="id"`：[EntityDesign.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-web/src/views/EntityDesign.vue:670)。
+- 界面指定用户使用 `value-key="id"`：[EntityDesign.vue](/Users/dawei/Documents/ddup/ai/flow/workflow-frontend/workflow-web/src/views/EntityDesign.vue:670)。
 - USER/ROLE/GROUP/DEPT/ORG 的实际 ID 比较：[PermissionRuleMatcher.java](/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-entity/src/main/java/com/workflow/entity/permission/application/PermissionRuleMatcher.java:237)。
 - 内存探针保持 username=alice 不变，仅将用户 ID 从 source-user-id 改为 target-user-id，匹配由 true 变为 false。
 

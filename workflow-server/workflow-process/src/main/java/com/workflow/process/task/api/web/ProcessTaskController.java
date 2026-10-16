@@ -19,8 +19,6 @@ import com.workflow.entity.form.application.EntityFormActionService;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskDetailService;
 import com.workflow.process.task.application.TaskActionService;
-import com.workflow.process.task.application.nextapproval.NextApprovalPreviewService;
-import com.workflow.process.task.application.nextapproval.NextApproverCandidateService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +42,11 @@ import java.util.Map;
 @RequestMapping("/api/process-task")
 @RequiredArgsConstructor
 public class ProcessTaskController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.process.instance.port.ProcessInstanceCommandPort instanceCommands;
+
 
     private final ProcessTaskService processTaskService;
     private final TaskDetailService taskDetailService;
@@ -53,10 +56,7 @@ public class ProcessTaskController {
     private final EntityFormActionService formActionService;
 
     @Autowired
-    private NextApprovalPreviewService nextApprovalPreviewService;
-
-    @Autowired
-    private NextApproverCandidateService nextApproverCandidateService;
+    private com.workflow.process.task.application.TaskApprovalQueryService taskApprovalQueryService;
 
     private final com.workflow.process.task.application.TaskListQueryService taskListQueryService;
 
@@ -175,7 +175,8 @@ public class ProcessTaskController {
     @PostMapping("/claim/{taskId}")
     public Result<Void> claimTask(@PathVariable String taskId) {
         try {
-            taskActionService.claimTask(taskId);
+            taskCommands.claim(new com.workflow.contracts.process.task.model.ClaimTaskCommand(
+                    com.workflow.process.command.application.ProcessHttpCommands.meta(null), taskId));
         } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException exception) {
             throw taskStateChanged();
         } catch (FlowableObjectNotFoundException exception) {
@@ -210,17 +211,12 @@ public class ProcessTaskController {
     /**
      * 完成任务
      *
-     * @param params 参数，作为 {@code requireSubmitApprovalAction} 的输入影响后续处理
+     * @param params 包含页面表单摘要和业务意图键；事务内由公共命令重新鉴权并办理
      * @return 处理后的完成任务结果，供调用方继续处理
      */
     @PostMapping("/complete")
     public Result<Void> completeTask(@RequestBody TaskCompleteRequest params) {
         String taskId = params.getTaskId();
-        String action = params.getAction();
-        String comment = params.getComment();
-        String transferTo = params.getTransferTo();
-        String actionLabel = params.getActionLabel();
-        Map<String, Object> formData = params.getFormData();
 
         if (taskId == null || taskId.isEmpty()) {
             return Result.error("任务ID不能为空");
@@ -231,38 +227,7 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }
-            boolean hasNextSelections = params.getNextApproverSelections() != null
-                    && !params.getNextApproverSelections().isEmpty();
-            // 加签子任务同样由审批表单的 submitApproval 触发，不能在
-            // early-return 分支绕过已发布按钮条件。
-            requireSubmitApprovalAction(params);
-            if (taskAddSignService.requireAddSignTaskAccess(taskId)) {
-                if (hasNextSelections) {
-                    throw new IllegalArgumentException(
-                            "加签子任务不能指定下一节点审批人");
-                }
-                taskAddSignService.completeAddSignTask(taskId, action, comment);
-                return Result.success();
-            }
-            if (hasNextSelections
-                    && taskAddSignService.isAddSignSourceTask(taskId)) {
-                throw new IllegalArgumentException(
-                        "加签编排中的原任务不能指定下一节点审批人");
-            }
-            if (taskAddSignService.handleSourceCompletion(
-                    taskId, currentUser, action, comment, actionLabel, formData)) {
-                return Result.success();
-            }
-            taskActionService.completeTask(
-                    taskId,
-                    currentUser,
-                    action,
-                    comment,
-                    transferTo,
-                    actionLabel,
-                    formData,
-                    params.getNextApprovalScopeKey(),
-                    params.getNextApproverSelections());
+            taskCommands.completeHttp(params);
             return Result.success();
         } catch (FlowableOptimisticLockingException | FlowableTaskAlreadyClaimedException e) {
             // 事务代理提交时也可能才检测出并发修改，必须在服务事务退出后转换为可识别的冲突。
@@ -273,6 +238,8 @@ public class ProcessTaskController {
                 throw taskAlreadyCompleted();
             }
             return Result.error("审批失败: " + e.getMessage());
+        } catch (com.workflow.contracts.process.error.ProcessOperationException e) {
+            throw e;
         } catch (ForbiddenException | BusinessConflictException e) {
             throw e;
         } catch (Exception e) {
@@ -310,37 +277,7 @@ public class ProcessTaskController {
     public Result<NextApprovalPreviewResponse> previewNextApproval(
             @PathVariable String taskId,
             @RequestBody(required = false) NextApprovalPreviewRequest request) {
-        RuntimeException taskAccessFailure = null;
-        try {
-            taskActionService.requireTaskAccess(taskId);
-        } catch (RuntimeException exception) {
-            taskAccessFailure = exception;
-        }
-        if (taskAccessFailure != null
-                && taskAddSignService.requireAddSignTaskAccess(taskId)) {
-            NextApprovalPreviewResponse response =
-                    new NextApprovalPreviewResponse();
-            response.setTaskId(taskId);
-            response.setStatus(
-                    com.workflow.process.task.api.response.NextApprovalPreviewStatus.DEFERRED);
-            response.setMessage("加签子任务需等待加签编排完成");
-            return Result.success(response);
-        }
-        if (taskAccessFailure != null) {
-            throw taskAccessFailure;
-        }
-        if (taskAddSignService.isAddSignSourceTask(taskId)) {
-            NextApprovalPreviewResponse response =
-                    new NextApprovalPreviewResponse();
-            response.setTaskId(taskId);
-            response.setStatus(
-                    com.workflow.process.task.api.response.NextApprovalPreviewStatus.DEFERRED);
-            response.setMessage("加签编排中的下一节点需等待加签完成");
-            return Result.success(response);
-        }
-        return Result.success(nextApprovalPreviewService.preview(
-                taskId,
-                request == null ? new NextApprovalPreviewRequest() : request));
+        return Result.success(taskApprovalQueryService.preview(taskId, request));
     }
 
     /**
@@ -354,9 +291,7 @@ public class ProcessTaskController {
     public Result<PageResult<NextApproverCandidateDTO>> nextApproverOptions(
             @PathVariable String taskId,
             @RequestBody NextApproverOptionsRequest request) {
-        taskActionService.requireTaskAccess(taskId);
-        return Result.success(nextApproverCandidateService.options(
-                taskId, request));
+        return Result.success(taskApprovalQueryService.options(taskId, request));
     }
 
     /**
@@ -399,8 +334,11 @@ public class ProcessTaskController {
             if (currentUser == null || currentUser.isBlank()) {
                 throw new ForbiddenException("用户未登录");
             }
-            taskActionService.withdrawProcess(processInstanceId, currentUser, reason);
+            instanceCommands.withdraw(new com.workflow.contracts.process.instance.model.WithdrawProcessCommand(
+                    com.workflow.process.command.application.ProcessHttpCommands.meta(params.get("requestId")), processInstanceId, reason));
             return Result.success();
+        } catch (com.workflow.contracts.process.error.ProcessOperationException e) {
+            throw e;
         } catch (ForbiddenException e) {
             throw e;
         } catch (Exception e) {

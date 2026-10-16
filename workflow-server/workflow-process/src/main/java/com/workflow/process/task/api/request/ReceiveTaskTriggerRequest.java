@@ -13,6 +13,9 @@ import java.util.Map;
  */
 @Data
 public class ReceiveTaskTriggerRequest {
+    /** 同一次触发重试复用的意图键；缺失时按新请求处理。 */
+    private String requestId;
+
 
     /**
      * 执行实例ID（可选，与 activityId 至少填写一个；指定后直接触发该执行实例）

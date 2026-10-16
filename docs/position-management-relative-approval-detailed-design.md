@@ -1,5 +1,7 @@
 # Flow 职务管理与相对组织审批详细设计
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 > 状态：当前工作区实现基线，待迁移演练与上线验收
 >
 > 文档版本：1.1

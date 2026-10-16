@@ -4,158 +4,100 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.contracts.process.action.port.FlowActionRuntimePort;
 import com.workflow.contracts.entity.model.EntityRecordData;
 import com.workflow.contracts.entity.port.EntityRecordQueryPort;
-import lombok.RequiredArgsConstructor;
-import org.flowable.engine.HistoryService;
-import org.flowable.engine.RuntimeService;
-import org.flowable.engine.TaskService;
-import org.flowable.engine.history.HistoricProcessInstance;
-import org.flowable.engine.runtime.ProcessInstance;
-import org.flowable.task.api.Task;
+import com.workflow.contracts.process.model.ProcessLifecycle;
+import com.workflow.contracts.process.query.model.ProcessInstanceView;
+import com.workflow.contracts.process.query.model.ProcessTaskView;
+import com.workflow.contracts.process.query.port.ProcessQueryPort;
+import com.workflow.contracts.process.variable.model.ProcessVariablePatch;
+import com.workflow.contracts.process.variable.model.VariableReadMode;
+import com.workflow.contracts.process.variable.port.ProcessVariablePort;
+import com.workflow.process.command.application.ProcessInvocationScope;
+import com.workflow.process.variable.application.ProcessVariableReader;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
-import java.util.LinkedHashMap;
+import java.util.Set;
 
 /**
- * 流程动作查询辅助器。
- *
- * <p>封装根据流程实例 ID、实体编码等核心标识查询运行时数据的常用方法。</p>
+ * 动作上下文的便利方法委托到公共流程端口。签发的动作范围由执行器绑定，
+ * 不因持有此 Bean 就自动获得跨流程权限，也不泄露可直接修改的 Flowable 对象。
  */
 @Component
-@RequiredArgsConstructor
 public class FlowActionRuntimeAdapter implements FlowActionRuntimePort {
-
-    private final RuntimeService runtimeService;
-    private final TaskService taskService;
-    private final HistoryService historyService;
+    private final ProcessQueryPort queries;
+    private final ProcessVariablePort variables;
+    private final ProcessVariableReader reader;
     private final EntityRecordQueryPort entityDataDynamicService;
     private final ObjectMapper objectMapper;
 
-    /**
-     * 查询流程实例全部变量，优先从运行时获取，运行实例已结束时回退到历史变量。
-     *
-     * @param processInstanceId 流程实例 ID
-     * @return 流程变量 map
-     */
+    /** 引擎监听器在引擎装配期间依赖此适配器，延迟取得端口以避免反向初始化流程引擎。 */
+    public FlowActionRuntimeAdapter(@Lazy ProcessQueryPort queries, @Lazy ProcessVariablePort variables,
+                                   @Lazy ProcessVariableReader reader, EntityRecordQueryPort entityDataDynamicService,
+                                   ObjectMapper objectMapper) {
+        this.queries = queries; this.variables = variables; this.reader = reader;
+        this.entityDataDynamicService = entityDataDynamicService; this.objectMapper = objectMapper;
+    }
+
+    /** 空运行态仍是有效结果；仅实例结束时才允许公共变量读取回退历史。 */
     @Override
     public Map<String, Object> getVariables(String processInstanceId) {
-        try {
-            Map<String, Object> variables = runtimeService.getVariables(processInstanceId);
-            if (variables != null && !variables.isEmpty()) {
-                return variables;
-            }
-        } catch (Exception ignored) {
-        }
-        // 运行实例已结束或查询失败，回退到历史变量
-        Map<String, Object> variables = new LinkedHashMap<>();
-        historyService.createHistoricVariableInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .list()
-                .forEach(variable -> variables.put(variable.getVariableName(), variable.getValue()));
-        return variables;
+        return variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_OR_HISTORY);
     }
 
-    /**
-     * 查询单个流程变量值。
-     *
-     * @param processInstanceId 流程实例 ID
-     * @param name              变量名
-     * @return 变量值；不存在返回 null
-     */
+    @Override
+    public Map<String, Object> getLiveVariables(String processInstanceId) {
+        return variables.getProcessVariables(processInstanceId, VariableReadMode.RUNTIME_ONLY);
+    }
+
     @Override
     public Object getVariable(String processInstanceId, String name) {
-        Map<String, Object> variables = getVariables(processInstanceId);
-        return variables.get(name);
+        return variables.getProcessVariable(processInstanceId, name, VariableReadMode.RUNTIME_OR_HISTORY).value();
+    }
+
+    /** 快捷写入按本次动作内调用顺序获得稳定键，重试不能生成随机 requestId。 */
+    @Override
+    public void setVariable(String processInstanceId, String name, Object value) {
+        setVariables(processInstanceId, Collections.singletonMap(name, value));
+    }
+
+    /** 变量边界、原子写入和幂等回执与 biz 的公共调用完全相同。 */
+    @Override
+    public void setVariables(String processInstanceId, Map<String, Object> values) {
+        if (values == null || values.isEmpty()) return;
+        variables.patchProcessVariables(new ProcessVariablePatch(ProcessInvocationScope.nextVariableCommand(processInstanceId),
+                processInstanceId, values, Set.of()));
+    }
+
+    /** 保留原快捷方法只返回运行实例的语义；需要已结束实例时使用历史方法。 */
+    @Override
+    public ProcessInstanceView getProcessInstance(String processInstanceId) {
+        return queries.findInstance(processInstanceId).filter(view -> view.lifecycle() != ProcessLifecycle.ENDED).orElse(null);
+    }
+
+    @Override
+    public ProcessInstanceView getHistoricProcessInstance(String processInstanceId) {
+        return queries.findInstance(processInstanceId).orElse(null);
+    }
+
+    @Override
+    public List<ProcessTaskView> getActiveTasks(String processInstanceId) {
+        return queries.listActiveTasks(processInstanceId);
+    }
+
+    /** 已经完成的触发任务返回 null，避免把后继任务误认为触发任务。 */
+    @Override
+    public ProcessTaskView getTask(String taskId) {
+        return taskId == null || taskId.isBlank() ? null : queries.findActiveTask(taskId).orElse(null);
     }
 
     /**
-     * 设置变量；后续读取或执行将使用更新后的状态。
-     *
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @param name 名称，后续用于设置变量时匹配或展示
-     * @param value 待设置变量的原始输入，结果供调用方继续使用
+     * 仅供引擎监听器构造触发快照，保留发起人、实体绑定和审批编排字段。
+     * 不属于公共 Port，不能复用公共业务变量过滤后丢失事件必须的身份数据。
      */
-    @Override
-    public void setVariable(
-            String processInstanceId,
-            String name,
-            Object value) {
-        runtimeService.setVariable(
-                processInstanceId, name, value);
-    }
-
-    /**
-     * 设置流程变量；后续读取或执行将使用更新后的状态。
-     *
-     * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
-     * @param variables 流程变量，后续传给流程引擎或规则求值器使用
-     */
-    @Override
-    public void setVariables(
-            String processInstanceId,
-            Map<String, Object> variables) {
-        if (variables == null || variables.isEmpty()) {
-            return;
-        }
-        runtimeService.setVariables(
-                processInstanceId, variables);
-    }
-
-    /**
-     * 查询运行中的流程实例。
-     *
-     * @param processInstanceId 流程实例 ID
-     * @return 运行中的流程实例；不存在返回 null
-     */
-    @Override
-    public ProcessInstance getProcessInstance(String processInstanceId) {
-        return runtimeService.createProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-    }
-
-    /**
-     * 查询历史流程实例（含已结束的流程）。
-     *
-     * @param processInstanceId 流程实例 ID
-     * @return 历史流程实例；不存在返回 null
-     */
-    @Override
-    public HistoricProcessInstance getHistoricProcessInstance(String processInstanceId) {
-        return historyService.createHistoricProcessInstanceQuery()
-                .processInstanceId(processInstanceId)
-                .singleResult();
-    }
-
-    /**
-     * 查询流程实例当前活动中的第一个待办任务。
-     *
-     * @param processInstanceId 流程实例 ID
-     * @return 当前待办任务；无则返回 null
-     */
-    @Override
-    public Task getCurrentTask(String processInstanceId) {
-        return taskService.createTaskQuery()
-                .processInstanceId(processInstanceId)
-                .active()
-                .list()
-                .stream()
-                .findFirst()
-                .orElse(null);
-    }
-
-    /**
-     * 按任务 ID 查询任务详情。
-     *
-     * @param taskId 任务 ID
-     * @return 任务对象；ID 为空或不存在返回 null
-     */
-    @Override
-    public Task getTask(String taskId) {
-        if (taskId == null || taskId.isBlank()) {
-            return null;
-        }
-        return taskService.createTaskQuery().taskId(taskId).singleResult();
+    Map<String, Object> getTriggerVariables(String instanceId) {
+        return reader.process(instanceId, VariableReadMode.RUNTIME_OR_HISTORY).values();
     }
 
     /**

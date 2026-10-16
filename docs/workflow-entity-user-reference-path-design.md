@@ -1,5 +1,7 @@
 # 流程用户范围：多级实体关系选择实现方案
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 日期：2026-10-14。状态：已实现并通过定向回归；数据库迁移文件已新增，尚未在现有业务数据库执行。
 
 目标：将“实体用户关系字段”从单字段选择升级为逐级关系路径选择。例如：

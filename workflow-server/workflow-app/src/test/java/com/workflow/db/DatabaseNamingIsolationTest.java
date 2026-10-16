@@ -126,7 +126,7 @@ class DatabaseNamingIsolationTest {
 
     @Test
     void frontendUsesCanonicalProcessAndEntityApis() throws Exception {
-        Path webRoot = Path.of("../../workflow-web/src");
+        Path webRoot = Path.of("../../workflow-frontend/workflow-web/src");
         String actionApi = Files.readString(
                 webRoot.resolve("api/processAction.js"));
         assertFalse(Files.exists(webRoot.resolve("api/flowAction.js")));

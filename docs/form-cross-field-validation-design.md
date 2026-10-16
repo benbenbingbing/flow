@@ -1,5 +1,7 @@
 # 表单跨字段校验设计
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 > 状态：已实现，包含前后端比较校验与配置、运行时验证。
 > 日期：2026-09-15。
 > 范围：同一实体、同一条记录中的字段比较；不涉及子表单。

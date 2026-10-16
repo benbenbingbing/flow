@@ -1,5 +1,7 @@
 # 移动端系统主题
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 在 PC 的「系统管理 → 全局设置 → 移动端主题」配置系统统一配色。
 
 - 预设：青绿、经典蓝、雅紫、暖橙、玫瑰红、湖青、石墨灰；选预设后也可继续自定义。

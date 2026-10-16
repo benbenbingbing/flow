@@ -115,10 +115,11 @@ public class ProcessInstanceService {
      * 触发流程中处于等待状态的接收任务（ReceiveTask）继续向下流转。
      *
      * @param processInstanceId 流程实例ID
-     * @param request           触发请求（executionId/activityId 二选一定位，可校验消息标识）
+     * @param request           触发请求（executionId/activityId 至少一个，同时提供时必须一致）
      * @return 被触发的执行实例ID
      * @throws IllegalArgumentException 流程实例不存在、未处于接收任务节点或消息标识不匹配时抛出
      */
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
     public String triggerReceiveTask(
             String processInstanceId,
             ReceiveTaskTriggerRequest request) {
@@ -143,7 +144,10 @@ public class ProcessInstanceService {
         validateReceiveMessage(flowElement, request.getMessageRef());
         Map<String, Object> variables = WorkflowReservedVariables
                 .sanitizeRuntimeMutation(request.getVariables());
-        runtimeService.trigger(execution.getId(), variables);
+        // 业务变量属于根流程，不能随接收任务落在某个并行分支/子流程执行的本地作用域。
+        // 变量写入和 trigger 共用事务；后继节点或监听器失败时必须一起回滚。
+        if (!variables.isEmpty()) runtimeService.setVariablesLocal(processInstanceId, variables);
+        runtimeService.trigger(execution.getId());
         return execution.getId();
     }
 
@@ -166,6 +170,10 @@ public class ProcessInstanceService {
                     .singleResult();
             if (execution == null || !processInstanceId.equals(execution.getProcessInstanceId())) {
                 throw new IllegalArgumentException("执行实例不存在或不属于当前流程: " + request.getExecutionId());
+            }
+            if (request.getActivityId() != null && !request.getActivityId().isBlank()
+                    && !request.getActivityId().equals(execution.getActivityId())) {
+                throw new IllegalArgumentException("executionId 与 activityId 指向不同的接收任务");
             }
             return execution;
         }

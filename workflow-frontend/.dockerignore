@@ -1,0 +1,12 @@
+# 前端构建上下文只使用源码和锁文件，不能带入宿主依赖、产物与环境文件。
+**/node_modules
+**/dist
+**/target
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.log
+**/*.pid
+.codex-artifacts

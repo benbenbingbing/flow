@@ -135,7 +135,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 true,
-                true);
+                true, null);
     }
 
     /**
@@ -181,7 +181,20 @@ public class TaskActionService {
                 nextApprovalScopeKey,
                 nextApproverSelections,
                 true,
-                true);
+                true, null);
+    }
+
+    /**
+     * 公共退回命令传入独立的目标约束，供原节点矩阵校验；不混入实体表单补丁。
+     * 引擎仍通过正常 reject 路由推进，调用方在同一事务内验证实际落点。
+     * @param returnTargetNodeId 已由公共命令确认属于发布策略白名单的目标
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void completeTaskWithReturnTarget(String taskId, String userId, String comment,
+            String actionLabel, Map<String, Object> formData, String nextApprovalScopeKey,
+            List<NextApproverSelectionRequest> nextApproverSelections, String returnTargetNodeId) {
+        completeTaskInternal(taskId, userId, "reject", comment, null, actionLabel, formData,
+                nextApprovalScopeKey, nextApproverSelections, true, true, returnTargetNodeId);
     }
 
     /**
@@ -211,7 +224,7 @@ public class TaskActionService {
                 null,
                 List.of(),
                 false,
-                false);
+                false, null);
     }
 
     /**
@@ -264,15 +277,17 @@ public class TaskActionService {
      * @param nextApproverSelections 用户选择的后续办理人，由覆盖服务重验
      * @param checkAccess 交互办理时为 true；后台加签收口已提前授权时关闭
      * @param validateNextApprover 交互办理时为 true；后台收口前已判断手选需求时关闭
+     * @param returnTargetNodeId 专用退回命令的目标约束，空值沿用旧表单兼容字段
      */
     private void completeTaskInternal(String taskId, String userId, String action, String comment, String transferTo,
                                       String actionLabel, Map<String, Object> formData,
                                       String nextApprovalScopeKey,
                                       List<NextApproverSelectionRequest> nextApproverSelections,
                                       boolean checkAccess,
-                                      boolean validateNextApprover) {
+                                      boolean validateNextApprover,
+                                      String returnTargetNodeId) {
         comment = comment == null ? "" : comment;
-        requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData);
+        requireConfiguredNodeOperation(taskId, action, comment, transferTo, formData, returnTargetNodeId);
         // 验证任务是否存在
         Task task = taskService.createTaskQuery()
                 .taskId(taskId)
@@ -392,7 +407,17 @@ public class TaskActionService {
                 // 自定义操作类型：按普通审批完成，approved 使用原始 action 值。
                 // 自定义项不加通过人数、不触发否决，避免会签阈值被非审批动作污染。
                 Map<String, Object> customVars = new HashMap<>();
-                putApprovedOutcome(customVars, task, normalizedAction);
+                // 重提的路由结果保持 approve，操作历史仍记录 resubmit；
+                // 两种旧入口在此统一，字段保存和下一审批人校验继续走上面的公共路径。
+                putApprovedOutcome(customVars, task, "resubmit".equals(normalizedAction) ? "approve" : normalizedAction);
+                if ("resubmit".equals(normalizedAction)) {
+                    customVars.put("_rejected_", false);
+                    customVars.put("_resubmitted_", true);
+                    customVars.put("resubmitted", true);
+                    customVars.put("_resubmitBy_", userId);
+                    customVars.put("_resubmitTime_", new Date());
+                    customVars.put("_resubmitComment_", comment);
+                }
                 customVars.put("action", normalizedAction);
                 if (actionLabel != null && !actionLabel.isBlank()) {
                     customVars.put("actionLabel", actionLabel);
@@ -451,7 +476,8 @@ public class TaskActionService {
             String action,
             String comment,
             String transferTo,
-            Map<String, Object> formData) {
+            Map<String, Object> formData,
+            String returnTargetNodeId) {
         // 授权映射必须与执行层共用同一归一化规则，否则 TRANSFERRED
         // 等同义状态值会在执行层变成转办，却绕过转办开关。
         String normalized = multiInstanceOutcomeService
@@ -470,7 +496,7 @@ public class TaskActionService {
                 ? java.util.Set.of(transferTo)
                 : java.util.Set.of();
         Map<String, Object> requestVariables = formData == null ? Map.of() : formData;
-        String targetNodeId = firstText(
+        String targetNodeId = StringUtils.hasText(returnTargetNodeId) ? returnTargetNodeId : firstText(
                 requestVariables, "targetNodeId", "targetActivityId", "rejectTarget");
         com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext context =
                 com.workflow.process.task.application.operation.NodeOperationDecisionService.CheckContext

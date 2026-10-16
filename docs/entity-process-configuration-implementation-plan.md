@@ -3,10 +3,10 @@
 > 2026-09-20 退役说明：发布候选功能已整体下线，V099 清理其专属菜单、授权和六张表。下文候选设计仅作历史记录；普通配置迁移的导入、导出、发布和批次回滚继续保留。
 
 > 历史说明：原 4.3“节点操作矩阵”已于 2026-09-09 被
-> [节点操作权限三开关方案](./node-operation-permission-simplification.md)替代；相关章节保留用于追溯原始计划。
+> [节点操作权限三开关方案](node-operation-permission-simplification.md)替代；相关章节保留用于追溯原始计划。
 
 > 编制日期：2026-08-21  
-> 依据：[实体配置与流程配置功能完善度分析](./entity-process-configuration-gap-analysis.md)  
+> 依据：[实体配置与流程配置功能完善度分析](entity-process-configuration-gap-analysis.md)
 > 计划范围：完整实施 P0、完整实施 P2，并实施 P1 中的 4.2、4.3、4.5。
 
 ## 1. 实施目标

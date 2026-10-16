@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "用途：项目自定义权限候选。name=projectPermissionOptions 是业务配置的稳定引用，移动文件不要改名。 权限编辑器按当前实体上下文调用该函数收集候选；返回选项不等于授予权限，实际授权由后端执行。 实现：package 指向 @flow/biz-project 的公开入口；default 是默认导出；kind=FUNCTION 表示保留函数引用。 enabled 是构建安装开关，不代表数据库目录启停或页面已绑定。",
+  "schemaVersion": 1,
+  "type": "PERMISSION_PROVIDER",
+  "name": "projectPermissionOptions",
+  "label": "项目自定义权限候选",
+  "description": "",
+  "version": 1,
+  "enabled": true,
+  "implementation": {
+    "export": "default",
+    "kind": "FUNCTION",
+    "package": "@flow/biz-project/pc/permissions/projectPermissionOptions"
+  },
+  "metadata": {}
+}

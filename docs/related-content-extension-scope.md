@@ -1,5 +1,7 @@
 # 关联内容扩展范围
 
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+
 普通实体关系的“子页面”不再提供“关联操作扩展”“展示扩展”或“使用自定义组件”。目标数据由实体关系确定，展示沿用目标表单或列表的 PAGE 自定义配置，新增、编辑和保存继续使用原有能力及权限检查。
 
 普通关系包括 `ENTITY_RELATION`，以及待重新选择实体关系的旧 `REFERENCE_FIELD`、`REVERSE_REFERENCE`、`FIELD_MATCH` 配置。读取这些草稿时清除接口取数、动作接口和关联专属组件覆盖，保存时不再提交 `specialHandling.interfaceService`、`specialHandling.actionServices` 与 `specialHandling.customComponent`。模式统一恢复为 `NONE`，失败策略恢复为 `ERROR`，避免已经没有配置入口的旧隐藏策略继续遮蔽错误。

@@ -745,6 +745,14 @@ public class EntityFormService {
     }
 
     /**
+     * 将稳定实体编码解析为表单查询所需的 ID；跨模块调用不需要接触持久化实体。
+     * @return 实体 ID，不存在时返回 null；不授予记录读写或表单提交权限
+     */
+    public String findEntityIdByCode(String entityCode) {
+        return entityMapper.findByEntityCode(entityCode).map(EntityDefinition::getId).orElse(null);
+    }
+
+    /**
      * 根据实体 ID 解析编码，供运行态元数据权限校验使用。
      *
      * @param entityId 实体定义 ID

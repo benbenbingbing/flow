@@ -17,7 +17,7 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: npm
-    directory: /workflow-web
+    directory: /workflow-frontend
     schedule:
       interval: weekly
     cooldown:
@@ -33,7 +33,7 @@ updates:
     open-pull-requests-limit: 3
 
   - package-ecosystem: docker
-    directory: /workflow-web
+    directory: /workflow-frontend/workflow-web
     schedule:
       interval: weekly
     cooldown:
