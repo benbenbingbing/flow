@@ -162,14 +162,14 @@ const config = computed(() => props.composition?.config || {})
 const presentation = computed(() => config.value.presentation || {})
 const visibilityAllows = computed(() => relatedContentIsVisible(presentation.value, props.sourceData, props.mode))
 const specialHandling = computed(() => config.value.specialHandling || {})
-// 动作接口仅属于独立扩展页面；旧普通关系发布配置不能再暴露接口调用入口。
+// 专属组件和动作接口仅属于独立扩展页面；普通关系始终沿用目标 PAGE 页面，忽略旧覆盖。
 const allowsActionExtensions = computed(() => ['SAME_RECORD', 'INTERFACE_SERVICE'].includes(
   String(config.value.relation?.type || '').toUpperCase()
 ))
 const actionServices = computed(() => allowsActionExtensions.value
   ? specialHandling.value.actionServices || [] : [])
 const customComponentConfig = computed(
-  () => specialHandling.value.customComponent || {}
+  () => allowsActionExtensions.value ? specialHandling.value.customComponent || {} : {}
 )
 const position = computed(() =>
   String(presentation.value.position || 'INLINE').toUpperCase()
@@ -187,7 +187,8 @@ const loadImmediately = computed(() =>
     === 'IMMEDIATE'
 )
 const failurePolicy = computed(() =>
-  String(specialHandling.value.failurePolicy || 'ERROR').toUpperCase()
+  // 普通关系没有展示扩展入口，旧发布的隐藏策略也不能继续遮蔽目标页面加载错误。
+  allowsActionExtensions.value ? String(specialHandling.value.failurePolicy || 'ERROR').toUpperCase() : 'ERROR'
 )
 const hasSourceContext = computed(() => Boolean(
   String(props.sourceRecordId || '').trim()
@@ -302,7 +303,7 @@ const shouldRender = computed(() =>
     && actionFailure.value?.policy !== 'HIDE'
 )
 const isCustomMode = computed(() =>
-  ['CUSTOM_COMPONENT', 'BOTH'].includes(
+  allowsActionExtensions.value && ['CUSTOM_COMPONENT', 'BOTH'].includes(
     String(specialHandling.value.mode || 'NONE').toUpperCase()
   )
 )

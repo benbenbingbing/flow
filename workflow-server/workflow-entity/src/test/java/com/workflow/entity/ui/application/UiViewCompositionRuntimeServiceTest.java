@@ -215,6 +215,52 @@ class UiViewCompositionRuntimeServiceTest {
         assertTrue(result);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH"})
+    void historicalOrdinaryComponentDoesNotBlockTargetPageResolution(String relationType) {
+        Fixture fixture = fixture(relationType, "LIST", true);
+        Map<String, Object> historical = replaceSpecialHandling(fixture, Map.of("mode", "CUSTOM_COMPONENT",
+                "customComponent", Map.of("name", "deleted-component", "version", 2)));
+        JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
+        String originalDocument = codec.write(historical, "historical publication");
+        String originalHash = fixture.ownerRelease().getContentHash();
+
+        UiViewCompositionResolveResponse response = service.resolve(fixture.request());
+
+        assertEquals(fixture.expectedFilters(), response.getFixedFilters());
+        assertEquals("target-list-release", response.getTargetReleaseId());
+        assertEquals(originalDocument, codec.write(historical, "historical publication"));
+        assertEquals(originalHash, fixture.ownerRelease().getContentHash());
+        org.mockito.Mockito.verifyNoInteractions(dataSourceService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"SAME_RECORD", "INTERFACE_SERVICE"})
+    void independentExtensionPageStillRequiresPinnedComponentDefinition(String relationType) {
+        Fixture fixture = fixture(relationType, "LIST", true);
+        replaceSpecialHandling(fixture, Map.of("mode", "CUSTOM_COMPONENT", "customComponent",
+                Map.of("name", "unfixed-component", "version", 2)));
+
+        BusinessConflictException failure = assertThrows(BusinessConflictException.class,
+                () -> service.resolve(fixture.request()));
+
+        assertEquals("VIEW_COMPOSITION_COMPONENT_SNAPSHOT_REQUIRED", failure.getErrorCode());
+    }
+
+    /** 仅替换 mock 发布副本，供测试确认运行时不会改写服务端原发布内容。 */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> replaceSpecialHandling(Fixture fixture, Map<String, Object> special) {
+        Map<String, Object> snapshot = new LinkedHashMap<>(fixture.ownerSnapshot());
+        Map<String, Object> composition = new LinkedHashMap<>((Map<String, Object>)
+                ((List<?>) snapshot.get("viewCompositions")).get(0));
+        Map<String, Object> config = new LinkedHashMap<>((Map<String, Object>) composition.get("config"));
+        config.put("specialHandling", special);
+        composition.put("config", config);
+        snapshot.put("viewCompositions", List.of(composition));
+        when(releaseService.verifiedReleaseSnapshot(fixture.ownerRelease())).thenReturn(snapshot);
+        return snapshot;
+    }
+
     @Test
     void ordinaryIdRelationUsesExactFilterAndRetainsFormCardinalityCheck() {
         Fixture fixture = fixture("ENTITY_RELATION", "LIST", true);

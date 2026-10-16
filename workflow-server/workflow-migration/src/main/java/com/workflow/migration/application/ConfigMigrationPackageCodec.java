@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.migration.infrastructure.archive.WfpackArchive;
 import com.workflow.migration.infrastructure.crypto.WfpackIntegrity;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import lombok.RequiredArgsConstructor;
 import com.workflow.admin.setting.application.GlobalSettingService;
 import static com.workflow.admin.setting.application.GlobalSettingRegistry.MIGRATION_SIGNING_KEY;
@@ -226,6 +227,7 @@ public class ConfigMigrationPackageCodec {
     private Map<String, Object> selectSnapshot(Map<String, Object> snapshot,
                                                Object rawSelection,
                                                boolean requireSelectedKeys) {
+        snapshot = normalizeRetiredViewComponents(snapshot);
         Map<String, Object> selection = normalizeSelection(rawSelection);
         if (Boolean.TRUE.equals(selection.get("full"))) {
             Map<String, Object> selected = new LinkedHashMap<>(snapshot);
@@ -258,6 +260,124 @@ public class ConfigMigrationPackageCodec {
         selected.put("dependencies", selectDependencies(snapshot, selected, sections));
         selected.put(SELECTION_METADATA, selection);
         return selected;
+    }
+
+    /**
+     * 对迁移工作副本清理普通关系的组件覆盖及其孤立依赖。
+     * 解包先校验原始哈希，再调用此方法；历史快照、包原文及其哈希均不回写。
+     * 仅删除由退役覆盖引入、且已无其他引用的组件，目标页面和独立扩展仍使用的版本必须保留。
+     */
+    private Map<String, Object> normalizeRetiredViewComponents(Map<String, Object> snapshot) {
+        Map<String, Object> normalized = new LinkedHashMap<>(snapshot);
+        Set<String> retiredKeys = new LinkedHashSet<>();
+        Set<String> retiredDefinitions = new LinkedHashSet<>();
+        for (String section : List.of("forms", "lists")) {
+            if (!snapshot.containsKey(section)) continue;
+            List<Map<String, Object>> owners = new ArrayList<>();
+            for (Map<String, Object> rawOwner : castMapList(snapshot.get(section))) {
+                Map<String, Object> owner = new LinkedHashMap<>(rawOwner);
+                if (owner.containsKey("viewCompositions")) {
+                    List<Map<String, Object>> compositions = new ArrayList<>();
+                    for (Map<String, Object> raw : castMapList(owner.get("viewCompositions"))) {
+                        Map<String, Object> composition = new LinkedHashMap<>(raw);
+                        Map<String, Object> config = mapValue(raw.get("config"));
+                        Map<String, Object> special = mapValue(config.get("specialHandling"));
+                        Map<String, Object> cleaned = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                                config.get("relation"), special);
+                        if (special.containsKey("customComponent") && !cleaned.containsKey("customComponent")) {
+                            Map<String, Object> component = mapValue(special.get("customComponent"));
+                            if (component.get("name") instanceof String name && StringUtils.hasText(name)) {
+                                retiredKeys.add(componentReference(name, component.get("version")));
+                                retiredDefinitions.add(String.valueOf(component.getOrDefault("extensionType", "FORM"))
+                                        .toUpperCase(Locale.ROOT) + "|" + componentReference(name, component.get("version")));
+                            }
+                        }
+                        if (config.containsKey("specialHandling")) config.put("specialHandling", cleaned);
+                        composition.put("config", config);
+                        compositions.add(composition);
+                    }
+                    owner.put("viewCompositions", compositions);
+                }
+                owners.add(owner);
+            }
+            normalized.put(section, owners);
+        }
+        if (retiredKeys.isEmpty()) return normalized;
+
+        // 扩展清单和依赖表不能被当作使用者，否则被删除的组件会通过自身定义保活。
+        Map<String, Object> consumers = new LinkedHashMap<>(normalized);
+        consumers.remove("extensions");
+        consumers.remove("dependencies");
+        Set<String> activeKeys = new LinkedHashSet<>();
+        collectComponentReferences(consumers, activeKeys);
+        if (normalized.containsKey("extensions")) {
+            normalized.put("extensions", castMapList(normalized.get("extensions")).stream()
+                    .filter(extension -> {
+                        // 组件注册键在扩展类型内唯一，同名接口或字段扩展不属于本次退役对象。
+                        String prefix = String.valueOf(extension.getOrDefault("extensionType", "FORM"))
+                                .toUpperCase(Locale.ROOT) + "|";
+                        String name = String.valueOf(extension.get("extensionKey"));
+                        if (!retiredDefinitions.contains(prefix + componentReference(name, extension.get("version")))
+                                && !retiredDefinitions.contains(prefix + name + "@*")) return true;
+                        return !isRetiredComponent(
+                            String.valueOf(extension.get("extensionKey")), extension.get("version"),
+                            retiredKeys, activeKeys);
+                    }).toList());
+        }
+        if (normalized.containsKey("dependencies")) {
+            normalized.put("dependencies", castMapList(normalized.get("dependencies")).stream()
+                    .filter(dependency -> {
+                        if (!"CUSTOM_COMPONENT".equals(dependency.get("type"))) return true;
+                        String key = String.valueOf(dependency.get("key"));
+                        int separator = key.lastIndexOf('@');
+                        return !isRetiredComponent(separator > 0 ? key.substring(0, separator) : key,
+                                separator > 0 ? key.substring(separator + 1) : dependency.get("version"),
+                                retiredKeys, activeKeys);
+                    }).toList());
+        }
+        return normalized;
+    }
+
+    /** 无版本的历史引用按整个组件保留，不能误删仍供 PAGE/字段或独立扩展使用的实现。 */
+    private boolean isRetiredComponent(String name, Object version, Set<String> retired, Set<String> active) {
+        String key = componentReference(name, version);
+        boolean removed = retired.contains(key) || retired.contains(name + "@*")
+                || version == null && retired.stream().anyMatch(value -> value.startsWith(name + "@"));
+        boolean retained = active.contains(key) || active.contains(name + "@*")
+                || version == null && active.stream().anyMatch(value -> value.startsWith(name + "@"));
+        return removed && !retained;
+    }
+
+    private String componentReference(String name, Object version) {
+        return name + "@" + (version == null ? "*" : version);
+    }
+
+    /** 收集实际配置中的组件使用者；JSON 属性也会读取，版本未知时采取保守保留。 */
+    private void collectComponentReferences(Object value, Set<String> references) {
+        if (value instanceof Map<?, ?> map) {
+            for (String key : List.of("customComponent", "renderComponent", "componentType")) {
+                Object component = map.get(key);
+                if (component instanceof Map<?, ?> descriptor && descriptor.get("name") instanceof String name) {
+                    references.add(componentReference(name, descriptor.get("version")));
+                } else if (component instanceof String name && StringUtils.hasText(name)) {
+                    String versionKey = switch (key) {
+                        case "customComponent" -> "customComponentVersion";
+                        case "renderComponent" -> "renderComponentVersion";
+                        default -> "componentVersion";
+                    };
+                    references.add(componentReference(name, map.get(versionKey)));
+                }
+            }
+            map.values().forEach(child -> collectComponentReferences(child, references));
+        } else if (value instanceof Collection<?> values) {
+            values.forEach(child -> collectComponentReferences(child, references));
+        } else if (value instanceof String text && (text.trim().startsWith("{") || text.trim().startsWith("["))) {
+            try {
+                collectComponentReferences(objectMapper.readValue(text, Object.class), references);
+            } catch (Exception ignored) {
+                // 普通文本不是配置文档，不应阻断旧包读取。
+            }
+        }
     }
 
     /**

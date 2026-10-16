@@ -236,6 +236,7 @@ class UiViewCompositionConfigValidatorTest {
     @Test
     void rejectsDynamicUrlsEvenInsideRegisteredComponentProps() {
         Map<String, Object> config = frontendDraft();
+        config.put("relation", Map.of("type", "SAME_RECORD"));
         Map<String, Object> special = mutableChild(config, "specialHandling");
         special.put("mode", "CUSTOM_COMPONENT");
         special.put("customComponent", new LinkedHashMap<>(Map.of(
@@ -254,6 +255,7 @@ class UiViewCompositionConfigValidatorTest {
     @Test
     void normalizesRegisteredComponentArtifactDigest() {
         Map<String, Object> config = frontendDraft();
+        config.put("relation", Map.of("type", "SAME_RECORD"));
         Map<String, Object> special = mutableChild(
                 config, "specialHandling");
         special.put("mode", "CUSTOM_COMPONENT");
@@ -278,6 +280,7 @@ class UiViewCompositionConfigValidatorTest {
     @Test
     void rejectsMalformedRegisteredComponentArtifactDigest() {
         Map<String, Object> config = frontendDraft();
+        config.put("relation", Map.of("type", "SAME_RECORD"));
         Map<String, Object> special = mutableChild(
                 config, "specialHandling");
         special.put("mode", "CUSTOM_COMPONENT");

@@ -191,8 +191,8 @@ assert.equal(
   '动作接口也只能持久化 extensionId 和映射契约'
 )
 
-// 同一旧配置改为普通关系后，接口能力必须从模型、校验和保存载荷一起移除；自定义展示继续保留。
-const customDisplay = { name: 'project-board', version: 2, artifactDigest: 'a'.repeat(64), props: { compact: true } }
+// 同一旧配置改为普通关系后，接口能力和专属组件覆盖必须从模型、校验和保存载荷一起移除。
+const customDisplay = { name: 'project-board', displayName: '', version: 2, artifactDigest: 'a'.repeat(64), props: { compact: true } }
 for (const ownerType of ['FORM', 'LIST']) {
   for (const relationType of ['ENTITY_RELATION', 'REFERENCE_FIELD', 'REVERSE_REFERENCE', 'FIELD_MATCH']) {
     const ordinary = structuredClone(interfacePayload)
@@ -203,21 +203,32 @@ for (const ownerType of ['FORM', 'LIST']) {
     ordinary.config.specialHandling.actionServices[0].actionKey = ''
     const original = structuredClone(ordinary)
     const reopened = normalizeRelatedContent(ordinary, { ownerType })
-    assert.equal(reopened.config.specialHandling.mode, 'CUSTOM_COMPONENT')
+    assert.equal(reopened.config.specialHandling.mode, 'NONE')
+    assert.equal(reopened.config.specialHandling.customComponent.name, '')
+    assert.deepEqual(reopened.config.specialHandling.customComponent.props, {})
     assert.equal(reopened.config.specialHandling.interfaceService.extensionId, '')
     assert.deepEqual(reopened.config.specialHandling.actionServices, [])
-    assert.equal(validateRelatedContent(ordinary, ownerType).valid, true, '已移除的接口不应继续产生隐藏校验错误')
+    assert.equal(validateRelatedContent(ordinary, ownerType).valid, true, '已移除的接口和组件不应继续产生隐藏校验错误')
     const saved = buildRelatedContentPayload(reopened, ownerType, 'owner')
     assert.equal('interfaceService' in saved.config.specialHandling, false)
     assert.equal('actionServices' in saved.config.specialHandling, false)
-    assert.equal(saved.config.specialHandling.failurePolicy, 'PLACEHOLDER')
-    assert.equal(saved.config.specialHandling.customComponent.name, customDisplay.name)
-    assert.equal(saved.config.specialHandling.customComponent.artifactDigest, customDisplay.artifactDigest)
-    assert.deepEqual(saved.config.specialHandling.customComponent.props, customDisplay.props)
+    assert.equal(saved.config.specialHandling.failurePolicy, 'ERROR')
+    assert.equal('customComponent' in saved.config.specialHandling, false)
     assert.deepEqual(normalizeRelatedContent(saved, { ownerType }).config.specialHandling, reopened.config.specialHandling)
     assert.deepEqual(ordinary, original, '归一化不能反向修改来源草稿')
   }
 }
+// 旧普通发布可能缺少版本、摘要或组件已下线；清理覆盖后不再要求用户补齐已撤销契约。
+for (const legacyCustom of [{ name: 'removed-component' }, { name: '', version: -1, artifactDigest: 'invalid', props: { title: '旧覆盖' } }]) {
+  const ordinary = structuredClone(interfacePayload)
+  ordinary.config.relation = { type: 'ENTITY_RELATION', relationCode: 'projects' }
+  ordinary.config.specialHandling = { mode: 'CUSTOM_COMPONENT', customComponent: legacyCustom, failurePolicy: 'ERROR' }
+  assert.equal(validateRelatedContent(ordinary, 'FORM').valid, true)
+  const saved = buildRelatedContentPayload(ordinary, 'FORM', 'owner')
+  assert.equal(saved.config.specialHandling.mode, 'NONE')
+  assert.equal('customComponent' in saved.config.specialHandling, false)
+}
+
 const ordinaryServiceOnly = structuredClone(interfacePayload)
 ordinaryServiceOnly.config.relation = { type: 'ENTITY_RELATION', relationCode: 'projects' }
 assert.equal(normalizeRelatedContent(ordinaryServiceOnly).config.specialHandling.mode, 'NONE')
@@ -226,6 +237,9 @@ assert.equal(normalizeRelatedContent(ordinaryServiceOnly).config.specialHandling
 for (const relationType of ['SAME_RECORD', 'INTERFACE_SERVICE']) {
   const extensionPage = structuredClone(interfacePayload)
   extensionPage.config.relation = { type: relationType }
+  extensionPage.config.specialHandling.mode = 'BOTH'
+  extensionPage.config.specialHandling.customComponent = customDisplay
+  extensionPage.config.specialHandling.failurePolicy = 'HIDE'
   extensionPage.config.specialHandling.interfaceService.inputMappings = [{ source: 'id', target: 'projectId' }]
   extensionPage.config.specialHandling.actionServices[0].outputMappings = [{ source: 'status', target: 'status' }]
   const saved = buildRelatedContentPayload(extensionPage, 'FORM', 'owner')

@@ -109,6 +109,11 @@ public class UiViewCompositionConfigValidator {
         if (config == null || config.isEmpty()) {
             throw new IllegalArgumentException("关联内容配置不能为空");
         }
+        // 普通关系旧展示覆盖已不执行，先在副本中清理，避免旧组件参数或定义缺失阻断发布。
+        // 接口配置仍完整保留，随后继续执行普通关系禁止接口扩展的策略。
+        config = new LinkedHashMap<>(config);
+        config.put("specialHandling", UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                config.get("relation"), optionalMap(config.get("specialHandling"), "特殊处理")));
         validateNoForbiddenContent(config, "$", 0);
         requireAllowedKeys(config, ROOT_KEYS, "关联内容配置");
 

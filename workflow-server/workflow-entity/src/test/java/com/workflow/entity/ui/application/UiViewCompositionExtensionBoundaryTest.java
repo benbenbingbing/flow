@@ -3,6 +3,7 @@ package com.workflow.entity.ui.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.core.serialization.JsonDocumentCodec;
 import com.workflow.entity.ui.application.validation.UiViewCompositionConfigValidator;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.entity.ui.infrastructure.persistence.mapper.UiEventBindingMapper;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -51,17 +52,34 @@ class UiViewCompositionExtensionBoundaryTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH"})
-    void ordinaryRelationsKeepCustomPresentationAndEmptyEditorSkeletons(String relationType) {
+    void ordinaryRelationsRemoveRetiredPresentationWithoutMutatingOriginal(String relationType) {
         Map<String, Object> config = config(relationType);
-        config.put("specialHandling", Map.of("mode", "CUSTOM_COMPONENT", "customComponent", component(),
-                "actionServices", List.of(), "interfaceService", Map.of("extensionId", "", "operationCode", "")));
+        Map<String, Object> originalSpecial = Map.of("mode", "CUSTOM_COMPONENT", "customComponent",
+                Map.of("name", "deleted-component", "version", -1, "props", Map.of("url", "https://retired.example")),
+                "failurePolicy", "HIDE", "actionServices", List.of(),
+                "interfaceService", Map.of("extensionId", "", "operationCode", ""));
+        config.put("specialHandling", originalSpecial);
 
         Map<?, ?> special = (Map<?, ?>) validator.validate(config).normalizedConfig().get("specialHandling");
 
-        assertEquals("CUSTOM_COMPONENT", special.get("mode"));
-        assertEquals("demo.details", ((Map<?, ?>) special.get("customComponent")).get("name"));
+        assertEquals("NONE", special.get("mode"));
+        assertEquals("ERROR", special.get("failurePolicy"));
+        assertFalse(special.containsKey("customComponent"));
         assertFalse(special.containsKey("actionServices"));
         assertFalse(special.containsKey("interfaceService"));
+        assertEquals("CUSTOM_COMPONENT", originalSpecial.get("mode"));
+        assertEquals("HIDE", originalSpecial.get("failurePolicy"));
+        assertTrue(originalSpecial.containsKey("customComponent"));
+        assertEquals(originalSpecial, config.get("specialHandling"));
+        Map<String, Object> both = Map.of("mode", "BOTH", "customComponent", component(),
+                "actionServices", List.of(binding));
+        Map<String, Object> cleaned = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                config.get("relation"), both);
+        assertEquals("INTERFACE_SERVICE", cleaned.get("mode"));
+        assertEquals(both.get("actionServices"), cleaned.get("actionServices"));
+        assertFalse(cleaned.containsKey("customComponent"));
+        assertEquals("ERROR", UiViewCompositionExtensionPolicy.normalizePresentationOverride(config.get("relation"),
+                Map.of("mode", "NONE", "failurePolicy", "PLACEHOLDER")).get("failurePolicy"));
     }
 
     @ParameterizedTest
@@ -71,12 +89,17 @@ class UiViewCompositionExtensionBoundaryTest {
             Map<String, Object> config = config(relationType);
             config.put("target", Map.of("entityId", "target", "contentId", "target-page", "contentType", contentType));
             Map<String, Object> special = new LinkedHashMap<>();
-            special.put("mode", "INTERFACE_SERVICE");
+            special.put("mode", "BOTH");
+            special.put("failurePolicy", "PLACEHOLDER");
+            special.put("customComponent", component());
             special.put("actionServices", List.of(binding));
             special.put("interfaceService", Map.of("extensionId", "resolve-interface"));
             config.put("specialHandling", special);
             Map<String, Object> normalized = validator.validate(config).normalizedConfig();
             Map<?, ?> savedSpecial = (Map<?, ?>) normalized.get("specialHandling");
+            assertEquals("BOTH", savedSpecial.get("mode"));
+            assertEquals("PLACEHOLDER", savedSpecial.get("failurePolicy"));
+            assertEquals("demo.details", ((Map<?, ?>) savedSpecial.get("customComponent")).get("name"));
             assertEquals("risk-interface", ((Map<?, ?>) ((List<?>) savedSpecial.get("actionServices")).get(0)).get("extensionId"));
             assertEquals("$.release.viewCompositions[0].config.specialHandling.actionServices[0]",
                     matcher.findPublished(contentType, snapshot(normalized), "RELATED_CONTENT_ACTION",

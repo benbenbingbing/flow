@@ -752,6 +752,7 @@ class UiConfigReleaseServiceTest {
                         "orderKey", 1000L,
                         "config", Map.of(
                                 "name", "项目需求",
+                                "relation", Map.of("type", "INTERFACE_SERVICE"),
                                 "source", Map.of(
                                         "entityId", "entity-project",
                                         "entityCode", "project",
@@ -834,6 +835,25 @@ class UiConfigReleaseServiceTest {
         assertTrue(preview.getDependencies().stream().anyMatch(item ->
                 "CUSTOM_COMPONENT".equals(item.get("type"))
                         && Integer.valueOf(2).equals(item.get("version"))));
+    }
+
+    @Test
+    void publicationDependenciesIgnoreOrdinaryRetiredPresentationButKeepIndependentExtensions() {
+        TestContext context = context();
+        for (String relation : List.of("ENTITY_RELATION", "REFERENCE_FIELD", "REVERSE_REFERENCE", "FIELD_MATCH",
+                "SAME_RECORD", "INTERFACE_SERVICE")) {
+            Map<String, Object> special = Map.of("mode", "CUSTOM_COMPONENT",
+                    "customComponent", Map.of("name", "legacy-board", "version", 2));
+            Map<String, Object> snapshot = Map.of("viewCompositions", List.of(Map.of("compositionKey", "details",
+                    "config", Map.of("relation", Map.of("type", relation), "specialHandling", special))));
+            List<Map<String, Object>> dependencies = ReflectionTestUtils.invokeMethod(context.service(),
+                    "publishDependencies", snapshot);
+            boolean independent = List.of("SAME_RECORD", "INTERFACE_SERVICE").contains(relation);
+            assertEquals(independent ? 1 : 0, dependencies.size(), relation);
+            if (independent) assertEquals("CUSTOM_COMPONENT", dependencies.get(0).get("type"));
+            assertTrue(special.containsKey("customComponent"));
+            assertEquals("CUSTOM_COMPONENT", special.get("mode"));
+        }
     }
 
     @Test

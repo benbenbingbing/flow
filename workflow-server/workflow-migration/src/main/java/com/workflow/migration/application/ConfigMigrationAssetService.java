@@ -40,6 +40,7 @@ import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUse
 import com.workflow.entity.ui.infrastructure.persistence.record.UiConfigRelease;
 import com.workflow.entity.ui.infrastructure.persistence.record.UiExtensionDefinition;
 import com.workflow.entity.ui.application.UiEventBindingSnapshotService;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset;
 import com.workflow.process.configuration.infrastructure.persistence.mapper.AssigneeConfigMapper;
 import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityCodeRuleMapper;
@@ -1609,8 +1610,9 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
             config.put("target", portableCompositionTarget(
                     mapValue(config.get("target"))));
 
-            Map<String, Object> special = mapValue(
-                    config.get("specialHandling"));
+            // 在便携副本上清理普通关系覆盖，避免退役组件的定义缺失阻断导出；不改原发布快照。
+            Map<String, Object> special = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                    config.get("relation"), mapValue(config.get("specialHandling")));
             if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
                 Map<String, Object> service = mapValue(rawService);
                 String extensionId = firstNonBlank(
@@ -2718,8 +2720,8 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                                 true,
                                 "关联内容目标实体");
                     }
-                    Map<String, Object> special = mapValue(
-                            config.get("specialHandling"));
+                    Map<String, Object> special = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                            config.get("relation"), mapValue(config.get("specialHandling")));
                     if (special.get("interfaceService") instanceof Map<?, ?> raw) {
                         Map<String, Object> service = mapValue(raw);
                         addDependency(

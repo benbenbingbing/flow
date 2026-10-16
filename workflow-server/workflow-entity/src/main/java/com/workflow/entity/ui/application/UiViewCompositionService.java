@@ -512,6 +512,8 @@ public class UiViewCompositionService {
         List<Map<String, Object>> result = new ArrayList<>();
         for (UiViewComposition value : mapper.findByOwner(owner.type(), owner.id())) {
             Map<String, Object> config = readConfig(value.getConfigDocument());
+            // 即使其他依赖尚不可用，草稿比较也应反映普通关系已移除的展示覆盖。
+            normalizePresentationOverride(config);
             // 钉定会分多步更新嵌套字段；必须在独立副本上进行，失败后不能留下
             // 一半新依赖、一半旧配置的比较文档，也不能修改数据库中的草稿。
             Map<String, Object> pinned = readConfig(value.getConfigDocument());
@@ -3006,6 +3008,7 @@ public class UiViewCompositionService {
     private void pinPublishedDependencies(
             Map<String, Object> config,
             String ownerEntityId) {
+        normalizePresentationOverride(config);
         UiViewCompositionConfigValidator.requireUnifiedRelation(config);
         Map<String, Object> target = requireMutableMap(
                 config.get("target"), "目标内容");
@@ -3086,6 +3089,15 @@ public class UiViewCompositionService {
             component.put("definitionSnapshot", definitionSnapshot);
             component.put("definitionHash", sha256(definitionSnapshot));
             special.put("customComponent", component);
+        }
+    }
+
+    /** 只更新调用方已创建的配置副本，发布历史原文不写回；独立扩展页面保留原组件契约。 */
+    private void normalizePresentationOverride(Map<String, Object> config) {
+        // 草稿比较允许展示尚未通过校验的文档；结构错误留给正式校验，不能在比较阶段阻断读取。
+        if (config.get("specialHandling") instanceof Map<?, ?> special) {
+            config.put("specialHandling", UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                    config.get("relation"), stringMap(special)));
         }
     }
 

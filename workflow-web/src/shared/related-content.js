@@ -190,8 +190,8 @@ function serializeInterfaceBinding(binding = {}, action = false) {
 
 /**
  * 按当前配置契约构造编辑模型，参数传递统一使用 parameterMappings。展示快照只用于中文回显，
- * 运行时仍必须由服务端根据 ID 重新解析并鉴权。普通关系不再使用接口取数
- * 或动作接口，读取时清除这些配置，防止隐藏字段在后续保存中重新启用。
+ * 运行时仍必须由服务端根据 ID 重新解析并鉴权。普通关系统一沿用目标页面展示，
+ * 读取时清除关联专属组件和接口配置，防止隐藏字段在后续保存中重新启用。
  */
 export function normalizeRelatedContent(value = {}, defaults = {}) {
   const empty = createEmptyRelatedContent(defaults)
@@ -237,12 +237,12 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
   }
   if (!config.actions.length) config.actions = ['VIEW']
   if (!['SAME_RECORD', 'INTERFACE_SERVICE'].includes(config.relation.type)) {
-    // 编辑模型保留空结构供共享表单绑定；持久化时会省略普通关系的接口字段。
+    // 编辑模型保留空结构供共享表单绑定；普通关系只由目标页面决定组件及实例参数。
     config.specialHandling.interfaceService = normalizeInterfaceBinding()
     config.specialHandling.actionServices = []
-    config.specialHandling.mode = ['CUSTOM_COMPONENT', 'BOTH'].includes(config.specialHandling.mode)
-      ? 'CUSTOM_COMPONENT'
-      : 'NONE'
+    config.specialHandling.customComponent = clone(empty.config.specialHandling.customComponent)
+    config.specialHandling.mode = 'NONE'
+    config.specialHandling.failurePolicy = 'ERROR'
   }
   if (config.relation.type === 'INTERFACE_SERVICE'
     && config.specialHandling.mode === 'NONE') {
@@ -259,7 +259,7 @@ export function normalizeRelatedContent(value = {}, defaults = {}) {
   }
 }
 
-/** 构造宿主草稿的保存载荷；普通关系省略接口配置，独立扩展页只写入服务端允许的绑定字段。 */
+/** 构造宿主草稿的保存载荷；普通关系省略专属组件与接口，独立扩展页保留共享扩展契约。 */
 export function buildRelatedContentPayload(value, ownerType, ownerId) {
   const normalized = normalizeRelatedContent(value, {
     ownerType,
@@ -277,6 +277,7 @@ export function buildRelatedContentPayload(value, ownerType, ownerId) {
     // 普通关系的空编辑占位不属于保存契约，避免重新携带已移除的扩展能力。
     delete config.specialHandling.interfaceService
     delete config.specialHandling.actionServices
+    delete config.specialHandling.customComponent
   }
   const result = {
     compositionKey: normalized.compositionKey || undefined,

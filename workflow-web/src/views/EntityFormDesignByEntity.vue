@@ -263,7 +263,7 @@
         </template>
         <template v-if="selectedRelatedContent">
           <el-tabs v-model="activeNodeSettingsTab" class="node-settings-tabs" stretch>
-            <el-tab-pane v-for="tab in availableNodeSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
+            <el-tab-pane v-for="tab in availableRelatedContentSettingsTabs" :key="tab.value" :label="tab.label" :name="tab.value" />
           </el-tabs>
           <el-scrollbar class="node-property-scrollbar">
             <RelatedContentConfigDialog v-loading="saving || savingNode" :key="selectedRelatedKey" embedded owner-type="FORM" :owner-id="form.id || ''" :model-value="selectedRelatedContent" :settings-tab="activeNodeSettingsTab" :source-entity="entityInfo" :source-fields="entityFields" :source-content-fields="formFields" :anchor-options="relatedContentAnchorOptions" :existing-count="relatedContents.length" @draft-change="updateRelatedContentDraft" />
@@ -1492,7 +1492,8 @@ async function openRelatedContentProperties(item, tab = 'basic') {
   if (!item?.config) return
   selectedField.value = null
   selectedRelatedKey.value = relatedContentIdentity(item)
-  activeNodeSettingsTab.value = tab
+  activeNodeSettingsTab.value = availableRelatedContentSettingsTabs.value.some(item => item.value === tab)
+    ? tab : 'child-pages'
   showFormSettings.value = false
   propertyDrawerVisible.value = true
 }
@@ -1972,6 +1973,12 @@ const availableNodeSettingsTabs = [
   { value: 'child-pages', label: '子页面' },
   { value: 'extension', label: '数据与扩展' }
 ]
+// 普通关联不再覆盖目标页面组件，移除空页签；独立扩展和普通字段仍保留各自的扩展设置。
+const availableRelatedContentSettingsTabs = computed(() =>
+  ['SAME_RECORD', 'INTERFACE_SERVICE'].includes(selectedRelatedContent.value?.config.relation?.type)
+    ? availableNodeSettingsTabs
+    : availableNodeSettingsTabs.filter(tab => tab.value !== 'extension')
+)
 const selectedNodeDirty = computed(() => {
   const field = selectedField.value
   if (!field?.revision) return true

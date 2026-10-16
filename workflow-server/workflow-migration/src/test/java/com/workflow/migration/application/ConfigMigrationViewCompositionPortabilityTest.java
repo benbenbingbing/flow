@@ -38,6 +38,7 @@ class ConfigMigrationViewCompositionPortabilityTest {
                 "anchorType", "OWNER",
                 "orderKey", 1000,
                 "config", Map.of(
+                        "relation", Map.of("type", "INTERFACE_SERVICE"),
                         "target", Map.of(
                                 "entityCode", "requirement",
                                 "contentType", "LIST",

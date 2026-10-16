@@ -24,7 +24,7 @@
         <el-step description="目标和位置" />
         <el-step v-if="!isRelationBound" description="当前记录或扩展接口" />
         <el-step description="查看或操作范围" />
-        <el-step description="复杂能力兜底" />
+        <el-step v-if="!isRelationBound" description="复杂能力兜底" />
       </el-steps>
 
       <div class="step-content">
@@ -208,7 +208,7 @@
 
         </component>
 
-        <component :is="embedded ? SettingsSection : 'section'" :title="isRelationBound ? '展示扩展' : '页面扩展'" :default-expanded="true" v-show="!embedded ? activeStep === 4 : settingsTab === 'extension'">
+        <component v-if="!isRelationBound" :is="embedded ? SettingsSection : 'section'" title="页面扩展" :default-expanded="true" v-show="!embedded ? activeStep === 4 : settingsTab === 'extension'">
           <StepHeading
             :number="String(stepNumber(4))"
             v-if="!embedded" title="特殊情况怎么处理"
@@ -226,7 +226,7 @@
               <template #title>
                 <div class="collapse-heading">
                   <span>特殊处理</span>
-                  <small>{{ isRelationBound ? '使用已注册组件展示关联数据' : '复杂查询、外部能力或专业界面' }}</small>
+                  <small>复杂查询、外部能力或专业界面</small>
                 </div>
               </template>
 
@@ -523,8 +523,9 @@
               </el-form>
             </el-collapse-item>
           </el-collapse>
+        </component>
 
-          <div v-if="!embedded" class="review-card">
+          <div v-if="!embedded && activeStep === stepIds[stepIds.length - 1]" class="review-card">
             <div class="review-card__heading">
               <strong>保存前确认</strong>
               <el-tag :type="localValidation.valid ? 'success' : 'danger'" effect="plain">
@@ -535,7 +536,7 @@
               <el-descriptions-item label="显示效果">{{ naturalSummary }}</el-descriptions-item>
               <el-descriptions-item label="数据关联">{{ relationSummary }}</el-descriptions-item>
               <el-descriptions-item label="允许操作">{{ actionSummary }}</el-descriptions-item>
-              <el-descriptions-item label="特殊处理">{{ specialSummary }}</el-descriptions-item>
+              <el-descriptions-item v-if="!isRelationBound" label="特殊处理">{{ specialSummary }}</el-descriptions-item>
             </el-descriptions>
             <div v-if="!localValidation.valid" class="validation-errors">
               <button
@@ -548,7 +549,6 @@
               </button>
             </div>
           </div>
-        </component>
       </div>
     </div>
 
@@ -557,7 +557,7 @@
         <el-button @click="visible = false">取消</el-button>
         <div>
           <el-button v-if="activeStep > 1" @click="goPrevious">上一步</el-button>
-          <el-button v-if="activeStep < 4" type="primary" @click="goNext">下一步</el-button>
+          <el-button v-if="stepNumber(activeStep) < stepIds.length" type="primary" @click="goNext">下一步</el-button>
           <el-button
             v-if="isRelationBound || activeStep === 4"
             type="primary"
@@ -743,8 +743,9 @@ const boundEntityRelation = computed(() => sourceRelations.value.find(item => bo
       ? String(item.parentEntityId) === String(editor.config.target.entityId)
       : !item.parentEntityId || String(item.parentEntityId) === String(props.sourceEntity.id))))
 const dialogTitle = computed(() => isRelationBound.value ? '关系展示设置' : '扩展页面')
-const stepIds = computed(() => isRelationBound.value ? [1, 3, 4] : [1, 2, 3, 4])
-const visibleStep = step => isRelationBound.value && step === 2 ? 1 : step
+// 普通关系统一沿用目标页面渲染，仅保留展示位置与操作范围两个步骤。
+const stepIds = computed(() => isRelationBound.value ? [1, 3] : [1, 2, 3, 4])
+const visibleStep = step => isRelationBound.value ? (step <= 2 ? 1 : 3) : step
 const stepNumber = step => stepIds.value.indexOf(step) + 1
 
 const selectedEntityRelation = computed(() => isRelationBound.value ? boundEntityRelation.value : null)

@@ -37,7 +37,7 @@ function composition(type, key) {
    customComponent: { name: type === 'ENTITY_RELATION' ? 'ScopeCard' : '', version: 1, artifactDigest: 'a'.repeat(64), props: {} }, failurePolicy: 'ERROR' }
  } }
 }
-const state = reactive({ current: composition('ENTITY_RELATION', 'ordinary'), tab: 'child-pages', draft: null, calls: [], unexpected: [] })
+const state = reactive({ current: composition('ENTITY_RELATION', 'ordinary'), embedded: true, tab: 'child-pages', draft: null, calls: [], unexpected: [] })
 request.defaults.adapter = async config => {
  const url = config.url
  state.calls.push({ url, params: config.params || {} })
@@ -57,7 +57,7 @@ window.scopeTest = { state, open(type) { state.draft = null; state.tab = 'child-
 const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { render: () => null } }] })
 createApp({ render: () => h('main', { style: 'max-width:1000px;margin:24px auto' }, [
  h('nav', [h('button', { onClick: () => state.tab = 'child-pages' }, '子页面'), h('button', { onClick: () => state.tab = 'extension' }, '扩展')]),
- h(ConfigDialog, { embedded: true, modelValue: state.current, settingsTab: state.tab, ownerType: 'FORM', ownerId: 'owner', sourceEntity: source, sourceFields: fields, 'onDraft-change': value => state.draft = value })
+ h(ConfigDialog, { embedded: state.embedded, modelValue: state.current, settingsTab: state.tab, ownerType: 'FORM', ownerId: 'owner', sourceEntity: source, sourceFields: fields, 'onDraft-change': value => state.draft = value })
 ]) }).use(createPinia()).use(router).use(ElementPlus).mount('#app')
 `)
 
@@ -86,22 +86,16 @@ try {
   const cleaned = await page.evaluate(() => scopeTest.state.draft.config.specialHandling)
   assert.equal(cleaned.interfaceService.extensionId, '')
   assert.deepEqual(cleaned.actionServices, [])
-  assert.equal(cleaned.mode, 'CUSTOM_COMPONENT')
-  assert.equal(cleaned.customComponent.name, 'ScopeCard')
+  assert.equal(cleaned.mode, 'NONE')
+  assert.equal(cleaned.customComponent?.name || '', '')
   assert.equal(await page.evaluate(() => scopeTest.state.calls.some(call => call.url === '/ui-extensions/available-interfaces')), false, '普通关系不能请求接口目录')
 
   await page.getByRole('button', { name: '扩展', exact: true }).click()
-  assert.deepEqual(await visibleSectionTitles(), ['展示扩展'])
+  assert.deepEqual(await visibleSectionTitles(), [])
   await assertNoActionInterfaces()
   const custom = checkbox('使用自定义组件')
-  await custom.waitFor({ state: 'visible' })
-  assert.equal(await custom.isVisible(), true)
-  assert.equal(await custom.locator('input').isChecked(), true)
-  await setChecked(custom, false)
-  await page.waitForFunction(() => scopeTest.state.draft.config.specialHandling.mode === 'NONE')
-  await setChecked(custom)
-  await page.waitForFunction(() => scopeTest.state.draft.config.specialHandling.mode === 'CUSTOM_COMPONENT')
-  assert.equal(await dialog.locator('.special-config-card .el-select').first().isVisible(), true)
+  assert.equal(await custom.count(), 0, '普通关系完全移除展示覆盖，不保留隐藏的组件选择器')
+  assert.equal(await dialog.locator('.special-config-card').count(), 0)
   assert.equal(await page.evaluate(() => scopeTest.state.calls.some(call => call.url === '/ui-extensions/available-interfaces')), false)
 
   const capabilityErrors = []
@@ -113,6 +107,12 @@ try {
     assert.deepEqual(await page.evaluate(() => scopeTest.state.calls.filter(call => call.url === '/ui-extensions/available-interfaces').map(call => call.params.bindingCode).sort()), ['RELATED_CONTENT_ACTION', 'RELATED_CONTENT_RESOLVE'])
     await page.getByRole('button', { name: '扩展', exact: true }).click()
     assert.deepEqual(await visibleSectionTitles(), ['页面扩展'])
+    // 独立扩展仍允许使用关联契约组件，不能误删共用注册能力。
+    await setChecked(custom)
+    const customSelect = dialog.locator('.special-config-card').filter({ hasText: '固定精确版本' }).locator('.el-select').first()
+    await customSelect.click()
+    await page.getByRole('option', { name: /关联展示卡片/ }).click()
+    await page.waitForFunction(() => scopeTest.state.draft.config.specialHandling.customComponent.name === 'ScopeCard')
     const service = checkbox('使用数据或动作扩展接口')
     assert.equal(await service.isVisible(), true)
     if (type === 'SAME_RECORD') await setChecked(service)
@@ -156,11 +156,25 @@ try {
     assert.equal(await dialog.locator('.action-service-card:visible').count(), 1)
     assert.equal(await page.evaluate(() => scopeTest.state.draft.config.specialHandling.actionServices[0].extensionId), 'calculate')
     assert.equal(await page.evaluate(() => scopeTest.state.draft.config.specialHandling.interfaceService.extensionId), 'lookup')
+    assert.equal(await page.evaluate(() => scopeTest.state.draft.config.specialHandling.customComponent.name), 'ScopeCard')
   }
+  // 同一编辑器的列表/独立弹窗入口只剩两步，末步保留确认摘要及保存入口。
+  await page.evaluate(() => scopeTest.open('ENTITY_RELATION'))
+  await page.waitForFunction(() => scopeTest.state.draft?.compositionKey === 'entity_relation')
+  await page.evaluate(() => { scopeTest.state.embedded = false })
+  await dialog.getByText('第 1 步，共 2 步', { exact: true }).waitFor({ state: 'visible' })
+  assert.equal(await dialog.locator('.el-steps .el-step').count(), 2)
+  assert.equal(await custom.count(), 0)
+  await dialog.getByRole('button', { name: '下一步', exact: true }).click()
+  await dialog.getByText('第 2 步，共 2 步', { exact: true }).waitFor({ state: 'visible' })
+  assert.equal(await dialog.getByRole('button', { name: '下一步', exact: true }).count(), 0)
+  assert.equal(await dialog.getByText('保存前确认', { exact: true }).isVisible(), true)
+  assert.equal(await dialog.getByRole('button', { name: '保存显示配置', exact: true }).isEnabled(), true)
+  await dialog.getByRole('button', { name: '取消', exact: true }).click()
   assert.deepEqual(await page.evaluate(() => scopeTest.state.unexpected), [])
   assert.deepEqual(errors, [])
   assert.deepEqual(capabilityErrors, [], '独立扩展页数据接口必须可编辑')
-  console.log('related content extension scope browser acceptance passed: ordinary relation tabs/custom component only, legacy service cleanup and no interface catalog; SAME_RECORD and INTERFACE_SERVICE data/action editors preserved in extension tab')
+  console.log('related content extension scope browser acceptance passed: ordinary relation display overrides removed and legacy settings cleared; two-step dialog; SAME_RECORD and INTERFACE_SERVICE component/data/action editors preserved')
 } finally {
   await browser?.close()
   await server?.close()

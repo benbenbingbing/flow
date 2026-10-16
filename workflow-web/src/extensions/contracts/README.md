@@ -12,7 +12,7 @@
 | list-cell.js | 使用 listCellProps；config 来自列渲染参数，value 已经格式化 |
 | list-action.js | JS handler 按注释读取 context；Vue 按钮使用 listButtonProps 并遵守 disabled/reason |
 | action-rule.js | 使用 actionRuleConditionProps/Emits 编辑条件；权限提供器按注释返回候选项 |
-| related-content.js | 使用 relatedContentProps；通过 runtime.query/dispatch/refresh 操作关联内容 |
+| related-content.js | 独立扩展页使用 relatedContentProps；通过 runtime.query/dispatch/refresh 操作目标内容 |
 | validation.js | 实现 CustomValidator 或 defineCustomValidator；用 validateCustomValue 归一化结果，或适配 Element Plus |
 | data-source.js | 参照注释和 FORM_DATA_SOURCE_USAGES 使用宿主传入的受控数据源，不自行构造发布身份 |
 | subform.js | 阅读子表输入参数、父级/行上下文和初始化映射约定；这是文档契约，不是独立注册器 |
@@ -53,6 +53,6 @@ Element Plus 独立页面可参考 [ValidatedAmountForm.vue](../examples/contrac
 
 ## 关联内容与普通页面
 
-关联组件必须使用 relatedContentProps，并在 FORM/LIST 清单声明 usageContexts=["RELATED_CONTENT"]。该宿主不监听 update:modelValue，也不自动调用组件 validate；修改应走受控 runtime.dispatch。普通整表单/列表使用 PAGE 契约，不把两套 props 混用。
+独立扩展页（SAME_RECORD / INTERFACE_SERVICE）的组件使用 relatedContentProps，并在 FORM/LIST 清单声明 usageContexts=["RELATED_CONTENT"]。表单组件通过 update:modelValue 更新宿主草稿，内置保存入口调用组件暴露的 validate()；额外动作接口通过受控 runtime.dispatch 调用。普通实体关系沿用目标表单/列表的 PAGE 配置，不再支持 RELATED_CONTENT 组件覆盖；两套 props 和运行时方法不能混用。
 
 修改契约后同步检查模板和宿主，从 `workflow-web/` 执行 `npm run test:extension-contracts`；涉及字段校验时执行 `npm run test:custom-validators`。只读、实体范围、授权仍由组件、宿主和后端共同落实。

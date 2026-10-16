@@ -1,7 +1,7 @@
 <!--
-  关联内容模板：在关联配置中指定对应 FORM/LIST 注册组件，而非普通列表 customComponent。
+  独立扩展页模板：在 SAME_RECORD / INTERFACE_SERVICE 配置中指定对应 FORM/LIST 注册组件。
   示例只读显示宿主目标记录和发布能力；LIST 数据请显式调用 runtime.query 并管理分页。
-  普通关联页的表单修改通过 update:modelValue 更新宿主草稿，再由内置保存入口提交。
+  扩展表单通过 update:modelValue 更新宿主草稿，再由内置保存入口提交；普通关联沿用目标 PAGE 组件。
   独立扩展页可调用 runtime.dispatch(action, { targetRecordIds })；调用前需检查该方法存在。
 -->
 <template>

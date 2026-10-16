@@ -48,7 +48,7 @@ api.validate = async () => { throw new Error('配置不完整') }
 await assert.rejects(persist(), /配置不完整/)
 assert.equal(calls.length, 2)
 
-// 打开后不改其他属性也必须落库清理旧接口；有效独立扩展和空编辑占位不能被误标脏。
+// 打开后不改其他属性也必须落库清理旧接口与组件覆盖；有效独立扩展和空编辑占位不能被误标脏。
 const legacyAction = item('legacy-action')
 legacyAction.config.specialHandling.actionServices = [{ actionKey: 'AUDIT', extensionId: 'old-audit' }]
 const legacyData = item('legacy-data')
@@ -59,15 +59,24 @@ legacyData.configDocument = JSON.stringify(legacyData.config)
 delete legacyData.config
 const extensionPage = item('extension-page')
 extensionPage.config.relation.type = 'SAME_RECORD'
-extensionPage.config.specialHandling.mode = 'INTERFACE_SERVICE'
+extensionPage.config.specialHandling.mode = 'BOTH'
+extensionPage.config.specialHandling.customComponent = { name: 'independent-board', version: 2, artifactDigest: 'a'.repeat(64), props: { compact: true } }
 extensionPage.config.specialHandling.actionServices = [{ actionKey: 'AUDIT', extensionId: 'valid-audit' }]
+extensionPage.config.specialHandling.failurePolicy = 'HIDE'
 const displayOnly = item('display-only')
 delete displayOnly.config.specialHandling
-const sourceItems = [legacyAction, legacyData, extensionPage, item('empty-placeholder'), displayOnly]
+const legacyCustom = item('legacy-custom')
+legacyCustom.config.specialHandling.mode = 'CUSTOM_COMPONENT'
+legacyCustom.config.specialHandling.customComponent = { name: 'retired-board' }
+const hiddenCustom = item('hidden-custom')
+hiddenCustom.config.specialHandling.customComponent.props = { oldTitle: '旧组件实例参数' }
+const legacyFailurePolicy = item('legacy-failure-policy')
+legacyFailurePolicy.config.specialHandling.failurePolicy = 'HIDE'
+const sourceItems = [legacyAction, legacyData, legacyCustom, hiddenCustom, legacyFailurePolicy, extensionPage, item('empty-placeholder'), displayOnly]
 let cleanedRows = sourceItems.map(source => normalizeRelatedContent(source))
 const cleanupState = createRelatedContentDraftState()
 cleanupState.reset(cleanedRows, { sourceItems })
-assert.deepEqual(cleanedRows.map(row => cleanupState.dirty(row)), [true, true, false, false, false])
+assert.deepEqual(cleanedRows.map(row => cleanupState.dirty(row)), [true, true, true, true, true, false, false, false])
 const cleanupWrites = []
 let rejectCleanup = true, cleanupRevision = 4
 const cleanupApi = {
@@ -76,6 +85,8 @@ const cleanupApi = {
     if (rejectCleanup) throw new Error('清理保存失败')
     assert.equal('interfaceService' in payload.config.specialHandling, false)
     assert.equal('actionServices' in payload.config.specialHandling, false)
+    assert.equal('customComponent' in payload.config.specialHandling, false)
+    assert.equal(payload.config.specialHandling.failurePolicy, 'ERROR')
     cleanupWrites.push(id)
     return { ...payload, id, revision: 2, ownerRevision: ++cleanupRevision }
   }
@@ -89,13 +100,18 @@ await assert.rejects(saveCleanup(), /清理保存失败/)
 assert.equal(cleanupState.dirty(cleanedRows[0]), true, '失败不能清除待清理标记')
 rejectCleanup = false
 await saveCleanup()
-assert.deepEqual(cleanupWrites, ['legacy-action', 'legacy-data'])
+assert.deepEqual(cleanupWrites, ['legacy-action', 'legacy-data', 'legacy-custom', 'hidden-custom', 'legacy-failure-policy'])
 assert.equal(cleanedRows[0].config.specialHandling.mode, 'NONE')
-assert.equal(cleanedRows[1].config.specialHandling.mode, 'CUSTOM_COMPONENT')
-assert.equal(cleanedRows[1].config.specialHandling.customComponent.name, 'project-board')
+assert.equal(cleanedRows[1].config.specialHandling.mode, 'NONE')
+assert.equal(cleanedRows[1].config.specialHandling.customComponent.name, '')
+assert.equal(cleanedRows[2].config.specialHandling.customComponent.name, '')
+assert.deepEqual(cleanedRows[3].config.specialHandling.customComponent.props, {})
+assert.equal(cleanedRows[4].config.specialHandling.failurePolicy, 'ERROR')
+assert.equal(cleanedRows[5].config.specialHandling.customComponent.name, 'independent-board')
+assert.equal(cleanedRows[5].config.specialHandling.failurePolicy, 'HIDE')
 assert.equal(cleanupState.hasChanges(cleanedRows), false)
 await saveCleanup()
-assert.equal(cleanupWrites.length, 2, '清理成功后不重复写入')
+assert.equal(cleanupWrites.length, 5, '清理成功后不重复写入')
 cleanupState.reset(cleanedRows)
 assert.equal(cleanupState.hasChanges(cleanedRows), false, '服务端清理结果重新加载后保持已保存')
 console.log('related content draft model tests passed')

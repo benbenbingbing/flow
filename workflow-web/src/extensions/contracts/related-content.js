@@ -1,12 +1,12 @@
 /**
- * 关联内容自定义呈现的独立契约，来源 RelatedContentRuntime.vue。
+ * 独立扩展页（SAME_RECORD / INTERFACE_SERVICE）自定义呈现契约，来源 RelatedContentRuntime.vue。
  * 使用 FORM/LIST 清单且 metadata.usageContexts 包含 RELATED_CONTENT，
  * 关联配置使用组件 name/version/artifactDigest/props；实际选版和装载由宿主完成。
  *
  * 这里没有普通整列表的 dataList/queryForm/pageNum，也不保证 mode、formActionSlots。
  * modelValue 是目标记录的业务字段数据，不是来源记录；LIST 应通过 runtime.query 查询。
- * 表单数据通过宿主的内置保存入口提交。runtime.dispatch 仅在 SAME_RECORD /
- * INTERFACE_SERVICE 独立扩展页提供，普通 ENTITY_RELATION 关联页不提供此能力。
+ * 表单数据通过宿主的内置保存入口提交。普通实体关系沿用目标页面的 PAGE 契约，
+ * 不再实例化本契约组件，也不向 PAGE 组件注入 runtime.dispatch。
  *
  * @typedef {Object} RelatedContentRuntime
  * @property {function(): Promise<*>} refresh 重新解析并刷新关联内容。

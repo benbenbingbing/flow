@@ -1,6 +1,7 @@
 package com.workflow.entity.ui.application;
 
 import com.workflow.entity.ui.application.validation.UiConfigInterfaceReferenceValidator;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 
 import com.workflow.entity.form.application.FormNodeStructurePolicy;
 
@@ -1317,8 +1318,9 @@ public class UiConfigReleaseService {
                         dependency);
             }
 
-            Map<String, Object> special = mapValue(
-                    config.get("specialHandling"));
+            // 历史预览只忽略普通关系的退役覆盖，不把无效组件继续列为发布依赖。
+            Map<String, Object> special = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                    config.get("relation"), mapValue(config.get("specialHandling")));
             addInterfaceDependency(
                     result,
                     seen,

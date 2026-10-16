@@ -185,8 +185,9 @@ public class UiViewCompositionRuntimeService {
         }
         Map<String, Object> targetConfig = map(config.get("target"));
         Map<String, Object> relationConfig = map(config.get("relation"));
-        Map<String, Object> specialConfig = map(
-                config.get("specialHandling"));
+        // 历史发布保持原文和哈希；普通关系只在本次解析副本中忽略已退役的展示覆盖。
+        Map<String, Object> specialConfig = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                relationConfig, map(config.get("specialHandling")));
         validatePinnedCustomComponent(specialConfig);
 
         EntityDefinition sourceEntity = requireOwnerEntity(

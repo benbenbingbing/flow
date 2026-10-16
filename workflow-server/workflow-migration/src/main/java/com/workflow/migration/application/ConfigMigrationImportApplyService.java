@@ -20,6 +20,7 @@ import com.workflow.entity.definition.api.response.EntityFieldDTO;
 import com.workflow.entity.list.api.response.EntityListConfigDTO;
 import com.workflow.process.definition.api.response.ProcessDefinitionDTO;
 import com.workflow.entity.ui.api.request.UiExtensionDefinitionSaveRequest;
+import com.workflow.entity.ui.application.validation.UiViewCompositionExtensionPolicy;
 import com.workflow.contracts.migration.model.ConfigMigrationPublishRequest;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityCodeRule;
 import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
@@ -2066,7 +2067,9 @@ public class ConfigMigrationImportApplyService {
         target.put("contentName", contentName);
         config.put("target", target);
 
-        Map<String, Object> special = mapValue(config.get("specialHandling"));
+        // 导入/回滚落地时也清理已退役的普通关系展示覆盖，不能把旧包配置重新写回草稿。
+        Map<String, Object> special = UiViewCompositionExtensionPolicy.normalizePresentationOverride(
+                config.get("relation"), mapValue(config.get("specialHandling")));
         // 旧引用只携带编码；未钉定实现版本时按版本和主键稳定取首条，已含 extensionId 的引用保持原样。
         if (special.get("interfaceService") instanceof Map<?, ?> rawService) {
             Map<String, Object> service = mapValue(rawService);

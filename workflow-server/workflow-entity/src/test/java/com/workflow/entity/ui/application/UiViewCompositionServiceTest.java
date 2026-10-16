@@ -777,9 +777,14 @@ class UiViewCompositionServiceTest {
         when(fixture.extensionService.list(
                 null, "project-timeline", "ACTIVE"))
                 .thenReturn(List.of(definition));
+        String executable = "{\"schemaVersion\":1}";
+        when(fixture.dataSourceService.freezeExtension("service-1"))
+                .thenReturn(new UiInterfaceExtensionService.PublishedOperationSnapshot(
+                        "service-1", "projectRequirements", 3, "resolveRequirements",
+                        executable, sha256(executable)));
         UiViewComposition current = existing(fixture.codec, 9);
         current.setConfigDocument(fixture.codec.write(
-                componentConfig(), "test component config"));
+                interfaceSpecialConfig("BOTH", false, true), "test component config"));
         when(fixture.mapper.findByOwner("FORM", "form-1"))
                 .thenReturn(List.of(current));
         List<Map<String, Object>> compositions = fixture.service.snapshot(
@@ -809,6 +814,67 @@ class UiViewCompositionServiceTest {
                         "FORM",
                         "form-1",
                         ownerSnapshot(compositions, List.of())));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void ordinaryRetiredPresentationIsRemovedFromDraftAndHistoricalProjectionsOnly() {
+        Fixture fixture = fixture();
+        Map<String, Object> config = componentConfig();
+        UiViewComposition current = existing(fixture.codec, 9);
+        String originalDocument = fixture.codec.write(config, "retired component draft");
+        current.setConfigDocument(originalDocument);
+        when(fixture.mapper.findByOwner("FORM", "form-1")).thenReturn(List.of(current));
+
+        assertRetiredPresentationRemoved(fixture.service.validate("FORM", "form-1", config).getNormalizedConfig());
+        assertRetiredPresentationRemoved((Map<String, Object>) fixture.service.draftSnapshot("FORM", "form-1")
+                .get(0).get("config"));
+        List<Map<String, Object>> published = fixture.service.snapshot("FORM", "form-1");
+        assertRetiredPresentationRemoved((Map<String, Object>) published.get(0).get("config"));
+
+        List<Map<String, Object>> historical = fixtureCompositionCopy(published);
+        ((Map<String, Object>) historical.get(0).get("config")).put("specialHandling", config.get("specialHandling"));
+        String historicalDocument = fixture.codec.write(historical, "historical document");
+        String historicalHash = sha256(historicalDocument);
+        assertDoesNotThrow(() -> fixture.service.validateReleaseSnapshot("FORM", "form-1",
+                ownerSnapshot(historical, List.of())));
+        assertRetiredPresentationRemoved((Map<String, Object>) fixture.service
+                .normalizeSnapshotForCurrentDependencies(historical).get(0).get("config"));
+
+        // 清理只发生在新配置和读取副本中，不能覆写草稿原文或历史发布的内容哈希。
+        assertEquals(originalDocument, current.getConfigDocument());
+        assertEquals(historicalDocument, fixture.codec.write(historical, "historical document"));
+        assertEquals(historicalHash, sha256(fixture.codec.write(historical, "historical document")));
+        fixture.targetRelease.setConfigType("UNAVAILABLE");
+        assertRetiredPresentationRemoved((Map<String, Object>) fixture.service.draftSnapshot("FORM", "form-1")
+                .get(0).get("config"));
+        org.mockito.Mockito.verifyNoInteractions(fixture.extensionService);
+    }
+
+    @Test
+    void ordinaryRetiredPresentationIsRemovedWhenRestoringOrImportingDraft() {
+        for (boolean restore : List.of(true, false)) {
+            Fixture fixture = fixture();
+            when(fixture.formMapper.update(isNull(), any())).thenReturn(1);
+            Map<String, Object> config = componentConfig();
+            Map<String, Object> item = Map.of("id", "composition-1", "compositionKey", "project_requirements",
+                    "anchorType", "OWNER", "orderKey", 1000L, "config", config);
+            String original = fixture.codec.write(item, "original snapshot item");
+            if (restore) fixture.service.restoreForRelease("FORM", "form-1", List.of(item));
+            else fixture.service.importPortableDraft("FORM", "form-1", List.of(item));
+
+            ArgumentCaptor<UiViewComposition> captor = ArgumentCaptor.forClass(UiViewComposition.class);
+            verify(fixture.mapper).insert(captor.capture());
+            assertRetiredPresentationRemoved(fixture.codec.readObject(captor.getValue().getConfigDocument(), "saved draft"));
+            assertEquals(original, fixture.codec.write(item, "original snapshot item"));
+            org.mockito.Mockito.verifyNoInteractions(fixture.extensionService);
+        }
+    }
+
+    private void assertRetiredPresentationRemoved(Map<String, Object> config) {
+        Map<?, ?> special = (Map<?, ?>) config.get("specialHandling");
+        assertEquals("NONE", special.get("mode"));
+        assertFalse(special.containsKey("customComponent"));
     }
 
     @Test

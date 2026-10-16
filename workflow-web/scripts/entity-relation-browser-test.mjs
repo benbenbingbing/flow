@@ -563,12 +563,12 @@ try {
   const targetContentSelection = `${dialog}?.querySelector('.target-content-select .el-select__selected-item.el-select__placeholder')`
   await until(`${relationMatch}?.textContent.trim()==='ZDWREQ.acceptance_id = 当前记录.id' && !${dialog}.querySelector('.el-loading-mask')`)
   assert.equal(await evaluate(`${targetContentSelection}?.textContent.trim()`), '需求详情表单 (details)')
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`), 3)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`), 2)
   assert.equal(await evaluate(`${dialog}.querySelectorAll('.relation-methods, .el-segmented').length`), 0)
   assert.equal(await evaluate(`${dialog}.querySelector('.inherited-target').textContent.includes('需求管理')`), true)
-  assert.equal(await evaluate(`${dialog}.innerText.includes('第 1 步，共 3 步')`), true)
+  assert.equal(await evaluate(`${dialog}.innerText.includes('第 1 步，共 2 步')`), true)
   await click('下一步', dialog)
-  assert.equal(await evaluate(`${dialog}.innerText.includes('第 2 步，共 3 步')`), true)
+  assert.equal(await evaluate(`${dialog}.innerText.includes('第 2 步，共 2 步')`), true)
   assert.equal(await evaluate(`[...${dialog}.querySelectorAll('.step-heading')].find(e=>e.getClientRects().length).textContent.includes('允许做什么')`), true)
   assert.equal(await evaluate(`[...${dialog}.querySelectorAll('.action-option')].some(e=>e.textContent.includes('随当前表单一起保存'))`), false, '新展示不能提供无效的聚合保存勾选项')
   await click('上一步', dialog)
@@ -752,7 +752,7 @@ try {
   // 新建业务关联必须选择目录中的关系；扩展页面另有入口，不能再次输入字段匹配条件。
   await click('新增关联内容',"document.querySelector('.related-content-panel')")
   await until(`${dialog}?.querySelector('.relation-binding-select .el-select__placeholder')?.textContent.trim()==='选择已定义的实体关系'`)
-  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),3)
+  assert.equal(await evaluate(`${dialog}.querySelectorAll('.el-steps .el-step').length`),2)
   assert.equal(await evaluate(`[...${dialog}.querySelectorAll('button')].find(b=>b.textContent.trim()==='保存显示配置').disabled`),true)
   await evaluate(`${dialog}.querySelector('.relation-binding-select .el-select__wrapper').click()`)
   await until("[...document.querySelectorAll('.el-select-dropdown__item')].some(e=>e.getClientRects().length&&e.textContent.includes('所属需求'))")
@@ -902,6 +902,8 @@ try {
   await doubleClick(ordinaryTitle)
   const propertyDrawer = "[...document.querySelectorAll('.node-property-drawer')].find(e=>e.getClientRects().length)"
   await until(`${propertyDrawer}?.querySelector('.form-content-display-settings input')`)
+  assert.equal(await evaluate(`[...${propertyDrawer}.querySelectorAll('.node-settings-tabs .el-tabs__item')].some(e=>e.textContent==='数据与扩展')`),false,'普通关联移除空的扩展页签')
+  assert.equal(await evaluate(`${propertyDrawer}.querySelectorAll('.special-choice').length`),0,'普通关联不得渲染扩展组件配置')
   assert.equal(await evaluate("[...document.querySelectorAll('.el-dialog.related-content-config-dialog,.form-settings-drawer')].some(e=>e.getClientRects().length)"),false,'双击不得跳入关系展示向导或表单设置')
   assert.equal(await evaluate(`${propertyDrawer}.querySelector('input').disabled`),false)
   await evaluate(`(async()=>{const input=${propertyDrawer}.querySelector('input');input.value='双击打开的关联表单';input.dispatchEvent(new Event('input',{bubbles:true}));const toggle=${propertyDrawer}.querySelector('.el-switch');toggle.click();await relationTest.settle();toggle.click();await relationTest.settle()})()`)
@@ -929,7 +931,7 @@ try {
 
   await click('已添加 · 配置', "[...document.querySelectorAll('#real-designer .relation-item')].find(e=>e.innerText.includes('所属需求'))")
   await until(`${propertyDrawer}?.querySelector('.el-tabs__item.is-active')?.textContent==='子页面'`)
-  assert.equal(await evaluate(`${propertyDrawer}.querySelectorAll('.node-settings-tabs .el-tabs__item').length`),5)
+  assert.equal(await evaluate(`${propertyDrawer}.querySelectorAll('.node-settings-tabs .el-tabs__item').length`),4)
   await evaluate(`[...${propertyDrawer}.querySelectorAll('.el-tabs__item')].find(e=>e.textContent==='基础与布局').click();relationTest.settle()`)
   await until(`${propertyDrawer}.querySelector('input')?.value==='关闭后保留草稿'`)
   await evaluate(`(()=>{const input=${propertyDrawer}.querySelector('input');input.value='双击打开的关联表单';input.dispatchEvent(new Event('input',{bubbles:true}));${propertyDrawer}.querySelector('.el-drawer__close-btn').click()})()`)
@@ -959,6 +961,7 @@ try {
   await click('添加到表单')
   const nodeDrawer = "[...document.querySelectorAll('.el-drawer')].find(e=>e.getClientRects().length&&e.querySelector('.node-settings-tabs'))"
   await until(`${nodeDrawer}?.innerText.includes('组成明细')`)
+  assert.equal(await evaluate(`[...${nodeDrawer}.querySelectorAll('.node-settings-tabs .el-tabs__item')].some(e=>e.textContent==='数据与扩展')`),true,'真实组成节点仍保留自身的字段数据配置')
   await evaluate(`[...${nodeDrawer}.querySelectorAll('.el-tabs__item')].find(e=>e.textContent.includes('子页面')).click();relationTest.settle()`)
   const childSettings = `[...${nodeDrawer}.querySelectorAll('.settings-section')].find(e=>e.querySelector('.settings-section__heading strong')?.textContent==='子表单配置')`
   assert.equal(await evaluate(`${childSettings}.classList.contains('is-disabled')`),false,'组成节点的子页面属性必须激活')
