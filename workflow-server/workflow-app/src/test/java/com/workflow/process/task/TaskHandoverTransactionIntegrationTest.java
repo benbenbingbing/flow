@@ -4,6 +4,27 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.audit.port.SystemAuditPort;
+import com.workflow.core.database.jdbc.JdbcWriteAttempt;
+import com.workflow.core.error.BusinessConflictException;
+import com.workflow.entity.data.api.response.EntityDataDTO;
+import com.workflow.entity.data.application.*;
+import com.workflow.entity.data.application.mapping.EntityRuntimeRecordMapper;
+import com.workflow.entity.data.infrastructure.adapter.EntityRecordMutationAdapter;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityDataDynamicMapper;
+import com.workflow.entity.data.infrastructure.persistence.mapper.EntityRelationMapper;
+import com.workflow.entity.data.infrastructure.persistence.record.EntityRelation;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper;
+import com.workflow.entity.definition.infrastructure.persistence.mapper.EntityFieldMapper;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityDefinition;
+import com.workflow.entity.form.application.validation.PublishedFormCrossFieldMutationValidator;
+import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
+import com.workflow.entity.mutation.application.*;
+import com.workflow.entity.mutation.infrastructure.persistence.mapper.EntityMutationReceiptMapper;
+import com.workflow.entity.mutation.infrastructure.persistence.record.EntityMutationReceipt;
+import com.workflow.entity.version.application.*;
+import com.workflow.integration.database.api.write.DatabaseInsertDialect;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.entity.port.EntityTaskSummaryPort;
 import com.workflow.contracts.identity.model.IdentityHandoverUser;
@@ -43,6 +64,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -65,6 +87,8 @@ class TaskHandoverTransactionIntegrationTest {
     private TaskHandoverMapper handover;
     private TaskSlaRuntimeService sla;
     private TaskHandoverService service;
+    private EntityDataDynamicService aggregateQuery;
+    private EntityRecordMutationAdapter recordAdapter;
     private List<String> taskIds;
     private List<Snapshot> before;
     private final AtomicInteger targetNameReads = new AtomicInteger();
@@ -92,7 +116,8 @@ class TaskHandoverTransactionIntegrationTest {
         config.setMapUnderscoreToCamelCase(true);
         for (Class<?> mapper : List.of(ProcessTaskMapper.class, TaskHandoverMapper.class,
                 TaskInboxProjectionMapper.class, ProcessTaskCandidateUserMapper.class,
-                ProcessTaskCandidateGroupMapper.class, ProcessOperationLogMapper.class)) config.addMapper(mapper);
+                ProcessTaskCandidateGroupMapper.class, ProcessOperationLogMapper.class,
+                EntityDataDynamicMapper.class, EntityMutationReceiptMapper.class)) config.addMapper(mapper);
         var factory = new MybatisSqlSessionFactoryBean();
         factory.setDataSource(source);
         factory.setConfiguration(config);
@@ -115,7 +140,10 @@ class TaskHandoverTransactionIntegrationTest {
             }
             return user;
         });
-        var processTasks = mock(ProcessTaskService.class);
+        recordAdapter = currentTaskAdapter(session);
+        var processTasks = transactional(new ProcessTaskService(tasks, engine.getTaskService(),
+                engine.getRuntimeService(), engine.getRepositoryService(), null, null, null,
+                new ObjectMapper(), recordAdapter, directory));
         var beans = new DefaultListableBeanFactory();
         beans.registerSingleton("processTasks", processTasks);
         var inbox = transactional(new TaskInboxProjectionService(tasks,
@@ -159,6 +187,9 @@ class TaskHandoverTransactionIntegrationTest {
 
     @Test
     void disabledDeletedSourceTransfersWholeBatchWithoutCompletingOrAcknowledgingTasks() throws Exception {
+        // 同一份真实子表数据在普通读取时仍违反一对一关系，交接不能依赖它能成功展开。
+        assertInvalidRelation();
+        clearInvocations(aggregateQuery);
         assertEquals(2, service.transfer(request(true)));
 
         assertTrue(observedUncommittedBatch);
@@ -190,7 +221,12 @@ class TaskHandoverTransactionIntegrationTest {
             assertNotNull(engine.getRuntimeService().createProcessInstanceQuery()
                     .processInstanceId(tasks.selectByTaskId(taskId).getProcessInstanceId()).singleResult());
             verify(sla).updateAssignee(taskId, "bob");
+            assertEquals("bob", jdbc.queryForObject(
+                    "SELECT current_task_assignee FROM wf_handover_entity WHERE id=?", String.class, taskId));
         }
+        verifyNoInteractions(aggregateQuery);
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM entity_mutation_receipt WHERE status='SUCCESS'", Integer.class));
+        assertInvalidRelation();
         verifyNoMoreInteractions(sla);
         assertEquals(List.of("TRANSFER", "TRANSFER"), jdbc.queryForList(
                 "SELECT operation_type FROM process_operation_log ORDER BY task_id", String.class));
@@ -229,6 +265,75 @@ class TaskHandoverTransactionIntegrationTest {
         verifyNoMoreInteractions(sla);
     }
 
+    @Test
+    void returningToPreviousAssigneeUpdatesSummaryDespiteHistoricalReceipt() {
+        String taskId = taskIds.get(0);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        for (String assignee : List.of("bob", "alice", "bob")) {
+            transaction.executeWithoutResult(status -> recordAdapter.updateCurrentTask(
+                    "handover_entity", taskId, taskId, "部门审批", assignee));
+            assertEquals(assignee, jdbc.queryForObject(
+                    "SELECT current_task_assignee FROM wf_handover_entity WHERE id=?", String.class, taskId));
+        }
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM entity_mutation_receipt WHERE status='SUCCESS'", Integer.class));
+    }
+
+    @Test
+    void summaryWriteFailureRollsBackEngineTasksSlaLogsAndReceipts() throws Exception {
+        jdbc.execute("ALTER TABLE wf_handover_entity ADD CONSTRAINT reject_summary CHECK "
+                + "(id <> '" + taskIds.get(1) + "' OR current_task_assignee <> 'bob')");
+        assertThrows(RuntimeException.class, () -> service.transfer(request(true)));
+        assertWholeBatchRolledBack();
+    }
+
+    /** 保留真实关系读取规则和脏子表，防止测试仅用 mock 假定普通读取会失败。 */
+    private void assertInvalidRelation() {
+        var failure = assertThrows(BusinessConflictException.class,
+                () -> aggregateQuery.findById("handover_entity", taskIds.get(0)));
+        assertEquals("ENTITY_VERSION_RELATION_CARDINALITY_VIOLATION", failure.getErrorCode());
+    }
+
+    /** 实体摘要写入、幂等回执与流程引擎共享同一数据源和事务。 */
+    private EntityRecordMutationAdapter currentTaskAdapter(SqlSessionTemplate session) {
+        var mapper = session.getMapper(EntityDataDynamicMapper.class);
+        var tables = mock(DynamicTableService.class);
+        when(tables.getTableName("handover_entity")).thenReturn("wf_handover_entity");
+        when(tables.getTableName("handover_child")).thenReturn("wf_handover_child");
+        when(tables.tableExists("handover_child")).thenReturn(true);
+        var definitions = mock(EntityDefinitionMapper.class);
+        var parent = new EntityDefinition(); parent.setId("parent"); parent.setEntityCode("handover_entity");
+        var child = new EntityDefinition(); child.setId("child"); child.setEntityCode("handover_child");
+        when(definitions.findByEntityCode("handover_entity")).thenReturn(Optional.of(parent));
+        when(definitions.findByEntityCode("handover_child")).thenReturn(Optional.of(child));
+        var relationMapper = mock(EntityRelationMapper.class);
+        var relation = new EntityRelation(); relation.setRelationName("一对一子表");
+        relation.setRelationCode("detail"); relation.setDataKey("detail");
+        relation.setParentEntityCode("handover_entity"); relation.setChildEntityCode("handover_child");
+        relation.setChildRefFieldCode("parent_id"); relation.setRelationType(EntityRelation.RelationType.ONE_TO_ONE);
+        when(relationMapper.selectByParentEntityId("parent")).thenReturn(List.of(relation));
+        var json = new ObjectMapper();
+        var relations = new EntityRelationRuntimeService(mapper, definitions, mock(EntityFieldMapper.class),
+                relationMapper, tables, json, new EntityRuntimeRecordMapper(json), null);
+        aggregateQuery = mock(EntityDataDynamicService.class);
+        when(aggregateQuery.findById(org.mockito.ArgumentMatchers.eq("handover_entity"), anyString()))
+                .thenAnswer(call -> {
+                    var dto = new EntityDataDTO(); dto.setEntityCode("handover_entity"); dto.setId(call.getArgument(1));
+                    relations.loadRelationData(dto);
+                    return dto;
+                });
+        var mutations = new EntityDataMutationService(mapper, definitions, null, tables,
+                null, null, relations, null, null, null, null, null, null, null);
+        var writer = new EntityAggregateWriter(aggregateQuery, mutations, tables, mapper, relations, json);
+        var receipts = new EntityMutationReceiptService(session.getMapper(EntityMutationReceiptMapper.class), json,
+                new JdbcWriteAttempt(jdbc, mock(DatabaseInsertDialect.class)));
+        var executor = transactional(new EntityMutationTransactionExecutor(writer, aggregateQuery,
+                mock(EntityVersionPolicyMatcher.class), mock(EntityRecordVersionService.class),
+                mock(EntityRelatedVersionCaptureService.class), receipts, mock(EntityFormUniqueClaimService.class),
+                mock(PublishedFormCrossFieldMutationValidator.class), json));
+        return new EntityRecordMutationAdapter(new EntityMutationPipeline(executor, mock(SystemAuditPort.class)),
+                null, null, null);
+    }
+
     private TaskHandoverRequest request(boolean all) {
         return new TaskHandoverRequest("alice-id", "bob-id", all ? List.of() : taskIds, all, " 离职交接 ");
     }
@@ -249,7 +354,10 @@ class TaskHandoverTransactionIntegrationTest {
         assertEquals(2, handover.count("alice-id"));
         assertEquals(0, handover.count("bob-id"));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM process_operation_log", Integer.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM entity_mutation_receipt", Integer.class));
         for (String taskId : taskIds) {
+            assertEquals("alice", jdbc.queryForObject(
+                    "SELECT current_task_assignee FROM wf_handover_entity WHERE id=?", String.class, taskId));
             assertEquals("alice", engine.getTaskService().createTaskQuery().taskId(taskId).singleResult().getAssignee());
             assertEquals(0, engine.getHistoryService().createHistoricTaskInstanceQuery().taskId(taskId).finished().count());
         }
@@ -287,6 +395,12 @@ class TaskHandoverTransactionIntegrationTest {
     private String startTask() {
         var instance = engine.getRuntimeService().startProcessInstanceByKey("handover");
         Task task = engine.getTaskService().createTaskQuery().processInstanceId(instance.getId()).singleResult();
+        engine.getRuntimeService().setVariables(instance.getId(), Map.of(
+                "entityCode", "handover_entity", "entityDataId", task.getId()));
+        jdbc.update("INSERT INTO wf_handover_entity(id,current_task_id,current_task_name,current_task_assignee) VALUES (?,?,?,'alice')",
+                task.getId(), task.getId(), task.getName());
+        jdbc.update("INSERT INTO wf_handover_child(id,parent_id) VALUES (?,?),(?,?)",
+                UUID.randomUUID().toString(), task.getId(), UUID.randomUUID().toString(), task.getId());
         ProcessTask mirror = new ProcessTask();
         mirror.setTaskId(task.getId()); mirror.setNodeId(task.getTaskDefinitionKey()); mirror.setNodeName(task.getName());
         mirror.setProcessInstanceId(instance.getId()); mirror.setProcessDefinitionId(instance.getProcessDefinitionId());
@@ -314,6 +428,11 @@ class TaskHandoverTransactionIntegrationTest {
     }
 
     private void createTables() {
+        createEntityTable(EntityMutationReceipt.class);
+        jdbc.execute("CREATE UNIQUE INDEX handover_receipt_key ON entity_mutation_receipt(idempotency_key)");
+        jdbc.execute("CREATE TABLE wf_handover_entity(id VARCHAR(64) PRIMARY KEY, current_task_id VARCHAR(64),"
+                + "current_task_name VARCHAR(255),current_task_assignee VARCHAR(64),update_time TIMESTAMP,deleted INT DEFAULT 0)");
+        jdbc.execute("CREATE TABLE wf_handover_child(id VARCHAR(64) PRIMARY KEY,parent_id VARCHAR(64),deleted INT DEFAULT 0,create_time TIMESTAMP)");
         createEntityTable(ProcessTask.class);
         createEntityTable(ProcessOperationLog.class);
         jdbc.execute("CREATE UNIQUE INDEX unique_handover_task ON process_task(task_id)");

@@ -14,6 +14,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * 动态实体聚合的唯一内部写入器。
@@ -53,6 +54,41 @@ public class EntityAggregateWriter {
                     recordId);
         }
     }
+
+    /**
+     * 锁定业务主记录后同步任务摘要，供交接、认领等只改变办理身份的操作使用。
+     * 不展开关系、不写业务字段、不产生业务版本；数据库错误仍由外层事务整体回滚。
+     * 返回值只含任务摘要，供幂等回执与审计使用，不冒充完整业务快照。
+     *
+     * @param command 受信流程运行态的 CURRENT_TASK 命令，三个任务字段均允许置空
+     * @throws EntityMutationTargetNotFoundException 业务主记录已不存在
+     */
+    public CurrentTaskSyncResult synchronizeCurrentTask(EntityMutationCommand command) {
+        if (!EntityMutationSystemFields.isCurrentTaskSync(command)) {
+            throw new IllegalArgumentException("仅支持当前任务摘要同步");
+        }
+        Map<String, Object> row = dynamicMapper.selectByIdForUpdate(
+                dynamicTableService.getTableName(command.entityCode()), command.recordId());
+        if (row == null) {
+            throw new EntityMutationTargetNotFoundException(command.entityCode(), command.recordId());
+        }
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("id", command.recordId());
+        summary.put("currentTaskId", text(command.payload().get("currentTaskId")));
+        summary.put("currentTaskName", text(command.payload().get("currentTaskName")));
+        summary.put("currentTaskAssignee", text(command.payload().get("currentTaskAssignee")));
+        boolean changed = !Objects.equals(row.get("current_task_id"), summary.get("currentTaskId"))
+                || !Objects.equals(row.get("current_task_name"), summary.get("currentTaskName"))
+                || !Objects.equals(row.get("current_task_assignee"), summary.get("currentTaskAssignee"));
+        // 即使摘要值未变，也登记任务列表投影刷新，以修复尚未同步的旧投影。
+        mutationService.updateCurrentTask(command.entityCode(), command.recordId(),
+                (String) summary.get("currentTaskId"), (String) summary.get("currentTaskName"),
+                (String) summary.get("currentTaskAssignee"));
+        return new CurrentTaskSyncResult(summary, changed);
+    }
+
+    /** 任务摘要回执不含子表和业务字段，也不参与业务版本比较。 */
+    public record CurrentTaskSyncResult(Map<String, Object> record, boolean changed) {}
 
     /**
      * 应用实体聚合对象写入器，并将结果传给后续步骤。

@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 流程运行态实体端口适配器。
@@ -53,16 +54,16 @@ public class EntityRecordMutationAdapter
             String currentTaskId,
             String currentTaskName,
             String currentTaskAssignee) {
-        // 会签时每人完成自己的任务后，剩余活跃任务的第一个 ID 经常不变。
-        // 幂等键若只含该任务 ID，后办的人会带着不同操作者撞上首次同步回执。
-        // 键按「当前任务快照」区分，操作者固定为系统，相同快照视为重放。
+        // 摘要是可反复回到旧值的投影（如 A → B → A），不能把目标快照当永久幂等键。
+        // 每次同步独立记账，同一命令重试仍可重放；重复同步由局部字段赋值自然幂等。
         String key = String.join(
                 ":",
                 "task-runtime",
                 entityCode,
                 entityRecordId,
                 blankToNone(currentTaskId),
-                blankToNone(currentTaskAssignee));
+                blankToNone(currentTaskAssignee),
+                UUID.randomUUID().toString());
         Map<String, Object> payload =
                 new LinkedHashMap<>();
         payload.put(

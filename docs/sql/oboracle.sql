@@ -1,7 +1,8 @@
 -- OceanBase 4.x Oracle 模式 平台基础表空库初始化脚本。
+-- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
+-- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 192 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
--- 已同步 V115 对应结构及 V117 表单组件统一调整；直接建立当前发布配置与 Excel 表，不创建已退役的热修复表。
+-- 包含 194 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 导入前须将本文件中的 INIT_SIGNING_KEY_64_HEX_PLACEHOLDER 替换为新生成的 64 位十六进制随机密钥（例如 openssl rand -hex 32）。
 
@@ -3157,6 +3158,7 @@ CREATE TABLE "SYS_ORGANIZATION" (
   "CREATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp DEFAULT CURRENT_TIMESTAMP,
   "DELETED" number(10) DEFAULT '0',
+  "CREATE_BY" varchar2(64),
   CONSTRAINT "PK_SYS_ORGANIZATION_S_44BEBB18" PRIMARY KEY ("ID")
 );
 
@@ -3470,6 +3472,7 @@ CREATE TABLE "UI_EXTENSION_DEFINITION" (
   "CREATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "UPDATE_TIME" timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "DELETED" number(3) NOT NULL DEFAULT '0',
+  "SCOPE_ENTITY_IDS_DOCUMENT" clob,
   CONSTRAINT "PK_UI_EXTENSION_DEFIN_BF8114D9" PRIMARY KEY ("ID")
 );
 
@@ -3595,6 +3598,47 @@ CREATE TABLE "WORKFLOW_OUTBOX_EVENT" (
   "PROCESSED_TIME" timestamp,
   CONSTRAINT "PK_WORKFLOW_OUTBOX_EV_1326468D" PRIMARY KEY ("ID")
 );
+
+CREATE TABLE "SYS_DATABASE_LOCK" (
+  "LOCK_KEY" varchar2(64) NOT NULL,
+  PRIMARY KEY ("LOCK_KEY")
+);
+COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."SCOPE_ENTITY_IDS_DOCUMENT" IS '接口适用实体ID数组JSON；GLOBAL不限定实体，ENTITY覆盖所选实体内相应上下文的全部页面';
+COMMENT ON COLUMN "SYS_ORGANIZATION"."CREATE_BY" IS '创建人用户ID，用于流程关系路径解析；历史创建人不可推断时保留NULL';
+COMMENT ON TABLE "SYS_DATABASE_LOCK" IS '跨实例独立事务互斥锁标记，不持久化业务数据';
+COMMENT ON COLUMN "SYS_DATABASE_LOCK"."LOCK_KEY" IS '命名空间及业务键哈希；供 OceanBase MySQL 未提交唯一键插入仲裁，释放时必须回滚，其他方言不使用';
+
+-- 回执与引擎变更同事务提交；身份字段区分大小写，重试复用首次结果。
+CREATE TABLE "PROCESS_COMMAND_RECEIPT" (
+  "ID" varchar2(64) NOT NULL,
+  "REQUEST_ID" varchar2(200) NOT NULL,
+  "INVOCATION_SCOPE" varchar2(512) NOT NULL,
+  "COMMAND_TYPE" varchar2(64) NOT NULL,
+  "COMMAND_HASH" varchar2(64) NOT NULL,
+  "STATUS" varchar2(16) NOT NULL,
+  "PROCESS_INSTANCE_ID" varchar2(128),
+  "TASK_ID" varchar2(128),
+  "CHANGED" number(1) DEFAULT 0 NOT NULL,
+  "RESULT_DOCUMENT" clob,
+  "CREATE_TIME" timestamp(6) NOT NULL,
+  "UPDATE_TIME" timestamp(6) NOT NULL,
+  PRIMARY KEY ("ID")
+);
+CREATE INDEX "IDX_PROCESS_COMMAND_INSTANCE" ON "PROCESS_COMMAND_RECEIPT" ("PROCESS_INSTANCE_ID", "CREATE_TIME");
+CREATE INDEX "IDX_PROCESS_COMMAND_CREATED" ON "PROCESS_COMMAND_RECEIPT" ("CREATE_TIME");
+COMMENT ON TABLE "PROCESS_COMMAND_RECEIPT" IS '流程公共命令事务内幂等回执';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."ID" IS '命令身份主键，由请求与调用范围生成；用于原子占位并复用首次执行结果';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."REQUEST_ID" IS '调用方请求ID；同一命令重试必须复用，避免重复变更流程';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."INVOCATION_SCOPE" IS '调用身份及业务范围；参与幂等身份计算，隔离不同调用来源';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."COMMAND_TYPE" IS '公共命令类型；用于校验重试命令与首次调用一致';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."COMMAND_HASH" IS '命令参数摘要；同一幂等身份参数不一致时拒绝执行';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."STATUS" IS '回执状态；区分事务内占位与已保存结果';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."PROCESS_INSTANCE_ID" IS '关联流程实例ID；用于查询命令执行记录';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."TASK_ID" IS '关联任务ID；任务命令回执用于追溯办理结果';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."CHANGED" IS '是否实际改变流程状态；重试返回首次结果而不再次执行';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."RESULT_DOCUMENT" IS '首次执行结果JSON；与引擎变更同事务保存，跨进程重试直接复用';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."CREATE_TIME" IS '回执创建时间；用于实例查询排序和记录清理';
+COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."UPDATE_TIME" IS '回执状态更新时间；由命令服务在事务中维护';
 
 CREATE TABLE "WORKFLOW_SCHEMA_CHANGE" (
   "ID" varchar2(36) NOT NULL,
@@ -5518,13 +5562,13 @@ COMMENT ON COLUMN "ENTITY_FORM"."STATUS" IS '状态：0-禁用 1-启用。';
 COMMENT ON COLUMN "ENTITY_FORM"."CREATE_TIME" IS '创建时间。';
 COMMENT ON COLUMN "ENTITY_FORM"."UPDATE_TIME" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。';
 COMMENT ON COLUMN "ENTITY_FORM"."DELETED" IS '逻辑删除标记：删除标志。';
-COMMENT ON COLUMN "ENTITY_FORM"."IS_DEFAULT" IS '草稿默认选择；仅发布成功后更新 ENTITY_FORM_CURRENT_DEFAULT，草稿保存不改变线上入口。';
+COMMENT ON COLUMN "ENTITY_FORM"."IS_DEFAULT" IS '草稿默认选择；仅发布成功后更新 entity_form_current_default，草稿保存不改变线上入口。';
 COMMENT ON COLUMN "ENTITY_FORM"."CUSTOM_COMPONENT" IS '自定义表单组件注册名。';
 COMMENT ON COLUMN "ENTITY_FORM"."CREATED_BY" IS '创建人。';
 COMMENT ON COLUMN "ENTITY_FORM"."UPDATED_BY" IS '修改人：更新人。';
 COMMENT ON COLUMN "ENTITY_FORM"."VIEW_CONFIG" IS '表单视图配置JSON：布局、自定义组件参数。';
 COMMENT ON COLUMN "ENTITY_FORM"."REVISION" IS '修订号：草稿元数据修订号。';
-COMMENT ON COLUMN "ENTITY_FORM"."ACTIVE_RELEASE_ID" IS '当前发布配置内容哈希；运行内容从 ENTITY_FORM_PUBLISHED 读取，不再指向历史发布记录。';
+COMMENT ON COLUMN "ENTITY_FORM"."ACTIVE_RELEASE_ID" IS '当前发布内容哈希，用于页面过期检查；运行配置按 form_id 读取 entity_form_published。';
 COMMENT ON COLUMN "ENTITY_FORM"."DRAFT_HASH" IS '当前草稿内容哈希。';
 COMMENT ON COLUMN "ENTITY_FORM"."CUSTOM_COMPONENT_VERSION" IS '自定义整页表单组件锁定版本。';
 COMMENT ON COLUMN "ENTITY_FORM"."CUSTOM_COMPONENT_SNAPSHOT_VERSION" IS '自定义整页表单配置快照版本。';
@@ -5547,8 +5591,8 @@ COMMENT ON COLUMN "ENTITY_FORM_NODE"."REVISION" IS '修订号：节点草稿修�
 COMMENT ON COLUMN "ENTITY_FORM_NODE"."CREATE_TIME" IS '创建时间。';
 COMMENT ON COLUMN "ENTITY_FORM_NODE"."UPDATE_TIME" IS '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。';
 COMMENT ON COLUMN "ENTITY_FORM_NODE"."DELETED" IS '逻辑删除标记：逻辑删除标志（0-未删除 1-已删除）。';
-COMMENT ON COLUMN "ENTITY_FORM_NODE"."COMPONENT_VERSION" IS '统一字段组件锁定版本：与 PROPS_DOCUMENT.componentType 对应的 FIELD 注册定义共同定位组件；内置组件无需设置。';
-COMMENT ON COLUMN "ENTITY_FORM_NODE"."SNAPSHOT_VERSION" IS '统一字段组件配置快照版本：供 PROPS_DOCUMENT.componentType 对应组件解析已锁定配置；内置组件无需设置。';
+COMMENT ON COLUMN "ENTITY_FORM_NODE"."COMPONENT_VERSION" IS '统一字段组件锁定版本；与 props_document.componentType 对应的 FIELD 注册定义共同定位组件，内置组件无需设置。';
+COMMENT ON COLUMN "ENTITY_FORM_NODE"."SNAPSHOT_VERSION" IS '统一字段组件配置快照版本；供 props_document.componentType 对应组件解析已锁定配置，内置组件无需设置。';
 COMMENT ON TABLE "ENTITY_FORM_UNIQUE_CLAIM" IS '表单唯一值原子占位表';
 COMMENT ON COLUMN "ENTITY_FORM_UNIQUE_CLAIM"."CONSTRAINT_KEY" IS '唯一约束命名空间，格式 FORM:{formId}:{snapshotIdentity}:{ruleId}。';
 COMMENT ON COLUMN "ENTITY_FORM_UNIQUE_CLAIM"."VALUE_HASH" IS '规范化值的 SHA-256。';
@@ -6876,8 +6920,8 @@ COMMENT ON COLUMN "UI_COMPONENT_TEMPLATE_VERSION"."CREATED_BY" IS '创建人。'
 COMMENT ON COLUMN "UI_COMPONENT_TEMPLATE_VERSION"."CREATE_TIME" IS '创建时间。';
 COMMENT ON TABLE "UI_CONFIG_RELEASE" IS '表单列表发布快照表';
 COMMENT ON COLUMN "UI_CONFIG_RELEASE"."ID" IS '主键ID：发布快照ID。';
-COMMENT ON COLUMN "UI_CONFIG_RELEASE"."CONFIG_TYPE" IS '配置类型。';
-COMMENT ON COLUMN "UI_CONFIG_RELEASE"."CONFIG_ID" IS '表单或列表配置ID。';
+COMMENT ON COLUMN "UI_CONFIG_RELEASE"."CONFIG_TYPE" IS '当前只保存 LIST 发布历史；FORM 配置使用 entity_form_published。';
+COMMENT ON COLUMN "UI_CONFIG_RELEASE"."CONFIG_ID" IS '列表配置ID，用于查找不可变发布历史。';
 COMMENT ON COLUMN "UI_CONFIG_RELEASE"."VERSION" IS '版本号：不可变版本号。';
 COMMENT ON COLUMN "UI_CONFIG_RELEASE"."SNAPSHOT_DOCUMENT" IS '完整运行时快照JSON文档。';
 COMMENT ON COLUMN "UI_CONFIG_RELEASE"."CONTENT_HASH" IS 'SHA-256内容哈希。';
@@ -6922,7 +6966,7 @@ COMMENT ON COLUMN "UI_EVENT_BINDING"."UPDATE_TIME" IS '更新时间；更新时�
 COMMENT ON COLUMN "UI_EVENT_BINDING"."DELETED" IS '逻辑删除标记。';
 COMMENT ON TABLE "UI_EXTENSION_DEFINITION" IS '统一扩展定义目录表';
 COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."ID" IS '主键ID：扩展定义ID。';
-COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."EXTENSION_TYPE" IS '扩展类型：本表取值为 `FORM`/`FIELD`/`LIST`/`INTERFACE`；字段和节点组件统一使用 FIELD，通过 componentType 关联；管理层将前三类投影为 UI_*，并聚合另表中的流程动作和人员解析器。';
+COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."EXTENSION_TYPE" IS '扩展类型：FORM/FIELD/LIST/INTERFACE；字段和节点组件统一使用 FIELD，通过 componentType 关联。';
 COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."EXTENSION_KEY" IS '扩展稳定编码：完整能力的唯一稳定编码。';
 COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."DISPLAY_NAME" IS '显示名称。';
 COMMENT ON COLUMN "UI_EXTENSION_DEFINITION"."VERSION" IS '版本号：扩展实现版本。';
@@ -7197,7 +7241,7 @@ INSERT INTO "ENTITY_FIELD" ("ID", "ENTITY_ID", "FIELD_CODE", "FIELD_NAME", "FIEL
 INSERT INTO "ENTITY_FIELD" ("ID", "ENTITY_ID", "FIELD_CODE", "FIELD_NAME", "FIELD_TYPE", "DB_TYPE", "FIELD_LENGTH", "IS_REQUIRED", "IS_UNIQUE", "DEFAULT_VALUE", "OPTIONS_JSON", "VALIDATE_RULES", "SORT_ORDER", "IS_SYSTEM", "IS_PUBLISHED", "EDITABLE", "CREATE_TIME", "UPDATE_TIME", "FIELD_PRECISION", "DB_COLUMN_NAME", "FILE_TYPES", "FILE_MAX_SIZE", "FILE_MAX_COUNT", "REF_ENTITY_TYPE", "REF_ENTITY_ID", "REF_FIELD_CODE", "REF_LIST_KEY", "FIELD_ID", "DICT_TYPE", "VALUE_STORAGE", "DELETED") VALUES (370552990036906948,924525185085388686,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "ENTITY_FIELD" ("ID", "ENTITY_ID", "FIELD_CODE", "FIELD_NAME", "FIELD_TYPE", "DB_TYPE", "FIELD_LENGTH", "IS_REQUIRED", "IS_UNIQUE", "DEFAULT_VALUE", "OPTIONS_JSON", "VALIDATE_RULES", "SORT_ORDER", "IS_SYSTEM", "IS_PUBLISHED", "EDITABLE", "CREATE_TIME", "UPDATE_TIME", "FIELD_PRECISION", "DB_COLUMN_NAME", "FILE_TYPES", "FILE_MAX_SIZE", "FILE_MAX_COUNT", "REF_ENTITY_TYPE", "REF_ENTITY_ID", "REF_FIELD_CODE", "REF_LIST_KEY", "FIELD_ID", "DICT_TYPE", "VALUE_STORAGE", "DELETED") VALUES (335370829110629664,924525185085388686,'update_time','更新时间','DATETIME','datetime',NULL,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'update_time',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "PROCESS_ACTION_DEFINITION" ("ID", "ACTION_CODE", "DISPLAY_NAME", "DESCRIPTION", "HANDLER_NAME", "VISIBILITY_SCOPE", "ENABLED", "CREATED_BY", "CREATE_TIME", "UPDATE_TIME", "DELETED") VALUES ('flow_action_definition_notify','sendNotificationHandler','发送流程通知','发送待办、完成、撤回等流程通知；推荐使用提交后执行。','sendNotificationHandler','GLOBAL',1,'system',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
-INSERT INTO "PROCESS_PERSON_RESOLVER_DEFINITION" ("ID", "RESOLVER_CODE", "DISPLAY_NAME", "DESCRIPTION", "BEAN_NAME", "IMPLEMENTATION_VERSION", "CONTRACT_VERSION", "SUPPORTED_USAGES_DOCUMENT", "EXTRA_PARAM_SCHEMA_DOCUMENT", "DYNAMIC_EXTRA_PARAMS", "ENABLED", "REVISION", "CREATE_TIME", "UPDATE_TIME", "DELETED") VALUES ('person_resolver_entity_user_reference_001','entityUserReferenceField','实体用户关系字段','从流程绑定实体的已发布用户单选或多选关系字段读取人员','entityUserReferenceFieldPersonResolver',1,1,'[\"ASSIGNEE\",\"CANDIDATE\",\"MULTI_INSTANCE\"]','{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"schemaVersion\",\"entityCode\",\"fieldCode\"],\"properties\":{\"schemaVersion\":{\"const\":1},\"entityCode\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":128},\"fieldCode\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":100,\"pattern\":\"^[A-Za-z][A-Za-z0-9_]{0,99}$\"}}}',0,1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
+INSERT INTO "PROCESS_PERSON_RESOLVER_DEFINITION" ("ID", "RESOLVER_CODE", "DISPLAY_NAME", "DESCRIPTION", "BEAN_NAME", "IMPLEMENTATION_VERSION", "CONTRACT_VERSION", "SUPPORTED_USAGES_DOCUMENT", "EXTRA_PARAM_SCHEMA_DOCUMENT", "DYNAMIC_EXTRA_PARAMS", "ENABLED", "REVISION", "CREATE_TIME", "UPDATE_TIME", "DELETED") VALUES ('person_resolver_entity_user_reference_001','entityUserReferenceField','实体用户关系字段','从流程绑定实体的已发布用户单选或多选关系字段读取人员','entityUserReferenceFieldPersonResolver',2,1,'["ASSIGNEE","CANDIDATE","MULTI_INSTANCE"]','{"oneOf":[{"type":"object","additionalProperties":false,"required":["schemaVersion","entityCode","fieldCode"],"properties":{"schemaVersion":{"const":1},"entityCode":{"type":"string","minLength":1,"maxLength":128},"fieldCode":{"type":"string","minLength":1,"maxLength":100,"pattern":"^[A-Za-z][A-Za-z0-9_]{0,99}$"}}},{"type":"object","additionalProperties":false,"required":["schemaVersion","entityCode","path"],"properties":{"schemaVersion":{"const":2},"entityCode":{"type":"string","minLength":1,"maxLength":128},"path":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","additionalProperties":false,"required":["type","code"],"properties":{"type":{"enum":["REFERENCE_FIELD","SYSTEM_REFERENCE","RELATION","REVERSE_REFERENCE","PARENT_RELATION"]},"code":{"type":"string","minLength":1,"maxLength":100,"pattern":"^[A-Za-z][A-Za-z0-9_]{0,99}$"},"sourceEntityCode":{"type":"string","minLength":1,"maxLength":128},"targetEntityCode":{"type":"string","minLength":1,"maxLength":128}}}},"versions":{"type":"array","minItems":1,"maxItems":9,"items":{"type":"object","additionalProperties":false,"required":["entityCode"],"properties":{"entityCode":{"type":"string","minLength":1,"maxLength":128},"historyId":{"type":["string","null"]},"schemaHash":{"type":["string","null"]},"systemVersion":{"type":["integer","null"],"enum":[1,null]}}}}}}]}',0,1,2,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
 INSERT INTO "PROCESS_PERSON_RESOLVER_DEFINITION" ("ID", "RESOLVER_CODE", "DISPLAY_NAME", "DESCRIPTION", "BEAN_NAME", "IMPLEMENTATION_VERSION", "CONTRACT_VERSION", "SUPPORTED_USAGES_DOCUMENT", "EXTRA_PARAM_SCHEMA_DOCUMENT", "DYNAMIC_EXTRA_PARAMS", "ENABLED", "REVISION", "CREATE_TIME", "UPDATE_TIME", "DELETED") VALUES ('person_resolver_relative_position_001','relativeOrgPosition','相对组织职务','按流程发起人冻结组织链查询节点激活时的有效职务任职人','relativeOrgPositionPersonResolver',1,1,'[\"CANDIDATE\",\"ASSIGNEE\",\"MULTI_INSTANCE\"]','{\"multipleMatchPolicies\":[\"ERROR\",\"PRIMARY_OR_ERROR\",\"ALL\"],\"subject\":[\"PROCESS_INITIATOR\"],\"schemaVersion\":1,\"lookupModes\":[\"SELF\",\"FIXED_ANCESTOR\",\"NEAREST_WITH_HOLDER\",\"BUSINESS_LEVEL\"],\"anchor\":[\"DEPARTMENT\",\"ORGANIZATION\"],\"type\":\"object\"}',0,1,2,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0);
 INSERT INTO "SYS_DICT" ("ID", "DICT_CODE", "DICT_NAME", "DESCRIPTION", "STATUS", "SORT", "DELETED", "CREATE_TIME", "UPDATE_TIME") VALUES ('dict_org_business_level_001','organization_business_level','组织业务层级','独立于物理树深度的稳定组织业务层级','0',10,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 INSERT INTO "SYS_DICT_ITEM" ("ID", "DICT_ID", "DICT_CODE", "PARENT_ID", "ITEM_CODE", "ITEM_LABEL", "ITEM_VALUE", "SORT", "STATUS", "REMARK", "DELETED", "CREATE_TIME", "UPDATE_TIME") VALUES ('dict_org_level_center_001','dict_org_business_level_001','organization_business_level','0','CENTER','中心','CENTER',30,'0',NULL,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
@@ -7211,7 +7255,7 @@ INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SO
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('400','0','系统管理','M','Setting',4,'/system',NULL,NULL,'0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('403','300','流程用户组','C','FolderOpened',3,'/config/process-user-groups',NULL,NULL,'0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,'migration-v076',CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('assignee_incident_handle_001','assignee_incident_menu_001','处置空办理人事件','F',NULL,1,'','','process:assignee-incident:handle','0','0','0','1','补充办理人、重试解析器、转兜底组或终止实例',0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0',NULL,NULL,NULL,NULL);
-INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('assignee_incident_menu_001','0','空办理人事件','C','Warning',78,'/system/assignee-incidents','system/AssigneeIncidentManagement','process:assignee-incident:list','0','0','0','1','查看空办理人告警、重试和人工恢复记录',0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0',NULL,NULL,NULL,NULL);
+INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('assignee_incident_menu_001','400','空办理人事件','C','Warning',16,'/system/assignee-incidents','system/AssigneeIncidentManagement','process:assignee-incident:list','0','0','0','1','查看空办理人告警、重试和人工恢复记录',0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0',NULL,NULL,NULL,NULL);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('config_migration_analyze_001','config_migration_menu_001','分析配置','F',NULL,4,'','','config-migration:analyze','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('config_migration_download_001','config_migration_menu_001','下载发布包','F',NULL,2,'','','config-migration:download','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME", "IS_FRAME", "IS_CACHE", "QUERY", "ENTITY_CODE", "RESOURCE_TYPE", "LIST_KEY") VALUES ('config_migration_export_001','config_migration_menu_001','导出配置','F',NULL,1,'','','config-migration:export','0','0','0','1',NULL,0,NULL,CURRENT_TIMESTAMP,NULL,CURRENT_TIMESTAMP,'0','0','',NULL,NULL,NULL);

@@ -354,6 +354,31 @@ class EntityMutationTransactionExecutorTest {
     }
 
     @Test
+    void mixedBatchKeepsBusinessValidationAndTaskSyncInOriginalOrder() {
+        EntityMutationCommand business = command(Map.of("data", Map.of("name", "更新")), Map.of());
+        EntityMutationCommand summary = new EntityMutationCommand("summary", "asset", "record-1",
+                EntityMutationOperationType.STATUS_CHANGE,
+                Map.of(com.workflow.entity.data.application.EntityMutationSystemFields.MODE_KEY, "CURRENT_TASK",
+                        "currentTaskId", "task", "currentTaskName", "审批", "currentTaskAssignee", "bob"),
+                EntityMutationContext.builder(EntityMutationSourceType.PROCESS_RUNTIME, "TASK_RUNTIME_SYNC", "当前任务同步").build());
+        when(queryService.findById("asset", "record-1")).thenReturn(record("更新"));
+        when(writer.apply(business, prepared)).thenReturn(new EntityAggregateWriter.WriteResult("record-1", null));
+        when(writer.synchronizeCurrentTask(summary)).thenReturn(
+                new EntityAggregateWriter.CurrentTaskSyncResult(Map.of("currentTaskAssignee", "bob"), true));
+
+        var results = executor.executeBatch(List.of(summary, business));
+
+        assertEquals(List.of(summary.operationId(), business.operationId()), results.stream()
+                .map(EntityMutationResult::operationId).toList());
+        var order = inOrder(writer, crossFieldValidator);
+        order.verify(writer).synchronizeCurrentTask(summary);
+        order.verify(writer).apply(business, prepared);
+        order.verify(crossFieldValidator).validate(eq(business), anyMap());
+        verify(crossFieldValidator, never()).validate(eq(summary), anyMap());
+        verify(formUniqueClaimService).prepareAll(org.mockito.ArgumentMatchers.argThat(values -> values.size() == 1));
+    }
+
+    @Test
     void batchPreparesAllUniqueClaimsBeforeTakingLocks() {
         EntityMutationCommand first = command(
                 "operation-1", "line-1", "最终同值");

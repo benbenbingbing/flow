@@ -13,6 +13,7 @@ import com.workflow.contracts.entity.mutation.model.EntityMutationResult;
 import com.workflow.entity.data.api.response.EntityDataDTO;
 import com.workflow.entity.data.application.EntityAggregateWriter;
 import com.workflow.entity.data.application.EntityDataDynamicService;
+import com.workflow.entity.data.application.EntityMutationSystemFields;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.PreparedUniqueClaims;
 import com.workflow.entity.form.uniqueness.application.EntityFormUniqueClaimService.Preparation;
@@ -64,10 +65,12 @@ public class EntityMutationTransactionExecutor {
             isolation = Isolation.READ_COMMITTED)
     public EntityMutationResult execute(
             EntityMutationCommand command) {
+        boolean currentTaskSync = EntityMutationSystemFields.isCurrentTaskSync(command);
         EntityMutationResult replayed = receiptService.acquire(command);
         if (replayed != null) {
             return replayed;
         }
+        if (currentTaskSync) return executeCurrentTaskSync(command);
         Map<String, Object> before = command.operationType()
                 == EntityMutationOperationType.CREATE
                 ? Map.of()
@@ -144,6 +147,7 @@ public class EntityMutationTransactionExecutor {
                 Collections.nCopies(commands.size(), null));
         List<IndexedCommand> indexed = new ArrayList<>();
         for (int index = 0; index < commands.size(); index++) {
+            EntityMutationSystemFields.isCurrentTaskSync(commands.get(index));
             indexed.add(new IndexedCommand(index, commands.get(index)));
         }
         List<IndexedCommand> pending = new ArrayList<>();
@@ -165,33 +169,52 @@ public class EntityMutationTransactionExecutor {
         List<IndexedCommand> originalWriteOrder = pending.stream()
                 .sorted(Comparator.comparingInt(IndexedCommand::index))
                 .toList();
-        List<Map<String, Object>> snapshots = originalWriteOrder.stream()
+        // 任务摘要不触碰业务聚合，混合批次也不能为它加载子表或准备表单校验。
+        List<IndexedCommand> businessWrites = originalWriteOrder.stream()
+                .filter(item -> !EntityMutationSystemFields.isCurrentTaskSync(item.command()))
+                .toList();
+        List<Map<String, Object>> snapshots = businessWrites.stream()
                 .map(item -> item.command().operationType()
                         == EntityMutationOperationType.CREATE
                         ? Map.<String, Object>of()
                         : load(item.command().entityCode(),
                                 item.command().recordId()))
                 .toList();
-        List<IndexedCommand> writeOrder = originalWriteOrder;
-        List<PreparedUniqueClaims> prepared =
+        List<PreparedUniqueClaims> prepared = businessWrites.isEmpty() ? List.of() :
                 formUniqueClaimService.prepareAll(
                         java.util.stream.IntStream.range(
-                                        0, writeOrder.size())
+                                        0, businessWrites.size())
                                 .mapToObj(index -> preparation(
-                                        writeOrder.get(index).command(),
+                                        businessWrites.get(index).command(),
                                         snapshots.get(index)))
                                 .toList());
-        Set<RootKey> lockedRoots = lockBatch(writeOrder);
-        for (int index = 0; index < writeOrder.size(); index++) {
-            IndexedCommand item = writeOrder.get(index);
+        Map<Integer, PreparedUniqueClaims> preparedByIndex = new LinkedHashMap<>();
+        for (int index = 0; index < businessWrites.size(); index++) {
+            preparedByIndex.put(businessWrites.get(index).index(), prepared.get(index));
+        }
+        Set<RootKey> lockedRoots = lockBatch(originalWriteOrder);
+        for (IndexedCommand item : originalWriteOrder) {
             results.set(
                     item.index(),
-                    executeInternal(
+                    EntityMutationSystemFields.isCurrentTaskSync(item.command())
+                            ? executeCurrentTaskSync(item.command()) : executeInternal(
                             item.command(),
                             lockedRoots,
-                            prepared.get(index)));
+                            preparedByIndex.get(item.index())));
         }
         return results;
+    }
+
+    /**
+     * 在统一事务和幂等回执范围内更新任务投影，不执行表单校验或业务版本捕获。
+     * 交接不修改业务数据，历史子表问题不能阻止责任移交；实际写入失败仍向外抛出。
+     */
+    private EntityMutationResult executeCurrentTaskSync(EntityMutationCommand command) {
+        var summary = writer.synchronizeCurrentTask(command);
+        var result = new EntityMutationResult(command.operationId(), command.entityCode(), command.recordId(),
+                command.operationType(), summary.record(), null, null, summary.changed(), false);
+        receiptService.complete(command, result);
+        return result;
     }
 
     /**
@@ -328,6 +351,10 @@ public class EntityMutationTransactionExecutor {
         Set<RootKey> records = new LinkedHashSet<>();
         for (IndexedCommand item : pending) {
             EntityMutationCommand command = item.command();
+            if (EntityMutationSystemFields.isCurrentTaskSync(command)) {
+                records.add(new RootKey(command.entityCode(), command.recordId()));
+                continue;
+            }
             Map<String, Object> before = command.operationType()
                     == EntityMutationOperationType.CREATE
                     ? Map.of()

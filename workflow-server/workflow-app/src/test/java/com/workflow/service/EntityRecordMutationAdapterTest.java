@@ -11,10 +11,13 @@ import org.mockito.ArgumentCaptor;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
 class EntityRecordMutationAdapterTest {
 
@@ -46,7 +49,7 @@ class EntityRecordMutationAdapterTest {
     }
 
     @Test
-    void currentTaskSyncKeyIncludesAssigneeAndUsesSystemOperator() {
+    void returningToPreviousAssigneeGetsNewSyncKeyAndUsesSystemOperator() {
         EntityMutationPort mutationPort = mock(EntityMutationPort.class);
         EntityRecordMutationAdapter adapter = new EntityRecordMutationAdapter(
                 mutationPort,
@@ -60,13 +63,18 @@ class EntityRecordMutationAdapterTest {
                 "经理审批",
                 "lisi");
 
+        adapter.updateCurrentTask("ZDWREQ", "5923234364c54632a85c74ea1ae70862",
+                "fc60bf47-9b00-11f1-a82b-2e2fd2ff86d9", "经理审批", "zhangsan");
+        adapter.updateCurrentTask("ZDWREQ", "5923234364c54632a85c74ea1ae70862",
+                "fc60bf47-9b00-11f1-a82b-2e2fd2ff86d9", "经理审批", "lisi");
         ArgumentCaptor<EntityMutationCommand> captor =
                 ArgumentCaptor.forClass(EntityMutationCommand.class);
-        verify(mutationPort).execute(captor.capture());
+        verify(mutationPort, times(3)).execute(captor.capture());
         EntityMutationCommand command = captor.getValue();
-        assertEquals(
+        assertTrue(command.context().idempotencyKey().startsWith(
                 "task-runtime:ZDWREQ:5923234364c54632a85c74ea1ae70862:"
-                        + "fc60bf47-9b00-11f1-a82b-2e2fd2ff86d9:lisi",
+                        + "fc60bf47-9b00-11f1-a82b-2e2fd2ff86d9:lisi:"));
+        assertNotEquals(captor.getAllValues().get(0).context().idempotencyKey(),
                 command.context().idempotencyKey());
         assertEquals("system", command.context().operatorId());
         assertEquals("流程引擎", command.context().operatorName());
