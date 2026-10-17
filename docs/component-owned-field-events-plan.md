@@ -96,7 +96,7 @@ export async function trimCustomerName({ value, setValue }) {
 }
 ```
 
-为它新增 `FIELD_EVENT_HANDLER` 清单，例如 `extensions/manifests/biz-customer/handlers/trim_name.v1.extension.json`：
+为它新增 `FIELD_EVENT_HANDLER` 清单，例如 `custom/biz-customer/manifests/handlers/trim_name.v1.extension.json`：
 
 ```json
 {

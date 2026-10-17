@@ -48,6 +48,6 @@ const next = migrateSummaryConfig({ fromVersion: 1, toVersion: 2, config: { fiel
 
 ## 复制到正式模块与验证
 
-业务实现复制到前端工作区根目录 `packages/biz-<module>/src/pc/`，通过 SDK 替换应用私有导入；对应清单放入 `extensions/manifests/biz-<module>/`，使用公开 `implementation.package` 入口。通用实现仍可放 common。修改 name、label、范围和参数，并设置 enabled=true。正式业务清单不依赖 Demo 开关；不要与原示例使用相同的活动注册名。
+业务实现复制到前端工作区根目录 `custom/biz-<module>/src/pc/`，通过 SDK 替换应用私有导入；对应清单放入 `custom/biz-<module>/manifests/`，使用公开 `implementation.package` 入口。通用实现仍可放 common。修改 name、label、范围和参数，并设置 enabled=true。正式业务清单不依赖 Demo 开关；不要与原示例使用相同的活动注册名。
 
 从 `workflow-frontend/workflow-web/` 执行 `npm run extensions:check`、`npm run test:extension-contracts`。`npm run test:extensions:browser` 验证 Demo 开关和真实注册；需要验证校验交互时运行 `npm run test:custom-validators:browser`。

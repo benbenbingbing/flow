@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { fileURLToPath } from 'node:url'
 import { workflowBoundaryPlugin } from '../scripts/workflow-boundary.mjs'
 import { mobileExtensionsPlugin } from '../scripts/mobile-extensions.mjs'
+import { discoverBusinessModules } from '../scripts/extensions/modules.mjs'
 
 const envDir = fileURLToPath(new URL('../..', import.meta.url))
 export default defineConfig(({ mode }) => {
@@ -10,7 +11,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: '/m/', envDir,
     define: { 'import.meta.env.VITE_WEB_PORT': JSON.stringify(process.env.WEB_PORT || env.WEB_PORT || '3000') },
-    optimizeDeps: { exclude: ['@flow/workflow-extension-sdk', '@flow/biz-project', '@flow/workflow-core', '@flow/workflow-api', '@flow/workflow-mobile-ui'] },
+    // 从业务目录发现公开包，新增模块不要求在移动应用另行登记。
+    optimizeDeps: { exclude: ['@flow/workflow-extensions', '@flow/workflow-core', '@flow/workflow-api', '@flow/workflow-mobile-ui', ...[...discoverBusinessModules().values()].map(module => module.name)] },
     plugins: [workflowBoundaryPlugin('mobile'), mobileExtensionsPlugin(), vue()],
     resolve: { dedupe: ['vue', 'pinia', 'vue-router'] },
     server: {

@@ -7,9 +7,10 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 const repositoryRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: root, encoding: 'utf8' }).trim()
 const frontendPrefix = path.relative(repositoryRoot, root).split(path.sep).join('/')
 // 业务抽包后仍受同一维护预算约束；自动发现后续新增包，避免搬目录绕过检查。
-const paths = ['workflow-web/src', 'workflow-mobile/src', ...readdirSync(path.join(root, 'packages'), { withFileTypes: true })
-  .filter(entry => entry.isDirectory() && existsSync(path.join(root, 'packages', entry.name, 'src')))
-  .map(entry => `packages/${entry.name}/src`)]
+const paths = ['workflow-web/src', 'workflow-mobile/src', ...['packages', 'custom'].flatMap(category =>
+  (existsSync(path.join(root, category)) ? readdirSync(path.join(root, category), { withFileTypes: true }) : [])
+    .filter(entry => entry.isDirectory() && existsSync(path.join(root, category, entry.name, 'src')))
+    .map(entry => `${category}/${entry.name}/src`))]
 const defaultLimit = 900
 const inputBase = process.env.FRONTEND_BUDGET_BASE || 'HEAD'
 const requestedBase = /^0+$/.test(inputBase) ? 'HEAD^' : inputBase

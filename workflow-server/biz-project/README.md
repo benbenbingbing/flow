@@ -137,8 +137,8 @@ SPI，身份参数为 `IdentityUser`；知会扩展不再使本模块直接依�
 F07 前端自定义表单位于以下仓库路径：
 
 ```text
-workflow-frontend/packages/biz-project/src/pc/forms/ProjectMemberChangeForm.vue
-workflow-frontend/packages/biz-project/src/mobile/forms/ProjectMemberChangeForm.vue
+workflow-frontend/custom/biz-project/src/pc/forms/ProjectMemberChangeForm.vue
+workflow-frontend/custom/biz-project/src/mobile/forms/ProjectMemberChangeForm.vue
 ```
 
 除该业务自定义表单和跨实体处理器外，F07 的实体、字段、列表、菜单、数据范围、BPMN、节点表单绑定和动作绑定均由配置实现。

@@ -1,8 +1,9 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import path from 'node:path'
-import { frontendRoot, businessModulePattern } from './modules.mjs'
+import { businessModulePattern, discoverBusinessModules } from './modules.mjs'
 
-const schema = JSON.parse(readFileSync(new URL('../../extensions/schemas/extension.schema.json', import.meta.url), 'utf8'))
+// 构建期直接读取产品协议，不能依赖 workflow-extensions 的 dist，否则 core 元数据生成会形成循环。
+const schema = JSON.parse(readFileSync(new URL('../../packages/workflow-extensions/schemas/extension.schema.json', import.meta.url), 'utf8'))
 const multiVersionTypes = new Set(['FORM', 'LIST', 'FIELD', 'VALIDATOR', 'FIELD_EVENT_HANDLER'])
 const componentTypes = new Set(['FORM', 'LIST', 'FIELD', 'LIST_CELL', 'LIST_BUTTON', 'ACTION_CONDITION'])
 
@@ -69,9 +70,9 @@ function validateReference(reference, { moduleId, platform = 'pc' } = {}) {
 export function resolveImplementation(root, reference, options = {}) {
   validateReference(reference, options)
   if (reference.package) {
-    const workspace = realpathSync(options.repositoryRoot || frontendRoot)
-    const packageRoot = realpathSync(path.join(workspace, 'packages', options.moduleId))
-    if (packageRoot !== path.join(workspace, 'packages', options.moduleId)) throw new Error(`业务包不能通过符号链接越界：${reference.package}`)
+    const module = (options.businessModules || discoverBusinessModules(options)).get(options.moduleId)
+    if (!module) throw new Error(`未知前端业务模块：${options.moduleId}`)
+    const packageRoot = realpathSync(module.directory)
     const descriptor = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'))
     if (descriptor.name !== `@flow/${options.moduleId}`) throw new Error(`业务包名称不匹配：${reference.package}`)
     const entry = '.' + reference.package.slice(descriptor.name.length)

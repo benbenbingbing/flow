@@ -20,12 +20,12 @@
 1. 在 `workflow-frontend/workflow-web/` 执行复制，例如：
 
 ```sh
-mkdir -p ../packages/biz-order/src/pc/list-cells
-cp src/extensions/templates/CustomCellTemplate.vue ../packages/biz-order/src/pc/list-cells/OrderStatusCell.vue
+mkdir -p ../custom/biz-order/src/pc/list-cells
+cp src/extensions/templates/CustomCellTemplate.vue ../custom/biz-order/src/pc/list-cells/OrderStatusCell.vue
 ```
 
 2. 创建业务包 `package.json`，声明依赖和公开入口；模板的应用私有导入改为 SDK 契约/宿主能力。读取 [contracts](../contracts/README.md) 约定的 props，不要从组件内部调用注册 API。
-3. 在前端工作区根目录 `extensions/manifests/biz-order/list-cells/order_status.v1.extension.json` 编写 LIST_CELL 清单，name 设为 OrderStatusCell，`implementation.package` 为公开入口 `@flow/biz-order/pc/list-cells/OrderStatusCell`，export=default、kind=COMPONENT。
+3. 在前端工作区根目录 `custom/biz-order/manifests/list-cells/order_status.v1.extension.json` 编写 LIST_CELL 清单，name 设为 OrderStatusCell，`implementation.package` 为公开入口 `@flow/biz-order/pc/list-cells/OrderStatusCell`，export=default、kind=COMPONENT。
 4. 参数放 metadata.configSchema；模板有 suffix 示例，可声明为 text。新业务清单设 enabled=true，并在前端工作区根目录 `config/frontend-modules.json` 中启用 `biz-order`。
 5. 运行 `npm run extensions:check`、`npm run test:extension-contracts` 和 `npm run build`。契约测试只编译模板及契约示例；新业务组件由生产构建实际编译。
 6. 在列表设计器的列渲染组件中选择 OrderStatusCell，填写渲染参数、保存并预览。

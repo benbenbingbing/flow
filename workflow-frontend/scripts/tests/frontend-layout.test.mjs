@@ -59,13 +59,26 @@ test('迁移后的基线使用新路径；新增文件仍执行 900 行上限', 
   assert.match(result.stderr, /New.vue: 901 行 > 900 行/)
 })
 
-test('前端 workspace 保持同层包布局与单一锁文件解析', () => {
+test('前端 workspace 分别解析产品包与自定义模块，并共用单一锁文件', () => {
   const manifest = JSON.parse(readFileSync(path.join(frontend, 'package.json'), 'utf8'))
   const lock = JSON.parse(readFileSync(path.join(frontend, 'package-lock.json'), 'utf8'))
-  assert.deepEqual(manifest.workspaces, ['workflow-web', 'workflow-mobile', 'packages/*'])
-  for (const target of ['workflow-web', 'workflow-mobile', 'packages/workflow-core', 'packages/biz-project']) {
+  assert.deepEqual(manifest.workspaces, ['workflow-web', 'workflow-mobile', 'packages/*', 'custom/*'])
+  for (const target of ['workflow-web', 'workflow-mobile', 'packages/workflow-core', 'packages/workflow-extensions', 'custom/biz-project']) {
     const pkg = JSON.parse(readFileSync(path.join(frontend, target, 'package.json'), 'utf8'))
     assert.equal(lock.packages[`node_modules/${pkg.name}`]?.resolved, target)
     assert.equal(lock.packages[`node_modules/${pkg.name}`]?.link, true)
   }
+})
+
+test('业务目录与产品包都纳入新增文件预算，任意目录名不能免检', t => {
+  const f = fixture(t)
+  for (const folder of ['custom/biz-project', 'custom/renamed', 'packages/workflow-extensions']) {
+    const filename = `workflow-frontend/${folder}/src/Large.vue`
+    f.put(filename, '<!-- new -->\n'.repeat(901))
+    const result = f.run()
+    assert.notEqual(result.status, 0)
+    assert.ok(result.stderr.includes(`${folder}/src/Large.vue: 901 行 > 900 行`))
+    f.put(filename, '<!-- fixed -->\n')
+  }
+  assert.equal(f.run().status, 0)
 })

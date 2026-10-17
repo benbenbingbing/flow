@@ -64,8 +64,8 @@ test('跨字段 patch 合并完成后逐字段进入 change 和校验链，事�
 })
 
 for (const [platform, file, method] of [
-  ['PC', '../../../../packages/biz-project/src/pc/fields/ProjectAcceptanceSummaryField.vue', 'executeNodeDataSource'],
-  ['移动', '../../../../packages/biz-project/src/mobile/fields/ProjectAcceptanceSummaryField.vue', 'execute']
+  ['PC', '../../../../custom/biz-project/src/pc/fields/ProjectAcceptanceSummaryField.vue', 'executeNodeDataSource'],
+  ['移动', '../../../../custom/biz-project/src/mobile/fields/ProjectAcceptanceSummaryField.vue', 'execute']
 ]) {
   test(`${platform} 摘要迁移后通过 patch 更新当前作用域，保留零值并丢弃离开原行后的旧结果`, async () => {
     const props = vue.reactive({ field: { fieldCode: 'extension_summary' }, node: null, formData: { name: '当前子表行', acceptance_score: 0 }, disabled: false, readonly: false, mode: 'edit', context: {}, config: {} })

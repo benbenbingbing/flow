@@ -1,9 +1,9 @@
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { discoverExtensions, manifestDirectory } from './discover.mjs'
+import { discoverExtensions, extensionWatchDirectories, isExtensionManifestChange } from './discover.mjs'
 import { generateExtensionModule, writeFieldDefinitions } from './generate.mjs'
 import { implementationWatchFiles } from './validate.mjs'
-import { moduleConfigFile } from '../../../scripts/extensions/modules.mjs'
+import { extensionLayout } from '../../../scripts/extensions/modules.mjs'
 
 const publicId = 'virtual:flow-extension-manifest'
 const resolvedId = `\0${publicId}`
@@ -27,17 +27,17 @@ export function flowExtensionsPlugin(options = {}) {
       if (id !== resolvedId) return null
       const entries = refresh()
       for (const entry of entries) this.addWatchFile(path.join(root, entry.sourceFile))
-      this.addWatchFile(options.moduleConfigFile || moduleConfigFile)
+      this.addWatchFile(extensionLayout(options).moduleConfigFile)
+      // Vite 会把虚拟模块的 addWatchFile 记录作为导入分析依赖；目录只能交给服务器 watcher。
       return generateExtensionModule(entries, root)
     },
     configureServer(server) {
-      const folder = options.manifestDirectory || manifestDirectory
-      server.watcher.add(folder)
-      const configFile = options.moduleConfigFile || moduleConfigFile
+      server.watcher.add(extensionWatchDirectories(options))
+      const configFile = extensionLayout(options).moduleConfigFile
       server.watcher.add(configFile)
       server.watcher.add([...fieldImplementations])
       const onChange = filename => {
-        if (filename !== configFile && !fieldImplementations.has(filename) && (!filename.startsWith(folder + path.sep) || !filename.endsWith('.extension.json'))) return
+        if (filename !== configFile && !fieldImplementations.has(filename) && !isExtensionManifestChange(filename, options)) return
         try {
           refresh()
           server.watcher.add([...fieldImplementations])

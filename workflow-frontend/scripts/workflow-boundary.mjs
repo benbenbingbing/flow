@@ -33,8 +33,8 @@ export function workflowBoundaryPlugin(platform, options = {}) {
       const modules = [...this.getModuleIds()]
       const invalid = modules.filter(id => forbidden.test(id))
       if (invalid.length) this.error(`平台依赖越界：\n${invalid.join('\n')}`)
-      const enabledModules = resolveEnabledModules(path.join(context.root, 'extensions/manifests'), {
-        moduleConfigFile: path.join(context.root, 'config/frontend-modules.json'), enabledModules: options.enabledModules
+      const enabledModules = resolveEnabledModules({
+        repositoryRoot: context.root, enabledModules: options.enabledModules
       })
       // 交付配置是构建边界；即使某个已启用业务间接导入另一个包，也不能带入未选业务。
       const excluded = modules.filter(id => {

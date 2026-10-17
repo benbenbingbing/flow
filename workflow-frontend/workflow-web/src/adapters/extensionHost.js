@@ -1,4 +1,4 @@
-import { provideExtensionHost } from '@flow/workflow-extension-sdk/host'
+import { provideExtensionHost } from '@flow/workflow-extensions/host'
 import { entityDataApi } from '@/api/entity.js'
 import { uiEventBindingApi } from '@/api/uiConfig.js'
 import { showRequestError } from '@/shared/request'

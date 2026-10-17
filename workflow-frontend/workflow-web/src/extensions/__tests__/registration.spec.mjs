@@ -38,16 +38,18 @@ test('现有清单覆盖十类，保留业务名称和 Demo 开关；生成字�
 test('新模块只增加实现和 JSON 就能被发现，具名导出生成明确 import', () => {
   const fixture = mkdtempSync(path.join(tmpdir(), 'flow-extensions-'))
   try {
-    mkdirSync(path.join(fixture, 'packages/biz-new/src/pc'), { recursive: true })
-    writeFileSync(path.join(fixture, 'packages/biz-new/package.json'), JSON.stringify({ name: '@flow/biz-new', exports: { './pc/Field': './dist/pc/Field.js' } }))
-    mkdirSync(path.join(fixture, 'src/extensions/manifests/biz-new/fields'), { recursive: true })
-    writeFileSync(path.join(fixture, 'packages/biz-new/src/pc/Field.js'), 'export const Field = { name: "new-field" }')
+    mkdirSync(path.join(fixture, 'custom/biz-new/src/pc'), { recursive: true })
+    writeFileSync(path.join(fixture, 'custom/biz-new/package.json'), JSON.stringify({ name: '@flow/biz-new', exports: { './pc/Field': './dist/pc/Field.js' } }))
+    mkdirSync(path.join(fixture, 'custom/biz-new/manifests/fields'), { recursive: true })
+    writeFileSync(path.join(fixture, 'custom/biz-new/src/pc/Field.js'), 'export const Field = { name: "new-field" }')
     const manifest = { schemaVersion: 1, type: 'FIELD', name: 'new_field', label: '新字段', version: 1, implementation: { package: '@flow/biz-new/pc/Field', export: 'Field', kind: 'COMPONENT' } }
-    writeFileSync(path.join(fixture, 'src/extensions/manifests/biz-new/fields/field.extension.json'), JSON.stringify(manifest))
-    const discovered = discoverExtensions(fixture, { manifestDirectory: path.join(fixture, 'src/extensions/manifests'), enabledModules: ['biz-new'], repositoryRoot: fixture })
+    writeFileSync(path.join(fixture, 'custom/biz-new/manifests/fields/field.extension.json'), JSON.stringify(manifest))
+    const appRoot = path.join(fixture, 'workflow-web')
+    mkdirSync(path.join(fixture, 'packages/workflow-extensions/manifests'), { recursive: true })
+    const discovered = discoverExtensions(appRoot, { enabledModules: ['biz-new'], repositoryRoot: fixture })
     assert.equal(discovered.length, 1)
     assert.equal(discovered[0].module, 'biz-new')
-    assert.match(generateExtensionModule(discovered, fixture), /import \{ Field as implementation0 \}/)
+    assert.match(generateExtensionModule(discovered, appRoot), /import \{ Field as implementation0 \}/)
   } finally { rmSync(fixture, { recursive: true, force: true }) }
 })
 

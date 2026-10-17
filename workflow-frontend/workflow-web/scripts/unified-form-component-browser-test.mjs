@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 // 挂载真实设计器和节点树运行时；全部接口走内存适配器，不读取或改写业务配置。
-const summary = JSON.parse(readFileSync('../extensions/manifests/biz-project/fields/ProjectAcceptanceSummaryNode.v1.extension.json', 'utf8'))
-const password = JSON.parse(readFileSync('../extensions/manifests/platform/fields/password.v1.extension.json', 'utf8'))
+const summary = JSON.parse(readFileSync('../custom/biz-project/manifests/fields/ProjectAcceptanceSummaryNode.v1.extension.json', 'utf8'))
+const password = JSON.parse(readFileSync('../packages/workflow-extensions/manifests/platform/fields/password.v1.extension.json', 'utf8'))
 const harness = `
 import {createApp,h,reactive,nextTick} from 'vue'
 import {createPinia} from 'pinia'

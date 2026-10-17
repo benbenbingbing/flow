@@ -1,8 +1,8 @@
 # 前端扩展契约使用说明
 
-本目录保留产品内部的契约兼容入口，公开契约由 `packages/workflow-extension-sdk` 维护。
-业务统一从 `@flow/workflow-extension-sdk/contracts/*` 引入 props、emits、动作上下文与校验协议，
-不引用应用私有别名。导入契约不等于注册扩展，仍需按 [清单手册](../../../../extensions/manifests/README.md) 添加 JSON。
+本目录保留产品内部的契约兼容入口，公开契约由 `packages/workflow-extensions` 维护。
+业务统一从 `@flow/workflow-extensions/contracts/*` 引入 props、emits、动作上下文与校验协议，
+不引用应用私有别名。导入契约不等于注册扩展，仍需按 [清单手册](../../../../packages/workflow-extensions/manifests/README.md) 添加 JSON。
 
 ## 根据实现选择文件
 
@@ -32,7 +32,7 @@
 </template>
 
 <script setup>
-import { listCellProps } from '@flow/workflow-extension-sdk/contracts/list-cell'
+import { listCellProps } from '@flow/workflow-extensions/contracts/list-cell'
 defineProps(listCellProps)
 </script>
 ```
@@ -42,7 +42,7 @@ defineProps(listCellProps)
 ## 校验契约怎么调用
 
 ```js
-import { defineCustomValidator, validateCustomValue } from '@flow/workflow-extension-sdk/contracts/validation'
+import { defineCustomValidator, validateCustomValue } from '@flow/workflow-extensions/contracts/validation'
 
 const rule = defineCustomValidator(value => value !== '' || '请填写内容')
 const result = await validateCustomValue(rule, '', { fieldCode: 'remark' })

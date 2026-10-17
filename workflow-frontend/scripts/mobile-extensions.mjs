@@ -1,8 +1,8 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { discoverExtensions, manifestDirectory } from './extensions/discover.mjs'
+import { discoverExtensions, extensionWatchDirectories, isExtensionManifestChange } from './extensions/discover.mjs'
 import { implementationWatchFiles, implementationImport } from './extensions/validate.mjs'
-import { moduleConfigFile } from './extensions/modules.mjs'
+import { extensionLayout } from './extensions/modules.mjs'
 
 const repository = fileURLToPath(new URL('..', import.meta.url))
 const virtualId = 'virtual:flow-mobile-extensions'
@@ -37,20 +37,24 @@ export function mobileExtensionsPlugin(options = {}) {
   return {
     name: 'flow-mobile-extensions',
     resolveId(id) { if (id === virtualId) return '\0' + virtualId },
-    load(id) { if (id === '\0' + virtualId) return generateMobileExtensions(options) },
+    load(id) {
+      if (id !== '\0' + virtualId) return
+      this.addWatchFile?.(extensionLayout(options).moduleConfigFile)
+      // 目录交由 configureServer 监听；addWatchFile 目录会被 Vite 当作无法解析的模块导入。
+      return generateMobileExtensions(options)
+    },
     configureServer(server) {
-      const manifests = options.manifestDirectory || manifestDirectory
-      const configFile = options.moduleConfigFile || moduleConfigFile
+      const configFile = extensionLayout(options).moduleConfigFile
       const implementationRoot = path.join(options.repositoryRoot || repository, 'workflow-mobile')
       const readFieldImplementations = () => new Set(discoverExtensions(implementationRoot, { ...options, platform: 'mobile', implementationRoot })
         .filter(entry => entry.type === 'FIELD' && entry.platforms?.mobile)
         .flatMap(entry => implementationWatchFiles(implementationRoot, entry.platforms.mobile.implementation, { ...options, moduleId: entry.module, platform: 'mobile' })))
       let fieldImplementations = readFieldImplementations()
-      server.watcher.add(manifests)
+      server.watcher.add(extensionWatchDirectories(options))
       server.watcher.add(configFile)
       server.watcher.add([...fieldImplementations])
       const onChange = (_, filename) => {
-        if (filename !== configFile && !filename.startsWith(manifests + path.sep) && !fieldImplementations.has(filename)) return
+        if (filename !== configFile && !isExtensionManifestChange(filename, options) && !fieldImplementations.has(filename)) return
         try {
           fieldImplementations = readFieldImplementations()
           server.watcher.add([...fieldImplementations])

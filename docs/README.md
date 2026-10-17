@@ -9,7 +9,7 @@
 - [仓库启动、构建与部署](../README.md)
 - [前端工作区命令和目录](../workflow-frontend/README.md)
 - [前端业务模块与 SDK](frontend-business-modules.md)
-- [扩展清单手册](../workflow-frontend/extensions/manifests/README.md)
+- [扩展清单手册](../workflow-frontend/packages/workflow-extensions/manifests/README.md)
 - [移动工作台](../workflow-frontend/workflow-mobile/README.md)
 - [后端模块与包边界](backend-package-layout.md)
 

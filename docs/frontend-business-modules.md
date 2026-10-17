@@ -10,42 +10,44 @@
 
 ```text
 flow/workflow-frontend/
-├── config/frontend-modules.json           # 默认启用的业务模块
-├── extensions/
-│   ├── manifests/
-│   │   ├── platform/                     # 产品内置声明
-│   │   ├── common/                       # 跨业务通用声明
-│   │   ├── examples/                     # 产品示例声明
-│   │   └── biz-project/                  # 项目业务声明
-│   └── schemas/                          # 清单格式规范
-├── packages/
-│   ├── workflow-core/                    # 通用规则、校验、表单与流程运行逻辑
-│   ├── workflow-api/                     # 通用实体、流程、文件 API
-│   ├── workflow-extension-sdk/           # 对业务公开的契约和宿主注入接口
-│   ├── workflow-mobile-ui/               # 通用移动组件
-│   └── biz-project/
-│       ├── package.json                  # 显式依赖和各端公开入口
-│       ├── src/
-│       │   ├── shared/                   # 项目成员变更、验收模型
-│       │   ├── api/                      # 项目 API 的组合和业务查询规则
-│       │   ├── pc/                       # PC 表单、字段、列表、动作等
-│       │   └── mobile/                   # 移动表单和字段
+├── config/frontend-modules.json        # 默认启用的业务模块
+├── packages/                           # 产品公共包
+│   ├── workflow-core/
+│   ├── workflow-api/
+│   ├── workflow-mobile-ui/
+│   └── workflow-extensions/
+│       ├── src/contracts/              # 公开运行时契约
+│       ├── src/host/                   # 按应用隔离的宿主能力
+│       ├── manifests/                  # platform/common/examples
+│       ├── schemas/                    # 共用清单 Schema
 │       └── tests/
-├── workflow-web/src/
-│   ├── adapters/extensionHost.js         # PC/Embed 宿主能力
-│   └── extensions/                       # 产品扩展、示例和统一安装入口
-├── workflow-mobile/src/
-│   ├── adapters/extensionHost.js         # 移动宿主能力
-│   └── extensions/                       # 通用扩展及产品示例
+├── custom/                             # 自定义模块，不混入产品源码
+│   └── biz-project/
+│       ├── package.json                # 显式依赖及各端公开入口
+│       ├── src/
+│       │   ├── shared/                 # 跨端业务模型
+│       │   ├── api/                    # 项目 API 组装
+│       │   ├── pc/                     # PC 表单、字段、列表、动作
+│       │   └── mobile/                 # 移动表单和字段
+│       ├── manifests/                  # 该业务全部扩展声明
+│       ├── tests/
+│       └── README.md
+├── workflow-web/src/adapters/extensionHost.js
+├── workflow-mobile/src/adapters/extensionHost.js
 └── scripts/
-    ├── extensions/                       # 清单扫描、校验、代码生成
-    ├── check-business-boundaries.mjs      # 业务与产品源码依赖检查
-    └── workflow-boundary.mjs              # 构建模块图和平台边界检查
+    ├── extensions/                     # 跨目录统一发现、校验、生成
+    ├── check-business-boundaries.mjs    # 产品/业务源码依赖检查
+    └── workflow-boundary.mjs            # 实际构建图与平台边界检查
 ```
 
-实现包与清单目录一一对应：`packages/biz-project` 对应
-`extensions/manifests/biz-project`。新业务同样使用 `biz-名称`，不再增加 `business/` 层。
-业务包内部目录按实际需要创建。前端工作区的 `extensions` 只保存声明和规范，实际页面参数仍保存在业务配置中。
+业务实现与清单统一放在 `custom/biz-project/`，新业务同样使用 `custom/biz-名称/`。
+业务开发只维护自己模块的实现、公开入口和清单，并在交付配置中选择模块。
+`packages/workflow-extensions` 合并原 SDK、产品清单和 Schema；产品组件实现仍留在所属产品包或应用。
+运行时入口只导出契约和宿主能力，构建器单独读取 `manifests` 和 `schemas`，导入契约不会注册产品扩展。
+
+PC 与移动端扫描同一份业务清单：PC/Embed 使用顶层 `implementation`，移动端仅使用
+`platforms.mobile.implementation`。未声明移动实现时不会加载 PC 组件，目录搬迁不改变这一规则。
+源码和构建图按 `custom` 的实际位置判定业务归属，不能通过修改包名前缀绕开依赖边界。
 
 ## 选择交付模块
 
@@ -107,12 +109,12 @@ GitHub CI/部署/镜像安全检查使用可选变量 `vars.FLOW_FRONTEND_MODULE
 源码检查解析 JS/TS/Vue 的 AST，覆盖 import、export、require 和懒加载，不把注释中的示例当作依赖。
 构建检查使用实际解析后的模块图，覆盖 alias、间接依赖和动态分块；所有生产入口都执行检查。
 
-## 使用 SDK 和宿主能力
+## 使用扩展契约和宿主能力
 
-业务契约从 `@flow/workflow-extension-sdk/contracts/*` 导入。需要宿主能力时：
+业务契约从 `@flow/workflow-extensions/contracts/*` 导入。需要宿主能力时：
 
 ```js
-import { useExtensionHost } from '@flow/workflow-extension-sdk/host'
+import { useExtensionHost } from '@flow/workflow-extensions/host'
 import { createMemberChangeApi } from '@flow/biz-project/api/memberChange'
 
 // 在组件 setup 中取当前应用的客户端，继承会话、请求错误和权限处理。
@@ -131,11 +133,11 @@ PC/Embed 宿主提供 `entityDataApi`、`uiEventBindingApi`、`showRequestError`
 
 ## 新增业务扩展
 
-1. 创建 `packages/biz-order/package.json`，命名为 `@flow/biz-order`；声明实际依赖，
+1. 创建 `custom/biz-order/package.json` 和 `manifests/`，命名为 `@flow/biz-order`；workspace 已覆盖 `custom/*`，声明实际依赖，
    在 `exports` 中分别公开 `./shared/*`、`./api/*`、`./pc/*`、`./mobile/*` 中需要接入的具体入口。
 2. 在 `src` 中实现业务。可从产品扩展模板复制，复制后将应用私有导入替换为 SDK 契约/宿主能力。
    业务模块不自行注册，不修改产品注册表或产品页面。
-3. 在 `extensions/manifests/biz-order/<类型>/` 新增清单。业务实现使用 `implementation.package`：
+3. 在 `custom/biz-order/manifests/<类型>/` 新增清单。业务实现使用 `implementation.package`：
 
 ```json
 {
@@ -157,7 +159,7 @@ PC/Embed 宿主提供 `entityDataApi`、`uiEventBindingApi`、`showRequestError`
 ```
 
 上面只展示实现入口，完整清单仍需要 `schemaVersion/type/name/version/metadata` 等字段，见
-[清单手册](../workflow-frontend/extensions/manifests/README.md)。`package` 和应用内 `path` 二选一；
+[清单手册](../workflow-frontend/packages/workflow-extensions/manifests/README.md)。`package` 和应用内 `path` 二选一；
 业务入口必须属于同名业务包，路径和平台受校验。未实现移动端时不声明 `platforms.mobile`，不会回退加载 PC。
 
 4. 将 `biz-order` 加入启用配置，完成 workspace 安装和构建；在设计器中绑定稳定注册名、填写参数、发布。

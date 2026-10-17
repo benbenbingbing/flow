@@ -183,8 +183,8 @@ PC 和移动端的实际 Origin 加入开发环境 CORS 白名单。两端请求
 `start.sh` 自动进入前端工作区安装依赖并
 构建产品公共包、扩展 SDK、业务包、PC（含 Embed）和移动端。
 共享包源码修改由 watch 重建。移动端的组件位置、扩展注册与限制见
-[`workflow-mobile/README.md`](workflow-frontend/workflow-mobile/README.md)。业务实现统一位于 `workflow-frontend/packages/biz-*`，
-同名声明位于 `workflow-frontend/extensions/manifests/biz-*`。前端命令入口见
+[`workflow-mobile/README.md`](workflow-frontend/workflow-mobile/README.md)。业务实现与声明统一位于 `workflow-frontend/custom/biz-*` 的 `src/` 和 `manifests/`。
+产品扩展契约、宿主接口、产品清单及 Schema 由 `packages/workflow-extensions` 统一维护。前端命令入口见
 [前端工作区](workflow-frontend/README.md)，模块选择、SDK 宿主能力和依赖边界见
 [前端业务模块开发](docs/frontend-business-modules.md)。
 

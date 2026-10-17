@@ -15,7 +15,7 @@
 3. 用 `configSchema` 声明变化参数，避免在代码中固定某个实体编码、字段名或业务额度。确有范围要求则声明 `supportedEntityCodes`。
 4. 从 `workflow-frontend/workflow-web/` 执行 `npm run extensions:check`、`npm run test:extensions`、`npm run build`，然后在两个不同实体配置不同参数验证复用行为。
 
-CLASS、OBJECT、FACTORY 的选择和清单示例见 [通用清单说明](../../../../extensions/manifests/README.md)。
+CLASS、OBJECT、FACTORY 的选择和清单示例见 [通用清单说明](../../../../packages/workflow-extensions/manifests/README.md)。
 
 ## 通用校验器
 

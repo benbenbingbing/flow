@@ -56,9 +56,11 @@ test('容器 npm ci 前包含全部 workspace 描述，并通过真实离线依�
   const stage = mkdtempSync(path.join(tmpdir(), 'flow-container-install-'))
   t.after(() => rmSync(stage, { recursive: true, force: true }))
   stageInputs(stage, true)
-  for (const entry of readdirSync(path.join(root, 'packages'))) {
-    if (!existsSync(path.join(root, 'packages', entry, 'package.json'))) continue
-    assert.ok(existsSync(path.join(stage, 'packages', entry, 'package.json')), `缺少 workspace ${entry}`)
+  for (const folder of ['packages', 'custom']) {
+    for (const entry of readdirSync(path.join(root, folder))) {
+      if (!existsSync(path.join(root, folder, entry, 'package.json'))) continue
+      assert.ok(existsSync(path.join(stage, folder, entry, 'package.json')), `缺少 workspace ${folder}/${entry}`)
+    }
   }
   const install = spawnSync('npm', ['ci', '--dry-run', '--ignore-scripts', '--offline', '--no-audit', '--no-fund', '--cache', path.join(stage, '.npm-cache')], {
     cwd: stage, encoding: 'utf8', timeout: 60000, shell: process.platform === 'win32'
@@ -71,7 +73,7 @@ test('容器构建输入支持默认配置和 none 选择，且不复制宿主�
   t.after(() => rmSync(stage, { recursive: true, force: true }))
   stageInputs(stage)
   assert.ok(existsSync(path.join(stage, 'config/frontend-modules.json')))
-  for (const excluded of ['node_modules', 'packages/biz-project/dist', 'workflow-web/dist', 'workflow-mobile/dist']) assert.equal(existsSync(path.join(stage, excluded)), false, excluded)
+  for (const excluded of ['node_modules', 'custom/biz-project/dist', 'workflow-web/dist', 'workflow-mobile/dist']) assert.equal(existsSync(path.join(stage, excluded)), false, excluded)
   const script = "import { selectedWorkspacePackages } from './scripts/workspace-packages.mjs'; console.log(JSON.stringify(selectedWorkspacePackages()))"
   const baseEnv = { ...process.env }
   delete baseEnv.FLOW_FRONTEND_MODULES
@@ -80,7 +82,7 @@ test('容器构建输入支持默认配置和 none 选择，且不复制宿主�
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], { cwd: stage, env, encoding: 'utf8' })
     assert.equal(result.status, 0, result.stderr)
     const packages = JSON.parse(result.stdout)
-    assert.ok(packages.includes('@flow/workflow-extension-sdk'))
+    assert.ok(packages.includes('@flow/workflow-extensions'))
     const expected = enabled === 'none' ? [] : JSON.parse(readFileSync(path.join(stage, 'config/frontend-modules.json'))).enabledModules
     assert.deepEqual(packages.filter(name => name.startsWith('@flow/biz-')), expected.map(name => `@flow/${name}`))
   }

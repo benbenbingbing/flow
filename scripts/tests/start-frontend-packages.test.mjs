@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 const repository = fileURLToPath(new URL('../..', import.meta.url))
-const productPackages = ['workflow-core', 'workflow-extension-sdk', 'workflow-api', 'workflow-mobile-ui']
+const productPackages = ['workflow-core', 'workflow-extensions', 'workflow-api', 'workflow-mobile-ui']
 
 /** 只替换服务启动与 PID 探测；真实 Bash 分派和模块选择在临时仓库中执行。 */
 function fixture(t) {
@@ -20,11 +20,11 @@ function fixture(t) {
     copyFileSync(path.join(repository, name), target)
   }
   for (const name of [...productPackages, 'biz-project', 'biz-purchase']) {
-    const folder = path.join(frontendRoot, 'packages', name)
+    const folder = path.join(frontendRoot, name.startsWith('biz-') ? 'custom' : 'packages', name)
     mkdirSync(folder, { recursive: true })
     writeFileSync(path.join(folder, 'package.json'), JSON.stringify({ name: `@flow/${name}` }))
   }
-  for (const module of ['biz-project', 'biz-purchase']) mkdirSync(path.join(frontendRoot, 'extensions/manifests', module), { recursive: true })
+  for (const module of ['biz-project', 'biz-purchase']) mkdirSync(path.join(frontendRoot, 'custom', module, 'manifests'), { recursive: true })
   mkdirSync(path.join(frontendRoot, 'config'))
   writeFileSync(path.join(frontendRoot, 'config/frontend-modules.json'), JSON.stringify({ enabledModules: ['biz-project'] }))
   return { root, frontendRoot,
@@ -87,7 +87,7 @@ test('业务 watcher 按公开子入口构建就绪，不要求 dist/index.js', 
     }
     assert.equal(flag, '--watch')
   }
-  assert.equal(existsSync(path.join(app.frontendRoot, 'packages/biz-project/dist/index.js')), false)
+  assert.equal(existsSync(path.join(app.frontendRoot, 'custom/biz-project/dist/index.js')), false)
 })
 
 test('同一次启动固定模块快照，磁盘配置变化不改变构建与 watcher 的选择', t => {
@@ -105,8 +105,8 @@ start_package_watchers
 
 test('停止扫描已记录 PID，当前配置禁用或损坏也不会遗留旧业务 watcher', t => {
   const app = fixture(t)
-  for (const name of ['workflow-extension-sdk', 'workflow-mobile-ui', 'biz-project']) {
-    writeFileSync(path.join(app.frontendRoot, 'packages', name, 'watch.pid'), '123\n')
+  for (const name of ['workflow-extensions', 'workflow-mobile-ui', 'biz-project']) {
+    writeFileSync(path.join(app.frontendRoot, name.startsWith('biz-') ? 'custom' : 'packages', name, 'watch.pid'), '123\n')
   }
   writeFileSync(path.join(app.frontendRoot, 'config/frontend-modules.json'), '{invalid')
   const result = app.run(`
@@ -115,9 +115,9 @@ stop_package_watchers
 `)
   succeeded(result)
   const lines = result.stdout.trim().split('\n').map(line => line.split('|'))
-  assert.deepEqual(lines.map(line => line[0]).sort(), ['biz-project watch', 'workflow-extension-sdk watch', 'workflow-mobile-ui watch'].sort())
+  assert.deepEqual(lines.map(line => line[0]).sort(), ['biz-project watch', 'workflow-extensions watch', 'workflow-mobile-ui watch'].sort())
   for (const [name, command, directory] of lines) {
-    assert.equal(directory, path.join(app.frontendRoot, 'packages', name.replace(/ watch$/, '')))
+    assert.equal(directory, path.join(app.frontendRoot, name.startsWith('biz-') ? 'custom' : 'packages', name.replace(/ watch$/, '')))
     assert.equal(command, name.startsWith('workflow-mobile-ui ') ? 'node_modules/.bin/vite' : 'build-module-package.mjs --watch')
   }
 })
@@ -138,7 +138,7 @@ start_application
 
 test('status 继续显示已禁用业务和 SDK 的已记录进程', t => {
   const app = fixture(t)
-  writeFileSync(path.join(app.frontendRoot, 'packages/biz-project/watch.pid'), '123\n')
+  writeFileSync(path.join(app.frontendRoot, 'custom/biz-project/watch.pid'), '123\n')
   const result = app.run(`
 SERVER_PORT=8080; WEB_PORT=3000; MOBILE_PORT=3001
 process_status() { printf '%s|%s\\n' "$1" "$2"; }
@@ -146,7 +146,7 @@ curl() { return 1; }
 show_status
 `, { FLOW_FRONTEND_MODULES: 'none' })
   succeeded(result)
-  assert.match(result.stdout, /workflow-extension-sdk\|/)
+  assert.match(result.stdout, /workflow-extensions\|/)
   assert.match(result.stdout, /biz-project\|/)
 })
 

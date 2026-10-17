@@ -42,9 +42,9 @@ npm run build
 | `workflow-mobile/src/pages` | 登录、列表、详情与审批编排 |
 | `workflow-mobile/src/adapters` | 会话、Vant 提示、字段事件、上传和受控候选查询 |
 | `workflow-mobile/src/extensions` | 通用扩展与产品 Demo |
-| `packages/biz-project/src/mobile` | 项目验收、成员变更等移动业务扩展 |
-| `packages/biz-project/src/shared`、`src/api` | 项目专属跨端规则与接口组装 |
-| `packages/workflow-extension-sdk/src` | 产品公开契约及按应用隔离的宿主能力 |
+| `custom/biz-project/src/mobile` | 项目验收、成员变更等移动业务扩展 |
+| `custom/biz-project/src/shared`、`src/api` | 项目专属跨端规则与接口组装 |
+| `packages/workflow-extensions/src` | 产品公开契约及按应用隔离的宿主能力 |
 | `packages/workflow-mobile-ui/src` | 表单、字段、子表、附件、选择器、审批面板和主题 |
 | `packages/workflow-core/src` | 发布模型、校验、联动、参数、流程规则及无 UI composables |
 | `packages/workflow-api/src` | 注入 request 的接口工厂；无应用 store、UI 或 token 单例 |
@@ -59,7 +59,7 @@ PC 引入移动 UI 会构建失败；产物中的 `module-boundary.json` 可检�
 ## 扩展和能力限制
 
 扩展身份仍使用原 manifest 的 `type + name + version`。在
-`extensions/manifests/biz-project/` 的对应清单中声明移动业务实现：
+`custom/biz-project/manifests/` 的对应清单中声明移动业务实现：
 
 ```json
 {

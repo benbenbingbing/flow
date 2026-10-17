@@ -1,6 +1,6 @@
 # 平台内置扩展
 
-`fields/` 实现标准表单控件，`list-cells/` 实现标准单元格。注册声明位于 [platform 清单](../../../../extensions/manifests/README.md)，应用启动时自动安装。
+`fields/` 实现标准表单控件，`list-cells/` 实现标准单元格。注册声明位于 [platform 清单](../../../../packages/workflow-extensions/manifests/README.md)，应用启动时自动安装。
 
 ## 如何使用现有控件
 
@@ -13,7 +13,7 @@
 ## 如何修改或新增平台能力
 
 - 修改所有使用方共用的行为：修改此处实现，并核对对应清单的 `configSchema`、兼容类型和别名。
-- 只服务一个业务的变化：复制模板到 `packages/biz-<module>/src/pc/`（相对前端工作区根目录），使用独立注册名与业务清单。
+- 只服务一个业务的变化：复制模板到 `custom/biz-<module>/src/pc/`（相对前端工作区根目录），使用独立注册名与业务清单。
 - 新增平台字段：实现后在 `manifests/platform/fields/` 写 JSON；确认哪些类型默认使用它，避免与已有 `defaultForFieldTypes` 冲突。
 
 以下命令从 `workflow-frontend/workflow-web/` 执行；修改平台字段清单后先更新生成数据：
@@ -29,7 +29,7 @@ npm run build
 
 本节文件路径相对 `builtin/fields/`。
 
-`components/` 提供文本、数字、日期、选择、附件、实体引用和子表等控件；`composables/useFormField.js` 共享值同步、选项、禁用态、默认值和标准事件。注册名、别名和类型兼容范围来自 [平台字段清单](../../../../extensions/manifests/platform/fields)。
+`components/` 提供文本、数字、日期、选择、附件、实体引用和子表等控件；`composables/useFormField.js` 共享值同步、选项、禁用态、默认值和标准事件。注册名、别名和类型兼容范围来自 [平台字段清单](../../../../packages/workflow-extensions/manifests/platform/fields)。
 
 ### 在表单中使用
 
@@ -71,7 +71,7 @@ const { fieldValue, isDisabled, parsedComponentProps, handleChange, handleBlur, 
 
 本节实现位于 `builtin/list-cells/`。
 
-此目录的三个组件由 [平台单元格清单](../../../../extensions/manifests/platform/list-cells) 自动注册，业务列表无需再次注册。
+此目录的三个组件由 [平台单元格清单](../../../../packages/workflow-extensions/manifests/platform/list-cells) 自动注册，业务列表无需再次注册。
 
 ### 如何配置
 

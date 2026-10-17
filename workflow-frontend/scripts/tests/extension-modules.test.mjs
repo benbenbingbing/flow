@@ -1,13 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, symlinkSync, realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'node:events'
 import { discoverExtensions } from '../extensions/discover.mjs'
 import { generateExtensionModule } from '../extensions/generate.mjs'
-import { resolveEnabledModules } from '../extensions/modules.mjs'
+import { discoverBusinessModules, resolveEnabledModules } from '../extensions/modules.mjs'
+import { selectedWorkspacePackageDescriptors } from '../workspace-packages.mjs'
 import { resolveImplementation } from '../extensions/validate.mjs'
 import { generateMobileExtensions, mobileExtensionsPlugin } from '../mobile-extensions.mjs'
 import { flowExtensionsPlugin } from '../../workflow-web/build/extensions/vite-plugin.mjs'
@@ -24,25 +25,25 @@ function fixture(t) {
     writeFileSync(filename, typeof value === 'string' ? value : JSON.stringify(value))
     return filename
   }
-  const manifestDirectory = path.join(repositoryRoot, 'extensions/manifests')
+  const manifestDirectory = path.join(repositoryRoot, 'packages/workflow-extensions/manifests')
   const moduleConfigFile = put('config/frontend-modules.json', { enabledModules: ['biz-project'] })
-  const pc = 'packages/biz-project/src/pc/forms/ProjectForm.vue'
-  const mobile = 'packages/biz-project/src/mobile/forms/ProjectForm.vue'
+  const pc = 'custom/biz-project/src/pc/forms/ProjectForm.vue'
+  const mobile = 'custom/biz-project/src/mobile/forms/ProjectForm.vue'
   put(pc, '<template>PC</template>')
   put(mobile, '<template>Mobile</template>')
   const descriptor = { name: '@flow/biz-project', exports: {
     './pc/forms/ProjectForm': './dist/pc/forms/ProjectForm.vue',
     './mobile/forms/ProjectForm': './dist/mobile/forms/ProjectForm.vue'
   } }
-  put('packages/biz-project/package.json', descriptor)
+  put('custom/biz-project/package.json', descriptor)
   const manifest = { schemaVersion: 1, type: 'FORM', name: 'ProjectForm', label: '项目表单', version: 3,
     implementation: { package: '@flow/biz-project/pc/forms/ProjectForm', export: 'default', kind: 'COMPONENT' },
     platforms: { mobile: { implementation: { package: '@flow/biz-project/mobile/forms/ProjectForm', export: 'default', kind: 'COMPONENT' }, capabilities: { readonly: true, editable: true, validate: true } } }
   }
-  const manifestFile = 'extensions/manifests/biz-project/forms/ProjectForm.extension.json'
+  const manifestFile = 'custom/biz-project/manifests/forms/ProjectForm.extension.json'
   put(manifestFile, manifest)
   put('workflow-web/src/common.js', 'export const run = () => true')
-  put('extensions/manifests/common/actions/Common.extension.json', {
+  put('packages/workflow-extensions/manifests/common/actions/Common.extension.json', {
     schemaVersion: 1, type: 'LIST_ACTION', name: 'Common', label: '通用动作', version: 1, targets: ['ROW'],
     implementation: { path: 'src/common.js', export: 'run', kind: 'FUNCTION' }
   })
@@ -52,7 +53,7 @@ function fixture(t) {
 
 test('配置与环境选择业务模块：none、覆盖、未知、重复及空配置', t => {
   const f = fixture(t)
-  const selected = extra => [...resolveEnabledModules(f.options.manifestDirectory, { ...f.options, ...extra })]
+  const selected = extra => [...resolveEnabledModules({ ...f.options, ...extra })]
   assert.deepEqual(selected(), ['biz-project'])
   assert.deepEqual(selected({ env: { FLOW_FRONTEND_MODULES: 'none' } }), [])
   assert.deepEqual(selected({ env: { FLOW_FRONTEND_MODULES: ' biz-project ' } }), ['biz-project'])
@@ -64,6 +65,42 @@ test('配置与环境选择业务模块：none、覆盖、未知、重复及空�
     f.put('config/frontend-modules.json', { enabledModules })
     assert.throws(() => selected(), /名称数组/)
   }
+})
+
+test('custom 目录是模块与构建的唯一目录来源，旧目录和重复登记立即失败', t => {
+  const f = fixture(t)
+  const modules = discoverBusinessModules(f.options)
+  assert.deepEqual(modules.get('biz-project'), {
+    id: 'biz-project', name: '@flow/biz-project', directory: path.join(f.repositoryRoot, 'custom/biz-project'),
+    manifestDirectory: path.join(f.repositoryRoot, 'custom/biz-project/manifests')
+  })
+  assert.deepEqual(selectedWorkspacePackageDescriptors(f.options).at(-1), { name: '@flow/biz-project', directory: path.join(f.repositoryRoot, 'custom/biz-project') })
+  assert.equal(selectedWorkspacePackageDescriptors({ ...f.options, enabledModules: [] }).length, 4)
+  assert.throws(() => resolveEnabledModules(f.options.manifestDirectory, f.options), /不再接受旧清单目录参数/)
+  for (const legacy of ['extensions/manifests', 'packages/biz-project']) {
+    const folder = path.join(f.repositoryRoot, legacy)
+    mkdirSync(folder, { recursive: true })
+    assert.throws(() => discoverExtensions(f.root, f.options), /旧.*目录/)
+    rmSync(folder, { recursive: true })
+  }
+  f.put('packages/workflow-extensions/manifests/biz-project/duplicate.extension.json', f.manifest)
+  assert.throws(() => discoverExtensions(f.root, { ...f.options, enabledModules: [] }), /未知归属目录/)
+})
+
+test('业务目录必须使用 biz-* 同名包，并拒绝模块和清单符号链接', t => {
+  const f = fixture(t)
+  f.put('custom/biz-project/package.json', { ...f.descriptor, name: '@flow/other' })
+  assert.throws(() => discoverBusinessModules(f.options), /名称不匹配/)
+  f.put('custom/biz-project/package.json', f.descriptor)
+  const invalid = path.join(f.repositoryRoot, 'custom/project')
+  mkdirSync(invalid)
+  assert.throws(() => discoverBusinessModules(f.options), /非法业务模块目录/)
+  rmSync(invalid, { recursive: true })
+  symlinkSync(path.join(f.repositoryRoot, 'custom/biz-project'), path.join(f.repositoryRoot, 'custom/biz-other'))
+  assert.throws(() => discoverBusinessModules(f.options), /符号链接/)
+  rmSync(path.join(f.repositoryRoot, 'custom/biz-other'))
+  symlinkSync(path.join(f.repositoryRoot, f.manifestFile), path.join(f.repositoryRoot, 'custom/biz-project/manifests/duplicate.extension.json'))
+  assert.throws(() => discoverExtensions(f.root, f.options), /清单目录不能使用符号链接/)
 })
 
 test('PC/移动只生成自己的公开子入口，禁用模块在两个导入图中均消失', t => {
@@ -86,7 +123,7 @@ test('PC/移动只生成自己的公开子入口，禁用模块在两个导入�
 
 test('未选业务不依赖源码/产物，metadata 从不读取业务组件，但坏声明仍失败', t => {
   const f = fixture(t)
-  rmSync(path.join(f.repositoryRoot, 'packages'), { recursive: true })
+  rmSync(path.join(f.repositoryRoot, 'custom/biz-project/src'), { recursive: true })
   assert.doesNotThrow(() => discoverExtensions(f.root, { ...f.options, enabledModules: [] }))
   assert.doesNotThrow(() => discoverExtensions(f.root, { ...f.options, platform: 'metadata' }))
   assert.throws(() => discoverExtensions(f.root, f.options), /ENOENT/)
@@ -106,10 +143,10 @@ test('业务入口必须匹配本业务、本平台、公开 exports 和真实�
     assert.throws(() => resolve(entry), /公开包入口|未导出/)
   }
   f.descriptor.exports['./pc/forms/ProjectForm'] = './dist/mobile/forms/ProjectForm.vue'
-  f.put('packages/biz-project/package.json', f.descriptor)
+  f.put('custom/biz-project/package.json', f.descriptor)
   assert.throws(() => resolve('@flow/biz-project/pc/forms/ProjectForm'), /本平台/)
   f.descriptor.exports = { './pc/forms/*': './dist/pc/forms/*.vue' }
-  f.put('packages/biz-project/package.json', f.descriptor)
+  f.put('custom/biz-project/package.json', f.descriptor)
   assert.equal(resolve('@flow/biz-project/pc/forms/ProjectForm'), path.join(f.repositoryRoot, f.pc))
   rmSync(path.join(f.repositoryRoot, f.pc))
   symlinkSync(path.join(f.repositoryRoot, f.mobile), path.join(f.repositoryRoot, f.pc))
@@ -154,10 +191,12 @@ test('PC 和移动开发监听配置切换、包字段产物更新，并把坏�
     plugin.configureServer(server)
     const emit = file => platform === 'pc' ? watcher.emit('change', file) : watcher.emit('all', 'change', file)
     const moduleId = plugin.resolveId(platform === 'pc' ? 'virtual:flow-extension-manifest' : 'virtual:flow-mobile-extensions')
-    const load = () => plugin.load.call({ addWatchFile() {} }, moduleId)
+    const load = () => plugin.load.call({ addWatchFile(filename) {
+      assert.equal(statSync(filename).isFile(), true, '虚拟模块依赖只能登记文件，Vite 无法把目录解析为导入')
+    } }, moduleId)
     assert.match(load(), /@flow\/biz-project/)
     assert.ok(watched.has(f.options.moduleConfigFile))
-    const output = path.join(f.repositoryRoot, 'packages/biz-project/dist', platform, 'forms/ProjectForm.vue')
+    const output = path.join(f.repositoryRoot, 'custom/biz-project/dist', platform, 'forms/ProjectForm.vue')
     assert.ok(watched.has(output), '字段产物完成复制后应重新提取组件的事件能力')
     f.put('config/frontend-modules.json', { enabledModules: [] })
     emit(f.options.moduleConfigFile)
@@ -174,6 +213,41 @@ test('PC 和移动开发监听配置切换、包字段产物更新，并把坏�
     assert.match(messages.at(-1).err.message, /未知前端业务模块/)
     httpServer.emit('close')
     assert.equal(watcher.listenerCount(platform === 'pc' ? 'change' : 'all'), 0)
+  }
+})
+
+test('PC 和移动可发现业务清单新增、变更、删除，无需重新启动 Vite', t => {
+  for (const platform of ['pc', 'mobile']) {
+    const f = fixture(t)
+    const watcher = new EventEmitter(), httpServer = new EventEmitter(), watched = new Set(), messages = []
+    watcher.add = filenames => { for (const file of [filenames].flat()) watched.add(file) }
+    const server = { watcher, httpServer, ws: { send: message => messages.push(message) }, moduleGraph: { getModuleById: () => ({}), invalidateModule() {} } }
+    const plugin = platform === 'pc' ? flowExtensionsPlugin(f.options) : mobileExtensionsPlugin(f.options)
+    plugin.configResolved?.({ root: f.root })
+    plugin.configureServer(server)
+    assert.ok(watched.has(path.join(f.repositoryRoot, 'custom')))
+    assert.ok(watched.has(f.options.manifestDirectory))
+    const moduleId = plugin.resolveId(platform === 'pc' ? 'virtual:flow-extension-manifest' : 'virtual:flow-mobile-extensions')
+    const load = () => plugin.load.call({ addWatchFile() {} }, moduleId)
+    const emit = (event, filename) => platform === 'pc' ? watcher.emit(event, filename) : watcher.emit('all', event, filename)
+    const extra = { ...f.manifest, name: 'AddedForm' }
+    const relative = 'custom/biz-project/manifests/new/forms/AddedForm.extension.json'
+    const filename = f.put(relative, extra)
+    emit('add', filename)
+    assert.equal(messages.at(-1).type, 'full-reload')
+    assert.match(load(), /AddedForm/)
+    extra.name = 'ChangedForm'
+    f.put(relative, extra)
+    emit('change', filename)
+    assert.equal(messages.at(-1).type, 'full-reload')
+    assert.match(load(), /ChangedForm/)
+    assert.doesNotMatch(load(), /"name":"AddedForm"/)
+    rmSync(filename)
+    emit('unlink', filename)
+    assert.equal(messages.at(-1).type, 'full-reload')
+    assert.doesNotMatch(load(), /AddedForm|ChangedForm/)
+    assert.equal(messages.length, 3)
+    httpServer.emit('close')
   }
 })
 

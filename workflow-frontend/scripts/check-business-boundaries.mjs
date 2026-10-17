@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parse } from '@babel/parser'
 import { parse as parseSfc } from '@vue/compiler-sfc'
+import { discoverBusinessModules } from './extensions/modules.mjs'
 
 const repository = fileURLToPath(new URL('..', import.meta.url))
 const assemblyModules = new Set(['virtual:flow-extension-manifest', 'virtual:flow-mobile-extensions'])
@@ -64,14 +65,27 @@ function resolveExport(pkg, source) {
 export function createBusinessBoundaryContext(root = repository) {
   root = normalize(root)
   const packages = new Map()
-  const folder = path.join(root, 'packages')
-  for (const entry of existsSync(folder) ? readdirSync(folder, { withFileTypes: true }) : []) {
-    if (!entry.isDirectory()) continue
-    const directory = path.join(folder, entry.name)
-    const filename = path.join(directory, 'package.json')
-    if (!existsSync(filename)) continue
-    const json = JSON.parse(readFileSync(filename, 'utf8'))
-    packages.set(json.name, { name: json.name, directory: normalize(directory), json, business: entry.name.startsWith('biz-') })
+  const packageDirectories = []
+  const errors = []
+  try { discoverBusinessModules({ repositoryRoot: root }) } catch (error) { errors.push(error.message) }
+  // 业务身份来自 custom 目录，不能通过修改包名或缺失 package.json 逃过源码边界扫描。
+  // 布局错误单独收集，仍检查实际目录内的导入；重复名称也不能覆盖已发现的目录。
+  for (const category of ['packages', 'custom']) {
+    const folder = path.join(root, category)
+    for (const entry of existsSync(folder) ? readdirSync(folder, { withFileTypes: true }) : []) {
+      if (!entry.isDirectory()) continue
+      const directory = path.join(folder, entry.name)
+      const filename = path.join(directory, 'package.json')
+      if (!existsSync(filename) && category === 'packages') continue
+      let json = {}
+      try { if (existsSync(filename)) json = JSON.parse(readFileSync(filename, 'utf8')) } catch (error) { errors.push(`${filename}：${error.message}`) }
+      const pkg = { name: json.name, directory: normalize(directory), json, business: category === 'custom' }
+      packageDirectories.push(pkg)
+      if (json.name) {
+        if (packages.has(json.name)) errors.push(`工作区包名重复：${json.name}`)
+        else packages.set(json.name, pkg)
+      }
+    }
   }
   const applications = ['workflow-web', 'workflow-mobile'].map(name => ({ name, directory: path.join(root, name) }))
   function classify(id) {
@@ -79,7 +93,7 @@ export function createBusinessBoundaryContext(root = repository) {
     if (assemblyModules.has(value)) return { assembly: true }
     if (!path.isAbsolute(value)) return {}
     const filename = normalize(value)
-    const pkg = [...packages.values()].find(candidate => inside(filename, candidate.directory))
+    const pkg = packageDirectories.find(candidate => inside(filename, candidate.directory))
     const app = applications.find(candidate => inside(filename, candidate.directory))
     const segments = pkg ? path.relative(pkg.directory, filename).split(path.sep) : []
     return { filename, pkg, app, platform: segments.find(segment => ['pc', 'mobile'].includes(segment)) }
@@ -99,7 +113,7 @@ export function createBusinessBoundaryContext(root = repository) {
     const sourceTarget = target.replace(/^\.\/dist\//, './src/')
     return findFile(path.resolve(pkg.directory, sourceTarget))
   }
-  return { root, packages, applications, classify, resolve }
+  return { root, packages, packageDirectories, applications, errors, classify, resolve }
 }
 
 /**
@@ -185,8 +199,17 @@ function sourceFiles(folder) {
 /** 扫描全部产品/业务源码（含未启用业务），失败时返回所有位置，方便一次修复依赖边界。 */
 export function checkBusinessBoundaries(root = repository) {
   const context = createBusinessBoundaryContext(root)
-  const files = [...context.packages.values(), ...context.applications].flatMap(entry => sourceFiles(path.join(entry.directory, 'src')))
-  const errors = []
+  const files = [...context.packageDirectories, ...context.applications].flatMap(entry => sourceFiles(path.join(entry.directory, 'src')))
+  const errors = [...context.errors]
+  // 业务由根工作区链接并由清单装配；产品声明运行依赖会重新要求每增减业务修改产品。
+  for (const entry of [...context.packageDirectories.filter(pkg => !pkg.business), ...context.applications]) {
+    const filename = path.join(entry.directory, 'package.json')
+    if (!existsSync(filename)) continue
+    const json = entry.json || JSON.parse(readFileSync(filename, 'utf8'))
+    for (const name of Object.keys({ ...json.dependencies, ...json.optionalDependencies, ...json.peerDependencies })) {
+      if (context.packages.get(name)?.business) errors.push(`产品不能声明业务运行依赖；请由根工作区链接并通过扩展清单装配：${path.relative(root, filename)} → ${name}`)
+    }
+  }
   for (const filename of files) {
     try {
       for (const dependency of readModuleDependencies(readFileSync(filename, 'utf8'), filename)) {

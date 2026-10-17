@@ -2309,8 +2309,8 @@ const guideExpectations = {
     'supportedEntityCodes',
     'GET /api/entity-list-config/extension-options'
   ],
-  'src/views/system/CustomListGuide.vue': ['extensions/manifests', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
-  'src/views/system/CustomFormGuide.vue': ['扩展清单', 'extensions/manifests', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
+  'src/views/system/CustomListGuide.vue': ['packages/workflow-extensions/manifests', 'runtime', 'canAction', 'DemoProjectCardList', 'toolbarCapabilities'],
+  'src/views/system/CustomFormGuide.vue': ['扩展清单', 'packages/workflow-extensions/manifests', 'create', 'approve', 'defineExpose', 'DemoProjectForm']
 }
 for (const [file, markers] of Object.entries(guideExpectations)) {
   const source = readFileSync(path.join(root, file), 'utf8')
@@ -2517,9 +2517,9 @@ for (const file of [
 }
 
 const demoExpectations = {
-  '../extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
-  '../extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
-  '../extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
+  '../packages/workflow-extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json': ['DemoProjectForm', 'COMPONENT'],
+  '../packages/workflow-extensions/manifests/examples/demo/lists/DemoProjectCardList.v1.extension.json': ['DemoProjectCardList', 'COMPONENT'],
+  '../packages/workflow-extensions/manifests/examples/demo/list-cells/DemoRiskProgressCell.v1.extension.json': ['DemoRiskProgressCell', 'COMPONENT'],
   'src/extensions/examples/demo/list-fields/DemoRiskProgressCell.vue': ['warningAt', 'dangerAt', 'context'],
   'src/extensions/examples/demo/lists/DemoProjectCardList.vue': ['runtime.canAction', 'toolbarCapabilities', 'sizeChange', 'pageChange'],
   'src/extensions/examples/demo/forms/DemoProjectForm.vue': ['isFieldReadonlyForMode', 'linkageState', 'defineExpose({ validate })'],

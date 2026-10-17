@@ -1,14 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const repository = fileURLToPath(new URL('../..', import.meta.url))
-const productPackages = ['@flow/workflow-core', '@flow/workflow-extension-sdk', '@flow/workflow-api', '@flow/workflow-mobile-ui']
+const productPackages = ['@flow/workflow-core', '@flow/workflow-extensions', '@flow/workflow-api', '@flow/workflow-mobile-ui']
 
 /** 使用临时仓库和替身 npm 观察真实进程组、启动次序和文件监听，不启动项目服务器。 */
 function fixture(t, enabledModules = ['biz-project']) {
@@ -22,16 +22,20 @@ function fixture(t, enabledModules = ['biz-project']) {
   }
   for (const name of ['scripts/dev-workspace.mjs', 'scripts/build-workspace-packages.mjs', 'scripts/workspace-packages.mjs',
     'scripts/extensions/modules.mjs', 'scripts/extensions/discover.mjs', 'scripts/extensions/validate.mjs',
-    'scripts/extensions/generate.mjs', 'extensions/schemas/extension.schema.json']) {
+    'scripts/extensions/generate.mjs', 'packages/workflow-extensions/schemas/extension.schema.json']) {
     const target = put(name, '')
     copyFileSync(path.join(repository, name), target)
   }
-  for (const moduleId of ['biz-project', 'biz-purchase']) mkdirSync(path.join(root, 'extensions/manifests', moduleId), { recursive: true })
+  mkdirSync(path.join(root, 'packages/workflow-extensions/manifests'), { recursive: true })
+  for (const moduleId of ['biz-project', 'biz-purchase']) {
+    mkdirSync(path.join(root, 'custom', moduleId, 'manifests'), { recursive: true })
+    put(`custom/${moduleId}/package.json`, { name: `@flow/${moduleId}` })
+  }
   put('package.json', { type: 'module' })
   put('config/frontend-modules.json', { enabledModules })
   put('events.jsonl', '')
   const npm = put('bin/npm', `#!${process.execPath}
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 const root = process.cwd()
@@ -61,8 +65,18 @@ if (process.env.FAKE_GRANDCHILD === '1') {
     const config = JSON.parse(readFileSync(path.join(root, 'config/frontend-modules.json')))
     const override = process.env.FLOW_FRONTEND_MODULES
     const modules = override === undefined ? config.enabledModules : override === 'none' ? [] : override.split(',')
-    const missing = modules.filter(name => !existsSync(marker('@flow/' + name)))
+    const missing = [...${JSON.stringify(productPackages)}, ...modules.map(name => '@flow/' + name)].filter(name => !existsSync(marker(name)))
     if (missing.length) { record('app-missing-build', { missing }); process.exit(13) }
+  } else {
+    // 模拟 mobile-ui 的 Vite watcher 首轮清理产物；只等待前置 build 无法避免冷启动竞态。
+    if (workspace === '@flow/workflow-mobile-ui') rmSync(marker(workspace), { force: true })
+    record('watch-start')
+    await wait(Number(process.env.FAKE_WATCH_DELAY || 20))
+    if (workspace === process.env.FAKE_FAIL_WATCH) { record('watch-failed'); process.exit(8) }
+    mkdirSync(path.dirname(marker(workspace)), { recursive: true })
+    writeFileSync(marker(workspace), 'built')
+    record('watch-ready')
+    console.log(workspace + ': built')
   }
   spawn(process.execPath, [process.argv[1], ...args], { stdio: 'inherit', env: { ...process.env, FAKE_GRANDCHILD: '1' } })
   setInterval(() => {}, 1000)
@@ -86,7 +100,7 @@ if (process.env.FAKE_GRANDCHILD === '1') {
     for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
     rmSync(root, { recursive: true, force: true })
   })
-  return { root, env, events,
+  return { root, env, events, put,
     select(modules) {
       // 编辑器常用临时文件 + rename 保存，必须触发目录监听。
       put('config/frontend-modules.next.json', { enabledModules: modules })
@@ -134,7 +148,7 @@ test('生产包按依赖顺序构建，none 不构建业务，失败立即停止
   assert.equal(app.build({ FLOW_FRONTEND_MODULES: 'none' }).status, 0)
   assert.deepEqual(app.events().filter(event => event.type === 'build-done').map(event => event.workspace), productPackages)
   writeFileSync(path.join(app.root, 'events.jsonl'), '')
-  assert.equal(app.build({ FAKE_FAIL_BUILD: '@flow/workflow-extension-sdk' }).status, 7)
+  assert.equal(app.build({ FAKE_FAIL_BUILD: '@flow/workflow-extensions' }).status, 7)
   assert.deepEqual(app.events().filter(event => event.type === 'build-start').map(event => event.workspace), productPackages.slice(0, 2))
 })
 
@@ -145,6 +159,9 @@ test('冷启动先完整构建后开应用及选中业务 watcher，关闭清理
   const events = app.events()
   assert.deepEqual(events.filter(event => event.type === 'dev-start').map(event => event.workspace).sort(), [...productPackages, '@flow/biz-project', 'workflow-mobile'].sort())
   assert.ok(events.findIndex(event => event.type === 'build-group-done') < events.findIndex(event => event.type === 'dev-start'))
+  const appStarted = events.findIndex(event => event.type === 'dev-start' && event.workspace === 'workflow-mobile')
+  assert.equal(events.filter(event => event.type === 'watch-ready').length, 5)
+  assert.ok(events.every((event, index) => event.type !== 'watch-ready' || index < appStarted), '应用须等全部包 watcher 首轮产物就绪')
   assert.deepEqual(events.find(event => event.type === 'dev-start' && event.workspace === 'workflow-mobile').args.slice(-3), ['--', '--host', '127.0.0.1'])
   assert.equal(events.some(event => event.type === 'app-missing-build'), false)
   await stopAndAssertClean(app, child)
@@ -227,4 +244,57 @@ test('构建期间关闭入口不会在构建退出后继续启动应用', async
   await until(() => app.events().some(event => event.type === 'build-start'), '构建启动', child)
   await stopAndAssertClean(app, child)
   assert.equal(app.events().some(event => event.type === 'dev-start'), false)
+})
+
+test('开发中新增、修改、删除产品清单会重新生成字段策略', async t => {
+  const app = fixture(t)
+  const child = app.dev()
+  await until(() => app.events().filter(event => event.type === 'grandchild').length === 6, '全部进程启动', child)
+  const relative = 'packages/workflow-extensions/manifests/platform/fields/NewField.extension.json'
+  const generated = path.join(app.root, 'packages/workflow-core/src/extensions/generated/field-definitions.js')
+  const contents = () => existsSync(generated) ? readFileSync(generated, 'utf8') : ''
+  const manifest = { schemaVersion: 1, type: 'FIELD', name: 'NewField', label: '新增字段', version: 1,
+    implementation: { path: 'src/NewField.vue', kind: 'COMPONENT', export: 'default' }, metadata: { supportedFieldTypes: ['TEXT'] } }
+  app.put(relative, manifest)
+  await until(() => contents().includes('NewField'), '新增清单生成字段策略', child)
+  manifest.name = 'ChangedField'
+  app.put(relative, manifest)
+  await until(() => contents().includes('ChangedField'), '变更清单更新字段策略', child)
+  assert.doesNotMatch(contents(), /NewField/)
+  rmSync(path.join(app.root, relative))
+  await until(() => contents().includes('export default []'), '删除清单移除字段策略', child)
+  await stopAndAssertClean(app, child)
+})
+
+test('custom 清单监听错误会终止入口并清理全部开发进程组', async t => {
+  const app = fixture(t)
+  const child = app.dev()
+  await until(() => app.events().filter(event => event.type === 'grandchild').length === 6, '全部进程启动', child)
+  app.put('custom/biz-project/manifests/Invalid.extension.json', { schemaVersion: 1 })
+  await until(() => child.exitCode !== null || child.signalCode !== null, '清单校验失败终止入口')
+  assert.notEqual(child.exitCode, 0)
+  assert.match(child.output, /缺少/)
+  await until(() => app.events().every(event => !alive(event.pid)), '清理清单错误后的子进程组')
+})
+
+test('包 watcher 首轮构建失败时不启动应用并清理其余 watcher', async t => {
+  const app = fixture(t)
+  const child = app.dev('mobile', { FAKE_FAIL_WATCH: '@flow/workflow-mobile-ui' })
+  await until(() => child.exitCode !== null || child.signalCode !== null, 'watcher 失败终止入口')
+  assert.notEqual(child.exitCode, 0)
+  assert.equal(app.events().some(event => event.type === 'dev-start' && event.workspace === 'workflow-mobile'), false)
+  await until(() => app.events().every(event => !alive(event.pid)), '失败 watcher 的全部后代退出')
+})
+
+test('watcher 首轮构建期间切换模块不会启动旧选择的应用', async t => {
+  const app = fixture(t)
+  const child = app.dev('web', { FAKE_WATCH_DELAY: '250' })
+  await until(() => app.events().some(event => event.type === 'watch-start'), '首轮 watcher 开始构建', child)
+  app.select(['biz-purchase'])
+  await until(() => app.events().some(event => event.type === 'dev-start' && event.workspace === 'workflow-web'), '最终选择的应用启动', child)
+  const events = app.events()
+  assert.equal(events.filter(event => event.type === 'dev-start' && event.workspace === 'workflow-web').length, 1)
+  assert.ok(events.findIndex(event => event.type === 'watch-ready' && event.workspace === '@flow/biz-purchase') < events.findIndex(event => event.type === 'dev-start' && event.workspace === 'workflow-web'))
+  assert.equal(events.some(event => event.type === 'app-missing-build'), false)
+  await stopAndAssertClean(app, child)
 })

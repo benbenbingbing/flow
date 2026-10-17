@@ -19,8 +19,7 @@
     "pinia": "^2.1.0",
     "vant": "^4.9.0",
     "bpmn-js": "^17.0.0",
-    "@flow/workflow-extension-sdk": "1.0.0",
-    "@flow/biz-project": "1.0.0"
+    "@flow/workflow-extensions": "1.0.0"
   },
   "devDependencies": {
     "vite": "8.1.5",

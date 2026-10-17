@@ -39,7 +39,7 @@ test('扩展路径仅验证目标平台，且禁止移动实现越界', () => {
   try {
     mkdirSync(path.join(root, 'src'))
     writeFileSync(path.join(root, 'src/Mobile.vue'), '<template />')
-    const manifest = JSON.parse(readFileSync(new URL('../../../extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json', import.meta.url)))
+    const manifest = JSON.parse(readFileSync(new URL('../../../packages/workflow-extensions/manifests/examples/demo/forms/DemoProjectForm.v1.extension.json', import.meta.url)))
     manifest.implementation.path = 'src/MissingDesktop.vue'
     manifest.platforms.mobile.implementation.path = 'src/Mobile.vue'
     assert.doesNotThrow(() => validateManifest(manifest, root, 'fixture', { platform: 'mobile', implementationRoot: root }))

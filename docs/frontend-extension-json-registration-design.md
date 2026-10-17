@@ -1,27 +1,30 @@
 # 前端扩展集中管理与 JSON 注册
 
-> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`extensions/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
+> 路径与命令：本文的 `workflow-web/`、`workflow-mobile/`、`packages/`、`custom/` 和前端 `scripts/` 相对 `workflow-frontend/`；前端 npm/Node 命令从该工作区执行。`workflow-server/`、`docs/`、`deploy/` 仍相对仓库根目录。
 
 实施日期：2026-09-21。状态：已实现。开发入口见 [前端扩展中心](../workflow-frontend/workflow-web/src/extensions/README.md)，验证结果见 [实施验收记录](frontend-extension-json-registration-verification.md)。
 
-采用集中清单、构建发现、启动安装的方式。产品内置、通用和演示实现保留在应用内；业务实现已独立到 `packages/biz-*`，公开契约位于 `packages/workflow-extension-sdk`，清单集中在前端工作区的 `extensions/`。新增现有类型只写实现、公开包入口和 JSON，不修改注册 JS。模块选择和依赖规则见 [前端业务模块开发](frontend-business-modules.md)。
+采用集中清单、构建发现、启动安装的方式。产品内置、通用和演示实现保留在应用内；业务实现已独立到 `custom/biz-*`，公开契约位于 `packages/workflow-extensions`，产品清单和 Schema 同属 `packages/workflow-extensions`，业务清单随模块放在 `custom/biz-*/manifests`。新增现有类型只写实现、公开包入口和 JSON，不修改注册 JS。模块选择和依赖规则见 [前端业务模块开发](frontend-business-modules.md)。
 
 ## 文件夹与职责
 
 ```text
-extensions/
+packages/workflow-extensions/
+├── src/contracts/                      # 公开运行时契约
+├── src/host/                           # 按应用隔离的宿主能力
 ├── manifests/
 │   ├── platform/                       # 标准字段、内置单元格
 │   ├── common/                         # 通用校验等跨业务扩展
-│   ├── biz-project/                    # 项目业务清单
 │   └── examples/                       # Demo 与默认禁用的契约示例
-└── schemas/                            # 有属性说明的 JSON Schema
-packages/
-├── workflow-extension-sdk/             # 公开契约与宿主能力接口
-└── biz-project/src/
+└── schemas/                            # JSON Schema
+custom/biz-project/
+├── package.json
+├── manifests/                          # 本业务的所有扩展声明
+├── tests/
+└── src/
     ├── shared/                         # 跨端业务模型
     ├── api/                            # 项目接口组装
-    ├── pc/                             # PC 表单、字段、列表、动作等
+    ├── pc/                             # PC 表单、字段、列表、动作
     └── mobile/                         # 移动表单和字段
 scripts/extensions/                     # 公共发现、校验、代码生成
 workflow-web/
@@ -40,7 +43,7 @@ workflow-web/
     └── __tests__/                      # 发现、校验、安装、目录、宿主边界测试
 ```
 
-主要目录均有 README。清单按归属再按类型分类，例如 `extensions/manifests/biz-project/fields/xxx.v1.extension.json`。无总清单 `index.json`，新增子目录也会自动发现。业务动作目前复用原模块的 `acceptanceRuntime.js`，新增较多动作时可自行建立 `actions/`。
+主要目录均有 README。清单按归属再按类型分类，例如 `custom/biz-project/manifests/fields/xxx.v1.extension.json`。无总清单 `index.json`，新增子目录也会自动发现。业务动作目前复用原模块的 `acceptanceRuntime.js`，新增较多动作时可自行建立 `actions/`。
 
 ## 集中的十种扩展
 
@@ -89,7 +92,7 @@ workflow-web/
 }
 ```
 
-以上展示的是现有评分清单的核心字段，不要再创建同名副本。完整可运行文件位于 `extensions/manifests/biz-project/fields/project_acceptance_score.v1.extension.json`。
+以上展示的是现有评分清单的核心字段，不要再创建同名副本。完整可运行文件位于 `custom/biz-project/manifests/fields/project_acceptance_score.v1.extension.json`。
 
 4. 将业务加入前端工作区 `config/frontend-modules.json` 的 `enabledModules`。在 `workflow-web/` 执行 `npm run extensions:check`、`npm run test:extensions`，在前端工作区根目录执行 `npm run build`。调整平台字段时先执行 `npm run extensions:generate`。
 5. 部署构建，在实体表单/列表设计器中选择名称、填写实例参数、发布；流程复用已发布的实体表单。

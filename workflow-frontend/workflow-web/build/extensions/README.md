@@ -2,7 +2,7 @@
 
 路径说明：前端工作区根目录为仓库中的 `workflow-frontend/`，npm 依赖统一在该目录安装；包和清单的相对关系不变。
 
-本目录的 discover/validate/generate 是兼容入口，实际中立实现位于前端工作区根目录 `scripts/extensions/`，共享清单位于前端工作区根目录 `extensions/manifests/`。PC 专属 Vite 适配器仍在本目录。
+本目录的 discover/validate/generate 是兼容入口，实际中立实现位于前端工作区根目录 `scripts/extensions/`，共享清单位于前端工作区根目录 `packages/workflow-extensions/manifests/`。PC 专属 Vite 适配器仍在本目录。
 
 `discover.mjs` 扫描集中清单目录，按来源路径确定平台、通用、业务或示例归属。`validate.mjs` 读取同一份 JSON Schema 并校验名称、参数、源码路径、同名业务包公开入口和最终注册冲突，不执行业务模块。
 

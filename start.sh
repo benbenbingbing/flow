@@ -17,6 +17,7 @@ WEB_EXECUTABLE="$FRONTEND_DIR/node_modules/.bin/vite"
 MOBILE_PID_FILE="$FRONTEND_DIR/workflow-mobile/mobile.pid"
 MOBILE_LOG="$FRONTEND_DIR/workflow-mobile/mobile.log"
 PACKAGE_SERVICES=()
+PACKAGE_DIRECTORIES=()
 WEB_PROCESS_PATTERN="node_modules/.bin/vite"
 
 action="${1:-start}"
@@ -300,7 +301,7 @@ show_status() {
     process_status "mobile" "$MOBILE_PID_FILE"
     local directory package
     # 显示所有已知包，不能因当前配置禁用了业务就隐藏仍在运行的旧 watcher。
-    for directory in "$FRONTEND_DIR"/packages/*; do
+    for directory in "$FRONTEND_DIR"/packages/* "$FRONTEND_DIR"/custom/*; do
         [[ -f "$directory/package.json" || -f "$directory/watch.pid" ]] || continue
         package="${directory##*/}"
         process_status "$package" "$directory/watch.pid"
@@ -473,17 +474,21 @@ start_mobile() {
 # 读取与 npm 构建相同的选择列表，并固定本次启动快照。
 # 后端构建可能持续较久；期间编辑配置不能使 Vite 加载尚未构建的另一组业务。
 load_package_services() {
-    local selected package modules=""
+    local selected package directory modules=""
     selected="$(node --input-type=module - "$FRONTEND_DIR/scripts/workspace-packages.mjs" <<'JS'
 import { pathToFileURL } from 'node:url'
-const { selectedWorkspacePackages } = await import(pathToFileURL(process.argv[2]).href)
-console.log(selectedWorkspacePackages().map(name => name.replace(/^@flow\//, '')).join('\n'))
+const { selectedWorkspacePackageDescriptors } = await import(pathToFileURL(process.argv[2]).href)
+for (const { name, directory } of selectedWorkspacePackageDescriptors()) {
+  console.log(`${name.replace(/^@flow\//, '')}\t${directory}`)
+}
 JS
     )" || fail "Unable to resolve frontend modules"
     PACKAGE_SERVICES=()
-    while IFS= read -r package; do
+    PACKAGE_DIRECTORIES=()
+    while IFS=$'\t' read -r package directory; do
         [[ -n "$package" ]] || continue
         PACKAGE_SERVICES+=("$package")
+        PACKAGE_DIRECTORIES+=("$directory")
         if [[ "$package" == biz-* ]]; then
             modules="${modules:+$modules,}$package"
         fi
@@ -495,7 +500,7 @@ JS
 # 继续使用原有 cwd 与命令身份核验，避免终止同名的其他仓库进程。
 stop_package_watchers() {
     local pid_file directory package pattern
-    for pid_file in "$FRONTEND_DIR"/packages/*/watch.pid; do
+    for pid_file in "$FRONTEND_DIR"/packages/*/watch.pid "$FRONTEND_DIR"/custom/*/watch.pid; do
         [[ -f "$pid_file" ]] || continue
         directory="${pid_file%/watch.pid}"
         package="${directory##*/}"
@@ -507,26 +512,29 @@ stop_package_watchers() {
 
 # 直接启动构建器而非 npm 包装进程，让 PID 文件对应真实服务并可独立停止。
 start_package_watchers() {
-    local package pid ready attempt
+    local index package directory pid ready attempt
     ((${#PACKAGE_SERVICES[@]} > 0)) || load_package_services
-    for package in "${PACKAGE_SERVICES[@]}"; do
+    # 包路径由 workspace 目录解析器给出，业务统一位于 custom，不能按包名拼接 packages 路径。
+    for index in "${!PACKAGE_SERVICES[@]}"; do
+        package="${PACKAGE_SERVICES[$index]}"
+        directory="${PACKAGE_DIRECTORIES[$index]}"
         if [[ "$package" == "workflow-mobile-ui" ]]; then
-            start_detached "$FRONTEND_DIR/packages/$package/watch.pid" "$FRONTEND_DIR/packages/$package/watch.log" \
-                "$FRONTEND_DIR/packages/$package" "$WEB_EXECUTABLE" build --watch
+            start_detached "$directory/watch.pid" "$directory/watch.log" \
+                "$directory" "$WEB_EXECUTABLE" build --watch
         else
-            start_detached "$FRONTEND_DIR/packages/$package/watch.pid" "$FRONTEND_DIR/packages/$package/watch.log" \
-                "$FRONTEND_DIR/packages/$package" node "$FRONTEND_DIR/scripts/build-module-package.mjs" --watch
+            start_detached "$directory/watch.pid" "$directory/watch.log" \
+                "$directory" node "$FRONTEND_DIR/scripts/build-module-package.mjs" --watch
         fi
-        pid="$(cat "$FRONTEND_DIR/packages/$package/watch.pid")"
+        pid="$(cat "$directory/watch.pid")"
         ready=false
         # Vite watch 会先清理 dist；首次输出完成后再启动消费者，避免随机缺失入口。
         for attempt in {1..30}; do
-            pid_is_running "$pid" || fail "$package watcher exited; see workflow-frontend/packages/$package/watch.log"
+            pid_is_running "$pid" || fail "$package watcher exited; see $directory/watch.log"
             # 业务包只公开 pc/mobile 子入口，不要求存在会混合两端依赖的 dist/index.js。
             # 每次启动会截断日志，因此 built 必须来自本轮完整复制/构建。
-            if [[ -d "$FRONTEND_DIR/packages/$package/dist" ]] \
-                && grep -q 'built' "$FRONTEND_DIR/packages/$package/watch.log" \
-                && { [[ "$package" != "workflow-mobile-ui" ]] || [[ -s "$FRONTEND_DIR/packages/$package/dist/index.js" ]]; }; then
+            if [[ -d "$directory/dist" ]] \
+                && grep -q 'built' "$directory/watch.log" \
+                && { [[ "$package" != "workflow-mobile-ui" ]] || [[ -s "$directory/dist/index.js" ]]; }; then
                 ready=true
                 break
             fi

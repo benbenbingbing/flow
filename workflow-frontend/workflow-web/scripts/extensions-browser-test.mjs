@@ -10,7 +10,7 @@ import path from 'node:path'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const fixture = mkdtempSync(path.join(root, '.extension-browser-'))
 const implementationFolder = mkdtempSync(path.join(root, 'src/extensions/examples/.browser-'))
-const manifestFolder = mkdtempSync(path.join(root, '../extensions/manifests/common/.browser-'))
+const manifestFolder = mkdtempSync(path.join(root, '../packages/workflow-extensions/manifests/common/.browser-'))
 const profile = mkdtempSync(path.join(tmpdir(), 'extension-chrome-'))
 const manifestPath = path.join(manifestFolder, 'temporary.extension.json')
 const relative = filename => path.relative(root, filename).split(path.sep).join('/')

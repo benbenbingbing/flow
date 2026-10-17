@@ -1,7 +1,7 @@
 /**
  * 自定义组件注册中心
  *
- * 开发者在 extensions/manifests 中声明 FORM/LIST；以下写入 API 仅由统一适配器调用。
+ * 开发者在 所属模块的 manifests 中声明 FORM/LIST；以下写入 API 仅由统一适配器调用。
  *
  * 自定义列表组件运行时契约 v2：
  *   - entityCode: 实体编码

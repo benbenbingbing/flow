@@ -1,0 +1,36 @@
+{
+  "name": "@flow/workflow-extensions",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./dist/index.js",
+    "./contracts": "./dist/contracts/index.js",
+    "./host": "./dist/host/index.js",
+    "./contracts/related-content": "./dist/contracts/related-content.js",
+    "./contracts/data-source": "./dist/contracts/data-source.js",
+    "./contracts/list": "./dist/contracts/list.js",
+    "./contracts/component": "./dist/contracts/component.js",
+    "./contracts/action-rule": "./dist/contracts/action-rule.js",
+    "./contracts/list-action": "./dist/contracts/list-action.js",
+    "./contracts/subform": "./dist/contracts/subform.js",
+    "./contracts/list-cell": "./dist/contracts/list-cell.js",
+    "./contracts/form": "./dist/contracts/form.js",
+    "./contracts/form-field": "./dist/contracts/form-field.js",
+    "./contracts/validation": "./dist/contracts/validation.js",
+    "./contracts/mobile-form": "./dist/contracts/mobile-form.js",
+    "./manifests/*": "./manifests/*",
+    "./schemas/extension.schema.json": "./schemas/extension.schema.json"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-module-package.mjs",
+    "dev": "node ../../scripts/build-module-package.mjs --watch"
+  },
+  "dependencies": {
+    "@flow/workflow-core": "1.0.0"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  }
+}

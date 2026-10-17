@@ -82,7 +82,7 @@ test('清单编辑器 Schema 路径可解析；业务实现没有第二套注册
   for (const item of discoverExtensions(root)) {
     const file = path.join(root, item.sourceFile)
     const manifest = JSON.parse(readFileSync(file, 'utf8'))
-    assert.equal(path.resolve(path.dirname(file), manifest.$schema), path.resolve(root, '../extensions/schemas/extension.schema.json'))
+    assert.equal(path.resolve(path.dirname(file), manifest.$schema), path.resolve(root, '../packages/workflow-extensions/schemas/extension.schema.json'))
     const source = readFileSync(resolveImplementation(root, item.implementation, { moduleId: item.module, platform: 'pc' }), 'utf8')
     assert.doesNotMatch(source, /\bregister(?:CustomFormComponent|CustomListComponent|FormFieldComponent|FormNodeComponent|CellComponent|ListButtonComponent|ListToolbarAction|ListRowAction|CustomValidator|EntityActionRuleCondition|EntityPermissionOptionProvider)\s*\(/)
   }

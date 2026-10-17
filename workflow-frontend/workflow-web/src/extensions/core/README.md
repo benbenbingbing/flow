@@ -1,6 +1,6 @@
 # 扩展运行核心
 
-本目录供平台宿主、设计器及扩展机制维护者使用。业务新增组件走 [JSON 清单](../../../../extensions/manifests/README.md)，通常不修改核心文件。
+本目录供平台宿主、设计器及扩展机制维护者使用。业务新增组件走 [JSON 清单](../../../../packages/workflow-extensions/manifests/README.md)，通常不修改核心文件。
 
 | 文件/目录 | 用途 | 使用时机 |
 | --- | --- | --- |
@@ -116,4 +116,4 @@ FORM/LIST/FIELD/VALIDATOR 保留多版本查询；其余类型由清单检查阻
 
 可复用处理函数新增 `FIELD_EVENT_HANDLER` 清单，`implementation.kind` 为 `FUNCTION`。函数接收 `{ value, field, selection, event, setValue, getFieldValue, setFieldValue }`，安装时不会执行。字段属性下拉选择函数后保存 `{ mode: 'function', handler: '注册名', version: 1 }`。`metadata.supportedFieldTypes` 和 `metadata.capabilities.eventNames` 可限制适用范围；函数实现版本须保留，不能静默换成最新版。
 
-完整接入与存储说明见 `docs/component-owned-field-events-plan.md`；可运行的公共函数清单在 `extensions/manifests/common/handlers/`，业务事件示例在 `ProjectAcceptanceScoreField.vue`。
+完整接入与存储说明见 `docs/component-owned-field-events-plan.md`；可运行的公共函数清单在 `packages/workflow-extensions/manifests/common/handlers/`，业务事件示例在 `ProjectAcceptanceScoreField.vue`。

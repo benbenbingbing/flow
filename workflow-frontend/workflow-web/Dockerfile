@@ -4,13 +4,13 @@ WORKDIR /app
 COPY package*.json ./
 COPY workflow-web/package.json workflow-web/package.json
 COPY workflow-mobile/package.json workflow-mobile/package.json
-# 包按目录整体复制，新增 biz-* / SDK 时无需维护第二份 workspace 名单。
+# 产品包与自定义模块整体复制，新增业务无需维护第二份 workspace 名单。
 # .dockerignore 排除宿主 node_modules/dist，容器只使用 npm ci 安装的 Linux 依赖。
 COPY packages packages
+COPY custom custom
 RUN npm ci
 COPY scripts scripts
-# 字段策略生成及两端扩展编译都依赖前端工作区下的 Schema 和清单，必须随源码进入构建阶段。
-COPY extensions extensions
+# 清单和 Schema 随所属产品包/业务模块复制，两端编译使用同一来源。
 COPY config config
 COPY workflow-web workflow-web
 COPY workflow-mobile workflow-mobile

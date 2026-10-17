@@ -2,7 +2,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { createDemoProjectValue } from './demoProjectModel.js'
-import { extensionFormProps, mergeExtensionField } from '@flow/workflow-extension-sdk/contracts/mobile-form'
+import { extensionFormProps, mergeExtensionField } from '@flow/workflow-extensions/contracts/mobile-form'
 import { MobileExtensionFormFields } from '@flow/workflow-mobile-ui'
 const props = defineProps(extensionFormProps), emit = defineEmits(['update:modelValue'])
 const fieldsRef = ref(), value = ref({ ...props.modelValue, ...createDemoProjectValue(props.modelValue) })
