@@ -79,6 +79,8 @@ const props = defineProps({
   xml: { type: String, default: '' },
   navigated: { type: Boolean, default: false },
   fitViewport: { type: Boolean, default: false },
+  // 历史映射图只显示事实记录，不以运行态推测节点完成情况。
+  archiveMode: { type: Boolean, default: false },
   // 进度相关数据
   progressData: {
     type: Object,
@@ -93,7 +95,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['imported', 'error'])
+const emit = defineEmits(['imported', 'error', 'node-click'])
 
 const canvasRef = ref()
 const viewer = ref(null)
@@ -311,6 +313,7 @@ const loadXml = (xml) => {
  * 高亮显示流程节点和连线
  */
 const highlightProcess = () => {
+  if (props.archiveMode) return
   try {
     if (!viewer.value) return
     
@@ -573,6 +576,7 @@ const addMouseEventListeners = () => {
 
     // 鼠标悬停节点：显示 tooltip（未固定时）
     eventBus.on('element.hover', (e) => {
+      if (props.archiveMode) return
       try {
         const element = e.element
         if (!element) return
@@ -636,6 +640,10 @@ const addMouseEventListeners = () => {
 
     // 点击节点：固定/取消固定 tooltip
     eventBus.on('element.click', (e) => {
+      if (props.archiveMode) {
+        if (e.element) emit('node-click', { id: e.element.id })
+        return
+      }
       try {
         const element = e.element
         if (!element) return

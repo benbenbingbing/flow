@@ -48,6 +48,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class EntityRelationRuntimeService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.history.EntityHistoryWriteGuard historyWriteGuard;
 
     @org.springframework.beans.factory.annotation.Autowired
     private EntityTaskSummaryRefresh taskSummaryRefresh;
@@ -701,7 +703,8 @@ public class EntityRelationRuntimeService {
                 || depth > MAX_RELATION_DEPTH) {
             return;
         }
-        validateRequiredRelations(parentId, relations, relationData);
+        if (!com.workflow.entity.history.HistoryRelationValidationScope.deferred())
+            validateRequiredRelations(parentId, relations, relationData);
         if (relationData == null || relationData.isEmpty()) {
             return;
         }
@@ -885,6 +888,7 @@ public class EntityRelationRuntimeService {
                 if (isNewChild) {
                     dynamicMapper.insert(childTableName, childData);
                 } else {
+                    if (historyWriteGuard != null) historyWriteGuard.requireWritable(childDefinition.getEntityCode(), childId);
                     dynamicMapper.update(childTableName, childData);
                 }
                 refreshTaskSummary(childDefinition.getEntityCode(), childId);
@@ -965,6 +969,21 @@ public class EntityRelationRuntimeService {
             throw new BusinessConflictException(
                     "ENTITY_RELATION_REQUIRED_MISSING",
                     "关系 " + relation.getRelationName() + " 至少需要一条子记录");
+        }
+    }
+
+    /** 历史组提交前核验最终关系集合；父子分 Sheet 创建也必须满足必填及一对一约束。 */
+    public void validateImportedRelations(String entityCode, String recordId) {
+        var definition = definitionMapper.selectOne(com.baomidou.mybatisplus.core.toolkit.Wrappers.<EntityDefinition>lambdaQuery()
+                .eq(EntityDefinition::getEntityCode, entityCode));
+        var published = loadRelations(definition);
+        validateRequiredRelations(recordId, published, Map.of());
+        for (var relation : published) {
+            if (Boolean.FALSE.equals(relation.getEnabled()) || relation.getRelationType() != EntityRelation.RelationType.ONE_TO_ONE) continue;
+            var child = loadChildEntity(relation);
+            if (child != null && dynamicTableService.tableExists(child.getEntityCode())
+                    && findRowsByReference(dynamicTableService.getTableName(child.getEntityCode()), relation.getChildRefFieldCode(), recordId).size() > 1)
+                throw new BusinessConflictException("HISTORY_RELATION_CARDINALITY", "一对一关系存在多条子记录: " + relation.getRelationName());
         }
     }
 
@@ -1086,6 +1105,7 @@ public class EntityRelationRuntimeService {
                 if (!StringUtils.hasText(childId)) {
                     continue;
                 }
+                if (historyWriteGuard != null) historyWriteGuard.requireWritable(childDefinition.getEntityCode(), childId);
                 cascadeDeleteRelations(
                         childDefinition,
                         childId,
@@ -1446,6 +1466,7 @@ public class EntityRelationRuntimeService {
         for (Map<String, Object> row : existingRows) {
             String id = stringValue(row.get("id"));
             if (StringUtils.hasText(id) && !activeIds.contains(id)) {
+                if (historyWriteGuard != null) historyWriteGuard.requireWritable(childEntityCode, id);
                 dynamicMapper.deleteById(tableName, id);
                 refreshTaskSummary(childEntityCode, id);
                 releaseChildClaims(childEntityCode, id);

@@ -60,6 +60,8 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class EntityDataActionService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.history.EntityHistoryWriteGuard historyWriteGuard;
     private final com.workflow.entity.ui.application.UiConfigReleaseService formPublishService;
 
     private static final Set<String> UPDATE_CONTEXT_FIELDS = Set.of(
@@ -607,6 +609,7 @@ public class EntityDataActionService {
                 ? null : formData.get(
                         "compositionContext"));
         boolean compositionSubmission = compositionContext != null;
+        if (historyWriteGuard != null) historyWriteGuard.requireWritable(entityCode, id);
         String effectiveListKey = compositionSubmission ? null : listKey;
         EntityListConfig config = compositionSubmission
                 ? null
@@ -855,6 +858,7 @@ public class EntityDataActionService {
             String listKey,
             EntityListRuntimeContext runtimeContext) {
         requireDynamicRuntime(entityCode);
+        if (historyWriteGuard != null) historyWriteGuard.requireWritable(entityCode, id);
         EntityListConfig config = resolveListConfig(
                 entityCode,
                 listKey,
@@ -948,6 +952,7 @@ public class EntityDataActionService {
         List<EntityDataDTO> rows = new ArrayList<>();
         List<String> denied = new ArrayList<>();
         for (String id : ids.stream().filter(StringUtils::hasText).distinct().toList()) {
+            if (historyWriteGuard != null) historyWriteGuard.requireWritable(entityCode, id);
             EntityDataDTO row = findAccessible(entityCode, id, config);
             rows.add(row);
             var capability = capabilityService.evaluateRowActionForConfig(

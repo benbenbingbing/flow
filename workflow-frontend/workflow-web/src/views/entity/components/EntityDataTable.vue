@@ -159,6 +159,7 @@
       </template>
       <el-table-column v-if="hasVisibleRowActions" label="操作" min-width="180" fixed="right">
         <template #default="{ row }">
+          <el-button v-if="canReadArchive" type="primary" link @click="archiveRecordId = row.id">迁入历史</el-button>
           <el-button
             v-if="showVersionAction"
             type="primary"
@@ -262,12 +263,17 @@
     >
       <template #default></template>
     </EntityListLauncher>
+    <el-dialog :model-value="!!archiveRecordId" title="迁入流程历史" width="90%" destroy-on-close append-to-body @close="archiveRecordId = ''">
+      <ProcessArchivePanel v-if="archiveRecordId" :entity-code="entityCode" :record-id="archiveRecordId" />
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
+import ProcessArchivePanel from '@/components/ProcessArchivePanel.vue'
+import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
@@ -720,8 +726,11 @@ function handleOpenListConfirm(rows: any[]) {
   })
 }
 
+const archiveRecordId = ref('')
+const archiveUser = useUserStore()
+const canReadArchive = computed(() => archiveUser.isSuperAdmin || archiveUser.permissions.includes('process:archive:read') || archiveUser.permissions.includes('*'))
 const hasVisibleRowActions = computed(() =>
-  props.showVersionAction
+  props.showVersionAction || canReadArchive.value
   || props.dataList.some(row => visibleRowButtons(row).length > 0)
 )
 

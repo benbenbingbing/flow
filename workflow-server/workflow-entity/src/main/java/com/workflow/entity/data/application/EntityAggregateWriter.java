@@ -26,6 +26,9 @@ import java.util.Objects;
 @RequiredArgsConstructor
 public class EntityAggregateWriter {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.entity.history.EntityHistoryWriteGuard historyWriteGuard;
+
     private final EntityDataDynamicService queryService;
     private final EntityDataMutationService mutationService;
     private final DynamicTableService dynamicTableService;
@@ -64,6 +67,7 @@ public class EntityAggregateWriter {
      * @throws EntityMutationTargetNotFoundException 业务主记录已不存在
      */
     public CurrentTaskSyncResult synchronizeCurrentTask(EntityMutationCommand command) {
+        if (historyWriteGuard != null) historyWriteGuard.requireWritable(command.entityCode(), command.recordId());
         if (!EntityMutationSystemFields.isCurrentTaskSync(command)) {
             throw new IllegalArgumentException("仅支持当前任务摘要同步");
         }
@@ -112,6 +116,9 @@ public class EntityAggregateWriter {
     public WriteResult apply(
             EntityMutationCommand command,
             PreparedUniqueClaims prepared) {
+        // 保护覆盖 Java Port 和批量写入，不能仅靠前端隐藏编辑按钮。
+        if (historyWriteGuard != null && command.operationType() != EntityMutationOperationType.CREATE)
+            historyWriteGuard.requireWritable(command.entityCode(), command.recordId());
         Object internalMode = command.payload().get(EntityMutationSystemFields.MODE_KEY);
         if (internalMode != null && command.context().sourceType()
                 != com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.PROCESS_RUNTIME) {
@@ -145,6 +152,8 @@ public class EntityAggregateWriter {
                 command.payload(),
                 EntityDataDTO.class);
         dto.setEntityCode(command.entityCode());
+        // CREATE 命令的 DTO 若携带已有 ID，底层兼容路径会按更新处理，也必须受历史写保护。
+        if (historyWriteGuard != null) historyWriteGuard.requireWritable(command.entityCode(), dto.getId());
         Object rawData = command.payload().get("data");
         if (rawData instanceof Map<?, ?> map) {
             // 子表单发布引用使用不可伪造的 JVM 私有 Marker 跨越聚合

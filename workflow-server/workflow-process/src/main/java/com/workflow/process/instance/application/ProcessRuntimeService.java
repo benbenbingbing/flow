@@ -52,6 +52,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ProcessRuntimeService implements ProcessRuntimePort {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.contracts.history.EntityHistoryWritePolicyPort historyWriteGuard;
 
     private final ProcessDefinitionConfigMapper processDefinitionConfigMapper;
     private final RepositoryService repositoryService;
@@ -88,6 +90,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     @Transactional(rollbackFor = Exception.class)
     @SystemAudit(module = AuditModule.PROCESS, action = AuditAction.START, operation = "发起实体流程", risk = AuditRiskLevel.MEDIUM, targetType = "PROCESS_INSTANCE", captureArguments = true, captureResult = true)
     public ProcessStartResult start(ProcessStartRequest request) {
+        // 在引擎监听器和任务创建之前拒绝只读历史业务记录。
+        if (historyWriteGuard != null) historyWriteGuard.requireWritable(request.entityCode(), request.entityRecordId());
         ProcessDefinitionConfig processConfig = processDefinitionConfigMapper.selectById(request.processDefinitionId());
         if (processConfig == null) {
             throw new BusinessConflictException(

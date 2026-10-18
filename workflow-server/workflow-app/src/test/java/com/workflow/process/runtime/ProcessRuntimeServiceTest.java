@@ -42,6 +42,18 @@ import static org.mockito.Mockito.when;
 
 class ProcessRuntimeServiceTest {
         @Test
+        void historicalReadonlyGuardRunsBeforeAnyEngineStart() {
+                Fixture fixture = new Fixture();
+                ProcessRuntimeService service = fixture.service();
+                var guard = mock(com.workflow.contracts.history.EntityHistoryWritePolicyPort.class);
+                org.springframework.test.util.ReflectionTestUtils.setField(service, "historyWriteGuard", guard);
+                org.mockito.Mockito.doThrow(new com.workflow.core.error.BusinessConflictException("HISTORICAL_RECORD_READONLY", "历史只读"))
+                        .when(guard).requireWritable("expense", "data-1");
+                org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.BusinessConflictException.class,
+                        () -> service.start(new ProcessStartRequest("process-config-1", "expense", "data-1", "EXP-1", "admin", "管理员", "PENDING", Map.of(), Map.of())));
+                org.mockito.Mockito.verifyNoInteractions(fixture.processDefinitionConfigMapper);
+        }
+        @Test
         void transitionModeDoesNotImplicitlySetBusinessStatusWhenStarting() {
                 Fixture fixture = new Fixture();
                 ProcessRuntimeService service = fixture.service();

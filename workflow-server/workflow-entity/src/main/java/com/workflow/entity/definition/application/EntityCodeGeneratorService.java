@@ -61,6 +61,10 @@ public class EntityCodeGeneratorService {
         String mode = mode(rule);
         String code;
         if ("CUSTOM".equals(mode)) {
+            // 预检之后配置仍可能变化，实际取号入口再次阻止历史导入触发业务扩展副作用。
+            var importContext = com.workflow.entity.definition.application.code.EntityCodeGenerationScope.current();
+            if (importContext != null && "HISTORICAL_IMPORT".equals(importContext.businessIntentCode()))
+                throw new IllegalArgumentException("历史导入不执行自定义编码生成器");
             Map<String, Object> config = EntityCodeSnapshots.copy(rule.getGeneratorConfig());
             EntityCodeGeneratorProvider generator = registry.require(rule.getGeneratorCode(), context.entityCode(), config);
             code = generator.generate(context, config);

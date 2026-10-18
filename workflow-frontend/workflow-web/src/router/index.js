@@ -341,6 +341,12 @@ const routes = [
         }
       },
       {
+        path: '/system/history-import',
+        name: 'HistoryImport',
+        component: () => import('@/views/system/HistoryImport.vue'),
+        meta: { title: '历史数据导入', requiredPermissions: ['history-import:read'] }
+      },
+      {
         path: '/system/assignee-incidents',
         name: 'AssigneeIncidentManagement',
         component: () => import('@/views/system/AssigneeIncidentManagement.vue'),
