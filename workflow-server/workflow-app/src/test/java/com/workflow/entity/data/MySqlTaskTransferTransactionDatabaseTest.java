@@ -136,7 +136,7 @@ class MySqlTaskTransferTransactionDatabaseTest {
                     mock(RepositoryService.class), h.mapper(ProcessOperationLogMapper.class), mock(SysUserService.class),
                     mock(NodeFormSubmissionService.class), mock(EntityRecordPort.class), mock(ProcessCcService.class),
                     mock(NextApproverOverrideService.class), outcomes, mock(NodeOperationCapabilityService.class),
-                    mock(TaskIdentityAccessService.class)));
+                    mock(TaskIdentityAccessService.class), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)));
             UserContext.setCurrentUser("alice", "alice");
         }
 

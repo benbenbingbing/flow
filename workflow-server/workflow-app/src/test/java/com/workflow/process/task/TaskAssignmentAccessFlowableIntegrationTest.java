@@ -131,7 +131,7 @@ class TaskAssignmentAccessFlowableIntegrationTest {
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),
                         engine.getTaskService(), objectMapper),
                 mock(NodeOperationCapabilityService.class),
-                new TaskIdentityAccessService(engine.getTaskService(), groupMapper, roleMapper, identityDirectory));
+                new TaskIdentityAccessService(engine.getTaskService(), groupMapper, roleMapper, identityDirectory), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
     }
 
     @AfterEach

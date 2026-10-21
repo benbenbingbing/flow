@@ -71,7 +71,7 @@ class NextApprovalRouteServiceTest {
                 policyReader,
                 nodeFormSubmissionService,
                 new ObjectMapper(),
-                multiInstanceOutcomeService);
+                multiInstanceOutcomeService, org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
         task = mock(Task.class);
         when(task.getProcessDefinitionId()).thenReturn("definition-7");
         when(task.getProcessInstanceId()).thenReturn("instance-1");

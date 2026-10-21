@@ -493,6 +493,41 @@ public class EntityDataMutationService {
     }
 
     /**
+     * 关联调用活动创建的子流程。调用方必须经过聚合管道，先锁定记录再检查已有实例，
+     * 让两个父流程同时调用同一记录时只有一个成功；失败会回滚整个父子流程事务。
+     * 不支持隐式重新发起，已结束记录仍应使用已有的重新发起入口。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void bindCalledProcess(String entityCode, String recordId, String processInstanceId,
+            String submitterId, String submitterName, String processingStatus) {
+        String tableName = dynamicTableService.getTableName(entityCode);
+        Map<String, Object> existing = dynamicMapper.selectByIdForUpdate(tableName, recordId);
+        if (existing == null) {
+            throw new IllegalArgumentException("子流程关联记录不存在: " + entityCode + "/" + recordId);
+        }
+        if (StringUtils.hasText(asText(existing.get("process_instance_id")))) {
+            throw new BusinessConflictException("CALLED_PROCESS_ALREADY_STARTED", "子流程关联记录已发起流程，不能重复调用");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        Map<String, Object> update = new HashMap<>();
+        update.put("id", recordId);
+        update.put("process_instance_id", processInstanceId);
+        update.put("process_status", "RUNNING");
+        update.put("process_start_time", now);
+        update.put("process_end_time", null);
+        update.put("submit_time", now);
+        update.put("submitter_id", submitterId);
+        update.put("submitter_name", submitterName);
+        update.put("update_time", now);
+        if (StringUtils.hasText(processingStatus)) {
+            update.put("status", getStatusByCategory(entityCode, "PROCESSING", processingStatus));
+        }
+        dynamicMapper.update(tableName, update);
+        refreshTaskSummary(entityCode, recordId);
+        entityRecordTeamService.record(entityCode, recordId, "START_PROCESS", "发起关联子流程", processInstanceId, null);
+    }
+
+    /**
      * 兼容内部旧调用；跨模块事件必须使用携带实例 ID 的重载。
      *
      * @param entityCode 实体编码，用于限定后续数据读取、校验或写入的实体范围

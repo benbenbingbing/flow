@@ -72,6 +72,11 @@ public class ProcessBpmnPublishSanitizer {
     @Autowired
     private EntityUserPathBpmnCompiler entityUserPathBpmnCompiler;
 
+    @Autowired
+    private com.workflow.process.definition.infrastructure.persistence.mapper.ProcessDefinitionConfigMapper calledProcessConfigs;
+    @Autowired
+    private com.workflow.entity.definition.infrastructure.persistence.mapper.EntityDefinitionMapper calledProcessEntities;
+
     /** 解析器自身拥有 extraParams 语义，发布器只负责路由校验请求。 */
     @Autowired(required = false)
     private List<PersonResolverConfigurationValidationProvider>
@@ -156,7 +161,7 @@ public class ProcessBpmnPublishSanitizer {
         result = fixConfiguredServiceTasks(result);
         result = fixConfiguredSendTasks(result);
         result = fixConfiguredBusinessRuleTasks(result);
-        result = fixConfiguredCallActivities(result);
+        result = fixConfiguredCallActivities(result, processKey);
         result = fixConfiguredReceiveTasks(result);
         result = fixConfiguredUserTaskSlas(result);
         if (entityUserPathBpmnCompiler != null) {
@@ -2398,7 +2403,7 @@ public class ProcessBpmnPublishSanitizer {
      * @param bpmnXml BPMNXML，作为 {@code rewriteConfiguredElements} 的输入影响后续处理
      * @return 处理后的{@code fix}已配置{@code call}{@code activities}文本，供调用方比较或展示
      */
-    private String fixConfiguredCallActivities(String bpmnXml) {
+    private String fixConfiguredCallActivities(String bpmnXml, String processKey) {
         return rewriteConfiguredElements(bpmnXml, "callActivity", "callConfig", (element, config) -> {
             String calledElement = config.path("calledElement").asText("");
             if (calledElement.isBlank()) {
@@ -2415,6 +2420,12 @@ public class ProcessBpmnPublishSanitizer {
                     : setQualifiedAttribute(startTag, "businessKey", businessKey);
 
             String content = removeGeneratedCallMappings(element.content());
+            if ("existing".equals(config.path("entityBinding").asText())) {
+                validateCalledEntity(config, calledElement, processKey);
+                // 独立实体只能使用目标记录及显式输入，禁止导入 XML 的整包变量继承污染子实体。
+                startTag = setQualifiedAttribute(startTag, "inheritVariables", "false");
+                startTag = setQualifiedAttribute(startTag, "inheritBusinessKey", "false");
+            }
             String mappings = callMappings(config.path("inputParameters").asText(""), "in")
                     + callMappings(config.path("outputParameters").asText(""), "out");
             if (!mappings.isEmpty()) {
@@ -2422,6 +2433,41 @@ public class ProcessBpmnPublishSanitizer {
             }
             return element.withStartTag(startTag).withContent(content);
         });
+    }
+
+    /** 发布时拒绝错误绑定和保留变量映射；运行时仍复核发布状态和记录占用情况。 */
+    private void validateCalledEntity(com.fasterxml.jackson.databind.JsonNode config, String calledElement, String processKey) {
+        if (!"bpmn".equals(config.path("callActivityType").asText("bpmn"))
+                || calledElement.equals(processKey) || calledElement.contains("${")) {
+            throw new IllegalArgumentException("关联实体子流程必须选择其他已发布 BPMN 流程");
+        }
+        com.workflow.process.instance.application.CalledProcessRecordSource.path(config.path("entityRecordId").asText());
+        for (String mappingName : List.of("inputParameters", "outputParameters")) {
+            try {
+                String raw = config.path(mappingName).asText("");
+                if (raw.isBlank()) continue;
+                var mappings = objectMapper.readTree(raw);
+                if (!mappings.isObject()) throw new IllegalArgumentException("参数映射必须是 JSON 对象");
+                var names = mappings.fieldNames();
+                while (names.hasNext()) {
+                    String name = names.next();
+                    if (WorkflowReservedVariables.isProtectedContextVariable(name)) {
+                        throw new IllegalArgumentException("关联实体子流程参数不能覆盖平台变量: " + name);
+                    }
+                }
+            } catch (java.io.IOException exception) {
+                throw new IllegalArgumentException("子流程参数映射无效", exception);
+            }
+        }
+        // 生产注入必需；直接构造的无数据库编译测试仅验证配置语法。
+        if (calledProcessConfigs != null && calledProcessEntities != null) {
+            var target = calledProcessConfigs.findByProcessKey(calledElement)
+                    .orElseThrow(() -> new IllegalArgumentException("所选子流程不存在: " + calledElement));
+            if (target.getStatus() != com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig.ProcessStatus.PUBLISHED
+                    || calledProcessEntities.findAllByProcessDefinitionId(target.getId()).size() != 1) {
+                throw new IllegalArgumentException("所选子流程必须已发布且唯一绑定实体: " + calledElement);
+            }
+        }
     }
 
     /**

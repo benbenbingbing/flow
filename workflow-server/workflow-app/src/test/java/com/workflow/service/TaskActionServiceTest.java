@@ -139,7 +139,7 @@ class TaskActionServiceTest {
                 nodeOperationCapabilityService,
                 new TaskIdentityAccessService(taskService, mock(SysGroupMapper.class),
                         mock(SysRoleMapper.class), mock(IdentityDirectoryPort.class))
-        );
+        , org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
         UserContext.setCurrentUser("admin-id", "admin");
     }
 

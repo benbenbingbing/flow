@@ -32,6 +32,24 @@ public class EntityRecordMutationAdapter
     private final EntityRecordTeamService teamService;
     private final com.workflow.entity.definition.application.EntityStatusService statusService;
 
+    /** 通过统一聚合管道锁定并绑定子流程，沿用历史只读、审计和事务保护。 */
+    @Override
+    public void bindCalledProcess(String entityCode, String recordId, String processDefinitionId,
+            String processInstanceId, String submitterId, String submitterName, String processingStatus) {
+        String key = "called-process-start:" + processInstanceId;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put(EntityMutationSystemFields.MODE_KEY, EntityMutationSystemFields.CALL_PROCESS_START);
+        payload.put("processingStatus", processingStatus);
+        mutationPort.execute(new EntityMutationCommand(key, entityCode, recordId,
+                EntityMutationOperationType.STATUS_CHANGE, payload,
+                EntityMutationContext.builder(EntityMutationSourceType.PROCESS_RUNTIME,
+                                "CALL_PROCESS_START", "发起关联子流程")
+                        .sourceRecord(entityCode, recordId)
+                        .process(processDefinitionId, processInstanceId, null)
+                        .operator(submitterId, submitterName)
+                        .trace(processInstanceId, key).build()));
+    }
+
     /** 先验证配置再取消引擎，避免流程结束后才发现目标状态缺失。 */
     @Override
     public String requireProcessEndStatus(String entityCode, String category) {

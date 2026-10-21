@@ -217,7 +217,16 @@ public class EntityAggregateWriter {
             PreparedUniqueClaims prepared) {
         String mode = text(command.payload()
                 .get(EntityMutationSystemFields.MODE_KEY));
-        if (EntityMutationSystemFields.PROCESS_END.equals(mode)) {
+        if (EntityMutationSystemFields.CALL_PROCESS_START.equals(mode)) {
+            // 系统模式不能从普通表单/业务动作进入，实例身份必须来自可信引擎上下文。
+            if (command.context().sourceType() != com.workflow.contracts.entity.mutation.model.EntityMutationSourceType.PROCESS_RUNTIME
+                    || command.context().processInstanceId() == null) {
+                throw new IllegalArgumentException("子流程绑定只允许流程引擎调用");
+            }
+            mutationService.bindCalledProcess(command.entityCode(), command.recordId(),
+                    command.context().processInstanceId(), command.context().operatorId(),
+                    command.context().operatorName(), text(command.payload().get("processingStatus")));
+        } else if (EntityMutationSystemFields.PROCESS_END.equals(mode)) {
             mutationService.markProcessEnded(
                     command.context().processInstanceId(),
                     command.entityCode(),

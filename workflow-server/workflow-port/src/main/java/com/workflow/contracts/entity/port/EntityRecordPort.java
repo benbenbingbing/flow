@@ -6,6 +6,14 @@ package com.workflow.contracts.entity.port;
 public interface EntityRecordPort {
 
     /**
+     * 将未发起流程的既有记录绑定到引擎创建的子流程；与父流程流转使用同一事务。
+     * 记录不存在、只读或已关联其他实例时失败，防止重复发起及覆盖历史关联。
+     * submitter 来自父流程的可信发起人；processingStatus 为空时保留连线状态策略。
+     */
+    void bindCalledProcess(String entityCode, String recordId, String processDefinitionId,
+            String processInstanceId, String submitterId, String submitterName, String processingStatus);
+
+    /**
      * 在终止/撤回产生引擎副作用前确认唯一的业务目标状态。
      * @param entityCode 被取消流程绑定的实体
      * @param category TERMINATED 或 WITHDRAWN，用于选择特殊操作的唯一目标

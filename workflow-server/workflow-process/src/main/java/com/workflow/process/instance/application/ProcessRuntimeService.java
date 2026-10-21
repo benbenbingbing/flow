@@ -65,6 +65,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
     private final EntityProcessLinkMapper entityProcessLinkMapper;
     private final JdbcLockedRow lockedRows;
     private final DatabaseClockPort databaseClock;
+    /** 从持久化实体补齐系统字段，供新实例和存量网关使用同一变量口径。 */
+    private final com.workflow.process.instance.application.ProcessEntityVariableService entityVariableService;
 
     @Autowired
     private com.workflow.process.status.application.ProcessEntityStatusPolicy statusPolicy;
@@ -328,6 +330,8 @@ public class ProcessRuntimeService implements ProcessRuntimePort {
         variables.putAll(WorkflowReservedVariables.sanitize(request.variables()));
         variables.put("entityCode", request.entityCode());
         variables.put("entityDataId", request.entityRecordId());
+        // name 独立于自定义 data 存储；从已保存的记录补齐，不能依赖当前请求是否提交该字段。
+        variables.putAll(entityVariableService.missingRecordVariables(variables));
         // 编号取自服务端实体记录，覆盖表单或扩展变量中的同名输入。
         variables.put("code", request.code());
         variables.put("submitterId", request.submitterId());

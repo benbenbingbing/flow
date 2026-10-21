@@ -227,7 +227,7 @@ class ProcessRuntimeServiceTest {
                                         taskService,
                                         processTaskService,
                                         multiInstanceCollectionListener,
-                                        entityProcessLinkMapper, lockedRows, () -> java.time.LocalDateTime.of(2026, 9, 22, 3, 0));
+                                        entityProcessLinkMapper, lockedRows, () -> java.time.LocalDateTime.of(2026, 9, 22, 3, 0), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
                 }
         }
 }

@@ -22,6 +22,7 @@ import jakarta.annotation.PostConstruct;
 public class FlowableEventListenerConfig {
 
     private final RuntimeService runtimeService;
+    private final com.workflow.process.engine.infrastructure.flowable.CalledProcessEntityListener calledProcessEntityListener;
     /** 提交前归并任务与候选变更，保证最终办理身份与本地列表投影同事务。 */
     private final com.workflow.process.task.infrastructure.flowable.TaskInboxProjectionListener taskInboxProjectionListener;
     /** 实体状态更新监听器：监听任务完成事件以同步实体流程状态 */
@@ -52,6 +53,8 @@ public class FlowableEventListenerConfig {
      */
     @PostConstruct
     public void init() {
+        // 必须早于流程动作和知会监听器，保证 PROCESS_STARTED 已能读取子实体上下文。
+        runtimeService.addEventListener(calledProcessEntityListener);
         runtimeService.addEventListener(taskInboxProjectionListener);
         // 注册任务完成事件监听器（不指定事件类型，监听所有事件，在监听器中过滤）
         runtimeService.addEventListener(entityStatusUpdateListener);

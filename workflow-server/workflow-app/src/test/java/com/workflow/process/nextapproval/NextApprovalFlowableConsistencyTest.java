@@ -119,7 +119,7 @@ class NextApprovalFlowableConsistencyTest {
                         engine.getRuntimeService(),
                         engine.getRepositoryService(),
                         engine.getTaskService(),
-                        objectMapper));
+                        objectMapper), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
         NextApproverCandidateService candidateService =
                 mock(NextApproverCandidateService.class);
         when(candidateService.defaultAssignees(any(), any()))

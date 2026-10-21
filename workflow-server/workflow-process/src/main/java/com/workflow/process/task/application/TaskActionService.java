@@ -75,6 +75,8 @@ public class TaskActionService {
             nodeOperationCapabilityService;
     /** 待办、认领、审批与其他任务操作共用业务候选身份口径。 */
     private final TaskIdentityAccessService taskIdentityAccessService;
+    /** 从持久化实体补齐系统字段，供新实例和存量网关使用同一变量口径。 */
+    private final com.workflow.process.instance.application.ProcessEntityVariableService entityVariableService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.workflow.process.task.application.operation.NodeOperationDecisionService
@@ -319,6 +321,15 @@ public class TaskActionService {
         }
 
         String normalizedAction = multiInstanceOutcomeService.normalizeAction(action);
+        if (!"transfer".equals(normalizedAction)) {
+            // 存量实例可能从未初始化 name；只补缺失变量，并在本次审批事务中写入。
+            // 后续节点表单仍按原权限规则处理可编辑值，不能用客户端只读字段补齐。
+            Map<String, Object> missing = entityVariableService.missingRecordVariables(
+                    runtimeService.getVariables(task.getProcessInstanceId()));
+            if (!missing.isEmpty()) {
+                runtimeService.setVariables(task.getProcessInstanceId(), missing);
+            }
+        }
         // 预览可能因提交前数据源有副作用而延期；该标记交给重验逻辑决定
         // 本次能否直接确定下一审批人，而不是由客户端声称预览已完成。
         boolean nextApprovalPreviewDeferred = false;

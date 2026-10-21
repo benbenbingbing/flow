@@ -141,7 +141,7 @@ class TaskCandidateApprovalTransactionIntegrationTest {
                 mock(NextApproverOverrideService.class),
                 new MultiInstanceOutcomeService(engine.getRuntimeService(), engine.getRepositoryService(),
                         engine.getTaskService(), new ObjectMapper()),
-                mock(NodeOperationCapabilityService.class), taskIdentityAccessService);
+                mock(NodeOperationCapabilityService.class), taskIdentityAccessService, org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
         TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
         transactionInterceptor.setTransactionManager(transactionManager);
         transactionInterceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());

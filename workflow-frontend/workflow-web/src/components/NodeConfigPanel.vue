@@ -1195,8 +1195,18 @@
         />
       </section>
       
-      <!-- ========== 调用活动配置（调用活动） ========== -->
-      <section v-if="isCallActivity && activeTab === 'basic'" class="config-section">
+      <section v-if="isSubProcess && activeTab === 'basic'" class="config-section">
+        <SettingsSection title="子流程来源" :collapsible="false" primary>
+          <el-radio-group v-model="subProcessSource">
+            <el-radio value="embedded">当前内嵌子流程</el-radio>
+            <el-radio value="existing">调用已有流程</el-radio>
+          </el-radio-group>
+          <el-alert v-if="subProcessSource === 'existing'" class="mt-12" type="info" :closable="false"
+            title="应用后使用所选流程替换内部节点，保留外部连线；可通过撤销恢复。" />
+        </SettingsSection>
+      </section>
+      <!-- 内嵌子流程切换为调用活动后，父流程由引擎等待被调用流程结束再继续。 -->
+      <section v-if="(isCallActivity || (isSubProcess && subProcessSource === 'existing')) && activeTab === 'basic'" class="config-section">
         <SettingsSection
           title="调用流程"
           description="调用另一个独立流程并配置参数映射"
@@ -1206,13 +1216,13 @@
           <el-form :model="callForm" label-width="100px" size="small">
           <el-form-item label="子流程Key">
             <template #label>
-              <ConfigHelpLabel label="子流程Key" content="被调用的子流程定义Key" />
+              <ConfigHelpLabel label="已有流程" content="选择其他已发布流程，子流程结束后父流程继续执行。可调用绑定其他实体的流程。" />
             </template>
             <el-select 
               v-model="callForm.calledElement" 
               placeholder="选择要调用的子流程"
               filterable
-              allow-create
+              :allow-create="callForm.entityBinding !== 'existing'"
               default-first-option
               :loading="subProcessesLoading"
               style="width: 100%"
@@ -1225,11 +1235,25 @@
               />
             </el-select>
           </el-form-item>
+
+          <el-form-item label="关联实体记录">
+            <el-switch v-model="callForm.entityBinding" active-value="existing" inactive-value="" />
+          </el-form-item>
+          <el-form-item v-if="callForm.entityBinding === 'existing'" label="记录 ID 来源">
+            <el-select v-model="callForm.entityRecordId" filterable allow-create default-first-option
+              placeholder="选择父实体字段或输入 ${relatedRecordId}" style="width: 100%">
+              <el-option v-for="field in entityFields" :key="field.fieldCode"
+                :label="`${field.fieldName || field.fieldCode} (${field.fieldCode})`"
+                :value="'${' + field.fieldCode + '}'" />
+            </el-select>
+          </el-form-item>
+          <el-alert v-if="callForm.entityBinding === 'existing'" type="info" :closable="false"
+            title="使用所选流程绑定的实体及已有记录。记录 ID 从父流程字段或参数读取，如 ${relatedRecordId}；该记录须尚未发起流程。" />
           
           <el-form-item label="调用方式">
             <el-radio-group v-model="callForm.callActivityType">
               <el-radio value="bpmn">BPMN子流程</el-radio>
-              <el-radio value="cmmn">CMMN案例</el-radio>
+              <el-radio value="cmmn" :disabled="callForm.entityBinding === 'existing'">CMMN案例</el-radio>
             </el-radio-group>
           </el-form-item>
           
@@ -1808,6 +1832,7 @@ import { Plus, Delete, View, WarningFilled } from '@element-plus/icons-vue'
 import { getEntityStatusList } from '@/api/entityStatus'
 import { deleteStatusMappings, getStatusMappings, saveStatusMappings } from '@/api/entityFlowStatus'
 import { processApi } from '@/api/process'
+import { readCalledProcessConfig, validateCalledProcessConfig, replaceWithCalledProcess } from './node-config/calledProcessConfig'
 import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -2143,7 +2168,15 @@ const receiveForm = ref({ messageRef: '', hasTimeout: false, timeout: 30, timeou
 const manualForm = ref({ description: '', completionCriteria: '', responsible: '', estimatedHours: 0 })
 const ruleForm = ref({ decisionRef: '', inputVariables: '', resultVariable: '', mapDecisionResult: true })
 
-const callForm = ref({ calledElement: '', callActivityType: 'bpmn', inputParameters: '', outputParameters: '', businessKey: '' })
+const callForm = ref(readCalledProcessConfig())
+const subProcessSource = ref('embedded')
+
+watch(subProcessSource, source => {
+  if (source === 'existing' && isSubProcess.value) {
+    callForm.value.entityBinding = 'existing'
+    callForm.value.callActivityType = 'bpmn'
+  }
+})
 const conditionForm = ref({ type: '', expression: '' })
 const conditionRoot = ref(createFlowConditionGroup())
 const conditionParseWarning = ref('')
@@ -3149,16 +3182,13 @@ watch([() => props.element, () => props.processId], async ([newElement]) => {
         }
       }
     }
-    if (isCallActivity.value) {
-      // 加载调用活动配置
-      const callConfigStr = extProps['callConfig']
-      if (callConfigStr) {
-        try {
-          const callConfig = JSON.parse(callConfigStr)
-          callForm.value = { ...callForm.value, ...callConfig }
-        } catch (e) {
-          console.error('解析 callConfig 失败:', e)
-        }
+    if (isCallActivity.value || isSubProcess.value) {
+      subProcessSource.value = 'embedded'
+      callForm.value = readCalledProcessConfig(bo)
+      try {
+        callForm.value = readCalledProcessConfig(bo, extProps['callConfig'])
+      } catch (e) {
+        console.error('解析 callConfig 失败:', e)
       }
     }
     if (isSequenceFlow.value) {
@@ -4431,8 +4461,8 @@ function applyConfigurationSection(section) {
         updateExtensionProperty('ruleConfig', JSON.stringify(ruleForm.value))
         break
       case 'call':
-        if (!callForm.value.calledElement?.trim()) {
-          ElMessage.warning('请选择或填写子流程 Key')
+        if (validateCalledProcessConfig(callForm.value)) {
+          ElMessage.warning(validateCalledProcessConfig(callForm.value))
           return
         }
         try {
@@ -4541,6 +4571,14 @@ function applyConfigurationSection(section) {
 }
 
 async function applyNodeConfiguration() {
+  if (isCallActivity.value || (isSubProcess.value && subProcessSource.value === 'existing')) {
+    const validation = validateCalledProcessConfig(callForm.value)
+    if (validation) { ElMessage.warning(validation); return }
+    try {
+      parseJsonObject(callForm.value.inputParameters, '调用活动输入参数')
+      parseJsonObject(callForm.value.outputParameters, '调用活动输出参数')
+    } catch (error) { ElMessage.warning(error.message); return }
+  }
   if (isUserTask.value && approvalForm.value.enabled) {
     // 审批选项必须在任何分区写入 bpmn-js 前完成预检，避免后置失败留下半应用状态。
     const approvalValidation = validateApprovalOptionActionCodes(
@@ -4553,6 +4591,12 @@ async function applyNodeConfiguration() {
   }
   for (const section of getConfigurationSections()) {
     if (!applyConfigurationSection(section)) return
+  }
+  if (isSubProcess.value && subProcessSource.value === 'existing') {
+    const modeler = toRaw(props.element)._modeler
+    const replacement = replaceWithCalledProcess(modeler, toRaw(props.element), { ...callForm.value })
+    // 复用设计器选中入口，让属性面板和动作面板切换到新节点，避免继续编辑已移除的内嵌节点。
+    modeler.get('eventBus').fire('element.click', { element: replacement })
   }
   if (isSequenceFlow.value) {
     statusForm.value.conditionExpression = conditionForm.value.type === 'expression'

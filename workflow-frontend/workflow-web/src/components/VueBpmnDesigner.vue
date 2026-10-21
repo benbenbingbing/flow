@@ -109,6 +109,16 @@ const initModeler = () => {
           }
         }
       }
+      // 直接创建独立调用活动，避免必须先拖内嵌子流程再从替换菜单寻找入口。
+      entries['create-call-activity'] = {
+        group: 'activity',
+        className: 'bpmn-icon-call-activity',
+        title: '调用已有流程',
+        action: {
+          dragstart: event => create.start(event, elementFactory.createShape({ type: 'bpmn:CallActivity' })),
+          click: event => create.start(event, elementFactory.createShape({ type: 'bpmn:CallActivity' }), { hints: { autoActivate: true } })
+        }
+      }
       return entries
     }
   } catch (e) {}

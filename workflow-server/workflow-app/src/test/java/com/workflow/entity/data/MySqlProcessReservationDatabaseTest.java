@@ -123,7 +123,7 @@ class MySqlProcessReservationDatabaseTest {
             when(tasks.createTaskQuery()).thenReturn(taskQuery); when(taskQuery.listPage(0, 1)).thenReturn(List.of());
             service = transactional(new ProcessRuntimeService(config, repository, runtime, mock(IdentityService.class), tasks,
                     mock(ProcessTaskService.class), mock(MultiInstanceCollectionListener.class), h.mapper(EntityProcessLinkMapper.class),
-                    new JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)), new JdbcDatabaseClock(h.jdbc, DatabaseVendor.MYSQL)), h);
+                    new JdbcLockedRow(h.jdbc, DatabaseDialects.insert(DatabaseVendor.MYSQL)), new JdbcDatabaseClock(h.jdbc, DatabaseVendor.MYSQL), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)), h);
         }
 
         /** 与生产 EntityDataMutationService 一致：先写实体根行，再在同一事务发起流程。 */

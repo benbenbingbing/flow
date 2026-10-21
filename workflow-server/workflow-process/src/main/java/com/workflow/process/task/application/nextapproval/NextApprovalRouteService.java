@@ -61,6 +61,8 @@ public class NextApprovalRouteService {
     private final NodeFormSubmissionService nodeFormSubmissionService;
     private final ObjectMapper objectMapper;
     private final MultiInstanceOutcomeService multiInstanceOutcomeService;
+    /** 从持久化实体补齐系统字段，供新实例和存量网关使用同一变量口径。 */
+    private final com.workflow.process.instance.application.ProcessEntityVariableService entityVariableService;
 
     /**
      * 解析下一步审批路由；输出作为后续校验或处理的输入。
@@ -168,6 +170,8 @@ public class NextApprovalRouteService {
 
         Map<String, Object> variables = new LinkedHashMap<>(
                 runtimeService.getVariables(task.getProcessInstanceId()));
+        // 预览仅补本地投影，不写引擎；正式办理使用相同来源补齐后再执行网关。
+        variables.putAll(entityVariableService.missingRecordVariables(variables));
         Set<String> submittedEditableFields = Set.of();
         if (includeSubmittedForm && request != null) {
             final Map<String, Object> editable;
