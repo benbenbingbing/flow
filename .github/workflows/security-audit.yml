@@ -147,7 +147,7 @@ jobs:
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./workflow-frontend
-          file: workflow-frontend/workflow-web/Dockerfile
+          file: workflow-frontend/Dockerfile
           build-args: |
             FLOW_FRONTEND_MODULES=${{ vars.FLOW_FRONTEND_MODULES }}
           load: true

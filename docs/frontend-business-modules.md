@@ -84,7 +84,7 @@ FLOW_FRONTEND_MODULES=biz-project npm run dev:web
 以下命令从仓库根执行；临时交付可指定构建参数：
 
 ```bash
-docker build -f workflow-frontend/workflow-web/Dockerfile --build-arg FLOW_FRONTEND_MODULES=none -t flow-web:base workflow-frontend
+docker build --build-arg FLOW_FRONTEND_MODULES=none -t flow-web:base workflow-frontend
 FLOW_FRONTEND_MODULES=none docker compose build web
 ```
 

@@ -1,3 +1,4 @@
+# 在前端工作区统一构建 PC、Embed 和移动端，三端产物共同交付到同一镜像。
 FROM node:25-alpine@sha256:bdf2cca6fe3dabd014ea60163eca3f0f7015fbd5c7ee1b0e9ccb4ced6eb02ef4 AS build
 WORKDIR /app
 # 构建上下文为 workflow-frontend 目录，所有 workspace 共用一份锁文件。
@@ -21,7 +22,7 @@ RUN if [ -z "$FLOW_FRONTEND_MODULES" ]; then unset FLOW_FRONTEND_MODULES; fi; np
 FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:44e36330f74d4f3a1d4e222acca9e23b401fb87811a7597024502bb759c4dd49
 ENV SERVER_UPSTREAM=server:8080
 ENV NGINX_ENVSUBST_FILTER=SERVER_UPSTREAM
-COPY workflow-web/nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=build /app/workflow-web/dist /usr/share/nginx/html
 COPY --from=build /app/workflow-mobile/dist /usr/share/nginx/html/m
 USER 101:101

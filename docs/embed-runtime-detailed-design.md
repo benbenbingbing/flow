@@ -264,7 +264,7 @@ Embed 配置保存的 JSON Schema 校验，并由服务端映射为：
 
 - `workflow-web/src/router/index.js`
 - `workflow-web/src/shared/request/index.js`
-- `workflow-web/nginx.conf`
+- `workflow-frontend/nginx.conf`
 - `workflow-web/src/views/entity/EntityDataList.vue`
 - `workflow-web/src/views/entity/components/EntityDataFormDialog.vue`
 - `workflow-server/workflow-app/src/main/java/com/workflow/config/web/WebAccessConfiguration.java`
@@ -2984,7 +2984,7 @@ embed.flow.example.com   Embed Shell + 同源 Embed 控制面/原生委托 API �
 api.flow.example.com     可选的服务端 Open API/OAuth
 ```
 
-当前 `workflow-web/nginx.conf` 的全局 `frame-ancestors 'none'` 不能直接沿用到 Embed 页面。
+当前 `workflow-frontend/nginx.conf` 的全局 `frame-ancestors 'none'` 不能直接沿用到 Embed 页面。
 因为每个 Launch 的父 Origin 不同，入口 HTML 最适合由后端/边缘 Handler 动态返回 CSP；静态
 JS/CSS 仍由 Nginx 长缓存。不得为了省事把全站改成 `frame-ancestors *`。Embed 必须使用独立
 VHost/Ingress，入口路由不得继承或追加管理站点的 `frame-ancestors 'none'`；浏览器会同时执行

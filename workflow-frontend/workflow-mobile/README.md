@@ -97,7 +97,7 @@ PC 引入移动 UI 会构建失败；产物中的 `module-boundary.json` 可检�
 访问令牌只在内存，刷新依赖 HttpOnly Cookie。强制改密时引导至 PC，移动端不提供改密入口。
 开发使用相对 `/api` 和 Vite 代理；`start.sh` 按实际主机与端口配置精确 CORS Origin。
 在仓库根目录构建生产前端镜像：
-`docker build -f workflow-frontend/workflow-web/Dockerfile workflow-frontend`，构建上下文为前端工作区。
+`docker build -t flow-web:local workflow-frontend`，构建上下文为前端工作区。
 Nginx 同域提供 PC `/`、mobile `/m/`、API `/api/`；移动深链接回退 `/m/index.html`，
 缺失的移动静态资源返回 404。Embed 保持独立 Origin。
 

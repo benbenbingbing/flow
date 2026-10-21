@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const repositoryRoot = path.resolve(root, '..')
-const dockerfile = readFileSync(path.join(root, 'workflow-web/Dockerfile'), 'utf8')
+const dockerfile = readFileSync(path.join(root, 'Dockerfile'), 'utf8')
 const ignores = readFileSync(path.join(root, '.dockerignore'), 'utf8').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'))
 
 function included(filename) {
@@ -44,7 +44,7 @@ test('Compose 和 CI 从前端工作区构建，Dockerfile 与锁文件路径可
   assert.equal(readFileSync(path.resolve(repositoryRoot, context, file), 'utf8'), dockerfile)
   for (const workflow of ['ci.yml', 'deploy.yml', 'security-audit.yml']) {
     const source = readFileSync(path.join(repositoryRoot, '.github/workflows', workflow), 'utf8')
-    assert.match(source, /context: \.\/workflow-frontend\s+file: workflow-frontend\/workflow-web\/Dockerfile/)
+    assert.match(source, /context: \.\/workflow-frontend\s+file: workflow-frontend\/Dockerfile/)
     for (const [, lockfile] of source.matchAll(/cache-dependency-path:\s*(\S+)/g)) {
       assert.equal(path.resolve(repositoryRoot, lockfile), path.join(root, 'package-lock.json'))
       assert.ok(existsSync(path.resolve(repositoryRoot, lockfile)))

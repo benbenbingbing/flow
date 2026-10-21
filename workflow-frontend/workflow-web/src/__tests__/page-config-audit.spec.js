@@ -2917,7 +2917,7 @@ assert.doesNotMatch(
 )
 
 const packageSource = readFileSync(path.join(root, 'package.json'), 'utf8')
-const nginxSource = readFileSync(path.join(root, 'nginx.conf'), 'utf8')
+const nginxSource = readFileSync(path.join(root, '..', 'nginx.conf'), 'utf8')
 assert.match(
   nginxSource,
   /location\s+\/oauth2\/\s*\{[\s\S]*?proxy_pass\s+http:\/\/\$\{SERVER_UPSTREAM\}\/oauth2\/;/,

@@ -362,7 +362,7 @@ fi
 
 embed_vhost_file="$temporary_directory/embed-nginx-vhost.conf"
 awk '/^# Embed Runtime 使用独立端口/ { capture = 1 } capture { print }' \
-  "$repository_root/workflow-frontend/workflow-web/nginx.conf" >"$embed_vhost_file"
+  "$repository_root/workflow-frontend/nginx.conf" >"$embed_vhost_file"
 assert_exact_line "$embed_vhost_file" '    listen 8081;'
 assert_exact_line "$embed_vhost_file" '    if ($flow_forwarded_proto != "https") {'
 assert_exact_line "$embed_vhost_file" '    location ^~ /embed-assets/ {'
@@ -375,7 +375,7 @@ if grep -F 'location /api/ {' "$embed_vhost_file" >/dev/null \
 fi
 assert_exact_line "$embed_vhost_file" \
   '    location ~ "^/embed/v1/launches/lch_[A-Za-z0-9_-]{16,60}$" {'
-if ! grep -F "frame-ancestors 'none'" "$repository_root/workflow-frontend/workflow-web/nginx.conf" >/dev/null; then
+if ! grep -F "frame-ancestors 'none'" "$repository_root/workflow-frontend/nginx.conf" >/dev/null; then
   printf 'Admin VHost must retain frame-ancestors none\n' >&2
   exit 1
 fi

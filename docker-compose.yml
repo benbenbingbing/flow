@@ -140,7 +140,7 @@ services:
     image: flow-web:local
     build:
       context: ./workflow-frontend
-      dockerfile: workflow-web/Dockerfile
+      dockerfile: Dockerfile
       args:
         FLOW_FRONTEND_MODULES: ${FLOW_FRONTEND_MODULES:-}
     restart: unless-stopped

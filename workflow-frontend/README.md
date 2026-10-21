@@ -8,7 +8,9 @@
 ```text
 workflow-frontend/
 ├── package.json / package-lock.json    # workspace 清单与唯一锁文件
-├── workflow-web/                       # PC/Embed 应用、设计器、Dockerfile
+├── Dockerfile / .dockerignore          # PC/Embed 与移动端的统一镜像构建
+├── nginx.conf                         # 三端入口、反向代理与 Embed Origin 隔离
+├── workflow-web/                       # PC/Embed 应用、设计器
 ├── workflow-mobile/                    # Vant 移动应用
 ├── packages/                           # 产品维护的公共包
 │   ├── workflow-core/
@@ -67,11 +69,12 @@ npm run test:web
 
 默认业务选择由 `config/frontend-modules.json` 管理；`FLOW_FRONTEND_MODULES=none`
 构建基础产品，逗号分隔的 `biz-*` 名称可覆盖本次选择。PC/Embed 与移动端仍共同交付在前端镜像中。
+Dockerfile、Nginx 配置和 `.dockerignore` 统一位于本目录。
 Docker 的构建上下文为 `workflow-frontend/`，与根 Compose 的 `build.context` 一致。
 以下命令在仓库根执行，最后的参数指定前端工作区作为构建上下文：
 
 ```bash
-docker build -f workflow-frontend/workflow-web/Dockerfile -t flow-web:local workflow-frontend
+docker build -t flow-web:local workflow-frontend
 FLOW_FRONTEND_MODULES=none docker compose build web
 ```
 
