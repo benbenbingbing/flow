@@ -13,6 +13,7 @@ import com.workflow.entity.form.infrastructure.persistence.record.EntityFormFiel
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
 import com.workflow.process.form.infrastructure.persistence.record.ProcessNodeForm;
 import com.workflow.process.publish.application.ProcessPublishedSnapshotService;
+import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.entity.form.application.EntityFormService;
 import com.workflow.entity.form.application.context.FormSubmissionExecutionContext;
 import com.workflow.entity.form.application.context.FormCrossFieldRuntimeContext;
@@ -61,6 +62,8 @@ public class NodeFormSubmissionService {
     /** 表单提交追踪服务 */
     private final FormSubmissionTraceService formSubmissionTraceService;
     private final ObjectMapper objectMapper;
+    /** 让旧实例的只读表单预览与正式办理使用相同的实体系统字段。 */
+    private final ProcessEntityVariableService entityVariableService;
 
     /**
      * 只读投影审批表单中允许当前节点编辑的提交值。
@@ -545,7 +548,7 @@ public class NodeFormSubmissionService {
     }
 
     /**
-     * 整理当前实体数据数据，供调用方遍历或继续处理。
+     * 构建已声明表单字段的可信基础值，供预览和正式提交执行同一套前置规则。
      *
      * @param processInstanceId 流程实例 ID，用于定位流程及其关联任务或业务记录
      * @param declaredFieldCodes {@code declared}字段编码集合，作为 {@code putDeclaredValues} 的输入影响后续处理
@@ -566,9 +569,14 @@ public class NodeFormSubmissionService {
         Map<String, Object> processVariables = runtimeService.getVariables(
                 processInstanceId);
         if (processVariables != null) {
+            // 预览不会经过正式办理的变量补齐步骤，必须在本地副本中补齐旧实例缺失的 name。
+            // 顶层流程变量优先于历史 entityData 快照，与正式办理补齐后读取的顺序一致；
+            // 不写引擎，也不接受客户端传来的只读字段作为补齐来源。
+            Map<String, Object> trustedVariables = new LinkedHashMap<>(processVariables);
+            trustedVariables.putAll(entityVariableService.missingRecordVariables(trustedVariables));
             putDeclaredValues(
                     result,
-                    processVariables,
+                    trustedVariables,
                     declaredFieldCodes);
         }
         return result;

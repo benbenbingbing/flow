@@ -11,6 +11,9 @@ import com.workflow.entity.form.application.PublishedFormSubmissionService;
 import com.workflow.entity.form.uniqueness.application.FormUniqueMutationContext;
 
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.instance.application.ProcessEntityVariableService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 
 import com.workflow.contracts.entity.ui.model.UiRuntimePurpose;
 import com.workflow.contracts.entity.ui.context.UiRuntimeResolutionContext;
@@ -47,6 +50,77 @@ import static org.mockito.Mockito.when;
  */
 class NodeFormSubmissionServiceTest {
 
+    /** 旧实例只读名称参与提交前派生时，预览与正式补齐后的结果一致，客户端不能伪造它。 */
+    @Test
+    void previewRepairsMissingNameBeforeSubmissionRulesWithoutWritingRuntime() {
+        RuntimeService runtimeService = mock(RuntimeService.class);
+        ProcessPublishedSnapshotService snapshotService = mock(ProcessPublishedSnapshotService.class);
+        EntityFormRuntimeService runtimeFormService = mock(EntityFormRuntimeService.class);
+        PublishedFormSubmissionService submissionService = mock(PublishedFormSubmissionService.class);
+        FormSubmissionTraceService traceService = mock(FormSubmissionTraceService.class);
+        EntityMutationPort mutationPort = mock(EntityMutationPort.class);
+        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        EntityRecordData record = new EntityRecordData();
+        record.setName("2");
+        when(records.findById("expense", "data-1")).thenReturn(record);
+        NodeFormSubmissionService service = new NodeFormSubmissionService(
+                runtimeService, snapshotService, mock(EntityFormService.class), runtimeFormService,
+                mutationPort, submissionService, traceService, new ObjectMapper(),
+                new ProcessEntityVariableService(records));
+        Task task = task();
+        FormSubmissionExecutionContext executionContext = executionContext();
+        when(traceService.current(eq("PROCESS_APPROVAL_SUBMIT"), eq("task:task-1"),
+                org.mockito.ArgumentMatchers.anyMap())).thenReturn(executionContext);
+        when(runtimeService.getVariable("instance-1", "entityCode")).thenReturn("expense");
+        when(runtimeService.getVariable("instance-1", "entityDataId")).thenReturn("data-1");
+        // 历史嵌套快照可能已过期；正式补齐后的顶层名称同样应覆盖它。
+        Map<String, Object> entityData = Map.of("name", "1", "routeBucket", "UNKNOWN");
+        when(runtimeService.getVariable("instance-1", "entityData")).thenReturn(entityData);
+        Map<String, Object> legacyVariables = Map.of(
+                "entityCode", "expense", "entityDataId", "data-1", "entityData", entityData);
+        when(runtimeService.getVariables("instance-1")).thenReturn(legacyVariables);
+
+        ProcessNodeForm nodeForm = new ProcessNodeForm();
+        nodeForm.setFormId("form-1");
+        nodeForm.setFormReleaseId("release-3");
+        nodeForm.setFormReleaseVersion(3);
+        nodeForm.setIsReadonly(0);
+        when(snapshotService.getNodeFormsContextByProcessDefinitionId("definition-1", "Task_Review"))
+                .thenReturn(published(nodeForm));
+        EntityForm form = new EntityForm();
+        form.setFields(List.of(field("name", 1), field("routeBucket", 0)));
+        when(runtimeFormService.getByBinding(nodeForm, "history-1", UiRuntimePurpose.ACTIVE_TASK))
+                .thenReturn(form);
+        when(submissionService.previewSideEffectFreeForm(
+                eq("form-1"), eq("release-3"), eq(3), eq("expense"), eq("data-1"), eq("approve"),
+                org.mockito.ArgumentMatchers.anyMap(), eq(executionContext),
+                org.mockito.ArgumentMatchers.any(UiRuntimeResolutionContext.class)))
+                .thenAnswer(invocation -> {
+                    Map<String, Object> values = new java.util.LinkedHashMap<>(invocation.getArgument(6));
+                    assertEquals("2", values.get("name"));
+                    values.put("routeBucket", "1".equals(values.get("name")) ? "EQUAL" : "NOT_EQUAL");
+                    return values;
+                });
+
+        Map<String, Object> legacyPreview = service.projectEditableData(task, Map.of("name", "1"));
+        assertEquals(Map.of("routeBucket", "NOT_EQUAL"), legacyPreview);
+        assertFalse(legacyVariables.containsKey("name"));
+        assertEquals("1", entityData.get("name"));
+
+        // 模拟正式办理已经补齐顶层变量；两种入口交给 BEFORE_SUBMIT 的数据必须相同。
+        Map<String, Object> repairedVariables = new java.util.LinkedHashMap<>(legacyVariables);
+        repairedVariables.put("name", "2");
+        when(runtimeService.getVariables("instance-1")).thenReturn(repairedVariables);
+        assertEquals(legacyPreview, service.projectEditableData(task, Map.of("name", "1")));
+        verify(records, times(1)).findById("expense", "data-1");
+        verify(mutationPort, never()).execute(org.mockito.ArgumentMatchers.any());
+        verify(runtimeService, never()).setVariables(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyMap());
+        verify(runtimeService, never()).setVariable(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     void previewUsesTrustedEditableProjectionAndSafeBeforeSubmit() {
         RuntimeService runtimeService = mock(RuntimeService.class);
@@ -67,7 +141,7 @@ class NodeFormSubmissionServiceTest {
                 mutationPort,
                 submissionService,
                 traceService,
-                new ObjectMapper());
+                new ObjectMapper(), mock(ProcessEntityVariableService.class));
         Task task = task();
         FormSubmissionExecutionContext executionContext =
                 executionContext();
@@ -165,7 +239,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService, new ObjectMapper());
+                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class));
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(
@@ -288,7 +362,7 @@ class NodeFormSubmissionServiceTest {
                         mutationPort,
                         submissionService,
                         traceService,
-                        new ObjectMapper());
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(
@@ -436,7 +510,7 @@ class NodeFormSubmissionServiceTest {
         NodeFormSubmissionService service = new NodeFormSubmissionService(
                 runtimeService, snapshotService, formService,
                 runtimeFormService, mutationPort, submissionService,
-                traceService, new ObjectMapper());
+                traceService, new ObjectMapper(), mock(ProcessEntityVariableService.class));
 
         Task task = task();
         when(runtimeService.getVariable("instance-1", "entityCode")).thenReturn("expense");
@@ -516,7 +590,7 @@ class NodeFormSubmissionServiceTest {
                 mutationPort,
                 submissionService,
                 traceService,
-                new ObjectMapper());
+                new ObjectMapper(), mock(ProcessEntityVariableService.class));
         Task task = task();
         FormSubmissionExecutionContext executionContext =
                 executionContext();
@@ -604,7 +678,7 @@ class NodeFormSubmissionServiceTest {
                         mock(EntityMutationPort.class),
                         mock(PublishedFormSubmissionService.class),
                         mock(FormSubmissionTraceService.class),
-                        new ObjectMapper());
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
         Task task = task();
         when(runtimeService.getVariable(
                 "instance-1",
@@ -651,7 +725,7 @@ class NodeFormSubmissionServiceTest {
                         mutationPort,
                         submissionService,
                         traceService,
-                        new ObjectMapper());
+                        new ObjectMapper(), mock(ProcessEntityVariableService.class));
         FormSubmissionExecutionContext executionContext =
                 executionContext();
         when(traceService.current(

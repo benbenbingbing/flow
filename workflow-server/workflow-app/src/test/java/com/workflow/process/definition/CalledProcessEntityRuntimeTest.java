@@ -62,6 +62,7 @@ class CalledProcessEntityRuntimeTest {
             assertEquals(120, variables.get("amount"));
             assertEquals(900, variables.get("parentAmount"));
             assertEquals("CHILD-001", variables.get("code"));
+            assertEquals("2", variables.get("name"));
             assertEquals("alice", variables.get("initiator"));
             assertFalse(variables.containsKey("parentOnly"));
             assertEquals(0, engine.getTaskService().createTaskQuery().processInstanceId(parent.getId()).count());
@@ -172,6 +173,7 @@ class CalledProcessEntityRuntimeTest {
         when(entities.findAllByProcessDefinitionId("2")).thenReturn(List.of(entity));
         when(statuses.usesTransitions(anyString())).thenReturn(true);
         var record = new EntityRecordData(); record.setId("record-b"); record.setCode("CHILD-001");
+        record.setName("2");
         record.setData(Map.of("amount", 120, "entityCode", "forged", "initiator", "forged"));
         when(queries.findById("child_entity", "record-b")).thenReturn(record);
         deploy(engine, "child", definitions("""

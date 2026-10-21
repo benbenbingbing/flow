@@ -605,7 +605,8 @@ class ProcessProgrammingVariableIntegrationTest {
                 mock(com.workflow.contracts.entity.port.EntityRecordPort.class),
                 mock(com.workflow.process.cc.application.ProcessCcService.class),
                 mock(com.workflow.process.task.application.nextapproval.NextApproverOverrideService.class), outcome,
-                mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class), identity));
+                mock(com.workflow.process.task.application.operation.NodeOperationCapabilityService.class), identity,
+                mock(com.workflow.process.instance.application.ProcessEntityVariableService.class)));
         return new com.workflow.process.task.application.ProcessTaskCommandAdapter(commands, access,
                 engine.getTaskService(), engine.getRuntimeService(), engine.getHistoryService(), engine.getRepositoryService(),
                 core, mock(com.workflow.process.task.application.TaskAddSignService.class),

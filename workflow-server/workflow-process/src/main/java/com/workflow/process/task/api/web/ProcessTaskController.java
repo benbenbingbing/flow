@@ -22,6 +22,7 @@ import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.instance.application.ProcessInstanceAccessService;
 import com.workflow.process.task.api.response.TaskVO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.flowable.common.engine.api.FlowableObjectNotFoundException;
 import org.flowable.common.engine.api.FlowableOptimisticLockingException;
 import org.flowable.common.engine.api.FlowableTaskAlreadyClaimedException;
@@ -41,6 +42,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/process-task")
 @RequiredArgsConstructor
+@Slf4j
 public class ProcessTaskController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.workflow.process.task.application.ProcessTaskCommandAdapter taskCommands;
@@ -237,12 +239,16 @@ public class ProcessTaskController {
             if (Task.class.equals(e.getObjectClass())) {
                 throw taskAlreadyCompleted();
             }
+            log.error("审批失败: {}", e.getMessage(),e);
             return Result.error("审批失败: " + e.getMessage());
         } catch (com.workflow.contracts.process.error.ProcessOperationException e) {
+            log.error("审批失败: {}", e.getMessage(),e);
             throw e;
         } catch (ForbiddenException | BusinessConflictException e) {
+            log.error("审批失败: {}", e.getMessage(),e);
             throw e;
         } catch (Exception e) {
+            log.error("审批失败: {}", e.getMessage(),e);
             return Result.error("审批失败: " + e.getMessage());
         }
     }

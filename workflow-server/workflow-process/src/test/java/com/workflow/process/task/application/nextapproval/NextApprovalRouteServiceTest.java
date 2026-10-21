@@ -6,8 +6,11 @@ import com.workflow.process.task.application.nextapproval.model.NextApproverSele
 import com.workflow.process.task.infrastructure.flowable.FlowableConditionEvaluator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import com.workflow.entity.form.application.error.FormSubmissionPreviewDeferredException;
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.process.task.application.MultiInstanceOutcomeService;
 import com.workflow.process.task.api.request.NextApprovalPreviewRequest;
 import com.workflow.process.task.api.response.NextApprovalPreviewStatus;
@@ -41,6 +44,8 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -52,6 +57,7 @@ class NextApprovalRouteServiceTest {
     private NextApproverSelectionPolicyReader policyReader;
     private NodeFormSubmissionService nodeFormSubmissionService;
     private MultiInstanceOutcomeService multiInstanceOutcomeService;
+    private ProcessEntityVariableService entityVariableService;
     private NextApprovalRouteService service;
     private Task task;
 
@@ -63,15 +69,8 @@ class NextApprovalRouteServiceTest {
         policyReader = mock(NextApproverSelectionPolicyReader.class);
         nodeFormSubmissionService = mock(NodeFormSubmissionService.class);
         multiInstanceOutcomeService = mock(MultiInstanceOutcomeService.class);
-        service = new NextApprovalRouteService(
-                mock(TaskService.class),
-                runtimeService,
-                repositoryService,
-                conditionEvaluator,
-                policyReader,
-                nodeFormSubmissionService,
-                new ObjectMapper(),
-                multiInstanceOutcomeService, org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
+        entityVariableService = mock(ProcessEntityVariableService.class);
+        service = createService();
         task = mock(Task.class);
         when(task.getProcessDefinitionId()).thenReturn("definition-7");
         when(task.getProcessInstanceId()).thenReturn("instance-1");
@@ -310,6 +309,52 @@ class NextApprovalRouteServiceTest {
                 resolution.targets().stream()
                         .map(target -> target.userTask().getId())
                         .toList());
+    }
+
+    @Test
+    void legacyMissingEntityNameUsesPersistedValueForPreviewWithoutWritingRuntime() {
+        EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+        EntityRecordData record = new EntityRecordData();
+        record.setName("2");
+        when(records.findById("expense", "record-1")).thenReturn(record);
+        entityVariableService = new ProcessEntityVariableService(records);
+        service = createService();
+        Map<String, Object> storedVariables = Map.of(
+                "entityCode", "expense",
+                "entityDataId", "record-1");
+        when(runtimeService.getVariables("instance-1")).thenReturn(storedVariables);
+
+        org.flowable.bpmn.model.Process process = process();
+        UserTask current = node(new UserTask(), "current-review");
+        ExclusiveGateway gateway = node(new ExclusiveGateway(), "name-decision");
+        UserTask equal = node(new UserTask(), "equal-review");
+        UserTask notEqual = node(new UserTask(), "not-equal-review");
+        add(process, current, gateway, equal, notEqual);
+        connect(process, current, gateway, "to-decision", null);
+        connect(process, gateway, equal, "to-equal", "${name == '1'}");
+        connect(process, gateway, notEqual, "to-not-equal", "${name != '1'}");
+        when(repositoryService.getBpmnModel("definition-7")).thenReturn(model(process));
+        when(conditionEvaluator.evaluate(anyString(), anyMap()))
+                .thenAnswer(invocation -> {
+                    String expression = invocation.getArgument(0);
+                    Map<String, Object> variables = invocation.getArgument(1);
+                    assertEquals("2", variables.get("name"));
+                    boolean equalToOne = "1".equals(variables.get("name"));
+                    return "${name == '1'}".equals(expression) ? equalToOne : !equalToOne;
+                });
+
+        NextApprovalResolution resolution = service.resolve(
+                task, request("approve", 2000), true);
+
+        assertEquals(NextApprovalPreviewStatus.READY, resolution.status());
+        assertEquals(List.of("not-equal-review"), resolution.targets().stream()
+                .map(target -> target.userTask().getId()).toList());
+        assertEquals("2", resolution.variables().get("name"));
+        // 预览只读取真实记录并补本地投影，不能修写实例变量或复用原 Map 写入。
+        assertFalse(storedVariables.containsKey("name"));
+        verify(records).findById("expense", "record-1");
+        verify(runtimeService, never()).setVariables(anyString(), anyMap());
+        verify(runtimeService, never()).setVariable(anyString(), anyString(), any());
     }
 
     @Test
@@ -880,6 +925,19 @@ class NextApprovalRouteServiceTest {
                 resolution.targets().stream()
                         .map(target -> target.userTask().getId())
                         .toList());
+    }
+
+    private NextApprovalRouteService createService() {
+        return new NextApprovalRouteService(
+                mock(TaskService.class),
+                runtimeService,
+                repositoryService,
+                conditionEvaluator,
+                policyReader,
+                nodeFormSubmissionService,
+                new ObjectMapper(),
+                multiInstanceOutcomeService,
+                entityVariableService);
     }
 
     private NextApprovalPreviewRequest request(String action, int amount) {

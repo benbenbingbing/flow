@@ -2,6 +2,7 @@ package com.workflow.service;
 
 import com.workflow.process.cc.application.ProcessCcService;
 import com.workflow.process.form.application.NodeFormSubmissionService;
+import com.workflow.process.instance.application.ProcessEntityVariableService;
 import com.workflow.process.task.application.ProcessTaskService;
 import com.workflow.process.task.application.TaskActionService;
 import com.workflow.process.task.application.TaskIdentityAccessService;
@@ -39,6 +40,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.any;
@@ -113,6 +115,9 @@ class TaskActionServiceTest {
     @Mock
     private NodeOperationCapabilityService nodeOperationCapabilityService;
 
+    @Mock
+    private ProcessEntityVariableService entityVariableService;
+
     /** 被测任务动作服务 */
     private TaskActionService service;
 
@@ -138,8 +143,8 @@ class TaskActionServiceTest {
                         new com.fasterxml.jackson.databind.ObjectMapper()),
                 nodeOperationCapabilityService,
                 new TaskIdentityAccessService(taskService, mock(SysGroupMapper.class),
-                        mock(SysRoleMapper.class), mock(IdentityDirectoryPort.class))
-        , org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
+                        mock(SysRoleMapper.class), mock(IdentityDirectoryPort.class)),
+                entityVariableService);
         UserContext.setCurrentUser("admin-id", "admin");
     }
 
@@ -222,6 +227,46 @@ class TaskActionServiceTest {
         verify(taskService).complete(eq("task-1"), anyMap());
         verify(processTaskService).completeTask("task-1", "reject", "资料不全", null);
         verify(processTaskService).syncTasksFromFlowable("proc-1");
+    }
+
+    @Test
+    void completeTaskRepairsMissingEntityNameBeforeFormSubmissionAndEngineAdvance() {
+        mockTask("task-1", "proc-1", "admin");
+        Map<String, Object> storedVariables = Map.of(
+                "entityCode", "expense",
+                "entityDataId", "record-1");
+        Map<String, Object> missingVariables = Map.of("name", "2");
+        Map<String, Object> formData = Map.of("amount", 2000);
+        when(runtimeService.getVariables("proc-1")).thenReturn(storedVariables);
+        when(entityVariableService.missingRecordVariables(storedVariables))
+                .thenReturn(missingVariables);
+
+        service.completeTask("task-1", "admin", "approve", "同意", null, null, formData);
+
+        // 旧实例先补齐持久化名称，再让表单按权限处理本次提交，最后交由引擎计算网关。
+        var ordered = inOrder(runtimeService, entityVariableService,
+                nodeFormSubmissionService, taskService);
+        ordered.verify(runtimeService).getVariables("proc-1");
+        ordered.verify(entityVariableService).missingRecordVariables(storedVariables);
+        ordered.verify(runtimeService).setVariables("proc-1", missingVariables);
+        ordered.verify(nodeFormSubmissionService).applyEditableData(task, formData);
+        ordered.verify(taskService).complete(eq("task-1"), anyMap());
+    }
+
+    @Test
+    void transferDoesNotRepairEntityVariablesOrAdvanceEngine() {
+        when(taskService.createTaskQuery()).thenReturn(taskQuery);
+        when(taskQuery.taskId("task-1")).thenReturn(taskQuery);
+        when(taskQuery.singleResult()).thenReturn(task);
+        when(task.getAssignee()).thenReturn("admin");
+        when(task.getProcessInstanceId()).thenReturn("proc-1");
+
+        service.completeTask("task-1", "admin", "transfer", "转交处理", "user-2", null);
+
+        verify(taskService).setAssignee("task-1", "user-2");
+        verifyNoInteractions(entityVariableService);
+        verify(runtimeService, never()).setVariables(anyString(), anyMap());
+        verify(taskService, never()).complete(anyString(), anyMap());
     }
 
     @Test

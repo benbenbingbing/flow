@@ -1,6 +1,9 @@
 package com.workflow.process.runtime;
 
 import com.workflow.process.instance.application.ProcessRuntimeService;
+import com.workflow.process.instance.application.ProcessEntityVariableService;
+import com.workflow.contracts.entity.model.EntityRecordData;
+import com.workflow.contracts.entity.port.EntityRecordQueryPort;
 import com.workflow.core.database.jdbc.JdbcLockedRow;
 import com.workflow.process.instance.infrastructure.persistence.mapper.EntityProcessLinkMapper;
 import com.workflow.process.instance.infrastructure.persistence.record.EntityProcessLink;
@@ -117,6 +120,28 @@ class ProcessRuntimeServiceTest {
                 assertEquals("task-1", result.currentTaskId());
         }
 
+        /** 名称独立于自定义 data 保存，发起时也要提供给首个网关使用。 */
+        @Test
+        void initializesNameFromSavedEntityWhenRequestOnlyContainsCustomFields() {
+                Fixture fixture = new Fixture();
+                EntityRecordQueryPort records = mock(EntityRecordQueryPort.class);
+                EntityRecordData record = new EntityRecordData();
+                record.setName("2");
+                when(records.findById("expense", "data-1")).thenReturn(record);
+                fixture.entityVariableService = new ProcessEntityVariableService(records);
+
+                fixture.service().start(new ProcessStartRequest(
+                                "process-config-1", "expense", "data-1", "EXP-1",
+                                "admin", "管理员", "PENDING", Map.of("amount", 100), Map.of()));
+
+                @SuppressWarnings("unchecked")
+                ArgumentCaptor<Map<String, Object>> variables = ArgumentCaptor.forClass(Map.class);
+                verify(fixture.runtimeService).startProcessInstanceById(
+                                eq("definition-v3"), eq("data-1"), variables.capture());
+                assertEquals("2", variables.getValue().get("name"));
+                assertEquals(100, variables.getValue().get("amount"));
+        }
+
         @Test
         void unsafeHistoricalSkipExpressionDoesNotReceiveEnableSwitch() {
                 Fixture fixture = new Fixture();
@@ -164,6 +189,7 @@ class ProcessRuntimeServiceTest {
                 final ProcessTaskService processTaskService = mock(ProcessTaskService.class);
                 final MultiInstanceCollectionListener multiInstanceCollectionListener = mock(
                                 MultiInstanceCollectionListener.class);
+                ProcessEntityVariableService entityVariableService = mock(ProcessEntityVariableService.class);
                 Fixture() {
                         ProcessDefinitionConfig config = new ProcessDefinitionConfig();
                         config.setId("process-config-1");
@@ -227,7 +253,9 @@ class ProcessRuntimeServiceTest {
                                         taskService,
                                         processTaskService,
                                         multiInstanceCollectionListener,
-                                        entityProcessLinkMapper, lockedRows, () -> java.time.LocalDateTime.of(2026, 9, 22, 3, 0), org.mockito.Mockito.mock(com.workflow.process.instance.application.ProcessEntityVariableService.class));
+                                        entityProcessLinkMapper, lockedRows,
+                                        () -> java.time.LocalDateTime.of(2026, 9, 22, 3, 0),
+                                        entityVariableService);
                 }
         }
 }
