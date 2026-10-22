@@ -39,6 +39,7 @@ import {
   createFlowConditionGroup
 } from '@flow/workflow-core/utils/flowConditionGroups'
 import { translate as translateBpmn } from '@/utils/bpmn-i18n.js'
+import { validateCalledProcessConfig } from '@/components/node-config/calledProcessConfig.js'
 import {
   getNodeTypeDescription,
   getNodeTypeTag,
@@ -916,14 +917,48 @@ for (const validationText of [
   '请填写 REST 请求 URL',
   '请至少选择一个发送渠道',
   '接收任务超时时间必须是正整数',
-  '请填写业务规则任务的决策表 Key',
-  '请选择或填写子流程 Key'
+  '请填写业务规则任务的决策表 Key'
 ]) {
   assert.ok(
     nodeConfigPanelSource.includes(validationText),
     `自动流程节点缺少保存前校验: ${validationText}`
   )
 }
+// 调用流程校验已提取到独立模块；验证业务约束和保存入口接入，避免绑定旧文案所在文件。
+assert.match(
+  nodeConfigPanelSource,
+  /case 'call':\s*if \(validateCalledProcessConfig\(callForm\.value\)\)\s*\{[\s\S]*?ElMessage\.warning\([\s\S]*?\)\s*return\s*\}/,
+  '调用流程保存前应执行公共校验，并在失败时提示并终止保存'
+)
+for (const calledElement of [undefined, null, '', '   ']) {
+  assert.ok(
+    validateCalledProcessConfig({ calledElement }),
+    '未选择调用流程或仅填写空白 Key 时必须阻止保存'
+  )
+}
+assert.equal(
+  validateCalledProcessConfig({ calledElement: 'legacy_process' }),
+  '',
+  '未启用实体绑定的历史调用配置应继续允许保存'
+)
+const boundCallConfig = { calledElement: 'child_process', callActivityType: 'bpmn', entityBinding: 'existing' }
+for (const entityRecordId of ['relatedRecordId', '${related.id}']) {
+  assert.equal(
+    validateCalledProcessConfig({ ...boundCallConfig, entityRecordId }),
+    '',
+    '关联实体记录应允许父流程变量及 Map 路径'
+  )
+}
+for (const entityRecordId of ['', '   ', '${bean.run()}']) {
+  assert.ok(
+    validateCalledProcessConfig({ ...boundCallConfig, entityRecordId }),
+    '关联实体记录必须提供合法的记录来源，且不能执行方法'
+  )
+}
+assert.ok(
+  validateCalledProcessConfig({ ...boundCallConfig, callActivityType: 'cmmn', entityRecordId: '${related.id}' }),
+  '关联实体记录仅支持 BPMN 调用'
+)
 assert.equal(
   nodeConfigPanelSource.includes('<el-option label="multipart/form-data"'),
   false,

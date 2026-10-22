@@ -136,7 +136,9 @@ export const CONFIGURATION_SOURCES = Object.freeze([
     '^sendForm\\.',
     '^serviceForm\\.',
     '^slaForm\\.',
-    '^statusForm\\.'
+    '^statusForm\\.',
+    // 来源选择会转换并持久化 BPMN 节点类型，属于设计配置而非纯界面状态。
+    '^subProcessSource$'
   ]),
   source('src/components/node-config/NodeSlaEditor.vue', '流程配置', '流程节点', ['^slaForm\\.']),
   source('src/components/FlowConditionGroupEditor.vue', '流程配置', '流程条件', [
@@ -787,6 +789,7 @@ const LOCATION_RULES = Object.freeze([
   locationRule('src/components/NodeConfigPanel.vue', '^manualForm\\.', '流程配置-流程-设计-人工任务属性-常用-线下任务'),
   locationRule('src/components/NodeConfigPanel.vue', '^ruleForm\\.', '流程配置-流程-设计-业务规则任务属性-常用-业务规则'),
   locationRule('src/components/NodeConfigPanel.vue', '^callForm\\.', '流程配置-流程-设计-调用活动属性-常用-调用流程'),
+  locationRule('src/components/NodeConfigPanel.vue', '^subProcessSource$', '流程配置-流程-设计-子流程属性-常用-子流程来源'),
   locationRule('src/components/NodeConfigPanel.vue', '^conditionForm\\.', '流程配置-流程-设计-连线属性-常用-流转条件'),
   locationRule('src/components/node-config/NodeSlaEditor.vue', '^slaForm\\.', '流程配置-流程-设计-用户任务属性-高级-任务 SLA'),
   locationRule('src/components/NodeConfigPanel.vue', '^advancedForm\\.(skipExpression|skipMode)$', '流程配置-流程-设计-用户任务属性-高级-自动跳过'),
@@ -1381,6 +1384,31 @@ const KEY_GUIDANCE = Object.freeze({
 })
 
 const CONTROL_OVERRIDES = Object.freeze({
+  // 子流程来源会改变模型结构，实体绑定开关保存字符串枚举；不能套用通用开关说明或布尔示例。
+  'src/components/NodeConfigPanel.vue:subProcessSource': {
+    label: '子流程来源',
+    meaning: '选择保留当前内嵌节点，或将其转换为调用另一个已发布流程的调用活动。',
+    example: 'existing',
+    configureWhen: '需要复用独立发布的流程，并让父流程等待该流程结束后继续时选择调用已有流程。',
+    skipWhen: '需要继续执行当前子流程内部节点时保留 embedded，无需配置被调用流程。',
+    expectedEffect: '选择 existing 并应用到画布后，原内部节点被调用活动替代，节点 ID、外围连线和配置保留；转换可撤销，保存草稿后持久化。'
+  },
+  'src/components/NodeConfigPanel.vue:callForm.entityBinding': {
+    label: '关联实体记录',
+    meaning: '决定被调用的 BPMN 流程是否绑定其目标实体中一条尚未发起流程的已有记录；开启保存 existing，关闭保存空字符串。',
+    example: 'existing',
+    configureWhen: '父流程需要为另一条已有业务记录发起子流程，并使用该记录的表单、业务字段和状态规则时开启。',
+    skipWhen: '子流程只处理传入变量、不需要绑定业务记录时关闭；历史未开启的调用活动保持原行为。',
+    expectedEffect: '开启后要求目标流程唯一绑定一个实体，并按记录 ID 来源绑定已有记录；记录不存在或已有关联流程时当前流转事务回滚。'
+  },
+  'src/components/NodeConfigPanel.vue:callForm.entityRecordId': {
+    label: '记录 ID 来源',
+    meaning: '从父流程变量或 Map 路径读取目标实体记录的 ID，只支持字段路径，不执行方法或脚本。',
+    example: '${relatedRecordId}',
+    configureWhen: '开启关联实体记录后，选择存放目标记录 ID 的父实体字段，或填写父流程参数引用，如 ${relation.id}。',
+    skipWhen: '未开启关联实体记录时无需配置；开启后此项必填。',
+    expectedEffect: '启动子流程时解析该来源，并使用所选流程绑定的实体核验和绑定记录；非法来源在应用配置时被拦截，运行时无法解析或记录不合法则回滚。'
+  },
   // 关系选择器保存完整路径，模板无法推导结构化示例；示例须与 V2 办理人解析契约一致。
   'src/components/NodeConfigPanel.vue:assigneeForm.entityUserReference': {
     label: '用户关系路径',
