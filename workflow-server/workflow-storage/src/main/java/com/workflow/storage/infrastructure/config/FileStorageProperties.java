@@ -14,6 +14,7 @@ public class FileStorageProperties {
 
     /**
      * 存储类型：local、s3、minio，也可使用已注册的业务扩展策略标识。
+     * 所有 profile（包括 production）均按此配置选择策略，由部署者决定存储方式。
      */
     private String type = "local";
 

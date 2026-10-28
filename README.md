@@ -230,8 +230,10 @@ FILE_STORAGE_MINIO_ACCESS_URL=
 - 旧的 `s3` 策略仍可连接 MinIO。切换为 `minio` 时保留相同的 endpoint、bucket 和
   access-url，即可继续使用原有文件标识；更换桶或前缀需要另行处理历史文件。
 
-`production` profile 支持 `s3` 和 `minio`。现有生产部署模板继续默认使用 `s3`；
-启用独立 MinIO 策略时，需要同步向应用容器注入上述环境变量。
+所有 profile（包括 `production`）都按 `FILE_STORAGE_TYPE`（即 `file.storage.type`）
+选择存储方式，支持 `local`、`s3`、`minio` 及已注册的业务扩展策略，应用默认使用 `local`。
+部署者自行配置所选存储的目录或连接参数，生产启动不再限制存储类型。
+现有生产部署模板默认使用 `s3`；启用 MinIO 时，向应用容器注入上述环境变量。
 
 ## 构建与验证
 

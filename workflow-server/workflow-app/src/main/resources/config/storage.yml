@@ -15,7 +15,7 @@ spring:
 file:
   # 文件存储策略和各后端连接参数，仅选中的策略用于实际存储。
   storage:
-    # 存储策略标识：local、s3、minio 或已注册的业务扩展策略。
+    # 存储策略标识：local、s3、minio 或已注册的业务扩展策略；production 同样由部署者选择。
     type: ${FILE_STORAGE_TYPE:local}
     # 本地磁盘存储参数，适用于本地开发或具备共享文件方案的部署。
     local:
