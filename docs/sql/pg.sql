@@ -1,9 +1,10 @@
 -- PostgreSQL 16 平台基础表空库初始化脚本。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
+-- 2026-10-29：同步至 V124，新增历史导入四张表、三条菜单权限及超级管理员授权。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 194 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
 
@@ -3714,6 +3715,115 @@ COMMENT ON COLUMN "process_command_receipt"."result_document" IS '首次执行�
 COMMENT ON COLUMN "process_command_receipt"."create_time" IS '回执创建时间；用于实例查询排序和记录清理';
 COMMENT ON COLUMN "process_command_receipt"."update_time" IS '回执状态更新时间；由命令服务在事务中维护';
 
+-- V124：历史导入与引擎运行态隔离；来源键用摘要去重，所有审批事件随不可变档案原子保存。
+
+CREATE TABLE "history_import_batch" (
+  "id" varchar(64) NOT NULL,
+  "owner_id" varchar(64) NOT NULL,
+  "name" varchar(200) NOT NULL,
+  "state" varchar(30) NOT NULL,
+  "revision" integer NOT NULL,
+  "plan_json" text NOT NULL,
+  "entities_json" text NULL,
+  "history_json" text NULL,
+  "validation_json" text NULL,
+  "validation_hash" varchar(64) NULL,
+  "created_at" timestamp(0) NOT NULL,
+  "updated_at" timestamp(0) NOT NULL,
+  PRIMARY KEY ("id")
+);
+CREATE INDEX "idx_history_batch_owner" ON "history_import_batch" ("owner_id", "created_at");
+COMMENT ON TABLE "history_import_batch" IS '历史导入批次，保存方案、输入和预检快照并协调分组事务';
+COMMENT ON COLUMN "history_import_batch"."id" IS '批次唯一标识；用于锁定执行批次并关联提交组和来源映射';
+COMMENT ON COLUMN "history_import_batch"."owner_id" IS '创建用户 ID；批次查询和操作仅允许所属用户访问';
+COMMENT ON COLUMN "history_import_batch"."name" IS '导入方案名称；用于批次列表展示和人工识别';
+COMMENT ON COLUMN "history_import_batch"."state" IS '批次状态；控制编辑、预检、执行及失败重试的允许时机';
+COMMENT ON COLUMN "history_import_batch"."revision" IS '批次修订号；修改方案或文件后递增，拒绝旧页面覆盖当前配置';
+COMMENT ON COLUMN "history_import_batch"."plan_json" IS '导入方案 JSON；保存来源命名空间、实体引用及流程映射供预检和执行使用';
+COMMENT ON COLUMN "history_import_batch"."entities_json" IS '实体输入 JSON；暂存标准化文件内容供联合预检使用，不直接写入业务表';
+COMMENT ON COLUMN "history_import_batch"."history_json" IS '流程历史输入 JSON；暂存已结束实例和审批事件供联合预检使用';
+COMMENT ON COLUMN "history_import_batch"."validation_json" IS '预检快照 JSON；保存输入、实体配置、流程模板及依赖顺序供执行时复核';
+COMMENT ON COLUMN "history_import_batch"."validation_hash" IS '预检内容摘要；执行请求必须匹配，方案或文件变化后原预检失效';
+COMMENT ON COLUMN "history_import_batch"."created_at" IS '批次创建时间；配合所属用户索引支持批次列表排序';
+COMMENT ON COLUMN "history_import_batch"."updated_at" IS '批次更新时间；由导入服务在配置和执行状态变化时维护';
+
+CREATE TABLE "history_import_group" (
+  "id" varchar(64) NOT NULL,
+  "batch_id" varchar(64) NOT NULL,
+  "group_key" varchar(500) NOT NULL,
+  "group_hash" varchar(64) NOT NULL,
+  "state" varchar(30) NOT NULL,
+  "result_json" text NULL,
+  "error_message" varchar(2000) NULL,
+  "updated_at" timestamp(0) NOT NULL,
+  PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "uk_history_batch_group" ON "history_import_group" ("batch_id", "group_hash");
+COMMENT ON TABLE "history_import_group" IS '历史导入提交组，关联实体和流程档案在同一业务事务中提交';
+COMMENT ON COLUMN "history_import_group"."id" IS '提交组记录主键；用于持久化一次预检生成的分组身份';
+COMMENT ON COLUMN "history_import_group"."batch_id" IS '所属批次 ID；与分组摘要共同唯一定位组，供顺序执行和重试查询';
+COMMENT ON COLUMN "history_import_group"."group_key" IS '来源文件中的提交组键；用于展示分组并匹配预检依赖顺序';
+COMMENT ON COLUMN "history_import_group"."group_hash" IS '提交组键摘要；避免字符排序规则合并大小写不同的来源组键';
+COMMENT ON COLUMN "history_import_group"."state" IS '组执行状态；COMMITTED 的组重试时复用结果，失败组允许显式重试';
+COMMENT ON COLUMN "history_import_group"."result_json" IS '已提交结果 JSON；保存新旧记录映射及档案 ID，供重复请求和结果展示复用';
+COMMENT ON COLUMN "history_import_group"."error_message" IS '组执行失败原因；业务事务回滚后单独保存，供用户修正输入或重试';
+COMMENT ON COLUMN "history_import_group"."updated_at" IS '组状态更新时间；供查看最近一次提交或失败时间';
+
+CREATE TABLE "entity_import_source_link" (
+  "source_hash" varchar(64) NOT NULL,
+  "source_system" varchar(200) NOT NULL,
+  "source_entity_key" varchar(100) NOT NULL,
+  "source_record_id" varchar(500) NOT NULL,
+  "entity_code" varchar(100) NOT NULL,
+  "entity_record_id" varchar(64) NOT NULL,
+  "content_hash" varchar(64) NOT NULL,
+  "readonly_flag" integer NOT NULL DEFAULT 1,
+  "batch_id" varchar(64) NOT NULL,
+  "created_at" timestamp(0) NOT NULL,
+  PRIMARY KEY ("source_hash")
+);
+CREATE UNIQUE INDEX "uk_entity_import_target" ON "entity_import_source_link" ("entity_code", "entity_record_id");
+COMMENT ON TABLE "entity_import_source_link" IS '历史实体来源映射，按来源摘要去重并控制迁入记录只读策略';
+COMMENT ON COLUMN "entity_import_source_link"."source_hash" IS '来源系统、实体键和原记录 ID 的摘要主键；跨批次去重且保留来源大小写语义';
+COMMENT ON COLUMN "entity_import_source_link"."source_system" IS '来源系统命名空间；与来源实体键和原记录 ID 一起计算幂等身份';
+COMMENT ON COLUMN "entity_import_source_link"."source_entity_key" IS '导入方案中的来源实体键；用于解析旧记录引用并定位目标实体';
+COMMENT ON COLUMN "entity_import_source_link"."source_record_id" IS '来源业务记录 ID；保留原值供追溯，唯一性由来源摘要判定';
+COMMENT ON COLUMN "entity_import_source_link"."entity_code" IS '目标实体编码；与目标记录 ID 组成唯一映射并用于只读策略查询';
+COMMENT ON COLUMN "entity_import_source_link"."entity_record_id" IS '目标业务记录 ID；将旧引用转换为当前业务记录身份';
+COMMENT ON COLUMN "entity_import_source_link"."content_hash" IS '来源内容摘要；同来源再次导入时校验内容一致，冲突时拒绝覆盖';
+COMMENT ON COLUMN "entity_import_source_link"."readonly_flag" IS '迁入记录只读标记，默认 1；业务写入前据此阻止修改历史只读记录';
+COMMENT ON COLUMN "entity_import_source_link"."batch_id" IS '首次建立来源映射的批次 ID；用于追溯记录的迁入批次';
+COMMENT ON COLUMN "entity_import_source_link"."created_at" IS '来源映射创建时间；记录首次迁入时间供审计追溯';
+
+CREATE TABLE "process_archive_instance" (
+  "id" varchar(64) NOT NULL,
+  "source_hash" varchar(64) NOT NULL,
+  "source_system" varchar(200) NOT NULL,
+  "source_instance_id" varchar(500) NOT NULL,
+  "entity_code" varchar(100) NOT NULL,
+  "entity_record_id" varchar(64) NOT NULL,
+  "process_name" varchar(200) NOT NULL,
+  "end_result" varchar(40) NOT NULL,
+  "content_hash" varchar(64) NOT NULL,
+  "document_json" text NOT NULL,
+  "created_at" timestamp(0) NOT NULL,
+  PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "uk_process_archive_source" ON "process_archive_instance" ("source_hash");
+CREATE INDEX "idx_archive_entity" ON "process_archive_instance" ("entity_code", "entity_record_id", "created_at");
+COMMENT ON TABLE "process_archive_instance" IS '迁入的已结束流程档案，独立于引擎运行态且完整文档不可变';
+COMMENT ON COLUMN "process_archive_instance"."id" IS '流程档案唯一标识；用于历史列表定位和读取归档详情';
+COMMENT ON COLUMN "process_archive_instance"."source_hash" IS '来源系统与原流程实例 ID 的摘要；唯一约束防止跨批次重复建立档案';
+COMMENT ON COLUMN "process_archive_instance"."source_system" IS '来源系统命名空间；参与原流程实例的幂等身份计算';
+COMMENT ON COLUMN "process_archive_instance"."source_instance_id" IS '来源已结束流程实例 ID；保留原值供历史审计追溯';
+COMMENT ON COLUMN "process_archive_instance"."entity_code" IS '关联目标实体编码；配合记录 ID 和创建时间索引查询迁入流程列表';
+COMMENT ON COLUMN "process_archive_instance"."entity_record_id" IS '关联目标业务记录 ID；读取档案前据此复核当前实体数据权限';
+COMMENT ON COLUMN "process_archive_instance"."process_name" IS '来源流程名称；用于历史列表展示，不创建引擎流程定义或运行实例';
+COMMENT ON COLUMN "process_archive_instance"."end_result" IS '来源流程结束结果；仅接受已结束状态，供历史列表和详情展示';
+COMMENT ON COLUMN "process_archive_instance"."content_hash" IS '完整档案内容摘要；重复导入只复用相同内容，拒绝改写已归档历史';
+COMMENT ON COLUMN "process_archive_instance"."document_json" IS '不可变完整档案 JSON；原子保存流程图、字段快照及全部事件，保留同节点多次办理';
+COMMENT ON COLUMN "process_archive_instance"."created_at" IS '档案迁入时间；用于按业务记录查询历史流程时排序';
+
 CREATE TABLE "workflow_schema_change" (
   "id" varchar(36) NOT NULL,
   "ddl_hash" char(64) NOT NULL,
@@ -7108,8 +7218,16 @@ COMMENT ON COLUMN "workflow_schema_change"."completed_time" IS '完成时间。'
 
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 当前发布门闩及人员交接菜单；空库仅为内置超级管理员授权。
+-- V124：历史数据导入入口及执行、档案读取权限。
+INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "path", "component", "icon", "sort", "visible", "status", "perm", "create_time") VALUES ('history_import_menu', '400', '历史数据导入', 'C', '/system/history-import', 'system/HistoryImport', 'Upload', 17, '0', '0', 'history-import:read', CURRENT_TIMESTAMP);
+INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "sort", "visible", "status", "perm", "create_time") VALUES ('history_import_execute', 'history_import_menu', '执行历史导入', 'F', 1, '0', '0', 'history-import:execute', CURRENT_TIMESTAMP);
+INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "sort", "visible", "status", "perm", "create_time") VALUES ('process_archive_read', 'history_import_menu', '查看迁入历史', 'F', 2, '0', '0', 'process:archive:read', CURRENT_TIMESTAMP);
 INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "sort", "path", "component", "perm", "status", "visible", "is_frame", "is_cache", "keep_alive", "breadcrumb", "remark", "deleted", "create_by", "create_time", "update_by", "update_time") VALUES ('task_handover_menu_001','400','人员交接','C','Switch',36,'/system/task-handover','system/TaskHandoverManagement','system:task-handover:view','0','0','0','0','0','1','查询任意状态人员的待办并执行管理员交接',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO "sys_menu" ("id", "parent_id", "menu_name", "menu_type", "icon", "sort", "path", "component", "perm", "status", "visible", "is_frame", "is_cache", "keep_alive", "breadcrumb", "remark", "deleted", "create_by", "create_time", "update_by", "update_time") VALUES ('task_handover_transfer_001','task_handover_menu_001','批量交接','F',NULL,1,NULL,NULL,'system:task-handover:transfer','0','0','0','0','0','1','将选中的待办交接给状态正常的人员',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
+-- 历史导入页面和功能分别授权，确保新库超级管理员可以完成导入并查看迁入历史。
+INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_history_import_menu', '1', 'history_import_menu', CURRENT_TIMESTAMP);
+INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_history_import_execute', '1', 'history_import_execute', CURRENT_TIMESTAMP);
+INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_process_archive_read', '1', 'process_archive_read', CURRENT_TIMESTAMP);
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_task_handover_view_001','1','task_handover_menu_001',CURRENT_TIMESTAMP);
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_task_handover_transfer_001','1','task_handover_transfer_001',CURRENT_TIMESTAMP);
 INSERT INTO "entity_form_publication_lock" ("lock_id") VALUES (1);

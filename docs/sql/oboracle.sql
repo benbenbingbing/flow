@@ -1,9 +1,10 @@
 -- OceanBase 4.x Oracle 模式 平台基础表空库初始化脚本。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
+-- 2026-10-29：同步至 V124，新增历史导入四张表、三条菜单权限及超级管理员授权。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 194 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 导入前须将本文件中的 INIT_SIGNING_KEY_64_HEX_PLACEHOLDER 替换为新生成的 64 位十六进制随机密钥（例如 openssl rand -hex 32）。
 
@@ -3641,6 +3642,115 @@ COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."RESULT_DOCUMENT" IS '首次执行�
 COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."CREATE_TIME" IS '回执创建时间；用于实例查询排序和记录清理';
 COMMENT ON COLUMN "PROCESS_COMMAND_RECEIPT"."UPDATE_TIME" IS '回执状态更新时间；由命令服务在事务中维护';
 
+-- V124：历史导入与引擎运行态隔离；来源键用摘要去重，所有审批事件随不可变档案原子保存。
+
+CREATE TABLE "HISTORY_IMPORT_BATCH" (
+  "ID" varchar2(64) NOT NULL,
+  "OWNER_ID" varchar2(64) NOT NULL,
+  "NAME" varchar2(200) NOT NULL,
+  "STATE" varchar2(30) NOT NULL,
+  "REVISION" number(10) NOT NULL,
+  "PLAN_JSON" clob NOT NULL,
+  "ENTITIES_JSON" clob NULL,
+  "HISTORY_JSON" clob NULL,
+  "VALIDATION_JSON" clob NULL,
+  "VALIDATION_HASH" varchar2(64) NULL,
+  "CREATED_AT" timestamp(0) NOT NULL,
+  "UPDATED_AT" timestamp(0) NOT NULL,
+  PRIMARY KEY ("ID")
+);
+CREATE INDEX "IDX_HISTORY_BATCH_OWNER" ON "HISTORY_IMPORT_BATCH" ("OWNER_ID", "CREATED_AT");
+COMMENT ON TABLE "HISTORY_IMPORT_BATCH" IS '历史导入批次，保存方案、输入和预检快照并协调分组事务';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."ID" IS '批次唯一标识；用于锁定执行批次并关联提交组和来源映射';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."OWNER_ID" IS '创建用户 ID；批次查询和操作仅允许所属用户访问';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."NAME" IS '导入方案名称；用于批次列表展示和人工识别';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."STATE" IS '批次状态；控制编辑、预检、执行及失败重试的允许时机';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."REVISION" IS '批次修订号；修改方案或文件后递增，拒绝旧页面覆盖当前配置';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."PLAN_JSON" IS '导入方案 JSON；保存来源命名空间、实体引用及流程映射供预检和执行使用';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."ENTITIES_JSON" IS '实体输入 JSON；暂存标准化文件内容供联合预检使用，不直接写入业务表';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."HISTORY_JSON" IS '流程历史输入 JSON；暂存已结束实例和审批事件供联合预检使用';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."VALIDATION_JSON" IS '预检快照 JSON；保存输入、实体配置、流程模板及依赖顺序供执行时复核';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."VALIDATION_HASH" IS '预检内容摘要；执行请求必须匹配，方案或文件变化后原预检失效';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."CREATED_AT" IS '批次创建时间；配合所属用户索引支持批次列表排序';
+COMMENT ON COLUMN "HISTORY_IMPORT_BATCH"."UPDATED_AT" IS '批次更新时间；由导入服务在配置和执行状态变化时维护';
+
+CREATE TABLE "HISTORY_IMPORT_GROUP" (
+  "ID" varchar2(64) NOT NULL,
+  "BATCH_ID" varchar2(64) NOT NULL,
+  "GROUP_KEY" varchar2(500) NOT NULL,
+  "GROUP_HASH" varchar2(64) NOT NULL,
+  "STATE" varchar2(30) NOT NULL,
+  "RESULT_JSON" clob NULL,
+  "ERROR_MESSAGE" varchar2(2000) NULL,
+  "UPDATED_AT" timestamp(0) NOT NULL,
+  PRIMARY KEY ("ID")
+);
+CREATE UNIQUE INDEX "UK_HISTORY_BATCH_GROUP" ON "HISTORY_IMPORT_GROUP" ("BATCH_ID", "GROUP_HASH");
+COMMENT ON TABLE "HISTORY_IMPORT_GROUP" IS '历史导入提交组，关联实体和流程档案在同一业务事务中提交';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."ID" IS '提交组记录主键；用于持久化一次预检生成的分组身份';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."BATCH_ID" IS '所属批次 ID；与分组摘要共同唯一定位组，供顺序执行和重试查询';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."GROUP_KEY" IS '来源文件中的提交组键；用于展示分组并匹配预检依赖顺序';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."GROUP_HASH" IS '提交组键摘要；避免字符排序规则合并大小写不同的来源组键';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."STATE" IS '组执行状态；COMMITTED 的组重试时复用结果，失败组允许显式重试';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."RESULT_JSON" IS '已提交结果 JSON；保存新旧记录映射及档案 ID，供重复请求和结果展示复用';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."ERROR_MESSAGE" IS '组执行失败原因；业务事务回滚后单独保存，供用户修正输入或重试';
+COMMENT ON COLUMN "HISTORY_IMPORT_GROUP"."UPDATED_AT" IS '组状态更新时间；供查看最近一次提交或失败时间';
+
+CREATE TABLE "ENTITY_IMPORT_SOURCE_LINK" (
+  "SOURCE_HASH" varchar2(64) NOT NULL,
+  "SOURCE_SYSTEM" varchar2(200) NOT NULL,
+  "SOURCE_ENTITY_KEY" varchar2(100) NOT NULL,
+  "SOURCE_RECORD_ID" varchar2(500) NOT NULL,
+  "ENTITY_CODE" varchar2(100) NOT NULL,
+  "ENTITY_RECORD_ID" varchar2(64) NOT NULL,
+  "CONTENT_HASH" varchar2(64) NOT NULL,
+  "READONLY_FLAG" number(10) NOT NULL DEFAULT 1,
+  "BATCH_ID" varchar2(64) NOT NULL,
+  "CREATED_AT" timestamp(0) NOT NULL,
+  PRIMARY KEY ("SOURCE_HASH")
+);
+CREATE UNIQUE INDEX "UK_ENTITY_IMPORT_TARGET" ON "ENTITY_IMPORT_SOURCE_LINK" ("ENTITY_CODE", "ENTITY_RECORD_ID");
+COMMENT ON TABLE "ENTITY_IMPORT_SOURCE_LINK" IS '历史实体来源映射，按来源摘要去重并控制迁入记录只读策略';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."SOURCE_HASH" IS '来源系统、实体键和原记录 ID 的摘要主键；跨批次去重且保留来源大小写语义';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."SOURCE_SYSTEM" IS '来源系统命名空间；与来源实体键和原记录 ID 一起计算幂等身份';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."SOURCE_ENTITY_KEY" IS '导入方案中的来源实体键；用于解析旧记录引用并定位目标实体';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."SOURCE_RECORD_ID" IS '来源业务记录 ID；保留原值供追溯，唯一性由来源摘要判定';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."ENTITY_CODE" IS '目标实体编码；与目标记录 ID 组成唯一映射并用于只读策略查询';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."ENTITY_RECORD_ID" IS '目标业务记录 ID；将旧引用转换为当前业务记录身份';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."CONTENT_HASH" IS '来源内容摘要；同来源再次导入时校验内容一致，冲突时拒绝覆盖';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."READONLY_FLAG" IS '迁入记录只读标记，默认 1；业务写入前据此阻止修改历史只读记录';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."BATCH_ID" IS '首次建立来源映射的批次 ID；用于追溯记录的迁入批次';
+COMMENT ON COLUMN "ENTITY_IMPORT_SOURCE_LINK"."CREATED_AT" IS '来源映射创建时间；记录首次迁入时间供审计追溯';
+
+CREATE TABLE "PROCESS_ARCHIVE_INSTANCE" (
+  "ID" varchar2(64) NOT NULL,
+  "SOURCE_HASH" varchar2(64) NOT NULL,
+  "SOURCE_SYSTEM" varchar2(200) NOT NULL,
+  "SOURCE_INSTANCE_ID" varchar2(500) NOT NULL,
+  "ENTITY_CODE" varchar2(100) NOT NULL,
+  "ENTITY_RECORD_ID" varchar2(64) NOT NULL,
+  "PROCESS_NAME" varchar2(200) NOT NULL,
+  "END_RESULT" varchar2(40) NOT NULL,
+  "CONTENT_HASH" varchar2(64) NOT NULL,
+  "DOCUMENT_JSON" clob NOT NULL,
+  "CREATED_AT" timestamp(0) NOT NULL,
+  PRIMARY KEY ("ID")
+);
+CREATE UNIQUE INDEX "UK_PROCESS_ARCHIVE_SOURCE" ON "PROCESS_ARCHIVE_INSTANCE" ("SOURCE_HASH");
+CREATE INDEX "IDX_ARCHIVE_ENTITY" ON "PROCESS_ARCHIVE_INSTANCE" ("ENTITY_CODE", "ENTITY_RECORD_ID", "CREATED_AT");
+COMMENT ON TABLE "PROCESS_ARCHIVE_INSTANCE" IS '迁入的已结束流程档案，独立于引擎运行态且完整文档不可变';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."ID" IS '流程档案唯一标识；用于历史列表定位和读取归档详情';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."SOURCE_HASH" IS '来源系统与原流程实例 ID 的摘要；唯一约束防止跨批次重复建立档案';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."SOURCE_SYSTEM" IS '来源系统命名空间；参与原流程实例的幂等身份计算';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."SOURCE_INSTANCE_ID" IS '来源已结束流程实例 ID；保留原值供历史审计追溯';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."ENTITY_CODE" IS '关联目标实体编码；配合记录 ID 和创建时间索引查询迁入流程列表';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."ENTITY_RECORD_ID" IS '关联目标业务记录 ID；读取档案前据此复核当前实体数据权限';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."PROCESS_NAME" IS '来源流程名称；用于历史列表展示，不创建引擎流程定义或运行实例';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."END_RESULT" IS '来源流程结束结果；仅接受已结束状态，供历史列表和详情展示';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."CONTENT_HASH" IS '完整档案内容摘要；重复导入只复用相同内容，拒绝改写已归档历史';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."DOCUMENT_JSON" IS '不可变完整档案 JSON；原子保存流程图、字段快照及全部事件，保留同节点多次办理';
+COMMENT ON COLUMN "PROCESS_ARCHIVE_INSTANCE"."CREATED_AT" IS '档案迁入时间；用于按业务记录查询历史流程时排序';
+
 CREATE TABLE "WORKFLOW_SCHEMA_CHANGE" (
   "ID" varchar2(36) NOT NULL,
   "DDL_HASH" char(64) NOT NULL,
@@ -7254,6 +7364,10 @@ INSERT INTO "SYS_DICT_ITEM" ("ID", "DICT_ID", "DICT_CODE", "PARENT_ID", "ITEM_CO
 INSERT INTO "SYS_GLOBAL_SETTING" ("ID", "SCOPE_TYPE", "OWNER_ID", "SETTING_KEY", "NAME", "SETTING_VALUE_TYPE", "SETTING_VALUE", "REMARK", "VERSION", "CREATED_BY", "UPDATED_BY", "CREATE_TIME", "UPDATE_TIME") VALUES ('99777a7f-819f-4830-885e-eb36e7607b19','SYSTEM','0','ui.user_preferences','用户界面偏好','JSON','{\"fieldTypesCollapsed\":false,\"sidebarCollapsed\":false,\"tabsEnabled\":false}','字段类型面板收起、左侧主菜单收起和顶部多标签页统一存储；按字段优先使用个人配置，缺失字段继承系统默认值。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 -- 补齐平台固定导航；目录、页面及按钮均需显式授权，不能依赖运行库曾经手工创建的菜单。
 -- 页面入口不重复声明权限码，对应 API 权限由下方启用的 F 类型资源提供。
+-- V124：历史数据导入入口及执行、档案读取权限。
+INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "PATH", "COMPONENT", "ICON", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_menu', '400', '历史数据导入', 'C', '/system/history-import', 'system/HistoryImport', 'Upload', 17, '0', '0', 'history-import:read', CURRENT_TIMESTAMP);
+INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_execute', 'history_import_menu', '执行历史导入', 'F', 1, '0', '0', 'history-import:execute', CURRENT_TIMESTAMP);
+INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('process_archive_read', 'history_import_menu', '查看迁入历史', 'F', 2, '0', '0', 'process:archive:read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('100','0','首页','C','HomeFilled',1,'/home','Home',NULL,'0','0','0','0','0','1','待办、已办与我发起的流程统一入口',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('301','300','实体配置','C','Box',1,'/entity','EntityList',NULL,'0','0','0','0','0','1','配置实体字段、表单、列表及流程绑定',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('302','300','流程配置','C','Connection',2,'/process','ProcessList',NULL,'0','0','0','0','0','1','设计、发布与管理流程定义',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
@@ -7360,6 +7474,10 @@ INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SO
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('task_handover_transfer_001','task_handover_menu_001','批量交接','F',NULL,1,NULL,NULL,'system:task-handover:transfer','0','0','0','0','0','1','将选中的待办交接给状态正常的人员',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE" ("ID", "ROLE_NAME", "ROLE_CODE", "DESCRIPTION", "SORT", "STATUS", "CREATE_TIME", "UPDATE_TIME", "DELETED", "SORT_ORDER") VALUES ('1','超级管理员','super_admin','系统内置超级管理员角色',0,'0',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,0);
 -- 为内置超级管理员（role_code = super_admin，固定 ID 为 1）补齐新增页面授权；已有子菜单和按钮授权继续保留。
+-- 历史导入页面和功能分别授权，确保新库超级管理员可以完成导入并查看迁入历史。
+INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_history_import_menu', '1', 'history_import_menu', CURRENT_TIMESTAMP);
+INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_history_import_execute', '1', 'history_import_execute', CURRENT_TIMESTAMP);
+INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_process_archive_read', '1', 'process_archive_read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('bootstrap_navigation_100','1','100',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('bootstrap_navigation_301','1','301',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('bootstrap_navigation_302','1','302',CURRENT_TIMESTAMP);

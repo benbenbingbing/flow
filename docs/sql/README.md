@@ -14,6 +14,23 @@
 | OceanBase MySQL 模式 | [obmysql.sql](obmysql.sql) |
 | OceanBase Oracle 模式 | [oboracle.sql](oboracle.sql) |
 
+## 2026-10-29 同步 V124 历史数据导入
+
+七份脚本已同步 `V124__historical_entity_and_process_import.sql`，当前均为 **198 张表、2,778 个字段**，包含 Flowable 表，不包含 Flyway 历史表。本次新增四张表、41 个字段，字段类型按各数据库方言转换，保留原迁移的长度、可空性、默认值、主键及五个索引，并补充用途注释：
+
+| 表 | 用途及关键约束 |
+| --- | --- |
+| `history_import_batch` | 保存导入方案、上传输入和预检快照；按所属用户及创建时间索引查询批次。 |
+| `history_import_group` | 保存同事务提交组的执行状态、结果和失败原因；`(batch_id, group_hash)` 唯一，重试复用已提交结果。 |
+| `entity_import_source_link` | 保存旧记录到当前实体记录的映射及只读策略；来源摘要为主键，`(entity_code, entity_record_id)` 唯一。 |
+| `process_archive_instance` | 独立于引擎运行态保存已结束流程及完整审批事件文档；来源摘要唯一，按关联实体、记录及创建时间索引查询。 |
+
+菜单同步新增系统管理下的“历史数据导入”（顺序 17，`history-import:read`）、“执行历史导入”（`history-import:execute`）及“查看迁入历史”（`process:archive:read`）。沿用独立空库脚本的授权规则，为超级管理员显式授权三条资源。当前共 **104 条菜单/权限记录（41 条目录或页面、63 条按钮权限）和 104 条超级管理员授权**。
+
+本次验证已逐项对照 V124 的字段、默认值、可空性、主键及索引，并通过 SQLite 内存执行七份脚本的菜单、角色和授权 INSERT，核对跨方言数据、菜单树、路由及授权完整性。除新增结构和种子数据外，原有 SQL 保持不变；本次未执行目标数据库的完整空库导入，后文的 MySQL/PostgreSQL 导入结果属于此前 V123 验证记录。
+
+本次新增、修改、删除或重命名的 Flyway 迁移文件均为 **无**，`V124` 及其他已有迁移保持不变。
+
 ## 2026-10-28 菜单初始化补齐
 
 七份脚本在原有 V123 结构范围内统一补齐菜单种子数据，初始化后包含以下平台导航及其全部子菜单：
