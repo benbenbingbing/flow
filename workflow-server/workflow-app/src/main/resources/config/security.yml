@@ -33,7 +33,7 @@ workflow:
       cookie-path: ${AUTH_SESSION_COOKIE_PATH:/api/auth}
       # 跨站发送 Cookie 的策略；跨站部署时需结合 HTTPS 和浏览器限制配置。
       cookie-same-site: ${AUTH_SESSION_COOKIE_SAME_SITE:Lax}
-      # 是否仅通过 HTTPS 发送 Refresh Token Cookie，生产 HTTPS 环境应开启。
+      # 按浏览器入口协议设置：HTTPS 使用 true，同源 HTTP 使用 false；生产环境允许显式配置。
       cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:false}
       # 清理失效会话的 Spring 六段 cron 表达式，按应用时区调度。
       cleanup-cron: ${AUTH_SESSION_CLEANUP_CRON:0 15 4 * * *}

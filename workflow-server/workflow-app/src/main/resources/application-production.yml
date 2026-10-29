@@ -1,4 +1,10 @@
-# 生产环境差异配置：激活 production profile 后生效；只覆盖日志相关差异，其余默认值沿用分组文件。
+# 生产环境差异配置：激活 production profile 后生效；覆盖会话 Cookie 和日志默认值，其余沿用分组文件。
+
+workflow:
+  security:
+    session:
+      # 保留生产 HTTPS 默认值；HTTP 部署必须显式关闭，移除强制校验后也不能静默降级默认 Cookie 策略。
+      cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:true}
 
 # 应用日志级别和输出格式，默认输出到控制台供部署平台采集。
 logging:

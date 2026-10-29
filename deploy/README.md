@@ -66,6 +66,36 @@ list only the ingress or load-balancer networks in
 nearest hop toward the client and ignores the header entirely when the direct
 peer is not trusted.
 
+## Browser login over HTTP or HTTPS
+
+Refresh Token cookies follow the browser-facing protocol, including when a proxy
+terminates TLS and forwards plain HTTP to the server. Deployment templates default
+to `Secure=true`; production also accepts an explicit `false` for same-origin HTTP
+deployments. With `Secure=true`, a browser visiting an ordinary HTTP address cannot
+store/send the refresh cookie, so login can succeed while a page reload receives
+401 from `/api/auth/refresh` and returns to the login page.
+
+For a same-origin HTTP deployment, set this in the target host's deployment `.env`
+or inject it into the server environment:
+
+```dotenv
+AUTH_SESSION_COOKIE_SECURE=false
+```
+
+For Helm, set `application.authSessionCookieSecure: false` in the deployment values.
+For direct server startup, supply the same environment variable. Keep the default
+cookie path `/api/auth` and `SameSite=Lax` when pages and APIs share an origin.
+HTTP sends the refresh credential without transport encryption. When the browser
+entry point uses HTTPS, set the value back to `true` even if the proxy's upstream
+connection remains HTTP.
+
+Apply the updated server image and recreate/restart the server so both the code and
+environment take effect; older images still reject non-Secure cookies under the
+`production` profile. Changing the environment requires recreating Compose
+containers rather than only running `docker compose restart`. Log in again after
+the change and confirm that `/api/auth/refresh` sends `flow_refresh_token` and
+returns 200 when the page reloads.
+
 ## Form release token lifetime
 
 `UI_RELEASE_RESOLUTION_TTL_SECONDS` configures `ui.release-resolution.ttl-seconds`

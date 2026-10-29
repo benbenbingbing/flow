@@ -31,6 +31,6 @@ public class AuthSessionProperties {
     /** Refresh Token Cookie 的 SameSite 策略。 */
     private String cookieSameSite = "Lax";
 
-    /** 是否为 Refresh Token Cookie 设置 Secure 属性。 */
+    /** 按浏览器入口协议决定是否添加 Secure；HTTPS 为 true，同源 HTTP 为 false，代理内网协议不影响此选择。 */
     private boolean cookieSecure;
 }

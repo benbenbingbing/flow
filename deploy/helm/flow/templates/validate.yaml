@@ -40,9 +40,6 @@
 {{- if and .Values.application.corsAllowCredentials (contains "*" .Values.application.corsAllowedOrigins) }}
 {{- fail "application.corsAllowedOrigins cannot use wildcards when credentials are enabled" }}
 {{- end }}
-{{- if not .Values.application.authSessionCookieSecure }}
-{{- fail "application.authSessionCookieSecure must be true for production deployments" }}
-{{- end }}
 {{- $openApiKeyIds := dict }}
 {{- $openApiFileNames := dict }}
 {{- $openApiSecretKeys := dict .Values.openApi.privateKeySecretKey true .Values.openApi.publicKeySecretKey true }}

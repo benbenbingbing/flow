@@ -40,6 +40,7 @@ class ApplicationConfigImportTest {
                             .contains("serverTimezone=UTC");
                     assertThat(environment.getProperty("flowable.history-level")).isEqualTo("full");
                     assertThat(environment.getProperty("jwt.expiration")).isEqualTo("900000");
+                    assertThat(environment.getProperty("workflow.security.session.cookie-secure")).isEqualTo("false");
                     assertThat(environment.getProperty("file.storage.local.path")).isEqualTo("./uploads");
                     assertThat(environment.getProperty("workflow.open-api.audience")).isEqualTo("flow-open-api");
                     assertThat(environment.getProperty("workflow.embed.crypto.context-key-version"))
@@ -63,6 +64,7 @@ class ApplicationConfigImportTest {
             assertThat(environment.getProperty("mybatis-plus.configuration.log-impl"))
                     .isEqualTo("org.apache.ibatis.logging.nologging.NoLoggingImpl");
             assertThat(environment.getProperty("workflow.outbox.batch-size")).isEqualTo("100");
+            assertThat(environment.getProperty("workflow.security.session.cookie-secure")).isEqualTo("true");
         });
     }
 
@@ -75,6 +77,7 @@ class ApplicationConfigImportTest {
                 "WORKFLOW_LOG_LEVEL", "DEBUG",
                 "MYBATIS_LOG_IMPL", "org.apache.ibatis.logging.stdout.StdOutImpl",
                 "SPRING_DATASOURCE_URL", "jdbc:mysql://override.example/explicit",
+                "AUTH_SESSION_COOKIE_SECURE", "false",
                 "JWT_SECRET", "config-import-test-only-secret"))
                 .withPropertyValues("spring.profiles.active=production")
                 .run(context -> {
@@ -89,6 +92,8 @@ class ApplicationConfigImportTest {
                     assertThat(environment.getProperty("mybatis-plus.configuration.log-impl"))
                             .isEqualTo("org.apache.ibatis.logging.stdout.StdOutImpl");
                     assertThat(environment.getProperty("jwt.secret")).isEqualTo("config-import-test-only-secret");
+                    // HTTP 生产部署的显式选择必须覆盖生产 profile 默认值，才能下发浏览器可携带的刷新 Cookie。
+                    assertThat(environment.getProperty("workflow.security.session.cookie-secure")).isEqualTo("false");
                     assertThat(environment.getProperty("logging.structured.format.console")).isEqualTo("ecs");
                 });
     }

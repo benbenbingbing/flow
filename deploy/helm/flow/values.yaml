@@ -89,6 +89,7 @@ application:
   authSessionIdleTimeout: 2h
   authSessionAbsoluteTimeout: 12h
   authSessionRetention: 7d
+  # 依据浏览器入口协议设置；同源 HTTP 部署改为 false，TLS 在代理终止时仍保持 true。
   authSessionCookieSecure: true
   trustForwardedHeaders: true
   httpAllowedHosts: ""
