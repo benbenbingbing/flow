@@ -91,17 +91,29 @@ public class ProcessArchiveService implements ProcessArchivePort {
         return id;
     }
 
+    /**
+     * 在实体查看权限和当前数据范围内列出迁入流程轮次，供普通详情页复用。
+     * 不要求导入管理权限；无档案返回空列表，无权查看关联实体时拒绝读取。
+     * @param entityCode 关联实体编码，与记录 ID 一起限定档案查询范围
+     * @param recordId 当前业务记录 ID，读取前重新校验当前用户的数据范围
+     * @return 按迁入时间排序的档案摘要，不包含原始档案文档
+     */
     @Override
     public List<Map<String, Object>> list(String entityCode, String recordId) {
-        require("process:archive:read");
         entities.readable(entityCode, recordId);
         return mapper.list(entityCode, recordId).stream().map(row -> Map.<String,Object>of("id", row.id(), "name", row.name(),
                 "result", row.result(), "sourceSystem", row.sourceSystem(), "sourceId", row.sourceId())).toList();
     }
 
+    /**
+     * 按档案关联的实体记录重新授权并读取只读详情；关联快照逐条检查权限。
+     * @param id 档案 ID，仅定位档案，不授予访问权
+     * @return 经过当前实体字段权限裁剪的档案详情
+     * @throws ForbiddenException 当前用户无权查看主业务记录
+     * @throws IllegalArgumentException 档案不存在
+     */
     @Override
     public Map<String, Object> detail(String id) {
-        require("process:archive:read");
         var document = mapper.document(id);
         if (document == null) throw new IllegalArgumentException("归档不存在");
         Archive archive;

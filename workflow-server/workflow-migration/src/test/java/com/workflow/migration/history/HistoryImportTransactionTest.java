@@ -16,6 +16,7 @@ import com.workflow.entity.definition.infrastructure.persistence.mapper.*;
 import com.workflow.entity.definition.infrastructure.persistence.record.*;
 import com.workflow.entity.history.*;
 import com.workflow.entity.permission.application.EntityActionCapabilityService;
+import com.workflow.entity.permission.application.EntityPermissionAction;
 import com.workflow.process.archive.ProcessArchiveService;
 import com.workflow.process.archive.infrastructure.persistence.ProcessArchiveMapper;
 import com.workflow.entity.history.infrastructure.persistence.EntityHistorySourceMapper;
@@ -52,6 +53,7 @@ class HistoryImportTransactionTest {
     HistoryImportWorkbook workbook;
     EntityPublishedSnapshot snapshot;
     EntityRelationRuntimeService relations;
+    EntityActionCapabilityService access;
     EntityDataDynamicService records;
     MockedStatic<PermissionUtil> permissions;
     ObjectMapper json = new ObjectMapper();
@@ -83,7 +85,7 @@ class HistoryImportTransactionTest {
         var sourceMapper = session.getMapper(EntityHistorySourceMapper.class);
         var archiveMapper = session.getMapper(ProcessArchiveMapper.class);
         var definitions = mock(EntityDefinitionMapper.class); var snapshots = mock(EntityPublishedSnapshotService.class);
-        var access = mock(EntityActionCapabilityService.class); var mutations = mock(EntityMutationPort.class);
+        access = mock(EntityActionCapabilityService.class); var mutations = mock(EntityMutationPort.class);
         records = mock(EntityDataDynamicService.class); relations = mock(EntityRelationRuntimeService.class);
         var rules = mock(EntityCodeRuleMapper.class); var tables = mock(DynamicTableService.class);
         var definition = new EntityDefinition(); definition.setEntityCode("expense"); definition.setStatus(EntityDefinition.Status.PUBLISHED); definition.setStorageMode(EntityDefinition.StorageMode.DYNAMIC);
@@ -178,7 +180,23 @@ class HistoryImportTransactionTest {
         UserContext.setCurrentUser("u2", "another"); assertThrows(ForbiddenException.class, () -> service.get(batch.get("id").toString()));
         when(records.findAccessibleById(eq("expense"), anyString(), isNull())).thenThrow(new ForbiddenException("权限收回"));
         String id = jdbc.queryForObject("SELECT id FROM process_archive_instance", String.class);
+        assertThrows(ForbiddenException.class, () -> archives.list("expense", "000"));
         assertThrows(ForbiddenException.class, () -> archives.detail(id));
+    }
+    @Test void entityViewerCanReadImportedHistoryWithoutImportManagementPermissions() throws Exception {
+        execute(batch(true, "历史业务数据"), false);
+        String recordId = jdbc.queryForObject("SELECT id FROM test_business", String.class);
+        String archiveId = jdbc.queryForObject("SELECT id FROM process_archive_instance", String.class);
+        // 普通查看者不持有导入权限；实体查看和数据范围仍由真实实体读取服务校验。
+        permissions.when(() -> PermissionUtil.hasPermission(anyString())).thenReturn(false);
+        assertEquals(archiveId, archives.list("expense", recordId).get(0).get("id"));
+        assertEquals(2, ((List<?>) archives.detail(archiveId).get("events")).size());
+        assertThrows(ForbiddenException.class, () -> service.catalog());
+        assertThrows(ForbiddenException.class, () -> service.create(plan));
+        doThrow(new ForbiddenException("没有实体查看权限")).when(access)
+                .requireStandardPermission("expense", EntityPermissionAction.VIEW);
+        assertThrows(ForbiddenException.class, () -> archives.list("expense", recordId));
+        assertThrows(ForbiddenException.class, () -> archives.detail(archiveId));
     }
     @Test void concurrentSameGroupRequestsCommitOnlyOnce() throws Exception {
         var batch = batch(false, "并发记录");

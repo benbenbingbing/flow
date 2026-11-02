@@ -7,15 +7,20 @@
         <span
           v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
           class="custom-button-host"
-          :class="{ 'custom-button-host--disabled': isToolbarDisabled(btn) }"
+          :class="{
+            'custom-button-host--disabled': isToolbarDisabled(btn),
+            'custom-button-host--loading': actionLoading.isLoading(btn)
+          }"
           :title="getToolbarReason(btn)"
           :aria-disabled="isToolbarDisabled(btn)"
           @click.capture="event => guardCustomComponentAction(event, isToolbarDisabled(btn), getToolbarReason(btn))"
         >
+          <el-icon v-if="actionLoading.isLoading(btn)" class="list-action-spinner is-loading"><Loading /></el-icon>
           <component
             :is="getListButtonComponent(btn.customHandler)"
             mode="toolbar"
             :disabled="isToolbarDisabled(btn)"
+            :loading="actionLoading.isLoading(btn)"
             :reason="getToolbarReason(btn)"
             :context="{
               ...runtimeContext,
@@ -25,6 +30,7 @@
               refresh,
               canAction,
               getActionReason,
+              runAction: task => runComponentAction(btn, undefined, task),
               disabled: isToolbarDisabled(btn),
               reason: getToolbarReason(btn)
             }"
@@ -32,8 +38,11 @@
         </span>
         <el-button
           v-else
+          class="list-action-button"
+          :aria-label="btn.label"
           :type="btn.buttonType || 'default'"
           :disabled="isToolbarDisabled(btn)"
+          :loading="actionLoading.isLoading(btn)"
           :title="getToolbarReason(btn)"
           @click="onToolbarClick(btn)"
         >
@@ -105,6 +114,8 @@
                 :button="getCellAction(field, row)"
                 :row="row"
                 :text="getFieldDisplayValue(row, field)"
+                :loading="isCellActionLoading(field, row)"
+                :pending="isCellActionPending(field, row)"
                 @action="onRowActionClick"
               >
                 <!-- 自定义渲染组件 -->
@@ -159,12 +170,15 @@
       </template>
       <el-table-column v-if="hasVisibleRowActions" label="操作" min-width="180" fixed="right">
         <template #default="{ row }">
-          <el-button v-if="canReadArchive" type="primary" link @click="archiveRecordId = row.id">迁入历史</el-button>
           <el-button
             v-if="showVersionAction"
+            class="list-action-button"
+            aria-label="版本"
             type="primary"
             link
-            @click="emit('versions', row)"
+            :loading="actionLoading.isLoading(versionButton, row)"
+            :disabled="actionLoading.isDisabled(versionButton, row)"
+            @click="runButton(versionButton, row, () => invokeAction('versions', row))"
           >
             版本
           </el-button>
@@ -172,16 +186,21 @@
             <span
               v-if="btn.type === 'custom' && btn.customMode === 'component' && hasListButtonComponent(btn.customHandler)"
               class="custom-button-host"
-              :class="{ 'custom-button-host--disabled': !canAction(row, btn.key) }"
+              :class="{
+                'custom-button-host--disabled': isRowActionDisabled(btn, row),
+                'custom-button-host--loading': actionLoading.isLoading(btn, row)
+              }"
               :title="getActionReason(row, btn.key)"
-              :aria-disabled="!canAction(row, btn.key)"
-              @click.capture="event => guardCustomComponentAction(event, !canAction(row, btn.key), getActionReason(row, btn.key))"
+              :aria-disabled="isRowActionDisabled(btn, row)"
+              @click.capture="event => guardCustomComponentAction(event, isRowActionDisabled(btn, row), getActionReason(row, btn.key))"
             >
+              <el-icon v-if="actionLoading.isLoading(btn, row)" class="list-action-spinner is-loading"><Loading /></el-icon>
               <component
                 :is="getListButtonComponent(btn.customHandler)"
                 mode="row"
                 :row="row"
-                :disabled="!canAction(row, btn.key)"
+                :disabled="isRowActionDisabled(btn, row)"
+                :loading="actionLoading.isLoading(btn, row)"
                 :reason="getActionReason(row, btn.key)"
                 :context="{
                   ...runtimeContext,
@@ -190,7 +209,8 @@
                   refresh,
                   canAction,
                   getActionReason,
-                  disabled: !canAction(row, btn.key),
+                  runAction: task => runComponentAction(btn, row, task),
+                  disabled: isRowActionDisabled(btn, row),
                   reason: getActionReason(row, btn.key)
                 }"
               />
@@ -198,9 +218,12 @@
             <!-- 操作列沿用统一的文字链接样式；历史配置的 link=false 不能改变已有页面外观。 -->
             <el-button
               v-else
+              class="list-action-button"
+              :aria-label="btn.label"
               :type="btn.buttonType || 'primary'"
               link
-              :disabled="!canAction(row, btn.key)"
+              :disabled="isRowActionDisabled(btn, row)"
+              :loading="actionLoading.isLoading(btn, row)"
               :title="getActionReason(row, btn.key)"
               @click="onRowActionClick(btn, row)"
             >
@@ -263,19 +286,16 @@
     >
       <template #default></template>
     </EntityListLauncher>
-    <el-dialog :model-value="!!archiveRecordId" title="迁入流程历史" width="90%" destroy-on-close append-to-body @close="archiveRecordId = ''">
-      <ProcessArchivePanel v-if="archiveRecordId" :entity-code="entityCode" :record-id="archiveRecordId" />
-    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { resolveProcessStatusLabel } from '@flow/workflow-core/entity-status-runtime'
 import { computed, nextTick, reactive, ref, watch } from 'vue'
-import ProcessArchivePanel from '@/components/ProcessArchivePanel.vue'
-import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
-import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked } from '@element-plus/icons-vue'
+import { Plus, Download, Delete, View, Edit, Check, Close, Printer, FolderChecked, Loading } from '@element-plus/icons-vue'
+import { useListActionLoading } from '@/shared/list-action-loading'
+import { showRequestError } from '@/shared/request'
 import ListCellRenderer from '@/components/ListCellRenderer.vue'
 import ListQuickCopyCell from '@/components/ListQuickCopyCell.vue'
 import EntityListLauncher from '@/components/EntityListLauncher.vue'
@@ -332,7 +352,38 @@ const props = defineProps<{
   listOwnerId?: string
   listConfigHash?: string
   sortState?: { sortField: string, sortDirection: string } | null
+  // Vue emit 不返回父级异步结果；生产入口通过可等待的处理器衔接真实完成时机。
+  actionHandlers?: Record<string, (...args: any[]) => any>
 }>()
+
+const actionLoading = useListActionLoading()
+const versionButton = { key: '$versions', type: 'built-in' }
+watch(() => [props.entityCode, props.listOwnerId], () => actionLoading.reset())
+
+/** 旧宿主仍可监听事件；需要完整 loading 的宿主应传入返回 Promise 的 actionHandlers。 */
+function invokeAction(action: string, ...args: any[]) {
+  const handler = props.actionHandlers?.[action]
+  if (handler) return handler(...args)
+  return (emit as Function)(action, ...args)
+}
+
+async function runButton(button: any, row: any, task: Function) {
+  try {
+    return await actionLoading.run(button, row, task)
+  } catch (error: any) {
+    showRequestError(error, error?.message || '按钮操作执行失败')
+  }
+}
+
+/** 组件自行执行点击逻辑，显式交给宿主等待，才能覆盖异步请求而不猜测其完成时间。 */
+function runComponentAction(button: any, row: any, task: Function) {
+  if (row ? isRowActionDisabled(button, row) : isToolbarDisabled(button)) return
+  return runButton(button, row, task)
+}
+
+function isRowActionDisabled(button: any, row: any) {
+  return !canAction(row, button.key) || actionLoading.isDisabled(button, row)
+}
 
 const rowExpandCompositions = computed(() => props.rowExpandCompositions || [])
 const listOwnerId = computed(() => props.listOwnerId || '')
@@ -393,6 +444,16 @@ const cellActionMap = computed(() => props.useListConfig
 const getCellAction = (field: any, row: any) => {
   const button = cellActionMap.value.get(field.fieldCode)
   return button && isActionVisible(row, button.key) ? button : null
+}
+
+function isCellActionLoading(field: any, row: any) {
+  const button = getCellAction(field, row)
+  return button ? actionLoading.isLoading(button, row) : false
+}
+
+function isCellActionPending(field: any, row: any) {
+  const button = getCellAction(field, row)
+  return button ? actionLoading.isDisabled(button, row) : false
 }
 
 const getFieldDisplayValue = (row: any, field: any) => {
@@ -478,115 +539,73 @@ const handleSelectionChange = (selection: any[]) => {
   emit('selection-change', selection)
 }
 
-// 内置工具栏动作映射
-const BUILTIN_TOOLBAR_ACTIONS: Record<string, Function> = {
-  create: (btn: any) => emit('create', btn),
-  import: (btn: any) => emit('import-excel', btn),
-  exportSelected: (btn: any) => emit('export-selected', btn),
-  exportAll: (btn: any) => emit('export-all', btn),
-  batchDelete: () => emit('batch-delete')
-}
-
-// 工具栏按钮点击分发
+/** 工具栏和操作列共用异步入口；后续效果完成之前保留互斥状态。 */
 const onToolbarClick = (btn: any) => {
+  if (actionLoading.isDisabled(btn)) return
   if (isToolbarDisabled(btn)) {
     ElMessage.warning(getToolbarReason(btn) || '当前选择不满足操作条件')
     return
   }
-  if (btn.type === 'built-in') {
-    BUILTIN_TOOLBAR_ACTIONS[btn.key]?.(btn)
-  } else if (btn.type === 'custom') {
-    if (btn.customMode === 'event') {
-      emit('event-action', {
-        button: btn,
-        selectedRows: selectedRows.value
+  return runButton(btn, undefined, async (execution: any) => {
+    if (btn.type === 'built-in') {
+      const action = ({ create: 'create', import: 'import-excel', exportSelected: 'export-selected',
+        exportAll: 'export-all', batchDelete: 'batch-delete' } as Record<string, string>)[btn.key]
+      if (action) return invokeAction(action, btn, execution)
+    } else if (btn.type === 'custom') {
+      if (btn.customMode === 'event') {
+        return invokeAction('event-action', { button: btn, selectedRows: [...selectedRows.value] })
+      }
+      if (isRelatedContentButton(btn)) return openRelatedContent(btn, selectedRows.value[0])
+      if (btn.customMode === 'open-list') return openConfiguredList(btn)
+      if (btn.customMode === 'open-form') return invokeAction('create', btn, execution)
+      const handler = getListToolbarAction(btn.customHandler)
+      if (!handler) {
+        ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
+        return
+      }
+      return handler({
+        ...(props.runtimeContext || {}), selectedRows: [...selectedRows.value],
+        entityCode: props.entityCode, entityDefinition: props.entityDefinition,
+        refresh: props.refresh, config: btn
       })
-      return
     }
-    if (isRelatedContentButton(btn)) {
-      openRelatedContent(btn, selectedRows.value[0])
-      return
-    }
-    if (btn.customMode === 'open-list') {
-      openConfiguredList(btn)
-      return
-    }
-    if (btn.customMode === 'open-form') {
-      emit('create', btn)
-      return
-    }
-    const handler = getListToolbarAction(btn.customHandler)
-    if (handler) {
-      handler({
-        ...(props.runtimeContext || {}),
-        selectedRows: selectedRows.value,
-        entityCode: props.entityCode,
-        entityDefinition: props.entityDefinition,
-        refresh: props.refresh,
-        config: btn
-      })
-    } else {
-      ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
-    }
-  }
+  })
 }
 
-// 内置操作列动作映射
-const BUILTIN_ROW_ACTIONS: Record<string, Function> = {
-  view: (row: any, btn: any) => emit('view', row, btn),
-  edit: (row: any, btn: any) => emit('edit', row, btn),
-  restartProcess: (row: any, btn: any) => emit('edit', row, btn),
-  approve: (row: any, btn: any) => emit('approve', row, btn),
-  delete: (row: any, btn: any) => emit('delete', row, btn)
-}
-
-// 操作列按钮点击分发
+/** 参数映射单元格也进入本方法，共用按钮的 loading、权限和重复点击保护。 */
 const onRowActionClick = (btn: any, row: any) => {
+  if (actionLoading.isDisabled(btn, row)) return
   if (btn.enabled === false || !canAction(row, btn.key)) {
     ElMessage.warning(getActionReason(row, btn.key) || '当前数据不可操作')
     return
   }
-  if (btn.type === 'built-in') {
-    BUILTIN_ROW_ACTIONS[btn.key]?.(row, btn)
-  } else if (btn.type === 'custom') {
-    if (isRelatedContentButton(btn)) {
-      openRelatedContent(btn, row)
-      return
-    }
-    if (btn.customMode === 'event') {
-      emit('event-action', {
-        button: btn,
-        row,
-        selectedRows: selectedRows.value
-      })
-      return
-    }
-    if (btn.customMode === 'open-list') {
-      openConfiguredList(btn, row)
-      return
-    }
-    if (btn.customMode === 'open-form') {
-      if (btn.targetFormMode === 'EDIT') {
-        emit('edit', row, btn)
-      } else {
-        emit('view', row, btn)
+  return runButton(btn, row, async (execution: any) => {
+    if (btn.type === 'built-in') {
+      const action = btn.key === 'restartProcess' ? 'edit' : btn.key
+      if (['view', 'edit', 'approve', 'delete'].includes(action)) {
+        return invokeAction(action, row, btn, execution)
       }
-      return
-    }
-    const handler = getListRowAction(btn.customHandler)
-    if (handler) {
-      handler({
-        ...(props.runtimeContext || {}),
-        row,
-        entityCode: props.entityCode,
-        entityDefinition: props.entityDefinition,
-        refresh: props.refresh,
-        config: btn
+    } else if (btn.type === 'custom') {
+      if (isRelatedContentButton(btn)) return openRelatedContent(btn, row)
+      if (btn.customMode === 'event') {
+        return invokeAction('event-action', { button: btn, row, selectedRows: [...selectedRows.value] })
+      }
+      if (btn.customMode === 'open-list') return openConfiguredList(btn, row)
+      if (btn.customMode === 'open-form') {
+        return invokeAction(btn.targetFormMode === 'EDIT' ? 'edit' : 'view', row, btn, execution)
+      }
+      const handler = getListRowAction(btn.customHandler)
+      if (!handler) {
+        ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
+        return
+      }
+      return handler({
+        ...(props.runtimeContext || {}), row,
+        entityCode: props.entityCode, entityDefinition: props.entityDefinition,
+        refresh: props.refresh, config: btn
       })
-    } else {
-      ElMessage.warning(`未找到自定义执行器：${btn.customHandler}`)
     }
-  }
+  })
 }
 
 // 当前选中行（由父组件通过 selection-change 同步）
@@ -701,7 +720,7 @@ async function openConfiguredList(button: any, row?: any) {
     params: { ...(props.runtimeContext?.parameters || {}), ...parameters }
   }
   await nextTick()
-  entityListLauncherRef.value?.open()
+  await entityListLauncherRef.value?.open()
 }
 
 function handleOpenListConfirm(rows: any[]) {
@@ -714,7 +733,8 @@ function handleOpenListConfirm(rows: any[]) {
     ElMessage.warning(`未找到选择结果处理器：${pending.button.selectionHandler}`)
     return
   }
-  handler({
+  // 打开阶段已经结束；选择后的异步回写是新一次执行，也必须等待并处理失败。
+  return runButton(pending.button, pending.row, () => handler({
     ...(props.runtimeContext || {}),
     rows,
     row: pending.row,
@@ -723,14 +743,11 @@ function handleOpenListConfirm(rows: any[]) {
     entityDefinition: props.entityDefinition,
     refresh: props.refresh,
     config: pending.button
-  })
+  }))
 }
 
-const archiveRecordId = ref('')
-const archiveUser = useUserStore()
-const canReadArchive = computed(() => archiveUser.isSuperAdmin || archiveUser.permissions.includes('process:archive:read') || archiveUser.permissions.includes('*'))
 const hasVisibleRowActions = computed(() =>
-  props.showVersionAction || canReadArchive.value
+  props.showVersionAction
   || props.dataList.some(row => visibleRowButtons(row).length > 0)
 )
 
@@ -767,6 +784,7 @@ const visibleToolbarButtons = computed(() =>
 )
 
 const isToolbarDisabled = (btn: any) => {
+  if (actionLoading.isDisabled(btn)) return true
   if (toolbarSelectionReason(btn, selectedRows.value)) return true
   if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) return true
   if (props.toolbarCapabilities?.[btn.key]?.enabled === false) return true
@@ -777,6 +795,7 @@ const isToolbarDisabled = (btn: any) => {
 }
 
 const getToolbarReason = (btn: any) => {
+  if (actionLoading.isDisabled(btn)) return '操作处理中，请稍候'
   const selectionReason = toolbarSelectionReason(btn, selectedRows.value)
   if (selectionReason) return selectionReason
   if (isRelatedContentButton(btn) && relatedContentSelectionReason(selectedRows.value)) {
@@ -815,6 +834,27 @@ const guardCustomComponentAction = (
 
 .custom-button-host {
   display: inline-flex;
+  position: relative;
+  align-items: center;
+}
+
+// 保留原内容的排版尺寸，加载图标绝对居中，避免增减图标或文字时推动相邻按钮。
+.list-action-button.is-loading > :deep(.el-icon.is-loading),
+.custom-button-host > .list-action-spinner {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  z-index: 2;
+}
+
+.list-action-button.is-loading > :deep(span) {
+  visibility: hidden;
+  // Element Plus 会为“加载图标 + 文字”增加间距；图标改为覆盖展示后不再占据这段宽度。
+  margin-left: 0;
+}
+
+.custom-button-host--loading > :deep(:not(.list-action-spinner)) {
+  visibility: hidden;
 }
 
 .custom-button-host--disabled {

@@ -1767,6 +1767,8 @@ function applySavedAction(button, saved) {
     // 权威响应中缺失表示已解绑，不能保留 Object.assign 前的旧映射。
     mappedFieldCode: params.mappedFieldCode || '',
     hideWhenMapped: params.hideWhenMapped === true,
+    // 保存响应缺失代表回到默认开启，不能沿用草稿中先前的 false。
+    showLoading: params.showLoading !== false,
     // 关系型响应是保存后的权威值；null 表示用户已经显式清空条件。
     availabilityRule: availabilityRule || null,
     templateId: saved.templateId || null,

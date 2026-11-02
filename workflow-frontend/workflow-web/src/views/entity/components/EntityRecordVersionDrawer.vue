@@ -328,7 +328,9 @@ async function open(rowValue: any) {
   invalidateDrawerContext()
   record.value = rowValue
   visible.value = true
-  await loadVersions(true)
+  // 入口只负责打开抽屉；后续版本和比较请求由抽屉内部 loading 接管。
+  void loadVersions(true)
+  await nextTick()
 }
 
 async function loadVersions(resetComparison = true) {

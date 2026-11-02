@@ -7,7 +7,7 @@
     </el-select>
     <el-empty v-if="!loading && !detail && !error" description="这条业务记录暂无迁入流程历史" />
     <template v-if="detail">
-      <el-alert title="历史迁入 · 图中标记表示有映射记录；连线不代表旧系统实际执行路径。" type="info" :closable="false" />
+      <el-alert :title="view === 'history' ? '历史迁入 · 以下为旧系统审批记录。' : '历史迁入 · 图中标记表示有映射记录；连线不代表旧系统实际执行路径。'" type="info" :closable="false" />
       <el-descriptions :column="2" border>
         <el-descriptions-item label="流程">{{ detail.instance.name }}</el-descriptions-item>
         <el-descriptions-item label="结果">{{ resultLabel(detail.instance.result) }}</el-descriptions-item>
@@ -16,9 +16,9 @@
         <el-descriptions-item label="开始时间">{{ detail.instance.startedAt || '未提供' }}</el-descriptions-item>
         <el-descriptions-item label="结束时间">{{ detail.instance.endedAt || '未提供' }}</el-descriptions-item>
       </el-descriptions>
-      <el-tabs v-model="activeTab">
+      <el-tabs v-model="activeTab" :class="{ 'archive-tabs--embedded': view !== 'all' }">
         <el-tab-pane label="流程图与审批记录" name="history">
-          <div class="archive-diagram">
+          <div v-if="view !== 'history'" class="archive-diagram">
             <VueBpmnViewer :key="detail.id" :xml="detail.template.xml" navigated fit-viewport archive-mode
               @imported="markNodes" @node-click="selectNode" @error="error = '历史流程图加载失败，可继续查看下方审批记录'" />
           </div>
@@ -36,7 +36,7 @@
             <el-table-column label="时间" width="180"><template #default="{ row }">{{ row.handledAt || '未提供' }}</template></el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="实体数据快照" name="data">
+        <el-tab-pane v-if="view === 'all'" label="实体数据快照" name="data">
           <el-alert title="以下是迁入时的实体最终数据，审批记录不包含当时的逐节点表单快照。" type="info" :closable="false" />
           <el-descriptions :column="2" border>
             <el-descriptions-item v-for="field in detail.fields" :key="field.code" :label="field.name">{{ formatValue(detail.data[field.code]) }}</el-descriptions-item>
@@ -59,7 +59,11 @@ import { computed, ref, watch } from 'vue'
 import VueBpmnViewer from '@/components/VueBpmnViewer.vue'
 import { historyImportApi } from '@/api/historyImport'
 import { archiveNodeEvents, archiveActionLabels, archiveResultLabels } from '@/shared/history-import'
-const props = defineProps({ archiveId: String, entityCode: String, recordId: String })
+// 查看弹窗复用原有流程图/审批历史页签；管理页仍可查看完整档案及迁入快照。
+const props = defineProps({
+  archiveId: String, entityCode: String, recordId: String,
+  view: { type: String, default: 'all' }
+})
 const loading = ref(false), error = ref(''), rounds = ref([]), selectedId = ref(''), detail = ref(null)
 const selectedNode = ref(''), activeTab = ref('history')
 let generation = 0
@@ -108,6 +112,7 @@ function markNodes({ viewer }) {
 </script>
 <style scoped>
 .archive-panel { min-height: 180px; }
+.archive-tabs--embedded :deep(.el-tabs__header) { display: none; }
 .archive-panel > * + * { margin-top: 16px; }
 .archive-panel > .el-select { width: 100%; }
 .archive-diagram { height: 400px; border: 1px solid var(--el-border-color); }

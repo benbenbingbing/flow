@@ -1,7 +1,7 @@
 -- OceanBase 4.x MySQL 模式平台基础表空库初始化脚本。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
--- 2026-10-29：同步至 V124，新增历史导入四张表、三条菜单权限及超级管理员授权。
+-- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
 -- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -4389,10 +4389,9 @@ INSERT INTO `sys_dict_item` (`id`, `dict_id`, `dict_code`, `parent_id`, `item_co
 INSERT INTO `sys_global_setting` (`id`, `scope_type`, `owner_id`, `setting_key`, `name`, `setting_value_type`, `setting_value`, `remark`, `version`, `created_by`, `updated_by`, `create_time`, `update_time`) VALUES ('99777a7f-819f-4830-885e-eb36e7607b19','SYSTEM','0','ui.user_preferences','用户界面偏好','JSON','{"fieldTypesCollapsed":false,"sidebarCollapsed":false,"tabsEnabled":false}','字段类型面板收起、左侧主菜单收起和顶部多标签页统一存储；按字段优先使用个人配置，缺失字段继承系统默认值。',0,NULL,NULL,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 -- 补齐平台固定导航；目录、页面及按钮均需显式授权，不能依赖运行库曾经手工创建的菜单。
 -- 页面入口不重复声明权限码，对应 API 权限由下方启用的 F 类型资源提供。
--- V124：历史数据导入入口及执行、档案读取权限。
+-- 历史数据导入仅保留管理入口及执行权限，档案读取复用实体查看权限（V125）。
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `path`, `component`, `icon`, `sort`, `visible`, `status`, `perm`, `create_time`) VALUES ('history_import_menu', '400', '历史数据导入', 'C', '/system/history-import', 'system/HistoryImport', 'Upload', 17, '0', '0', 'history-import:read', CURRENT_TIMESTAMP);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `sort`, `visible`, `status`, `perm`, `create_time`) VALUES ('history_import_execute', 'history_import_menu', '执行历史导入', 'F', 1, '0', '0', 'history-import:execute', CURRENT_TIMESTAMP);
-INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `sort`, `visible`, `status`, `perm`, `create_time`) VALUES ('process_archive_read', 'history_import_menu', '查看迁入历史', 'F', 2, '0', '0', 'process:archive:read', CURRENT_TIMESTAMP);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('100','0','首页','C','HomeFilled',1,'/home','Home',NULL,'0','0','0','0','0','1','待办、已办与我发起的流程统一入口',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('301','300','实体配置','C','Box',1,'/entity','EntityList',NULL,'0','0','0','0','0','1','配置实体字段、表单、列表及流程绑定',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('302','300','流程配置','C','Connection',2,'/process','ProcessList',NULL,'0','0','0','0','0','1','设计、发布与管理流程定义',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
@@ -4499,10 +4498,9 @@ INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `so
 INSERT INTO `sys_menu` (`id`, `parent_id`, `menu_name`, `menu_type`, `icon`, `sort`, `path`, `component`, `perm`, `status`, `visible`, `is_frame`, `is_cache`, `keep_alive`, `breadcrumb`, `remark`, `deleted`, `create_by`, `create_time`, `update_by`, `update_time`) VALUES ('task_handover_transfer_001', 'task_handover_menu_001', '批量交接', 'F', NULL, 1, NULL, NULL, 'system:task-handover:transfer', '0', '0', '0', '0', '0', '1', '将选中的待办交接给状态正常的人员', 0, 'migration-v110', CURRENT_TIMESTAMP, 'migration-v110', CURRENT_TIMESTAMP);
 INSERT INTO `sys_role` (`id`, `role_name`, `role_code`, `description`, `sort`, `status`, `create_time`, `update_time`, `deleted`, `sort_order`) VALUES ('1','超级管理员','super_admin','系统内置超级管理员角色',0,'0',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,0);
 -- 为内置超级管理员（role_code = super_admin，固定 ID 为 1）补齐新增页面授权；已有子菜单和按钮授权继续保留。
--- 历史导入页面和功能分别授权，确保新库超级管理员可以完成导入并查看迁入历史。
+-- 历史导入管理与执行分别授权；实体查看权限同时覆盖关联流程档案。
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('init_history_import_menu', '1', 'history_import_menu', CURRENT_TIMESTAMP);
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('init_history_import_execute', '1', 'history_import_execute', CURRENT_TIMESTAMP);
-INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('init_process_archive_read', '1', 'process_archive_read', CURRENT_TIMESTAMP);
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('bootstrap_navigation_100','1','100',CURRENT_TIMESTAMP);
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('bootstrap_navigation_301','1','301',CURRENT_TIMESTAMP);
 INSERT INTO `sys_role_menu` (`id`, `role_id`, `menu_id`, `create_time`) VALUES ('bootstrap_navigation_302','1','302',CURRENT_TIMESTAMP);

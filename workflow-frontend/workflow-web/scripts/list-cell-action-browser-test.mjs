@@ -96,7 +96,7 @@ const runtimeRows = `document.querySelectorAll('#runtime .el-table__body tr')`
 const firstCell = `document.querySelector('#runtime .list-cell-action')`
 const eventCount = () => evaluate('cellTest.state.events.length')
 try {
-  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 3399, strictPort: true } })
+  server = await createServer({ cacheDir: path.join(fixture, 'cache'), optimizeDeps: { include: ['axios', 'async-validator'], entries: [path.join(fixture, 'index.html')] }, server: { host: '127.0.0.1', port: 3399, strictPort: true } })
   await server.listen()
   browser = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--remote-debugging-port=9399', `--user-data-dir=${profile}`, 'about:blank'

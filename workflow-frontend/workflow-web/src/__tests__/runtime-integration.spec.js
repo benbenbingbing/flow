@@ -385,7 +385,7 @@ assert.match(
 )
 assert.match(
   entityDataTableSource,
-  /:disabled="isToolbarDisabled\(btn\)"[\s\S]*:disabled="!canAction\(row, btn\.key\)"/,
+  /:disabled="isToolbarDisabled\(btn\)"[\s\S]*:disabled="isRowActionDisabled\(btn, row\)"/,
   '宿主必须向工具栏和行级自定义按钮组件传递禁用状态'
 )
 

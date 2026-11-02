@@ -139,6 +139,19 @@
           :button-compositions="relatedButtonCompositions"
           :list-owner-id="listConfig?.id || ''"
           :list-config-hash="listConfig?.configHash || configHash || ''"
+          :action-handlers="{
+            create: handleCreate,
+            view: handleView,
+            edit: handleEdit,
+            approve: handleApprove,
+            delete: handleDelete,
+            versions: handleVersions,
+            'batch-delete': handleBatchDelete,
+            'import-excel': () => handleExcelAction('import'),
+            'export-selected': () => handleExport('SELECTED'),
+            'export-all': () => handleExport('ALL'),
+            'event-action': handleEventAction
+          }"
           v-model:selectedRows="selectedRows"
           @create="handleCreate"
           @view="handleView"
@@ -1049,54 +1062,70 @@ const handlePageChange = (val: number) => {
   pageNum.value = val
   loadDataList()
 }
-// 删除
-const handleDelete = async (row: any) => {
+/**
+ * 删除确认和实际提交分开反馈；提交期间禁止关闭确认框，避免网络未结束便释放重复点击保护。
+ * 删除成功后等待列表刷新，失败也关闭本次确认并恢复按钮，允许用户重新操作。
+ */
+async function confirmDeletion(message: string, title: string, remove: () => Promise<any>, execution?: any) {
+  let submitting = false
   try {
-    await ElMessageBox.confirm(
-      '删除后该条业务数据将无法在列表中恢复，并可能影响关联表单、引用字段和流程记录。确定继续吗？',
-      '删除业务数据',
-      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
-    )
-    await entityDataApi.delete(
-      entityCode.value,
-      row.id,
-      listConfig.value?.listKey,
-      listReleaseContext.value
-    )
-    ElMessage.success('删除成功')
-    loadDataList()
+    await ElMessageBox.confirm(message, title, {
+      type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消',
+      closeOnClickModal: false, closeOnPressEscape: false,
+      beforeClose: async (action: string, instance: any, done: () => void) => {
+        if (submitting) return
+        if (action !== 'confirm') { done(); return }
+        submitting = true
+        instance.confirmButtonLoading = true
+        execution?.startLoading()
+        try {
+          await remove()
+          ElMessage.success('删除成功')
+          await loadDataList()
+        } catch (error: any) {
+          showRequestError(error, error?.message || '删除失败')
+        } finally {
+          instance.confirmButtonLoading = false
+          done()
+        }
+      }
+    })
   } catch (error: any) {
-    if (error !== 'cancel') {
-      showRequestError(error, error.message || '删除失败')
+    if (error !== 'cancel' && error !== 'close') {
+      showRequestError(error, error?.message || '删除失败')
     }
   }
 }
-// 批量删除
-const handleBatchDelete = async () => {
+
+const handleDelete = async (row: any, _button?: any, execution?: any) => {
+  // 确认期间页面可能刷新，删除目标和发布上下文必须固定为点击时的值。
+  const code = entityCode.value, listKey = listConfig.value?.listKey
+  const releaseContext = { ...listReleaseContext.value }, recordId = row.id
+  await confirmDeletion(
+    '删除后该条业务数据将无法在列表中恢复，并可能影响关联表单、引用字段和流程记录。确定继续吗？',
+    '删除业务数据',
+    () => entityDataApi.delete(code, recordId, listKey, releaseContext),
+    execution
+  )
+}
+
+const handleBatchDelete = async (_button?: any, execution?: any) => {
   if (selectedRows.value.length === 0) {
     ElMessage.warning('请先选择数据')
     return
   }
-  try {
-    await ElMessageBox.confirm(
-      `将删除选中的 ${selectedRows.value.length} 条业务数据，关联表单、引用字段和流程记录可能受影响。确定继续吗？`,
-      '批量删除业务数据',
-      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
-    )
-    await entityDataApi.batchDelete(
-      entityCode.value,
-      selectedRows.value.map(row => row.id),
-      listConfig.value?.listKey,
-      listReleaseContext.value
-    )
-    ElMessage.success('批量删除成功')
-    selectedRows.value = []
-    loadDataList()
-  } catch (error: any) {
-    if (error !== 'cancel') {
-      showRequestError(error, error.message || '批量删除失败')
-    }
-  }
+  const recordIds = selectedRows.value.map(row => row.id)
+  const code = entityCode.value, listKey = listConfig.value?.listKey
+  const releaseContext = { ...listReleaseContext.value }
+  await confirmDeletion(
+    `将删除选中的 ${recordIds.length} 条业务数据，关联表单、引用字段和流程记录可能受影响。确定继续吗？`,
+    '批量删除业务数据',
+    async () => {
+      await entityDataApi.batchDelete(code, recordIds, listKey, releaseContext)
+      selectedRows.value = []
+    },
+    execution
+  )
 }
 // 导出数据
 const excelActionDialog = ref(null)
@@ -1300,9 +1329,9 @@ async function loadRuntimeButtonForm(
   return loadExplicitListButtonForm(runtimeButton, { ...props.context?.runtimeContext, listKey: runtimeListKey.value, buttonId: runtimeButton.key, compositionContext: compositionContext.value || undefined })
 }
 
-const handleVersions = (row: any) => {
+const handleVersions = async (row: any) => {
   if (!showVersionAction.value) return
-  versionDrawerRef.value?.open(row)
+  await versionDrawerRef.value?.open(row)
 }
 const confirmSelection = () => {
   const rows = effectiveSelectionMode.value === 'SINGLE'

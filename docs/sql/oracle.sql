@@ -1,7 +1,7 @@
 -- Oracle Database 19c 平台基础表空库初始化脚本。
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
--- 2026-10-29：同步至 V124，新增历史导入四张表、三条菜单权限及超级管理员授权。
+-- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -7213,16 +7213,14 @@ COMMENT ON COLUMN "WORKFLOW_SCHEMA_CHANGE"."COMPLETED_TIME" IS '完成时间。'
 
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 当前发布门闩及人员交接菜单；空库仅为内置超级管理员授权。
--- V124：历史数据导入入口及执行、档案读取权限。
+-- 历史数据导入仅保留管理入口及执行权限，档案读取复用实体查看权限（V125）。
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "PATH", "COMPONENT", "ICON", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_menu', '400', '历史数据导入', 'C', '/system/history-import', 'system/HistoryImport', 'Upload', 17, '0', '0', 'history-import:read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('history_import_execute', 'history_import_menu', '执行历史导入', 'F', 1, '0', '0', 'history-import:execute', CURRENT_TIMESTAMP);
-INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "SORT", "VISIBLE", "STATUS", "PERM", "CREATE_TIME") VALUES ('process_archive_read', 'history_import_menu', '查看迁入历史', 'F', 2, '0', '0', 'process:archive:read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('task_handover_menu_001','400','人员交接','C','Switch',36,'/system/task-handover','system/TaskHandoverManagement','system:task-handover:view','0','0','0','0','0','1','查询任意状态人员的待办并执行管理员交接',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_MENU" ("ID", "PARENT_ID", "MENU_NAME", "MENU_TYPE", "ICON", "SORT", "PATH", "COMPONENT", "PERM", "STATUS", "VISIBLE", "IS_FRAME", "IS_CACHE", "KEEP_ALIVE", "BREADCRUMB", "REMARK", "DELETED", "CREATE_BY", "CREATE_TIME", "UPDATE_BY", "UPDATE_TIME") VALUES ('task_handover_transfer_001','task_handover_menu_001','批量交接','F',NULL,1,NULL,NULL,'system:task-handover:transfer','0','0','0','0','0','1','将选中的待办交接给状态正常的人员',0,'init',CURRENT_TIMESTAMP,'init',CURRENT_TIMESTAMP);
--- 历史导入页面和功能分别授权，确保新库超级管理员可以完成导入并查看迁入历史。
+-- 历史导入管理与执行分别授权；实体查看权限同时覆盖关联流程档案。
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_history_import_menu', '1', 'history_import_menu', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_history_import_execute', '1', 'history_import_execute', CURRENT_TIMESTAMP);
-INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_process_archive_read', '1', 'process_archive_read', CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_task_handover_view_001','1','task_handover_menu_001',CURRENT_TIMESTAMP);
 INSERT INTO "SYS_ROLE_MENU" ("ID", "ROLE_ID", "MENU_ID", "CREATE_TIME") VALUES ('init_task_handover_transfer_001','1','task_handover_transfer_001',CURRENT_TIMESTAMP);
 INSERT INTO "ENTITY_FORM_PUBLICATION_LOCK" ("LOCK_ID") VALUES (1);

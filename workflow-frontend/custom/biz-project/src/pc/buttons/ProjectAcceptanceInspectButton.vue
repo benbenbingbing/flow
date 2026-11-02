@@ -19,6 +19,7 @@ const props = defineProps({
   mode: { type: String, default: 'toolbar' },
   row: { type: Object, default: null },
   disabled: { type: Boolean, default: false },
+  loading: { type: Boolean, default: false },
   reason: { type: String, default: '' },
   context: { type: Object, default: () => ({}) }
 })
@@ -28,6 +29,11 @@ function inspect() {
     ElMessage.warning(props.reason || '当前数据不可操作')
     return
   }
+  // 异步扩展也应返回执行 Promise，让实体列表宿主负责加载反馈与重复点击保护。
+  return props.context.runAction ? props.context.runAction(inspectRecord) : inspectRecord()
+}
+
+function inspectRecord() {
   const selectedCount = props.context.selectedRows?.length || 0
   const identity = props.row?.code
     || props.row?.id

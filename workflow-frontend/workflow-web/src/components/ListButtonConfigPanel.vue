@@ -207,6 +207,13 @@
         <el-form-item label="图标">
           <el-input v-model="advancedButton.icon" placeholder="Element Plus 图标名" />
         </el-form-item>
+        <el-form-item v-if="advancedButton.type === 'custom'" label="显示 loading">
+          <el-switch
+            :model-value="advancedButton.showLoading !== false"
+            @update:model-value="value => advancedButton.showLoading = value"
+          />
+          <div class="field-help">默认开启，执行期间显示加载状态；关闭后仍会阻止重复点击。</div>
+        </el-form-item>
         <el-form-item label="按钮样式">
           <el-select v-model="advancedButton.buttonType" style="width: 100%">
             <el-option label="默认" value="default" />

@@ -3,8 +3,9 @@ const buttonComponents = new Map()
 /**
  * 注册列表自定义按钮组件
  * @param {string} name 组件标识名
- * @param {Component} component Vue 组件；运行时接收 mode、row、disabled、reason
- *   和 context。组件应展示禁用态，宿主仍会在捕获阶段强制阻断禁用点击。
+ * @param {Component} component Vue 组件；运行时接收 mode、row、disabled、loading、reason
+ *   和 context。组件应通过 context.runAction(task) 交付异步完成时机；宿主负责
+ *   加载反馈并在捕获阶段强制阻断禁用点击。
  */
 export function registerListButtonComponent(name, component) {
   buttonComponents.set(name, component)

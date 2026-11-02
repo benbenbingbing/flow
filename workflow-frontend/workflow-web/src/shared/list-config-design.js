@@ -117,6 +117,10 @@ export function normalizeListActionForSave(button, position) {
   if (position === 'TOOLBAR' && button.type === 'custom') {
     actionParams.selectionRequirement = toolbarSelectionRequirement(button)
   }
+  // 缺失即开启；只保存显式关闭，兼容旧配置且不产生批量默认值变更。
+  if (button.type === 'custom' && button.showLoading === false) {
+    actionParams.showLoading = false
+  }
   // 映射属于行按钮；清空字段或切换为组件按钮时一并清除隐藏标记。
   if (position === 'ROW' && supportsCellAction(button) && mappedFieldCode(button)) {
     actionParams.mappedFieldCode = mappedFieldCode(button)

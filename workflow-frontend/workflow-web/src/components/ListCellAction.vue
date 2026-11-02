@@ -2,30 +2,37 @@
   <span
     v-if="button"
     class="list-cell-action"
-    :class="{ 'is-disabled': disabled }"
+    :class="{ 'is-disabled': disabled, 'is-loading': loading }"
     role="button"
     :tabindex="disabled ? -1 : 0"
     :aria-disabled="disabled"
+    :aria-busy="loading"
     :aria-label="`${button.label}：${text}`"
-    :title="disabled ? (getActionCapabilityReason(row, button.key) || '当前数据不可操作') : button.label"
+    :title="pending ? '操作处理中，请稍候' : disabled ? (getActionCapabilityReason(row, button.key) || '当前数据不可操作') : button.label"
     @click.capture="activate"
     @keydown.enter.capture="activate"
     @keydown.space.capture="activate"
-  ><slot /></span>
+  >
+    <el-icon v-if="loading" class="list-cell-action__spinner is-loading"><Loading /></el-icon>
+    <span class="list-cell-action__content"><slot /></span>
+  </span>
   <slot v-else />
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import { canExecuteAction, getActionCapabilityReason } from '@/utils/listButtonPermission'
 
 const props = defineProps({
   button: { type: Object, default: null },
   row: { type: Object, required: true },
-  text: { default: '' }
+  text: { default: '' },
+  loading: { type: Boolean, default: false },
+  pending: { type: Boolean, default: false }
 })
 const emit = defineEmits(['action'])
-const disabled = computed(() => !props.button || !canExecuteAction(props.row, props.button.key))
+const disabled = computed(() => props.pending || !props.button || !canExecuteAction(props.row, props.button.key))
 
 /**
  * 捕获点击与键盘激活，避免单元格渲染器自己的事件重复执行业务动作。
@@ -40,10 +47,15 @@ function activate(event) {
 
 <style scoped>
 .list-cell-action {
+  display: inline-block;
+  position: relative;
   color: var(--el-color-primary);
   cursor: pointer;
   border-radius: 2px;
 }
+/* 隐藏但不移除原内容，长文本或自定义渲染器在加载前后的占位保持一致。 */
+.list-cell-action.is-loading .list-cell-action__content { visibility: hidden; }
+.list-cell-action__spinner { position: absolute; inset: 0; margin: auto; }
 /* 状态标签和自定义渲染器也沿用映射入口的蓝色/禁用色，避免可点击内容看起来像普通文本。 */
 .list-cell-action :deep(*) { color: inherit !important; }
 .list-cell-action:hover { text-decoration: underline; }
