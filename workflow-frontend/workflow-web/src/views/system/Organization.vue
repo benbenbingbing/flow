@@ -121,7 +121,7 @@
       >
         <el-form-item label="上级" prop="parentId" v-if="!isEdit || form.parentId !== '0'">
           <el-tree-select
-            v-model="form.parentId"
+            v-model="form.parentId" :disabled="!!form.sourceInfo"
             :data="parentOptions"
             :props="{ label: 'orgName', value: 'id' }"
             placeholder="请选择上级（不选为顶级）"
@@ -132,21 +132,21 @@
           />
         </el-form-item>
         <el-form-item label="类型" prop="type">
-          <el-radio-group v-model="form.type" @change="handleTypeChange">
+          <el-radio-group v-model="form.type" :disabled="!!form.sourceInfo" @change="handleTypeChange">
             <el-radio-button value="org" :disabled="parentIsDepartment">组织</el-radio-button>
             <el-radio-button value="dept">部门</el-radio-button>
           </el-radio-group>
           <div class="field-help">{{ hierarchyHelp }}</div>
         </el-form-item>
         <el-form-item label="编码" prop="orgCode">
-          <el-input v-model="form.orgCode" placeholder="请输入编码" />
+          <el-input v-model="form.orgCode" :disabled="!!form.sourceInfo" placeholder="请输入编码" />
         </el-form-item>
         <el-form-item label="名称" prop="orgName">
-          <el-input v-model="form.orgName" placeholder="请输入名称" />
+          <el-input v-model="form.orgName" :disabled="!!form.sourceInfo" placeholder="请输入名称" />
         </el-form-item>
         <el-form-item label="业务层级">
           <el-select
-            v-model="form.businessLevelCode"
+            v-model="form.businessLevelCode" :disabled="!!form.sourceInfo"
             clearable
             filterable
             placeholder="请选择业务层级（可选）"
@@ -189,26 +189,28 @@
           <div v-else class="field-help">请先创建组织节点，再通过负责人或职务任命入口维护 UNIT_LEADER。</div>
         </el-form-item>
         <el-form-item label="联系电话">
-          <el-input v-model="form.phone" placeholder="请输入联系电话" />
+          <el-input v-model="form.phone" :disabled="!!form.sourceInfo" placeholder="请输入联系电话" />
         </el-form-item>
         <el-form-item label="邮箱">
-          <el-input v-model="form.email" placeholder="请输入邮箱" />
+          <el-input v-model="form.email" :disabled="!!form.sourceInfo" placeholder="请输入邮箱" />
         </el-form-item>
         <el-form-item label="地址">
-          <el-input v-model="form.address" placeholder="请输入地址" />
+          <el-input v-model="form.address" :disabled="!!form.sourceInfo" placeholder="请输入地址" />
         </el-form-item>
         <el-form-item label="排序">
-          <el-input-number v-model="form.sortOrder" :min="0" style="width: 100%" />
+          <el-input-number v-model="form.sortOrder" :disabled="!!form.sourceInfo" :min="0" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="状态">
+        <el-alert v-if="form.sourceInfo" title="基础资料由业务系统维护；本地可维护扩展资料和本地启用状态。业务停用时本地启用不会使其生效。" type="info" :closable="false" style="margin-bottom: 16px" />
+        <el-form-item :label="form.sourceInfo ? '本地启用' : '状态'">
           <el-radio-group v-model="form.status">
             <el-radio value="0">启用</el-radio>
             <el-radio value="1">禁用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="3" placeholder="请输入描述" />
+          <el-input v-model="form.description" :disabled="!!form.sourceInfo" type="textarea" :rows="3" placeholder="请输入描述" />
         </el-form-item>
+        <IdentityExtensionForm v-if="dialogVisible" ref="extensionFormRef" target-type="ORGANIZATION" :target-id="form.id" />
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -227,6 +229,7 @@
 </template>
 
 <script setup>
+import IdentityExtensionForm from '@/views/system/components/IdentityExtensionForm.vue'
 import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, OfficeBuilding, House } from '@element-plus/icons-vue'
@@ -252,6 +255,7 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const submitLoading = ref(false)
 const formRef = ref(null)
+const extensionFormRef = ref(null)
 const positionAssignmentVisible = ref(false)
 const positionAssignmentUnit = ref(null)
 const businessLevelOptions = ref([])
@@ -306,7 +310,8 @@ const form = reactive({
   address: '',
   sortOrder: 0,
   status: '0',
-  description: ''
+  description: '',
+  sourceInfo: null
 })
 
 const rules = {
@@ -392,10 +397,12 @@ function handleAddChild(row) {
   dialogVisible.value = true
 }
 
-function handleEdit(row) {
+async function handleEdit(row) {
+  row = await request.get('/system/org/' + encodeURIComponent(row.id))
   isEdit.value = true
   resetForm()
   Object.assign(form, row)
+  form.status = row.sourceInfo ? (row.sourceInfo.localAllowed ? '0' : '1') : row.status
   originalLeaderId.value = String(row.leaderId || '')
   dialogVisible.value = true
 }
@@ -479,7 +486,8 @@ async function submitForm() {
       address: form.address,
       sortOrder: form.sortOrder,
       status: form.status,
-      description: form.description
+      description: form.description,
+      extensions: extensionFormRef.value?.getChanges() || {}
     }
     if (isEdit.value) {
       await request.post(`/system/org/${form.id}/update`, organizationPayload)
@@ -533,6 +541,7 @@ function resetForm() {
   form.sortOrder = 0
   form.status = '0'
   form.description = ''
+  form.sourceInfo = null
   originalLeaderId.value = ''
 }
 

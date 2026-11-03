@@ -145,3 +145,15 @@ workflow-frontend/custom/biz-project/src/mobile/forms/ProjectMemberChangeForm.vu
 
 前端依赖和构建在 [前端工作区](../../workflow-frontend/README.md) 中统一管理；
 模块选择与扩展契约见 [前端业务模块开发](../../docs/frontend-business-modules.md)。
+
+## 用户、组织接入与资料扩展
+
+`identity/ProjectIdentityImporter` 演示 biz 接收已获取的业务快照，转换为公共模型并主动调用 `IdentityWritePort`。
+调用入口和时机由 biz 决定，本模块不注册自动取数任务。
+
+默认只写用户和组织基础数据，不声明具体业务扩展，也不创建业务扩展表。
+按版本顺序执行迁移，并按实际服务用户配置来源 `project-directory`。
+已执行 V127 的环境通过 V128 清理三张历史示例表及表内数据，V127 原文件保留以满足 Flyway 校验。
+将来需要扩展时，由业务自行定义扩展类、提供对应建表迁移；SOURCE 扩展还需加入来源的允许写入清单。
+
+配置、调用代码、扩展声明、页面行为及事务约束见[完整接入说明](../../docs/architecture/identity-write-and-extension-design.md)。

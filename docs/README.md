@@ -12,6 +12,7 @@
 - [扩展清单手册](../workflow-frontend/packages/workflow-extensions/manifests/README.md)
 - [移动工作台](../workflow-frontend/workflow-mobile/README.md)
 - [后端模块与包边界](backend-package-layout.md)
+- [用户、组织标准写入与独立扩展方案](architecture/identity-write-and-extension-design.md)
 
 ## 阅读历史资料
 

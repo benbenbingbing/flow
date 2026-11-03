@@ -51,6 +51,9 @@ public interface SysOrganizationService {
      * @return 保存后的组织部门对象
      */
     SysOrganization saveOrg(SysOrganization org);
+
+    /** 来源预配入口，复用组织树规则；调用方已验证来源权限并开启事务。 */
+    SysOrganization saveProvisionedOrganization(SysOrganization org);
     
     /**
      * 删除组织部门

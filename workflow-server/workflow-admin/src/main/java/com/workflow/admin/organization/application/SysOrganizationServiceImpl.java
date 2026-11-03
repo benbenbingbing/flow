@@ -32,6 +32,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysOrganizationServiceImpl implements SysOrganizationService {
     
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.admin.identity.provisioning.application.IdentityManagementSupport identityManagement;
+
     /** 组织部门 Mapper */
     private final SysOrganizationMapper orgMapper;
     /** 用户 Mapper，用于查询用户所属组织/部门 */
@@ -121,6 +124,28 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             captureArguments = true,
             captureResult = true)
     public SysOrganization saveOrg(SysOrganization org) {
+        if (identityManagement != null) {
+            identityManagement.lock();
+            SysOrganization existing = org.getId() == null ? null : orgMapper.selectById(org.getId());
+            identityManagement.protectOrganization(org, existing);
+            if (existing != null && org.getStatus() != null) org.setStatus(identityManagement.status(
+                    com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, org.getId(), org.getStatus()));
+            else if (existing != null) org.setStatus(existing.getStatus());
+        }
+        SysOrganization result = saveCore(org, false);
+        if (identityManagement != null) identityManagement.saveExtensions(
+                com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, result.getId(), org.getExtensions());
+        return result;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SysOrganization saveProvisionedOrganization(SysOrganization org) {
+        return saveCore(org, true);
+    }
+
+    /** 共用组织树、业务层级和负责人投影规则；来源写入不经过本地字段主权覆盖入口。 */
+    private SysOrganization saveCore(SysOrganization org, boolean provisioned) {
         if (StringUtils.hasText(org.getOrgCode())) {
             String excludeId = org.getId() != null ? org.getId() : "";
             if (orgMapper.existsCode(org.getOrgCode(), excludeId)) {
@@ -131,7 +156,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         SysOrganization oldOrg = StringUtils.hasText(org.getId())
                 ? orgMapper.selectById(org.getId()) : null;
         // 创建身份来自可信操作上下文；禁止客户端伪造或通过更新重新指定创建者。
-        org.setCreateBy(oldOrg == null ? com.workflow.admin.security.context.UserContext.getUserId() : oldOrg.getCreateBy());
+        org.setCreateBy(oldOrg == null ? provisioned ? org.getCreateBy() : com.workflow.admin.security.context.UserContext.getUserId() : oldOrg.getCreateBy());
         protectLeaderProjection(org, oldOrg);
         org.setBusinessLevelCode(normalizeAndValidateBusinessLevel(
                 org.getBusinessLevelCode()));
@@ -150,7 +175,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         calcLevelAndPath(org);
         org.setUpdateTime(LocalDateTime.now());
         
-        if (!StringUtils.hasText(org.getId())) {
+        if (!StringUtils.hasText(org.getId()) || provisioned && oldOrg == null) {
             org.setCreateTime(LocalDateTime.now());
             orgMapper.insert(org);
             calcLevelAndPath(org);
@@ -234,6 +259,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             targetType = "SYS_ORGANIZATION",
             targetIdArg = 0)
     public void deleteOrg(String id) {
+        if (identityManagement != null) identityManagement.lock();
         SysOrganization org = orgMapper.selectById(id);
         if (org == null) {
             throw new RuntimeException("组织部门不存在");
@@ -250,6 +276,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         }
         
         orgMapper.deleteById(id);
+        if (identityManagement != null) identityManagement.retire(com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, id);
         log.info("删除组织部门：{} ({})", org.getOrgName(), org.getOrgCode());
     }
     
@@ -270,6 +297,10 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             targetIdArg = 0,
             captureArguments = true)
     public void updateStatus(String id, String status) {
+        if (identityManagement != null) {
+            identityManagement.lock();
+            status = identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.ORGANIZATION, id, status);
+        }
         SysOrganization org = new SysOrganization();
         org.setId(id);
         org.setStatus(status);

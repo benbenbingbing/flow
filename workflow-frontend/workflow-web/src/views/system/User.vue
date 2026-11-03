@@ -171,7 +171,7 @@
                 <el-button link type="primary" :icon="MoreFilled" aria-label="更多用户操作" />
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item @click="handleResetPassword(row)">重置密码</el-dropdown-item>
+                    <el-dropdown-item v-if="row.authenticationMode !== 'EXTERNAL_ONLY'" @click="handleResetPassword(row)">重置密码</el-dropdown-item>
                     <el-dropdown-item v-if="canAssignPosition" @click="openPositionAssignment(row)">职务任命</el-dropdown-item>
                     <el-dropdown-item divided :disabled="row.username === 'admin'" @click="handleDelete(row)">
                       <span :class="{ 'danger-action': row.username !== 'admin' }">删除用户</span>
@@ -227,6 +227,7 @@
         <el-descriptions-item label="创建时间">{{ formatDateValue(viewUser.createTime) }}</el-descriptions-item>
         <el-descriptions-item label="更新时间">{{ formatDateValue(viewUser.updateTime) }}</el-descriptions-item>
       </el-descriptions>
+      <el-form label-width="100px"><IdentityExtensionForm v-if="viewDialogVisible" target-type="USER" :target-id="viewUser.id" readonly /></el-form>
       <template #footer>
         <el-button @click="viewDialogVisible = false">关闭</el-button>
       </template>
@@ -245,6 +246,7 @@
         :rules="formRules"
         label-width="100px"
       >
+        <el-alert v-if="formData.sourceInfo" :title="'基础资料由业务系统维护，来源账号：' + (formData.sourceInfo.externalAccount || '未提供') + '。本地启用仍受业务启停控制，角色和本地扩展可单独维护。'" type="info" :closable="false" />
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="用户名" prop="username">
@@ -257,7 +259,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="昵称" prop="nickname">
-              <el-input v-model="formData.nickname" placeholder="请输入昵称" />
+              <el-input v-model="formData.nickname" :disabled="!!formData.sourceInfo" placeholder="请输入昵称" />
             </el-form-item>
           </el-col>
         </el-row>
@@ -279,19 +281,19 @@
         <el-row :gutter="20">
           <el-col :span="12">
             <el-form-item label="邮箱" prop="email">
-              <el-input v-model="formData.email" placeholder="请输入邮箱" />
+              <el-input v-model="formData.email" :disabled="!!formData.sourceInfo" placeholder="请输入邮箱" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="手机号" prop="phone">
-              <el-input v-model="formData.phone" placeholder="请输入手机号" />
+              <el-input v-model="formData.phone" :disabled="!!formData.sourceInfo" placeholder="请输入手机号" />
             </el-form-item>
           </el-col>
         </el-row>
         
         <el-row :gutter="20">
           <el-col :span="12">
-            <el-form-item label="状态" prop="status">
+            <el-form-item :label="formData.sourceInfo ? '本地启用' : '状态'" prop="status">
               <el-radio-group v-model="formData.status">
                 <el-radio value="0">启用</el-radio>
                 <el-radio value="1">禁用</el-radio>
@@ -304,7 +306,7 @@
           <el-col :span="12">
             <el-form-item label="组织">
               <el-tree-select
-                v-model="formData.orgId"
+                v-model="formData.orgId" :disabled="!!formData.sourceInfo"
                 :data="orgOptions"
                 :props="{ label: 'orgName', value: 'id' }"
                 placeholder="请选择组织"
@@ -317,7 +319,7 @@
           <el-col :span="12">
             <el-form-item label="部门">
               <el-tree-select
-                v-model="formData.deptId"
+                v-model="formData.deptId" :disabled="!!formData.sourceInfo"
                 :data="deptOptions"
                 :props="{ label: 'orgName', value: 'id' }"
                 placeholder="请选择部门"
@@ -344,6 +346,7 @@
             />
           </el-select>
         </el-form-item>
+        <IdentityExtensionForm v-if="dialogVisible" ref="extensionFormRef" target-type="USER" :target-id="formData.id" />
       </el-form>
       
       <template #footer>
@@ -389,6 +392,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowUp, MoreFilled, Search } from '@element-plus/icons-vue'
 import {
   getUserPage,
+  getUserById,
   createUser,
   updateUser,
   deleteUser,
@@ -400,6 +404,7 @@ import {
 } from '@/api/system/user'
 import request from '@/utils/request'
 import PageState from '@/components/PageState.vue'
+import IdentityExtensionForm from '@/views/system/components/IdentityExtensionForm.vue'
 import { formatDateColumn, formatDateValue } from '@/shared/list-runtime'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import SystemFilterPicker from '@/views/system/components/SystemFilterPicker.vue'
@@ -483,6 +488,7 @@ const viewUser = ref<any>(null)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref()
+const extensionFormRef = ref()
 const submitLoading = ref(false)
 
 const formData = reactive({
@@ -495,7 +501,8 @@ const formData = reactive({
   status: '0',
   roleIds: [],
   orgId: '',
-  deptId: ''
+  deptId: '',
+  sourceInfo: null as any
 })
 
 const formRules = {
@@ -650,7 +657,8 @@ const resetForm = () => {
     status: '0',
     roleIds: [],
     orgId: '',
-    deptId: ''
+    deptId: '',
+    sourceInfo: null
   })
 }
 
@@ -667,16 +675,16 @@ const handleView = (row: any) => {
   viewDialogVisible.value = true
 }
 
-// 编辑用户
-const handleEdit = (row: any) => {
+const handleEdit = async (row: any) => {
+  row = await getUserById(row.id)
   resetForm()
   Object.assign(formData, {
-    id: row.id,
+    id: row.id, sourceInfo: row.sourceInfo,
     username: row.username,
     nickname: row.nickname,
     email: row.email,
     phone: row.phone,
-    status: row.status,
+    status: row.sourceInfo ? (row.sourceInfo.localAllowed ? '0' : '1') : row.status,
     roleIds: row.roles?.map((r: any) => r.id) || [],
     orgId: row.orgId,
     deptId: row.deptId
@@ -685,17 +693,16 @@ const handleEdit = (row: any) => {
   dialogVisible.value = true
 }
 
-// 提交表单
 const handleSubmit = async () => {
   await formRef.value.validate()
   submitLoading.value = true
   try {
+    const payload = { ...formData, extensions: extensionFormRef.value?.getChanges() || {} }
     if (formData.id) {
-      // 更新用户
-      await updateUser(formData.id, formData)
+      // 基础资料与本地扩展使用同一次保存，资料冲突时后端整体回滚。
+      await updateUser(formData.id, payload)
     } else {
-      // 创建用户（只传 data，不传 id）
-      await createUser(formData)
+      await createUser(payload)
     }
     ElMessage.success(formData.id ? '更新成功' : '创建成功')
     dialogVisible.value = false

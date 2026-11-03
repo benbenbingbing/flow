@@ -48,6 +48,10 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SysUserService {
 
+    // 单独装配以保持现有独立服务测试的构造入口；生产容器必须注入这一强制支持组件。
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.admin.identity.provisioning.application.IdentityManagementSupport identityManagement;
+
     /** 用户 Mapper */
     private final SysUserMapper userMapper;
     /** 角色 Mapper，用于查询用户角色 */
@@ -298,6 +302,7 @@ public class SysUserService {
             captureArguments = true,
             captureResult = true)
     public SysUser saveUser(SysUser user) {
+        if (identityManagement != null) identityManagement.lock();
         SysUser existing = null;
         if (StringUtils.hasText(user.getId())) {
             existing = userMapper.selectById(user.getId());
@@ -305,7 +310,19 @@ public class SysUserService {
                 throw new IllegalArgumentException("用户不存在");
             }
         }
-        validateOrganizationMembership(user, existing);
+        if (identityManagement != null) {
+            identityManagement.protectUser(user, existing);
+            if (existing != null && user.getStatus() != null) {
+                user.setStatus(identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.USER, user.getId(), user.getStatus()));
+            } else if (existing != null) {
+                user.setStatus(existing.getStatus());
+            }
+        }
+        // 认证模式由服务端维护，任何普通保存均不能切换外部账号的登录方式。
+        user.setAuthenticationMode(existing == null ? "LOCAL_PASSWORD" : null);
+        // 外部停用人员的本地资料仍可编辑，不要求其保留的组织引用处于启用状态。
+        validateOrganizationMembership(user, existing, existing == null
+                || !"EXTERNAL_ONLY".equals(existing.getAuthenticationMode()) || "0".equals(user.getStatus()));
 
         // 校验用户名唯一性
         if (StringUtils.hasText(user.getUsername())) {
@@ -352,7 +369,14 @@ public class SysUserService {
             saveUserRoles(user.getId(), user.getRoleIds());
         }
         
+        if (identityManagement != null) identityManagement.saveExtensions(
+                com.workflow.contracts.identity.model.IdentityObjectType.USER, user.getId(), user.getExtensions());
         return user;
+    }
+
+    /** 来源预配复用归属规则，停用人员允许保留已停用但仍存在的组织引用。 */
+    public void validateProvisionedMembership(SysUser user) {
+        validateOrganizationMembership(user, null, "0".equals(user.getStatus()));
     }
 
     /**
@@ -365,6 +389,10 @@ public class SysUserService {
     private void validateOrganizationMembership(
             SysUser requested,
             SysUser existing) {
+        validateOrganizationMembership(requested, existing, true);
+    }
+
+    private void validateOrganizationMembership(SysUser requested, SysUser existing, boolean requireActive) {
         // 现有更新接口同时服务整 DTO 表单和内部的局部对象：null 表示未提供、
         // 沿用旧值；非 null 的空字符串表示前端 clearable 控件显式清空。
         // 这里只计算提交后的最终归属状态，不把局部更新扩展成新的 PATCH 契约。
@@ -383,7 +411,7 @@ public class SysUserService {
         SysOrganization organization = orgMapper.selectById(orgId);
         if (organization == null
                 || !SysOrganization.Type.ORG.getValue().equals(organization.getType())
-                || !SysOrganization.Status.ENABLED.getValue().equals(
+                || requireActive && !SysOrganization.Status.ENABLED.getValue().equals(
                     organization.getStatus())) {
             throw new IllegalArgumentException("orgId 必须指向启用的组织节点");
         }
@@ -393,7 +421,7 @@ public class SysUserService {
         SysOrganization department = orgMapper.selectById(deptId);
         if (department == null
                 || !SysOrganization.Type.DEPT.getValue().equals(department.getType())
-                || !SysOrganization.Status.ENABLED.getValue().equals(
+                || requireActive && !SysOrganization.Status.ENABLED.getValue().equals(
                     department.getStatus())) {
             throw new IllegalArgumentException("deptId 必须指向启用的部门节点");
         }
@@ -478,6 +506,7 @@ public class SysUserService {
             targetType = "SYS_USER",
             targetIdArg = 0)
     public void deleteUser(String id) {
+        if (identityManagement != null) identityManagement.lock();
         SysUser user = userMapper.selectById(id);
         if (user == null) {
             throw new RuntimeException("用户不存在");
@@ -496,6 +525,7 @@ public class SysUserService {
         
         // 逻辑删除用户
         userMapper.deleteById(id);
+        if (identityManagement != null) identityManagement.retire(com.workflow.contracts.identity.model.IdentityObjectType.USER, id);
         log.info("删除用户：{}", user.getUsername());
     }
     
@@ -517,6 +547,10 @@ public class SysUserService {
             targetIdArg = 0,
             captureArguments = true)
     public void updateStatus(String id, String status) {
+        if (identityManagement != null) {
+            identityManagement.lock();
+            status = identityManagement.status(com.workflow.contracts.identity.model.IdentityObjectType.USER, id, status);
+        }
         // 不能禁用超级管理员
         if ("1".equals(status)) {
             SysUser user = userMapper.selectById(id);
@@ -613,6 +647,7 @@ public class SysUserService {
         if (existing == null) {
             throw new IllegalArgumentException("用户不存在");
         }
+        requireLocalPassword(existing);
         validateNewPassword(newPassword);
         if (passwordMatches(newPassword, existing.getPassword())) {
             throw new IllegalArgumentException("新密码不能与当前密码相同");
@@ -653,6 +688,7 @@ public class SysUserService {
         if (!passwordMatches(currentPassword, existing.getPassword())) {
             throw new IllegalArgumentException("当前密码不正确");
         }
+        requireLocalPassword(existing);
         validateNewPassword(newPassword);
         if (passwordMatches(newPassword, existing.getPassword())) {
             throw new IllegalArgumentException("新密码不能与当前密码相同");
@@ -682,6 +718,7 @@ public class SysUserService {
             targetType = "SYS_USER",
             targetIdArg = 0)
     public void migrateLegacyPassword(String id, String rawPassword) {
+        requireLocalPassword(userMapper.selectById(id));
         SysUser update = new SysUser();
         update.setId(id);
         update.setPassword(passwordEncoder.encode(rawPassword));
@@ -706,12 +743,18 @@ public class SysUserService {
                 "TOKEN_VERSION_CHANGED");
     }
 
+    /** 外部账号无本地密码；重置、改密和历史迁移都不能隐式改变认证策略。 */
+    private void requireLocalPassword(SysUser user) {
+        if (user == null || "EXTERNAL_ONLY".equals(user.getAuthenticationMode())) {
+            throw new IllegalArgumentException("外部账号不支持本地密码操作");
+        }
+    }
+
     /**
-     * 判断密码匹配条件是否成立，供调用方选择后续分支。
-     *
-     * @param rawPassword 原始密码，作为 {@code passwordEncoder.matches} 的输入影响后续处理
-     * @param storedPassword 已存储密码，作为 {@code passwordEncoder.matches} 的输入影响后续处理
-     * @return 密码匹配条件成立时为 true，否则为 false
+     * 判断输入密码是否与现有摘要匹配；空摘要（包括外部账号）一律不匹配。
+     * @param rawPassword 用户提交的原始密码
+     * @param storedPassword 数据库存储的摘要或待迁移历史密码
+     * @return 匹配时为 true；本方法不执行密码迁移
      */
     public boolean passwordMatches(String rawPassword, String storedPassword) {
         if (!StringUtils.hasText(rawPassword) || !StringUtils.hasText(storedPassword)) {

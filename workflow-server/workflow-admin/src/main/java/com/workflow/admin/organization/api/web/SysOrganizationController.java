@@ -26,6 +26,9 @@ public class SysOrganizationController {
     /** 组织部门服务 */
     private final SysOrganizationService orgService;
     
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.admin.identity.provisioning.application.IdentityManagementSupport identityManagement;
+
     /**
      * 获取组织部门树
      *
@@ -66,7 +69,9 @@ public class SysOrganizationController {
      */
     @GetMapping("/{id}")
     public Result<SysOrganization> getById(@PathVariable String id) {
-        return Result.success(orgService.getById(id));
+        SysOrganization result = orgService.getById(id);
+        if (result != null && identityManagement != null) identityManagement.fill(result);
+        return Result.success(result);
     }
     
     /**

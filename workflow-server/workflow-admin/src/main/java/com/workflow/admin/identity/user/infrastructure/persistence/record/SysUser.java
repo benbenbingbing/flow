@@ -23,6 +23,25 @@ import java.util.List;
 @Data
 @TableName("sys_user")
 public class SysUser {
+    /** 同次管理保存提交的本地扩展组，未携带的组保持原值。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
+    private java.util.Map<String, com.workflow.contracts.identity.model.IdentityExtensionEdit> extensions;
+
+    /** 授权后的资料与版本，供通用表单回填；不接受客户端指定读取结果。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private java.util.Map<String, com.workflow.contracts.identity.model.IdentityExtensionValue> extensionValues;
+
+    /** 来源维护标识，用于页面只读基础信息和展示独立的本地停用状态。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private com.workflow.contracts.identity.model.IdentitySourceInfo sourceInfo;
+
+    /** LOCAL_PASSWORD 或 EXTERNAL_ONLY；由框架创建策略决定，不能通过管理请求切换。 */
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String authenticationMode;
+
     
     /** 主键ID（雪花算法分配） */
     @TableId(type = IdType.ASSIGN_ID)

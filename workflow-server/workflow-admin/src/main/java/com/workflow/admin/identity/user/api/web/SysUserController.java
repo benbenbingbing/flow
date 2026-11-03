@@ -33,6 +33,9 @@ public class SysUserController {
     /** 角色服务，用于查询启用角色供分配 */
     private final SysRoleService roleService;
     
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.workflow.admin.identity.provisioning.application.IdentityManagementSupport identityManagement;
+
     /**
      * 查询用户列表
      *
@@ -79,7 +82,9 @@ public class SysUserController {
      */
     @GetMapping("/{id}")
     public Result<SysUser> getById(@PathVariable String id) {
-        return Result.success(userService.getById(id));
+        SysUser result = userService.getById(id);
+        if (result != null && identityManagement != null) identityManagement.fill(result);
+        return Result.success(result);
     }
     
     /**

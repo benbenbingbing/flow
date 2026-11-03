@@ -117,7 +117,7 @@ public class AuthController {
                     "用户已被禁用");
             return Result.error("用户名或密码错误");
         }
-        if (!passwordMatches) {
+        if ("EXTERNAL_ONLY".equals(user.getAuthenticationMode()) || !passwordMatches) {
             loginThrottleService.recordFailure(
                     loginDTO.getUsername(),
                     clientAddress);

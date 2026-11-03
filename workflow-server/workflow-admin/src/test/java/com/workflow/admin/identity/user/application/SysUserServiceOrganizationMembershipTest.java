@@ -34,6 +34,31 @@ class SysUserServiceOrganizationMembershipTest {
             mock(PositionOrganizationScopeService.class));
 
     @Test
+    void externalDisabledUserCanKeepInactiveMembershipWhileEditingLocalProfile() {
+        SysUser existing = enabledUser("user-1", "org-a", null);
+        existing.setAuthenticationMode("EXTERNAL_ONLY");
+        existing.setStatus("1");
+        when(userMapper.selectById("user-1")).thenReturn(existing);
+        SysOrganization org = enabledUnit("org-a", "0", "org");
+        org.setStatus("1");
+        when(organizationMapper.selectById("org-a")).thenReturn(org);
+        SysUser requested = enabledUser("user-1", null, null);
+        requested.setStatus("1");
+        assertDoesNotThrow(() -> service.saveUser(requested));
+        verify(userMapper).updateById(requested);
+    }
+
+    @Test
+    void passwordResetCannotTurnExternalIdentityIntoPasswordAccount() {
+        SysUser existing = enabledUser("external", null, null);
+        existing.setAuthenticationMode("EXTERNAL_ONLY");
+        when(userMapper.selectById("external")).thenReturn(existing);
+        assertThrows(IllegalArgumentException.class, () -> service.resetPassword("external", "NewPassword123!"));
+        assertThrows(IllegalArgumentException.class, () -> service.migrateLegacyPassword("external", "password"));
+        verify(userMapper, never()).updateById(any(SysUser.class));
+    }
+
+    @Test
     void allowsMovingOrganizationWhenDepartmentIsExplicitlyCleared() {
         SysUser existing = enabledUser("user-1", "org-a", "dept-a");
         when(userMapper.selectById("user-1")).thenReturn(existing);
