@@ -25,7 +25,9 @@
 | `sys_identity_write_lock` | 以 `lock_key` 为主键，初始化固定 `directory` 行，供身份写入事务串行化组织树校验和首次来源绑定。 |
 | `sys_identity_source_binding` | 保存用户及组织的稳定来源键、版本、快照摘要和启用状态；`source_key` 为主键，`(object_type, local_id)` 唯一，来源与本地许可默认启用，绑定状态默认 `ACTIVE`。 |
 
-MySQL 与 OceanBase MySQL 的来源键、快照摘要保留 `ascii_bin` 排序规则；其余方言按既有规则转换字符串、整数及秒级时间类型。来源键由精确 UTF-8 值计算摘要，保留外部 ID 的大小写语义。绑定更新时间由应用维护，不增加数据库自动更新时间逻辑。
+MySQL 与 OceanBase MySQL 的来源键、快照摘要使用 `char(64) NOT NULL`，继承表的默认字符集和排序规则，不单独声明 `CHARACTER SET` 或 `COLLATE`。应用通过 `HexFormat.of().formatHex(...)` 统一生成固定 64 位小写十六进制摘要，无需依赖摘要列区分大小写。来源键按原始 ID 的精确 UTF-8 值计算，原始 ID 的大小写差异在计算摘要时已保留。其余方言按既有规则转换字符串、整数及秒级时间类型。绑定更新时间由应用维护，不增加数据库自动更新时间逻辑。
+
+移除摘要列的独立排序规则后，已在临时 MySQL 实例复验完整导入，并执行两份 MySQL 系脚本对应表的 DDL，确认两列继承表默认值、大小写不同的原始 ID 可按各自摘要正确查找、相同摘要由主键去重；这不替代 OceanBase 实库导入验证。
 
 V127 曾创建的 `biz_project_user_profile`、`biz_project_directory_user` 和 `biz_project_org_profile` 已由 V128 移除，因此空库不创建这些示例表。菜单/权限和超级管理员授权均保持 **103 条**。
 

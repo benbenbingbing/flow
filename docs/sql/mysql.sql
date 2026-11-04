@@ -4700,15 +4700,16 @@ CREATE TABLE `sys_identity_write_lock` (
   PRIMARY KEY (`lock_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='身份目录事务锁，覆盖组织树及来源首次创建';
 
+-- 摘要由应用统一生成固定 64 位小写十六进制串；原始 ID 的大小写差异在哈希时保留，摘要列沿用表的默认字符集和排序规则。
 CREATE TABLE `sys_identity_source_binding` (
-  `source_key` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义',
+  `source_key` char(64) NOT NULL COMMENT '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义',
   `source_code` varchar(64) NOT NULL COMMENT '已授权的身份来源代码；与外部 ID 共同定位来源对象',
   `object_type` varchar(20) NOT NULL COMMENT 'USER 或 ORGANIZATION；区分用户和组织的来源键及本地对象',
   `external_id` varchar(255) NOT NULL COMMENT '来源系统的稳定对象 ID；通过摘要主键定位，避免排序规则合并不同 ID',
   `local_id` varchar(64) NOT NULL COMMENT '框架分配的 sys_user 或 sys_organization 主键；同类型本地对象仅允许一个来源绑定',
   `external_account` varchar(255) DEFAULT NULL COMMENT '来源账号或组织外部编码；用于展示和追溯，不作为本地登录名',
   `source_version` bigint DEFAULT NULL COMMENT '来源快照版本；拒绝同版本不同内容并忽略旧版本，无版本来源保留 NULL',
-  `payload_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '规范化基础资料及扩展快照的 SHA-256；与版本共同判断重复写入或冲突',
+  `payload_hash` char(64) NOT NULL COMMENT '规范化基础资料及扩展快照的 SHA-256；与版本共同判断重复写入或冲突',
   `source_enabled` tinyint NOT NULL DEFAULT 1 COMMENT '来源启用标志；与 local_allowed 共同决定最终启用状态',
   `local_allowed` tinyint NOT NULL DEFAULT 1 COMMENT '本地启用许可；来源更新不得覆盖本地管理员的禁用决定',
   `binding_status` varchar(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE 或 RETIRED；退休后禁止来源写入重新创建该对象',
