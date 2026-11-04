@@ -1,6 +1,6 @@
 package com.workflow.admin.auth.infrastructure.web;
 
-import com.workflow.admin.auth.infrastructure.web.AuthInterceptor;
+import com.workflow.admin.auth.api.web.AuthController;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.admin.auth.application.AuthErrorCode;
@@ -16,6 +16,8 @@ import com.workflow.core.security.RequiresPermission;
 import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -34,7 +36,7 @@ import org.springframework.web.method.HandlerMethod;
  * 认证拦截器单元测试。
  *
  * <p>被测对象为 {@link AuthInterceptor}，验证缺少 Token 返回 401、
- * 登录端点放行、current 端点需鉴权、以及有效 Token 设置当前用户上下文。</p>
+ * 公开认证端点按注解放行、current 端点需鉴权、以及有效 Token 设置当前用户上下文。</p>
  */
 class AuthInterceptorTest {
 
@@ -75,18 +77,39 @@ class AuthInterceptorTest {
         assertEquals("登录凭证无效", body.get("message").asText());
     }
 
-    /** 登录端点应放行，不需要 Token */
-    @Test
-    void loginEndpointDoesNotRequireToken() throws Exception {
+    /** 登录、刷新和退出必须通过实际处理方法的注解放行，不能依赖 URL 白名单。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"login", "refresh", "logout"})
+    void publicAuthEndpointDoesNotRequireToken(String methodName) throws Exception {
         AuthInterceptor interceptor =
                 new AuthInterceptor(authSessionService);
-        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/login");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/auth/" + methodName);
         MockHttpServletResponse response = new MockHttpServletResponse();
+        var method = java.util.Arrays.stream(AuthController.class.getDeclaredMethods())
+                .filter(candidate -> candidate.getName().equals(methodName))
+                .findFirst().orElseThrow();
+        HandlerMethod handler = new HandlerMethod(mock(AuthController.class), method);
 
-        boolean allowed = interceptor.preHandle(request, response, new Object());
+        boolean allowed = interceptor.preHandle(request, response, handler);
 
         assertTrue(allowed);
         assertEquals(200, response.getStatus());
+        verifyNoInteractions(authSessionService);
+    }
+
+    /** 原公开路径本身不再授予匿名权限，实际匹配到受保护方法时仍必须认证。 */
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/auth/login", "/api/auth/refresh", "/api/auth/logout", "/api/system/mobile-theme"})
+    void publicPathWithoutPublicAnnotationStillRequiresToken(String path) throws Exception {
+        when(authSessionService.authenticateAccess(null))
+                .thenThrow(new AuthSessionException(AuthErrorCode.ACCESS_INVALID, "登录凭证无效"));
+        AuthInterceptor interceptor = new AuthInterceptor(authSessionService);
+        HandlerMethod handler = new HandlerMethod(
+                new PermissionFixture(), PermissionFixture.class.getDeclaredMethod("deleteRecord"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        assertFalse(interceptor.preHandle(new MockHttpServletRequest("GET", path), response, handler));
+        assertEquals(401, response.getStatus());
     }
 
     /** current 端点应需要 Token，缺少时返回 401 */

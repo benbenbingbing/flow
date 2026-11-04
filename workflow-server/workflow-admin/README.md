@@ -2,6 +2,17 @@
 
 管理模块负责认证、用户、角色、组织、菜单、字典、扩展治理和统一系统操作审计。
 
+## 公开接口
+
+普通 MVC 接口在控制器方法上添加 `@PublicApi` 即可匿名调用，无需配置路径白名单；
+标在控制器类上时对该类接口生效。方法上的访问策略优先于类上的策略：
+公开类中的方法可用 `@AuthenticatedApi` 或 `@RequiresPermission` 要求认证，
+受保护类中的方法可用 `@PublicApi` 单独公开。
+
+公开接口跳过 Access Token 校验，即使请求携带失效 Token 也可调用，且不会建立普通 JWT 用户上下文。
+接口及其服务不能依赖当前登录用户；参数校验与业务校验仍照常执行。
+`/api/open/**` 和 Embed Runtime 仍由各自的专属安全链管理。
+
 ## 审计边界
 
 - `com.workflow.admin.audit.api.web/request/response`：只读查询、导出接口及其请求和响应。

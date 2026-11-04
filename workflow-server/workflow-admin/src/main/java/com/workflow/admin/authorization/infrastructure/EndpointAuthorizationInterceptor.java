@@ -4,8 +4,8 @@ import com.workflow.admin.authorization.application.CurrentUserRoleService;
 import com.workflow.admin.authorization.menu.infrastructure.persistence.mapper.SysMenuMapper;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.error.ForbiddenException;
+import com.workflow.core.security.ApiAccessPolicyResolver;
 import com.workflow.core.security.AuthenticatedApi;
-import com.workflow.core.security.PublicApi;
 import com.workflow.core.security.RequiresPermission;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.beans.factory.ObjectProvider;
@@ -57,13 +57,14 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * 判断{@code pre}{@code handle}条件是否成立，供调用方选择后续分支。
+     * 按接口声明的访问策略校验授权；公开接口直接放行，其余接口必须先建立登录用户上下文。
+     * 写接口还需声明功能权限或由业务执行对象级授权，避免仅凭登录态执行写操作。
      *
-     * @param request 本次请求，后续经校验后用于处理{@code pre}{@code handle}
-     * @param response 响应，供本方法处理{@code pre}{@code handle}时使用
-     * @param handler 处理器，供本方法处理{@code pre}{@code handle}时使用
-     * @return {@code pre}{@code handle}条件成立时为 true，否则为 false
-     * @throws ForbiddenException 当前用户缺少所需访问权限时抛出
+     * @param request 本次请求，用于区分只读与写操作的授权要求
+     * @param response HTTP 响应，授权失败时交由统一异常处理器写出错误
+     * @param handler MVC 匹配的处理器，用于解析方法及类上的访问策略
+     * @return 非控制器处理器、公开接口或授权通过的接口返回 true
+     * @throws ForbiddenException 未登录、权限不足、缺少访问策略或写接口未声明必要授权时抛出
      */
     @Override
     public boolean preHandle(
@@ -74,12 +75,8 @@ public class EndpointAuthorizationInterceptor implements HandlerInterceptor {
             return true;
         }
 
-        // 方法上的策略覆盖类上的策略，避免管理控制器的类级权限
-        // 把登录用户自己的运行态接口（如侧栏菜单）一并挡住。
-        if (findMethodAnnotation(handlerMethod, PublicApi.class) != null
-                || (findMethodAnnotation(handlerMethod, RequiresPermission.class) == null
-                && findMethodAnnotation(handlerMethod, AuthenticatedApi.class) == null
-                && findClassAnnotation(handlerMethod, PublicApi.class) != null)) {
+        // 与认证层使用相同的公开策略，方法上的认证或权限要求可收紧类级公开配置。
+        if (ApiAccessPolicyResolver.isPublic(handlerMethod)) {
             return true;
         }
 

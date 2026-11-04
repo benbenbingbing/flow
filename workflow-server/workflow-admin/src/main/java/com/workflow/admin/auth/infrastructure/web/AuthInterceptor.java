@@ -5,11 +5,14 @@ import com.workflow.admin.auth.application.AuthSessionService;
 import com.workflow.admin.auth.application.AuthenticatedAccess;
 import com.workflow.admin.security.context.UserContext;
 import com.workflow.core.result.Result;
+import com.workflow.core.security.ApiAccessPolicyResolver;
+import com.workflow.core.security.PublicApi;
 import com.workflow.contracts.embed.runtime.context.EmbedDelegatedRequestContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,7 +23,8 @@ import java.io.IOException;
  * JWT认证拦截器
  * <p>
  * 拦截请求校验 JWT Token，校验通过后将用户信息写入 {@link UserContext} 与 request attribute；
- * 登录、退出接口直接放行。请求结束后清理 ThreadLocal，避免内存泄漏。
+ * 有效访问策略为 {@link PublicApi} 的接口直接放行，不建立 JWT 用户上下文。
+ * 请求结束后清理 ThreadLocal，避免内存泄漏。
  * </p>
  */
 @Component
@@ -56,26 +60,21 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
     
     /**
-     * 请求前置处理：校验 Token 并设置当前用户上下文
+     * 请求前置处理：公开接口按注解放行，其余请求校验 Token 并设置当前用户上下文。
      *
      * @param request  HTTP 请求
      * @param response HTTP 响应
      * @param handler  处理器
-     * @return 校验通过返回 true 放行；未登录或 Token 失效返回 false 并写出 401 响应
+     * @return 公开接口或认证通过时返回 true；认证失败返回 false 并写出对应错误响应
      * @throws Exception 写出响应发生 IO 异常时抛出
      */
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 登录、刷新和退出端点可在 Access Token 缺失或过期时处理。
-        String uri = request.getRequestURI();
-        if (uri.equals("/api/auth/login")
-                || uri.equals("/api/auth/refresh")
-                || uri.equals("/api/auth/logout")) {
+        // 与授权层共享方法优先的策略；公开接口在 Token 缺失、失效或认证服务不可用时均可访问。
+        if (handler instanceof HandlerMethod handlerMethod
+                && ApiAccessPolicyResolver.isPublic(handlerMethod)) {
             return true;
         }
-
-        // 登录页仅需公开的固定主题投影；其他设置及写操作仍必须认证。
-        if ("GET".equals(request.getMethod()) && "/api/system/mobile-theme".equals(uri)) return true;
 
         // Embed 委托只能信任服务端认证过滤器写入的 request attribute；协议头本身
         // 绝不能跳过 JWT。UserContext 已由同一过滤器按映射 Flow 用户建立，后续
@@ -93,6 +92,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
         
+        String uri = request.getRequestURI();
         // 获取Token
         String token = request.getHeader("Authorization");
         if (token != null && token.startsWith("Bearer ")) {

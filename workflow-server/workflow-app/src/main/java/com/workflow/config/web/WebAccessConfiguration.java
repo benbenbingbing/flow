@@ -66,14 +66,10 @@ public class WebAccessConfiguration {
             
             @Override
             public void addInterceptors(InterceptorRegistry registry) {
-                // Authentication always runs first; only login is intentionally anonymous.
+                // 先建立身份；普通公开接口由 PublicApi 注解放行，Open API 和 Embed 使用专属安全链。
                 registry.addInterceptor(authInterceptor)
                         .addPathPatterns("/api/**")
-                        .excludePathPatterns(
-                                "/api/auth/login",
-                                "/api/auth/refresh",
-                                "/api/auth/logout",
-                                "/api/open/**")
+                        .excludePathPatterns("/api/open/**")
                         .excludePathPatterns(
                                 EMBED_RUNTIME_PATH_PATTERNS);
                 // Embed iframe 是隔离 Origin 上的原生 Flow 客户端。opaque
