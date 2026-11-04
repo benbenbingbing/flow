@@ -81,6 +81,16 @@
         "bucket": {
           "type": "string",
           "minLength": 1
+        },
+        "keyPrefix": {
+          "type": "string"
+        },
+        "readableBuckets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9.-]*$"
+          }
         }
       }
     },

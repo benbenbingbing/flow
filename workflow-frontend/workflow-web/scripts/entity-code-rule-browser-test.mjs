@@ -12,11 +12,11 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import Dialog from '/src/views/entity/components/EntityCodeRuleDialog.vue'
 import { codeRuleApi } from '/src/api/codeRule.js'
-const state=reactive({key:0,rule:{entityCode:'project',generationMode:'RULE',prefix:'XM',seqLength:6,seqType:'DAY',dateFormat:'yyyyMMdd',currentSeq:42,id:'server-rule'},saved:[],previewFailure:false,delay:false,closed:false})
+const state=reactive({key:0,rule:{entityCode:'project',generationMode:'RULE',prefix:'XM',seqLength:6,seqType:'DAY',dateFormat:'yyyyMMdd',currentSeq:42,id:'server-rule'},saved:[],previews:0,generatorsAvailable:true,previewFailure:false,delay:false,closed:false})
 const schema={type:'object',required:['prefix'],properties:{prefix:{type:'string',title:'编号前缀',default:'XM'}}}
 codeRuleApi.getByEntityCode=async()=>({...state.rule})
-codeRuleApi.generators=async()=>[{code:'PROJECT_RECORD_ID',displayName:'项目编号',configurationSchema:schema}]
-codeRuleApi.preview=async()=>{if(state.previewFailure)throw Error('模拟自定义服务失败');if(state.delay)return new Promise(resolve=>window.previewResolve=resolve);return ''}
+codeRuleApi.generators=async()=>state.generatorsAvailable?[{code:'PROJECT_RECORD_ID',displayName:'项目编号',configurationSchema:schema}]:[]
+codeRuleApi.preview=async()=>{state.previews++;if(state.previewFailure)throw Error('模拟自定义服务失败');if(state.delay)return new Promise(resolve=>window.previewResolve=resolve);return ''}
 codeRuleApi.save=async value=>{state.saved.push(JSON.parse(JSON.stringify(value)));state.rule={...value}}
 createApp({setup:()=>()=>h(Dialog,{key:state.key,entity:{entityCode:'project',entityName:'项目'},onClose:()=>{state.closed=true}})}).use(ElementPlus).mount('#app')
 window.codeRuleTest={state,settle:async()=>{await nextTick();await new Promise(r=>setTimeout(r,100));await nextTick()}}
@@ -93,7 +93,7 @@ try {
   await evaluate('codeRuleTest.state.previewFailure=false;codeRuleTest.state.delay=true')
   await click('刷新')
   await until('Boolean(window.previewResolve)')
-  await radio('规则生成')
+  await radio('不自动生成')
   await evaluate("window.previewResolve('STALE-CODE');codeRuleTest.settle()")
   assert.equal(await evaluate("[...document.querySelectorAll('input')].some(e=>e.value==='STALE-CODE')"),false)
   await radio('自定义生成')
@@ -110,8 +110,29 @@ try {
   await evaluate("codeRuleTest.state.rule.generatorCode='UNINSTALLED';codeRuleTest.state.key++;codeRuleTest.settle()")
   await until("document.body.innerText.includes('当前生成器不可用')")
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='保存').disabled"),true)
+
+  // 没有可用扩展也能关闭取号；隐藏参数和示例，保存及重新打开均不得发起预览。
+  await evaluate('codeRuleTest.state.generatorsAvailable=false;codeRuleTest.state.key++;codeRuleTest.settle()')
+  await until("document.body.innerText.includes('暂无适用于此实体的生成器')")
+  const previews = await evaluate('codeRuleTest.state.previews')
+  await radio('不自动生成')
+  assert.equal(await evaluate("document.body.innerText.includes('保存新记录时不自动生成数据编码')"),true)
+  assert.equal(await evaluate("document.body.innerText.includes('编码生成器')"),false)
+  assert.equal(await evaluate("document.body.innerText.includes('编码前缀')"),false)
+  assert.equal(await evaluate("document.body.innerText.includes('编码示例')"),false)
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(e=>e.textContent.trim()==='保存').disabled"),false)
+  const disabledScreenshot = await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true})
+  writeFileSync('/tmp/flow-disabled-code-dialog.png',Buffer.from(disabledScreenshot.data,'base64'))
+  await click('保存')
+  await until('codeRuleTest.state.saved.length===2')
+  assert.equal(await evaluate('codeRuleTest.state.saved[1].generationMode'),'NONE')
+  await evaluate('codeRuleTest.state.key++;codeRuleTest.settle()')
+  await until("document.querySelector('.el-radio-button.is-active')?.textContent.trim()==='不自动生成'")
+  assert.equal(await evaluate('codeRuleTest.state.previews'),previews)
+  await radio('规则生成')
+  assert.equal(await evaluate("[...document.querySelectorAll('.el-form-item')].find(e=>e.textContent.includes('编码前缀'))?.querySelector('input')?.value"),'XM')
   assert.deepEqual(errors,[])
-  console.log('Entity custom code dialog browser regression passed')
+  console.log('Entity code generation modes browser regression passed')
 } finally {
   ws?.close()
   browser?.kill('SIGTERM')

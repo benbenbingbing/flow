@@ -1,7 +1,8 @@
 package com.workflow.storage.infrastructure.s3;
 
-import com.workflow.contracts.storage.spi.FileStorageProvider;
+import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.contracts.storage.model.StoredFile;
+import com.workflow.contracts.storage.spi.FileStorageProvider;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import jakarta.annotation.PreDestroy;
 import java.io.FileNotFoundException;
@@ -11,15 +12,17 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
-import com.workflow.contracts.storage.model.FileUpload;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -35,7 +38,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /**
- * S3-compatible storage shared by every application replica.
+ * S3 兼容存储：上传和删除使用默认桶的指定目录，下载可读取默认桶及显式允许的其他桶。
+ * 对象引用仅决定桶和 key，所有请求仍复用本策略的 endpoint、区域和凭证。
  */
 @Component
 @ConditionalOnProperty(
@@ -45,6 +49,9 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
 
     private final FileStorageProperties.S3Config config;
     private final S3Client client;
+    /** 带结尾斜杠的写入前缀，保证目录边界匹配，避免 flow/prod 误匹配 flow/production。 */
+    private final String keyPrefix;
+    private final Set<String> readableBuckets;
 
     /**
      * 初始化{@code s3}文件存储{@code strategy}，保存构造参数供后续方法使用。
@@ -69,6 +76,8 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
         requireText(config.getBucket(), "file.storage.s3.bucket");
         requireText(config.getRegion(), "file.storage.s3.region");
         validateCredentials(config);
+        this.keyPrefix = normalizeKeyPrefix(config.getKeyPrefix());
+        this.readableBuckets = readableBuckets(config.getReadableBuckets());
         this.client = client == null
                 ? buildClient(config)
                 : client;
@@ -100,7 +109,7 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 整理上传数据，供调用方遍历或继续处理。
+     * 将文件上传到默认桶的 key-prefix/年/月/日/UUID 路径，并返回包含完整对象 key 的文件标识。
      *
      * @param file 文件，作为 {@code objectKey} 的输入影响后续处理
      * @return 上传键值结果，供调用方继续处理
@@ -141,42 +150,45 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 删除{@code s3}文件存储{@code strategy}；后续读取或执行将使用更新后的状态。
+     * 删除默认桶写入目录内的对象；额外可读桶和其他目录不会因此获得删除权限。
      *
-     * @param fileUrl 文件URL，作为 {@code extractKey} 的输入影响后续处理
-     * @return {@code s3}文件存储{@code strategy}条件成立时为 true，否则为 false
+     * @param fileUrl s3://bucket/key 或默认桶的自定义访问地址
+     * @return 地址属于写入范围且删除请求成功时为 true，超出范围时为 false
      */
     @Override
     public boolean delete(String fileUrl) {
-        String key = extractKey(fileUrl);
-        if (key == null) {
+        ObjectReference reference = extractReference(fileUrl);
+        if (reference == null
+                || !config.getBucket().equals(reference.bucket())
+                || !reference.key().startsWith(keyPrefix)) {
             return false;
         }
         client.deleteObject(DeleteObjectRequest.builder()
                 .bucket(config.getBucket())
-                .key(key)
+                .key(reference.key())
                 .build());
         return true;
     }
 
     /**
-     * 处理打开，并将结果传给后续步骤。
+     * 流式下载默认桶任意目录或额外可读桶中的对象，不将上传目录再次拼入已有 key。
+     * 调用方须先完成文件归属鉴权；可读桶配置只限定存储范围，不代替用户授权。
      *
-     * @param fileUrl 文件URL，作为 {@code extractKey} 的输入影响后续处理
-     * @return 处理后的打开结果，供调用方继续处理
-     * @throws IOException 读取或写入外部资源失败时抛出
+     * @param fileUrl s3://bucket/key；自定义访问地址仅映射到默认桶
+     * @return 需由调用方关闭的文件流，缺少名称元数据时使用 key 的最后一段
+     * @throws IOException 地址无效、桶未开放读取或对象不存在时抛出
      */
     @Override
     public StoredFile open(String fileUrl) throws IOException {
-        String key = extractKey(fileUrl);
-        if (key == null) {
+        ObjectReference reference = extractReference(fileUrl);
+        if (reference == null || !readableBuckets.contains(reference.bucket())) {
             throw new IOException("文件路径无效");
         }
         ResponseInputStream<GetObjectResponse> stream;
         try {
             stream = client.getObject(GetObjectRequest.builder()
-                    .bucket(config.getBucket())
-                    .key(key)
+                    .bucket(reference.bucket())
+                    .key(reference.key())
                     .build());
         } catch (S3Exception exception) {
             if (exception.statusCode() == 404) {
@@ -191,7 +203,7 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
                 stream,
                 StringUtils.hasText(originalName)
                         ? originalName
-                        : key.substring(key.lastIndexOf('/') + 1),
+                        : reference.key().substring(reference.key().lastIndexOf('/') + 1),
                 StringUtils.hasText(response.contentType())
                         ? response.contentType()
                         : "application/octet-stream",
@@ -201,9 +213,9 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 读取访问URL；查询结果供调用方展示或继续处理。
+     * 为默认桶的完整对象 key 生成稳定标识；此处不再添加 key-prefix，避免目录被重复拼接。
      *
-     * @param key 键，后续用于授权校验、关联或幂等去重
+     * @param key 已包含桶内目录的完整对象 key，通常取自上传结果的 filename
      * @return 读取后的访问URL文本，供调用方比较或展示
      */
     @Override
@@ -235,7 +247,7 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 生成对象键文本，供后续匹配或展示。
+     * 生成带写入目录的唯一对象 key；日期与 UUID 保留原有布局，空前缀兼容历史行为。
      *
      * @param originalName 原始名称，后续用于处理对象键时匹配或展示
      * @return 处理后的对象键文本，供调用方比较或展示
@@ -252,7 +264,7 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
                 }
             }
         }
-        return LocalDate.now().format(
+        return keyPrefix + LocalDate.now().format(
                 DateTimeFormatter.ofPattern("yyyy/MM/dd"))
                 + "/"
                 + UUID.randomUUID()
@@ -260,19 +272,25 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 提取键；输出作为后续校验或处理的输入。
+     * 从存储标识中分离桶与完整 key，读取与删除随后各自校验允许的操作范围。
+     * 不把任意 HTTP 地址解析为新 endpoint，也不解码 key，避免改变含百分号等字符的对象名称。
      *
-     * @param fileUrl 文件URL，供本方法提取键时使用
-     * @return 提取后的键文本，供调用方比较或展示
+     * @param fileUrl s3://bucket/key 或默认桶配置的访问地址
+     * @return 对象位置；地址或 key 无效时返回 null，不发出存储请求
      */
-    private String extractKey(String fileUrl) {
+    private ObjectReference extractReference(String fileUrl) {
         if (!StringUtils.hasText(fileUrl)) {
             return null;
         }
         String key = fileUrl;
-        String s3Prefix = "s3://" + config.getBucket() + "/";
-        if (key.startsWith(s3Prefix)) {
-            key = key.substring(s3Prefix.length());
+        String bucket = config.getBucket();
+        if (key.startsWith("s3://")) {
+            int separator = key.indexOf('/', "s3://".length());
+            if (separator < 0) {
+                return null;
+            }
+            bucket = key.substring("s3://".length(), separator);
+            key = key.substring(separator + 1);
         } else if (StringUtils.hasText(config.getAccessUrl())) {
             String accessPrefix = config.getAccessUrl();
             accessPrefix = accessPrefix.endsWith("/")
@@ -285,12 +303,64 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
         } else {
             return null;
         }
-        return key.isBlank()
+        return !StringUtils.hasText(bucket)
+                || key.isBlank()
                 || key.startsWith("/")
                 || key.contains("..")
                 || key.contains("\\")
                 ? null
-                : key;
+                : new ObjectReference(bucket, key);
+    }
+
+    /**
+     * 统一配置目录的首尾斜杠，拒绝无法通过既有对象 key 校验的目录，避免上传后无法读取或删除。
+     *
+     * @param prefix 可为空的桶内目录，允许带首尾斜杠
+     * @return 空字符串或带一个结尾斜杠的目录前缀，用于上传及删除边界匹配
+     * @throws IllegalStateException 目录含相对路径、反斜杠、空路径段或控制字符时抛出
+     */
+    private static String normalizeKeyPrefix(String prefix) {
+        if (!StringUtils.hasText(prefix)) {
+            return "";
+        }
+        String normalized = prefix.trim().replaceAll("^/+|/+$", "");
+        if (normalized.contains("..") || normalized.contains("\\")
+                || normalized.contains("//") || normalized.equals(".")
+                || normalized.startsWith("./") || normalized.contains("/./")
+                || normalized.endsWith("/.")
+                || normalized.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalStateException("Object storage key-prefix must be a bucket-relative directory");
+        }
+        return normalized.isEmpty() ? "" : normalized + "/";
+    }
+
+    /**
+     * 默认桶始终可读，额外桶采用精确名称匹配；空环境变量视为未配置，不支持通配符或 URL。
+     *
+     * @param buckets 额外允许下载的桶名；这些桶不会获得写入或删除权限
+     * @return 初始化时固定的读取范围，避免运行时配置集合变更造成权限漂移
+     * @throws IllegalStateException 配置值不是桶名时抛出
+     */
+    private Set<String> readableBuckets(List<String> buckets) {
+        Set<String> allowed = new HashSet<>();
+        allowed.add(config.getBucket());
+        if (buckets != null) {
+            for (String bucket : buckets) {
+                if (!StringUtils.hasText(bucket)) {
+                    continue;
+                }
+                String name = bucket.trim();
+                if (!name.matches("[a-z0-9][a-z0-9.-]*")) {
+                    throw new IllegalStateException("Object storage readable-buckets must contain bucket names only");
+                }
+                allowed.add(name);
+            }
+        }
+        return Set.copyOf(allowed);
+    }
+
+    /** 桶与 key 分开保留，使跨桶下载无需改变客户端或重写对象路径。 */
+    private record ObjectReference(String bucket, String key) {
     }
 
     /**

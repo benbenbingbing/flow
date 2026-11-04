@@ -397,6 +397,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
+                { field: '生成方式', meaning: '控制新记录是否及如何分配数据编码。', defaultLimit: '默认规则生成；可选自定义生成、不自动生成。', effect: '选择不自动生成时，新建主表和子表记录的编码留空，不分配流水。', publish: '仅影响之后创建的记录，已有编码保持不变。' },
                 { field: '编码前缀', meaning: '业务单号固定前缀。', defaultLimit: '最多 20 字符；无规则时默认尝试使用实体编码大写。', effect: '生成结果最前部分。', publish: '上线后修改会导致新旧编码格式并存。' },
                 { field: '日期格式', meaning: '编码中的日期片段。', defaultLimit: 'yyyyMMdd、yyyy-MM-dd、yyyy/MM/dd、yyyyMM、yyMMdd；默认 yyyyMMdd。', effect: '按生成时日期拼接。', publish: '确认分隔符是否符合外部系统和数据库长度要求。' },
                 { field: '序列号位数', meaning: '递增序号补零长度。', defaultLimit: '3–10；默认 6。', effect: '例如 1 生成 000001。', publish: '位数过小可能在高并发周期内耗尽。' },

@@ -11,6 +11,8 @@ import com.workflow.storage.infrastructure.local.LocalFileStorageStrategy;
 import com.workflow.storage.infrastructure.minio.MinioFileStorageStrategy;
 import com.workflow.storage.infrastructure.s3.S3FileStorageStrategy;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -84,6 +86,40 @@ class FileStorageConfigurationTest {
                     assertThat(context.getBean(FileStorageFactory.class).getStrategy())
                             .isExactlyInstanceOf(S3FileStorageStrategy.class);
                 });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"s3", "minio"})
+    void bindsUploadDirectoryAndAdditionalDownloadBuckets(String type) {
+        String prefix = "file.storage." + type + ".";
+        runner.withPropertyValues("file.storage.type=" + type,
+                prefix + "endpoint=http://localhost:9000", prefix + "bucket=flow-files",
+                prefix + "access-key=test-access", prefix + "secret-key=test-secret",
+                prefix + "key-prefix=flow/prod", prefix + "readable-buckets=shared-files,archive-files")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    FileStorageProperties properties = context.getBean(FileStorageProperties.class);
+                    if ("minio".equals(type)) {
+                        assertThat(properties.getMinio().getKeyPrefix()).isEqualTo("flow/prod");
+                        assertThat(properties.getMinio().getReadableBuckets())
+                                .containsExactly("shared-files", "archive-files");
+                    } else {
+                        assertThat(properties.getS3().getKeyPrefix()).isEqualTo("flow/prod");
+                        assertThat(properties.getS3().getReadableBuckets())
+                                .containsExactly("shared-files", "archive-files");
+                    }
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"s3", "minio"})
+    void emptyDownloadBucketsEnvironmentValueKeepsExistingConfigurationValid(String type) {
+        String prefix = "file.storage." + type + ".";
+        runner.withPropertyValues("file.storage.type=" + type,
+                prefix + "endpoint=http://localhost:9000", prefix + "bucket=flow-files",
+                prefix + "access-key=test-access", prefix + "secret-key=test-secret",
+                prefix + "key-prefix=", prefix + "readable-buckets=")
+                .run(context -> assertThat(context).hasNotFailed().hasSingleBean(FileStorageProvider.class));
     }
 
     // 扫描实际配置包，使测试覆盖生产启动时的组件发现，避免重新引入存储类型限制后仍通过。

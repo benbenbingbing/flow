@@ -31,7 +31,7 @@ public class EntityCodeReservationService {
 
     /**
      * 先以唯一主键串行化同码写入，再检查上线前未建立占用的历史业务行。
-     * 必须与 INSERT 使用同一事务；平台所有主/子新增入口都必须经过此方法。
+     * 必须与 INSERT 使用同一事务；平台所有主/子新增入口分配了编码后都必须经过此方法。
      */
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public void reserve(String entityCode, String recordId, String code) {

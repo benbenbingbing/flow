@@ -23,6 +23,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabase;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
@@ -154,10 +156,11 @@ class StoredFileAccessServiceTest {
         assertEquals(400, exception.getResultCode());
     }
 
-    @Test
-    void onlyOwnerOrAuthenticatedAdministratorCanReadAndDelete() {
+    @ParameterizedTest
+    @ValueSource(strings = {"s3://files/private.txt", "s3://files/legacy/private.txt",
+            "s3://archive-files/legacy/private.txt"})
+    void onlyOwnerOrAuthenticatedAdministratorCanReadAndDelete(String url) {
         MockMultipartFile file = file("content");
-        String url = "s3://files/private.txt";
         service.register(stored(url), file, service.prepareUpload("private-01", file));
 
         service.requireRead(url);

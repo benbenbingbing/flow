@@ -620,7 +620,7 @@ public class EntityDataMutationService {
     }
 
     /**
-     * 新记录统一生成 code 作为业务编号，独立实体与流程实体使用同一套编码规则。
+     * 新记录按实体配置分配 code 作为业务编号；不自动生成时留空，独立实体与流程实体遵循同一规则。
      *
      * @param dto DTO，作为 {@code getDefaultStatus} 的输入影响后续处理
      * @param tableName 目标物理表名，后续用于构造查询或表结构操作

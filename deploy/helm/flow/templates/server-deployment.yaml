@@ -79,6 +79,10 @@ spec:
               value: {{ .Values.storage.region | quote }}
             - name: FILE_STORAGE_S3_BUCKET
               value: {{ .Values.storage.bucket | quote }}
+            - name: FILE_STORAGE_S3_KEY_PREFIX
+              value: {{ .Values.storage.keyPrefix | default "" | quote }}
+            - name: FILE_STORAGE_S3_READABLE_BUCKETS
+              value: {{ .Values.storage.readableBuckets | default (list) | join "," | quote }}
             - name: FILE_STORAGE_S3_ACCESS_URL
               value: {{ .Values.storage.accessUrl | quote }}
             - name: FILE_STORAGE_S3_PATH_STYLE

@@ -20,13 +20,14 @@
     />
     <el-form v-else v-loading="loading" :disabled="loading || codeRuleSaving" :model="codeRule" label-width="120px" size="default">
       <el-alert type="info" :closable="false" style="margin-bottom: 16px">
-        {{ codeRule.generationMode === 'CUSTOM' ? '保存新记录时，由所选生成器生成完整编号。' : '默认格式：前缀 + 日期 + 序列号' }}
+        {{ generationHint }}
       </el-alert>
 
       <el-form-item label="生成方式">
         <el-radio-group v-model="codeRule.generationMode">
           <el-radio-button value="RULE">规则生成</el-radio-button>
           <el-radio-button value="CUSTOM">自定义生成</el-radio-button>
+          <el-radio-button value="NONE">不自动生成</el-radio-button>
         </el-radio-group>
       </el-form-item>
       <template v-if="codeRule.generationMode === 'CUSTOM'">
@@ -45,7 +46,7 @@
         </el-form-item>
         <ConfigSchemaEditor v-if="selectedGenerator" v-model="codeRule.generatorConfig" :schema="generatorFields" :grouped="false" />
       </template>
-      <template v-else>
+      <template v-else-if="codeRule.generationMode === 'RULE'">
       <el-form-item label="编码前缀">
         <el-input v-model="codeRule.prefix" placeholder="如：CG、DD、ORDER" maxlength="20" show-word-limit />
         <div class="form-tip">建议使用大写字母，如采购单用CG，订单用DD</div>
@@ -82,16 +83,18 @@
       </el-form-item>
 
       </template>
-      <el-divider />
+      <template v-if="codeRule.generationMode !== 'NONE'">
+        <el-divider />
 
-      <el-form-item label="编码示例">
-        <el-input v-model="codeRule.example" readonly>
-          <template #append>
-            <el-button :loading="previewing" @click="previewCode">刷新</el-button>
-          </template>
-        </el-input>
-        <div class="form-tip">{{ previewHint || '示例仅展示格式，不占用正式编号。' }}</div>
-      </el-form-item>
+        <el-form-item label="编码示例">
+          <el-input v-model="codeRule.example" readonly>
+            <template #append>
+              <el-button :loading="previewing" @click="previewCode">刷新</el-button>
+            </template>
+          </el-input>
+          <div class="form-tip">{{ previewHint || '示例仅展示格式，不占用正式编号。' }}</div>
+        </el-form-item>
+      </template>
     </el-form>
 
     <template #footer>
@@ -137,6 +140,11 @@ const createCodeRuleDraft = (entityCode = '') => ({
 const codeRule = ref(createCodeRuleDraft())
 const selectedGenerator = computed(() => generators.value.find(item => item.code === codeRule.value.generatorCode))
 const generatorFields = computed(() => generatorSchemaFields(selectedGenerator.value?.configurationSchema))
+const generationHint = computed(() => ({
+  RULE: '默认格式：前缀 + 日期 + 序列号',
+  CUSTOM: '保存新记录时，由所选生成器生成完整编号。',
+  NONE: '保存新记录时不自动生成数据编码，已有记录的编码保持不变。'
+}[codeRule.value.generationMode]))
 
 /** 用户切换实现时清空旧实现的参数，防止同名参数被错误复用。 */
 const changeGenerator = () => {
@@ -196,6 +204,8 @@ watch(() => JSON.stringify(buildCodeRuleSavePayload()), () => {
 
 /** 自定义预览失败明确提示；只有内置规则允许用本地格式生成展示样例。 */
 const previewCode = async () => {
+  // 关闭自动取号时不请求预览，避免失败兜底意外显示规则编码。
+  if (codeRule.value.generationMode === 'NONE') return
   if (previewing.value) return
   const payload = buildCodeRuleSavePayload()
   const signature = JSON.stringify(payload)

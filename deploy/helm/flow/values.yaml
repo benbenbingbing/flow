@@ -80,6 +80,10 @@ storage:
   endpoint: https://s3.example.internal
   region: us-east-1
   bucket: flow-production
+  # 上传、删除的桶内目录；下载仍可读取默认桶其他目录。
+  keyPrefix: ""
+  # 同一对象存储中额外允许下载的桶，不授予上传或删除权限。
+  readableBuckets: []
   accessUrl: ""
   pathStyleAccess: false
 

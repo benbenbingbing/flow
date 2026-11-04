@@ -36,6 +36,29 @@ import static org.mockito.Mockito.*;
 /** 使用真实 JDBC 事务和生产事务注解验证：自定义在 INSERT 前执行，唯一占用与业务写入原子提交。 */
 class EntityCustomCodeTransactionTest {
     @Test
+    void disabledGenerationPersistsMultipleEmptyCodesWithoutClaimsOrChangingExistingCodes() {
+        var f = new Fixture();
+        f.rule.setGenerationMode("NONE");
+        f.jdbc.update("INSERT INTO wf_asset VALUES ('existing', 'EXISTING-001')");
+        var calls = new AtomicInteger();
+        var service = f.service(context -> { calls.incrementAndGet(); return "UNEXPECTED"; });
+
+        f.tx.executeWithoutResult(status -> {
+            String mainCode = service.generateCode(f.context("main"), null);
+            String childCode = service.generateCode(f.context("child"), "SUPPLIED-CHILD-CODE");
+            assertNull(mainCode);
+            assertNull(childCode);
+            f.jdbc.update("INSERT INTO wf_asset VALUES (?, ?)", "main", mainCode);
+            f.jdbc.update("INSERT INTO wf_asset VALUES (?, ?)", "child", childCode);
+        });
+
+        assertEquals(2, f.jdbc.queryForObject("SELECT COUNT(*) FROM wf_asset WHERE code IS NULL", Integer.class));
+        assertEquals("EXISTING-001", f.jdbc.queryForObject("SELECT code FROM wf_asset WHERE id='existing'", String.class));
+        assertEquals(0, f.count("entity_unique_value"));
+        assertEquals(0, calls.get());
+    }
+
+    @Test
     void currentRecordDoesNotExistYetButParentInSameTransactionIsVisible() {
         var f = new Fixture();
         var service = f.service((context) -> {

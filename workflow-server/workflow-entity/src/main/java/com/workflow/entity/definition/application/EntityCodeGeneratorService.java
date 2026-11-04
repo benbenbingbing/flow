@@ -50,6 +50,7 @@ public class EntityCodeGeneratorService {
     /**
      * 当前业务记录 INSERT 前调用。自定义实现加入当前事务；预留最终编码与业务行一起提交。
      * suppliedCode 仅兼容旧规则模式的子行导入，自定义模式始终由服务端生成。
+     * NONE 模式返回 null，主表和子表均不分配编码，也不占用唯一值。
      */
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public String generateCode(EntityCodeGenerationContext context, String suppliedCode) {
@@ -59,6 +60,8 @@ public class EntityCodeGeneratorService {
         EntityCodeRule rule = codeRuleMapper.findByEntityCode(context.entityCode())
                 .orElseGet(() -> EntityCodeRule.getDefault(context.entityCode()));
         String mode = mode(rule);
+        // 显式关闭后不使用客户端子行编码，也不执行生成值校验或唯一占用；已有记录不经过此入口。
+        if ("NONE".equals(mode)) return null;
         String code;
         if ("CUSTOM".equals(mode)) {
             // 预检之后配置仍可能变化，实际取号入口再次阻止历史导入触发业务扩展副作用。
@@ -83,6 +86,7 @@ public class EntityCodeGeneratorService {
     /** 预览只调用无副作用的样例接口，不创建规则、不占号，也不预留唯一值。 */
     public String previewCode(EntityCodeRule rule) {
         validateConfiguration(rule);
+        if ("NONE".equals(mode(rule))) return "";
         if ("RULE".equals(mode(rule))) {
             String preview = ruleGenerator.previewCode(rule);
             validateCode(preview);
@@ -100,6 +104,8 @@ public class EntityCodeGeneratorService {
             throw new IllegalArgumentException("实体编码不能为空");
         }
         rule.setGenerationMode(mode(rule));
+        // 隐藏的规则参数和生成器不参与 NONE 校验，避免旧配置或未安装扩展阻止关闭取号。
+        if ("NONE".equals(rule.getGenerationMode())) return;
         if ("CUSTOM".equals(rule.getGenerationMode())) {
             registry.require(rule.getGeneratorCode(), rule.getEntityCode(), rule.getGeneratorConfig());
             return;
@@ -128,7 +134,7 @@ public class EntityCodeGeneratorService {
 
     private String mode(EntityCodeRule rule) {
         String mode = rule.getGenerationMode() == null ? "RULE" : rule.getGenerationMode();
-        if (!Set.of("RULE", "CUSTOM").contains(mode)) throw new IllegalArgumentException("不支持的编码生成方式");
+        if (!Set.of("RULE", "CUSTOM", "NONE").contains(mode)) throw new IllegalArgumentException("不支持的编码生成方式");
         return mode;
     }
 
@@ -159,7 +165,8 @@ public class EntityCodeGeneratorService {
         }
         String entityCode = rule.getEntityCode().trim();
         rule.setEntityCode(entityCode);
-        if (rule.getPrefix() != null && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
+        if (!"NONE".equals(mode(rule)) && rule.getPrefix() != null
+                && rule.getPrefix().length() > EntityCodeRule.MAX_PREFIX_LENGTH) {
             throw new RuntimeException("编码前缀长度不能超过" + EntityCodeRule.MAX_PREFIX_LENGTH + "个字符");
         }
         entityAccessPolicy.requireDynamicByCodeForUpdate(entityCode);
@@ -179,14 +186,11 @@ public class EntityCodeGeneratorService {
             rule.setCreatedAt(old.getCreatedAt());
             rule.setUpdatedAt(null);
             // 只更新配置列，不能把读取到的旧序号写回，避免并发取号被回退。
-            if ("CUSTOM".equals(mode(rule))) {
-                rule.setPrefix(old.getPrefix());
-                rule.setDateFormat(old.getDateFormat());
-                rule.setSeqLength(old.getSeqLength());
-                rule.setSeqType(old.getSeqType());
-            }
+            if (!"RULE".equals(mode(rule))) copyRuleFormat(old, rule);
             codeRuleMapper.updateConfiguration(rule);
         } else {
+            // 关闭自动取号时，忽略隐藏输入并保存合法默认格式，之后切回规则生成仍可配置。
+            if ("NONE".equals(mode(rule))) copyRuleFormat(EntityCodeRule.getDefault(entityCode), rule);
             // 新规则的主键只能由服务端生成，不能复用客户端或旧实体残留的ID。
             rule.setId(null);
             rule.setCurrentSeq(0);
@@ -197,6 +201,14 @@ public class EntityCodeGeneratorService {
         }
         
         log.info("保存编码规则：entityCode={}", LogValue.safe(entityCode));
+    }
+
+    /** 停用内置规则时保留其格式；流水状态仍由 Mapper 独立维护，不能写回旧序号。 */
+    private void copyRuleFormat(EntityCodeRule source, EntityCodeRule target) {
+        target.setPrefix(source.getPrefix());
+        target.setDateFormat(source.getDateFormat());
+        target.setSeqLength(source.getSeqLength());
+        target.setSeqType(source.getSeqType());
     }
     
     /**

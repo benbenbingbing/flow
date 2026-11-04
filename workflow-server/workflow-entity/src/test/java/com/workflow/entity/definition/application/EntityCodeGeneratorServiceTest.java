@@ -187,6 +187,67 @@ class EntityCodeGeneratorServiceTest {
     }
 
     @Test
+    void disabledGenerationLeavesMainAndChildCodesEmptyWithoutAllocatingOrReserving() {
+        EntityCodeRule rule = rule("asset");
+        rule.setGenerationMode("NONE");
+        rule.setGeneratorCode("UNINSTALLED");
+        when(codeRuleMapper.findByEntityCode("asset")).thenReturn(Optional.of(rule));
+
+        assertNull(service.generateCode(context(), null));
+        assertNull(service.generateCode(context(), "SUPPLIED-CHILD-CODE"));
+        verifyNoInteractions(ruleGenerator, reservations, contexts);
+    }
+
+    @Test
+    void disabledPreviewAndNewRuleSaveIgnoreInactiveConfiguration() {
+        String entityCode = "entity_with_a_very_long_code";
+        EntityCodeRule rule = rule(entityCode);
+        rule.setGenerationMode("NONE");
+        rule.setGeneratorCode("UNINSTALLED");
+        rule.setPrefix(entityCode.toUpperCase());
+        rule.setDateFormat("invalid[");
+        rule.setSeqLength(-1);
+        rule.setSeqType("INVALID");
+
+        assertEquals("", service.previewCode(rule));
+        service.saveRule(rule);
+
+        verify(codeRuleMapper).insert(rule);
+        assertEquals("NONE", rule.getGenerationMode());
+        assertEquals("", rule.getExample());
+        assertEquals(EntityCodeRule.defaultPrefix(entityCode), rule.getPrefix());
+        assertEquals("yyyyMMdd", rule.getDateFormat());
+        assertEquals(6, rule.getSeqLength());
+        assertEquals("DAY", rule.getSeqType());
+        verifyNoInteractions(ruleGenerator, reservations, contexts);
+    }
+
+    @Test
+    void disablingExistingRulePreservesFormatAndSequenceForLaterReactivation() {
+        EntityCodeRule current = rule("asset");
+        current.setId("persisted-rule-id");
+        current.setCurrentSeq(42);
+        current.setSeqDate("20261103");
+        EntityCodeRule request = new EntityCodeRule();
+        request.setEntityCode("asset");
+        request.setGenerationMode("NONE");
+        when(codeRuleMapper.findByEntityCode("asset")).thenReturn(Optional.of(current));
+
+        service.saveRule(request);
+
+        verify(codeRuleMapper).updateConfiguration(request);
+        assertEquals("NONE", request.getGenerationMode());
+        assertEquals("", request.getExample());
+        assertEquals(current.getPrefix(), request.getPrefix());
+        assertEquals(current.getDateFormat(), request.getDateFormat());
+        assertEquals(current.getSeqLength(), request.getSeqLength());
+        assertEquals(current.getSeqType(), request.getSeqType());
+        assertEquals(42, request.getCurrentSeq());
+        assertEquals("20261103", request.getSeqDate());
+        verifyNoInteractions(ruleGenerator, reservations, contexts);
+    }
+
+    @Test
     void registryRejectsDuplicateNamesAndWrongEntityOrConfiguration() {
         var generator = generator("PROJECT", new AtomicInteger(), "XM-001", Optional.empty());
         assertThrows(IllegalStateException.class, () -> registry(generator, generator));

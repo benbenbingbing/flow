@@ -68,6 +68,8 @@ public class MinioFileStorageStrategy extends S3FileStorageStrategy {
         s3.setEndpoint(config.getEndpoint());
         s3.setRegion(config.getRegion());
         s3.setBucket(config.getBucket());
+        s3.setKeyPrefix(config.getKeyPrefix());
+        s3.setReadableBuckets(config.getReadableBuckets());
         s3.setAccessKey(config.getAccessKey());
         s3.setSecretKey(config.getSecretKey());
         s3.setAccessUrl(config.getAccessUrl());

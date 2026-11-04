@@ -13,10 +13,15 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockMultipartFile;
@@ -33,10 +38,11 @@ import software.amazon.awssdk.services.s3.model.S3Exception;
 class MinioFileStorageStrategyTest {
 
     @ParameterizedTest
-    @ValueSource(strings = {"", "https://files.example.test/flow-files", "https://files.example.test/flow-files/"})
-    void uploadsReadsAndDeletesUsingStableObjectReference(String accessUrl) throws Exception {
+    @MethodSource("uploadLocations")
+    void uploadsReadsAndDeletesUsingStableObjectReference(String accessUrl, String keyPrefix) throws Exception {
         FileStorageProperties.MinioConfig config = config();
         config.setAccessUrl(accessUrl);
+        config.setKeyPrefix(keyPrefix);
         S3Client client = mock(S3Client.class);
         byte[] content = "图片内容".getBytes(StandardCharsets.UTF_8);
         String originalName = "需求图片.png";
@@ -65,7 +71,8 @@ class MinioFileStorageStrategyTest {
         try (MinioFileStorageStrategy strategy = new MinioFileStorageStrategy(config, client)) {
             Map<String, String> result = strategy.upload(com.workflow.storage.infrastructure.web.MultipartFileUploadAdapter.from(file));
             String key = result.get("filename");
-            assertTrue(key.matches("\\d{4}/\\d{2}/\\d{2}/[a-f0-9-]+\\.png"));
+            String directory = keyPrefix.isEmpty() ? "" : "flow/prod/";
+            assertTrue(key.matches(directory + "\\d{4}/\\d{2}/\\d{2}/[a-f0-9-]+\\.png"));
             String prefix = accessUrl.isEmpty() ? "s3://flow-files/" : accessUrl.replaceAll("/+$", "") + "/";
             assertEquals(prefix + key, result.get("url"));
             assertEquals(originalName, result.get("originalName"));
@@ -90,6 +97,12 @@ class MinioFileStorageStrategyTest {
             verify(client).deleteObject(DeleteObjectRequest.builder().bucket("flow-files").key(key).build());
         }
         verify(client).close();
+    }
+
+    private static Stream<Arguments> uploadLocations() {
+        return Stream.of("", "https://files.example.test/flow-files", "https://files.example.test/flow-files/")
+                .flatMap(url -> Stream.of("", "flow/prod", "/flow/prod/")
+                        .map(prefix -> Arguments.of(url, prefix)));
     }
 
     @ParameterizedTest
@@ -141,8 +154,11 @@ class MinioFileStorageStrategyTest {
         assertNull(error.getCause());
     }
 
-    @Test
-    void realClientUsesConfiguredEndpointCredentialsRegionAndPathStyle() throws Exception {
+    @ParameterizedTest
+    @CsvSource({"flow-files, folder/file.txt", "archive-files, folder/file.txt",
+            "archive-files, folder/中文 报告%20?#.txt"})
+    void realClientDownloadsOtherDirectoriesAndBucketsUsingConfiguredConnection(String bucket, String key)
+            throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicReference<String> requestedPath = new AtomicReference<>();
         AtomicReference<String> authorization = new AtomicReference<>();
@@ -163,11 +179,14 @@ class MinioFileStorageStrategyTest {
             // localhost 是合法 DNS 名，若未强制路径式寻址，SDK 会尝试 flow-files.localhost。
             properties.getMinio().setEndpoint("http://localhost:" + server.getAddress().getPort());
             properties.getMinio().setRegion("test-region-1");
+            properties.getMinio().setKeyPrefix("flow/prod");
+            properties.getMinio().setReadableBuckets(List.of("archive-files"));
             try (MinioFileStorageStrategy strategy = new MinioFileStorageStrategy(properties);
-                    StoredFile stored = strategy.open("s3://flow-files/folder/file.txt")) {
+                    StoredFile stored = strategy.open("s3://" + bucket + "/" + key)) {
                 assertEquals("minio-object", new String(stored.inputStream().readAllBytes(), StandardCharsets.UTF_8));
+                assertFalse(strategy.delete("s3://" + bucket + "/" + key));
             }
-            assertEquals("/flow-files/folder/file.txt", requestedPath.get());
+            assertEquals("/" + bucket + "/" + key, requestedPath.get());
             assertTrue(authorization.get().contains("Credential=minio-test-access/"));
             assertTrue(authorization.get().contains("/test-region-1/s3/aws4_request"));
         } finally {

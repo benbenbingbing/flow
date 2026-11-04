@@ -31,6 +31,10 @@ file:
       region: ${FILE_STORAGE_S3_REGION:us-east-1}
       # 已创建的目标存储桶，上传对象写入此桶。
       bucket: ${FILE_STORAGE_S3_BUCKET:}
+      # 上传、删除限定在此桶内目录；留空为桶根，下载默认桶其他目录不受影响。
+      key-prefix: ${FILE_STORAGE_S3_KEY_PREFIX:}
+      # 额外允许下载的桶，逗号分隔；使用当前 endpoint 和凭证，不开放跨桶写入或删除。
+      readable-buckets: ${FILE_STORAGE_S3_READABLE_BUCKETS:}
       # 对象存储访问身份，由部署环境注入。
       access-key: ${FILE_STORAGE_S3_ACCESS_KEY:}
       # 对象存储签名密钥，由部署环境注入，不写入仓库。
@@ -47,6 +51,10 @@ file:
       region: ${FILE_STORAGE_MINIO_REGION:us-east-1}
       # 已创建的 MinIO 存储桶，应用不会自动建桶或修改桶策略。
       bucket: ${FILE_STORAGE_MINIO_BUCKET:}
+      # 上传、删除限定在此桶内目录；留空为桶根，下载默认桶其他目录不受影响。
+      key-prefix: ${FILE_STORAGE_MINIO_KEY_PREFIX:}
+      # 额外允许下载的桶，逗号分隔；使用当前 endpoint 和凭证，不开放跨桶写入或删除。
+      readable-buckets: ${FILE_STORAGE_MINIO_READABLE_BUCKETS:}
       # MinIO 访问身份，由部署环境注入。
       access-key: ${FILE_STORAGE_MINIO_ACCESS_KEY:}
       # MinIO 签名密钥，由部署环境注入，不写入仓库。

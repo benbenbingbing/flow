@@ -29,7 +29,7 @@ public class EntityCodeRule {
     @TableField("entity_code")
     private String entityCode;
 
-    /** RULE 使用内置格式和流水；CUSTOM 按 generatorCode 调用业务实现。旧配置默认 RULE。 */
+    /** RULE 使用内置格式和流水；CUSTOM 按 generatorCode 调用业务实现；NONE 新记录不分配编码。旧配置默认 RULE。 */
     @TableField("generation_mode")
     private String generationMode;
 

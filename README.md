@@ -210,6 +210,8 @@ FILE_STORAGE_TYPE=minio
 FILE_STORAGE_MINIO_ENDPOINT=http://localhost:9000
 FILE_STORAGE_MINIO_REGION=us-east-1
 FILE_STORAGE_MINIO_BUCKET=flow-files
+FILE_STORAGE_MINIO_KEY_PREFIX=flow/prod
+FILE_STORAGE_MINIO_READABLE_BUCKETS=shared-files,archive-files
 FILE_STORAGE_MINIO_ACCESS_KEY=replace-with-a-minio-access-key
 FILE_STORAGE_MINIO_SECRET_KEY=replace-with-a-minio-secret-key
 FILE_STORAGE_MINIO_ACCESS_URL=
@@ -228,7 +230,38 @@ FILE_STORAGE_MINIO_ACCESS_URL=
   该标识不是浏览器可直接打开的 HTTP 地址。需要自定义访问前缀时，填写包含桶路径或
   对应代理路径的完整前缀；设置前缀不会自动开放桶权限。
 - 旧的 `s3` 策略仍可连接 MinIO。切换为 `minio` 时保留相同的 endpoint、bucket 和
-  access-url，即可继续使用原有文件标识；更换桶或前缀需要另行处理历史文件。
+  access-url，即可继续使用原有文件标识；同时保留 key-prefix 和 readable-buckets，
+  以维持相同的读写范围。更换默认桶后，可将旧桶加入 readable-buckets 继续下载；
+  更换 access-url 则需要另行处理使用原访问地址的历史文件标识。
+
+### 对象存储目录与跨桶下载
+
+S3 和 MinIO 均支持独立配置上传目录与下载范围：
+
+| 用途 | S3 环境变量 | MinIO 环境变量 |
+| --- | --- | --- |
+| 上传及删除的桶内目录 | `FILE_STORAGE_S3_KEY_PREFIX` | `FILE_STORAGE_MINIO_KEY_PREFIX` |
+| 额外允许下载的桶，逗号分隔 | `FILE_STORAGE_S3_READABLE_BUCKETS` | `FILE_STORAGE_MINIO_READABLE_BUCKETS` |
+
+以默认桶 `flow-files`、`KEY_PREFIX=flow/prod`、`READABLE_BUCKETS=shared-files,archive-files`
+为例，上传产生 `s3://flow-files/flow/prod/年/月/日/UUID.ext`；目录首尾的 `/` 会统一处理。
+`KEY_PREFIX` 留空时维持原有桶根行为，不需要预先创建目录。
+
+- **下载**：默认桶任意目录均可读，例如 `s3://flow-files/legacy/report.pdf`；也可使用
+  `s3://archive-files/other-project/report.pdf` 下载已配置可读桶的对象。
+  输入使用完整 key，不会自动补上上传目录。额外桶名必须精确列出，不接受通配符或 URL。
+- **上传、删除**：仅允许默认桶的 `flow/prod/` 内对象，额外可读桶不开放上传、删除。
+  启用或更换目录不会移动历史文件，历史目录内的文件仍可下载，删除则受当前目录限制。
+- **连接与权限**：跨桶下载复用当前 endpoint、region 和凭证；对象存储端还须授予目标对象
+  的读取权限。不能通过文件地址切换到其他 endpoint，也不解析任意 HTTP 地址。
+- **自定义访问地址**：`ACCESS_URL` 仍表示默认桶根的访问地址，上传目录已经包含在完整 key 中，
+  不应在 `ACCESS_URL` 中再次追加。其他桶统一使用 `s3://bucket/key`，避免桶映射歧义。
+- **文件归属**：`/api/file/preview?url=...` 继续校验文件登记与所有者/管理员权限。
+  可读桶配置不会自动登记其他系统的文件；业务端调用 `FileStorageProvider.open(...)`
+  读取外部对象时也须自行完成业务授权。
+
+Helm 对应设置为 `storage.keyPrefix` 和 `storage.readableBuckets`；Compose 可直接使用上述
+S3 环境变量。两个配置默认均为空，兼容原有部署。
 
 所有 profile（包括 `production`）都按 `FILE_STORAGE_TYPE`（即 `file.storage.type`）
 选择存储方式，支持 `local`、`s3`、`minio` 及已注册的业务扩展策略，应用默认使用 `local`。

@@ -1,5 +1,7 @@
 package com.workflow.storage.infrastructure.config;
 
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -38,6 +40,10 @@ public class FileStorageProperties {
         private String region = "us-east-1";
         /** 已创建的存储桶；应用不会自动建桶或修改桶的访问策略。 */
         private String bucket;
+        /** 上传及删除的桶内根目录；为空时使用桶根，读取其他目录不受此值限制。 */
+        private String keyPrefix = "";
+        /** 额外允许下载的桶名，复用当前 endpoint 和凭证；不授予上传或删除权限。 */
+        private List<String> readableBuckets = new ArrayList<>();
         private String accessKey;
         private String secretKey;
         /** 可选的对象访问前缀；为空时返回稳定的 s3://bucket/key 文件标识。 */
@@ -68,6 +74,10 @@ public class FileStorageProperties {
         private String endpoint;
         private String region = "us-east-1";
         private String bucket;
+        /** 上传及删除的桶内根目录；为空时使用桶根，读取其他目录不受此值限制。 */
+        private String keyPrefix = "";
+        /** 额外允许下载的桶名，默认桶始终可读；存储端凭证仍须具备目标对象读取权限。 */
+        private List<String> readableBuckets = new ArrayList<>();
         private String accessKey;
         private String secretKey;
         private String accessUrl;
