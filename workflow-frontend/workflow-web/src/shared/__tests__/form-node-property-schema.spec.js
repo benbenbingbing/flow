@@ -232,7 +232,7 @@ assert.equal(
 
 assert.deepEqual(
   getFormNodeDataSourceUsages('FIELD'),
-  ['FIELD_OPTIONS', 'FIELD_DEFAULT', 'FIELD_COMPUTE', 'AFTER_LOAD', 'BEFORE_SUBMIT']
+  ['FIELD_OPTIONS', 'FIELD_PICKER_SCHEMA', 'FIELD_PICKER_QUERY', 'FIELD_PICKER_RESOLVE', 'FIELD_DEFAULT', 'FIELD_COMPUTE', 'AFTER_LOAD', 'BEFORE_SUBMIT']
 )
 assert.deepEqual(
   getFormNodeDataSourceUsages('SUB_FORM'),

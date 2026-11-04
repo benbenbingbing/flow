@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-10-29 脚本同步说明：本目录七种数据库的空库初始化脚本已对齐 V125，均包含 198 张平台及 Flowable 表、2,778 个字段；历史导入包含批次、提交组、实体来源映射和流程档案四张表，档案查看复用实体查看入口及权限。同步范围与验证结果见 [初始化脚本说明](README.md)。下文的表数、字段数和未补录章节仍是历史核对记录，不能作为当前建库结构清单；当前结构以对应数据库的 `.sql` 文件为准。
+2026-11-04 脚本同步说明：本目录七种数据库的空库初始化脚本已对齐 V128，均包含 200 张平台及 Flowable 表、2,793 个字段；在历史导入及档案查看权限合并的基础上，补齐身份来源绑定、目录写入锁、用户认证策略及密码可空性，不再预置 V128 已移除的项目身份扩展示例表。同步范围与验证结果见 [初始化脚本说明](README.md)。下文的表数、字段数和未补录章节仍是历史核对记录，不能作为当前建库结构清单；当前结构以对应数据库的 `.sql` 文件为准。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -4456,7 +4456,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 保存平台用户身份、登录凭证摘要、联系信息、组织归属和账号状态。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 15 个。
+物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。V126 后字段 16 个。
 
 #### 9.5.2 字段设计
 
@@ -4465,7 +4465,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `id` | 主键ID | `varchar(64)` | 否 | 无 | 用户ID。 | 现存 |
 | `username` | 用户名 | `varchar(50)` | 否 | 无 | 用户名。 | 现存 |
 | `nickname` | 昵称 | `varchar(50)` | 是 | `''` | 昵称。 | 现存 |
-| `password` | 密码 | `varchar(100)` | 否 | 无 | 密码。 | 现存 |
+| `password` | 密码 | `varchar(100)` | 是 | `NULL` | 本地口令哈希；外部账号允许为空，登录和重置同时检查认证策略。 | 现存 |
 | `email` | 邮箱 | `varchar(100)` | 是 | `''` | 邮箱。 | 现存 |
 | `phone` | 手机号 | `varchar(20)` | 是 | `''` | 手机号。 | 现存 |
 | `avatar` | 头像 | `varchar(255)` | 是 | `''` | 头像。 | 现存 |
@@ -4477,6 +4477,7 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 | `dept_id` | 部门ID | `varchar(64)` | 是 | `NULL` | 部门ID。 | 现存 |
 | `password_reset_required` | 是否必须在继续使用系统前修改密码 | `tinyint` | 否 | `'0'` | 是否必须在继续使用系统前修改密码。 | 现存 |
 | `token_version` | 令牌版本 | `bigint` | 否 | `0` | 用户令牌撤销版本；递增后此前签发的会话需按安全校验失效。 | 现存 |
+| `authentication_mode` | 认证策略 | `varchar(32)` | 否 | `'LOCAL_PASSWORD'` | 框架维护；`LOCAL_PASSWORD` 使用本地口令，`EXTERNAL_ONLY` 禁止本地密码登录和重置。 | V126 新增 |
 
 #### 9.5.3 索引与关联
 
@@ -4491,13 +4492,13 @@ business_level_code 引用业务层级字典，parent_id 和路径字段维护�
 
 #### 9.5.4 业务规则
 
-password 保存口令哈希，token_version 用于撤销此前签发的会话。
+password 保存本地口令哈希，外部账号可为空；authentication_mode 决定是否允许本地密码登录及重置。token_version 用于撤销此前签发的会话。外部用户与组织的来源信息保存在 `sys_identity_source_binding`，不通过追加用户或组织基础字段保存；首次绑定及组织树更新使用 `sys_identity_write_lock` 的固定 `directory` 行进行事务互斥。
 
 原 SQL 部分中文注释存在乱码，文档按还原后的含义表述。
 
 #### 9.5.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V002__security_foundation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V002__security_foundation.sql)。
+结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V002__security_foundation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V002__security_foundation.sql)、[V126__identity_source_write_and_external_accounts.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql)。
 
 实现定位：[SysUserMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/infrastructure/persistence/mapper/SysUserMapper.java)、[ProcessTaskMapper.java](../../workflow-server/workflow-process/src/main/java/com/workflow/process/task/infrastructure/persistence/mapper/ProcessTaskMapper.java)、[SysUserService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
 

@@ -1,0 +1,33 @@
+server:
+  address: 127.0.0.1
+  port: ${DEMO_PORT:18081}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: strict
+
+partner:
+  embed-demo:
+    flow:
+      # HTTP 仅允许回环地址联调；其他环境必须使用 HTTPS，不跟随上游重定向。
+      api-base-url: ${FLOW_API_BASE_URL:http://127.0.0.1:8080}
+      client-id: ${FLOW_CLIENT_ID:}
+      client-secret: ${FLOW_CLIENT_SECRET:}
+      embed-origin: ${FLOW_EMBED_ORIGIN:https://embed.flow.example.com}
+      parent-origin: ${PARTNER_ORIGIN:https://portal.partner.example}
+      view-key: ${FLOW_VIEW_KEY:project-requirements}
+      surface-type: ${FLOW_SURFACE_TYPE:LIST}
+      allowed-entry-modes: ${FLOW_ENTRY_MODES:LIST}
+      assertion-issuer: ${PARTNER_ASSERTION_ISSUER:https://id.partner.example}
+      assertion-key-id: ${PARTNER_ASSERTION_KEY_ID:partner-demo-rsa-1}
+      private-key: ${PARTNER_PRIVATE_KEY:secrets/partner-private.pem}
+    host:
+      # 只演示一个已登录宿主用户。接入真实系统时替换为现有登录会话和业务授权查询。
+      username: ${DEMO_USERNAME:demo}
+      password: ${DEMO_PASSWORD:}
+      external-subject: ${DEMO_EXTERNAL_SUBJECT:employee-000123}
+      # VIEW 默认拒绝所有记录；按此用户的业务权限配置可查看的 Flow recordId。
+      allowed-record-ids: ${DEMO_ALLOWED_RECORD_IDS:}
+      # Context 从后端业务数据推导；若配置 supplierId 等字段，Flow 侧必须先发布匹配的 Schema。
+      context: {}

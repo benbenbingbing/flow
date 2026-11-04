@@ -1341,6 +1341,9 @@ const nodeTypeOptions = [
 const ROOT_PARENT_VALUE = '__FORM_ROOT__'
 const formDataSourceUsages = [
   { value: 'FIELD_OPTIONS', label: '字段选项' },
+  { value: 'FIELD_PICKER_SCHEMA', label: '选择器字段描述' },
+  { value: 'FIELD_PICKER_QUERY', label: '选择器分页查询' },
+  { value: 'FIELD_PICKER_RESOLVE', label: '选择器按键解析' },
   { value: 'FIELD_DEFAULT', label: '字段默认值' },
   { value: 'FIELD_COMPUTE', label: '字段计算' },
   { value: 'SUBFORM_ROWS', label: '子表行数据' },

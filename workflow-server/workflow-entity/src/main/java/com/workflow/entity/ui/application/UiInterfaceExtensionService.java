@@ -80,6 +80,9 @@ public class UiInterfaceExtensionService {
         private static final Set<String> USAGES = Set.of(
                         UiDataSourceUsages.FORM_INIT,
                         UiDataSourceUsages.FIELD_OPTIONS,
+                        UiDataSourceUsages.FIELD_PICKER_SCHEMA,
+                        UiDataSourceUsages.FIELD_PICKER_QUERY,
+                        UiDataSourceUsages.FIELD_PICKER_RESOLVE,
                         UiDataSourceUsages.FIELD_DEFAULT,
                         UiDataSourceUsages.FIELD_COMPUTE,
                         UiDataSourceUsages.SUBFORM_ROWS,
@@ -1994,6 +1997,14 @@ public class UiInterfaceExtensionService {
                 if (request != null && UiDataSourceUsages.FIELD_OPTIONS.equals(normalize(request.getUsage()))
                                 && !"READ".equals(normalize(definition.getInterfaceKind()))) {
                         throw new BusinessForbiddenException("FIELD_OPTIONS_READ_REQUIRED", "字段选项接口必须为 READ");
+                }
+                // 面板挂载和回显会自动执行；发布时校验之外，在真正调用 Provider 前再次限制为读取。
+                if (request != null && UiDataSourceUsages.FIELD_PICKER_USAGES.contains(normalize(request.getUsage()))) {
+                        if (!"READ".equals(normalize(definition.getInterfaceKind()))) {
+                                throw new BusinessForbiddenException("FIELD_PICKER_READ_REQUIRED", "数据选择器接口必须为 READ");
+                        }
+                        com.workflow.entity.ui.application.validation.DataPickerConfigurationPolicy.validateRequest(
+                                normalize(request.getUsage()), request.getInput());
                 }
 
                 // 与实际执行共用当前内存定义，堵住导入资格检查之后 READ 被改为 WRITE 的窗口。

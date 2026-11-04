@@ -1,5 +1,8 @@
 <template>
   <div class="node-data-settings">
+    <SettingsSection v-if="isDataPicker" v-show="activeNodeSettingsTab === 'extension'" title="数据选择器与回填" :default-expanded="true">
+      <DataPickerSettings :field="selectedField" :form-id="form.id" :fields="formFields" />
+    </SettingsSection>
     <SettingsSection
       :disabled="!isReferenceFieldNode"
       disabled-reason="仅实体引用字段支持此配置"
@@ -405,6 +408,7 @@ import SettingsFormItem from '@/components/SettingsFormItem.vue'
 import SubFormParameterMappingEditor from './SubFormParameterMappingEditor.vue'
 import SubListParameterMappingEditor from './SubListParameterMappingEditor.vue'
 import FormContentDisplaySettings from './FormContentDisplaySettings.vue'
+import DataPickerSettings from './DataPickerSettings.vue'
 import BuiltInButtonAppearanceEditor from '@/components/BuiltInButtonAppearanceEditor.vue'
 import { normalizeBuiltInActionBar } from '@flow/workflow-core/builtin-button-appearance'
 import { FORM_DESIGNER_CONTEXT_KEY } from './context'
@@ -425,6 +429,7 @@ if (!context) {
 }
 
 const {
+  form, formFields,
   selectedField,
   entityInfo,
   entityFields,
@@ -460,6 +465,7 @@ const canEditSelectedDataSourceUsage = computed(() =>
 )
 
 const isCascader = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'cascader')
+const isDataPicker = computed(() => String(selectedField.value?.componentType || '').toLowerCase() === 'data_picker')
 const cascaderUsesInterface = computed(() => safeParseConfig(selectedField.value?.componentProps).cascaderSource === 'INTERFACE')
 const isCascaderOptions = computed(() => isCascader.value && selectedField.value?.dataSourceUsage === 'FIELD_OPTIONS')
 const selectedDataSourceInterfaceHelp = computed(() =>

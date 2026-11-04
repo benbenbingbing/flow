@@ -530,6 +530,7 @@ class EntityFormNodePropertyPolicyTest {
         assertEquals(
                 Set.of(
                         "FIELD_OPTIONS", "FIELD_DEFAULT", "FIELD_COMPUTE",
+                        "FIELD_PICKER_SCHEMA", "FIELD_PICKER_QUERY", "FIELD_PICKER_RESOLVE",
                         "AFTER_LOAD", "BEFORE_SUBMIT"),
                 EntityFormNodePropertyPolicy.dataSourceUsages("FIELD"));
         assertEquals(

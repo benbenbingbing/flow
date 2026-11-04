@@ -278,6 +278,9 @@ const FORM_DATA_SOURCE_USAGE_HELP = Object.freeze({
 export function getFormDataSourceInterfaceHelp(usage, { cascader = false } = {}) {
   const usageKey = String(usage || '').trim().toUpperCase()
   const usageHelp = FORM_DATA_SOURCE_USAGE_HELP[usageKey]
+    || ({ FIELD_PICKER_SCHEMA: '只读字段描述接口，返回 schemaVersion、valueField、labelField、fields 和 columns。获取字段后保存并发布表单。',
+      FIELD_PICKER_QUERY: '只读分页接口，从 input.picker 读取 pageNum、pageSize、keyword，返回 {records,total}。',
+      FIELD_PICKER_RESOLVE: '只读按键解析接口，从 input.picker.values 读取业务键数组，返回记录数组；用于回显和确认前补查，不能依赖当前页。' })[usageKey]
     || '按所选用途提供字段选项、默认值、计算值、子表行数据，或参与表单初始化、加载后及提交前处理。'
   const cascaderHelp = cascader && usageKey === 'FIELD_OPTIONS'
     ? '级联选择通过 input.cascader 传入加载方式、父节点编码、完整父路径和层级；接口返回含 value、label、children 或 leaf 的节点数组，逐级加载须提供 leaf。'

@@ -14,6 +14,25 @@
 | OceanBase MySQL 模式 | [obmysql.sql](obmysql.sql) |
 | OceanBase Oracle 模式 | [oboracle.sql](oboracle.sql) |
 
+## 2026-11-04 同步 V128 身份来源写入
+
+七份初始化脚本已对齐 V128 的最终结构，均为 **200 张表、2,793 个字段**，包含 Flowable 表，不包含 Flyway 历史表。本次相对 V125 新增两张表、15 个字段，并同步用户密码的可空性及实体字段元数据：
+
+| 对象 | 空库最终状态及用途 |
+| --- | --- |
+| `sys_user.authentication_mode` | `varchar(32)`，非空，默认 `LOCAL_PASSWORD`；外部账号使用 `EXTERNAL_ONLY`，禁止本地密码登录和重置。 |
+| `sys_user.password` | 允许 `NULL`，保留长度 100；对应 `entity_field` 的 `is_required` 初始化为 `0`，允许创建无本地口令的外部账号。 |
+| `sys_identity_write_lock` | 以 `lock_key` 为主键，初始化固定 `directory` 行，供身份写入事务串行化组织树校验和首次来源绑定。 |
+| `sys_identity_source_binding` | 保存用户及组织的稳定来源键、版本、快照摘要和启用状态；`source_key` 为主键，`(object_type, local_id)` 唯一，来源与本地许可默认启用，绑定状态默认 `ACTIVE`。 |
+
+MySQL 与 OceanBase MySQL 的来源键、快照摘要保留 `ascii_bin` 排序规则；其余方言按既有规则转换字符串、整数及秒级时间类型。来源键由精确 UTF-8 值计算摘要，保留外部 ID 的大小写语义。绑定更新时间由应用维护，不增加数据库自动更新时间逻辑。
+
+V127 曾创建的 `biz_project_user_profile`、`biz_project_directory_user` 和 `biz_project_org_profile` 已由 V128 移除，因此空库不创建这些示例表。菜单/权限和超级管理员授权均保持 **103 条**。
+
+验证已完成：七份脚本的表名、字段清单一致，V126 涉及的字段类型、长度、可空性、默认值、主键、唯一索引及核心种子数据已核对；MySQL 8.0.27 和 PostgreSQL 15.12 的独立临时空库完整导入通过，并验证外部账号空密码、认证策略默认值、目录锁初始行、大小写不同来源 ID 的存储和本地对象绑定唯一约束。其余五种方言完成静态检查，未连接对应数据库进行完整导入；未连接或修改业务数据库。
+
+本次新增、修改、删除或重命名的 Flyway 迁移文件均为 **无**，已有 V001—V128 迁移保持不变。
+
 ## 2026-10-29 同步 V125 档案查看入口合并
 
 七份初始化脚本已对齐 V125，仍为 **198 张表、2,778 个字段**。迁入流程档案融入实体“查看”的“流程图”和“审批历史”页签，读取复用实体查看权限及当前数据范围；不再初始化 `process_archive_read` / `process:archive:read` 独立权限及其超级管理员授权。导入管理和执行权限继续保留。

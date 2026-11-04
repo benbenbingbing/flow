@@ -2,9 +2,10 @@
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
+-- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
--- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- OceanBase MySQL 模式不支持 RANDOM_BYTES；导入前请在同一会话设置 @INIT_SIGNING_KEY 为新生成的 64 位十六进制随机串（例如 openssl rand -hex 32 的输出）。
 -- 操作顺序：生成随机密钥，在导入使用的 SQL 会话执行 SET @INIT_SIGNING_KEY = '生成的64位十六进制随机串';，再执行本文件；详细示例见 README.md。
@@ -3730,7 +3731,7 @@ CREATE TABLE `sys_user` (
   `id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID：用户ID。',
   `username` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户名。',
   `nickname` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '昵称。',
-  `password` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '密码。',
+  `password` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '本地口令哈希；外部账号允许 NULL，登录及重置必须同时检查 authentication_mode',
   `email` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '邮箱。',
   `phone` varchar(20) COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '手机号。',
   `avatar` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT '' COMMENT '头像。',
@@ -3742,6 +3743,7 @@ CREATE TABLE `sys_user` (
   `dept_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '部门ID。',
   `password_reset_required` tinyint NOT NULL DEFAULT '0' COMMENT '是否必须在继续使用系统前修改密码。',
   `token_version` bigint NOT NULL DEFAULT '0' COMMENT '令牌版本：用户令牌撤销版本；递增后此前签发的会话需按安全校验失效。',
+  `authentication_mode` varchar(32) NOT NULL DEFAULT 'LOCAL_PASSWORD' COMMENT '认证策略由框架维护；LOCAL_PASSWORD 使用本地密码，EXTERNAL_ONLY 禁止本地密码登录或重置',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
   KEY `idx_status` (`status`),
@@ -4217,6 +4219,30 @@ CREATE TABLE `process_archive_instance` (
   KEY `idx_archive_entity` (`entity_code`, `entity_record_id`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='迁入的已结束流程档案，独立于引擎运行态且完整文档不可变';
 
+-- 标准身份写入只保存来源映射与状态；目录锁固定行须在首次写入前初始化（V126）。
+CREATE TABLE `sys_identity_write_lock` (
+  `lock_key` varchar(64) NOT NULL COMMENT '固定 directory 行供身份写入事务加锁；串行化组织树校验及来源首次绑定，禁止删除',
+  PRIMARY KEY (`lock_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='身份目录事务锁，覆盖组织树及来源首次创建';
+
+CREATE TABLE `sys_identity_source_binding` (
+  `source_key` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义',
+  `source_code` varchar(64) NOT NULL COMMENT '已授权的身份来源代码；与外部 ID 共同定位来源对象',
+  `object_type` varchar(20) NOT NULL COMMENT 'USER 或 ORGANIZATION；区分用户和组织的来源键及本地对象',
+  `external_id` varchar(255) NOT NULL COMMENT '来源系统的稳定对象 ID；通过摘要主键定位，避免排序规则合并不同 ID',
+  `local_id` varchar(64) NOT NULL COMMENT '框架分配的 sys_user 或 sys_organization 主键；同类型本地对象仅允许一个来源绑定',
+  `external_account` varchar(255) DEFAULT NULL COMMENT '来源账号或组织外部编码；用于展示和追溯，不作为本地登录名',
+  `source_version` bigint DEFAULT NULL COMMENT '来源快照版本；拒绝同版本不同内容并忽略旧版本，无版本来源保留 NULL',
+  `payload_hash` char(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '规范化基础资料及扩展快照的 SHA-256；与版本共同判断重复写入或冲突',
+  `source_enabled` tinyint NOT NULL DEFAULT 1 COMMENT '来源启用标志；与 local_allowed 共同决定最终启用状态',
+  `local_allowed` tinyint NOT NULL DEFAULT 1 COMMENT '本地启用许可；来源更新不得覆盖本地管理员的禁用决定',
+  `binding_status` varchar(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE 或 RETIRED；退休后禁止来源写入重新创建该对象',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '来源绑定创建时间，用于审计首次接入',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近来源写入或本地许可变更时间；由应用在更新时维护',
+  PRIMARY KEY (`source_key`),
+  UNIQUE KEY `uk_identity_source_local` (`object_type`,`local_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外部数据对象到产品身份的映射；与 Embed 登录主体绑定分别维护';
+
 CREATE TABLE `workflow_schema_change` (
   `id` varchar(36) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '主键ID。',
   `ddl_hash` char(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'DDL哈希。',
@@ -4241,6 +4267,8 @@ CREATE TABLE `workflow_schema_change` (
 -- 系统元数据、菜单权限与禁用的超级管理员。
 -- 全局表单发布锁必须在空库预置，后续发布事务才能获取同一行锁。
 INSERT INTO `entity_form_publication_lock` (`lock_id`) VALUES (1);
+-- 身份来源写入通过此固定行取得目录事务锁。
+INSERT INTO `sys_identity_write_lock` (`lock_key`) VALUES ('directory');
 INSERT INTO `ACT_GE_PROPERTY` (`NAME_`, `VALUE_`, `REV_`) VALUES ('app.schema.version','7.2.0.2',1);
 INSERT INTO `ACT_GE_PROPERTY` (`NAME_`, `VALUE_`, `REV_`) VALUES ('cfg.execution-related-entities-count','true',1);
 INSERT INTO `ACT_GE_PROPERTY` (`NAME_`, `VALUE_`, `REV_`) VALUES ('cfg.task-related-entities-count','true',1);
@@ -4304,7 +4332,7 @@ INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `fiel
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1134826313312664922,429188770482109985,'id','用户ID','STRING','varchar(64)',64,1,1,NULL,NULL,NULL,1,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (745051415557763972,429188770482109985,'nickname','昵称','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,3,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'nickname',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1148301704392575944,429188770482109985,'org_id','组织ID','STRING','varchar(64)',64,0,0,NULL,NULL,NULL,12,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'org_id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (317101019809934504,429188770482109985,'password','密码','STRING','varchar(100)',100,1,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'password',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (317101019809934504,429188770482109985,'password','密码','STRING','varchar(100)',100,0,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'password',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (1039751570117789095,429188770482109985,'password_reset_required','password_reset_required','BOOLEAN','tinyint',NULL,1,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'password_reset_required',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (475192751198870445,429188770482109985,'phone','手机号','STRING','varchar(20)',20,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'phone',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO `entity_field` (`id`, `entity_id`, `field_code`, `field_name`, `field_type`, `db_type`, `field_length`, `is_required`, `is_unique`, `default_value`, `options_json`, `validate_rules`, `sort_order`, `is_system`, `is_published`, `editable`, `create_time`, `update_time`, `field_precision`, `db_column_name`, `file_types`, `file_max_size`, `file_max_count`, `ref_entity_type`, `ref_entity_id`, `ref_field_code`, `ref_list_key`, `field_id`, `dict_type`, `value_storage`, `deleted`) VALUES (59576534536847010,429188770482109985,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);

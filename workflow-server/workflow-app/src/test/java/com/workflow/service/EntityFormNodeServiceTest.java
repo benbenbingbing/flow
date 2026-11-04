@@ -1,5 +1,6 @@
 package com.workflow.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.workflow.integration.database.api.DatabaseVendor;
 import com.workflow.integration.database.api.DatabaseDialects;
@@ -42,6 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.inOrder;
@@ -151,6 +153,29 @@ class EntityFormNodeServiceTest {
                 () -> service.patch("form-1", "field", subFormRequest));
 
         verify(nodeMapper, never()).update(isNull(), any());
+    }
+
+    /** 数据选择器先保存三个草稿绑定再获取描述，节点保存不能被旧用途白名单拦截。 */
+    @Test
+    void dataPickerBindingsCanBeSavedOnFieldDraft() {
+        EntityFormNodeMapper nodeMapper = mock(EntityFormNodeMapper.class);
+        EntityFormNode current = typedNode("customer", null, "FIELD");
+        when(nodeMapper.selectById("customer")).thenReturn(current);
+        when(nodeMapper.selectCount(any())).thenReturn(0L);
+        when(nodeMapper.update(isNull(), any())).thenReturn(1);
+        EntityFormNodePatchRequest request = new EntityFormNodePatchRequest();
+        request.setExpectedRevision(1);
+        request.setProps(Map.of("fieldCode", "customer", "fieldName", "客户", "fieldType", "STRING", "componentType", "data_picker"));
+        request.setDataSourceBindings(Map.of(
+                "FIELD_PICKER_SCHEMA", Map.of("extensionId", "describe"),
+                "FIELD_PICKER_QUERY", Map.of("extensionId", "query"),
+                "FIELD_PICKER_RESOLVE", Map.of("extensionId", "resolve")));
+
+        assertDoesNotThrow(() -> service(nodeMapper).patch("form-1", "customer", request));
+        verify(nodeMapper).update(isNull(), argThat(wrapper -> wrapper instanceof UpdateWrapper<?> update
+                && update.getParamNameValuePairs().values().stream().anyMatch(value -> value instanceof String document
+                        && document.contains("\"FIELD_PICKER_SCHEMA\"") && document.contains("\"FIELD_PICKER_QUERY\"")
+                        && document.contains("\"FIELD_PICKER_RESOLVE\""))));
     }
 
     /** 测试重排序允许变更已绑定节点的放置位置：验证 parentId 变更被接受并触发 update */

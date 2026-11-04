@@ -7,6 +7,7 @@
   <MobileSubList v-else-if="type === 'sub_list'" :field="field" :context="context" :services="services" />
   <MobileFileField v-else-if="['file', 'image'].includes(type)" ref="fileRef" v-bind="fieldProps" :services="services" @update:model-value="handleChange" />
   <MobileCascaderField v-else-if="type === 'cascader'" ref="cascaderRef" v-bind="fieldProps" :required="required" @update:model-value="handleChange" @focus="handleFocus" @blur="handleBlur" />
+  <MobileDataPickerField v-else-if="type === 'data_picker'" ref="dataPickerRef" v-bind="fieldProps" :required="required" @patch-form="patchCustomForm" />
   <MobileReadonlyField v-else-if="disabled" :field="field" :model-value="modelValue" :options="choices" :context="context" :services="services" />
   <h3 v-else-if="type === 'section'" class="field-section">{{ fieldLabel }}</h3>
   <MobileRichTextEditor v-else-if="type === 'rich_text'" :label="fieldLabel" :model-value="fieldValue" @update:model-value="input" @blur="blur" @focus="handleFocus" />
@@ -20,7 +21,7 @@
   <p v-if="optionError" class="field-unsupported" role="alert">{{ optionError }}<button @click="loadOptions">重试</button></p>
   <p v-if="scriptConfigurationErrors.length" class="field-unsupported" role="alert">{{ scriptConfigurationErrors.join('；') }}</p>
   <MobileEntityPicker v-if="entityType" v-model:show="pickerOpen" :title="`选择${fieldLabel}`" :model-value="selectedRecords" :multiple="multiple" :load-options="loadEntityOptions" :identity="`${context.form?.id || ''}:${field.fieldCode}`" @confirm="selectRecords" />
-  <VanPopup v-else-if="type !== 'cascader'" v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
+  <VanPopup v-else-if="!['cascader', 'data_picker'].includes(type)" v-model:show="pickerOpen" position="bottom" round safe-area-inset-bottom>
     <template v-if="dateType">
       <VanNavBar :title="`选择${fieldLabel}`" left-text="取消" right-text="确定" @click-left="pickerOpen = false" @click-right="confirmDate" />
       <VanDatePicker v-if="type !== 'time'" v-model="dateParts" :show-toolbar="false" :min-date="minDate" :max-date="maxDate" />
@@ -48,6 +49,7 @@ import { useFormField } from '@flow/workflow-core/vue/useFormField'
 import { getFormDataSourceBindings } from '@flow/workflow-core/form-runtime'
 import MobileReadonlyField from './MobileReadonlyField.vue'
 import MobileCascaderField from './MobileCascaderField.vue'
+import MobileDataPickerField from './MobileDataPickerField.vue'
 import MobileFileField from './MobileFileField.vue'
 import MobileRichTextEditor from './MobileRichTextEditor.vue'
 import MobileSubForm from '../form/MobileSubForm.vue'
@@ -97,7 +99,7 @@ const dateType = computed(() => ['date', 'datetime', 'time'].includes(type.value
 const selectionType = computed(() => entityType.value || ['select', 'select_multiple'].includes(type.value))
 const multiple = computed(() => type.value === 'select_multiple' || parsedComponentProps.value.multiple === true || ['MULTI_REFERENCE', 'MULTI_SELECT'].includes(String(props.field.fieldType).toUpperCase()))
 const remoteOptions = ref(null), optionError = ref(''), pickerOpen = ref(false), selectionDraft = ref([]), selectedRecords = ref([])
-const customRef = ref(), cascaderRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
+const customRef = ref(), cascaderRef = ref(), dataPickerRef = ref(), subFormRef = ref(), fileRef = ref(), numberDraft = ref(null)
 function normalizeOptions(options) { return (Array.isArray(options) ? options : []).map(option => typeof option === 'object' ? { ...option, text: option.text ?? option.label ?? option.name ?? String(option.value ?? option.id), value: option.value ?? option.id, ...(option.children ? { children: normalizeOptions(option.children) } : {}) } : { text: String(option), value: option }) }
 const choices = computed(() => normalizeOptions(props.options ?? remoteOptions.value ?? (entityType.value ? selectedRecords.value.map(item => ({ ...item, value: item.id, text: item.name || item.nickname || item.dataName || item.code || String(item.id) })) : staticOptions.value)))
 const selectionLabel = computed(() => {
@@ -109,8 +111,8 @@ let optionGeneration = 0, committed = JSON.stringify(props.modelValue)
 /** 先使用已发布的动态选项绑定，否则读取实体字段代码表；两者都没有时保留内嵌选项。 */
 async function loadOptions() {
   const generation = ++optionGeneration; optionError.value = ''; remoteOptions.value = null
-  // 级联字段有独立的逐级加载、回显与重试流程，不能被通用选项加载重复调用。
-  if (type.value === 'cascader') return
+  // 级联与数据选择器有独立的查询、回显与重试流程，不能被旧选项绑定重复加载或影响校验。
+  if (['cascader', 'data_picker'].includes(type.value)) return
   try {
     let result
     if (props.dataSourceRuntime && getFormDataSourceBindings(props.field, 'FIELD_OPTIONS').length) {
@@ -197,6 +199,7 @@ async function validate() {
   return !optionError.value && (await customRef.value?.validate?.()) !== false
     && (await subFormRef.value?.validate?.()) !== false && (await fileRef.value?.validate?.()) !== false
     && (await cascaderRef.value?.validate?.()) !== false
+    && (await dataPickerRef.value?.validate?.()) !== false
 }
 defineExpose({ validate })
 </script>

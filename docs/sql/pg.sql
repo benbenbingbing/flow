@@ -2,9 +2,10 @@
 -- 2026-10-16：结构及种子数据已对齐 V123，包含空办理人菜单归属调整。
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
+-- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
--- 包含 198 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
+-- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
 -- 不含 biz_* 动态业务表、业务记录及普通用户；admin 初始禁用，需通过 Bootstrap 设置密码后激活。
 -- 每次导入随机生成独立的配置迁移签名密钥；本文件是独立初始化脚本，不属于 Flyway 迁移。
 
@@ -3159,7 +3160,7 @@ CREATE TABLE "sys_user" (
   "id" varchar(64) NOT NULL,
   "username" varchar(50) NOT NULL,
   "nickname" varchar(50) DEFAULT '',
-  "password" varchar(100) NOT NULL,
+  "password" varchar(100),
   "email" varchar(100) DEFAULT '',
   "phone" varchar(20) DEFAULT '',
   "avatar" varchar(255) DEFAULT '',
@@ -3171,6 +3172,7 @@ CREATE TABLE "sys_user" (
   "dept_id" varchar(64),
   "password_reset_required" smallint NOT NULL DEFAULT '0',
   "token_version" bigint NOT NULL DEFAULT '0',
+  "authentication_mode" varchar(32) NOT NULL DEFAULT 'LOCAL_PASSWORD',
   CONSTRAINT "pk_sys_user_sys_user" PRIMARY KEY ("id")
 );
 
@@ -3823,6 +3825,46 @@ COMMENT ON COLUMN "process_archive_instance"."end_result" IS '来源流程结束
 COMMENT ON COLUMN "process_archive_instance"."content_hash" IS '完整档案内容摘要；重复导入只复用相同内容，拒绝改写已归档历史';
 COMMENT ON COLUMN "process_archive_instance"."document_json" IS '不可变完整档案 JSON；原子保存流程图、字段快照及全部事件，保留同节点多次办理';
 COMMENT ON COLUMN "process_archive_instance"."created_at" IS '档案迁入时间；用于按业务记录查询历史流程时排序';
+
+-- 标准身份写入只保存来源映射与状态；目录锁固定行须在首次写入前初始化（V126）。
+CREATE TABLE "sys_identity_write_lock" (
+  "lock_key" varchar(64) NOT NULL,
+  PRIMARY KEY ("lock_key")
+);
+COMMENT ON TABLE "sys_identity_write_lock" IS '身份目录事务锁，覆盖组织树及来源首次创建';
+COMMENT ON COLUMN "sys_identity_write_lock"."lock_key" IS '固定 directory 行供身份写入事务加锁；串行化组织树校验及来源首次绑定，禁止删除';
+
+CREATE TABLE "sys_identity_source_binding" (
+  "source_key" char(64) NOT NULL,
+  "source_code" varchar(64) NOT NULL,
+  "object_type" varchar(20) NOT NULL,
+  "external_id" varchar(255) NOT NULL,
+  "local_id" varchar(64) NOT NULL,
+  "external_account" varchar(255),
+  "source_version" bigint,
+  "payload_hash" char(64) NOT NULL,
+  "source_enabled" smallint NOT NULL DEFAULT 1,
+  "local_allowed" smallint NOT NULL DEFAULT 1,
+  "binding_status" varchar(16) NOT NULL DEFAULT 'ACTIVE',
+  "created_at" timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updated_at" timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY ("source_key")
+);
+CREATE UNIQUE INDEX "uk_identity_source_local" ON "sys_identity_source_binding" ("object_type", "local_id");
+COMMENT ON TABLE "sys_identity_source_binding" IS '外部数据对象到产品身份的映射；与 Embed 登录主体绑定分别维护';
+COMMENT ON COLUMN "sys_identity_source_binding"."source_key" IS '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义';
+COMMENT ON COLUMN "sys_identity_source_binding"."source_code" IS '已授权的身份来源代码；与外部 ID 共同定位来源对象';
+COMMENT ON COLUMN "sys_identity_source_binding"."object_type" IS 'USER 或 ORGANIZATION；区分用户和组织的来源键及本地对象';
+COMMENT ON COLUMN "sys_identity_source_binding"."external_id" IS '来源系统的稳定对象 ID；通过摘要主键定位，避免排序规则合并不同 ID';
+COMMENT ON COLUMN "sys_identity_source_binding"."local_id" IS '框架分配的 sys_user 或 sys_organization 主键；同类型本地对象仅允许一个来源绑定';
+COMMENT ON COLUMN "sys_identity_source_binding"."external_account" IS '来源账号或组织外部编码；用于展示和追溯，不作为本地登录名';
+COMMENT ON COLUMN "sys_identity_source_binding"."source_version" IS '来源快照版本；拒绝同版本不同内容并忽略旧版本，无版本来源保留 NULL';
+COMMENT ON COLUMN "sys_identity_source_binding"."payload_hash" IS '规范化基础资料及扩展快照的 SHA-256；与版本共同判断重复写入或冲突';
+COMMENT ON COLUMN "sys_identity_source_binding"."source_enabled" IS '来源启用标志；与 local_allowed 共同决定最终启用状态';
+COMMENT ON COLUMN "sys_identity_source_binding"."local_allowed" IS '本地启用许可；来源更新不得覆盖本地管理员的禁用决定';
+COMMENT ON COLUMN "sys_identity_source_binding"."binding_status" IS 'ACTIVE 或 RETIRED；退休后禁止来源写入重新创建该对象';
+COMMENT ON COLUMN "sys_identity_source_binding"."created_at" IS '来源绑定创建时间，用于审计首次接入';
+COMMENT ON COLUMN "sys_identity_source_binding"."updated_at" IS '最近来源写入或本地许可变更时间；由应用在更新时维护';
 
 CREATE TABLE "workflow_schema_change" (
   "id" varchar(36) NOT NULL,
@@ -6921,7 +6963,8 @@ COMMENT ON TABLE "sys_user" IS '系统用户表';
 COMMENT ON COLUMN "sys_user"."id" IS '主键ID：用户ID。';
 COMMENT ON COLUMN "sys_user"."username" IS '用户名。';
 COMMENT ON COLUMN "sys_user"."nickname" IS '昵称。';
-COMMENT ON COLUMN "sys_user"."password" IS '密码。';
+COMMENT ON COLUMN "sys_user"."password" IS '本地口令哈希；外部账号允许 NULL，登录及重置必须同时检查 authentication_mode';
+COMMENT ON COLUMN "sys_user"."authentication_mode" IS '认证策略由框架维护；LOCAL_PASSWORD 使用本地密码，EXTERNAL_ONLY 禁止本地密码登录或重置';
 COMMENT ON COLUMN "sys_user"."email" IS '邮箱。';
 COMMENT ON COLUMN "sys_user"."phone" IS '手机号。';
 COMMENT ON COLUMN "sys_user"."avatar" IS '头像。';
@@ -7229,6 +7272,8 @@ INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES (
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_task_handover_view_001','1','task_handover_menu_001',CURRENT_TIMESTAMP);
 INSERT INTO "sys_role_menu" ("id", "role_id", "menu_id", "create_time") VALUES ('init_task_handover_transfer_001','1','task_handover_transfer_001',CURRENT_TIMESTAMP);
 INSERT INTO "entity_form_publication_lock" ("lock_id") VALUES (1);
+-- 身份来源写入通过此固定行取得目录事务锁。
+INSERT INTO "sys_identity_write_lock" ("lock_key") VALUES ('directory');
 
 INSERT INTO "act_ge_property" ("name_", "value_", "rev_") VALUES ('app.schema.version','7.2.0.2',1);
 INSERT INTO "act_ge_property" ("name_", "value_", "rev_") VALUES ('cfg.execution-related-entities-count','true',1);
@@ -7293,7 +7338,7 @@ INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "fiel
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (1134826313312664922,429188770482109985,'id','用户ID','STRING','varchar(64)',64,1,1,NULL,NULL,NULL,1,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (745051415557763972,429188770482109985,'nickname','昵称','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,3,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'nickname',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (1148301704392575944,429188770482109985,'org_id','组织ID','STRING','varchar(64)',64,0,0,NULL,NULL,NULL,12,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'org_id',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
-INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (317101019809934504,429188770482109985,'password','密码','STRING','varchar(100)',100,1,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'password',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
+INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (317101019809934504,429188770482109985,'password','密码','STRING','varchar(100)',100,0,0,NULL,NULL,NULL,4,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'password',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (1039751570117789095,429188770482109985,'password_reset_required','password_reset_required','BOOLEAN','tinyint',NULL,1,0,NULL,NULL,NULL,14,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,0,'password_reset_required',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (475192751198870445,429188770482109985,'phone','手机号','STRING','varchar(20)',20,0,0,NULL,NULL,NULL,6,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'phone',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);
 INSERT INTO "entity_field" ("id", "entity_id", "field_code", "field_name", "field_type", "db_type", "field_length", "is_required", "is_unique", "default_value", "options_json", "validate_rules", "sort_order", "is_system", "is_published", "editable", "create_time", "update_time", "field_precision", "db_column_name", "file_types", "file_max_size", "file_max_count", "ref_entity_type", "ref_entity_id", "ref_field_code", "ref_list_key", "field_id", "dict_type", "value_storage", "deleted") VALUES (59576534536847010,429188770482109985,'status','状态（0启用 1禁用）','STRING','varchar(50)',50,0,0,NULL,NULL,NULL,8,1,1,0,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,'status',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,'SCALAR',0);

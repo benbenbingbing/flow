@@ -3,7 +3,7 @@ import { getDefaultFormFieldComponentType } from '@flow/workflow-core/extensions
 import { readComponentScriptEvents } from '@flow/workflow-core/browser/field-script-metadata'
 
 const extensions = new Map()
-const builtin = new Set(['input', 'password', 'textarea', 'number', 'date', 'datetime', 'time', 'select', 'select_multiple', 'radio', 'checkbox', 'switch', 'cascader', 'user', 'dept', 'role', 'group', 'entity', 'file', 'image', 'rich_text', 'section', 'sub_form', 'sub_list'])
+const builtin = new Set(['data_picker', 'input', 'password', 'textarea', 'number', 'date', 'datetime', 'time', 'select', 'select_multiple', 'radio', 'checkbox', 'switch', 'cascader', 'user', 'dept', 'role', 'group', 'entity', 'file', 'image', 'rich_text', 'section', 'sub_form', 'sub_list'])
 
 /** 按稳定身份和版本安装移动实现，不接受 PC 组件作为默认回退。 */
 export function registerMobileExtension({ type = 'FIELD', name, version = 1, component, readonly = true, editable = false, validate = false, nodeTypes = ['FIELD'], supportedBindings = [], supportedFieldTypes = [] }) {

@@ -283,6 +283,8 @@ export function createFormDataSourceRuntime(options) {
     if (usage === 'FIELD_OPTIONS' && runtimeContext.input?.cascader) {
       input.cascader = runtimeContext.input.cascader
     }
+    // 面板生成的分页和所选键不属于业务参数映射，不能因只映射公司等参数而丢失。
+    if (usage.startsWith('FIELD_PICKER_')) input.picker = runtimeContext.input?.picker || {}
     const executeDataSource = options.executeDataSource
     if (typeof executeDataSource !== 'function') throw new Error('宿主未提供数据源执行能力')
     const response = await executeDataSource(buildFormDataSourceExecutionRequest({

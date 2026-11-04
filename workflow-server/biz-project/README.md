@@ -157,3 +157,11 @@ workflow-frontend/custom/biz-project/src/mobile/forms/ProjectMemberChangeForm.vu
 将来需要扩展时，由业务自行定义扩展类、提供对应建表迁移；SOURCE 扩展还需加入来源的允许写入清单。
 
 配置、调用代码、扩展声明、页面行为及事务约束见[完整接入说明](../../docs/architecture/identity-write-and-extension-design.md)。
+
+## 第三方 Embed 后端示例
+
+[`com.workflow.biz.project.embed.demo`](src/main/java/com/workflow/biz/project/embed/demo/README.md)
+提供可复制到第三方系统的后端 Demo，演示宿主登录态、Client Credentials Token 缓存、RS256 人员断言、
+一次性 Launch 接口、公开 JWKS 和入口/记录授权。通过公开 HTTP API 接入 Flow，不依赖平台内部服务或数据库。
+示例随本模块编译，默认不注册 Bean；仅在第三方应用显式启用 `partner-embed-demo` Profile 后运行。
+配置、前端调用与验证命令见 [Demo 接入说明](src/main/java/com/workflow/biz/project/embed/demo/README.md)。

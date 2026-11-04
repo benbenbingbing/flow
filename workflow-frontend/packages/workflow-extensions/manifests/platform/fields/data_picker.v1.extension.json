@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../schemas/extension.schema.json",
+  "$comment": "外部数据单选：属性保存稳定字符串业务键；在字段扩展设置中绑定字段描述、分页查询、按键解析三个 READ 接口，并获取字段后配置回填。无需新建实体关系。",
+  "schemaVersion": 1,
+  "type": "FIELD",
+  "name": "data_picker",
+  "label": "数据选择器",
+  "version": 1,
+  "implementation": {
+    "path": "src/extensions/builtin/fields/components/DataPickerField.vue",
+    "export": "default",
+    "kind": "COMPONENT"
+  },
+  "metadata": {
+    "nodeTypes": ["FIELD"],
+    "supportedBindings": ["ENTITY_FIELD"],
+    "supportedFieldTypes": ["STRING", "SELECT"],
+    "configSchema": [
+      { "key": "pickerTitle", "label": "面板标题", "type": "text", "description": "选择面板的标题，留空时使用当前属性名称。" },
+      { "key": "pickerPageSize", "label": "每页条数", "type": "number", "defaultValue": 10, "description": "每次分页读取 1～200 条记录，查询参数与表单范围在数据源绑定中配置。" },
+      { "key": "pickerClearOnClear", "label": "清空选择时处理回填字段", "type": "boolean", "defaultValue": false, "description": "默认仅清空当前属性；开启后按每条回填规则的空值和覆盖策略处理目标字段。" }
+    ]
+  },
+  "aliases": [],
+  "defaultForFieldTypes": []
+}

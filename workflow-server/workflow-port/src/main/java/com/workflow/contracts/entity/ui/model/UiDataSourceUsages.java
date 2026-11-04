@@ -7,6 +7,16 @@ package com.workflow.contracts.entity.ui.model;
  */
 public final class UiDataSourceUsages {
 
+    /** 选择面板字段描述；结果固定字段契约，供两端展示和回填配置使用。 */
+    public static final String FIELD_PICKER_SCHEMA = "FIELD_PICKER_SCHEMA";
+    /** 选择面板分页查询；协议坐标位于 input.picker，不作为认证或授权信息。 */
+    public static final String FIELD_PICKER_QUERY = "FIELD_PICKER_QUERY";
+    /** 按稳定业务键批量解析；回显和选择确认不能依赖搜索当前页。 */
+    public static final String FIELD_PICKER_RESOLVE = "FIELD_PICKER_RESOLVE";
+    /** 三个自动读取位置均只允许 READ，运行时也检查，避免接口变更引入写副作用。 */
+    public static final java.util.Set<String> FIELD_PICKER_USAGES = java.util.Set.of(
+            FIELD_PICKER_SCHEMA, FIELD_PICKER_QUERY, FIELD_PICKER_RESOLVE);
+
     /** 表单创建运行时模型时执行，结果可用于初始化表单字段。 */
     public static final String FORM_INIT = "FORM_INIT";
 

@@ -47,6 +47,7 @@ public class UiConfigInterfaceReferenceValidator {
                     "发布配置禁止包含任意 SQL、脚本或外网 URL 数据源");
         }
         validateValue(snapshot, "$", owner(snapshot));
+        validatePickerTargets(snapshot);
     }
 
     /**
@@ -107,6 +108,7 @@ public class UiConfigInterfaceReferenceValidator {
             Owner owner) {
         if (value instanceof Map<?, ?> map) {
             validateCascader(map, path, owner);
+            validatePicker(map, path, owner);
             validateReference(
                     map,
                     "extensionId",
@@ -203,6 +205,60 @@ public class UiConfigInterfaceReferenceValidator {
             return StringUtils.hasText(document) ? codec.readObject(document, label) : Map.of();
         }
         throw new IllegalArgumentException(label + "必须为 JSON 对象");
+    }
+
+    /** 三个读取能力必须属于当前字段；字段结构和映射随发布快照固定，避免借用其它节点的接口。 */
+    private void validatePicker(Map<?, ?> node, String path, Owner owner) {
+        if (!node.containsKey("nodeType") && !path.matches(".*\\.(?:nodes|legacyFields|fields)\\[\\d+\\]")) return;
+        Map<String, Object> props = configurationMap(node.containsKey("props") ? node.get("props") : node.get("propsDocument"), "选择器字段属性");
+        String component = firstText(props.get("componentType"), node.get("componentType"));
+        if (!"DATA_PICKER".equals(normalize(component))) return;
+        if (!"ENTITY_FIELD".equals(normalize(text(node.get("bindingType"))))
+                && !StringUtils.hasText(firstText(props.get("fieldId"), node.get("fieldId")))) {
+            throw new IllegalArgumentException("数据选择器必须绑定实体属性");
+        }
+        String fieldType = firstText(props.get("fieldType"), node.get("fieldType"));
+        if (!List.of("STRING", "SELECT").contains(normalize(fieldType))) throw new IllegalArgumentException("数据选择器仅支持 STRING、SELECT 属性");
+        Map<String, Object> componentProps = configurationMap(props.containsKey("componentProps") ? props.get("componentProps") : node.get("componentProps"), "选择器组件参数");
+        Map<String, Object> bindings = configurationMap(node.containsKey("dataSourceBindings") ? node.get("dataSourceBindings") : node.get("dataSourceBindingsDocument"), "选择器接口绑定");
+        var validated = DataPickerConfigurationPolicy.validate(componentProps, bindings, firstText(props.get("fieldCode"), node.get("fieldCode")));
+        validated.forEach((usage, binding) -> validateReference(binding, "extensionId", null, usage, path, owner));
+    }
+
+    /** 回填目标必须是当前表单实际绑定的属性，并在发布前校验类型；不能把结构节点或外部字段作为目标。 */
+    private void validatePickerTargets(Map<String, Object> snapshot) {
+        Map<String, Map<String, Object>> fields = new java.util.LinkedHashMap<>();
+        for (String collection : List.of("nodes", "legacyFields")) {
+            if (!(snapshot.get(collection) instanceof List<?> nodes)) continue;
+            for (Object item : nodes) {
+                Map<String, Object> node = stringMap(item);
+                Map<String, Object> field = configurationMap(node.containsKey("props") ? node.get("props") : node.get("propsDocument"), "表单字段属性");
+                if (field.isEmpty()) field = node;
+                String code = text(field.get("fieldCode"));
+                String bindingType = text(node.get("bindingType"));
+                if (StringUtils.hasText(code) && (StringUtils.hasText(text(field.get("fieldId"))) || "ENTITY_FIELD".equals(normalize(bindingType)))) fields.put(code, field);
+            }
+        }
+        for (Map<String, Object> field : fields.values()) {
+            if (!"DATA_PICKER".equals(normalize(text(field.get("componentType"))))) continue;
+            Map<String, Object> props = configurationMap(field.get("componentProps"), "选择器组件参数");
+            Map<String, Object> schema = configurationMap(props.get("pickerSchema"), "选择器字段描述");
+            Map<String, String> sourceTypes = DataPickerConfigurationPolicy.validateSchema(schema);
+            if (!(props.get("pickerMappings") instanceof List<?> mappings)) continue;
+            for (Object item : mappings) {
+                Map<String, Object> mapping = stringMap(item);
+                String source = text(mapping.get("sourcePath")).substring("selection.data.".length());
+                String target = text(mapping.get("targetPath")).substring("form.".length());
+                Map<String, Object> targetField = fields.get(target);
+                if (targetField == null || !DataPickerConfigurationPolicy.compatibleTypes(sourceTypes.get(source), normalize(text(targetField.get("fieldType"))))) {
+                    throw new IllegalArgumentException("数据选择器回填目标不存在或类型不兼容: " + target);
+                }
+            }
+        }
+    }
+
+    private String firstText(Object first, Object second) {
+        return StringUtils.hasText(text(first)) ? text(first) : text(second);
     }
 
     /**
@@ -318,6 +374,13 @@ public class UiConfigInterfaceReferenceValidator {
             String bindingCode,
             UiExtensionDefinition definition,
             String extensionId) {
+        if (bindingCode != null && UiDataSourceUsages.FIELD_PICKER_USAGES.contains(bindingCode)) {
+            Map<String, Object> schema = configurationMap(definition.getOutputSchemaDocument(), "接口输出Schema");
+            if (!"READ".equals(normalize(definition.getInterfaceKind())) || !DataPickerConfigurationPolicy.supportsOutputSchema(bindingCode, schema)) {
+                throw new IllegalArgumentException("数据选择器必须使用符合固定返回契约的 READ 接口: " + extensionId);
+            }
+            return;
+        }
         if (!UiDataSourceUsages.LIST_QUERY.equals(bindingCode)
                 && !UiDataSourceUsages.LIST_COLUMN.equals(bindingCode)
                 && !UiDataSourceUsages.FIELD_OPTIONS.equals(bindingCode)) {

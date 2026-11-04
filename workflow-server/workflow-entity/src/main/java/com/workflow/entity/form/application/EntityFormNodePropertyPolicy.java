@@ -27,6 +27,9 @@ public final class EntityFormNodePropertyPolicy {
 
     private static final Set<String> FIELD_DATA_SOURCE_USAGES = Set.of(
             UiDataSourceUsages.FIELD_OPTIONS,
+            UiDataSourceUsages.FIELD_PICKER_SCHEMA,
+            UiDataSourceUsages.FIELD_PICKER_QUERY,
+            UiDataSourceUsages.FIELD_PICKER_RESOLVE,
             UiDataSourceUsages.FIELD_DEFAULT,
             UiDataSourceUsages.FIELD_COMPUTE,
             UiDataSourceUsages.AFTER_LOAD,
@@ -70,6 +73,7 @@ public final class EntityFormNodePropertyPolicy {
                     Map.entry("date", Set.of("DATE")),
                     Map.entry("datetime", Set.of("DATETIME")),
                     Map.entry("select", Set.of("SELECT", "STRING")),
+                    Map.entry("data_picker", Set.of("STRING", "SELECT")),
                     Map.entry(
                             "select_multiple",
                             Set.of("MULTI_SELECT")),

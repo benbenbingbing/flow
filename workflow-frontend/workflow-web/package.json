@@ -113,6 +113,7 @@
     "test:excel": "node --test src/components/excel/__tests__/excelModel.spec.mjs ../packages/workflow-api/tests/entity-excel.test.mjs ../packages/workflow-core/tests/excel-effects.test.mjs",
     "test:excel:browser": "node scripts/excel-workflow-browser-test.mjs",
     "test:cascader:browser": "node scripts/cascader-browser-test.mjs",
+    "test:data-picker:browser": "node scripts/data-picker-browser-test.mjs",
     "test:builtin-button-appearance": "node --test ../packages/workflow-core/tests/builtin-button-appearance.test.mjs src/shared/__tests__/related-content-button-appearance.spec.js src/components/__tests__/subformBuiltInAppearance.spec.mjs",
     "test:builtin-button-appearance:browser": "node scripts/builtin-button-appearance-browser-test.mjs"
   },

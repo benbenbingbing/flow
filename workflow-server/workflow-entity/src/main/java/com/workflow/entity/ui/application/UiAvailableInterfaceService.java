@@ -34,6 +34,9 @@ public class UiAvailableInterfaceService {
     private static final Set<String> READ_BINDINGS = Set.of(
             UiDataSourceUsages.FORM_INIT,
             UiDataSourceUsages.FIELD_OPTIONS,
+            UiDataSourceUsages.FIELD_PICKER_SCHEMA,
+            UiDataSourceUsages.FIELD_PICKER_QUERY,
+            UiDataSourceUsages.FIELD_PICKER_RESOLVE,
             UiDataSourceUsages.FIELD_DEFAULT,
             UiDataSourceUsages.FIELD_COMPUTE,
             UiDataSourceUsages.SUBFORM_ROWS,
@@ -163,6 +166,9 @@ public class UiAvailableInterfaceService {
             UiExtensionDefinition definition) {
         java.util.Map<String, Object> outputSchema =
                 readSchema(definition.getOutputSchemaDocument());
+        if (UiDataSourceUsages.FIELD_PICKER_USAGES.contains(bindingCode)) {
+            return com.workflow.entity.ui.application.validation.DataPickerConfigurationPolicy.supportsOutputSchema(bindingCode, outputSchema);
+        }
         return switch (bindingCode) {
             case UiDataSourceUsages.FIELD_OPTIONS,
                     UiDataSourceUsages.SUBFORM_ROWS ->

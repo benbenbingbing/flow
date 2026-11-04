@@ -9,6 +9,9 @@ export const interfaceImplementationTypeOptions = [
 export const interfaceUsageOptions = [
   { label: '表单初始化（FORM_INIT）', value: 'FORM_INIT' },
   { label: '字段选项（FIELD_OPTIONS）', value: 'FIELD_OPTIONS' },
+  { label: '选择器字段描述（FIELD_PICKER_SCHEMA）', value: 'FIELD_PICKER_SCHEMA' },
+  { label: '选择器分页查询（FIELD_PICKER_QUERY）', value: 'FIELD_PICKER_QUERY' },
+  { label: '选择器按键解析（FIELD_PICKER_RESOLVE）', value: 'FIELD_PICKER_RESOLVE' },
   { label: '字段默认值（FIELD_DEFAULT）', value: 'FIELD_DEFAULT' },
   { label: '字段计算（FIELD_COMPUTE）', value: 'FIELD_COMPUTE' },
   { label: '子表行加载（SUBFORM_ROWS）', value: 'SUBFORM_ROWS' },
@@ -36,8 +39,9 @@ export const interfaceUsageOptions = [
   { label: '表单按钮（FORM_BUTTON_CLICK）', value: 'FORM_BUTTON_CLICK' }
 ]
 
-const eventCodes = interfaceUsageOptions.slice(9).map(option => option.value)
+const eventCodes = interfaceUsageOptions.slice(interfaceUsageOptions.findIndex(option => option.value === 'LIST_LOAD')).map(option => option.value)
 const readOnlyUsages = new Set([
+  'FIELD_PICKER_SCHEMA', 'FIELD_PICKER_QUERY', 'FIELD_PICKER_RESOLVE',
   'FORM_INIT', 'FIELD_OPTIONS', 'FIELD_DEFAULT', 'FIELD_COMPUTE',
   'SUBFORM_ROWS', 'LIST_QUERY', 'LIST_COLUMN', 'AFTER_LOAD',
   'LIST_LOAD', 'LIST_EXPORT', 'DETAIL_LOAD', 'FORM_OPEN',
@@ -48,6 +52,7 @@ const writeOnlyUsages = new Set([
   'DATA_BATCH_DELETE', 'FORM_SAVE', 'SUBFORM_SAVE'
 ])
 const formDataUsages = new Set([
+  'FIELD_PICKER_SCHEMA', 'FIELD_PICKER_QUERY', 'FIELD_PICKER_RESOLVE',
   'FORM_INIT', 'FIELD_OPTIONS', 'FIELD_DEFAULT', 'FIELD_COMPUTE',
   'SUBFORM_ROWS', 'AFTER_LOAD', 'BEFORE_SUBMIT'
 ])

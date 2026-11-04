@@ -21,6 +21,15 @@ export default [
     ]
   },
   {
+    "name": "data_picker",
+    "aliases": [],
+    "defaultForFieldTypes": [],
+    "supportedFieldTypes": [
+      "STRING",
+      "SELECT"
+    ]
+  },
+  {
     "name": "date",
     "aliases": [],
     "defaultForFieldTypes": [

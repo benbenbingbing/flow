@@ -88,6 +88,9 @@ public class EntityFormNodeService {
         private static final Set<String> DATA_SOURCE_USAGES = Set.of(
                         UiDataSourceUsages.FORM_INIT,
                         UiDataSourceUsages.FIELD_OPTIONS,
+                        UiDataSourceUsages.FIELD_PICKER_SCHEMA,
+                        UiDataSourceUsages.FIELD_PICKER_QUERY,
+                        UiDataSourceUsages.FIELD_PICKER_RESOLVE,
                         UiDataSourceUsages.FIELD_DEFAULT,
                         UiDataSourceUsages.FIELD_COMPUTE,
                         UiDataSourceUsages.SUBFORM_ROWS,
@@ -99,6 +102,9 @@ public class EntityFormNodeService {
                         Set.of(
                                         UiDataSourceUsages.FORM_INIT,
                                         UiDataSourceUsages.FIELD_OPTIONS,
+                                        UiDataSourceUsages.FIELD_PICKER_SCHEMA,
+                                        UiDataSourceUsages.FIELD_PICKER_QUERY,
+                                        UiDataSourceUsages.FIELD_PICKER_RESOLVE,
                                         UiDataSourceUsages.AFTER_LOAD);
 
         private final EntityFormMapper formMapper;
