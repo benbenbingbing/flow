@@ -85,6 +85,9 @@
         "keyPrefix": {
           "type": "string"
         },
+        "trustAllCertificates": {
+          "type": "boolean"
+        },
         "readableBuckets": {
           "type": "array",
           "items": {

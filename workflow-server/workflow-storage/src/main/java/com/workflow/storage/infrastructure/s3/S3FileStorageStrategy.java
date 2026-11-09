@@ -27,6 +27,8 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.SdkHttpClient;
+import software.amazon.awssdk.http.SdkHttpConfigurationOption;
 import software.amazon.awssdk.http.apache5.Apache5HttpClient;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -84,17 +86,23 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     }
 
     /**
-     * 构建客户端；结果供后续流程传递或持久化。
+     * 为当前存储策略构建专用客户端，由 S3Client 管理 HTTP 连接池生命周期。
      *
-     * @param config 配置内容，决定后续客户端的处理规则
-     * @return 构建后的客户端结果，供调用方继续处理
+     * @param config 区域、端点、凭证及 TLS 配置，信任全部证书须显式开启
+     * @return 用于上传、下载及删除的客户端，随策略关闭
      */
     private S3Client buildClient(
             FileStorageProperties.S3Config config) {
+        // 在 SDK 提供的默认配置上覆盖本客户端的 TLS 开关，避免影响其他存储策略或 JVM 全局 HTTPS。
+        // 保留 httpClientBuilder 入口，使 S3Client 继续负责关闭 HTTP 客户端。
+        SdkHttpClient.Builder<Apache5HttpClient.Builder> httpClientBuilder = serviceDefaults ->
+                Apache5HttpClient.builder().buildWithDefaults(serviceDefaults.toBuilder()
+                        .put(SdkHttpConfigurationOption.TRUST_ALL_CERTIFICATES, config.isTrustAllCertificates())
+                        .build());
         S3ClientBuilder builder = S3Client.builder()
                 .region(Region.of(config.getRegion()))
                 .forcePathStyle(config.isPathStyleAccess())
-                .httpClientBuilder(Apache5HttpClient.builder());
+                .httpClientBuilder(httpClientBuilder);
         if (StringUtils.hasText(config.getEndpoint())) {
             builder.endpointOverride(URI.create(config.getEndpoint()));
         }

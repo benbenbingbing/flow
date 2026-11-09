@@ -43,6 +43,8 @@ file:
       access-url: ${FILE_STORAGE_S3_ACCESS_URL:}
       # 启用路径式桶寻址，以兼容不支持虚拟主机式寻址的对象存储。
       path-style-access: ${FILE_STORAGE_S3_PATH_STYLE:false}
+      # 显式开启后跳过 S3 HTTPS 证书及主机名校验，存在中间人风险，默认保持校验。
+      trust-all-certificates: ${FILE_STORAGE_S3_TRUST_ALL_CERTIFICATES:false}
     # MinIO 独立参数，通过 S3 协议访问并固定使用路径式桶寻址。
     minio:
       # MinIO 对象 API 地址，通常为 9000 端口，不是控制台地址。
@@ -61,3 +63,5 @@ file:
       secret-key: ${FILE_STORAGE_MINIO_SECRET_KEY:}
       # 可选对象访问前缀；留空时返回稳定的 s3://bucket/key 文件标识。
       access-url: ${FILE_STORAGE_MINIO_ACCESS_URL:}
+      # 显式开启后跳过 MinIO HTTPS 证书及主机名校验，存在中间人风险，默认保持校验。
+      trust-all-certificates: ${FILE_STORAGE_MINIO_TRUST_ALL_CERTIFICATES:false}

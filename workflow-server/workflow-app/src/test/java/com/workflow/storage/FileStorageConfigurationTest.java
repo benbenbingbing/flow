@@ -74,6 +74,8 @@ class FileStorageConfigurationTest {
                     assertThat(strategy).isExactlyInstanceOf(MinioFileStorageStrategy.class);
                     assertThat(strategy.getStorageType()).isEqualTo("minio");
                     assertThat(strategy.getAccessUrl("image.png")).isEqualTo("s3://flow-files/image.png");
+                    assertThat(context.getBean(FileStorageProperties.class).getMinio().isTrustAllCertificates())
+                            .isFalse();
                 });
     }
 
@@ -85,6 +87,25 @@ class FileStorageConfigurationTest {
                             .doesNotHaveBean(MinioFileStorageStrategy.class);
                     assertThat(context.getBean(FileStorageFactory.class).getStrategy())
                             .isExactlyInstanceOf(S3FileStorageStrategy.class);
+                    assertThat(context.getBean(FileStorageProperties.class).getS3().isTrustAllCertificates())
+                            .isFalse();
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void bindsIndependentTlsVerificationOptions(boolean minioTrustAllCertificates) {
+        runner.withPropertyValues("file.storage.type=minio",
+                "file.storage.minio.endpoint=https://localhost:9000",
+                "file.storage.minio.bucket=flow-files",
+                "file.storage.minio.access-key=test-access", "file.storage.minio.secret-key=test-secret",
+                "file.storage.minio.trust-all-certificates=" + minioTrustAllCertificates,
+                "file.storage.s3.trust-all-certificates=" + !minioTrustAllCertificates)
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    FileStorageProperties properties = context.getBean(FileStorageProperties.class);
+                    assertThat(properties.getMinio().isTrustAllCertificates()).isEqualTo(minioTrustAllCertificates);
+                    assertThat(properties.getS3().isTrustAllCertificates()).isEqualTo(!minioTrustAllCertificates);
                 });
     }
 

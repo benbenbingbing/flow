@@ -73,6 +73,8 @@ public class MinioFileStorageStrategy extends S3FileStorageStrategy {
         s3.setAccessKey(config.getAccessKey());
         s3.setSecretKey(config.getSecretKey());
         s3.setAccessUrl(config.getAccessUrl());
+        // MinIO 只读取自身的 TLS 开关，复用 S3 实现时保持两套配置独立。
+        s3.setTrustAllCertificates(config.isTrustAllCertificates());
         // 桶名放在 URL 路径中，支持 IP、容器服务名和未配置桶子域名的 MinIO 部署。
         s3.setPathStyleAccess(true);
         return s3;

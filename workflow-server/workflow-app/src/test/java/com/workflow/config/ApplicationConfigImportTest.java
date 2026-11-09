@@ -42,6 +42,10 @@ class ApplicationConfigImportTest {
                     assertThat(environment.getProperty("jwt.expiration")).isEqualTo("900000");
                     assertThat(environment.getProperty("workflow.security.session.cookie-secure")).isEqualTo("false");
                     assertThat(environment.getProperty("file.storage.local.path")).isEqualTo("./uploads");
+                    assertThat(environment.getProperty("file.storage.s3.trust-all-certificates"))
+                            .isEqualTo("false");
+                    assertThat(environment.getProperty("file.storage.minio.trust-all-certificates"))
+                            .isEqualTo("false");
                     assertThat(environment.getProperty("workflow.open-api.audience")).isEqualTo("flow-open-api");
                     assertThat(environment.getProperty("workflow.embed.crypto.context-key-version"))
                             .isEqualTo("embed-context-v1");
@@ -78,6 +82,8 @@ class ApplicationConfigImportTest {
                 "MYBATIS_LOG_IMPL", "org.apache.ibatis.logging.stdout.StdOutImpl",
                 "SPRING_DATASOURCE_URL", "jdbc:mysql://override.example/explicit",
                 "AUTH_SESSION_COOKIE_SECURE", "false",
+                "FILE_STORAGE_S3_TRUST_ALL_CERTIFICATES", "true",
+                "FILE_STORAGE_MINIO_TRUST_ALL_CERTIFICATES", "false",
                 "JWT_SECRET", "config-import-test-only-secret"))
                 .withPropertyValues("spring.profiles.active=production")
                 .run(context -> {
@@ -88,6 +94,10 @@ class ApplicationConfigImportTest {
                     assertThat(environment.getProperty("spring.datasource.url"))
                             .isEqualTo("jdbc:mysql://override.example/explicit");
                     assertThat(environment.getProperty("file.storage.type")).isEqualTo("s3");
+                    assertThat(environment.getProperty("file.storage.s3.trust-all-certificates"))
+                            .isEqualTo("true");
+                    assertThat(environment.getProperty("file.storage.minio.trust-all-certificates"))
+                            .isEqualTo("false");
                     assertThat(environment.getProperty("logging.level.com.workflow")).isEqualTo("DEBUG");
                     assertThat(environment.getProperty("mybatis-plus.configuration.log-impl"))
                             .isEqualTo("org.apache.ibatis.logging.stdout.StdOutImpl");

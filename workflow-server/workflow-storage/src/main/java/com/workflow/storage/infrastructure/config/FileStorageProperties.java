@@ -48,6 +48,8 @@ public class FileStorageProperties {
         private String secretKey;
         /** 可选的对象访问前缀；为空时返回稳定的 s3://bucket/key 文件标识。 */
         private String accessUrl;
+        /** 显式启用后跳过当前 MinIO 客户端的证书及主机名校验，存在中间人风险，默认关闭。 */
+        private boolean trustAllCertificates;
     }
 
     /**
@@ -82,5 +84,7 @@ public class FileStorageProperties {
         private String secretKey;
         private String accessUrl;
         private boolean pathStyleAccess;
+        /** 显式启用后跳过当前 S3 客户端的证书及主机名校验，存在中间人风险，默认关闭。 */
+        private boolean trustAllCertificates;
     }
 }

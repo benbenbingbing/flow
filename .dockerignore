@@ -1,6 +1,8 @@
 **/node_modules
 **/dist
-**/target
+# 保留各模块 target 下预打包的 JAR，供部署时直接 COPY；其余产物继续排除，避免带入宿主机编译缓存。
+**/target/*
+!**/target/*.jar
 .git
 .env
 .env.*

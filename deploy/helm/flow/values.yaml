@@ -86,6 +86,8 @@ storage:
   readableBuckets: []
   accessUrl: ""
   pathStyleAccess: false
+  # 显式开启后跳过对象存储证书及主机名校验，存在中间人风险。
+  trustAllCertificates: false
 
 application:
   corsAllowedOrigins: ""

@@ -72,6 +72,8 @@ spec:
               value: {{ .Values.storage.accessUrl | quote }}
             - name: FILE_STORAGE_S3_PATH_STYLE
               value: {{ .Values.storage.pathStyleAccess | quote }}
+            - name: FILE_STORAGE_S3_TRUST_ALL_CERTIFICATES
+              value: {{ .Values.storage.trustAllCertificates | default false | quote }}
             - name: WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
