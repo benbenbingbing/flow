@@ -1,7 +1,9 @@
 package com.workflow.config;
 
+import com.workflow.admin.identity.provisioning.application.IdentityWriteProperties;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.core.env.StandardEnvironment;
@@ -56,6 +58,136 @@ class ApplicationConfigImportTest {
                     // 必填凭据不能因为配置拆分而悄悄获得默认值。
                     assertThatThrownBy(() -> environment.getRequiredProperty("jwt.secret"))
                             .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("JWT_SECRET");
+                });
+    }
+
+    /** 新增条目须由真实 YAML 提供默认值，避免只依赖业务类的 @Value 默认值掩盖漏配。 */
+    @Test
+    void importsSupplementedRuntimeDefaultsAndEmptyIdentitySources() {
+        context(Map.of()).run(context -> {
+            assertThat(context).hasNotFailed();
+            var environment = context.getEnvironment();
+            Map.ofEntries(
+                    Map.entry("workflow.process.storage-zone", "Asia/Shanghai"),
+                    Map.entry("workflow.task-sla.batch-size", "50"),
+                    Map.entry("workflow.task-sla.lease-seconds", "120"),
+                    Map.entry("workflow.task-sla.poll-delay-ms", "5000"),
+                    Map.entry("workflow.assignee-incident.retry-scan-ms", "30000"),
+                    Map.entry("workflow.outbox.retention-cron", "0 15 3 * * *"),
+                    Map.entry("workflow.outbox.retention-batch-size", "1000"),
+                    Map.entry("workflow.outbox.retention-max-rows", "10000"),
+                    Map.entry("workflow.outbox.retention-max-seconds", "10"),
+                    Map.entry("workflow.audit.retention-cron", "0 30 3 * * *"),
+                    Map.entry("workflow.audit.retention-batch-size", "1000"),
+                    Map.entry("workflow.audit.retention-max-rows", "10000"),
+                    Map.entry("workflow.audit.retention-max-seconds", "10"),
+                    Map.entry("workflow.security.login-throttle.cleanup-cron", "0 45 3 * * *"),
+                    Map.entry("workflow.position.leader-projection-reconcile-ms", "60000"),
+                    Map.entry("workflow.open-api.rate-limit-cleanup-cron", "0 20 3 * * *"),
+                    Map.entry("workflow.open-api.request-lease-cleanup-cron", "0 */10 * * * *"),
+                    Map.entry("entity.excel.cleanup-delay-ms", "3600000"))
+                    .forEach((property, expected) ->
+                            assertThat(environment.getProperty(property)).as(property).isEqualTo(expected));
+
+            var identity = Binder.get(environment).bind("workflow.identity", IdentityWriteProperties.class).get();
+            assertThat(identity.getScanPackages()).containsExactly("com.workflow.biz");
+            assertThat(identity.getSources()).isEmpty();
+            assertThat(environment.containsProperty("ui.release-resolution.ttl-seconds")).isFalse();
+        });
+    }
+
+    /** 验证各补齐分组的部署变量及显式来源可覆盖默认值，空来源映射不能阻止后续接入。 */
+    @Test
+    void environmentOverridesSupplementedDefaultsAndIdentityBinding() {
+        context(Map.of(
+                "WORKFLOW_IDENTITY_SCAN_PACKAGES", "com.acme.identity,com.workflow.biz",
+                "WORKFLOW_OPEN_API_RATE_LIMIT_CLEANUP_CRON", "0 10 2 * * *",
+                "PROCESS_STORAGE_ZONE", "UTC",
+                "TASK_SLA_BATCH_SIZE", "25",
+                "ASSIGNEE_INCIDENT_RETRY_SCAN_MS", "45000",
+                "OUTBOX_RETENTION_MAX_ROWS", "2000",
+                "AUDIT_RETENTION_BATCH_SIZE", "500",
+                "LOGIN_THROTTLE_CLEANUP_CRON", "0 40 2 * * *",
+                "POSITION_LEADER_PROJECTION_RECONCILE_MS", "90000",
+                "ENTITY_EXCEL_CLEANUP_DELAY_MS", "1800000"))
+                .withPropertyValues(
+                        "workflow.identity.sources.project-directory.write-permission=system:user:manage",
+                        "workflow.identity.sources.project-directory.service-user-id=directory-service-test")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var environment = context.getEnvironment();
+                    Map.of(
+                            "workflow.open-api.rate-limit-cleanup-cron", "0 10 2 * * *",
+                            "workflow.process.storage-zone", "UTC",
+                            "workflow.task-sla.batch-size", "25",
+                            "workflow.assignee-incident.retry-scan-ms", "45000",
+                            "workflow.outbox.retention-max-rows", "2000",
+                            "workflow.audit.retention-batch-size", "500",
+                            "workflow.security.login-throttle.cleanup-cron", "0 40 2 * * *",
+                            "workflow.position.leader-projection-reconcile-ms", "90000",
+                            "entity.excel.cleanup-delay-ms", "1800000")
+                            .forEach((property, expected) ->
+                                    assertThat(environment.getProperty(property)).as(property).isEqualTo(expected));
+
+                    var identity = Binder.get(environment).bind("workflow.identity", IdentityWriteProperties.class).get();
+                    assertThat(identity.getScanPackages()).containsExactly("com.acme.identity", "com.workflow.biz");
+                    assertThat(identity.getSources()).containsOnlyKeys("project-directory");
+                    var source = identity.getSources().get("project-directory");
+                    assertThat(source.getWritePermission()).isEqualTo("system:user:manage");
+                    assertThat(source.getServiceUserId()).isEqualTo("directory-service-test");
+                    assertThat(source.getVersionMode()).isEqualTo(IdentityWriteProperties.VersionMode.VERSIONED);
+                    assertThat(source.getExtensions()).isEmpty();
+                });
+    }
+
+    /** 可选覆盖须保持未声明状态，空配置会阻断 Excel 密钥回退或覆盖数据库自动初始化策略。 */
+    @Test
+    void optionalOverridesStayAbsentAndExcelSecretsFallBackToJwt() {
+        context(Map.of("JWT_SECRET", "config-import-jwt-test-secret")).run(context -> {
+            assertThat(context).hasNotFailed();
+            var environment = context.getEnvironment();
+            assertThat(environment.containsProperty("workflow.database.flowable-type")).isFalse();
+            assertThat(environment.containsProperty("spring.datasource.hikari.connection-init-sql")).isFalse();
+            assertThat(environment.containsProperty("entity.excel.action-secret")).isFalse();
+            assertThat(environment.containsProperty("entity.excel.file-secret")).isFalse();
+            assertThat(environment.containsProperty("ui.release-resolution.secret")).isFalse();
+            assertThat(environment.resolveRequiredPlaceholders(
+                    "${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}"))
+                    .isEqualTo("config-import-jwt-test-secret");
+            assertThat(environment.resolveRequiredPlaceholders(
+                    "${entity.excel.file-secret:${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}}"))
+                    .isEqualTo("config-import-jwt-test-secret");
+        });
+    }
+
+    /** 沿用历史密钥的部署与显式提供独立密钥的部署，均须按原有优先级解析 Excel 密钥。 */
+    @Test
+    void excelSecretsUseLegacyFallbackAndDedicatedOverrides() {
+        context(Map.of("JWT_SECRET", "config-import-jwt-test-secret",
+                "UI_RELEASE_RESOLUTION_SECRET", "config-import-legacy-test-secret"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var environment = context.getEnvironment();
+                    assertThat(environment.resolveRequiredPlaceholders(
+                            "${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}"))
+                            .isEqualTo("config-import-legacy-test-secret");
+                    assertThat(environment.resolveRequiredPlaceholders(
+                            "${entity.excel.file-secret:${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}}"))
+                            .isEqualTo("config-import-legacy-test-secret");
+                });
+        context(Map.of("JWT_SECRET", "config-import-jwt-test-secret",
+                "UI_RELEASE_RESOLUTION_SECRET", "config-import-legacy-test-secret",
+                "ENTITY_EXCEL_ACTION_SECRET", "config-import-action-test-secret",
+                "ENTITY_EXCEL_FILE_SECRET", "config-import-file-test-secret"))
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var environment = context.getEnvironment();
+                    assertThat(environment.resolveRequiredPlaceholders(
+                            "${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}"))
+                            .isEqualTo("config-import-action-test-secret");
+                    assertThat(environment.resolveRequiredPlaceholders(
+                            "${entity.excel.file-secret:${entity.excel.action-secret:${ui.release-resolution.secret:${jwt.secret}}}}"))
+                            .isEqualTo("config-import-file-test-secret");
                 });
     }
 

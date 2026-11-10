@@ -142,6 +142,14 @@ public interface SysOrganizationMapper extends BaseMapper<SysOrganization> {
             </script>
             """)
     int updateChildrenPath(@Param("oldPath") String oldPath, @Param("newPath") String newPath);
+
+    /** 来源目录锁内更新派生结构，显式写入 NULL 使祖先缺失后的旧路径失效，保留基础资料及负责人投影。 */
+    @Update("""
+            UPDATE sys_organization SET parent_id = #{parentId}, path = #{path}, level = #{level},
+                hierarchy_ready = #{hierarchyReady}, update_time = CURRENT_TIMESTAMP
+            WHERE id = #{id} AND deleted = 0
+            """)
+    int updateProvisionedHierarchy(SysOrganization organization);
     
 
 

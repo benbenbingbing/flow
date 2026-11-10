@@ -24,7 +24,7 @@ public class ProjectIdentityImporter {
                         user.organizationId(), user.departmentId(), user.enabled()), List.of()));
     }
 
-    /** 保存业务组织快照；父节点不存在时先由业务写入父节点，或直接使用 Port 的组织批量入口。 */
+    /** 保存业务组织快照；父级允许后到，框架保存来源引用并在祖先补齐后自动关联组织树。 */
     public IdentitySaveResult saveOrganization(DirectoryOrganization unit) {
         return identities.saveOrganization(new OrganizationSaveModel(new ExternalIdentityKey(SOURCE, unit.externalId()), unit.version(),
                 new OrganizationBaseData(unit.code(), unit.name(), unit.type(), unit.parentId(), null,

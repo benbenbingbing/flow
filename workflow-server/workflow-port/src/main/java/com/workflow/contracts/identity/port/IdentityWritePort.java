@@ -7,10 +7,10 @@ import java.util.List;
 public interface IdentityWritePort {
     /** 保存用户基础快照及携带的扩展，映射、审计与资料一起提交；失败整次回滚。 */
     IdentitySaveResult saveUser(UserSaveModel model);
-    /** 保存组织基础快照与扩展；父组织必须存在，派生路径由框架维护。 */
+    /** 保存组织基础快照与扩展；同来源父级允许后到，父链未齐时隐藏于组织树，补齐后自动维护路径及下级。 */
     IdentitySaveResult saveOrganization(OrganizationSaveModel model);
     /** 同来源最多 100 个用户，整批原子提交；已有同库事务须为 READ_COMMITTED，由外层决定最终提交。 */
     List<IdentitySaveResult> saveUsers(List<UserSaveModel> models);
-    /** 同来源最多 100 个组织，按父子依赖处理并按输入顺序返回，错误整批回滚。 */
+    /** 同来源最多 100 个组织，允许父级不在本批或尚未到达；按输入顺序返回，非法父链及其他错误整批回滚。 */
     List<IdentitySaveResult> saveOrganizations(List<OrganizationSaveModel> models);
 }

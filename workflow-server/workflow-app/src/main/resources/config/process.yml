@@ -23,6 +23,10 @@ flowable:
 
 # 应用自定义配置，保持此前缀以兼容现有属性绑定和部署变量。
 workflow:
+  # 流程查询中的历史时间转换，须与旧业务表 DATETIME 实际保存的时区一致。
+  process:
+    # 将旧表无时区日期转为时间点时使用的时区，影响查询返回的时间及时间范围判断。
+    storage-zone: ${PROCESS_STORAGE_ZONE:Asia/Shanghai}
   # 收件箱摘要分页；用户可见任务未回填完时自动沿用旧查询，可独立关闭新读取进行回切。
   task-inbox:
     read-model-enabled: ${TASK_INBOX_READ_MODEL_ENABLED:true}
@@ -30,6 +34,18 @@ workflow:
     backfill-enabled: ${TASK_INBOX_BACKFILL_ENABLED:true}
     backfill-initial-delay-ms: ${TASK_INBOX_BACKFILL_INITIAL_DELAY_MS:5000}
     backfill-delay-ms: ${TASK_INBOX_BACKFILL_DELAY_MS:10000}
+  # 到期 SLA 事件的认领和故障恢复参数，供超时提醒、升级等后台处理使用。
+  task-sla:
+    # 每轮认领事件及恢复超时暂停任务的数量上限，限制单轮数据库与业务处理负载。
+    batch-size: ${TASK_SLA_BATCH_SIZE:50}
+    # 事件认领租约的秒数，进程故障后允许过期事件重新认领，运行时至少使用 30 秒。
+    lease-seconds: ${TASK_SLA_LEASE_SECONDS:120}
+    # SLA 扫描的固定延迟，单位毫秒，影响到期事件的处理及时性。
+    poll-delay-ms: ${TASK_SLA_POLL_DELAY_MS:5000}
+  # 无办理人异常的持久化重试调度，重启后继续处理已安排的重试事件。
+  assignee-incident:
+    # 扫描到期重试事件的固定延迟，单位毫秒，具体退避及重试状态由事件记录决定。
+    retry-scan-ms: ${ASSIGNEE_INCIDENT_RETRY_SCAN_MS:30000}
   # 事务消息出站队列，负责提交后投递、失败重试和历史清理。
   outbox:
     # 出站队列扫描的固定延迟，单位毫秒，控制投递延迟和数据库轮询压力。
@@ -50,6 +66,14 @@ workflow:
     retry-max-seconds: ${OUTBOX_RETRY_MAX_SECONDS:3600}
     # 已完成出站事件的保留天数，供排查投递历史后定期清理。
     retention-days: ${OUTBOX_RETENTION_DAYS:7}
+    # 清理已完成事件的 Spring 六段 cron 表达式，按应用时区调度。
+    retention-cron: ${OUTBOX_RETENTION_CRON:0 15 3 * * *}
+    # 每批清理的事件数量上限，每批独立提交以限制事务大小。
+    retention-batch-size: ${OUTBOX_RETENTION_BATCH_SIZE:1000}
+    # 每轮清理的总行数上限，超过后留待下一轮继续处理。
+    retention-max-rows: ${OUTBOX_RETENTION_MAX_ROWS:10000}
+    # 每轮清理的时间预算，单位秒，批次之间检查预算以限制持续占用数据库的时间。
+    retention-max-seconds: ${OUTBOX_RETENTION_MAX_SECONDS:10}
   # 流程动作后台执行设置，控制异步动作领取和执行容量。
   flow-action:
     # 扫描待执行流程动作的固定延迟，单位毫秒。

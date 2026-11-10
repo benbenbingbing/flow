@@ -20,7 +20,7 @@ flowchart LR
 | workflow-port | 公共写入/查询 Port、基础快照、扩展基类、注解、保存结果及异常 |
 | workflow-admin | 来源授权、身份映射、事务写入、组织规则、扩展注册及通用持久化、管理 API |
 | biz-project | 仅写基础用户/组织数据的主动调用示例 ProjectIdentityImporter |
-| workflow-db-migrator | V126 框架迁移、原样保留已执行的 V127、新增 V128 清理历史示例表 |
+| workflow-db-migrator | V126 框架迁移、V127/V128 历史示例表迁移、V129 乱序组织父链支持 |
 | workflow-web | 通用扩展表单和用户、组织管理页接入 |
 
 依赖方向为 biz → workflow-port，admin → workflow-port，由 workflow-app 装配。
@@ -82,7 +82,11 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 仓库内可编译示例：[ProjectIdentityImporter](../../workflow-server/biz-project/src/main/java/com/workflow/biz/project/identity/ProjectIdentityImporter.java)。
 该类只接收 biz 已获取的快照，提供 `saveUser`、`saveOrganization`，不主动取数，默认不提交业务扩展。
 
-组织须先写入，再写引用这些组织的用户。组织批量保存支持父子顺序打乱。
+组织支持单条、跨批次乱序写入。父级尚未到达时保存基础资料及同来源父级外部引用，
+`hierarchyReady=false`，`path/level` 为空，组织树暂时隐藏该节点及其未完整的下级。
+父级到达后，在同一目录事务中自动补齐关联并重算受影响子树的路径、层级，包括已有本地下级。
+父链尚未补齐的组织无法参与要求完整父链的流程人员解析。自引用、跨调用循环父链及非法父子类型会拒绝并回滚本次写入。
+用户引用的组织仍须先存在，组织批量保存允许父级不在本批。
 公共方法包括 `saveUser`、`saveOrganization`、`saveUsers`、`saveOrganizations`；批量必须同来源，每批 1～100 条。
 
 ## 3. 基础模型与身份规则
@@ -101,6 +105,9 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 基础字段是本模型范围内的**完整快照**：可空字段传 null 会清空原值。
 组织引用按当前 sourceCode 解析为外部 ID；null 表示无引用，根组织 parentExternalId 为 null。
 首版不接受跨来源引用。用户仍使用现有单一 org/dept 归属，多组织任职通过职务领域维护。
+
+V129 为来源映射保存 `parent_external_id` 与精确哈希 `parent_source_key`，后者支持后到父级的定点查询，
+避免数据库大小写不敏感的默认排序规则误关联。历史组织默认父链已完整，迁移从已有父子关系回填来源父级引用。
 
 - 新外部用户由框架生成稳定的本地 ID 和 `ext_<本地ID>` 用户名，外部 account 单独保存。
 - 业务修改账号或姓名不会改变本地用户名，现有任务 assignee 和历史身份保持稳定。
@@ -240,20 +247,24 @@ HTTP 不接受 Java 类名、表名或列名；SQL 标识符只来自启动白�
 
 ## 7. 迁移与验证
 
-业务扩展表由业务按需自行建表；已执行的历史迁移保留原文件，通过更高版本清理示例表：
+业务扩展表由业务按需自行建表，框架结构随版本迁移演进。
 
 - `V126__identity_source_write_and_external_accounts.sql`：认证模式、密码可空、目录锁、来源映射及密码字段元数据。
 - `V127__project_identity_extension_examples.sql`：恢复并原样保留已执行的示例表迁移，确保 Flyway 历史校验一致。
 - `V128__remove_project_identity_extension_examples.sql`：删除 V127 创建的三张示例表及表内数据，不影响其他自建扩展表。
+- `V129__allow_out_of_order_organization_provisioning.java` 增加组织父链就绪状态、来源父级引用及查询索引，并回填已有同来源父子引用。
 
 V127 已执行，不能删除或改写；新库依次执行 V127、V128 后最终不保留这三张示例表。
-已升级到 V127 的环境继续执行 V128。未改写 V001，未执行 flyway repair 或 baseline。
+已升级到 V127 的环境依次执行 V128、V129，应用升级前须完成 V129。
 创建后续业务扩展前，重新检查 SQL/Java 迁移的最大版本，使用更高版本号。
 
 新增验证覆盖同键并发创建、重复/乱序/冲突版本、完整快照清空、扩展组保留、整批/审计失败回滚、
 本地扩展乐观锁、来源主权、组织批次排序和环、服务账号及权限拒绝、外部账号密码限制和 biz 转换示例。
 前端模型测试覆盖未建档、修改检测、版本、只读组与字段验证；构建包含管理端和嵌入端。
 集成测试使用 H2 MySQL 模式执行 V126 的兼容 SQL，不等同于已在真实部署 MySQL 上执行迁移验收。
+乱序组织回归使用真实组织服务及 Mapper，覆盖跨调用和跨批次补齐、父子并发写入、待关联父级版本变更、
+整棵子树路径与层级重算、循环与类型拒绝、审计失败回滚、本地状态更新兼容和精确来源匹配。
+V129 测试直接执行实际 Java 迁移，并通过 Flyway 验证空结构升级、历史回填及重复执行。
 
 ### 本轮验证结果
 

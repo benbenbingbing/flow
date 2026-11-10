@@ -52,7 +52,7 @@ public interface SysOrganizationService {
      */
     SysOrganization saveOrg(SysOrganization org);
 
-    /** 来源预配入口，复用组织树规则；调用方已验证来源权限并开启事务。 */
+    /** 来源预配入口，允许服务端标记的父链待关联状态；调用方须持有目录锁、验证来源权限并在同事务补齐下级。 */
     SysOrganization saveProvisionedOrganization(SysOrganization org);
     
     /**

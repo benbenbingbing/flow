@@ -63,19 +63,27 @@ public class SysOrganization {
     private String businessLevelCode;
     
     /**
-     * 父级ID（顶级为0）
+     * 父级ID，顶级为 0，来源父级尚未到达时为空，后续由来源关联处理补齐。
      */
     private String parentId;
+
+    /**
+     * 父链已接到真实根节点时才为 true，供组织树过滤和流程组织链校验使用。
+     * 仅由来源关联 SQL 维护，普通局部更新不得把 DTO 的默认值写回待关联组织。
+     */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private boolean hierarchyReady = true;
     
     /**
      * 层级（0为顶级）
-     * 冗余字段，避免递归计算层级
+     * 冗余字段，避免递归计算层级，父链未完整时为空，补齐后连同下级重新计算。
      */
     private Integer level;
     
     /**
      * 完整路径，如：/0/1/5/10/
-     * 冗余字段，避免递归查询所有父级
+     * 冗余字段，避免递归查询所有父级，父链未完整时为空，避免使用不完整路径查询下级。
      */
     private String path;
     

@@ -111,6 +111,10 @@ public class OrganizationPositionDirectoryAdapter
                         OrganizationPositionErrorCode.ORG_SNAPSHOT_INVALID,
                         "组织父链存在悬空节点");
             }
+            // 待关联的来源组织已保存基础资料，但不能作为完整组织链参与流程找人。
+            if (!current.isHierarchyReady()) {
+                throw directoryFailure(OrganizationPositionErrorCode.ORG_SNAPSHOT_INVALID, "组织父链尚未补齐");
+            }
             if (!visited.add(current.getId())) {
                 throw directoryFailure(
                         OrganizationPositionErrorCode.HIERARCHY_CYCLE,
@@ -161,6 +165,9 @@ public class OrganizationPositionDirectoryAdapter
             throw directoryFailure(
                     OrganizationPositionErrorCode.ORGANIZATION_UNIT_NOT_FOUND,
                     "冻结组织节点已不存在: " + organizationUnitId);
+        }
+        if (!unit.isHierarchyReady()) {
+            throw directoryFailure(OrganizationPositionErrorCode.ORG_SNAPSHOT_INVALID, "组织父链尚未补齐: " + organizationUnitId);
         }
         if (!SysOrganization.Status.ENABLED.getValue().equals(unit.getStatus())) {
             throw directoryFailure(

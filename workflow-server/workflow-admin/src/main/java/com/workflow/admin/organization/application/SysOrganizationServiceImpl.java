@@ -56,7 +56,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         } else {
             allList = orgMapper.selectEnabledList();
         }
-        return buildTree(allList);
+        return buildTree(allList.stream().filter(SysOrganization::isHierarchyReady).toList(), StringUtils.hasText(type));
     }
     
     /**
@@ -155,13 +155,15 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
         
         SysOrganization oldOrg = StringUtils.hasText(org.getId())
                 ? orgMapper.selectById(org.getId()) : null;
+        // 本地管理请求不能自行声明待关联状态，来源待关联节点的本地启停及扩展编辑沿用其当前状态。
+        if (!provisioned) org.setHierarchyReady(oldOrg == null || oldOrg.isHierarchyReady());
         // 创建身份来自可信操作上下文；禁止客户端伪造或通过更新重新指定创建者。
         org.setCreateBy(oldOrg == null ? provisioned ? org.getCreateBy() : com.workflow.admin.security.context.UserContext.getUserId() : oldOrg.getCreateBy());
         protectLeaderProjection(org, oldOrg);
         org.setBusinessLevelCode(normalizeAndValidateBusinessLevel(
                 org.getBusinessLevelCode()));
 
-        if (!StringUtils.hasText(org.getParentId())) {
+        if (!StringUtils.hasText(org.getParentId()) && org.isHierarchyReady()) {
             org.setParentId("0");
         }
         validateHierarchy(org);
@@ -182,7 +184,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             orgMapper.updateById(org);
             log.info("新增组织部门：{} ({})", LogValue.safe(org.getOrgName()), LogValue.safe(org.getOrgCode()));
         } else {
-            if (oldOrg != null && !oldOrg.getPath().equals(org.getPath())) {
+            // 来源结构由目录锁内的关联处理统一更新下级，涵盖祖先尚未到达时的 NULL 路径。
+            if (!provisioned && oldOrg != null && !java.util.Objects.equals(oldOrg.getPath(), org.getPath())) {
                 updateChildrenPath(oldOrg.getPath(), org.getPath());
             }
             orgMapper.updateById(org);
@@ -372,12 +375,18 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      * @param org 待计算的组织部门对象（会被设置 level 和 path）
      */
     private void calcLevelAndPath(SysOrganization org) {
+        // 未完整的父链没有可供业务查询使用的路径，祖先补齐时再连同下级一起计算。
+        if (!org.isHierarchyReady()) {
+            org.setLevel(null);
+            org.setPath(null);
+            return;
+        }
         if ("0".equals(org.getParentId())) {
             org.setLevel(0);
             org.setPath("/0/" + (StringUtils.hasText(org.getId()) ? org.getId() : "temp") + "/");
         } else {
             SysOrganization parent = orgMapper.selectById(org.getParentId());
-            if (parent == null) {
+            if (parent == null || !parent.isHierarchyReady()) {
                 throw new RuntimeException("父级组织部门不存在");
             }
             org.setLevel(parent.getLevel() + 1);
@@ -398,6 +407,7 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
                 SysOrganization.Type.DEPT.getValue()).contains(org.getType())) {
             throw new IllegalArgumentException("类型只能是组织或部门");
         }
+        if (!org.isHierarchyReady() && org.getParentId() == null) return;
         boolean topLevel = "0".equals(org.getParentId());
         if (SysOrganization.Type.DEPT.getValue().equals(org.getType()) && topLevel) {
             throw new IllegalArgumentException("部门必须隶属于一个组织或上级部门");
@@ -444,9 +454,10 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
      * 构建树形结构
      *
      * @param list 平铺的组织部门列表
+     * @param typeFiltered 类型筛选视图缺少真实根节点时沿用原有平铺返回行为
      * @return 树形结构的组织部门列表
      */
-    private List<SysOrganization> buildTree(List<SysOrganization> list) {
+    private List<SysOrganization> buildTree(List<SysOrganization> list, boolean typeFiltered) {
         List<SysOrganization> rootList = list.stream()
                 .filter(o -> "0".equals(o.getParentId()))
                 .collect(Collectors.toList());
@@ -455,7 +466,8 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             buildChildren(root, list);
         }
         
-        return rootList.isEmpty() ? list : rootList;
+        // 类型筛选的部门视图沿用平铺语义；完整树只能返回从真实根可达的节点，不能提升孤立节点。
+        return typeFiltered && rootList.isEmpty() ? list : rootList;
     }
     
     /**

@@ -3,6 +3,7 @@ package com.workflow.admin.identity.provisioning.infrastructure.persistence.mapp
 import com.workflow.contracts.identity.model.*;
 import org.apache.ibatis.annotations.*;
 import java.util.Map;
+import java.util.List;
 
 /** 身份基础写入与来源映射统一使用 Mapper，动态表仅由经过校验的扩展注册清单提供。 */
 @Mapper
@@ -53,6 +54,24 @@ public interface IdentityPersistenceMapper {
 
     @Update("UPDATE sys_identity_source_binding SET external_account = #{v.external_account}, source_version = #{v.source_version}, payload_hash = #{v.payload_hash}, source_enabled = #{v.source_enabled}, updated_at = CURRENT_TIMESTAMP WHERE source_key = #{v.source_key}")
     int updateBinding(@Param("v") Map<String, Object> values);
+
+    /** 父级外部 ID 用于追溯来源快照，哈希引用用于精确匹配后到达的父级，null 表示来源根节点。 */
+    @Update("""
+            UPDATE sys_identity_source_binding SET parent_external_id = #{parentExternalId}, parent_source_key = #{parentSourceKey}
+            WHERE source_key = #{key}
+            """)
+    int updateOrganizationParent(@Param("key") String key, @Param("parentExternalId") String parentExternalId,
+                                 @Param("parentSourceKey") String parentSourceKey);
+
+    /** 只关联活动且未删除的来源子级，哈希查询避免数据库默认排序规则混淆外部 ID 大小写。 */
+    @Select("""
+            SELECT binding.local_id FROM sys_identity_source_binding binding
+            JOIN sys_organization org ON org.id = binding.local_id AND org.deleted = 0
+            WHERE binding.object_type = 'ORGANIZATION' AND binding.binding_status = 'ACTIVE'
+              AND binding.parent_source_key = #{parentSourceKey}
+            ORDER BY binding.local_id
+            """)
+    List<String> selectOrganizationChildren(String parentSourceKey);
 
     @SelectProvider(type = IdentitySqlProvider.class, method = "readExtension")
     Map<String, Object> selectExtension(@Param("table") String table, @Param("owner") String owner, @Param("id") String id);

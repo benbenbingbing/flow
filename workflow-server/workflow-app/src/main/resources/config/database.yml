@@ -30,6 +30,9 @@ spring:
       max-lifetime: ${DB_POOL_MAX_LIFETIME_MS:1800000}
       # 连接借出超过此毫秒数时记录疑似泄漏，帮助定位未释放连接或长事务。
       leak-detection-threshold: ${DB_POOL_LEAK_DETECTION_MS:60000}
+      # 可选连接初始化 SQL，按需取消下一行注释并注入环境变量，供业务池及专用数据库连接建连时执行。
+      # 未声明时由数据库适配器选择默认 SQL，例如 MySQL 使用 SET NAMES 设置字符集及排序规则。
+      # connection-init-sql: ${DB_CONNECTION_INIT_SQL}
   # 版本迁移配置；生产运行进程由部署参数关闭迁移，结构升级交给独立迁移进程。
   flyway:
     # 是否在应用启动时执行 Flyway；生产服务进程必须覆盖为 false。
@@ -92,6 +95,9 @@ workflow:
   database:
     # 数据库厂商标识；auto 根据 JDBC 地址选择适配器。
     vendor: ${WORKFLOW_DATABASE_VENDOR:auto}
+    # 可选 Flowable 语法族覆盖值，例如 mysql、postgres、oracle 或测试用 h2。
+    # 未声明时根据 JDBC 地址和数据库厂商选择，按需取消下一行注释并注入环境变量。
+    # flowable-type: ${WORKFLOW_DATABASE_FLOWABLE_TYPE}
   # 动态实体结构发布策略，与应用启动时的 Flyway 版本迁移分开管理。
   schema-publisher:
     # direct 直接执行 DDL，queue 将结构变更交给独立工作进程处理。

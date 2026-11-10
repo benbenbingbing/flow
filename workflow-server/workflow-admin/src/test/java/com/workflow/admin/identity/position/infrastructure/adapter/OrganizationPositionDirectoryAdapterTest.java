@@ -81,6 +81,22 @@ class OrganizationPositionDirectoryAdapterTest {
                 inactive.errorCode());
     }
 
+    /** 基础组织已落库但祖先未齐时，不能把空 parentId 当根节点生成流程快照。 */
+    @Test
+    void pendingSourceOrganizationCannotParticipateInProcessDirectoryResolution() {
+        SysOrganization pending = unit("pending", null, "org", "0");
+        pending.setHierarchyReady(false);
+        when(organizationMapper.selectById("pending")).thenReturn(pending);
+        when(userMapper.selectById("user-1")).thenReturn(enabledUser("user-1", "alice", "pending", null));
+
+        var snapshot = assertThrows(OrganizationPositionDirectoryException.class,
+                () -> adapter.captureInitiatorSnapshot("user-1"));
+        assertEquals(OrganizationPositionErrorCode.ORG_SNAPSHOT_INVALID, snapshot.errorCode());
+        var lookup = assertThrows(OrganizationPositionDirectoryException.class,
+                () -> adapter.requireActiveOrganizationUnit("pending"));
+        assertEquals(OrganizationPositionErrorCode.ORG_SNAPSHOT_INVALID, lookup.errorCode());
+    }
+
     private void stubChain(int size) {
         Map<String, SysOrganization> units = new HashMap<>();
         for (int index = 0; index < size; index++) {

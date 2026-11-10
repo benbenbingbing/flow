@@ -1,4 +1,4 @@
-# 运行基础配置：Web 服务、线程池、停机与初始化角色；保持原属性路径和部署变量不变。
+# 运行基础配置，涵盖 Web 服务、线程池、停机、初始化角色和 Excel 后台任务。
 
 # Web 服务入口，控制监听端口、请求容量和停机行为。
 server:
@@ -94,6 +94,23 @@ workflow:
   scheduling:
     # 是否启用 Spring 业务调度；bootstrap 作业应关闭，不替代 Flowable 异步执行器开关。
     enabled: ${WORKFLOW_SCHEDULING_ENABLED:true}
+
+# 实体 Excel 任务的清理与密钥配置，文件实际保存到 storage.yml 选择的后端。
+entity:
+  excel:
+    # 清理过期任务文件和行明细的固定延迟，单位毫秒，任务文件保留期由代码固定为 24 小时。
+    cleanup-delay-ms: ${ENTITY_EXCEL_CLEANUP_DELAY_MS:3600000}
+    # 可选操作签名密钥，签名上下文有效期由代码固定为 15 分钟。
+    # 未声明时依次使用 ui.release-resolution.secret、jwt.secret，按需取消下一行注释并注入环境变量。
+    # action-secret: ${ENTITY_EXCEL_ACTION_SECRET}
+    # 可选任务文件加密密钥，未声明时依次使用 action-secret、ui.release-resolution.secret、jwt.secret。
+    # 同一环境所有实例须使用一致密钥，任务文件保留期内须保持原密钥以便解密已有文件。
+    # file-secret: ${ENTITY_EXCEL_FILE_SECRET}
+
+# 历史 Excel 密钥回退入口，沿用此键的部署可按下面的示例注入，供上述两项密钥选择使用。
+# ui:
+#   release-resolution:
+#     secret: ${UI_RELEASE_RESOLUTION_SECRET}
 
 # 业务配置管理入口，供配置包导入导出等功能使用。
 config:

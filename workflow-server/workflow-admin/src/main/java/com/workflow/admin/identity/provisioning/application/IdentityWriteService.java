@@ -34,6 +34,7 @@ public class IdentityWriteService implements IdentityWritePort {
     private final SysUserService users;
     private final SysUserMapper userMapper;
     private final SysOrganizationService organizations;
+    private final IdentityOrganizationHierarchyService organizationHierarchy;
     private final SystemAuditPort audit;
 
     @Override
@@ -98,12 +99,12 @@ public class IdentityWriteService implements IdentityWritePort {
         if (previous != null && persistence.findObject(IdentityObjectType.ORGANIZATION, id) == null) {
             fail("SOURCE_OBJECT_RETIRED", "key", "映射的本地组织已删除或缺失");
         }
-        String parent = store.resolveOrganization(model.key().sourceCode(), base.parentExternalId());
         boolean allowed = previous == null || IdentitySourceStore.flag(previous.get("local_allowed"));
         SysOrganization org = new SysOrganization();
         org.setId(id); org.setOrgCode("ext_" + id); org.setOrgName(base.name());
         org.setType(base.type() == OrganizationUnitType.ORGANIZATION ? "org" : "dept");
-        org.setParentId(parent == null ? "0" : parent); org.setBusinessLevelCode(base.businessLevelCode());
+        organizationHierarchy.prepare(org, model.key(), base.parentExternalId());
+        org.setBusinessLevelCode(base.businessLevelCode());
         org.setPhone(base.phone()); org.setEmail(base.email()); org.setAddress(base.address());
         org.setDescription(base.description()); org.setSortOrder(base.sortOrder());
         org.setStatus(base.enabled() && allowed ? "0" : "1"); org.setCreateBy(writer.actorId());
@@ -111,6 +112,7 @@ public class IdentityWriteService implements IdentityWritePort {
         persistence.clearableOrganizationFields(id, base);
         extensions.saveSource(IdentityObjectType.ORGANIZATION, id, groups);
         saveBinding(IdentityObjectType.ORGANIZATION, model.key(), model.sourceVersion(), digest, id, base.externalCode(), base.enabled(), previous);
+        organizationHierarchy.reconcile(model.key(), base.parentExternalId(), org);
         record(writer.actorId(), IdentityObjectType.ORGANIZATION, id, model.key());
         return result(IdentityObjectType.ORGANIZATION, model.key(), id, null,
                 previous == null ? IdentitySaveOutcome.CREATED : IdentitySaveOutcome.UPDATED, model.sourceVersion());
