@@ -2,6 +2,7 @@ package com.workflow.admin.organization.application;
 
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
+import com.workflow.core.result.PageResult;
 
 import java.util.List;
 
@@ -21,6 +22,24 @@ public interface SysOrganizationService {
      * @return 树形结构的组织部门列表
      */
     List<SysOrganization> getOrgTree(String type);
+
+    /**
+     * 分页浏览直属下级；keyword 非空时搜索当前节点及其后代，包含启用和禁用节点。
+     *
+     * @param pageNum 页码，从 1 开始
+     * @param pageSize 每页数量，范围 1 到 100
+     * @param parentId 浏览或搜索范围，0 表示全部组织
+     * @param keyword 名称或编码关键词，空白表示浏览直属下级
+     * @param type org/dept 或空，筛选结果类型
+     * @param excludeId 选择上级时排除本节点及整个子树，可空
+     * @return 带完整名称路径及按需展开标记的分页结果
+     * @throws IllegalArgumentException 参数非法或范围节点不存在、父链未完整
+     */
+    PageResult<SysOrganization> getManagementPage(
+            int pageNum, int pageSize, String parentId, String keyword, String type, String excludeId);
+
+    /** 返回从真实根到目标节点的有序路径，用于面包屑和懒加载树定位；无有效父链时拒绝定位。 */
+    List<SysOrganization> getAncestors(String id);
     
     /**
      * 查询所有启用中的组织部门（平铺列表）

@@ -323,7 +323,8 @@ async function initialize() {
   clearPrecheck()
   const [positions, organizations] = await Promise.all([
     getEnabledPositions(),
-    getOrgTree()
+    // 组织管理入口已锁定目标节点，无需为任职弹窗重新读取整个组织目录。
+    props.lockedUnit ? Promise.resolve([]) : getOrgTree()
   ])
   positionOptions.value = Array.isArray(positions)
     ? positions

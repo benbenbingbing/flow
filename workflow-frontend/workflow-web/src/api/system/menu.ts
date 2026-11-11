@@ -5,6 +5,27 @@ export const getMenuTree = () => {
   return request.get('/system/menu/tree')
 }
 
+/** 管理页按直属下级分页，关键词按全菜单名称、路由和权限码搜索。 */
+export const getMenuManagementPage = (params: {
+  parentId?: string
+  pageNum?: number
+  pageSize?: number
+  keyword?: string
+  type?: string
+  excludeId?: string
+  parentCandidates?: boolean
+}) => request.get('/system/menu/page', { params })
+
+/** 读取真实父链用于面包屑、深层定位及上级回显。 */
+export const getMenuAncestors = (id: string) => {
+  return request.get(`/system/menu/${encodeURIComponent(id)}/ancestors`)
+}
+
+/** 排序只提交目标数值，避免列表快照覆盖菜单元数据。 */
+export const updateMenuSortValue = (id: string, sort: number) => {
+  return request.post(`/system/menu/${encodeURIComponent(id)}/sort`, { sort })
+}
+
 // 分页获取指定父菜单下的子菜单
 export const getMenuChildren = (parentId: string, pageNum = 1, pageSize = 10) => {
   return request.get('/system/menu/children', { params: { parentId, pageNum, pageSize } })

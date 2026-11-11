@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-11-04 脚本同步说明：本目录七种数据库的空库初始化脚本已对齐 V128，均包含 200 张平台及 Flowable 表、2,793 个字段；在历史导入及档案查看权限合并的基础上，补齐身份来源绑定、目录写入锁、用户认证策略及密码可空性，不再预置 V128 已移除的项目身份扩展示例表。同步范围与验证结果见 [初始化脚本说明](README.md)。下文的表数、字段数和未补录章节仍是历史核对记录，不能作为当前建库结构清单；当前结构以对应数据库的 `.sql` 文件为准。
+2026-11-10 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V129，均包含 200 张平台及 Flowable 表、2,796 个字段。此次补齐组织父链就绪状态、来源父级外部引用及待关联子级索引，相关表的字段与规则见第 9 章。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的表数、字段数仍是历史核对记录，当前建库结构以对应数据库的 `.sql` 文件为准。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -121,6 +121,8 @@
   - [9.11 sys_role_menu 角色菜单权限关联表](#911-sys_role_menu-角色菜单权限关联表)
   - [9.12 auth_login_throttle 登录失败限流表](#912-auth_login_throttle-登录失败限流表)
   - [9.13 auth_refresh_session 浏览器刷新会话表](#913-auth_refresh_session-浏览器刷新会话表)
+  - [9.14 sys_identity_source_binding 身份来源映射表](#914-sys_identity_source_binding-身份来源映射表)
+  - [9.15 sys_identity_write_lock 身份目录事务锁表](#915-sys_identity_write_lock-身份目录事务锁表)
 - [10. 集成应用安全底座](#10-集成应用安全底座)
   - [10.1 integration_application 外部集成应用表](#101-integration_application-外部集成应用表)
   - [10.2 integration_application_credential 集成应用凭证表](#102-integration_application_credential-集成应用凭证表)
@@ -4248,7 +4250,7 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 维护组织树、类型、业务层级和启用状态，作为用户归属及职务任职的组织单元。
 
-物理属性：InnoDB；字符集 utf8mb4；表排序规则 utf8mb4_unicode_ci。现存字段 19 个。
+物理属性为 InnoDB，字符集 utf8mb4，表排序规则 utf8mb4_unicode_ci。V129 后字段 21 个。
 
 #### 9.1.2 字段设计
 
@@ -4259,9 +4261,9 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 | `org_name` | 组织名称 | `varchar(100)` | 否 | 无 | 组织名称。 | 现存 |
 | `type` | 类型 | `varchar(20)` | 否 | 无 | 类型：org-组织，dept-部门。 | 现存 |
 | `business_level_code` | 稳定业务层级编码 | `varchar(100)` | 是 | `NULL` | 稳定业务层级编码，来源于 organization_business_level 字典。 | 现存 |
-| `parent_id` | 父级ID | `varchar(64)` | 是 | `'0'` | 父级ID（顶级为0）。 | 现存 |
-| `level` | 层级 | `int` | 是 | `'0'` | 层级（0为顶级）。 | 现存 |
-| `path` | 完整路径 | `varchar(500)` | 是 | `'/'` | 完整路径，如：/0/1/5/10/。 | 现存 |
+| `parent_id` | 父级ID | `varchar(64)` | 是 | `'0'` | 顶级为 0，来源父级尚未到达时为 NULL，补齐后关联本地父级。 | 现存 |
+| `level` | 层级 | `int` | 是 | `'0'` | 0 为顶级，来源父链未完整时为 NULL，补齐后与下级一起重算。 | 现存 |
+| `path` | 完整路径 | `varchar(500)` | 是 | `'/'` | 完整路径如 /0/1/5/10/，来源父链未完整时为 NULL。 | 现存 |
 | `sort_order` | 排序号 | `int` | 是 | `'0'` | 排序号。 | 现存 |
 | `leader_id` | 负责人ID | `varchar(64)` | 是 | `NULL` | 负责人ID。 | 现存 |
 | `leader_name` | 负责人名称 | `varchar(100)` | 是 | `NULL` | 负责人名称（冗余）。 | 现存 |
@@ -4273,6 +4275,8 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 | `create_time` | 创建时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 创建时间。 | 现存 |
 | `update_time` | 更新时间 | `datetime` | 是 | `CURRENT_TIMESTAMP` | 更新时间；更新时自动设置为 CURRENT_TIMESTAMP。 | 现存 |
 | `deleted` | 逻辑删除标记 | `int` | 是 | `'0'` | 是否删除：0-未删除 1-已删除。 | 现存 |
+| `create_by` | 创建人用户 ID | `varchar(64)` | 是 | `NULL` | 用于流程关系路径解析，历史创建人不可推断时保留 NULL。 | V119 新增 |
+| `hierarchy_ready` | 父链完整标志 | `smallint` | 否 | `1` | 1 表示已接到真实根节点，0 表示等待祖先补齐，供组织树过滤及流程组织链校验使用。 | V129 新增 |
 
 #### 9.1.3 索引与关联
 
@@ -4295,9 +4299,13 @@ active_slot tinyint GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'ACTIVE'
 
 business_level_code 引用业务层级字典，parent_id 和路径字段维护组织层级。
 
+来源组织允许单条及跨批次乱序到达，缺失父级时保存来源引用，`hierarchy_ready=0`，路径和层级为空。
+父链未完整的节点及其子树在组织树中隐藏，祖先补齐后在同一目录事务中自动关联并重算派生字段。
+历史组织升级时默认 `hierarchy_ready=1`，来源引用根据已有同来源父子关系回填。
+
 #### 9.1.5 来源与迁移
 
-结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V069__organization_position_model.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)。
+结构依据见 [V001 初始化](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V069 组织职务模型](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V069__organization_position_model.sql)、[V119 用户关系路径](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V119__entity_user_relation_path.sql) 和 [V129 乱序组织父链支持](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V129__allow_out_of_order_organization_provisioning.java)。
 
 实现定位：[SysOrganizationMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/infrastructure/persistence/mapper/SysOrganizationMapper.java)、[BusinessMigrationPreflight.java](../../workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/BusinessMigrationPreflight.java)、[SysOrganizationService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/organization/application/SysOrganizationService.java)。
 
@@ -4866,6 +4874,61 @@ password 保存本地口令哈希，外部账号可为空；authentication_mode 
 结构依据：[V037__refresh_session.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V037__refresh_session.sql)、[V040__align_refresh_session_user_collation.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V040__align_refresh_session_user_collation.sql)。
 
 实现定位：[AuthRefreshSessionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/auth/infrastructure/persistence/mapper/AuthRefreshSessionMapper.java)、[SysUserService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/identity/user/application/SysUserService.java)。
+
+### 9.14 sys_identity_source_binding 身份来源映射表
+
+#### 9.14.1 业务说明
+
+记录来源用户和组织到本地身份的稳定映射、写入版本、启用许可及待关联父级。V129 后字段 15 个。
+
+#### 9.14.2 字段设计
+
+| 字段名 | 数据类型 | 允许空 | 数据库默认值 | 业务含义与约束 |
+| --- | --- | --- | --- | --- |
+| `source_key` | `char(64)` | 否 | 无 | 对象类型、来源编码及外部 ID 的 SHA-256 主键，按精确 UTF-8 值计算以保留大小写语义。 |
+| `source_code` | `varchar(64)` | 否 | 无 | 部署时登记的来源编码，供来源配置及权限规则定位使用。 |
+| `object_type` | `varchar(20)` | 否 | 无 | USER 或 ORGANIZATION，用于隔离两类对象的来源键及本地映射。 |
+| `external_id` | `varchar(255)` | 否 | 无 | 来源系统稳定对象 ID，供追溯来源身份使用。 |
+| `local_id` | `varchar(64)` | 否 | 无 | 对应 sys_user 或 sys_organization 的本地主键，同类型本地对象只能绑定一个来源。 |
+| `external_account` | `varchar(255)` | 是 | `NULL` | 固定来源账号或组织编码。分别原样用作 username（最多 50 字符）及 orgCode（最多 100 字符），应用在创建和更新时均要求非空，后续写入据此校验编码不可变。 |
+| `source_version` | `bigint` | 是 | `NULL` | VERSIONED 模式保存非负来源版本，SERIAL 模式保留 NULL。 |
+| `payload_hash` | `char(64)` | 否 | 无 | 规范化基础资料及本次携带扩展的 SHA-256，供重复写入和版本冲突判断使用。 |
+| `source_enabled` | `tinyint` | 否 | `1` | 来源启用标志，与 local_allowed 共同决定本地最终启用状态。 |
+| `local_allowed` | `tinyint` | 否 | `1` | 本地启用许可，来源更新时保留管理员本地停用决定。 |
+| `binding_status` | `varchar(16)` | 否 | `'ACTIVE'` | ACTIVE 或 RETIRED，退休身份再次来源写入时拒绝创建。 |
+| `created_at` | `datetime` | 否 | `CURRENT_TIMESTAMP` | 记录首次来源绑定时间，供审计及问题追溯使用。 |
+| `updated_at` | `datetime` | 否 | `CURRENT_TIMESTAMP` | 最近来源写入或本地许可变更时间，由应用维护。 |
+| `parent_external_id` | `varchar(255)` | 是 | `NULL` | V129 新增，同来源父组织外部 ID，根节点为 NULL，供追溯及后到父级关联使用。 |
+| `parent_source_key` | `varchar(64)` | 是 | `NULL` | V129 新增，同来源父组织的精确 SHA-256 来源键，供索引定位待关联子级使用。 |
+
+#### 9.14.3 索引与关联
+
+- `source_key` 为主键。
+- `uk_identity_source_local` 唯一索引覆盖 `(object_type, local_id)`。
+- `idx_identity_parent` 普通索引覆盖 `parent_source_key`，用于父级到达后的子级查询。
+- `parent_source_key` 允许引用尚未到达的父级，因此按业务规则关联来源映射。
+
+#### 9.14.4 业务规则
+
+根组织和用户映射的父级引用均为 NULL。来源父级引用与组织派生结构在同一目录事务中提交。
+历史回填只匹配来源编码精确一致的组织父子关系，已有父级引用保留原值。
+来源版本、内容摘要及来源键的具体规则见 [身份写入设计](../architecture/identity-write-and-extension-design.md)。
+
+来源用户的 `username` 原样使用 `account`，来源组织的 `orgCode` 原样使用 `externalCode`。
+编码在各自本地表中全局唯一，逻辑删除记录继续占用编码；新对象遇到重复值返回 `IDENTITY_CODE_CONFLICT`。
+已有映射的来源编码变更返回 `SOURCE_CODE_IMMUTABLE`，创建和更新统一执行非空及长度校验。
+此规则由应用写入校验实施，表结构、唯一索引和初始化种子数据沿用 V129。
+
+#### 9.14.5 来源与迁移
+
+结构依据见 [V126 身份来源写入](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql) 和 [V129 乱序组织父链支持](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V129__allow_out_of_order_organization_provisioning.java)。
+
+### 9.15 sys_identity_write_lock 身份目录事务锁表
+
+表内包含一个非空 `varchar(64)` 主键字段 `lock_key`，初始化固定值 `directory`。
+用户与组织来源写入及本地管理通过该行持有事务锁，用于串行化首次来源绑定、组织父链校验及派生结构更新。
+
+结构依据见 [V126 身份来源写入](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V126__identity_source_write_and_external_accounts.sql)。
 
 ## 10. 集成应用安全底座
 

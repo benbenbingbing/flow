@@ -20,6 +20,8 @@
     "test:task-handover:browser": "node scripts/task-handover-browser-test.mjs",
     "test:auth-redirect": "node src/shared/__tests__/login-redirect.spec.js && node src/shared/__tests__/auth-redirect-adapters.spec.js && node src/router/__tests__/password-reset.spec.js && node src/views/__tests__/loginRedirect.spec.js && node src/views/__tests__/changePassword.spec.js",
     "test:group": "node src/views/system/__tests__/groupManagement.spec.js",
+    "test:organization:browser": "node scripts/organization-pagination-browser-test.mjs",
+    "test:menu:browser": "node scripts/menu-pagination-browser-test.mjs",
     "test:config-migration": "node src/shared/__tests__/config-migration-pagination.spec.js && node src/views/system/__tests__/configMigrationPagination.spec.js && node src/shared/__tests__/config-migration-upload.spec.js",
     "test:action-rules": "node src/shared/__tests__/action-rules.spec.js",
     "test:workspace-tabs": "node src/shared/__tests__/workspace-tabs.spec.js",

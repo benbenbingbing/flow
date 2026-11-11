@@ -11,10 +11,15 @@ workflow:
     # 接入时使用下面的来源声明替换 sources 空映射，来源编码须与 ExternalIdentityKey.sourceCode 一致。
     # sources:
     #   project-directory:
-    #     # 调用用户须具备此权限，业务可改用已在产品权限体系中授予的独立权限。
+    #     # 默认校验来源写权限，可信来源可设为 false，操作人有效性和扩展组权限仍独立校验。
+    #     permission-check-enabled: true
+    #     # 开启来源写权限校验时必填，关闭后可省略，业务可使用产品权限体系中已授予的独立权限。
     #     write-permission: system:user:manage
-    #     # 无登录上下文时使用的有效本地服务用户 ID，该用户仍须具备来源及扩展的写权限。
+    #     # 无登录上下文时使用的有效本地服务用户 ID，用于账号校验和审计归属。
     #     service-user-id: ${PROJECT_DIRECTORY_SERVICE_USER_ID}
+    #     # 可选默认角色编码，仅在该来源新建用户时分配，须对应已存在且启用的角色。
+    #     # 省略或留空表示不分配，配置无效会回滚本次创建，后续同步保留用户已有角色。
+    #     default-role-code: ${PROJECT_DIRECTORY_DEFAULT_ROLE_CODE:}
     #     # VERSIONED 要求 sourceVersion 可靠递增，SERIAL 要求版本为空且由 biz 保证调用顺序。
     #     version-mode: VERSIONED
     #     # 允许来源写入的 SOURCE 扩展编码清单，空列表表示只提交基础用户、组织数据。

@@ -39,6 +39,26 @@ public class SysMenuController {
         return Result.success(menuService.getMenuTree());
     }
 
+    /** 管理页及上级选择器的有界分页，关键词覆盖全部菜单的名称、路由和权限码。 */
+    @GetMapping("/page")
+    public Result<PageResult<SysMenu>> page(
+            @RequestParam(defaultValue = "0") String parentId,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String excludeId,
+            @RequestParam(defaultValue = "false") boolean parentCandidates) {
+        return Result.success(menuService.getManagementPage(parentId, pageNum, pageSize,
+                keyword, type, excludeId, parentCandidates));
+    }
+
+    /** 返回真实有序父链，支持定位尚未展开或未翻页加载的菜单。 */
+    @GetMapping("/{id}/ancestors")
+    public Result<List<SysMenu>> ancestors(@PathVariable String id) {
+        return Result.success(menuService.getAncestors(id));
+    }
+
     /**
      * 分页查询指定父菜单下的直接子菜单
      *
@@ -175,6 +195,14 @@ public class SysMenuController {
     @RequiresPermission("system:menu:manage")
     public Result<Void> updateSort(@RequestBody List<String> menuIds) {
         menuService.updateSort(menuIds);
+        return Result.success();
+    }
+
+    /** 单行排序只更新排序值，避免分页行的旧元数据覆盖并发编辑或改变其上级。 */
+    @PostMapping("/{id}/sort")
+    @RequiresPermission("system:menu:manage")
+    public Result<Void> updateSortValue(@PathVariable String id, @RequestBody Map<String, Integer> body) {
+        menuService.updateSortValue(id, body.get("sort"));
         return Result.success();
     }
     

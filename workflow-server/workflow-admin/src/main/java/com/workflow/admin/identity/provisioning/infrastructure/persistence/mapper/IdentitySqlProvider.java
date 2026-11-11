@@ -9,6 +9,13 @@ public final class IdentitySqlProvider {
         String table = args.get("type") == IdentityObjectType.USER ? "sys_user" : "sys_organization";
         return "SELECT * FROM " + table + " WHERE id = #{id} AND deleted = 0";
     }
+    /** 表名和列名仅由对象类型决定，编码参数绑定并沿用目标列的排序规则。 */
+    public String countIdentityCode(Map<String, Object> args) {
+        boolean user = args.get("type") == IdentityObjectType.USER;
+        String table = user ? "sys_user" : "sys_organization";
+        String column = user ? "username" : "org_code";
+        return "SELECT COUNT(*) FROM " + table + " WHERE " + column + " = #{code}";
+    }
     public String readExtension(Map<String, Object> args) {
         validate(args);
         return "SELECT * FROM " + args.get("table") + " WHERE " + args.get("owner") + " = #{id}";

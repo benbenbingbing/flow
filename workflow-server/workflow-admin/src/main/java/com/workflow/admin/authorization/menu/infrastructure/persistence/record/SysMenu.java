@@ -146,6 +146,16 @@ public class SysMenu {
     @TableField(exist = false)
     private Boolean hasChildren;
 
+    /** 管理页的完整名称路径，用于搜索定位及上级选择回显，区别于路由地址 path。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String displayPath;
+
+    /** 选择上级时标记当前节点及其后代为不可选，防止搜索结果绕过树形导航产生循环。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private boolean selectionDisabled;
+
     // Getter 和 Setter 方法
     /**
      * 读取ID；查询结果供调用方展示或继续处理。

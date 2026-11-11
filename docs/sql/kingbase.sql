@@ -3,6 +3,7 @@
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
+-- 2026-11-10 同步至 V129，补齐组织父链就绪状态、来源父级外部引用及待关联子级索引。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空 schema。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3074,6 +3075,7 @@ CREATE TABLE "sys_organization" (
   "update_time" timestamp DEFAULT CURRENT_TIMESTAMP,
   "deleted" integer DEFAULT '0',
   "create_by" varchar(64),
+  "hierarchy_ready" smallint DEFAULT 1 NOT NULL,
   CONSTRAINT "pk_sys_organization_sys_organization" PRIMARY KEY ("id")
 );
 
@@ -3522,6 +3524,7 @@ CREATE TABLE "entity_form_current_default" (
 );
 COMMENT ON COLUMN "ui_extension_definition"."scope_entity_ids_document" IS '接口适用实体ID数组JSON；GLOBAL不限定实体，ENTITY覆盖所选实体内相应上下文的全部页面';
 COMMENT ON COLUMN "sys_organization"."create_by" IS '创建人用户ID，用于流程关系路径解析；历史创建人不可推断时保留NULL';
+COMMENT ON COLUMN "sys_organization"."hierarchy_ready" IS '父链完整标志，1 表示已接到真实根节点，0 表示等待祖先补齐，供组织树过滤及流程组织链校验使用';
 COMMENT ON TABLE "entity_form_current_default" IS '实体唯一当前默认表单入口，草稿保存不改变此选择。';
 COMMENT ON COLUMN "entity_form_current_default"."entity_id" IS '实体唯一键，确保每个实体只有一个线上默认入口。';
 COMMENT ON COLUMN "entity_form_current_default"."form_id" IS '当前默认的稳定表单 ID，运行配置从 ENTITY_FORM_PUBLISHED 读取。';
@@ -3851,9 +3854,12 @@ CREATE TABLE "sys_identity_source_binding" (
   "binding_status" varchar(16) NOT NULL DEFAULT 'ACTIVE',
   "created_at" timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "updated_at" timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "parent_external_id" varchar(255),
+  "parent_source_key" varchar(64),
   PRIMARY KEY ("source_key")
 );
 CREATE UNIQUE INDEX "uk_identity_source_local" ON "sys_identity_source_binding" ("object_type", "local_id");
+CREATE INDEX "idx_identity_parent" ON "sys_identity_source_binding" ("parent_source_key");
 COMMENT ON TABLE "sys_identity_source_binding" IS '外部数据对象到产品身份的映射；与 Embed 登录主体绑定分别维护';
 COMMENT ON COLUMN "sys_identity_source_binding"."source_key" IS '对象类型、来源代码和外部 ID 的 SHA-256 主键；按精确 UTF-8 值生成以保留大小写语义';
 COMMENT ON COLUMN "sys_identity_source_binding"."source_code" IS '已授权的身份来源代码；与外部 ID 共同定位来源对象';
@@ -3868,6 +3874,8 @@ COMMENT ON COLUMN "sys_identity_source_binding"."local_allowed" IS '本地启用
 COMMENT ON COLUMN "sys_identity_source_binding"."binding_status" IS 'ACTIVE 或 RETIRED；退休后禁止来源写入重新创建该对象';
 COMMENT ON COLUMN "sys_identity_source_binding"."created_at" IS '来源绑定创建时间，用于审计首次接入';
 COMMENT ON COLUMN "sys_identity_source_binding"."updated_at" IS '最近来源写入或本地许可变更时间；由应用在更新时维护';
+COMMENT ON COLUMN "sys_identity_source_binding"."parent_external_id" IS '来源组织快照声明的同来源父级外部 ID，根节点为 NULL，供追溯及后到父级关联使用';
+COMMENT ON COLUMN "sys_identity_source_binding"."parent_source_key" IS '同来源父组织的精确 SHA-256 来源键，供父级到达后按索引定位待关联子级，根节点为 NULL';
 
 CREATE TABLE "workflow_schema_change" (
   "id" varchar(36) NOT NULL,
@@ -6892,9 +6900,9 @@ COMMENT ON COLUMN "sys_organization"."org_code" IS '组织编码（唯一）。'
 COMMENT ON COLUMN "sys_organization"."org_name" IS '组织名称。';
 COMMENT ON COLUMN "sys_organization"."type" IS '类型：org-组织，dept-部门。';
 COMMENT ON COLUMN "sys_organization"."business_level_code" IS '稳定业务层级编码，来源于 organization_business_level 字典。';
-COMMENT ON COLUMN "sys_organization"."parent_id" IS '父级ID（顶级为0）。';
-COMMENT ON COLUMN "sys_organization"."level" IS '层级（0为顶级）。';
-COMMENT ON COLUMN "sys_organization"."path" IS '完整路径，如：/0/1/5/10/。';
+COMMENT ON COLUMN "sys_organization"."parent_id" IS '父级ID，顶级为0，来源父级尚未到达时为NULL，补齐后关联本地父级';
+COMMENT ON COLUMN "sys_organization"."level" IS '层级，0为顶级，来源父链未完整时为NULL，补齐后与下级一起重算';
+COMMENT ON COLUMN "sys_organization"."path" IS '完整路径，如/0/1/5/10/，来源父链未完整时为NULL，补齐后与下级一起重算';
 COMMENT ON COLUMN "sys_organization"."sort_order" IS '排序号。';
 COMMENT ON COLUMN "sys_organization"."leader_id" IS '负责人ID。';
 COMMENT ON COLUMN "sys_organization"."leader_name" IS '负责人名称（冗余）。';

@@ -136,6 +136,36 @@ class SysMenuControllerTest {
     }
 
     @Test
+    void managementPageBindsSearchTypeAndParentPickerArguments() throws Exception {
+        testMenu.setDisplayPath("系统管理 / 测试菜单");
+        when(menuService.getManagementPage("parent", 2, 50, "test", "C", "excluded", true))
+                .thenReturn(new PageResult<>(List.of(testMenu), 51, 2, 50));
+        mockMvc.perform(get("/api/system/menu/page").param("parentId", "parent")
+                        .param("pageNum", "2").param("pageSize", "50").param("keyword", "test")
+                        .param("type", "C").param("excludeId", "excluded").param("parentCandidates", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.total").value(51))
+                .andExpect(jsonPath("$.data.records[0].displayPath").value("系统管理 / 测试菜单"));
+    }
+
+    @Test
+    void ancestorsReturnOrderedPath() throws Exception {
+        when(menuService.getAncestors("test-id-1")).thenReturn(List.of(testMenu));
+        mockMvc.perform(get("/api/system/menu/test-id-1/ancestors"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value("test-id-1"));
+    }
+
+    @Test
+    void singleRowSortSendsOnlyTheRequestedValue() throws Exception {
+        mockMvc.perform(post("/api/system/menu/test-id-1/sort")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"sort\":17}"))
+                .andExpect(status().isOk());
+        verify(menuService).updateSortValue("test-id-1", 17);
+        verify(menuService, never()).saveMenu(any());
+    }
+
+    @Test
     @DisplayName("测试查询指定节点的完整子树接口")
     void testSubtree() throws Exception {
         SysMenu childMenu = new SysMenu();

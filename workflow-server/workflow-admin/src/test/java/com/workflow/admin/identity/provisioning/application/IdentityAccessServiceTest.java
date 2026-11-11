@@ -7,6 +7,10 @@ import com.workflow.admin.security.context.UserContext;
 import com.workflow.contracts.identity.error.IdentityWriteException;
 import com.workflow.contracts.identity.model.*;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import com.workflow.admin.identity.provisioning.infrastructure.persistence.mapper.IdentityPersistenceMapper;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import org.mybatis.spring.SqlSessionTemplate;
@@ -60,6 +64,79 @@ class IdentityAccessServiceTest {
                     () -> access.requireSource(new ExternalIdentityKey("erp", "E1"))).code());
         }
     }
+
+    /** 历史配置未声明开关时继续要求来源写权限，空值不能隐式开启免权限模式。 */
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = "  ")
+    void sourcePermissionCheckRemainsEnabledByDefault(String permission) {
+        var source = properties.getSources().get("erp");
+        assertTrue(source.isPermissionCheckEnabled());
+        source.setWritePermission(permission);
+        assertEquals("SOURCE_NOT_ALLOWED", assertThrows(IdentityWriteException.class,
+                () -> access.requireSource(new ExternalIdentityKey("erp", "E1"))).code());
+    }
+
+    /** 显式关闭后来源权限可省略，也不因保留旧权限码而继续查询权限集合。 */
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"directory:write", "  "})
+    void disabledSourcePermissionCheckAcceptsValidServiceAccount(String permission) {
+        var source = properties.getSources().get("erp");
+        source.setPermissionCheckEnabled(false);
+        source.setWritePermission(permission);
+        try (var permissions = mockStatic(PermissionUtil.class)) {
+            var writer = access.requireSource(new ExternalIdentityKey("erp", "E1"));
+            assertEquals("svc", writer.actorId());
+            assertSame(source, writer.source());
+            permissions.verifyNoInteractions();
+        }
+    }
+
+    /** 有登录上下文时继续使用当前操作者，供后续基础资料及审计归属使用。 */
+    @Test
+    void disabledSourcePermissionCheckKeepsLoggedInActor() {
+        var source = properties.getSources().get("erp");
+        source.setPermissionCheckEnabled(false);
+        source.setWritePermission(null);
+        source.setServiceUserId(null);
+        UserContext.setCurrentUser("target", "target-user");
+        try (var permissions = mockStatic(PermissionUtil.class)) {
+            assertEquals("target", access.requireSource(new ExternalIdentityKey("erp", "E1")).actorId());
+            permissions.verifyNoInteractions();
+        }
+    }
+
+    /** 来源免权限模式仍要求有效账号，缺失、停用和删除的服务账号均不能承担写入与审计。 */
+    @ParameterizedTest
+    @CsvSource(value = {"NULL,0,0", "missing,0,0", "svc,1,0", "svc,0,1"}, nullValues = "NULL")
+    void disabledSourcePermissionCheckRejectsInvalidServiceAccount(String serviceUserId, String status, int deleted) {
+        var source = properties.getSources().get("erp");
+        source.setPermissionCheckEnabled(false);
+        source.setWritePermission(null);
+        source.setServiceUserId(serviceUserId);
+        jdbc.update("UPDATE sys_user SET status = ?, deleted = ? WHERE id = 'svc'", status, deleted);
+        assertEquals("FORBIDDEN", assertThrows(IdentityWriteException.class,
+                () -> access.requireSource(new ExternalIdentityKey("erp", "E1"))).code());
+    }
+
+    @Test
+    void disabledSourcePermissionCheckRejectsInvalidCurrentActorWithoutServiceFallback() {
+        properties.getSources().get("erp").setPermissionCheckEnabled(false);
+        UserContext.setCurrentUser("missing", "missing-user");
+        assertEquals("FORBIDDEN", assertThrows(IdentityWriteException.class,
+                () -> access.requireSource(new ExternalIdentityKey("erp", "E1"))).code());
+    }
+
+    @Test
+    void disabledSourcePermissionCheckStillRequiresRegisteredSourceAndValidKey() {
+        properties.getSources().get("erp").setPermissionCheckEnabled(false);
+        assertEquals("SOURCE_NOT_ALLOWED", assertThrows(IdentityWriteException.class,
+                () -> access.requireSource(new ExternalIdentityKey("unknown", "E1"))).code());
+        assertEquals("INVALID_MODEL", assertThrows(IdentityWriteException.class,
+                () -> access.requireSource(new ExternalIdentityKey("erp", " "))).code());
+    }
+
     @Test
     void unauthenticatedCallsWithoutServiceAccountCannotWrite() {
         properties.getSources().get("erp").setServiceUserId(null);

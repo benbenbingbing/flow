@@ -21,19 +21,28 @@ public class IdentityAccessService {
     private final CurrentUserRoleService roles;
     private final PositionOrganizationScopeService scope;
 
-    /** 无浏览器上下文时只允许显式配置的有效服务账号，仍逐项校验来源权限。 */
+    /**
+     * 校验已登记来源及有效操作人，按来源配置决定是否校验来源写权限。
+     * 无登录上下文时使用配置的服务账号，免来源权限模式下也以有效操作人作为审计归属。
+     *
+     * @param key 来源编码及稳定外部 ID，用于定位部署时登记的来源
+     * @return 有效操作人与来源配置，供基础资料、扩展及审计共用
+     * @throws IdentityWriteException 来源键非法、来源未登记、权限配置缺失、操作人无效或缺少必需权限
+     */
     public Writer requireSource(ExternalIdentityKey key) {
         if (key == null || key.sourceCode() == null || !key.sourceCode().matches("[a-z][a-z0-9_-]{0,63}")
                 || key.externalId() == null || key.externalId().isBlank() || key.externalId().length() > 255
                 || key.externalId().indexOf(0) >= 0) fail("INVALID_MODEL", "key", "来源键非法");
         var config = properties.getSources().get(key.sourceCode());
-        if (config == null || config.getWritePermission() == null || config.getWritePermission().isBlank()) {
+        if (config == null || config.isPermissionCheckEnabled()
+                && (config.getWritePermission() == null || config.getWritePermission().isBlank())) {
             fail("SOURCE_NOT_ALLOWED", "key.sourceCode", "来源未配置或没有写入授权");
         }
         String actor = UserContext.getUserId();
         if (actor == null) actor = config.getServiceUserId();
         requireActive(actor);
-        requirePermission(actor, config.getWritePermission());
+        // 来源免权限仅作用于此处，保留有效操作人供后续扩展组权限校验和必需审计使用。
+        if (config.isPermissionCheckEnabled()) requirePermission(actor, config.getWritePermission());
         return new Writer(actor, config);
     }
     public void requirePermission(String actor, String permission) {

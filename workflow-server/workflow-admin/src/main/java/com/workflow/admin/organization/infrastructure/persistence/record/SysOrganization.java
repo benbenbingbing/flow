@@ -154,6 +154,16 @@ public class SysOrganization {
      */
     @TableField(exist = false)
     private List<SysOrganization> children;
+
+    /** 管理页按需展开标记，由当前页节点批量查询得出，不写入数据库。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private boolean hasChildren;
+
+    /** 管理页完整名称路径，用于搜索结果区分同名部门及选择上级时回显。 */
+    @TableField(exist = false)
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String displayPath;
     
     /**
      * 父级名称

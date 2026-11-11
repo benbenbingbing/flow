@@ -89,6 +89,141 @@ public class SysMenuService {
     }
 
     /**
+     * 管理页按直属下级分页；关键词非空时按名称、路由或权限码搜索全部菜单。
+     *
+     * @param parentId 浏览范围，0 表示顶级，历史 NULL 父级也视为顶级
+     * @param pageNum 页码，从 1 开始
+     * @param pageSize 每页条数，范围 1 到 100
+     * @param keyword 全菜单关键词，可空
+     * @param type M/C/F 类型过滤，可空
+     * @param excludeId 上级选择时排除自身，并将命中的后代标记为不可选
+     * @param parentCandidates 是否只返回可作为上级的目录、菜单
+     * @return 包含完整名称路径及展开标记的分页结果
+     * @throws IllegalArgumentException 分页、类型或父链不合法
+     */
+    public PageResult<SysMenu> getManagementPage(String parentId, int pageNum, int pageSize,
+            String keyword, String type, String excludeId, boolean parentCandidates) {
+        if (pageNum < 1 || pageSize < 1 || pageSize > 100) {
+            throw new IllegalArgumentException("页码必须大于 0，每页数量必须在 1 到 100 之间");
+        }
+        if (StringUtils.hasText(type) && !List.of("M", "C", "F").contains(type)) {
+            throw new IllegalArgumentException("菜单类型只能是目录、菜单或按钮");
+        }
+        String scopeId = StringUtils.hasText(parentId) ? parentId : "0";
+        if (StringUtils.hasText(excludeId) && menuMapper.selectById(excludeId) == null) {
+            throw new IllegalArgumentException("待编辑菜单不存在");
+        }
+        if (!"0".equals(scopeId)) {
+            SysMenu scope = menuMapper.selectById(scopeId);
+            if (scope == null) throw new IllegalArgumentException("父菜单不存在");
+            // 普通浏览只校验范围存在，选择上级时才额外检查排除节点的父链。
+            if (StringUtils.hasText(excludeId) && pathTo(scope, loadAncestorMap(List.of(scope)))
+                    .stream().anyMatch(menu -> menu.getId().equals(excludeId))) {
+                return new PageResult<>(List.of(), 0, pageNum, pageSize);
+            }
+        }
+        var query = new LambdaQueryWrapper<SysMenu>();
+        if (StringUtils.hasText(keyword)) {
+            String term = keyword.trim();
+            query.and(q -> q.like(SysMenu::getMenuName, term)
+                    .or().like(SysMenu::getPath, term).or().like(SysMenu::getPerm, term));
+        } else if ("0".equals(scopeId)) {
+            query.and(q -> q.eq(SysMenu::getParentId, "0").or().isNull(SysMenu::getParentId));
+        } else {
+            query.eq(SysMenu::getParentId, scopeId);
+        }
+        query.eq(StringUtils.hasText(type), SysMenu::getMenuType, type)
+                .ne(parentCandidates, SysMenu::getMenuType, "F")
+                .ne(StringUtils.hasText(excludeId), SysMenu::getId, excludeId)
+                .orderByAsc(SysMenu::getSort, SysMenu::getCreateTime, SysMenu::getId);
+        Page<SysMenu> page = menuMapper.selectPage(new Page<>(pageNum, pageSize), query);
+        fillManagementRows(page.getRecords(), loadAncestorMap(page.getRecords()), excludeId, parentCandidates);
+        return new PageResult<>(page.getRecords(), page.getTotal(), pageNum, pageSize);
+    }
+
+    /**
+     * 只读取目标父链，供懒加载树定位和面包屑回显使用。
+     *
+     * @param id 菜单主键
+     * @return 从顶级到当前菜单的有序路径，包含目标菜单
+     * @throws IllegalArgumentException 菜单不存在、父链缺失或存在循环
+     */
+    public List<SysMenu> getAncestors(String id) {
+        SysMenu menu = menuMapper.selectById(id);
+        if (menu == null) throw new IllegalArgumentException("菜单不存在");
+        Map<String, SysMenu> ancestors = loadAncestorMap(List.of(menu));
+        List<SysMenu> path = pathTo(menu, ancestors);
+        fillManagementRows(path, ancestors, null, false);
+        return path;
+    }
+
+    /** 按层批量读取本页缺少的祖先，历史缺失父级只尝试一次，循环数据也不会无限查询。 */
+    private Map<String, SysMenu> loadAncestorMap(List<SysMenu> rows) {
+        Map<String, SysMenu> result = new HashMap<>();
+        rows.forEach(row -> result.put(row.getId(), row));
+        Set<String> requested = new HashSet<>(result.keySet());
+        while (true) {
+            List<String> missing = result.values().stream().map(SysMenu::getParentId)
+                    .filter(StringUtils::hasText).filter(id -> !"0".equals(id))
+                    .filter(id -> !requested.contains(id)).distinct().toList();
+            if (missing.isEmpty()) return result;
+            requested.addAll(missing);
+            // 限制 IN 长度，兼容 Oracle 的 1000 项上限；只投影父链所需的字段。
+            for (int offset = 0; offset < missing.size(); offset += 500) {
+                var parents = menuMapper.selectList(new LambdaQueryWrapper<SysMenu>()
+                        .select(SysMenu::getId, SysMenu::getParentId, SysMenu::getMenuName, SysMenu::getMenuType)
+                        .in(SysMenu::getId, missing.subList(offset, Math.min(offset + 500, missing.size()))));
+                parents.forEach(parent -> result.put(parent.getId(), parent));
+            }
+        }
+    }
+
+    /** 父链必须通向真实根，拒绝把孤儿或循环节点提升成顶级菜单。 */
+    private List<SysMenu> pathTo(SysMenu menu, Map<String, SysMenu> ancestors) {
+        var path = new ArrayList<SysMenu>();
+        var visited = new HashSet<String>();
+        SysMenu current = menu;
+        while (current != null && visited.add(current.getId())) {
+            path.add(current);
+            if (!StringUtils.hasText(current.getParentId()) || "0".equals(current.getParentId())) {
+                Collections.reverse(path);
+                return path;
+            }
+            current = ancestors.get(current.getParentId());
+        }
+        throw new IllegalArgumentException("菜单父链不完整或存在循环");
+    }
+
+    /** 批量计算展开标记；父链异常仍允许管理页展示、编辑和修复该条记录。 */
+    private void fillManagementRows(List<SysMenu> rows, Map<String, SysMenu> ancestors,
+            String excludeId, boolean parentCandidates) {
+        if (rows.isEmpty()) return;
+        List<String> ids = rows.stream().map(SysMenu::getId).toList();
+        Set<String> parents = new HashSet<>();
+        // 路径接口可能返回很深的历史父链，同样分批控制 IN 长度。
+        for (int offset = 0; offset < ids.size(); offset += 500) {
+            menuMapper.selectList(new LambdaQueryWrapper<SysMenu>()
+                            .select(SysMenu::getParentId)
+                            .in(SysMenu::getParentId, ids.subList(offset, Math.min(offset + 500, ids.size())))
+                            .ne(parentCandidates, SysMenu::getMenuType, "F")
+                            .ne(StringUtils.hasText(excludeId), SysMenu::getId, excludeId)
+                            .groupBy(SysMenu::getParentId))
+                    .forEach(parent -> parents.add(parent.getParentId()));
+        }
+        for (SysMenu row : rows) {
+            row.setHasChildren(parents.contains(row.getId()));
+            try {
+                List<SysMenu> path = pathTo(row, ancestors);
+                row.setDisplayPath(path.stream().map(SysMenu::getMenuName).collect(Collectors.joining(" / ")));
+                row.setSelectionDisabled(path.stream().anyMatch(menu -> menu.getId().equals(excludeId)));
+            } catch (IllegalArgumentException invalidHierarchy) {
+                row.setDisplayPath("父链异常 / " + row.getMenuName());
+                row.setSelectionDisabled(true);
+            }
+        }
+    }
+
+    /**
      * 查询以指定节点为根的完整子树（递归所有后代）。
      *
      * @param parentId 父菜单ID，为空时取 "0"
@@ -359,6 +494,29 @@ public class SysMenuService {
             menu.setUpdateTime(LocalDateTime.now());
             menuMapper.updateById(menu);
         }
+    }
+
+    /**
+     * 分页列表的单行排序入口，只修改排序及更新时间。
+     *
+     * @param id 目标菜单主键
+     * @param sort 新排序值，范围 0 到 9999
+     * @throws IllegalArgumentException 菜单不存在或排序值非法
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @SystemAudit(module = AuditModule.SYSTEM, action = AuditAction.UPDATE,
+            operation = "调整菜单排序", risk = AuditRiskLevel.MEDIUM,
+            targetType = "SYS_MENU", targetIdArg = 0, captureArguments = true)
+    public void updateSortValue(String id, Integer sort) {
+        if (sort == null || sort < 0 || sort > 9999) {
+            throw new IllegalArgumentException("排序必须在 0 到 9999 之间");
+        }
+        if (menuMapper.selectById(id) == null) throw new IllegalArgumentException("菜单不存在");
+        SysMenu update = new SysMenu();
+        update.setId(id);
+        update.setSort(sort);
+        update.setUpdateTime(LocalDateTime.now());
+        menuMapper.updateById(update);
     }
     
     /**

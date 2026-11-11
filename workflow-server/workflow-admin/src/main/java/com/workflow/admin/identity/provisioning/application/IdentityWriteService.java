@@ -1,6 +1,9 @@
 package com.workflow.admin.identity.provisioning.application;
 
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.workflow.admin.authorization.role.infrastructure.persistence.mapper.SysRoleMapper;
+import com.workflow.admin.authorization.role.infrastructure.persistence.record.SysRole;
 import com.workflow.admin.identity.extension.application.IdentityExtensionService;
 import com.workflow.admin.identity.user.application.SysUserService;
 import com.workflow.admin.identity.user.infrastructure.persistence.mapper.SysUserMapper;
@@ -33,6 +36,7 @@ public class IdentityWriteService implements IdentityWritePort {
     private final ObjectMapper mapper;
     private final SysUserService users;
     private final SysUserMapper userMapper;
+    private final SysRoleMapper roleMapper;
     private final SysOrganizationService organizations;
     private final IdentityOrganizationHierarchyService organizationHierarchy;
     private final SystemAuditPort audit;
@@ -59,12 +63,13 @@ public class IdentityWriteService implements IdentityWritePort {
         String dept = store.resolveOrganization(model.key().sourceCode(), base.departmentExternalId());
         boolean allowed = previous == null || IdentitySourceStore.flag(previous.get("local_allowed"));
         String status = base.enabled() && allowed ? "0" : "1";
-        String username = existing == null ? "ext_" + id : existing.getUsername();
+        String username = identityCode(IdentityObjectType.USER, base.account(), previous);
         SysUser candidate = new SysUser();
         candidate.setId(id); candidate.setOrgId(org); candidate.setDeptId(dept); candidate.setStatus(status);
         users.validateProvisionedMembership(candidate);
         if (existing == null) {
             persistence.insertUser(id, username, base, status, org, dept);
+            assignDefaultRole(id, writer.source());
         } else {
             // 完整快照中的 null 必须真实清空；不能使用忽略 null 的默认 ORM 更新策略。
             persistence.updateUser(id, base, status, org, dept);
@@ -85,7 +90,7 @@ public class IdentityWriteService implements IdentityWritePort {
         var writer = access.requireSource(model.key());
         if (model.base() == null) fail("INVALID_MODEL", "base", "基础快照不能为空");
         var base = model.base();
-        text(base.name(), 100, true, "name"); text(base.externalCode(), 100, false, "externalCode");
+        text(base.name(), 100, true, "name"); text(base.externalCode(), 100, true, "externalCode");
         text(base.phone(), 50, false, "phone"); text(base.email(), 100, false, "email");
         text(base.address(), 200, false, "address"); text(base.description(), 500, false, "description");
         if (base.type() == null) fail("INVALID_MODEL", "type", "组织类型不能为空");
@@ -101,7 +106,9 @@ public class IdentityWriteService implements IdentityWritePort {
         }
         boolean allowed = previous == null || IdentitySourceStore.flag(previous.get("local_allowed"));
         SysOrganization org = new SysOrganization();
-        org.setId(id); org.setOrgCode("ext_" + id); org.setOrgName(base.name());
+        org.setId(id);
+        org.setOrgCode(identityCode(IdentityObjectType.ORGANIZATION, base.externalCode(), previous));
+        org.setOrgName(base.name());
         org.setType(base.type() == OrganizationUnitType.ORGANIZATION ? "org" : "dept");
         organizationHierarchy.prepare(org, model.key(), base.parentExternalId());
         org.setBusinessLevelCode(base.businessLevelCode());
@@ -196,6 +203,51 @@ public class IdentityWriteService implements IdentityWritePort {
             fail("INVALID_MODEL", "sourceVersion", "版本与来源配置不匹配");
         }
     }
+
+    /**
+     * 首次创建时原样使用来源编码，供各环境按相同用户名或组织编码解析配置引用。
+     * 已有映射以首次保存的来源编码校验后续快照，防止改名使任务和配置中的引用失效。
+     *
+     * @param type 决定目标表与错误字段名
+     * @param requested 已通过非空及长度校验的 account 或 externalCode
+     * @param previous 已有来源映射，保存创建时的固定来源编码
+     * @return 原样传入的来源编码，供本地 username 或 orgCode 使用
+     * @throws IdentityWriteException 来源编码已被占用或试图修改已有编码时拒绝写入
+     */
+    private String identityCode(IdentityObjectType type, String requested, Map<String, Object> previous) {
+        boolean user = type == IdentityObjectType.USER;
+        String field = user ? "account" : "externalCode";
+        if (previous != null) {
+            if (!Objects.equals(requested, previous.get("external_account"))) {
+                fail("SOURCE_CODE_IMMUTABLE", field, "来源编码创建后不可修改");
+            }
+        } else if (persistence.countIdentityCode(type, requested) > 0) {
+            // 与数据库唯一索引使用相同的比较规则，并覆盖逻辑删除记录占用的编码。
+            fail("IDENTITY_CODE_CONFLICT", field, "用户名或组织编码已被占用");
+        }
+        return requested;
+    }
+
+    /**
+     * 为来源首次创建的用户分配可选默认角色，与基础资料、映射及审计共用当前事务。
+     * 仅由新增分支调用，后续来源更新继续保留本地维护的角色集合。
+     *
+     * @param userId 本次新建用户的本地 ID，用于保存用户角色关联
+     * @param source 已授权来源的部署配置，空角色编码表示省略默认角色分配
+     * @throws IdentityWriteException 配置的角色不存在、已删除或未启用时拒绝并回滚本次创建
+     */
+    private void assignDefaultRole(String userId, IdentityWriteProperties.Source source) {
+        String roleCode = source.getDefaultRoleCode();
+        if (roleCode == null || roleCode.isBlank()) return;
+        SysRole role = roleMapper.selectOne(Wrappers.<SysRole>lambdaQuery()
+                .eq(SysRole::getRoleCode, roleCode)
+                .eq(SysRole::getStatus, SysRole.Status.ENABLED.getValue()));
+        if (role == null) {
+            fail("DEFAULT_ROLE_NOT_AVAILABLE", "defaultRoleCode", "来源配置的默认角色不存在或未启用");
+        }
+        users.saveUserRoles(userId, List.of(role.getId()));
+    }
+
     private IdentitySaveResult previousResult(IdentityObjectType type, ExternalIdentityKey key, Long version,
                                                String digest, Map<String, Object> previous) {
         if (previous == null) return null;
@@ -241,7 +293,7 @@ public class IdentityWriteService implements IdentityWritePort {
                 .summary("来源=" + key.sourceCode()).build());
     }
     private void validateUser(UserBaseData base) {
-        text(base.account(), 255, false, "account"); text(base.nickname(), 50, true, "nickname");
+        text(base.account(), 50, true, "account"); text(base.nickname(), 50, true, "nickname");
         text(base.email(), 100, false, "email"); text(base.phone(), 20, false, "phone");
         text(base.avatar(), 255, false, "avatar");
     }

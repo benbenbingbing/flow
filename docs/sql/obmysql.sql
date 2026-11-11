@@ -3,6 +3,7 @@
 -- 2026-10-28：补齐首页、配置管理及系统管理子菜单，恢复基础权限资源并授予超级管理员全部初始化菜单。
 -- 2026-10-29：同步至 V125，包含历史导入四张表；流程档案复用实体查看入口及权限。
 -- 2026-11-04：同步至 V128，补齐身份来源写入表、目录锁及认证策略；不预置已退役的 V127 项目示例表。
+-- 2026-11-10 同步至 V129，补齐组织父链就绪状态、来源父级外部引用及待关联子级索引。
 -- 空库直接建立当前结构；V113/V120/V121 的历史配置转换无种子记录需要处理，不代替存量库迁移。
 -- 基于项目数据库导出的 MySQL 平台 DDL 与系统种子数据转换；仅用于预先创建的空数据库。
 -- 包含 200 张平台及 Flowable 表、表和字段注释、索引、约束与系统初始化数据。
@@ -3606,9 +3607,9 @@ CREATE TABLE `sys_organization` (
   `org_name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '组织名称。',
   `type` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '类型：org-组织，dept-部门。',
   `business_level_code` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '稳定业务层级编码，来源于 organization_business_level 字典。',
-  `parent_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT '0' COMMENT '父级ID（顶级为0）。',
-  `level` int DEFAULT '0' COMMENT '层级（0为顶级）。',
-  `path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT '/' COMMENT '完整路径，如：/0/1/5/10/。',
+  `parent_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT '0' COMMENT '父级ID，顶级为0，来源父级尚未到达时为NULL，补齐后关联本地父级',
+  `level` int DEFAULT '0' COMMENT '层级，0为顶级，来源父链未完整时为NULL，补齐后与下级一起重算',
+  `path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT '/' COMMENT '完整路径，如/0/1/5/10/，来源父链未完整时为NULL，补齐后与下级一起重算',
   `sort_order` int DEFAULT '0' COMMENT '排序号。',
   `leader_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '负责人ID。',
   `leader_name` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '负责人名称（冗余）。',
@@ -3621,6 +3622,7 @@ CREATE TABLE `sys_organization` (
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间；更新时自动设置为 CURRENT_TIMESTAMP。',
   `deleted` int DEFAULT '0' COMMENT '逻辑删除标记：是否删除：0-未删除 1-已删除。',
   `create_by` varchar(64) DEFAULT NULL COMMENT '创建人用户ID，用于流程关系路径解析；历史创建人不可推断时保留NULL',
+  `hierarchy_ready` smallint DEFAULT 1 NOT NULL COMMENT '父链完整标志，1 表示已接到真实根节点，0 表示等待祖先补齐，供组织树过滤及流程组织链校验使用',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_org_code` (`org_code`),
   KEY `idx_parent_id` (`parent_id`),
@@ -4240,8 +4242,11 @@ CREATE TABLE `sys_identity_source_binding` (
   `binding_status` varchar(16) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE 或 RETIRED；退休后禁止来源写入重新创建该对象',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '来源绑定创建时间，用于审计首次接入',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '最近来源写入或本地许可变更时间；由应用在更新时维护',
+  `parent_external_id` varchar(255) DEFAULT NULL COMMENT '来源组织快照声明的同来源父级外部 ID，根节点为 NULL，供追溯及后到父级关联使用',
+  `parent_source_key` varchar(64) DEFAULT NULL COMMENT '同来源父组织的精确 SHA-256 来源键，供父级到达后按索引定位待关联子级，根节点为 NULL',
   PRIMARY KEY (`source_key`),
-  UNIQUE KEY `uk_identity_source_local` (`object_type`,`local_id`)
+  UNIQUE KEY `uk_identity_source_local` (`object_type`,`local_id`),
+  KEY `idx_identity_parent` (`parent_source_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='外部数据对象到产品身份的映射；与 Embed 登录主体绑定分别维护';
 
 CREATE TABLE `workflow_schema_change` (

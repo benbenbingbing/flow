@@ -14,6 +14,28 @@
 | OceanBase MySQL 模式 | [obmysql.sql](obmysql.sql) |
 | OceanBase Oracle 模式 | [oboracle.sql](oboracle.sql) |
 
+## 2026-11-10 同步 V129 组织乱序接入
+
+已核对近期 V124—V129 的 SQL 和 Java 迁移，七份初始化脚本补齐 V129 后均为 **200 张表、2,796 个字段**，包含 Flowable 表，不包含 Flyway 历史表。V124—V128 的结构、系统种子数据及示例表清理结果已包含在脚本中。
+
+| 对象 | 空库最终状态及用途 |
+| --- | --- |
+| `sys_organization.hierarchy_ready` | 非空，默认 `1`。来源父链未完整时由应用写入 `0`，组织树据此隐藏节点及其子树，祖先补齐后重新关联并计算路径和层级。 |
+| `sys_identity_source_binding.parent_external_id` | 可空，长度 255。保存同来源父组织的外部 ID，根组织及用户映射保留 NULL，供追溯及后到父级关联使用。 |
+| `sys_identity_source_binding.parent_source_key` | 可空，长度 64。保存同来源父组织的精确 SHA-256 来源键，供父级到达后查询待关联子级。 |
+| `idx_identity_parent` | `parent_source_key` 上的普通索引，支持待关联子级查询。 |
+
+MySQL、OceanBase MySQL、PostgreSQL 和人大金仓使用 `smallint` 表示父链状态，Oracle、达梦及 OceanBase Oracle 沿用脚本的 `number(5)` 映射。两个父级引用字段分别使用对应方言的 `varchar` 或 `varchar2`，保持长度和可空性。组织的 `parent_id`、`level`、`path` 注释同步说明父链缺失时的 NULL 语义。V129 的历史父子引用回填用于已有来源映射，空库没有来源映射记录需要转换。
+
+### 本次验证
+
+- 七份脚本的 200 个表名及 2,796 个字段清单一致，新增字段的类型、长度、默认值、可空性、用途注释和索引已核对，相关字段文档与脚本一致。
+- 原有种子数据 INSERT 保持一致，七份脚本均包含 103 条菜单/权限、103 条超级管理员授权及固定 `directory` 锁行，V128 退役的三张项目身份扩展示例表已移除。
+- `mysql.sql` 和 `obmysql.sql` 均通过 MySQL 8.0.27 独立临时空库完整导入，`pg.sql` 通过 PostgreSQL 15.12 独立临时空库完整导入。导入后验证了表数、字段数、新增字段约束、索引、普通组织的就绪默认值，以及待关联组织的空路径和父级引用存储。
+- Oracle、达梦、人大金仓及两种 OceanBase 模式完成静态检查，对应数据库实例的完整导入验证尚未执行。`obmysql.sql` 的执行结果来自 MySQL 实例。
+
+本次 Flyway 迁移文件新增、修改、删除或重命名均为 **无**。下文保留各历史版本的同步记录。
+
 ## 2026-11-04 同步 V128 身份来源写入
 
 七份初始化脚本已对齐 V128 的最终结构，均为 **200 张表、2,793 个字段**，包含 Flowable 表，不包含 Flyway 历史表。本次相对 V125 新增两张表、15 个字段，并同步用户密码的可空性及实体字段元数据：

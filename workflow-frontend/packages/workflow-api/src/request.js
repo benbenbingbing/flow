@@ -201,23 +201,31 @@ function setEmbedProtocolHeader(config, enabled) {
   }
 }
 
+/**
+ * 会话无法续期时只清理、广播和导航一次；同一批失败仍抛给页面恢复加载状态。
+ * 统一用户提示并标记错误已处理，避免拦截器和页面 catch 再次展示刷新协议细节。
+ */
 function terminateAuthSession(
-  message,
+  error,
   {
     notify = true,
     broadcast = true
   } = {}
 ) {
+  error.message = error.errorCode === 'AUTH_ACCOUNT_DISABLED'
+    ? '账号已禁用，请联系管理员'
+    : '登录已过期，请重新登录'
+  error.notificationShown = true
+  if (authTerminationHandled) return
+
+  authTerminationHandled = true
   const userStore = getSession()
   userStore.clearAuth({
     broadcast,
     reason: 'invalidated'
   })
-  if (authTerminationHandled) return
-
-  authTerminationHandled = true
   if (notify) {
-    notifyError(message || '登录已过期，请重新登录')
+    notifyError(error.message)
   }
   onAuthExpired()
 }
@@ -290,7 +298,7 @@ function restoreAuthSession() {
       .then(() => true)
       .catch((error) => {
         if (isTerminalAuthError(error.errorCode)) {
-          terminateAuthSession(error.message, {
+          terminateAuthSession(error, {
             notify: false,
             broadcast: false
           })
@@ -378,7 +386,7 @@ request.interceptors.request.use(
         await refreshAuthSession()
       } catch (error) {
         if (isTerminalAuthError(error.errorCode)) {
-          terminateAuthSession(error.message)
+          terminateAuthSession(error)
           throw error
         }
         if (isAccessTokenExpired(userStore.tokenExpiresAt)) {
@@ -410,7 +418,7 @@ async function retryAfterRefresh(config, payload) {
     })
   } catch (error) {
     if (isTerminalAuthError(error.errorCode)) {
-      terminateAuthSession(error.message)
+      terminateAuthSession(error)
     }
     throw error
   }
@@ -441,8 +449,9 @@ async function handleApiPayload(
         payload,
         '登录已过期，请重新登录'
       )
-      terminateAuthSession(message)
-      throw createApiError(message, payload, status)
+      const error = createApiError(message, payload, status)
+      terminateAuthSession(error)
+      throw error
     }
   }
 
@@ -514,11 +523,11 @@ request.interceptors.response.use(
           payload,
           '登录已过期，请重新登录'
         )
-        terminateAuthSession(message)
         error.message = message
         error.errorCode = payload.errorCode
         error.currentData = payload.data
         error.status = response.status
+        terminateAuthSession(error)
         return Promise.reject(error)
       }
     }

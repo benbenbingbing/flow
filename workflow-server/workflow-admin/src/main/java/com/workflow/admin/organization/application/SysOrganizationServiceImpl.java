@@ -1,6 +1,9 @@
 package com.workflow.admin.organization.application;
 
 import com.workflow.core.logging.LogValue;
+import com.workflow.core.result.PageResult;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.identity.user.infrastructure.persistence.record.SysUser;
 import com.workflow.contracts.audit.model.AuditAction;
@@ -21,6 +24,9 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -57,6 +63,96 @@ public class SysOrganizationServiceImpl implements SysOrganizationService {
             allList = orgMapper.selectEnabledList();
         }
         return buildTree(allList.stream().filter(SysOrganization::isHierarchyReady).toList(), StringUtils.hasText(type));
+    }
+
+    @Override
+    public PageResult<SysOrganization> getManagementPage(
+            int pageNum, int pageSize, String parentId, String keyword, String type, String excludeId) {
+        if (pageNum < 1 || pageSize < 1 || pageSize > 100) {
+            throw new IllegalArgumentException("页码必须大于 0，每页数量必须在 1 到 100 之间");
+        }
+        if (StringUtils.hasText(type) && !List.of("org", "dept").contains(type)) {
+            throw new IllegalArgumentException("类型只能是组织或部门");
+        }
+        String scopeId = StringUtils.hasText(parentId) ? parentId : "0";
+        SysOrganization scope = "0".equals(scopeId) ? null : requireHierarchyNode(scopeId);
+        var query = Wrappers.<SysOrganization>lambdaQuery().eq(SysOrganization::isHierarchyReady, 1);
+        if (StringUtils.hasText(keyword)) {
+            // path 包含分隔符，避免同前缀 ID 串到其他子树；范围来自数据库而非客户端路径。
+            if (scope != null) query.likeRight(SysOrganization::getPath, scope.getPath());
+            String term = keyword.trim();
+            query.and(q -> q.like(SysOrganization::getOrgName, term).or().like(SysOrganization::getOrgCode, term));
+        } else {
+            query.eq(SysOrganization::getParentId, scopeId);
+        }
+        query.eq(StringUtils.hasText(type), SysOrganization::getType, type);
+        if (StringUtils.hasText(excludeId)) {
+            SysOrganization excluded = orgMapper.selectById(excludeId);
+            if (excluded == null) throw new IllegalArgumentException("待编辑组织部门不存在");
+            query.ne(SysOrganization::getId, excludeId);
+            if (StringUtils.hasText(excluded.getPath())) {
+                query.notLikeRight(SysOrganization::getPath, excluded.getPath());
+            }
+        }
+        // 同名、同排序号也使用主键稳定排序，避免翻页时出现重复或遗漏。
+        query.orderByAsc(SysOrganization::getSortOrder, SysOrganization::getCreateTime, SysOrganization::getId);
+        Page<SysOrganization> page = orgMapper.selectPage(new Page<>(pageNum, pageSize), query);
+        fillManagementRows(page.getRecords());
+        return new PageResult<>(page.getRecords(), page.getTotal(), pageNum, pageSize);
+    }
+
+    @Override
+    public List<SysOrganization> getAncestors(String id) {
+        List<SysOrganization> ancestors = orgMapper.selectParentsByPath(requireHierarchyNode(id).getPath());
+        fillManagementRows(ancestors);
+        return ancestors;
+    }
+
+    /** 父链待补齐的来源节点不能作为浏览范围，避免 NULL 路径扩大搜索范围。 */
+    private SysOrganization requireHierarchyNode(String id) {
+        SysOrganization node = orgMapper.selectById(id);
+        if (node == null || !node.isHierarchyReady() || !StringUtils.hasText(node.getPath())) {
+            throw new IllegalArgumentException("组织部门不存在或父链尚未完整");
+        }
+        return node;
+    }
+
+    /**
+     * 仅为本页批量补充展开标记和路径名称，避免逐行读取祖先和查询下级。
+     * 祖先按主键集中读取，同名部门仍可通过完整路径辨认。
+     */
+    private void fillManagementRows(List<SysOrganization> rows) {
+        if (rows.isEmpty()) return;
+        List<String> ids = rows.stream().map(SysOrganization::getId).toList();
+        var parentsWithChildren = orgMapper.selectList(Wrappers.<SysOrganization>lambdaQuery()
+                        .select(SysOrganization::getParentId)
+                        .eq(SysOrganization::isHierarchyReady, 1)
+                        .in(SysOrganization::getParentId, ids)
+                        .groupBy(SysOrganization::getParentId))
+                .stream().map(SysOrganization::getParentId).collect(Collectors.toSet());
+        var ancestorIds = new LinkedHashSet<String>();
+        for (SysOrganization row : rows) ancestorIds.addAll(pathIds(row.getPath()));
+        var names = new HashMap<String, String>();
+        List<String> requestedIds = new ArrayList<>(ancestorIds);
+        // 控制 IN 列表长度，兼容 Oracle 的 1000 项限制，且只投影路径所需字段。
+        for (int offset = 0; offset < requestedIds.size(); offset += 500) {
+            for (SysOrganization ancestor : orgMapper.selectList(Wrappers.<SysOrganization>lambdaQuery()
+                    .select(SysOrganization::getId, SysOrganization::getOrgName)
+                    .in(SysOrganization::getId, requestedIds.subList(offset, Math.min(offset + 500, requestedIds.size()))))) {
+                names.put(ancestor.getId(), ancestor.getOrgName());
+            }
+        }
+        for (SysOrganization row : rows) {
+            row.setHasChildren(parentsWithChildren.contains(row.getId()));
+            row.setDisplayPath(pathIds(row.getPath()).stream().map(names::get)
+                    .filter(java.util.Objects::nonNull).collect(Collectors.joining(" / ")));
+        }
+    }
+
+    /** 路径中的 0 为虚拟根节点，不参与名称查询。 */
+    private List<String> pathIds(String path) {
+        return path == null ? List.of() : Arrays.stream(path.split("/"))
+                .filter(id -> !id.isBlank() && !"0".equals(id)).toList();
     }
     
     /**

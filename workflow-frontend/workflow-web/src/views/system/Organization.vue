@@ -5,11 +5,6 @@
         <div class="card-header">
           <span>组织部门管理</span>
           <div class="header-actions">
-            <el-radio-group v-model="filterType" size="small" @change="handleFilterChange">
-              <el-radio-button value="">全部</el-radio-button>
-              <el-radio-button value="org">组织</el-radio-button>
-              <el-radio-button value="dept">部门</el-radio-button>
-            </el-radio-group>
             <el-button size="small" @click="handleAdd('org')">
               <el-icon><Plus /></el-icon>新增顶级组织
             </el-button>
@@ -20,90 +15,115 @@
         </div>
       </template>
 
-      <el-alert
-        title="层级规则：组织可位于顶级或其他组织下；部门必须隶属于组织或上级部门；组织不能放在部门下。"
-        type="info"
-        :closable="false"
-        show-icon
-        class="hierarchy-rule"
-      />
-
-      <PageState
-        v-if="loadError"
-        type="error"
-        title="组织部门加载失败"
-        :description="loadError"
-        retryable
-        @retry="loadOrgTree"
-      />
-      
-      <!-- 组织部门树形表格 -->
-      <el-table
-        v-else
-        :data="orgTree"
-        row-key="id"
-        default-expand-all
-        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
-        v-loading="loading"
-      >
-        <el-table-column prop="orgName" label="名称" min-width="200">
-          <template #default="{ row }">
-            <el-icon v-if="row.type === 'org'"><OfficeBuilding /></el-icon>
-            <el-icon v-else><House /></el-icon>
-            <el-tooltip
-              :content="row.displayPath"
-              placement="top-start"
-              :show-after="200"
-              :popper-style="{ maxWidth: '480px' }"
-            >
-              <span class="org-name">{{ row.orgName }}</span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column prop="orgCode" label="编码" width="150" />
-        <el-table-column prop="type" label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag v-if="row.type === 'org'" type="primary">组织</el-tag>
-            <el-tag v-else type="success">部门</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="业务层级" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ businessLevelLabel(row.businessLevelCode) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="leaderName" label="负责人" width="120" />
-        <el-table-column prop="phone" label="联系电话" width="150" />
-        <el-table-column prop="sortOrder" label="排序" width="80" />
-        <el-table-column prop="status" label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag v-if="row.status === '0'" type="success">启用</el-tag>
-            <el-tag v-else type="danger">禁用</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="275" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="handleAddChild(row)">
-              新增下级
-            </el-button>
-            <el-button type="primary" link size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-button
-              v-if="canAssignPosition"
-              type="primary"
-              link
-              size="small"
-              @click="openPositionAssignment(row)"
-            >
-              职务任命
-            </el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="organization-layout">
+        <aside class="organization-sidebar">
+          <div class="sidebar-title">组织架构</div>
+          <OrganizationNavigationTree
+            ref="navigationRef"
+            :model-value="currentId"
+            @select="navigateTo"
+          />
+        </aside>
+        <main class="organization-content">
+          <el-breadcrumb separator="/" class="organization-breadcrumb">
+            <el-breadcrumb-item @click="navigateTo({ id: '0' })">全部组织</el-breadcrumb-item>
+            <el-breadcrumb-item v-for="item in currentPath" :key="item.id" @click="navigateTo(item)">
+              {{ item.orgName }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
+          <div class="list-toolbar">
+            <el-input v-model="searchInput" placeholder="搜索当前节点及下级的名称或编码" clearable @keyup.enter="handleSearch" @clear="handleSearch" />
+            <el-button type="primary" @click="handleSearch">搜索</el-button>
+            <el-radio-group v-model="filterType" size="small" @change="handleFilterChange">
+              <el-radio-button value="">全部</el-radio-button>
+              <el-radio-button value="org">组织</el-radio-button>
+              <el-radio-button value="dept">部门</el-radio-button>
+            </el-radio-group>
+          </div>
+          <p class="list-description">{{ keyword ? '搜索当前节点及全部下级，点击名称可进入对应层级。' : '展示当前节点的直属组织、部门，点击名称可进入下级。' }}</p>
+          <PageState
+            v-if="loadError"
+            type="error"
+            title="组织部门加载失败"
+            :description="loadError"
+            retryable
+            @retry="refreshOrganizations"
+          />
+          <el-table v-else :data="rows" row-key="id" v-loading="loading">
+            <el-table-column prop="orgName" label="名称" min-width="200" fixed="left">
+              <template #default="{ row }">
+                <el-icon v-if="row.type === 'org'"><OfficeBuilding /></el-icon>
+                <el-icon v-else><House /></el-icon>
+                <el-tooltip
+                  :content="row.displayPath"
+                  placement="top-start"
+                  :show-after="200"
+                  :popper-style="{ maxWidth: '480px' }"
+                >
+                  <el-button type="primary" link @click="navigateTo(row)">
+                    <span class="org-name">{{ row.orgName }}</span>
+                  </el-button>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column v-if="keyword" prop="displayPath" label="所属路径" min-width="220" show-overflow-tooltip />
+            <el-table-column prop="orgCode" label="编码" width="150" />
+            <el-table-column prop="type" label="类型" width="100">
+              <template #default="{ row }">
+                <el-tag v-if="row.type === 'org'" type="primary">组织</el-tag>
+                <el-tag v-else type="success">部门</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="业务层级" min-width="140" show-overflow-tooltip>
+              <template #default="{ row }">
+                {{ businessLevelLabel(row.businessLevelCode) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="leaderName" label="负责人" width="120" />
+            <el-table-column prop="phone" label="联系电话" width="150" />
+            <el-table-column prop="sortOrder" label="排序" width="80" />
+            <el-table-column prop="status" label="状态" width="80">
+              <template #default="{ row }">
+                <el-tag v-if="row.status === '0'" type="success">启用</el-tag>
+                <el-tag v-else type="danger">禁用</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" :width="keyword ? 350 : 275" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="keyword" type="primary" link size="small" @click="navigateTo(row)">定位到树</el-button>
+                <el-button type="primary" link size="small" @click="handleAddChild(row)">
+                  新增下级
+                </el-button>
+                <el-button type="primary" link size="small" @click="handleEdit(row)">
+                  编辑
+                </el-button>
+                <el-button
+                  v-if="canAssignPosition"
+                  type="primary"
+                  link
+                  size="small"
+                  @click="openPositionAssignment(row)"
+                >
+                  职务任命
+                </el-button>
+                <el-button type="danger" link size="small" @click="handleDelete(row)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-pagination
+            v-model:current-page="pagination.pageNum"
+            v-model:page-size="pagination.pageSize"
+            class="organization-pagination"
+            :total="pagination.total"
+            :page-sizes="[20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="loadPage"
+            @size-change="handlePageSizeChange"
+          />
+        </main>
+      </div>
     </el-card>
     
     <!-- 新增/编辑弹窗 -->
@@ -119,17 +139,12 @@
         :rules="rules"
         label-width="100px"
       >
-        <el-form-item label="上级" prop="parentId" v-if="!isEdit || form.parentId !== '0'">
-          <el-tree-select
-            v-model="form.parentId" :disabled="!!form.sourceInfo"
-            :data="parentOptions"
-            :props="{ label: 'orgName', value: 'id' }"
-            placeholder="请选择上级（不选为顶级）"
-            clearable
-            check-strictly
-            :render-after-expand="false"
-            style="width: 100%"
-          />
+        <el-form-item label="上级" prop="parentId">
+          <div class="parent-picker-field">
+            <el-input :model-value="parentDisplayPath" readonly placeholder="请选择上级" :disabled="!!form.sourceInfo" @click="openParentPicker" />
+            <el-button :disabled="!!form.sourceInfo" @click="openParentPicker">选择上级</el-button>
+            <el-button v-if="form.type === 'org'" :disabled="!!form.sourceInfo" @click="selectParent({ id: '0' })">设为顶级</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="类型" prop="type">
           <el-radio-group v-model="form.type" :disabled="!!form.sourceInfo" @change="handleTypeChange">
@@ -220,6 +235,19 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="parentPickerVisible" title="选择上级组织部门" width="600px" append-to-body destroy-on-close>
+      <p class="field-help">{{ form.type === 'org' ? '请选择组织，或点击全部组织设为顶级。' : '请选择上级组织或部门。' }}当前节点及其下级已排除。</p>
+      <OrganizationNavigationTree
+        v-if="parentPickerVisible"
+        :model-value="form.parentId || '0'"
+        :type="form.type === 'org' ? 'org' : ''"
+        :exclude-id="form.id"
+        :selectable-root="form.type === 'org'"
+        searchable
+        @select="selectParent"
+      />
+    </el-dialog>
+
     <PositionAssignmentDialog
       v-model="positionAssignmentVisible"
       :locked-unit="positionAssignmentUnit"
@@ -239,7 +267,8 @@ import UserSelector from '@/components/UserSelector.vue'
 import PositionAssignmentDialog from '@/views/system/components/PositionAssignmentDialog.vue'
 import { useUserStore } from '@/stores/user'
 import { updateOrganizationLeader } from '@/api/system/position'
-import { getOrganizationBusinessLevelOptions } from '@/api/system/org'
+import { getOrganizationBusinessLevelOptions, getOrganizationPage, getOrganizationAncestors } from '@/api/system/org'
+import OrganizationNavigationTree from '@/views/system/components/OrganizationNavigationTree.vue'
 import { createIdempotentSubmissionKeyTracker } from '@/shared/idempotent-submission'
 
 const userStore = useUserStore()
@@ -249,7 +278,19 @@ const canAssignPosition = computed(() => userStore.isSuperAdmin
 
 const loading = ref(false)
 const loadError = ref('')
-const orgTree = ref([])
+const rows = ref([])
+const navigationRef = ref(null)
+const currentId = ref('0')
+const currentPath = ref([])
+const searchInput = ref('')
+const keyword = ref('')
+const pagination = reactive({ pageNum: 1, pageSize: 20, total: 0 })
+const parentPickerVisible = ref(false)
+const selectedParent = ref(null)
+const parentDisplayPath = computed(() => form.parentId === '0' ? '顶级组织' : selectedParent.value?.displayPath || selectedParent.value?.orgName || '')
+let pageSequence = 0
+let navigationSequence = 0
+let editSequence = 0
 const filterType = ref('')
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -265,32 +306,7 @@ const leaderSubmissionKeyTracker = createIdempotentSubmissionKeyTracker()
 const leaderDirty = computed(() => isEdit.value
   && String(form.leaderId || '') !== String(originalLeaderId.value || ''))
 
-const flatOrganizations = computed(() => {
-  const result = []
-  const walk = (nodes) => {
-    ;(nodes || []).forEach(node => {
-      result.push(node)
-      walk(node.children)
-    })
-  }
-  walk(orgTree.value)
-  return result
-})
-
-const parentIsDepartment = computed(() =>
-  flatOrganizations.value.find(item => item.id === form.parentId)?.type === 'dept'
-)
-
-const parentOptions = computed(() => {
-  const current = flatOrganizations.value.find(item => item.id === form.id)
-  const currentPath = current?.path || ''
-  const filterNodes = (nodes) => (nodes || []).flatMap(node => {
-    if (node.id === form.id || (currentPath && node.path?.startsWith(currentPath))) return []
-    if (form.type === 'org' && node.type !== 'org') return []
-    return [{ ...node, children: filterNodes(node.children) }]
-  })
-  return filterNodes(orgTree.value)
-})
+const parentIsDepartment = computed(() => selectedParent.value?.type === 'dept')
 
 const hierarchyHelp = computed(() => {
   if (form.type === 'org') return '组织可作为顶级节点，也可隶属于另一个组织。'
@@ -333,29 +349,92 @@ const rules = {
   orgName: [{ required: true, message: '请输入名称', trigger: 'blur' }]
 }
 
-// 加载组织部门树
-async function loadOrgTree() {
+/** 翻页、搜索和切换层级共享数据库分页，过期响应不能覆盖较新的选择。 */
+async function loadPage() {
+  const sequence = ++pageSequence
   loading.value = true
   loadError.value = ''
   try {
-    const res = await request.get('/system/org/tree', { params: { type: filterType.value } })
-    if (res && Array.isArray(res)) {
-      const decorate = (nodes, ancestors = []) => (nodes || []).map(node => {
-        const names = [...ancestors, node.orgName]
-        return {
-          ...node,
-          displayPath: names.join(' / '),
-          children: decorate(node.children, names)
-        }
-      })
-      orgTree.value = decorate(res)
+    const page = await getOrganizationPage({
+      parentId: currentId.value,
+      pageNum: pagination.pageNum,
+      pageSize: pagination.pageSize,
+      keyword: keyword.value,
+      type: filterType.value
+    })
+    if (sequence !== pageSequence) return
+    pagination.total = page.total
+    // 删除当前末页最后一条后退到有效页，避免留下空白列表。
+    const lastPage = Math.max(1, Math.ceil(page.total / pagination.pageSize))
+    if (pagination.pageNum > lastPage) {
+      pagination.pageNum = lastPage
+      return await loadPage()
     }
+    rows.value = page.records
   } catch (e) {
-    console.error('加载组织部门失败:', e)
-    loadError.value = e?.message || '无法读取组织部门树，请重试。'
+    if (sequence === pageSequence) loadError.value = e?.message || '无法读取组织部门，请重试。'
   } finally {
-    loading.value = false
+    if (sequence === pageSequence) loading.value = false
   }
+}
+
+/** 服务端返回真实父链，搜索命中深层节点时也可同步定位到尚未展开的树。 */
+async function navigateTo(row) {
+  const sequence = ++navigationSequence
+  ++pageSequence
+  loading.value = true
+  loadError.value = ''
+  try {
+    const path = row.id === '0' ? [] : await getOrganizationAncestors(row.id)
+    if (sequence !== navigationSequence) return
+    currentId.value = row.id
+    currentPath.value = path
+    searchInput.value = ''
+    keyword.value = ''
+    pagination.pageNum = 1
+    await loadPage()
+  } catch (e) {
+    if (sequence === navigationSequence) {
+      loading.value = false
+      loadError.value = e?.message || '无法定位组织部门'
+    }
+  }
+}
+
+/** 修改或任职后刷新当前页和已选路径，并使树中的下级标记与最新结构一致。 */
+async function refreshOrganizations() {
+  const scopeId = currentId.value
+  try {
+    const path = scopeId === '0' ? [] : await getOrganizationAncestors(scopeId)
+    if (scopeId !== currentId.value) return
+    currentPath.value = path
+    await Promise.all([loadPage(), navigationRef.value?.reload()])
+  } catch (e) {
+    // 写入可能已成功，刷新失败只进入列表重试状态，避免提示提交失败而诱发重复创建。
+    if (scopeId === currentId.value) loadError.value = e?.message || '组织部门刷新失败，请重新加载。'
+  }
+}
+
+function handleSearch() {
+  keyword.value = searchInput.value.trim()
+  pagination.pageNum = 1
+  loadPage()
+}
+
+function handlePageSizeChange() {
+  pagination.pageNum = 1
+  loadPage()
+}
+
+function openParentPicker() {
+  if (!form.sourceInfo) parentPickerVisible.value = true
+}
+
+function selectParent(row) {
+  form.parentId = row.id
+  selectedParent.value = row.id === '0' ? null : row
+  parentPickerVisible.value = false
+  formRef.value?.clearValidate('parentId')
 }
 
 async function loadBusinessLevels() {
@@ -378,33 +457,47 @@ function businessLevelLabel(code) {
 }
 
 function handleFilterChange() {
-  loadOrgTree()
+  pagination.pageNum = 1
+  loadPage()
 }
 
 function handleAdd(type = 'org') {
+  ++editSequence
   isEdit.value = false
   resetForm()
   form.type = type
-  form.parentId = type === 'org' ? '0' : ''
+  const current = currentPath.value.at(-1)
+  if (type === 'dept' && current) selectParent(current)
+  else form.parentId = type === 'org' ? '0' : ''
   dialogVisible.value = true
 }
 
 function handleAddChild(row) {
+  ++editSequence
   isEdit.value = false
   resetForm()
-  form.parentId = row.id
+  selectParent(row)
   form.type = 'dept'
   dialogVisible.value = true
 }
 
 async function handleEdit(row) {
-  row = await request.get('/system/org/' + encodeURIComponent(row.id))
-  isEdit.value = true
-  resetForm()
-  Object.assign(form, row)
-  form.status = row.sourceInfo ? (row.sourceInfo.localAllowed ? '0' : '1') : row.status
-  originalLeaderId.value = String(row.leaderId || '')
-  dialogVisible.value = true
+  const sequence = ++editSequence
+  try {
+    row = await request.get('/system/org/' + encodeURIComponent(row.id))
+    const parentPath = row.parentId && row.parentId !== '0' ? await getOrganizationAncestors(row.parentId) : []
+    // 连续点击不同记录时，旧详情及旧父链不能覆盖最后一次编辑选择。
+    if (sequence !== editSequence) return
+    isEdit.value = true
+    resetForm()
+    Object.assign(form, row)
+    selectedParent.value = parentPath.at(-1) || null
+    form.status = row.sourceInfo ? (row.sourceInfo.localAllowed ? '0' : '1') : row.status
+    originalLeaderId.value = String(row.leaderId || '')
+    dialogVisible.value = true
+  } catch (e) {
+    if (sequence === editSequence) ElMessage.error(e?.message || '组织部门详情加载失败')
+  }
 }
 
 function openPositionAssignment(row) {
@@ -413,7 +506,7 @@ function openPositionAssignment(row) {
 }
 
 async function handlePositionAssignmentSaved() {
-  await loadOrgTree()
+  await refreshOrganizations()
 }
 
 /**
@@ -449,7 +542,7 @@ async function saveOrganizationLeader() {
     leaderSubmissionKeyTracker.clear()
     originalLeaderId.value = String(form.leaderId || '')
     ElMessage.success(form.leaderId ? '负责人已转任' : '负责人已撤销')
-    await loadOrgTree()
+    await refreshOrganizations()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       console.error('负责人任职维护失败:', error)
@@ -460,11 +553,10 @@ async function saveOrganizationLeader() {
 }
 
 function handleTypeChange(type) {
-  if (type === 'org' && parentIsDepartment.value) {
-    form.parentId = '0'
-  }
+  if (type === 'org' && parentIsDepartment.value) selectParent({ id: '0' })
   if (type === 'dept' && form.parentId === '0') {
     form.parentId = ''
+    selectedParent.value = null
   }
 }
 
@@ -497,7 +589,7 @@ async function submitForm() {
       ElMessage.success('新增成功')
     }
     dialogVisible.value = false
-    loadOrgTree()
+    await refreshOrganizations()
   } catch (e) {
     console.error('提交失败:', e)
     ElMessage.error('提交失败')
@@ -507,9 +599,8 @@ async function submitForm() {
 }
 
 function handleDelete(row) {
-  const childCount = row.children?.length || 0
   ElMessageBox.confirm(
-    `删除前必须确保没有下级节点和关联用户。当前可见下级 ${childCount} 个。确认删除「${row.orgName}」吗？`,
+    `删除前必须确保没有下级节点和关联用户。确认删除「${row.orgName}」吗？`,
     '删除组织部门',
     {
     confirmButtonText: '确认删除',
@@ -519,7 +610,9 @@ function handleDelete(row) {
     try {
       await request.post(`/system/org/${row.id}/delete`)
       ElMessage.success('删除成功')
-      loadOrgTree()
+      // 搜索结果包含当前节点，删除当前叶节点后回到仍存在的上级。
+      if (row.id === currentId.value) await navigateTo(currentPath.value.at(-2) || { id: '0' })
+      await refreshOrganizations()
     } catch (e) {
       console.error('删除失败:', e)
       ElMessage.error('删除失败')
@@ -528,6 +621,7 @@ function handleDelete(row) {
 }
 
 function resetForm() {
+  selectedParent.value = null
   form.id = ''
   form.parentId = '0'
   form.type = 'org'
@@ -546,7 +640,7 @@ function resetForm() {
 }
 
 onMounted(() => {
-  loadOrgTree()
+  loadPage()
   loadBusinessLevels()
 })
 </script>
@@ -563,8 +657,68 @@ onMounted(() => {
   gap: 10px;
 }
 
-.hierarchy-rule {
-  margin-bottom: 14px;
+.organization-layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.organization-sidebar {
+  border-right: 1px solid var(--el-border-color-light);
+  padding-right: 16px;
+  min-width: 0;
+}
+
+.sidebar-title {
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.organization-content {
+  min-width: 0;
+}
+
+.organization-breadcrumb {
+  margin: 4px 0 18px;
+  line-height: 1.8;
+}
+
+.organization-breadcrumb :deep(.el-breadcrumb__inner) {
+  cursor: pointer;
+}
+
+.list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.list-toolbar > .el-input {
+  width: min(360px, 100%);
+}
+
+.list-description {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+}
+
+.organization-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
+  overflow: auto;
+}
+
+.parent-picker-field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.org-name {
+  cursor: pointer;
+  color: var(--el-color-primary);
+  margin-left: 5px;
 }
 
 .field-help {
@@ -573,15 +727,27 @@ onMounted(() => {
   font-size: 12px;
 }
 
-.org-name {
-  margin-left: 5px;
-}
-
 .leader-editor {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   width: 100%;
+}
+
+@media (max-width: 1000px) {
+  .organization-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .organization-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--el-border-color-light);
+    padding: 0 0 16px;
+  }
+
+  .organization-sidebar :deep(.tree-scroll) {
+    max-height: 220px;
+  }
 }
 
 @media (max-width: 760px) {

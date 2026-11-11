@@ -27,6 +27,10 @@ public interface IdentityPersistenceMapper {
 
     default Map<String, Object> findObject(IdentityObjectType type, String id) { return row(selectObject(type, id)); }
 
+    /** 编码在本地表中全局唯一，逻辑删除记录仍受唯一索引约束，首次来源写入须一并检查。 */
+    @SelectProvider(type = IdentitySqlProvider.class, method = "countIdentityCode")
+    int countIdentityCode(@Param("type") IdentityObjectType type, @Param("code") String code);
+
     @Select("SELECT COUNT(*) FROM sys_user WHERE id = #{id} AND status = '0' AND deleted = 0")
     int activeUser(String id);
 
@@ -36,7 +40,7 @@ public interface IdentityPersistenceMapper {
     @Update("UPDATE sys_identity_source_binding SET binding_status = 'RETIRED', updated_at = CURRENT_TIMESTAMP WHERE object_type = #{type} AND local_id = #{id}")
     int retire(@Param("type") IdentityObjectType type, @Param("id") String id);
 
-    /** 新建外部账号没有密码、角色或权限，认证模式不能由业务参数指定。 */
+    /** 新建外部账号使用无密码认证模式，来源默认角色由应用服务在同一事务中单独分配。 */
     @Insert("INSERT INTO sys_user (id, username, nickname, password, authentication_mode, email, phone, avatar, status, org_id, dept_id, password_reset_required, token_version, deleted, create_time, update_time) VALUES (#{id}, #{username}, #{base.nickname}, NULL, 'EXTERNAL_ONLY', #{base.email}, #{base.phone}, #{base.avatar}, #{status}, #{org}, #{dept}, 0, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
     int insertUser(@Param("id") String id, @Param("username") String username, @Param("base") UserBaseData base,
             @Param("status") String status, @Param("org") String org, @Param("dept") String dept);

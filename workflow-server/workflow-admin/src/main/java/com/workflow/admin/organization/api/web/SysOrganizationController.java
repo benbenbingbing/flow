@@ -3,6 +3,7 @@ package com.workflow.admin.organization.api.web;
 import com.workflow.core.security.RequiresPermission;
 
 import com.workflow.core.result.Result;
+import com.workflow.core.result.PageResult;
 import com.workflow.admin.organization.infrastructure.persistence.record.SysOrganization;
 import com.workflow.admin.organization.application.SysOrganizationService;
 import com.workflow.contracts.identity.position.model.OrganizationBusinessLevelView;
@@ -38,6 +39,24 @@ public class SysOrganizationController {
     @GetMapping("/tree")
     public Result<List<SysOrganization>> getTree(@RequestParam(required = false) String type) {
         return Result.success(orgService.getOrgTree(type));
+    }
+
+    /** 管理页的数据库分页入口；关键词搜索范围由 parentId 限定，excludeId 用于安全选择上级。 */
+    @GetMapping("/page")
+    public Result<PageResult<SysOrganization>> page(
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize,
+            @RequestParam(defaultValue = "0") String parentId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String excludeId) {
+        return Result.success(orgService.getManagementPage(pageNum, pageSize, parentId, keyword, type, excludeId));
+    }
+
+    /** 仅读取目标父链，供分页搜索结果定位及编辑上级路径回显使用。 */
+    @GetMapping("/{id}/ancestors")
+    public Result<List<SysOrganization>> ancestors(@PathVariable String id) {
+        return Result.success(orgService.getAncestors(id));
     }
     
     /**

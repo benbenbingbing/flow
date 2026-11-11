@@ -112,7 +112,8 @@ class ApplicationConfigImportTest {
                 "ENTITY_EXCEL_CLEANUP_DELAY_MS", "1800000"))
                 .withPropertyValues(
                         "workflow.identity.sources.project-directory.write-permission=system:user:manage",
-                        "workflow.identity.sources.project-directory.service-user-id=directory-service-test")
+                        "workflow.identity.sources.project-directory.service-user-id=directory-service-test",
+                        "workflow.identity.sources.project-directory.default-role-code=employee")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     var environment = context.getEnvironment();
@@ -133,10 +134,33 @@ class ApplicationConfigImportTest {
                     assertThat(identity.getScanPackages()).containsExactly("com.acme.identity", "com.workflow.biz");
                     assertThat(identity.getSources()).containsOnlyKeys("project-directory");
                     var source = identity.getSources().get("project-directory");
+                    assertThat(source.isPermissionCheckEnabled()).isTrue();
                     assertThat(source.getWritePermission()).isEqualTo("system:user:manage");
                     assertThat(source.getServiceUserId()).isEqualTo("directory-service-test");
+                    assertThat(source.getDefaultRoleCode()).isEqualTo("employee");
                     assertThat(source.getVersionMode()).isEqualTo(IdentityWriteProperties.VersionMode.VERSIONED);
                     assertThat(source.getExtensions()).isEmpty();
+                });
+    }
+
+    /** 来源级开关必须独立绑定，显式免来源权限的来源可省略权限码，其他来源继续沿用默认校验。 */
+    @Test
+    void identitySourcePermissionCheckCanBeDisabledIndependently() {
+        context(Map.of()).withPropertyValues(
+                        "workflow.identity.sources.project-directory.permission-check-enabled=false",
+                        "workflow.identity.sources.project-directory.service-user-id=directory-service-test",
+                        "workflow.identity.sources.other.write-permission=other:write")
+                .run(context -> {
+                    assertThat(context).hasNotFailed();
+                    var identity = Binder.get(context.getEnvironment())
+                            .bind("workflow.identity", IdentityWriteProperties.class).get();
+                    var trusted = identity.getSources().get("project-directory");
+                    assertThat(trusted.isPermissionCheckEnabled()).isFalse();
+                    assertThat(trusted.getWritePermission()).isNull();
+                    assertThat(trusted.getServiceUserId()).isEqualTo("directory-service-test");
+                    assertThat(trusted.getDefaultRoleCode()).isNull();
+                    assertThat(identity.getSources().get("other").isPermissionCheckEnabled()).isTrue();
+                    assertThat(identity.getSources().get("other").getDefaultRoleCode()).isNull();
                 });
     }
 

@@ -41,16 +41,20 @@ workflow:
       - com.workflow.biz
     sources:
       project-directory:
+        permission-check-enabled: true
         write-permission: system:user:manage
         service-user-id: "实际服务用户的本地 ID"
+        default-role-code: "employee" # 可选，使用角色管理中已存在且启用的角色编码
         version-mode: VERSIONED
         extensions: []
 ```
 
 - `scan-packages` 默认 `com.workflow.biz`，只扫描实际装配的模块；包外的扩展要显式加入扫描范围。
-- 来源未配置、权限配置为空、操作者无权限或账号已停用时拒绝保存。
-- 登录请求使用当前操作者；无请求上下文时使用显式配置的有效服务账号，并检查同样的权限。
-- 服务账号还须拥有提交的每组扩展所声明的写权限。来源编码本身不是鉴权凭据。
+- 来源必须显式登记，`permission-check-enabled` 默认 `true`，此时 `write-permission` 必填且操作者须具备该权限。
+- 可信来源可设置 `permission-check-enabled: false`，此时可省略 `write-permission`，来源写权限校验会跳过。
+- 登录请求使用当前操作者，无请求上下文时使用显式配置的服务账号，两种模式均校验账号有效性并记录操作人审计。
+- `default-role-code` 为可选角色编码，省略或留空时新用户的初始角色为空。配置后，仅在该来源首次创建用户时分配对应角色，后续同步保留本地维护的角色集合。角色须已存在、未删除且已启用，否则报 `DEFAULT_ROLE_NOT_AVAILABLE`，用户创建及同批次写入一起回滚。
+- 提交的每组扩展仍须在来源允许清单中，且操作者须拥有该组声明的写权限。来源编码本身不是鉴权凭据。
 - 上述示例复用已有 `system:user:manage` 权限，实际业务可配置独立权限，但须在产品权限体系中授予。
 
 ### 2.2 主动调用
@@ -109,15 +113,18 @@ public IdentitySaveResult saveEmployee(ExternalEmployee employee) {
 V129 为来源映射保存 `parent_external_id` 与精确哈希 `parent_source_key`，后者支持后到父级的定点查询，
 避免数据库大小写不敏感的默认排序规则误关联。历史组织默认父链已完整，迁移从已有父子关系回填来源父级引用。
 
-- 新外部用户由框架生成稳定的本地 ID 和 `ext_<本地ID>` 用户名，外部 account 单独保存。
-- 业务修改账号或姓名不会改变本地用户名，现有任务 assignee 和历史身份保持稳定。
-- 本地组织编码也由框架生成，externalCode 保存在来源信息中，避免不同业务的编码冲突。
+- 外部用户的本地 ID 由框架生成，`username` 原样使用传入的 `account`。创建和更新时 `account` 均必填，最多 50 字符，并在所有来源及本地用户中全局唯一。
+- 组织的 `orgCode` 原样使用传入的 `externalCode`，创建和更新时均必填且最多 100 字符，并在所有来源及本地组织中全局唯一。两类编码均按输入保存大小写和空格。
+- 编码占用检查沿用目标数据库列的比较规则，包含逻辑删除记录；冲突返回 `IDENTITY_CODE_CONFLICT`，由调用方协调来源数据。
+- 用户账号和组织编码创建后固定。已有来源对象提交新版本且改变 `account` / `externalCode` 时返回 `SOURCE_CODE_IMMUTABLE`，整次写入回滚；旧版本忽略和同版本冲突仍按第 6 节处理。姓名及其他资料可随来源快照更新。
+- 各环境独立同步相同来源快照时，来源身份键、用户名和组织编码一致，流程配置可按用户名或组织编码解析为目标环境本地 ID。本地 ID 及组织路径仍由各环境生成。
 - 组织类型为 ORGANIZATION / DEPARTMENT；路径、层级、父子约束和业务层级复用现有组织服务。
 - 负责人继续通过 UNIT_LEADER 任职入口维护，不在组织基础快照中设置。
 - 来源对象被本地逻辑删除后，映射标记 RETIRED；再次提交相同键会拒绝，不静默重建。
 
 外部预配账号使用 `EXTERNAL_ONLY`，不生成本地密码；本地密码登录、重置、改密、历史密码迁移均不能把它切换为密码账号。
-保存身份资料不会自动授予登录凭据、角色或权限。外部登录仍需使用产品已有且经过授权的登录接入能力。
+来源配置 `default-role-code` 时，首次创建用户会同时分配该角色，获得该角色对应的权限。用户及组织同步共用来源配置，默认角色只用于新建用户。
+外部登录仍需使用产品已有且经过授权的登录接入能力。
 产品原有本地用户继续使用 LOCAL_PASSWORD。
 
 ## 4. 继承式扩展
@@ -234,7 +241,7 @@ HTTP 不接受 Java 类名、表名或列名；SQL 标识符只来自启动白�
 - 已有对象不能混用两种模式。摘要基于完整基础快照及本次携带的规范化扩展；同版本重试必须携带相同内容。
 - 返回 IdentitySaveResult，包括 objectType、sourceCode、externalId、localId、canonicalUsername、outcome、appliedSourceVersion。
 - 批量保存全部成功才提交，返回顺序与输入一致。IdentityWriteException 提供稳定 code/field；执行中失败通过 models[index] 定位。
-- 基础、扩展、映射和必需审计一起提交；审计写入失败也回滚。单次失败直接抛回 biz，框架不隐式重试。
+- 基础、扩展、映射、新用户默认角色和必需审计一起提交，审计写入失败也回滚。单次失败直接抛回 biz，框架不隐式重试。
 
 首版使用数据库事务内的目录行锁串行化身份写入，覆盖本地管理和来源写入，优先保证建树与首次创建一致性。
 来源 Port 开启 READ_COMMITTED 事务，等待锁后读取最新已提交数据。
