@@ -1,0 +1,8 @@
+=== fresh_source / final snapshot restart ===
+2026-11-11 11:13:49 [main] [system] INFO  o.f.core.internal.command.DbValidate - Successfully validated 129 migrations (execution time 00:00.070s)
+2026-11-11 11:13:49 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Schema `wfpack_fresh_source_r4` is up to date. No migration necessary.
+2026-11-11 11:13:55 [main] [system] INFO  com.workflow.WorkflowApplication - Started WorkflowApplication in 9.643 seconds (process running for 10.054)
+=== fresh_target / final snapshot restart ===
+2026-11-11 11:13:49 [main] [system] INFO  o.f.core.internal.command.DbValidate - Successfully validated 129 migrations (execution time 00:00.070s)
+2026-11-11 11:13:49 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Schema `wfpack_fresh_target_r4` is up to date. No migration necessary.
+2026-11-11 11:13:55 [main] [system] INFO  com.workflow.WorkflowApplication - Started WorkflowApplication in 9.509 seconds (process running for 9.919)

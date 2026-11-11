@@ -119,7 +119,7 @@ class ConfigMigrationExcelSupportTest {
         var batch = new ConfigImportPackage(); batch.setId("batch"); batch.setStatus("ANALYZED"); batch.setPackageNo("P1");
         var item = new ConfigImportItem(); item.setId("item"); item.setAssetType("ENTITY"); item.setBusinessKey("employee");
         item.setMappingStatus("RESOLVED"); item.setComparisonStatus("CHANGED"); item.setSnapshotJson(json.writeValueAsString(snapshot()));
-        when(batchMapper.selectById("batch")).thenReturn(batch); when(items.selectList(any())).thenReturn(List.of(item));
+        when(batchMapper.selectForUpdate("batch")).thenReturn(batch); when(items.selectList(any())).thenReturn(List.of(item));
         when(port.openPublicationScope(any())).thenReturn(scope);
         doThrow(new IllegalStateException("lock failed")).when(locks).lockAffectedExistingProcesses(any());
         assertEquals("lock failed", assertThrows(IllegalStateException.class, () -> service.publish("batch")).getMessage());

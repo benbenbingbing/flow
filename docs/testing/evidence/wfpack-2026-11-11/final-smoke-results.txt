@@ -1,0 +1,11 @@
+source login OK
+target login OK
+PASS WFPACK_FIX_PARENT_CURRENT.wfpack 重启后再次分析无阻断
+PASS WFPACK_FIX_PARENT_CURRENT.wfpack 配置保持一致
+PASS WFPACK_FIX_PARENT_CURRENT.wfpack 再次发布成功
+PASS WFPACK_QA_OPTIONAL_TYPE.wfpack 重启后再次分析无阻断
+PASS WFPACK_QA_OPTIONAL_TYPE.wfpack 配置保持一致
+PASS WFPACK_QA_OPTIONAL_TYPE.wfpack 再次发布成功
+PASS 新建流程增量版本保持为2
+PASS 最终构建实际创建审批任务
+PASS 最终构建实际审批完成

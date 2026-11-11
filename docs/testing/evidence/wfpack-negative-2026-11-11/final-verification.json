@@ -1,0 +1,35 @@
+{
+  "environments": {
+    "source": {
+      "flyway": "129\t129\t129\t0",
+      "importStatuses": "",
+      "pendingPublishingItems": 0,
+      "processCount": 72,
+      "entityCount": 20
+    },
+    "target": {
+      "flyway": "129\t129\t129\t0",
+      "importStatuses": "ANALYZED\t22\nBLOCKED\t17\nPUBLISHED\t49\nROLLED_BACK\t16",
+      "pendingPublishingItems": 0,
+      "processCount": 36,
+      "entityCount": 16
+    },
+    "target2": {
+      "flyway": "129\t129\t129\t0",
+      "importStatuses": "ANALYZED\t15\nBLOCKED\t12\nPUBLISHED\t28\nROLLED_BACK\t5\nUPLOADED\t6",
+      "pendingPublishingItems": 0,
+      "processCount": 17,
+      "entityCount": 17
+    }
+  },
+  "sourceFiles": {
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java": "536d813fdbd902913a7a104c2b3061becf23a81bb86e4807506dbde44d2490f6",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageService.java": "17b707443f1a1aa29a142601d9e93694c7ef4f576369571acdda77b6e0660beb",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java": "09ff4280a3d183e8844bd7d1587d98b2bef081725be3b763d245836b50aba2cb",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationSubFormReferences.java": "b478f2ced4341c9d739696e5ac2e4646f42f7b16a79a0bdbfa84f623e58632ea",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationRelationImporter.java": "e9849f0181d9ffc8d3954b1eeb5a855759d4c00df13b02621a86ef66f45dbafa"
+  },
+  "gitHead": "3a2bdc4a4589d4eebd1135d3b78560e7aa9b6e60",
+  "testedJarSha256": "560a41da3d5f94636e6dea74c5ee0a2b097d5add6c1b67232734f9b6b26ffb87",
+  "migrationDiff": ""
+}

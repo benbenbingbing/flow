@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { migrationValidationIssues } from '../config-migration-display.js'
 import {
   applyConfigMigrationPageResult,
   createConfigMigrationPage,
@@ -61,3 +62,18 @@ assert.equal(
 )
 
 console.log('config migration pagination tests passed')
+
+// 真实报告可能同时包含正文问题、结构风险、编码映射缺失与冲突，每一项都应保留操作建议。
+const report = { items: [{ itemId: 'blocked', comparisonStatus: 'CONFLICT', risks: [
+  { level: 'BLOCKING', message: '未声明固定用户', path: '$[expense].paramsJson/owner', suggestion: '声明 /owner 为 USER' },
+  { level: 'BLOCKING', message: '字段类型变更', fieldCode: 'owner' }
+], missingDependencies: [{ type: 'USER', key: 'alice', targetKey: 'alice-prod', reason: '用户不存在' }] }] }
+const issues = migrationValidationIssues(report, 'blocked')
+assert.equal(issues.length, 4)
+assert.equal(issues[0].path, '$[expense].paramsJson/owner')
+assert.equal(issues[0].suggestion, '声明 /owner 为 USER')
+assert.equal(issues[1].path, 'owner')
+assert.ok(issues.every(issue => issue.suggestion?.length > 0), '所有阻断项都应有处理建议')
+assert.match(issues[3].message, /USER\/alice-prod/)
+assert.deepEqual(migrationValidationIssues(report, 'another-item'), [])
+assert.deepEqual(migrationValidationIssues(null, 'blocked'), [])

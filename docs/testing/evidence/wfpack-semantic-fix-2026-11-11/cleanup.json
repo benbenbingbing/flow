@@ -1,0 +1,33 @@
+{
+  "temporaryPortsClosed": {
+    "13313": true,
+    "18094": true,
+    "18194": true
+  },
+  "mysqlShutdownExit": 0,
+  "credentialsRemoved": true,
+  "temporaryDatabaseAndBuildRemoved": true,
+  "originalServicesBefore": {
+    "8080": [
+      "75465"
+    ],
+    "3000": [
+      "75789"
+    ],
+    "3001": [
+      "75850"
+    ]
+  },
+  "originalServicesAfter": {
+    "8080": [
+      "75465"
+    ],
+    "3000": [
+      "75789"
+    ],
+    "3001": [
+      "75850"
+    ]
+  },
+  "originalServicesUnchanged": true
+}

@@ -1,0 +1,46 @@
+TAP version 13
+# Subtest: lifecycle options are independent, readonly, and available to forms
+ok 1 - lifecycle options are independent, readonly, and available to forms
+  ---
+  duration_ms: 1.402458
+  type: 'test'
+  ...
+# Subtest: discarded progress requests cannot repopulate a newly opened record
+ok 2 - discarded progress requests cannot repopulate a newly opened record
+  ---
+  duration_ms: 0.79775
+  type: 'test'
+  ...
+# Subtest: process details preserve configured entity status names and use shared fallbacks
+ok 3 - process details preserve configured entity status names and use shared fallbacks
+  ---
+  duration_ms: 0.493875
+  type: 'test'
+  ...
+# Subtest: history returned after switching records is also ignored
+ok 4 - history returned after switching records is also ignored
+  ---
+  duration_ms: 0.123708
+  type: 'test'
+  ...
+# Subtest: entity dialog titles use biz lifecycle even when the viewed process has ended
+ok 5 - entity dialog titles use biz lifecycle even when the viewed process has ended
+  ---
+  duration_ms: 0.136958
+  type: 'test'
+  ...
+# Subtest: withdrawal and cancelled tasks are distinct from approved history
+ok 6 - withdrawal and cancelled tasks are distinct from approved history
+  ---
+  duration_ms: 0.35175
+  type: 'test'
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 148.154

@@ -1,0 +1,7 @@
+
+> workflow-web@1.0.0 test:config-migration
+> node src/shared/__tests__/config-migration-pagination.spec.js && node src/views/system/__tests__/configMigrationPagination.spec.js && node src/shared/__tests__/config-migration-upload.spec.js
+
+config migration pagination tests passed
+config migration pagination integration tests passed
+config migration signature confirmation passed

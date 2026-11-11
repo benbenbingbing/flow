@@ -1,0 +1,32 @@
+{
+  "tests": {
+    "tests": 317,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "classes": 43
+  },
+  "sourceSha256": {
+    "workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageCodec.java": "71c0b3bd808acd7d6b985ddcc7c7c311d67d4db93a3197e04d76e8274f822c71",
+    "workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageValidation.java": "b930eeae4b82f57f0490e816d07b39cad68c2f5b48f6409c02c0de4f63743eef",
+    "workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationPackageSemanticValidationTest.java": "4e6d5e2fc5631f1607028016a2c6898418ef8e268ef8f08bc0525a30e6f402cf",
+    "workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationSignatureImportTest.java": "09f91a5041fa455f1c154a57b0a07ba92c17eb2febf123b7a41eddbc00b0a502",
+    "workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationRelatedPresentationTest.java": "f3383f28cd689c5ab97c231046e76c7652f0eeecd7817618af9606b5059634cc"
+  },
+  "testedJarSha256": "f1eae6188ee0076b71fd9a7697ff971ffd3b88f3d29eb87b84c86d2136ab9ed4",
+  "flyway": {
+    "migrations": 129,
+    "failed": 0
+  },
+  "publishingItems": 0,
+  "apiSummary": {
+    "negativeRequests": 42,
+    "negativePassed": 42,
+    "positiveCases": 4,
+    "allPassed": true
+  },
+  "positiveConfirmation": {
+    "passed": true,
+    "createdNoImportState": true
+  }
+}

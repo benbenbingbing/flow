@@ -59,6 +59,26 @@ class ConfigMigrationPinnedFormReferencesTest {
     }
 
     @Test
+    void relationSubFormDropsSourceEntityIdsAndRebuildsTargetCaches() {
+        EntityForm source = form("source-form"); source.setEntityId("source-entity");
+        EntityDefinition sourceEntity = new EntityDefinition(); sourceEntity.setEntityCode("expense");
+        when(forms.selectById("source-form")).thenReturn(source);
+        when(entities.selectById("source-entity")).thenReturn(sourceEntity);
+        Map<String, Object> exported = service.exportReferences(Map.of("componentProps", Map.of("subFormConfig", Map.of(
+                "childFormId", "source-form", "childEntityId", "source-entity", "refEntityId", "source-entity", "relationCode", "details"))));
+        assertFalse(exported.toString().contains("source-entity"));
+        assertEquals(exported, service.exportReferences(exported));
+        prepareTarget();
+        EntityForm target = form("target-form"); target.setEntityId("target-e");
+        when(forms.selectByEntityIdAndFormKey("target-e", "details")).thenReturn(target);
+        Map<String, Object> restored = service.materialize(exported, (type, key) -> key, unused -> fail());
+        Map<String, Object> config = object(object(restored.get("componentProps")).get("subFormConfig"));
+        assertEquals("target-form", config.get("childFormId"));
+        assertEquals("target-e", config.get("childEntityId"));
+        assertEquals("target-e", config.get("refEntityId"));
+    }
+
+    @Test
     void missingDependencyRequiresPackageFormOrExistingTarget() {
         prepareTarget();
         Map<String, Object> document = Map.of("childFormRef", "wf-form://expense/details");

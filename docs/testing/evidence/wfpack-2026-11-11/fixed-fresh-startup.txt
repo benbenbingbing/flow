@@ -1,0 +1,10 @@
+=== fresh_source / clean schema / final API test ===
+2026-11-11 10:52:35 [main] [system] INFO  o.f.core.internal.command.DbValidate - Successfully validated 129 migrations (execution time 00:00.050s)
+2026-11-11 10:52:37 [main] [system] INFO  c.w.d.r.MySqlV062CompatibilityCallback - V062 MySQL 临时表兼容执行完成，清理角色授权 1 条；原迁移文件和校验和保持不变
+2026-11-11 10:52:40 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Successfully applied 129 migrations to schema `wfpack_fresh_source_r3`, now at version v129 (execution time 00:04.164s)
+2026-11-11 10:52:48 [main] [system] INFO  com.workflow.WorkflowApplication - Started WorkflowApplication in 16.949 seconds (process running for 17.325)
+=== fresh_target / clean schema / final API test ===
+2026-11-11 10:52:35 [main] [system] INFO  o.f.core.internal.command.DbValidate - Successfully validated 129 migrations (execution time 00:00.053s)
+2026-11-11 10:52:37 [main] [system] INFO  c.w.d.r.MySqlV062CompatibilityCallback - V062 MySQL 临时表兼容执行完成，清理角色授权 1 条；原迁移文件和校验和保持不变
+2026-11-11 10:52:40 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Successfully applied 129 migrations to schema `wfpack_fresh_target_r3`, now at version v129 (execution time 00:04.247s)
+2026-11-11 10:52:48 [main] [system] INFO  com.workflow.WorkflowApplication - Started WorkflowApplication in 17.077 seconds (process running for 17.453)

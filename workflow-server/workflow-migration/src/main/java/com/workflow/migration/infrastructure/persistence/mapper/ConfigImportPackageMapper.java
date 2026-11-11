@@ -5,6 +5,7 @@ import com.workflow.migration.infrastructure.persistence.record.ConfigImportPack
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
+import org.apache.ibatis.annotations.Select;
 
 /**
  * 配置导入批次 Mapper。
@@ -13,6 +14,10 @@ import org.apache.ibatis.annotations.Update;
  */
 @Mapper
 public interface ConfigImportPackageMapper extends BaseMapper<ConfigImportPackage> {
+
+    /** 锁定批次后再检查状态，串行化同一批次的分析、发布和回滚，保护回滚历史及发布幂等性。 */
+    @Select("SELECT * FROM config_import_package WHERE id = #{id} FOR UPDATE")
+    ConfigImportPackage selectForUpdate(@Param("id") String id);
 
     /**
      * 更新批次分析结果，并显式允许清空上一次阻断原因。

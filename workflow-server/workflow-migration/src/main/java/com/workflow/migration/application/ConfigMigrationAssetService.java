@@ -117,7 +117,7 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
     public static final String TASK_SLA_POLICY = "TASK_SLA_POLICY"; // 资产类型：SLA策略
     public static final String COMPLETE = "COMPLETE"; // 快照完整度：完整
 
-    private static final int SNAPSHOT_SCHEMA_VERSION = 2;
+    private static final int SNAPSHOT_SCHEMA_VERSION = 3;
     private static final DateTimeFormatter TAG_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private static final Set<String> TECHNICAL_KEYS = Set.of(
             "id", "entityId", "formId", "fieldId", "listConfigId", "policyId", "processConfigId",
@@ -260,6 +260,26 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
                         .orderByDesc(ConfigMigrationAsset::getSourceVersion, ConfigMigrationAsset::getId))
                 .getRecords().stream().findFirst().orElse(null);
+    }
+
+    /**
+     * 锁定资产版本记录并读取最新版本，供持有业务行锁的迁移事务核对发布前后版本。
+     * 普通快照读可能仍看到等待业务行锁前的旧版本，不能用于防止过期包覆盖。
+     *
+     * @param assetType 资产类型，与业务编码共同限定待保护的资产
+     * @param businessKey 目标环境的稳定业务编码
+     * @return 当前最新发布资产，不存在时返回 null
+     * @throws org.springframework.transaction.IllegalTransactionStateException 调用方未开启迁移事务
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ConfigMigrationAsset findLatestForUpdate(String assetType, String businessKey) {
+        return assetMapper.selectList(
+                new LambdaQueryWrapper<ConfigMigrationAsset>()
+                        .eq(ConfigMigrationAsset::getAssetType, assetType)
+                        .eq(ConfigMigrationAsset::getBusinessKey, businessKey)
+                        .orderByDesc(ConfigMigrationAsset::getSourceVersion, ConfigMigrationAsset::getId)
+                        .last("FOR UPDATE"))
+                .stream().findFirst().orElse(null);
     }
 
     /**
@@ -885,6 +905,17 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
                         value -> value,
                         (left, right) -> left,
                         LinkedHashMap::new));
+        // 系统 UI 包不导出实体结构，但固定条件和默认值仍需源字段类型，不能借目标同名字段猜测。
+        Map<String, String> referenceFields = new LinkedHashMap<>();
+        fieldsByCode.forEach((code, field) -> {
+            Map<String, Object> contract = portableMap(field);
+            if (StringUtils.hasText(field.getRefEntityId())) {
+                EntityDefinition referenced = entityMapper.selectById(field.getRefEntityId());
+                contract.put("refEntityCode", referenced == null ? null : referenced.getEntityCode());
+            }
+            referenceFields.put(code, ConfigMigrationValueReferences.fieldType(contract));
+        });
+        snapshot.put(ConfigMigrationValueReferences.FIELD_TYPES, referenceFields);
         Set<String> referencedFields = new LinkedHashSet<>();
         Set<String> extensionReferences = new LinkedHashSet<>();
         Set<String> dataSourceIds = new LinkedHashSet<>();
@@ -2232,6 +2263,8 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         }
         String portableBpmn = replacePortableForms(redactSensitiveXml(history.getBpmnXml()), portableForms);
         List<Map<String, Object>> dependencies = new ArrayList<>();
+        ConfigMigrationBpmnReferences.formReferences(portableBpmn).forEach(form ->
+                addDependency(dependencies, "FORM", form, true, "BPMN 实体表单绑定"));
         portableBpmn = ConfigMigrationAssignmentSupport.rewriteBpmn(
                 portableBpmn, config.getProcessKey(), (type, key, context) -> {
                     String portable = portableAssignmentKey(type, key);
@@ -2574,13 +2607,13 @@ public class ConfigMigrationAssetService implements MigrationAssetPort, com.work
         if (!StringUtils.hasText(bpmnXml)) {
             return bpmnXml;
         }
-        String result = bpmnXml;
-        for (Map.Entry<String, String> entry : formReferences.entrySet()) {
-            if (StringUtils.hasText(entry.getKey()) && StringUtils.hasText(entry.getValue())) {
-                result = result.replace(entry.getKey(), entry.getValue());
-            }
-        }
-        return result;
+        // 同一 ID 文本可能出现在节点坐标、脚本或说明中，只转换平台声明的表单绑定。
+        return ConfigMigrationBpmnReferences.rewriteForms(
+                bpmnXml, value -> {
+                    if (value.startsWith("wf-form://")) return value;
+                    // nodeForms 历史表可能只同步了主表单，BPMN 中的其他绑定也必须按源目录解析。
+                    return formReferences.containsKey(value) ? formReferences.get(value) : portableFormReference(value);
+                });
     }
 
     /**

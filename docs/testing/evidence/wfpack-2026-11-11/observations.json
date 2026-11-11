@@ -1,0 +1,633 @@
+{
+  "date": "2026-11-11",
+  "timezone": "Asia/Shanghai",
+  "headAtReport": "3a2bdc4a4589d4eebd1135d3b78560e7aa9b6e60",
+  "environment": {
+    "mysql": "8.0.27",
+    "java": "21.0.11",
+    "node": "22.22.1",
+    "sourcePort": 18081,
+    "targetPort": 18082,
+    "uiPort": 13000,
+    "mysqlPort": 13311,
+    "schemaSetup": "First attempted empty-schema Flyway on two schemas, both failed V062. Continued on two other empty schemas initialized using docs/sql/mysql.sql (V129) with Flyway disabled only for this alternative initialization route. No repair or baseline."
+  },
+  "backendTests": {
+    "workflow-process": {
+      "classes": 86,
+      "tests": 574,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "workflow-migration": {
+      "classes": 38,
+      "tests": 195,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "artifacts": {
+    "child-parent-order.wfpack": {
+      "sha256": "381acb3074765e6db8c8a091dd8578cc11f1eaf7f605f7d7645241599fc7baf2",
+      "bytes": 12629
+    },
+    "missing-field-type.wfpack": {
+      "sha256": "730c5bf72a2e655bfe8011ac9c568434198534a3b8e55273aabb901e4c3db1d3",
+      "bytes": 4768
+    },
+    "browser-create.png": {
+      "sha256": "3668fcacff846983b9c5e0567efd1bcb945f5c16928a188e4a73ca69a581d843",
+      "bytes": 86589
+    }
+  },
+  "observations": {
+    "fullAnalysis": {
+      "analyzedAt": "2026-11-11T10:04:10.826657",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120336754111242241",
+          "assetType": "ENTITY",
+          "businessKey": "qa_expense",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120336754132213761",
+          "assetType": "PROCESS",
+          "businessKey": "qa_basic",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "unconfirmedImport": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "checksum": "1518967fdaf687564b6e59a5b2bbf18bb048fc0e7af67f586b3027b0c73d4c44",
+        "confirmationRequired": true,
+        "packageNo": "WFP-WFPACK_QA_20261111-20261111100329-BFDE95",
+        "message": "发布包签名校验未通过，可能是两端环境密钥不同，也可能是文件被修改。请确认来源可信后继续导入。"
+      }
+    },
+    "fullImport": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "id": "2120336754090270722",
+        "packageNo": "WFP-WFPACK_QA_FULL-20261111100410-57C05D",
+        "sourceEnvironment": "wfpack-test-source",
+        "signatureStatus": "MISMATCH_CONFIRMED",
+        "signatureConfirmedBy": "admin",
+        "signatureConfirmedAt": "2026-11-11T10:04:10.785039",
+        "migrationTag": "WFPACK_QA_FULL",
+        "fileName": "test.wfpack",
+        "checksum": "48894525a114d2b78f6e0577b35d6e70bc9808c1a7e877fffa911d3b8be6577c",
+        "status": "UPLOADED",
+        "importedBy": "admin",
+        "importedAt": "2026-11-11T10:04:10.785039",
+        "publishedBy": null,
+        "publishedAt": null,
+        "errorMessage": null
+      }
+    },
+    "sameUpload": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "id": "2120336754090270722",
+        "packageNo": "WFP-WFPACK_QA_FULL-20261111100410-57C05D",
+        "sourceEnvironment": "wfpack-test-source",
+        "signatureStatus": "MISMATCH_CONFIRMED",
+        "signatureConfirmedBy": "admin",
+        "signatureConfirmedAt": "2026-11-11T10:04:10.785039",
+        "migrationTag": "WFPACK_QA_FULL",
+        "fileName": "test.wfpack",
+        "checksum": "48894525a114d2b78f6e0577b35d6e70bc9808c1a7e877fffa911d3b8be6577c",
+        "status": "PUBLISHED",
+        "importedBy": "admin",
+        "importedAt": "2026-11-11T10:04:11",
+        "publishedBy": "admin",
+        "publishedAt": "2026-11-11T10:04:12",
+        "errorMessage": null
+      }
+    },
+    "sameContentAnalysis": {
+      "analyzedAt": "2026-11-11T10:12:30.613542",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120338850415923202",
+          "assetType": "ENTITY",
+          "businessKey": "qa_expense",
+          "comparisonStatus": "CONSISTENT",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120338850428506114",
+          "assetType": "PROCESS",
+          "businessKey": "qa_basic",
+          "comparisonStatus": "CONSISTENT",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "incrementAnalysis": {
+      "analyzedAt": "2026-11-11T10:12:30.862434",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120338851456110594",
+          "assetType": "ENTITY",
+          "businessKey": "qa_expense",
+          "comparisonStatus": "CONSISTENT",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120338851468693506",
+          "assetType": "PROCESS",
+          "businessKey": "qa_basic",
+          "comparisonStatus": "SOURCE_NEWER",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "incrementTarget": {
+      "id": "2120336756141285377",
+      "version": 2,
+      "processName": "迁移测试_基础审批V2",
+      "hasSourceFormId": false
+    },
+    "runtimeAfterScheduler": {
+      "id": "35c7e2bb18c640ffa501382adfff2521",
+      "entityCode": "qa_expense",
+      "entityName": null,
+      "name": "迁移后运行验收",
+      "code": "QA_EXPENSE20261111000001",
+      "status": "DRAFT",
+      "processStatus": "COMPLETED",
+      "processInstanceId": "4bc6558b-dd74-11f1-89aa-7612d5b69a47",
+      "processStartTime": "2026-11-11T10:04:58",
+      "processEndTime": "2026-11-11T10:06:41",
+      "currentTaskId": null,
+      "currentTaskName": null,
+      "currentTaskAssignee": null,
+      "data": {
+        "amount": 125.5,
+        "title": "实际跨环境审批"
+      },
+      "submitterId": "1",
+      "submitterName": "admin",
+      "deptId": null,
+      "deptName": null,
+      "submitTime": "2026-11-11T10:04:58",
+      "deleted": false,
+      "startProcess": null,
+      "processVariables": null,
+      "extData": {},
+      "listKey": null,
+      "listConfigHash": null,
+      "formConfigHash": null,
+      "runtimeContext": null,
+      "formId": null,
+      "compositionContext": null,
+      "actionCapabilities": {},
+      "create_time": "2026-11-11T10:04:58",
+      "update_time": "2026-11-11T10:06:41",
+      "create_by": "1",
+      "update_by": "1"
+    },
+    "advancedRetryImport": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "id": "2120338598262755330",
+        "packageNo": "WFP-WFPACK_QA_ADVANCED_RETRY-20261111101130-09E247",
+        "sourceEnvironment": "wfpack-test-source",
+        "signatureStatus": "MISMATCH_CONFIRMED",
+        "signatureConfirmedBy": "admin",
+        "signatureConfirmedAt": "2026-11-11T10:11:30.470141",
+        "migrationTag": "WFPACK_QA_ADVANCED_RETRY",
+        "fileName": "test.wfpack",
+        "checksum": "381acb3074765e6db8c8a091dd8578cc11f1eaf7f605f7d7645241599fc7baf2",
+        "status": "UPLOADED",
+        "importedBy": "admin",
+        "importedAt": "2026-11-11T10:11:30.470141",
+        "publishedBy": null,
+        "publishedAt": null,
+        "errorMessage": null
+      }
+    },
+    "advancedRetryAnalysis": {
+      "analyzedAt": "2026-11-11T10:11:30.516211",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120338598275338241",
+          "assetType": "ENTITY",
+          "businessKey": "qa_child_entity",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120338598283726850",
+          "assetType": "ENTITY",
+          "businessKey": "qa_parent_entity",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120338598296309761",
+          "assetType": "PROCESS",
+          "businessKey": "qa_a_parent",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120338598308892674",
+          "assetType": "PROCESS",
+          "businessKey": "qa_z_child",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "advancedRetryPublish": {
+      "http": 400,
+      "code": 400,
+      "message": "所选子流程必须已发布且唯一绑定实体: qa_z_child",
+      "errorCode": null,
+      "data": null
+    },
+    "failedBatchRollback": {
+      "entities": "0",
+      "processes": "0",
+      "forms": "0",
+      "tables": "biz_qa_expense\nbiz_qa_expense_multi\nbiz_qa_expense_team"
+    },
+    "WFPACK_QA_CHILD_FIRSTPublish": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "status": "PUBLISHED"
+    },
+    "WFPACK_QA_PARENT_SECONDPublish": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "status": "PUBLISHED"
+    },
+    "optionalTypeSourcePublish": {
+      "node": {
+        "id": "6a1e5b380236456485b8c9c8749159bc",
+        "formId": "2120339688546910210",
+        "parentId": null,
+        "nodeKey": "note",
+        "nodeType": "FIELD",
+        "bindingType": "ENTITY_FIELD",
+        "bindingRef": "note",
+        "componentVersion": null,
+        "snapshotVersion": null,
+        "propsDocument": "{\"fieldCode\":\"note\",\"fieldName\":\"备注\",\"componentType\":\"input\",\"label\":\"备注\"}",
+        "rulesDocument": null,
+        "dataSourceBindingsDocument": null,
+        "legacyPropsDocument": null,
+        "orderKey": 1000000,
+        "revision": 1,
+        "createdAt": "2026-11-11T10:15:50.426145",
+        "updatedAt": "2026-11-11T10:15:50.426147",
+        "deleted": 0
+      },
+      "previewCanPublish": true,
+      "published": {
+        "formId": "2120339688546910210",
+        "contentHash": "747ad1f4f4e534640a4238096b0eb5ba9de34d9ed821fcfe6e6a0516098217bb",
+        "publishedBy": "1",
+        "publishedAt": "2026-11-11T10:15:50.461741"
+      }
+    },
+    "WFPACK_QA_OPTIONAL_TYPEUpload": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "id": "2120339689067008002",
+        "packageNo": "WFP-WFPACK_QA_OPTIONAL_TYPE-20261111101550-0E63A4",
+        "sourceEnvironment": "wfpack-test-source",
+        "signatureStatus": "MISMATCH_CONFIRMED",
+        "signatureConfirmedBy": "admin",
+        "signatureConfirmedAt": "2026-11-11T10:15:50.53784",
+        "migrationTag": "WFPACK_QA_OPTIONAL_TYPE",
+        "fileName": "test.wfpack",
+        "checksum": "730c5bf72a2e655bfe8011ac9c568434198534a3b8e55273aabb901e4c3db1d3",
+        "status": "UPLOADED",
+        "importedBy": "admin",
+        "importedAt": "2026-11-11T10:15:50.53784",
+        "publishedBy": null,
+        "publishedAt": null,
+        "errorMessage": null
+      }
+    },
+    "WFPACK_QA_OPTIONAL_TYPEAnalysis": {
+      "analyzedAt": "2026-11-11T10:15:50.555605",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120339689075396609",
+          "assetType": "ENTITY",
+          "businessKey": "qa_optional_type",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "WFPACK_QA_OPTIONAL_TYPEPublish": {
+      "http": 400,
+      "code": 400,
+      "message": "组件 input 不兼容字段类型 FIELD",
+      "status": null
+    },
+    "identityPackageRefs": {
+      "containsSourceUserId": false,
+      "containsReviewerUsername": true
+    },
+    "identityRuntimeRetest": {
+      "http": 200,
+      "code": 200,
+      "message": "success",
+      "errorCode": null,
+      "data": {
+        "id": "07ad1410bd0648219330aff8e5e816ac",
+        "entityCode": "qa_identity_entity",
+        "entityName": null,
+        "name": "跨环境运行_qa_identity_entity",
+        "code": "QA_IDENTITY_ENTITY20261111000001",
+        "status": "DRAFT",
+        "processStatus": "RUNNING",
+        "processInstanceId": "ec041afb-dd75-11f1-9fd1-7612d5b69a47",
+        "processStartTime": "2026-11-11T10:16:37",
+        "processEndTime": null,
+        "currentTaskId": "ec094b35-dd75-11f1-9fd1-7612d5b69a47",
+        "currentTaskName": "身份映射审批",
+        "currentTaskAssignee": "qa_reviewer",
+        "data": {},
+        "submitterId": "1",
+        "submitterName": "admin",
+        "deptId": null,
+        "deptName": null,
+        "submitTime": "2026-11-11T10:16:37",
+        "deleted": false,
+        "startProcess": null,
+        "processVariables": null,
+        "extData": {},
+        "listKey": null,
+        "listConfigHash": null,
+        "formConfigHash": null,
+        "runtimeContext": null,
+        "formId": null,
+        "compositionContext": null,
+        "actionCapabilities": {},
+        "create_time": "2026-11-11T10:16:37",
+        "update_time": "2026-11-11T10:16:37",
+        "create_by": "1",
+        "update_by": "1"
+      }
+    },
+    "identityCcActual": "qa_reviewer\t迁移测试审批人\tTASK_CREATE",
+    "missingIdentityAnalysis": {
+      "analyzedAt": "2026-11-11T10:15:50.223212",
+      "blocked": true,
+      "items": [
+        {
+          "itemId": "2120339687691276289",
+          "assetType": "PROCESS",
+          "businessKey": "qa_missing_person",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "UNRESOLVED",
+          "missingDependencies": [
+            {
+              "type": "USER",
+              "key": "qa_missing",
+              "required": true,
+              "targetOnly": true,
+              "source": "流程 qa_missing_person / 节点  (review) / assignee",
+              "references": [
+                {
+                  "processKey": "qa_missing_person",
+                  "nodeId": "review",
+                  "nodeName": "",
+                  "section": "bpmnXml",
+                  "multiInstance": false,
+                  "location": "assignee"
+                }
+              ],
+              "targetKey": "qa_missing",
+              "reason": "目标系统不存在对应编码或配置不可用"
+            }
+          ],
+          "risks": [
+            {
+              "code": "REFERENCE_INVALID",
+              "level": "BLOCKING",
+              "message": "流程人员迁移文档转换失败: 目标身份编码不存在: USER/qa_missing"
+            }
+          ],
+          "blocked": true
+        }
+      ]
+    },
+    "tampered": {
+      "http": 400,
+      "code": 400,
+      "message": "发布包文件校验失败: assets/processes/qa_basic-v1.json",
+      "errorCode": null,
+      "data": null
+    },
+    "legacyFormatWithValidChecksum": {
+      "http": 400,
+      "code": 400,
+      "message": "不支持的发布包格式版本: 2",
+      "errorCode": null,
+      "data": null
+    },
+    "WFPACK_QA_MULTIAnalysis": {
+      "analyzedAt": "2026-11-11T10:18:52.648425",
+      "blocked": false,
+      "items": [
+        {
+          "itemId": "2120340452770074625",
+          "assetType": "ENTITY",
+          "businessKey": "qa_multi_entity",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        },
+        {
+          "itemId": "2120340452782657537",
+          "assetType": "PROCESS",
+          "businessKey": "qa_multi_gateway",
+          "comparisonStatus": "NEW",
+          "mappingStatus": "RESOLVED",
+          "missingDependencies": [],
+          "risks": [],
+          "blocked": false
+        }
+      ]
+    },
+    "multiActualTasks": "admin\tlow_task\t50.00\nadmin\treview\t200.00\nqa_reviewer\treview\t200.00",
+    "multiBeforeSecondApprover": "1",
+    "runtimeApprovals": [
+      {
+        "processKey": "qa_identity",
+        "assignee": "qa_reviewer",
+        "taskId": "19d7abb0-dd76-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "processKey": "qa_identity",
+        "assignee": "qa_reviewer",
+        "taskId": "ec094b35-dd75-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "processKey": "qa_multi_gateway",
+        "assignee": "admin",
+        "taskId": "3d61e08e-dd76-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "processKey": "qa_multi_gateway",
+        "assignee": "admin",
+        "taskId": "3d751aa0-dd76-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "processKey": "qa_multi_gateway",
+        "assignee": "qa_reviewer",
+        "taskId": "3d627cd6-dd76-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      },
+      {
+        "processKey": "qa_z_child",
+        "assignee": "admin",
+        "taskId": "ec373840-dd75-11f1-9fd1-7612d5b69a47",
+        "http": 200,
+        "code": 200,
+        "message": "success"
+      }
+    ],
+    "finalDatabaseStates": {
+      "multi": "50.00\tCOMPLETED\n200.00\tCOMPLETED",
+      "child": "COMPLETED",
+      "parent": "COMPLETED",
+      "identity": "COMPLETED\nCOMPLETED",
+      "failedOptionalEntityCount": "0",
+      "failedBatchStatuses": "2120338598262755330\tANALYZED\tNULL\n2120339689067008002\tANALYZED\tNULL"
+    },
+    "browserCreatedDraft": {
+      "id": "2120341625019305986",
+      "revision": 2,
+      "status": "DRAFT",
+      "hasBpmnDiagram": true,
+      "runtimeErrors": []
+    },
+    "semanticChecks": {
+      "count": 36,
+      "passed": [
+        "完整包首次发布成功",
+        "目标流程生成新ID",
+        "目标实体生成新ID",
+        "BPMN表单不残留源ID",
+        "异密钥首次要求确认",
+        "确认后记录签名不一致状态",
+        "同文件上传复用批次",
+        "同内容导入识别一致",
+        "同内容重发布成功",
+        "增量流程识别来源更新",
+        "增量发布版本为2",
+        "基础实例最终完成",
+        "父子整包分析误判无阻断",
+        "父子整包发布失败",
+        "失败批次配置回滚",
+        "先子后父均发布成功",
+        "子流程实例真实启动",
+        "父子流程最终完成",
+        "人员包不残留源ID",
+        "人员撞号场景选择正确用户",
+        "知会配置重绑目标ID",
+        "知会实际生成正确接收人",
+        "目标缺失人员按编码阻断",
+        "损坏包拒绝",
+        "旧格式拒绝",
+        "缺省字段类型源端可发布",
+        "缺省字段类型目标分析误判",
+        "缺省字段类型目标发布失败",
+        "缺省字段类型失败回滚",
+        "条件网关与会签迁移成功",
+        "高金额生成两人会签任务",
+        "低金额走默认分支",
+        "会签单人办理后仍保留另一任务",
+        "所有实际审批请求均成功",
+        "所有网关测试实例最终完成",
+        "真实页面新建保存成功"
+      ]
+    }
+  }
+}

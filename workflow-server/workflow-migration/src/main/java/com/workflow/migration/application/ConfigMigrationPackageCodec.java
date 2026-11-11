@@ -1,6 +1,7 @@
 package com.workflow.migration.application;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.workflow.migration.infrastructure.archive.WfpackArchive;
 import com.workflow.migration.infrastructure.crypto.WfpackIntegrity;
@@ -36,7 +37,7 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ConfigMigrationPackageCodec {
 
-    private static final int FORMAT_VERSION = 3;              // 当前发布包格式版本
+    private static final int FORMAT_VERSION = 4;              // 字段常量及扩展参数引用协议，旧导入器必须拒绝
     private static final int MIN_SUPPORTED_FORMAT_VERSION = 3;
     static final String SELECTION_METADATA = "_selection";
     static final String TARGET_ONLY_DEPENDENCY = "targetOnly";
@@ -128,7 +129,8 @@ public class ConfigMigrationPackageCodec {
      * 解码 wfpack 发布包二进制为结构化资产数据。
      *
      * <p>依次校验：非空与大小上限、zip 解压条目数/单条目大小/总大小/路径合法性、
-     * 清单存在性、每个条目的校验和、清单格式版本，最终还原资产列表并返回 HMAC 验签状态。
+     * 清单存在性、每个条目的校验和、包编号、协议版本、选择范围与附加依赖清单结构，
+     * 最终还原资产列表并返回 HMAC 验签状态。所有语义检查均在导入批次入库之前完成。
      * 签名不一致由导入服务要求人工确认；格式或内容损坏始终拒绝。</p>
      *
      * @param packageData 发布包二进制内容
@@ -167,6 +169,8 @@ public class ConfigMigrationPackageCodec {
                 || formatVersion > FORMAT_VERSION) {
             throw new IllegalArgumentException("不支持的发布包格式版本: " + formatVersion);
         }
+        String packageNo = ConfigMigrationPackageValidation.packageNo(manifest.get("packageNo"));
+        validateDependencyFile(requiredEntry(entries, "dependencies.json"));
 
         List<Map<String, Object>> manifestAssets = castMapList(manifest.get("assets"));
         List<DecodedAsset> assets = new ArrayList<>();
@@ -174,6 +178,10 @@ public class ConfigMigrationPackageCodec {
             String path = String.valueOf(asset.get("path"));
             byte[] snapshotBytes = requiredEntry(entries, path);
             Map<String, Object> snapshot = readMap(snapshotBytes, new TypeReference<>() {});
+            int sourceVersion = ConfigMigrationPackageValidation.positiveVersion(
+                    asset.get("sourceVersion"), path + " sourceVersion");
+            ConfigMigrationPackageValidation.snapshotVersion(asset, snapshot, path);
+            ConfigMigrationPackageValidation.selection(String.valueOf(asset.get("assetType")), asset.get("selection"));
             Map<String, Object> selection = normalizeSelection(asset.get("selection"));
             String packagedSourceHash = String.valueOf(asset.get("sourceHash"));
             String verifiedHash = hashSnapshot(snapshot);
@@ -188,13 +196,13 @@ public class ConfigMigrationPackageCodec {
                     String.valueOf(asset.get("assetType")),
                     String.valueOf(asset.get("businessKey")),
                     String.valueOf(asset.get("assetName")),
-                    Integer.parseInt(String.valueOf(asset.get("sourceVersion"))),
+                    sourceVersion,
                     normalizedSourceHash,
                     snapshot,
                     castMapList(snapshot.get("dependencies"))));
         }
         return new DecodedPackage(
-                String.valueOf(manifest.get("packageNo")),
+                packageNo,
                 String.valueOf(manifest.get("migrationTag")),
                 String.valueOf(manifest.getOrDefault("sourceEnvironment", "")),
                 WfpackIntegrity.sha256(packageData),
@@ -203,6 +211,18 @@ public class ConfigMigrationPackageCodec {
                         hmac(checksumBytes).getBytes(StandardCharsets.UTF_8)),
                 manifest,
                 assets);
+    }
+
+    /** 附加清单也必须是完整 JSON 文档，损坏文件不能因资产正文可读而被静默忽略。 */
+    private void validateDependencyFile(byte[] bytes) {
+        Object dependencies;
+        try {
+            dependencies = objectMapper.readerFor(Object.class)
+                    .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readValue(bytes);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("发布包 dependencies.json JSON 格式错误", e);
+        }
+        ConfigMigrationPackageValidation.dependencies(dependencies);
     }
 
     /**
@@ -227,6 +247,7 @@ public class ConfigMigrationPackageCodec {
     private Map<String, Object> selectSnapshot(Map<String, Object> snapshot,
                                                Object rawSelection,
                                                boolean requireSelectedKeys) {
+        ConfigMigrationPackageValidation.selection(String.valueOf(snapshot.get("assetType")), rawSelection);
         snapshot = normalizeRetiredViewComponents(snapshot);
         Map<String, Object> selection = normalizeSelection(rawSelection);
         if (Boolean.TRUE.equals(selection.get("full"))) {
@@ -238,7 +259,8 @@ public class ConfigMigrationPackageCodec {
         Set<String> sections = stringSet(selection.get("sections"));
         Map<String, Object> selected = new LinkedHashMap<>();
         copyIfPresent(snapshot, selected,
-                "schemaVersion", "assetType", "businessKey", "assetName");
+                "schemaVersion", "assetType", "businessKey", "assetName",
+                ConfigMigrationValueReferences.FIELD_TYPES, ConfigMigrationValueReferences.PROTOCOL);
         selected.put("definition", selectedDefinition(snapshot, sections));
 
         for (String section : expandedSections(
@@ -415,6 +437,7 @@ public class ConfigMigrationPackageCodec {
         if (!(rawSelection instanceof Map<?, ?> rawMap)) {
             return Map.of("full", true);
         }
+        ConfigMigrationPackageValidation.selection(null, rawSelection);
         Map<String, Object> selection = new LinkedHashMap<>();
         Object full = rawMap.get("full");
         if (Boolean.TRUE.equals(full)

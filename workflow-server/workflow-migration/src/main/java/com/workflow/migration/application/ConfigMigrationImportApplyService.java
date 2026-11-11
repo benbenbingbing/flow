@@ -98,6 +98,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
@@ -174,6 +175,7 @@ public class ConfigMigrationImportApplyService {
     private final ConfigMigrationPackageService packageService;
     private final ConfigMigrationReferenceService referenceService;
     private final ConfigMigrationSubFormReferences subFormReferences;
+    private final ConfigMigrationRelationImporter relationImporter;
     private final ObjectMapper objectMapper;
     private final DatabaseQueryDialect queryDialect;
     @org.springframework.beans.factory.annotation.Autowired
@@ -191,7 +193,7 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalStateException 批次未分析、存在阻断项或发布后未生成迁移资产
      * @throws IllegalArgumentException 没有可发布条目
      */
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     @SystemAudit(
             module = AuditModule.MIGRATION,
             action = AuditAction.PUBLISH,
@@ -250,7 +252,8 @@ public class ConfigMigrationImportApplyService {
         // Excel 的表单/方案双向引用只在本事务预检计划内延期；结束后必须正常发布并复核。
         var excelScope = openExcelPublicationScope(actionableItems);
         try {
-        processLockCoordinator.lockAffectedExistingProcesses(actionableItems);
+        processLockCoordinator.lockAffectedExistingProcesses(items);
+        packageService.requireUnchangedTargets(items, false);
 
         List<ConfigImportItem> dictionaries = itemsOfType(
                 actionableItems,
@@ -283,6 +286,9 @@ public class ConfigMigrationImportApplyService {
         for (SystemEntityUiContext context : systemEntityUis) prepareUiOwners(context.entity(), context.snapshot());
         for (EntityContext context : entities) applyEntityConfiguration(context, false, true);
         for (SystemEntityUiContext context : systemEntityUis) applySystemEntityUiConfiguration(context, true);
+        // 独立组成关系不再由 SUB_FORM 实体字段承载；等全部子实体字段就绪后统一恢复，
+        // 这样父实体排在子实体前也不会丢关系，后续节点校验才能使用目标关系身份。
+        for (EntityContext context : entities) relationImporter.apply(context.entity(), context.snapshot(), this::mappedKey);
         // 先按稳定子表单依赖拓扑顺序发布，再处理列表；不恢复或临时激活隐藏历史版本。
         List<CurrentUiContext> uiContexts = new ArrayList<>();
         for (EntityContext context : entities) uiContexts.add(new CurrentUiContext(context.entity().getId(), context.entity().getEntityCode(), context.snapshot()));
@@ -327,11 +333,11 @@ public class ConfigMigrationImportApplyService {
         }
         bindEntities(entities, processes);
 
-        for (ProcessContext context : processes) {
+        for (ProcessContext context : orderProcessesForPublication(processes)) {
             applyProcessConfiguration(context, importPackage);
             markPublished(context.item());
         }
-        for (EntityContext context : entities) publishEntity(context, importPackage);
+        for (EntityContext context : orderEntitiesForPublication(entities)) publishEntity(context, importPackage);
         excelScope.close();
         for (EntityContext context : entities) {
             applyExcelConfiguration(context);
@@ -590,7 +596,7 @@ public class ConfigMigrationImportApplyService {
      * @return 回滚结果
      * @throws IllegalStateException 批次未发布、上一版本非完整快照不能自动回滚
      */
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(rollbackFor = Exception.class, isolation = Isolation.READ_COMMITTED)
     @SystemAudit(
             module = AuditModule.MIGRATION,
             action = AuditAction.ROLLBACK,
@@ -653,6 +659,7 @@ public class ConfigMigrationImportApplyService {
         try {
         processLockCoordinator.lockAffectedExistingProcesses(
                 rollbackLockItems(rollbackPlans));
+        packageService.requireUnchangedTargets(items, true);
         for (RollbackItemPlan plan : rollbackPlans) {
             ConfigImportItem item = plan.originalItem();
             ConfigImportItem rollbackItem = plan.rollbackItem();
@@ -698,8 +705,14 @@ public class ConfigMigrationImportApplyService {
                             item.getBusinessKey()));
         }
         for (EntityRollbackContext rollback : entityRollbacks) {
-            applyEntityConfiguration(rollback.context(), true);
+            applyEntityConfiguration(rollback.context(), true, true);
         }
+        for (EntityRollbackContext rollback : entityRollbacks)
+            relationImporter.apply(rollback.context().entity(), rollback.context().snapshot(), this::mappedKey);
+        applyCurrentForms(entityRollbacks.stream().map(rollback -> new CurrentUiContext(
+                rollback.context().entity().getId(), rollback.context().entity().getEntityCode(), rollback.context().snapshot())).toList());
+        for (EntityRollbackContext rollback : entityRollbacks)
+            if (rollback.context().snapshot().containsKey("lists")) applyLists(rollback.context().entity(), mapList(rollback.context().snapshot().get("lists")));
         for (SystemEntityUiRollbackContext rollback :
                 systemUiContexts) {
             applySystemEntityUiConfiguration(rollback.context());
@@ -731,10 +744,13 @@ public class ConfigMigrationImportApplyService {
         for (ConfigImportItem item : taskSlaPolicyRollbacks) {
             applyTaskSlaPolicy(item, rollbackPackage.getMigrationTag());
         }
-        for (ProcessContext context : processContexts) {
+        for (ProcessContext context : orderProcessesForPublication(processContexts)) {
             applyProcessConfiguration(context, rollbackPackage);
         }
-        for (EntityRollbackContext rollback : entityRollbacks) {
+        Map<String, EntityRollbackContext> rollbacksByCode = entityRollbacks.stream().collect(
+                java.util.stream.Collectors.toMap(value -> value.context().entity().getEntityCode(), value -> value));
+        for (EntityContext context : orderEntitiesForPublication(entityRollbacks.stream().map(EntityRollbackContext::context).toList())) {
+            EntityRollbackContext rollback = rollbacksByCode.get(context.entity().getEntityCode());
             removeEntityConfigurationsAbsentFrom(
                     rollback.originalItem(),
                     rollback.context().snapshot());
@@ -1293,11 +1309,13 @@ public class ConfigMigrationImportApplyService {
             for (Map<String, Object> fieldValue : mapList(value.get("fields"))) {
                 EntityFormField formField = convert(fieldValue, EntityFormField.class);
                 EntityField entityField = fields.get(formField.getFieldCode());
-                if (entityField == null) {
+                // 组成关系节点投影的 dataKey 是聚合数据入口，没有对应的 entity_field。
+                // 仅允许有真实 RELATION 节点支撑的虚拟字段，普通缺失字段仍然拒绝。
+                if (entityField == null && !isRelationFormField(formField.getFieldCode(), mapList(value.get("nodes")))) {
                     throw new IllegalStateException("表单字段不存在: " + formField.getFieldCode());
                 }
                 formField.setId(null);
-                formField.setFieldId(entityField.getId());
+                formField.setFieldId(entityField == null ? null : entityField.getId());
                 formFields.add(formField);
             }
             form.setFields(null);
@@ -1330,6 +1348,18 @@ public class ConfigMigrationImportApplyService {
                 node.setDeleted(0);
                 nodes.add(node);
             }
+            // 源端允许实体字段节点省略 fieldType；必须先从目标实体补全，避免旧字段投影的
+            // FIELD（节点类型）被合回属性后误当成数据类型，导致源端可发布的表单无法导入。
+            for (EntityFormNode node : nodes) {
+                Map<String, Object> props = new LinkedHashMap<>(
+                        new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
+                                .readObject(node.getPropsDocument(), "导入节点属性"));
+                EntityField targetField = fields.get(text(props.get("fieldCode"), node.getBindingRef()));
+                if (completeImportedFieldType(node, props, targetField)) {
+                    node.setPropsDocument(new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
+                            .write(props, "导入节点属性"));
+                }
+            }
             // 导入包可能仍含快照字段；合入节点后只保存节点，避免两份可编辑配置。
             nodes = new com.workflow.entity.form.application.EntityFormFieldProjection(
                     new com.workflow.core.serialization.JsonDocumentCodec(objectMapper))
@@ -1340,11 +1370,13 @@ public class ConfigMigrationImportApplyService {
                         new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
                                 .readObject(node.getPropsDocument(), "导入节点属性"));
                 EntityField targetField = fields.get(text(props.get("fieldCode"), node.getNodeKey()));
+                boolean changed = normalizeImportedRelationNodeProps(node, props);
                 if (targetField != null) {
                     props.put("fieldId", targetField.getId());
-                    node.setPropsDocument(new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
-                            .write(props, "导入节点属性"));
+                    changed = true;
                 }
+                if (changed) node.setPropsDocument(new com.workflow.core.serialization.JsonDocumentCodec(objectMapper)
+                        .write(props, "导入节点属性"));
             }
             if (value.containsKey("nodes") || value.containsKey("fields")) {
                 entityFormNodeService.replaceByDiff(saved.getId(), nodes);
@@ -1399,6 +1431,17 @@ public class ConfigMigrationImportApplyService {
             rewrittenForms.add(form);
         }
         snapshot.put("forms", rewrittenForms);
+    }
+
+    /** 关系字段必须由子表单/明细节点声明；不能凭 fieldType 绕过实体字段存在性校验。 */
+    private boolean isRelationFormField(String fieldCode, List<Map<String, Object>> nodes) {
+        var codec = new com.workflow.core.serialization.JsonDocumentCodec(objectMapper);
+        return nodes.stream().anyMatch(node -> {
+            if (!"RELATION".equals(node.get("bindingType"))
+                    || !Set.of("SUB_FORM", "REPEATER").contains(text(node.get("nodeType"), ""))) return false;
+            Map<String, Object> props = codec.readObject(text(node.get("propsDocument"), "{}"), "导入关系节点属性");
+            return Objects.equals(fieldCode, text(props.get("fieldCode"), text(node.get("nodeKey"), null)));
+        });
     }
 
     /**
@@ -2932,6 +2975,7 @@ public class ConfigMigrationImportApplyService {
         if (entity == null) {
             return;
         }
+        relationImporter.disableAdded(entity, importedSnapshot, restoredSnapshot);
         if (importedSnapshot.containsKey("forms")) {
             Set<String> removedForms = formKeys(importedSnapshot);
             removedForms.removeAll(formKeys(restoredSnapshot));
@@ -3084,13 +3128,18 @@ public class ConfigMigrationImportApplyService {
      * @return 解析后的可移植BPMN文本，供调用方比较或展示
      */
     private String resolvePortableBpmn(String bpmnXml, Map<String, Object> snapshot) {
-        String result = bpmnXml;
+        Map<String, String> formIds = new LinkedHashMap<>();
         for (Map<String, Object> value : mapList(snapshot.get("nodeForms"))) {
             String formRef = text(value.get("formRef"), null);
             if (StringUtils.hasText(formRef)) {
-                result = result.replace(formRef, resolveFormId(formRef));
+                formIds.put(formRef, resolveFormId(formRef));
             }
         }
+        String result = ConfigMigrationBpmnReferences.rewriteForms(bpmnXml, value -> {
+            if (formIds.containsKey(value)) return formIds.get(value);
+            // 正文中的引用同样需要解析，不能仅靠 nodeForms 清单完整性保证可移植性。
+            return value.startsWith("wf-form://") ? resolveFormId(value) : value;
+        });
         return ConfigMigrationAssignmentSupport.rewriteBpmn(
                 result, text(snapshot.get("businessKey"), ""),
                 (type, key, context) -> resolveAssigneeValue(type, key));
@@ -3215,6 +3264,105 @@ public class ConfigMigrationImportApplyService {
                 .toList();
     }
 
+    /** 实体正常发布会校验子实体已发布；同包子实体必须先发布，不能依赖编码排序。 */
+    private List<EntityContext> orderEntitiesForPublication(List<EntityContext> entities) {
+        Map<String, EntityContext> byCode = new LinkedHashMap<>();
+        Map<String, Set<String>> dependencies = new LinkedHashMap<>();
+        for (EntityContext context : entities) {
+            String code = context.entity().getEntityCode();
+            byCode.put(code, context);
+            Set<String> children = new LinkedHashSet<>();
+            for (Map<String, Object> relation : mapList(context.snapshot().get("relations")))
+                children.add(mappedKey("ENTITY", text(relation.get("childEntityCode"), "")));
+            dependencies.put(code, children);
+        }
+        return publicationOrder(dependencies, "实体关系").stream().map(byCode::get).toList();
+    }
+
+    /**
+     * 按包内调用依赖发布子流程，再发布父流程；已在目标发布且本次复用的流程不参与排序。
+     * 发布和回滚共用此顺序，避免编码排序或批次条目顺序改变调用校验的结果。
+     *
+     * @param processes 已准备并完成实体绑定的本次待发布流程
+     * @return 子流程优先的流程上下文；调用成环时抛出异常并由外层事务回滚
+     */
+    private List<ProcessContext> orderProcessesForPublication(List<ProcessContext> processes) {
+        Map<String, ProcessContext> byKey = new LinkedHashMap<>();
+        Map<String, Set<String>> dependencies = new LinkedHashMap<>();
+        for (ProcessContext context : processes) {
+            String key = context.process().getProcessKey();
+            byKey.put(key, context);
+            Set<String> children = new LinkedHashSet<>();
+            for (Map<String, Object> dependency : mapList(context.snapshot().get("dependencies"))) {
+                if (ConfigMigrationAssetService.PROCESS.equals(dependency.get("type"))) {
+                    children.add(mappedKey(ConfigMigrationAssetService.PROCESS, text(dependency.get("key"), "")));
+                }
+            }
+            dependencies.put(key, children);
+        }
+        return processPublicationOrder(dependencies).stream().map(byKey::get).toList();
+    }
+
+    /**
+     * 只排序本批次中的流程依赖；批次外依赖仍由迁移预检和流程发布校验确认有效。
+     *
+     * @param dependencies 目标流程编码到被调用流程编码的有向依赖，保留无依赖项的原始顺序
+     * @return 子流程在父流程之前的完整顺序；存在自引用或环时拒绝发布
+     */
+    static List<String> processPublicationOrder(Map<String, Set<String>> dependencies) {
+        return publicationOrder(dependencies, "流程调用");
+    }
+
+    /** 预先完成完整拓扑计划；环依赖在任何实体 DDL 发布前拒绝，避免留下半批配置。 */
+    static List<String> publicationOrder(Map<String, Set<String>> dependencies, String dependencyType) {
+        Set<String> pending = new LinkedHashSet<>(dependencies.keySet());
+        List<String> ordered = new ArrayList<>();
+        while (!pending.isEmpty()) {
+            boolean progressed = false;
+            for (String key : List.copyOf(pending)) {
+                if (dependencies.get(key).stream().anyMatch(pending::contains)) continue;
+                ordered.add(key);
+                pending.remove(key);
+                progressed = true;
+            }
+            if (!progressed) {
+                throw new IllegalArgumentException("迁移包" + dependencyType + "依赖循环: " + pending);
+            }
+        }
+        return ordered;
+    }
+
+    /**
+     * 旧字段投影统一补出普通字段的布尔标志，但关系节点不支持这些属性。
+     * 新建节点会自动剥离，更新节点却严格拒绝；在导入副本统一清理，保证首次导入、升级和回滚一致。
+     */
+    static boolean normalizeImportedRelationNodeProps(EntityFormNode node, Map<String, Object> props) {
+        if (!Set.of("SUB_FORM", "REPEATER").contains(textNodeType(node))) return false;
+        boolean changed = false;
+        for (String key : List.of("required", "readonly", "hidden", "placeholder", "defaultValue")) {
+            if (props.containsKey(key)) { props.remove(key); changed = true; }
+        }
+        return changed;
+    }
+
+    private static String textNodeType(EntityFormNode node) {
+        return node.getNodeType() == null ? "" : node.getNodeType();
+    }
+
+    /**
+     * 恢复省略的数据类型及旧投影生成的 FIELD 占位值，实体字段元数据才是这两种情况的类型依据。
+     * 显式配置的有效数据类型不覆盖，仍交给正常组件兼容校验；子表单等结构节点不参与恢复。
+     */
+    static boolean completeImportedFieldType(EntityFormNode node, Map<String, Object> props, EntityField targetField) {
+        String type = props.get("fieldType") == null ? null : String.valueOf(props.get("fieldType"));
+        if ("FIELD".equals(node.getNodeType()) && targetField != null
+                && (!StringUtils.hasText(type) || "FIELD".equals(type))) {
+            props.put("fieldType", targetField.getFieldType());
+            return true;
+        }
+        return false;
+    }
+
     /**
      * 处理必填导入，并将结果传给后续步骤。
      *
@@ -3223,7 +3371,7 @@ public class ConfigMigrationImportApplyService {
      * @throws IllegalArgumentException 输入参数或目标数据不满足方法前置条件时抛出
      */
     private ConfigImportPackage requiredImport(String id) {
-        ConfigImportPackage importPackage = importPackageMapper.selectById(id);
+        ConfigImportPackage importPackage = importPackageMapper.selectForUpdate(id);
         if (importPackage == null) {
             throw new IllegalArgumentException("导入批次不存在: " + id);
         }

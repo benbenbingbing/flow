@@ -1,0 +1,27 @@
+{
+  "stoppedTestPorts": [
+    13311,
+    18081,
+    18082,
+    18083,
+    18084,
+    18181,
+    18182,
+    18183,
+    18184,
+    13000,
+    19320
+  ],
+  "testMysqlStopped": true,
+  "temporaryCredentialsRemoved": true,
+  "temporaryBrowserProfileRemoved": true,
+  "originalDevelopmentPidsPreserved": [
+    75465,
+    75789,
+    75850
+  ],
+  "versionedMigrationsAdded": [],
+  "versionedMigrationsModified": [],
+  "versionedMigrationsDeleted": [],
+  "versionedMigrationsRenamed": []
+}

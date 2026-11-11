@@ -1,0 +1,28 @@
+source login OK
+target login OK
+PASS originalParentChildPackage 上传成功
+PASS originalParentChildPackage 无分析阻断
+PASS originalParentChildPackage 整包发布成功
+PASS originalMissingTypePackage 上传成功
+PASS originalMissingTypePackage 无分析阻断
+PASS originalMissingTypePackage 整包发布成功
+PASS 缺省字段恢复为目标实体 STRING
+PASS originalBasicPackage 上传成功
+PASS originalBasicPackage 无分析阻断
+PASS originalBasicPackage 整包发布成功
+PASS 新环境源端新建并发布成功
+PASS newlyCreatedRoundtrip 上传成功
+PASS newlyCreatedRoundtrip 无分析阻断
+PASS newlyCreatedRoundtrip 整包发布成功
+PASS 流程实体目标 ID 重建
+PASS 流程表单引用不含源 ID
+PASS 相同包复用批次
+PASS 重复发布不增版
+PASS newIncrementalPackage 上传成功
+PASS newIncrementalPackage 无分析阻断
+PASS newIncrementalPackage 整包发布成功
+PASS 增量发布版本 2 且 ID 保持
+PASS 三个运行流程均生成任务
+PASS 子流程父流程基础流程新建流程最终全部完成
+PASS 两个新环境均完整执行129个迁移
+ALL 25 FIX REGRESSION CHECKS PASSED

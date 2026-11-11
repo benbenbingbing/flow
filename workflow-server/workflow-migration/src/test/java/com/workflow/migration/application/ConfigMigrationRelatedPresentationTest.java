@@ -93,10 +93,12 @@ class ConfigMigrationRelatedPresentationTest {
         String assetPath = "assets/entities/project.json";
         Map<String, byte[]> entries = new LinkedHashMap<>();
         entries.put(assetPath, mapper.writeValueAsBytes(source));
+        entries.put("dependencies.json", mapper.writeValueAsBytes(source.get("dependencies")));
         entries.put("manifest.json", mapper.writeValueAsBytes(Map.of(
                 "formatVersion", 3, "packageNo", "legacy", "migrationTag", "legacy",
                 "assets", List.of(Map.of("assetType", "ENTITY", "businessKey", "project",
                         "assetName", "Project", "sourceVersion", 1, "sourceHash", originalHash,
+                        "snapshotSchemaVersion", 1,
                         "path", assetPath, "selection", Map.of("full", true))))));
         Map<String, String> checksums = new LinkedHashMap<>();
         entries.forEach((path, bytes) -> checksums.put(path, WfpackIntegrity.sha256(bytes)));
@@ -169,6 +171,7 @@ class ConfigMigrationRelatedPresentationTest {
         special.put("interfaceService", Map.of("extensionCode", "query.api"));
         special.put("actionServices", List.of(Map.of("extensionCode", "action.api")));
         return new LinkedHashMap<>(Map.of(
+                "schemaVersion", 1,
                 "assetType", "ENTITY", "businessKey", "project", "definition", Map.of("entityCode", "project"),
                 "forms", List.of(new LinkedHashMap<>(Map.of("formKey", "detail", "customComponent", "MainPage",
                         "customComponentVersion", 1, "viewCompositions", List.of(

@@ -1,0 +1,106 @@
+{
+  "workflow-process": {
+    "classes": 86,
+    "tests": 574,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-migration": {
+    "classes": 41,
+    "tests": 217,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-db-migrator": {
+    "classes": 2,
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-app": {
+    "classes": 1,
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}
+
+=== final-backend-tests.log ===
+11:03:15.551 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.047s)
+11:03:17.764 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 61 migrations to schema `wfpack_flyway_test_final`, now at version v061 (execution time 00:01.542s)
+11:03:17.820 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.021s)
+11:03:17.843 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 1 migration to schema `wfpack_flyway_test_final`, now at version v062 (execution time 00:00.010s)
+11:03:17.874 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.017s)
+11:03:17.917 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.017s)
+11:03:20.563 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Successfully applied 67 migrations to schema `wfpack_flyway_test_final`, now at version v129 (execution time 00:02.062s)
+11:03:20.591 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.016s)
+11:03:20.657 [main] INFO org.flywaydb.core.internal.command.DbValidate -- Successfully validated 129 migrations (execution time 00:00.016s)
+11:03:20.662 [main] INFO org.flywaydb.core.internal.command.DbMigrate -- Schema `wfpack_flyway_test_final` is up to date. No migration necessary.
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.023 s -- in com.workflow.process.form.infrastructure.adapter.EntityNewDataFormRuntimeAdapterTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.workflow.process.assignment.application.InitiatorOrganizationSnapshotServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.032 s -- in com.workflow.process.assignment.application.AssigneeIncidentIdempotencyTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.039 s -- in com.workflow.process.assignment.infrastructure.flowable.PersonResolverAssignmentModeTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.process.status.application.ProcessStatusSyncRetryPolicyTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.057 s -- in com.workflow.process.action.application.FlowActionFailurePublicationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.048 s -- in com.workflow.process.action.application.FlowActionFailureStrategyTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.workflow.process.action.infrastructure.flowable.ProcessFlowActionBpmnInjectorTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.067 s -- in com.workflow.process.action.infrastructure.flowable.FlowActionEngineEventListenerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.009 s -- in com.workflow.process.definition.application.RelativePositionPublishSanitizerTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.048 s -- in com.workflow.process.definition.infrastructure.flowable.ProcessFlowableDeploymentServiceTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.010 s -- in com.workflow.process.task.api.NextApprovalApiContractTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.006 s -- in com.workflow.process.task.application.operation.NodeOperationConditionEvaluatorTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.026 s -- in com.workflow.process.task.application.operation.NodeOperationDecisionServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.workflow.process.task.application.operation.NodeOperationPolicyBpmnValidatorTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.088 s -- in com.workflow.process.task.application.TaskDetailServiceLocalAddSignTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.process.task.infrastructure.MultiInstanceVariableNamesTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.workflow.process.instance.application.ProcessRollbackStatusTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.095 s -- in com.workflow.process.instance.application.PublishedBpmnReaderTest
+[INFO] Tests run: 574, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.430 s -- in com.workflow.migration.application.ConfigMigrationPublishRollbackTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.workflow.migration.application.SlaUserReferenceRewriterTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.194 s -- in com.workflow.migration.application.ConfigMigrationAssignmentSnapshotTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.workflow.migration.application.ConfigMigrationViewCompositionPortabilityTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.workflow.migration.application.ConfigMigrationUiOwnerPreparationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.130 s -- in com.workflow.migration.application.ConfigMigrationAssignmentTargetValidatorTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.workflow.migration.application.AttachmentItemMigrationSupportTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.migration.application.ConfigMigrationMenuImportSupportTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.migration.application.ConfigMigrationFlowActionImportSupportTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in com.workflow.migration.application.ConfigMigrationAssetDependencyServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.workflow.migration.application.ConfigMigrationDataSourceReferenceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.migration.application.ConfigMigrationUiAssetSourceKeyTest
+[INFO] Tests run: 215, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  46.851 s
+
+=== final-migration-tests.log ===
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.425 s -- in com.workflow.migration.application.ConfigMigrationPublishRollbackTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.workflow.migration.application.SlaUserReferenceRewriterTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.207 s -- in com.workflow.migration.application.ConfigMigrationAssignmentSnapshotTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.003 s -- in com.workflow.migration.application.ConfigMigrationViewCompositionPortabilityTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.workflow.migration.application.ConfigMigrationUiOwnerPreparationTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.134 s -- in com.workflow.migration.application.ConfigMigrationAssignmentTargetValidatorTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.004 s -- in com.workflow.migration.application.AttachmentItemMigrationSupportTest
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.002 s -- in com.workflow.migration.application.ConfigMigrationMenuImportSupportTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0 s -- in com.workflow.migration.application.ConfigMigrationFlowActionImportSupportTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.033 s -- in com.workflow.migration.application.ConfigMigrationAssetDependencyServiceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.migration.application.ConfigMigrationDataSourceReferenceTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.001 s -- in com.workflow.migration.application.ConfigMigrationUiAssetSourceKeyTest
+[INFO] Tests run: 217, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  11.562 s
+
+=== final-app-config-test.log ===
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.421 s -- in com.workflow.config.migration.FreshInstallFlywayConfigurationTest
+[INFO] Tests run: 2, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  9.237 s
+
+=== final-build.log ===
+[INFO] BUILD SUCCESS
+[INFO] Total time:  9.754 s
+

@@ -160,7 +160,7 @@ class ConfigMigrationAssignmentExportImportTest {
         item.setBusinessKey("approval");
         item.setSnapshotJson(asset(dependencies).getSnapshotJson());
         item.setDependenciesJson(json.writeValueAsString(dependencies));
-        when(importPackageMapper.selectById(batch.getId())).thenReturn(batch);
+        when(importPackageMapper.selectForUpdate(batch.getId())).thenReturn(batch);
         when(importItemMapper.selectList(any())).thenReturn(List.of(item));
         return item;
     }

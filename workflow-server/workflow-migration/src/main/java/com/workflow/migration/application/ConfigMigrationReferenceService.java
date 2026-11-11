@@ -9,12 +9,15 @@ import com.workflow.admin.organization.infrastructure.persistence.mapper.SysOrga
 import com.workflow.admin.extension.action.infrastructure.persistence.mapper.FlowActionDefinitionMapper;
 import com.workflow.admin.extension.action.infrastructure.persistence.record.FlowActionDefinition;
 import com.workflow.contracts.process.action.port.FlowActionCatalogPort;
+import com.workflow.contracts.migration.spi.ConfigMigrationParameterReferenceProvider;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.function.BiFunction;
 import java.util.function.UnaryOperator;
 
@@ -30,16 +33,29 @@ public class ConfigMigrationReferenceService {
     private final SysOrganizationMapper organizationMapper;
     private final FlowActionDefinitionMapper actionMapper;
     private final FlowActionCatalogPort actionCatalog;
+    private List<ConfigMigrationParameterReferenceProvider> parameterReferenceProviders = List.of();
+
+    /** 扩展可选择注册参数引用契约；无适配器时仍检查固定目录 ID，并给出具体参数路径与建议。 */
+    @Autowired(required = false)
+    void configureParameterReferences(List<ConfigMigrationParameterReferenceProvider> providers) {
+        parameterReferenceProviders = List.copyOf(providers);
+    }
 
     /** 导出 ID 语义字段为带类型的编码引用，并补充真实依赖清单。 */
     Map<String, Object> exportReferences(Map<String, Object> snapshot) {
         List<Map<String, Object>> dependencies = dependencies(snapshot);
-        Map<String, Object> result = rewrite(snapshot, (type, id) -> {
+        if (snapshot.get("bpmnXml") instanceof String xml) {
+            ConfigMigrationBpmnReferences.formReferences(xml).forEach(form -> dependencies.add(Map.of(
+                    "type", "FORM", "key", form, "required", true, "source", "BPMN 实体表单绑定")));
+        }
+        BiFunction<String, String, String> identity = (type, id) -> {
             String key = id.startsWith("wf-ref://") ? code(type, id) : sourceCode(type, id);
             dependencies.add(Map.of("type", type, "key", key, "required", true,
                     "targetOnly", true, "source", "权限规则固定身份"));
             return reference(type, key);
-        }, UnaryOperator.identity());
+        };
+        Map<String, Object> result = rewrite(
+                ConfigMigrationValueReferences.rewrite(snapshot, identity, true), identity, UnaryOperator.identity());
         List<Map<String, Object>> actions = new ArrayList<>();
         for (Map<String, Object> action : maps(result.get("flowActions"))) {
             String actionCode = text(action.get("actionCode"));
@@ -68,14 +84,23 @@ public class ConfigMigrationReferenceService {
                     "references", List.of(new java.util.LinkedHashMap<>(context))));
             return reference(identityType, stable);
         });
+        // 每个导出副本独立缓存目录检查；不会扫描整张身份表，也不持有跨请求的过期 ID。
+        Map<String, String> checkedIds = new HashMap<>();
+        result = ConfigMigrationOpaqueReferences.rewrite(result, identity, parameterReferenceProviders,
+                id -> checkedIds.computeIfAbsent(id, this::sourceIdentityType), true);
         result.put("dependencies", ConfigMigrationAssignmentSupport.mergeDependencies(dependencies));
         return result;
     }
 
     /** 分析和执行共用解析器；在任何业务写入之前即可校验全部身份与动作引用。 */
     Map<String, Object> importReferences(Map<String, Object> snapshot, BiFunction<String, String, String> mapping) {
-        Map<String, Object> result = rewrite(snapshot,
-                (type, value) -> targetId(type, mapping.apply(type, code(type, value))), UnaryOperator.identity());
+        if (snapshot.get("bpmnXml") instanceof String xml) ConfigMigrationBpmnReferences.formReferences(xml);
+        BiFunction<String, String, String> identity =
+                (type, value) -> targetId(type, mapping.apply(type, code(type, value)));
+        Map<String, Object> parameters = ConfigMigrationOpaqueReferences.rewrite(snapshot, identity,
+                parameterReferenceProviders, unused -> "", false);
+        Map<String, Object> result = rewrite(
+                ConfigMigrationValueReferences.rewrite(parameters, identity, false), identity, UnaryOperator.identity());
         List<Map<String, Object>> actions = new ArrayList<>();
         for (Map<String, Object> action : maps(result.get("flowActions"))) {
             String actionCode = text(action.remove("actionCode"));
@@ -148,6 +173,16 @@ public class ConfigMigrationReferenceService {
         }
         if (result == null || result.isBlank()) throw new IllegalArgumentException("源身份不存在或缺少编码: " + type + "/" + key);
         return result;
+    }
+
+    /** 只在源端检查不透明配置里的字面量是否为真实目录主键，不将检查结果用于目标解析。 */
+    private String sourceIdentityType(String id) {
+        if (id.isBlank() || id.startsWith("wf-ref://") || id.length() > 128) return "";
+        if (userMapper != null && userMapper.selectById(id) != null) return "USER";
+        if (roleMapper != null && roleMapper.selectById(id) != null) return "ROLE";
+        if (groupMapper != null && groupMapper.selectById(id) != null) return "GROUP";
+        if (organizationMapper != null && organizationMapper.selectById(id) != null) return "DEPT";
+        return "";
     }
 
     /** 目标端只查询编码；禁止任何 selectById 回退，避免源 ID 撞号越权。 */

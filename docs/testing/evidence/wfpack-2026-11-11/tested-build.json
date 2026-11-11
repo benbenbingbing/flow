@@ -1,0 +1,66 @@
+{
+  "head": "3a2bdc4a4589d4eebd1135d3b78560e7aa9b6e60",
+  "jarSha256": "267a3b89b15a8f25bc81ad11582a2c97b481123df87a35ea79ce56083689ffed",
+  "testCounts": {
+    "workflow-process": {
+      "classes": 86,
+      "tests": 574,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "workflow-migration": {
+      "classes": 41,
+      "tests": 217,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "workflow-db-migrator": {
+      "classes": 2,
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "workflow-app": {
+      "classes": 1,
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "totalTests": 797,
+  "testedSourceFilesSha256": {
+    "workflow-server/workflow-app/src/main/java/com/workflow/config/migration/FreshInstallFlywayConfiguration.java": "e5a06ba7e534dea6546113989388a9592c41967422192b7d4da22b33d1f9801f",
+    "workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/DatabaseMigrator.java": "e1fc9fa484abf8663e51166778a186ba870b0c5528ab2dd378735330a3bf24a2",
+    "workflow-server/workflow-db-migrator/src/main/java/com/workflow/dbmigrator/runner/MySqlV062CompatibilityCallback.java": "1b565abfe7b81f5dbde27b5f7a002355421aa138dec2cdac37d04ca3473efe67",
+    "workflow-server/workflow-db-migrator/src/test/java/com/workflow/dbmigrator/runner/MySqlFreshInstallMigrationTest.java": "a7f46683f2650703503111d91ce1c4736fa28bcee14b424bedaab94c05dac3ed",
+    "workflow-server/workflow-db-migrator/src/test/java/com/workflow/dbmigrator/runner/MySqlV062CompatibilityCallbackTest.java": "7fab2de8cc795bcdd9aced0e4b075b96538b04f5b8e447a2dec486be97b4d9ab",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java": "1b8354d75cd761ef4927c82f20f97f7424e9e2767dc4a5b85cef0df08508f786",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationBpmnReferences.java": "b494a6feea5761abe9c7ee383cfb28e0ae0544f7c412584ed10643d223eedaec",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationImportApplyService.java": "2f7ded3ac3f2e64c02806a76fd83c02164198be5e01e8b00a5657393d9fa2c97",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationOpaqueReferences.java": "f4ad33557e45dca06b3e66f653b7140238dc6fdaf4e9eeda07e48c45b11cf459",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageCodec.java": "2bd6316eee5a1bf4adcc521677b694ef7e542b39f41067d67cadcd79c0b0b5c1",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationPackageService.java": "b957cccc09a0e6323c603a57a712189aa732f47e65b1f2394328a85f065edff3",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationReferenceService.java": "df0c6dd7205944a2c440ad2fa08197ddafc2fa68d6415c8d46fa74d084502260",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationValueReferences.java": "5e535a48df19fa3cde96a0d9ff2ebff439caab80376dad3c4a4b26831eb1cb0e",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationAnalysisPersistenceTest.java": "1e1c5d694d0080781782dfa4e5062a7f98a3a37473d17f632ccc4f04fcd78154",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationBpmnFormReferenceRoundTripTest.java": "1d8d88280819c49040e32dfb8ffca1ef20bc2a5518dfadbf45c69de2d83c168c",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationFormImportSupportTest.java": "2c034f057638d9a59d04461e992c70e305cfbb9db6276a7d4f804f2c6e7e54a8",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationOpaqueReferencesTest.java": "9babf0ec028147639b2d4c495fbc5f8c8f120f32b3982a15ca930470541be305",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationProcessPublicationOrderTest.java": "bdcf9b908aa6c84d453052d1020551843627a9976546b1bd7bfa557ce775b943",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationSignatureImportTest.java": "692ca82bdd8b93cc4fedfe348fdcafe7861f270b90be78afa7c2a7a3e78ae6db",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationValueReferencesTest.java": "abe7b1dd5309eaa04af49a5a237fc0659decd37e468d4226a0772ca6a3bc81fa",
+    "workflow-server/workflow-spi/src/main/java/com/workflow/contracts/migration/spi/ConfigMigrationParameterReferenceProvider.java": "b173884b2176869309f45c36d5a7b4ef139ba89f160287e080a9cd8ab7827815"
+  },
+  "concurrentWorkspaceFilesChangedAfterSnapshot": [
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationAssetService.java",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationBpmnReferences.java",
+    "workflow-server/workflow-migration/src/main/java/com/workflow/migration/application/ConfigMigrationReferenceService.java",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationAnalysisPersistenceTest.java",
+    "workflow-server/workflow-migration/src/test/java/com/workflow/migration/application/ConfigMigrationBpmnFormReferenceRoundTripTest.java"
+  ],
+  "unchangedV062Sha256": "fe89d47fe54ebe843e76f05a674f0fbb2e3e6a490251ce7b36c174c2140bec28"
+}

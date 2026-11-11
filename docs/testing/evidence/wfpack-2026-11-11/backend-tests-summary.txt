@@ -1,0 +1,24 @@
+Command: mvn -o -pl workflow-process,workflow-migration -am test -Dtest=com.workflow.process.**,com.workflow.migration.** -Dsurefire.failIfNoSpecifiedTests=false
+
+{
+  "workflow-process": {
+    "classes": 86,
+    "tests": 574,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-migration": {
+    "classes": 38,
+    "tests": 195,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}
+
+[INFO] Tests run: 574, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 195, Failures: 0, Errors: 0, Skipped: 0
+[INFO] BUILD SUCCESS
+[INFO] Total time:  15.997 s
+[INFO] Finished at: 2026-11-11T10:11:01+08:00

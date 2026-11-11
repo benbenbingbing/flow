@@ -90,7 +90,7 @@ class ConfigMigrationPublishRollbackTest {
         item.setSourceHash("after-hash");
         item.setTargetBeforeHash("before-hash");
         item.setSnapshotJson(snapshot("New priority"));
-        when(importPackageMapper.selectById(batch.getId())).thenReturn(batch);
+        when(importPackageMapper.selectForUpdate(batch.getId())).thenReturn(batch);
     }
 
     @Test

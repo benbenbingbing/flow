@@ -315,10 +315,30 @@
           <el-table
             v-if="!compareError"
             :data="pagedCompareItems"
+            row-key="id"
+            :expand-row-keys="blockedCompareItemIds"
             border
             stripe
             v-loading="compareLoading"
           >
+            <el-table-column type="expand">
+              <template #default="{ row }">
+                <div v-if="validationIssues(row.id).length" class="migration-validation-issues">
+                  <el-alert
+                    v-for="(issue, index) in validationIssues(row.id)"
+                    :key="index"
+                    :title="issue.message"
+                    :type="issue.level === 'BLOCKING' ? 'error' : 'warning'"
+                    :closable="false"
+                    show-icon
+                  >
+                    <p v-if="issue.path">配置位置：{{ issue.path }}</p>
+                    <p v-if="issue.suggestion">处理建议：{{ issue.suggestion }}</p>
+                  </el-alert>
+                </div>
+                <div v-else class="migration-validation-issues">当前资产没有分析问题。</div>
+              </template>
+            </el-table-column>
             <el-table-column label="资产" min-width="330">
               <template #default="{ row }">
                 <div class="asset-title-line">
@@ -520,6 +540,7 @@ import {
   assetTypeTagType,
   compareStatusText,
   compareStatusType,
+  migrationValidationIssues,
   publishStatusText,
   statusText,
   statusType
@@ -601,6 +622,9 @@ const assetStats = reactive({ pending: 0, exported: 0 })
 const importStats = reactive({ blocked: 0 })
 const compareItems = computed(() => Array.isArray(compareData.value?.items) ? compareData.value.items : [])
 const pagedCompareItems = computed(() => paginateConfigMigrationRows(compareItems.value, comparePage.value))
+const blockedCompareItemIds = computed(() => (compareData.value?.validationReport?.items || [])
+  .filter(item => item.blocked).map(item => item.itemId))
+const validationIssues = itemId => migrationValidationIssues(compareData.value?.validationReport, itemId)
 const migrationStep = computed(() => {
   if (activeTab.value === 'assets') {
     return selectedAssets.value.length > 0 ? 1 : 0
@@ -963,9 +987,12 @@ const analyzeImport = async (row) => {
     result.blocked ? '分析完成，存在阻断项' : '分析通过，可以发布'
   )
   await Promise.all([loadImports(), loadImportOptions(), loadStats()])
-  if (activeTab.value === 'compare') {
+  // 阻断后直接展示具体配置位置和处理建议，避免用户只看到一条无法操作的状态提示。
+  if (result.blocked || activeTab.value === 'compare') {
+    activeTab.value = 'compare'
     compareImportId.value = row.id
-    loadCompare()
+    comparePage.value = createConfigMigrationPage(comparePage.value.pageSize)
+    await loadCompare()
   }
 }
 const openCompare = async (row) => {

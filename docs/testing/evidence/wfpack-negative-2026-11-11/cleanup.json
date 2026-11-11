@@ -1,0 +1,32 @@
+{
+  "testAppPids": {
+    "source": 44659,
+    "target": 44662,
+    "target2": 44664
+  },
+  "mysqlShutdown": {
+    "exitCode": 0,
+    "error": ""
+  },
+  "ports": {
+    "13312": "closed",
+    "18091": "closed",
+    "18092": "closed",
+    "18093": "closed",
+    "18191": "closed",
+    "18192": "closed",
+    "18193": "closed"
+  },
+  "removed": [
+    "credentials.json",
+    "mysql",
+    "checkout"
+  ],
+  "previewFilesRemoved": true,
+  "developerListeners": {
+    "8080": "p75465\ncjava\nf18",
+    "3000": "p75789\ncnode\nf15",
+    "3001": "p75850\ncnode\nf15"
+  },
+  "completedAt": "2026-11-11 15:52:52 +0800"
+}

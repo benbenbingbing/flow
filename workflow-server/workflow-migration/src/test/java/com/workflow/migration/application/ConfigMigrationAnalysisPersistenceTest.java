@@ -100,6 +100,83 @@ class ConfigMigrationAnalysisPersistenceTest {
     @InjectMocks
     private ConfigMigrationPackageService service;
 
+    /** 发布完成的回滚锚点不可被分析或全局映射配置覆盖。 */
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"PUBLISHED", "ROLLED_BACK"})
+    void finalizedBatchRejectsAnalysisWithoutChangingHistory(String status) {
+        ConfigImportPackage batch = new ConfigImportPackage(); batch.setId("finalized"); batch.setStatus(status);
+        when(importPackageMapper.selectForUpdate(batch.getId())).thenReturn(batch);
+        var error = org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.BusinessConflictException.class,
+                () -> service.analyze(batch.getId()));
+        assertEquals("MIGRATION_BATCH_FINALIZED", error.getErrorCode());
+        assertEquals(status, batch.getStatus());
+        org.mockito.Mockito.verifyNoInteractions(importItemMapper, assetService);
+    }
+
+    /** 目标已发布新内容时，旧分析发布与旧批次回滚都必须在任何资产应用前失败。 */
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void targetVersionGuardRejectsLaterPublication(boolean rollback) {
+        ConfigImportItem item = new ConfigImportItem(); item.setAssetType("PROCESS"); item.setBusinessKey("leave");
+        item.setTargetBeforeVersion(1); item.setTargetBeforeHash("v1");
+        item.setTargetAfterVersion(2); item.setTargetAfterHash("v2");
+        var current = new com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset();
+        current.setSourceVersion(3); current.setContentHash("v3");
+        when(assetService.findLatestForUpdate("PROCESS", "leave")).thenReturn(current);
+        var error = org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.BusinessConflictException.class,
+                () -> service.requireUnchangedTargets(List.of(item), rollback));
+        assertEquals("MIGRATION_TARGET_CHANGED", error.getErrorCode());
+        org.mockito.Mockito.verify(importItemMapper, org.mockito.Mockito.never()).updateById(any(ConfigImportItem.class));
+    }
+
+    @Test
+    void targetVersionGuardPreservesUnpublishedProcessDraft() {
+        ConfigImportItem item = new ConfigImportItem(); item.setAssetType("PROCESS"); item.setBusinessKey("leave");
+        item.setTargetBeforeVersion(1); item.setTargetBeforeHash("v1");
+        var current = new com.workflow.migration.infrastructure.persistence.record.ConfigMigrationAsset();
+        current.setSourceVersion(1); current.setContentHash("v1");
+        when(assetService.findLatestForUpdate("PROCESS", "leave")).thenReturn(current);
+        var process = new com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig();
+        process.setDraftRevision(2L); process.setPublishedRevision(1L);
+        when(processMapper.findByProcessKey("leave")).thenReturn(Optional.of(process));
+        org.junit.jupiter.api.Assertions.assertThrows(com.workflow.core.error.BusinessConflictException.class,
+                () -> service.requireUnchangedTargets(List.of(item), false));
+    }
+
+    @Test
+    void invalidReferencePersistsItsLocationAndRepairAdviceInBlockedReport() {
+        ConfigImportPackage pack = new ConfigImportPackage(); pack.setId("reference-check");
+        ConfigImportItem item = new ConfigImportItem();
+        item.setId("reference-item"); item.setImportPackageId(pack.getId());
+        item.setAssetType("ENTITY"); item.setBusinessKey("expense"); item.setSourceVersion(1);
+        item.setDependenciesJson("[]");
+        item.setSnapshotJson("{\"fields\":[{\"fieldCode\":\"owner\",\"fieldType\":\"USER\",\"defaultValue\":\"source-u\"}]}");
+        when(importPackageMapper.selectForUpdate(pack.getId())).thenReturn(pack);
+        when(importItemMapper.selectList(any())).thenReturn(List.of(item));
+        Map<String, Object> report = service.analyze(pack.getId());
+        assertEquals(true, report.get("blocked"));
+        String result = documents.writeJson(report);
+        assertTrue(result.contains("REFERENCE_INVALID"));
+        assertTrue(result.contains("defaultValue"));
+        assertTrue(result.contains("suggestion"));
+        assertTrue(result.contains("重新导出"));
+        org.mockito.Mockito.verify(entityMapper, org.mockito.Mockito.never()).insert(any(EntityDefinition.class));
+    }
+
+    @Test
+    void publishRechecksDefaultTargetsEvenWhenTheDependencyListIsEmpty() {
+        ConfigImportItem item = new ConfigImportItem();
+        item.setAssetType("ENTITY"); item.setBusinessKey("expense"); item.setDependenciesJson("[]");
+        item.setSnapshotJson("{\"fields\":[{\"fieldCode\":\"owner\",\"fieldType\":\"USER\",\"defaultValue\":\"wf-ref://USER/alice\"}]}");
+        var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> service.requireResolvedDependencies(List.of(item)));
+        assertTrue(error.getMessage().contains("defaultValue"));
+        assertTrue(error.getMessage().contains("建议"));
+        verify(userMapper).selectByUsername("alice");
+        org.mockito.Mockito.verify(userMapper, org.mockito.Mockito.never()).selectById(any());
+        org.mockito.Mockito.verify(entityMapper, org.mockito.Mockito.never()).insert(any(EntityDefinition.class));
+    }
+
     @Test
     void missingCodeGeneratorBlocksImportBeforeAnyEntityIsCreated() {
         ConfigImportPackage pack = new ConfigImportPackage(); pack.setId("custom-code");
@@ -108,7 +185,7 @@ class ConfigMigrationAnalysisPersistenceTest {
         item.setAssetType("ENTITY"); item.setBusinessKey("project"); item.setSourceVersion(1);
         item.setDependenciesJson("[]");
         item.setSnapshotJson("{\"codeRule\":{\"generationMode\":\"CUSTOM\",\"generatorCode\":\"MISSING\"}}");
-        when(importPackageMapper.selectById(pack.getId())).thenReturn(pack);
+        when(importPackageMapper.selectForUpdate(pack.getId())).thenReturn(pack);
         when(importItemMapper.selectList(any())).thenReturn(List.of(item));
         org.mockito.Mockito.doThrow(new IllegalArgumentException("编码生成器未安装: MISSING"))
                 .when(codeGeneratorService).validateConfiguration(any());
@@ -134,7 +211,7 @@ class ConfigMigrationAnalysisPersistenceTest {
         item.setDependenciesJson(documents.writeJson(List.of(Map.of(
                 "type", "ENTITY", "key", "sys_user", "required", true,
                 "targetOnly", targetOnly))));
-        when(importPackageMapper.selectById(importPackage.getId())).thenReturn(importPackage);
+        when(importPackageMapper.selectForUpdate(importPackage.getId())).thenReturn(importPackage);
         when(importItemMapper.selectList(any())).thenReturn(List.of(item));
         EntityDefinition systemEntity = new EntityDefinition();
         systemEntity.setEntityCode("sys_user");
@@ -168,7 +245,7 @@ class ConfigMigrationAnalysisPersistenceTest {
         item.setMappingStatus("UNRESOLVED");
         item.setErrorMessage("缺少 5 个依赖映射");
 
-        when(importPackageMapper.selectById("import-1"))
+        when(importPackageMapper.selectForUpdate("import-1"))
                 .thenReturn(importPackage);
         when(importItemMapper.selectList(any()))
                 .thenReturn(List.of(item));
@@ -248,7 +325,7 @@ class ConfigMigrationAnalysisPersistenceTest {
                 """);
         entity.setDependenciesJson("[]");
 
-        when(importPackageMapper.selectById("import-form"))
+        when(importPackageMapper.selectForUpdate("import-form"))
                 .thenReturn(importPackage);
         when(importItemMapper.selectList(any()))
                 .thenReturn(List.of(entity, process));
@@ -305,7 +382,7 @@ class ConfigMigrationAnalysisPersistenceTest {
         existing.setId("entity-1");
         existing.setEntityCode("expense");
 
-        when(importPackageMapper.selectById(importPackage.getId()))
+        when(importPackageMapper.selectForUpdate(importPackage.getId()))
                 .thenReturn(importPackage);
         when(importItemMapper.selectList(any()))
                 .thenReturn(List.of(item));

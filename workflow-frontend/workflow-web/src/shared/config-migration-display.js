@@ -60,3 +60,27 @@ export const assetTypeTagType = (assetType) => ({
   WORK_CALENDAR: 'info',
   TASK_SLA_POLICY: 'danger'
 }[assetType] || 'info')
+
+/** 将正文引用问题和依赖缺失合并为可操作说明，保留后端给出的配置位置与修复建议。 */
+export function migrationValidationIssues(report, itemId) {
+  const item = (report?.items || []).find(value => value.itemId === itemId)
+  if (!item) return []
+  return [
+    ...(item.risks || []).map(risk => ({
+      ...risk,
+      path: risk.path || risk.fieldCode || '',
+      suggestion: risk.suggestion || '请根据问题位置修正源配置，重新发布导出后再分析导入包。'
+    })),
+    ...(['CONFLICT', 'LOCAL_CHANGED'].includes(item.comparisonStatus) ? [{
+      level: 'BLOCKING',
+      message: '目标配置存在本地修改或双向冲突。',
+      suggestion: '请先备份并核对目标修改，将需要保留的修改合并到源配置后重新发布导出，再更新目标基线并重新分析。'
+    }] : []),
+    ...(item.missingDependencies || []).map(dependency => ({
+      level: 'BLOCKING',
+      message: `目标依赖 ${dependency.type}/${dependency.targetKey || dependency.key}：${dependency.reason || '未找到对应配置'}`,
+      path: dependency.source || '',
+      suggestion: '请在目标系统补齐对应的目录或配置，或在“环境依赖映射”中填写实际目标编码，然后重新分析。'
+    }))
+  ]
+}

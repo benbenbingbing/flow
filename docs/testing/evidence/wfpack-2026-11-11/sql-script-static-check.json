@@ -1,0 +1,34 @@
+{
+  "version": "V129",
+  "scripts": {
+    "mysql": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "pg": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "oracle": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "dameng": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "kingbase": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "obmysql": {
+      "tables": 200,
+      "fields": 2796
+    },
+    "oboracle": {
+      "tables": 200,
+      "fields": 2796
+    }
+  },
+  "sameTableAndFieldNames": true
+}

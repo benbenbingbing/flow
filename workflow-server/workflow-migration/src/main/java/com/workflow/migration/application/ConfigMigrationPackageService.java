@@ -9,6 +9,7 @@ import com.workflow.integration.database.api.query.DatabaseQueryDialect;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.workflow.admin.security.context.UserContext;
+import com.workflow.core.error.BusinessConflictException;
 import com.workflow.contracts.audit.model.AuditAction;
 import com.workflow.contracts.audit.model.AuditModule;
 import com.workflow.contracts.audit.model.AuditRiskLevel;
@@ -191,9 +192,9 @@ public class ConfigMigrationPackageService {
             ConfigMigrationAsset copy = new ConfigMigrationAsset();
             org.springframework.beans.BeanUtils.copyProperties(asset, copy);
             Map<String, Object> snapshot = subFormReferences.exportReferences(referenceService.exportReferences(documents.readMap(asset.getSnapshotJson())));
-            snapshot.put("schemaVersion", 2);
+            snapshot.put("schemaVersion", 3);
             copy.setSnapshotJson(documents.writeJson(snapshot));
-            copy.setSnapshotSchemaVersion(2);
+            copy.setSnapshotSchemaVersion(3);
             return copy;
         }).toList();
     }
@@ -377,7 +378,7 @@ public class ConfigMigrationPackageService {
             targetIdArg = 0,
             captureResult = true)
     public Map<String, Object> analyze(String importId) {
-        ConfigImportPackage importPackage = requiredImport(importId);
+        ConfigImportPackage importPackage = requiredEditableImport(importId);
         List<ConfigImportItem> items = listImportItems(importId);
         Map<String, PackageAsset> packageAssets = items.stream()
                 .collect(java.util.stream.Collectors.toMap(
@@ -403,8 +404,11 @@ public class ConfigMigrationPackageService {
                 subFormReferences.validate(snapshot, packageFormReferences(items), this::mappedKey);
                 validateExcelSnapshot(item, snapshot);
             } catch (RuntimeException exception) {
-                risks.add(Map.of("level", "BLOCKING", "code", "REFERENCE_INVALID",
-                        "message", String.valueOf(exception.getMessage())));
+                risks.add(exception instanceof ConfigMigrationValueReferences.ReferenceException reference
+                        ? reference.risk()
+                        : Map.of("level", "BLOCKING", "code", "REFERENCE_INVALID",
+                                "message", String.valueOf(exception.getMessage()),
+                                "suggestion", "请检查目标目录和编码映射；缺少稳定编码的旧引用请从源系统重新导出"));
             }
             if ("PROCESS".equals(item.getAssetType())) {
                 try {
@@ -412,7 +416,8 @@ public class ConfigMigrationPackageService {
                             ConfigMigrationAssignmentSupport.text(documents.readMap(item.getSnapshotJson()).get("bpmnXml")));
                 } catch (IllegalArgumentException exception) {
                     risks.add(Map.of("level", "BLOCKING", "code", "ASSIGNMENT_CONFIG_INVALID",
-                            "message", exception.getMessage()));
+                            "message", exception.getMessage(), "path", "bpmnXml",
+                            "suggestion", "请在源流程设计器修正对应节点的办理人、会签或抄送配置，重新发布并导出后再导入"));
                 }
             }
             boolean itemBlocked = !dependencyResolution.resolved()
@@ -469,7 +474,7 @@ public class ConfigMigrationPackageService {
             targetIdArg = 0,
             captureArguments = true)
     public void saveMappings(String importId, ConfigEnvironmentMappingRequest request) {
-        requiredImport(importId);
+        requiredEditableImport(importId);
         if (request == null || request.getMappings() == null) {
             return;
         }
@@ -732,6 +737,10 @@ public class ConfigMigrationPackageService {
         item.setTargetBeforeVersion(target == null ? null : target.getSourceVersion());
         item.setTargetBeforeHash(target == null ? null : target.getContentHash());
         Map<String, Object> incomingSnapshot = documents.readMap(item.getSnapshotJson());
+        // 已发布资产不会包含待发布草稿；不能仅比较发布快照就允许迁移覆盖草稿。
+        if (hasUnpublishedProcessDraft(item)) {
+            return "LOCAL_CHANGED";
+        }
         if (target == null) {
             if (isFineGrainedSnapshot(incomingSnapshot)
                     && liveAssetExists(item.getAssetType(), item.getBusinessKey())) {
@@ -761,6 +770,9 @@ public class ConfigMigrationPackageService {
             return item.getSourceVersion() != null && target.getSourceVersion() != null
                     && item.getSourceVersion() > target.getSourceVersion() ? "SOURCE_NEWER" : "CONFLICT";
         }
+        if (sourceVersionRegressed(item, hashes.sourceHash())) {
+            return "CONFLICT";
+        }
         boolean localChanged = !Objects.equals(
                 targetScopeHash, hashes.targetHash());
         boolean sourceChanged = !Objects.equals(
@@ -772,6 +784,60 @@ public class ConfigMigrationPackageService {
             return "LOCAL_CHANGED";
         }
         return sourceChanged ? "SOURCE_NEWER" : "CONSISTENT";
+    }
+
+    /**
+     * 只与同一来源环境、同一基线内容的已成功导入版本比较，不能用目标环境的发布次数判断源版本。
+     * 显式回滚由回滚入口完成；普通导入不允许旧源版本再次覆盖最新基线。
+     */
+    private boolean sourceVersionRegressed(ConfigImportItem item, String baselineSourceHash) {
+        if (item.getSourceVersion() == null || Objects.equals(item.getSourceHash(), baselineSourceHash)) return false;
+        ConfigImportPackage incoming = importPackageMapper.selectById(item.getImportPackageId());
+        if (incoming == null) return false;
+        return importItemMapper.selectList(new LambdaQueryWrapper<ConfigImportItem>()
+                        .eq(ConfigImportItem::getAssetType, item.getAssetType())
+                        .eq(ConfigImportItem::getBusinessKey, item.getBusinessKey())
+                        .eq(ConfigImportItem::getSourceHash, baselineSourceHash)
+                        .eq(ConfigImportItem::getPublishStatus, "SUCCESS"))
+                .stream().anyMatch(previous -> {
+                    if (previous.getSourceVersion() == null || previous.getSourceVersion() < item.getSourceVersion()) return false;
+                    ConfigImportPackage batch = importPackageMapper.selectById(previous.getImportPackageId());
+                    return batch != null && Objects.equals(incoming.getSourceEnvironment(), batch.getSourceEnvironment());
+                });
+    }
+
+    /** 判断流程是否有本地待发布修改；迁移必须保护整份草稿，包括节点配置修订。 */
+    private boolean hasUnpublishedProcessDraft(ConfigImportItem item) {
+        if (!ConfigMigrationAssetService.PROCESS.equals(item.getAssetType())) return false;
+        return processMapper.findByProcessKey(item.getBusinessKey()).map(process ->
+                process.getStatus() == com.workflow.process.definition.infrastructure.persistence.record.ProcessDefinitionConfig.ProcessStatus.DRAFT
+                || (process.getDraftRevision() != null && process.getDraftRevision() >
+                (process.getPublishedRevision() == null ? 0L : process.getPublishedRevision())))
+                .orElse(false);
+    }
+
+    /**
+     * 在业务行锁内验证分析/发布时记录的目标版本仍是当前版本，任何写入前整批失败。
+     * 回滚也必须验证发布后的版本，防止旧批次撤销后来发布的配置；不改写原回滚锚点。
+     *
+     * @param items 本批次全部条目，包括一致复用项
+     * @param rollback 是否按发布后版本核对（否则按分析时版本）
+     * @throws BusinessConflictException 目标版本或待发布草稿发生变化，调用方需重新分析或处理本地修改
+     */
+    public void requireUnchangedTargets(List<ConfigImportItem> items, boolean rollback) {
+        for (ConfigImportItem item : items.stream().sorted(Comparator.comparing(
+                value -> value.getAssetType() + ":" + value.getBusinessKey())).toList()) {
+            ConfigMigrationAsset current = assetService.findLatestForUpdate(item.getAssetType(), item.getBusinessKey());
+            Integer expectedVersion = rollback ? item.getTargetAfterVersion() : item.getTargetBeforeVersion();
+            String expectedHash = rollback ? item.getTargetAfterHash() : item.getTargetBeforeHash();
+            if (!Objects.equals(expectedVersion, current == null ? null : current.getSourceVersion())
+                    || !Objects.equals(expectedHash, current == null ? null : current.getContentHash())
+                    || hasUnpublishedProcessDraft(item)) {
+                throw new BusinessConflictException("MIGRATION_TARGET_CHANGED",
+                        "目标配置已变化或存在未发布草稿，不能" + (rollback ? "回滚旧批次" : "使用过期分析发布")
+                                + "，请重新检查: " + item.getBusinessKey());
+            }
+        }
     }
 
     /**
@@ -974,7 +1040,8 @@ public class ConfigMigrationPackageService {
             if (!resolution.resolved()) {
                 Map<String, Object> missing = resolution.missing().get(0);
                 throw new IllegalStateException("目标依赖校验失败: " + missing.get("type") + ":"
-                        + missing.get("targetKey") + "；" + missing.get("source") + "；" + missing.get("reason"));
+                        + missing.get("targetKey") + "；" + missing.get("source") + "；" + missing.get("reason")
+                        + "。建议：请补齐目标依赖或修正环境依赖映射后重新分析");
             }
         }
     }
@@ -1551,6 +1618,20 @@ public class ConfigMigrationPackageService {
         value.put("code", code);
         value.put("fieldCode", fieldCode);
         value.put("message", message);
+        // 结构风险也必须给出可执行的处理办法，避免导入页只有阻断结论。
+        value.put("suggestion", switch (code) {
+            case "CODE_GENERATOR_UNAVAILABLE" -> "请在目标系统安装并启用对应编码生成器，或在源系统改用目标支持的生成器后重新发布导出";
+            case "FIELD_REMOVED" -> "请在源配置保留该字段后重新导出；确需退役时先独立完成数据归档及字段退役迁移";
+            case "FIELD_TYPE_CHANGED" -> "请保留原字段类型，新增目标类型字段并完成数据转换后，再迁移引用新字段的配置";
+            case "FIELD_LENGTH_NARROWED" -> "请保持或扩大字段长度；确需收窄时先独立检查并处理超长数据，再调整目标结构";
+            case "FIELD_REQUIRED" -> "请先回填目标历史空值并通过独立结构迁移设为必填，或在源配置取消必填后重新导出";
+            case "FIELD_UNIQUE" -> "请先清理目标重复数据并通过独立结构迁移建立唯一约束，或在源配置取消唯一限制后重新导出";
+            case "NEW_REQUIRED_WITHOUT_DEFAULT" -> "请在源字段设置合法默认值，或先以非必填字段迁移并回填历史数据，再启用必填";
+            case "SYSTEM_ENTITY_MISSING", "SYSTEM_FIELD_MISSING" -> "请将目标平台升级到包含该系统实体及字段的版本，或移除源 UI 中对应字段引用后重新导出";
+            case "SYSTEM_ENTITY_MODE_MISMATCH" -> "请核对目标同编码实体，解决业务实体与平台系统实体的编码冲突后重新分析";
+            case "SYSTEM_ENTITY_NOT_SUPPORTED", "SYSTEM_FIELD_NOT_READABLE" -> "请从源表单和列表中移除不支持的系统实体或安全字段；需要开放时先通过平台字段策略评审并升级两端";
+            default -> "请根据配置位置修正源配置或补齐目标依赖后重新分析";
+        });
         return value;
     }
     /**
@@ -1570,13 +1651,23 @@ public class ConfigMigrationPackageService {
         }
         long blockingRisks = risks.stream().filter(risk -> "BLOCKING".equals(risk.get("level"))).count();
         if (blockingRisks > 0) {
-            reasons.add("存在 " + blockingRisks + " 项危险变更");
+            reasons.add("存在 " + blockingRisks + " 项阻断问题，请展开影响对比查看原因与处理建议");
         }
         if ("CONFLICT".equals(comparisonStatus) || "LOCAL_CHANGED".equals(comparisonStatus)) {
             reasons.add("生产配置存在本地修改或双向冲突");
         }
         return String.join("；", reasons);
     }
+    /** 锁定并限制可分析状态，发布后的分析/映射不得改写原回滚锚点。 */
+    private ConfigImportPackage requiredEditableImport(String id) {
+        ConfigImportPackage batch = importPackageMapper.selectForUpdate(id);
+        if (batch == null) throw new IllegalArgumentException("导入批次不存在: " + id);
+        if (Set.of("PUBLISHED", "ROLLED_BACK", "PUBLISHING").contains(String.valueOf(batch.getStatus()))) {
+            throw new BusinessConflictException("MIGRATION_BATCH_FINALIZED", "已发布或已回滚批次不能重新分析或修改映射，请新建导入批次");
+        }
+        return batch;
+    }
+
     /**
      * 处理必填导入，并将结果传给后续步骤。
      *

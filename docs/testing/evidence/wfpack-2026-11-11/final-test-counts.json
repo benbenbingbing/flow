@@ -1,0 +1,30 @@
+{
+  "workflow-process": {
+    "classes": 86,
+    "tests": 574,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-migration": {
+    "classes": 41,
+    "tests": 217,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-db-migrator": {
+    "classes": 2,
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "workflow-app": {
+    "classes": 1,
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

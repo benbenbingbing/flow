@@ -1,14 +1,23 @@
 package com.workflow.migration.application;
 
 import com.workflow.entity.form.infrastructure.persistence.record.EntityFormNode;
+import com.workflow.entity.form.infrastructure.persistence.record.EntityFormField;
+import com.workflow.entity.definition.infrastructure.persistence.record.EntityField;
+import com.workflow.entity.form.application.EntityFormFieldProjection;
+import com.workflow.core.serialization.JsonDocumentCodec;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * {@link ConfigMigrationImportApplyService#resolveNodeIds} 单元测试。
@@ -17,6 +26,52 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * 以及重复导入保持稳定节点ID的行为。</p>
  */
 class ConfigMigrationFormImportSupportTest {
+
+    @Test
+    void relationProjectionFlagsAreRemovedForUpgradeAndRollbackButOrdinaryFieldsKeepThem() {
+        EntityFormNode node = new EntityFormNode(); node.setNodeType("SUB_FORM");
+        Map<String, Object> props = new LinkedHashMap<>(Map.of("required", false, "readonly", false,
+                "hidden", false, "label", "明细", "componentProps", Map.of("subFormConfig", Map.of("layout", "form"))));
+        assertTrue(ConfigMigrationImportApplyService.normalizeImportedRelationNodeProps(node, props));
+        assertEquals(Set.of("label", "componentProps"), props.keySet());
+        assertFalse(ConfigMigrationImportApplyService.normalizeImportedRelationNodeProps(node, props));
+        node.setNodeType("FIELD"); props.put("required", true);
+        assertFalse(ConfigMigrationImportApplyService.normalizeImportedRelationNodeProps(node, props));
+        assertEquals(true, props.get("required"));
+    }
+
+    /** 实际旧导出包已把缺省值投影成 FIELD，补全后再次 materialize 也必须保持真实数据类型。 */
+    @Test
+    void recoversMissingAndProjectedFieldTypesBeforeSnapshotMaterialization() {
+        JsonDocumentCodec codec = new JsonDocumentCodec(new ObjectMapper());
+        EntityField target = new EntityField();
+        target.setFieldType(EntityField.FieldType.STRING);
+        for (boolean projected : List.of(false, true)) {
+            EntityFormNode node = new EntityFormNode();
+            node.setId("target-node"); node.setNodeKey("note"); node.setNodeType("FIELD");
+            Map<String, Object> props = new LinkedHashMap<>(Map.of("fieldCode", "note", "componentType", "input"));
+            if (projected) props.put("fieldType", "FIELD");
+            assertTrue(ConfigMigrationImportApplyService.completeImportedFieldType(node, props, target));
+            node.setPropsDocument(codec.write(props, "测试节点"));
+            EntityFormField previous = new EntityFormField();
+            previous.setFieldCode("note"); previous.setFieldType("FIELD");
+            var restored = new EntityFormFieldProjection(codec).materialize("target-form", List.of(previous), List.of(node));
+            assertEquals("STRING", codec.readObject(restored.get(0).getPropsDocument(), "恢复节点").get("fieldType"));
+        }
+    }
+
+    @Test
+    void preservesExplicitTypeAndStructuralNodesAndDoesNotGuessMissingEntityField() {
+        EntityField target = new EntityField(); target.setFieldType(EntityField.FieldType.STRING);
+        EntityFormNode node = new EntityFormNode(); node.setNodeType("FIELD");
+        Map<String, Object> props = new LinkedHashMap<>(Map.of("fieldType", "DECIMAL"));
+        assertFalse(ConfigMigrationImportApplyService.completeImportedFieldType(node, props, target));
+        assertEquals("DECIMAL", props.get("fieldType"));
+        props.clear();
+        assertFalse(ConfigMigrationImportApplyService.completeImportedFieldType(node, props, null));
+        node.setNodeType("SUB_FORM");
+        assertFalse(ConfigMigrationImportApplyService.completeImportedFieldType(node, props, target));
+    }
 
     /** 入参节点的 nodeKey 与已有节点匹配时，应复用已有节点ID，其余生成新ID。 */
     @Test

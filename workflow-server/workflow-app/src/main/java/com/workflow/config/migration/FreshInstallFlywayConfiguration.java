@@ -1,6 +1,7 @@
 package com.workflow.config.migration;
 
 import com.workflow.dbmigrator.runner.BusinessMigrationPreflight;
+import com.workflow.dbmigrator.runner.MySqlV062CompatibilityCallback;
 import org.flywaydb.core.Flyway;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
@@ -15,6 +16,12 @@ import java.sql.SQLException;
  */
 @Configuration(proxyBeanMethods = false)
 public class FreshInstallFlywayConfiguration {
+
+    /** 应用启动与独立迁移工具共用兼容回调，保持历史迁移文件及校验和不可变。 */
+    @Bean
+    MySqlV062CompatibilityCallback mySqlV062CompatibilityCallback() {
+        return new MySqlV062CompatibilityCallback();
+    }
 
     /**
      * 处理{@code forward}仅迁移{@code strategy}，并将结果传给后续步骤。

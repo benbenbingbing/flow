@@ -57,6 +57,7 @@ public final class DatabaseMigrator {
                 .validateOnMigrate(true)
                 .cleanDisabled(true)
                 .placeholderReplacement(false)
+                .callbacks(new MySqlV062CompatibilityCallback())
                 .connectRetries(connectRetries)
                 .load()
                 .migrate();

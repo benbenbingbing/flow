@@ -1,0 +1,903 @@
+{
+  "negativeRequests": [
+    {
+      "phase": "EMPTY",
+      "case": "S08",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S08",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S09",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S09",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S13",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S13",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S15",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S15",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S16",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S16",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S18",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S18",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S23",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "EMPTY",
+      "case": "S23",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S08",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S08",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S09",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S09",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S13",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S13",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S15",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S15",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S16",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S16",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S18",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S18",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S23",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "UPGRADE_PENDING",
+      "case": "S23",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S08",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S08",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S09",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S09",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 assets/entities/mx_entity-v2.json sourceVersion 必须为 1～2147483647 的整数",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S13",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S13",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的快照版本: assets/entities/mx_entity-v2.json，snapshotSchemaVersion=999，schemaVersion=3",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S15",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S15",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S16",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S16",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 packageNo 必须为非空字符串，最多 100 个字符，且不能包含首尾空白或控制字符",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S18",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S18",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "不支持的配置分区 selection.sections: UNKNOWN，资产类型=ENTITY，可选值=codeRule, dataPermissions, dataSources, definition, eventBindings, excelConfiguration, extensions, fields, forms, interfaceExtensions, lists, menus, relations, scopeBindings, scopePolicies, statuses",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S23",
+      "confirmed": false,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    },
+    {
+      "phase": "CONSISTENT",
+      "case": "S23",
+      "confirmed": true,
+      "response": {
+        "http": 400,
+        "code": 400,
+        "message": "发布包 dependencies.json JSON 格式错误",
+        "errorCode": null,
+        "data": null
+      },
+      "unchangedMigrationAndBusinessState": true,
+      "passed": true
+    }
+  ],
+  "positiveCases": [
+    {
+      "name": "合法历史格式整包首次导入",
+      "passed": true,
+      "analysis": {
+        "analyzedAt": "2026-11-11T16:33:25.788509",
+        "blocked": false,
+        "items": [
+          {
+            "itemId": "2120434711783333890",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "comparisonStatus": "NEW",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          },
+          {
+            "itemId": "2120434711808499714",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "comparisonStatus": "NEW",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          }
+        ]
+      },
+      "publish": {
+        "importId": "2120434711749779457",
+        "packageNo": "WFP-SEMANTIC-EARLIER",
+        "migrationTag": "MX_BASELINE",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-11T16:33:26.61852",
+        "items": [
+          {
+            "id": "2120434711783333890",
+            "importPackageId": "2120434711749779457",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "assetName": "测试_mx_entity",
+            "sourceVersion": 1,
+            "sourceHash": "7181713e9182e61da065548006d381623f77eeec46f91cf5dba4463f50d19e03",
+            "targetBeforeVersion": null,
+            "targetBeforeHash": null,
+            "targetAfterVersion": 2,
+            "targetAfterHash": "56caa12867f62018cb82e7be639ad412f0dcf60f18fb795f46d74a7b58a5176e",
+            "comparisonStatus": "NEW",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"ENTITY\",\"businessKey\":\"mx_entity\",\"assetName\":\"测试_mx_entity\",\"definition\":{\"entityCode\":\"mx_entity\",\"entityName\":\"语义回归_较早实体版本\",\"description\":null,\"lifecycleMode\":\"WORKFLOW\",\"storageMode\":\"DYNAMIC\",\"processKey\":\"mx_baseline\"},\"fields\":[{\"fieldCode\":\"id\",\"fieldName\":\"ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"note\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"dbType\":null,\"fieldLength\":100,\"dbColumnName\":\"note\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":false,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"name\",\"fieldName\":\"数据名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":1,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"code\",\"fieldName\":\"数据编码\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"code\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":true,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":2,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"status\",\"fieldName\":\"状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(50)\",\"fieldLength\":50,\"dbColumnName\":\"status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"DRAFT\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":3,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStatus\",\"fieldName\":\"流程状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(20)\",\"fieldLength\":20,\"dbColumnName\":\"process_status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"NOT_STARTED\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":4,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processInstanceId\",\"fieldName\":\"流程实例ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"process_instance_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":5,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStartTime\",\"fieldName\":\"流程开始时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_start_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":6,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processEndTime\",\"fieldName\":\"流程结束时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_end_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":7,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterId\",\"fieldName\":\"提交人ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"submitter_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":8,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterName\",\"fieldName\":\"提交人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"submitter_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":9,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deptId\",\"fieldName\":\"所属部门\",\"fieldType\":\"REFERENCE\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"dept_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":10,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":\"sys_organization\",\"refEntityType\":\"DEPT\",\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitTime\",\"fieldName\":\"提交时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"submit_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":11,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskId\",\"fieldName\":\"当前任务ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":12,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskName\",\"fieldName\":\"当前任务名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"current_task_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":13,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskAssignee\",\"fieldName\":\"当前任务办理人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_assignee\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":14,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_time\",\"fieldName\":\"创建时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"create_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":15,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_time\",\"fieldName\":\"更新时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"update_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":16,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_by\",\"fieldName\":\"创建人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"create_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":17,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_by\",\"fieldName\":\"更新人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"update_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":18,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deleted\",\"fieldName\":\"删除标记\",\"fieldType\":\"BOOLEAN\",\"dbType\":\"tinyint\",\"fieldLength\":null,\"dbColumnName\":\"deleted\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":19,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]}],\"relations\":[],\"statuses\":[{\"entityCode\":\"mx_entity\",\"statusCode\":\"DRAFT\",\"statusName\":\"草稿\",\"statusCategory\":\"NEW\",\"sortOrder\":10,\"description\":\"新建或尚未处理的数据\",\"color\":\"info\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"PENDING\",\"statusName\":\"处理中\",\"statusCategory\":\"PROCESSING\",\"sortOrder\":20,\"description\":\"流程处理中\",\"color\":\"warning\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"APPROVED\",\"statusName\":\"已完成\",\"statusCategory\":\"COMPLETED\",\"sortOrder\":30,\"description\":\"流程已正常完成\",\"color\":\"success\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"TERMINATED\",\"statusName\":\"已终止\",\"statusCategory\":\"TERMINATED\",\"sortOrder\":40,\"description\":\"流程已终止\",\"color\":\"danger\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"WITHDRAWN\",\"statusName\":\"已撤回\",\"statusCategory\":\"WITHDRAWN\",\"sortOrder\":50,\"description\":\"流程由发起人撤回\",\"color\":\"info\"}],\"codeRule\":null,\"forms\":[{\"description\":\"\",\"formKey\":\"main\",\"formName\":\"测试表单\",\"isDefault\":true,\"layoutType\":\"vertical\",\"status\":1,\"fields\":[{\"componentType\":\"input\",\"fieldCode\":\"note\",\"fieldLabel\":\"备注\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"gridSpan\":24,\"isHidden\":0,\"isReadonly\":0,\"isRequired\":0,\"sortOrder\":0}],\"nodes\":[{\"parentId\":null,\"nodeKey\":\"note\",\"nodeType\":\"FIELD\",\"bindingType\":\"ENTITY_FIELD\",\"bindingRef\":\"note\",\"componentVersion\":null,\"snapshotVersion\":null,\"propsDocument\":\"{\\\"fieldId\\\":null,\\\"fieldCode\\\":\\\"note\\\",\\\"fieldName\\\":\\\"备注\\\",\\\"label\\\":\\\"备注\\\",\\\"fieldType\\\":\\\"STRING\\\",\\\"componentType\\\":\\\"input\\\",\\\"required\\\":false,\\\"readonly\\\":false,\\\"hidden\\\":false,\\\"defaultValue\\\":null,\\\"placeholder\\\":null,\\\"gridSpan\\\":24}\",\"rulesDocument\":\"{}\",\"dataSourceBindingsDocument\":null,\"legacyPropsDocument\":null,\"orderKey\":1000000,\"revision\":null,\"parentNodeKey\":null}],\"eventBindings\":[],\"viewCompositions\":[]}],\"extensions\":[],\"eventBindings\":[],\"lists\":[],\"interfaceExtensions\":[],\"scopePolicies\":[{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_personal\",\"policyName\":\"本人创建或提交的数据\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"PERSONAL_OR_SUBMITTER\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"RULE\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":{\\\"type\\\":\\\"GROUP\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":\\\"OR\\\",\\\"children\\\":[{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_CREATOR\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_SUBMITTER\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null}],\\\"relation\\\":null,\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_has_todo\",\"policyName\":\"当前用户存在待办\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"HAS_TODO\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"HAS_TODO\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_team\",\"policyName\":\"相关人（参与过该记录）\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"TEAM\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"TEAM\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0}],\"scopeBindings\":[],\"menus\":[{\"parentId\":\"2120407367991459841\",\"menuName\":\"测试_mx_entity权限\",\"menuType\":\"C\",\"icon\":null,\"sort\":0,\"path\":\"/__entity_permissions__/mx_entity\",\"component\":\"\",\"perm\":null,\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"查询列表\",\"menuType\":\"F\",\"icon\":null,\"sort\":1,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:list\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"查看\",\"menuType\":\"F\",\"icon\":null,\"sort\":2,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:view\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"新增\",\"menuType\":\"F\",\"icon\":null,\"sort\":3,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:create\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"Excel导入\",\"menuType\":\"F\",\"icon\":null,\"sort\":4,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:import\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"编辑\",\"menuType\":\"F\",\"icon\":null,\"sort\":5,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:update\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"单条删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":6,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"批量删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":7,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:batch-delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"导出选中\",\"menuType\":\"F\",\"icon\":null,\"sort\":8,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"导出全部\",\"menuType\":\"F\",\"icon\":null,\"sort\":9,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export-all\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"绕过数据范围\",\"menuType\":\"F\",\"icon\":null,\"sort\":12,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:scope:bypass\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"重新发起\",\"menuType\":\"F\",\"icon\":null,\"sort\":10,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:restart-process\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"审批\",\"menuType\":\"F\",\"icon\":null,\"sort\":11,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:approve\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"}],\"excelConfiguration\":{\"schemaVersion\":1,\"schemes\":[],\"defaults\":{\"schemaVersion\":1,\"defaultImportSchemeCode\":null,\"defaultExportSchemeCode\":null}},\"dependencies\":[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}],\"_referenceFields\":{\"status\":\"VALUE\",\"current_task_assignee\":\"USER\",\"dept_id\":\"DEPT\",\"submitTime\":\"VALUE\",\"deleted\":\"VALUE\",\"name\":\"VALUE\",\"currentTaskAssignee\":\"USER\",\"submitter_id\":\"USER\",\"processStatus\":\"VALUE\",\"process_status\":\"VALUE\",\"submitterId\":\"USER\",\"id\":\"RECORD:当前实体\",\"update_by\":\"USER\",\"code\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"processStartTime\":\"VALUE\",\"update_time\":\"VALUE\",\"submitterName\":\"VALUE\",\"currentTaskId\":\"RECORD:流程任务\",\"create_by\":\"USER\",\"processEndTime\":\"VALUE\",\"currentTaskName\":\"VALUE\",\"deptId\":\"DEPT\",\"create_time\":\"VALUE\",\"note\":\"VALUE\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:26",
+            "updatedAt": "2026-11-11T16:33:26.614867"
+          },
+          {
+            "id": "2120434711808499714",
+            "importPackageId": "2120434711749779457",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "assetName": "测试_mx_baseline_v1",
+            "sourceVersion": 1,
+            "sourceHash": "57c456dadeed6a42bcde964a5870e991d27c2aa2323a82ca19ebaae2c86a4815",
+            "targetBeforeVersion": null,
+            "targetBeforeHash": null,
+            "targetAfterVersion": 1,
+            "targetAfterHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "comparisonStatus": "NEW",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"PROCESS\",\"businessKey\":\"mx_baseline\",\"assetName\":\"测试_mx_baseline_v1\",\"definition\":{\"processKey\":\"mx_baseline\",\"processName\":\"测试_mx_baseline_v1\",\"description\":null,\"category\":null},\"bpmnXml\":\"<bpmn:definitions xmlns:bpmn=\\\"http://www.omg.org/spec/BPMN/20100524/MODEL\\\" xmlns:flowable=\\\"http://flowable.org/bpmn\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" targetNamespace=\\\"wfpack-qa\\\"><bpmn:process id=\\\"mx_baseline\\\" isExecutable=\\\"true\\\" name=\\\"mx_baseline\\\"><bpmn:startEvent id=\\\"start\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:startEvent><bpmn:userTask flowable:assignee=\\\"admin\\\" id=\\\"review\\\" name=\\\"审批\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:userTask><bpmn:endEvent id=\\\"end\\\"/><bpmn:sequenceFlow id=\\\"f1\\\" sourceRef=\\\"start\\\" targetRef=\\\"review\\\"/><bpmn:sequenceFlow id=\\\"f2\\\" sourceRef=\\\"review\\\" targetRef=\\\"end\\\"/></bpmn:process></bpmn:definitions>\",\"nodes\":[{\"nodeId\":\"start\",\"nodeName\":\"start\",\"nodeType\":\"START\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"end\",\"nodeName\":\"end\",\"nodeType\":\"END\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"nodeType\":\"USER_TASK\",\"configJson\":null,\"skipNode\":false,\"assignees\":[{\"assigneeType\":\"USER\",\"assigneeValue\":\"admin\",\"assigneeName\":null,\"priority\":0}],\"forms\":null}],\"nodeForms\":[{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"isReadonly\":0,\"sortOrder\":0,\"formReleaseId\":null,\"formReleaseVersion\":null,\"form\":null,\"formRef\":\"wf-form://mx_entity/main\"}],\"nodeApprovals\":[],\"flowActions\":[],\"statusMappings\":[],\"dependencies\":[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}],\"_referenceFields\":{\"status\":\"VALUE\",\"current_task_assignee\":\"USER\",\"dept_id\":\"DEPT\",\"submitTime\":\"VALUE\",\"deleted\":\"VALUE\",\"name\":\"VALUE\",\"currentTaskAssignee\":\"USER\",\"submitter_id\":\"USER\",\"processStatus\":\"VALUE\",\"process_status\":\"VALUE\",\"submitterId\":\"USER\",\"id\":\"RECORD:当前实体\",\"update_by\":\"USER\",\"code\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"processStartTime\":\"VALUE\",\"update_time\":\"VALUE\",\"submitterName\":\"VALUE\",\"currentTaskId\":\"RECORD:流程任务\",\"create_by\":\"USER\",\"processEndTime\":\"VALUE\",\"currentTaskName\":\"VALUE\",\"deptId\":\"DEPT\",\"create_time\":\"VALUE\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:26",
+            "updatedAt": "2026-11-11T16:33:26.463698"
+          }
+        ]
+      }
+    },
+    {
+      "name": "合法历史格式整包升级",
+      "passed": true,
+      "analysis": {
+        "analyzedAt": "2026-11-11T16:33:29.977618",
+        "blocked": false,
+        "items": [
+          {
+            "itemId": "2120434729504268290",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "comparisonStatus": "SOURCE_NEWER",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          },
+          {
+            "itemId": "2120434729533628418",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          }
+        ]
+      },
+      "publish": {
+        "importId": "2120434729479102465",
+        "packageNo": "WFP-MX_BASELINE-20261111144636-6AA579",
+        "migrationTag": "MX_BASELINE",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-11T16:33:30.310327",
+        "items": [
+          {
+            "id": "2120434729504268290",
+            "importPackageId": "2120434729479102465",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "assetName": "测试_mx_entity",
+            "sourceVersion": 2,
+            "sourceHash": "ee077541c2fb5799ad9eb5dab698d7f87ec53221ed51a458559545482fc071ac",
+            "targetBeforeVersion": 2,
+            "targetBeforeHash": "56caa12867f62018cb82e7be639ad412f0dcf60f18fb795f46d74a7b58a5176e",
+            "targetAfterVersion": 3,
+            "targetAfterHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "comparisonStatus": "SOURCE_NEWER",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"ENTITY\",\"businessKey\":\"mx_entity\",\"assetName\":\"测试_mx_entity\",\"definition\":{\"entityCode\":\"mx_entity\",\"entityName\":\"测试_mx_entity\",\"description\":null,\"lifecycleMode\":\"WORKFLOW\",\"storageMode\":\"DYNAMIC\",\"processKey\":\"mx_baseline\"},\"fields\":[{\"fieldCode\":\"id\",\"fieldName\":\"ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"note\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"dbType\":null,\"fieldLength\":100,\"dbColumnName\":\"note\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":false,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"name\",\"fieldName\":\"数据名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":1,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"code\",\"fieldName\":\"数据编码\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"code\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":true,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":2,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"status\",\"fieldName\":\"状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(50)\",\"fieldLength\":50,\"dbColumnName\":\"status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"DRAFT\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":3,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStatus\",\"fieldName\":\"流程状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(20)\",\"fieldLength\":20,\"dbColumnName\":\"process_status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"NOT_STARTED\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":4,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processInstanceId\",\"fieldName\":\"流程实例ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"process_instance_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":5,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStartTime\",\"fieldName\":\"流程开始时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_start_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":6,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processEndTime\",\"fieldName\":\"流程结束时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_end_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":7,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterId\",\"fieldName\":\"提交人ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"submitter_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":8,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterName\",\"fieldName\":\"提交人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"submitter_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":9,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deptId\",\"fieldName\":\"所属部门\",\"fieldType\":\"REFERENCE\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"dept_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":10,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":\"sys_organization\",\"refEntityType\":\"DEPT\",\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitTime\",\"fieldName\":\"提交时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"submit_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":11,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskId\",\"fieldName\":\"当前任务ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":12,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskName\",\"fieldName\":\"当前任务名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"current_task_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":13,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskAssignee\",\"fieldName\":\"当前任务办理人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_assignee\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":14,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_time\",\"fieldName\":\"创建时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"create_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":15,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_time\",\"fieldName\":\"更新时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"update_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":16,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_by\",\"fieldName\":\"创建人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"create_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":17,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_by\",\"fieldName\":\"更新人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"update_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":18,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deleted\",\"fieldName\":\"删除标记\",\"fieldType\":\"BOOLEAN\",\"dbType\":\"tinyint\",\"fieldLength\":null,\"dbColumnName\":\"deleted\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":19,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]}],\"relations\":[],\"statuses\":[{\"entityCode\":\"mx_entity\",\"statusCode\":\"DRAFT\",\"statusName\":\"草稿\",\"statusCategory\":\"NEW\",\"sortOrder\":10,\"description\":\"新建或尚未处理的数据\",\"color\":\"info\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"PENDING\",\"statusName\":\"处理中\",\"statusCategory\":\"PROCESSING\",\"sortOrder\":20,\"description\":\"流程处理中\",\"color\":\"warning\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"APPROVED\",\"statusName\":\"已完成\",\"statusCategory\":\"COMPLETED\",\"sortOrder\":30,\"description\":\"流程已正常完成\",\"color\":\"success\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"TERMINATED\",\"statusName\":\"已终止\",\"statusCategory\":\"TERMINATED\",\"sortOrder\":40,\"description\":\"流程已终止\",\"color\":\"danger\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"WITHDRAWN\",\"statusName\":\"已撤回\",\"statusCategory\":\"WITHDRAWN\",\"sortOrder\":50,\"description\":\"流程由发起人撤回\",\"color\":\"info\"}],\"codeRule\":null,\"forms\":[{\"description\":\"\",\"formKey\":\"main\",\"formName\":\"测试表单\",\"isDefault\":true,\"layoutType\":\"vertical\",\"status\":1,\"fields\":[{\"componentType\":\"input\",\"fieldCode\":\"note\",\"fieldLabel\":\"备注\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"gridSpan\":24,\"isHidden\":0,\"isReadonly\":0,\"isRequired\":0,\"sortOrder\":0}],\"nodes\":[{\"parentId\":null,\"nodeKey\":\"note\",\"nodeType\":\"FIELD\",\"bindingType\":\"ENTITY_FIELD\",\"bindingRef\":\"note\",\"componentVersion\":null,\"snapshotVersion\":null,\"propsDocument\":\"{\\\"fieldId\\\":null,\\\"fieldCode\\\":\\\"note\\\",\\\"fieldName\\\":\\\"备注\\\",\\\"label\\\":\\\"备注\\\",\\\"fieldType\\\":\\\"STRING\\\",\\\"componentType\\\":\\\"input\\\",\\\"required\\\":false,\\\"readonly\\\":false,\\\"hidden\\\":false,\\\"defaultValue\\\":null,\\\"placeholder\\\":null,\\\"gridSpan\\\":24}\",\"rulesDocument\":\"{}\",\"dataSourceBindingsDocument\":null,\"legacyPropsDocument\":null,\"orderKey\":1000000,\"revision\":null,\"parentNodeKey\":null}],\"eventBindings\":[],\"viewCompositions\":[]}],\"extensions\":[],\"eventBindings\":[],\"lists\":[],\"interfaceExtensions\":[],\"scopePolicies\":[{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_personal\",\"policyName\":\"本人创建或提交的数据\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"PERSONAL_OR_SUBMITTER\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"RULE\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":{\\\"type\\\":\\\"GROUP\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":\\\"OR\\\",\\\"children\\\":[{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_CREATOR\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_SUBMITTER\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null}],\\\"relation\\\":null,\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_has_todo\",\"policyName\":\"当前用户存在待办\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"HAS_TODO\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"HAS_TODO\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_team\",\"policyName\":\"相关人（参与过该记录）\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"TEAM\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"TEAM\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0}],\"scopeBindings\":[],\"menus\":[{\"parentId\":\"2120407367991459841\",\"menuName\":\"测试_mx_entity权限\",\"menuType\":\"C\",\"icon\":null,\"sort\":0,\"path\":\"/__entity_permissions__/mx_entity\",\"component\":\"\",\"perm\":null,\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"查询列表\",\"menuType\":\"F\",\"icon\":null,\"sort\":1,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:list\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"查看\",\"menuType\":\"F\",\"icon\":null,\"sort\":2,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:view\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"新增\",\"menuType\":\"F\",\"icon\":null,\"sort\":3,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:create\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"Excel导入\",\"menuType\":\"F\",\"icon\":null,\"sort\":4,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:import\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"编辑\",\"menuType\":\"F\",\"icon\":null,\"sort\":5,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:update\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"单条删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":6,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"批量删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":7,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:batch-delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"导出选中\",\"menuType\":\"F\",\"icon\":null,\"sort\":8,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"导出全部\",\"menuType\":\"F\",\"icon\":null,\"sort\":9,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export-all\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"绕过数据范围\",\"menuType\":\"F\",\"icon\":null,\"sort\":12,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:scope:bypass\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"重新发起\",\"menuType\":\"F\",\"icon\":null,\"sort\":10,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:restart-process\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120407825162207234\",\"menuName\":\"审批\",\"menuType\":\"F\",\"icon\":null,\"sort\":11,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:approve\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"}],\"excelConfiguration\":{\"schemaVersion\":1,\"schemes\":[],\"defaults\":{\"schemaVersion\":1,\"defaultImportSchemeCode\":null,\"defaultExportSchemeCode\":null}},\"dependencies\":[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}],\"_referenceFields\":{\"status\":\"VALUE\",\"current_task_assignee\":\"USER\",\"dept_id\":\"DEPT\",\"submitTime\":\"VALUE\",\"deleted\":\"VALUE\",\"name\":\"VALUE\",\"currentTaskAssignee\":\"USER\",\"submitter_id\":\"USER\",\"processStatus\":\"VALUE\",\"process_status\":\"VALUE\",\"submitterId\":\"USER\",\"id\":\"RECORD:当前实体\",\"update_by\":\"USER\",\"code\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"processStartTime\":\"VALUE\",\"update_time\":\"VALUE\",\"submitterName\":\"VALUE\",\"currentTaskId\":\"RECORD:流程任务\",\"create_by\":\"USER\",\"processEndTime\":\"VALUE\",\"currentTaskName\":\"VALUE\",\"deptId\":\"DEPT\",\"create_time\":\"VALUE\",\"note\":\"VALUE\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:30",
+            "updatedAt": "2026-11-11T16:33:30.30511"
+          },
+          {
+            "id": "2120434729533628418",
+            "importPackageId": "2120434729479102465",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "assetName": "测试_mx_baseline_v1",
+            "sourceVersion": 1,
+            "sourceHash": "57c456dadeed6a42bcde964a5870e991d27c2aa2323a82ca19ebaae2c86a4815",
+            "targetBeforeVersion": 1,
+            "targetBeforeHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "targetAfterVersion": 1,
+            "targetAfterHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"PROCESS\",\"businessKey\":\"mx_baseline\",\"assetName\":\"测试_mx_baseline_v1\",\"definition\":{\"processKey\":\"mx_baseline\",\"processName\":\"测试_mx_baseline_v1\",\"description\":null,\"category\":null},\"bpmnXml\":\"<bpmn:definitions xmlns:bpmn=\\\"http://www.omg.org/spec/BPMN/20100524/MODEL\\\" xmlns:flowable=\\\"http://flowable.org/bpmn\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" targetNamespace=\\\"wfpack-qa\\\"><bpmn:process id=\\\"mx_baseline\\\" isExecutable=\\\"true\\\" name=\\\"mx_baseline\\\"><bpmn:startEvent id=\\\"start\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:startEvent><bpmn:userTask flowable:assignee=\\\"admin\\\" id=\\\"review\\\" name=\\\"审批\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:userTask><bpmn:endEvent id=\\\"end\\\"/><bpmn:sequenceFlow id=\\\"f1\\\" sourceRef=\\\"start\\\" targetRef=\\\"review\\\"/><bpmn:sequenceFlow id=\\\"f2\\\" sourceRef=\\\"review\\\" targetRef=\\\"end\\\"/></bpmn:process></bpmn:definitions>\",\"nodes\":[{\"nodeId\":\"start\",\"nodeName\":\"start\",\"nodeType\":\"START\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"end\",\"nodeName\":\"end\",\"nodeType\":\"END\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"nodeType\":\"USER_TASK\",\"configJson\":null,\"skipNode\":false,\"assignees\":[{\"assigneeType\":\"USER\",\"assigneeValue\":\"admin\",\"assigneeName\":null,\"priority\":0}],\"forms\":null}],\"nodeForms\":[{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"isReadonly\":0,\"sortOrder\":0,\"formReleaseId\":null,\"formReleaseVersion\":null,\"form\":null,\"formRef\":\"wf-form://mx_entity/main\"}],\"nodeApprovals\":[],\"flowActions\":[],\"statusMappings\":[],\"dependencies\":[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}],\"_referenceFields\":{\"status\":\"VALUE\",\"current_task_assignee\":\"USER\",\"dept_id\":\"DEPT\",\"submitTime\":\"VALUE\",\"deleted\":\"VALUE\",\"name\":\"VALUE\",\"currentTaskAssignee\":\"USER\",\"submitter_id\":\"USER\",\"processStatus\":\"VALUE\",\"process_status\":\"VALUE\",\"submitterId\":\"USER\",\"id\":\"RECORD:当前实体\",\"update_by\":\"USER\",\"code\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"processStartTime\":\"VALUE\",\"update_time\":\"VALUE\",\"submitterName\":\"VALUE\",\"currentTaskId\":\"RECORD:流程任务\",\"create_by\":\"USER\",\"processEndTime\":\"VALUE\",\"currentTaskName\":\"VALUE\",\"deptId\":\"DEPT\",\"create_time\":\"VALUE\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:30",
+            "updatedAt": "2026-11-11T16:33:30.308595"
+          }
+        ]
+      }
+    },
+    {
+      "name": "当前格式完整包导出并导入",
+      "passed": true,
+      "analysis": {
+        "analyzedAt": "2026-11-11T16:33:33.622229",
+        "blocked": false,
+        "items": [
+          {
+            "itemId": "2120434744826060801",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          },
+          {
+            "itemId": "2120434744838643714",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          }
+        ]
+      },
+      "publish": {
+        "importId": "2120434744813477890",
+        "packageNo": "WFP-SEMANTIC-FULL-20261111163333-EF62C5",
+        "migrationTag": "SEMANTIC-FULL",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-11T16:33:33.65238",
+        "items": [
+          {
+            "id": "2120434744826060801",
+            "importPackageId": "2120434744813477890",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "assetName": "测试_mx_entity",
+            "sourceVersion": 3,
+            "sourceHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "targetBeforeVersion": 3,
+            "targetBeforeHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "targetAfterVersion": 3,
+            "targetAfterHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"ENTITY\",\"businessKey\":\"mx_entity\",\"assetName\":\"测试_mx_entity\",\"definition\":{\"entityCode\":\"mx_entity\",\"entityName\":\"测试_mx_entity\",\"description\":null,\"lifecycleMode\":\"WORKFLOW\",\"storageMode\":\"DYNAMIC\",\"processKey\":\"mx_baseline\"},\"fields\":[{\"fieldCode\":\"id\",\"fieldName\":\"ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"note\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"dbType\":null,\"fieldLength\":100,\"dbColumnName\":\"note\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":0,\"isSystem\":false,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"name\",\"fieldName\":\"数据名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":1,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"code\",\"fieldName\":\"数据编码\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"code\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":true,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":2,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"status\",\"fieldName\":\"状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(50)\",\"fieldLength\":50,\"dbColumnName\":\"status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"DRAFT\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":3,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStatus\",\"fieldName\":\"流程状态\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(20)\",\"fieldLength\":20,\"dbColumnName\":\"process_status\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":\"NOT_STARTED\",\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":4,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processInstanceId\",\"fieldName\":\"流程实例ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"process_instance_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":5,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processStartTime\",\"fieldName\":\"流程开始时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_start_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":6,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"processEndTime\",\"fieldName\":\"流程结束时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"process_end_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":7,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterId\",\"fieldName\":\"提交人ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"submitter_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":8,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitterName\",\"fieldName\":\"提交人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(100)\",\"fieldLength\":100,\"dbColumnName\":\"submitter_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":9,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deptId\",\"fieldName\":\"所属部门\",\"fieldType\":\"REFERENCE\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"dept_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":10,\"isSystem\":true,\"editable\":true,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":\"sys_organization\",\"refEntityType\":\"DEPT\",\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"submitTime\",\"fieldName\":\"提交时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"submit_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":11,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskId\",\"fieldName\":\"当前任务ID\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_id\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":12,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskName\",\"fieldName\":\"当前任务名称\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(200)\",\"fieldLength\":200,\"dbColumnName\":\"current_task_name\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":13,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"currentTaskAssignee\",\"fieldName\":\"当前任务办理人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"current_task_assignee\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":14,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_time\",\"fieldName\":\"创建时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"create_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":15,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_time\",\"fieldName\":\"更新时间\",\"fieldType\":\"DATETIME\",\"dbType\":\"datetime\",\"fieldLength\":null,\"dbColumnName\":\"update_time\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":16,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"create_by\",\"fieldName\":\"创建人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"create_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":17,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"update_by\",\"fieldName\":\"更新人\",\"fieldType\":\"STRING\",\"dbType\":\"varchar(64)\",\"fieldLength\":64,\"dbColumnName\":\"update_by\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":18,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]},{\"fieldCode\":\"deleted\",\"fieldName\":\"删除标记\",\"fieldType\":\"BOOLEAN\",\"dbType\":\"tinyint\",\"fieldLength\":null,\"dbColumnName\":\"deleted\",\"fieldPrecision\":null,\"isRequired\":false,\"isUnique\":false,\"defaultValue\":null,\"optionsJson\":null,\"dictType\":null,\"valueStorage\":\"SCALAR\",\"refListKey\":null,\"validateRules\":null,\"sortOrder\":19,\"isSystem\":true,\"editable\":false,\"uiConfigurable\":null,\"runtimeReadable\":null,\"refEntityCode\":null,\"refEntityType\":null,\"refFieldCode\":null,\"fileTypes\":null,\"fileMaxSize\":null,\"fileMaxCount\":null,\"fileItems\":[]}],\"relations\":[],\"statuses\":[{\"entityCode\":\"mx_entity\",\"statusCode\":\"DRAFT\",\"statusName\":\"草稿\",\"statusCategory\":\"NEW\",\"sortOrder\":0,\"description\":\"新建或尚未处理的数据\",\"color\":\"info\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"PENDING\",\"statusName\":\"处理中\",\"statusCategory\":\"PROCESSING\",\"sortOrder\":1,\"description\":\"流程处理中\",\"color\":\"warning\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"APPROVED\",\"statusName\":\"已完成\",\"statusCategory\":\"COMPLETED\",\"sortOrder\":2,\"description\":\"流程已正常完成\",\"color\":\"success\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"TERMINATED\",\"statusName\":\"已终止\",\"statusCategory\":\"TERMINATED\",\"sortOrder\":3,\"description\":\"流程已终止\",\"color\":\"danger\"},{\"entityCode\":\"mx_entity\",\"statusCode\":\"WITHDRAWN\",\"statusName\":\"已撤回\",\"statusCategory\":\"WITHDRAWN\",\"sortOrder\":4,\"description\":\"流程由发起人撤回\",\"color\":\"info\"}],\"codeRule\":null,\"forms\":[{\"description\":\"\",\"formKey\":\"main\",\"formName\":\"测试表单\",\"isDefault\":true,\"layoutType\":\"vertical\",\"status\":1,\"fields\":[{\"componentType\":\"input\",\"fieldCode\":\"note\",\"fieldLabel\":\"备注\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"gridSpan\":24,\"isHidden\":0,\"isReadonly\":0,\"isRequired\":0,\"sortOrder\":0}],\"nodes\":[{\"parentId\":null,\"nodeKey\":\"note\",\"nodeType\":\"FIELD\",\"bindingType\":\"ENTITY_FIELD\",\"bindingRef\":\"note\",\"componentVersion\":null,\"snapshotVersion\":null,\"propsDocument\":\"{\\\"fieldId\\\":\\\"2120434712928378882\\\",\\\"fieldCode\\\":\\\"note\\\",\\\"fieldName\\\":\\\"备注\\\",\\\"label\\\":\\\"备注\\\",\\\"fieldType\\\":\\\"STRING\\\",\\\"componentType\\\":\\\"input\\\",\\\"required\\\":false,\\\"readonly\\\":false,\\\"hidden\\\":false,\\\"defaultValue\\\":null,\\\"placeholder\\\":null,\\\"gridSpan\\\":24}\",\"rulesDocument\":\"{}\",\"dataSourceBindingsDocument\":null,\"legacyPropsDocument\":null,\"orderKey\":1000000,\"revision\":null,\"parentNodeKey\":null}],\"eventBindings\":[],\"viewCompositions\":[]}],\"extensions\":[],\"eventBindings\":[],\"lists\":[],\"interfaceExtensions\":[],\"scopePolicies\":[{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_has_todo\",\"policyName\":\"当前用户存在待办\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"HAS_TODO\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"HAS_TODO\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_personal\",\"policyName\":\"本人创建或提交的数据\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"PERSONAL_OR_SUBMITTER\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"RULE\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":{\\\"type\\\":\\\"GROUP\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":\\\"OR\\\",\\\"children\\\":[{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_CREATOR\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},{\\\"type\\\":\\\"RELATION\\\",\\\"lifecycleVersion\\\":null,\\\"logic\\\":null,\\\"children\\\":[],\\\"relation\\\":\\\"CURRENT_USER_IS_SUBMITTER\\\",\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null}],\\\"relation\\\":null,\\\"field\\\":null,\\\"operator\\\":null,\\\"value\\\":null},\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0},{\"entityCode\":\"mx_entity\",\"policyKey\":\"default_team\",\"policyName\":\"相关人（参与过该记录）\",\"description\":\"系统预置规则目录，需在列表设置中绑定后才生效\",\"presetCode\":\"TEAM\",\"filterConfig\":\"{\\\"version\\\":1,\\\"type\\\":\\\"TEAM\\\",\\\"includeSubDept\\\":null,\\\"deptIds\\\":null,\\\"fieldMapping\\\":null,\\\"statusLimit\\\":null,\\\"root\\\":null,\\\"ruleEffect\\\":\\\"ALLOW\\\",\\\"audience\\\":{\\\"version\\\":1,\\\"logic\\\":\\\"OR\\\",\\\"conditions\\\":[{\\\"scopeType\\\":\\\"ALL_USERS\\\",\\\"targetIds\\\":null,\\\"operator\\\":\\\"ANY\\\",\\\"includeSubDept\\\":null,\\\"sql\\\":null}],\\\"root\\\":null},\\\"sql\\\":null,\\\"customSql\\\":null,\\\"expression\\\":null}\",\"status\":\"PUBLISHED\",\"enabled\":1,\"version\":1,\"reviewRequired\":0}],\"scopeBindings\":[],\"menus\":[{\"parentId\":\"2120433713228603393\",\"menuName\":\"测试_mx_entity权限\",\"menuType\":\"C\",\"icon\":null,\"sort\":0,\"path\":\"/__entity_permissions__/mx_entity\",\"component\":\"\",\"perm\":null,\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"查询列表\",\"menuType\":\"F\",\"icon\":null,\"sort\":1,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:list\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"查看\",\"menuType\":\"F\",\"icon\":null,\"sort\":2,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:view\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"新增\",\"menuType\":\"F\",\"icon\":null,\"sort\":3,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:create\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"Excel导入\",\"menuType\":\"F\",\"icon\":null,\"sort\":4,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:import\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"编辑\",\"menuType\":\"F\",\"icon\":null,\"sort\":5,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:update\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"单条删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":6,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"批量删除\",\"menuType\":\"F\",\"icon\":null,\"sort\":7,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:batch-delete\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"导出选中\",\"menuType\":\"F\",\"icon\":null,\"sort\":8,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"导出全部\",\"menuType\":\"F\",\"icon\":null,\"sort\":9,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:export-all\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"重新发起\",\"menuType\":\"F\",\"icon\":null,\"sort\":10,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:restart-process\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"审批\",\"menuType\":\"F\",\"icon\":null,\"sort\":11,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:approve\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"},{\"parentId\":\"2120434712332787714\",\"menuName\":\"绕过数据范围\",\"menuType\":\"F\",\"icon\":null,\"sort\":12,\"path\":\"\",\"component\":\"\",\"perm\":\"entity:mx_entity:scope:bypass\",\"status\":\"0\",\"visible\":\"1\",\"isFrame\":\"0\",\"isCache\":\"0\",\"query\":\"\",\"entityCode\":\"mx_entity\",\"resourceType\":null,\"listKey\":null,\"children\":null,\"parentName\":null,\"hasChildren\":null,\"displayPath\":null,\"selectionDisabled\":false,\"parentPath\":\"/__entity_permissions__/mx_entity\"}],\"excelConfiguration\":{\"schemaVersion\":1,\"schemes\":[],\"defaults\":{\"schemaVersion\":1,\"defaultImportSchemeCode\":null,\"defaultExportSchemeCode\":null}},\"dependencies\":[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}],\"_referenceFields\":{\"current_task_assignee\":\"USER\",\"status\":\"VALUE\",\"create_time\":\"VALUE\",\"deptId\":\"DEPT\",\"currentTaskName\":\"VALUE\",\"processEndTime\":\"VALUE\",\"create_by\":\"USER\",\"currentTaskId\":\"RECORD:流程任务\",\"submitterName\":\"VALUE\",\"update_time\":\"VALUE\",\"processStartTime\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"code\":\"VALUE\",\"update_by\":\"USER\",\"id\":\"RECORD:当前实体\",\"submitterId\":\"USER\",\"process_status\":\"VALUE\",\"processStatus\":\"VALUE\",\"submitter_id\":\"USER\",\"currentTaskAssignee\":\"USER\",\"name\":\"VALUE\",\"deleted\":\"VALUE\",\"submitTime\":\"VALUE\",\"dept_id\":\"DEPT\",\"note\":\"VALUE\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"PROCESS\",\"key\":\"mx_baseline\",\"required\":true,\"source\":\"实体绑定流程\"}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:34",
+            "updatedAt": "2026-11-11T16:33:33.64727"
+          },
+          {
+            "id": "2120434744838643714",
+            "importPackageId": "2120434744813477890",
+            "assetType": "PROCESS",
+            "businessKey": "mx_baseline",
+            "assetName": "测试_mx_baseline_v1",
+            "sourceVersion": 1,
+            "sourceHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "targetBeforeVersion": 1,
+            "targetBeforeHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "targetAfterVersion": 1,
+            "targetAfterHash": "9c65686f96078a816ff2bfb8dfa076e0adc24f36dcd582b11bb74d5264c835c6",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"PROCESS\",\"businessKey\":\"mx_baseline\",\"assetName\":\"测试_mx_baseline_v1\",\"definition\":{\"processKey\":\"mx_baseline\",\"processName\":\"测试_mx_baseline_v1\",\"description\":null,\"category\":null},\"bpmnXml\":\"<bpmn:definitions xmlns:bpmn=\\\"http://www.omg.org/spec/BPMN/20100524/MODEL\\\" xmlns:flowable=\\\"http://flowable.org/bpmn\\\" xmlns:xsi=\\\"http://www.w3.org/2001/XMLSchema-instance\\\" targetNamespace=\\\"wfpack-qa\\\"><bpmn:process id=\\\"mx_baseline\\\" isExecutable=\\\"true\\\" name=\\\"mx_baseline\\\"><bpmn:startEvent id=\\\"start\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:startEvent><bpmn:userTask flowable:assignee=\\\"admin\\\" id=\\\"review\\\" name=\\\"审批\\\"><bpmn:extensionElements><flowable:properties><flowable:property name=\\\"entityFormId\\\" value=\\\"wf-form://mx_entity/main\\\"/><flowable:property name=\\\"entityFormBindingMode\\\" value=\\\"CUSTOM\\\"/></flowable:properties></bpmn:extensionElements></bpmn:userTask><bpmn:endEvent id=\\\"end\\\"/><bpmn:sequenceFlow id=\\\"f1\\\" sourceRef=\\\"start\\\" targetRef=\\\"review\\\"/><bpmn:sequenceFlow id=\\\"f2\\\" sourceRef=\\\"review\\\" targetRef=\\\"end\\\"/></bpmn:process></bpmn:definitions>\",\"nodes\":[{\"nodeId\":\"start\",\"nodeName\":\"start\",\"nodeType\":\"START\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"end\",\"nodeName\":\"end\",\"nodeType\":\"END\",\"configJson\":null,\"skipNode\":false,\"assignees\":[],\"forms\":null},{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"nodeType\":\"USER_TASK\",\"configJson\":null,\"skipNode\":false,\"assignees\":[{\"assigneeType\":\"USER\",\"assigneeValue\":\"admin\",\"assigneeName\":null,\"priority\":0}],\"forms\":null}],\"nodeForms\":[{\"nodeId\":\"review\",\"nodeName\":\"审批\",\"isReadonly\":0,\"sortOrder\":0,\"formReleaseId\":null,\"formReleaseVersion\":null,\"form\":null,\"formRef\":\"wf-form://mx_entity/main\"}],\"nodeApprovals\":[],\"flowActions\":[],\"statusMappings\":[],\"dependencies\":[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}],\"_referenceFields\":{\"current_task_assignee\":\"USER\",\"status\":\"VALUE\",\"create_time\":\"VALUE\",\"deptId\":\"DEPT\",\"currentTaskName\":\"VALUE\",\"processEndTime\":\"VALUE\",\"create_by\":\"USER\",\"currentTaskId\":\"RECORD:流程任务\",\"submitterName\":\"VALUE\",\"update_time\":\"VALUE\",\"processStartTime\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"code\":\"VALUE\",\"update_by\":\"USER\",\"id\":\"RECORD:当前实体\",\"submitterId\":\"USER\",\"process_status\":\"VALUE\",\"processStatus\":\"VALUE\",\"submitter_id\":\"USER\",\"currentTaskAssignee\":\"USER\",\"name\":\"VALUE\",\"deleted\":\"VALUE\",\"submitTime\":\"VALUE\",\"dept_id\":\"DEPT\"},\"_referenceProtocol\":1,\"_selection\":{\"full\":true}}",
+            "dependenciesJson": "[{\"type\":\"FORM\",\"key\":\"wf-form://mx_entity/main\",\"required\":true,\"source\":\"BPMN 实体表单绑定\",\"sources\":[\"BPMN 实体表单绑定\",\"节点表单\"]},{\"type\":\"USER\",\"key\":\"admin\",\"required\":true,\"targetOnly\":true,\"source\":\"流程 mx_baseline / 节点 审批 (review) / assignee\",\"references\":[{\"processKey\":\"mx_baseline\",\"nodeId\":\"review\",\"nodeName\":\"审批\",\"section\":\"bpmnXml\",\"multiInstance\":false,\"location\":\"assignee\"}]}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:34",
+            "updatedAt": "2026-11-11T16:33:33.650402"
+          }
+        ]
+      }
+    },
+    {
+      "name": "当前格式 main 表单局部包导出并导入",
+      "passed": true,
+      "analysis": {
+        "analyzedAt": "2026-11-11T16:33:33.710127",
+        "blocked": false,
+        "items": [
+          {
+            "itemId": "2120434745241296897",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "missingDependencies": [],
+            "risks": [],
+            "blocked": false
+          }
+        ]
+      },
+      "publish": {
+        "importId": "2120434745228713985",
+        "packageNo": "WFP-SEMANTIC-PARTIAL-20261111163333-DC92B4",
+        "migrationTag": "SEMANTIC-PARTIAL",
+        "status": "PUBLISHED",
+        "publishedAt": "2026-11-11T16:33:33.728189",
+        "items": [
+          {
+            "id": "2120434745241296897",
+            "importPackageId": "2120434745228713985",
+            "assetType": "ENTITY",
+            "businessKey": "mx_entity",
+            "assetName": "测试_mx_entity",
+            "sourceVersion": 3,
+            "sourceHash": "6bc01ff5547d16cf234286a6ed9897f8441dd6f9ccb5a58c4ef1c5d66c8820a8",
+            "targetBeforeVersion": 3,
+            "targetBeforeHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "targetAfterVersion": 3,
+            "targetAfterHash": "57771fb8153df0fc6a6e230f47a65a07b53a9b320084886c3f5071943bc59487",
+            "comparisonStatus": "CONSISTENT",
+            "mappingStatus": "RESOLVED",
+            "publishStatus": "SUCCESS",
+            "snapshotJson": "{\"schemaVersion\":3,\"assetType\":\"ENTITY\",\"businessKey\":\"mx_entity\",\"assetName\":\"测试_mx_entity\",\"_referenceFields\":{\"current_task_assignee\":\"USER\",\"status\":\"VALUE\",\"create_time\":\"VALUE\",\"deptId\":\"DEPT\",\"currentTaskName\":\"VALUE\",\"processEndTime\":\"VALUE\",\"create_by\":\"USER\",\"currentTaskId\":\"RECORD:流程任务\",\"submitterName\":\"VALUE\",\"update_time\":\"VALUE\",\"processStartTime\":\"VALUE\",\"processInstanceId\":\"RECORD:流程实例\",\"code\":\"VALUE\",\"update_by\":\"USER\",\"id\":\"RECORD:当前实体\",\"submitterId\":\"USER\",\"process_status\":\"VALUE\",\"processStatus\":\"VALUE\",\"submitter_id\":\"USER\",\"currentTaskAssignee\":\"USER\",\"name\":\"VALUE\",\"deleted\":\"VALUE\",\"submitTime\":\"VALUE\",\"dept_id\":\"DEPT\",\"note\":\"VALUE\"},\"_referenceProtocol\":1,\"definition\":{\"entityCode\":\"mx_entity\",\"entityName\":\"测试_mx_entity\",\"storageMode\":\"DYNAMIC\"},\"forms\":[{\"description\":\"\",\"formKey\":\"main\",\"formName\":\"测试表单\",\"isDefault\":true,\"layoutType\":\"vertical\",\"status\":1,\"fields\":[{\"componentType\":\"input\",\"fieldCode\":\"note\",\"fieldLabel\":\"备注\",\"fieldName\":\"备注\",\"fieldType\":\"STRING\",\"gridSpan\":24,\"isHidden\":0,\"isReadonly\":0,\"isRequired\":0,\"sortOrder\":0}],\"nodes\":[{\"parentId\":null,\"nodeKey\":\"note\",\"nodeType\":\"FIELD\",\"bindingType\":\"ENTITY_FIELD\",\"bindingRef\":\"note\",\"componentVersion\":null,\"snapshotVersion\":null,\"propsDocument\":\"{\\\"fieldId\\\":\\\"2120434712928378882\\\",\\\"fieldCode\\\":\\\"note\\\",\\\"fieldName\\\":\\\"备注\\\",\\\"label\\\":\\\"备注\\\",\\\"fieldType\\\":\\\"STRING\\\",\\\"componentType\\\":\\\"input\\\",\\\"required\\\":false,\\\"readonly\\\":false,\\\"hidden\\\":false,\\\"defaultValue\\\":null,\\\"placeholder\\\":null,\\\"gridSpan\\\":24}\",\"rulesDocument\":\"{}\",\"dataSourceBindingsDocument\":null,\"legacyPropsDocument\":null,\"orderKey\":1000000,\"revision\":null,\"parentNodeKey\":null}],\"eventBindings\":[],\"viewCompositions\":[]}],\"eventBindings\":[],\"excelConfiguration\":{\"schemaVersion\":1,\"schemes\":[],\"defaults\":{\"schemaVersion\":1,\"defaultImportSchemeCode\":null,\"defaultExportSchemeCode\":null}},\"extensions\":[],\"dependencies\":[{\"type\":\"ENTITY\",\"key\":\"mx_entity\",\"required\":true,\"source\":\"细粒度配置所属实体\",\"targetOnly\":true}],\"_selection\":{\"full\":false,\"sections\":[\"forms\"],\"formKeys\":[\"main\"]}}",
+            "dependenciesJson": "[{\"type\":\"ENTITY\",\"key\":\"mx_entity\",\"required\":true,\"source\":\"细粒度配置所属实体\",\"targetOnly\":true}]",
+            "errorMessage": null,
+            "createdAt": "2026-11-11T16:33:34",
+            "updatedAt": "2026-11-11T16:33:33.725525"
+          }
+        ]
+      }
+    }
+  ],
+  "initialImportCount": 0,
+  "validCrossEnvironmentConfirmation": {
+    "passed": true,
+    "createdNoImportState": true
+  },
+  "flyway": {
+    "migrations": 129,
+    "failed": 0
+  },
+  "publishingItems": 0,
+  "summary": {
+    "negativeRequests": 42,
+    "negativePassed": 42,
+    "positiveCases": 4,
+    "allPassed": true
+  }
+}

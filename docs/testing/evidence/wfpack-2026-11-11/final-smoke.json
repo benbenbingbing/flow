@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "WFPACK_FIX_PARENT_CURRENT.wfpack 重启后再次分析无阻断",
+    "WFPACK_FIX_PARENT_CURRENT.wfpack 配置保持一致",
+    "WFPACK_FIX_PARENT_CURRENT.wfpack 再次发布成功",
+    "WFPACK_QA_OPTIONAL_TYPE.wfpack 重启后再次分析无阻断",
+    "WFPACK_QA_OPTIONAL_TYPE.wfpack 配置保持一致",
+    "WFPACK_QA_OPTIONAL_TYPE.wfpack 再次发布成功",
+    "新建流程增量版本保持为2",
+    "最终构建实际创建审批任务",
+    "最终构建实际审批完成"
+  ],
+  "recordId": "ece45fee810047aeb7b32078d9641f5d",
+  "finalState": "COMPLETED"
+}

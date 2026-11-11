@@ -171,7 +171,7 @@ class ConfigMigrationSignatureImportTest {
         for (int version : List.of(1, 2)) {
             var entries = unzip(packageData(TARGET_KEY));
             var manifest = json.readValue(entries.get("manifest.json"), new TypeReference<Map<String, Object>>() {});
-            assertEquals(3, manifest.get("formatVersion"));
+            assertEquals(4, manifest.get("formatVersion"));
             manifest.put("formatVersion", version);
             entries.put("manifest.json", json.writeValueAsBytes(manifest));
             refreshChecksums(entries);
@@ -197,6 +197,7 @@ class ConfigMigrationSignatureImportTest {
         var asset = new ConfigMigrationAsset();
         asset.setId("asset-1"); asset.setAssetType("ENTITY"); asset.setBusinessKey("test_entity");
         asset.setAssetName("测试实体"); asset.setSourceVersion(1);
+        asset.setSnapshotSchemaVersion(1);
         asset.setSnapshotJson(json.writeValueAsString(Map.of("schemaVersion", 1, "assetType", "ENTITY",
                 "businessKey", "test_entity", "definition", Map.of("entityCode", "test_entity"),
                 "dependencies", List.of(Map.of("type", "USER", "key", "missing-user", "required", true, "targetOnly", true)))));

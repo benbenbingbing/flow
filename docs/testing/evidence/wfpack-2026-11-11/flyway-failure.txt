@@ -1,0 +1,46 @@
+=== source / fresh empty schema ===
+2026-11-11 09:58:35 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Migrating schema `wfpack_source` to version "061 - ui view composition"
+2026-11-11 09:58:35 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Migrating schema `wfpack_source` to version "062 - remove entity list scope inventory"
+2026-11-11 09:58:35 [main] [system] ERROR o.f.core.internal.command.DbMigrate - Migration of schema `wfpack_source` to version "062 - remove entity list scope inventory" failed! Please restore backups and roll back database and code!
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'flywayInitializer' defined in class path resource [org/springframework/boot/autoconfigure/flyway/FlywayAutoConfiguration$FlywayConfiguration.class]: Failed to execute script V062__remove_entity_list_scope_inventory.sql
+---------------------------------------------------------------------
+SQL State  : HY000
+Error Code : 1137
+Message    : Can't reopen table: 'own_root'
+Location   : db/migration/V062__remove_entity_list_scope_inventory.sql (/private/tmp/flow-wfpack-20261111/source/nested:/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-app/target/workflow-server-1.0.0.jar/!BOOT-INF/lib/workflow-db-migrator-1.0.0.jar!/db/migration/V062__remove_entity_list_scope_inventory.sql)
+Line       : 29
+Statement  : Run Flyway with -X option to see the actual statement causing the problem
+
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1824)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:607)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:529)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:339)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:373)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:202)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:315)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:202)
+
+=== target / fresh empty schema ===
+2026-11-11 09:58:35 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Migrating schema `wfpack_target` to version "061 - ui view composition"
+2026-11-11 09:58:35 [main] [system] INFO  o.f.core.internal.command.DbMigrate - Migrating schema `wfpack_target` to version "062 - remove entity list scope inventory"
+2026-11-11 09:58:35 [main] [system] ERROR o.f.core.internal.command.DbMigrate - Migration of schema `wfpack_target` to version "062 - remove entity list scope inventory" failed! Please restore backups and roll back database and code!
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'flywayInitializer' defined in class path resource [org/springframework/boot/autoconfigure/flyway/FlywayAutoConfiguration$FlywayConfiguration.class]: Failed to execute script V062__remove_entity_list_scope_inventory.sql
+---------------------------------------------------------------------
+SQL State  : HY000
+Error Code : 1137
+Message    : Can't reopen table: 'own_root'
+Location   : db/migration/V062__remove_entity_list_scope_inventory.sql (/private/tmp/flow-wfpack-20261111/target/nested:/Users/dawei/Documents/ddup/ai/flow/workflow-server/workflow-app/target/workflow-server-1.0.0.jar/!BOOT-INF/lib/workflow-db-migrator-1.0.0.jar!/db/migration/V062__remove_entity_list_scope_inventory.sql)
+Line       : 29
+Statement  : Run Flyway with -X option to see the actual statement causing the problem
+
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1824)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:607)
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:529)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:339)
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:373)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:337)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:202)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:315)
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:202)
+

@@ -53,12 +53,16 @@ public class ConfigMigrationSubFormReferences {
         Map<String, Object> result = rewrite(snapshot, (type, value) -> value, config -> {
             if (config.containsKey("childFormReleaseRef")) throw new IllegalArgumentException("旧固定子表单包必须重新导出");
             String formId = first(config, FORM_IDS);
-            if (formId.isBlank()) return config;
+            if (formId.isBlank()) {
+                if (config.containsKey("childFormRef")) clearEntityIds(config);
+                return config;
+            }
             EntityForm form = formMapper.selectById(formId);
             if (form == null) throw new IllegalArgumentException("源子表单不存在: " + formId);
             var entity = entityMapper.selectById(form.getEntityId());
             if (entity == null) throw new IllegalArgumentException("源子表单所属实体不存在: " + formId);
             clearIds(config);
+            clearEntityIds(config);
             config.put("childFormRef", "wf-form://" + entity.getEntityCode() + "/" + form.getFormKey());
             dependencies.add(Map.of("type", "ENTITY", "key", entity.getEntityCode(), "required", true,
                     "source", "子表单当前配置依赖"));
@@ -93,6 +97,11 @@ public class ConfigMigrationSubFormReferences {
             config.remove("childFormRef");
             clearIds(config);
             config.put("childFormId", form.getId());
+            // 关系属性内的实体 ID 是本地缓存，不能继承源 ID；以已解析的子表单所属实体重建。
+            if (config.containsKey("relationCode") || config.containsKey("childEntityId") || config.containsKey("refEntityId")) {
+                config.put("childEntityId", form.getEntityId());
+                config.put("refEntityId", form.getEntityId());
+            }
             return config;
         });
     }
@@ -235,6 +244,12 @@ public class ConfigMigrationSubFormReferences {
 
     private static String first(Map<String, Object> value, List<String> keys) {
         return keys.stream().map(key -> text(value.get(key))).filter(text -> !text.isBlank()).findFirst().orElse("");
+    }
+
+    /** 子表单依靠稳定表单引用确定实体，不携带跨环境无效的实体缓存 ID。 */
+    private static void clearEntityIds(Map<String, Object> value) {
+        value.remove("childEntityId");
+        value.remove("refEntityId");
     }
 
     private static void clearIds(Map<String, Object> value) {
