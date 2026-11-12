@@ -153,6 +153,8 @@ GET /api/system/identity/source-snapshots/{target}/{localId}
 
 实施前检查 SQL / Java 迁移的最大版本为 V130，新增 `V131__identity_source_snapshot.java`，没有修改历史迁移。七份初始化脚本均同步至 V131，共 200 表、2,792 字段；实际验证结果记录在 [SQL 说明](../sql/README.md)。
 
+MySQL 存量库另提供可直接执行的 [V131 手工升级 SQL](../sql/upgrade/mysql/V131__identity_source_snapshot.sql)，与原 Java 迁移的 MySQL DDL 等价，重复执行不改变已有原文。原 Java 迁移已提交到主分支，继续保留以兼容 Flyway 历史；手工执行不登记版本，后续仍由原迁移正常登记。实际业务环境是否已执行需查询该环境的迁移历史和表结构，执行方法见 [手工升级说明](../sql/README.md#2026-11-12-补充-v131-mysql-手工升级脚本)。
+
 **8. 验收范围**
 
 - 原有四参数调用及 Builder 调用继续编译，新接入可传入完整原始 JSON。

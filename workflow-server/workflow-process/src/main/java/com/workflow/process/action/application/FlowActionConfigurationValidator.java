@@ -96,6 +96,10 @@ public class FlowActionConfigurationValidator {
         if (!(bean instanceof FlowActionProvider handler)) {
             throw new RuntimeException("Bean '" + action.getInterfaceName() + "' 未实现 FlowActionProvider 接口");
         }
+        // 内置字段赋值必须在保存和发布时检查真实发布字段，不能只依赖前端候选过滤。
+        if (handler instanceof EntityFieldAssignmentFlowActionHandler assignment) {
+            assignment.validateConfiguration(action);
+        }
         // 处理器可声明仅支持部分触发时机
         Set<String> supportedTimings = handler.supportedTriggerTimings();
         if (supportedTimings != null && !supportedTimings.isEmpty()

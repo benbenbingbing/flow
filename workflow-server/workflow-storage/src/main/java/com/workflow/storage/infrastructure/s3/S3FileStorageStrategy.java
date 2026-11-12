@@ -8,6 +8,7 @@ import jakarta.annotation.PreDestroy;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -27,6 +28,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.http.ContentStreamProvider;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.SdkHttpConfigurationOption;
 import software.amazon.awssdk.http.apache5.Apache5HttpClient;
@@ -119,9 +121,9 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
     /**
      * 将文件上传到默认桶的 key-prefix/年/月/日/UUID 路径，并返回包含完整对象 key 的文件标识。
      *
-     * @param file 文件，作为 {@code objectKey} 的输入影响后续处理
-     * @return 上传键值结果，供调用方继续处理
-     * @throws IllegalStateException 当前业务状态不允许继续处理时抛出
+     * @param file 当前同步调用内可重复打开的上传内容，供 SDK 签名、校验及重试时从头读取
+     * @return 文件标识、完整对象 key、原始名称和大小，供调用方保存文件记录
+     * @throws IllegalStateException 打开、读取或关闭上传内容失败时抛出
      */
     @Override
     public Map<String, String> upload(FileUpload file) {
@@ -129,8 +131,9 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
         String contentType = StringUtils.hasText(file.contentType())
                 ? file.contentType()
                 : "application/octet-stream";
-        // SDK 同步消费请求体，本 Provider 在上传成功或失败后均关闭宿主提供的内容流。
-        try (InputStream stream = file.openStream()) {
+        // 磁盘上的 multipart 流不一定支持 mark/reset；每次重读重新打开，避免签名或重试失败。
+        // 显式提供已知长度，保持流式上传，不为支持回退而把整份文件缓存在内存中。
+        try (UploadContentStreamProvider content = new UploadContentStreamProvider(file)) {
             client.putObject(
                     PutObjectRequest.builder()
                             .bucket(config.getBucket())
@@ -141,10 +144,8 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
                                     encodeOriginalName(
                                             file.originalFilename())))
                             .build(),
-                    RequestBody.fromInputStream(
-                            stream,
-                            file.size()));
-        } catch (IOException exception) {
+                    RequestBody.fromContentProvider(content, file.size(), contentType));
+        } catch (IOException | UncheckedIOException exception) {
             throw new IllegalStateException(
                     "读取上传文件失败",
                     exception);
@@ -155,6 +156,41 @@ public class S3FileStorageStrategy implements FileStorageProvider, AutoCloseable
         result.put("originalName", file.originalFilename());
         result.put("size", String.valueOf(file.size()));
         return result;
+    }
+
+    /**
+     * 在单次同步上传内管理可重放的内容流；重读前关闭上一条流，结束时关闭最后一条流。
+     * 不依赖 SDK 是否主动关闭流，因此签名失败或存储服务异常时也不会遗留文件句柄。
+     */
+    private static final class UploadContentStreamProvider implements ContentStreamProvider, AutoCloseable {
+        private final FileUpload file;
+        private InputStream stream;
+
+        private UploadContentStreamProvider(FileUpload file) {
+            this.file = file;
+        }
+
+        /** 每次均返回内容起点的新流；SDK 的回调不允许 checked exception，IO 失败需转为运行时异常。 */
+        @Override
+        public InputStream newStream() {
+            try {
+                close();
+                stream = file.openStream();
+                return stream;
+            } catch (IOException exception) {
+                throw new UncheckedIOException("读取上传文件失败", exception);
+            }
+        }
+
+        /** 先清除引用再关闭，避免关闭失败时在退出上传的清理阶段再次关闭同一条流。 */
+        @Override
+        public void close() throws IOException {
+            InputStream previous = stream;
+            stream = null;
+            if (previous != null) {
+                previous.close();
+            }
+        }
     }
 
     /**

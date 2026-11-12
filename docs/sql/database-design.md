@@ -2,7 +2,7 @@
 
 文档版本：1.8；整理日期：2026-10-08。
 
-2026-11-12 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V131，均包含 200 张平台及 Flowable 表、2,792 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
+2026-11-12 脚本同步说明。本目录七种数据库的空库初始化脚本已对齐 V132，均包含 200 张平台及 Flowable 表、2,792 个字段。V130 职务管理收敛为当前人员关系；V131 增加身份来源最新原文快照，相关字段与业务规则见第 9 章；V132 仅新增内置实体字段赋值动作目录种子，复用第 5.11–5.12 节存储，结构计数不变。同步范围与验证结果见 [初始化脚本说明](README.md)。下文未补录章节的统计仍是历史核对记录。
 
 本文按业务模块记录 Flow 平台的数据库结构、表间关系和使用情况。每张表单列章节，全部字段列在同一张表格中。
 
@@ -2600,9 +2600,17 @@ NodeConfigService 和流程节点同步服务仍通过本表读写节点表单�
 
 可见实体范围保存在 process_action_definition_entity。
 
+V132 新增全局内置目录「实体字段赋值」，`id=flow_action_definition_field_assignment`，`action_code` 与 `handler_name` 均为 `entityFieldAssignmentFlowActionHandler`。新库默认启用；升级仅补缺失记录，不覆盖管理员设置或恢复逻辑删除记录。存量升级使用可直接执行的 MySQL SQL 文件，也保留 Flyway 版本迁移入口；已存在相同编码和处理器时保留原 ID，稳定 ID、编码或处理器被不一致动作占用时由主键或唯一索引中止，不覆盖冲突数据。其他数据库的存量升级语法需按方言调整，七份空库脚本的种子内容保持等价。
+
+具体绑定仍使用 `process_action.action_definition_id` 关联本目录，`scope_type=SEQUENCE_FLOW`、`trigger_timing=TRANSITION_TAKEN`、`execution_mode=IN_TRANSACTION`、`failure_policy=ROLLBACK`。`params_json` 保存 `assignments` 数组，每项为字段编码、SET/CLEAR 操作及 SET 的字面值；LONG/DECIMAL 使用字符串保精度，CLEAR 省略 value。配置按流程版本复制，目标始终是当前实例关联的实体记录，不接受任意目标坐标。
+
+只允许实体发布快照中的普通标量及单选字段；保护系统字段、必填规则、类型精度和有效选项。更新通过统一实体变更管道，以 FLOW_ACTION 来源和 PROCESS_FIELD_ASSIGNMENT 业务意图记录，复用既有幂等、审计、版本与事务。字段写入失败会与流程及连线状态共同回滚，运行中循环再次经过会独立执行；并行分支写同一字段的不同值在发布时拒绝。实体字段与流程变量分别维护，本能力不自动同步变量。详见 [使用与执行约束](../process-entity-field-assignment.md)。
+
 #### 5.12.5 来源与迁移
 
 结构依据：[V001__business_schema.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V001__business_schema.sql)、[V078__remove_legacy_process_action_fields.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V078__remove_legacy_process_action_fields.sql)。
+
+内置字段赋值目录种子：[V132__entity_field_assignment_action.sql](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V132__entity_field_assignment_action.sql)。手动执行后可由 Flyway 正常登记，无需修改迁移历史；执行方法见 [MySQL 手动升级](../process-entity-field-assignment.md#mysql-手动升级)。
 
 实现定位：[FlowActionDefinitionMapper.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/extension/action/infrastructure/persistence/mapper/FlowActionDefinitionMapper.java)、[FlowActionDefinition.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/extension/action/infrastructure/persistence/record/FlowActionDefinition.java)、[FlowActionCatalogService.java](../../workflow-server/workflow-admin/src/main/java/com/workflow/admin/extension/action/application/FlowActionCatalogService.java)。
 
@@ -4901,6 +4909,8 @@ V062 清理已退役的范围盘点根菜单及直接子菜单授权，保留并
 | `recorded_by` | `VARCHAR(64)` / `VARCHAR2(64)` | 否 | 无 | 有效登录用户或配置服务账号，用于审计归属 |
 
 MySQL、OceanBase MySQL 使用 LONGTEXT，PostgreSQL、人大金仓使用 TEXT，Oracle、达梦、OceanBase Oracle 使用 CLOB。只有主键 `pk_identity_snapshot`，无额外索引、外键或种子数据。
+
+MySQL 存量库可直接执行 [V131 手工升级 SQL](upgrade/mysql/V131__identity_source_snapshot.sql)，字段类型、长度、可空性、默认值、主键及用途注释与历史 Java 迁移一致。脚本只在表缺失时建表，不回填资料、不改已有表及原文；原 Java 迁移保留，手工建表后仍可由 Flyway 正常登记 V131。执行状态查询、命令和验证结果见 [数据库脚本说明](README.md#2026-11-12-补充-v131-mysql-手工升级脚本)。
 
 写入持有现有目录锁，与基础资料、扩展、默认角色、绑定和必需审计共用事务。UNCHANGED 可补录或单独更新原文，结果仍为 UNCHANGED；完全重复不改时间。STALE_IGNORED 和同版本业务冲突不改原文。UPDATED 缺原文时仅将旧原文标为过期，必须用显式状态避免 SERIAL 业务值恢复后误认为原文仍有效。
 

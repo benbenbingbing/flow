@@ -4,6 +4,10 @@ import request from '@/utils/request'
  * 流程动作管理API
  */
 export const processActionApi = {
+  /** 只读取当前流程实体的已发布可赋值字段，保存时仍由服务端重新校验。 */
+  assignableFields(processConfigId) {
+    return request.get(`/process-actions/process/${processConfigId}/assignable-fields`)
+  },
   /** 已注册策略按流程实体范围返回，能力声明用于设计器兼容性提示。 */
   failureStrategies(processConfigId) {
     return request.get('/process-actions/failure-strategies', { params: { processConfigId } })

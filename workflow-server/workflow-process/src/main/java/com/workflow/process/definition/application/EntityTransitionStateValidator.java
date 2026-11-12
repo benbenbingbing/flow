@@ -4,15 +4,15 @@ import org.w3c.dom.*;
 import java.util.*;
 
 /** 发布时检查并发写状态；互斥网关允许不同结果，汇合后的顺序状态也允许不同。 */
-final class EntityTransitionStateValidator {
+public final class EntityTransitionStateValidator {
     private static final String BPMN = "http://www.omg.org/spec/BPMN/20100524/MODEL";
     /**
      * 封装边的不可变数据；各分量供后续校验、传递或结果展示使用。
      *
      * @param target 目标，保存在对象中供后续校验、查询或展示
-     * @param status 状态标识，决定后续边采用的处理分支
+     * @param values 当前边写入的值集合，供并行分支之间比较是否存在竞争
      */
-    private record Edge(String target, String status) { }
+    private record Edge(String target, Set<String> values) { }
     /**
      * 初始化实体{@code transition}状态校验器，保存构造参数供后续方法使用。
      */
@@ -24,6 +24,26 @@ final class EntityTransitionStateValidator {
      * @param document 文档，供本方法校验实体{@code transition}状态时使用
      */
     static void validate(Document document) {
+        validate(document, flow -> {
+            String value = status(flow);
+            return value.isBlank() ? Set.of() : Set.of(value);
+        }, "并行分支业务状态冲突");
+    }
+
+    /**
+     * 按字段分别比较并发分支上的全部固定写入；相同值可并行，不同字段互不冲突。
+     * 空值也作为明确写入比较，避免把 CLEAR 当成未配置而漏检。
+     */
+    public static void validateFieldAssignments(Document document, Map<String, Map<String, Set<String>>> writes) {
+        Set<String> fields = new HashSet<>();
+        writes.values().forEach(values -> fields.addAll(values.keySet()));
+        for (String field : fields) validate(document,
+                flow -> writes.getOrDefault(flow.getAttribute("id"), Map.of()).getOrDefault(field, Set.of()),
+                "并行分支字段赋值冲突（" + field + "）");
+    }
+
+    private static void validate(Document document, java.util.function.Function<Element, Set<String>> values,
+                                 String conflictMessage) {
         Map<String, Element> nodes = new HashMap<>();
         Map<String, List<Edge>> outgoing = new HashMap<>();
         Map<String, Integer> incoming = new HashMap<>();
@@ -34,7 +54,7 @@ final class EntityTransitionStateValidator {
             if ("sequenceFlow".equals(element.getLocalName())) {
                 String target = element.getAttribute("targetRef");
                 outgoing.computeIfAbsent(element.getAttribute("sourceRef"), k -> new ArrayList<>())
-                        .add(new Edge(target, status(element)));
+                        .add(new Edge(target, values.apply(element)));
                 incoming.merge(target, 1, Integer::sum);
             }
         }
@@ -58,19 +78,18 @@ final class EntityTransitionStateValidator {
             List<Set<String>> branchStates = new ArrayList<>();
             for (Edge edge : entry.getValue()) {
                 Set<String> states = new HashSet<>();
-                if (!edge.status().isBlank()) states.add(edge.status());
+                states.addAll(edge.values());
                 for (String id : reachable(edge.target(), outgoing, joins)) {
                     if (joins.contains(id)) continue;
                     Element node = nodes.get(id);
                     if (node != null && "subProcess".equals(node.getLocalName())) {
                         NodeList innerFlows = node.getElementsByTagNameNS(BPMN, "sequenceFlow");
                         for (int inner = 0; inner < innerFlows.getLength(); inner++) {
-                            String value = status((Element) innerFlows.item(inner));
-                            if (!value.isBlank()) states.add(value);
+                            states.addAll(values.apply((Element) innerFlows.item(inner)));
                         }
                     }
                     for (Edge downstream : outgoing.getOrDefault(id, List.of())) {
-                        if (!downstream.status().isBlank()) states.add(downstream.status());
+                        states.addAll(downstream.values());
                     }
                 }
                 branchStates.add(states);
@@ -78,7 +97,7 @@ final class EntityTransitionStateValidator {
             for (int i = 0; i < branchStates.size(); i++) for (int j = i + 1; j < branchStates.size(); j++) {
                 for (String left : branchStates.get(i)) for (String right : branchStates.get(j)) {
                     if (!left.equals(right)) throw new IllegalArgumentException(
-                            "并行分支业务状态冲突: " + entry.getKey() + "，请把不同状态回写移至汇合后的连线");
+                            conflictMessage + ": " + entry.getKey() + "，请把冲突回写移至汇合后的连线");
                 }
             }
         }

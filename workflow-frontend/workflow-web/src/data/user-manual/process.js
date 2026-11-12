@@ -819,6 +819,7 @@ export default {
               type: 'table',
               columns: fieldColumns,
               rows: [
+                { field: '字段赋值（连线快捷入口）', meaning: '实际经过连线后给当前实体的多个普通字段设置固定值或显式清空。', defaultLimit: '仅已发布的文本、数字、布尔、日期和单选字段；一次 1–50 个字段；必填字段不能清空。', effect: '复用内置流程动作，事务内写入，失败与流程推进共同回滚。', publish: '保存动作后发布流程；系统字段仍由平台维护，实体字段更新不自动同步流程变量。' },
                 { field: '快捷模板', meaning: '审批前校验、通知下一办理人、审批结果同步、流程完成通知、撤回清理。', defaultLimit: '可选。', effect: '快速带出名称、时机、方式和失败策略。', publish: '仍需选择实际处理器和参数。' },
                 { field: '动作名称', meaning: '动作业务名称。', defaultLimit: '必填。', effect: '用于列表、版本和执行日志。', publish: '写清时机和目标系统。' },
                 { field: '执行时机', meaning: '由当前作用域与节点类型动态提供。', defaultLimit: '新增默认第一个可用时机。', effect: '决定何时触发。', publish: '改变时机会改变可用上下文。' },

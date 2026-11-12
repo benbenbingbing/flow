@@ -10,6 +10,7 @@
         <el-tag v-if="hasDraftChanges" type="warning" size="small">有未发布变更</el-tag>
       </div>
       <div class="header-actions">
+        <el-button v-if="scopeType === 'SEQUENCE_FLOW'" size="small" @click="openFieldAssignment">字段赋值</el-button>
         <el-button v-if="canOpenExtensionManagement" size="small" @click="openExtensionManagement">
           <el-icon><Setting /></el-icon>扩展管理
         </el-button>
@@ -160,7 +161,7 @@
               </el-radio-button>
               <el-radio-button
                 value="AFTER_COMMIT"
-                :disabled="!handlerSupportsMode('AFTER_COMMIT')"
+                :disabled="isFieldAssignment || !handlerSupportsMode('AFTER_COMMIT')"
               >
                 提交后执行
               </el-radio-button>
@@ -265,19 +266,21 @@
         </SettingsSection>
 
         <SettingsSection
-          title="说明与参数"
-          description="传给处理器的附加说明和结构化参数"
-          :default-expanded="Boolean(editingAction.description) || actionParamList.length > 0"
+          :title="isFieldAssignment ? '说明与字段赋值' : '说明与参数'"
+          :description="isFieldAssignment ? '配置当前实体字段及对应固定值' : '传给处理器的附加说明和结构化参数'"
+          :default-expanded="isFieldAssignment || Boolean(editingAction.description) || actionParamList.length > 0"
         >
           <template #summary>
-            <span>{{ actionParamList.length }} 个参数</span>
+            <span>{{ isFieldAssignment ? '固定值或清空' : `${actionParamList.length} 个参数` }}</span>
           </template>
 
           <el-form-item label="描述">
             <el-input v-model="editingAction.description" type="textarea" :rows="2" />
           </el-form-item>
 
-          <el-form-item>
+          <EntityFieldAssignmentEditor v-if="isFieldAssignment" ref="fieldAssignmentEditor"
+            :process-id="processId" :params-json="editingAction.paramsJson || ''" />
+          <el-form-item v-else>
             <template #label>
               <JsonConfigLabel
                 label="参数配置"
@@ -349,6 +352,8 @@ import ExtensionCapabilityPicker from '@/components/ExtensionCapabilityPicker.vu
 import SettingsSection from '@/components/SettingsSection.vue'
 import JsonConfigLabel from '@/components/JsonConfigLabel.vue'
 import ConfigSchemaEditor from '@/components/ConfigSchemaEditor.vue'
+import EntityFieldAssignmentEditor from '@/components/EntityFieldAssignmentEditor.vue'
+import { ENTITY_FIELD_ASSIGNMENT_HANDLER } from '@/shared/entity-field-assignment'
 import { failurePolicyOptions as buildFailurePolicyOptions, strategyFormSchema, strategyDefaults, strategyProblem, parseStrategyConfig } from '@/shared/flow-action-failure-strategy'
 
 const props = defineProps({
@@ -372,6 +377,8 @@ const hasDraftChanges = ref(false)
 const actionDialogVisible = ref(false)
 const selectedTemplate = ref('')
 const editingAction = ref({})
+const fieldAssignmentEditor = ref(null)
+const isFieldAssignment = computed(() => editingAction.value.interfaceName === ENTITY_FIELD_ASSIGNMENT_HANDLER)
 const actionParamList = ref([])
 const retryForm = ref({ maxRetries: 5 })
 const failureStrategies = ref([])
@@ -462,7 +469,8 @@ const availableTemplates = computed(() => templates.filter(template => {
   return true
 }))
 
-const failurePolicyOptions = computed(() => buildFailurePolicyOptions(editingAction.value.executionMode))
+const failurePolicyOptions = computed(() => buildFailurePolicyOptions(editingAction.value.executionMode)
+  .filter(option => !isFieldAssignment.value || option.value === 'ROLLBACK'))
 
 const riskWarnings = computed(() => {
   const warnings = []
@@ -481,7 +489,11 @@ const riskWarnings = computed(() => {
 
 watch(
   () => [props.processId, props.scopeType, props.elementId, props.bpmnType],
-  loadAll,
+  (_binding, previous) => {
+    // 编辑过程中切换流程或连线，必须重新打开对应配置，避免把旧草稿保存到新目标。
+    if (previous) actionDialogVisible.value = false
+    loadAll()
+  },
   { immediate: true }
 )
 
@@ -520,7 +532,7 @@ function createEmptyAction() {
 
 function showActionDialog(action = null) {
   editingAction.value = action ? { ...action } : createEmptyAction()
-  actionParamList.value = parseParamsJson(editingAction.value.paramsJson)
+  actionParamList.value = isFieldAssignment.value ? [] : parseParamsJson(editingAction.value.paramsJson)
   retryForm.value = parseRetryConfig(editingAction.value.retryConfig)
   strategyConfigError.value = ''
   try {
@@ -533,6 +545,27 @@ function showActionDialog(action = null) {
   selectedTemplate.value = ''
   actionDialogVisible.value = true
   loadSelectedHandler()
+}
+
+/** 快捷入口仍创建普通流程动作，沿用动作目录的启停、可见范围和发布规则。 */
+async function openFieldAssignment() {
+  const binding = [props.processId, props.scopeType, props.elementId].join(':')
+  try {
+    // 与普通动作选择器使用同一目录入口，流程设计人员无需额外取得扩展管理权限。
+    const options = await extensionCatalogApi.options({ capabilityType: 'FLOW_ACTION', processConfigId: props.processId,
+      keyword: ENTITY_FIELD_ASSIGNMENT_HANDLER, limit: 20 })
+    if (binding !== [props.processId, props.scopeType, props.elementId].join(':')) return
+    const option = (options || []).find(option => option.sourceName === ENTITY_FIELD_ASSIGNMENT_HANDLER)
+    if (!option) throw new Error('实体字段赋值动作当前不可用，请联系管理员检查动作目录。')
+    const handler = normalizeCatalogHandler(option)
+    rememberHandler(handler)
+    showActionDialog()
+    Object.assign(editingAction.value, {
+      actionName: '实体字段赋值', actionDefinitionId: handler.definitionId,
+      interfaceName: handler.beanName, triggerTiming: 'TRANSITION_TAKEN',
+      executionMode: 'IN_TRANSACTION', failurePolicy: 'ROLLBACK'
+    })
+  } catch (error) { ElMessage.error(error?.message || '加载实体字段赋值动作失败') }
 }
 
 /** 目录请求失败时保留原策略及参数，避免编辑旧配置时静默降级。 */
@@ -583,9 +616,17 @@ function onExecutionModeChange(value) {
 }
 
 function onHandlerSelected(option) {
+  const previousName = editingAction.value.interfaceName
   const selected = option ? normalizeCatalogHandler(option) : null
   if (selected) rememberHandler(selected)
   editingAction.value.interfaceName = selected?.beanName || ''
+  if (previousName !== editingAction.value.interfaceName
+      && (previousName === ENTITY_FIELD_ASSIGNMENT_HANDLER || isFieldAssignment.value)) {
+    // 两种编辑器的参数结构不同，切换处理器时不能把旧结构当作普通文本重新保存。
+    editingAction.value.paramsJson = ''
+    actionParamList.value = []
+  }
+  if (isFieldAssignment.value) editingAction.value.failurePolicy = 'ROLLBACK'
   const recommended = currentHandler.value?.recommendedExecutionMode
   if (recommended && handlerSupportsMode(recommended)) {
     editingAction.value.executionMode = recommended
@@ -762,6 +803,10 @@ function parseParamsJson(value) {
 }
 
 function buildParamsJson() {
+  if (isFieldAssignment.value) {
+    if (!fieldAssignmentEditor.value) throw new Error('字段赋值配置尚未就绪，请稍后保存。')
+    return fieldAssignmentEditor.value.paramsJson()
+  }
   const params = {}
   actionParamList.value.forEach(param => {
     if (!param.name) return

@@ -1,7 +1,9 @@
 package com.workflow.storage.infrastructure.s3;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -10,14 +12,22 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.workflow.contracts.storage.model.FileUpload;
 import com.workflow.contracts.storage.model.StoredFile;
 import com.workflow.storage.infrastructure.config.FileStorageProperties;
 import java.io.ByteArrayInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
@@ -32,8 +42,90 @@ import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 
 class S3FileStorageStrategyTest {
+
+    @TempDir
+    Path directory;
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void reopensNonResettableUploadStreamsAndClosesThemOnSuccessOrFailure(boolean storageFails) throws Exception {
+        // 真实文件流不支持 mark/reset，且内容超过 SDK 常见的 128 KiB 回退窗口，避免内存流掩盖缺陷。
+        byte[] content = new byte[256 * 1024 + 17];
+        new Random(1234).nextBytes(content);
+        Path path = Files.write(directory.resolve("upload.bin"), content);
+        List<CloseTrackingInputStream> streams = new ArrayList<>();
+        FileUpload file = new FileUpload("upload.bin", "application/octet-stream", content.length, () -> {
+            CloseTrackingInputStream stream = new CloseTrackingInputStream(Files.newInputStream(path));
+            assertFalse(stream.markSupported());
+            streams.add(stream);
+            return stream;
+        });
+        S3Client client = mock(S3Client.class);
+        var failure = S3Exception.builder().statusCode(500).message("storage failed").build();
+        when(client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenAnswer(invocation -> {
+            RequestBody body = invocation.getArgument(1);
+            assertEquals(content.length, body.optionalContentLength().orElseThrow());
+            // 模拟签名完整读取、传输中断后重试；每次都必须从文件起点开始。
+            InputStream first = body.contentStreamProvider().newStream();
+            assertArrayEquals(content, first.readAllBytes());
+            InputStream second = body.contentStreamProvider().newStream();
+            assertTrue(streams.get(0).closed);
+            assertEquals(content[0] & 0xff, second.read());
+            InputStream third = body.contentStreamProvider().newStream();
+            assertTrue(streams.get(1).closed);
+            assertArrayEquals(content, third.readAllBytes());
+            if (storageFails) {
+                throw failure;
+            }
+            return null;
+        });
+
+        try (S3FileStorageStrategy strategy = new S3FileStorageStrategy(config(), client)) {
+            if (storageFails) {
+                assertSame(failure, assertThrows(S3Exception.class, () -> strategy.upload(file)));
+            } else {
+                assertEquals(String.valueOf(content.length), strategy.upload(file).get("size"));
+            }
+        }
+        assertEquals(3, streams.size());
+        for (CloseTrackingInputStream stream : streams) {
+            assertTrue(stream.closed);
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    void reportsOpenFailuresAndClosesAnyPreviousUploadStream(int successfulOpens) throws Exception {
+        List<CloseTrackingInputStream> streams = new ArrayList<>();
+        FileUpload file = new FileUpload("upload.txt", "text/plain", 4, () -> {
+            if (streams.size() == successfulOpens) {
+                throw new IOException("cannot open upload");
+            }
+            CloseTrackingInputStream stream = new CloseTrackingInputStream(
+                    new ByteArrayInputStream("data".getBytes(StandardCharsets.UTF_8)));
+            streams.add(stream);
+            return stream;
+        });
+        S3Client client = mock(S3Client.class);
+        when(client.putObject(any(PutObjectRequest.class), any(RequestBody.class))).thenAnswer(invocation -> {
+            RequestBody body = invocation.getArgument(1);
+            body.contentStreamProvider().newStream().readAllBytes();
+            body.contentStreamProvider().newStream();
+            return null;
+        });
+
+        try (S3FileStorageStrategy strategy = new S3FileStorageStrategy(config(), client)) {
+            IllegalStateException error = assertThrows(IllegalStateException.class, () -> strategy.upload(file));
+            assertEquals("读取上传文件失败", error.getMessage());
+        }
+        assertEquals(successfulOpens, streams.size());
+        for (CloseTrackingInputStream stream : streams) {
+            assertTrue(stream.closed);
+        }
+    }
 
     @Test
     void uploadsAndStreamsObjectsUsingStablePublicUrl()
@@ -196,5 +288,20 @@ class S3FileStorageStrategyTest {
         config.setBucket("files");
         config.setAccessUrl("https://files.example.test");
         return config;
+    }
+
+    /** 保留底层流的 mark/reset 能力，单独记录资源关闭，避免依赖 JVM 内部文件流类型的 Mock。 */
+    private static final class CloseTrackingInputStream extends FilterInputStream {
+        private boolean closed;
+
+        private CloseTrackingInputStream(InputStream stream) {
+            super(stream);
+        }
+
+        @Override
+        public void close() throws IOException {
+            closed = true;
+            super.close();
+        }
     }
 }

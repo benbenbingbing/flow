@@ -27,6 +27,14 @@ public class FlowActionController {
     private final FlowActionService flowActionService;
     private final FlowActionTimingCatalog timingCatalog;
     private final com.workflow.process.action.application.FlowActionFailureStrategyCatalog failureStrategies;
+    private final com.workflow.process.action.application.EntityFieldAssignmentFlowActionHandler fieldAssignment;
+
+    /** 返回当前流程关联实体的已发布可赋值字段；沿用类级流程设计管理权限。 */
+    @GetMapping("/process/{processConfigId}/assignable-fields")
+    public ApiResponse<List<com.workflow.process.action.application.EntityFieldAssignmentFlowActionHandler.FieldOption>> assignableFields(
+            @PathVariable String processConfigId) {
+        return ApiResponse.success(fieldAssignment.fieldsForProcess(processConfigId));
+    }
 
     /** 返回当前流程实体可见的已注册策略；保存和发布仍由后端重新校验。 */
     @GetMapping("/failure-strategies")

@@ -264,6 +264,8 @@ HTTP 不接受 Java 类名、表名或列名；SQL 标识符只来自启动白�
 - `V129__allow_out_of_order_organization_provisioning.java` 增加组织父链就绪状态、来源父级引用及查询索引，并回填已有同来源父子引用。
 - `V131__identity_source_snapshot.java`：来源身份最新原文快照，每个来源对象仅保存一份。应用部署前执行至 V131。
 
+MySQL 存量库也可直接执行 [V131 手工升级 SQL](../sql/upgrade/mysql/V131__identity_source_snapshot.sql)。它与原 Java 迁移等价，支持重复执行；原历史迁移保留，后续 Flyway 可正常登记版本。操作及状态查询方法见 [SQL 说明](../sql/README.md#2026-11-12-补充-v131-mysql-手工升级脚本)。
+
 V127 已执行，不能删除或改写；新库依次执行 V127、V128 后最终不保留这三张示例表。
 已升级到 V127 的环境依次执行 V128、V129，应用升级前须完成 V129。
 创建后续业务扩展前，重新检查 SQL/Java 迁移的最大版本，使用更高版本号。

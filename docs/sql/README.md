@@ -1,8 +1,60 @@
 # 数据库空库初始化脚本
 
-本目录脚本用于预先创建的空数据库或空 schema，包含平台表、Flowable 引擎表和系统种子数据，不包含 `biz_*` 动态业务表或业务记录。按目标数据库选择文件，并遵守文件头中的字符集、签名密钥和管理员 Bootstrap 要求。
+本目录根目录的七份数据库脚本用于预先创建的空数据库或空 schema，包含平台表、Flowable 引擎表和系统种子数据，不包含 `biz_*` 动态业务表或业务记录。按目标数据库选择文件，并遵守文件头中的字符集、签名密钥和管理员 Bootstrap 要求。`upgrade/mysql` 下的文件则是明确标注用途的 MySQL 存量库手工升级脚本。
 
-这些文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入本目录脚本。
+本目录七份数据库文件是独立空库导入脚本，不是 Flyway `B` 基线，也不是存量库升级脚本。采用 Flyway 管理的新库按版本执行全部迁移；存量库继续执行尚未应用的迁移，不能重复导入这些空库脚本。V131、V132 可直接执行的 MySQL 增量脚本及操作方法见下文。
+
+## 2026-11-12 补充 V131 MySQL 手工升级脚本
+
+新增 [`upgrade/mysql/V131__identity_source_snapshot.sql`](upgrade/mysql/V131__identity_source_snapshot.sql)，可连接目标业务库后直接执行。该脚本与已提交到主分支的 [`V131__identity_source_snapshot.java`](../../workflow-server/workflow-db-migrator/src/main/java/db/migration/V131__identity_source_snapshot.java) 的 MySQL DDL 等价，仅增加 `IF NOT EXISTS` 以支持手工重复执行；已有表及原文数据保持不变，不回填历史资料，也不自动修复已有表的结构差异。
+
+原 Java 迁移作为历史版本保留，不替换、不修改。手工 SQL 放在 Flyway 扫描目录之外，不新增或重复注册版本；手工执行后，原 Java 迁移会跳过已存在的表并正常登记 V131，无需手改历史表、建立基线或执行 repair。
+
+此前交付记录中的 V131 执行均为隔离测试，不代表业务环境已经升级。可在目标环境查询 Flyway 历史并检查实际表：
+
+```sql
+SELECT version, script, type, success
+FROM flyway_schema_history
+WHERE version = '131';
+
+SHOW TABLES LIKE 'sys_identity_source_snapshot';
+```
+
+`success=1` 表示 Flyway 已登记成功；无版本记录但表已存在时，也可能是通过空库初始化或手工 SQL 创建，需用 `SHOW CREATE TABLE sys_identity_source_snapshot` 核对实际结构。没有 Flyway 历史表的手工管理环境直接检查实际表即可。
+
+在仓库根目录执行（替换主机、用户和数据库名）：
+
+```sh
+mysql --default-character-set=utf8mb4 -h db_host -u db_user -p db_name \
+  < docs/sql/upgrade/mysql/V131__identity_source_snapshot.sql
+```
+
+### 本次检查与验证
+
+- 同时检查 SQL 与 Java 迁移，最高版本仍为 V132，无重复 Flyway 版本。七份空库初始化脚本保持 **200 张表、2,792 个字段**，无需改变已有 DDL 或种子数据；V131 的 9 个字段、类型、长度、可空性、默认值、主键及用途注释已逐方言与历史迁移核对。
+- `IdentitySourceSnapshotMigrationTest` 的 11 项及 `EntityFieldAssignmentMigrationTest` 的 9 项测试全部通过。新增覆盖手工 SQL 与历史迁移、MySQL 空库脚本逐字规范化等价，手工执行及重复执行保留原文，手工执行后由原 Java 迁移登记及 Flyway validate / 重复 migrate。
+- 独立 MySQL 8.0.27 实例执行实际手工 SQL，通过信息模式及 `SHOW CREATE TABLE` 核对与 `mysql.sql` 的结构、主键、注释、引擎和字符集一致；验证超过 64 KiB 的中文及 emoji JSON、精确大整数、可空来源版本、过期标记、微秒时间、重复执行及主键冲突，原文数据保留。实例已关闭并删除临时库。
+- 本轮未连接其他六种数据库的实例，也未连接或修改业务数据库；其他数据库只核对已有空库脚本，不新增手工方言版本。
+
+本轮文件清单：新增手工升级 SQL **docs/sql/upgrade/mysql/V131__identity_source_snapshot.sql**；修改或删除历史迁移：**无**；新增 Flyway 版本：**无**。
+
+## 2026-11-12 同步 V132 内置实体字段赋值动作
+
+已同时检查 SQL 与 Java 迁移至 V132。七份空库脚本仍为 **200 张表、2,792 个字段**（含 Flowable，不含 Flyway 历史表和动态业务表），本次不改变表、字段、索引或约束，仅向 `process_action_definition` 增加一条等价系统种子：`entityFieldAssignmentFlowActionHandler`，中文名称「实体字段赋值」，GLOBAL 范围、默认启用。
+
+新增迁移 [`V132__entity_field_assignment_action.sql`](../../workflow-server/workflow-db-migrator/src/main/resources/db/migration/V132__entity_field_assignment_action.sql) 仅补缺失目录，不覆盖已有管理员配置或恢复已删除记录。该文件按 MySQL 兼容编写，可直接在存量业务库执行；重复执行不新增重复记录，目录标识被其他动作占用时由主键或唯一约束中止。手动执行后仍可正常运行 Flyway，由 Flyway 跳过已存在的目录并登记版本，无需改历史表或执行 repair。其他数据库的存量升级语法按目标方言自行调整；七份空库脚本的种子等价语义保持不变。
+
+赋值配置复用 `process_action.params_json`，没有新增存储对象。字段、关联及业务规则见 [数据库设计 5.11–5.12](database-design.md#511-process_action-流程动作绑定表)，使用及手动执行方法见 [流程连线实体字段赋值](../process-entity-field-assignment.md#mysql-手动升级)。
+
+### 本次验证
+
+- V132 改为 SQL 后的 9 项迁移测试通过：H2 MySQL 模式执行实际 SQL 的 Flyway migrate、validate、重复 migrate、直接重试及先手动执行再由 Flyway 登记；覆盖管理员自建 ID、名称、可见范围、启停、删除和更新时间保留，以及 ID、动作编码、处理器、混合冲突和处理器名称大小写冲突的拒绝。
+- 在 `/tmp` 的独立 MySQL 8.0.27 实例中，使用 `mysql.sql` 的实际目录表 DDL 执行本次 SQL，验证首次插入、重复执行、管理员配置保留、自建 ID 保留、四类目录标识冲突，以及不区分大小写排序规则下的 Spring Bean 名称冲突，测试通过；实例已关闭并删除临时库。
+- 七种方言的新种子逐字规范化比对一致；与任务修改前的七份脚本逐项比较，原有 CREATE TABLE、字段、索引、约束及种子均保留，仅各新增一条系统种子与版本说明。
+- 功能实现阶段已有 70 项所选后端测试通过，覆盖配置保存与发布复制、精确数字、显式清空、字段保护、停用选项、并行冲突、真实 Flowable 分支、循环及共同回滚，同时回归既有状态、参数和配置导入逻辑；管理端与嵌入端生产构建通过。前端 3 项赋值模型测试、既有失败策略回归及真实组件浏览器测试通过，覆盖快捷入口、多字段保存与重开、布尔/长整数/清空、非法旧配置保护和加载失败重试。本次仅替换迁移形式，重新执行上述 9 项迁移测试，未重复运行其他功能测试与前端构建。
+- 本次未连接 PostgreSQL、Oracle、达梦、人大金仓或两种 OceanBase 的实际实例；七份空库脚本完成静态种子语义核对，H2 不替代这些数据库的实机验证。未连接或修改业务数据库。
+
+本次最终迁移文件：新增 **V132__entity_field_assignment_action.sql**；移除本任务新建、尚未合并的 **V132__entity_field_assignment_action.java**，由上述 SQL 替代；修改、删除、重命名主分支历史迁移：**无**。没有执行 repair 或建立基线。
 
 ## 2026-11-12 同步 V131 来源身份最新原文
 
